@@ -2937,7 +2937,7 @@
      working, review or fix whose newest consumer has ended and no newer one is out is the stall it
      names (sprint.CheckConsumers). A clear drops the history with the epoch. The log's timeline prints
      a consumer record as one short line, the record whole behind log --card and --json."
-      :origin "this card, a-card-carries-its-consumer-history.w12; w11 recorded attempts and reads but never the landing, so the landings count was always 0; w12 records the landing (kind land, its taken and outcome) on the primary as it moves to Landed")
+      :origin "this card, a-card-carries-its-consumer-history.w13, attempt 13; w11 recorded attempts and reads but never the landing, so the landings count was always 0; w12 recorded the landing (kind land, its taken and outcome) on the primary as it moves to Landed; w13 carried w12's work onto the tip of main and reran the store test and the gate")
    (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
     :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"
     :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 27 to 52 (friend-empty-run to stop-fence).
