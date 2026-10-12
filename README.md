@@ -14,7 +14,7 @@ One worker can implement an API while another updates the client and a
 third tackles an unrelated fix. Different models and harnesses can work
 across the same fleet, each taking a bounded assignment.
 
-The **fleet** is the set of machines providing capacity linked across [tailscale](https://tailscale.com). 
+The **fleet** is the set of machines linked across [tailscale](https://tailscale.com). 
 **Workers** carry out the assignments. A machine's **width** sets how many work assignments
 it can run at once. Think of these as lanes: when one opens up, the system runs the next ready card on it.
 
