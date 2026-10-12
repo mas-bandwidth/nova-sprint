@@ -20,7 +20,7 @@ it can run at once. Think of these as lanes: when one opens up, the system runs 
 
 More lanes help when the work is independent. Dependencies have to land first.
 
-## Follow a card all the way home
+## A system for work
 
 Cards move through the system automatically:
 
