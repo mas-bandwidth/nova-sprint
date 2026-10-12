@@ -1292,6 +1292,10 @@ type tickRun struct {
 	// passed over after a part ran: the tick's end brings them up to date.
 	unshown bool
 	routes  RouteCache // read once, by the tick's first part that deals or checks
+	// routeSharesSet says the per-route share of new takes was computed once on the
+	// tick's first read (sprint.SetRouteShares) and written onto the shared route
+	// records, so the deal and the rebalance draw by the one share (route_pick.go).
+	routeSharesSet bool
 	// readers is each reader's state as the tick's first read found it (nil: a
 	// store that keeps no beats).
 	readers map[string]string
@@ -1350,6 +1354,14 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				t.err = fmt.Errorf("tick %s: %w", part.Name, err)
 				return tickFailed
 			}
+			if !t.routeSharesSet {
+				// the per-route share of new takes, computed once on the tick's first
+				// read from the routes and the fleet as it held them, and written onto
+				// the shared route records so the deal and the rebalance draw by the one
+				// share (sprint.SetRouteShares, route_pick.go)
+				sprint.SetRouteShares(t.routes.set.Routes, t.snap.Fleet)
+				t.routeSharesSet = true
+			}
 			v := *view
 			set.into(&v)
 			view = &v
@@ -1386,6 +1398,15 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			if drain {
 				planned = sprint.Drain(s, s.Queue, sprint.MachineActor)
 				return planned, 0
+			}
+			if routesPart(part.Name) && !t.routeSharesSet {
+				// the per-route share of new takes, computed once on the tick's first
+				// read (sprint.SetRouteShares, route_pick.go) and written onto the shared
+				// route records this part and every later one draw by; the probe block
+				// above computes them for its own draw, and this holds them for the
+				// part's real read even when the probe was passed over
+				sprint.SetRouteShares(s.Routes, t.snap.Fleet)
+				t.routeSharesSet = true
 			}
 			wakes = nil
 			if s.Friends == nil {

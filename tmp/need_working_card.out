@@ -1,0 +1,14 @@
+# a-need-added-to-a-working-card-is-not-a-broken-invariant.w4, gate, 2026-10-12T05:28:48Z
+# go vet ./cmd/nova-sprint ./internal/sprint
+# go vet -tags functional ./cmd/nova-sprint (the functional test compiles)
+# go test -count=1 -timeout 600s ./internal/sprint/
+
+$ go vet ./cmd/nova-sprint ./internal/sprint
+vet exit 0
+
+$ go vet -tags functional ./cmd/nova-sprint
+vet (functional) exit 0
+
+$ go test -count=1 -timeout 600s ./internal/sprint/
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	22.072s
+test exit 0

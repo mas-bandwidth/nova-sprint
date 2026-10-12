@@ -196,6 +196,12 @@ type Route struct {
 	// Prices is the route's price sheet (cardcost.PricesOf), what a card that ran on it
 	// is priced by (cost.go); every price "" when the route has none.
 	Prices cardcost.Prices `json:"prices"`
+	// Share is the route's share of new takes, computed once per tick on the tick's
+	// first read (route_pick.go, SetRouteShares) and carried on the shared route record
+	// so every draw reads the one share (route.go, drawRoute). A zero Share is a route
+	// whose share is not yet computed: a computed share is never zero, the floor (0.1)
+	// is the least it holds.
+	Share float64 `json:"-"`
 }
 
 // The work card's route fields, written at each deal and redeal: the route taken
@@ -608,7 +614,11 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 	} else if v, ok := s.Fleet.Prop(PropRouteIndex(tier)); ok {
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	// the per-route shares were computed once on the tick's first read and shared
+	// by every part's snapshot (RouteShareMap, route_pick.go); this draw reads them.
+	// A snapshot handed straight to a caller computes them on the first draw.
+	s.ensureRouteShares()
+	r, steps, ok = preferFirstWeighted(arr, served, drawn, fresh, at)
 	if !ok && drawing && s.budgets != nil && s.budgets.soft {
 		// a coordinator's rework or redo is never refused for a full provider: with no route
 		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
@@ -624,7 +634,7 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 			_, isServed := soft(name)
 			fresh = fresh || isServed && !contains(drawn, name)
 		}
-		r, steps, ok = preferFirst(arr, soft, drawn, fresh, at)
+		r, steps, ok = preferFirstWeighted(arr, soft, drawn, fresh, at)
 	}
 	if !ok {
 		rested, unlaunchable, full = s.unservedWhy(tier, member, drawing)
