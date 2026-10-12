@@ -310,6 +310,10 @@ type lander struct {
 	st                         *store.Store
 	repoDir, base, check, root string
 	dry, twin                  bool // twin: a mem twin, which has no git
+	// identity is the configured author and committer's environment (GIT_AUTHOR_NAME,
+	// GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL), read from the sprint row
+	// before any git; nil when none is configured, which the landing refuses.
+	identity []string
 	// conflictKind and conflictPaths are what the last merge that stopped on unmerged paths
 	// left (mergeHead): the conflict fact carries them (conflictCard).
 	conflictKind  string
@@ -504,6 +508,12 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	ctx := a.landCtx
 	if ctx == nil {
 		ctx = context.Background() // a direct land command has no loop caller
+	}
+	// the machine's commit identity, read before any git: a landing with none configured
+	// refuses to commit, naming the setting (docs/SPEC-SPRINT.md, the machine's commit
+	// identity). A dry run and a twin (no git) read it too, so the refusal is the same.
+	if why := l.readIdentity(ctx); why != "" {
+		return refuse(stderr, "land", why)
 	}
 	if *check != "" && !*dry {
 		a.serial.Lock()
@@ -2507,7 +2517,7 @@ func rejected(err error) bool {
 // except -z output whose status columns and paths are byte-exact; an error
 // carries git's own words.
 func (l *lander) git(ctx context.Context, dir string, args ...string) (string, error) {
-	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.a.gitEnv, OwnRepo: dir != ""}, args...)
+	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.gitEnv(), OwnRepo: dir != ""}, args...)
 	if err != nil {
 		words := strings.TrimSpace(string(res.Stderr) + "\n" + string(res.Stdout))
 		return "", fmt.Errorf("git %s: %w: %s", args[0], err, words)
@@ -2516,6 +2526,31 @@ func (l *lander) git(ctx context.Context, dir string, args ...string) (string, e
 		return string(res.Stdout), nil
 	}
 	return strings.TrimSpace(string(res.Stdout)), nil
+}
+
+// readIdentity reads the sprint row's git_identity and sets l.identity to the author and
+// committer environment it spells; why is a refusal when none is configured. The landing
+// refuses to commit without one, naming the setting (docs/SPEC-SPRINT.md, the machine's
+// commit identity).
+func (l *lander) readIdentity(ctx context.Context) string {
+	identity, why := readMachineIdentity(ctx, l.st, "landing")
+	if why != "" {
+		return why
+	}
+	l.identity = identity
+	return ""
+}
+
+// gitEnv is the environment land's git runs in: the app's, with the configured identity's
+// author and committer set, so every commit the machine makes carries the configured
+// identity, never the host's global git config. Any identity the caller's environment
+// carries is dropped first, so the configured one wins.
+func (l *lander) gitEnv() []string {
+	env := l.a.gitEnv
+	if env == nil {
+		env = os.Environ()
+	}
+	return withMachineGitIdentity(env, l.identity)
 }
 
 // firstLine is a failure's words on one line: the error's, else out's.

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
@@ -256,6 +257,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		o = a.realOutside()
 	}
 	in := sprint.DoctorInput{Snap: read.Snap, Req: read.Req, ReaderBeats: read.ReaderBeats, FriendBeats: read.FriendBeats, Hook: m.Hook, Seat: rec.Seat}
+	in.HostGitEmail = hostGitEmail(ctx)
 	var cfg doctorConfig
 	if o.doctorConfig != nil {
 		if cfg, err = o.doctorConfig(ctx); err != nil {
@@ -324,4 +326,14 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		}
 	}
 	return out, read.Refused, nil
+}
+
+// hostGitEmail is the host's global git user.email, read by the doctor for the git-identity
+// check; "" when it cannot be read (no global config, or git fails).
+func hostGitEmail(ctx context.Context) string {
+	out, err := gitrun.Output(ctx, gitrun.Options{Timeout: 5 * time.Second}, "config", "--global", "user.email")
+	if err != nil {
+		return ""
+	}
+	return out
 }

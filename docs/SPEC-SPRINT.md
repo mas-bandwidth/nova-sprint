@@ -4176,6 +4176,19 @@ cards had none outstanding.
    coordinator is told. The coordinator may act on the card, the stream, or
    several streams together.
 
+**The machine's commit identity.** Every commit the sprint machine makes (land,
+merge, rework-at-tip, the promotion's cut, ledger and roadmap writes) carries an
+explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@mas-bandwidth.com>`), never the host's global git config. The landing
+and the promotion (`mergeTarget`'s `git commit-tree`) refuse to commit, naming the
+setting, when none is configured; `doctor` reports the identity in use and fails
+when its email equals the host's global `user.email`. Workers' clones get the
+identity in their local config at clone time (`pkg/swarm`, `StageJob`/
+`StageCloneIdentity` and their `As` variants): the live staging entry points
+carry the machine's identity (the sprint row's `git_identity`, default
+`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, and
+the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
+so a machine commit in a clone carries the configured identity too.
+
 **The sprint branch.** Every stream lands on the sprint branch, and promotion
 alone reaches dev: a card cut on dev is merged by the lander straight onto it and
 ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
