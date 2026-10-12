@@ -75,18 +75,19 @@ FINISH OK moved=1 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done ok; s1-1 working -> review (finish by m1)
 MOVED ask: s1-1 asked of reader-a
+MOVED deadlines: landing-stall watch begins: 1 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=1 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --begin --epoch 0
 MOVED s1-1.r1.reader-a asked -> reading
-READ OK moved=1 refused=0 notes=0 op=read-t35-1
+READ OK moved=1 refused=0 notes=0 op=read-t36-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --ok --epoch 0
 MOVED s1-1.r1.reader-a reading -> ok
-READ OK moved=1 refused=0 notes=0 op=read-t36-1
+READ OK moved=1 refused=0 notes=0 op=read-t37-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -99,7 +100,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=3 op=merge-t41-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t42-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
@@ -187,8 +188,9 @@ FINISH OK moved=2 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done failed; s1-1 working -> review (finish by m1)
 MOVED drain: s1-2.w1 working -> done failed; s1-2 working -> review (finish by m1)
+MOVED deadlines: landing-stall watch begins: 2 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=0 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint answer --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
@@ -256,6 +258,51 @@ brief verb and the bound).
   dealt).
 
 
+### The landing stall (v1.2.14)
+
+Cards that wait in review or merging with no landing for the bound (one
+minute, `set --landing-stall-bound`) raise one "landing stalled" judgment to
+the coordinator with its breakdown, re-raised each bound and cleared by the
+next landing with "landing again after <d>"; every landing is pushed to the
+coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
+
+- Unit, `internal/sprint/landing_stall_test.go`:
+  `TestLandingStallIsJudgedWhenCardsWaitAndNothingLands`,
+  `TestLandingStallNamesTheRedCI`, `TestLandingStallIsReRaisedEachBound`,
+  `TestLandingStallClearsOnTheNextLanding`, `TestNoStallWithNothingWaiting`,
+  `TestLandingStallClosesItsJudgmentWhenWaitingClears`,
+  `TestLandingReadCountsCombineFleetAndLegacyConsumersOnce`,
+  `TestLandingReadCountsAnActiveUnmarkedFleetRead`,
+  `TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads`,
+  `TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead`,
+  `TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall`,
+  `TestEveryLandingIsPushedToTheCoordinator`,
+  `TestMergeWritesTheLandingStallFacts`, `TestMergeWritesTheLandersLastRefusal`,
+  `TestTickDeadlinesRaisesTheLandingStall`,
+  `TestLandingStallStartsBeforeTheFirstLanding`,
+  `TestLandingStallSurvivesTicksShorterThanTheBound`,
+  `TestLandingStallBoundIsSettable`,
+  `TestALandingSeenLateEndsTheOldStallBeforeANewOne`,
+  `TestALandingPushOfLongLedgerTextsStaysInsideTheFieldBound`,
+  `TestALandingStallStampAloneIsAPlanTheTickWrites`,
+  `TestALandingPushOfAHundredCardsKeepsEveryCardsLine`,
+  `TestLandingLinesNameEveryCardWhenTheFactsAloneOverflow`,
+  `TestASubSecondBoundNeverTakesTheLastLandingForANewOne`,
+  `TestALandingOverflowOfIDsPastTheBoundCountsAllAndCutsNoID`.
+- Unit, `internal/sprint/store/landing_stall_reads_test.go`:
+  `TestLandingPushCountsFinishedFriendReadsAfterAccept`,
+  `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.
+- Unit, `cmd/nova-sprint/land_test.go`:
+  `TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead`.
+- Functional (`-tags functional`), `cmd/nova-sprint/landing_stall_functional_test.go`:
+  `TestALandingStallIsJudgedAndClearedByALandingOnTheStore`, on a private
+  redis-server with the machine's own clock and a one-second bound: the stall
+  is raised to the coordinator, and the landing pushes "landed" and closes it.
+  Every verb names the private store with `--redis`; the app sees only the
+  test's own environment (its home and config directory are temporary, no
+  `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
+  a live sprint server.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
@@ -321,7 +368,36 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `VERIFY FAILED` with one `VERIFY MISSING`, `EXTRA` or `DRIFT` line per difference.
 `differences=0` is the proof the tree holds what GitHub holds.
 
+## Judgments that hold a card (v1.2.14, PR #111)
 
+Failed work and broken reads rework themselves, and no wait parks a card
+(docs/SPEC-SPRINT.md section 8, "Judgments that hold a card"). Each test by its exact name:
+
+- `TestFailedWorkReworksItselfWithItsFinding` (internal/sprint/store/no_parked_test.go)
+- `TestABrokenReadReworksItself` (internal/sprint/store/no_parked_test.go)
+- `TestPastTheBoundItStaysASeatJudgment` (internal/sprint/store/no_parked_test.go)
+- `TestWaitIsRefusedOnACardHoldingJudgment` (internal/sprint/store/no_parked_test.go)
+- `TestWaitStillWorksOnAnAlarm` (internal/sprint/store/no_parked_test.go)
+- `TestASharedFailureIsOneFleetJudgmentAtOnce` (internal/sprint/store/no_parked_test.go)
+- `TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird` (internal/sprint/store/no_parked_test.go)
+- `TestAnAckedFleetFailureHoldsUntilANewFailure` (internal/sprint/store/no_parked_test.go)
+- `TestARepairedFailureDoesNotReopenAnAckedFleetFailure` (internal/sprint/store/no_parked_test.go)
+- `TestTheFleetFailureIsRaisedWithTheRulesOff` (internal/sprint/store/no_parked_test.go)
+- `TestANoRoomReworkKeepsARealFailureCounted` (internal/sprint/store/no_parked_test.go)
+- `TestAnOkFinishThenNoRoomReworkDoesNotReopenTheAlarm` (internal/sprint/store/no_parked_test.go)
+- `TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish` (internal/sprint/store/no_parked_test.go)
+- `TestAPinnedModelFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
+- `TestAFrontierTierFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
+- `TestTheSameFailureOnManyCardsIsReworkedOnItsTier` (internal/sprint/store/rule_answers_test.go)
+- `TestEveryKindThatHoldsACardRefusesWait` (internal/sprint/wait_refused_test.go)
+- `TestNoJudgmentOffersADecisionItsVerbRefuses` (internal/sprint/wait_refused_test.go)
+- `TestAStoppedStreamCountsTheCardsItHolds` (internal/sprint/wait_refused_test.go)
+- `TestAStallRefusesWaitOnlyWhenItNamesACard` (internal/sprint/wait_refused_test.go)
+- `TestNoPerNoteDecisionOffersAWaitItsVerbRefuses` (internal/sprint/wait_refused_test.go)
+- `TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld` (internal/sprint/wait_refused_test.go)
+- `TestAJudgmentNamingACardRefusesWaitWhateverItsKind` (internal/sprint/wait_refused_test.go)
+- `TestWaitByGroupIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
+- `TestWaitByAliasIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
 
 ## Release acceptance
 

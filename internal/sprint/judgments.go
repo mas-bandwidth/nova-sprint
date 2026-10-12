@@ -44,6 +44,19 @@ const (
 // watch is too long. 1 minute."), and the default.
 const LandingStallBound = time.Minute
 
+// landingStamp is a landing-stall stamp: RFC3339 to the nanosecond, since the
+// bound may be under a second and a landing and its episode's start must order
+// within one (two whole-second stamps of one second are equal). It parses as any
+// stamp does (TickReq.running).
+func landingStamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+// stampAfter says the stamp a is strictly later than b; false when either does not parse.
+func stampAfter(a, b string) bool {
+	ta, errA := time.Parse(time.RFC3339Nano, a)
+	tb, errB := time.Parse(time.RFC3339Nano, b)
+	return errA == nil && errB == nil && ta.After(tb)
+}
+
 // landingStallBound is the landing-stall bound: the sprint's setting
 // (PropLandingStallBound), else LandingStallBound.
 func (s *Snapshot) landingStallBound() time.Duration {
@@ -63,6 +76,10 @@ func (s *Snapshot) landingStallBound() time.Duration {
 // keep on top of things".
 const NLanding = "landed"
 
+// landingLineBytes bounds the ledger :title and :text each landing line carries
+// (each; landingLines shares less among a batch too long for the field bound).
+const landingLineBytes = 600
+
 // LandingTitleField and LandingTextField are the fields the member writes its
 // ledger entry's one-line :title and :text on: what the coordinator reads in
 // the landing push without opening the ledger.
@@ -79,11 +96,14 @@ const (
 // card, "landed <card>" with its stream, its head, the one-line :title and
 // :text of its ledger entry, and the attempts and reads it took. A batch in
 // one tick is one push with one line per card, addressed to the coordinator,
-// needing no ack beyond the hook's.
+// needing no ack beyond the hook's. The note stays inside the field bound (a
+// push over it would refuse the landing it reports) and every card keeps its
+// line: the ledger texts share what the bound leaves after the lines'
+// facts, each at most landingLineBytes, and only past that are the lines
+// themselves cut, ending "... and N more landed: <ids>" (landingLines).
 func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[string]LandingLedgerEntry, now time.Time) Note {
-	var lines []string
+	var lines []landingLine
 	for _, c := range landing {
-		reads := len(landingReadConsumers(s, c.ID, true))
 		title, text := c.F(LandingTitleField), c.F(LandingTextField)
 		if entry, ok := ledger[c.ID]; ok {
 			title, text = entry.Title, entry.Text
@@ -91,14 +111,122 @@ func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[st
 				title, text = "", "ledger entry unavailable: "+entry.Error
 			}
 		}
-		lines = append(lines, fmt.Sprintf("landed %s (stream %s, head %s) %s %s; attempts %d, reads %d",
-			c.ID, stream, orDash(shortSHA(c.F("head"))), oneLine(title), oneLine(text),
-			c.Int("attempt"), reads))
+		lines = append(lines, landingLine{id: c.ID, stream: stream, head: orDash(shortSHA(c.F("head"))),
+			title: oneLine(title), text: oneLine(text), attempts: c.Int("attempt"), reads: len(landingReadConsumers(s, c.ID, true))})
 	}
 	n := happened(NLanding, stream, now)
 	n.Who, n.To = who, s.Coordinator
-	n.What = strings.Join(lines, "\n")
+	n.What = landingLines(lines, MaxCardTextBytes)
 	return n
+}
+
+// landingLine is one landed card's line of the landing push.
+type landingLine struct {
+	id, stream, head, title, text string
+	attempts, reads               int
+}
+
+// with is the line with its ledger title and text each cut to n bytes.
+func (l landingLine) with(n int) string {
+	return fmt.Sprintf("landed %s (stream %s, head %s) %s %s; attempts %d, reads %d",
+		l.id, l.stream, l.head, cutTo(l.title, n), cutTo(l.text, n), l.attempts, l.reads)
+}
+
+// cutTo is cutText that never cuts below its ellipsis: under it, a text that
+// does not fit is left out.
+func cutTo(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n < 8 {
+		return ""
+	}
+	return cutText(s, n)
+}
+
+// landingLines is the push's text within bound bytes (docs/SPEC-SPRINT.md, the
+// judgments section): the ledger texts get an equal share of what the lines'
+// facts leave, at most landingLineBytes each, so every card keeps its line.
+// When even the facts do not fit, the lines that fit are kept and the last line
+// counts every card left out, always in full: "... and N more landed: <ids>".
+// Its ids are whole and as many as fit; when they do not all fit (ids that
+// alone pass the bound) the line says so, "... and N more landed (partial list,
+// M named): <ids>", and the count still names how many landed. The limit is the
+// bound: no id is ever cut partway.
+func landingLines(lines []landingLine, bound int) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	base := len(lines) - 1 // the newlines
+	for _, l := range lines {
+		base += len(l.with(0))
+	}
+	share := min(landingLineBytes, (bound-base)/(2*len(lines)))
+	if share >= 0 {
+		out := make([]string, len(lines))
+		for i, l := range lines {
+			out[i] = l.with(share)
+		}
+		if what := strings.Join(out, "\n"); len(what) <= bound {
+			return what
+		}
+	}
+	// room always kept for the overflow line's count, at its longest
+	reserve := len(landingOverflowHead(len(lines), len(lines), true))
+	var kept []string
+	used := 0
+	i := 0
+	for ; i < len(lines); i++ {
+		line := lines[i].with(0)
+		if used+len(line)+1+reserve > bound {
+			break
+		}
+		kept = append(kept, line)
+		used += len(line) + 1
+	}
+	if i == len(lines) {
+		return strings.Join(kept, "\n")
+	}
+	return strings.Join(append(kept, landingOverflow(lines[i:], bound-used)), "\n")
+}
+
+// landingOverflowHead is the overflow line's count: n cards left out of the
+// push, named of them when the list is partial.
+func landingOverflowHead(n, named int, partial bool) string {
+	if partial {
+		return fmt.Sprintf("... and %d more landed (partial list, %d named):", n, named)
+	}
+	return fmt.Sprintf("... and %d more landed:", n)
+}
+
+// landingOverflow is the overflow line within room bytes: the count of the cards
+// left out in full, then their whole ids, as many as fit.
+func landingOverflow(rest []landingLine, room int) string {
+	if line := landingOverflowHead(len(rest), len(rest), false) + " " + landingIDs(rest); len(line) <= room {
+		return line
+	}
+	named, used := 0, len(landingOverflowHead(len(rest), len(rest), true))
+	for _, r := range rest {
+		if used+1+len(r.id) > room {
+			break
+		}
+		used += 1 + len(r.id)
+		named++
+	}
+	out := landingOverflowHead(len(rest), named, true)
+	if named > 0 {
+		out += " " + landingIDs(rest[:named])
+	}
+	return out
+}
+
+// landingIDs is the lines' card ids, space separated.
+func landingIDs(lines []landingLine) string {
+	ids := make([]string, len(lines))
+	for i, l := range lines {
+		ids[i] = l.id
+	}
+	return strings.Join(ids, " ")
 }
 
 type landingReadIdentity struct {
@@ -333,6 +461,8 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	review, merging := len(s.Work.Column(Review)), len(s.Work.Column(Merging))
 	waiting := review + merging
 	last, hasLast := s.Work.Prop(PropLastLanding)
+	hasLast = hasLast && last != ""
+	landing := last // the real last landing, before the no-landing case borrows since
 	since, _ := s.Work.Prop(PropLandingStallSince)
 	said, _ := s.Work.Prop(PropLandingStallSaid)
 	write := func(name, value string) {
@@ -345,8 +475,8 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	// With no prior landing, the first tick that sees waiting cards starts the
 	// episode. Later ticks measure its running-time age just like a landing stamp.
 	if waiting > 0 && !hasLast && since == "" {
-		write(PropLandingStallSince, stamp(s.Now))
-		return p, 0
+		write(PropLandingStallSince, landingStamp(s.Now))
+		return landingStallKept(p, fmt.Sprintf("landing-stall watch begins: %d review, %d merging, no landing yet", review, merging)), 0
 	}
 	if waiting > 0 && !hasLast {
 		last, hasLast = since, true
@@ -358,11 +488,39 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 			stalled = true
 		}
 	}
-	landedAgain := hasLast && since != "" && last > since
+	// a landing after the episode's start breaks it: the stamps are compared as
+	// times to the nanosecond (landingStamp), never as text, so a sub-second
+	// bound cannot read a landing and the episode it came before as one second
+	landedAgain := landing != "" && since != "" && stampAfter(landing, since)
 	switch {
+	// The episode is cleared only when the condition is actually gone: nothing
+	// is waiting, or a landing happened since it began. "The bound has not
+	// elapsed yet" is not a clear -- keep since/said so the no-prior-landing
+	// path keeps measuring the running-time age instead of restarting every
+	// tick whose cadence is shorter than the bound. A landing is taken before a
+	// stall that still holds after it, so the old episode says "landing again"
+	// and a new one begins at the next tick.
+	case since != "" && (waiting == 0 || landedAgain):
+		if o, ok := openJudgmentOf(s, NLandingStall); ok {
+			p.Closes = append(p.Closes, o)
+		}
+		if said != "" && landedAgain {
+			took := ""
+			if at, err := time.Parse(time.RFC3339, landing); err == nil {
+				if d, ok := r.running(at, since); ok && d >= 0 {
+					took = " after " + d.Round(time.Second).String()
+				}
+			}
+			n := happened(NLandingAgain, "", s.Now)
+			n.What = "landing again" + took
+			n.Who, n.To = r.who(), s.Coordinator
+			p.Notes = append(p.Notes, n)
+		}
+		write(PropLandingStallSince, "")
+		write(PropLandingStallSaid, "")
 	case stalled:
 		if since == "" {
-			write(PropLandingStallSince, stamp(s.Now))
+			write(PropLandingStallSince, landingStamp(s.Now))
 		}
 		due := said == ""
 		if !due {
@@ -381,29 +539,26 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 				p.Notes = append(p.Notes, n)
 			}
 			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second))})
-			write(PropLandingStallSaid, stamp(s.Now))
+			write(PropLandingStallSaid, landingStamp(s.Now))
 		}
-	// The episode is cleared only when the condition is actually gone: nothing
-	// is waiting, or a landing happened since it began. "The bound has not
-	// elapsed yet" is not a clear -- keep since/said so the no-prior-landing
-	// path keeps measuring the running-time age instead of restarting every
-	// tick whose cadence is shorter than the bound.
-	case since != "" && (waiting == 0 || landedAgain):
-		if o, ok := openJudgmentOf(s, NLandingStall); ok {
-			p.Closes = append(p.Closes, o)
-		}
-		if said != "" && landedAgain {
-			took := ""
-			if d, ok := r.running(s.Now, since); ok {
-				took = " after " + d.Round(time.Second).String()
-			}
-			n := happened(NLandingAgain, "", s.Now)
-			n.What = "landing again" + took
-			n.Who, n.To = r.who(), s.Coordinator
-			p.Notes = append(p.Notes, n)
-		}
-		write(PropLandingStallSince, "")
-		write(PropLandingStallSaid, "")
 	}
-	return p, 0
+	ends := "landing-stall watch ends: nothing waits"
+	if landedAgain {
+		ends = "landing-stall watch ends: a card landed"
+	}
+	return landingStallKept(p, ends), 0
+}
+
+// landingStallKept gives a plan that writes only the episode's stamps a unit of
+// its own (docs/SPEC-SPRINT.md, the judgments section): the store's tick passes
+// over a part whose plan is Empty, which counts no property write, so without
+// the unit the episode's first stamp (a sprint that has not yet landed) or its
+// clear would never be written and the stall would never be raised.
+func landingStallKept(p Plan, moved string) Plan {
+	if len(p.Props) > 0 && p.Empty() {
+		// keyed by the property it writes: the stamp's own unit, as the store
+		// reports it and the reference model words the property's move
+		p.Units = append(p.Units, Unit{Key: PropLandingStallSince, Moved: moved})
+	}
+	return p
 }
