@@ -74,6 +74,34 @@ func unrelatedType() { _ = other.MergeStep(nil) }
 	require.Contains(t, strings.Join(problems, "\n"), "internal/elsewhere/caller.go:3: func accidental")
 }
 
+func TestMergeStepCallerGuardSkipsHiddenDirectoriesButScansRoot(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	root := filepath.Join(parent, ".hk-root")
+	require.NoError(t, os.Mkdir(root, 0700))
+	write := func(path, body string) {
+		t.Helper()
+		full := filepath.Join(root, filepath.FromSlash(path))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0700))
+		require.NoError(t, os.WriteFile(full, []byte(body), 0600))
+	}
+	badCaller := `package p
+import store "` + mergeStepStoreImport + `"
+func accidental() { store.MergeStep(nil) }
+`
+	write("root.go", badCaller)
+	write("pkg/visible.go", badCaller)
+	write(".hk-transient/hidden.go", badCaller)
+
+	problems := mergeStepCallerProblems(root)
+	require.Len(t, problems, 2, "the root and visible package files remain scanned; hidden transient files do not")
+	joined := strings.Join(problems, "\n")
+	require.Contains(t, joined, "root.go:3: func accidental")
+	require.Contains(t, joined, "pkg/visible.go:3: func accidental")
+	require.NotContains(t, joined, ".hk-transient")
+}
+
 func mergeStepCallerProblems(root string) []string {
 	var problems []string
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -81,6 +109,9 @@ func mergeStepCallerProblems(root string) []string {
 			return err
 		}
 		if entry.IsDir() {
+			if filepath.Clean(path) != filepath.Clean(root) && strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
 			switch entry.Name() {
 			case ".git", "node_modules", "testdata", "tmp", "vendor":
 				return filepath.SkipDir
