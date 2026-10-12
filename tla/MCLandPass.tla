@@ -16,4 +16,11 @@ MCHeads == {1, 2}
 \* before it lands, head 2 reworked), s2 is refused with no head blamed (Unblamed), s3's
 \* tree tests read none of its files so it lands whole (Whole).
 MCBlame == [s \in MCStreams |-> IF s = s1 THEN 2 ELSE IF s = s2 THEN Unblamed ELSE Whole]
+\* Routing bound: two streams, three singleton batches (two in s1). Both add-before-
+\* migration and add-after-migration, every lifecycle column and both cert results.
+MCFlowStreams == {s1, s2}
+MCFlowOrder == <<s1, s2>>
+MCFlowTouches == [s \in MCFlowStreams |-> {"f1"}]
+MCFlowHeads == {1, 2}
+MCFlowBlame == [s \in MCFlowStreams |-> Whole]
 =============================================================================

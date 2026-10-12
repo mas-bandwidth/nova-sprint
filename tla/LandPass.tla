@@ -1,4 +1,15 @@
 ------------------------------- MODULE LandPass -------------------------------
+\* STREAM FLOW (2026-10-12, revised after Rowan's cold read). StreamFlowSpec
+\* models per-card base and the land_protected mark, stream batches, trunk moves,
+\* inflight certification, and empty branches following sibling trunk advances.
+\* SetBase compares rewrite-all with the existing preserve-cut-head selector;
+\* an independent BriefEdit mutation tests postmigration routing. StreamLand and
+\* StreamMerge separate branch landing from serialized certification admission;
+\* CertDone and an explicitly successful Fix support weakly fair completion.
+\* Reversed witnesses cover each rule and adversarial red/retry cycles. The old
+\* batch-set base is batchBase. This is a separate abstraction, not a composition
+\* or refinement of the legacy gate machine; each spec freezes the other's state.
+\*
 \* nova-sprint land, the pass in two phases (cmd/nova-sprint/landpass.go; the owner,
 \* 2026-10-07: "We can do merges across work streams in parallel. The only thing that
 \* needs to be serial is the merge after."). Land.tla holds one batch's push and report
@@ -167,9 +178,13 @@ ASSUME Touches \in [Streams -> SUBSET Files]
 ASSUME Heads \subseteq Nat \ {0} /\ Heads # {}
 ASSUME blame \in [Streams -> (Heads \cup {Unblamed, Whole})]
 
-VARIABLES phase, cut, base, green, running, pushes, collided, cached, stuck
+VARIABLES phase, cut, batchBase, green, running, pushes, collided, cached, stuck
 
-vars == <<phase, cut, base, green, running, pushes, collided, cached, stuck>>
+legacyVars == <<phase, cut, batchBase, green, running, pushes, collided, cached, stuck>>
+
+VARIABLES sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes
+flowVars == <<sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+vars == <<legacyVars, flowVars>>
 
 Trees == SUBSET Streams
 
@@ -179,7 +194,7 @@ Phases == {"queued", "merging", "green", "landed", "stopped", "abandoned", "rewo
 Touched(T) == UNION {Touches[t] : t \in T}
 
 \* The batches landed on the base since the stream's batch was cut.
-Since(s) == base \ cut[s]
+Since(s) == batchBase \ cut[s]
 
 \* The batch's files and the files landed since it was cut do not meet.
 Disjoint(s) == Touches[s] \cap Touched(Since(s)) = {}
@@ -197,7 +212,7 @@ Landed(s) ==
 TypeOK ==
   /\ phase \in [Streams -> Phases]
   /\ cut \in [Streams -> Trees]
-  /\ base \in Trees
+  /\ batchBase \in Trees
   /\ green \in [Trees -> BOOLEAN]
   /\ running \in 0..Width
   /\ pushes \in Seq([s : Streams, tree : Trees, since : Trees, how : {"own", "disjoint", "combined", "prefix", "whole"}])
@@ -205,10 +220,10 @@ TypeOK ==
   /\ cached \subseteq Trees
   /\ stuck \subseteq Streams
 
-Init ==
+LegacyInit ==
   /\ phase = [s \in Streams |-> "queued"]
   /\ cut = [s \in Streams |-> {}]
-  /\ base = {}
+  /\ batchBase = {}
   /\ green \in [Trees -> BOOLEAN]
   /\ running = 0
   /\ pushes = <<>>
@@ -228,10 +243,10 @@ Pushed(s, tree, how) == pushes' = Append(pushes, [s |-> s, tree |-> tree, since 
 StartMerge(s) ==
   /\ phase[s] = "queued" /\ running < Width
   /\ phase' = [phase EXCEPT ![s] = "merging"]
-  /\ cut' = [cut EXCEPT ![s] = base]
+  /\ cut' = [cut EXCEPT ![s] = batchBase]
   /\ running' = running + 1
   /\ collided' = collided \ {s}
-  /\ UNCHANGED <<base, green, pushes, cached, stuck>>
+  /\ UNCHANGED <<batchBase, green, pushes, cached, stuck>>
 
 \* The base's own gate, before any head is merged, unless the base is recorded as gated:
 \* a red base refuses the batch for the pass and blames no head (the base-gate rule; the
@@ -240,7 +255,7 @@ BaseRed(s) ==
   /\ phase[s] = "merging" /\ s \notin stuck /\ cut[s] \notin cached /\ ~green[cut[s]]
   /\ phase' = [phase EXCEPT ![s] = "queued"]
   /\ running' = running - 1
-  /\ UNCHANGED <<cut, base, green, pushes, collided, cached, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, pushes, collided, cached, stuck>>
 
 \* The base green (gated now and recorded, or recorded before), the batch's tree is gated
 \* once: green, it waits to land; red, the head that turned it red is found by bisection
@@ -256,7 +271,7 @@ GateGreen(s) ==
   /\ phase' = [phase EXCEPT ![s] = "green"]
   /\ running' = running - 1
   /\ cached' = cached \cup {cut[s]}
-  /\ UNCHANGED <<cut, base, green, pushes, collided, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, pushes, collided, stuck>>
 
 \* Red, blamed: the bisection blames one head (blame[s]); the prefix before it lands and the
 \* head is reworked, the stream going on (landpastblame: the whole batch lands, heads at and
@@ -264,10 +279,10 @@ GateGreen(s) ==
 GateBlame(s) ==
   /\ GateGuard(s) /\ ~green[cut[s] \cup {s}] /\ blame[s] \in Heads
   /\ phase' = [phase EXCEPT ![s] = IF Broken = "landpastblame" THEN "landed" ELSE "reworked"]
-  /\ base' = base \cup {s}
+  /\ batchBase' = batchBase \cup {s}
   /\ running' = running - 1
   /\ cached' = cached \cup {cut[s]}
-  /\ Pushed(s, base \cup {s}, "prefix")
+  /\ Pushed(s, batchBase \cup {s}, "prefix")
   /\ UNCHANGED <<cut, green, collided, stuck>>
 
 \* Red, refused with no head blamed: a bench that did not run the gate, a cancelled gate, or
@@ -278,17 +293,17 @@ GateUnblamed(s) ==
   /\ phase' = [phase EXCEPT ![s] = IF Broken = "unblamedstops" THEN "stopped" ELSE "queued"]
   /\ running' = running - 1
   /\ cached' = cached \cup {cut[s]}
-  /\ UNCHANGED <<cut, base, green, pushes, collided, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, pushes, collided, stuck>>
 
 \* Red, but the tree tests read none of the batch's files: the batch lands whole, nothing
 \* blamed, and its tip is not recorded as gated (the tree tests never saw it green).
 GateWhole(s) ==
   /\ GateGuard(s) /\ ~green[cut[s] \cup {s}] /\ blame[s] = Whole
   /\ phase' = [phase EXCEPT ![s] = "landed"]
-  /\ base' = base \cup {s}
+  /\ batchBase' = batchBase \cup {s}
   /\ running' = running - 1
   /\ cached' = cached \cup {cut[s]}
-  /\ Pushed(s, base \cup {s}, "whole")
+  /\ Pushed(s, batchBase \cup {s}, "whole")
   /\ UNCHANGED <<cut, green, collided, stuck>>
 
 Gate(s) == GateGreen(s) \/ GateBlame(s) \/ GateUnblamed(s) \/ GateWhole(s)
@@ -301,7 +316,7 @@ Abandon(s) ==
   /\ phase[s] = "merging" /\ s \in stuck
   /\ phase' = [phase EXCEPT ![s] = "abandoned"]
   /\ running' = running - 1
-  /\ UNCHANGED <<cut, base, green, pushes, collided, cached, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, pushes, collided, cached, stuck>>
 
 \* ---- phase 2: the landings, one at a time, as each batch is built (landpass.go, land) ----
 
@@ -315,11 +330,11 @@ Landing(s) ==
 \* The base still has the tip the batch was cut from: its gated tip is pushed, no new gate,
 \* and recorded as gated.
 Push(s) ==
-  /\ Landing(s) /\ cut[s] = base
-  /\ base' = base \cup {s}
+  /\ Landing(s) /\ cut[s] = batchBase
+  /\ batchBase' = batchBase \cup {s}
   /\ phase' = [phase EXCEPT ![s] = "landed"]
-  /\ Pushed(s, base \cup {s}, "own")
-  /\ cached' = cached \cup {base \cup {s}}
+  /\ Pushed(s, batchBase \cup {s}, "own")
+  /\ cached' = cached \cup {batchBase \cup {s}}
   /\ UNCHANGED <<cut, green, running, collided, stuck>>
 
 \* The base moved: the batch is merged again onto its tip, every head merging; the files
@@ -327,25 +342,25 @@ Push(s) ==
 \* the files; nocut: the batch's own tip is pushed over the moved base, and what landed
 \* since is gone from it; cachedisjoint: recorded as gated all the same).
 PushDisjoint(s) ==
-  /\ Landing(s) /\ cut[s] # base
+  /\ Landing(s) /\ cut[s] # batchBase
   /\ Broken = "nogate" \/ Disjoint(s)
-  /\ base' = IF Broken = "nocut" THEN cut[s] \cup {s} ELSE base \cup {s}
+  /\ batchBase' = IF Broken = "nocut" THEN cut[s] \cup {s} ELSE batchBase \cup {s}
   /\ phase' = [phase EXCEPT ![s] = "landed"]
-  /\ Pushed(s, base', "disjoint")
-  /\ cached' = IF Broken = "cachedisjoint" THEN cached \cup {base'} ELSE cached
+  /\ Pushed(s, batchBase', "disjoint")
+  /\ cached' = IF Broken = "cachedisjoint" THEN cached \cup {batchBase'} ELSE cached
   /\ UNCHANGED <<cut, green, running, collided, stuck>>
 
 \* The base moved and the files met, or fewer heads merged (ShrinkPrefix): the combined
 \* tree is gated once, and green, pushed and recorded as gated.
 Combined(s) ==
-  /\ green[base \cup {s}]
-  /\ base' = base \cup {s}
-  /\ Pushed(s, base \cup {s}, "combined")
-  /\ cached' = cached \cup {base \cup {s}}
+  /\ green[batchBase \cup {s}]
+  /\ batchBase' = batchBase \cup {s}
+  /\ Pushed(s, batchBase \cup {s}, "combined")
+  /\ cached' = cached \cup {batchBase \cup {s}}
   /\ UNCHANGED <<cut, green, running, collided, stuck>>
 
 PushCombined(s) ==
-  /\ Landing(s) /\ cut[s] # base
+  /\ Landing(s) /\ cut[s] # batchBase
   /\ Broken # "nogate" /\ ~Disjoint(s)
   /\ Combined(s)
   /\ phase' = [phase EXCEPT ![s] = "landed"]
@@ -355,32 +370,32 @@ PushCombined(s) ==
 \* and pushed when green, and the stream stops on the conflict after its push; a red gate
 \* refuses the batch as Refuse does.
 ShrinkPrefix(s) ==
-  /\ Shrinks /\ Landing(s) /\ cut[s] # base
+  /\ Shrinks /\ Landing(s) /\ cut[s] # batchBase
   /\ Broken # "nogate"
   /\ \/ /\ Combined(s)
         /\ phase' = [phase EXCEPT ![s] = "stopped"]
-     \/ /\ ~green[base \cup {s}]
+     \/ /\ ~green[batchBase \cup {s}]
         /\ phase' = [phase EXCEPT ![s] = "queued"]
         /\ collided' = collided \cup {s}
-        /\ UNCHANGED <<cut, base, green, running, pushes, cached, stuck>>
+        /\ UNCHANGED <<cut, batchBase, green, running, pushes, cached, stuck>>
 
 \* The re-merge onto the moved base merges no head: the first met a conflict there; nothing
 \* is pushed and nothing reported as a batch, the stream stops on the conflict (pushempty:
 \* the batch is reported landed all the same, the base unchanged).
 ShrinkConflict(s) ==
-  /\ Shrinks /\ Landing(s) /\ cut[s] # base
+  /\ Shrinks /\ Landing(s) /\ cut[s] # batchBase
   /\ phase' = [phase EXCEPT ![s] = IF Broken = "pushempty" THEN "landed" ELSE "stopped"]
-  /\ UNCHANGED <<cut, base, green, running, pushes, collided, cached, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, running, pushes, collided, cached, stuck>>
 
 \* The combined tree is red: the batch is refused for this pass, its cards still queued,
 \* nothing pushed, no fact, no stream stopped (stopcollide: the stream stops; revert: the
 \* base is put back to the batch's cut).
 Refuse(s) ==
-  /\ Landing(s) /\ cut[s] # base
+  /\ Landing(s) /\ cut[s] # batchBase
   /\ Broken # "nogate" /\ ~Disjoint(s)
-  /\ ~green[base \cup {s}]
+  /\ ~green[batchBase \cup {s}]
   /\ phase' = [phase EXCEPT ![s] = IF Broken = "stopcollide" THEN "stopped" ELSE "queued"]
-  /\ base' = IF Broken = "revert" THEN cut[s] ELSE base
+  /\ batchBase' = IF Broken = "revert" THEN cut[s] ELSE batchBase
   /\ collided' = collided \cup {s}
   /\ UNCHANGED <<cut, green, running, pushes, cached, stuck>>
 
@@ -390,25 +405,247 @@ Requeue(s) ==
   /\ phase[s] = "abandoned"
   /\ \A t \in Streams : ~InPass(t) /\ phase[t] # "green"
   /\ phase' = [phase EXCEPT ![s] = "queued"]
-  /\ UNCHANGED <<cut, base, green, running, pushes, collided, cached, stuck>>
+  /\ UNCHANGED <<cut, batchBase, green, running, pushes, collided, cached, stuck>>
 
-Next ==
+LegacyNext ==
   \E s \in Streams : StartMerge(s) \/ BaseRed(s) \/ Gate(s) \/ Abandon(s)
                      \/ Push(s) \/ PushDisjoint(s) \/ PushCombined(s)
                      \/ ShrinkPrefix(s) \/ ShrinkConflict(s) \/ Refuse(s) \/ Requeue(s)
 
+
+\* ---- stream branches and trunk certification (separate abstraction) ----
+\* Fault/policy selectors reuse Broken so historical configurations need no edits.
+BugCardOntoDev == Broken = "cardontodev"
+BugMergeBeforeCert == Broken = "mergebeforecert"
+BugBaseSkipsReview == Broken = "baseskipsreview"
+BugBriefBase == Broken = "briefbase"
+BugEmptyStale == Broken = "emptystale"
+BugRedRetry == Broken = "redretry"
+BugNoRepair == Broken = "norepair"
+BugUnmarkedLanding == Broken = "unmarkedlanding"
+\* The current Go selector preserves already-cut working/review heads. Rewrite-all
+\* is the requested stronger policy, not a claim that changing an active head's
+\* base is already the agreed Go implementation. Merging/queued is repointed.
+BaseRewritePolicy == IF BugBaseSkipsReview THEN "preserve-cut-head" ELSE "all-unlanded"
+None == "none"
+TrunkBranch == "trunk"
+\* With two Heads this is three cards: two in the first stream, one in the other.
+Cards == {c \in Streams \X Heads : c[1] = Order[1] \/ c[2] = CHOOSE h \in Heads : \A k \in Heads : h <= k}
+Stream(c) == c[1]
+Columns == {"absent", "waiting", "ready", "working", "review", "merging", "landed"}
+Unlanded == {c \in Cards : column[c] \notin {"absent", "landed"}}
+
+FlowStart(protected) ==
+  /\ sbranch = [s \in Streams |-> {}]
+  /\ trunk = <<>>
+  /\ inflight = None
+  /\ cert = None
+  /\ base = [c \in Cards |-> None]
+  /\ column = [c \in Cards |-> "absent"]
+  /\ streamBase = [s \in Streams |-> TrunkBranch]
+  /\ integrated = [s \in Streams |-> {}]
+  /\ landedAt = [c \in Cards |-> None]
+  /\ moveFree = <<>>
+  /\ landProtected = protected
+  /\ edited = {}
+  /\ branchTrunk = [s \in Streams |-> 0]
+  /\ firstLandCut = [s \in Streams |-> 0]
+  /\ firstLandTrunk = [s \in Streams |-> 0]
+  /\ markedPushes = <<>>
+FlowIdle == FlowStart({})
+
+AddCard(c) ==
+  /\ column[c] = "absent"
+  /\ base' = [base EXCEPT ![c] = streamBase[Stream(c)]]
+  /\ column' = [column EXCEPT ![c] = "waiting"]
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+AdvanceCard(c) ==
+  /\ column[c] \in {"waiting", "ready", "working", "review"}
+  /\ column' = [column EXCEPT ![c] = CASE @ = "waiting" -> "ready"
+                                         [] @ = "ready" -> "working"
+                                         [] @ = "working" -> "review"
+                                         [] OTHER -> "merging"]
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, base, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+SetBase(s, b) ==
+  /\ b = s /\ streamBase[s] = TrunkBranch
+  /\ streamBase' = [streamBase EXCEPT ![s] = b]
+  /\ base' = [c \in Cards |->
+       IF Stream(c) = s /\ c \in Unlanded
+          /\ ~(BaseRewritePolicy = "preserve-cut-head" /\ column[c] \in {"working", "review"})
+       THEN b ELSE base[c]]
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, column, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+\* One attempted brief edit per card. Its payload is independent input, not a
+\* pre-checked invariant; the fault writes its proposed BASE into the real state.
+BriefEdit(c, proposedBase) ==
+  /\ c \in Unlanded \ edited /\ proposedBase \in {Stream(c), TrunkBranch}
+  /\ edited' = edited \cup {c}
+  /\ base' = IF BugBriefBase THEN [base EXCEPT ![c] = proposedBase] ELSE base
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, column, streamBase, integrated, landedAt,
+                 moveFree, landProtected, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+\* Singleton batches, oldest first; the first stream can land a second batch
+\* while a frozen snapshot of its first is being certified on the trunk.
+ReadyBatch(s) == {c \in Cards : Stream(c) = s /\ column[c] = "merging"
+                  /\ \A d \in Cards : Stream(d) = s /\ d[2] < c[2] => column[d] = "landed"}
+Batch(s) == ReadyBatch(s)
+Eligible(s) == Batch(s) # {}
+MoveAllowed == inflight = None /\ (cert = "green" \/ trunk = <<>>)
+
+\* A sibling can advance the trunk while this stream is empty. Fast-forward is
+\* separate from that move, but must finish before the stream's first landing.
+FollowTrunk(s) ==
+  /\ sbranch[s] = {} /\ branchTrunk[s] < Len(trunk)
+  /\ branchTrunk' = [branchTrunk EXCEPT ![s] = Len(trunk)]
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, base, column, streamBase, integrated,
+                 landedAt, moveFree, landProtected, edited, firstLandCut, firstLandTrunk, markedPushes>>
+
+StreamLand(s) ==
+  /\ Eligible(s) /\ streamBase[s] = s
+  /\ \A c \in Batch(s) : base[c] = s
+  /\ sbranch[s] # {} \/ branchTrunk[s] = Len(trunk) \/ BugEmptyStale
+  /\ sbranch' = [sbranch EXCEPT ![s] = @ \cup Batch(s)]
+  /\ column' = [c \in Cards |-> IF c \in Batch(s) THEN "landed" ELSE column[c]]
+  /\ landedAt' = [c \in Cards |-> IF c \in Batch(s) THEN s ELSE landedAt[c]]
+  /\ firstLandCut' = IF sbranch[s] = {} THEN [firstLandCut EXCEPT ![s] = branchTrunk[s]] ELSE firstLandCut
+  /\ firstLandTrunk' = IF sbranch[s] = {} THEN [firstLandTrunk EXCEPT ![s] = Len(trunk)] ELSE firstLandTrunk
+  /\ UNCHANGED <<trunk, inflight, cert, base, streamBase, integrated, moveFree,
+                 landProtected, edited, branchTrunk, markedPushes>>
+
+\* The actual land_protected mark is independent of the skip-base fault. An
+\* unmarked stream is refused before git (land.go placeWhy); only the explicit
+\* unmarkedlanding mutation removes that guard. The normal design forbids even
+\* marked direct pushes; cardontodev restores the historical marked exception.
+CardOntoTrunk(s) ==
+  /\ Eligible(s) /\ (BugCardOntoDev \/ BugUnmarkedLanding)
+  /\ s \in landProtected \/ BugUnmarkedLanding
+  /\ \A c \in Batch(s) : base[c] = TrunkBranch
+  /\ trunk' = Append(trunk, <<"card", Batch(s)>>)
+  /\ moveFree' = Append(moveFree, MoveAllowed)
+  /\ markedPushes' = Append(markedPushes, s \in landProtected)
+  /\ cert' = IF cert = "running" THEN "cancelled" ELSE "running"
+  /\ column' = [c \in Cards |-> IF c \in Batch(s) THEN "landed" ELSE column[c]]
+  /\ landedAt' = [c \in Cards |-> IF c \in Batch(s) THEN TrunkBranch ELSE landedAt[c]]
+  /\ UNCHANGED <<sbranch, inflight, base, streamBase, integrated, landProtected,
+                 edited, branchTrunk, firstLandCut, firstLandTrunk>>
+
+StreamMerge(s) ==
+  /\ sbranch[s] \ integrated[s] # {}
+  /\ MoveAllowed \/ (BugMergeBeforeCert /\ cert = "running")
+  /\ trunk' = Append(trunk, <<"merge", s>>)
+  /\ moveFree' = Append(moveFree, MoveAllowed)
+  /\ integrated' = [integrated EXCEPT ![s] = sbranch[s]]
+  /\ inflight' = s
+  /\ cert' = "running"
+  /\ UNCHANGED <<sbranch, base, column, streamBase, landedAt, landProtected, edited,
+                 branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+CertDone(r) ==
+  /\ cert = "running" /\ r \in {"green", "red"}
+  /\ cert' = r
+  /\ inflight' = None
+  /\ UNCHANGED <<sbranch, trunk, base, column, streamBase, integrated, landedAt, moveFree,
+                 landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+CertFinish == \E r \in {"green", "red"} : CertDone(r)
+
+\* Fix is a SUCCESSFUL repair-and-recertification of the same trunk move, not a
+\* new merge. Weak fairness of this action is the explicit recovery assumption.
+\* redretry weakens it to a mere retry: fair red/retry cycles then defeat liveness.
+Fix ==
+  /\ cert = "red" /\ ~BugNoRepair
+  /\ cert' = IF BugRedRetry THEN "running" ELSE "green"
+  /\ UNCHANGED <<sbranch, trunk, inflight, base, column, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+FlowComplete ==
+  /\ \A c \in Cards : column[c] = "landed" /\ c \in integrated[Stream(c)]
+  /\ inflight = None /\ cert = "green"
+\* The only explicit stutter is completed work. Incomplete wedges are deadlocks,
+\* not "ignore-terminal" passes. Brief edits are finite, non-stuttering events.
+Quiesce == FlowComplete /\ UNCHANGED flowVars
+
+FlowNext ==
+  \/ \E c \in Cards : AddCard(c) \/ AdvanceCard(c)
+                        \/ \E b \in Streams \cup {TrunkBranch} : BriefEdit(c, b)
+  \/ \E s \in Streams : SetBase(s, s) \/ FollowTrunk(s) \/ StreamLand(s)
+                         \/ CardOntoTrunk(s) \/ StreamMerge(s)
+  \/ CertFinish \/ Fix \/ Quiesce
+
+StreamFlowInit ==
+  /\ LegacyInit /\ stuck = {} /\ \A T \in Trees : green[T]
+  /\ \E protected \in SUBSET Streams : FlowStart(protected)
+StreamFlowNext == FlowNext /\ UNCHANGED legacyVars
+StreamFlowSpec == StreamFlowInit /\ [][StreamFlowNext]_vars
+StreamFlowFairSpec ==
+  /\ StreamFlowSpec
+  /\ \A c \in Cards : WF_flowVars(AddCard(c)) /\ WF_flowVars(AdvanceCard(c))
+  /\ \A s \in Streams : WF_flowVars(SetBase(s, s)) /\ WF_flowVars(FollowTrunk(s))
+                         /\ WF_flowVars(StreamLand(s)) /\ WF_flowVars(StreamMerge(s))
+  /\ WF_flowVars(CertFinish) /\ WF_flowVars(Fix)
+
+FlowTypeOK ==
+  /\ sbranch \in [Streams -> SUBSET Cards]
+  /\ integrated \in [Streams -> SUBSET Cards]
+  /\ trunk \in Seq(({"merge"} \X Streams) \cup ({"card"} \X SUBSET Cards))
+  /\ inflight \in Streams \cup {None}
+  /\ cert \in {None, "running", "green", "red", "cancelled"}
+  /\ base \in [Cards -> Streams \cup {TrunkBranch, None}]
+  /\ column \in [Cards -> Columns]
+  /\ streamBase \in [Streams -> Streams \cup {TrunkBranch}]
+  /\ landedAt \in [Cards -> Streams \cup {TrunkBranch, None}]
+  /\ moveFree \in Seq(BOOLEAN) /\ Len(moveFree) = Len(trunk)
+  /\ landProtected \subseteq Streams /\ edited \subseteq Cards
+  /\ branchTrunk \in [Streams -> 0..Len(trunk)]
+  /\ firstLandCut \in [Streams -> 0..Len(trunk)]
+  /\ firstLandTrunk \in [Streams -> 0..Len(trunk)]
+  /\ markedPushes \in Seq(BOOLEAN)
+
+TrunkMovesOnlyByStreamMerge == \A i \in 1..Len(trunk) : trunk[i][1] = "merge"
+DevMovesOnlyByStreamMerge == TrunkMovesOnlyByStreamMerge
+\* PRE-state guard history survives CertDone and detects overlapping certification
+\* admission. The forge's merge queue already serializes actual Git trunk writes.
+OneStreamMergeInflightPerTrunk == cert # "cancelled" /\ \A i \in 1..Len(moveFree) : moveFree[i]
+StreamMergesSerial == OneStreamMergeInflightPerTrunk
+ProtectedLandingRequiresMark == \A i \in 1..Len(markedPushes) : markedPushes[i]
+CardLandsOnItsStream ==
+  \A c \in Cards : column[c] = "landed" =>
+    landedAt[c] = Stream(c) /\ c \in sbranch[Stream(c)]
+NoUnlandedCardBasesOnTrunk ==
+  \A c \in Unlanded : streamBase[Stream(c)] = Stream(c) => base[c] = Stream(c)
+EmptyStreamFollowsTrunk ==
+  \A s \in Streams : sbranch[s] # {} => firstLandCut[s] = firstLandTrunk[s]
+SetBaseReachesEveryUnlanded ==
+  [][\A s \in Streams : SetBase(s, s) =>
+       \A c \in Unlanded : Stream(c) = s => base'[c] = s]_vars
+BriefEditKeepsBase ==
+  [][\A c \in Cards : \A b \in Streams \cup {TrunkBranch} :
+       BriefEdit(c, b) => base' = base]_vars
+LandedEventuallyIntegrated ==
+  \A c \in Cards : [](column[c] = "landed" => <>(c \in integrated[Stream(c)]))
+AllFlowWorkCompletes == <>FlowComplete
+\* This structural invariant catches a partial-completion terminal even in a
+\* witness run: no broad stutter is used to conceal a missing repair action.
+NoPartialCompletionWedge == FlowComplete \/ ENABLED StreamFlowNext
+
+Init == LegacyInit /\ FlowIdle
+Next == LegacyNext /\ UNCHANGED flowVars
 Spec == Init /\ [][Next]_vars
 
 \* Every action weakly fair but the deadline: a slow gate may hold its stream as long as
 \* it likes within its bound, and no other stream's landing waits for it.
 SlowSpec ==
   /\ Spec
-  /\ \A s \in Streams : WF_vars(StartMerge(s)) /\ WF_vars(BaseRed(s)) /\ WF_vars(Gate(s)) /\ WF_vars(Push(s))
-                        /\ WF_vars(PushDisjoint(s)) /\ WF_vars(PushCombined(s)) /\ WF_vars(Refuse(s))
-                        /\ WF_vars(Requeue(s))
+  /\ \A s \in Streams : WF_legacyVars(StartMerge(s)) /\ WF_legacyVars(BaseRed(s)) /\ WF_legacyVars(Gate(s)) /\ WF_legacyVars(Push(s))
+                        /\ WF_legacyVars(PushDisjoint(s)) /\ WF_legacyVars(PushCombined(s)) /\ WF_legacyVars(Refuse(s))
+                        /\ WF_legacyVars(Requeue(s))
 
 \* Every action weakly fair: the loop runs pass after pass, and every deadline fires.
-FairSpec == SlowSpec /\ \A s \in Streams : WF_vars(Abandon(s))
+FairSpec == SlowSpec /\ \A s \in Streams : WF_legacyVars(Abandon(s))
 
 \* ---- the rules ----
 
@@ -428,7 +665,7 @@ BaseAdvancesGated ==
 
 LandsOnce == \A s \in Streams : Cardinality({i \in 1..Len(pushes) : pushes[i].s = s}) <= 1
 
-BaseKeepsLandings == \A s \in Streams : phase[s] \in {"landed", "reworked"} => s \in base
+BaseKeepsLandings == \A s \in Streams : phase[s] \in {"landed", "reworked"} => s \in batchBase
 
 \* A refused batch is still queued in the store (and so is one abandoned at a deadline).
 RefusedStaysMerging == \A s \in collided : phase[s] \in {"queued", "abandoned"}
@@ -444,11 +681,11 @@ NoHeadPastItsBlame ==
       p.how = "prefix" => Landed(p.s) \cap {h \in Heads : h >= blame[p.s]} = {}
 
 RefusalTouchesNoOtherStream ==
-  [][\A s \in Streams : Refuse(s) => base' = base /\ \A t \in Streams \ {s} : phase'[t] = phase[t] /\ cut'[t] = cut[t]]_vars
+  [][\A s \in Streams : Refuse(s) => batchBase' = batchBase /\ \A t \in Streams \ {s} : phase'[t] = phase[t] /\ cut'[t] = cut[t]]_vars
 
 \* An abandonment changes the base, the cache, the pushes and no other stream's phase.
 AbandonTouchesNothingElse ==
-  [][\A s \in Streams : Abandon(s) => base' = base /\ cached' = cached /\ pushes' = pushes /\ \A t \in Streams \ {s} : phase'[t] = phase[t]]_vars
+  [][\A s \in Streams : Abandon(s) => batchBase' = batchBase /\ cached' = cached /\ pushes' = pushes /\ \A t \in Streams \ {s} : phase'[t] = phase[t]]_vars
 
 \* A gate that refuses the batch with no head blamed leaves it queued, never stopped.
 UnblamedRefusalQueues ==

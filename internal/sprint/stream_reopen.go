@@ -26,7 +26,12 @@ const (
 )
 
 // PushedPin identifies the exact card revision contained in a pushed batch.
-type PushedPin struct{ ID, Head, Attempt string }
+// PushedPin names one card of a landing at the head and attempt the batch was built from,
+// and, for the landing mark, the base it was built onto (Base, the card's BASE: as the land
+// pass read it; "" when the caller pins no base, as the pushed-unreported mark does not): a
+// card re-pointed to another base while the batch built (stream set --base reaches a
+// merging card) is refused the push and lands on the next pass, on its new base.
+type PushedPin struct{ ID, Head, Attempt, Base string }
 
 const noteStreamReopened = "stream-reopened"
 
