@@ -32,11 +32,10 @@ Cards move through the dashboard automatically:
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
 go back for rework. Gates and decisions that need attention remain visible.
-“Landed” means the change reached the integration branch—not just that a
-worker finished typing.
+“Landed” means the change reached the integration branch.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time. Follow a card or watch the whole fleet make laps.
+estimated finish time.
 
 ## Start with one lane. Then go wider.
 
