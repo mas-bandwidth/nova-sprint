@@ -787,7 +787,7 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	var classes []string
 	for _, c := range s.Work.Column(Waiting, Ready, Working, Review, Merging) {
 		class := c.F(FieldFailure)
-		if class == "" {
+		if class == "" || !lastFinishFailed(c) {
 			continue
 		}
 		if d, ok := r.running(s.Now, c.F(FieldFinishedAt)); !ok || d > RuleFleetWindow {
@@ -801,7 +801,7 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	for _, class := range classes {
 		ids := cards[class]
-		if len(ids) < RuleSameFailureCards || fleetFailureOpen(s, class) {
+		if len(ids) < RuleSameFailureCards || fleetFailureOpen(s, class) || !failedSinceAck(s, class, ids) {
 			continue
 		}
 		slices.Sort(ids)
@@ -812,6 +812,38 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 		p.Notes = append(p.Notes, n)
 	}
 	return p, 0
+}
+
+// lastFinishFailed says the card's last finish is the failure it records: the attempt that
+// last finished (the current one once it is in review or merging, the one before while its
+// next attempt is on its way) is the attempt its failure was recorded at (FieldFailureAt).
+func lastFinishFailed(c *Card) bool {
+	last := c.Int("attempt")
+	if c.Col == Waiting || c.Col == Ready || c.Col == Working {
+		last--
+	}
+	return last > 0 && c.F(FieldFailureAt) == itoa(last)
+}
+
+// failedSinceAck says the class may be raised: no acknowledgement of its judgment is held, or
+// one of its cards' failures finished after the latest one (an ack holds the class until a new
+// failure of it).
+func failedSinceAck(s *Snapshot, class string, ids []string) bool {
+	var ackAt time.Time
+	for _, o := range s.Acked {
+		if o.Note.Type == NFleetFailure && strings.HasPrefix(o.Note.What, fleetFailureWhat(class)) && o.Note.At.After(ackAt) {
+			ackAt = o.Note.At
+		}
+	}
+	if ackAt.IsZero() {
+		return true
+	}
+	for _, id := range ids {
+		if c := s.Work.Placed(id); c != nil && stampAt(c, FieldFinishedAt).After(ackAt) {
+			return true
+		}
+	}
+	return false
 }
 
 // fleetFailureOpen says an open judgment names the class's failure.
