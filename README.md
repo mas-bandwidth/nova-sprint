@@ -30,8 +30,6 @@ A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
 go back for rework.
 
-<img width="998" height="462" alt="image" src="https://github.com/user-attachments/assets/5f2d4f69-e1a5-4e88-baa5-be516e1dd64b" />
-
 The dashboard shows work streams, fleet capacity, progress, costs, and
 estimated finish time. 
 
