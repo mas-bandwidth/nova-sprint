@@ -48,7 +48,7 @@
 (* mark it saw (tseen = markId), so the shown figures undercount the cards  *)
 (* since the mark: ShownIsSinceMark fails, and the code keeps the reset's   *)
 (* mark, not rebased (store/stats_tidy.go: the end rebases on its own read; *)
-(* store/stats_reset.go:127, a stale marker does not refuse the reset).     *)
+(* store/stats_reset.go:137, a stale marker does not refuse the reset).     *)
 (*                                                                         *)
 (* The where record (store/where.go keepWhere) caches the shown figures:   *)
 (* the tick reads in one step and writes in a later one, and where takes   *)

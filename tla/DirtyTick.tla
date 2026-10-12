@@ -689,8 +689,11 @@ ApplyF(S, e) ==
     [] e.k = "dealt" ->
          IF S.stat[m] = "up" THEN [S EXCEPT !.mc[m] = @ \cup {c}]
          ELSE Put(S, "work", E("returned", c, "-"))
-    [] e.k = "take" ->
-         IF c \in S.mc[m] THEN [S EXCEPT !.tk[c] = TRUE] ELSE S
+    [] e.k = "take" ->     \* the lane acquired at the one writer: a member runs at most its
+                           \* width (takeOne); past it the take is refused and the card stays
+                           \* dealt. The witness "nolanes" drops the guard.
+         IF c \in S.mc[m] /\ (Broken = "nolanes" \/ Cardinality({d \in S.mc[m] : S.tk[d]}) < Width[m])
+         THEN [S EXCEPT !.tk[c] = TRUE] ELSE S
     [] e.k = "fin" ->
          IF c \notin S.mc[m] THEN S    \* a finish of a card since returned
          ELSE IF Broken = "drop" THEN RoomNews([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], m)
@@ -918,12 +921,13 @@ BeatReset(m) ==
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, acts, ext, phase, pumps, sub, addr,
                  notes, wake, brk, dealt, always, drain, run, CardVars>>
-\* The worker takes a card dealt to its machine: a member runs at most its
-\* width, so the cards already taken on m must be below Width[m] (the reversed
-\* witness "nolanes" drops the guard).
+\* The worker takes a card dealt to its machine: an entry to the fleet queue.
+\* The lane is acquired when the fleet applies it (ApplyF "take"), not here: the
+\* code holds the width at the sprint's one writer (steps_work.go takeOne, "THE
+\* WIDTH IS HARD": the room is the width less the working cells as the writer
+\* reads them), whatever the member asks.
 Take(c, m) ==
   /\ Takes /\ c \in mc[m] /\ live[m] /\ ~tk[c] /\ Pend("fleet", "take", c) = 0
-  /\ Broken = "nolanes" \/ Cardinality({d \in mc[m] : tk[d]}) < Width[m]
   /\ Outside("fleet", E("take", c, m)) /\ UNCHANGED <<live, miss, acts>>
 \* The coordinator's verbs: a CI result on a card in review (red at its head,
 \* or green), a return of a card queued to merge, an accept of a card the
