@@ -75,11 +75,11 @@ nova-sprint goal set <name> [--file <path>] [--to file:<path>]
 nova-sprint goal show [<name>]
 nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
-nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>]
+nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 nova-sprint queue --as <reader|member> | --stream <s>
-nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
+nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
 # reader serves is read one tier down: the read card's tier names the strongest tier with an
@@ -89,7 +89,7 @@ nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-ru
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
 nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>]
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
-nova-sprint priority <id>... | (<id>... | --stream <s>) (--blocker | --critical | --high | --normal | --low) --reason <text>
+nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
@@ -177,7 +177,7 @@ nova-sprint rules
 nova-sprint funded <provider> --reason <text>
 nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--json]
-nova-sprint stats [--routes [--since <10m|RFC3339>]]
+nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
@@ -280,6 +280,11 @@ read card is reader or its primary's higher level, a primary normal unless its b
 stream's default or `priority` sets it. `priority s1-4 --high --reason '<why>'` sets one card,
 `priority --stream s2 --low --reason '<why>'` sets, in one call, every card now in the stream
 (its own level overwritten) and the stream's default for cards added later, and `priority s1-4` prints the level and where it comes from;
+`priority` also takes the shared selector (`--who`, `--state`, `--ids-file`, or `--stream`
+with any of them, and `--dry-run`), setting every selected card in one call and no stream
+default: `priority --ids-file raise.txt --critical --reason 'next point release'` sets the
+three cards the file names, one line per card and the total, or none (an id that is no card,
+or names a read or work card, refuses the whole call with nothing written);
 each change is on the card's timeline (`log --card`) with the actor and the reason. Every
 deal places the cards above reader first, then the reads, then normal and low work in the
 room the reads leave; `where` prints the levels beside the critical list and the backup
@@ -290,7 +295,7 @@ state (`backup: reads (review ... > working ...)`) while there is one
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. `nova-sprint run --keys <NAME,...>` records the decision key and each provider key in `keys.json` beside that login (names only, never a value) and the run process reads each one from the seat; a name that cannot be read refuses at start, naming the name. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-seats-store-login) and [SPEC-SECRETS.md](SPEC-SECRETS.md) ("A tool's store login").
 
-The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)). Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set: it holds one subscription on the server and prints one event a line. Answer its `HOOK CHALLENGE <c>` with `nova-sprint hook --prove <c>`; the server challenges again every 10 minutes, and an answer later than 5 minutes unhooks. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`. The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. `nova-sprint unhook` ends it (recorded away, the owner told); a hook that drops is recorded gone at once and the owner told. There is no override.
+The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)). Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set: it holds one subscription on the server and prints one event a line. Answer its `HOOK CHALLENGE <c>` with `nova-sprint hook --prove <c>`; the server challenges again every 10 minutes, and an answer later than 5 minutes unhooks. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`. The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. `nova-sprint hook --quiet-happened` makes the seat receive judgments and challenges only, not the informational HAPPENED pushes. `nova-sprint unhook` ends it (recorded away, the owner told); a hook that drops is recorded gone at once and the owner told. There is no override.
 
 `nova-sprint seat install --server <host:port> --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>` (beside the push loop's unit) records the sprint's server in `seat.json` beside that login and writes the nova-config seat profile, the row `<name>\t<dsn>\t<NAME>` of `~/.config/nova-config/seats.tsv`. After it, `nova-sprint seat check` measures the recorded server when `NOVA_SPRINT_SERVER` is not set and prints `MACHINERY config OK seat=<name> …` (or DOWN with the remedy), and `nova-config <verb> --seat <name>` (or `NOVA_SEAT`) reaches the config store with no `nova-secrets exec`: the password is read in process from the store login's nova-secrets seat under `<NAME>` when that variable is not set and `NOVA_PG_PASSWORD_ENV` is not given (`NOVA_PG_PASSWORD_ENV` given still wins). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#handing-over-the-seat) and [SPEC-CONFIG.md](SPEC-CONFIG.md#connecting).
 
@@ -433,6 +438,19 @@ reader's finding stays yours. `nova-sprint rules` prints what the rules would an
 Xoff, and nova-config's sprint row turns single ones off: `nova-config sprint set
 --answer_rules_off late,conflict`, then `nova-config apply`. The contract is
 [SPEC-SPRINT.md section 8](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#answered-by-rule).
+
+### The machine's commit identity
+
+Every commit the sprint machine makes (land, merge, rework-at-tip, the promotion's cut,
+ledger and roadmap writes) carries an explicit author and committer, the sprint row's
+`git_identity`: `nova-config sprint set --git_identity 'Name <email>'` (default
+`nova-sprint <nova-sprint@mas-bandwidth.com>`), then `nova-config apply`. The landing and
+the promotion refuse to commit, naming the setting, when none is configured; `nova-sprint doctor` reports the identity in use and fails when its email equals the host's global
+`user.email`. A worker's clone gets the identity in its local git config at clone time
+(`pkg/swarm`, `StageJob`/`StageCloneIdentity` and their `As` variants): the live staging
+entry points carry the machine's identity (the sprint row's `git_identity`, default
+`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, so a rework-at-tip
+commit in the clone carries it too. The contract is [SPEC-SPRINT.md section 7](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#7-merging).
 
 ### Promoting the sprint branch into dev
 

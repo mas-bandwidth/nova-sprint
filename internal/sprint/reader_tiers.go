@@ -80,19 +80,6 @@ func (s *Snapshot) readerTiersStored(reader string) string {
 	return row[ReaderTiers]
 }
 
-// ReaderTiersStored is the reader's tiers cell, "" when the row names none
-// (every tier) or the table carries no texts.
-func ReaderTiersStored(t *Table, reader string) string {
-	if t == nil || t.Texts == nil {
-		return ""
-	}
-	row := t.Texts[reader]
-	if row == nil {
-		return ""
-	}
-	return row[ReaderTiers]
-}
-
 // readerReadsTier says the reader reads tier. An empty cell reads every tier.
 func (s *Snapshot) readerReadsTier(reader, tier string) bool {
 	stored := strings.TrimSpace(s.readerTiersStored(reader))

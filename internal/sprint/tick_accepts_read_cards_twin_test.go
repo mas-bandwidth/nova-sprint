@@ -62,7 +62,7 @@ func TestTheTickAcceptsAPrimaryWhoseReadsAreAllOkOnReadCards(t *testing.T) {
 			for _, n := range notes {
 				if n.Type == sprint.NReadyToMerge {
 					told++
-					require.Equal(t, []string{"s1-1"}, n.Primaries)
+					require.Contains(t, n.What, "s1-1")
 				}
 			}
 			require.Equal(t, 1, told, "the seat is told once")

@@ -15,6 +15,24 @@ type DeferReq struct {
 	Who     string
 }
 
+// pickedForDrop chooses the cards a step that takes primaries off the table
+// (drop, defer) acts on: the cards of the columns passed, each refused when it
+// is not on the table, and the ids of the chosen, the dropping set both callers
+// build before they differ.
+func pickedForDrop(p *Plan, sel Sel, cols []*Card, refuse func(*Card) string, byID func(string) *Card) (chosen []*Card, dropping map[string]bool) {
+	chosen = pick(p, sel, cols, rowOf, func(c *Card) string {
+		if !c.Placed() {
+			return "not on the table (" + orDash(c.F("outcome")) + ")"
+		}
+		return refuse(c)
+	}, byID)
+	dropping = make(map[string]bool, len(chosen))
+	for _, c := range chosen {
+		dropping[c.ID] = true
+	}
+	return chosen, dropping
+}
+
 // Defer takes waiting primaries off the table with the reason, as Drop does,
 // but only from the waiting column: a card that is no longer waiting when the
 // step runs (it moved ready) is refused and nothing of it changes. Its record,
@@ -22,10 +40,7 @@ type DeferReq struct {
 // store step only drops).
 func Defer(s *Snapshot, r DeferReq) Plan {
 	var p Plan
-	chosen := pick(&p, r.Sel, s.Work.Column(Waiting), rowOf, func(c *Card) string {
-		if !c.Placed() {
-			return "not on the table (" + orDash(c.F("outcome")) + ")"
-		}
+	chosen, dropping := pickedForDrop(&p, r.Sel, s.Work.Column(Waiting), func(c *Card) string {
 		if c.Col != Waiting {
 			return "not waiting (it is " + c.Col + ")"
 		}
@@ -34,10 +49,6 @@ func Defer(s *Snapshot, r DeferReq) Plan {
 		}
 		return ""
 	}, s.primaryCard)
-	dropping := map[string]bool{}
-	for _, c := range chosen {
-		dropping[c.ID] = true
-	}
 	for _, c := range chosen {
 		u := Unit{Key: c.ID, Stream: c.Row}
 		for _, fc := range s.Fleet.Of(c.ID) {

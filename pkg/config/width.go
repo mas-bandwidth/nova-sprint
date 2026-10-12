@@ -55,17 +55,6 @@ func Widths(ctx context.Context, st Store) ([]MachineWidth, error) {
 	return out, nil
 }
 
-// WidthOf is one machine's width from Widths; found is false when no machine
-// row has the name.
-func WidthOf(ws []MachineWidth, name string) (w MachineWidth, found bool) {
-	for _, x := range ws {
-		if x.Machine == name {
-			return x, true
-		}
-	}
-	return MachineWidth{}, false
-}
-
 // Line is the width's one printed line.
 func (w MachineWidth) Line() string {
 	width := strconv.Itoa(w.Width)

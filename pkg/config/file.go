@@ -113,9 +113,6 @@ func OpenFile(path string) (*FileStore, error) {
 	return f, nil
 }
 
-// Path is the file the store is kept in.
-func (f *FileStore) Path() string { return f.path }
-
 // absent is the refusal of every read and write before migrate made the file.
 func (f *FileStore) absent() error {
 	if f.exists {
@@ -159,13 +156,6 @@ func (f *FileStore) save() error {
 	}
 	f.exists = true
 	return nil
-}
-
-func (f *FileStore) Get(ctx context.Context, kind, name string) (Row, bool, error) {
-	if err := f.absent(); err != nil {
-		return Row{}, false, err
-	}
-	return f.Mem.Get(ctx, kind, name)
 }
 
 func (f *FileStore) List(ctx context.Context, kind string) ([]Row, error) {
@@ -214,51 +204,6 @@ func (f *FileStore) Insert(ctx context.Context, kind string, row Row, actor stri
 	return id, f.commit(next)
 }
 
-func (f *FileStore) Update(ctx context.Context, kind, name string, changes map[string]string, actor string) (Row, int64, error) {
-	if err := f.absent(); err != nil {
-		return Row{}, 0, err
-	}
-	next := f.staged()
-	row, id, err := next.Mem.Update(ctx, kind, name, changes, actor)
-	if err != nil {
-		return Row{}, 0, err
-	}
-	return row, id, f.commit(next)
-}
-
-func (f *FileStore) Delete(ctx context.Context, kind, name, actor string) (int64, error) {
-	if err := f.absent(); err != nil {
-		return 0, err
-	}
-	next := f.staged()
-	id, err := next.Mem.Delete(ctx, kind, name, actor)
-	if err != nil {
-		return 0, err
-	}
-	return id, f.commit(next)
-}
-
-func (f *FileStore) History(ctx context.Context, kind, name string) ([]Change, error) {
-	if err := f.absent(); err != nil {
-		return nil, err
-	}
-	return f.Mem.History(ctx, kind, name)
-}
-
-func (f *FileStore) Rev(ctx context.Context, kind string) (int64, error) {
-	if err := f.absent(); err != nil {
-		return 0, err
-	}
-	return f.Mem.Rev(ctx, kind)
-}
-
-func (f *FileStore) Counts(ctx context.Context) (map[string]int, error) {
-	if err := f.absent(); err != nil {
-		return nil, err
-	}
-	return f.Mem.Counts(ctx)
-}
-
 // Version is the schema the file is at: 0 before migrate made it, else
 // this binary's (a file is read up to it when opened).
 func (f *FileStore) Version(context.Context) (int, error) {
@@ -270,23 +215,6 @@ func (f *FileStore) Version(context.Context) (int, error) {
 		return 0, err
 	}
 	return len(all), nil
-}
-
-// Applied is the ledger: every migration once the file is there (a file is
-// read up to this binary's schema), none before.
-func (f *FileStore) Applied(context.Context) ([]int, error) {
-	if !f.exists {
-		return nil, nil
-	}
-	all, err := Migrations()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]int, 0, len(all))
-	for _, m := range all {
-		out = append(out, m.Version)
-	}
-	return out, nil
 }
 
 // Migrate makes the file when it is not there (from 0, every migration
@@ -309,13 +237,3 @@ func (f *FileStore) Migrate(ctx context.Context) (from, to int, applied []int, e
 	}
 	return from, len(all), applied, nil
 }
-
-// Ownership is the zero Ownership: a file has no roles and no owners, so
-// migrate's preflight has nothing to refuse.
-func (f *FileStore) Ownership(context.Context) (Ownership, error) { return Ownership{}, nil }
-
-// Sessions is none: a file has no other backends.
-func (f *FileStore) Sessions(context.Context) ([]Session, error) { return nil, nil }
-
-// Close writes nothing: every write saved the file as it landed.
-func (f *FileStore) Close() error { return nil }

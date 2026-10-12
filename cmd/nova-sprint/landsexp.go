@@ -360,73 +360,9 @@ func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 // added is there as added (both adding one id differently is a conflict), and nothing else
 // is there.
 func sexpEntriesMerged(kind, file string, base, ours, theirs, merged []byte) error {
-	var e [3]map[string]any
-	for i, side := range [][]byte{base, ours, theirs} {
-		m, err := sexpEntries(kind, file, side)
-		if err != nil {
-			return fmt.Errorf("a side does not decode: %s", oneLineErr(err))
-		}
-		e[i] = m
-	}
-	b, o, t := e[0], e[1], e[2]
-	want := map[string]any{}
-	for _, k := range unionKeys(b, o, t) {
-		bv, inB := b[k]
-		ov, inO := o[k]
-		tv, inT := t[k]
-		switch {
-		case inB && inO && inT:
-			switch {
-			case ov == bv:
-				want[k] = tv
-			case tv == bv || tv == ov:
-				want[k] = ov
-			default:
-				return fmt.Errorf("both sides change %s", k)
-			}
-		case inB:
-			if inO && ov != bv || inT && tv != bv {
-				return fmt.Errorf("one side removes %s and the other changes it", k)
-			}
-		case inO && inT && ov != tv:
-			return fmt.Errorf("both sides add %s, differently", k)
-		case inO:
-			want[k] = ov
-		default:
-			want[k] = tv
-		}
-	}
-	got, err := sexpEntries(kind, file, merged)
-	if err != nil {
-		return fmt.Errorf("the merged data does not decode: %s", oneLineErr(err))
-	}
-	for _, k := range unionKeys(want, got) {
-		wv, inW := want[k]
-		gv, inG := got[k]
-		switch {
-		case !inG:
-			return fmt.Errorf("the merged data lacks %s", k)
-		case !inW:
-			return fmt.Errorf("the merged data holds %s, which a side removed", k)
-		case wv != gv:
-			return fmt.Errorf("the merged data changes %s", k)
-		}
-	}
-	return nil
-}
-
-// unionKeys is the keys of the maps, sorted, each once.
-func unionKeys(ms ...map[string]any) []string {
-	var out []string
-	for _, m := range ms {
-		for k := range m {
-			if !slices.Contains(out, k) {
-				out = append(out, k)
-			}
-		}
-	}
-	slices.Sort(out)
-	return out
+	return entriesMerged(func(file string, data []byte) (map[string]any, error) {
+		return sexpEntries(kind, file, data)
+	}, unionKeys[any], file, base, ours, theirs, merged)
 }
 
 // oneLineErr is err's words on one line.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
@@ -65,6 +66,7 @@ const (
 	CheckFinishFailures = "finish-failures"
 	CheckFriends        = "friends"
 	CheckDraining       = "draining"
+	CheckGitIdentity    = "git-identity"
 )
 
 // DoctorFixSafe is the checks whose remedy is idempotent and safe for a later `doctor --fix`
@@ -172,6 +174,10 @@ type DoctorInput struct {
 	Declared string
 	Hook     HookM
 	Seat     SeatWaits
+	// HostGitEmail is the host's global git user.email, read by the doctor (git config
+	// --global user.email); "" when not read. The git-identity check fails when the sprint
+	// row's git_identity email equals it.
+	HostGitEmail string
 }
 
 // The bounds the checks judge by.
@@ -217,6 +223,7 @@ func Doctor(in DoctorInput) []DoctorCheck {
 	out = append(out, DoctorReadyNotDealt(in)...)
 	out = append(out, DoctorLanderLoop(in)...)
 	out = append(out, DoctorSeat(in)...)
+	out = append(out, DoctorGitIdentity(in)...)
 	for i := range out {
 		out[i].FixSafe = out[i].Status != DoctorOK && slices.Contains(DoctorFixSafe, out[i].Check)
 	}
@@ -1167,6 +1174,33 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 		out = append(out, okCheck(area, check, "judgments", fmt.Sprintf("open=%d overdue=0", in.Seat.Judgments)))
 	}
 	return out
+}
+
+// ---- 9b. git-identity ---------------------------------------------------------------------
+
+// DoctorGitIdentity is the machine's commit identity check: it reports the sprint row's
+// git_identity in use, and FAILs when none is configured (the landing refuses to commit) or
+// when its email equals the host's global user.email (the machine would commit as the owner).
+func DoctorGitIdentity(in DoctorInput) (out []DoctorCheck) {
+	const area, check = AreaSeat, CheckGitIdentity
+	s := in.Snap
+	if s == nil {
+		return nil
+	}
+	id := s.GitIdentity
+	parsed, ok := config.ParseGitIdentity(id)
+	switch {
+	case !ok:
+		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
+			Evidence: "the sprint row names no git_identity: the landing refuses to commit",
+			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@mas-bandwidth.com>' && nova-config apply"}}
+	case in.HostGitEmail != "" && parsed.Email == in.HostGitEmail:
+		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
+			Evidence: fmt.Sprintf("git_identity email %s equals the host's global user.email: the machine would commit as the owner", parsed.Email),
+			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@mas-bandwidth.com>' && nova-config apply"}}
+	default:
+		return []DoctorCheck{okCheck(area, check, "identity", fmt.Sprintf("git_identity=%s", id))}
+	}
 }
 
 // ---- 10. finish-failures ------------------------------------------------------------------

@@ -1,7 +1,6 @@
 package friend
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -50,73 +49,3 @@ type PushProver struct {
 
 // passiveReason is the down proof of a harness with no deliver command.
 const passiveReason = "the harness has no deliver adapter, so nothing pushes into the session"
-
-// Save is inner with the proof written first: what the SessionCheck's Save
-// is set to, so each presence the daemon saves is also the bus's proof. A
-// failed write is recorded and tried again at the next save; it never
-// stops the presence file.
-func (p *PushProver) Save(inner func(PresenceStatus) error) func(PresenceStatus) error {
-	return func(s PresenceStatus) error {
-		p.Step(s)
-		if inner == nil {
-			return nil
-		}
-		return inner(s)
-	}
-}
-
-// Step writes the proof the presence s says, when it differs from the last
-// one written or the last up one is PushRenewEvery old.
-func (p *PushProver) Step(s PresenceStatus) {
-	now := p.Now()
-	up, reason := s.Presence == PresenceUp, s.Reason
-	if _, passive := p.Deliver.(interface{ Passive() }); passive || p.Deliver == nil {
-		up, reason = false, passiveReason
-	}
-	if !up && reason == "" {
-		reason = NoSessionAnswer
-	}
-	p.mu.Lock()
-	if s.Nonce != "" {
-		p.asked = s.Nonce
-	}
-	if s.Answers > p.answers {
-		p.nonce, p.proven = p.asked, now
-		if s.Answered != "" {
-			p.nonce = s.Answered // the check answered, never one asked after it in the same step
-		}
-	}
-	p.answers = s.Answers
-	due := !p.wrote || up != p.up || reason != p.reason || (up && now.Sub(p.wroteAt) >= PushRenewEvery)
-	proof := bus.PushProof{Name: p.Friend, Harness: p.Harness, Nonce: p.nonce, Proven: p.proven, Up: up}
-	p.mu.Unlock()
-	if !up {
-		proof.Reason = reason
-	}
-	if !due {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), PushWriteBudget)
-	defer cancel()
-	if _, err := (&bus.Bus{Store: p.Store}).ProvePush(ctx, proof); err != nil {
-		p.record(now, "push proof: not written: "+err.Error())
-		return
-	}
-	p.mu.Lock()
-	was := p.wrote && p.up == up
-	p.wrote, p.up, p.reason, p.wroteAt = true, up, reason, now
-	p.mu.Unlock()
-	switch {
-	case was:
-	case up:
-		p.record(now, "push proof: up: the session answered "+proof.Nonce+" through "+p.Harness+"'s deliver adapter; nova-bus hears "+p.Friend)
-	default:
-		p.record(now, "push proof: down: "+reason+"; nova-bus names shows "+p.Friend+" push=down and a sender is told")
-	}
-}
-
-func (p *PushProver) record(now time.Time, line string) {
-	if p.Record != nil {
-		p.Record(now.UTC().Format(time.RFC3339) + " " + line)
-	}
-}

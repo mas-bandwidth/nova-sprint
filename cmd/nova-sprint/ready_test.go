@@ -93,7 +93,8 @@ func TestTheTickAcceptsAndReadOkSaysNothingWaits(t *testing.T) {
 		require.Equal(t, sprint.Merging, ta.primary(id).Col, "%s accepted by the tick", id)
 	}
 	g := ta.group(sprint.NReadyToMerge, "s1")
-	require.Equal(t, []string{"s1-1", "s1-2"}, g.Primaries, "the seat is told: %+v", g)
+	require.Contains(t, g.What, "s1-1", "the seat is told: %+v", g)
+	require.Contains(t, g.What, "s1-2", "the seat is told: %+v", g)
 	require.Empty(t, g.Commands, "a notice: nothing to answer: %+v", g)
 	out = ta.ok("accept --read-ok")
 	require.Contains(t, out, "nothing waits: the tick accepts", "accept --read-ok with nothing waiting:\n%s", out)

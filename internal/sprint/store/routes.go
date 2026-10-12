@@ -104,6 +104,10 @@ type Bars struct {
 	// RulesOff is the sprint row's rules the machine does not answer by (answer_rules_off: a
 	// comma list of config.AnswerRules); "" turns none off.
 	RulesOff string
+	// GitIdentity is the sprint row's author and committer for every commit the sprint
+	// machine makes (git_identity: "Name <email>"); "" is none configured, which the landing
+	// refuses.
+	GitIdentity string
 }
 
 // fields is each bar by its sprint row field (config.SprintKey(field) holds it).
@@ -119,6 +123,7 @@ func (b *Bars) fields() map[string]*string {
 		config.FieldDecideGatePreexisting:    &b.GatePreexisting,
 		config.FieldDecideJudgment:           &b.Judgment,
 		config.FieldAnswerRulesOff:           &b.RulesOff,
+		config.FieldGitIdentity:              &b.GitIdentity,
 	}
 }
 
@@ -130,6 +135,7 @@ func (rs RouteSet) into(s *sprint.Snapshot) {
 	s.DecideScoreBar = rs.Bars.Score
 	s.DecideGateFlaky, s.DecideGatePreexisting = rs.Bars.GateFlaky, rs.Bars.GatePreexisting
 	s.RulesOff = sprint.Split(rs.Bars.RulesOff)
+	s.GitIdentity = rs.Bars.GitIdentity
 }
 
 // routes is the routes a dealing step plans with, by name, and the tiers'
@@ -360,9 +366,25 @@ func (m *Mem) SetRulesOff(rules ...string) {
 	m.bars.RulesOff = strings.Join(rules, ",")
 }
 
+// SetGitIdentity gives the store the sprint row's git identity, as nova-config's apply does
+// a live one (sprint:git_identity).
+func (m *Mem) SetGitIdentity(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bars.GitIdentity = id
+}
+
 // RulesOff is the rules the machine does not answer by as nova-config applied them, read
 // with the routes: the lander reads base-gate there (cmd/nova-sprint, landgo.go).
 func (st *Store) RulesOff(ctx context.Context) ([]string, error) {
 	set, err := st.routes(ctx)
 	return sprint.Split(set.Bars.RulesOff), err
+}
+
+// GitIdentity is the sprint row's author and committer for every commit the sprint machine
+// makes, as nova-config applied it (sprint:git_identity), read with the routes: the lander
+// reads it there (cmd/nova-sprint, land.go). "" is none configured.
+func (st *Store) GitIdentity(ctx context.Context) (string, error) {
+	set, err := st.routes(ctx)
+	return set.Bars.GitIdentity, err
 }

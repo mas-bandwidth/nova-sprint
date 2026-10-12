@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -20,9 +19,6 @@ import (
 
 // TmuxPrefix starts the name of every hosted session: friend-<name>.
 const TmuxPrefix = "friend-"
-
-// TmuxSession is the tmux session that hosts the friend name.
-func TmuxSession(name string) string { return TmuxPrefix + name }
 
 // Timing of a typed delivery: the pane is polled each TmuxPoll for up to
 // TmuxAcceptWithin for the prompt line to go (the turn started).
@@ -47,25 +43,6 @@ var HostPrompts = map[string]string{
 // PromptPattern compiles a prompt pattern, panicking on a bad constant.
 func PromptPattern(s string) *regexp.Regexp { return regexp.MustCompile(s) }
 
-// HostPrompt is the idle prompt pattern a hosted harness gets: override when
-// given, else the harness's own from HostPrompts; src is its source text, as
-// saved in the friend's state. A harness with none and no override is refused
-// with the names there are.
-func HostPrompt(harness, override string) (re *regexp.Regexp, src string, err error) {
-	src = override
-	if src == "" {
-		var ok bool
-		if src, ok = HostPrompts[harness]; !ok {
-			return nil, "", fmt.Errorf("%q has no idle prompt pattern; name one with --prompt <regexp> (known: opencode, grok, aider)", harness)
-		}
-	}
-	re, err = regexp.Compile(src)
-	if err != nil {
-		return nil, "", fmt.Errorf("--prompt %q is no regular expression: %v", src, err)
-	}
-	return re, src, nil
-}
-
 // HostFile is the friend's host state in its state directory.
 const HostFile = "host.json"
 
@@ -75,15 +52,6 @@ type Hosted struct {
 	Session string `json:"session"`
 	Harness string `json:"harness"`
 	Prompt  string `json:"prompt"`
-}
-
-// WriteHost saves the host state of the friend whose state directory this is.
-func WriteHost(stateDir string, h Hosted) error { return write(filepath.Join(stateDir, HostFile), h) }
-
-// ReadHost is the saved host state; found is false when host never ran.
-func ReadHost(stateDir string) (h Hosted, found bool, err error) {
-	found, err = read(filepath.Join(stateDir, HostFile), &h)
-	return h, found, err
 }
 
 // Tmux delivers into a TUI hosted in a tmux pane. Deliver captures the pane
@@ -222,32 +190,6 @@ func TypedLine(text string) string {
 	return strings.ReplaceAll(text, "\n", " ⏎ ")
 }
 
-// TmuxFor points a Tmux deliverer at the friend's hosted session: the session
-// and prompt host saved in stateDir, else friend-<name> and the generic
-// prompt. Any other deliverer is left alone.
-func TmuxFor(d Deliverer, name, stateDir string) error {
-	t, ok := d.(*Tmux)
-	if !ok {
-		return nil
-	}
-	h, found, err := ReadHost(stateDir)
-	if err != nil {
-		return err
-	}
-	if t.Session == "" {
-		t.Session = TmuxSession(name)
-		if found && h.Session != "" {
-			t.Session = h.Session
-		}
-	}
-	if found && h.Prompt != "" && t.Prompt == nil {
-		if t.Prompt, err = regexp.Compile(h.Prompt); err != nil {
-			return fmt.Errorf("%s: the saved prompt %q is no regular expression: %v", HostFile, h.Prompt, err)
-		}
-	}
-	return nil
-}
-
 // HostSpec is one host: the friend, its directory, the launch command and
 // whether to only print.
 type HostSpec struct {
@@ -263,34 +205,6 @@ type HostResult struct {
 
 // HostRefused is host's refusal: the session runs already.
 type HostRefused struct{ Session string }
-
-func (h HostRefused) Error() string {
-	return h.Session + " runs already; run: tmux attach -t " + h.Session
-}
-
-// Host starts the command in a new detached tmux session friend-<name> in the
-// directory, refusing when that session exists. A dry run runs no tmux.
-func Host(ctx context.Context, run Exec, s HostSpec) (HostResult, error) {
-	session := TmuxSession(s.Name)
-	args := append([]string{"new-session", "-d", "-s", session, "-c", s.Dir, "--"}, s.Command...)
-	res := HostResult{Session: session, Attach: "tmux attach -t " + session, Line: "tmux " + strings.Join(args, " ")}
-	if s.DryRun {
-		return res, nil
-	}
-	if _, exit, err := run(ctx, s.Dir, "tmux", []string{"has-session", "-t", session}, ""); err != nil {
-		return res, fmt.Errorf("tmux has-session: %w", err)
-	} else if exit == 0 {
-		return res, HostRefused{Session: session}
-	}
-	out, exit, err := run(ctx, s.Dir, "tmux", args, "")
-	if err != nil {
-		return res, fmt.Errorf("tmux new-session: %w", err)
-	}
-	if exit != 0 {
-		return res, fmt.Errorf("tmux new-session exited %d: %s", exit, strings.TrimSpace(Head(out, 200)))
-	}
-	return res, nil
-}
 
 // Alive: the hosted tmux session exists (`tmux has-session`); the TUI inside
 // it may still be at any state, which the session check alone answers.

@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 )
@@ -214,10 +215,11 @@ func admitAnsweredByNew(e string, news []string) bool {
 	return false
 }
 
-// admitHits says e names a file, a directory, or a glob match in files.
+// admitHits says e names a file, a directory, or a glob match in files (diffcheck.Covers,
+// the one reading of a PATHS entry the lander's E12 check shares).
 func admitHits(files []string, e string) bool {
 	for _, f := range files {
-		if f == e || strings.HasPrefix(f, e+"/") || hygiene.MatchGlob(e, f) {
+		if diffcheck.Covers(e, f) {
 			return true
 		}
 	}
@@ -228,8 +230,7 @@ func admitHits(files []string, e string) bool {
 func admitAnyCovered(paths, files []string) bool {
 	for _, f := range files {
 		for _, e := range paths {
-			e = admitClean(e)
-			if e == f || strings.HasPrefix(f, e+"/") || hygiene.MatchGlob(e, f) {
+			if diffcheck.Covers(e, f) {
 				return true
 			}
 		}

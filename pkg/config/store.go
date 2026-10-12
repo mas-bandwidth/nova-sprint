@@ -68,12 +68,6 @@ type Change struct {
 // as another argument of every Store write.
 type reasonKey struct{}
 
-// WithReason returns ctx carrying reason as the reason of the writes made with
-// it; "" is no reason.
-func WithReason(ctx context.Context, reason string) context.Context {
-	return context.WithValue(ctx, reasonKey{}, reason)
-}
-
 // ReasonFrom is the reason WithReason put on ctx, "" when none.
 func ReasonFrom(ctx context.Context) string {
 	reason, _ := ctx.Value(reasonKey{}).(string)
@@ -106,13 +100,6 @@ type RefusedError struct {
 
 func (e *RefusedError) Error() string { return e.Detail }
 func (e *RefusedError) Unwrap() error { return e.Err }
-
-// Refused reports whether err is a store refusal (exit 1), as opposed to a
-// store that could not answer (exit 2).
-func Refused(err error) bool {
-	var r *RefusedError
-	return errors.As(err, &r)
-}
 
 // checkRefs is the validation every store runs before an add or a set: the
 // kind's Check on the row the write would leave (ErrInvalid), then the
@@ -197,57 +184,6 @@ func checkReferenced(ctx context.Context, st Store, kind, name string) error {
 		}
 	}
 	return nil
-}
-
-// PlanWrite is the history row a write would add, worked out from the store as it
-// stands and written nowhere: the dry run of Insert (OpAdd, row), Update
-// (OpSet, row.Name and changes) and Delete (OpRemove, row.Name), with the
-// refusals both stores make before they write (a name taken or missing, the
-// kind's Check, a ref naming no row, a row another names or the migration
-// made), from the same checks. The change has no id and no instant: nothing
-// was recorded.
-func PlanWrite(ctx context.Context, st Store, op, kind string, row Row, changes map[string]string) (Change, error) {
-	k, ok := Lookup(kind)
-	if !ok {
-		return Change{}, fmt.Errorf("unknown kind %q", kind)
-	}
-	cur, found, err := st.Get(ctx, kind, row.Name)
-	if err != nil {
-		return Change{}, err
-	}
-	c := Change{Kind: kind, Name: row.Name, Op: op}
-	missing := &RefusedError{Err: ErrNotFound, Detail: fmt.Sprintf("%s %s not found", kind, row.Name)}
-	switch op {
-	case OpAdd:
-		if err := checkRefs(ctx, st, k, row); err != nil {
-			return Change{}, err
-		}
-		if found {
-			return Change{}, &RefusedError{Err: ErrExists, Detail: fmt.Sprintf("%s %s exists", kind, row.Name)}
-		}
-		c.After = row.Clone().Fields
-	case OpSet:
-		if !found {
-			return Change{}, missing
-		}
-		next := cur.Clone()
-		maps.Copy(next.Fields, changes)
-		if err := checkRefs(ctx, st, k, next); err != nil {
-			return Change{}, err
-		}
-		c.Before, c.After = cur.Fields, next.Fields
-	case OpRemove:
-		if !found {
-			return Change{}, missing
-		}
-		if err := checkReferenced(ctx, st, kind, row.Name); err != nil {
-			return Change{}, err
-		}
-		c.Before = cur.Fields
-	default:
-		return Change{}, fmt.Errorf("plan: unknown op %q", op)
-	}
-	return c, nil
 }
 
 // Mem is the in-memory Store the unit tests use. It is strict like PG: the

@@ -3,7 +3,6 @@ package sprint
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -175,15 +174,4 @@ func RefusedVerbLines(recs []RefusedVerb, now time.Time) []string {
 // RefusedBeatOK is a member's one OK line when none of its beats were refused in the window.
 func RefusedBeatOK(member string) string {
 	return fmt.Sprintf("DOCTOR OK member-beat %s", member)
-}
-
-// RefusedAnyBeat is whether any member's refused beats reached the bound: the member-beat
-// check is red only then.
-func RefusedAnyBeat(recs []RefusedVerb, now time.Time) bool {
-	return len(RefusedBeatLines(recs, now)) > 0
-}
-
-// refusedArgv is a compact rendering of what a refused verb sent, for a fault line.
-func refusedArgv(argv []string) string {
-	return strings.Join(argv, " ")
 }
