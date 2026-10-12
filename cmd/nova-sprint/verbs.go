@@ -404,7 +404,8 @@ one answer to each judgment (every one prints its own, filled in):
   ci red                      rework --group <id> --expect <n> --fix '<fix>' --answers <notes>
   blocked on a dropped card   drop --group <id> --expect <n> --reason '<why>' --answers <notes>
   blocked on a missing card   drop <ids> --reason '<why>' or ack <notes> --reason '<why the named missing needs can be waived>'
-  reads exhausted             ask --group <id> --expect <n> --another --answers <notes>
+   reads exhausted             ask --group <id> --expect <n> --another --answers <notes>
+   a read was lost twice       card <primary>, then ack <note> --reason '<what you found>'  (two reads were returned lost at one attempt: the reader's beats name reads it does not run)
   repair skipped changes      card <primary>, then rework, return or drop --group <id> --expect <n> --answers <notes>
   an operation was stuck      check, then ack <note> --reason '<what you found>'
   a repeat: stop and look     card <primary>
