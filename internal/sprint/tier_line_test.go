@@ -67,3 +67,21 @@ func TestAHeavyCardsFirstDealDrawsAHeavyRoute(t *testing.T) {
 	require.NotNil(t, wc)
 	assert.Equal(t, "heavy-a", wc.F(FieldRoute), "the first deal draws the tier line 1 names")
 }
+
+// brief re-tiers a card by its new line 1 (steps_edit.go, Brief): it says <id> tier=<t>, and
+// a tier stronger than the one the card was dealt on raises tier_now, so its next attempt is
+// dealt on it; a weaker line 1 never lowers a tier the card is on.
+func TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "c: the work (s1) tier: flash\n\nThe task."}}}))
+	w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RouteFlash // dealt on flash before
+
+	p := w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "s1-1", Brief: "c: the work (s1) tier: heavy\n\nThe task."}}, Who: "coordinator"}))
+	assert.Contains(t, p.Said, "s1-1 tier=heavy", "brief says the tier the card is dealt on")
+	assert.Equal(t, cardhdr.RouteHeavy, w.s.Work.Card("s1-1").F(FieldTierNow), "a stronger line 1 raises tier_now")
+
+	p = w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "s1-1", Brief: "c: the work (s1) tier: pro\n\nThe task."}}, Who: "coordinator"}))
+	assert.Contains(t, p.Said, "s1-1 tier=heavy", "a weaker line 1 keeps the stronger tier the card is on")
+	assert.Equal(t, cardhdr.RouteHeavy, w.s.Work.Card("s1-1").F(FieldTierNow), "never lowered")
+}

@@ -50,3 +50,14 @@ func TestAddPrintsTheTierEachCardIsStoredWith(t *testing.T) {
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, errs, "--default-tier wants flash, pro or heavy")
 }
+
+// brief prints the tier the re-briefed card is dealt on (<id> tier=<t>), the tier its new
+// line 1 names.
+func TestBriefPrintsTheTierTheCardIsDealtOn(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --one s1-1 --brief-file " + tierBrief(t, "flash", "c: the work (s1) tier: flash", ""))
+	out := ta.ok("brief s1-1 --brief-file " + tierBrief(t, "heavy", "c: the work (s1) tier: heavy", ""))
+	assert.Contains(t, out, "s1-1 tier=heavy", "brief says the tier: %s", out)
+}
