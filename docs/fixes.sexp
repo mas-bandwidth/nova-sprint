@@ -2338,6 +2338,26 @@
    :title "The fleet alarm and idle count measure working work cards only"
    :text "Both the fleet backlog alarm and FleetWorking now count the work cards on up members, excluding working read cards. Before, a reader card could carry the alarm numerator across its 50% threshold and clear the work alarm, then start another episode when the read ended, while work stayed below threshold. TestTheFleetAlarmIgnoresReadsCrossingTheThreshold and TestTheIdleFleetCountsWorkNotReads pin both directions; TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds still proves that real work crossing the threshold clears once."
    :origin "this hand fix, 2026-10-11; source defect reviewed at nova-sprint main c28d55fccdadbe80f89bbb2efb1ae99d548ace2a; scoped card the-fleet-alarm-counts-working-work-cards-only")
+  (fix "tla-provider-funds" :release "v1.2.14" :status "planned"
+   :title "ProviderFunds models a provider's refusal rest, its judgments and the all-out stop"
+   :text "Models only, no product change. New tla/ProviderFunds.tla instantiates tla/RouteRest.tla once per
+    provider (p1, p2, one enabled route each; no rest rule is copied) and adds what lies above one provider:
+    two outstanding takes a provider, each launched after the last rest ended, stale (launched at or before
+    it) or with no launch time, so a refusal rests the provider only from a take launched after the last rest
+    ended (providerRestsDue, internal/sprint/provider_funds.go: e.taken.After(last.Mark())); a payment the poll
+    sees, funded and the coordinator's wake each end the rest and set that mark (balance.go, Funded,
+    route_coordinator.go: Until = now). The balance poll writes no rest. Judgments is providerConds' one
+    judgment a provider: out of funds or refused key before low, low only while no rest of its own holds.
+    AllOutOfCredit stops the machine only when every provider rests for credit (RouteRest.Out), and
+    friendsKeepRunning drops the stop while a friend is up; START is the coordinator's and is refused while all
+    are out unless a friend is up. Invariants and properties: LowNeverStops, NoFundsStopWhileFriendUp,
+    StartIsTheCoordinators, StopOnlyWhenAllOut, RefusalsAfterLastEnd, JudgmentsMatch. Reversed witnesses:
+    lowisout (Out counts a low balance; fails LowNeverStops), nofriendexception (drops friendsKeepRunning; fails
+    NoFundsStopWhileFriendUp) and stalerefusal (drops the launch-after-the-mark guard; fails
+    RefusalsAfterLastEnd). provider_funds.go gains comment lines citing the module, and AllOutOfCredit's comment
+    no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
+    spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
+   :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
   (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
    :title "The landing gate runs its classes side by side"
    :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,
