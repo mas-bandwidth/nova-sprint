@@ -3204,10 +3204,10 @@ order the cards were dealt in, so a card brought to the front of its stream by
   1000%. `--load <percent>` gives it instead.
  - The beat's words are the member's, written once: `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>`. The optional words may stand in any order and `--load` anywhere
    among them; `--load` is required, because the server cannot measure another
-   machine. nova-tools pkg/member sends exactly this list (`Beat`, `drainArgs`,
-   `noRoomArgs`), and both repositories' tests pin it: nova-sprint's
-   `cmd/nova-sprint/serve_beat_test.go` and `internal/sprint/fleet_beat_test.go`,
-   nova-tools' `pkg/member/stop_test.go`. `--no-room <why>` is the member's word
+   machine. nova-sprint `pkg/member` owns the fleet loop and sends exactly this list (`Beat`,
+   `drainArgs`, `noRoomArgs`). Its `cmd/nova-sprint/serve_beat_test.go`,
+   `internal/sprint/fleet_beat_test.go`, and `pkg/member/fleet_stop_test.go` pin it;
+   `nova-swarm member` imports this package at a pinned version. `--no-room <why>` is the member's word
    that it starts no card and why (its free disk under its floor): while its beat
    is fresh the deal gives it none (`NotQuiet`). `--draining` is its word that
    the binary it runs was replaced under it: it takes no new card and stops when

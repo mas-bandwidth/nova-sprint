@@ -333,13 +333,14 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 			c.done, c.res = true, member.Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "did it"}
 			c.mu.Unlock()
 		}
-		pass()
+		pass() // the running member reports the ended children
 		r.boss("nova-sprint tick")
-		assert.Len(t, rn.packets, 2*(round+2), "the freed lanes are filled again: %s", log.String())
+		pass() // the next pass fills lanes freed by the reports
+		assert.Len(t, rn.packets, 2*(round+2), "the freed lanes are filled next pass: %s", log.String())
 		assert.LessOrEqual(t, m.Running(), 2, "never over its width")
 	}
-	// a member with no load sampled yet does not beat a load it did not measure
-	require.ErrorContains(t, m.Beat(), "no sample yet")
+	// The fleet member sends an explicit zero while its load has no sample.
+	require.NoError(t, m.Beat())
 	verbs := map[string]int{}
 	for _, v := range r.served {
 		verbs[v[0]]++
@@ -347,7 +348,7 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 	assert.Equal(t, 4, verbs["finish"], "%v\n%s", verbs, log.String())
 	assert.Positive(t, verbs["take"])
 	assert.Positive(t, verbs["queue"])
-	assert.Zero(t, verbs["fleet"], "the beat with no load was not sent")
+	assert.Positive(t, verbs["fleet"], "the beat with no load sends zero")
 	seen := map[string]bool{}
 	for _, p := range rn.packets {
 		assert.False(t, seen[p.Card], "%s started twice", p.Card)
