@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The landing stall on a real store (docs/SPEC-SPRINT.md, the judgments section; the owner,
@@ -30,14 +33,26 @@ func TestALandingStallIsJudgedAndClearedByALandingOnTheStore(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
-	// a scrubbed environment: the private store and the actor, nothing of the machine's
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}
+	// A scrubbed environment: the private store, the actor, and a home and config directory of
+	// the test's own; no other variable of the machine's (no NOVA_SPRINT_SERVER, no seat
+	// record) is seen. Every verb names the private store with --redis, which never forwards
+	// (forward.go, server), and the app's forward fails the test: no verb can reach a live
+	// sprint server from here.
+	home := t.TempDir()
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
+		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
+	a.home = func() (string, error) { return home, nil }
+	a.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
+		t.Fatalf("a verb was forwarded to a sprint server at %s: %q", addr, verbs)
+		return nil, errors.New("forwarding is refused in this test")
+	}
+	require.Empty(t, func() string { s, _ := a.namedServer(); return s }(), "no sprint server is named in the test's environment")
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(strings.Fields(line), &out, &errb)
+		code := a.run(append(strings.Fields(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}

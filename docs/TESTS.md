@@ -252,7 +252,10 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `TestLandingStallBoundIsSettable`,
   `TestALandingSeenLateEndsTheOldStallBeforeANewOne`,
   `TestALandingPushOfLongLedgerTextsStaysInsideTheFieldBound`,
-  `TestALandingStallStampAloneIsAPlanTheTickWrites`.
+  `TestALandingStallStampAloneIsAPlanTheTickWrites`,
+  `TestALandingPushOfAHundredCardsKeepsEveryCardsLine`,
+  `TestLandingLinesNameEveryCardWhenTheFactsAloneOverflow`,
+  `TestASubSecondBoundNeverTakesTheLastLandingForANewOne`.
 - Unit, `internal/sprint/store/landing_stall_reads_test.go`:
   `TestLandingPushCountsFinishedFriendReadsAfterAccept`,
   `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.
@@ -262,6 +265,10 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `TestALandingStallIsJudgedAndClearedByALandingOnTheStore`, on a private
   redis-server with the machine's own clock and a one-second bound: the stall
   is raised to the coordinator, and the landing pushes "landed" and closes it.
+  Every verb names the private store with `--redis`; the app sees only the
+  test's own environment (its home and config directory are temporary, no
+  `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
+  a live sprint server.
 
 ## nova-card
 

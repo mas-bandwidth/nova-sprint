@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -411,4 +412,74 @@ func TestALandingStallStampAloneIsAPlanTheTickWrites(t *testing.T) {
 	assert.False(t, p.Empty(), "a clear-only plan is not passed over by the tick")
 	p, _ = TickDeadlines(w.s, TickReq{})
 	assert.False(t, p.Empty(), "nor is the deadlines part that carries it")
+}
+
+// A batch of a hundred landings with long ledger texts is one push inside the
+// field bound in which every card keeps its own line and its ledger title: the
+// texts share what the lines' facts leave (docs/SPEC-SPRINT.md, the judgments
+// section). Cutting the joined note instead dropped every line past the bound.
+func TestALandingPushOfAHundredCardsKeepsEveryCardsLine(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	var cards []*Card
+	ledger := map[string]LandingLedgerEntry{}
+	long := strings.Repeat("a long ledger text ", 1000)
+	for i := 1; i <= 100; i++ {
+		id := fmt.Sprintf("s9-%d", i)
+		cards = append(cards, &Card{ID: id, Row: "s9", Fields: map[string]string{"head": "abcdef0123456789", "attempt": "1"}})
+		ledger[id] = LandingLedgerEntry{Title: "title " + id, Text: long}
+	}
+	n := landingPush(w.s, "s9", "rowan", cards, ledger, w.s.Now)
+	require.LessOrEqual(t, len(n.What), MaxCardTextBytes, "the push is inside the field bound")
+	for i := 1; i <= 100; i++ {
+		id := fmt.Sprintf("s9-%d", i)
+		assert.Contains(t, n.What, "landed "+id+" (stream s9", "%s keeps its line", id)
+		assert.Contains(t, n.What, "title "+id+" ", "%s keeps its ledger title", id)
+	}
+}
+
+// When even the lines' facts do not fit the bound, the lines that fit are kept
+// and every other card is named by id on the last line: no landed card is
+// dropped from the push.
+func TestLandingLinesNameEveryCardWhenTheFactsAloneOverflow(t *testing.T) {
+	t.Parallel()
+	var lines []landingLine
+	for i := 1; i <= 10; i++ {
+		lines = append(lines, landingLine{id: fmt.Sprintf("s9-%d", i), stream: "s9", head: "abcdef0123", title: "t", text: "x", attempts: 1})
+	}
+	got := landingLines(lines, 400)
+	require.LessOrEqual(t, len(got), 400)
+	assert.Contains(t, got, "more landed:")
+	named := map[string]bool{}
+	for _, f := range strings.Fields(strings.NewReplacer("(", " ", ")", " ", ",", " ").Replace(got)) {
+		named[f] = true
+	}
+	for i := 1; i <= 10; i++ {
+		assert.True(t, named[fmt.Sprintf("s9-%d", i)], "s9-%d is named in %q", i, got)
+	}
+}
+
+// At a sub-second bound a landing and the stall raised after it fall in one
+// second: whole-second stamps read them as one time, and the next tick took the
+// old landing for a new one and cleared the stall with no card landed (Stella's
+// read of #117). The stamps order to the nanosecond (landingStamp).
+func TestASubSecondBoundNeverTakesTheLastLandingForANewOne(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2)
+	w.s.Work.SetProp(PropLandingStallBound, "500ms")
+	base := w.s.Now.Truncate(time.Second)
+	accepted(w, "s1-1")
+	w.s.Now = base.Add(100 * time.Millisecond)
+	w.must(MergeStep(w.s, MergeReq{Stream: "s1", Batch: 1})) // s1-1 lands at :00.100
+	stallCard(w, "s1-2", Review)
+	w.s.Now = base.Add(700 * time.Millisecond)
+	p, _ := TickLandingStall(w.s, TickReq{})
+	w.must(p)
+	require.Len(t, w.notesOf(NLandingStall), 1, "600ms with no landing past a 500ms bound: the stall is raised at :00.700")
+	w.s.Now = base.Add(800 * time.Millisecond)
+	p, _ = TickLandingStall(w.s, TickReq{})
+	w.must(p)
+	assert.Empty(t, w.notesOf(NLandingAgain), "no card landed after the stall began: no landing again")
+	_, open := openJudgmentOf(w.s, NLandingStall)
+	assert.True(t, open, "the stall judgment stays open")
 }

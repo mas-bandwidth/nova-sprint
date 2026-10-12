@@ -7538,7 +7538,11 @@ merge step): one happened `landed <card>` per landing line, with the card's stre
 head, the one-line `:title` and `:text` of its fixes ledger entry (read by the lander from
 the landed head and carried onto the merge event), and the attempts and reads it took. A batch of landings in one tick
 is one push with one line per card, addressed to the coordinator and needing no ack beyond
-the hook's. The owner, 2026-10-11: "you should also get this push notification, so you as
+the hook's. The push stays inside the field bound and every landed card keeps its line: the
+ledger texts share what the lines' facts leave (each at most 600 bytes), and only when the
+facts alone overflow are the lines that fit kept and the rest named "... and N more landed:
+<ids>". The landing and episode stamps are RFC3339 to the nanosecond and compared as times,
+so a sub-second bound orders a landing against the episode it came before. The owner, 2026-10-11: "you should also get this push notification, so you as
 coordinator can read the card that landed and keep on top of things".
 
 ### The server
