@@ -334,6 +334,17 @@ there is no `log -f` stream to guard.
   `TestHookFlushesAfterChallengeOnTheStore` does the same on a private
   redis-server, the store named explicitly with `--redis` on every verb, in a
   scrubbed environment.
+- Unit, `cmd/nova-sprint/hook_compact_test.go`:
+  `TestHookCompactPrintsOnlyWhatTheSeatActsOn` runs `hook --compact --overdue 2s`
+  against a private server and store with its stdout a real OS pipe, proves it,
+  raises one card-holding judgment and one HAPPENED note addressed to the seat and
+  checks that the JUDGMENT and its first detail line are read as `PUSH <id> JUDGMENT ...` with no acknowledge menu and that the HAPPENED push is not
+  printed; it asserts that one `OVERDUE <alias> <age> <kind> :: <cards>` line is
+  read past `--overdue` and a second after another interval, and that none is
+  read once the judgment is answered. `TestCompactSayPrintsACriticalJudgment`
+  pins that a judgment whose cards wait on it (its group line prefixed
+  `CRITICAL <n> behind:`) is printed, not dropped. (docs/SPEC-SPRINT.md,
+  "The hook"; docs/CLI.md, `nova-sprint hook --compact`.)
 - Unit, `cmd/nova-sprint/flush_stream_test.go`:
   `TestWhereWatchFlushesEveryFrame` runs `where --watch --every 20ms` against the
   test store with its stdout a real OS pipe and asserts a frame is readable
