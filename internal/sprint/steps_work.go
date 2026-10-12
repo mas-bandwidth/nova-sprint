@@ -1866,7 +1866,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 				// (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla,
 				// RateLimitSpendsNoRedeal)
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "rate limited",
-					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
+					fmt.Sprintf("%s working -> provider gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
 			if outOfCredit(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
@@ -1876,7 +1876,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 				// (a 401) and an unlimited route keep takeEnded's path (provider_funds.go;
 				// tla/RouteRest.tla, OutOfCreditSpendsNoRedeal)
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "out of credit",
-					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
+					fmt.Sprintf("%s working -> provider gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))

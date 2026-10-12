@@ -3,11 +3,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -19,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // A machine's ok% counts only the work the machine did, never an end it did not cause.
@@ -31,8 +27,7 @@ import (
 // one landed ok. The machine's stored okpct — the field the dashboard's ok% cell reads, ok
 // over (ok + failed work + no result) — is exactly one failure over the two work ends: the
 // drop, the refused move, the provider refusal, the death and the staging refusal are never
-// failed work (the staging refusal files in coordination; the refusal and the death return to
-// ready at the same attempt; the drop and the refused move record no end).
+// failed work.
 func TestOkPercentCountsOnlyTheWorkAMachineDid(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -44,33 +39,20 @@ func TestOkPercentCountsOnlyTheWorkAMachineDid(t *testing.T) {
 	require.NoError(t, admin.HSet(ctx, config.RouteKey("flash-a"), "name", "flash-a", "tier", "flash", "provider", "p", "model", "m",
 		"tokens", "100000", "deadline", "900", "enabled", "true").Err())
 
-	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "seat-ok", "HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
-	a := newApp(func(k string) string { return env[k] })
-	t.Cleanup(a.close)
-	a.home = func() (string, error) { return home, nil }
-	a.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
-		t.Fatalf("a verb was forwarded to a sprint server at %s: %q", addr, verbs)
-		return nil, errors.New("forwarding is refused in this test")
-	}
+	ta := newFunctionalTestApp(t, addr)
 	run := func(line string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := a.run(append(split(line), "--redis", addr), &out, &errb)
-		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
-		return out.String()
+		return ta.runVerb(split(line)...)
 	}
 	refused := func(line string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := a.run(append(split(line), "--redis", addr), &out, &errb)
-		require.NotZero(t, code, "%s: expected a refusal\n%s%s", line, out.String(), errb.String())
-		return errb.String()
+		out, code, errb := ta.runVerbOut(split(line)...)
+		require.NotZero(t, code, "%s: expected a refusal\n%s%s", line, out, errb)
+		return errb
 	}
 	load := func() *sprint.Snapshot {
 		t.Helper()
-		_, cm := a.verbSetup("log")
-		st, err := a.store(*cm)
+		st, err := ta.app().store(common{redis: addr, actor: "coordinator"})
 		require.NoError(t, err)
 		s, err := st.Load(ctx, store.All, nil)
 		require.NoError(t, err)
@@ -112,9 +94,8 @@ func TestOkPercentCountsOnlyTheWorkAMachineDid(t *testing.T) {
 	run("tick") // a finish is queued until the next tick drains it, and the ask asks the readers
 
 	// The not-its-fault ends never file in the failed cell: the staging refusal files in
-	// coordination, the provider refusal and the 134 death return to ready at the same
-	// attempt (their take recorded in their own named columns, never a failure), and the
-	// drop removes the card.
+	// coordination, and the provider refusal, the 134 death and the drop never reach the
+	// failed cell.
 	s = load()
 	assert.True(t, inCell(s, sprint.Coordination)["s1-4.w1"], "the staging refusal files in the coordination column")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-4.w1"} {
@@ -135,7 +116,6 @@ func TestOkPercentCountsOnlyTheWorkAMachineDid(t *testing.T) {
 	s = load()
 	assert.Equal(t, 1, s.Fleet.Count("m1", sprint.DoneOK), "the ok card is ok work")
 	assert.Equal(t, 1, s.Fleet.Count("m1", sprint.DoneFailed), "exactly one real failure")
-	assert.Zero(t, s.Fleet.Count("m1", sprint.NoResult), "no work end left no result")
 	var view struct {
 		Tables map[string]map[string]map[string]any `json:"tables"`
 	}

@@ -256,7 +256,7 @@ func anyCardSince(s *Snapshot, p *Card, since time.Time) bool {
 // samples are one member's, reader's or route's cards and their samples, in seconds.
 type samples struct {
 	n, ok, failed, noResult, provider, coordination, environment, harness int
-	wait, wall, lag                                                        []float64
+	wait, wall, lag                                                       []float64
 }
 
 // sampleOf is the name's samples, counted one card more, made on first meeting.

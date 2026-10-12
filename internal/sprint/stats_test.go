@@ -98,7 +98,7 @@ func TestStatsArePassNumbersFromTheCards(t *testing.T) {
 		{Reader: "reader-b", Cards: 1}, // retired unbegun: asked of it, no time to measure
 	}, ps.Reads)
 	assert.Equal(t, []RouteTakes{
-		{Route: "flash-a", Takes: 2, OK: 1, Failed: 1, RunWall: m(8, 10, 2)}, // the staging refusal is no take
+		{Route: "flash-a", Takes: 2, OK: 1, Failed: 1, RunWall: m(8, 10, 2)},        // the staging refusal is no take
 		{Route: "flash-b", Takes: 2, Provider: 1, NoResult: 1, RunWall: m(3, 4, 2)}, // a provider failure and a no-result work end, apart
 		{Route: "pin:opencode/x", Takes: 1, OK: 1, RunWall: m(8, 8, 1)},
 		{Route: "pro-a", Takes: 1, OK: 1, RunWall: m(8, 8, 1)},

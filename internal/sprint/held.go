@@ -712,7 +712,7 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 		return "its tier " + tier + " is served by friends alone, and none up who serves it may be dealt it (withdrawn or taken back from each): it waits for another friend of its tier", "", true
 	}
 	var wc *Card
-	if w := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); w != nil && w.Col == Withdrawn {
+	if w := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); w != nil && Redealable(w) {
 		wc = w
 	}
 	if f := laneRunsIt(s, s.Friends, pr, wc); f != "" {

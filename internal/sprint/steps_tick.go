@@ -1959,7 +1959,7 @@ func LateStands(s *Snapshot, n Note) bool {
 			}
 			return true
 		}
-		return c.Col == Ready || c.Col == Working || c.Col == Withdrawn
+		return c.Col == Ready || c.Col == Working || c.Col == Withdrawn || NotItsFaultCol(c.Col)
 	case NReadLate:
 		c := s.Readers.Placed(n.Card)
 		if c == nil {

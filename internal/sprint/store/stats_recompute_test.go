@@ -32,7 +32,7 @@ func TestARecomputeCountsTheStoredEndsByCauseAndWritesTheRecord(t *testing.T) {
 		fr.As, fr.Sel, fr.Gens, fr.Who = wc.Row, sprint.Sel{IDs: []string{wc.ID}}, gens, wc.Row
 		h.must(FinishStep(fr))
 	}
-	finish("s1-1.w1", sprint.FinishReq{Head: "abc123", Usage: "wall=1.00s"})                        // ok
+	finish("s1-1.w1", sprint.FinishReq{Head: "abc123", Usage: "wall=1.00s"})                           // ok
 	finish("s1-2.w1", sprint.FinishReq{Failed: true, Report: "verdict not-done", Usage: "wall=1.00s"}) // failed work
 	finish("s1-3.w1", sprint.FinishReq{Failed: true, Report: providerLine, Usage: "wall=1.00s"})       // provider failure
 	finish("s1-4.w1", sprint.FinishReq{Failed: true, Report: noResultLine, Usage: "wall=1.00s"})       // no result
