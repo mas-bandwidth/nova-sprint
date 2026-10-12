@@ -86,6 +86,8 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	run("tick")
 	run("take --as m1 --limit 5 --epoch 0")
 	run("finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0")
+	run("queue --as reader-a") // a reader asks for its queue: it is up
+	run("queue --as reader-b")
 	run("ask")
 	run("read --as reader-a --ok --limit 10 --epoch 0")
 	run("read --as reader-b --ok --limit 10 --epoch 0")

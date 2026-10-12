@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// LandingFlow is the landing flow: stream branches hold cards in a batch, then
+// merge serially into dev; a card never lands on dev or main (docs/SPEC-SPRINT.md
+// section 7, the sprint branch).
+const LandingFlow = "The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main."
+
 // Every stream lands on the sprint branch, and promotion alone reaches dev
 // (docs/SPEC-SPRINT.md section 7, the sprint branch): a card cut on dev or main is merged
 // by the lander straight onto it and ejects the merge queue's promotion run, so add
@@ -30,6 +35,53 @@ func SprintBase(s *Snapshot) string {
 		return v
 	}
 	return ""
+}
+
+// StreamBranch is the branch a stream's cards land on, as its control card records it
+// (FieldStreamBranch): sprint/<stream> when it records none (docs/SPEC-SPRINT.md section 7,
+// the sprint branch).
+func StreamBranch(s *Snapshot, stream string) string {
+	if b := s.StreamCtl(stream).F(FieldStreamBranch); b != "" {
+		return b
+	}
+	return "sprint/" + stream
+}
+
+// Trunk is the trunk a stream's branch is cut from, as its control card records it
+// (FieldTrunk): dev, or main where the repository has no dev, dev when it records none
+// (docs/SPEC-SPRINT.md section 7, the sprint branch).
+func Trunk(s *Snapshot, stream string) string {
+	if t := s.StreamCtl(stream).F(FieldTrunk); t != "" {
+		return t
+	}
+	return DevBranch
+}
+
+// branchAndTrunk is a stream's branch and trunk from its control card's recorded fields
+// and an add's cards' bases: the trunk is the protected branch a card names (main when any
+// names main, else dev), and the branch is the recorded one, or sprint/<stream> when none
+// is, or a non-protected branch a card names, which the stream keeps (docs/SPEC-SPRINT.md
+// section 7, the sprint branch).
+func branchAndTrunk(ctl *Card, stream string, bases []string) (branch, trunk string) {
+	branch, trunk = "sprint/"+stream, DevBranch
+	if ctl != nil {
+		if b := ctl.F(FieldStreamBranch); b != "" {
+			branch = b
+		}
+		if t := ctl.F(FieldTrunk); t != "" {
+			trunk = t
+		}
+	}
+	for _, b := range bases {
+		switch {
+		case b == "main":
+			trunk = "main"
+		case b == DevBranch:
+		case b != "":
+			branch = b // a non-protected branch: the stream keeps it as its branch
+		}
+	}
+	return branch, trunk
 }
 
 // IsPromotionStream says the stream's control card carries the old mark FieldLandProtected,

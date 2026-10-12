@@ -288,7 +288,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 		"No `rm -rf` outside the job directory.\nReport what was not done.\n"), 0o600))
 	r.do("add --stream s5 --count 1 --one --brief-file " + pro)
 	r.do("add --stream s6 --count 1 --one")
-	r.do("brief s6-1 --tier pro")
+	r.do("brief s6-1 --tier pro --reason 'the coordinator pins it to pro'")
 
 	s := r.hookIn()
 	r.do("start")

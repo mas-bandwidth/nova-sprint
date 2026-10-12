@@ -26,11 +26,6 @@ const (
 // promotion alone reaches, and main, the release branch (docs/SPEC-SPRINT.md section 7).
 var ProtectedBranches = []string{"dev", "main"}
 
-// LandingFlow is the landing flow, one sentence (docs/SPEC-SPRINT.md section 7, the sprint
-// branch): a card head lands in a batch on its stream's branch, and only the serial merge of
-// stream branches reaches dev or main; a card never lands on dev or main itself.
-const LandingFlow = "The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main."
-
 // ProtectedLandingWhy is why a landing whose target is a protected branch (dev or main) is
 // refused, "" when base is none of them: it is refused for every stream, whatever the
 // stream's mark, since land_protected is no landing permission (docs/SPEC-SPRINT.md section 7,

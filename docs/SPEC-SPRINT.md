@@ -2692,6 +2692,23 @@ the pre-state does not hold it. A primary is working if and only if
 it has a live work card. Nothing retries by itself. Nothing leaves review
 except by the coordinator.
 
+**The live-need rules (every-need-names-a-live-card-checked-every-second).**
+Three rules hold a need to a live card. (a) A drop, and every verb that takes a
+card off the table, of a card any unlanded card needs is refused, naming each
+dependant, unless the call says what happens to each: `drop <card> --relink <new id>`
+re-points the dependants' needs at the new card, `--waive` removes the need from
+each (recorded with the reason), or `--cascade` drops the dependants too. The
+refusal reads every unlanded state -- waiting, ready, working, review, merging --
+not only waiting primaries. (b) The tick's needs part (`TickNeeds`) reads every
+unlanded card's needs each tick, in every state, and a need naming a card that is
+absent or off the table raises one judgment, "a card needs a card that is gone",
+at once, naming the card, its state, the missing need and the two answers
+(`needs set <id> --needs <rest>`, or `drop`); it stays open and the overdue part
+repeats it at its deadline until it is answered, and it closes when the need is
+landed, waived or re-pointed. A card in merging or review with a missing need is
+answerable by `needs set` in place. (c) `accept` refuses a card whose need has
+not landed, so no card enters merging with a need that is not landed.
+
 ## 4. Order
 
 A score is given once, at admission. Work cards, read cards and the merge place
@@ -4337,23 +4354,30 @@ carry the machine's identity (the sprint row's `git_identity`, default
 the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
 so a machine commit in a clone carries the configured identity too.
 
-**The sprint branch.** Every stream lands on the sprint branch, and promotion
-alone reaches dev: a card cut on dev is merged by the lander straight onto it and
-ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
-`BASE: dev` restarted that run at every landing). So `add` refuses, per card and
-all or none, nothing written, a card whose brief names `BASE: dev` or `BASE:
-main` (a pinned `dev@<sha>` too, as the lander reads the line), in every stream
-alike, its remedy the sprint branch. `quack` is held to the same rule, its
-default base the test repository's sprint branch, `sprint/quack`. The landing
-flow, one sentence: `sprint.LandingFlow` — "The landing flow: card heads land in
-a batch on their stream's branch sprint/<stream>, oldest first, one writer per
-stream; stream branches merge one at a time into dev (main where a repository
-has no dev); a card never lands on dev or main." A card naming no `BASE:` lands
-on the lander's `--base` (`sprint.SprintBranchWhy`). The mark `land_protected`,
-which `stream set --land-protected` once wrote, is no landing permission: a
-stream carrying it from an old store is held to the same rule, and the one
-command that fixes a card meant for such a branch re-points the stream's base,
-`nova-sprint stream set <s> --base sprint/<s>` (the protected branches, below).
+**The sprint branch.** Every stream lands on its own branch, `sprint/<stream>`,
+and a card never lands on dev or main (found 2026-10-04, when cards cut with
+`BASE: dev` restarted the promotion run at every landing). The landing flow is one
+sentence, `sprint.LandingFlow`: "The landing flow: card heads land in a batch on
+their stream's branch sprint/<stream>, oldest first, one writer per stream; stream
+branches merge one at a time into dev (main where a repository has no dev); a card
+never lands on dev or main." A stream's branch and trunk are fields of its control
+card (`stream_branch`, `trunk`, `sprint.FieldStreamBranch` and `FieldTrunk`): the
+first add of a stream writes both in the same step as its first card, the branch
+`sprint/<stream>` and the trunk the protected branch the card's `BASE:` names (dev,
+or main; dev when it names none). `add` refuses, per card and all or none, nothing
+written, a card whose brief names `BASE: dev` or `BASE: main` (a pinned `dev@<sha>`
+too, as the lander reads the line), in every stream alike, marked or not, its
+remedy the sprint branch (`sprint.SprintBranchWhy`, `sprint.PromotionBaseWhy`).
+`quack` is held to the same rule, its default base the test repository's sprint
+branch, `sprint/quack`. The lander creates an absent stream branch on origin at the
+trunk's tip in its kept clone before it lands any card of the stream, one NOTE line
+`LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>`; a card of a stream whose
+branch origin lacks is held, never landed on the trunk. A card naming no `BASE:` lands
+on the lander's `--base` (`sprint.SprintBranchWhy`). The mark `land_protected`, which
+`stream set --land-protected` once wrote, is no landing permission: a stream carrying
+it from an old store is held to the same rule, and the one command that fixes a card
+meant for such a branch re-points the stream's base, `nova-sprint stream set <s>
+--base sprint/<s>` (the protected branches, below).
 
 accept places the primary in merge `queued` with its score, and retires, in
 the same step, every read card of the primary still asked or reading (marked

@@ -60,6 +60,11 @@ const (
 	// hand ("ready to accept") instead of the tick accepting a card whose reads have all
 	// passed; set by stream set --seat-accept on, taken off by off (seat_answers.go, rule (a)).
 	FieldSeatAccept = "seat_accept"
+	// FieldStreamBranch is a stream's control card's field: the branch the stream lands on,
+	// sprint/<stream> by default (docs/SPEC-SPRINT.md section 7).
+	FieldStreamBranch = "stream_branch"
+	// FieldTrunk is a stream's control card's field: the trunk branch (dev or main) of the stream's branch.
+	FieldTrunk = "trunk"
 	// PropFleet and PropFriends are the work table's properties: the switches of the
 	// fleet's work and the friends' work (the owner, 2026-10-06: "We should be able to
 	// enable/disable fleet, enable/disable friends. default enabled."), SwitchOn or

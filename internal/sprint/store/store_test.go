@@ -120,18 +120,27 @@ func (h *harness) state(id string) string { return h.snap().StateOf(id) }
 // setup: two members up, n primaries in s1.
 func (h *harness) setup(n int) { h.setupBrief(n, proBrief) }
 
+// readers puts the harness's three readers on the readers table and beats them,
+// so the cards' asks find readers. A clear leaves the new epoch blank (its
+// reader row is not carried over), so a test that clears calls readers again
+// before it drives the new epoch.
+func (h *harness) readers() {
+	h.t.Helper()
+	if pinned, err := h.st.pin(h.ctx); err == nil {
+		require.NoError(h.t, pinned.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
+	}
+	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
+		require.NoError(h.t, err)
+	}
+}
+
 // setupBrief is setup with the given brief for the n primaries.
 func (h *harness) setupBrief(n int, brief string) {
 	h.t.Helper()
 	// a clear leaves the new epoch blank, so its readers are added fresh here
 	// (a no-op while they already exist): the blank-slate clear carries no
 	// reader row into the new epoch.
-	if pinned, err := h.st.pin(h.ctx); err == nil {
-		require.NoError(h.t, pinned.B.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
-	}
-	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
-		require.NoError(h.t, err)
-	}
+	h.readers()
 	// a member brought up here is as wide as the set is large: the deal holds a member to twice its
 	// width (tla/DirtyTick.tla, HoldRespected), so a verb that deals all n needs the room; a
 	// member the test brought up before keeps its width

@@ -160,6 +160,7 @@ func TestRedisClear(t *testing.T) {
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 	// Clear left the machine STOPPED, so through's take is refused until it is started.
 	h.startMachine()
+	h.readers()
 	h.through("s1-1", "s1-2")
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1"}))
 	h.clean("landed again")
