@@ -191,12 +191,12 @@ func sprintNeeds(s *sprint.Snapshot, only string, rootsOnly bool) needsView {
 		// needs name one (docs/SPEC-SPRINT.md section 11).
 		orphan := false
 		for _, n := range needs[c.ID] {
-			word := needWord(n.State)
+			word := sprint.NeedWord(n.State)
 			if n.Waived || word == sprint.Landed {
 				continue
 			}
 			card.Needs = append(card.Needs, needLine{ID: n.ID, Column: word})
-			if word == droppedWord || word == absentWord {
+			if word == sprint.DroppedWord || word == sprint.AbsentWord {
 				orphan = true
 			}
 		}
@@ -318,46 +318,15 @@ func needsWidths(waiting []*sprint.Card, depth map[string]int, stream string) []
 	return out
 }
 
-// The words a need's state is printed with when it no longer sits in a work
-// column: a kept record's outcome dropped, and no record at all.
+// The words a need's place is printed with when it no longer sits in a work
+// column (a kept record's outcome dropped, and no record at all) are
+// sprint.DroppedWord and sprint.AbsentWord: sprint.NeedWord is the one function
+// both the card and needs readers call (docs/SPEC-SPRINT.md section 11). The
+// unexported names are kept here for this package's reader tests.
 const (
-	droppedWord = "dropped"
-	absentWord  = "absent"
+	droppedWord = sprint.DroppedWord
+	absentWord  = sprint.AbsentWord
 )
-
-// needWord is a need's state as this verb prints it: a column name, dropped
-// for a kept record whose outcome is dropped, that outcome for a record kept
-// with any other outcome, or absent for no record at all (sprint.NeedsOf
-// reads the record; sprint.StateOf and Card.Placed tell the three apart;
-// docs/SPEC-SPRINT.md section 11).
-func needWord(state string) string {
-	switch state {
-	case "not on the table":
-		return absentWord
-	}
-	if out, ok := offOutcome(state); ok {
-		if out == "dropped" {
-			return droppedWord
-		}
-		return out
-	}
-	return state
-}
-
-// offOutcome is the outcome a kept record's state names: NeedsOf writes the
-// state "off the table (<outcome>)" (internal/sprint/steps_work.go), false
-// for a placed card's state, which is a column name.
-func offOutcome(state string) (string, bool) {
-	rest, ok := strings.CutPrefix(state, "off the table (")
-	if !ok {
-		return "", false
-	}
-	out, ok := strings.CutSuffix(rest, ")")
-	if !ok {
-		return "", false
-	}
-	return out, true
-}
 
 // needsText is the graph in lines: one line a card (name, depth, ROOT, its
 // unmet needs and their states), a width line a stream, then the closing

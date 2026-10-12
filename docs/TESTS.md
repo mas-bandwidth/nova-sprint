@@ -204,6 +204,25 @@ finish-t32-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --o
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
+### No ghost reads (v1.2.14)
+
+A read working on a member is named by its member's beat, or within the grace
+it goes back to the read deal (docs/SPEC-SPRINT.md, working means a live run;
+tla/ReadCards.tla NoGhostRead). These tests lock it in; the functional ones are
+release acceptance (`make release-accept`).
+
+- Unit, `internal/sprint/read_lost_test.go`:
+  `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
+  `TestAMemberRestartReturnsItsReadsAtOnce`,
+  `TestAWorkingReadTheBeatNamesIsNeverReturned`.
+- Unit, `pkg/member/read_retry_test.go`:
+  `TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost`.
+- Functional (`-tags functional`), `cmd/nova-sprint/read_lost_functional_test.go`:
+  `TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`,
+  `TestAMemberKilledSilentGivesItsReadsBackByTheDownPath`. Both run
+  `pkg/member` members in the test process over the command's verbs, on the
+  sprint's clock; neither starts an OS process.
+
 
 ## nova-card
 
@@ -270,4 +289,13 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `VERIFY FAILED` with one `VERIFY MISSING`, `EXTRA` or `DRIFT` line per difference.
 `differences=0` is the proof the tree holds what GitHub holds.
 
+
+
+## Release acceptance
+
+The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
+
+- `TestAMovedCardsOldRunIsStoppedAtTheNextBeat`: a card moved from m1 g1 to m2 g2; m1's next beat names g1; the answer stops it; m1 ends that child alone.
+- `TestOldAttemptIsStopped`: an old attempt (.w9 when the card is at .w10) is stopped the same way.
+- `TestRunNeverStopsValidRun`: a run the store holds at that member and generation is never stopped.
 
