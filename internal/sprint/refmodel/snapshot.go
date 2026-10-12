@@ -90,10 +90,11 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 }
 
 // CarriedProps is the table properties the model carries, each read by a duty to decide as
-// the tick does: the status transitions' record (the presence duty), and the landing stall's
-// facts and episode (the deadlines duty, sprint.TickLandingStall).
+// the tick does: the status transitions' record (the presence duty), the landing stall's
+// facts and episode (the deadlines duty, sprint.TickLandingStall), and the unserved tier's
+// fallback setting (the unserved fallback duty, sprint.TickUnservedFallback).
 var CarriedProps = []string{sprint.PropStatusSeen, sprint.PropLastLanding, sprint.PropLandRefusal,
-	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound}
+	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo}
 
 func cloneTable(t *sprint.Table) *sprint.Table {
 	if t == nil {

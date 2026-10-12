@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // brief is a move as one short line: what it does to which card or judgment,
@@ -26,7 +27,7 @@ func brief(m refmodel.Move) string {
 	case refmodel.KindProp:
 		return fmt.Sprintf("prop %s %s", m.Table, strings.Join(m.Set, ","))
 	case refmodel.KindSet, refmodel.KindRemove, refmodel.KindBump:
-		return fmt.Sprintf("%s %s %s %s", m.Kind, m.Table, m.Card, strings.Join(m.Set, ","))
+		return fmt.Sprintf("%s %s %s %s", m.Kind, m.Table, m.Card, strings.Join(withoutConsumers(m.Set), ","))
 	case refmodel.KindClose:
 		return fmt.Sprintf("close %s %v", m.Type, m.Subjects)
 	case refmodel.KindDue, refmodel.KindPush, refmodel.KindRow, refmodel.KindRefuse:
@@ -36,9 +37,34 @@ func brief(m refmodel.Move) string {
 }
 
 func briefs(ms []refmodel.Move) []string {
-	out := make([]string, len(ms))
-	for i, m := range ms {
-		out[i] = brief(m)
+	var out []string
+	for _, m := range ms {
+		if coreMove(m) {
+			out = append(out, brief(m))
+		}
+	}
+	return out
+}
+
+// coreMove says the move is a card change worth stating, not just the store's
+// consumer record written on the card (sprint.FieldConsumerPrefix, consumers.go).
+func coreMove(m refmodel.Move) bool {
+	if m.Kind != refmodel.KindSet {
+		return true
+	}
+	return len(withoutConsumers(m.Set)) > 0 || len(m.Unset) > 0 || m.To != "" || m.Score != "" || m.Words != ""
+}
+
+// withoutConsumers drops the consumer record fields the store writes on a card
+// (sprint.FieldConsumerPrefix, consumers.go): a duty's fixture states its moves
+// without them, and the consumer record is held by the store's own tests.
+func withoutConsumers(set []string) []string {
+	var out []string
+	for _, kv := range set {
+		if strings.HasPrefix(kv, sprint.FieldConsumerPrefix) {
+			continue
+		}
+		out = append(out, kv)
 	}
 	return out
 }
@@ -607,7 +633,7 @@ func TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder(t *testing.T) {
 	for _, p := range sprint.TickParts {
 		assert.True(t, names[p.Name], "the tick's part %s is no duty: Decide would leave it out", p.Name)
 	}
-	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyCapDeal, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
+	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyCapDeal, refmodel.DutyUnservedFallback, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
 		refmodel.DutyStrangers, refmodel.DutyPresence, refmodel.DutyFriendStall, refmodel.DutyVerdicts, refmodel.DutyFriendRedeal, refmodel.DutyCheck, refmodel.DutyDeadlines, refmodel.DutyOverdue, refmodel.DutyDone, refmodel.DutyRemind}
 	var got []string
 	for _, d := range refmodel.Duties {
@@ -653,4 +679,15 @@ func TestASnapshotThatLacksATableIsRefusedInWords(t *testing.T) {
 	if got := refmodel.Decide(snap, later(0)); len(got) != 0 {
 		assert.Failf(t, "assertion failed", "a STOPPED machine decides nothing, whatever it holds:%s", show(got))
 	}
+}
+
+func TestUnservedFallbackMovesReturnsSomething(t *testing.T) {
+	t.Parallel()
+	w := sprintOf(t, "m1")
+	w.s.Routes = []sprint.Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
+	w.must(t, sprint.Set(w.s, sprint.SetReq{UnservedTierFallsTo: cardhdr.RouteHeavy, Who: coordinator}))
+	w.add(t, "s1", 1) // a ready pro primary whose tier no route serves
+	snap := w.snapshot(w.fresh())
+	moves := refmodel.UnservedFallbackMoves(snap, later(0))
+	assert.NotEmpty(t, moves, "a ready primary whose tier no route serves falls to the strongest served tier at or below the setting")
 }

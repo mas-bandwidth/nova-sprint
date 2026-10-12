@@ -3051,6 +3051,20 @@
       frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
       every unlanded frontier card of four repositories, then undid the pins by hand when the friend
       came back; one setting replaces the hand pinning")
+   (fix "the-reference-model-knows-the-unserved-fallback-duty" :release "v1.2.14" :status "planned"
+    :title "The reference model decides the unserved fallback part"
+    :text "The reference model (internal/sprint/refmodel) had no duty for the tick's unserved fallback
+     part (PartUnservedFallback, steps_tick.go, between cap deal and deal), so its differential tests
+     could not hold the reference to the store on it: the tick's part set or cleared a card's fallback
+     tier and the reference said nothing. Decide now runs DutyUnservedFallback between DutyCapDeal and
+     DutyDeal, built through partOn like every other duty, and carries the setting the part reads
+     (PropUnservedTierFallsTo) in CarriedProps, so the unserved fallback duty decides what the part
+     decides. The walks gain anUnservedTierFallsBack, a scenario that serves flash alone so a ready pro
+     primary's tier is unserved and falls to flash, then serves pro again so the fallback clears, so the
+     binding test compares the part on 32 samples with moves (at least 10), and
+     TestUnservedFallbackMovesReturnsSomething holds the duty red on a state with an unserved tier if
+     its moves function returns nothing."
+    :origin "this card, the-reference-model-knows-the-unserved-fallback-duty.w4, from the coordinator 2026-10-12 ~07:20Z (a bisect of the red unit tier: first bad 3852cb18, an-unserved-tier-falls-to-the-strongest-served-tier); checked against nova-sprint sprint/v1214-blocker")
     (fix "the-dirty-drive-raises-dev-behind-and-promotes" :release "v1.2.17" :status "planned"
      :title "The dirty tick drive lands each stream on its sprint branch, so dev is behind is raised and the coordinator promotes"
      :text "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch made dev is behind count only
