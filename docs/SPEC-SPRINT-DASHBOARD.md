@@ -76,6 +76,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner, of the page the Python server serves at :7390: "this is what it is."
 - 2026-10-11 the owner: "Remember that the reason we are in this mess is that you forgot to display the orange read cards."
 - 2026-10-11 the owner: "don't add things to the dashboard unless I ask for them"
+- 2026-10-12 the owner: "Add tooltip to fleet table ok% cell showing provider, coordination, environment, harness counts beside ok% to explain ok% counts only work ends."
 - 2026-10-11 the owner: "NEVER REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK"
 - 2026-10-11 the owner: "sentinel cards should not be counted when we are estimating time remaining, or cards per-hour"
 - 2026-10-11 the owner: "Right now they are inflating the ETA"
@@ -256,6 +257,8 @@ from the owner edits one line here and nothing else moves.
   wide (double the first attempt, ~64 px); every column gutter ~56 px.
 - Cells: no steady pulse; a cell flashes once when it lights or unlights. No numeric column in Fleet ever flashes.
 - OK% and Load: plain numbers, right-aligned, no bars, no dots. Total row: Ready and Done and OK% numbers, no cells.
+  The ok% cell carries a tooltip listing the end-class counts beside it: provider, coordination, environment, harness.
+  Ok% counts only work ends (ok, failed, no result). Other ends count in their named columns, not in ok%.
 - Done and OK% (and the Friends table's) count from the last `nova-sprint stats tidy --fleet` (`--friends`): the tidy takes
   the history off the done cells the page's counts are read from. Not yet: "since <time>" beside OK%, as for Cost.
 
@@ -351,3 +354,4 @@ Lanes panel, archived-stream summary or show/hide control, or tiers suffix on Fl
 Work keeps its existing stream, landed and held counts. Archived streams stay excluded.
 These removals supersede earlier display descriptions. No new dashboard content is added
 without an explicit request.
+
