@@ -2601,4 +2601,44 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    both refused, only wait quieting it")
+   (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
+    :title "Tests that failed on a loaded bench are made deterministic by their real cause"
+    :text "The owner's standing rule: tests are bounded and never flaky; a test that fails under load is
+     the test's defect. (1) TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued
+     (cmd/nova-sprint/landpass_test.go) failed once in a full gate under load: it canceled the land
+     caller from a gate-count callback, so the cancel raced wall time. The cancel is now delivered at a
+     synchronization point the test controls: the combined gate suspends in its gateRan seam until the
+     test has canceled, so however loaded the bench the cancel always arrives inside the gate.
+     (2) TestTickDrainAndDealUnderTheGateAtLoad (internal/sprint/deal_load_bench_test.go) failed once
+     at 9.83s under load: it held a sub-second wall-clock bound on a shared bench. The bound is removed
+     from the CI test (the gate's meaning is held by counts: the deal parses each ready brief once, and
+     the drain's moves are bounded by the deal's queued output) and the wall itself is measured only by
+     BenchmarkTickDealAtLoad and BenchmarkTickDrainAtLoad, outside the gate. (3)
+     TestTheIdleAlarmNamesTheRootsOnceAnEpisode (internal/sprint/store/idle_test.go) was seen red on a
+     hetzner2 base run; its dependency was the stale end-note rule it pinned (every episode end was a
+     working-again note), already fixed by b70990f6 (idleEnd: only the fleet working at half its width
+     again clears; else the episode-ended note). No production change was owed and an inert sort
+     tie-break added for it was dropped; the test passes 50/50 under load. (4) TestCRTwoRunLoopsAtOnce
+     (internal/sprint/store/machine_twoloops_test.go) failed 2 of 8 on clean main with 'the sprint is
+     busy: other operations kept the fence moving'. The real cause: the harness sets the outside
+     store's Sleep to a no-op, so the store's documented fence backoff (the wait between its FenceTries)
+     never yielded; an outside verb's read spent all its tries inside one tick loop's fence hold and
+     gave up. The test now keeps the store's real Sleep, so the designed backoff spaces the tries as a
+     run loop's verb has in production. The test's remaining outer retry of FenceBusyError (busyTries)
+     is a last-resort bound, and it is correct: with the real Sleep an outside verb reaches it only if
+     a fence stayed busy past the store's own documented RetryBudget, which is exactly the starvation
+     this test exists to catch, and its failure names the losing verb and the store's own read count.
+     The shared test helper setPrimary also read h.snap(), whose WithQueue overlay reads the work table
+     a revision ahead while the queue holds a change, so a write guarded on it was refused ('mem: table
+     revision mismatch'); setPrimary now guards on the unoverlaid table (setPrimaryOnTable,
+     internal/sprint/store/no_parked_test.go). The owed #110 step was run: cmd/nova-sprint 10x under
+     load. The tests that failed are the ones that shell out to git; their failures are the bench's
+     process table, not the tests' logic (fork/exec shim/git: resource temporarily unavailable /
+     Cannot fork), and the one whose own assertion the exhaustion turns red is
+     TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush, named for #110's gate.
+     TestTheTwinSocketFitsAUnixSocketPath also failed, environmental (this sandbox's TMPDIR exceeds the
+     100-byte Unix-socket limit and its /tmp fallback is denied). Named in docs/TESTS.md."
+    :origin "this card, two-tests-that-fail-under-load-are-made-deterministic.w4, attempt 5; the #111
+     author's gate on hetzner2, 2026-10-11 ~23:48Z at load 30-36; #122's description for the idle red;
+     #111's author for the two-run-loops red and the setPrimary overlay")))

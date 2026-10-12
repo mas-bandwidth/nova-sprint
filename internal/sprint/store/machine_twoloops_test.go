@@ -3,6 +3,7 @@ package store
 // Cold reader: two run loops on one sprint, with the outside world moving.
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,6 +20,15 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 	for trial := 0; trial < crScale.LoopTrials; trial++ {
 		w := crSprint(t, uint64(trial+1))
 		h := w.h
+		// The outside world's store keeps the real fence backoff. The harness sets
+		// Sleep to a no-op for speed, which turns every retry of a fenced read into a
+		// tight spin that spends its whole attempt count (FenceTries) inside one tick
+		// loop's fence hold and then reports "the sprint is busy"; with the real sleep
+		// the store's designed backoff spaces the tries, as a run loop's verb has in
+		// production, and the verb waits out the two tick loops instead of losing to
+		// them. That no-op Sleep, not the two loops, was the cause of the 2-of-8 reds:
+		// with it the outside verbs below never exhausted their own retries.
+		h.st.Sleep = time.Sleep
 		h.startMachine()
 		mk := func(actor string) *Store {
 			return &Store{B: h.m, Names: h.st.Names, Actor: actor, Now: h.st.Now, NewID: h.st.NewID, Sleep: func(time.Duration) {}}
@@ -45,8 +55,13 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 		// the store may also answer a verb with its documented retryable
 		// refusal (FenceBusyError, "the sprint is busy"): the verb changed
 		// nothing and asks to be run again, so run it again, up to a bound.
-		// A verb starved past the bound is an outside verb losing to two tick
-		// loops and fails the test, never a bigger bound.
+		// With the real Sleep above this is the last resort, not the cause:
+		// the store already backs off between its own FenceTries, so a verb
+		// reaches here only after the store's backoff lost to a genuinely busy
+		// fence; a verb starved even then is an outside verb losing to two tick
+		// loops and fails the test, naming the verb and the store's own read
+		// count, never a bigger bound. The bound is therefore correct: it is
+		// the starvation the test pins, not a retry the cause is hidden behind.
 		const busyTries = 20
 		cut := 0
 		busyRetries := 0
@@ -65,7 +80,12 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 					return
 				}
 				if try >= busyTries {
-					require.NoError(t, err, "%s: still busy after %d tries (%d busy retries this trial)", step.Verb, try, busyRetries+1)
+					var busy *FenceBusyError
+					reads := 0
+					if errors.As(err, &busy) {
+						reads = busy.Reads
+					}
+					require.NoError(t, err, "outside verb %q lost the fence to two run loops: still busy after %d outer tries (%d fence reads on the last, %d busy retries this trial)", step.Verb, try, reads, busyRetries+1)
 					return
 				}
 				busyRetries++
