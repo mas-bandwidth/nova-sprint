@@ -103,20 +103,23 @@
      :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w9, from the owner, 2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9 behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full, and they should be assigned elsewhere via rebalancing\").")
      (fix "a-replaced-card-is-an-alias-every-need-follows" :release "v1.2.12" :status "planned"
       :title "A dropped card that has a successor is a permanent alias no need can name again"
-      :text "A card dropped and replaced by its successor comes back as a need: the old id is
-       re-read from a brief's DEPENDS-ON line and stored again, and the cards that name it sit in
-       merging or review blocked on a card that can never land (2026-10-11: the nova-tools TLA
-       coverage card was replaced by its successor, and every brief edit of a card that named the
-       old id put it back, fourteen cards by 20:05Z; relink refused because it only rewrote waiting
-       cards, and ack refused because rule 11 is a condition the tick keeps). The fix is
-       internal/sprint/need_alias.go: a dropped card's successor is recorded as FieldReplacedBy on
-       its kept record (drop --replaced-by records it as relink does), and every reader of needs
-       (NamedWaits, droppedNeeds, missingNeeds, NeedsOf, a brief edit) resolves the stored name
-       through the alias, so the old id can never come back as a live need. relink rewrites the
-       need on every open card that names old, whatever its column, not only waiting. The remaining
-       work (the alias recorded by relink and replace themselves, the functional twin-server test,
-       docs/SPEC-SPRINT.md and docs/CLI.md, and the TLA+ note) is owed: this entry is partial."
-      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w1, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; branch sprint/a-replaced-card-is-an-alias-every-need-follows.w1.g3.e19; the alias write from relink and replace is deferred because the store retried and lost on an off-table record's place expectation")
+       :text "A card dropped and replaced by its successor comes back as a need: the old id is
+        re-read from a brief's DEPENDS-ON line and stored again, and the cards that name it sit in
+        merging or review blocked on a card that can never land (2026-10-11: the nova-tools TLA
+        coverage card was replaced by its successor, and every brief edit of a card that named the
+        old id put it back, fourteen cards by 20:05Z; relink refused because it only rewrote waiting
+        cards, and ack refused because rule 11 is a condition the tick keeps). The fix is
+        internal/sprint/need_alias.go: a dropped card's successor is recorded as FieldReplacedBy on
+        its kept record (drop --replaced-by records it as relink does), and every reader of needs
+        (NamedWaits, droppedNeeds, missingNeeds, NeedsOf, a brief edit) resolves the stored name
+        through the alias, so the old id can never come back as a live need. relink rewrites the
+        need on every open card that names old, whatever its column, not only waiting. Land 2 adds
+        the functional twin-server test (cmd/nova-sprint/need_alias_functional_test.go: add A, B
+        needing A; drop A --replaced-by A2; brief-edit B with the text still naming A; B's need is
+        A2). The remaining work (the alias recorded by relink and replace themselves, docs/SPEC-
+        SPRINT.md and docs/CLI.md, rule 11's needs resolution, and the TLA+ note) is owed: this
+        entry is partial."
+      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w2, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; branch sprint/a-replaced-card-is-an-alias-every-need-follows.w2.g2.e19; the alias write from relink and replace is deferred because the store retried and lost on an off-table record's place expectation")
      (fix "the-read-deal-counts-the-queue-and-fills-free-lanes-first" :release "v1.2.12" :status "planned"
      :title "The read deal counts the queue and fills free lanes first"
      :text "The read deal measured the wrong thing. readUnitsOf counted a unit's idle lanes from its
