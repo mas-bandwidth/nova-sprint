@@ -2023,7 +2023,11 @@ type DropReq struct {
 	// card a waiting primary still needs is refused, naming the dependants
 	// (docs/SPEC-SPRINT.md section 11).
 	Cascade bool
-	Who     string
+	// ReplacedBy is the successor a dropped card becomes an alias of: the drop
+	// records the alias as relink does (need_alias.go), so a need on the dropped
+	// id resolves to the successor and the card naming it is not refused.
+	ReplacedBy string
+	Who        string
 }
 
 // Drop takes open primaries off the table with the reason: their record,
@@ -2080,13 +2084,17 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		chosen = kept
 	} else {
 		// Without Cascade a card another waiting primary still needs is
-		// refused for that card, naming the dependants, and nothing moves.
+		// refused for that card, naming the dependants, and nothing moves. A
+		// card dropped --replaced-by a successor becomes an alias of it, so a
+		// need on it resolves to the successor and is not refused (need_alias.go).
 		var kept []*Card
 		for _, c := range chosen {
-			if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
-				p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
-				dropping[c.ID] = false
-				continue
+			if r.ReplacedBy == "" {
+				if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
+					p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
+					dropping[c.ID] = false
+					continue
+				}
 			}
 			kept = append(kept, c)
 		}
@@ -2107,8 +2115,13 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		if m := s.Merge.Placed(c.ID); m != nil {
 			u.Changes = append(u.Changes, change(Merge, removeEntry(m, map[string]string{"dropped": stamp(s.Now)})))
 		}
-		u.Changes = append(u.Changes, change(Work, removeEntry(c, map[string]string{
-			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)})))
+		dropped := map[string]string{
+			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)}
+		if r.ReplacedBy != "" {
+			// the dropped card becomes an alias of its successor (need_alias.go).
+			dropped[FieldReplacedBy] = fmt.Sprintf("%s %s by %s", r.ReplacedBy, stamp(s.Now), orDash(r.Who))
+		}
+		u.Changes = append(u.Changes, change(Work, removeEntry(c, dropped)))
 		u.Closes = closesFor(s.Open, nil, c.ID)
 		answerListed(&u, s.Open, r.Answers, "drop", c.Row, "dropped "+c.ID+"; "+r.Reason, r.Who, s.Now, c.ID)
 		u.Moved = fmt.Sprintf("%s %s -> off the table (%s)", c.ID, c.Col, r.Reason)
