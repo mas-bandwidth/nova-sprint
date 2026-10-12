@@ -74,9 +74,16 @@ func TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore(t *testing.T) {
 	brief := filepath.Join(dir, "brief.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a flash card (s1) tier: flash\nTHE TASK.\nwork\n")), 0o600))
 	run("add", "--stream", "s1", "s1-1", "--one", "--brief-file", brief)
+	run("fleet", "beat", "m1")
+	// the readers beat too (a reader's queue is its beat): without a beat a real
+	// store holds every reader down, and the review ask would find none up
+	run("queue", "--as", "reader-a")
+	run("queue", "--as", "reader-b")
+	run("queue", "--as", "reader-c")
 	run("start")
-	run("tick") // the fleet update, last in the tick, brings m1 up
+	run("tick") // the fleet update brings m1 up
 	run("tick") // the pump deals to it
+	require.Contains(t, run("card", "s1-1"), "working", "the deal must reach m1 before the take")
 	run("take", "--as", "m1", "--max", "1")
 	run("finish", "--as", "m1", "s1-1.w1@1", "--epoch", "0", "--report", "done")
 	run("tick") // the primary moves to review and its read is asked
