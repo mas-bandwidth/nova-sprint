@@ -8,18 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lateCards is the work cards the tick's deadline part names late now.
-func lateCards(w *world) []string {
-	p, _ := TickDeadlines(w.s, TickReq{})
-	var out []string
-	for _, n := range p.Notes {
-		if n.Type == NWorkLate {
-			out = append(out, n.Card)
-		}
-	}
-	return out
-}
-
 // A friend's card's working deadline is the larger of DeadlineUnfinished and
 // FriendDeadlineK times her median run wall over her last ok attempts (her take to her
 // report), set on the card as she takes it, as nova-tools#5300 gives a machine's card its
