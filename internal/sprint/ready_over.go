@@ -31,7 +31,7 @@ import (
 const NReadyOver = "a ready card is not dealt"
 
 func init() {
-	TickDecisions[NReadyOver] = []string{"look at the card", "drop", "wait"}
+	TickDecisions[NReadyOver] = []string{"look at the card", "drop"} // never wait: it holds its card (wait_refused.go)
 }
 
 // routeWhys names each route of the tier that serves no card now, with why: disabled,
