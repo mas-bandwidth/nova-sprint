@@ -6,9 +6,9 @@ EXTENDS Integers
 \* docs/SPEC-SPRINT.md section 8, the rules table's row friend-take: a friend's
 \* work card taken back and dealt to the next friend is measured from her own
 \* deal, and a never-taken judgment raised before her deal, while the card sat
-\* withdrawn, closes on it (internal/sprint/steps_tick.go:2072 WorkDeadline and
-\* :1822 LateStands, judgment_rules.go:45 ruleFriendTake, friend_deal.go:1018
-\* friendRedealUnit, steps_work.go:3227 nextGen). One work card, two friends,
+\* withdrawn, closes on it (internal/sprint/steps_tick.go:2081 WorkDeadline and
+\* :1831 LateStands, judgment_rules.go:45 ruleFriendTake, friend_deal.go:1018
+\* friendRedealUnit, steps_work.go:3228 nextGen). One work card, two friends,
 \* running time in units. The take-back stamps untaken_since (since) and unsets
 \* dealt; the deal to the next friend stamps dealt and keeps since. The tick is
 \* one action: the deadlines part (raise a never-taken judgment when the card is

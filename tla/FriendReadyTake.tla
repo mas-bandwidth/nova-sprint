@@ -4,9 +4,9 @@ EXTENDS Naturals, FiniteSets
 \* abstraction: current friendDealPass awaits a start receipt and TickDeadlines
 \* skips friend rows; COVERAGE.tsv records these gaps, not a current proof.
 \* docs/SPEC-SPRINT.md section 1, a friend takes her own ready cards
-\* (internal/sprint/steps_work.go:1485 takeOne, friend_deal.go:586 friendDealPass,
-\* steps_work.go:2100 friendNext, friend_take.go:214 FriendReadyMax and :220
-\* friendLaneIdle, steps_tick.go:1525 TickDeadlines). One friend's
+\* (internal/sprint/steps_work.go:1486 takeOne, friend_deal.go:586 friendDealPass,
+\* steps_work.go:2101 friendNext, friend_take.go:214 FriendReadyMax and :220
+\* friendLaneIdle, steps_tick.go:1526 TickDeadlines). One friend's
 \* row, "a", in batch or one-shot mode (the rules are one for both: one lane
 \* per unit of width), and a stranger, "b". Cards are dealt to her row
 \* into working while a lane is free and ready behind otherwise, within her

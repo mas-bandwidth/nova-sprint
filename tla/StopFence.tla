@@ -4,7 +4,7 @@
 \* RunSeq (machineRecord), :162 unsettledStopDebt (ExplicitStart), :369
 \* stopWithCause and its run-sequence check :394 (TickCauseStop);
 \* internal/sprint/store/tick.go: :90-92 RunSeq, :881 halted and its check :886
-\* (TickPartCommit), :192 stopRevoked (Stop and Report); fleet_rows.go:172-176
+\* (TickPartCommit), :192 stopRevoked (Stop and Report); fleet_rows.go:173-177
 \* DropMembers' row-delete fence (NoOrphanDebt).
 \* This bounded fence predates held-report exemptions and debt settlement;
 \* nova-sprint StopReturn.tla models the separate return/settle machine.
