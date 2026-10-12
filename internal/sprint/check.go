@@ -230,8 +230,14 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 		}
 	}
 	// 11. A primary anywhere but waiting has every need landed or waived.
+	// A card that gained a need after its attempt was dealt is legal until that
+	// attempt ends: the need applies from its next deal and the finish moves it
+	// to waiting (FieldWaitsAfter; steps_edit.go briefInPlace, briefDepends;
+	// steps_work.go finishPlan), so rule 11 leaves the needs it gained while
+	// working out of the count here.
 	for _, c := range s.Work.Column(Ready, Working, Review, Merging, Landed) {
-		if w := NamedWaits(s, c, nil); len(w) > 0 {
+		w := without(NamedWaits(s, c, nil), Split(c.F(FieldWaitsAfter)))
+		if len(w) > 0 {
 			out = append(out, Violation{11, fmt.Sprintf("%s is %s and needs %s, not landed", c.ID, c.Col, strings.Join(w, ","))})
 		}
 	}

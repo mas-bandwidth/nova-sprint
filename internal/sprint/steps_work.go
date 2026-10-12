@@ -746,6 +746,21 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	return out
 }
 
+// waitsAfterOpen is the needs a working card gained while it was dealt
+// (FieldWaitsAfter) that have not landed and were not waived: the card's current
+// attempt is legal until it ends, and the finish sends the card to waiting for
+// them (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace).
+func waitsAfterOpen(s *Snapshot, c *Card) []string {
+	var out []string
+	waived := Split(c.F("waived"))
+	for _, n := range Split(c.F(FieldWaitsAfter)) {
+		if s.StateOf(n) != Landed && !contains(waived, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // NeedState is one need of a primary as it stands: the need's place as its
 // column, and whether it was waived.
 type NeedState struct {
@@ -2000,6 +2015,11 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 		}
 		attempt := pr.Int("attempt")
+		// A card that gained a need while working waits for it once this attempt ends:
+		// the attempt was dealt before the need was recorded, so it is legal until now
+		// (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace). If the
+		// need has landed by the finish, the card goes on to review as any finish.
+		after := waitsAfterOpen(s, pr)
 		// the primary's ran record, this attempt added (recordRan, judgments.go): the brief
 		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
 		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)
@@ -2008,7 +2028,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// escalates below the ceiling only under the attempt cap, counting only attempts whose
 		// worker ran and reported
 		bb, atBound := AtBriefBound(withField(withField(pr, FieldCostTotal, set[FieldCostTotal]), FieldRanAttempts, ranAttempts), r.Report, s.AttemptsCap(pr.Row))
-		if next := s.NextTier(pr); identical && next != "" && !atBound {
+		if next := s.NextTier(pr); identical && next != "" && !atBound && len(after) == 0 {
 			// the second identical failure below its ceiling (rules 1 and 2, nova-tools#5174:
 			// "Flash first on every card; pro only on escalation"): no judgment; the primary
 			// takes the next tier and its why and goes back to ready, as a rework with no
@@ -2088,9 +2108,22 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			n.Who, n.Attempt, n.Card, n.What = who, attempt, c.ID, r.SeatJudgment
 			u.Notes = append(u.Notes, n)
 		}
-		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, Review, set, ruleAnswerConsumed(pr, set)...)))
-		if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, writes: u.Notes, who: who}); ok {
-			u.Notes = append(u.Notes, j)
+		to := Review
+		unsetMove := ruleAnswerConsumed(pr, set)
+		if pr.F(FieldWaitsAfter) != "" {
+			// the marker is spent: the need is now the card's ordinary wait
+			unsetMove = append(unsetMove, FieldWaitsAfter)
+		}
+		if len(after) > 0 {
+			// its attempt ended: it waits for the need it gained while working
+			to = Waiting
+			u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> waiting (its needs %s have not landed)", c.ID, result, pr.ID, strings.Join(after, ","))
+		}
+		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, unsetMove...)))
+		if to == Review {
+			if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, writes: u.Notes, who: who}); ok {
+				u.Notes = append(u.Notes, j)
+			}
 		}
 		if !late { // a late report frees no lane: the deadline's failure freed it
 			friendNext(s, c, &u, p.Units)
