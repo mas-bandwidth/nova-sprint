@@ -1432,34 +1432,7 @@ func NamedLaneTake(s *Snapshot, r TakeReq) Plan {
 		return p
 	}
 	one := takeOne(s, r)
-	for i := range one.Units {
-		u := &one.Units[i]
-		c := s.Fleet.Card(u.Key)
-		if c == nil {
-			continue
-		}
-		set, unset := laneSet(s, c, r.As, r.Lane)
-		for j := range u.Changes {
-			e := &u.Changes[j].Entry
-			if e.ID != c.ID {
-				continue
-			}
-			merged := maps.Clone(e.Set)
-			if merged == nil {
-				merged = map[string]string{}
-			}
-			maps.Copy(merged, set)
-			e.Set = nonEmpty(merged)
-			// each field unset once, and never the lane's own: the lane's move sets them
-			all := slices.DeleteFunc(append(slices.Clone(e.Unset), unset...), func(n string) bool { return n == FieldLane || n == FieldLaneAt })
-			slices.Sort(all)
-			e.Unset = unsetPresent(c, slices.Compact(all))
-		}
-		if r.Lane != 0 {
-			u.Moved += " lane=" + laneOf(r.Lane)
-		}
-	}
-	return one
+	return stitchLaneTake(s, one, r.As, r.Lane)
 }
 
 // takeSeat is the width a take for as is held to, or why it takes nothing. A machine

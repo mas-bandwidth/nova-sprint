@@ -2038,19 +2038,12 @@ func Drop(s *Snapshot, r DropReq) Plan {
 	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
 		all = append(all, s.Work.Column(st)...)
 	}
-	chosen := pick(&p, r.Sel, all, rowOf, func(c *Card) string {
-		if !c.Placed() {
-			return "not on the table (" + orDash(c.F("outcome")) + ")"
-		}
+	chosen, dropping := pickedForDrop(&p, r.Sel, all, func(c *Card) string {
 		if !IsOpen(c.Col) {
 			return "landed; landed is final"
 		}
 		return ""
 	}, s.primaryCard)
-	dropping := map[string]bool{}
-	for _, c := range chosen {
-		dropping[c.ID] = true
-	}
 	if r.Cascade {
 		// Grow the set of dropping cards: every waiting primary that needs
 		// one of them goes too, and their dependants in turn (a cascade), so
