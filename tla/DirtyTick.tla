@@ -77,6 +77,18 @@
 \*   RedealBoundHolds). The coordinator's verbs (ci, return, accept) and
 \*   take run only where the instance turns them on (Coord, Takes).
 \*
+\* THE ENVIRONMENT DEATH (2026-10-12, the owner's ruling for v1.2.16: a child
+\* killed by its environment, exit 134 or 137, is not the card's failure).
+\* The outside's EnvEnd(c, m) is a take of c ending on m's environment: the
+\* work card is withdrawn with no take ended (nothing marks ended, so no
+\* redeal is spent, and the attempt does not move), its environment deaths
+\* this attempt counted (env), and its primary ready again at its attempt.
+\* At EnvCap the card is held (AtEB, not dealt) and the tick addresses the
+\* coordinator (the bound judgment). The witness "envspends" counts an
+\* environment death as a take that ended (a redeal); "envnocap" lifts the
+\* cap. Properties: EnvDeathSpendsNoRedeal, EnvDeathsBounded. The scenario
+\* turns the event on (Scn.env).
+\*
 \* THE ROUTE (2026-10-01, the owner: "the card should determine the model
 \*   used"). A card is dealt only when a route serves its tier or it pins a
 \*   model (Served, the scenario's: internal/sprint/route.go resolves it from
@@ -333,12 +345,20 @@ ScnRefuse == [
 \* The in-place re-asks of a returned read at its attempt (internal/sprint
 \* MaxReadReasks).
 MaxReasks == 2
+\* The environment deaths a card may take at its attempt before it is held
+\* (internal/sprint steps_work.go EnvExitCardCap: 134/137 spends nothing,
+\* and at this many the tick holds the card).
+EnvCap == 3
+\* The scenario turns a take's environment death on (Scn.env); one that names
+\* none has none, and no take ends on the environment.
+EnvOn == "env" \in DOMAIN Scn /\ Scn.env
 
 VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
           brk, dealt, always, drain, run,
           okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
+          env,
           fat, ftr, tier, back, fbk, rwk, rb
 
 \* fat, ftr       the work table: the primary's record, written by a rework at
@@ -364,6 +384,9 @@ VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
 \* rdl, ended     the work card: its redeals; a take of it ended and the
 \*                deal that places it again has not counted it
 \* ends           ghost: takes of the card that ended, this attempt
+\* env            ghost: the card's environment deaths this attempt (THE
+\*                ENVIRONMENT DEATH), capped at EnvCap (EnvCap + 1 under the
+\*                "envnocap" witness)
 \* hred           ghost: the last CI result reported for the card's current
 \*                head is red (what ci must say; a result for an older head
 \*                leaves both as they are)
@@ -372,9 +395,9 @@ vars == <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
           brk, dealt, always, drain, run,
-          okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
+          okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt, env,
           fat, ftr, tier, back, fbk, rwk, rb>>
-CardVars == <<okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
+CardVars == <<okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt, env,
               fat, ftr, tier, back, fbk, rwk, rb>>
 
 -----------------------------------------------------------------------------
@@ -406,6 +429,7 @@ Cur == [col |-> col, att |-> att, bnd |-> bnd, rd |-> rd, askw |-> askw,
         brk |-> brk, dealt |-> dealt, plc |-> <<>>, notes |-> notes,
         f0 |-> Len(Q["fleet"]), drain |-> drain,
         okd |-> okd, ci |-> ci, ret |-> ret, tk |-> tk, rdl |-> rdl, ended |-> ended, ends |-> ends,
+        env |-> env,
         hred |-> hred, seen |-> seen, hb |-> hb, rea |-> rea, cna |-> cna, nrt |-> nrt,
         fat |-> fat, ftr |-> ftr, tier |-> tier, back |-> back, fbk |-> fbk, rwk |-> rwk, rb |-> rb]
 
@@ -462,11 +486,16 @@ AcceptAll(S) ==
 \* not dealt again (the witness "redealpast" deals it).
 AtRB(S, c) == Broken # "redealpast" /\ S.ended[c] /\ S.rdl[c] >= MaxRedeals
 
+\* THE ENVIRONMENT-DEATH BOUND. A card whose children died on the environment
+\* EnvCap times at its attempt is held: not dealt again (the witness "envnocap"
+\* lifts it).
+AtEB(S, c) == Broken # "envnocap" /\ S.env[c] >= EnvCap
+
 \* A new attempt: a new card, a new head, nothing returned at it, no reader
 \* has read it.
 NewAttempt(S, c) ==
   [S EXCEPT !.okd[c] = FALSE, !.ci[c] = "none", !.ret[c] = FALSE,
-            !.rdl[c] = 0, !.ended[c] = FALSE, !.ends[c] = 0, !.hred[c] = FALSE,
+            !.rdl[c] = 0, !.ended[c] = FALSE, !.ends[c] = 0, !.env[c] = 0, !.hred[c] = FALSE,
             !.seen[c] = {}, !.hb[c] = NoR, !.rea[c] = 0, !.cna[c] = FALSE, !.nrt[c] = FALSE]
 
 -----------------------------------------------------------------------------
@@ -496,6 +525,14 @@ ApplyW(S, e) ==
          ELSE LET S1 == [S EXCEPT !.col[c] = "ready", !.ended[c] = @ \/ e.x = "taken"]
               \* at its bound: its last take on its tier ended, so the provider is not back
               IN IF e.x = "taken" /\ S.rdl[c] >= MaxRedeals THEN Address([S1 EXCEPT !.back[S.tier[c]] = FALSE]) ELSE S1
+    [] e.k = "envreturn" ->  \* a take ended on the environment: no redeal, no attempt
+         IF S.col[c] # "working" THEN S
+         ELSE LET S1 == [S EXCEPT !.col[c] = "ready",
+                                  !.env[c] = IF Broken = "envnocap" THEN Min(@ + 1, EnvCap + 1) ELSE Min(@ + 1, EnvCap),
+                                  \* the witness "envspends" counts it as a take that ended
+                                  !.ended[c] = @ \/ Broken = "envspends",
+                                  !.ends[c] = IF Broken = "envspends" THEN Min(@ + 1, MaxRedeals + 1) ELSE @]
+              IN IF S.env[c] = EnvCap - 1 /\ Broken # "envnocap" THEN Address(S1) ELSE S1
     [] e.k = "ci" -> [S EXCEPT !.ci[c] = e.x, !.hred[c] = (e.x = "red")]
     [] e.k = "ciold" ->     \* a result for an older head: labelled, ci kept
          IF Broken = "ciold" THEN [S EXCEPT !.ci[c] = e.x] ELSE S
@@ -546,7 +583,7 @@ Release(S, C) ==
 \* the machine counter over the up machines with room. A held stream's cards
 \* are not dealable (THE DEAL'S ORDER AND SKIPS; steps_tick.go:804,
 \* steps_work.go:1032); the witness "dealheldstream" deals them.
-Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ (c \in Served \/ Broken = "noroute")
+Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ ~AtEB(S, c) /\ (c \in Served \/ Broken = "noroute")
                                    /\ (StreamOf[c] \notin HeldStreams \/ Broken = "dealheldstream")}
 UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "dealdraining" \/ ~S.drain[m]) /\
@@ -746,6 +783,9 @@ ApplyF(S, e) ==
          IF c \notin S.mc[m] THEN S    \* a finish of a card since returned
          ELSE IF Broken = "drop" THEN RoomNews([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], m)
          ELSE RoomNews(Put([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], "work", E("finished", c, "-")), m)
+    [] e.k = "envend" ->
+         IF c \notin S.mc[m] THEN S    \* an environment death of a card since returned
+         ELSE Put([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], "work", E("envreturn", c, "-"))
     [] e.k = "readon" ->
          IF S.stat[m] = "up" THEN [S EXCEPT !.mr[m] = @ \cup {c}]
          ELSE Put(S, "readers", E("unread", c, "-"))
@@ -797,7 +837,7 @@ Update(t) ==
 
 Commit(S) ==
   /\ okd' = S.okd /\ ci' = S.ci /\ ret' = S.ret /\ tk' = S.tk /\ rdl' = S.rdl
-  /\ ended' = S.ended /\ ends' = S.ends /\ hred' = S.hred /\ seen' = S.seen /\ hb' = S.hb
+  /\ ended' = S.ended /\ ends' = S.ends /\ env' = S.env /\ hred' = S.hred /\ seen' = S.seen /\ hb' = S.hb
   /\ rea' = S.rea /\ cna' = S.cna /\ nrt' = S.nrt
   /\ fat' = S.fat /\ ftr' = S.ftr /\ tier' = S.tier /\ back' = S.back /\ fbk' = S.fbk /\ rwk' = S.rwk /\ rb' = S.rb
   /\ col' = S.col /\ att' = S.att /\ bnd' = S.bnd /\ rd' = S.rd /\ askw' = S.askw
@@ -980,6 +1020,14 @@ BeatReset(m) ==
 Take(c, m) ==
   /\ Takes /\ c \in mc[m] /\ live[m] /\ ~tk[c] /\ Pend("fleet", "take", c) = 0
   /\ Outside("fleet", E("take", c, m)) /\ UNCHANGED <<live, miss, acts>>
+\* A take of the card ends on the member's environment (134/137): the card is
+\* withdrawn with no take ended (the witness "envspends" counts it), so no
+\* redeal is spent, and it is dealt again at its attempt up to EnvCap (AtEB).
+EnvEnd(c, m) ==
+  /\ EnvOn /\ Takes /\ c \in mc[m] /\ live[m] /\ tk[c] /\ Pend("fleet", "envend", c) = 0 /\ acts < MaxActs
+  /\ acts' = acts + 1
+  /\ Outside("fleet", E("envend", c, m)) /\ UNCHANGED <<live, miss>>
+
 \* The coordinator's verbs: a CI result on a card in review (red at its head,
 \* or green), a return of a card queued to merge, an accept of a card the
 \* pump holds.
@@ -1073,7 +1121,7 @@ Init ==
   /\ always = [s \in Streams |-> TRUE]
   /\ okd = [c \in Cards |-> FALSE] /\ ci = [c \in Cards |-> "none"] /\ ret = [c \in Cards |-> FALSE]
   /\ tk = [c \in Cards |-> FALSE] /\ rdl = [c \in Cards |-> 0] /\ ended = [c \in Cards |-> FALSE]
-  /\ ends = [c \in Cards |-> 0] /\ hred = [c \in Cards |-> FALSE]
+  /\ ends = [c \in Cards |-> 0] /\ env = [c \in Cards |-> 0] /\ hred = [c \in Cards |-> FALSE]
   /\ seen = [c \in Cards |-> {}] /\ hb = [c \in Cards |-> NoR]
   /\ rea = [c \in Cards |-> 0] /\ cna = [c \in Cards |-> FALSE] /\ nrt = [c \in Cards |-> FALSE]
   /\ fat = [c \in Cards |-> 0] /\ ftr = [c \in Cards |-> "none"] /\ tier = [c \in Cards |-> Ladder[1]]
@@ -1084,7 +1132,7 @@ TickNext == TickStart \/ PumpWork \/ DrainWork \/ StoppedTick \/ TickEnd \/ Sett
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
-  \/ \E c \in Cards, m \in Machines : Finish(c, m) \/ Take(c, m)
+  \/ \E c \in Cards, m \in Machines : Finish(c, m) \/ Take(c, m) \/ EnvEnd(c, m)
   \/ \E c \in Cards : CIRed(c) \/ CIGreen(c) \/ CIOld(c) \/ Return(c) \/ CoordAccept(c) \/ ReadReturn(c) \/ ReadRefuse(c)
   \/ \E c \in Cards, cl \in BoundClasses, t \in Tiers : ReworkAtBound(c, cl, t)
   \/ \E t \in Tiers : TierOK(t)
@@ -1108,6 +1156,7 @@ TypeOK ==
   /\ okd \in [Cards -> BOOLEAN] /\ ci \in [Cards -> {"none", "red"}] /\ ret \in [Cards -> BOOLEAN]
   /\ tk \in [Cards -> BOOLEAN] /\ rdl \in [Cards -> 0..(MaxRedeals + 1)]
   /\ ended \in [Cards -> BOOLEAN] /\ ends \in [Cards -> 0..(MaxRedeals + 1)] /\ hred \in [Cards -> BOOLEAN]
+  /\ env \in [Cards -> 0..(EnvCap + 1)]
   /\ seen \in [Cards -> SUBSET Readers] /\ hb \in [Cards -> Readers \cup {NoR}]
   /\ rea \in [Cards -> 0..(MaxReasks + 1)] /\ cna \in [Cards -> BOOLEAN] /\ nrt \in [Cards -> BOOLEAN]
   /\ fat \in [Cards -> 0..MaxAttempts] /\ ftr \in [Cards -> Tiers \cup {"none"}]
@@ -1137,7 +1186,7 @@ ThreeQueuesEmptyAtTickEnd == [][act' = "TickEnd" => \A t \in Three : Q'[t] = <<>
 \* each card's token is in exactly one place, a table row or an entry on
 \* its way, and the attempts equal the broken reports and the reworks applied.
 Holds(c) == Cardinality({m \in Machines : c \in mc[m]}) + Pend("fleet", "dealt", c)
-            + Pend("work", "finished", c) + Pend("work", "returned", c)
+            + Pend("work", "finished", c) + Pend("work", "returned", c) + Pend("work", "envreturn", c)
 ReadTok(c) == Pend("readers", "ask", c) + (IF askw[c] THEN 1 ELSE 0) + (IF rd[c] # NoR THEN 1 ELSE 0)
               + Pend("work", "readok", c) + Pend("work", "broken", c) + (IF okd[c] THEN 1 ELSE 0)
 MergeTok(c) == Pend("merge", "queue", c) + (IF c \in mq THEN 1 ELSE 0) + Pend("work", "landed", c)
@@ -1176,7 +1225,7 @@ ReadFitsNow(m) == IF ReadCost = "whole" THEN RoomNow(m) > 0
 PumpDone ==
   /\ Q["work"] = <<>>
   /\ Landable(col) = {} /\ Releasable(col) = {}
-  /\ ~(/\ \E c \in Served : col[c] = "ready" /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
+  /\ ~(/\ \E c \in Served : col[c] = "ready" /\ ~(ended[c] /\ rdl[c] >= MaxRedeals) /\ ~AtEB(Cur, c)
                            /\ StreamOf[c] \notin HeldStreams
        /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0)
   /\ ~\E c \in Cards : col[c] = "review" /\ okd[c] /\ ci[c] # "red" /\ ~ret[c]
@@ -1233,7 +1282,7 @@ ConsumerOut(c) ==
   /\ col[c] = "working" => \E m \in Machines : c \in mc[m] /\ stat[m] = "up"
   /\ col[c] = "review" /\ ~okd[c] /\ ~bnd[c] /\ ~cna[c] /\ ~nrt[c] => rd[c] # NoR /\ stat[rd[c]] = "up"
 DealableLeft ==
-  \E c \in Cards : col[c] = "ready" /\ c \in Served /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
+  \E c \in Cards : col[c] = "ready" /\ c \in Served /\ ~(ended[c] /\ rdl[c] >= MaxRedeals) /\ ~AtEB(Cur, c)
                     /\ StreamOf[c] \notin HeldStreams
                     /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0
 ConsumersOut ==
@@ -1326,6 +1375,16 @@ EndedOnTheWay(c) == Count(Q["work"], LAMBDA e : e.k = "returned" /\ e.c = c /\ e
 RedealsAreEndedTakes ==
   \A c \in Cards : rdl[c] + (IF ended[c] THEN 1 ELSE 0) + EndedOnTheWay(c) = ends[c]
 RedealsBounded == \A c \in Cards : rdl[c] <= MaxRedeals
+\* AN ENVIRONMENT DEATH SPENDS NO REDEAL: when a pump applies a take ended on
+\* the environment, the card's redeals and attempt do not move (the witness
+\* "envspends" counts it as a take that ended, and the redeal moves).
+EnvDeathSpendsNoRedeal ==
+  [][\A c \in Cards : Pend("work", "envreturn", c) > 0 =>
+       rdl'[c] = rdl[c] /\ att'[c] = att[c]]_vars
+\* ENVIRONMENT DEATHS ARE BOUNDED: a card cannot loop on environment deaths
+\* without bound (the witness "envnocap" lifts the cap, so a card dies on the
+\* environment past EnvCap).
+EnvDeathsBounded == \A c \in Cards : env[c] <= EnvCap
 \* THE CI IS ITS HEAD'S: the record says red exactly when the last result
 \* reported for the card's current head is red.
 CIIsItsHeads == \A c \in Cards : (ci[c] = "red") = hred[c]

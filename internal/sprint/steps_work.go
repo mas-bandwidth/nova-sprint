@@ -2523,6 +2523,7 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 // primary gets the take's consumer record with that end (cost.go: the attempt record the
 // doctor counts, EnvExitChildren) and the same tail, so the cause is on the card a reader
 // reads (a-card-carries-its-consumer-history).
+// tla/DirtyTick.tla EnvEnd, tla/AttemptsEpochs.tla EnvEnds.
 func envExited(s *Snapshot, c, pr *Card, r FinishReq, ended, who string) Unit {
 	rec := EnvironmentExitRecord(r.Exit, r.Harness)
 	set := nextGen(c, "", s.Now)
@@ -3840,6 +3841,7 @@ func envExitHistory(wc *Card) []string { return Split(wc.F(FieldEnvExitHistory))
 // EnvExitCardCap or more environment exits on it (FieldEnvExitHistory): the deal deals it to
 // no machine and offers it to no friend, and the tick holds it with the bound judgment
 // (envExitBoundWhat); nil otherwise.
+// tla/DirtyTick.tla AtEB.
 func AtEnvExitBound(s *Snapshot, c *Card) *Card {
 	if s == nil || s.Fleet == nil || c == nil {
 		return nil

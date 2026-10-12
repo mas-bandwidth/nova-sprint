@@ -56,6 +56,11 @@
 \*   GenStep   the other generation steps (a stop-return, the live reconcile, a
 \*             gone lane): generation + 1, redeals unchanged, the same attempt.
 \*   TakeEnds  a take of the card ended without a finish: take_ended is set.
+\*   EnvEnds   a take of the card ended on the member's environment (a child
+\*             killed at 134 or 137, sprint.HardEnvExit): the generation steps
+\*             (nextGen, the card returns to ready at its attempt) with no
+\*             take_ended, so no redeal is counted and the attempt does not
+\*             move. The witness "envspends" counts it as a take that ended.
 \*   Report    a report names a generation: taken when it names the live one
 \*             (the card finishes), else refused as stale.
 \*   Launch    the card's push to its branch, one per generation.
@@ -66,6 +71,8 @@
 \*                   first launch's branch: SuffixUnique fails.
 \*   "nogenguard"   a report of an old generation is taken: StaleGenRefused
 \*                   fails.
+\*   "envspends"    an environment death sets take_ended, so the redeal moves:
+\*                   EnvDeathSpendsNoRedeal fails.
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Card,      \* the writer's card
@@ -78,10 +85,12 @@ CONSTANTS Card,      \* the writer's card
           Broken      \* the reversed witnesses in effect
 
 VARIABLES epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
-          attempt, gen, redeals, card, takeEnded, launched, launches, accepted
+          attempt, gen, redeals, card, takeEnded, launched, launches, accepted,
+          takes
 
 vars == <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
-          attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+          attempt, gen, redeals, card, takeEnded, launched, launches, accepted,
+          takes>>
 
 Epochs == 0..MaxEpoch
 Clears == {"A", "B"}
@@ -107,6 +116,7 @@ TypeOK ==
     /\ launched \in BOOLEAN
     /\ launches \in [Suffix -> Nat]
     /\ accepted \in SUBSET ((1..MaxGen) \X (1..MaxGen))
+    /\ takes \in 0..(MaxRedeals + 1)
     /\ (~card => gen = 0 /\ ~takeEnded /\ ~launched)
 
 Init ==
@@ -127,6 +137,7 @@ Init ==
     /\ launched = FALSE
     /\ launches = [s \in Suffix |-> 0]
     /\ accepted = {}
+    /\ takes = 0
 
 \* a step pins the store to the sprint's current epoch (a re-pin of a moved
 \* step, engine.go:555-562; every command pins before it acts)
@@ -134,7 +145,7 @@ PinStep ==
     /\ pinned # epoch
     /\ pinned' = epoch
     /\ UNCHANGED <<epoch, owed, streams, readers, members, clears, cfrom, ever,
-                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted, takes>>
 
 \* the writer's step writes its card at the epoch it pinned; a step whose
 \* epoch moved is refused as stale and writes nothing (engine.go:566-575)
@@ -144,7 +155,7 @@ WriteStep ==
     /\ streams' = [streams EXCEPT ![epoch] = streams[epoch] \cup {Card}]
     /\ ever' = [ever EXCEPT ![epoch] = TRUE]
     /\ UNCHANGED <<epoch, owed, readers, members, pinned, clears, cfrom,
-                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted, takes>>
 
 \* the pin's restore: when the epoch still owes its restore, copy the old
 \* epoch's shape into it (epoch.go:54, clear.go:184-222). A clear settles the
@@ -158,7 +169,7 @@ Restore ==
     /\ members' = [members EXCEPT ![epoch] = members[epoch-1]]
     /\ owed' = FALSE
     /\ UNCHANGED <<epoch, pinned, clears, cfrom, ever,
-                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted, takes>>
 
 \* a clear reads the epoch it will advance from (clear.go:36-68: the epoch
 \* read, the machine stopped and left stopped, then re-pinned)
@@ -168,7 +179,7 @@ ClearRead(k) ==
     /\ clears' = clears \cup {k}
     /\ cfrom' = [cfrom EXCEPT ![k] = epoch]
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, ever,
-                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted, takes>>
 
 \* the CAS wins (AdvanceEpoch, clear.go:96): advance by one, settle the restore
 \* it sets, blank the new streams and readers, carry the members (clear.go:
@@ -190,6 +201,7 @@ ClearAdvance(k) ==
     /\ card' = FALSE
     /\ takeEnded' = FALSE
     /\ launched' = FALSE
+    /\ takes' = 0
     /\ UNCHANGED <<owed, pinned, cfrom, ever, launches, accepted>>
 
 \* the CAS lost: another clear advanced the epoch first, so this one writes
@@ -199,7 +211,7 @@ ClearRefuse(k) ==
     /\ cfrom[k] # epoch
     /\ clears' = clears \ {k}
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, cfrom, ever,
-                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
+                  attempt, gen, redeals, card, takeEnded, launched, launches, accepted, takes>>
 
 \* a new attempt's work card: attempt + 1, generation 1; refused when the card
 \* exists already
@@ -211,6 +223,7 @@ Deal ==
     /\ redeals' = 0
     /\ takeEnded' = FALSE
     /\ launched' = FALSE
+    /\ takes' = 0
     /\ card' = TRUE
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever, launches, accepted>>
 
@@ -226,7 +239,7 @@ Redeal ==
     /\ launched' = FALSE
     /\ attempt' = attempt
     /\ card' = TRUE
-    /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever, launches, accepted>>
+    /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever, launches, accepted, takes>>
 
 \* the other generation steps (a stop-return, the live reconcile, a gone lane):
 \* generation + 1, redeals unchanged, the same attempt
@@ -237,15 +250,29 @@ GenStep ==
     /\ redeals' = redeals
     /\ launched' = FALSE
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
-                  attempt, takeEnded, card, launches, accepted>>
+                  attempt, takeEnded, card, launches, accepted, takes>>
 
 \* a take of the card ended without a finish (sprint.FieldTakeEnded)
 TakeEnds ==
     /\ card
     /\ ~takeEnded
     /\ takeEnded' = TRUE
+    /\ takes' = Min(takes + 1, MaxRedeals + 1)
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
                   attempt, gen, redeals, card, launched, launches, accepted>>
+
+\* a take of the card ended on the member's environment (134/137): the
+\* generation steps (nextGen, the card returns to ready at its attempt) with
+\* no take ended, so no redeal is counted and the attempt does not move. The
+\* witness "envspends" sets take_ended (counts it as a take that ended).
+EnvEnds ==
+    /\ card
+    /\ gen < MaxGen
+    /\ gen' = gen + 1
+    /\ takeEnded' = (takeEnded \/ "envspends" \in Broken)
+    /\ launched' = FALSE
+    /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
+                  attempt, redeals, card, launches, accepted, takes>>
 
 \* a report names a generation: taken when it names the live one, else refused
 \* as stale (liveGen)
@@ -259,7 +286,7 @@ Report(g) ==
     /\ redeals' = 0
     /\ takeEnded' = FALSE
     /\ launched' = FALSE
-    /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever, attempt, launches>>
+    /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever, attempt, launches, takes>>
 
 \* the card's push to its branch, one per generation
 Launch ==
@@ -268,7 +295,7 @@ Launch ==
     /\ launched' = TRUE
     /\ launches' = [launches EXCEPT ![<<attempt, gen, epoch>>] = @ + 1]
     /\ UNCHANGED <<epoch, owed, streams, readers, members, pinned, clears, cfrom, ever,
-                  attempt, gen, redeals, card, takeEnded, accepted>>
+                  attempt, gen, redeals, card, takeEnded, accepted, takes>>
 
 Next ==
     \/ PinStep
@@ -279,6 +306,7 @@ Next ==
     \/ Redeal
     \/ GenStep
     \/ TakeEnds
+    \/ EnvEnds
     \/ \E g \in 1..MaxGen : Report(g)
     \/ Launch
 
@@ -311,5 +339,11 @@ SuffixUnique == \A s \in Suffix : launches[s] <= 1
 \* a report of a generation that is not the live one is refused: every report
 \* taken named the card's live generation
 StaleGenRefused == \A p \in accepted : p[1] = p[2]
+
+\* an environment death never moves the redeals or the attempt: the redeals
+\* counted (and the one pending) never exceed the takes that ended without a
+\* finish (TakeEnds); an environment death sets no take_ended, so it counts
+\* nothing here (the witness "envspends" sets it).
+EnvDeathSpendsNoRedeal == redeals + (IF takeEnded THEN 1 ELSE 0) <= takes
 
 =============================================================================

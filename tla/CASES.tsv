@@ -591,3 +591,7 @@ MCSeatHookDurableBrokenEpochAcks.cfg	MCSeatHook.tla	invariant	DurableAckHistory	
 MCSeatHookDurableBrokenEpochPending.cfg	MCSeatHook.tla	invariant	EpochClearsPending	ignore-terminal	seathook-durable	required	-
 MCSeatHookDurableBrokenNoReplay.cfg	MCSeatHook.tla	temporal	EligibleUnackedDelivered	ignore-terminal	seathook-durable	required	-
 MCSeatHookDurableBrokenSequence.cfg	MCSeatHook.tla	invariant	SequenceHighWater	ignore-terminal	seathook-durable	required	-
+MCDirtyTickEnv.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickBrokenEnvSpends.cfg	MCDirtyTick.tla	action	EnvDeathSpendsNoRedeal	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenEnvNoCap.cfg	MCDirtyTick.tla	invariant	EnvDeathsBounded	ignore-terminal	dirtytick-witnesses	required	-
+MCAttemptsEpochsBrokenEnvSpends.cfg	MCAttemptsEpochs.tla	invariant	EnvDeathSpendsNoRedeal	ignore-terminal	attemptsepochs	required	-

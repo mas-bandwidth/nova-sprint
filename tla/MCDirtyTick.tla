@@ -70,6 +70,12 @@ ScnMiss == [Base EXCEPT !.misses = TRUE, !.col = [c \in Cards |-> "working"],
 ScnTake == [Base EXCEPT !.col = [c \in Cards |-> "working"],
                         !.mc = [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],
                         !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
+\* THE ENVIRONMENT DEATH. c1 dealt to m1 and not taken; its worker may take it,
+\* and its child may die on the member's environment (an environment death,
+\* spending no redeal) up to EnvCap, where the card is held: no machine lapses
+\* (the environment death is the event): EnvDeathSpendsNoRedeal and
+\* EnvDeathsBounded.
+ScnEnv == [env |-> TRUE, lapse |-> FALSE] @@ ScnTake
 \* c1 in review, its read on r1 (host m1) reported ok; the coordinator may
 \* record its CI, return it, and accept it: the accept's holds.
 ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Cards |-> "r1"],

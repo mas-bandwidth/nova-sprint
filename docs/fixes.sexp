@@ -66,7 +66,9 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
+    :text "The next small product fixes, one concern each.")
+   (release "v1.2.16" :status "planned"
+    :text "Every TLA+ model checked against the code."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -2640,4 +2642,8 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    both refused, only wait quieting it")
+  (fix "tla-an-environment-death-spends-no-redeal" :release "v1.2.16" :status "planned"
+   :title "A child killed by its environment (134/137) spends no redeal and no attempt, and is capped before a card-holding judgment"
+   :text "The TLA+ models gain the environment death that v1.2.14's doctor recorded (a-doctor-reports-the-child-exit-code-rate-per-member): a take ending on the member's environment (exit 134 or 137, sprint.HardEnvExit) is not the card's failure, so it spends no redeal and no attempt, and the card returns to ready at its attempt, up to EnvExitCardCap (3) environment deaths an attempt before the tick raises the card-holding bound judgment (NBound). tla/DirtyTick.tla adds the EnvEnd action, the env counter and the AtEB hold, with EnvDeathSpendsNoRedeal (an environment death never moves rdl or att) and EnvDeathsBounded (at most EnvCap per attempt), and the reversed witnesses envspends (an environment death counted as a redeal) and envnocap (no cap); tla/AttemptsEpochs.tla gains the EnvEnds path on its TakeEnds, with EnvDeathSpendsNoRedeal and the matching envspends witness. Checked against the code: internal/sprint/steps_work.go envExited, AtEnvExitBound, HardEnvExit, EnvExitCardCap."
+   :origin "this card, tla-an-environment-death-spends-no-redeal, the v1.2.16 TLA+ pass owed by a-doctor-reports-the-child-exit-code-rate-per-member")))
