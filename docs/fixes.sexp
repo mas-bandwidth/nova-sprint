@@ -3035,4 +3035,30 @@
      2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
      frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
      every unlanded frontier card of four repositories, then undid the pins by hand when the friend
-     came back; one setting replaces the hand pinning")))
+     came back; one setting replaces the hand pinning")
+   (fix "add-and-the-tick-keep-a-bench-mirror-for-every-named-repo" :release "v1.2.14" :status "planned"
+    :title "Add and the tick keep a bench mirror for every named repo"
+    :text "When add admits cards whose REPO: line (or a stream's repos) names a repository, and when
+     the tick sees a staging refusal no bench mirror for <url> (mirrorRefusals,
+     internal/sprint/staging_repo.go), nova-sprint records a mirror need for that repository: one row
+     per repository, the members that lack it (from the refusals and from the members' beats, which
+     name the mirrors they carry) and when it was raised (MirrorNeed, mirrorNeeds,
+     internal/sprint/mirror_need.go). add records the repository on its stream's control card
+     (FieldRepo, by sprint.Add) and prints one MIRROR <repo> needed on <members> line per repository
+     it admits (sprint.MirrorNotice, cmd/nova-sprint/add.go, cmd/nova-sprint/verbs.go). The tick
+     raises one judgment per repository (NMirrorNeed), naming the members, only while the need is not
+     served within its bound (StagingMirrorWindow, or a member's ok finish of a card of the
+     repository), and a refused card is not redealt to a member that lacks the mirror while another
+     member that has it is free (stagingRepoWhy, notLaunching). The need is served by running the
+     fleet's mirror refresh for that repository (the nova-swarm verb the card
+     every-bench-carries-every-mirror-a-card-can-name delivers), on the coordinator machine, which
+     holds the credentials; no ssh or git push runs from inside nova-sprint's tests.
+     docs/SPEC-SPRINT.md (the mirror need), docs/TESTS.md state it. Tests:
+     TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo, TestMirrorNeedFromAStagingRefusal,
+     TestMirrorNeedEndsAfterAnOk and TestMirrorNeedEndsPastTheWindow
+     (internal/sprint/mirror_need_test.go)."
+    :origin "this card, add-and-the-tick-keep-a-bench-mirror-for-every-named-repo.w2, from the
+     coordinator, 2026-10-12 epoch 19: after staging refused cards with no bench mirror for <url>,
+     the seat ran monitorsync.sh by hand to clone each missing repository as a bare mirror and push it
+     to every fleet member; this card makes nova-sprint ask for it at the two moments it knows a repo
+     is needed")))

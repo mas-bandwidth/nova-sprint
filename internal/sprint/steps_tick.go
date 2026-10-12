@@ -116,6 +116,11 @@ const (
 	// NStopDebtBeat names the seat's judgment that a STOP debt owner has not
 	// beaten since the STOP, so its lease cannot be settled from the beat.
 	NStopDebtBeat = "STOP debt: an owner has not beaten since the stop"
+	// NMirrorNeed is the judgment that a repository lacks a bench mirror on the
+	// members that refused it at staging for want of one (mirrorNeeds): the
+	// coordinator serves it by running the fleet's mirror refresh for that
+	// repository (docs/SPEC-SPRINT.md, the mirror need).
+	NMirrorNeed = "a repository lacks a bench mirror"
 )
 
 // Sentinel is the kind of a card that marks a point in a stream: the tick
@@ -176,6 +181,9 @@ var TickDecisions = map[string][]string{
 	NDriftBaseRed:  {"act", "wait"},
 	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
 	NBaseCIRed: {"act", "wait"},
+	// a repository lacks a bench mirror on some members (mirror_need.go): the
+	// fleet's mirror refresh serves it
+	NMirrorNeed: {"fleet up <m>", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -1100,13 +1108,20 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	// a ready card dealt on a route that rests now is withdrawn, never taken there
 	p.Units = append(p.Units, restWithdrawals(s, r.who())...)
+	// a repository some member refused at staging for want of a bench mirror needs the
+	// mirror on those members: one judgment per repository, naming them, while the need
+	// is not served within its bound (mirrorNeeds; docs/SPEC-SPRINT.md, the mirror need)
+	for _, need := range mirrorNeeds(s) {
+		conds = append(conds, cond{typ: NMirrorNeed, stream: need.Repo, streamLevel: true,
+			primaries: need.Members, what: fmt.Sprintf("the repository %s lacks a bench mirror on %s: run the fleet's mirror refresh for it, then add the mirror on those members", need.Repo, strings.Join(need.Members, ", "))})
+	}
 	// a ready work card on any row whose primary's named needs have not landed goes back
 	// to the pool at once (docs/SPEC-SPRINT.md, needs and the deal): withdrawn at a new
 	// generation, its attempt unchanged and no redeal spent, so no friend unheld with it
 	// takes it, and the note names the needs
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
@@ -1867,7 +1882,8 @@ func condKey(typ, subject, card, what string) string {
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
-		NNoFrontierRoom:
+		NNoFrontierRoom,
+		NMirrorNeed:
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so

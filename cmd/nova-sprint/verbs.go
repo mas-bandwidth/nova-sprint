@@ -1568,7 +1568,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if len(rs) == 1 {
 		step = store.AddStep(rs[0])
 	}
-	return a.runStep("add", *c, st, promotionGuard(step, rs, *landProtected), stdout, stderr)
+	step = promotionGuard(step, rs, *landProtected)
+	step = mirrorNotice(step, rs)
+	return a.runStep("add", *c, st, step, stdout, stderr)
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
