@@ -243,9 +243,14 @@ const NTickEnd = "tick end"
 
 // TickEndCounts says a note is an item for the coordinator that a tick-end
 // counts: a judgment, or a happened note addressed to someone (the sprint is
-// done). The tick-end note itself is not.
+// done). The tick-end note itself is not, nor is a landing push (landed,
+// landing again): it is a HAPPENED note the coordinator reads in the inbox but
+// needs no ack beyond the hook's (docs/SPEC-SPRINT.md, the judgments section).
 func TickEndCounts(n Note) bool {
-	return n.Type != NTickEnd && (n.Kind == Judgment || (n.Kind == Happened && n.To != ""))
+	if n.Type == NTickEnd || n.Type == NLanding || n.Type == NLandingAgain {
+		return false
+	}
+	return n.Kind == Judgment || (n.Kind == Happened && n.To != "")
 }
 
 // Due is when the judgment is overdue: its review time when one is set, else

@@ -30,9 +30,13 @@ func TestWhereShowsTheReadsSettingOnlyWhileSet(t *testing.T) {
 	assert.Contains(t, ta.ok("where"), "reads: 0\n")
 	assert.Equal(t, float64(0), readsOf())
 
-	code, _, errs := ta.do("set --reads 3")
+	assert.Contains(t, ta.ok("set --reads 3"), "reads-needed 3")
+	assert.Contains(t, ta.ok("where"), "reads: 3\n")
+	assert.Equal(t, float64(3), readsOf())
+
+	code, _, errs := ta.do("set --reads 4")
 	assert.NotEqual(t, 0, code)
-	assert.Contains(t, errs, "--reads wants 0, 1, 2 or default")
+	assert.Contains(t, errs, "--reads wants 0, 1, 2, 3 or default")
 
 	assert.Contains(t, ta.ok("set --reads default"), "reads-needed default")
 	assert.NotContains(t, ta.ok("where"), "reads: ")

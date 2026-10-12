@@ -106,3 +106,59 @@ func TestCardStateIsTheTableColumnInEveryReader(t *testing.T) {
 	}
 	ta.clean()
 }
+
+// SPEC-SPRINT section 11: a need's place is its column in both readers; card
+// --json carries each need's column in the needs verb's words, so a card's
+// own column is not confused with the state of its need.
+func TestCardJSONNeedsCarryTheirColumn(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.toMerging("s1")
+	ta.ok("add --one --stream s2 waiter --needs s1-1")
+
+	type need struct {
+		ID     string `json:"id"`
+		Column string `json:"column"`
+		State  string `json:"state"`
+	}
+	type cardJSON struct {
+		Needs []need `json:"needs"`
+	}
+	var card cardJSON
+	ta.json("card waiter", &card)
+	require.Len(t, card.Needs, 1)
+	assert.Equal(t, "s1-1", card.Needs[0].ID)
+	assert.Equal(t, sprint.Merging, card.Needs[0].Column, "a need's column is the needs verb's word")
+
+	// a waiting card whose need is off the table: only a waiting card defers, so
+	// the need waits on base, the waiter waits on the need, and deferring the
+	// need leaves the waiter on a dropped one.
+	dir := roadmapDir(t)
+	ta.ok("add --one --stream s3 base")
+	ta.ok("add --one --stream s3 need --needs base --brief-file " + writeBrief(t, "THE TASK. Do the need."))
+	ta.ok("add --one --stream s4 car --needs need")
+	ta.ok("defer need --repo-dir " + dir + " --reason 'deferred to the roadmap'")
+
+	var off cardJSON
+	ta.json("card car", &off)
+	require.Len(t, off.Needs, 1)
+	assert.Equal(t, "need", off.Needs[0].ID)
+	require.False(t, off.Needs[0].Column == "", "a need off the table carries its column")
+
+	var graph struct {
+		Streams []struct {
+			Cards []struct {
+				ID    string `json:"id"`
+				Needs []need `json:"needs"`
+			} `json:"cards"`
+		} `json:"streams"`
+	}
+	ta.json("needs --stream s4", &graph)
+	require.Len(t, graph.Streams, 1)
+	require.Len(t, graph.Streams[0].Cards, 1)
+	require.Len(t, graph.Streams[0].Cards[0].Needs, 1)
+	assert.Equal(t, graph.Streams[0].Cards[0].Needs[0].Column, off.Needs[0].Column,
+		"card --json and needs --json print the same column for the same need")
+	assert.Equal(t, "dropped", off.Needs[0].Column)
+	ta.clean()
+}

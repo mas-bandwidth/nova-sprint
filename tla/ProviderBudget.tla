@@ -17,7 +17,9 @@
 \* (none, or a cause); held[m], the member is held by it and is dealt nothing;
 \* judged[m], the environment judgment is open on the member; jcause[m], the
 \* cause the open judgment names; known[m], the member has been accepted into the
-\* fleet; probe[m], the caller's own word for the member's environment probe (the
+\* fleet; probeheld[m], the member was added by the sync and is held by the probe
+\* until its own probe passes (known only with the probe passed, NewMemberProbed);
+\* probe[m], the caller's own word for the member's environment probe (the
 \* --probe fleet up is given), which the model trusts as the code does; card[m],
 \* where the member's card
 \* is (ready: dealt and untaken, working: taken, pushed: its next card pushed,
@@ -42,8 +44,12 @@
 \*   ProbeNew(m,p)   a new member's probe is the caller's own word: TLC chooses p,
 \*                   none, pass or fail, and the model trusts it as the code does.
 \*   Boot(m)         init sets a member up: it passes --probe passed, so accepted.
-\*   Accept(m)       fleet up accepts a new member when the caller's word is pass.
+\*   Accept(m)       fleet up accepts a new member when the caller's word is pass,
+\*                   and lifts the sync's probe hold.
 \*   Refuse(m)       fleet up refuses a new member whose word is not pass.
+\*   SyncAdd(m)      the sync adds a member the fleet lacks: it is placed held by
+\*                   the probe (probeheld[m] TRUE) and NOT known; it becomes known
+\*                   only through a passed probe, as Accept does.
 \* Reversed witnesses:
 \*   "noenv"    a model failure holds the member: EnvOnlyByEnvironmentFinish
 \*   "nodeal"   the deal gives a held member a card: HeldDealtNothing
@@ -52,17 +58,18 @@
 \*   "nopush"   a push never clears the fault: FaultClearsOnPush
 \*   "clear"    fleet up accepts a member whose fault is not cleared:
 \*              FleetUpRefusesUncleared
-\*   "newup"    a new member is accepted with no probe or a failed one:
-\*              NewMemberProbed
+\*   "newup"    a new member is accepted, or a SyncAdd makes one known, with no
+\*              probe or a failed one: NewMemberProbed
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Members, Causes, Broken
 
-VARIABLES env, held, judged, jcause, known, probe, card, event
-vars == <<env, held, judged, jcause, known, probe, card, event>>
+VARIABLES env, held, judged, jcause, known, probeheld, probe, card, event
+vars == <<env, held, judged, jcause, known, probeheld, probe, card, event>>
 
 Events == Causes \cup {"model", "deal", "rejected", "pushed", "probe-pass", "probe-fail",
-                      "probe-new", "boot", "accept", "refuse", "init"}
+                      "probe-new", "boot", "accept", "refuse", "sync-add",
+                      "init"}
 
 TypeOK ==
     /\ env \in [Members -> {"none"} \cup Causes]
@@ -70,6 +77,7 @@ TypeOK ==
     /\ judged \in [Members -> BOOLEAN]
     /\ jcause \in [Members -> {"none"} \cup Causes]
     /\ known \in [Members -> BOOLEAN]
+    /\ probeheld \in [Members -> BOOLEAN]
     /\ probe \in [Members -> {"none", "pass", "fail"}]
     /\ card \in [Members -> {"ready", "working", "pushed", "failed"}]
     /\ event \in Events
@@ -80,6 +88,7 @@ Init ==
     /\ judged = [m \in Members |-> FALSE]
     /\ jcause = [m \in Members |-> "none"]
     /\ known = [m \in Members |-> FALSE]
+    /\ probeheld = [m \in Members |-> FALSE]
     /\ probe = [m \in Members |-> "none"]
     /\ card = [m \in Members |-> "ready"]
     /\ event = "init"
@@ -99,7 +108,7 @@ EnvFinish(m, c) ==
     /\ jcause' = [jcause EXCEPT ![m] = (IF "stale" \in Broken THEN jcause[m] ELSE c)]
     /\ card' = [card EXCEPT ![m] = "ready"]
     /\ event' = c
-    /\ UNCHANGED <<known, probe>>
+    /\ UNCHANGED <<known, probeheld, probe>>
 
 \* a card on m fails the model's way: not the environment's, so nothing is held
 \* ("noenv": the broken rule holds it anyway)
@@ -108,7 +117,7 @@ ModelFinish(m) ==
     /\ held' = [held EXCEPT ![m] = "noenv" \in Broken]
     /\ card' = [card EXCEPT ![m] = "failed"]
     /\ event' = "model"
-    /\ UNCHANGED <<env, judged, jcause, known, probe>>
+    /\ UNCHANGED <<env, judged, jcause, known, probeheld, probe>>
 
 \* a card on m is refused by the branch (rejected, non-fast-forward): the card
 \* fails but the environment does not change ("branchenv" witness below)
@@ -122,16 +131,16 @@ BranchRefused(m) ==
           /\ judged' = [judged EXCEPT ![m] = TRUE]
     /\ card' = [card EXCEPT ![m] = "failed"]
     /\ event' = "rejected"
-    /\ UNCHANGED <<known, probe>>
+    /\ UNCHANGED <<known, probeheld, probe>>
 
 \* the deal gives a known, not-held member a card ("nodeal": a held one too)
 Deal(m) ==
     /\ known[m]
-    /\ (~held[m] \/ "nodeal" \in Broken)
+    /\ ((~held[m] /\ ~probeheld[m]) \/ "nodeal" \in Broken)
     /\ card[m] = "ready"
     /\ card' = [card EXCEPT ![m] = "working"]
     /\ event' = "deal"
-    /\ UNCHANGED <<env, held, judged, jcause, known, probe>>
+    /\ UNCHANGED <<env, held, judged, jcause, known, probeheld, probe>>
 
 \* a held member's card in flight pushes: the fault clears itself
 \* ("nopush": the broken rule never clears it)
@@ -147,7 +156,7 @@ Push(m) ==
           /\ jcause' = [jcause EXCEPT ![m] = "none"]
     /\ card' = [card EXCEPT ![m] = "pushed"]
     /\ event' = "pushed"
-    /\ UNCHANGED <<known, probe>>
+    /\ UNCHANGED <<known, probeheld, probe>>
 
 \* fleet up is given the caller's word: a pass clears the fault, a failure
 \* leaves it and fleet up refuses
@@ -158,7 +167,7 @@ ProbePass(m) ==
     /\ judged' = [judged EXCEPT ![m] = FALSE]
     /\ jcause' = [jcause EXCEPT ![m] = "none"]
     /\ event' = "probe-pass"
-    /\ UNCHANGED <<known, probe, card>>
+    /\ UNCHANGED <<known, probeheld, probe, card>>
 
 \* "clear": the broken rule lets a failed word clear the fault
 ProbeFail(m) ==
@@ -171,7 +180,7 @@ ProbeFail(m) ==
        \/ "clear" \notin Broken
           /\ UNCHANGED <<env, held, judged, jcause>>
     /\ event' = "probe-fail"
-    /\ UNCHANGED <<known, probe, card>>
+    /\ UNCHANGED <<known, probeheld, probe, card>>
 
 \* a new member's probe is the caller's own word: fleet up is given --probe and
 \* TLC chooses the word, none, pass or fail; the model trusts it as the code does
@@ -180,7 +189,7 @@ ProbeNew(m, p) ==
     /\ p \in {"none", "pass", "fail"}
     /\ probe' = [probe EXCEPT ![m] = p]
     /\ event' = "probe-new"
-    /\ UNCHANGED <<env, held, judged, jcause, known, card>>
+    /\ UNCHANGED <<env, held, judged, jcause, known, probeheld, card>>
 
 \* init sets a member up: the machine's own setup ran its probe, so it passed
 Boot(m) ==
@@ -188,14 +197,16 @@ Boot(m) ==
     /\ probe' = [probe EXCEPT ![m] = "pass"]
     /\ known' = [known EXCEPT ![m] = TRUE]
     /\ event' = "boot"
-    /\ UNCHANGED <<env, held, judged, jcause, card>>
+    /\ UNCHANGED <<env, held, judged, jcause, probeheld, card>>
 
-\* fleet up accepts a new member only when the caller's word is pass; the "newup"
-\* witness accepts it with no probe or a failed one
+\* fleet up accepts a new member only when the caller's word is pass, and lifts
+\* the sync's probe hold: the "newup" witness accepts it with no probe or a
+\* failed one, and a SyncAdd makes it known with no probe
 Accept(m) ==
     /\ ~known[m]
     /\ (probe[m] = "pass" \/ "newup" \in Broken)
     /\ known' = [known EXCEPT ![m] = TRUE]
+    /\ probeheld' = [probeheld EXCEPT ![m] = FALSE]
     /\ event' = "accept"
     /\ UNCHANGED <<env, held, judged, jcause, probe, card>>
 
@@ -204,7 +215,21 @@ Refuse(m) ==
     /\ ~known[m]
     /\ probe[m] # "pass"
     /\ event' = "refuse"
-    /\ UNCHANGED <<env, held, judged, jcause, known, probe, card>>
+    /\ UNCHANGED <<env, held, judged, jcause, known, probeheld, probe, card>>
+
+\* the sync adds a member the fleet lacks: it is placed held by the probe
+\* (probeheld[m] TRUE) and is NOT known; only a passed probe, through Accept,
+\* makes it known. The "newup" witness writes it known at once with no probe,
+\* which NewMemberProbed catches.
+SyncAdd(m) ==
+    /\ ~known[m]
+    /\ probeheld' = [probeheld EXCEPT ![m] = TRUE]
+    /\ \/ "newup" \notin Broken
+          /\ UNCHANGED known
+       \/ "newup" \in Broken
+          /\ known' = [known EXCEPT ![m] = TRUE]
+    /\ event' = "sync-add"
+    /\ UNCHANGED <<env, held, judged, jcause, probe, card>>
 
 Next ==
     \/ \E m \in Members, c \in Causes : EnvFinish(m, c)
@@ -218,6 +243,7 @@ Next ==
     \/ \E m \in Members : Boot(m)
     \/ \E m \in Members : Accept(m)
     \/ \E m \in Members : Refuse(m)
+    \/ \E m \in Members : SyncAdd(m)
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 
@@ -247,7 +273,8 @@ FaultClearsOnPush ==
 FleetUpRefusesUncleared ==
     [][\A m \in Members : (held[m] /\ ~held[m]' /\ event' # "pushed") => event' = "probe-pass"]_vars
 
-\* a new member is accepted only when its own probe passed (init's Boot sets it):
+\* a new member is accepted only when its own probe passed (init's Boot sets it,
+\* and a SyncAdd leaves the member unknown until a passed probe accepts it):
 \* read the next state's probe, since Boot sets probe' and known' together
 NewMemberProbed ==
     [][\A m \in Members : (~known[m] /\ known[m]') => probe'[m] = "pass"]_vars

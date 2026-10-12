@@ -121,6 +121,6 @@ func TestTheRefusedLogHoldsNoSecret(t *testing.T) {
 	assert.Contains(t, log.String(), "SERVE REFUSED verb=finish as=m1 exit=1 card=no-such-card@1: ")
 
 	log.Reset()
-	ta.a.logRefused("read", "reader-a", 1, "", strings.Repeat("y", 1000))
+	ta.a.logRefused([]string{"read"}, "reader-a", 1, strings.Repeat("y", 1000))
 	assert.Contains(t, log.String(), "...+", "the verb's first stderr line is cut to the bound")
 }

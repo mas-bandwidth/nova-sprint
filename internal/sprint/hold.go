@@ -42,6 +42,20 @@ const (
 // tla/DealFill.tla, FaultHoldClears.
 const HeldByFault = "fault"
 
+// HeldByProbe is the hold mark (FieldHeldBy) of a member the sync added but whose
+// own probe has not passed yet: a member new to the sprint, added by fleet sync, is
+// known only once its own probe passes, so the add writes the control card held (a
+// held member's status is held, and presence never brings it up). Only fleet up <m>
+// --probe passed lifts it; no other path clears it (docs/SPEC-SPRINT.md section 5,
+// the fleet; tla/ProviderBudget.tla, NewMemberProbed).
+const HeldByProbe = "probe"
+
+// ProbeHeld says the member is held until its own probe passes (HeldByProbe): the
+// sync's add marks it so, and fleet up --probe passed is the one path that lifts it.
+func ProbeHeld(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeldBy) == HeldByProbe
+}
+
 // FieldFaultSince is a fault-held member's control card's stamp of when the machine
 // held it: kept through the probe (faultClear) so the tick can tell a clean finish
 // after the hold from one before it.
