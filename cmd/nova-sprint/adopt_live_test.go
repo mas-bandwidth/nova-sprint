@@ -106,7 +106,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })
 
 	var out, errs bytes.Buffer
-	require.Equal(t, 0, a.run([]string{"live", "--json", "--dashboard", link, "--agents-dir", agents}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--dashboard", link, "--agents-dir", agents}, &out, &errs), errs.String())
 	var m liveManifest
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
 	assert.Contains(t, ran, bin+"/nova-redis fn check --addr s:1 --user coordinator --password-env PW", "the library is read by the installed nova-redis, as the seat logs in")
@@ -186,14 +186,14 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	// a missing agents directory is no answer, never an empty host
 	out.Reset()
 	errs.Reset()
-	assert.Equal(t, 1, a.run([]string{"live", "--agents-dir", filepath.Join(home, "no-such-dir")}, &out, &errs))
+	assert.Equal(t, 1, runInto(a, []string{"live", "--agents-dir", filepath.Join(home, "no-such-dir")}, &out, &errs))
 	assert.Contains(t, errs.String(), "the agents directory "+filepath.Join(home, "no-such-dir")+" is not a directory that reads")
 	assert.Empty(t, out.String())
 
 	out.Reset()
 	errs.Reset()
 	env["NOVA_LAUNCH_AGENTS"] = agents // the environment names the directory too
-	require.Equal(t, 0, a.run([]string{"live", "--dashboard", link}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--dashboard", link}, &out, &errs), errs.String())
 	text := out.String()
 	assert.Contains(t, text, "LIVE SERVER binary="+filepath.Join(bin, "nova-sprint"))
 	assert.Contains(t, text, "LIVE LIBRARY state=STALE loaded=aaa want=bbb match=false")

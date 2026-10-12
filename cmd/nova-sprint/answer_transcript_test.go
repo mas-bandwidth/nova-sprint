@@ -35,7 +35,7 @@ func TestTheAnswerTranscriptRunsOverATwin(t *testing.T) {
 		}
 		a := newApp(func(k string) string { return env[k] })
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		a.close()
 		got = append(got, onboarding.Result{Code: code, Stdout: strings.ReplaceAll(out.String(), record, "./judgment.jsonl"), Stderr: errb.String()})
 	}

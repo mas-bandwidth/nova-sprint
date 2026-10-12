@@ -83,7 +83,7 @@ func (ta *testApp) whereJSON() (whereView, map[string]int) {
 	ta.beat()
 	ta.m.Calls = map[string]int{}
 	var out, errb bytes.Buffer
-	require.Zero(ta.t, ta.a.run([]string{"where", "--json"}, &out, &errb), "where --json: %s", errb.String())
+	require.Zero(ta.t, runInto(ta.a, []string{"where", "--json"}, &out, &errb), "where --json: %s", errb.String())
 	calls := ta.m.Calls
 	ta.m.Calls = map[string]int{}
 	var v whereView

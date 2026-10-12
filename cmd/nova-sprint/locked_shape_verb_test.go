@@ -68,7 +68,7 @@ func TestShadowTickRefusesAStoreMissingTheLockedFleetColumns(t *testing.T) {
 	t.Parallel()
 	ta := fleetOldStore(t)
 	var out, errb bytes.Buffer
-	code := ta.a.run([]string{"tick", "--shadow"}, &out, &errb)
+	code := runInto(ta.a, []string{"tick", "--shadow"}, &out, &errb)
 	require.Equal(t, 2, code)
 	assert.Contains(t, out.String(), "SHADOW TICK FAILED")
 	assert.Contains(t, out.String(), "wrote=nothing")
@@ -82,7 +82,7 @@ func TestShadowTickRefusesAStoreMissingTheLockedFleetColumns(t *testing.T) {
 
 	out.Reset()
 	errb.Reset()
-	code = ta.a.run([]string{"tick", "--shadow", "--json"}, &out, &errb)
+	code = runInto(ta.a, []string{"tick", "--shadow", "--json"}, &out, &errb)
 	require.Equal(t, 2, code)
 	for _, cmd := range []string{
 		"nova-table col add fleet finished --after withdrawn",
@@ -101,7 +101,7 @@ func TestRunRefusesAStoreMissingTheLockedFleetColumns(t *testing.T) {
 	t.Parallel()
 	ta := fleetOldStore(t)
 	var out, errb bytes.Buffer
-	code := ta.a.run([]string{"run"}, &out, &errb)
+	code := runInto(ta.a, []string{"run"}, &out, &errb)
 	require.Equal(t, 2, code)
 	assert.Contains(t, errb.String(), "the store's tables lack the columns this build writes:")
 	assert.Contains(t, errb.String(), "this server does not start")

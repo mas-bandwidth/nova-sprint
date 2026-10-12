@@ -305,7 +305,7 @@ func TestAServedAddAsksWhereItIsTyped(t *testing.T) {
 	dir := t.TempDir()
 	writeNeedsBrief(t, dir, "a1", "Fix a1. converges=0.8", "")
 	var out, errb bytes.Buffer
-	require.Equal(t, 0, c.run([]string{"add", "--stream", "s1", "--brief-dir", dir, "--decide-record", record}, &out, &errb), errb.String())
+	require.Equal(t, 0, runInto(c, []string{"add", "--stream", "s1", "--brief-dir", dir, "--decide-record", record}, &out, &errb), errb.String())
 	assert.Contains(t, out.String(), "BRIEF card=a1 op=a1@brief-")
 	assert.Contains(t, out.String(), "MOVED a1 -> ready")
 	assert.Equal(t, 1, b.asks)
@@ -322,7 +322,7 @@ func TestAServedAddAsksWhereItIsTyped(t *testing.T) {
 	writeNeedsBrief(t, dir, "a2", "Fix a2. converges=0.7", "")
 	out.Reset()
 	errb.Reset()
-	require.Equal(t, 0, c.run([]string{"add", "--stream", "s2", "--brief-file", filepath.Join(dir, "a2.md"), "x2", "--one", "--decide-record", record, "--json"}, &out, &errb), errb.String())
+	require.Equal(t, 0, runInto(c, []string{"add", "--stream", "s2", "--brief-file", filepath.Join(dir, "a2.md"), "x2", "--one", "--decide-record", record, "--json"}, &out, &errb), errb.String())
 	var res output
 	require.NoError(t, json.Unmarshal(out.Bytes(), &res), out.String())
 	require.Len(t, res.Moved, 1)
@@ -337,14 +337,14 @@ func TestAServedAddAsksWhereItIsTyped(t *testing.T) {
 	for _, key := range []string{"k-test", ""} {
 		env[decide.JevSecret] = key
 		errb.Reset()
-		assert.Equal(t, 2, c.run([]string{"add", "--stream", "s3", "y1", "--one", "--brief-file", filepath.Join(dir, "a2.md"), "--brief-op", "y1=y1@brief-deadbeef"}, &out, &errb))
+		assert.Equal(t, 2, runInto(c, []string{"add", "--stream", "s3", "y1", "--one", "--brief-file", filepath.Join(dir, "a2.md"), "--brief-op", "y1=y1@brief-deadbeef"}, &out, &errb))
 		assert.Contains(t, errb.String(), "--brief-op is the served add's wire word")
 	}
 	assert.Empty(t, sent, "nothing is sent")
 	res2 := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{{"add", "--actor", "boss", "--stream", "s3", "y1", "--one", "--brief-file", filepath.Join(dir, "a2.md"), "--brief-op", "y1=a1@brief-" + strings.TrimPrefix(op, "a1@brief-")}}}, true).Results[0]
 	assert.Equal(t, 2, res2.Code, res2.Stdout+res2.Stderr)
 	assert.Contains(t, res2.Stderr, "names no brief decision of a card of this add")
-	assert.NotEqual(t, 0, r.a.run([]string{"card", "y1"}, &out, &errb), "nothing was written")
+	assert.NotEqual(t, 0, runInto(r.a, []string{"card", "y1"}, &out, &errb), "nothing was written")
 }
 
 // A card's end attaches to the brief decision it stores: a drop attaches dropped with

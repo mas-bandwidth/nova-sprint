@@ -62,7 +62,7 @@ func TestAnInboxWaitSurfacesItsFailedLogPoll(t *testing.T) {
 					}
 				}
 				var out, errs bytes.Buffer
-				code := a.run([]string{"inbox", "--wait", "--timeout", "1m", "--json"}, &out, &errs)
+				code := runInto(a, []string{"inbox", "--wait", "--timeout", "1m", "--json"}, &out, &errs)
 				assert.NotZero(t, code, "a failed poll did not complete the wait")
 				assert.NotEmpty(t, errs.String(), "the failed poll is visible")
 				assert.Empty(t, out.String(), "no successful inbox or woke result masks the failure")

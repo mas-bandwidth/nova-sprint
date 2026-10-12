@@ -46,7 +46,7 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var errb bytes.Buffer
-		code := client.run([]string{"hook", "--compact", "--overdue", "2s", "--redis", "mem:0"}, pw, &errb)
+		code := runInto(client, []string{"hook", "--compact", "--overdue", "2s", "--redis", "mem:0"}, pw, &errb)
 		_ = pw.Close()
 		done <- code
 	}()
@@ -85,7 +85,7 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 	chal := strings.TrimSuffix(strings.Fields(chalLine)[2], ":")
 	code, out, errs := func() (int, string, string) {
 		var o, e bytes.Buffer
-		c := client.run([]string{"hook", "--prove", chal, "--actor", name, "--redis", "mem:0"}, &o, &e)
+		c := runInto(client, []string{"hook", "--prove", chal, "--actor", name, "--redis", "mem:0"}, &o, &e)
 		return c, o.String(), e.String()
 	}()
 	require.Equal(t, 0, code, out+errs)
@@ -181,7 +181,7 @@ waitPush:
 	default:
 	}
 	var uout, uerrs bytes.Buffer
-	require.Equal(t, 0, client.run(strings.Fields("unhook --actor "+name+" --redis mem:0"), &uout, &uerrs), uout.String()+uerrs.String())
+	require.Equal(t, 0, runInto(client, strings.Fields("unhook --actor "+name+" --redis mem:0"), &uout, &uerrs), uout.String()+uerrs.String())
 	select {
 	case code := <-done:
 		require.Equal(t, 0, code)

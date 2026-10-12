@@ -52,7 +52,7 @@ func TestASeatRecordedServerIsUsedWhenTheEnvironmentNamesNone(t *testing.T) {
 	run := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		_ = a.run(args, &out, &errb)
+		_ = runInto(a, args, &out, &errb)
 	}
 
 	run("where")
@@ -101,7 +101,7 @@ func TestTheHookNamesTheServerItUsedAndWhereItCameFrom(t *testing.T) {
 		pr, pw := io.Pipe()
 		go func() {
 			var errb bytes.Buffer
-			_ = client.run([]string{"hook"}, pw, &errb)
+			_ = runInto(client, []string{"hook"}, pw, &errb)
 			_ = pw.Close()
 		}()
 		sc := bufio.NewScanner(pr)
@@ -134,7 +134,7 @@ func TestHookRefusesWhenNeitherSourceNamesAServer(t *testing.T) {
 	rec, err := a.seatRecordPath()
 	require.NoError(t, err)
 	var out, errb bytes.Buffer
-	code := a.run([]string{"hook"}, &out, &errb)
+	code := runInto(a, []string{"hook"}, &out, &errb)
 	require.Equal(t, 2, code, out.String()+errb.String())
 	assert.Contains(t, errb.String(), "no sprint server named: "+ServerEnv+" is not set and the seat's record "+rec+" names none")
 	assert.Contains(t, errb.String(), "export "+ServerEnv+"=<host:port>")

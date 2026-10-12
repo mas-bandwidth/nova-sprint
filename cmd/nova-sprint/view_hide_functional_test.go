@@ -37,7 +37,7 @@ func TestTheViewAfterAClearDrawsNoOldStream(t *testing.T) {
 	run := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runOnStore(a, addr, args, &out, &errb)
 		require.Equal(t, 0, code, "%v: %d %s", args, code, errb.String())
 	}
 	frame := func() string {

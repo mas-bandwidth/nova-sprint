@@ -98,7 +98,7 @@ func TestLiveLinuxWithNoUnitsIsAnEmptyHost(t *testing.T) {
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })
 
 	var out, errs bytes.Buffer
-	require.Equal(t, 0, a.run([]string{"live", "--json"}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--json"}, &out, &errs), errs.String())
 	assert.Contains(t, out.String(), `"agents":[]`)
 }
 
@@ -124,7 +124,7 @@ func TestLiveLinuxIgnoresMissingAgentsDir(t *testing.T) {
 
 	var out, errs bytes.Buffer
 	missing := filepath.Join(home, "Library", "LaunchAgents")
-	require.Equal(t, 0, a.run([]string{"live", "--json", "--agents-dir", missing}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--agents-dir", missing}, &out, &errs), errs.String())
 	assert.Contains(t, out.String(), `"agents":[]`)
 }
 
@@ -161,7 +161,7 @@ func TestLiveDarwinReadsDaemonsDirectory(t *testing.T) {
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })
 
 	var out, errs bytes.Buffer
-	require.Equal(t, 0, a.run([]string{"live", "--json", "--agents-dir", agents, "--daemons-dir", daemons}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--agents-dir", agents, "--daemons-dir", daemons}, &out, &errs), errs.String())
 	var m liveManifest
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
 	require.Len(t, m.Agents, 1)
@@ -187,6 +187,6 @@ func TestLiveDarwinStillRefusesMissingAgentsDir(t *testing.T) {
 
 	var out, errs bytes.Buffer
 	missing := filepath.Join(home, "no-such-dir")
-	assert.Equal(t, 1, a.run([]string{"live", "--agents-dir", missing}, &out, &errs))
+	assert.Equal(t, 1, runInto(a, []string{"live", "--agents-dir", missing}, &out, &errs))
 	assert.Contains(t, errs.String(), "the agents directory "+missing+" is not a directory that reads")
 }

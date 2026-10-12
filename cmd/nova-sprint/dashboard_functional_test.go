@@ -51,7 +51,7 @@ func TestDashboardServesThePageOnEveryListener(t *testing.T) {
 	var out, errb syncBuffer
 	done := make(chan int, 1)
 	go func() {
-		done <- ta.a.run([]string{"dashboard", "--listen", "127.0.0.1:0,localhost:0", "--pull", "127.0.0.1:0", "--every", "100ms"}, &out, &errb)
+		done <- runInto(ta.a, []string{"dashboard", "--listen", "127.0.0.1:0,localhost:0", "--pull", "127.0.0.1:0", "--every", "100ms"}, &out, &errb)
 	}()
 	re := regexp.MustCompile(`DASHBOARD listening on (http://\S+/)`)
 	pullRe := regexp.MustCompile(`DASHBOARD pull routes on (http://\S+/)`)

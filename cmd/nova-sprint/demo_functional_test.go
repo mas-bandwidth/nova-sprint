@@ -46,7 +46,7 @@ func demoBackup(t *testing.T, cards int, hand bool) ([]string, []string) {
 		{"add", "--stream", "demo", "--count", fmt.Sprint(cards), "--brief", passingBrief("demo-brief")},
 	} {
 		var out, errb bytes.Buffer
-		require.Equal(t, 0, coord.run(args, &out, &errb), "%v: %s", args, errb.String())
+		require.Equal(t, 0, runOnStore(coord, twin, args, &out, &errb), "%v: %s", args, errb.String())
 	}
 	keys, err := admin.Keys(ctx, "*").Result()
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestDemoLoadReplaysABackupUnderThisBuildsLibrary(t *testing.T) {
 	})
 	t.Cleanup(a.close)
 	var out, errb bytes.Buffer
-	require.Equal(t, 0, a.run(append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb), "%s\n%s", out.String(), errb.String())
+	require.Equal(t, 0, runInto(a, append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb), "%s\n%s", out.String(), errb.String())
 	t.Log(out.String())
 	require.Len(t, dirs, 1)
 	addr := srv.Addr()
@@ -144,13 +144,13 @@ func TestDemoLoadReplaysABackupUnderThisBuildsLibrary(t *testing.T) {
 	assert.Equal(t, addr, "127.0.0.1:"+st.Port)
 
 	errb.Reset()
-	assert.Equal(t, 1, a.run(append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb))
+	assert.Equal(t, 1, runInto(a, append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb))
 	assert.Contains(t, errb.String(), "a demo is up at "+addr)
 	assert.Contains(t, errb.String(), "run: nova-sprint demo stop --dir "+root)
 	assert.Len(t, dirs, 1, "a second load started a Redis")
 
 	out.Reset()
-	require.Equal(t, 0, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
+	require.Equal(t, 0, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
 	assert.Contains(t, out.String(), fmt.Sprintf("DEMO STOPPED addr=%s pid=%d removed=%s", addr, srv.PID(), dirs[0]))
 	assert.Error(t, c.Ping(ctx).Err(), "the demo's Redis still answers after demo stop")
 	assert.NoDirExists(t, dirs[0])
@@ -175,12 +175,12 @@ func TestDemoStopStopsItsRedisAndRemovesOnlyItsDirectory(t *testing.T) {
 	a := newApp(func(string) string { return "" })
 	t.Cleanup(a.close)
 	var out, errb bytes.Buffer
-	require.Equal(t, 0, a.run(append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb), "%s", errb.String())
+	require.Equal(t, 0, runInto(a, append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb), "%s", errb.String())
 	assert.Contains(t, out.String(), "sha256=checked", "the parts were not checked against SHA256SUMS")
 	st, err := readDemoState(root)
 	require.NoError(t, err)
 	require.True(t, demoProcessAlive(srv.PID()))
-	require.Equal(t, 0, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
+	require.Equal(t, 0, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
 	c := redis.NewClient(&redis.Options{Addr: srv.Addr(), MaxRetries: -1})
 	t.Cleanup(func() { _ = c.Close() })
 	assert.Error(t, c.Ping(context.Background()).Err(), "the demo's Redis still answers after demo stop")
@@ -200,7 +200,7 @@ func TestDemoLoadStartsItsOwnLoopbackRedis(t *testing.T) {
 	a := newApp(func(string) string { return "" })
 	t.Cleanup(a.close)
 	var out, errb bytes.Buffer
-	code := a.run(append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb)
+	code := runInto(a, append([]string{"demo", "load", "--dir", root}, parts...), &out, &errb)
 	st, err := readDemoState(root)
 	if err == nil {
 		t.Cleanup(func() {
@@ -214,7 +214,7 @@ func TestDemoLoadStartsItsOwnLoopbackRedis(t *testing.T) {
 	assert.Contains(t, out.String(), fmt.Sprintf("keys=%d", len(keys)))
 	assert.Equal(t, "127.0.0.1:"+st.Port, st.Addr)
 	assert.FileExists(t, filepath.Join(st.Dir, "redis.log"))
-	require.Equal(t, 0, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
+	require.Equal(t, 0, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
 	// the started server is this test's child: it is gone once reaped
 	assert.Eventually(t, func() bool { return !demoProcessAlive(st.PID) }, demoStopWait, 20*time.Millisecond, "the demo's Redis is still running")
 	assert.NoDirExists(t, st.Dir)

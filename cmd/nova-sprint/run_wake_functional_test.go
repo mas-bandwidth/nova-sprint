@@ -62,7 +62,7 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 	do := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := world.run(args, &out, &errb)
+		code := runOnStore(world, addr, args, &out, &errb)
 		require.Equal(t, 0, code, "%v: %d %s", args, code, errb.String())
 		return out.String()
 	}

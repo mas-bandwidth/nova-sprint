@@ -21,7 +21,7 @@ func twinAt(t *testing.T, file string, now time.Time, line string) (int, string,
 	a.now = func() time.Time { return now }
 	defer a.close()
 	var out, errb bytes.Buffer
-	code := a.run(split(line), &out, &errb)
+	code := runInto(a, split(line), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

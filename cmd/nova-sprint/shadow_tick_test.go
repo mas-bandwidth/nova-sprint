@@ -29,7 +29,7 @@ func TestShadowTickPlansOnTheStoreAndWritesNothing(t *testing.T) {
 
 	// run, not do: do beats every member first, a write of the harness's
 	var out, errb bytes.Buffer
-	code := ta.a.run([]string{"tick", "--shadow"}, &out, &errb)
+	code := runInto(ta.a, []string{"tick", "--shadow"}, &out, &errb)
 	require.Equal(t, 0, code, errb.String())
 	assert.Contains(t, out.String(), "SHADOW PLAN ")
 	assert.Contains(t, out.String(), "SHADOW TICK OK epoch=0 state=RUNNING")
@@ -40,7 +40,7 @@ func TestShadowTickPlansOnTheStoreAndWritesNothing(t *testing.T) {
 
 	out.Reset()
 	errb.Reset()
-	code = ta.a.run([]string{"tick", "--shadow", "--json"}, &out, &errb)
+	code = runInto(ta.a, []string{"tick", "--shadow", "--json"}, &out, &errb)
 	require.Equal(t, 0, code, errb.String())
 	plan, _, err := shadowLine(out.String())
 	require.NoError(t, err)

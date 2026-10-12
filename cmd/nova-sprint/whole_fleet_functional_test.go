@@ -122,7 +122,7 @@ func TestTheWholeFleetMovesInOneTickOnTheStore(t *testing.T) {
 	do := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := world.run(args, &out, &errb)
+		code := runOnStore(world, addr, args, &out, &errb)
 		require.Equal(t, 0, code, "%v: %d %s", args, code, errb.String())
 		return out.String()
 	}
@@ -167,7 +167,7 @@ func TestTheWholeFleetMovesInOneTickOnTheStore(t *testing.T) {
 			}
 		}
 		var pout, perr bytes.Buffer
-		code = world.run([]string{"play", "--every", "1ms", "--ticks", "1"}, &pout, &perr)
+		code = runOnStore(world, addr, []string{"play", "--every", "1ms", "--ticks", "1"}, &pout, &perr)
 		require.Equal(t, 0, code, "play: %d %s%s", code, pout.String(), perr.String())
 		if !dealt {
 			continue

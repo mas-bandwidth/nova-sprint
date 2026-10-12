@@ -55,7 +55,7 @@ func TestTheHelpsWalkthroughLandsACardForReal(t *testing.T) {
 		a := newApp(func(k string) string { return sprintEnv[k] })
 		a.gitEnv = env
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		a.close()
 		require.Equal(t, 0, code, "%s\n%s%s", line, out.String(), errb.String())
 		last = out.String()

@@ -69,7 +69,7 @@ func TestTheDecideLaneGradesRecordsAndAttachesOutcomes(t *testing.T) {
 	require.NoError(t, err)
 	var o, e bytes.Buffer
 	ta.beat()
-	code := ta.a.run(ta.withEpoch([]string{"finish", "--as", "m1", "s1-1.w1@" + gens["s1-1.w1"], "--report", "done", "--decision", string(raw)}), &o, &e)
+	code := runInto(ta.a, ta.withEpoch([]string{"finish", "--as", "m1", "s1-1.w1@" + gens["s1-1.w1"], "--report", "done", "--decision", string(raw)}), &o, &e)
 	require.Equal(t, 0, code, e.String())
 	code, _, errs := ta.do("finish --as m1 s1-2.w1@" + gens["s1-2.w1"] + " --decision '{\"id\":\"not one\"}'")
 	assert.Equal(t, 2, code)
@@ -136,7 +136,7 @@ func TestARefusedFinishRecordsNoDecision(t *testing.T) {
 		require.NoError(t, err)
 		var o, e bytes.Buffer
 		ta.beat()
-		code := ta.a.run(ta.withEpoch([]string{"finish", "--as", "m1", "s1-1.w1@" + gen, "--failed", "--report", "verdict not-done; x", "--decision", string(raw)}), &o, &e)
+		code := runInto(ta.a, ta.withEpoch([]string{"finish", "--as", "m1", "s1-1.w1@" + gen, "--failed", "--report", "verdict not-done; x", "--decision", string(raw)}), &o, &e)
 		return code, o.String() + e.String()
 	}
 	code, said := finish(2)

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -28,16 +27,11 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 	defer c.Close()
 	ctx := context.Background()
 	require.NoError(t, fn.Load(ctx, c))
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}
-	world, waiter := newApp(func(k string) string { return env[k] }), newApp(func(k string) string { return env[k] })
-	defer world.close()
-	defer waiter.close()
+	world := newFunctionalTestApp(t, addr)
+	waiter := newFunctionalTestApp(t, addr)
 	do := func(line string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := world.run(strings.Fields(line), &out, &errb)
-		require.Equal(t, 0, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
-		return out.String()
+		return world.runVerb(strings.Fields(line)...)
 	}
 	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "add --stream s1 --count 2", "fleet beat m1", "start",
 		// the first tick's fleet update (last in the tick) brings m1 up; the
@@ -59,7 +53,7 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 		do(l)
 	}
 	require.Contains(t, do("accept --read-ok"), "ACCEPT OK moved=2", "accept --read-ok on the store")
-	recordMerge(t, world, "s1", 10, "0")
+	recordMerge(t, world.app(), "s1", 10, "0")
 
 	// the coordinator waits; the tick that finds the sprint done wakes it
 	type waited struct {
@@ -68,9 +62,8 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 	}
 	got := make(chan waited, 1)
 	go func() {
-		var out, errb bytes.Buffer
-		code := waiter.run([]string{"inbox", "--wait", "--timeout", "60s"}, &out, &errb)
-		got <- waited{code, out.String(), errb.String()}
+		out, code, errb := waiter.runVerbOut("inbox", "--wait", "--timeout", "60s")
+		got <- waited{code, out, errb}
 	}()
 	blocked := false
 	for i := 0; i < 500 && !blocked; i++ { // the waiter is in its XREAD BLOCK

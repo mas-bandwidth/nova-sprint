@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -30,17 +29,10 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
-	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_ACTOR": "coordinator", "HOME": home, "XDG_CONFIG_HOME": t.TempDir()}
-	a := newApp(func(k string) string { return env[k] })
-	a.home = func() (string, error) { return home, nil }
-	defer a.close()
+	ta := newFunctionalTestApp(t, addr)
 	run := func(args ...string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := a.run(append(args, "--redis", addr), &out, &errb)
-		require.Equal(t, 0, code, "%v: %d %s%s", args, code, out.String(), errb.String())
-		return out.String()
+		return ta.runVerb(args...)
 	}
 	dir := t.TempDir()
 	run("init", "--readers", "reader-a,reader-b", "--members", "m1")

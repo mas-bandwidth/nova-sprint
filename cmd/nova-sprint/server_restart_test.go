@@ -72,7 +72,7 @@ func TestAServerRestartKeepsReadsWithLiveLeases(t *testing.T) {
 	}
 	var out, errb startBuffer
 	ta.beat()
-	code := ta.a.run([]string{"run", "--tick-deadline", "0"}, &out, &errb)
+	code := runInto(ta.a, []string{"run", "--tick-deadline", "0"}, &out, &errb)
 	require.Equal(t, exitReplaced, code, "%s%s", out.String(), errb.String())
 	require.Equal(t, 1, ticks)
 

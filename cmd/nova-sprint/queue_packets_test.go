@@ -231,10 +231,10 @@ func TestTheServerRefusesAMalformedPacketsAsk(t *testing.T) {
 	assert.Equal(t, 0, ok.Code, ok.Stderr)
 
 	var out, errb strings.Builder
-	assert.Equal(t, 2, r.a.run(split("queue --as m1 --json --packets 1 --have ../x --redis "+r.a.serveAddr), &out, &errb), "the verb refuses it too")
+	assert.Equal(t, 2, runInto(r.a, split("queue --as m1 --json --packets 1 --have ../x --redis "+r.a.serveAddr), &out, &errb), "the verb refuses it too")
 	assert.Contains(t, errb.String(), "--have is card ids")
 	errb.Reset()
-	assert.Equal(t, 2, r.a.run(split("queue --stream s1 --json --packets 1 --redis "+r.a.serveAddr), &out, &errb))
+	assert.Equal(t, 2, runInto(r.a, split("queue --stream s1 --json --packets 1 --redis "+r.a.serveAddr), &out, &errb))
 	assert.Contains(t, errb.String(), "--packets is a worker's")
 }
 

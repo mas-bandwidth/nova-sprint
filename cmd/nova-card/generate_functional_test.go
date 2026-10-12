@@ -3,12 +3,9 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -77,35 +74,8 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	require.Equal(t, 0, exit, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Contains(t, stdout, "CARDS OK dir="+admit+" cards=3 waves=1 tier=flash shared-paths=yes")
 
-	sprint := filepath.Join(t.TempDir(), "nova-sprint")
-	if runtime.GOOS == "windows" {
-		sprint += ".exe"
-	}
-	build := exec.Command("go", "build", "-o", sprint, "../nova-sprint")
-	build.Env = goenv.Clean(os.Environ())
-	o, err := build.CombinedOutput()
-	require.NoError(t, err, "building nova-sprint: %s", o)
-	// the seat's name is the role word, as in cmd/nova-swarm's member drive: add holds
-	// every brief to name no coordinator by name (personal-name), and a one-letter
-	// name is a word of any brief
-	env := append(goenv.Clean(os.Environ()), "NOVA_SPRINT_REDIS=mem:"+filepath.Join(t.TempDir(), "twin"), "NOVA_SPRINT_ACTOR=coordinator",
-		// the lander's clones go under the test's own directories (os.UserCacheDir)
-		"HOME="+t.TempDir(), "XDG_CACHE_HOME="+t.TempDir())
-	sprintRun := func(args ...string) (int, string) {
-		t.Helper()
-		cmd := exec.Command(sprint, args...)
-		cmd.Env = env
-		var b bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &b, &b
-		err := cmd.Run()
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return ee.ExitCode(), b.String()
-		}
-		require.NoError(t, err, "nova-sprint %s", strings.Join(args, " "))
-		return 0, b.String()
-	}
-	code, text := sprintRun("init", "--members", "m1", "--readers", "r1")
+	sprint := newBuiltSprint(t)
+	code, text := sprint.run("init", "--members", "m1", "--readers", "r1")
 	require.Equal(t, 0, code, text)
 	// the seat is proven before any coordinator verb runs, as the built binary
 	// wants of every name (docs/SPEC-SPRINT.md, "The push proof"): a folder push
@@ -115,23 +85,23 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 		{"seat", "push", "--harness", "claude", "--target", t.TempDir()},
 		{"seat", "push", "--sent", nonce},
 	} {
-		code, text = sprintRun(step...)
+		code, text = sprint.run(step...)
 		require.Contains(t, []int{0, 1}, code, "nova-sprint %s: %s", strings.Join(step, " "), text) // 1 is PUSH DOWN, not proven yet
 	}
-	code, text = sprintRun("seat", "pong", nonce)
+	code, text = sprint.run("seat", "pong", nonce)
 	require.Equal(t, 0, code, text)
-	code, text = sprintRun("seat", "push")
+	code, text = sprint.run("seat", "push")
 	require.Equal(t, 0, code, text)
 	require.Contains(t, text, "PUSH OK name=coordinator")
-	code, text = sprintRun("add", "--stream", "s", "--brief-dir", admit)
+	code, text = sprint.run("add", "--stream", "s", "--brief-dir", admit)
 	assert.Equal(t, 2, code, "without --allow-shared-paths the cards' shared ledger is refused: %s", text)
-	code, text = sprintRun("add", "--stream", "s", "--brief-dir", admit, "--allow-shared-paths")
+	code, text = sprint.run("add", "--stream", "s", "--brief-dir", admit, "--allow-shared-paths")
 	require.Equal(t, 0, code, text)
 	assert.Contains(t, text, "ADD OK stream=s cards=3 before=- moved=3 refused=0")
-	_, text = sprintRun("card", "serial-tests-cmd-b-b")
+	_, text = sprint.run("card", "serial-tests-cmd-b-b")
 	assert.Contains(t, text, "ready")
 	assert.NotContains(t, text, "  needs serial")
-	_, text = sprintRun("card", "serial-tests-cmd-a-a")
+	_, text = sprint.run("card", "serial-tests-cmd-a-a")
 	assert.Contains(t, text, "ready")
 	assert.NotContains(t, text, "  needs serial")
 }

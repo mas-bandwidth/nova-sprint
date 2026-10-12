@@ -485,7 +485,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	client.hookSock = ta.a.hookSock
 	run := func(line string) (int, string, string) {
 		var out, errb bytes.Buffer
-		code := client.run(strings.Fields(line), &out, &errb)
+		code := runInto(client, strings.Fields(line), &out, &errb)
 		return code, out.String(), errb.String()
 	}
 
@@ -493,7 +493,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var errb bytes.Buffer
-		code := client.run([]string{"hook"}, pw, &errb)
+		code := runInto(client, []string{"hook"}, pw, &errb)
 		_ = pw.CloseWithError(io.EOF)
 		done <- code
 	}()
@@ -1302,7 +1302,7 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var errb bytes.Buffer
-		code := client.run([]string{"hook"}, pw, &errb)
+		code := runInto(client, []string{"hook"}, pw, &errb)
 		_ = pw.Close()
 		done <- code
 	}()
@@ -1334,7 +1334,7 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 
 	// end the hook cleanly
 	var out, errs bytes.Buffer
-	code := client.run(strings.Fields("unhook"), &out, &errs)
+	code := runInto(client, strings.Fields("unhook"), &out, &errs)
 	require.Equal(t, 0, code, out.String()+errs.String())
 	select {
 	case code := <-done:

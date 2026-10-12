@@ -53,7 +53,7 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(strings.Fields(line), &out, &errb)
+		code := runOnStore(a, addr, strings.Fields(line), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -75,7 +75,7 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	// a bare merge on the store is refused and writes nothing: check stays clean and the
 	// landing below still moves both cards
 	var bare, bareErr bytes.Buffer
-	require.NotZero(t, a.run(strings.Fields("merge --stream s1 --batch 10 --epoch 0"), &bare, &bareErr), "a bare merge on a real store:\n%s%s", bare.String(), bareErr.String())
+	require.NotZero(t, runOnStore(a, addr, strings.Fields("merge --stream s1 --batch 10 --epoch 0"), &bare, &bareErr), "a bare merge on a real store:\n%s%s", bare.String(), bareErr.String())
 	require.Contains(t, bareErr.String(), "a bare merge records the queue's head as landed with no push, and a real store refuses it; nothing was changed")
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the refused bare merge:\n%s", out)

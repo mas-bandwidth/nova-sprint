@@ -151,7 +151,7 @@ func newFriendTrees(t *testing.T) friendTrees {
 
 func (f friendTrees) run(extra ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := f.ta.a.run(append([]string{"friend", "clean", "--root", f.root}, extra...), &out, &errb)
+	code := runInto(f.ta.a, append([]string{"friend", "clean", "--root", f.root}, extra...), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

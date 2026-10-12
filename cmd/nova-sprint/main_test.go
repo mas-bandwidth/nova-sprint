@@ -120,7 +120,7 @@ func (ta *testApp) beat() {
 func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	code := ta.a.run(ta.withEpoch(split(line)), &out, &errb)
+	code := runInto(ta.a, ta.withEpoch(split(line)), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

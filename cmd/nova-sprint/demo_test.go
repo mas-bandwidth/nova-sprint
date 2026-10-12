@@ -122,11 +122,11 @@ func TestDemoLoadRefusesADamagedBackupAndStartsNothing(t *testing.T) {
 	require.NoError(t, os.WriteFile(stem+".part-ab", []byte("twx"), 0o600))
 	a := newApp(func(string) string { return "" })
 	var out, errb bytes.Buffer
-	assert.Equal(t, 1, a.run([]string{"demo", "load", "--dir", root, stem + ".part-ab", stem + ".part-aa"}, &out, &errb))
+	assert.Equal(t, 1, runInto(a, []string{"demo", "load", "--dir", root, stem + ".part-ab", stem + ".part-aa"}, &out, &errb))
 	assert.Contains(t, errb.String(), "the backup is damaged or a part is missing, and nothing was started")
 	// a --sha256 given is checked the same
 	errb.Reset()
-	assert.Equal(t, 1, a.run([]string{"demo", "load", "--dir", root, "--sha256", strings.Repeat("0", 64), stem + ".part-aa"}, &out, &errb))
+	assert.Equal(t, 1, runInto(a, []string{"demo", "load", "--dir", root, "--sha256", strings.Repeat("0", 64), stem + ".part-aa"}, &out, &errb))
 	assert.Contains(t, errb.String(), "nothing was started")
 	assert.Zero(t, started, "a Redis was started for a damaged backup")
 	_, err := os.Stat(root)
@@ -156,7 +156,7 @@ func TestDemoStopRemovesOnlyTheRecordedDirectory(t *testing.T) {
 		require.NoError(t, writeDemoState(root, demoState{Addr: "127.0.0.1:1", PID: 4242, Dir: bad}))
 		a := newApp(func(string) string { return "" })
 		var out, errb bytes.Buffer
-		assert.Equal(t, 1, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb), "a recorded directory %q was taken", bad)
+		assert.Equal(t, 1, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb), "a recorded directory %q was taken", bad)
 		assert.Contains(t, errb.String(), "nothing was stopped or removed")
 		assert.DirExists(t, outside)
 		assert.DirExists(t, mine)
@@ -165,7 +165,7 @@ func TestDemoStopRemovesOnlyTheRecordedDirectory(t *testing.T) {
 	require.NoError(t, writeDemoState(root, demoState{Addr: "127.0.0.1:1", PID: 4242, Dir: mine}))
 	a := newApp(func(string) string { return "" })
 	var out, errb bytes.Buffer
-	require.Equal(t, 0, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
+	require.Equal(t, 0, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb), "%s", errb.String())
 	assert.Contains(t, out.String(), "DEMO STOPPED addr=127.0.0.1:1 pid=4242 removed="+mine)
 	assert.NoDirExists(t, mine)
 	assert.FileExists(t, filepath.Join(other, "sub", "f"))
@@ -175,7 +175,7 @@ func TestDemoStopRemovesOnlyTheRecordedDirectory(t *testing.T) {
 
 	// a second stop finds no demo
 	errb.Reset()
-	assert.Equal(t, 1, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb))
+	assert.Equal(t, 1, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb))
 	assert.Contains(t, errb.String(), "no demo is up")
 }
 
@@ -192,7 +192,7 @@ func TestDemoStopNeverSignalsAPidThatIsNotTheDemo(t *testing.T) {
 	require.NoError(t, writeDemoState(root, demoState{Addr: "127.0.0.1:1", PID: os.Getpid(), Dir: mine}))
 	a := newApp(func(string) string { return "" })
 	var out, errb bytes.Buffer
-	assert.Equal(t, 1, a.run([]string{"demo", "stop", "--dir", root}, &out, &errb))
+	assert.Equal(t, 1, runInto(a, []string{"demo", "stop", "--dir", root}, &out, &errb))
 	assert.Contains(t, errb.String(), "is not the demo's Redis")
 	assert.Zero(t, killed)
 	assert.DirExists(t, mine)
@@ -237,10 +237,10 @@ func TestDemoTakesNoRedis(t *testing.T) {
 	}, nil, nil)
 	a := newApp(func(string) string { return "" })
 	var out, errb bytes.Buffer
-	assert.Equal(t, 2, a.run([]string{"demo", "load", "--dir", root, "--redis", "127.0.0.1:6379", "x.xz.part-aa"}, &out, &errb))
+	assert.Equal(t, 2, runInto(a, []string{"demo", "load", "--dir", root, "--redis", "127.0.0.1:6379", "x.xz.part-aa"}, &out, &errb))
 	assert.Contains(t, errb.String(), "takes no --redis")
 	errb.Reset()
-	assert.Equal(t, 2, a.run([]string{"demo", "stop", "--dir", root, "--redis", "127.0.0.1:6379"}, &out, &errb))
+	assert.Equal(t, 2, runInto(a, []string{"demo", "stop", "--dir", root, "--redis", "127.0.0.1:6379"}, &out, &errb))
 	assert.Contains(t, errb.String(), "takes no --redis")
 	assert.NoDirExists(t, root)
 }
