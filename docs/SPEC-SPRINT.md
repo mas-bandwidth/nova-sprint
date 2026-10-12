@@ -5127,6 +5127,15 @@ deadline does. A judgment whose review time has not come is quiet: not overdue, 
 listed after every judgment that is not quiet, marked `quiet until=<time>`, for the
 whole period, so it does not sit at the top of every inbox read.
 
+The review time and running-time origin are persisted with the judgment. A
+server process restart or hook reconnect does not reset either one: time while
+the sprint machine is RUNNING counts, including time the server process was
+down, and spans while the machine is STOPPED do not. The hook delivers only
+eligible judgments. Its transport acknowledgement is durable across sessions
+and process restarts; when a wait expires, that judgment is a fresh delivery
+obligation, while an acknowledged sibling in the same inbox group stays
+acknowledged.
+
 The machine's tick writes its own judgments (section 14): cannot ask, fewer than two readers up, no fleet
 member is up, a work card or a read card past its deadline, a stream with no
 merge step past its deadline, an invariant is broken, a stall (one
@@ -5855,23 +5864,83 @@ rules` prints the same answers, read-only: one `RULE` line per judgment and subj
 
 A failure many cards share is the fleet's, not the card's: when `RuleSameFailureCards` (3) or
 more cards hold the same failure class now (in review with their work failed that way, or
-ready at their redeal bound with that class), `failed` and `bound` leave each to a mind
-(`the same failure on <n> cards (<class>): the fleet's, not the card's`) rather than raise
-every card a tier for a failure no tier changes, a toolchain a machine cannot run or a
-provider down (`TestTheSameFailureOnManyCardsIsLeftToAMind`). Every other type stays a
-judgment. `run` and `tick` answer
-by rule unless `--answer-rules=false` (a `tick` by hand only with `--answer-rules`); nova-config's sprint row `answer_rules_off` (a list of
-`base-gate, bound, brief-defect, conflict, failed, friend-take, hold-need, late, read-broken,
-read-late`, applied to `sprint:answer_rules_off` and read with the routes) turns single
-rules off (`TestEachRuleHasAnOffSwitch`, `TestAMechanicalJudgmentIsAnsweredByItsRule`);
-`widen` is turned off by that key too, though nova-config's enum does not list it yet.
-`view coordinator` counts what the rules saved the seat: its summary line ends `| rules
-<n>/h`, and its counts carry `rules`, the cards a rule answered in the last hour by the
-`rule_answer` each move writes (`sprint.RuleAnsweredWithin`; a card answered twice in the
-hour counts once). The tests are internal/sprint/store/rule_answers_test.go, internal/sprint/rules_read_test.go,
-internal/sprint/judgment_rules_test.go, internal/sprint/widen_test.go,
-internal/sprint/rules_conflict_test.go and cmd/nova-sprint/base_gate_rule_test.go; the model is tla/SprintRules.tla (`RuleAnswersBounded`,
-`LadderClimbs`, `WaitOnce`, `BaseStopsOnThird`, `ReadAnswersBounded`, `WidensWiden`, `OutsideNeverBound`).
+ready at their redeal bound with that class), `failed` does not raise every card a tier for a
+failure no tier changes, a toolchain a machine cannot run or a provider down: below the
+brief's bound it reworks each on its tier with its report as the fix (`the same failure on
+<n> cards (<class>): the fleet's, not the card's` in its why), dealt round the fleet away from
+the member that failed it, each attempt counted toward the bound; a brief that pins its model
+or the frontier tier, where the ladder has no rung, is reworked the same way
+(`TestTheSameFailureOnManyCardsIsReworkedOnItsTier`). `bound` still leaves a shared failure at
+the bound to a mind. Every other type stays a judgment.
+
+#### Judgments that hold a card
+
+Failed work and broken reads are never left waiting on the seat below the bound (the owner,
+2026-10-11, after about two hours in which the seat answered `work came back failed` and `a
+reader found it broken` with `wait <id> --for 60m`, again and again, and about 22 of 42 review
+cards froze while the fleet idled: "i would very much like it if this was not possible to
+happen again"). Two rules make it so, the tool and not the seat's discipline:
+
+- **Failed work and broken reads rework themselves.** Work that came back failed with a report,
+  and a broken read with a finding, is reworked by the next tick with the report or the
+  finding as its fix (as `rework <card>` with no `--fix`): `failed` and `read-broken` above,
+  up to the card's attempt bound (`sprint.AtBriefBound`, the sprint's `attempts`). Only past
+  the bound (`the brief is wrong`, a card that reached its bound), a brief defect, a friend's
+  failure no harness class names, failed work with no report, and a broken verdict with no
+  finding stay the seat's (`TestFailedWorkReworksItselfWithItsFinding`,
+  `TestABrokenReadReworksItself`, `TestPastTheBoundItStaysASeatJudgment`).
+- **A wait can no longer park a card.** `wait` is refused, naming the action instead, on every
+  judgment that holds a card from progressing; the one table is `sprint.WaitRefused`
+  (internal/sprint/wait_refused.go), checked by the kind's name in both of wait's paths (the
+  tick-kept hold and the review time), and no kind in it offers `wait` among its decisions
+  (`NCross` and `NBaseRed` no longer do, `NBound` no longer does):
+  work came back failed, a reader found it broken, ready to accept, reads exhausted, stranded in
+  review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
+  dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
+  stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), and a stall that
+  names a card (`sprint.WaitRefusedWhenItNamesACard`: it holds the card in place), cannot ask, the
+  base branch is gone, a read branch missing, no route serves the tier, a ready card is not dealt,
+  and a merging card names a base not on origin. The kinds that hold a card are derived from the
+  code (every kind whose decisions offer a verb on a card, and every kind a rework discharges),
+  so a new kind is refused or named an exception. The exceptions, each with why
+  (`sprint.WaitAllowedOnACard`): a stall that names no card, sentinel reached and the fleet is
+  starving (stops the coordinator placed), and the two lateness alarms (a work or read card past
+  its deadline: the card keeps working under its holder and the late rules answer it; a wait
+  quiets the alarm, not the card). The inbox prints decisions by the same rule the wait
+  verb applies (`sprint.WaitRefusalOn`), so no decision list, a note's own included, offers a
+  wait the judgment refuses (`TestAStallRefusesWaitOnlyWhenItNamesACard`,
+  `TestNoPerNoteDecisionOffersAWaitItsVerbRefuses`). `wait` stays the answer to
+  the informational kinds: the alarms, the status and presence conditions the tick keeps, a
+  lateness (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestEveryKindThatHoldsACardRefusesWait`,
+  `TestNoJudgmentOffersADecisionItsVerbRefuses`, `TestWaitByGroupIsRefusedOnFailedWork`,
+  `TestWaitByAliasIsRefusedOnFailedWork`, `TestWaitStillWorksOnAnAlarm`).
+- **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
+  recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
+  but landed, each card counted only while its last finish is that failure (`last_finish`,
+  `<attempt>:<failed|ok|capped>`, written by every finish; never its column), in one tick or
+  one a tick and with the rules on or off, the deadlines part of every tick raises one
+  sprint-level judgment, `the same failure on many cards: the fleet's, not the card's`, naming
+  the failure and the cards, at their first failure, never per card; it takes no wait, is acked
+  once its cause is mended, and is not raised again for that failure while it is open, nor after
+  its ack until a new failure of it finishes (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
+  Rollout: the alarm counts finishes recorded after the upgrade that writes `last_finish`; a card
+  persisted before it is not counted until its next finish, if any, writes the field
+  (`TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish`).
+  A brief that pins its model or the frontier tier is reworked on its tier the same way
+  (`TestAPinnedModelFailureReworksOnItsTier`, `TestAFrontierTierFailureReworksOnItsTier`).
+
+The push `judgments wait on the coordinator past their deadline` also names the cards the open
+judgments hold now (`<n> cards held by open judgments`, `sprint.CardsHeldByJudgments`: the
+cards on the work table an open judgment of the table names, and the cards in review and
+merging of a stream a stream-level one stops; `TestAStoppedStreamCountsTheCardsItHolds`). The
+model is tla/SprintRules.tla, Part "answers": `FailedWithAFindingNeverParked` (failed work with
+a report, and a broken read with a finding, below the bound is reworked or finished, never held
+on the seat) and `IdenticalIsBound` (the second identical failure is the bound's, never a rework
+on its tier), with the reversed witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
+left to the seat), `MCSprintRulesAnswersBrokenNoReportRework` (failed work with no report
+reworked with no fix, `ReworkHasAFix`), `MCSprintRulesAnswersBrokenIdenticalRework` (the second
+identical failure reworked on its tier) and `MCSprintRulesAnswersReachMindJudges` (a mind still
+answers a card past the bound or with nothing to take as a fix).
 
 #### A broken read with a finding reworks the card
 
@@ -6753,10 +6822,10 @@ read of the store and a write of the state file, never run by the sprint's serve
 (the owner, 2026-10-10, after the seat answered PROOF files by hand while nothing in its session read the pushes, and about 1,200 went unread for hours: "You MUST be required to 'hook' in as coordinator." "This is not optional. Every command fails with 'You must hook in first'." "Until you call 'nova-sprint hook'." "and then when you stop, you go 'nova-sprint unhook'." "And you must PROVE YOU HAVE HOOKED IN before it will allow you to do anything.") It replaces the push proof: `seat watch`, the `PROOF-<nonce>` files and `seat pong` are gone. The model is `tla/SeatHook.tla`; the code is `cmd/nova-sprint/hook.go` and `internal/sprint/hook.go`.
 
 - **The subscription is the server's.** The seat's session runs `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set. It opens one connection to the server's loopback listener (`GET /api/hook?as=<seat>`, upgraded to `nova-sprint-hook`; the fleet's listener refuses it) and holds it. Only the seat's holder hooks in; a second hook replaces the first, whose connection is closed with `HOOK BYE ... replaced`. The server writes its word in the store key `seat-hook` (`sprint.HookRecord`: name, subscription id, state `hooked`, `away` or `gone`, since, the last proof, the time it is live until, why it ended, and the pushes not acknowledged with the oldest), and only the server writes it.
-- **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <c>: answer now, before anything else: nova-sprint hook --prove <c> --actor <seat>`, and for each judgment or note to the coordinator not yet sent on this subscription, `PUSH <id> <group>: read it, then acknowledge: nova-sprint hook --ack <id> --actor <seat>` with the group's text indented under it. The server looks every 2 seconds. A new subscription is sent every open judgment the seat has not acknowledged on an earlier one.
-- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the seat's last act. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
-- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone. Proven, the hook stays live while its seat acts over the connected stream (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`). The hook lapses only when its stream ends (gone at once, as before), or when its seat is silent past `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed"), a `HOOK BYE`, the record `gone` with the reason, and the owner told; the proof of the next hook acknowledges that judgment. A reconnect replays only the pushes not acknowledged: the server keeps every push the seat acknowledged on any subscription and sends none of them again. (`HookStays`, `CommandSafe`; the model's liveness of the hook under acts is owed to the v1.2.16 TLA+ pass.)
-- **Acknowledgement.** `nova-sprint hook --ack <id>` acknowledges every push up to that id, over the same connection. A push delivered and unacknowledged for 10 minutes blocks every coordinator command, naming it (`AckedOrBlocking`): `You must acknowledge push <id> first (<group>, delivered <time>, unacknowledged past 10m0s; <n> unacknowledged): read it in the hook's stream, then run: nova-sprint hook --ack <id>`.
+- **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <c>: answer now, before anything else: nova-sprint hook --prove <c> --actor <seat>`, and for each open judgment or note, `PUSH <id> <judgment> session=<token>: read it, then acknowledge: nova-sprint hook --ack <id> --session <token> --actor <seat>`, with the text indented under it. Push IDs come from a persistent monotone sequence, preserved across server restart, reconnect and epoch reset. A pre-upgrade record may have no saved sequence; session-token validation also protects that migration from old ACKs. On reconnect, the hook replays each durable unacknowledged judgment with a fresh, higher ID and the new connection's session token; acknowledge only from the command printed on the current connection. The server looks every 2 seconds.
+- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the last act. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
+- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): the recorded `Live` therefore trails the last act's by at most 30 seconds and one look (2 seconds), a bound, never a lapse. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open. Replay and the durable acknowledgement are the stream's and the acknowledgement's, above and below (`HookStays`, `SingleLapse`, `CommandSafe`; tla/SeatHook.tla, Part "cadence").
+- **Acknowledgement.** `nova-sprint hook --ack <id> --session <token>` acknowledges every push up to that ID, over the same connection and only for the session token printed on its `PUSH` line. Missing `--session` is refused locally with `hook --ack requires --session <token> from the PUSH line; nothing was changed`; a stale or foreign token is refused by the server with `this acknowledgement belongs to another hook session; copy the session token from the PUSH line`. Both refusals leave the durable acknowledgement state unchanged. Numeric-only ACKs from pre-upgrade clients are refused, so an old client cannot acknowledge new work by guessing an ID. After reconnect, read the replayed `PUSH` line and copy its current token. A push delivered and unacknowledged for 10 minutes blocks every coordinator command, naming it (`AckedOrBlocking`): `You must acknowledge push <id> first (<judgment>, delivered <time>, unacknowledged past 10m0s; <n> unacknowledged): read it in the hook's stream, then run the session-bound command shown there.`
 - **The gate.** Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` (exit 1, nothing else printed, nothing written) unless the record holds a live, proven hook for the seat's holder: every coordinator verb, and every read and seat verb the holder runs (`view`, `card`, `where`, `inbox`, `seat check`, `seat push`, `coordinator <name>`, ...). There is no override flag. The workers' verbs (`take`, `finish`, `progress`, `read`, the beats, `lane take`, `remind`), the reports, the machine's verbs, `hook` and `unhook`, anyone else's reads, and the first `init` on a store with no holder are never refused. The gate runs before the verb (`hookFirst` in cmd/nova-sprint/main.go's run), on the server for a verb sent there, and again where the verb opens the store (`coordinatorOnly`).
 - **The end.** `nova-sprint unhook` ends the hook over its connection: the record says `away`, the owner is told, and the hook exits 0 (`HOOK ENDED`). A seat that drops without unhook (the hook process ends, the connection breaks, an interrupt) is recorded `gone` at once and the owner told; the hook exits 1 (`HOOK DROPPED`). A server that starts finds a record an earlier server left `hooked`, records it `gone` (the subscription went with that server) and tells the owner. The owner is told by one bus message (`seat <name> is away|gone`) and the server's `SEAT HOOK` line.
 - **Status.** `view coordinator`'s summary ends `| hook state=<s> proven=<RFC3339|-> unacked=<n>`; `seat check` draws `MACHINERY hook OK holder=<seat> state=hooked unacked=<n> proven=<age> ago` or `DOWN ... proven=- why="<the gate's line>" remedy="nova-sprint hook"`. The record is a key of the sprint, and teardown removes it.

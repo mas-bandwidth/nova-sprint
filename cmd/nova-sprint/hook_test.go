@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http/httptest"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // shortSock is where a test's hook takes its session's lines: a directory of its own,
@@ -86,10 +88,11 @@ func (ta *testApp) refusedFirst(line, want string) {
 
 // hookClient is the session's end of a subscription the test runs on a pipe.
 type hookClient struct {
-	t     *testing.T
-	conn  net.Conn
-	lines chan hookMsg
-	n     int
+	t       *testing.T
+	conn    net.Conn
+	lines   chan hookMsg
+	n       int
+	session string
 }
 
 func (ta *testApp) hookOn(name string) *hookClient {
@@ -102,6 +105,9 @@ func (ta *testApp) hookOn(name string) *hookClient {
 		for sc.Scan() {
 			var m hookMsg
 			if json.Unmarshal(sc.Bytes(), &m) == nil {
+				if m.T == "hello" {
+					c.session = m.Session
+				}
 				c.lines <- m
 			}
 		}
@@ -128,6 +134,13 @@ func (c *hookClient) next(t string) hookMsg {
 
 // say sends one of the session's lines and returns the server's answer.
 func (c *hookClient) say(m hookMsg) hookMsg {
+	if m.T == "ack" && m.Session == "" {
+		m.Session = c.session
+	}
+	return c.sayRaw(m)
+}
+
+func (c *hookClient) sayRaw(m hookMsg) hookMsg {
 	c.t.Helper()
 	c.n++
 	m.Req = "q" + string(rune('a'+c.n))
@@ -213,9 +226,12 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 	env["NOVA_SPRINT_ACTOR"] = name
 
 	// the hook's own verbs are never refused by the gate
-	code, _, errs = ta.doLined("hook --ack 1")
+	code, _, errs = ta.doLined("hook --ack 1 --session old-session --actor " + name)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no hook is running on this machine for "+name)
+	code, _, errs = ta.doLined("hook --ack 1 --actor " + name)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errs, "requires --session <token>")
 	code, _, errs = ta.doLined("unhook")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no hook is running on this machine for "+name)
@@ -235,8 +251,8 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 // refused; the right one lets every command run. Each judgment is pushed with its id;
 // one left unacknowledged past its bound refuses every command naming it, until it is
 // acknowledged (AckedOrBlocking). No challenge is asked again on a connected hook; a
-// seat that acts keeps its hook (HookStays), and one silent past its bound lapses:
-// recorded gone, and the owner told.
+// hook with acts stays (HookStays), and one with no act past its bound lapses: recorded
+// gone, and the owner told.
 func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	t.Parallel()
 	const name = "hook-b"
@@ -291,13 +307,25 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	assert.Equal(t, 0, r.Unacked)
 	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
 
-	// silent past its bound, it lapses: gone, and the owner told
+	// The due set grew from two to three when s2 was added, which starts a new computed
+	// machine:stopped episode and therefore a distinct push, not the earlier acknowledged
+	// group; it stays unacknowledged.
+	ta.step(time.Minute)
+	s.look(context.Background())
+	computed := c.next("push")
+	assert.Equal(t, "machine:stopped", computed.What)
+	assert.Greater(t, computed.ID, p.ID)
+	rec, haveRecord := ta.hookRecord()
+	require.True(t, haveRecord)
+	assert.Equal(t, 1, rec.Unacked, "the later computed push remains independently unacknowledged")
+
+	// no act past its bound, it lapses: gone, and the owner told
 	ta.step(sprint.HookSilentBound + time.Second)
 	s.look(context.Background())
 	bye := c.next("bye")
-	assert.Contains(t, bye.Why, "silent past")
+	assert.Contains(t, bye.Why, "no act past")
 	rec = ta.waitHook(sprint.HookGone)
-	assert.Contains(t, rec.Why, "the seat was silent past 15m0s")
+	assert.Contains(t, rec.Why, "no act past 15m0s")
 	ta.refusedFirst("add --stream s3 --count 1 --one", sprint.HookFirst)
 	ta.mu.Lock()
 	sent := append([]string(nil), subjects(ta)...)
@@ -493,8 +521,8 @@ func (c *hookClient) drained() []hookMsg {
 // The seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the
 // seat's stream stayed connected and the seat kept acting; every lapse refused every
 // coordinator verb and replayed ~100 pushes. A hooked seat that acts once a minute (a verb,
-// an acknowledgement) for 40 minutes of sprint clock never lapses: no challenge after the
-// first, no bye, every verb runs, the record live past each act.
+// an acknowledgement, the client's keepalive) for 40 minutes of sprint clock never lapses:
+// no challenge after the first, no bye, every verb runs, the record live past each act.
 func TestAConnectedSeatThatActsNeverLapses(t *testing.T) {
 	t.Parallel()
 	const name = "hook-live-a"
@@ -512,13 +540,13 @@ func TestAConnectedSeatThatActsNeverLapses(t *testing.T) {
 			require.NotEqual(t, "challenge", m.T, "minute %d: a challenge asked again on a connected hook", minute)
 			require.NotEqual(t, "bye", m.T, "minute %d: the hook lapsed: %s", minute, m.Why)
 			if m.T == "push" {
-				require.Equal(t, "ok", c.say(hookMsg{T: "ack", ID: m.ID}).T, "minute %d: the seat answers its push", minute)
+				require.Equal(t, "ok", c.say(hookMsg{T: "ack", ID: m.ID, Session: m.Session}).T, "minute %d: the seat answers its push", minute)
 			}
 		}
 		if minute%2 == 0 {
 			ta.lined(func() { ta.ok("where") }) // a verb of the seat's
 		} else {
-			c.tell(hookMsg{T: "alive"}) // the client's own keepalive: no answer
+			c.tell(hookMsg{T: "alive"}) // the client's keepalive: the transport is alive, no answer
 		}
 		rec, _ := ta.hookRecord()
 		require.Equal(t, sprint.HookHooked, rec.State, "minute %d", minute)
@@ -528,13 +556,30 @@ func TestAConnectedSeatThatActsNeverLapses(t *testing.T) {
 	assert.True(t, rec.Live.After(ta.a.now().Add(sprint.HookSilentBound-2*time.Minute)), "live a bound past the last act: %s", rec.Live)
 }
 
-// A connected seat silent past the bound (no verb, no answer, no keepalive) lapses once: one
-// bye, the record gone, one judgment of the lapse, the owner told once; a later look writes
-// nothing more; a new hook's proof closes the judgment.
+// lapsesOf is the open lapse judgments of the store, by the seat each names (Who).
+func lapsesOf(ta *testApp) map[string]int {
+	out := map[string]int{}
+	ta.lined(func() {
+		st, err := ta.a.store(common{redis: "mem:0"})
+		require.NoError(ta.t, err)
+		open, err := st.B.OpenNotes(context.Background())
+		require.NoError(ta.t, err)
+		for _, o := range open {
+			if o.Note.Type == sprint.NHookLapsed {
+				out[o.Note.Who]++
+			}
+		}
+	})
+	return out
+}
+
+// A connected hook with no act past the bound (no verb, no answer, not even the client's
+// keepalive) lapses once: one bye, the record gone, one judgment of the lapse naming the
+// seat, the owner told once; a later look writes nothing more; the same seat's next proof
+// closes its judgment.
 func TestASilentSeatLapsesOnceAndSaysSo(t *testing.T) {
 	t.Parallel()
 	const name = "hook-live-b"
-	const lapsed = "the seat's hook lapsed: the seat was silent past its bound" // sprint.NHookLapsed
 	ta, _ := hookSprint(t, name)
 	c := ta.hookOn(name)
 	c.next("hello")
@@ -552,29 +597,14 @@ func TestASilentSeatLapsesOnceAndSaysSo(t *testing.T) {
 	for _, m := range c.drained() {
 		if m.T == "bye" {
 			byes++
-			assert.Contains(t, m.Why, "silent past")
+			assert.Contains(t, m.Why, "no act past")
 		}
 	}
 	assert.Equal(t, 1, byes, "one bye")
 	rec = ta.waitHook(sprint.HookGone)
-	assert.Contains(t, rec.Why, "silent past")
+	assert.Contains(t, rec.Why, "no act past")
 	s.look(context.Background())
-	lapses := func() int {
-		n := 0
-		ta.lined(func() {
-			st, err := ta.a.store(common{redis: "mem:0"})
-			require.NoError(t, err)
-			open, err := st.B.OpenNotes(context.Background())
-			require.NoError(t, err)
-			for _, o := range open {
-				if o.Note.Type == lapsed {
-					n++
-				}
-			}
-		})
-		return n
-	}
-	assert.Equal(t, 1, lapses(), "one judgment of the lapse")
+	assert.Equal(t, map[string]int{name: 1}, lapsesOf(ta), "one judgment of the lapse, naming the seat")
 	ta.mu.Lock()
 	told := 0
 	for _, x := range subjects(ta) {
@@ -588,7 +618,32 @@ func TestASilentSeatLapsesOnceAndSaysSo(t *testing.T) {
 	d := ta.hookOn(name)
 	d.next("hello")
 	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
-	assert.Equal(t, 0, lapses(), "a new hook's proof answers the lapse")
+	assert.Empty(t, lapsesOf(ta), "the seat's next proof answers its lapse")
+}
+
+// A seat proving in answers its own lapse, never another seat's (Stella's read of #124):
+// the earlier holder's lapse judgment stays open when a new holder proves a hook. Before,
+// closeLapsed acknowledged every open lapse, whoever it named.
+func TestAnotherSeatsProofLeavesALapseOpen(t *testing.T) {
+	t.Parallel()
+	const first, second = "hook-lapse-a", "hook-lapse-b"
+	ta, _ := hookSprint(t, first)
+	c := ta.hookOn(first)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	ta.step(sprint.HookSilentBound + time.Second)
+	s.look(context.Background())
+	ta.waitHook(sprint.HookGone)
+	require.Equal(t, map[string]int{first: 1}, lapsesOf(ta), "the first seat's lapse")
+
+	// the seat moves to another holder, who hooks in and proves
+	ta.lined(func() { require.NoError(t, ta.m.SetCoordinator(context.Background(), second)) })
+	d := ta.hookOn(second)
+	d.next("hello")
+	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
+	assert.Equal(t, map[string]int{first: 1}, lapsesOf(ta), "another seat's proof leaves the first seat's lapse open")
 }
 
 // step moves the test's clock.
@@ -596,6 +651,501 @@ func (ta *testApp) step(d time.Duration) {
 	ta.mu.Lock()
 	ta.now = ta.now.Add(d)
 	ta.mu.Unlock()
+}
+
+// restartTestServer creates a fresh app over the same persisted sprint, like the
+// server process restarting while its store remains available.
+func (ta *testApp) restartTestServer() {
+	ta.t.Helper()
+	old := ta.a
+	a := newApp(old.getenv)
+	a.now = old.now
+	a.sleep = old.sleep
+	a.backend = old.backend
+	a.hookSock = old.hookSock
+	a.serveAddr = old.serveAddr
+	a.bus = old.bus
+	a.meter = old.meter
+	a.mergeQueue = old.mergeQueue
+	a.checkTwin = old.checkTwin
+	ta.a = a
+	a.hookServerStart(context.Background())
+}
+
+func collectHookPushes(c *hookClient) []hookMsg {
+	c.t.Helper()
+	var pushes []hookMsg
+	for {
+		select {
+		case m, ok := <-c.lines:
+			if !ok {
+				return pushes
+			}
+			if m.T == "push" {
+				pushes = append(pushes, m)
+			}
+		case <-time.After(250 * time.Millisecond):
+			return pushes
+		}
+	}
+}
+
+// hookCIRedOnce records one CI-red notification as a replay fixture. It does not
+// exercise the wait command or claim that this card-holding judgment is waitable.
+func (ta *testApp) hookCIRedOnce(card, run string) {
+	ta.t.Helper()
+	ta.a.sleep(time.Second)
+	ta.ok("ci " + card + " --red --run " + run)
+}
+
+func (ta *testApp) hookTick() {
+	ta.t.Helper()
+	st, err := ta.a.store(common{redis: "mem:0", actor: sprint.MachineActor})
+	require.NoError(ta.t, err)
+	_, err = st.Tick(context.Background())
+	require.NoError(ta.t, err)
+}
+
+// A running-time wait on a timer judgment survives a server restart. A separate
+// card-holding invariant remains open exactly once; it is never used as a wait.
+func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {
+	t.Parallel()
+	const name = "hook-wait-restart"
+	ta, _ := hookSprint(t, name)
+	first := ta.hookOn(name)
+	first.next("hello")
+	challenge := first.next("challenge").Challenge
+	require.Equal(t, "ok", first.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	ta.ok("start")
+	ta.timerOnce("restart-look")
+	// timerOnce restores a stopped fixture after the reminder tick; start it
+	// again before measuring the wait over running time.
+	ta.ok("start")
+	// A second live work card for the same primary is a stable rule-2 invariant
+	// violation; keep that card-holding judgment open to check it is not duplicated.
+	st, err := ta.a.store(common{redis: "mem:0", actor: name})
+	require.NoError(t, err)
+	snap, err := st.Load(context.Background(), []string{sprint.Fleet}, nil)
+	require.NoError(t, err)
+	_, err = ta.m.Apply(context.Background(), ntable.BatchManifest{Schema: 1, Table: st.Names.Table(sprint.Fleet), Epoch: fmt.Sprint(snap.Epoch),
+		ExpectedTableRevision: fmt.Sprint(snap.Fleet.Revision), OperationID: "outside-invariant",
+		Members: []ntable.BatchMemberEntry{{ID: "s1-1.w9", Expect: &ntable.MemberExpect{Absent: true},
+			Create: &ntable.MemberCreateOp{Row: "m2", Col: sprint.Working, Score: 1}, Set: map[string]string{"kind": "work", "primary": "s1-1", "gen": "1"}}}})
+	require.NoError(t, err)
+	ta.ok("tick")
+	var invariant sprint.Group
+	for _, g := range ta.inboxGroups() {
+		if g.Kind == sprint.Judgment && g.Type == sprint.NInvariant {
+			invariant = g
+			break
+		}
+	}
+	require.NotEmpty(t, invariant.ID, "the tick-check invariant judgment: %+v", ta.inboxGroups())
+	held := ta.group(sprint.NTimer, "")
+	ta.ok("wait " + held.ID + " --for 60m")
+	held = ta.group(sprint.NTimer, "")
+	require.True(t, held.Quiet, "wait persisted the timer review: %+v", held)
+	reviewUntil := ta.a.now().Add(60 * time.Minute)
+	require.Equal(t, reviewUntil, held.Due, "wait persisted the timer review time: %+v", held)
+	// The server and hook come back 15m later, inside the stated running-time hold.
+	beforeRestart := ta.a.now()
+	ta.step(15 * time.Minute)
+	require.Equal(t, beforeRestart.Add(15*time.Minute), ta.a.now(), "the running clock advanced through the hold")
+	require.True(t, ta.a.now().Before(reviewUntil), "the timer review remains in the future after the clock advance")
+	require.NoError(t, first.conn.Close())
+	ta.waitHook(sprint.HookGone)
+	ta.restartTestServer()
+	second := ta.hookOn(name)
+	second.next("hello")
+	challenge = second.next("challenge").Challenge
+	require.Equal(t, "ok", second.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("tick")
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	restartedHeld := ta.group(sprint.NTimer, "")
+	assert.True(t, restartedHeld.Quiet, "the timer remains quiet after server restart: %+v", restartedHeld)
+	assert.Equal(t, reviewUntil, restartedHeld.Due, "the timer review survived restart: %+v", restartedHeld)
+	replayed := collectHookPushes(second)
+	for _, p := range replayed {
+		assert.NotEqual(t, held.ID, p.What, "a held timer judgment is not raised again after restart")
+	}
+	notes, _, err := ta.m.NotesSince(context.Background(), "", 10000)
+	require.NoError(t, err)
+	var raised int
+	for _, n := range notes {
+		if n.Kind == sprint.Judgment && n.Type == sprint.NInvariant && n.What == invariant.What {
+			raised++
+		}
+	}
+	assert.Equal(t, 1, raised, "the tick-check invariant was not raised again after restart: %+v", notes)
+}
+
+// A new hook session replays only groups whose pushes remain unacknowledged;
+// a held group and an already acknowledged push are not sent again.
+func TestAReconnectReplaysOnlyUnackedPushesInMemory(t *testing.T) {
+	t.Parallel()
+	const name = "hook-reconnect"
+	ta, _ := hookSprint(t, name)
+	first := ta.hookOn(name)
+	first.next("hello")
+	challenge := first.next("challenge").Challenge
+	require.Equal(t, "ok", first.say(hookMsg{T: "prove", Challenge: challenge}).T)
+
+	ta.lined(func() { ta.ok("add --stream s1 --count 1 --one") })
+	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
+	ta.lined(func() { ta.ok("add --stream s3 --count 1 --one") })
+	ta.deal(3)
+	ta.ok("start")
+	for _, id := range []string{"s1-1", "s2-1", "s3-1"} {
+		card := ta.fleetCard(id + ".w1")
+		require.NotNil(t, card)
+		ta.ok("take --as " + card.Row + " " + card.ID + "@1")
+		ta.ok("finish --as " + card.Row + " " + card.ID + "@1")
+	}
+	ta.ok("ask")
+	for _, id := range []string{"s1-1", "s2-1", "s3-1"} {
+		ta.hookCIRedOnce(id, "run-1")
+	}
+	acked := ta.group(sprint.NCIRed, "s1")
+	pending := ta.group(sprint.NCIRed, "s2")
+	held := ta.group(sprint.NCIRed, "s3")
+
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	initial := collectHookPushes(first)
+	require.NotEmpty(t, first.session)
+	ids := map[string]uint64{}
+	for _, p := range initial {
+		assert.Equal(t, first.session, p.Session, "the PUSH carries the token needed to bind its ACK")
+		ids[p.What] = p.ID
+	}
+	require.Contains(t, ids, acked.ID, "the acknowledged candidate was delivered")
+	require.Contains(t, ids, pending.ID, "the pending candidate was delivered")
+	require.Greater(t, ids[pending.ID], ids[acked.ID], "the cumulative ack leaves the later pending push open")
+	var initialWhat []string
+	for what := range ids {
+		initialWhat = append(initialWhat, what)
+	}
+	assert.ElementsMatch(t, []string{acked.ID, pending.ID, held.ID}, initialWhat, "the fixture has only the three intended pushes")
+	r := first.sayRaw(hookMsg{T: "ack", ID: ids[acked.ID]})
+	require.Equal(t, "refused", r.T, "a missing session token cannot acknowledge even on the current stream")
+	rec, ok := ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 3, rec.Unacked, "a missing session token leaves every push open")
+	require.Equal(t, "ok", first.say(hookMsg{T: "ack", ID: ids[acked.ID]}).T, "acknowledge the first push only with its session token")
+
+	second := ta.hookOn(name)
+	second.next("hello")
+	challenge = second.next("challenge").Challenge
+	require.Equal(t, "ok", second.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s = ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	replayed := collectHookPushes(second)
+	require.Len(t, replayed, 2, "only open, unacknowledged groups are replayed: %+v", replayed)
+	for _, push := range replayed {
+		assert.Equal(t, second.session, push.Session)
+	}
+	var replayedWhat []string
+	for _, push := range replayed {
+		replayedWhat = append(replayedWhat, push.What)
+	}
+	assert.ElementsMatch(t, []string{pending.ID, held.ID}, replayedWhat)
+	assert.NotContains(t, replayedWhat, acked.ID, "the acknowledged group is not replayed")
+	var initialMax, replayMax uint64
+	for _, id := range ids {
+		if id > initialMax {
+			initialMax = id
+		}
+	}
+	for _, push := range replayed {
+		assert.Greater(t, push.ID, initialMax, "replayed pushes use IDs above every push from the old session")
+		if push.ID > replayMax {
+			replayMax = push.ID
+		}
+	}
+	// A delayed cumulative ACK from the old stream must not clear freshly replayed
+	// pushes. The old pending ID was valid in that stream, but the replay has new IDs.
+	r = second.say(hookMsg{T: "ack", ID: ids[pending.ID], Session: first.session})
+	require.Equal(t, "refused", r.T, "an old-session token cannot acknowledge replayed pushes")
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 2, rec.Unacked, "the old-session ACK leaves both new deliveries pending")
+	assert.NotContains(t, rec.Acked, noteKey(pending.ID), "the stale ACK did not durably acknowledge the replay")
+	assert.Equal(t, replayMax, rec.PushSeq, "the push high-water mark is persisted with the pending deliveries")
+
+	// A server restart also restores the high-water mark, not a zeroed session-local
+	// counter. Replayed notes get IDs above the entire preceding session, and its last
+	// delayed ACK remains harmless.
+	require.NoError(t, second.conn.Close())
+	ta.waitHook(sprint.HookGone)
+	ta.restartTestServer()
+	third := ta.hookOn(name)
+	third.next("hello")
+	challenge = third.next("challenge").Challenge
+	require.Equal(t, "ok", third.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s = ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	replayedAfterRestart := collectHookPushes(third)
+	require.Len(t, replayedAfterRestart, 2)
+	for _, push := range replayedAfterRestart {
+		assert.Greater(t, push.ID, replayMax, "restart replay uses IDs above the prior server's high-water mark")
+	}
+	r = third.say(hookMsg{T: "ack", ID: replayMax, Session: second.session})
+	require.Equal(t, "refused", r.T, "a pre-restart session token cannot acknowledge current pushes")
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 2, rec.Unacked, "the pre-restart ACK cannot clear post-restart pushes")
+	var latest uint64
+	for _, push := range replayedAfterRestart {
+		if push.ID > latest {
+			latest = push.ID
+		}
+	}
+	assert.Equal(t, latest, rec.PushSeq, "the restarted server persists the new high-water mark")
+	require.NoError(t, third.conn.Close())
+	ta.waitHook(sprint.HookGone)
+	st, err := ta.a.store(common{redis: "mem:0", actor: name})
+	require.NoError(t, err)
+	cleared, err := st.Clear(context.Background())
+	require.NoError(t, err)
+	require.Greater(t, cleared.To, rec.Epoch, "the fixture advanced the sprint epoch")
+	ta.restartTestServer()
+	fourth := ta.hookOn(name)
+	fourth.next("hello")
+	challenge = fourth.next("challenge").Challenge
+	require.Equal(t, "ok", fourth.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s = ta.hookSession()
+	require.NotNil(t, s)
+	assert.Equal(t, cleared.To, s.epoch, "the new session adopted the new epoch")
+	assert.Equal(t, latest, s.seq, "the push high-water mark survives an epoch change")
+}
+
+func TestHookAckWriteFailureLeavesThePushPending(t *testing.T) {
+	t.Parallel()
+	const name = "hook-ack-write-failure"
+	ta, _ := hookSprint(t, name)
+	first := ta.hookOn(name)
+	first.next("hello")
+	challenge := first.next("challenge").Challenge
+	require.Equal(t, "ok", first.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	card := ta.fleetCard("s1-1.w1")
+	require.NotNil(t, card)
+	ta.failOnce(card.Row, "s1-1.w1@1", "ack write test")
+	ta.ok("tick")
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	p := first.next("push")
+
+	// The record write is the ACK commit. A failed commit must refuse and retain
+	// the push so a retry can commit it and clear the gate.
+	ta.failHookWrite(1)
+	r := first.say(hookMsg{T: "ack", ID: p.ID})
+	assert.Equal(t, "refused", r.T)
+	assert.Contains(t, r.Why, "acknowledgement could not be recorded")
+	rec, ok := ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 1, rec.Unacked, "a failed ACK commit stays pending")
+	assert.Empty(t, rec.Acked, "a failed ACK commit is not remembered")
+
+	r = first.say(hookMsg{T: "ack", ID: p.ID})
+	require.Equal(t, "ok", r.T, r.Why)
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Zero(t, rec.Unacked)
+	require.Len(t, rec.Acked, 1, "the committed ACK is durable")
+}
+
+func TestHookAckOfEligibleGroupMemberDoesNotHideHeldMember(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	g := sprint.Group{ID: "j1", Kind: sprint.Judgment, Type: sprint.NAlarmReview, Notes: []string{"held-note", "eligible-note"}}
+	open := []sprint.Open{
+		{Note: sprint.Note{ID: "held-note", Kind: sprint.Judgment, Type: sprint.NAlarmReview, Review: now.Add(time.Hour), ReviewSet: now}},
+		{Note: sprint.Note{ID: "eligible-note", Kind: sprint.Judgment, Type: sprint.NAlarmReview}},
+	}
+	active, before := deliveryKeys(g, open, now, nil)
+	require.Len(t, active, 2)
+	require.Len(t, before, 1, "only the unheld group member can be acknowledged")
+	assert.Contains(t, before[0], "eligible-note")
+	assert.NotContains(t, before[0], "held-note")
+	_, due := deliveryKeys(g, open, now.Add(61*time.Minute), nil)
+	require.Len(t, due, 2, "the previously held note becomes a fresh delivery obligation at its review time")
+	assert.Contains(t, due[0], "held-note")
+	assert.Contains(t, due[1], "eligible-note")
+}
+
+func TestHookReplaysANewNoteAddedToAnAcknowledgedGroup(t *testing.T) {
+	t.Parallel()
+	const name = "hook-growing-group"
+	ta, _ := hookSprint(t, name)
+	first := ta.hookOn(name)
+	first.next("hello")
+	challenge := first.next("challenge").Challenge
+	require.Equal(t, "ok", first.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("start")
+	ta.ok("add --stream s1 --count 2 --one")
+	ta.deal(2)
+	card1 := ta.fleetCard("s1-1.w1")
+	require.NotNil(t, card1)
+	ta.failOnce(card1.Row, "s1-1.w1@1", "first group member")
+	ta.ok("tick")
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	firstPush := first.next("push")
+	require.Equal(t, "ok", first.say(hookMsg{T: "ack", ID: firstPush.ID}).T)
+
+	card2 := ta.fleetCard("s1-2.w1")
+	require.NotNil(t, card2)
+	ta.failOnce(card2.Row, "s1-2.w1@1", "second group member")
+	ta.ok("tick")
+	s.look(context.Background())
+	newPush := first.next("push")
+	assert.Equal(t, firstPush.What, newPush.What, "the same group ID gained a new note")
+	assert.Equal(t, uint64(2), newPush.ID)
+	assert.Contains(t, newPush.Text, "size=2")
+}
+
+func TestHookReplaysANewComputedMachineEpisode(t *testing.T) {
+	t.Parallel()
+	const name = "hook-machine-episodes"
+	ta, _ := hookSprint(t, name)
+	client := ta.hookOn(name)
+	client.next("hello")
+	challenge := client.next("challenge").Challenge
+	require.Equal(t, "ok", client.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("start")
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	ta.step(store.MachineSilence + time.Second)
+	s.look(context.Background())
+	first := collectHookPushes(client)
+	var silent hookMsg
+	for _, push := range first {
+		if push.What == "machine:silent" {
+			silent = push
+		}
+	}
+	require.NotZero(t, silent.ID, "the machine's first silent episode was delivered: %+v", first)
+	require.Equal(t, "ok", client.say(hookMsg{T: "ack", ID: silent.ID}).T)
+
+	// A tick ends the first episode, but no hook look observes the gap. The
+	// heartbeat then goes silent again under the same group ID.
+	ta.ok("tick")
+	ta.step(store.MachineSilence + time.Second)
+	s.look(context.Background())
+	second := collectHookPushes(client)
+	var replay hookMsg
+	for _, push := range second {
+		if push.What == "machine:silent" {
+			replay = push
+		}
+	}
+	require.NotZero(t, replay.ID, "a later computed episode with the same group ID must be delivered: %+v", second)
+	assert.Greater(t, replay.ID, silent.ID)
+}
+
+func TestHookEpochChangeClearsPriorPendingPush(t *testing.T) {
+	t.Parallel()
+	const name = "hook-epoch-pending"
+	ta, _ := hookSprint(t, name)
+	client := ta.hookOn(name)
+	client.next("hello")
+	challenge := client.next("challenge").Challenge
+	require.Equal(t, "ok", client.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	ta.ok("start")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	card := ta.fleetCard("s1-1.w1")
+	require.NotNil(t, card)
+	ta.failOnce(card.Row, "s1-1.w1@1", "clear pending hook push")
+	ta.ok("tick")
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	p := client.next("push")
+	require.NotZero(t, p.ID)
+	rec, ok := ta.hookRecord()
+	require.True(t, ok)
+	require.Equal(t, 1, rec.Unacked)
+
+	ta.lined(func() {
+		st, err := ta.a.store(common{redis: "mem:0", actor: name})
+		require.NoError(t, err)
+		_, err = st.Clear(context.Background())
+		require.NoError(t, err)
+	})
+	s.look(context.Background())
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, uint64(1), rec.Epoch)
+	assert.Zero(t, rec.Unacked, "old-epoch pushes no longer block the hook gate")
+	assert.Nil(t, rec.Oldest)
+	code, _, errs := ta.doLined("where")
+	assert.Zero(t, code, errs)
+}
+
+func TestHookTakeoverWriteFailureLeavesOldSessionLive(t *testing.T) {
+	t.Parallel()
+	const name = "hook-takeover-write-failure"
+	ta, _ := hookSprint(t, name)
+	first := ta.hookOn(name)
+	first.next("hello")
+	challenge := first.next("challenge").Challenge
+	require.Equal(t, "ok", first.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	before, ok := ta.hookRecord()
+	require.True(t, ok)
+	require.Equal(t, sprint.HookHooked, before.State)
+	require.NotZero(t, before.Proven)
+
+	ta.failHookWrite(1)
+	second := ta.hookOn(name)
+	select {
+	case _, open := <-second.lines:
+		require.False(t, open, "failed replacement start closes its own connection without a hello")
+	case <-time.After(time.Second):
+		t.Fatal("failed replacement start left its connection open")
+	}
+	current := ta.hookSession()
+	require.NotNil(t, current)
+	assert.Equal(t, before.Session, current.id, "the old hook remains the active subscription")
+	assert.False(t, current.isEnded())
+	after, ok := ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, before, after, "the failed replacement does not corrupt the old durable hook record")
+	r := first.say(hookMsg{T: "unhook"})
+	assert.Equal(t, "ok", r.T, r.Why)
+}
+
+type hookHelloWriteFailure struct{ closed bool }
+
+func (c *hookHelloWriteFailure) Read([]byte) (int, error) { return 0, io.EOF }
+func (c *hookHelloWriteFailure) Write([]byte) (int, error) {
+	return 0, errors.New("hello write failed")
+}
+func (c *hookHelloWriteFailure) Close() error { c.closed = true; return nil }
+
+func TestHookStartSendFailureEndsPublishedSession(t *testing.T) {
+	t.Parallel()
+	const name = "hook-start-send-failure"
+	ta, _ := hookSprint(t, name)
+	conn := &hookHelloWriteFailure{}
+	ta.a.hookRun(context.Background(), name, conn, 0)
+	require.True(t, conn.closed, "failed hello closes the connection")
+	rec, ok := ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, sprint.HookGone, rec.State, "published HookHooked is ended when hello cannot be sent")
+	assert.Contains(t, rec.Why, "hello write failed")
+	assert.Nil(t, ta.hookSession(), "failed published session is no longer current")
 }
 
 // failHookKV embeds the test's in-memory store, so every part of it (the sprint

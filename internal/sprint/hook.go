@@ -35,8 +35,12 @@ const (
 // answered within HookAnswerBound or the hook is gone. Once proven, every act of the seat over
 // a connected stream (any coordinator verb it runs, any acknowledgement or answer, and the
 // keepalive the hook client sends on its own every HookKeepalive) renews the record's Live to
-// HookSilentBound after it; the hook lapses only when the stream ends, or when the seat is
-// silent past HookSilentBound (once, with one judgment, NHookLapsed). HookAckBound is how
+// HookSilentBound after it. The keepalive proves only that the transport is alive (the hook
+// client's process holds the stream), never that the seat or a person attends: an
+// inattentive seat is found by its unacknowledged pushes (HookAckBound) and the judgments'
+// deadlines. The hook lapses only when the stream ends, or when no act at all, keepalive
+// included, reaches the server past HookSilentBound (once, with one judgment, NHookLapsed,
+// naming the seat in its Who). HookAckBound is how
 // long a delivered push may go unacknowledged before every coordinator command is refused
 // naming it.
 const (
@@ -46,10 +50,11 @@ const (
 	HookAckBound    = 10 * time.Minute
 )
 
-// NHookLapsed is the one judgment of a hook that lapsed while its stream was connected: the
-// seat was silent (no verb, no answer, no keepalive) past HookSilentBound. It is closed when
-// the seat proves a new hook.
-const NHookLapsed = "the seat's hook lapsed: the seat was silent past its bound"
+// NHookLapsed is the one judgment of a hook that lapsed while its stream was connected: no
+// act (no verb, no answer, and no keepalive, so the transport went quiet too) reached the
+// server past HookSilentBound. Its Who is the seat; it is closed when that seat proves a new
+// hook, never by another seat's proof.
+const NHookLapsed = "the seat's hook lapsed: no act reached the server past its bound"
 
 // HookFirst is the one line every coordinator command fails with while the seat has no
 // live, proven hook (the owner's words, exactly).
@@ -61,6 +66,7 @@ type HookItem struct {
 	ID   uint64    `json:"id"`
 	What string    `json:"what"`
 	At   time.Time `json:"at"`
+	Keys []string  `json:"keys,omitempty"`
 }
 
 // HookRecord is the server's word on the seat's hook, the one the gate reads: who
@@ -70,6 +76,7 @@ type HookItem struct {
 // the oldest of them. Only the server writes it (cmd/nova-sprint/hook.go).
 type HookRecord struct {
 	Name    string    `json:"name"`
+	Epoch   uint64    `json:"epoch,omitempty"`
 	Session string    `json:"session,omitempty"`
 	State   string    `json:"state"`
 	Since   time.Time `json:"since,omitzero"`
@@ -78,6 +85,8 @@ type HookRecord struct {
 	Why     string    `json:"why,omitempty"`
 	Unacked int       `json:"unacked,omitempty"`
 	Oldest  *HookItem `json:"oldest,omitempty"`
+	Acked   []string  `json:"acked,omitempty"`
+	PushSeq uint64    `json:"push_seq,omitempty"`
 }
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven
@@ -107,7 +116,7 @@ func HookGate(rec HookRecord, ok bool, name string, now time.Time) string {
 // HookUnacked is the line a coordinator command fails with while a delivered push is
 // unacknowledged past its bound: the push by its id and what it is, and the answer.
 func HookUnacked(o HookItem, unacked int) string {
-	return fmt.Sprintf("You must acknowledge push %d first (%s, delivered %s, unacknowledged past %s; %d unacknowledged): read it in the hook's stream, then run: nova-sprint hook --ack %d",
+	return fmt.Sprintf("You must acknowledge push %d first (%s, delivered %s, unacknowledged past %s; %d unacknowledged): read it in the hook's stream, then run: nova-sprint hook --ack %d --session <token>",
 		o.ID, o.What, o.At.UTC().Format(time.RFC3339), HookAckBound, unacked, o.ID)
 }
 

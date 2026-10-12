@@ -368,7 +368,36 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `VERIFY FAILED` with one `VERIFY MISSING`, `EXTRA` or `DRIFT` line per difference.
 `differences=0` is the proof the tree holds what GitHub holds.
 
+## Judgments that hold a card (v1.2.14, PR #111)
 
+Failed work and broken reads rework themselves, and no wait parks a card
+(docs/SPEC-SPRINT.md section 8, "Judgments that hold a card"). Each test by its exact name:
+
+- `TestFailedWorkReworksItselfWithItsFinding` (internal/sprint/store/no_parked_test.go)
+- `TestABrokenReadReworksItself` (internal/sprint/store/no_parked_test.go)
+- `TestPastTheBoundItStaysASeatJudgment` (internal/sprint/store/no_parked_test.go)
+- `TestWaitIsRefusedOnACardHoldingJudgment` (internal/sprint/store/no_parked_test.go)
+- `TestWaitStillWorksOnAnAlarm` (internal/sprint/store/no_parked_test.go)
+- `TestASharedFailureIsOneFleetJudgmentAtOnce` (internal/sprint/store/no_parked_test.go)
+- `TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird` (internal/sprint/store/no_parked_test.go)
+- `TestAnAckedFleetFailureHoldsUntilANewFailure` (internal/sprint/store/no_parked_test.go)
+- `TestARepairedFailureDoesNotReopenAnAckedFleetFailure` (internal/sprint/store/no_parked_test.go)
+- `TestTheFleetFailureIsRaisedWithTheRulesOff` (internal/sprint/store/no_parked_test.go)
+- `TestANoRoomReworkKeepsARealFailureCounted` (internal/sprint/store/no_parked_test.go)
+- `TestAnOkFinishThenNoRoomReworkDoesNotReopenTheAlarm` (internal/sprint/store/no_parked_test.go)
+- `TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish` (internal/sprint/store/no_parked_test.go)
+- `TestAPinnedModelFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
+- `TestAFrontierTierFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
+- `TestTheSameFailureOnManyCardsIsReworkedOnItsTier` (internal/sprint/store/rule_answers_test.go)
+- `TestEveryKindThatHoldsACardRefusesWait` (internal/sprint/wait_refused_test.go)
+- `TestNoJudgmentOffersADecisionItsVerbRefuses` (internal/sprint/wait_refused_test.go)
+- `TestAStoppedStreamCountsTheCardsItHolds` (internal/sprint/wait_refused_test.go)
+- `TestAStallRefusesWaitOnlyWhenItNamesACard` (internal/sprint/wait_refused_test.go)
+- `TestNoPerNoteDecisionOffersAWaitItsVerbRefuses` (internal/sprint/wait_refused_test.go)
+- `TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld` (internal/sprint/wait_refused_test.go)
+- `TestAJudgmentNamingACardRefusesWaitWhateverItsKind` (internal/sprint/wait_refused_test.go)
+- `TestWaitByGroupIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
+- `TestWaitByAliasIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
 
 ## Release acceptance
 

@@ -27,11 +27,13 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
-| `SeatHook` | The coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
+| [SeatHook](README-SeatHook.md) | Durable scoped ACKs, reconnect/restart replay, held-to-due delivery, cumulative monotone push IDs and failed-write rollback, plus the coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `AttemptsEpochs` | The epoch a clear advances and a card's attempt, generation and redeals: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear, the deal and redeal, the stale-generation guard, and the branch per launch. |
 | `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, START, and clear's STOP followed by its live work/read-lease check. `MCStopReturnClear` checks clear reachability and safety; `BrokenClearBlocked` drops the live-lease guard. |
+| `FriendReadyTake`, `FriendRedealLate` | Historical friend ready-take and redeal clocks, moved from nova-tools dev `2314d437f`; current start receipts and deadline routing are outside these preserved models (partial coverage). |
+| `StopFence` | The distinct nova-tools STOP/START fence model, renamed on arrival: RunSeq, stale tick stop/part, launch/report and row-delete fences. Newer debt settlement and held-report exemptions are outside it. |
 | `WorkImport` | Issue import and the specified work-tree modes. |
 | `RoadmapEntry` | An entry of a repository's roadmap and fixes files under nova-work roadmap: add, remove, pull, note, done, and Save's four writes (destination data, destination page, source data, source page), with scheduled notes whose `:release` is unchecked. |
 | `GateRing` | The land stage's gate bench ring: the hashed start slot, the per-pass skip record, a refusal stepping to the next slot, and the local fallback refused as a remote-bench unavailability. |
@@ -158,3 +160,14 @@ the gap test removed from PR #5127's levelTo. Naive: a holds c2 and c3, c3
 refused by c, the emptiest two below; only c3 is tried, and the call returns
 with c2 still able to go to c. NoSkip: c3 goes onto c, its refuser (the code
 before #5000).
+
+### Models moved from nova-tools
+
+`FriendReadyTake` (five cases), `FriendRedealLate` (two), and `StopFence`
+(eight, formerly nova-tools `StopReturn`) preserve the machines and reversed
+witnesses at nova-tools dev `2314d437fedb33d148e75346ab5582ec552e7962`.
+Only names and source/header comments changed. `StopFence` includes its
+`StaleTick` and `StalePart` instances; it does not replace this repository's
+`StopReturn`. Their groups are `friendreadytake`, `friendredeallate`, and
+`stopfence`. Coverage stays partial for the concrete differences recorded in
+`COVERAGE.tsv`; fresh TLC passes do not erase those differences.
