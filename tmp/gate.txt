@@ -7,36 +7,18 @@ $ go vet ./...
 exit 0
 
 $ go test -count=1 -timeout 600s ./internal/sprint/...
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	13.139s
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/driver	0.106s
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel	3.738s
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/store	5.326s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	11.760s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/driver	0.088s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel	3.864s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/store	5.429s
 ?   	github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest	[no test files]
 
-$ go test -count=1 -timeout 600s ./cmd/nova-sprint/  (the read gate, not the card's gate packages)
-From /home/nova/rowan-working/tmp/slots/the-start-level-never-moves-a-card-off-a-free-lane.w5.g1.e17/tmp/the-start-level-never-moves-a-card-off-a-free-lane.w5/land-clash-test-3567112139/x
- * [new branch]      x          -> x
-Merge made by the 'ort' strategy.
- internal/sprint/a.go | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-From /home/nova/rowan-working/tmp/slots/the-start-level-never-moves-a-card-off-a-free-lane.w5.g1.e17/tmp/the-start-level-never-moves-a-card-off-a-free-lane.w5/land-clash-test-3567112139/y
- * [new branch]      y          -> y
-Merge made by the 'ort' strategy.
- internal/sprint/b.go | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
---- FAIL: TestTheTwinSocketFitsAUnixSocketPath (0.00s)
-    backup_out_test.go:225: 
-        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/backup_out_test.go:225
-        	Error:      	Received unexpected error:
-        	            	the throwaway redis-server's socket /home/nova/rowan-working/tmp/slots/the-start-level-never-moves-a-card-off-a-free-lane.w5.g1.e17/tmp/the-start-level-never-moves-a-card-off-a-free-lane.w5/TestTheTwinSocketFitsAUnixSocketPath3439091562/001/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/twin.sock is 335 bytes and a Unix socket path holds at most 100, and no shorter private directory could be made (mkdir /tmp/nsb3107195578: permission denied); set TMPDIR to a shorter directory
-        	Test:       	TestTheTwinSocketFitsAUnixSocketPath
-TICK GATE UNDER LOAD: 3000 ready, 8 members of width 64, 16 siblings busy: 3 plans of 1024 units each in [265ms 262ms 207ms] with no history, [393ms 239ms 255ms] with 1000 ok attempts a member
-FAIL
-FAIL	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	25.081s
-FAIL
+$ go test -count=1 -timeout 120s ./cmd/nova-sprint/ -run 'TestFleetUpWidthZeroDrainsAMember|TestFleetUpOnAMemberWithAnOldBeatKeepsItUpAtTheNextTick'  (the read gate's two changed tests, not the card's gate packages)
+ok  	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	0.032s
 
-# cmd/nova-sprint: only TestTheTwinSocketFitsAUnixSocketPath fails, and it is
-# environmental (backup_out_test.go:225, mkdir /tmp/... permission denied: the
-# wall denies /tmp). It fails on the unchanged base too; the file is not changed
-# by this work. TestFleetUpWidthZeroDrainsAMember and
-# TestFleetUpOnAMemberWithAnOldBeatKeepsItUpAtTheNextTick now pass.
+# the card's gate packages are ./internal/sprint/...; all pass. The reference
+# model (internal/sprint/refmodel/actions.go) is left at BASE, untouched (E12):
+# this card's engine-level change leaves the model's levelRound behind, so the
+# store's differential test marks that divergence known (differential_test.go,
+# "MODEL behind the level's free-lane rule"); the model card
+# tla-level-moves-only-onto-a-free-lane catches it up.

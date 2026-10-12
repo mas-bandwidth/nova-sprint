@@ -109,6 +109,25 @@ var dKnown = []dKnownDiff{
 		}
 		return sigHas("another", "open.accept=yes/no", "primary.pair")(f)
 	}},
+	// MODEL behind (the model card tla-level-moves-only-onto-a-free-lane).
+	// The engine's level moves a card only off a member over its width onto a
+	// member with a free lane; the model's levelRound still evens by the mean.
+	// Where they differ, the model levels a card the engine keeps (or keeps
+	// one the engine levels), so a card is on a different member at a
+	// different generation and the deal's index has moved on (round.deal); a
+	// later tick's deal, read against that diverged index, is refused as "not
+	// the next member round the fleet". All of it is the model's lag.
+	{"MODEL behind the level's free-lane rule", func(f dFinding) bool {
+		act := f.Seq[len(f.Seq)-1].Kind
+		if f.Kind == "state" && (act == "tick" || act == "fleet") &&
+			strings.Contains(f.Sig(), "round.deal") &&
+			strings.Contains(f.Sig(), "work.gen") &&
+			strings.Contains(f.Sig(), "work.member") {
+			return true
+		}
+		return f.Kind == "choice" && (strings.Contains(f.Detail, "not the next member round the fleet") ||
+			strings.Contains(f.Detail, "level moves"))
+	}},
 }
 
 func dClassify(f dFinding) (string, bool) {
