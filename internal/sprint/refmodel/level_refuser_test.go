@@ -16,8 +16,8 @@ import (
 // A card moves only off a member over its width, and only onto a free lane
 // that did not refuse it: the newest is skipped (its only free lane refused
 // it) and the next-newest moves to S, then A is at its width and the call ends
-// (round.levelTo, nextLane; tla/Level.tla, NeverOffAFreeLane,
-// NeverOnARefuser).
+// (round.levelTo, nextLane; tla/Level.tla, NeverOnARefuser; NeverOffAFreeLane
+// is owed by card tla-level-moves-only-onto-a-free-lane).
 func TestLevelRefuserTheEngineAndTheModelAgree(t *testing.T) {
 	t.Parallel()
 	s := refmodel.New(nil, []string{"A", "S", "T"}, "coordinator")

@@ -3175,7 +3175,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   once), no refuser, bench or launch exclusion of the card; the source gives at
   most its excess, its newest ready cards first, and a member at or below its
   width keeps every card dealt to it. The mean rule and the gap of two are gone
-  (round.levelTo, nextLane; tla/Level.tla, NeverOffAFreeLane; the owner,
+  (round.levelTo, nextLane; NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane; the owner,
   2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if
   there are not other machines/friends ready to do that work right now!"). A
   working card on an up member stays. It is a

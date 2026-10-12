@@ -303,7 +303,7 @@ func (r *round) nextFree(up []string, q, lanes, room map[string]int, avoid strin
 // index nor counts the card. "" when none: the caller that takes the card moves
 // the index past the member (moved) and counts it (q). The level uses this same
 // scan for its target: a card moves only onto a member with a free lane
-// (tla/Level.tla, NeverOffAFreeLane).
+// (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane).
 func (r *round) nextLane(up []string, q, lanes map[string]int, avoid []string) string {
 	isUp := make(map[string]bool, len(up))
 	for _, x := range up {
@@ -319,8 +319,8 @@ func (r *round) nextLane(up []string, q, lanes map[string]int, avoid []string) s
 // lane (held, the work cards it holds, below its width: lanes) that is not one
 // of avoid (the card's refusers, bench and launch exclusions). It is nextFree's
 // first scan (nextLane), so the level only ever moves a card onto a member that
-// can start it at once (tla/Level.tla, NeverOffAFreeLane; the model card
-// tla-level-moves-only-onto-a-free-lane; the owner, 2026-10-11 ~19:05-19:20Z:
+// can start it at once (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane:
+// tla/Level.tla still models the mean rule; the owner, 2026-10-11 ~19:05-19:20Z:
 // "cards only may accrue per-fleet or friend, if there are not other
 // machines/friends ready to do that work right now!"). It never targets a
 // member at or above its width, so the mean rule and the gap of two are gone.

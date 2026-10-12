@@ -347,7 +347,7 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 		// a1..a6 dealt m1 m2 m3 m1 m2 m3, the index past m3; m2 and m3 take
 		// and finish all theirs: no member is over its width (64), so the
 		// level moves nothing and a4 stays on m1 (round.levelTo, nextLane;
-		// tla/Level.tla, NeverOffAFreeLane); the index stays past m3.
+		// NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane); the index stays past m3.
 		{"level", append(up("m1", "m2", "m3"),
 			dAction{Kind: "start"},
 			dAction{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2", "a3", "a4", "a5", "a6"}},

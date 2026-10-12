@@ -3140,16 +3140,16 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 // to the next member round the fleet past the deal's index with a free lane
 // (held below its width) and no refuser, bench or launch exclusion of the card
 // (round.levelTo, nextLane). So a card moves only when its member cannot start
-// it, and only to a member that can (tla/Level.tla, NeverOffAFreeLane; the
+// it, and only to a member that can (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane; the
 // owner, 2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend,
 // if there are not other machines/friends ready to do that work right now!").
 // A member at or below its width keeps every card dealt to it: it will take
 // them at its next pass.
 //
-// The call ends, by two guards, each enough alone (tla/Level.tla; the wedge of
-// 2026-10-02, nova-tools#5122, was a call that did not): each move takes a
-// member above its width to one below it, so the sum of squared backlogs falls
-// by at least two, and a card it moved is never one it moves again, so it makes
+// The call ends, by two guards, each enough alone (the wedge of 2026-10-02,
+// nova-tools#5122, was a call that did not): each move takes a member above
+// its width to one below it, so the sum of squared backlogs falls, and a card
+// it moved is never one it moves again (tla/Level.tla, MovesBounded), so it makes
 // at most as many moves as the fleet had ready cards.
 func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int) {
 	levelWith(s, p, up, rr, moves, held, (*round).levelTo)

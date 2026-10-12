@@ -31,8 +31,8 @@ import (
 // (width 16) are dealt twelve cards; m1 takes all its cards but one and m2
 // takes every card, so m1 holds one ready card it will start at its next pass
 // and m2 holds fewer cards than m1 less their widths. The ticks that follow
-// leave that card on m1 at its generation (round.levelTo; tla/Level.tla,
-// NeverOffAFreeLane). Then m1's width falls to 2 while it holds four cards:
+// leave that card on m1 at its generation (round.levelTo; NeverOffAFreeLane,
+// owed by card tla-level-moves-only-onto-a-free-lane). Then m1's width falls to 2 while it holds four cards:
 // it cannot start its ready card, and the next tick moves it onto m2, the
 // member with a free lane.
 func TestTheStartLevelLeavesADealtCardOnAMemberThatCanStartItOnTheStore(t *testing.T) {
