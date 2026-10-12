@@ -55,9 +55,26 @@ func TestACappedLaneIsReDealtOnceAtTheNextTierUp(t *testing.T) {
 	assert.Empty(t, Check(w.s, nil))
 }
 
+// Dropping a primary whose work card sits in the coordination column (a capped lane's
+// re-tier files there, never redealt) removes that work card too: the drop and the defer
+// treat every end-class column as withdrawn (end_classify.go, EndedCol).
+func TestDroppingACappedPrimaryRemovesItsCoordinationWorkCard(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("only friend amy"))
+	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash,pro,heavy"}}
+	amy := FriendRow("amy")
+	dealStarted(w, seats...)
+	capped := "friend amy HOLD: nova-friend lane 1 of amy finished card s1-1.w1: capped at 15m0s (tier flash, overrun 3s): the card's wall reached its tier's cap and the daemon ended the lane, exit -1, wall 15m3s; no pushed head found."
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: amy, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: capped}))
+	require.Equal(t, Coordination, w.s.Fleet.Card("s1-1.w1").Col, "the capped take files in coordination")
+
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "obsolete", Who: "coordinator"}))
+	assert.Nil(t, w.s.Fleet.Placed("s1-1.w1"), "the coordination work card goes with its dropped primary")
+	assert.Empty(t, Check(w.s, nil))
+}
+
 // A report that names no cap is no capped finish, and one whose words are broken is none.
 func TestParseLaneCapReadsOnlyTheLanesWords(t *testing.T) {
-	t.Parallel()
 	for _, r := range []string{"", "friend amy FAIL: the run exited 3", "capped at soon (tier flash, overrun 0s)", "capped at 0s (tier flash, overrun 0s)", "we capped at 15m0s the budget"} {
 		_, ok := ParseLaneCap(r)
 		assert.False(t, ok, r)

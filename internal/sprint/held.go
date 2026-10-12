@@ -616,7 +616,7 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			// records, not the tables'; every other card a friend may take is the fleet's
 			// when no friend takes it (WHO is a preference)
 			name, _ := FriendCard(pr)
-			if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && Redealable(wc) {
+			if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && EndedCol(wc.Col) {
 				if from, _ := FriendOfRow(wc.F(FieldTakenFrom)); from != "" && from == name {
 					return "waits for only friend " + name + ", and it was taken back from her: give it back to her (nova-sprint friend give), unpin it (nova-sprint unpin), brief it for another friend, or drop it", "", true
 				}
@@ -671,7 +671,7 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		// the deal may give it (dealPlan): a withdrawn card is never dealt to a
 		// member that refused it at staging (StagingRefusers), so that member's
 		// free places hold nothing for it.
-		if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && Redealable(wc) {
+		if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && EndedCol(wc.Col) {
 			up = without(up, StagingRefusers(wc))
 		}
 		room := widthRoom(s, up)
@@ -712,7 +712,7 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 		return "its tier " + tier + " is served by friends alone, and none up who serves it may be dealt it (withdrawn or taken back from each): it waits for another friend of its tier", "", true
 	}
 	var wc *Card
-	if w := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); w != nil && Redealable(w) {
+	if w := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); w != nil && EndedCol(w.Col) {
 		wc = w
 	}
 	if f := laneRunsIt(s, s.Friends, pr, wc); f != "" {

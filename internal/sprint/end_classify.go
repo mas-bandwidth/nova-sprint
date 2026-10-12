@@ -109,6 +109,12 @@ func EndClassColumn(c EndClass) string {
 	}
 }
 
+// EndedCol says a work card in the column sits off the active table: withdrawn, or in one
+// of the end-class columns beside ok% (schema.go). The drop, the defer, the edit and the
+// fleet's keep treat a card in one of these exactly as a withdrawn card, whatever its next
+// move (a redeal or an escalation): the take that ended there is counted in its column.
+func EndedCol(col string) bool { return col == Withdrawn || NotItsFaultCol(col) }
+
 // NotItsFaultCol says a work card in the column ended not-its-fault (provider,
 // coordination, environment, harness) or with no result: the named end-class columns
 // beside ok% (schema.go). The deal redeals a card in one of them exactly as it redeals a

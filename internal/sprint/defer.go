@@ -52,7 +52,7 @@ func Defer(s *Snapshot, r DeferReq) Plan {
 	for _, c := range chosen {
 		u := Unit{Key: c.ID, Stream: c.Row}
 		for _, fc := range s.Fleet.Of(c.ID) {
-			if fc.Col == Ready || fc.Col == Working || Redealable(fc) {
+			if fc.Col == Ready || fc.Col == Working || EndedCol(fc.Col) {
 				u.Changes = append(u.Changes, change(Fleet, removeEntry(fc, map[string]string{"dropped": stamp(s.Now)})))
 			}
 		}
