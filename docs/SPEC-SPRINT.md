@@ -3411,6 +3411,18 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
 
 ## 6. The readers
 
+- **One read predicate (v1.2.15, a-dealt-read-is-held-or-returned-and-ask-agrees-with-itself).**
+  `ReadsOut` (`internal/sprint/readers.go`) is the one predicate for a primary's reads at its
+  current attempt: the readers table's live reads and the fleet read cards (a member's or a
+  friend's), each marked live, ghost or closed with its verdict; `ask`, `ask --another`,
+  `ask --instead`, `ReadsWanted`, `readCardsWanted`/`readCardsStanding`, `heavyRead` and the
+  doctor's readers check all rest on it. A read card working on a row whose fresh beat has not
+  named it for `LiveGrace`, or whose row is down, stale or held, reads as a ghost and does not
+  stand. A broken verdict whose finding is empty or whitespace is no verdict: the read returns
+  it. The doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the
+  cards; `card <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's
+  story.
+
 - **The interim rules of 2026-10-06, until read cards** (the owner, 7:25 PM ET: "fix it
   now, to work around it"; the read-cards change (PR 5392) replaces
   the ask, and these rules with it):

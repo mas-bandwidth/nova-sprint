@@ -577,14 +577,27 @@ func ReadsOut(s *Snapshot, pr *Card) []ReadOut {
 	attempt := max(pr.Int("attempt"), 1)
 	var out []ReadOut
 	if s.Readers != nil {
-		for _, rc := range liveReadsAt(s, pr, attempt) {
-			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Readers, State: ReadLive, Verdict: rc.F("verdict")})
+		for _, rc := range liveReadsAt(s, pr, pr.Int("attempt")) {
+			state, verdict := ReadLive, rc.F("verdict")
+			switch {
+			case rc.Col == Broken || verdict == "broken":
+				state, verdict = ReadClosed, "broken"
+			case rc.Col == OK || verdict == "ok":
+				state, verdict = ReadClosed, "ok"
+			}
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Readers, State: state, Verdict: verdict})
 		}
 	}
 	if s.Fleet != nil {
 		placed, oks, brk := fleetReadLiveAt(s, pr, attempt, s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+"."))
 		for _, rc := range placed {
-			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadLive, Verdict: rc.F("verdict")})
+			state := ReadLive
+			if rc.Col == Working {
+				if ghost, _ := readCardGhost(s, rc); ghost {
+					state = ReadGhost
+				}
+			}
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: state, Verdict: rc.F("verdict")})
 		}
 		for _, rc := range oks {
 			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadClosed, Verdict: "ok"})
@@ -610,19 +623,37 @@ func ReadsOut(s *Snapshot, pr *Card) []ReadOut {
 // they go is the readers' room. A friend's read of the attempt stands with
 // them (friendReadLive): placed or ok, it counts toward ReadsNeeded; broken, no second
 // read is asked (docs/SPEC-SPRINT.md, a read asked of any unit with room at
-// or above the read tier).
+// or above the read tier). A read card working on a row whose beat names it a
+// ghost (readCardGhost) does not stand: it is asked again, as a return is.
 //
 // tla/ReaderTiers.tla Ask
 func ReadsWanted(s *Snapshot, pr *Card) int {
 	if readBranchMissingOpen(s, pr) {
 		return 0 // its branch is not on origin: the seat's judgment holds it (read_missing.go)
 	}
-	placed := readsAt(s, pr, pr.Int("attempt"))
-	live := liveReadsAt(s, pr, pr.Int("attempt"))
-	fp, fok, fbr := friendReadLive(s, pr)
-	placed = append(placed, fp...)
-	live = append(append(append(live, fp...), fok...), fbr...)
-	return max(readsWantedOf(s, pr, live), len(placed)-len(live))
+	standing, _, broken := readsOutStanding(ReadsOut(s, pr))
+	if broken {
+		return 0
+	}
+	returned := len(returnedReadsAt(s, pr, pr.Int("attempt")))
+	return max(max(0, ReadsNeededIn(s, pr)-standing), returned)
+}
+
+// readsOutStanding sums the reads of ReadsOut that stand (live or closed) and
+// whether one found it broken; ghosts stand not (they are asked again).
+func readsOutStanding(out []ReadOut) (standing, ghosts int, broken bool) {
+	for _, ro := range out {
+		switch ro.State {
+		case ReadLive, ReadClosed:
+			standing++
+			if ro.Verdict == "broken" {
+				broken = true
+			}
+		case ReadGhost:
+			ghosts++
+		}
+	}
+	return standing, ghosts, broken
 }
 
 // readsWantedOf is ReadsWanted over the reads that stand, live.
@@ -1125,10 +1156,10 @@ func heavyWhy(r AcceptReq) string {
 // and verdict, its evidence and the broken reads at the attempt it overrules.
 func heavyRead(s *Snapshot, pr *Card, r AcceptReq) (fields map[string]string, overruled []*Card) {
 	var ids []string
-	for _, rc := range readsAt(s, pr, pr.Int("attempt")) {
-		if rc.Col == Broken {
-			overruled = append(overruled, rc)
-			ids = append(ids, rc.ID)
+	for _, ro := range ReadsOut(s, pr) {
+		if ro.Verdict == "broken" && ro.Card != nil {
+			overruled = append(overruled, ro.Card)
+			ids = append(ids, ro.Card.ID)
 		}
 	}
 	who := r.Who

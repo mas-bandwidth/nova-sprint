@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -73,3 +74,23 @@ func TestAskAndAskAnotherAgreeOnAsked(t *testing.T) {
 		})
 	}
 }
+
+// TestDoctorCountsFleetReadCards pins the doctor's readers check counting the fleet read
+// cards the readers-table check cannot see (docs/SPEC-SPRINT.md section 6, the reads): a
+// read card working on a row whose fresh beat has not named it for LiveGrace is a ghost,
+// and the readers check FAILs naming it.
+func TestDoctorCountsFleetReadCards(t *testing.T) {
+	t.Parallel()
+	w, rc, gen, b := takenRead(t)
+	w.tick(LiveGrace + time.Second)
+	b = memberBeat(b, w.s.Now) // a fresh beat naming nothing since its first: the read is not run
+	w.s.Beats = map[string]Beat{"m2": b}
+	in := DoctorInput{Snap: w.s, Req: TickReq{Beats: w.s.Beats}, ReaderBeats: map[string]Beat{"reader-m1": {At: w.s.Now}, "reader-m2": {At: w.s.Now}}}
+	cs := DoctorReaders(in)
+	fails := failsOn(cs, CheckReaders)
+	require.NotEmpty(t, fails, "a ghost read card fails the readers check: %s", lines(cs))
+	joined := lines(fails)
+	require.Contains(t, joined, rc.ID, "the ghost names its card: %s", joined)
+	require.Contains(t, joined, LiveKey(rc.ID, gen), "the ghost names the card at its generation: %s", joined)
+}
+

@@ -687,6 +687,53 @@ func DoctorReaders(in DoctorInput) (out []DoctorCheck) {
 		}
 	}
 	ev := fmt.Sprintf("up=%d idle=%d stale=%d reads-waiting=%d (asked=%d marked=%d) judgments=%d", len(up), len(idleUp), len(staleUp), waiting, asked, marked, judged)
+	// The read cards on the fleet table (docs/SPEC-SPRINT.md section 6, the reads): a
+	// read card dealt and not taken, one working, and one working whose row's beat names
+	// it a ghost are the reads the readers-table check does not see. A ghost, or a review
+	// primary with no live read and no judgment, is FAIL naming the cards.
+	var ghostNames, breachNames []string
+	if s.Fleet != nil {
+		for _, c := range s.Fleet.Column(Ready, Working) {
+			if !isRead(c) {
+				continue
+			}
+			if ghost, why := readCardGhost(s, c); ghost {
+				ghostNames = append(ghostNames, c.ID+" on "+c.Row+" ("+why+")")
+			}
+		}
+	}
+	if s.Work != nil {
+		for _, c := range s.Work.Column(Review) {
+			if IsSentinel(c) || hasOpenJudgmentOn(s, c.ID) {
+				continue
+			}
+			live, ok := 0, 0
+			for _, ro := range ReadsOut(s, c) {
+				switch ro.State {
+				case ReadLive:
+					live++
+				case ReadClosed:
+					if ro.Verdict == "ok" {
+						ok++
+					}
+				}
+			}
+			if live > 0 || ok >= ReadsNeededIn(s, c) {
+				continue
+			}
+			breachNames = append(breachNames, c.ID)
+		}
+	}
+	if len(ghostNames) > 0 {
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "all", Status: DoctorFail,
+			Evidence: ev + ": a read card is a ghost (" + strings.Join(ghostNames, "; ") + ")",
+			Remedy:   "the machine returns it to the read deal within the bound; a second ghost pushes a judgment (nova-sprint inbox)"})
+	}
+	if len(breachNames) > 0 {
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "all", Status: DoctorFail,
+			Evidence: ev + ": a card in review has no read out (" + strings.Join(breachNames, ", ") + ")",
+			Remedy:   "the tick's deal asks it and pushes a judgment (nova-sprint inbox)"})
+	}
 	switch {
 	case waiting+judged > 0 && len(up) == 0:
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "all", Status: DoctorFail, Evidence: ev + ": reads wait and no reader is up", Remedy: "restart the reader loops (nova-sprint doctor --area readers names each), or nova-sprint reader up <reader>"})

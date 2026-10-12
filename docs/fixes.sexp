@@ -2788,4 +2788,19 @@
      100-byte Unix-socket limit and its /tmp fallback is denied). Named in docs/TESTS.md."
     :origin "this card, two-tests-that-fail-under-load-are-made-deterministic.w4, attempt 5; the #111
      author's gate on hetzner2, 2026-10-11 ~23:48Z at load 30-36; #122's description for the idle red;
-     #111's author for the two-run-loops red and the setPrimary overlay")))
+     #111's author for the two-run-loops red and the setPrimary overlay")
+   (fix "a-dealt-read-is-held-or-returned-and-ask-agrees-with-itself" :release "v1.2.15" :status "planned"
+    :title "One read predicate, and a dealt read is held or returned every tick"
+    :text "Blocker. A read card the read-card deal places sat working on a member that never ran it, and the two
+     ask verbs disagreed on whether it was asked: `ask` counted the fleet read cards through friendReadLive while
+     `ask --another` counted the readers table only, so no ask reached a fleet read card, and a card in review was
+     silently idle. (a) ReadsOut (internal/sprint/readers.go) is the one predicate: a primary's reads at its current
+     attempt, from the readers table and the fleet read cards, each marked live, ghost or closed with its verdict;
+     ask, ask --another, ask --instead, ReadsWanted, readCardsWanted/readCardsStanding, heavyRead and the doctor's
+     readers check all rest on it, and a read card working on a row whose beat has not named it for LiveGrace (or
+     whose row is down, stale or held) reads as a ghost and does not stand. (e) A broken verdict whose finding is
+     empty or whitespace is no verdict: the read returns it, so no card rests in review on empty findings. (f) The
+     doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g) `card
+     <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no primary\".
+     Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards (internal/sprint/ghost_read_test.go)."
+    :origin "this card, from the owner, 2026-10-12 ~04:25Z: \"OK these ghost reads are scary. Please fix.\"")))
