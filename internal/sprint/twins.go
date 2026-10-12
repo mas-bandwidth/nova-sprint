@@ -235,10 +235,7 @@ func Relink(s *Snapshot, r RelinkReq) Plan {
 		return refuseAll(cyc)
 	}
 	weights, _ := twinWeights(s, deps, r.Old, r.New, nil, nil)
-	// the old ids become aliases of the twin, recorded on their kept records, so the
-	// successor outlives the drop and no path can bring the old id back as a need
-	// (need_alias.go).
-	units, bad := mergeCardChanges(append(append(units, aliasUnits(s, r.Old, r.New, r.Who)...), weights...))
+	units, bad := mergeCardChanges(append(units, weights...))
 	if bad != "" {
 		return refuseAll(bad)
 	}
@@ -385,9 +382,6 @@ func Replace(s *Snapshot, r AddReq) Plan {
 			all = append(all, u)
 		}
 	}
-	// every replaced id becomes an alias of the twin, recorded on its kept record
-	// (need_alias.go), so no path can bring the old id back as a need.
-	all = append(all, aliasUnits(s, r.Replaces, nw, r.Who)...)
 	all, bad := mergeCardChanges(append(all, weights...))
 	if bad != "" {
 		return refuseAll(bad)

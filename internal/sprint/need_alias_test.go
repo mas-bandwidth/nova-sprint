@@ -61,7 +61,6 @@ func TestRelinkRewritesANeedInAnyColumn(t *testing.T) {
 
 	require.Equal(t, "twin", w.s.Work.Card("s1-1").F("needs"), "the working card's need is re-pointed")
 	require.Equal(t, Working, w.state("s1-1"), "the working card keeps its column")
-	require.Equal(t, "twin", AliasOf(w.s, "s1-2"), "relink records the alias too")
 }
 
 func joined(ss []string) string {

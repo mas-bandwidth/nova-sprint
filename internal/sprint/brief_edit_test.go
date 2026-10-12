@@ -250,7 +250,7 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	assert.Equal(t, "a-2,x-2", w.s.Work.Placed("b").F("needs"), "the dropped a-1 an earlier relink replaced is not added back")
 	says := strings.Join(p.Said, "\n")
 	assert.Contains(t, says, "needs kept: x-2 (relinked from x-1 ")
-	assert.Contains(t, says, "need a-1 is now a-2 (relinked ", "the alias a-1 => a-2 outlives the last relink record: the text's old id resolves to its successor, not left as a dropped need")
+	assert.Contains(t, says, "needs kept: a-1 not added (kept, ")
 }
 
 // --tier with a brief is held to the lint's tla-is-frontier rule as tier --set
