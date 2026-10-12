@@ -171,7 +171,7 @@ func (st *Store) DropMembers(ctx context.Context, keep []string) ([]string, erro
 		return nil, err
 	}
 	// Deleting a row unplaces any card already on it. A row with a card needs
-	// the shared STOP fence through its delete (tla/StopReturn.tla
+	// the shared STOP fence through its delete (tla/StopFence.tla
 	// NoOrphanDebt; SPEC-SPRINT section 14). An empty candidate keeps the
 	// original conditional control-revision delete: a concurrent rejoin
 	// changes that revision, so RowsDelIf preserves its new cards and row.

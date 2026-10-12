@@ -48,8 +48,9 @@ func TestABriefEditNamingLandedNeedsLeavesTheCardReady(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-3"}, Brief: "two", Who: "coordinator"}))
 	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col, "a-2 starts waiting on a-3")
 
-	// the edit re-points a-2 at a-1, which has landed: the resolve makes it ready
-	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two\nDEPENDS-ON: a-1", Needs: []string{"a-1"}}}, Who: "coordinator"}))
+	// the edit re-points a-2 at a-1, which has landed: --needs-from-brief takes the
+	// text's DEPENDS-ON whole (a re-point drops the old need), then the resolve makes it ready
+	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two\nDEPENDS-ON: a-1", Needs: []string{"a-1"}}}, NeedsFromBrief: true, Who: "coordinator"}))
 	w.must(Resolve(w.s, ResolveReq{Who: "coordinator"}))
 	c := w.s.Work.Placed("a-2")
 	assert.Equal(t, Ready, c.Col, "a waiting card whose needs are all landed becomes ready")
@@ -92,9 +93,9 @@ func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 	assert.True(t, found, "the tick raises one judgment naming a-2 and its unlanded need a-1: %+v", tp.Notes)
 }
 
-// (v) a brief edit that drops its DEPENDS-ON clears the card's needs, rather
-// than keeping the stale ones: the ordinary path records the needs its brief
-// names, and a brief that names none leaves the card with none.
+// (v) a brief edit that drops its DEPENDS-ON keeps the card's needs: the text's
+// DEPENDS-ON is the admission-time list, so a text that drops a need does not
+// drop the card's. --needs-from-brief takes the text whole, clearing them.
 func TestABriefEditDroppingANeedClearsIt(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
@@ -103,8 +104,10 @@ func TestABriefEditDroppingANeedClearsIt(t *testing.T) {
 	require.Equal(t, "a-1", w.s.Work.Placed("a-2").F("needs"))
 
 	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two, reworded", Needs: nil}}, Who: "coordinator"}))
+	assert.Equal(t, "a-1", w.s.Work.Placed("a-2").F("needs"), "a text that drops its DEPENDS-ON keeps the needs, not clears them")
 
-	assert.Equal(t, "", w.s.Work.Placed("a-2").F("needs"), "the edit dropped its DEPENDS-ON: the needs are cleared, not kept stale")
+	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two, reworded", Needs: nil}}, NeedsFromBrief: true, Who: "coordinator"}))
+	assert.Equal(t, "", w.s.Work.Placed("a-2").F("needs"), "--needs-from-brief takes the text whole: the needs are cleared")
 	w.place(w.s.Work, "a-1", "a", Landed)
 	w.must(Resolve(w.s, ResolveReq{Who: "coordinator"}))
 	assert.Equal(t, Ready, w.s.Work.Placed("a-2").Col, "with no needs left, the card becomes ready")

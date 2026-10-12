@@ -20,6 +20,7 @@ MCMOrder == <<"m1", "m2">>
 MCROrder == <<"r1", "r2">>
 MCSOrder == <<"s1", "s2">>
 MCWidth == [m \in {"m1", "m2"} |-> 1]
+MCWidthTwo == [m \in {"m1", "m2"} |-> 2]
 MCHost == [r \in {"r1", "r2"} |-> IF r = "r1" THEN "m1" ELSE "m2"]
 
 InOrder == SelectSeq(MCCardOrder, LAMBDA c : c \in Cards)
@@ -78,6 +79,19 @@ ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Card
 \* Every card added, every machine up; no route serves c2's tier and it pins
 \* no model (THE ROUTE): c1 lives its life, c2 stays ready.
 ScnRoute == [Base EXCEPT !.served = Cards \ {"c2"}]
+
+\* THE DEAL'S ORDER AND SKIPS. The held stream: every card added, every
+\* machine up, s1 held: c1 (s1) is dealt to no machine and no friend until
+\* unhold, c2 (s2) lives its life. The witness "dealheldstream" deals c1.
+ScnHeldStream == [heldStreams |-> {"s1"}] @@ Base
+\* Reads before work, read cards on (ReadCost "half"): c1 ready, c2 in review
+\* with its read pending (askw), one machine of width 2 hosting the only
+\* reader: the pump places c2's read first, at half a slot, and deals c1 in
+\* the room it leaves. The witness "workfirst" deals c1 first. No machine
+\* lapses.
+ScnReadsFirst == [readCost |-> "half", askw |-> [c \in Cards |-> c = "c2"], lapse |-> FALSE] @@
+  [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
+               !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
 
 \* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
 \* (r1's machine): the ask asks r1 nothing and places the read on r2. No
