@@ -472,12 +472,3 @@ func Names(fs []Failure) string {
 	}
 	return strings.Join(out, ", ")
 }
-
-// Keys is the failures' keys.
-func Keys(fs []Failure) []string {
-	out := make([]string, len(fs))
-	for i, f := range fs {
-		out[i] = f.Key()
-	}
-	return out
-}
