@@ -73,6 +73,11 @@ func TestCoordinationFailuresAccumulateAndAreNotBlamedOnTheWorker(t *testing.T) 
 	// worker's, never coordination, so the counter is unchanged.
 	ta.ok("finish --as m1 s1-13.w1@1 --failed --head abcdef1234 --branch sprint/s1-13 --report 'verdict not-done; pushed=abcdef1234'")
 	assertCoordinationTotal(t, ta, len(coordinationEnds))
+
+	// each new coordination end is a HAPPENED note addressed to the coordinator
+	// (notes.go, NCoordinationFailure), which the coordinator's hook streams: the push
+	// reaches the seat that must fix the cause.
+	assert.Contains(t, ta.ok("inbox"), "a coordination failure", "the coordination push reached the coordinator")
 }
 
 func cardID(n int) string { return "s1-" + strconv.Itoa(n) + ".w1" }
