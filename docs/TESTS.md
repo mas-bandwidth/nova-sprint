@@ -673,3 +673,27 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
 
+
+## A PATHS-PROPOSED HOLD on a card a friend holds is the coordinator's
+
+A failed attempt whose report carries a `PATHS-PROPOSED:` line is the coordinator's
+judgment — widen it in place or rework it — when a friend holds the card. The `paths`
+rule (docs/SPEC-SPRINT.md section 8, the rules table's row `paths`) cut a twin `<id>-t`
+and left `<id>` off the work table: `streams --cards` listed the twin working, while
+`card <id>` read state `-` and `brief <id> --widen` refused `no primary <id> on the work
+table; nothing was changed`, so the coordinator could not reach the card she knew. The
+rule now leaves such a card in review, the judgment open, and `brief --widen`, `--brief`,
+`--brief-file` and `--tier` reach it by its own id. A machine's card is unchanged: the
+`paths` rule still replaces it by its widened twin (no twin for a card a friend holds).
+
+- Unit, `internal/sprint/paths_proposed_test.go`:
+  `TestAHoldWithPathsProposedCutsTheWidenedTwinByRule`: a machine's card whose HOLD
+  proposes PATHS is still replaced by its widened twin, or left with the twin command when
+  a proposed file is shared; the friend-held case is the one below.
+- Command, `cmd/nova-sprint/friend_brief_widen_test.go`:
+  `TestAPathsProposedHoldOnACardAFriendHoldsIsTheCoordinators`: on the in-memory private
+  store beside a local bare origin, a card dealt to a friend is held with
+  `PATHS-PROPOSED: b.go`; the `paths` rule reports `rule=paths act=left` naming the
+  friend-held card and cuts no twin (`card <id>-t` is no card), `card <id>` prints state
+  `review` and its stored brief, and `brief <id> --widen` edits the same id in place with
+  `PATHS: a.go,b.go` and a `CARRY:` line at the held head.

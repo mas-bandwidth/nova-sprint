@@ -115,6 +115,14 @@ func rulePaths(s *Snapshot, a *RuleAnswer) bool {
 	}
 	a.Rule, a.Card = RulePaths, pr.ID
 	said := fmt.Sprintf("attempt %d held with %s", p.Attempt, p.Line())
+	// A card a friend holds is the coordinator's judgment, never a twin by rule: the
+	// coordinator reaches it by id (card, brief --widen/--brief/--brief-file/--tier) and
+	// decides to widen or rework. A twin replaces the id she knows with one she does not,
+	// while streams lists the twin and the card she asked for reads as off the table.
+	if wc := s.Fleet.Card(cmp.Or(pr.F("work"), WorkCardID(pr.ID, p.Attempt))); wc != nil && IsFriendRow(wc.Row) {
+		left(a, said+": a card a friend holds: the coordinator's judgment, widen it in place (nova-sprint brief "+pr.ID+" --widen) or rework it")
+		return true
+	}
 	if pr.F(FieldPathsProposed) == p.mark() && strings.HasPrefix(a.open.Note.What, pathsCmdAt) {
 		left(a, said+": its twin command is in the judgment already, a mind's")
 		return true
