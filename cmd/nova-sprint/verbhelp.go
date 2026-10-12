@@ -50,7 +50,7 @@ var verbEffect = map[string]string{
 	"unhold":            "local write: releases the named holds in the sprint's store; --dry-run writes nothing",
 	"fleet hold":        "local write: holds the named fleet members in the sprint's store, as hold does (--return also hands back their begun work); --dry-run writes nothing",
 	"fleet unhold":      "local write: releases the named fleet members' holds in the sprint's store, as unhold does; --dry-run writes nothing",
-	"friend hold":       "local write: holds the named friends in the sprint's store, as hold does (every card she holds goes back to ready); --dry-run writes nothing",
+	"friend hold":       "local write: holds the named friends in the sprint's store, as hold does (every card the friend holds goes back to ready); --dry-run writes nothing",
 	"friend unhold":     "local write: releases the named friends' holds in the sprint's store, as unhold does; --dry-run writes nothing",
 	"check":             "inspection: reads the sprint's tables and prints each violation, writes nothing",
 	"brief check":       "inspection: reads the named briefs and runs every check add runs, in add's order, over every brief, collecting every finding instead of stopping at the first; reads the store read-only and writes nothing",
@@ -102,7 +102,7 @@ var verbEffect = map[string]string{
 	"server switch":     "local write: runs <binary> tick --shadow against the store first (read-only, under --tick-deadline) and refuses the swap, nothing changed, when it exits non-zero, panics or misses the deadline; then switches the server binary on disk, keeping the previous binary, the shadow's plan size and time at <target>.shadow.json, and rolling back on land failure in the window; --dry-run runs the shadow tick only and switches and writes nothing",
 	"merge-window open": "local write: the merge window, the merge table's properties in the sprint's store; land pauses while it is open; --dry-run checks --for and --reason and writes nothing",
 	// a store write, the collect's tip read and its directory reads said
-	"friend reconcile": "store write: finishes each card she reported on and returns each she abandoned, in the sprint's store; reads her inbox/QUEUE.json and outbox, writes nothing in her directory, and reads origin's tip (one git ls-remote) for each LAND it collects; --dry-run writes nothing and reads no tip",
+	"friend reconcile": "store write: finishes each card the friend reported on and returns each the friend abandoned, in the sprint's store; reads the friend's inbox/QUEUE.json and outbox, writes nothing in the friend's directory, and reads origin's tip (one git ls-remote) for each LAND it collects; --dry-run writes nothing and reads no tip",
 	"lane list":        "inspection: lists every machine's lanes and holders, writes nothing",
 	"lane take":        "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
 	"lane give":        "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",

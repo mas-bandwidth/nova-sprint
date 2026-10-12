@@ -196,7 +196,7 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 			next = next[1:]
 			set, unset := friendTaken(s, n, r.Friend)
 			u.Changes = append(u.Changes, change(Fleet, moveEntry(n, row, Working, set, unset...)))
-			u.Moved += fmt.Sprintf("; %s ready -> working (her next, taken now)", n.ID)
+			u.Moved += snapshotFriendPronouns(s, r.Friend).Sprintf("; %s ready -> working ({their} next, taken now)", n.ID)
 		}
 		p.Units = append(p.Units, u)
 	}
@@ -309,7 +309,7 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 		case wc != nil:
 			p.refuse(id, fmt.Sprintf("%s was never taken back from friend %s (taken from %s)", card, r.Friend, from))
 		case haveSeat && !friendTakes(s, seat, tier):
-			p.refuse(id, fmt.Sprintf("%s is a %s card, and friend %s's row does not serve tier %s (her tiers: %s)", pr.ID, tier, r.Friend, tier, orDash(strings.Join(friendTiers(seat), ","))))
+			p.refuse(id, snapshotFriendPronouns(s, r.Friend).Sprintf("%s is a %s card, and friend %s's row does not serve tier %s ({their} tiers: %s)", pr.ID, tier, r.Friend, tier, orDash(strings.Join(friendTiers(seat), ","))))
 		case len(NamedWaits(s, pr, nil)) > 0:
 			p.refuse(id, fmt.Sprintf("%s needs %s, not landed: nothing is handed to friend %s", pr.ID, strings.Join(NamedWaits(s, pr, nil), ","), r.Friend))
 		default:

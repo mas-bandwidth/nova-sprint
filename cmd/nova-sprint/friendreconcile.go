@@ -44,7 +44,7 @@ func friendQueueRead(dir string) (account sprint.FriendAccount, why string, err 
 	fi, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return account, path + " is not there: her own account of her cards is what reconcile compares the store with", nil
+		return account, path + " is not there: the friend's own account of the friend's cards is what reconcile compares the store with", nil
 	case err != nil:
 		return account, "", err
 	case !fi.Mode().IsRegular():
@@ -66,8 +66,8 @@ func friendQueueRead(dir string) (account sprint.FriendAccount, why string, err 
 func (a *app) cmdFriendReconcile(args []string, stdout, stderr io.Writer) int {
 	const name = "friend reconcile"
 	fs, c := a.verbSetup(name)
-	root := fs.String("root", "", "the directory the friends' working directories are under, <root>/<friend>-working (else HOME); her inbox/QUEUE.json and outbox are read there, and nothing is written there")
-	dry := fs.Bool("dry-run", false, "say what each card working on her row would get (collect, keep, return) and write nothing; the reads of the store and her directory are made")
+	root := fs.String("root", "", "the directory the friends' working directories are under, <root>/<friend>-working (else HOME); the friend's inbox/QUEUE.json and outbox are read there, and nothing is written there")
+	dry := fs.Bool("dry-run", false, "say what each card working on the friend's row would get (collect, keep, return) and write nothing; the reads of the store and the friend's directory are made")
 	friend, code := oneFriend(name, fs, args, stderr)
 	if code != 0 {
 		return code
@@ -95,7 +95,7 @@ func (a *app) cmdFriendReconcile(args []string, stdout, stderr io.Writer) int {
 	account, why, err := friendQueueRead(dir)
 	switch {
 	case err != nil:
-		fmt.Fprintf(stderr, "%s %s: her account cannot be read: %s; nothing was changed\n", prog, name, oneline.WithRemedy(err.Error(), "ls -la "+filepath.Join(dir, "inbox")))
+		fmt.Fprintf(stderr, "%s %s: the friend's account cannot be read: %s; nothing was changed\n", prog, name, oneline.WithRemedy(err.Error(), "ls -la "+filepath.Join(dir, "inbox")))
 		return 1
 	case why != "":
 		fmt.Fprintf(stderr, "%s %s: %s; run: ls -la %s; nothing was changed\n", prog, name, oneline.Escape(why), filepath.Join(dir, "inbox"))
@@ -132,7 +132,7 @@ func (a *app) cmdFriendReconcile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if packets+len(strays) == 0 {
-		line += ": nothing to do, no card is working on her row and her QUEUE.json names none"
+		line += ": nothing to do, no card is working on the friend's row and the friend's QUEUE.json names none"
 	}
 	sayOK(stdout, c.json, name, "FRIEND-RECONCILE OK friend="+friend+" "+line+dryWord, facts)
 	return 0
@@ -270,7 +270,7 @@ func (a *app) reconcileFriend(ctx context.Context, st *store.Store, r reconcileR
 	}
 	strays := sprint.FriendQueueStrays(account.Tasks, held)
 	for _, id := range strays {
-		say(fmt.Sprintf("NOTE friend=%s: her QUEUE.json says %s for %s, which is no card working on her row; nothing was done", friend, oneline.Field(account.Tasks[id]), oneline.Field(id)))
+		say(fmt.Sprintf("NOTE friend=%s: the friend's QUEUE.json says %s for %s, which is no card working on the friend's row; nothing was done", friend, oneline.Field(account.Tasks[id]), oneline.Field(id)))
 	}
 	t.cards, t.collected, t.kept, t.returned, t.refused, t.strays = len(packets), collected, kept, returned, refused, strays
 	return t, nil

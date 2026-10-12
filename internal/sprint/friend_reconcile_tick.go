@@ -77,7 +77,7 @@ func FriendDisagree(s *Snapshot, r FriendDisagreeReq) Plan {
 	write := func(value string) {
 		p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: value, Was: said, WasAbsent: !had})
 	}
-	counts := fmt.Sprintf("her row working=%d, her QUEUE.json working=%d", r.Row, r.Queue)
+	counts := fmt.Sprintf("row working=%d, QUEUE.json working=%d", r.Row, r.Queue)
 	switch {
 	case r.Row != r.Queue && said == "":
 		n := happened(NFriendDisagrees, "", s.Now)
@@ -85,13 +85,13 @@ func FriendDisagree(s *Snapshot, r FriendDisagreeReq) Plan {
 		n.What = fmt.Sprintf("friend %s after the run loop's reconcile: %s", r.Friend, counts)
 		n.Hint = "run: nova-sprint friend reconcile " + r.Friend + " --dry-run (what each card gets), nova-sprint card <card>"
 		write(stamp(s.Now))
-		p.Units = append(p.Units, Unit{Key: name, Notes: []Note{n}, Moved: "friend " + r.Friend + " disagrees with her QUEUE.json: " + counts + ": told " + orDash(s.Coordinator)})
+		p.Units = append(p.Units, Unit{Key: name, Notes: []Note{n}, Moved: "friend " + r.Friend + " disagrees with the friend's QUEUE.json: " + counts + ": told " + orDash(s.Coordinator)})
 	case r.Row == r.Queue && said != "":
 		n := happened(NFriendAgrees, "", s.Now)
 		n.Who, n.To = r.Who, s.Coordinator
 		n.What = fmt.Sprintf("friend %s: %s, agreeing again after disagreeing since %s", r.Friend, counts, said)
 		write("")
-		p.Units = append(p.Units, Unit{Key: name, Notes: []Note{n}, Moved: "friend " + r.Friend + " agrees with her QUEUE.json again: " + counts})
+		p.Units = append(p.Units, Unit{Key: name, Notes: []Note{n}, Moved: "friend " + r.Friend + " agrees with the friend's QUEUE.json again: " + counts})
 	}
 	return p
 }

@@ -214,8 +214,12 @@ completions at or after it, so a reset shows `done 0` until the next completion.
 readers' verdicts on its work), so reads never move it.
 
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
-<friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>`, her nova-config row
-as friend sync last copied it, which is how her daemon reads her delivery mode;
+<friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>
+row_pronouns=<she/her|he/him|they/them>`, her nova-config row as friend sync last
+copied it, which is how her daemon reads her delivery mode and explicit pronouns.
+A pronoun-only change is copied by the next sync and returned by both plain and
+JSON beats; a legacy roster defaults to they/them. The PostgreSQL column comes
+from the shared migration 0038;
 docs/SPEC-FRIEND.md, one-shot lanes), which her own machinery
 runs every second (`FriendBeatEvery`) beside her harness (it writes
 `friend-beat:<friend>`, the time to the second, with what she reports of her
@@ -4381,14 +4385,14 @@ cards had none outstanding.
 
 **The machine's commit identity.** Every commit the sprint machine makes (land,
 merge, rework-at-tip, the promotion's cut, ledger and roadmap writes) carries an
-explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@mas-bandwidth.com>`), never the host's global git config. The landing
+explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@example.invalid>`), never the host's global git config. The landing
 and the promotion (`mergeTarget`'s `git commit-tree`) refuse to commit, naming the
 setting, when none is configured; `doctor` reports the identity in use and fails
 when its email equals the host's global `user.email`. Workers' clones get the
 identity in their local config at clone time (`pkg/swarm`, `StageJob`/
 `StageCloneIdentity` and their `As` variants): the live staging entry points
 carry the machine's identity (the sprint row's `git_identity`, default
-`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, and
+`nova-sprint <nova-sprint@example.invalid>`), never the pool's owner, and
 the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
 so a machine commit in a clone carries the configured identity too.
 

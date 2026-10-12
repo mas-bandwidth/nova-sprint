@@ -314,7 +314,7 @@ func TestPromoteCarriesACutToARecordedPromotion(t *testing.T) {
 		// the cut is the machine's own commit: it carries the configured identity, never
 		// the twin's environment or the host's global git config (docs/SPEC-SPRINT.md, the
 		// machine's commit identity).
-		require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>",
+		require.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>",
 			w.git(w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", cut), "the cut carries the configured identity")
 		ta.clean()
 	})

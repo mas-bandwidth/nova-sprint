@@ -123,13 +123,13 @@ func init() {
 		{"friend hold", "<friend>... --reason <text> [--dry-run]", "friend hold friend-a --reason 'opus rate limited'", func(a *app, args []string, o, e io.Writer) int {
 			return a.cmdHoldKind("friend hold", sprint.HoldFriend, false, args, o, e)
 		}},
-		{"friend unhold", "<friend>... [--reason <text>] [--dry-run]", "friend unhold friend-a --reason 'her allowance is back'", func(a *app, args []string, o, e io.Writer) int {
+		{"friend unhold", "<friend>... [--reason <text>] [--dry-run]", "friend unhold friend-a --reason 'the friend's allowance is back'", func(a *app, args []string, o, e io.Writer) int {
 			return a.cmdHoldKind("friend unhold", sprint.HoldFriend, true, args, o, e)
 		}},
 		{"friend up", "<friend> [--width <n>]", "friend up friend-a --width 4", func(a *app, args []string, o, e io.Writer) int { return a.cmdFriendHold(false, args, o, e) }},
 		{"friend cards", "<friend> [--json]", "friend cards friend-a --json", (*app).cmdFriendCards},
-		{"friend take", "<friend> (<id>... | --all-unstarted) [--reason <text>]", "friend take friend-a s1-4 --reason 'she is on another job'", (*app).cmdFriendTake},
-		{"friend give", "<friend> <id>... [--reason <text>]", "friend give friend-a s1-4 --reason 'the take was the harness, not hers'", (*app).cmdFriendGive},
+		{"friend take", "<friend> (<id>... | --all-unstarted) [--reason <text>]", "friend take friend-a s1-4 --reason 'the friend is on another job'", (*app).cmdFriendTake},
+		{"friend give", "<friend> <id>... [--reason <text>]", "friend give friend-a s1-4 --reason 'the take was the harness, not the friend's'", (*app).cmdFriendGive},
 		{"friend level", "", "friend level", (*app).cmdFriendLevel},
 		{"friend health", "<friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)", "friend health friend-a --state up --seen 2026-10-04T15:00:00Z --generation 1", (*app).cmdFriendHealth},
 		{"friend clean", "[--pg <dsn> | --file <path>] [--root <dir>] [--days <n>] [--dry-run]", "friend clean --dry-run", (*app).cmdFriendClean},
@@ -310,9 +310,9 @@ name it for every card; a card named without one is refused, naming the live
 generation, and a generation that is not the live one is refused as stale.
 take with no card takes the member's oldest ready cards (--max n, default 1)
 and prints each one's generation.
-take --as friend.<name> <card>@<gen> is her lane's take with the card named
+take --as friend.<name> <card>@<gen> is the friend's lane's take with the card named
 (--lane <n> records the lane; omitted, no lane holds it): it starts the card
-as her lane's take does, so the tick never puts it back ready. A member's take
+as the friend's lane's take does, so the tick never puts it back ready. A member's take
 by id is unchanged, and a member names no lane with it.
 
 ` + inboxExample + `
@@ -2507,7 +2507,7 @@ func cardGens(words []string) ([]string, map[string]int, error) {
 func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("take")
 	as := fs.String("as", "", "the fleet member taking its cards; several, comma separated, each take from their own ready queue in one step")
-	lane := fs.Int("lane", 0, "a lane's take: the card lane n of the member's row holds on the server, else one given it now (a working card no lane holds, else its next ready card); names no card, no --max and no --epoch unless a friend names her cards by id (take --as friend.<name> <card>@<gen> --lane <n>), when the lane is recorded and the take is her lane's own move")
+	lane := fs.Int("lane", 0, "a lane's take: the card lane n of the member's row holds on the server, else one given it now (a working card no lane holds, else its next ready card); names no card, no --max and no --epoch unless a friend names the friend's cards by id (take --as friend.<name> <card>@<gen> --lane <n>), when the lane is recorded and the take is the friend's lane's own move")
 	var limit int
 	bindCapAlias(fs, "listed items of each kind (0 is all); when given, the first n of its ready queue (omitted, 1); with several members, n of each")
 	words, err := parse(fs, args)
@@ -2627,7 +2627,8 @@ func takeShort(ctx context.Context, st *store.Store, res store.Result, members [
 			if len(s.Fleet.Cell(m, sprint.Ready)) == 0 {
 				out = append(out, head+"its ready queue is empty")
 			} else {
-				out = append(out, fmt.Sprintf("%sher lanes are full (%d working) or she is not up; she takes another as she finishes one", head, len(working)))
+				friend, _ := sprint.FriendOfRow(m)
+				out = append(out, friendSays(ctx, st, friend)("%s{their} lanes are full (%d working) or the friend is not up; the friend takes another as a card finishes", head, len(working)))
 			}
 			continue
 		}
@@ -3859,13 +3860,13 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fleet := fs.String("alarm-fleet", "", "the backlog alarm on the fleet: a judgment, once an episode, while the members up work fewer cards than this percent (1 to 100) of their width with a primary ready or waiting; off takes it off (the default)")
 	readyAlarm := fs.String("alarm-ready", "", "the backlog alarm on the feed: on raises a judgment, once an episode, while no primary is ready and one waits; off takes it off (the default)")
 	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d: the attempts one card runs between two coordinator decisions before it is the coordinator's as one judgment); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
-	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under her working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
+	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under the friend's working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
 	landingStallBound := fs.String("landing-stall-bound", "", fmt.Sprintf("how long cards may wait in review or merging without a landing before the coordinator is judged stalled: a duration, or default (%s)", sprint.LandingStallBound))
 	fleetWork := fs.String("fleet", "", "the fleet's work: off and the deal hands no work card to a machine (its readers still read; no fleet idle alarm), on deals again (the default)")
-	friendsWork := fs.String("friends", "", "the friends' work: off and the deal hands no work card to a friend (her reads still flow; no empty-row alarm), on deals again (the default)")
+	friendsWork := fs.String("friends", "", "the friends' work: off and the deal hands no work card to a friend (the friend's reads still flow; no empty-row alarm), on deals again (the default)")
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
-	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of her row's own tiers")
-	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
+	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of the friend's row's own tiers")
+	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges the friend idle: a duration, or default (%s)", sprint.FriendFinishDefault))
 	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")

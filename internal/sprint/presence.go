@@ -341,7 +341,7 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	// since that beat, whatever the pong says (docs/SPEC-SPRINT.md section 1, a friend's
 	// health; a friend who stops beating is down).
 	if f.Beat.Beaten() && now.Sub(f.Beat.At) > FriendBeatBound {
-		return Down, "her daemon stopped beating " + ago(now.Sub(f.Beat.At)) + ": down since " + stamp(f.Beat.At)
+		return Down, "daemon stopped beating " + ago(now.Sub(f.Beat.At)) + ": down since " + stamp(f.Beat.At)
 	}
 	pong := !f.Health.Seen.IsZero() && f.Health.State == Up && f.Health.Generation == f.Generation
 	if age := now.Sub(f.Health.Seen); pong && age >= 0 && age < FriendPongWindow {
@@ -356,15 +356,15 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	if age := now.Sub(f.Finished); !f.Finished.IsZero() && age >= 0 && age < FriendFinishWindow {
 		return Up, "finish " + ago(age)
 	}
-	why := "no session evidence: no wake ping answered by her session within " + FriendPongWindow.String()
+	why := "no session evidence: no wake ping answered within " + FriendPongWindow.String()
 	if pong {
 		why += " (last " + ago(now.Sub(f.Health.Seen)) + ")"
 	}
-	why += ", no session proof on her beat within " + FriendProofLive.String()
+	why += ", no session proof on the beat within " + FriendProofLive.String()
 	if proof {
 		why += " (last " + ago(now.Sub(f.Beat.Proof))
 		if !f.Beat.Fresh(now) {
-			why += ", her beat stopped " + ago(now.Sub(f.Beat.At))
+			why += ", beat stopped " + ago(now.Sub(f.Beat.At))
 		}
 		why += ")"
 	}
@@ -373,7 +373,7 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 		why += " (last " + ago(now.Sub(f.Finished)) + ")"
 	}
 	if f.Beat.Beaten() {
-		why += "; her beat " + ago(now.Sub(f.Beat.At)) + " is not evidence"
+		why += "; beat " + ago(now.Sub(f.Beat.At)) + " is not evidence"
 	}
 	return Down, why
 }
@@ -381,7 +381,7 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 // beatSaysDownWhy is why a beat that says down puts her down (SaysDown): until
 // when, and the reason her daemon gave.
 func beatSaysDownWhy(b Beat) string {
-	why := "her beat says down until " + b.Friend.Until.UTC().Format(time.RFC3339)
+	why := "beat says down until " + b.Friend.Until.UTC().Format(time.RFC3339)
 	if b.Friend.Reason != "" {
 		why += ": " + b.Friend.Reason
 	}

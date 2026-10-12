@@ -2288,7 +2288,7 @@ func friendNext(s *Snapshot, c *Card, u *Unit, prior []Unit) {
 	next := ready[0]
 	set, unset := friendTaken(s, next, name)
 	u.Changes = append(u.Changes, change(Fleet, moveEntry(next, c.Row, Working, set, unset...)))
-	u.Moved += fmt.Sprintf("; %s ready -> working (her next, taken now)", next.ID)
+	u.Moved += snapshotFriendPronouns(s, name).Sprintf("; %s ready -> working ({their} next, taken now)", next.ID)
 }
 
 func unitPromoted(units []Unit, cardID string) bool {

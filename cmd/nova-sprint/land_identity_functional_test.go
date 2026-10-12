@@ -99,5 +99,5 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	// The landing commit's author and committer are the configured identity, not the planted
 	// global config and not the worker's.
 	got := git(remote, "log", "-1", "--format=%an <%ae>|%cn <%ce>", "main")
-	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
+	require.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>", got)
 }

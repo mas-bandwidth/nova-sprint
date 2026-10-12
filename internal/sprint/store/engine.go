@@ -220,6 +220,9 @@ type Step struct {
 	// Friends says the step consults the friends roster (finish, for friendNext
 	// delivery mode): it plans with the friend seats (sprint.Snapshot.Friends).
 	Friends bool
+	// FriendText loads only pronoun metadata; unlike Friends it changes no
+	// behavioral seat lookup, keeping manual verb routing and admission intact.
+	FriendText bool
 	// DrainMax, above zero, is the most entries of the queue's head a drain
 	// takes: the pump's second drain takes only what its first requeued.
 	DrainMax int
@@ -693,6 +696,16 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return res, err
 			}
 			snap.Friends = seats
+		}
+		if step.FriendText && !step.Friends {
+			specs, err := st.FriendSpecs(ctx)
+			if err != nil {
+				return res, err
+			}
+			snap.FriendTextPronouns = make(map[string]string, len(specs))
+			for _, spec := range specs {
+				snap.FriendTextPronouns[spec.Name] = spec.Pronouns
+			}
 		}
 		// Every plan is held to the lifecycle here, whatever step built it.
 		plan := sprint.Applied(snap, step.Plan(snap))

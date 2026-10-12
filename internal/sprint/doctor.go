@@ -1193,11 +1193,11 @@ func DoctorGitIdentity(in DoctorInput) (out []DoctorCheck) {
 	case !ok:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
 			Evidence: "the sprint row names no git_identity: the landing refuses to commit",
-			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@mas-bandwidth.com>' && nova-config apply"}}
+			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
 	case in.HostGitEmail != "" && parsed.Email == in.HostGitEmail:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
 			Evidence: fmt.Sprintf("git_identity email %s equals the host's global user.email: the machine would commit as the owner", parsed.Email),
-			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@mas-bandwidth.com>' && nova-config apply"}}
+			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
 	default:
 		return []DoctorCheck{okCheck(area, check, "identity", fmt.Sprintf("git_identity=%s", id))}
 	}
@@ -1436,11 +1436,11 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 		case f.Status == Held || f.Status == Down:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "nova-sprint friend up " + f.Name + " (once its cause is gone)"})
 		case !beaten || age > DoctorBeatBound*2:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": her daemon beats no more", Remedy: "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f.Name + " (on her host)"})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": " + friendPronouns(seats, f.Name).Say("{their} daemon beats no more"), Remedy: "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f.Name + " (on the friend's host)"})
 		case f.Width > 0 && working > f.Width:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past her width", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
 		case b.Friend != nil && len(f.Running) != working:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": her beat's running and her row's working differ", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend reconcile " + f.Name})
 		default:
 			fine++
 		}

@@ -51,7 +51,7 @@ func ruleFriendTake(s *Snapshot, r TickReq, a *RuleAnswer, wc *Card) {
 	}
 	i := slices.IndexFunc(r.Friends, func(f FriendSeat) bool { return f.Name == friend })
 	if i < 0 {
-		left(a, "the tick holds no seat of friend "+friend+": whether she started it is not known")
+		left(a, "the tick holds no seat of friend "+friend+": whether the friend started the card is not known")
 		return
 	}
 	if friendStarted(s, r.Friends[i], wc) {
@@ -63,7 +63,7 @@ func ruleFriendTake(s *Snapshot, r TickReq, a *RuleAnswer, wc *Card) {
 		return
 	}
 	a.Act, a.from = ActTake, friend
-	a.Why = fmt.Sprintf("friend %s has not started %s past its bound (%s): taken back and dealt again, never to her", friend, wc.ID, wc.Col)
+	a.Why = fmt.Sprintf("friend %s has not started %s past its bound (%s): taken back and dealt again, never to that friend", friend, wc.ID, wc.Col)
 }
 
 // ruleReadLate: a read card past its deadline (asked and not begun, or begun and not

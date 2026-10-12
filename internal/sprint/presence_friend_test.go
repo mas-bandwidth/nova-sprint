@@ -89,11 +89,11 @@ func TestFriendIsUpOnlyOnEvidenceFromHerSession(t *testing.T) {
 	row := r.row()
 	assert.Equal(t, sprint.Down, row.Status, "a beat alone is no evidence")
 	assert.Contains(t, row.Evidence, "no session evidence")
-	assert.Contains(t, row.Evidence, "her beat 0s ago is not evidence", "the row names the beat and its age")
+	assert.Contains(t, row.Evidence, "beat 0s ago is not evidence", "the row names the beat and its age")
 	r.beatFor(sprint.FriendPongWindow + time.Minute)
 	row = r.row()
 	assert.Equal(t, sprint.Down, row.Status, "beaten every second for eleven minutes, still down")
-	assert.Contains(t, row.Evidence, "no wake ping answered by her session within 10m0s")
+	assert.Contains(t, row.Evidence, "no wake ping answered within 10m0s")
 	assert.Contains(t, row.Evidence, "no card finished within 30m0s")
 
 	// her daemon's own pong is no evidence either

@@ -76,8 +76,8 @@ var WaitAllowedOnACard = map[string]string{
 	// the held wave's sentinel, never a card: a stop the coordinator placed
 	NStarving: "names the first held wave's sentinel, a stop the coordinator placed, never a single card",
 	// a friend's session: the judgment names a friend, not a card
-	NFriendIdle:    "names a friend whose session holds working cards and finishes none, not a card: the cards stay hers and keep their deadlines",
-	NFriendStalled: "names a friend, not a card: her cards keep their deadlines and the stall ladder wakes her",
+	NFriendIdle:    "names a friend whose session holds working cards and finishes none, not a card: the cards stay on that friend's row and keep their deadlines",
+	NFriendStalled: "names a friend, not a card: the cards keep their deadlines and the stall ladder wakes the friend",
 	// a deliberate stop: "do more before going on" is the sentinel's own decision
 	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
 }

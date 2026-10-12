@@ -93,12 +93,15 @@ const (
 // bus's Fake, a fake harness and its own clock.
 type Daemon struct {
 	Friend, Harness, Dir string
-	Width                int
-	Store                bus.Store
-	Deliver              Deliverer
-	Beat                 func(ctx context.Context, active time.Time) error // one beat to the sprint server, carrying the session's last activity (zero: none known)
-	StepBeatForTests     bool                                              // deterministic fake-clock seam; production has one independent beat caller
-	HarnessStatus        func() (seen, rule string)                        // the beat worker's advisory harness observation; only the loop writes Status
+	// Pro holds the friend's pronouns (the row's pronouns setting): every text the daemon
+	// writes about the friend says them through d.say. Nil is they/them.
+	Pro              *PronounsRef
+	Width            int
+	Store            bus.Store
+	Deliver          Deliverer
+	Beat             func(ctx context.Context, active time.Time) error // one beat to the sprint server, carrying the session's last activity (zero: none known)
+	StepBeatForTests bool                                              // deterministic fake-clock seam; production has one independent beat caller
+	HarnessStatus    func() (seen, rule string)                        // the beat worker's advisory harness observation; only the loop writes Status
 	// Activity is the newest write of the session's files and Cards the ids of
 	// the cards she holds, oldest first (nil: the queue file's queued and working
 	// tasks under Dir). Activity is read by the independent beat cadence at
@@ -872,7 +875,7 @@ func (l *loop) idle(now time.Time) {
 		l.startTurn(t, now, l.deliverBatch(t))
 	case note:
 		l.tellKind(bus.KindBlocker, fmt.Sprintf("friend %s: idle %s holding %d cards: %s", d.Friend, 2*after, len(d.cards), held),
-			fmt.Sprintf("Her session has written nothing for %s while holding these cards, and a wake turn %s ago changed nothing. Look at her session, or deal the cards to another friend.\n", 2*after, after), now)
+			d.sayf("{Their} session has written nothing for %s while holding these cards, and a wake turn %s ago changed nothing. Look at {their} session, or deal the cards to another friend.\n", 2*after, after), now)
 	}
 }
 
