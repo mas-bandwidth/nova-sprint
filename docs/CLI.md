@@ -803,3 +803,13 @@ The roadmap verbs of nova-sprint 8c87a4b (`roadmap check`, `add`, `remove`,
 `pull`, `note`) edited the private work record's `roadmaps/*.sexp` and were left
 out by the v1.2.3 re-seed. These verbs replace them, on the repository's own files.
 
+
+Producer planning: `add` places producer cards in `plan`. `check <ids...>`,
+`check --stream <s>`, and `check --all-plan` print set triage and move passing
+cards to `check`; with `--json`, output contains `triage` and `result`.
+`promote <ids...>` or `promote --stream <s>` moves checked cards to `waiting`.
+Both selection forms require the coordinator. Bare `check` remains the
+invariant audit; release `promote` options remain available without a card
+selection. `inbox --triage` prints the current review table as JSON.
+`set --plan-max <duration|default>` controls the planning judgment's bound
+(default 30 minutes of running time).

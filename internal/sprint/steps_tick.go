@@ -99,6 +99,7 @@ const (
 	NWorkLate   = "a work card is past its deadline"
 	NReadLate   = "a read card is past its deadline"
 	NMergeLate  = "a stream has had no merge step past its deadline"
+	NPlanLate   = "a planned set needs the coordinator"
 	NBound      = "a card reached its bound"
 	NStarving   = "the fleet is starving"  // ready under twice the width while a wave is held (heldWave)
 	NOverloaded = "a member is overloaded" // three timeouts within the window (overload.go)
@@ -154,6 +155,7 @@ var TickDecisions = map[string][]string{
 	NWorkLate:       {"fleet level", "fleet down <member>", "wait", "drop"},
 	NReadLate:       {"ask --another", "wait", "drop"},
 	NMergeLate:      {"merge --stream <s>", "look", "wait"},
+	NPlanLate:       {"check --all-plan", "promote --stream <s>", "wait"},
 	NStalled:        {"look at the card", "wait"},
 	NNoFrontierRoom: {"reader add", "wait"},
 	// the backlog alarms (alarms.go): seen, or quiet for a while
@@ -1661,7 +1663,16 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 				decisions: []string{"merge --stream " + st, "look", "wait"}})
 		}
 	}
-	due := notify(&p, s, conds, []string{NWorkLate, NReadLate, NMergeLate}, r)
+	var planned []string
+	for _, c := range s.Work.Column(Planned, Checked) {
+		if _, ok := late("admitted", c, s.PlanMax()); ok {
+			planned = append(planned, c.ID)
+		}
+	}
+	if len(planned) > 0 {
+		conds = append(conds, cond{typ: NPlanLate, streamLevel: true, primaries: planned, what: fmt.Sprintf("%d cards in plan or check for longer than %s", len(planned), s.PlanMax()), decisions: []string{"check --all-plan", "promote --stream <s>", "wait"}})
+	}
+	due := notify(&p, s, conds, []string{NWorkLate, NReadLate, NMergeLate, NPlanLate}, r)
 	// the ready-over judgments (ready_over.go), on a plan of their own the same way
 	ro, readyDue := TickReadyOver(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, ro.Notes...), append(p.Closes, ro.Closes...), append(p.Updates, ro.Updates...)
@@ -1839,7 +1850,7 @@ func condKey(typ, subject, card, what string) string {
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
-		NNoFrontierRoom:
+		NNoFrontierRoom, NPlanLate:
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so
@@ -2016,9 +2027,9 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NPlanLate || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
-				if c.typ == NNoFrontierRoom || c.typ == NReadyOver {
+				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NPlanLate {
 					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause
 				}
 				update(n, c.what, c.decisions, primaries) // the latest facts, in place

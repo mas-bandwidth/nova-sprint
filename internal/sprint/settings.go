@@ -22,6 +22,7 @@ const (
 	// PropReadyMax is the work table's property: how long a ready card may sit undealt
 	// before the tick raises the ready-over judgment, a duration (a-card-ready-over-a-minute-pushes-the-seat).
 	PropReadyMax = "ready_max"
+	PropPlanMax  = "plan_max"
 	// PropFriendIdle is the work table's property: how long a friend holding cards may
 	// show no session activity before it is an alarm, a duration.
 	PropFriendIdle = "friend_idle"
@@ -317,6 +318,7 @@ type SetReq struct {
 	Streams           []string `json:",omitempty"`
 	ReadTier          string   `json:",omitempty"`
 	DealtMax          string   `json:",omitempty"`
+	PlanMax           string   `json:",omitempty"`
 	Attempts          string   `json:",omitempty"`
 	FriendIdle        string   `json:",omitempty"`
 	LandingStallBound string   `json:",omitempty"`
@@ -388,6 +390,11 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.ReadTier != "" && r.ReadTier != ReadTierDefault && !slices.Contains(readTiers, r.ReadTier) {
 		why = append(why, "--read-tier wants "+strings.Join(readTiers, " or ")+", or "+ReadTierDefault+" to take it off; found "+r.ReadTier)
+	}
+	if r.PlanMax != "" && r.PlanMax != ReadTierDefault {
+		if d, err := time.ParseDuration(r.PlanMax); err != nil || d <= 0 {
+			why = append(why, "--plan-max wants a duration above zero or default")
+		}
 	}
 	if r.DealtMax != "" && r.DealtMax != ReadTierDefault {
 		if d, err := time.ParseDuration(r.DealtMax); err != nil || d <= 0 {
@@ -523,11 +530,14 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+	if r.PlanMax == "" && r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
+	}
+	if len(r.Streams) > 0 && r.PlanMax != "" {
+		why = append(why, "--plan-max is the sprint setting, not a stream setting")
 	}
 	if len(r.Streams) > 0 && r.DealtMax != "" {
 		why = append(why, "--dealt-max is the sprint's, not a stream's: nova-sprint set --dealt-max "+r.DealtMax)
@@ -668,6 +678,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	kvs := [][2]string{
 		{PropReadTier, r.ReadTier},
 		{PropDealtMax, r.DealtMax},
+		{PropPlanMax, r.PlanMax},
 		{PropGoLanes, r.GoLanes},
 		{PropAttempts, r.Attempts},
 		{PropFriendIdle, r.FriendIdle},
@@ -739,4 +750,16 @@ func (r SetReq) alarms() map[string]string {
 		}
 	}
 	return out
+}
+
+// PlanMax bounds the coordinator columns (docs/SPEC-SPRINT.md, plan and check columns).
+func (s *Snapshot) PlanMax() time.Duration {
+	if s.Work != nil {
+		if v, ok := s.Work.Prop(PropPlanMax); ok {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				return d
+			}
+		}
+	}
+	return 30 * time.Minute
 }

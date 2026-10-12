@@ -265,6 +265,10 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s -> waiting, needs %s", c.ID, len(b.Brief), c.Row, c.Col, strings.Join(want, ","))})
 			continue
 		}
+		if c.Col == Checked {
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Planned, set, append(unset, "checked")...))}, Moved: c.ID + " brief replaced; check -> plan"})
+			continue
+		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
 			Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)})
 	}

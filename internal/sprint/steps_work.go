@@ -139,8 +139,8 @@ func AddIDs(s *Snapshot, r AddReq) []string {
 	return out
 }
 
-// Add admits primaries: waiting if they need something not landed, else
-// ready. A need names a primary on the table (placed or kept) or one of this
+// Add admits primaries into plan for coordinator review (docs/SPEC-SPRINT.md,
+// plan and check columns). Sentinels retain their separate waiting/release lifecycle. A need names a primary on the table (placed or kept) or one of this
 // add. A stream's sentinels stop it by position: a card placed after an
 // unlanded sentinel of its stream waits on the latest such sentinel, and a
 // card placed in front of one is a need of it. A sentinel waits for every
@@ -507,8 +507,8 @@ func Add(s *Snapshot, r AddReq) Plan {
 		if a.sent || a.gate {
 			kind, col = "sentinel", Waiting
 		}
-		if r.Held {
-			col = Waiting
+		if kind == "primary" {
+			col = Planned
 		}
 		fields := map[string]string{"kind": kind, "stream": r.Stream, "attempt": "0", "admitted": stamp(s.Now)}
 		if kind == "primary" && col == Ready {

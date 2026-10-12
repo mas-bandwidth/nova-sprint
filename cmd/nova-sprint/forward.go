@@ -43,6 +43,7 @@ var waits = map[string]string{"where": "watch", "inbox": "wait", "lane take": "w
 
 // verbArgs is an argument list as its verb's own flags read it.
 type verbArgs struct {
+	pos   []string      // positional words retained by the shared parser
 	name  string        // the verb; "" when the list names none
 	words int           // how many words the verb is
 	fs    *flag.FlagSet // the verb's flags, set as the list sets them; nil for no verb
@@ -73,7 +74,7 @@ func readVerb(argv []string) (v verbArgs) {
 			v.help = true
 		}
 	}()
-	_, v.err = parse(v.fs, argv[v.words:])
+	v.pos, v.err = parse(v.fs, argv[v.words:])
 	return v
 }
 
@@ -123,7 +124,7 @@ func (v verbArgs) unserved() string {
 	switch {
 	case v.words == 0:
 		return "not a verb of nova-sprint; run: nova-sprint help"
-	case slices.Contains(notServed, v.name):
+	case slices.Contains(notServed, v.name) && !(v.name == "promote" && v.fs != nil && (len(v.pos) > 0 || v.given("stream"))):
 		return v.name + " is not run by the server; run it by itself"
 	case v.given("redis"):
 		return "--redis is not given to the server: its store is the sprint's"

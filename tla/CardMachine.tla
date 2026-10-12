@@ -35,7 +35,7 @@ NoOne    == "none"
 CopyId   == Cards \X (1..MaxCopies)
 
 \* TK.WHERE (02_card_move.lua 1062); done carries an outcome (ok)
-Where    == {"null", "waiting", "ready", "working", "review", "merging", "landed", "done"}
+Where    == {"null", "plan", "check", "waiting", "ready", "working", "review", "merging", "landed", "done"}
 Terminal == {"landed", "done"}
 \* a copy's where: TM.COLS (2388); "none" before it is cut
 CopyWhere == {"none", "ready", "working", "ok", "fail"}
@@ -138,6 +138,30 @@ RetireReads(f, c) == [i \in CopyId |-> IF i \in reads[c] /\ f[i] \in Live THEN "
 Push(c) ==
   /\ where[c] = "null"
   /\ where' = [where EXCEPT ![c] = "waiting"]
+  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up>>
+
+\* Coordinator admission (docs/SPEC-SPRINT.md, plan and check columns).
+\* Push above remains the legacy ISA admission; the current Spec uses PlanAdd.
+PlanAdd(c) ==
+  /\ where[c] = "null"
+  /\ where' = [where EXCEPT ![c] = "plan"]
+  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up>>
+
+PlanCheck(c) ==
+  /\ where[c] = "plan"
+  /\ where' = [where EXCEPT ![c] = "check"]
+  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up>>
+
+PlanPromote(c) ==
+  /\ where[c] = "check"
+  /\ where' = [where EXCEPT ![c] = "waiting"]
+  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up>>
+
+\* The projection of an epoch clear onto the two coordinator columns.
+\* AttemptsEpochs models the epoch CAS and stale writers, separately.
+PlanClear ==
+  /\ \E c \in Cards : where[c] \in {"plan", "check"}
+  /\ where' = [c \in Cards |-> IF where[c] \in {"plan", "check"} THEN "null" ELSE where[c]]
   /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up>>
 
 \* DEP.release (task_queue.lua 176), the resolve duty: waiting -> ready once
@@ -445,7 +469,8 @@ LandEvent(c) ==
 ----------------------------------------------------------------------------
 
 Next ==
-  \/ \E c \in Cards : Push(c) \/ Release(c) \/ DealReturn(c) \/ CIWord(c) \/ PRHeadMoves(c)
+  \/ PlanClear
+  \/ \E c \in Cards : PlanAdd(c) \/ PlanCheck(c) \/ PlanPromote(c) \/ Release(c) \/ DealReturn(c) \/ CIWord(c) \/ PRHeadMoves(c)
                       \/ Verdict(c) \/ CancelPrimary(c) \/ Land(c) \/ LandEvent(c)
   \/ \E c \in Cards, k \in Consumers : DealWork(c, k) \/ DealRead(c, k)
   \/ \E i \in CopyId : Work(i) \/ Beat(i) \/ Lapse(i) \/ Expire(i) \/ DownReady(i)
@@ -458,7 +483,7 @@ Next ==
 \* (Lapse), outages (Down), a PR's head moving and the coordinator's hand
 \* (cancel, a land event) are not. Up is fair: an outage ends.
 Fairness ==
-  /\ \A c \in Cards : WF_vars(Push(c)) /\ WF_vars(Release(c)) /\ WF_vars(DealReturn(c))
+  /\ \A c \in Cards : WF_vars(PlanAdd(c)) /\ WF_vars(Release(c)) /\ WF_vars(DealReturn(c))
                       /\ WF_vars(CIWord(c)) /\ WF_vars(Verdict(c)) /\ WF_vars(Land(c))
   \* the deal and the work are strongly fair: a consumer that is up
   \* infinitely often is dealt to (the duty ticks every second; an outage
@@ -535,7 +560,7 @@ DepCancelled(c) == \E d \in Deps[c] : where[d] = "done" /\ ok[d] = "fail"
 \* no such bound
 DepExhausted(c) == \E d \in Deps[c] : ncut[d] = MaxCopies /\ where[d] \notin Terminal
 Progress ==
-  \A c \in Cards : (where[c] /= "null") ~> (where[c] \in Terminal \/ ncut[c] = MaxCopies \/ DepCancelled(c) \/ DepExhausted(c))
+  \A c \in Cards : (where[c] \notin {"null", "plan", "check"}) ~> (where[c] \in Terminal \/ ncut[c] = MaxCopies \/ DepCancelled(c) \/ DepExhausted(c))
 
 \* every copy cut ends
 CopiesEnd ==
@@ -546,5 +571,24 @@ CopiesEnd ==
 \* ready, the next place is working
 ReadyIsOneWay ==
   [][\A c \in Cards : where[c] = "ready" /\ where'[c] /= "ready" => where'[c] \in {"working", "landed", "done"}]_vars
+
+\* The dealer never increases a planning card's copy generation. This checks
+\* the transition itself, including a mutant that leaves plan by dealing it.
+PlanningNotDealt ==
+  [][\A c \in Cards : where[c] \in {"plan", "check"} => ncut'[c] = ncut[c]]_vars
+PlanningIsQuiet ==
+  \A c \in Cards : where[c] \in {"plan", "check"} => LiveCopies(c) = {}
+NotChecked == \A c \in Cards : where[c] /= "check"
+
+\* Reversed witness: the deal's state guard is replaced by plan/check.
+PlanDealBroken(c,k) ==
+  /\ where[c] \in {"plan", "check"} /\ Bare(c)
+  /\ up[k] /\ Room(k) > 0 /\ CanCut(c)
+  /\ where' = [where EXCEPT ![c] = "working"]
+  /\ copy' = [copy EXCEPT ![c] = NextCopy(c)]
+  /\ ncut' = [ncut EXCEPT ![c] = @ + 1]
+  /\ cw' = CutCW(c,k) /\ ck' = CutCK(c,k) /\ cl' = CutCL(c,"work")
+  /\ UNCHANGED <<ok, reads, pending, low, author, head, prHead, ci, leased, up>>
+PlanBrokenSpec == Init /\ [][Next \/ (\E c \in Cards,k \in Consumers : PlanDealBroken(c,k))]_vars
 
 =============================================================================
