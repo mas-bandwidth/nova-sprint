@@ -1,70 +1,70 @@
-# The nova-sprint friends
+# Nova Sprint: finish faster
 
-nova-sprint is the running track in the Nova family: AI friends with different
-strengths, working together and having fun. Some sprint, some skip, someone
-stumbles, and someone needs a nap. The coordinator helps the team keep going.
+nova-sprint is the running track in the Nova Tools family: a cute, capable
+runner and a practical machine for moving work from ready to landed.
 
-The product promise is practical: scale out across friends running different
-models and harnesses, across a fleet running swarms of AIs, or any combination.
-An AI can coordinate that work while the human is away. The artwork makes
-the team approachable; the documentation explains the work clearly.
+The product promise is **multiple models, many machines**. Workers run bounded
+assignments across a fleet. Width lets independent work happen at the same
+time; the machine carries cards through implementation, review, checks,
+merging, and landing within the configured rules.
 
-## Name
+nova-sprint supplements existing ways of working with AIs. Keep the familiar
+workflow for conversation, exploration, and direction. Use the fleet when
+there is a batch of work to hand off.
 
-Write **nova-sprint** in prose and command names. The illustrated banner uses
-**Nova Sprint**, with a star in the rounded wordmark. Preserve that artwork
-when embedding it; do not redraw the text with an unrelated typeface.
+## Name and language
 
-Link to [Nova Tools](https://github.com/mas-bandwidth/nova-tools) when
-explaining the foundation. Send people who want to create AI friends to
-[Nova Seed](https://github.com/mas-bandwidth/nova).
+Write **nova-sprint** in prose and command names. The artwork uses **Nova Sprint**.
+Link to [Nova Tools](https://github.com/mas-bandwidth/nova-tools) when explaining
+the product family and foundation.
 
-## Mark and banner
+Use **workers**, **fleet**, **lanes**, **width**, **cards**, and **work streams**.
+A worker carries out an assignment. The fleet supplies machines. Width is
+concurrent capacity; a lane is its visual metaphor. Explain those terms
+before relying on them. Multiple models and many machines are both part of
+the promise.
 
-Use [the approved jogging banner](../brand/jogging/banner-cute-wave-left.png) at the
-top of the README. It is a 2171 × 724 lossless PNG: a happy white-and-blue
-friend jogging and waving, grouped with the flat Nova Sprint wordmark and
-centred as one element. Scale it as a whole. Earlier starting-blocks and
-group banners remain in the artwork archive.
+## Approved artwork
 
-The individual friends illustrate the [README explainer](../README.md).
-Green cannot hear the team, Yellow sleeps, and Purple trips over the blocked
-dependency. The checklist bot coordinates, Orange meets the fleet swarm,
-Pink cycles at her own pace, and White carries work through to landing.
-Keep [Glenn's character meanings](../brand/README.md#what-the-friends-represent)
-consistent. Humour comes from real coordination difficulties, not a ranking
-of models or people.
+The [daytime banner](../brand/fleet/banner-day.png) leads the README.
+The [nighttime banner](../brand/fleet/banner-night.png) is selected through
+GitHub's `prefers-color-scheme: dark` picture source. Daytime is the fallback.
+Both carry the same text:
 
-For future art, keep recognisable robot bodies, readable expressions, and
-varied movement. Align a runner's movement with the perspective of its lane.
-Keep orange clearly separate from yellow. Humour should feel affectionate.
-Record the source and generation details of any new asset in
-[Asset provenance](ASSET-PROVENANCE.md).
+> Finish faster.
+> Multiple models. Many machines.
 
-Keep the track, friends, and shadows as separate layers when composing future
-banners. Preserve the straight lane geometry; composite onto the track rather
-than repeatedly regenerating the whole image.
+Keep the rounded wordmark above the headline, a blue track with horizontal
+lane lines, and the white-and-blue robot in orange shoes. The face contains
+only two cyan diagonal eye strokes. The rear foot pushes off in the same
+lane as the starting blocks. The nighttime scene has no robot shadow.
+
+The [square badge](../brand/fleet/nova-sprint-square.png) uses playful stacked
+lettering, three gold beams, and a rich navy rounded tile extended to the
+image edges. Preserve the approved letter shapes and internal spacing.
+
+Do not introduce additional slogans. Keep track, robot, and shadow as
+separate layers for future compositions so placement stays intentional.
+Record new assets in [Asset provenance](ASSET-PROVENANCE.md).
 
 ## Show the product working
 
-The README follows problem → solution → how it works. Let the friends show
-the funny failures of LLM-only coordination, introduce the machine, then
-explain the dashboard's vocabulary with an example workflow. Cards, streams,
-dependencies, sentinel gates, friends, the fleet, review, and merge should all
-make sense before readers open the live demo. Keep operational detail in the
-guides. End the tour with a clear link to the live sprint.
+Explain the batch of work, how width helps, and how the machine keeps cards
+moving. Reuse clear explanations of cards, streams, dependencies, gates,
+review, and landing. Gates that need a decision remain gates; speed does
+not mean skipping checks.
 
-Screenshots are snapshots. Preserve their actual values and record where and
-when they were captured; do not manufacture a healthier or busier sprint.
+Screenshots are snapshots. Preserve actual values and record where and when
+they were captured. Keep command names and technical contracts accurate,
+even where the branding vocabulary is simpler than an implementation name.
 
-## Colours
+## Colours and type
 
-The illustration uses a blue track, navy and bright-blue lettering, warm
-golden light, and colourful friends. Those colours connect it to the wider
-Nova family without turning every robot into the same character.
+Use navy, bright blue, white, and gold for the mark. Orange shoes add warmth.
+The nighttime illustration uses moonlight and warm campus lamps. The square
+badge's background is `#081d46`.
 
-The dashboard has its own functional palette. Preserve the meanings of its
-state and status colours rather than assigning them to character identities:
+The dashboard's functional palette retains its existing state meanings:
 
 | Role | Dark theme | Light theme |
 |---|---|---|
@@ -76,36 +76,27 @@ state and status colours rather than assigning them to character identities:
 | Merging | `#c98500` | `#eda100` |
 | Landed | `#199e70` | `#1baf7a` |
 
-The [dashboard contract](SPEC-SPRINT-DASHBOARD.md) owns the UI palette and
-layout. The LANDED tile has a separately recorded owner-requested simplification;
-other interface rules stay with that contract.
+The [dashboard contract](SPEC-SPRINT-DASHBOARD.md) owns UI layout and state
+colours. Branding artwork does not redefine them.
 
-## Type
-
-The banner's lettering is part of the illustration. The dashboard uses a
-rounded wordmark stack including Nunito 800, with system text and monospace
-numbers. The bundled Nunito font carries the SIL Open Font License.
-
-Use ordinary Markdown headings, short paragraphs, and purposeful tables in
-repository documentation. Readability matters more than reproducing the
-illustration's lettering everywhere.
+The lettering is part of the approved artwork. Use ordinary Markdown
+headings, short paragraphs, and purposeful tables in documentation.
+The dashboard's bundled Nunito font carries the SIL Open Font License.
 
 ## Voice
 
-Write as a capable friend helping a programmer work with a team of AIs.
-Explain what the tool helps them do before introducing its internal machinery.
-Lead with AI coordination, cross-model collaboration, and autonomous work;
-make the human's role direction and boundaries, not constant dispatch.
+Warm, capable, and lightly playful. Explain the useful thing first; let the
+robot and an occasional joke supply the charm. The little orange shoes are
+welcome. A sporting metaphor in every sentence is a bit much cardio.
 
 | Prefer | Avoid |
 |---|---|
-| “Give your AI team a goal, and let them work together.” | “An opinionated processor of work-table state transitions.” |
-| “A card is one task, with a clear finish condition.” | “Primaries are admitted to streams” before defining either term. |
-| “The AI coordinator keeps the work moving while you are away.” | Making every handoff an instruction for the human to perform. |
-| “This card is waiting for a reader.” | “The system is stuck” without explaining what needs attention. |
+| “Give the fleet the next batch.” | Making every handoff an instruction for the human. |
+| “A card is one task, with a clear finish condition.” | Internal state vocabulary before defining it. |
+| “More lanes let independent work run at the same time.” | Promising that width removes dependencies. |
+| “This card is waiting for review.” | “The system is stuck” without explaining what needs attention. |
 | “The change landed; installation is still pending.” | “All done” when the evidence only shows a pushed branch. |
 
-Use the race metaphor lightly: a first lap is welcoming, but a reader should
-not have to decode sporting language to operate a command. Keep flags,
-formats, and refusal messages exact. Preserve historical reports and
-quotations as evidence, with plain-language context around them.
+Preserve historical reports, quotations, and earlier artwork as evidence.
+The previous branding remains on the archive branch linked from
+[the artwork notes](../brand/fleet/README.md).

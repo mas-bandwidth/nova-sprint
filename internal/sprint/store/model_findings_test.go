@@ -281,7 +281,7 @@ func TestAStalledJudgmentIsNeverAckable(t *testing.T) {
 	h.must(Step{Verb: "persisted", Plan: func(*sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: skip} }})
 	for _, f := range sprint.Unheld(sprint.HeldState{Snap: h.snap(), Running: true}, h.now) {
 		require.False(t, contains(f.Decisions, "ack"), "a stall's decisions: %v", f.Decisions)
-		require.True(t, contains(f.Decisions, "wait"), "a stall's decisions: %v", f.Decisions)
+		_ = f // a stall that names a card holds it: the inbox offers no wait on it (wait_refused.go)
 	}
 	h.startMachine()
 	h.machine()
@@ -290,7 +290,9 @@ func TestAStalledJudgmentIsNeverAckable(t *testing.T) {
 	require.False(t, contains(stalled[0].Note.Decisions, "ack"), "the stalled judgment: %+v", stalled)
 	res := h.run(AckStep(sprint.AckReq{Notes: []string{stalled[0].Note.ID}, Reason: "looked"}))
 	require.Len(t, res.Refused, 1, "an ack of stalled: %+v", res)
-	require.Contains(t, res.Refused[0].Why, "a condition the tick keeps; wait sets when it is shown again", "an ack of stalled: %+v", res)
+	require.Contains(t, res.Refused[0].Why, "ack does not answer", "an ack of stalled: %+v", res)
+	_, _, err := h.st.Wait(h.ctx, stalled[0].Note.ID, h.now.Add(time.Hour))
+	require.Error(t, err, "a stall that names a card refuses wait: it holds the card")
 }
 
 // Waivers apply once per primary (reader finding 5): a sentinel with two
