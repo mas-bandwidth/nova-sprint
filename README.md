@@ -5,8 +5,7 @@
 
 ## What is it?
 
-**nova-sprint** puts a fleet of AI workers to work across different models and machines,
-with a system that automatically advances cards from **ready to landed** - through implementation, review, and merging.
+**nova-sprint** puts a fleet of AI models to work across a fleet of machines linked by [tailscale](https://tailscale.com).
 
 ## More lanes. Finish faster.
 
@@ -39,7 +38,7 @@ estimated finish time. [See live demo](http://69.67.149.151/)
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need
-you. Then give the fleet the next batch. Keep working alongside it, or...
+you. Then give the fleet the next batch. Keep working alongside it, or... 
 just come back in the morning.
 
 Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). _Free and open source forever._
