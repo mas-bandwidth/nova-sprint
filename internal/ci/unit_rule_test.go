@@ -40,7 +40,34 @@ import (
 // the functional tag or onto a fake. A listed file that no longer offends fails
 // the test until its line is removed, and an offender not listed fails it too: the
 // list only shrinks, to zero.
-var unitRuleBurnDown = []string{}
+//
+// TODO (2026-10-12, the v1.2.16 unit-test rule, PR 2 of 2): the 20 files below are
+// the inventory left after the first moves (55 uses: 50 of real time, four of them
+// require.Eventually; 4 sockets; 1 service). Each is a move to the functional tier
+// or onto a fake, with its assertions kept; a file leaves this list the same turn it
+// is fixed.
+var unitRuleBurnDown = []string{
+	"cmd/nova-sprint/fleet_back_test.go",             // require.Eventually on the adopter's goroutine
+	"cmd/nova-sprint/friend_start_test.go",           // a job file aged against the wall clock
+	"cmd/nova-sprint/friendcards_cover_test.go",      // a spent wall-clock deadline
+	"cmd/nova-sprint/friendcards_verb_test.go",       // SyncInbox given the wall clock (as the file times are)
+	"cmd/nova-sprint/friendclean_test.go",            // cache entries aged against the wall clock
+	"cmd/nova-sprint/land_beat_test.go",              // a two-minute wall bound on the beat loop
+	"cmd/nova-sprint/land_class_test.go",             // time.After bounds on the side-by-side gate
+	"cmd/nova-sprint/landpass_lanes_test.go",         // time.After bounds on the lanes' locks
+	"cmd/nova-sprint/landring_test.go",               // a two-minute wall bound on the beat loop
+	"cmd/nova-sprint/landstage_test.go",              // a two-minute wall bound on the beat loop
+	"cmd/nova-sprint/tick_deadline_test.go",          // time.After bounds on the watchdog
+	"cmd/nova-sprint/tick_gate_test.go",              // the deal's wall measured under load
+	"cmd/nova-sprint/where_cost_perf_test.go",        // -tags perf: a wall-clock bound by design, not yet behind functional
+	"internal/sprint/deal_load_bench_test.go",        // the deal's wall measured and logged
+	"internal/sprint/store/machine_twoloops_test.go", // the store's real fence backoff
+	"internal/sprint/store/waitlog_test.go",          // a 30 s wall bound on a wait never woken
+	"internal/sprintdash/events_test.go",             // httptest.NewServer, DefaultClient, Eventually
+	"internal/sprintdash/fresh_test.go",              // httptest.NewServer
+	"internal/sprintdash/pageview_test.go",           // httptest.NewServer
+	"internal/sprintdash/serverpy_test.go",           // require.Eventually
+}
 
 // unitRuleFinding is one forbidden use: the file (slash path from the module
 // root), its line, the kind (time, socket or service) and what was used.
@@ -491,19 +518,19 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 		})
 	}
 	no := map[string]string{
-		"a functional file": "//go:build functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
+		"a functional file":          "//go:build functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
 		"a functional and slow file": "//go:build functional && slow\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
-		"a fixed time":      "package p\nimport \"time\"\nvar t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)\nfunc TestX() { _ = t0.Add(time.Second) }\n",
-		"a sleep in a bubble": "package p\nimport (\n\t\"time\"\n\t\"testing/synctest\"\n)\nfunc TestX(t T) { synctest.Test(t, func(t T) { time.Sleep(1); _ = time.Now() }) }\n",
+		"a fixed time":               "package p\nimport \"time\"\nvar t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)\nfunc TestX() { _ = t0.Add(time.Second) }\n",
+		"a sleep in a bubble":        "package p\nimport (\n\t\"time\"\n\t\"testing/synctest\"\n)\nfunc TestX(t T) { synctest.Test(t, func(t T) { time.Sleep(1); _ = time.Now() }) }\n",
 		"a helper only a bubble calls": "package p\nimport (\n\t\"time\"\n\t\"testing/synctest\"\n)\n" +
 			"func wait() { time.Sleep(1) }\n" +
 			"func deeper() { wait() }\n" +
 			"func TestX(t T) { synctest.Test(t, func(t T) { deeper() }) }\n",
-		"an in-memory pipe":     "package p\nimport \"net\"\nfunc TestX() { a, b := net.Pipe(); _, _ = a, b }\n",
-		"a recorder":            "package p\nimport \"net/http/httptest\"\nfunc TestX() { _ = httptest.NewRecorder(); _ = httptest.NewRequest(\"GET\", \"/\", nil) }\n",
+		"an in-memory pipe":           "package p\nimport \"net\"\nfunc TestX() { a, b := net.Pipe(); _, _ = a, b }\n",
+		"a recorder":                  "package p\nimport \"net/http/httptest\"\nfunc TestX() { _ = httptest.NewRecorder(); _ = httptest.NewRequest(\"GET\", \"/\", nil) }\n",
 		"a local name like the clock": "package p\nfunc TestX(c clock) { _ = c.Now(); c.Sleep(1) }\n",
-		"a test named Eventually": "package p\nfunc TestStalledCallerIsEventuallyGranted(t T) {}\n",
-		"a socket's path":         "package p\nimport \"github.com/mas-bandwidth/nova-sprint/pkg/testredis\"\nfunc TestX() { testredis.SocketPath(\"d\", \"n.sock\") }\n",
+		"a test named Eventually":     "package p\nfunc TestStalledCallerIsEventuallyGranted(t T) {}\n",
+		"a socket's path":             "package p\nimport \"github.com/mas-bandwidth/nova-sprint/pkg/testredis\"\nfunc TestX() { testredis.SocketPath(\"d\", \"n.sock\") }\n",
 	}
 	for name, src := range no {
 		t.Run("no/"+name, func(t *testing.T) {

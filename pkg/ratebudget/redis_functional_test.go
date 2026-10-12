@@ -147,4 +147,3 @@ func TestCrashedHoldersLeaseIsReclaimed(t *testing.T) {
 		t.Fatalf("the crashed holder's slot was not reclaimed at its expiry: %+v %v", g, err)
 	}
 }
-
