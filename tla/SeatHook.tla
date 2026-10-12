@@ -84,9 +84,9 @@
 \*   "noack"         the gate ignores the pushes not acknowledged: a delivered
 \*                   push past its bound neither acknowledged nor blocking
 \*                   (AckedOrBlocking)
-\*   "nomiss"        a missed challenge does not unhook and the gate does not
-\*                   read the deadline: a session that stopped reading keeps
-\*                   the seat (CommandSafe)
+\*   "nomiss"        a missed challenge or a silent bound does not unhook (no Miss,
+\*                   no Lapse) and the gate does not read the deadline or Live: a
+\*                   seat with no act past its bound keeps the seat (CommandSafe)
 \*   "silentdrop"    a drop is not recorded: the record says hooked with no
 \*                   subscription, and the drop is never told (RecordTrue)
 \*   "strictcadence" the silent bound runs from the proof, not the last act: an
@@ -165,12 +165,14 @@ LateC ==
     /\ ("strictcadence" \in Broken \/ ~reading)
 
 \* The rule: a live subscription, proven by a challenge the session read off it,
-\* the current challenge within its bound, no push blocking.
+\* the current challenge within its bound, an act within the silent bound (Part
+\* "cadence"), no push blocking.
 Rule ==
     /\ sub = "open"
     /\ proven
     /\ answered \in seen
     /\ ~LateC
+    /\ now <= cad.acted + HookSilentBound
     /\ Blocking = {}
 
 \* The gate as the code computes it, from the record and the clock
@@ -283,6 +285,7 @@ Lapse ==
     /\ sub = "open"
     /\ proven
     /\ now > SilentFrom + HookSilentBound
+    /\ "nomiss" \notin Broken
     /\ cad.lapses < 2
     /\ cad' = [cad EXCEPT !.lapses = @ + 1]
     /\ IF "lapsetwice" \in Broken

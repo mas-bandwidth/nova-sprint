@@ -3,6 +3,13 @@
 `SeatHook.tla` checks two specifications independently. `Spec` retains the
 challenge, proof, cadence, live-window and command-gate cases. `DurableSpec`
 holds those variables fixed and explores the transport protocol in PR115.
+`Spec`'s Part "cadence" (PR124) asks no challenge after the first on a connection
+(`NoRechallenge`), renews Live by acts (a verb, an acknowledgement, and the hook
+client's keepalive, which proves the transport alive and nothing more), and lapses a
+hook with no act past `HookSilentBound` once, with one judgment (`SingleLapse`); a
+keepalive every `KeepaliveEvery` keeps a connected hook (`HookStays`). Its reversed
+witnesses are `strictcadence` (the bound from the proof), `rechallenge` and
+`lapsetwice`; `nomiss` now also drops the lapse.
 This avoids a product of unrelated timing and delivery states; it is not a
 composed proof of the complete hook implementation.
 
@@ -59,8 +66,8 @@ The initial state includes legacy wire ID 1 with durable sequence 0: records
 from before this upgrade have no persisted high-water. This makes session
 binding necessary even though all new sequence IDs persist monotonically.
 Clients must copy the session token from PUSH and supply `--session` with
-`hook --ack`; legacy numeric-only ACK commands safely refuse. The existing
-`seathook` group retains its eight witnesses.
+`hook --ack`; legacy numeric-only ACK commands safely refuse. The
+`seathook` group has ten witnesses.
 
 Remaining abstraction boundaries include grouped frames, garbage collection of
 inactive key history, storage corruption, mutex scheduling, full end-write

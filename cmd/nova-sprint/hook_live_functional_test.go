@@ -154,6 +154,24 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 		return out
 	}
 
+	// sessionOf is the session token the PUSH line of id names (#115: an acknowledgement
+	// is bound to the hook session that delivered the push)
+	sessionOf := func(lines *hlLines, id uint64) string {
+		for _, l := range lines.all() {
+			f := strings.Fields(l)
+			if len(f) < 3 || f[0] != "PUSH" || f[1] != strconv.FormatUint(id, 10) {
+				continue
+			}
+			for _, w := range f[2:] {
+				if tok, ok := strings.CutPrefix(strings.TrimSuffix(w, ":"), "session="); ok {
+					return tok
+				}
+			}
+		}
+		t.Fatalf("no session token on PUSH %d", id)
+		return ""
+	}
+
 	lines, done := hookIn()
 	code, out := seat("add --stream s1 --count 1 --one")
 	require.Equal(t, 0, code, out)
@@ -172,8 +190,8 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 			10*time.Second, 20*time.Millisecond, "turn %d: a push:\n%s", turn, strings.Join(lines.all(), "\n"))
 		ids := pushIDs(lines)
 		acked = ids[len(ids)-1]
-		code, out = seat("hook --ack " + strconv.FormatUint(acked, 10))
-		require.Equal(t, 0, code, "turn %d: %s", turn, out)
+		code, out = seat("hook --ack " + strconv.FormatUint(acked, 10) + " --session " + sessionOf(lines, acked))
+		require.Equal(t, 0, code, "turn %d: %s\n%s", turn, out, strings.Join(lines.all(), "\n"))
 		// and the seat answers the reminder's judgment, so the next reminder is one of its own
 		for _, l := range lines.all() {
 			if f := strings.Fields(l); len(f) > 2 && f[0] == "PUSH" && f[1] == strconv.FormatUint(acked, 10) {
@@ -197,13 +215,15 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	// subscription sends nothing (before, it sent every open group again as unacknowledged)
 	time.Sleep(hookLook + 500*time.Millisecond)
 	ids := pushIDs(lines)
-	code, out = seat("hook --ack " + strconv.FormatUint(ids[len(ids)-1], 10))
+	code, out = seat("hook --ack " + strconv.FormatUint(ids[len(ids)-1], 10) + " --session " + sessionOf(lines, ids[len(ids)-1]))
 	require.Equal(t, 0, code, out)
 	code, out = seat("unhook")
 	require.Equal(t, 0, code, out)
 	<-done
 	again, _ := hookIn()
 	time.Sleep(hookLook + 500*time.Millisecond)
+	// replay is #115's durable acknowledgement: a reconnect replays only the pushes not
+	// acknowledged
 	assert.Zero(t, again.count("PUSH "), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }

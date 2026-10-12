@@ -255,22 +255,22 @@ type hookSession struct {
 
 	wmu sync.Mutex // one line at a time on the connection
 
-	mu      sync.Mutex
-	chal    string
-	chalAt  time.Time
-	proven  time.Time
-	seq     uint64
-	open    []sprint.HookItem // delivered, not acknowledged, oldest first
-	sent    map[string]bool
-	acked   map[string]bool // durably acknowledged note keys in the current sprint epoch
-	epoch   uint64
+	mu     sync.Mutex
+	chal   string
+	chalAt time.Time
+	proven time.Time
+	seq    uint64
+	open   []sprint.HookItem // delivered, not acknowledged, oldest first
+	sent   map[string]bool
+	acked  map[string]bool // durably acknowledged note keys in the current sprint epoch
+	epoch  uint64
 	// acted is the last act seen over this subscription or from its seat: the proof, an
 	// acknowledgement, a coordinator verb, or the hook client's keepalive. A keepalive
 	// proves only that the transport is alive (the client's process holds the stream),
 	// never that the seat, or a person, is attending: the pushes and the lapse judgment
 	// are how a seat that is not attending is told (docs/SPEC-SPRINT.md, "The hook").
-	acted  time.Time
-	liveAt time.Time // the Live the record was last written with
+	acted   time.Time
+	liveAt  time.Time // the Live the record was last written with
 	ended   bool
 	done    chan struct{}
 	endOnce sync.Once
@@ -1288,7 +1288,10 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, std
 				}
 				var r hookMsg
 				if err == nil {
-					r, err = relay.ask(hookMsg{T: m.T, Challenge: m.Challenge, ID: m.ID})
+					// the session token goes through: an acknowledgement is bound to the session
+					// that delivered the push (#115), and without it every ack from the command
+					// line was refused as another session's
+					r, err = relay.ask(hookMsg{T: m.T, Challenge: m.Challenge, ID: m.ID, Session: m.Session})
 				}
 				if err != nil {
 					r = hookMsg{T: "refused", Why: err.Error()}
