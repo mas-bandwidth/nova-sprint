@@ -130,15 +130,36 @@ func (c *reconnectHTTPHook) send(t *testing.T, m hookMsg) hookMsg {
 
 func (c *reconnectHTTPHook) requireNoFrame(t *testing.T, d time.Duration) {
 	t.Helper()
-	if len(c.pending) > 0 {
-		t.Fatalf("unexpected queued HTTP hook frame: %+v", c.pending[0])
+	// The waiting-judgment warning repeats every second while a judgment has
+	// waited JudgmentWarnAfter or longer (sprint.JudgmentWarnings). The fixture
+	// judgments are minutes old, so it is a status push that can land inside this
+	// window at any time; it is not a replay, so it is skipped here. Every other
+	// frame, a replayed acknowledged or held push included, still fails.
+	skipWarning := func(m hookMsg) bool {
+		return m.T == "push" && m.What == hookWarnWhat
 	}
-	select {
-	case m, ok := <-c.lines:
-		if ok {
-			t.Fatalf("unexpected HTTP hook frame: %+v", m)
+	deadline := time.After(d)
+	for {
+		if len(c.pending) > 0 {
+			m := c.pending[0]
+			if skipWarning(m) {
+				c.pending = c.pending[1:]
+				continue
+			}
+			t.Fatalf("unexpected queued HTTP hook frame: %+v", m)
 		}
-	case <-time.After(d):
+		select {
+		case m, ok := <-c.lines:
+			if !ok {
+				return
+			}
+			if skipWarning(m) {
+				continue
+			}
+			t.Fatalf("unexpected HTTP hook frame: %+v", m)
+		case <-deadline:
+			return
+		}
 	}
 }
 
