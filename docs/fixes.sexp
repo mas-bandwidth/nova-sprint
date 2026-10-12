@@ -135,6 +135,10 @@
      :text "Blocker. On the live v1.2.13 server about 20 of 42 cards in review each held one read card working for up to an hour with no member process running it (schema-c-t04-versions.r8.b2 since 21:53Z; b2's row showed 4 working reads and no child). The cause, read in b2's member log: a read whose stage failed (\"the wall refused a write outside the job; no verdict recorded; run again in 15s\") waited in pkg/member's reportOne for the queue's packet before running again, but a member's queue sends no packet for a card it names in --have, so the retry never ran; the launch kept its result, the member's live set named it held, the server's reconcile left it working, and only the 60-minute ReadCardDeadline took it back (\"reaped ... no longer in the queue\" at 22:50Z). The member restarts of the v1.2.12 and v1.2.13 rollouts were not the cause: a restarted member's empty live set lets the reconcile return within the grace. Fixed at both ends. pkg/member runs the retry from the launch's own packet when the queue listed the card working at the launch's claim with none, so its live set names a running child, never a held result with no child. The server's reconcile (sprint.LiveReturns) takes a working read card its row's fresh live set has not named for LiveGrace back to the read deal: it leaves the fleet table retired lost (RetiredByLost, never spent: spentBy is unchanged), with lost_from_gen and lost_reason, no fail mark, the STOP's receipt while STOPPED, and the next read-card ask deals it again at its next generation; before, it went to the lost member's ready. docs/SPEC-SPRINT.md (working means a live run) states the rule. tla/ReadCards.tla gains the live reads (Lose, Beat, LiveReturn) with NamedOrWithinGrace and NoGhostRead and two reversed witnesses, BugNamesHeld (breaks NoGhostRead) and BugNoLiveReturn (breaks NamedOrWithinGrace). Tests, red first: TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat, TestAMemberRestartReturnsItsReadsAtOnce and TestAWorkingReadTheBeatNamesIsNeverReturned (internal/sprint/read_lost_test.go), TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost (pkg/member/read_retry_test.go)."
      :origin "the read-deal diagnosis, 2026-10-11 ~23:00Z, on the live v1.2.13 server; hand-landed outside the sprint (hand/a-member-hands-back-a-read-it-is-not-running) for the owner: \"this must not happen. and we must stop it from ever happening again with tests that lock in correct behavior.\""
      :kept (:priority "blocker"))
+    (fix "tla-dirtytick-deal-order-and-skips" :release "v1.2.14" :status "planned"
+     :title "DirtyTick models the deal's held-stream skip and its reads-before-work order"
+     :text "Models only, no product change. tla/DirtyTick.tla's deal now does two things the code's TickDeal (internal/sprint/steps_tick.go) does and no other module holds. A held stream's ready cards are dealt to no machine and offered to no friend until unhold (hold.go StreamHeld; steps_tick.go TickDeal, steps_work.go dealPlan): a scenario's heldStreams (none in every existing configuration) leaves them out of Dealable, and the new invariant HeldStreamNotDealt, shaped like RouteGuard, says such a card never leaves none, waiting or ready. Under ReadCost \"half\" (read cards on, read_cards.go ReadCardsOn; the scenario's readCost, \"whole\" and the 2026-09-30 shape in every existing configuration), the pump places the reads pending at it before its deal (withReadCards), a read holding half a slot (halfLoad; Load, Room, ReadFits), and the new action property ReadsBeforeWork says every read a pump places precedes every card it deals. Two reversed witnesses: MCDirtyTickBrokenDealHeldStream (Broken \"dealheldstream\") fails HeldStreamNotDealt, MCDirtyTickBrokenWorkFirst (Broken \"workfirst\", the deal before the reads) fails ReadsBeforeWork; their controls MCDirtyTickHeldStream and MCDirtyTickReadsFirst pass. Every existing case keeps its declared result and its state space, since both are off unless the scenario turns them on. Friends first (tla/WhoPreference.tla), the bench skip and the staging refusers (tla/RouteIndex.tla Pool), the friend-dealt return (tla/FriendDealtReturn.tla) and the fault-hold clear (tla/DealFill.tla FaultHoldClears) are cited to their modules. steps_tick.go TickDeal, steps_work.go dealPlan and read_cards.go halfLoad and withReadCards each gain one comment line citing the module; no other Go change."
+     :origin "this card (tla-dirtytick-deal-order-and-skips), v1.2.12 inventory item T7, second half; drift read at nova-sprint main 00c54ba2e; hand-landed 2026-10-11 outside the sprint (hand/tla-dirtytick-deal-order-and-skips) after nine sprint attempts")
     (fix "a-stop-on-unlanded-needs-is-a-coordination-failure" :release "v1.2.13" :status "planned"
      :title "A worker's stop on needs that have not landed is a coordination failure, never the worker's; the needs withdrawal goes working -> waiting"
      :text "Blocker. A worker that stops because its card's named needs have not landed was blamed: the finish read its HOLD (\"the base lacks ...\") as a brief defect, or as failed work. A failed finish whose primary has a named need (not waived) that has not landed at the finish (stoppedOnNeeds, needs_stop.go; the table's facts, never the report's words) is now a coordination failure, judged before the brief defect: the work card goes back to the pool at a new generation (no fail mark and no ok% hit on the worker's row, no redeal spent, counted neither ok nor failed in the route and model stats), the primary goes working -> waiting at once, and one happened note, \"a card returned: dealt before its needs landed\", names the needs and the report (needsStopReturned); no brief-defect, failed-work or invariant judgment is written. The next deal after the needs land cuts the next attempt: an attempt number is spent, never a redeal or a failure. A primary is returned this way at most MaxNeedsReturns (3) times (needs_returns); past that, and whenever every need has landed by the finish, the HOLD is judged as any other, so a stale base never loops unseen (the cold read's probe: twelve free rounds). No coordination-failure counter exists, so the stop is classed as not the worker's. The needs withdrawal of a dealt card (needsWithdrawals) moved its working primary working -> waiting with no lifecycle row, so the store refused it; the lifecycle now has that row (withdraw, its needs have not landed, carried by the move's needs field), and needsWaits moves a ready primary whose needs have not landed and whose work card is dealt nowhere ready -> waiting. tla/SprintTables.tla models both (NeedsWithdraw, NeedsWait; WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits, ReadyToWaitingOnlyByInsert widened to needs) with the reversed witness withdrawready (the withdrawal run working -> ready breaks NeedsWithdrawalWaits, rule 11). docs/SPEC-SPRINT.md (the lifecycle table; needs and the deal; a brief defect) states the rule. Tests: TestAStopOnUnlandedNeedsIsNotTheWorkers, TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand, TestProbe96LandedNeedHoldLoopsUnbounded, TestProbe96UnrelatedNotLandedWordsSkipTheFailure, and the needs tests held to the lifecycle (lawfulDeal) and the end-of-tick check."
@@ -810,13 +814,25 @@
     the judgments section, names the stall, its bound, its breakdown and its clear. Every landing
     is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
     <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
-    entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
-    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
-    Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
-    TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
-    TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
-    TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
-    TestTickDeadlinesRaisesTheLandingStall, TestLandingStallSurvivesTicksShorterThanTheBound."
+    entry (read by the lander from the landed head and carried on the merge step), and the attempts
+    and reads it took; a batch in one tick is one push with a line a card, inside the field bound.
+    A landing the tick sees only after the stall holds again still ends the old episode first. A
+    plan that only writes the episode's stamps carries a unit of its own: the store's tick passes
+    over an empty plan, so on a real store a sprint that had not yet landed never began its
+    episode (found by the functional test); that unit is keyed by the property, as the status
+    record's is, the reference model carries the landing-stall properties (refmodel.CarriedProps),
+    and the differential test names the stall judgment the engine's until the model card lands. A
+    batch push shares the bound among its ledger texts so every landed card keeps its line (a cut
+    of the joined note dropped the lines past 64 KiB; past the facts the last line counts every card
+    left out and lists whole ids only, saying when the list is partial), and the landing and episode stamps are
+    nanosecond RFC3339 compared as times, so a sub-second bound never takes the last landing for a
+    new one. The functional test names its private store with --redis on every verb and fails on
+    any forward to a sprint server. The
+    model card tla-sprintrules-landing-stall-liveness is its own card. Unit tests in
+    internal/sprint/landing_stall_test.go, internal/sprint/store/landing_stall_reads_test.go and
+    cmd/nova-sprint/land_test.go; the functional test
+    TestALandingStallIsJudgedAndClearedByALandingOnTheStore on a real store (docs/TESTS.md, the
+    landing stall)."
    :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
     hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
     need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
@@ -2454,4 +2470,26 @@
     the merged data. One id both sides change differently is refused naming it, and a code conflict is
     refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
     witnesses."
-   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")
+  (fix "a-brief-edit-keeps-the-cards-needs-tier-and-bound" :release "v1.2.14" :status "planned"
+   :title "A brief edit keeps the needs, tier and bound a verb set"
+   :text "A brief edit replaces the card's whole text, but the text dumped from the card is the
+    admission-time text: its DEPENDS-ON and line 1 tier are the ones the card was admitted with, not
+    the ones a verb set since, so an edit silently rewrote them. Three rules keep them, and a brief
+    NOTE names every property it kept against the text. The needs are the card's, not the text's: the
+    edit starts from the card's needs, maps a name its relink record re-pointed to its twin (the
+    relink record wins over the text's stale DEPENDS-ON, NOTEd `needs kept: <twin> (relinked from
+    <old> <time>)`), and adds only names the text holds that the card does not, never a dropped card
+    the card's needs no longer name (the relink record keeps only the last relink); a need the text
+    drops stays, unless `--needs-from-brief` takes the text whole; the needs held to the batch's cycle
+    check are the ones the edit writes, never the text's list. The tier is a card field (`tier`): a text
+    whose line 1 names another tier than the card's recorded one keeps the recorded one, NOTEd, unless
+    `--tier <t>` names one, and `nova-sprint tier <card> --set <t> --reason` sets it without a text
+    edit; both refuse a TLA path at a tier below frontier as the lint does. The bound hashes the task,
+    not the text (the body and PATHS, NEW, SHARED, TEST and DONE-WHEN): an edit that changes only
+    DEPENDS-ON, ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS or the tier keeps the count (`bound: same
+    task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`). Tests:
+    internal/sprint/brief_edit_test.go (red first) and the functional
+    TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
+    DEPENDS-ON, on a real store)."
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))

@@ -89,6 +89,12 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 	return &c
 }
 
+// CarriedProps is the table properties the model carries, each read by a duty to decide as
+// the tick does: the status transitions' record (the presence duty), and the landing stall's
+// facts and episode (the deadlines duty, sprint.TickLandingStall).
+var CarriedProps = []string{sprint.PropStatusSeen, sprint.PropLastLanding, sprint.PropLandRefusal,
+	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound}
+
 func cloneTable(t *sprint.Table) *sprint.Table {
 	if t == nil {
 		return nil
@@ -96,10 +102,14 @@ func cloneTable(t *sprint.Table) *sprint.Table {
 	c := sprint.NewTable(t.Name)
 	c.Epoch, c.Revision = t.Epoch, t.Revision
 	c.SetRows(slices.Clone(t.Rows()))
-	if v, ok := t.Prop(sprint.PropStatusSeen); ok {
-		// the one property the model carries: the status transitions' record, which the
-		// presence duty reads to decide a transition and its judgment as the tick does
-		c.SetProps(map[string]string{sprint.PropStatusSeen: v})
+	carried := map[string]string{}
+	for _, name := range CarriedProps {
+		if v, ok := t.Prop(name); ok {
+			carried[name] = v
+		}
+	}
+	if len(carried) > 0 {
+		c.SetProps(carried)
 	}
 	for row, texts := range t.Texts {
 		c.Texts[row] = maps.Clone(texts)

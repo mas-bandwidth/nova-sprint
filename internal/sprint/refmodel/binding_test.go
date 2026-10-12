@@ -99,8 +99,14 @@ func loadSample(tb testing.TB, s sample) *loaded {
 		l.apply(stored, placed)
 		l.apply(stored, kept)
 		l.apply(stored, removed)
-		if v, ok := tab.Prop(sprint.PropStatusSeen); ok {
-			l.props(stored, map[string]string{sprint.PropStatusSeen: v})
+		carried := map[string]string{}
+		for _, n := range refmodel.CarriedProps {
+			if v, ok := tab.Prop(n); ok {
+				carried[n] = v
+			}
+		}
+		if len(carried) > 0 {
+			l.props(stored, carried)
 		}
 	}
 	l.judgments(t)
