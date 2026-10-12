@@ -121,6 +121,12 @@ const (
 	// it stands: rewritten in place only when its facts change, never raised
 	// anew (friend_read.go, read_cards.go).
 	NNoFrontierRoom = "no frontier reader has room"
+	// NLostTwice is the tick's judgment that a primary's attempt lost its read twice
+	// (two read cards retired lost): the machine's ghosts are the read deal's bound,
+	// and a second ghost means the member's beats keep naming reads it does not run.
+	// It names each card, row and reason, and is one judgment while it stands
+	// (tla-readcards-review-has-a-live-read-or-a-judgment).
+	NLostTwice = "a read was lost twice"
 )
 
 // Decisions open to each judgment type.
@@ -157,6 +163,7 @@ var Decisions = map[string][]string{
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
 	NNoFrontierRoom:    {"reader add", "wait"},
+	NLostTwice:         {"look at the reader", "act"},
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},

@@ -545,6 +545,70 @@ func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 	return out
 }
 
+// ReadOut is one read of a primary's attempt, wherever it stands: on the readers
+// table or as a fleet read card, marked live, ghost or closed, with its verdict
+// and the reader that holds it (docs/SPEC-SPRINT.md section 6, the reads).
+type ReadOut struct {
+	Card    *Card
+	Reader  string
+	Table   string // Readers or Fleet
+	State   string // ReadLive, ReadGhost or ReadClosed
+	Verdict string
+}
+
+// The states ReadsOut marks a read with.
+const (
+	ReadLive   = "live"
+	ReadGhost  = "ghost"
+	ReadClosed = "closed"
+)
+
+// ReadsOut is every read the primary has out at its current attempt: the
+// readers table's live read cards and the fleet's read cards (a friend's or a
+// member's, dealt by the read-card deal), each marked live, ghost or closed
+// with its verdict (docs/SPEC-SPRINT.md section 6, the reads). One predicate:
+// ask, ask --another, --instead, ReadsWanted, readCardsWanted/Standing,
+// heavyRead, doctor and the tick's check all rest on it, so a read one calls
+// out the others see too.
+func ReadsOut(s *Snapshot, pr *Card) []ReadOut {
+	if s == nil || pr == nil {
+		return nil
+	}
+	attempt := max(pr.Int("attempt"), 1)
+	var out []ReadOut
+	if s.Readers != nil {
+		for _, rc := range liveReadsAt(s, pr, pr.Int("attempt")) {
+			state, verdict := ReadLive, rc.F("verdict")
+			switch {
+			case rc.Col == Broken || verdict == "broken":
+				state, verdict = ReadClosed, "broken"
+			case rc.Col == OK || verdict == "ok":
+				state, verdict = ReadClosed, "ok"
+			}
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Readers, State: state, Verdict: verdict})
+		}
+	}
+	if s.Fleet != nil {
+		placed, oks, brk := fleetReadLiveAt(s, pr, attempt, s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+"."))
+		for _, rc := range placed {
+			state := ReadLive
+			if rc.Col == Working {
+				if ghost, _ := readCardGhost(s, rc); ghost {
+					state = ReadGhost
+				}
+			}
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: state, Verdict: rc.F("verdict")})
+		}
+		for _, rc := range oks {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadClosed, Verdict: "ok"})
+		}
+		for _, rc := range brk {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadClosed, Verdict: "broken"})
+		}
+	}
+	return out
+}
+
 // ReadsWanted is how many reads the ask places on the primary now, at its
 // attempt. Under the interim rule of 2026-10-06 (docs/SPEC-SPRINT.md section 6;
 // the owner, 6:02 PM ET: "send out multiple consumer cards in ||") a card's reads
@@ -559,19 +623,106 @@ func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 // they go is the readers' room. A friend's read of the attempt stands with
 // them (friendReadLive): placed or ok, it counts toward ReadsNeeded; broken, no second
 // read is asked (docs/SPEC-SPRINT.md, a read asked of any unit with room at
-// or above the read tier).
+// or above the read tier). A read card working on a row whose beat names it a
+// ghost (readCardGhost) does not stand: it is asked again, as a return is.
 //
 // tla/ReaderTiers.tla Ask
 func ReadsWanted(s *Snapshot, pr *Card) int {
 	if readBranchMissingOpen(s, pr) {
 		return 0 // its branch is not on origin: the seat's judgment holds it (read_missing.go)
 	}
-	placed := readsAt(s, pr, pr.Int("attempt"))
-	live := liveReadsAt(s, pr, pr.Int("attempt"))
-	fp, fok, fbr := friendReadLive(s, pr)
-	placed = append(placed, fp...)
-	live = append(append(append(live, fp...), fok...), fbr...)
-	return max(readsWantedOf(s, pr, live), len(placed)-len(live))
+	standing, _, broken := readsOutStanding(ReadsOut(s, pr))
+	if broken {
+		return 0
+	}
+	returned := len(returnedReadsAt(s, pr, pr.Int("attempt")))
+	return max(max(0, ReadsNeededIn(s, pr)-standing), returned)
+}
+
+// readsOutStanding sums the reads of ReadsOut that stand (live or closed) and
+// whether one found it broken; ghosts stand not (they are asked again).
+func readsOutStanding(out []ReadOut) (standing, ghosts int, broken bool) {
+	for _, ro := range out {
+		switch ro.State {
+		case ReadLive, ReadClosed:
+			standing++
+			if ro.Verdict == "broken" {
+				broken = true
+			}
+		case ReadGhost:
+			ghosts++
+		}
+	}
+	return standing, ghosts, broken
+}
+
+// ConsumersOutFull is the tick's consumers-out postcondition with its review half read
+// through the one predicate (ReadsOut, docs/SPEC-SPRINT.md section 6, the reads): every
+// producer card (working, review) has its consumer out after the tick. It is what the
+// store's tick calls (store/tick.go) in place of consumers_out.go's ConsumersOut, whose
+// review half reads the readers table alone; this one also holds a review primary by its
+// fleet read card (a member's or a friend's, live), by the ok reads it needs (acceptable)
+// or by an open judgment, so a card in review with no live read and no judgment is the
+// breach the invariant names (tla-readcards-review-has-a-live-read-or-a-judgment).
+func ConsumersOutFull(s *Snapshot) []LaneQuiet {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	fromRecord := map[string]string{}
+	for _, v := range CheckConsumers(s) {
+		if f := strings.Fields(v.Detail); len(f) > 0 {
+			fromRecord[f[0]] = v.Detail
+		}
+	}
+	var out []LaneQuiet
+	for _, c := range s.Work.Cards() {
+		switch c.Col {
+		case Working:
+			if q, missing := workingConsumerOut(s, c); missing {
+				out = append(out, withRecordWhy(c, q, fromRecord))
+			}
+		case Review:
+			if q, missing := reviewConsumerOutFull(s, c); missing {
+				out = append(out, withRecordWhy(c, q, fromRecord))
+			}
+		}
+	}
+	return out
+}
+
+// reviewConsumerOutFull is the one quiet of a review primary with no live read out for it
+// and no open judgment that names it, and whether it is missing. The read out is the one
+// predicate (ReadsOut, docs/SPEC-SPRINT.md section 6, the reads): a live read held by a
+// row whose queue lists it (a readers-table read asked or reading, a fleet read card
+// placed, a friend's read), or the ok reads it needs, so a fleet read card the readers
+// table cannot see still holds its primary.
+func reviewConsumerOutFull(s *Snapshot, c *Card) (LaneQuiet, bool) {
+	if reviewHasLiveRead(s, c) || acceptable(s, c) || heldByJudgment(s, c.ID) {
+		return LaneQuiet{}, false
+	}
+	return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "no read asked for it"}, true
+}
+
+// reviewHasLiveRead says a review primary has, at its current attempt, a live read held by
+// a row whose queue lists it: a readers-table read asked or reading, a fleet read card (a
+// member's or a friend's) the one predicate ReadsOut marks live rather than ghost, or a
+// read that found it broken (its judgment holds it). The ok reads it needs are acceptable's,
+// checked by the caller. tla-readcards-review-has-a-live-read-or-a-judgment.
+func reviewHasLiveRead(s *Snapshot, c *Card) bool {
+	if readOutFor(s, c.ID) {
+		return true
+	}
+	for _, ro := range ReadsOut(s, c) {
+		switch ro.State {
+		case ReadLive:
+			return true
+		case ReadClosed:
+			if ro.Verdict == "broken" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // readsWantedOf is ReadsWanted over the reads that stand, live.
@@ -1074,10 +1225,10 @@ func heavyWhy(r AcceptReq) string {
 // and verdict, its evidence and the broken reads at the attempt it overrules.
 func heavyRead(s *Snapshot, pr *Card, r AcceptReq) (fields map[string]string, overruled []*Card) {
 	var ids []string
-	for _, rc := range readsAt(s, pr, pr.Int("attempt")) {
-		if rc.Col == Broken {
-			overruled = append(overruled, rc)
-			ids = append(ids, rc.ID)
+	for _, ro := range ReadsOut(s, pr) {
+		if ro.Verdict == "broken" && ro.Card != nil {
+			overruled = append(overruled, ro.Card)
+			ids = append(ids, ro.Card.ID)
 		}
 	}
 	who := r.Who

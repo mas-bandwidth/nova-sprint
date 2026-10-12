@@ -702,6 +702,18 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 			p.Units = append(p.Units, missingBranchUnit(s, Fleet, c, pr, m, r.Finding, r.Usage, r.Who))
 			continue
 		}
+		if r.Verdict == "broken" && strings.TrimSpace(r.Finding) == "" {
+			// a broken verdict whose finding is empty or whitespace is no verdict
+			// (docs/SPEC-SPRINT.md section 6, the reads): the read returns it as
+			// pkg/member's no-finding return does, so no card rests in review on
+			// an empty finding.
+			set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": "empty finding"}
+			n := happened(NReadReturned, pr.Row, s.Now, pr.ID)
+			n.Who, n.Attempt, n.What = name, c.Int("attempt"), name+" returned "+c.ID+": no finding"
+			p.Units = append(p.Units, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{change(Fleet, removeEntry(c, set))},
+				Moved: c.ID + " " + c.Col + " -> returned (retired: " + name + " gave a broken verdict with no finding)", Notes: []Note{n}})
+			continue
+		}
 		u := friendReadCloseUnit(s, name, pr, c, r.Verdict, r.Finding, r.Usage)
 		u.Moved = c.ID + " " + c.Col + " -> " + r.Verdict + " (retired: read by " + name + ")"
 		p.Units = append(p.Units, u)
