@@ -55,7 +55,7 @@ func TestTheLoopPlaysTheWorldThroughVerbsOnly(t *testing.T) {
 	w := &world{where: []string{busy, busy, done}, queue: map[string]string{
 		"m1":       `{"cards":[{"id":"s1-1.w2","col":"working","gen":3},{"id":"s1-4.w1","col":"ready","gen":2}]}`,
 		"reader-a": `{"cards":[{"id":"s1-2.r1.reader-a","col":"asked"},{"id":"s1-5.r1.reader-a","col":"reading"}]}`,
-		"s1":       `{"cards":[{"id":"s1-3","col":"queued"}]}`,
+		"s1":       `{"cards":[{"id":"s1-3","col":"queued","head":"s1-3"}]}`,
 	}, inbox: `{"groups":[{"kind":"judgment","type":"work came back failed","stream":"s1","count":2,"oldest":"2030-01-02T03:00:00Z"}]}`}
 	var out bytes.Buffer
 	facts := NewSeeded(7)
@@ -200,7 +200,7 @@ func index(ran [][]string, from int, want string) int {
 func TestTheOtherQueuesAreReadWhenAFactNeedsThem(t *testing.T) {
 	t.Parallel()
 	w := &world{where: []string{twoStreams}, queue: map[string]string{
-		"m1": `{"cards":[]}`, "s1": `{"cards":[{"id":"s1-1","col":"queued"}]}`, "s2": `{"cards":[{"id":"s2-1","col":"queued"}]}`,
+		"m1": `{"cards":[]}`, "s1": `{"cards":[{"id":"s1-1","col":"queued","head":"s1-1"}]}`, "s2": `{"cards":[{"id":"s2-1","col":"queued","head":"s2-1"}]}`,
 	}, inbox: `{"groups":[]}`}
 	f := &scripted{cross: map[string]bool{"s2": true}}
 	d := &Driver{Run: w.run, Facts: f, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Batch: 5, Ticks: 1}}
@@ -299,7 +299,7 @@ func TestTheDriverStopsAtAClearWithoutWriting(t *testing.T) {
 	t.Parallel()
 	cleared := strings.Replace(busy, `{"landed"`, `{"epoch":1,"landed"`, 1)
 	w := &world{where: []string{busy, busy, busy, cleared}, queue: map[string]string{
-		"m1": `{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[{"id":"s1-3","col":"queued"}]}`,
+		"m1": `{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[{"id":"s1-3","col":"queued","head":"s1-3"}]}`,
 	}, inbox: `{"groups":[]}`}
 	var out bytes.Buffer
 	d := &Driver{Run: w.run, Facts: &scripted{down: map[string]bool{"m1": true}}, Clock: &fakeClock{}, Out: &out, Config: Config{Every: time.Second}}

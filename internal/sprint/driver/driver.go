@@ -139,14 +139,16 @@ const Most = 2000
 // run runs one verb, prints its command line and its summary shortened, and
 // returns its exit code and stdout.
 func (d *Driver) run(quiet bool, args ...string) (int, string) {
-	return d.exec(quiet, args, nil)
+	code, out, _ := d.exec(quiet, args, nil)
+	return code, out
 }
 
 // batch runs one verb over a set of cards in one call, the cards after its
 // words. Its printed line names the count and the first three cards when the
 // set is larger than three, never a line per card.
 func (d *Driver) batch(words []string, cards []string) (int, string) {
-	return d.exec(false, words, cards)
+	code, out, _ := d.exec(false, words, cards)
+	return code, out
 }
 
 // batches runs one verb over a set of cards in calls of at most Most cards
@@ -159,12 +161,12 @@ func (d *Driver) batches(words []string, cards []string) {
 	}
 }
 
-func (d *Driver) exec(quiet bool, args, cards []string) (int, string) {
+func (d *Driver) exec(quiet bool, args, cards []string) (int, string, string) {
 	if coordinatorVerbs[args[0]] {
 		panic("the driver never runs the coordinator's verb " + args[0])
 	}
 	if d.cleared {
-		return 1, ""
+		return 1, "", ""
 	}
 	full := append(append(append([]string{}, args...), cards...), d.Base...)
 	var out, errb bytes.Buffer
@@ -179,7 +181,7 @@ func (d *Driver) exec(quiet bool, args, cards []string) (int, string) {
 		}
 		fmt.Fprintf(d.Out, "  %-60s %s\n", line, short(args[0], out.String()+errb.String(), code))
 	}
-	return code, out.String()
+	return code, out.String(), errb.String()
 }
 
 // commandLine is the verb as it is typed: nova-sprint and its words, a word
@@ -313,7 +315,9 @@ func (d *Driver) Loop() (string, error) {
 			return "landed", nil
 		}
 		fmt.Fprintf(d.Out, "tick %d %s\n", tick, d.Clock.Now().Format("15:04:05"))
-		d.tick(tick, c, w)
+		if err := d.tick(tick, c, w); err != nil {
+			return "", err
+		}
 		if d.cleared {
 			return d.stopCleared(), nil
 		}
@@ -358,7 +362,7 @@ func landed(w where) bool {
 	return w.All > 0 && w.Landed == w.All
 }
 
-func (d *Driver) tick(tick int, c Config, w where) {
+func (d *Driver) tick(tick int, c Config, w where) error {
 	// Every verb that writes holds the driver's epoch: a clear since refuses
 	// it, naming the clear, so a write naming any other epoch cannot reach
 	// the table.
@@ -598,88 +602,106 @@ func (d *Driver) tick(tick int, c Config, w where) {
 			}
 		default:
 			// a green batch records its landings by name, the form a real store
-			// accepts (docs/SPEC-SPRINT.md section 8); a batch whose cards carry
-			// no head (a twin's world) stays a bare merge, which a twin allows and
-			// a real store refuses, the refusal reported by this run.
-			d.landingPins(&args, batch, heads)
+			// accepts (docs/SPEC-SPRINT.md section 8); a green batch that cannot
+			// be recorded by name is an error, never a bare merge, which a real
+			// store refuses.
+			if err := d.landingPins(&args, batch, heads); err != nil {
+				return fmt.Errorf("stream %s: %v", s, err)
+			}
 		}
-		d.run(false, append(args, held...)...)
+		code, _, errs := d.exec(false, append(args, held...), nil)
+		if code != 0 && !d.cleared {
+			return fmt.Errorf("stream %s: merge: %s", s, strings.TrimSpace(errs))
+		}
 	}
+	return nil
 }
 
 // landingPins appends the record-by-name flags of a green batch to args:
 // merge --landed <id>@<head> ... --repo <dir> --base-ref origin/<base>, each
 // card's head a ref the driver's own forge holds at the base commit, so the
 // merge verb's one git merge-base --is-ancestor per card holds there. A card
-// whose head the queue did not name, or a forge that cannot be made, leaves
-// args as the bare merge.
-func (d *Driver) landingPins(args *[]string, batch []string, heads map[string]string) {
+// whose head the queue did not name, or a forge that cannot be made, is an
+// error: a green batch never falls back to a bare merge, which a real store
+// refuses.
+func (d *Driver) landingPins(args *[]string, batch []string, heads map[string]string) error {
 	for _, id := range batch {
 		if heads[id] == "" {
-			return
+			return fmt.Errorf("card %s has no head on its merge queue, so its landing cannot be recorded by name", id)
 		}
 	}
-	dir, sha := d.landingForge()
-	if dir == "" {
-		return
+	dir, sha, err := d.landingForge()
+	if err != nil {
+		return fmt.Errorf("the landing forge could not be made: %w", err)
 	}
 	var pins []string
 	for _, id := range batch {
-		if !d.tagHead(dir, sha, heads[id]) {
-			return
+		if err := d.tagHead(dir, sha, heads[id]); err != nil {
+			return fmt.Errorf("card %s: %w", id, err)
 		}
 		pins = append(pins, "--landed", id+"@"+heads[id])
 	}
 	*args = append(*args, pins...)
 	*args = append(*args, "--repo", dir, "--base-ref", "origin/main")
+	return nil
 }
 
 // landingForge makes, once, the driver's own git repository: a base commit on
 // its default branch and the ref origin/main at it. merge --landed checks each
 // card's head (a ref tagHead makes) against origin/main there. It returns the
-// clone dir and the base commit; "" when the forge cannot be made (no git), so
-// a green batch then records a bare merge, which a real store refuses and the
-// run reports.
-func (d *Driver) landingForge() (string, string) {
+// clone dir and the base commit, or the error when the forge cannot be made.
+func (d *Driver) landingForge() (string, string, error) {
 	if d.forge != "" {
-		return d.forge, d.forgeSHA
+		return d.forge, d.forgeSHA, nil
 	}
 	dir, err := os.MkdirTemp("", "nova-sprint-driver-*")
 	if err != nil {
-		return "", ""
+		return "", "", fmt.Errorf("MkdirTemp: %w", err)
 	}
-	run := func(args ...string) bool {
-		return exec.Command("git", append([]string{"-C", dir}, args...)...).Run() == nil
+	run := func(args ...string) error {
+		if err := exec.Command("git", append([]string{"-C", dir}, args...)...).Run(); err != nil {
+			return fmt.Errorf("git -C %s %s: %w", dir, strings.Join(args, " "), err)
+		}
+		return nil
 	}
-	out := func(args ...string) (string, bool) {
+	out := func(args ...string) (string, error) {
 		b, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
-		return strings.TrimSpace(string(b)), err == nil
+		if err != nil {
+			return "", fmt.Errorf("git -C %s %s: %w", dir, strings.Join(args, " "), err)
+		}
+		return strings.TrimSpace(string(b)), nil
 	}
-	fail := func() (string, string) {
+	fail := func(err error) (string, string, error) {
 		os.RemoveAll(dir)
-		return "", ""
+		return "", "", err
 	}
-	if !run("init", "-q") {
-		return fail()
+	if err := run("init", "-q"); err != nil {
+		return fail(err)
 	}
-	if !run("-c", "user.email=nova-sprint-driver@example.invalid", "-c", "user.name=nova-sprint driver", "commit", "-q", "--allow-empty", "-m", "base") {
-		return fail()
+	if err := run("-c", "user.email=nova-sprint-driver@example.invalid", "-c", "user.name=nova-sprint driver", "commit", "-q", "--allow-empty", "-m", "base"); err != nil {
+		return fail(err)
 	}
-	sha, ok := out("rev-parse", "HEAD")
-	if !ok || sha == "" {
-		return fail()
+	sha, err := out("rev-parse", "HEAD")
+	if err != nil {
+		return fail(err)
 	}
-	if !run("update-ref", "refs/remotes/origin/main", sha) {
-		return fail()
+	if sha == "" {
+		return fail(fmt.Errorf("git -C %s rev-parse HEAD was empty", dir))
+	}
+	if err := run("update-ref", "refs/remotes/origin/main", sha); err != nil {
+		return fail(err)
 	}
 	d.forge, d.forgeSHA = dir, sha
-	return dir, sha
+	return dir, sha, nil
 }
 
 // tagHead records head as a ref of the forge at the base commit, so the merge
 // verb's git merge-base --is-ancestor <head> origin/main holds there.
-func (d *Driver) tagHead(dir, sha, head string) bool {
-	return exec.Command("git", "-C", dir, "update-ref", "refs/tags/"+head, sha).Run() == nil
+func (d *Driver) tagHead(dir, sha, head string) error {
+	if err := exec.Command("git", "-C", dir, "update-ref", "refs/tags/"+head, sha).Run(); err != nil {
+		return fmt.Errorf("git -C %s update-ref refs/tags/%s %s: %w", dir, head, sha, err)
+	}
+	return nil
 }
 
 // closeForge removes the driver's own forge, made when a green merge recorded

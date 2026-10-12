@@ -350,8 +350,8 @@ func eventful() *world {
 		queue: map[string]string{
 			"m1": cards, "m2": cards, "m3": cards,
 			"reader-a": `{"cards":[{"id":"s1-1.r1.reader-a","col":"asked"},{"id":"s1-2.r1.reader-a","col":"reading"},{"id":"s1-3.r1.reader-a","col":"reading"}]}`,
-			"s1":       `{"cards":[{"id":"s1-5","col":"queued"},{"id":"s1-6","col":"queued"}]}`,
-			"s2":       `{"cards":[{"id":"s2-5","col":"queued"},{"id":"s2-6","col":"queued"}]}`,
+			"s1":       `{"cards":[{"id":"s1-5","col":"queued","head":"s1-5"},{"id":"s1-6","col":"queued","head":"s1-6"}]}`,
+			"s2":       `{"cards":[{"id":"s2-5","col":"queued","head":"s2-5"},{"id":"s2-6","col":"queued","head":"s2-6"}]}`,
 		}, inbox: `{"groups":[]}`}
 }
 
@@ -373,7 +373,30 @@ func play(t *testing.T, seed uint64, ticks int) (ran, out string) {
 	for _, a := range w.ran {
 		lines = append(lines, strings.Join(a, " "))
 	}
-	return strings.Join(lines, "\n"), text.String()
+	return normalizeForge(strings.Join(lines, "\n")), normalizeForge(text.String())
+}
+
+// normalizeForge replaces the driver's own forge dir (a fresh temp dir each
+// run, nova-sprint-driver-<n> under os.TempDir) with <forge>, so two runs of
+// the same seed compare verb for verb.
+func normalizeForge(s string) string {
+	prefix := os.TempDir() + string(os.PathSeparator) + "nova-sprint-driver-"
+	var b strings.Builder
+	for {
+		i := strings.Index(s, prefix)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		b.WriteString(s[:i])
+		b.WriteString("<forge>")
+		rest := s[i+len(prefix):]
+		j := 0
+		for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+			j++
+		}
+		s = rest[j:]
+	}
 }
 
 // The same seed plays the same events, verb for verb, and another seed plays
