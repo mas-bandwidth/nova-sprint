@@ -81,12 +81,15 @@ var (
 
 // UnitPackages names the unit packages a head's merge could break, from the go.mod
 // module path and the files the merge changed. For module github.com/mas-bandwidth/nova-sprint:
-// a changed .go file or testdata under internal/sprint/ or cmd/nova-sprint/ gives both
-// ./internal/sprint/... and ./cmd/nova-sprint/... (cmd imports internal, so either side can
-// break the other's tests); a changed .go file elsewhere gives its own package directory
-// ./<dir>/. For any other module (nova-tools): the package directory of each changed .go
+// production source or data under pkg/ or internal/ gives the whole-tree pattern "...",
+// so reverse importers' tests run too. Markdown and docs/ are documentation; _test.go
+// and testdata/ are test-only inputs. Selection uses paths, so deleted production data
+// still triggers the gate. A test-only change under internal/sprint/ or a .go file or
+// testdata under cmd/nova-sprint/ gives both bare directories internal/sprint and
+// cmd/nova-sprint; a changed .go file elsewhere gives its own package directory.
+// For any other module (nova-tools): the package directory of each changed .go
 // file or testdata, deduplicated and sorted; reverse dependencies are not in this card.
-// Docs, ledgers and other non-Go files give none.
+// Outside the shared production inputs, docs, ledgers and other non-Go files give none.
 func UnitPackages(module string, changed []string) []string {
 	seen := map[string]bool{}
 	var pkgs []string
@@ -94,6 +97,11 @@ func UnitPackages(module string, changed []string) []string {
 	for _, f := range changed {
 		isGoFile := strings.HasSuffix(f, ".go")
 		isTestData := strings.HasSuffix(f, "testdata") || strings.Contains(f, "/testdata/")
+		shared := strings.HasPrefix(f, "pkg/") || strings.HasPrefix(f, "internal/")
+		isDoc := strings.HasSuffix(f, ".md") || strings.Contains(f, "/docs/")
+		if module == "github.com/mas-bandwidth/nova-sprint" && shared && !isTestData && !isDoc && !strings.HasSuffix(f, "_test.go") {
+			return []string{"..."}
+		}
 		if !isGoFile && !isTestData {
 			continue
 		}
