@@ -83,6 +83,90 @@ checks it against [`tla2tools.sha256`](tla2tools.sha256) before
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
 
+## LandPass stream routing and certification
+
+`MCLandPassStreamFlow.cfg` checks a second abstraction in `LandPass.tla`:
+`StreamFlowSpec`, alongside the existing pass/gate specifications. It is **not**
+a composition or refinement proof between those abstractions. The old batch-set
+variable is now `batchBase`; `base[c]` is a card's actual destination. The legacy
+specifications freeze the added state, and keep their old fairness over
+`legacyVars`. The flow specification freezes the old pass state with a green
+oracle. The legacy cases still check the gate and refusal rules independently.
+
+The flow bound is two streams, one card/batch per stream. A card is the pair
+`<<stream, head>>`; `sbranch[s]` is the set of cards in landed batches and
+`integrated[s]` is the snapshot last merged into the trunk. `trunk` records
+`<<"merge", s>>` or `<<"card", batch>>`. `inflight` and `cert` distinguish a merge
+being certified from a branch merely ahead of the trunk. `moveFree` records the
+pre-state admission guard at each trunk append: a later successful certification
+cannot erase an earlier overlapping move.
+
+The model starts with empty branches and legacy stream destinations on `trunk`.
+`AddCard(c)` inherits its stream's configured destination, either before or after
+migration. `AdvanceCard(c)` visits waiting, ready, working, review and merging;
+landing is the sixth real lifecycle column; `absent` is model-only.
+`SetBase(s, s)` migrates once to that stream's own
+branch and updates every existing unlanded card, in any column. Landed cards keep
+their history. A branch name here is a stream identity; repository strings and
+renames are projected away. `BriefEdit(c, proposedBase)` is a stuttering projection
+of the text edit: even a proposed trunk BASE cannot change routing. The control
+also checks `SetBaseReachesEveryUnlanded` and `BriefEditKeepsBase`.
+
+`StreamLand(s)` lands an eligible batch on its stream branch. `StreamMerge(s)`
+requires a branch ahead of its integrated snapshot, no inflight merge, and either
+green certification or a trunk that has never moved. It appends one merge move,
+sets inflight and starts certification. `CertDone(r)` chooses green or red and
+clears inflight; red blocks the next merge. No fairness is assumed by this safety
+specification: it does not claim that migration, landing or certification must
+finish. Empty-branch fast-forward, Git ancestry, repeated batches, oldest-first
+ordering inside a batch, crash recovery, and a repair after red certification are
+outside this bound.
+
+Three Boolean fault operators derive from the existing `Broken` configuration
+constant, preserving every old configuration's parameter interface:
+
+| Configuration | Switch (`Broken`) | Expected first violation |
+|---|---|---|
+| `MCLandPassBrokenCardOntoDev.cfg` | `BugCardOntoDev` (`"cardontodev"`) | `DevMovesOnlyByStreamMerge`: a merging card lands directly on trunk. |
+| `MCLandPassBrokenMergeBeforeCert.cfg` | `BugMergeBeforeCert` (`"mergebeforecert"`) | `StreamMergesSerial`: a second stream appends while the first is inflight and cert is running. |
+| `MCLandPassBrokenReviewKeepsBase.cfg` | `BugBaseSkipsReview` (`"baseskipsreview"`) | `CardLandsOnItsStream`: migration leaves a review/merging card on trunk, and its actual landing follows that stale BASE. |
+
+`CardOntoTrunk` exposes the legacy protected-branch compatibility route only under
+a fault switch. The skipped-base witness includes that historical route: it tests
+the incident where an incomplete rewrite and permission to land on protected
+branches coexist. A correct protected-branch refusal would stop that landing in
+depth. Direct card moves during running certification set `cert = "cancelled"`;
+the serial invariant rejects cancellation as well as overlapping appends.
+
+The first violating states were read by hand against staged Go head
+`c3b0b1b142cddfeec489582a493cb2ff0a0022d9` (no Go changes in this task):
+
+- **Direct card, state 7:** `trunk = <<<<"card", {<<s1, 1>>}>>>>`, the card landed
+  and `sbranch[s1] = {}`. `cmd/nova-sprint/landpass.go:299-302` reads the card's
+  BASE; line 323 calls `sprint.ProtectedLandWhy`. The marked-stream early return
+  in `internal/sprint/protected.go:48-50` permits that protected destination.
+- **Skipped base, state 8:** state 6 has the card merging on trunk; state 7 changes
+  `streamBase[s1]` to s1 while `base[<<s1, 1>>]` stays trunk; state 8 lands it there.
+  `internal/sprint/streams.go:407-421` selects only never-dealt or merge-queued
+  cards and keeps the others. Lines 433-436 apply `briefOnBase` (lines 350-356)
+  only to the selected cards. The actual push again uses landpass.go:299-302 and
+  the protected-mark bypass. Review and merging here abstract the dealt cards
+  omitted by that selector, not a claim that every Go merging card is skipped.
+- **Concurrent merge, state 17:** state 16 has `inflight = s1`, running cert and
+  one merge; state 17 appends s2 and records `moveFree = <<TRUE, FALSE>>`.
+  `cmd/nova-sprint/promote.go:354-370` carries a pending promotion to its watch;
+  lines 644-667 wait for checks before enqueueing, and lines 821-840 read pending
+  state from one clone. The model's guard is the intended **global per-trunk**
+  rule: bypassing it permits independent stream promotions to overlap. The
+  sibling `sprint.NextStreamMerge` is absent at this staged head, so this witness
+  maps the missing global guard, not an assertion that those existing local
+  checks themselves admit a second promotion.
+
+Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
+Linux and merge its generated records with `tools/tlacheck merge --keep` as above.
+The manifest keeps all 13 historical cases and adds the control and three
+witnesses. A witness's runner PASS means TLC reported its named violation.
+
 ## The models in detail
 
 These rows and the `Level` section moved here from nova-tools' `tla/README.md` at v1.2.3, with the
