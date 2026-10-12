@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -35,7 +36,18 @@ import (
 // calls. The one allowance is unit_rule_allowed.txt beside this file: the files that
 // broke the rule when it was written, allowed until moved (v1.3). A listed file that
 // stops offending fails the test until its line is removed, and an offender not
-// listed fails it: the list only shrinks, and a new offender is red at once.
+// listed fails it; TestTheUnitRuleAllowanceOnlyShrinks fails a line the merge base
+// does not have. So the list only shrinks, and a new offender is red at once. The
+// allowance is by file: a listed file may gain more forbidden uses until it is moved,
+// and the lint does not refuse them (the documented limit).
+//
+// The scan is syntactic (go/ast, no type information), and these are its known gaps,
+// out of scope here: a custom *http.Client.Do on a real transport is not an
+// httptest server and is not seen; an import name shadowed by a local identifier (a
+// parameter named `time`, a variable named `synctest`) is read as the package, so a
+// fake clock could be refused or a false bubble excused. A dot-import of a forbidden
+// package (`import . "time"`, then a bare Sleep) is seen; a local function of the same
+// bare name in such a file would be refused with it.
 
 // unitRuleAllowedFile names the files still allowed to break the rule, one slash
 // path from the module root a line, '#' lines comments (unit_rule_allowed.txt).
@@ -46,8 +58,13 @@ func unitRuleAllowed(t *testing.T) []string {
 	t.Helper()
 	b, err := os.ReadFile(unitRuleAllowedFile)
 	require.NoError(t, err)
+	return allowedLines(string(b))
+}
+
+// allowedLines is the paths of an allowlist's text: blank and '#' lines dropped.
+func allowedLines(text string) []string {
 	var out []string
-	for _, line := range strings.Split(string(b), "\n") {
+	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -261,6 +278,7 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 	}
 	for _, uf := range files {
 		imports := map[string]string{}
+		var dotImports []string // packages dot-imported: their names are bare identifiers
 		for _, is := range uf.f.Imports {
 			p, _ := strconv.Unquote(is.Path.Value)
 			name := filepath.Base(p)
@@ -269,6 +287,10 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 			}
 			if is.Name != nil {
 				name = is.Name.Name
+			}
+			if name == "." {
+				dotImports = append(dotImports, p)
+				continue
 			}
 			imports[name] = p
 		}
@@ -284,7 +306,19 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "testing/synctest" && (sel.Sel.Name == "Test" || sel.Sel.Name == "Run") {
 							walk(v.Fun, bubbled, decl)
 							for _, a := range v.Args {
-								walk(a, true, decl)
+								switch a := a.(type) {
+								case *ast.FuncLit:
+									// the callback's body runs inside the bubble
+									walk(a, true, decl)
+								case *ast.Ident:
+									// a named callback is passed, not called, here: its body runs
+									// inside the bubble (a bubble-only helper); a plain name has no use
+									walk(a, true, decl)
+								default:
+									// every other argument is evaluated before the bubble starts:
+									// synctest.Test(t, mk(time.Now())) reads the real clock
+									walk(a, bubbled, decl)
+								}
 							}
 							return false
 						}
@@ -312,6 +346,12 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 				case *ast.Ident:
 					if kind, ok := unitRuleHelpers[v.Name]; ok {
 						uses = append(uses, unitRuleUse{find(v, kind, v.Name), bubbled, decl})
+					}
+					// a dot-imported package's names are bare: `import . "time"` then Sleep(1)
+					for _, p := range dotImports {
+						if kind, ok := unitRuleCalls[p][v.Name]; ok {
+							uses = append(uses, unitRuleUse{find(v, kind, p+"."+v.Name), bubbled, decl})
+						}
 					}
 					if declared[v.Name] {
 						refs[v.Name] = append(refs[v.Name], ref{bubbled, decl})
@@ -443,6 +483,54 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 	t.Logf("unit-rule: %d files still allowed in %s", len(unitRuleBurnDown), unitRuleAllowedFile)
 }
 
+// TestTheUnitRuleAllowanceOnlyShrinks: against the base a change is merged into
+// (UNIT_RULE_BASE, a git revision: CI names the pull request's base, as it does for
+// PAGELOCK_BASE; unset, the local origin/sprint/comfort, origin/dev or origin/main if
+// git has one here, else not checked), every path in unit_rule_allowed.txt is in the
+// base's copy: a new allowance is red, a removed one is the move it records. A base
+// with no allowlist yet passes (the allowance's first change). No fetch runs here.
+func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
+	t.Parallel()
+	base := os.Getenv("UNIT_RULE_BASE")
+	if base == "" {
+		for _, ref := range []string{"refs/remotes/origin/sprint/comfort", "refs/remotes/origin/dev", "refs/remotes/origin/main"} {
+			if exec.Command("git", "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run() == nil {
+				base = ref
+				break
+			}
+		}
+	}
+	if base == "" {
+		t.Skip("UNIT_RULE_BASE names no base revision and git has no origin/sprint/comfort, origin/dev or origin/main here; CI sets it to the pull request's base")
+	}
+	// the base must be a commit git can read: a misspelled rev, no git or a refused
+	// repository is red, never a pass
+	if out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", base+"^{commit}").CombinedOutput(); err != nil {
+		t.Fatalf("UNIT_RULE_BASE %s is no commit git can read here (%v: %s): the allowance's shrinking is unchecked", base, err, strings.TrimSpace(string(out)))
+	}
+	const path = "internal/ci/" + unitRuleAllowedFile
+	if exec.Command("git", "cat-file", "-e", base+":"+path).Run() != nil {
+		t.Logf("%s holds no %s: this change is the allowance's first", base, unitRuleAllowedFile)
+		return
+	}
+	out, err := exec.Command("git", "show", base+":"+path).Output()
+	require.NoError(t, err, "git show %s:%s", base, path)
+	was := map[string]bool{}
+	for _, f := range allowedLines(string(out)) {
+		was[f] = true
+	}
+	var added []string
+	for _, f := range unitRuleAllowed(t) {
+		if !was[f] {
+			added = append(added, f)
+		}
+	}
+	if len(added) > 0 {
+		t.Errorf("%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
+			unitRuleAllowedFile, len(added), base, strings.Join(added, "\n"))
+	}
+}
+
 // TestTheUnitRuleScanSeesAKnownYesAndAKnownNo proves the scan on cases whose answer
 // is known, both ways, before it gates.
 func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
@@ -501,6 +589,11 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			"func TestX(t T) { synctest.Test(t, func(t T) { wait() }) }\n" +
 			"func TestY(t T) { wait() }\n",
 			[]string{"6 time time.Sleep"}},
+		"the wall clock as a bubble's argument": {"package p\nimport (\n\t\"time\"\n\t\"testing/synctest\"\n)\n" +
+			"func TestX(t T) { synctest.Test(t, mk(time.Now())) }\n",
+			[]string{"6 time time.Now"}},
+		"a dot-imported sleep": {"package p\nimport . \"time\"\nfunc TestX() { Sleep(1) }\n",
+			[]string{"3 time time.Sleep"}},
 	}
 	for name, c := range yes {
 		t.Run("yes/"+name, func(t *testing.T) {
@@ -516,6 +609,9 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			"func wait() { time.Sleep(1) }\n" +
 			"func deeper() { wait() }\n" +
 			"func TestX(t T) { synctest.Test(t, func(t T) { deeper() }) }\n",
+		"a named callback": "package p\nimport (\n\t\"time\"\n\t\"testing/synctest\"\n)\n" +
+			"func run(t T) { time.Sleep(1) }\n" +
+			"func TestX(t T) { synctest.Test(t, run) }\n",
 		"an in-memory pipe":           "package p\nimport \"net\"\nfunc TestX() { a, b := net.Pipe(); _, _ = a, b }\n",
 		"a recorder":                  "package p\nimport \"net/http/httptest\"\nfunc TestX() { _ = httptest.NewRecorder(); _ = httptest.NewRequest(\"GET\", \"/\", nil) }\n",
 		"a local name like the clock": "package p\nfunc TestX(c clock) { _ = c.Now(); c.Sleep(1) }\n",

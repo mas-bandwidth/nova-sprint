@@ -8,7 +8,10 @@
 # A file leaves this list the turn it is moved behind //go:build functional or put onto
 # a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble). A listed file
 # that keeps the rule fails the lint until its line is removed; a file not listed that
-# breaks it fails the lint. The list only shrinks.
+# breaks it fails the lint; a line added here that the merge base does not have fails the
+# lint (the allowance only shrinks against origin/<base>). The allowance is by file: a
+# listed file may gain more forbidden uses until it is moved, and the lint does not refuse
+# them. That is the documented limit of this list, not a scope to widen.
 cmd/nova-sprint/dashboard_cover_test.go
 cmd/nova-sprint/fleet_back_test.go
 cmd/nova-sprint/flush_stream_test.go
