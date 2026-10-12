@@ -75,7 +75,11 @@ nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | 
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 nova-sprint queue --as <reader|member> | --stream <s>
-nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]
+nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
+# read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
+# as one of the reads the card needs; refused for the card's own worker. A card at a tier no
+# reader serves is read one tier down: the read card's tier names the strongest tier with an
+# enabled route and a reader up ("read at heavy: no frontier reader").
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--answers <note>]
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]

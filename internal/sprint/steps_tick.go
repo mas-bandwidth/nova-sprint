@@ -132,7 +132,7 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
 	NBound:             {"rework with a fix", "drop"},    // never wait: it holds its card (wait_refused.go)
-	NCannotAsk:         {"reader add", "rework", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"reader add", "wait"}, // a card no reader can be asked holds nothing: it waits for a reader (wait_refused.go)
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
 	NAdoptFailed:       {"fleet up <m>", "wait"},                     // named per member (fleet_back.go)

@@ -2711,6 +2711,17 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "read", err.Error())
 	}
+	// a coordinator may read a card itself, recorded as one of the reads it needs
+	// (docs/SPEC-SPRINT.md section 6): read --as <coordinator> --ok|--broken <card>
+	// --finding <text>; refused for the card's own worker
+	if !*begin && *ret == "" {
+		if coord, _ := st.B.Coordinator(context.Background()); coord != "" && *as == coord {
+			if len(ids) == 0 {
+				return refuse(stderr, "read", "a coordinator read names the card it read: read --as "+coord+" --ok|--broken <card> --finding <text>")
+			}
+			return a.runStep("read", *c, st, store.CoordinatorReadStep(sprint.CoordinatorReadReq{IDs: ids, Verdict: verdict, Finding: *finding, Who: *as}), stdout, stderr)
+		}
+	}
 	if len(ids) == 0 && !sprint.IsFriendRow(*as) {
 		col := sprint.Reading
 		if *begin {

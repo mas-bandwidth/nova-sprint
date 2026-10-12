@@ -461,6 +461,7 @@ Failed work and broken reads rework themselves, and no wait parks a card
 - `TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish` (internal/sprint/store/no_parked_test.go)
 - `TestAPinnedModelFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
 - `TestAFrontierTierFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
+- `TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts` (cmd/nova-sprint/frontier_read_functional_test.go)
 - `TestTheSameFailureOnManyCardsIsReworkedOnItsTier` (internal/sprint/store/rule_answers_test.go)
 - `TestEveryKindThatHoldsACardRefusesWait` (internal/sprint/wait_refused_test.go)
 - `TestNoJudgmentOffersADecisionItsVerbRefuses` (internal/sprint/wait_refused_test.go)
