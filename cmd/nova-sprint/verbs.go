@@ -47,6 +47,11 @@ type verb struct {
 
 var verbs []verb
 
+// tier is the coordinator's verb, registered beside the verb it runs, as twin
+// and rebase register their own classes (twin_verb.go, rebase.go): nova-sprint
+// tier <card> --set <t> --reason re-tiers one primary without a text edit.
+func init() { verbClasses["tier"] = classCoordinator }
+
 func init() {
 	verbs = []verb{
 		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
