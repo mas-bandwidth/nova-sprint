@@ -70,7 +70,11 @@
    (release "v1.2.16" :status "planned"
     :text "Every TLA+ model checked against the code."))
   :items
-   ((fix "friend-output-uses-the-configured-pronouns" :release "v1.2.16" :status "planned"
+   ((fix "hook-refusal-counts-only-its-own-writes" :release "v1.2.16" :status "planned"
+     :title "The hook refusal fixture counts only its own writes"
+     :text "Tests only. refusedFirst read Mem.Calls outside the server's control line while hookServerStart's background Coordinator read incremented the same map. It now holds the existing line across both apply-count reads and the refused command, keeping the exit, output, hook breadcrumb and no-write assertions. TestHookRefusalCountsOnlyItsOwnWrites queues the refusal behind the line, commits a real in-memory AddStep, then releases it: the old helper attributes that preceding write to the refused command, while the fixed helper counts only its own turn. No production store API or hook behavior changes."
+     :origin "The full cmd/nova-sprint race gate at 3378f509, 2026-10-12: Mem.count versus testApp.applies in TestADropIsGoneAndUnhookIsAway; the implicated source predates the run-output change.")
+    (fix "friend-output-uses-the-configured-pronouns" :release "v1.2.16" :status "planned"
      :title "Friend output uses the configured pronouns"
      :origin "The owner, 2026-10-12: use each friend's configured pronouns in output, default they/them."
      :text "nova-sprint's friend help, diagnostics and judgments still called every friend she/her after config sync learned the pronouns field. Named friend output now reads the explicit synced row and renders she/her, he/him or they/them, defaulting to they/them for an unstated setting. Generic help and text without a friend row use neutral nouns. The sprint status and coordinator judgments carry the row through FriendSeat; the friend package uses the same renderer for its records and bus judgments. Config rejects unsupported pronouns and lists the field last, matching nova-tools. A Go-source literal guard and production take, present bus and status judgment regressions hold the behavior. Migrations 0037-0039 are unchanged; no live friend configuration is changed.")
