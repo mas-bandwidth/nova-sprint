@@ -182,7 +182,7 @@ func TestDropRefusesANeededCardAndWaiveLeavesNone(t *testing.T) {
 	r.do("add --stream s2 --count 1 --one --needs s1-1")
 
 	var out, errb bytes.Buffer
-	code := r.a.run([]string{"drop", "s1-1", "--reason", "replaced", "--redis", r.addr}, &out, &errb)
+	code := runOnStore(r.a, r.addr, []string{"drop", "s1-1", "--reason", "replaced"}, &out, &errb)
 	require.NotEqual(t, 0, code, "drop of a needed card is refused")
 	assert.Contains(t, errb.String(), "s1-1", "the refusal names the card")
 	assert.Contains(t, errb.String(), "s2-1", "the refusal names the dependent")
@@ -211,7 +211,7 @@ func TestDropGroupRefusesANeededCard(t *testing.T) {
 	r.do("add --stream s2 --count 1 --one --needs s1-1") // s2-1, the dependent
 
 	var out, errb bytes.Buffer
-	code := r.a.run([]string{"drop", "s1-1", "s1-2", "--reason", "obsolete", "--redis", r.addr}, &out, &errb)
+	code := runOnStore(r.a, r.addr, []string{"drop", "s1-1", "s1-2", "--reason", "obsolete"}, &out, &errb)
 	require.NotEqual(t, 0, code, "drop of a group holding a needed card is refused")
 	assert.Contains(t, errb.String(), "s1-1", "the refusal names the needed card")
 	assert.Contains(t, errb.String(), "s2-1", "the refusal names the dependent")
