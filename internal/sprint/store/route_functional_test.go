@@ -69,7 +69,7 @@ func TestRedisRoutesReadsTheSprintSettingsWithNoRoutes(t *testing.T) {
 	t.Parallel()
 	st, c := liveStore(t)
 	ctx := context.Background()
-	for f, v := range map[string]string{config.FieldGitIdentity: "nova-sprint <nova-sprint@mas-bandwidth.com>",
+	for f, v := range map[string]string{config.FieldGitIdentity: "nova-sprint <nova-sprint@example.invalid>",
 		config.FieldDecideBounce: "0.5", config.FieldDecideReview: "0.3", config.FieldAnswerRulesOff: "rule-a"} {
 		require.NoError(t, c.Set(ctx, config.SprintKey(f), v, 0).Err())
 	}
@@ -78,7 +78,7 @@ func TestRedisRoutesReadsTheSprintSettingsWithNoRoutes(t *testing.T) {
 	assert.Equal(t, int64(1), trips, "the set and the bars ride the one pipeline with no routes")
 	assert.Empty(t, set.Routes)
 	assert.Empty(t, set.Tiers)
-	assert.Equal(t, Bars{Bounce: "0.5", Review: "0.3", RulesOff: "rule-a", GitIdentity: "nova-sprint <nova-sprint@mas-bandwidth.com>"}, set.Bars)
+	assert.Equal(t, Bars{Bounce: "0.5", Review: "0.3", RulesOff: "rule-a", GitIdentity: "nova-sprint <nova-sprint@example.invalid>"}, set.Bars)
 }
 
 // The owner's store, 2026-10-01, by the current code: five routes applied as
