@@ -60,7 +60,7 @@ functional-gate:
 # functional-gate-rest runs the tier without ./cmd/nova-sprint, which the
 # functional job's matrix runs sharded across three legs
 # (.github/workflows/ci.yml).
-FUNCTIONAL_REST := $(filter-out ./cmd/nova-sprint,$(shell $(GO) list ./...))
+FUNCTIONAL_REST := $(filter-out %/cmd/nova-sprint,$(shell $(GO) list ./...))
 
 functional-gate-rest:
 	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s $(FUNCTIONAL_REST)

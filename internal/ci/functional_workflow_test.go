@@ -66,14 +66,14 @@ func TestTheFunctionalJobEveryLegCarriesTheTwoMinuteTimeout(t *testing.T) {
 
 // TestTheFunctionalJobRestLegExcludesCmdNovaSprint pins that the rest leg runs
 // every package of ./... but exactly ./cmd/nova-sprint: the functional-gate-rest
-// recipe expands the FUNCTIONAL_REST list, which filters ./cmd/nova-sprint out
+// recipe expands the FUNCTIONAL_REST list, which filters the cmd/nova-sprint import path (%/cmd/nova-sprint; go list prints full import paths) out
 // of `go list ./...`, and never runs the whole ./... tree.
 func TestTheFunctionalJobRestLegExcludesCmdNovaSprint(t *testing.T) {
 	makefile, err := os.ReadFile("../../Makefile")
 	require.NoError(t, err)
 	text := string(makefile)
-	require.Contains(t, text, "FUNCTIONAL_REST := $(filter-out ./cmd/nova-sprint,$(shell $(GO) list ./...))",
-		"FUNCTIONAL_REST does not filter exactly ./cmd/nova-sprint out of go list ./...")
+	require.Contains(t, text, "FUNCTIONAL_REST := $(filter-out %/cmd/nova-sprint,$(shell $(GO) list ./...))",
+		"FUNCTIONAL_REST does not filter the cmd/nova-sprint import path out of go list ./... (go list prints full import paths, so the pattern needs the % prefix)")
 	recipe := makeRecipes(t, text, "functional-gate-rest")
 	require.Contains(t, recipe, "$(FUNCTIONAL_REST)", "the rest recipe does not run the FUNCTIONAL_REST list")
 	require.NotContains(t, recipe, "./...", "the rest recipe runs the whole ./... tree")
