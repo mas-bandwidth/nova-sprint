@@ -2571,9 +2571,10 @@
     reversed witness still fails its named property; and each 2026-10-11 fix to these machines carries
     its property and a reversed witness or the row's note names it a gap. Rows owed to cards already on
     the table stay theirs (named, not redone); a missing rule is a gap for a new card, not a rewrite.
-    The bench TLC records (tla/RUNS.tsv) are owed for this card: TLC runs only on a Linux bench with
-    the pinned tla2tools.jar, not on the macOS working machine that staged it."
-   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w1, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+    The TLC check is green on a Linux bench: every CASES.tsv config of these modules has a current
+    tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
+    frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
   (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
    :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
    :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
