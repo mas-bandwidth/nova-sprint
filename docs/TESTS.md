@@ -506,3 +506,26 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
 - `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
 - `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.
+
+## A finish-PR card starts from the PR's own head
+
+A card cut to finish an open pull request stages from the PR's head, not from its base: the
+head rides the brief's machine-read `CARRY:` line (the line `brief --widen` writes), and a
+brief that names a PR — a `PR:` line or THE TASK's "Start from the PR's branch ..." — and
+carries no such line is refused at add with the fix named (`LINT DRIFT ... check=pr-carry`).
+The base is still merged in by the worker, never replaced.
+
+- Unit, `pkg/swarm/prcarry_test.go`: `TestLintBriefRefusesAFinishPRCardWithNoCarry`: an
+  uncarried finish-PR brief (a `PR:` line, or the PR named only in THE TASK) draws the
+  `pr-carry` finding and the remedy names the `CARRY:` line to add; the same brief with the
+  line passes, and a card that names no PR is not held.
+- Unit, `internal/sprint/packet_basehead_test.go`:
+  `TestAFinishPRPacketStagesFromTheCarriedHead`: a first attempt of a card whose brief carries
+  the line stages from the PR head, and a pushed earlier attempt still wins over a stale
+  carry.
+- Functional (`-tags functional`), `cmd/nova-sprint/finish_pr_carry_functional_test.go`:
+  `TestAFinishPRCardStagesFromThePRHeadOnAStore`, on a private redis-server with explicit
+  `--redis` and a scrubbed environment: a finish-PR card whose brief carries
+  `CARRY: head=<pr head> branch=<pr branch>` is admitted and dealt, the packet names the PR
+  head as the base the slot stages from, and a commit built on that staged head has the PR
+  head as an ancestor.

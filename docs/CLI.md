@@ -186,6 +186,17 @@ tier, in either form, is refused at `add` and by `brief check` (`LINT DRIFT ... 
 free task (no `PATHS:`) that names none starts on flash; frontier and a brief that pins its
 model name their own.
 
+**A finish-PR card stages from the PR's own head.** A card cut to finish an open pull
+request carries the PR's branch and head in the machine-read `CARRY:` line of its brief
+(the line `brief --widen` writes, `CARRY: <card> attempt <n> head=<sha>`, or a finish-PR
+card's `CARRY: head=<sha> branch=<branch>`): `add` stores it so and `brief` keeps it, and
+the deal's packet names the PR head as the base the slot is staged from, so the worker
+builds on the PR's work instead of one commit off its base. The base (`BASE:`) is still
+merged in by the worker, never replaced. `add` refuses a brief whose `PR:` line or THE
+TASK ("Start from the PR's branch ...") names a PR and carries no `CARRY:` line
+(`LINT DRIFT ... check=pr-carry`, the remedy naming the line to add); `brief check` holds a
+brief to the same rule.
+
 A `brief` edit replaces the card's whole text, but the text dumped from the
 card is the admission-time one: three rules keep what a verb set, and a `brief`
 NOTE names every property it kept against the text. **Needs**: the edit's needs

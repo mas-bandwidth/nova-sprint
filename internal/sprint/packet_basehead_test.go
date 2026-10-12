@@ -50,6 +50,23 @@ func TestALaterAttemptStartsFromTheLastPushedHeadOfAnyEarlierAttempt(t *testing.
 	}
 }
 
+// A finish-PR card carries the PR's head in its brief's CARRY: line: a first attempt (no
+// earlier pushed head) is staged from it, so the worker builds on the PR's work rather than
+// one commit off the base; the base is still merged in by the worker, never replaced. A
+// pushed earlier attempt still wins over a stale carry in the brief.
+func TestAFinishPRPacketStagesFromTheCarriedHead(t *testing.T) {
+	t.Parallel()
+	work := &Card{ID: "pr1.w1", Row: "m1", Fields: map[string]string{"kind": "work", "primary": "pr1", "attempt": "1", "gen": "1"}}
+	primary := &Card{ID: "pr1", Fields: map[string]string{"attempt": "1",
+		"brief": "finish pr, tier: pro\nCARRY: head=" + shaA + " branch=pr-1\n\nTHE TASK. Start from the PR's branch pr-1 at " + shaA + ".\n"}}
+	p := PacketOf("", 0, work, primary, nil, nil)
+	assert.Equal(t, shaA, p.BaseHead, "the slot stages from the PR head")
+	assert.Equal(t, 0, p.BaseAttempt, "no attempt of this card's pushed it")
+
+	q := PacketOf("", 0, work, primary, []*Card{attemptCard("1", "yes", shaB)}, nil)
+	assert.Equal(t, shaB, q.BaseHead, "the last pushed head wins over a stale carry")
+}
+
 // A packet reads every earlier attempt of the card, and a read's reads none.
 func TestPacketCardsNameEveryEarlierAttempt(t *testing.T) {
 	t.Parallel()
