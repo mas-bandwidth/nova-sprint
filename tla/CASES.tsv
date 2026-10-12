@@ -345,6 +345,7 @@ MCSprintTablesBrokenSkip.cfg	MCSprintTables.tla	action	MovesOnlyByTable	ignore-t
 MCSprintTablesBrokenUnland.cfg	MCSprintTables.tla	action	LandedIsFinal	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenComeback.cfg	MCSprintTables.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenWithdrawMet.cfg	MCSprintTables.tla	action	WorkingToWaitingOnlyOnNeeds	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenHalfstep.cfg	MCSprintTables.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
 MCSprintTablesMerge.cfg	MCSprintTablesMerge.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
