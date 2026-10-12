@@ -604,14 +604,6 @@ func (ta *testApp) hookCIRedOnce(card, run string) {
 	ta.ok("ci " + card + " --red --run " + run)
 }
 
-func (ta *testApp) hookTick() {
-	ta.t.Helper()
-	st, err := ta.a.store(common{redis: "mem:0", actor: sprint.MachineActor})
-	require.NoError(ta.t, err)
-	_, err = st.Tick(context.Background())
-	require.NoError(ta.t, err)
-}
-
 // A running-time wait on a timer judgment survives a server restart. A separate
 // card-holding invariant remains open exactly once; it is never used as a wait.
 func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {

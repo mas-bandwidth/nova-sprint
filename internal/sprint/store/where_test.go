@@ -197,16 +197,6 @@ func TestTheWhereRecordLeavesSentinelsOutOfItsLandings(t *testing.T) {
 	require.Equal(t, []int64{at.Unix()}, rec.Landings, "the work card's own stamp")
 }
 
-// landedAll is the primaries landed on the work table.
-func landedAll(h *harness) int64 {
-	var n int64
-	s := h.table()
-	for _, row := range s.Work.Rows() {
-		n += int64(s.Work.Count(row, sprint.Landed))
-	}
-	return n
-}
-
 // landedWork is the work primaries landed on the work table, sentinels left out:
 // a released sentinel is a stop, not work, so the where record keeps no stamp of
 // its landing (docs/SPEC-SPRINT.md sections 1 and 16).
