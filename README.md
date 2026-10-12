@@ -25,7 +25,7 @@ More lanes help when the work is independent. Dependencies have to land first.
 
 ## Follow a card all the way home
 
-Cards move through the dashboard automatically:
+Cards move through the system automatically:
 
 **Waiting → Ready → Working → Review → Merging → Landed**
 
