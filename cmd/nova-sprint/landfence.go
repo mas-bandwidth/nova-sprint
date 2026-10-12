@@ -29,7 +29,14 @@ import (
 // host (store.ServerRecord; docs/fixes.sexp, land-fenced-while-server-lands).
 func (a *app) serverRecord(actor string) store.ServerRecord {
 	host, _ := os.Hostname()
-	return store.ServerRecord{Actor: actor, Land: a.serverLands, PID: os.Getpid(), Host: host}
+	started := a.serverStarted
+	if started.IsZero() {
+		started = a.now()
+	}
+	return store.ServerRecord{
+		Actor: actor, Land: a.serverLands, PID: os.Getpid(), Host: host,
+		Version: buildVersion(), Commit: sourceCommitExtra(), Started: started,
+	}
 }
 
 // serverLanding is why a land must not run beside the server, "" when it may:

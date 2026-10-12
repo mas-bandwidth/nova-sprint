@@ -44,7 +44,10 @@ func TestLandRefusesWhileTheServerLands(t *testing.T) {
 	rec, ok, err := st.Server(ctx)
 	require.NoError(t, err)
 	require.True(t, ok, "the heartbeat writes a fresh record")
-	assert.Equal(t, store.ServerRecord{Actor: sprint.MachineActor, At: r.a.now(), Land: true, PID: os.Getpid(), Host: host}, rec)
+	assert.Equal(t, store.ServerRecord{
+		Actor: sprint.MachineActor, At: r.a.now(), Land: true, PID: os.Getpid(), Host: host,
+		Version: buildVersion(), Commit: sourceCommitExtra(), Started: r.a.now(),
+	}, rec)
 
 	before, applies := r.git(r.remote, "rev-parse", "main"), r.applies()
 	code, _, errs := r.do("land --repo-dir " + r.clone + " --base main")

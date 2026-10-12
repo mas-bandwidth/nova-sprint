@@ -7749,6 +7749,20 @@ line repeated within a minute is written once, and when it changes the line that
 few hundred lines and never one per verb. The model is `tla/ServerLanes.tla`. The server
 keeps nothing between requests.
 
+The server's heartbeat. At its start and every second (`store.ServerEvery`) the run loop
+writes one record, the server's heartbeat, to the store outside every table, under one SET
+with an expiry of three seconds (`store.ServerTTL`; `store.ServerRecord`, `store.SetServer`):
+the actor it runs as, the version it runs (the string `nova-sprint version` prints), the
+source commit it was built from, when it started, when it last wrote, whether it lands
+(`run --land`) and the process that wrote it. The record is the deployment's one key
+(`server`), not the sprint's and not an epoch's: a clear leaves it to its TTL rather than to
+the new epoch, and a stopped server's version is stale within the TTL and so is never shown.
+`where --json` carries the version while the record is fresh as `server_version`, and the
+record itself as `server` (`version`, `commit`, `started`, `at`); both are absent when the
+server's last heartbeat is missing or older than the TTL, so the dashboard hides its version
+cell rather than show a stale one. One heartbeat write is one SET with an expiry, a second
+apart.
+
 The tick's turn. The batches, the lanes beside the tick (land's reads and report, decide,
 balance) and the tick take one line of control. The batches and the lanes take it in the order
 they asked; the tick does not queue behind them. A tick that asks takes the line as soon as no

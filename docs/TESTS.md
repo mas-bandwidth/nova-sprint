@@ -491,6 +491,25 @@ from it; `cmd/nova-sprint/reads.go groupText`).
   with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
   wait and names the action.
 
+### The server's version heartbeat (v1.2.16)
+
+While `nova-sprint run` runs it writes one heartbeat a second to the store (one `SET` with an
+expiry, TTL three seconds) holding the version `nova-sprint version` prints, its commit, its
+start and the write time; `where --json` carries it as `server_version` plus `server`
+(`version`, `commit`, `started`, `at`), and both are absent when the heartbeat is missing or
+older than the TTL, so a stale version is never shown.
+
+- Unit, `cmd/nova-sprint/server_heartbeat_test.go`:
+  `TestServerHeartbeatCarriesTheBinarysVersion`: the heartbeat appears at once, carries the
+  binary's version, its commit and its start, and is gone (no server) after the TTL;
+  `TestWhereCarriesTheServerVersion`: `where --json` carries `server_version` and `server`
+  while the heartbeat is fresh and neither once it is stale.
+- Functional (`-tags functional`), `cmd/nova-sprint/server_heartbeat_functional_test.go`:
+  `TestServerHeartbeatOnAStoreWhereJSONReads`, a real run loop on a private store with an
+  explicit `--redis` and a scrubbed environment (HOME and XDG_CONFIG_HOME in a TempDir, no
+  `NOVA_*`): after ticks, `where --json` states the server's own version, and one heartbeat
+  write is one SET.
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
