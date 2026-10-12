@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
@@ -1312,6 +1313,13 @@ type ReworkReq struct {
 	Fix     string
 	Answers []string
 	Who     string
+	// Carry, when set, records each card's latest pushed head in its brief as a CARRY: line
+	// (member.CarryLine's shape, what brief --widen writes), resets the brief's bound and
+	// opens the next attempt staged from that head: the brief is otherwise kept (docs/
+	// SPEC-SPRINT.md, rework --carry). A card with no pushed head refuses the whole step, by
+	// name, and nothing is written. It answers a bound judgment and a brief-defect judgment
+	// whose named cause is coordination (BriefDefectCoordination) once the needs have landed.
+	Carry bool `json:",omitempty"`
 	// Tier, when set, is the tier every later deal of the card draws its route from
 	// (route.go, cardTier): written on the primary as FieldTier, over its brief's line 1.
 	Tier string `json:",omitempty"`
@@ -1365,8 +1373,25 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil {
 			return ""
 		}
+		if r.Carry {
+			return reworkWhyCarry(s, c)
+		}
 		return reworkWhy(c)
 	}, s.primaryCard)
+	if r.Carry {
+		// every card the step would move must have a pushed head to carry: the whole step
+		// is refused, by name, and nothing is written, when any has none (docs/SPEC-SPRINT.md,
+		// rework --carry)
+		refused := append([]Refusal(nil), p.Refused...)
+		for _, c := range chosen {
+			if _, head := carriedHead(s, c); head == "" {
+				refused = append(refused, Refusal{c.ID, c.ID + " has no pushed head for rework --carry: its next attempt would start from the card's base, not from work; nothing was changed"})
+			}
+		}
+		if len(refused) > 0 {
+			return Plan{Refused: refused}
+		}
+	}
 	up := notQuiet(s, s.UpMembers()) // a member quiet, under its floor or draining is dealt nothing (drain.go)
 	// the room of each member is its width (width.go)
 	q, room := memberLoads(s, up), memberWidths(s, up)
@@ -1419,16 +1444,21 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// (tla/SprintRules.tla, Part "reads": ReworkAtBound), so only a non-broken bound (a
 		// failure's attempt cap) refuses. The review circuit breaker also refuses rework after
 		// 4 consecutive rounds with new findings or 6 substantive rounds.
-		if fb := brokenFindings(s, c); fb == "" {
-			if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
-				p.refuse(c.ID, bb.Why())
-				stays()
-				continue
-			}
-			if _, ok := ReviewBreaker(c, finderOf(s, c), ""); ok {
-				p.refuse(c.ID, "card is at the review circuit breaker; brief edit resets the count")
-				stays()
-				continue
+		if !r.Carry {
+			// a carry resets the bound (the brief gains its CARRY: line, below): the bound
+			// and the breaker are deliberately passed, since the card is sent on from its
+			// own pushed head (docs/SPEC-SPRINT.md, rework --carry)
+			if fb := brokenFindings(s, c); fb == "" {
+				if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
+					p.refuse(c.ID, bb.Why())
+					stays()
+					continue
+				}
+				if _, ok := ReviewBreaker(c, finderOf(s, c), ""); ok {
+					p.refuse(c.ID, "card is at the review circuit breaker; brief edit resets the count")
+					stays()
+					continue
+				}
 			}
 		}
 		fix := r.Fix
@@ -1508,6 +1538,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			set[FieldFindingReader] = finder
 		} else {
 			unset = append(unset, FieldFindingReader)
+		}
+		if r.Carry {
+			// keep the brief, record its latest pushed head as the brief's CARRY: line (the
+			// same form brief --widen writes), reset the bound, and open the next attempt
+			// staged from that head: the whole point of the verb (docs/SPEC-SPRINT.md,
+			// rework --carry). The card is clean of the brief-defect mark it answers.
+			carryAttempt, carryHead := carriedHead(s, c)
+			set["brief"] = PathsWidened(c.F("brief"), nil, member.CarryLine(member.Carry{Card: c.ID, Attempt: carryAttempt, Head: carryHead}))
+			set[FieldBriefAttempt] = c.F("attempt")
+			unset = append(unset, FieldBriefDefect)
 		}
 		if bound != nil {
 			// the attempt ended at its bound: its end is the primary's record of its failed

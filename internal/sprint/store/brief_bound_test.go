@@ -107,13 +107,21 @@ func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	assert.Equal(t, "a card has reached its bound: the brief is wrong, not the worker", n.Type)
 	assert.Contains(t, n.What, "the brief is wrong, not the worker")
 	assert.Contains(t, n.What, "findings: attempt 1: r; attempt 2: r")
-	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
-	for _, c := range h.commandsOf(sprint.NBriefWrong) {
-		for _, l := range c.Lines {
-			assert.NotContains(t, l, "rework", "the inbox prints no rework for it: %s", l)
+	assert.Equal(t, []string{sprint.DecisionCarry, "brief", "drop"}, n.Decisions)
+	// the carry is printed first: the card reworked from its last pushed head, its brief kept
+	cmds := h.commandsOf(sprint.NBriefWrong)
+	require.NotEmpty(t, cmds)
+	assert.Equal(t, sprint.DecisionCarry, cmds[0].Decision)
+	require.NotEmpty(t, cmds[0].Lines)
+	assert.Contains(t, cmds[0].Lines[0], "nova-sprint rework s1-1 --carry --fix", "the carry line is first")
+	// the brief command is still printed, after it
+	brief := false
+	for _, c := range cmds {
+		if c.Decision == "brief" {
+			brief = true
+			assert.True(t, strings.HasPrefix(c.Lines[0], "nova-sprint brief s1-1 --brief-file"), c.Lines)
 		}
-		assert.Contains(t, []string{"brief", "drop"}, c.Decision)
 	}
-	assert.True(t, strings.HasPrefix(h.commandsOf(sprint.NBriefWrong)[0].Lines[0], "nova-sprint brief s1-1 --brief-file"), h.commandsOf(sprint.NBriefWrong)[0].Lines)
+	assert.True(t, brief, "the brief command is still offered")
 	h.clean("the brief's bound judged")
 }

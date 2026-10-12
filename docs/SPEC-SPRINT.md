@@ -1968,11 +1968,29 @@ task (<n> attempts stand)`, and a new task resets it and says `bound: new task (
 reset)` (section 11, the brief verb). The judgment raised for such a
 card is "a card has reached its bound: the brief is wrong, not the worker", in place of
 "a reader found it broken" at the read and of "work came back failed" at the finish; it
-names the two findings and their attempts, and its decisions are brief and drop, never
-rework (`TestTheBoundJudgmentNamesTheBriefNotTheWorker`); the tick's "a card reached its
+names the two findings and their attempts, and its decisions are `rework --carry` first, then
+brief and drop (`TestTheBoundJudgmentNamesTheBriefNotTheWorker`,
+`TestABoundJudgmentPrintsTheCarryLineFirst`); the tick's "a card reached its
 bound" on a card past the count says the same and offers the same. `answer` applies
-only a verb the judgment prints, so it cannot rework such a card
-(`TestTheAnswerPathCannotReworkACardAtTheBriefBound`), and the verb refuses it besides.
+only a verb the judgment prints, and the carry decision is no verb it chooses
+(`sprint.DecisionCarry`, `decide.VerbOf`), so it cannot rework such a card
+(`TestTheAnswerPathCannotReworkACardAtTheBriefBound`), and the plain verb refuses it besides.
+
+**Rework --carry** (the seat, 2026-10-11 23:15Z: a bound judgment offered only
+`brief --group --dir` and `drop`, so the seat dumped each brief, added a `CARRIED FROM:` line
+with the card's last pushed head, prepended a note and re-briefed by hand; the owner: "seems
+like that should have been a tool/verb"). It answers a bound judgment and a brief-defect
+judgment whose named cause is coordination (`sprint.BriefDefectCoordination`: the worker's
+report says it was dealt before its `DEPENDS-ON` or `ORDER` prerequisites landed) in one step.
+For each card it keeps the brief, records the card's latest pushed head (`sprint.BaseOf` over
+its dealt attempts) as the brief's `CARRY:` line (the form `brief --widen` writes,
+`sprint.PathsWidened`), adds the `--fix` note as the attempt's fix, resets the bound
+(`brief_attempt` to the card's attempt) and opens the next attempt staged from that head. A
+card with no pushed head refuses the whole step, by name, and nothing is written
+(`TestABoundGroupIsReworkedFromEachCardsLastHead`, `TestAReworkCarryRefusesACardWithNoPushedHead`).
+A coordination brief defect is taken only once its needs have landed; while any has not, the
+verb refuses it naming the needs
+(`TestAReworkCarryAnswersACoordinationBriefDefect`).
 
 **The two bounds count only attempts whose worker ran** (the owner, 2026-10-11,
 after a card reached its bound on the brief for five cards whose four attempts were

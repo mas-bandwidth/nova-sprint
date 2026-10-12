@@ -623,6 +623,74 @@ func briefStarted(c *Card) string {
 	return "run: " + drop
 }
 
+// BriefDefectCoordination is the brief-defect reason a worker names when it was dealt before
+// its DEPENDS-ON or ORDER prerequisites landed (docs/SPEC-SPRINT.md section 1, a brief
+// defect): no brief is wrong, only when it ran. It is the one brief defect that rework --carry
+// answers, once the needs have landed (steps_review.go, Rework), rather than re-cutting the
+// brief. FieldBriefDefect (brief_defect.go) is stamped with it.
+const BriefDefectCoordination = "dealt before its needs landed"
+
+// IsCoordinationDefect says a brief-defect reason names coordination: the worker was dealt
+// before its DEPENDS-ON or ORDER prerequisites landed. rework --carry answers it once the
+// needs have landed (steps_review.go, Rework); any other brief defect is re-cut, never reworked.
+func IsCoordinationDefect(reason string) bool {
+	return strings.Contains(reason, BriefDefectCoordination)
+}
+
+// DecisionCarry is the decision a bound judgment offers first: the card is reworked from its
+// last pushed head, the brief kept and its bound reset (rework --carry; docs/SPEC-SPRINT.md,
+// rework). It is no verb the automatic answer chooses (decide.VerbOf does not read it): a
+// mind's, so a bound is never reset under nova-decide's feet and a loop of redeals avoided.
+const DecisionCarry = "carry on from its last head"
+
+func init() {
+	// the carry is the bound judgment's first printed action, ahead of brief and drop
+	// (rework --carry; docs/SPEC-SPRINT.md, rework; inbox.go, commands)
+	Decisions[NBriefWrong] = []string{DecisionCarry, "brief", "drop"}
+}
+
+// carriedHead is a card's latest pushed head among its dealt attempts: the attempt it is the
+// head of and the full sha, 0 and "" when no attempt pushed one (BaseOf over the card's work
+// cards). It is what rework --carry records in the brief's CARRY: line.
+func carriedHead(s *Snapshot, c *Card) (int, string) {
+	var b Base
+	for n := 1; n <= c.Int("attempt"); n++ {
+		wc := s.Fleet.Card(WorkCardID(c.ID, n))
+		if wc == nil {
+			continue
+		}
+		if h := PushedHead(wc); h != "" && n > b.Attempt {
+			b = Base{Attempt: n, Head: h}
+		}
+	}
+	return b.Attempt, b.Head
+}
+
+// unlandedNeeds is the card's needs that have not landed, comma separated: "" when every one
+// has. It is what rework --carry waits for when it answers a coordination brief defect.
+func unlandedNeeds(s *Snapshot, c *Card) string {
+	var missing []string
+	for _, n := range Split(c.F("needs")) {
+		if s.StateOf(n) != Landed {
+			missing = append(missing, n)
+		}
+	}
+	return strings.Join(missing, ",")
+}
+
+// reworkWhyCarry is reworkWhy for rework --carry: a card in review that ended on a brief defect
+// whose cause is coordination (IsCoordinationDefect) takes the rework once its needs have all
+// landed; while any has not, it is refused naming them; any other card is reworkWhy's.
+func reworkWhyCarry(s *Snapshot, c *Card) string {
+	if c.Placed() && c.Col == Review && c.F(FieldBriefDefect) != "" && IsCoordinationDefect(c.F(FieldBriefDefect)) {
+		if missing := unlandedNeeds(s, c); missing != "" {
+			return "it ended on a coordination brief defect (" + c.F(FieldBriefDefect) + "), and its needs " + missing + " have not landed: rework --carry once they have, or re-cut the brief; nothing was changed"
+		}
+		return ""
+	}
+	return reworkWhy(c)
+}
+
 // reworkWhy is why a primary takes no rework (rework is the next attempt of one
 // in review), with the command that does what was wanted by its state: a card
 // still working is reworked once it finishes, or dropped now; one never dealt
