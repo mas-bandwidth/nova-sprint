@@ -2788,4 +2788,19 @@
      100-byte Unix-socket limit and its /tmp fallback is denied). Named in docs/TESTS.md."
     :origin "this card, two-tests-that-fail-under-load-are-made-deterministic.w4, attempt 5; the #111
      author's gate on hetzner2, 2026-10-11 ~23:48Z at load 30-36; #122's description for the idle red;
-     #111's author for the two-run-loops red and the setPrimary overlay")))
+      #111's author for the two-run-loops red and the setPrimary overlay")
+   (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
+    :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"
+    :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 27 to 52 (friend-empty-run to stop-fence).
+     Each module's actions and properties are checked against the code its row cites at file:line on
+     main; every CASES.tsv config of those modules has a current tla/RUNS.tsv record and every reversed
+     witness still fails its named property; rows owed to cards already on the table stay theirs (named,
+     not redone); a missing rule is a gap for a new card, not a rewrite. FriendEmptyRun's four friend
+     moves that read cardLeft (friendLevel, friendUnstartedLevel, reclaimUnit, friendCouldTake) are one
+     FriendMove action reading wleft and left, Rework has the brief-defect early return and CapDeal places
+     the card working on her row, with the reversed witnesses NoLeft, MachineLeft, CapLeft, RuleLeft and
+     LevelLeft; Rework (harness_fault.go) and CapDeal (brief_bound.go) cite the module, and the four friend
+     moves' files (friend_level.go, friend_start.go, friend_deal.go, coordinator_pass.go) are outside
+     PATHS so they stay uncited, named as a gap. The bench TLC check is green: go run ./tools/tlacheck
+     groups --root . --stale prints [] and the ci gate TestEveryStateMachineHasACurrentModel passes."
+    :origin "this card, tla-pass-nova-sprint-coverage-rows-27-to-52.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")))
