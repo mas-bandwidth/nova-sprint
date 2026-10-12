@@ -3476,6 +3476,23 @@ no fleet member, and an `--end` with no quiet in force are refused, nothing writ
 rule is `internal/sprint/fleet_quiet.go`; the twin test is
 `TestFleetQuietDealsNothingAndTellsWorkersUntilItEnds`.
 
+### An unserved tier falls to the strongest served tier
+
+The setting `set --unserved-tier-falls-to <heavy|pro|flash|off|default>` is the
+coordinator's one replacement for pinning cards by hand when their brief tier is unserved
+(`off`, the default, is today's behaviour). While it is set, a tick part before the deal
+(`internal/sprint/unserved_tier.go`, `TickUnservedFallback`) walks every unlanded primary
+whose brief tier no route serves and no up friend serves (the one tier check, `tierServed`,
+read through `tierHasServer`) and records a fallback tier on it: the strongest served tier
+at or below the setting, written as a field of its own (`FieldFallbackTier`, never the
+brief's line 1 and never a pin the seat made), with a timeline note naming the unserved
+tier and the reason. The deal and `DealtTier` read the fallback tier, so the card runs
+where something can take it. When the brief tier is served again (a route or an up friend
+serves it) the next tick clears the fallback on every card not yet taken, so they go back
+to their own tier; a taken card keeps its run. A card the seat pinned (`tier --set`,
+`brief --tier`) is never changed. `card` and `where --json --rows` show
+`tier=<brief> (falls to <t>)`.
+
 ## 6. The readers
 
 - **The interim rules of 2026-10-06, until read cards** (the owner, 7:25 PM ET: "fix it

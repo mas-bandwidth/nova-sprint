@@ -2957,4 +2957,30 @@
      TestDevBehindTheJudgmentNeverCarriesAnEmptyName,
      TestDevBehindNoRepositoryHasSprintAndDevNeverRaises, and the functional
      TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches."
-    :origin "this card, dev-is-behind-counts-only-cards-landed-on-a-sprint-branch.w3; the coordinator, 2026-10-12 ~04:30Z (a false dev is behind judgment for cards on dev/main and on sprint branches of repositories without a dev branch); checked against nova-sprint main")))
+    :origin "this card, dev-is-behind-counts-only-cards-landed-on-a-sprint-branch.w3; the coordinator, 2026-10-12 ~04:30Z (a false dev is behind judgment for cards on dev/main and on sprint branches of repositories without a dev branch); checked against nova-sprint main")
+   (fix "an-unserved-tier-falls-to-the-strongest-served-tier" :release "v1.2.14" :status "planned"
+    :title "An unserved tier falls to the strongest served tier"
+    :text "The setting set --unserved-tier-falls-to <heavy|pro|flash|off|default> (off, the
+     default, keeps today's behaviour) is the coordinator's one replacement for pinning cards by
+     hand when their brief tier is unserved (2026-10-12, epoch 19: with the only frontier friend held
+     and no route or up friend serving frontier, the frontier cards sat in ready while the seat pinned
+     every one to heavy by hand with pinfrontier.sh, then undid the pins when the friend came back).
+     While it names a tier, a tick part before the deal (internal/sprint/unserved_tier.go,
+     TickUnservedFallback, run from steps_tick.go) walks every unlanded primary whose brief tier no
+     route serves and no up friend serves (the one tier check, tierServed, read through tierHasServer)
+     and records a fallback tier on it: the strongest served tier at or below the setting, written as a
+     field of its own (FieldFallbackTier, never the brief's line 1 and never a pin the seat made), with
+     a happened note naming the unserved tier and the reason. The deal and DealtTier read the fallback
+     tier, so the card runs where something can take it. When the brief tier is served again (a route
+     or an up friend serves it) the next tick clears the fallback on every card not yet taken, so they
+     go back to their own tier; a taken card keeps its run. A card the seat pinned (tier --set, brief
+     --tier) is never changed. card and where --json --rows show tier=<brief> (falls to <t>).
+     docs/SPEC-SPRINT.md section 5 (An unserved tier falls to the strongest served tier), docs/CLI.md
+     and docs/TESTS.md state it. Tests: TestAnUnservedTierFallsToTheStrongestServedTier
+     (internal/sprint/unserved_tier_test.go) and TestCardAndWhereShowAFallbackTier
+     (cmd/nova-sprint/card_tier_fallback_test.go)."
+    :origin "this card, an-unserved-tier-falls-to-the-strongest-served-tier.w3, from the coordinator,
+     2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
+     frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
+     every unlanded frontier card of four repositories, then undid the pins by hand when the friend
+     came back; one setting replaces the hand pinning")))

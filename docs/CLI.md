@@ -105,8 +105,16 @@ nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind f
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--unserved-tier-falls-to <heavy|pro|flash|off|default>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
+
+`set --unserved-tier-falls-to <heavy|pro|flash>` is the coordinator's one replacement for
+pinning frontier cards by hand when their brief tier no route and no up friend serves: the
+tick records a fallback tier on every such card — the strongest served tier at or below the
+setting — so the deal runs it where something can take it (`off` and `default`, the
+behaviour when unset, leave today's behaviour). When the brief tier is served again the
+next tick clears the fallback on every card not yet taken. A card the seat pinned is never
+touched. `card` and `where --json --rows` show `tier=<brief> (falls to <t>)`.
 nova-sprint backup (--out <dir> [--part-bytes <n>] [--secrets-store <dir> --secrets-as <seat> --secrets-key <path> --sops <path>] | --file <path> [--dry-run])
 nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <path>] [--redis-server <path>]
 nova-sprint demo stop [--dir <dir>]

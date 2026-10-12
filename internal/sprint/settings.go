@@ -33,6 +33,13 @@ const (
 	PropFriendStallStep = "friend_stall_step"
 	// PropReadTier is the work table's property: the sprint's read tier.
 	PropReadTier = "read_tier"
+	// PropUnservedTierFallsTo is the work table's property: the tier an unserved card
+	// falls to, off by default. Set to heavy, pro or flash, the tick's fallback part gives
+	// every unlanded primary whose brief tier no route serves and no up friend serves the
+	// strongest served tier at or below the setting, and the deal draws from it; when the
+	// brief tier is served again the fallback is cleared on every card not yet taken
+	// (unserved_tier.go, docs/SPEC-SPRINT.md section 5).
+	PropUnservedTierFallsTo = "unserved_tier_falls_to"
 	// FieldReadTier is a stream's control card's field: the stream's read tier,
 	// over the sprint's.
 	FieldReadTier = "read_tier"
@@ -195,6 +202,20 @@ func SwitchWord(props map[string]string, prop string) string {
 		return SwitchOff
 	}
 	return SwitchOn
+}
+
+// UnservedTierFallsTo is the tier an unserved card falls to (PropUnservedTierFallsTo):
+// heavy, pro or flash, "" when the setting is off or default (today's behaviour, the
+// fallback part does nothing).
+func (s *Snapshot) UnservedTierFallsTo() string {
+	if s == nil || s.Work == nil {
+		return ""
+	}
+	v, _ := s.Work.Prop(PropUnservedTierFallsTo)
+	if v == "" || v == ReadTierDefault || v == SwitchOff {
+		return ""
+	}
+	return v
 }
 
 // DealtMaxDefault is the dealt bound when the coordinator set none: three times
@@ -365,6 +386,9 @@ type SetReq struct {
 	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, 3, or
 	// default (each card's own rule, ReadsNeeded).
 	Reads string `json:",omitempty"`
+	// UnservedTierFallsTo is the tier an unserved card falls to (PropUnservedTierFallsTo):
+	// heavy, pro, flash, off, or default (off).
+	UnservedTierFallsTo string `json:",omitempty"`
 	// Base, with Streams, re-points the stream's cards that are not yet dealt and
 	// those queued to merge to another base branch (stream set --base).
 	Base string `json:",omitempty"`
@@ -531,11 +555,19 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, "--reads is the sprint's, not a stream's: nova-sprint set --reads "+r.Reads)
 		}
 	}
+	if r.UnservedTierFallsTo != "" {
+		if r.UnservedTierFallsTo != ReadTierDefault && r.UnservedTierFallsTo != SwitchOff && !slices.Contains(tierLadder, r.UnservedTierFallsTo) {
+			why = append(why, "--unserved-tier-falls-to wants heavy, pro, flash or "+SwitchOff+" (the default); found "+r.UnservedTierFallsTo)
+		}
+		if len(r.Streams) > 0 {
+			why = append(why, "--unserved-tier-falls-to is the sprint's, not a stream's: nova-sprint set --unserved-tier-falls-to "+r.UnservedTierFallsTo)
+		}
+	}
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.UnservedTierFallsTo == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --unserved-tier-falls-to, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -694,6 +726,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropFriendsTiers, sideTiers[PropFriendsTiers]},
 		{PropReadCards, r.ReadCards},
 		{PropReadsNeeded, r.Reads},
+		{PropUnservedTierFallsTo, r.UnservedTierFallsTo},
 		{PropReworkPriority, r.ReworkPriority},
 	}
 	for _, a := range alarmProps {
