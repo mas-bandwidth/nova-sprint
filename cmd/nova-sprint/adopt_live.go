@@ -495,6 +495,31 @@ func (p liveProbe) procPath(pid int) string {
 	return filepath.Join(root, strconv.Itoa(pid), "exe")
 }
 
+// binOf fills the parts of an agent that come from its program: the binary it
+// runs, the nova tool, its inode, whether it is the installed one, and the role
+// and --listen addresses a run verb makes. It is the shared probe-result assembly
+// of systemdAgent and agent, which differ only in where the program comes from.
+func (p liveProbe) binOf(a *liveAgent, at int) {
+	if at < 0 {
+		return
+	}
+	a.Binary = a.Program[at]
+	a.Tool = filepath.Base(a.Binary)
+	a.BinaryInode = inodeOf(a.Binary)
+	a.Installed = a.Binary == filepath.Join(p.binDir, a.Tool)
+	verb := ""
+	if at+1 < len(a.Program) {
+		verb = a.Program[at+1]
+	}
+	switch {
+	case a.Tool == "nova-sprint" && verb == "run":
+		a.Role = "server"
+		a.Listen = listenOf(a.Program[at:])
+	case a.Tool == "nova-friend" && verb == "run":
+		a.Role = "friend"
+	}
+}
+
 // systemdAgent reads one nova-loop-*.service unit through systemctl and the
 // running binary through /proc: the label is the unit name without .service
 // (what the play passes to systemd_service) and the target scope/<unit>.
@@ -514,23 +539,7 @@ func (p liveProbe) systemdAgent(ctx context.Context, path, scope string) liveAge
 		a.Program = execStartWords(facts["ExecStart"])
 	}
 	at := toolAt(a.Program)
-	if at >= 0 {
-		a.Binary = a.Program[at]
-		a.Tool = filepath.Base(a.Binary)
-		a.BinaryInode = inodeOf(a.Binary)
-		a.Installed = a.Binary == filepath.Join(p.binDir, a.Tool)
-		verb := ""
-		if at+1 < len(a.Program) {
-			verb = a.Program[at+1]
-		}
-		switch {
-		case a.Tool == "nova-sprint" && verb == "run":
-			a.Role = "server"
-			a.Listen = listenOf(a.Program[at:])
-		case a.Tool == "nova-friend" && verb == "run":
-			a.Role = "friend"
-		}
-	}
+	p.binOf(&a, at)
 	if a.PID > 0 {
 		// The running arguments are the unit's ExecStart words and the running
 		// binary's inode is /proc/<pid>/exe's, so the same judge decides.
@@ -602,23 +611,7 @@ func (p liveProbe) agent(ctx context.Context, plist, target string) liveAgent {
 		a.ExitTimeout, _ = strconv.Atoi(facts["ExitTimeOut"]) // ignored: no ExitTimeOut, or not a number, is 0: none
 	}
 	at := toolAt(a.Program)
-	if at >= 0 {
-		a.Binary = a.Program[at]
-		a.Tool = filepath.Base(a.Binary)
-		a.BinaryInode = inodeOf(a.Binary)
-		a.Installed = a.Binary == filepath.Join(p.binDir, a.Tool)
-		verb := ""
-		if at+1 < len(a.Program) {
-			verb = a.Program[at+1]
-		}
-		switch {
-		case a.Tool == "nova-sprint" && verb == "run":
-			a.Role = "server"
-			a.Listen = listenOf(a.Program[at:])
-		case a.Tool == "nova-friend" && verb == "run":
-			a.Role = "friend"
-		}
-	}
+	p.binOf(&a, at)
 	var loadedArgs []string
 	if out, err := p.run(ctx, p.launchctl, "print", a.Target); err == nil {
 		a.Loaded = true
