@@ -2955,13 +2955,23 @@
      every tick, never only at deal time: a read card working on a row whose fresh beat names it held for more than
      HeldGrace (at most twice LiveGrace) is a ghost too, retired lost (spending no one) and dealt again in the same
      tick's deal; the second ghost at one primary's attempt pushes one judgment (a read was lost twice) naming each
-     card, row and reason (tla-readcards-review-has-a-live-read-or-a-judgment). (e) A broken verdict whose finding is
-     empty or whitespace is no verdict: the read returns it, so no card rests in review on empty findings. (f) The
-     doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g) `card
-     <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no primary\".
-     Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards,
-     TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain, TestASecondGhostAtOneAttemptPushesAJudgment
-     (internal/sprint/ghost_read_test.go)."
+     card, row and reason (tla-readcards-review-has-a-live-read-or-a-judgment). (b) The ask verb under read cards goes
+     through the read-card deal: ask --another cuts one more fleet read card for a primary already asked, and ask
+     --instead <member, reader-<member> or friend> takes back that unit's live fleet read card (retired_by
+     coordinator, spending no one) and deals it to another unit in the same step; every refusal names the reads that
+     stand and who holds each. (d) The tick's postcondition (sprint.ConsumersOut, internal/sprint/consumers_out.go) is
+     the invariant, checked every tick in place of the vacuous block: a primary in review has a live read held by a row
+     whose queue lists it (read through ReadsOut, so a fleet read card holds it), or the ok reads it needs, or an open
+     judgment on it; a primary working or in fix has its own work card working on an up row, or a judgment; a breach
+     pushes a judgment in that tick naming the card and its reads, and the tick's deal asks it. (e) A broken verdict
+     whose finding is empty or whitespace is no verdict: the read returns it, so no card rests in review on empty
+     findings. (f) The doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g)
+     `card <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no
+     primary\". Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards,
+     TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain, TestASecondGhostAtOneAttemptPushesAJudgment,
+     TestAReviewCardWithNoReadAndNoJudgmentIsImpossible, TestTheConsumersOutCheckIsNotVacuous,
+     TestAskInsteadTakesBackAFleetReadCard (internal/sprint/ghost_read_test.go), and
+     TestAReadDealtToAMemberThatNeverTakesItIsReDealtWithinTheBound (cmd/nova-sprint/ghost_read_functional_test.go)."
     :origin "this card, from the owner, 2026-10-12 ~04:25Z: \"OK these ghost reads are scary. Please fix.\"")
    (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
     :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"
