@@ -25,7 +25,7 @@ Dependencies still have to land first.
 
 ## Follow a card all the way home
 
-Cards move automatically through these stages:
+Cards move through the system automatically:
 
 **Waiting → Ready → Working → Review → Merging → Landed**
 

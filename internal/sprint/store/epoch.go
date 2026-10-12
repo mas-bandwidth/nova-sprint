@@ -182,6 +182,11 @@ func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Res
 		if o.Note.ID != noteID {
 			continue
 		}
+		// the seat is not answering is quieted only by the answers it names: no review
+		// time is set on it either way (sprint.NSeatSilent)
+		if why := sprint.SeatSilentRefusal(o.Note.Type, "waited"); why != "" {
+			return res, false, errors.New(why)
+		}
 		if snap == nil {
 			if snap, err = st.shadowRead(ctx); err != nil {
 				return res, false, err

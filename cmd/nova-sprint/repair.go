@@ -50,6 +50,7 @@ func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 		step := store.ReturnStep(sprint.ReturnReq{
 			Sel:    sprint.Sel{IDs: ids},
 			Reason: "rule 6: ok reads at its head from fewer readers than it needs; returned to review for its missing read",
+			For:    sprint.ReturnedForReads,
 			Who:    c.actor,
 		})
 		return a.runStep("repair", *c, st, step, stdout, stderr)

@@ -51,6 +51,10 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			continue
 		}
 		n := entries[0].Note
+		if why := seatSilentRefusal(n.Type, "acknowledged"); why != "" {
+			p.refuse(id, why)
+			continue
+		}
 		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
 			p.refuse(id, notAckable(n, entries))
 			continue
@@ -358,6 +362,10 @@ func Wait(s *Snapshot, r WaitReq) Plan {
 		return p
 	}
 	n := entries[0].Note
+	if why := seatSilentRefusal(n.Type, "waited"); why != "" {
+		p.refuse(r.Note, why) // quieted only by the answers it names (seat_answers.go)
+		return p
+	}
 	if why := WaitRefusalIn(s, n); why != "" {
 		p.refuse(r.Note, why) // a wait never parks a card (wait_refused.go)
 		return p

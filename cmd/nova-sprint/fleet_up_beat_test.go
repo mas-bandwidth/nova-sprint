@@ -12,7 +12,10 @@ import (
 
 // fleet up counts as a beat (docs/SPEC-SPRINT.md section 5): a member released
 // from a hold whose last beat is old is up at the next tick, within the beat
-// window, and keeps the cards the release dealt it. Without it the live run of
+// window. A release deals nothing via the level (the free-lane rule: a card
+// moves only off a member over its width onto a member with a free lane;
+// round.levelTo, nextLane), so m2, below its width, keeps every card it was
+// dealt and m1 is levelled no card. Without the beat the live run of
 // 2026-10-01 marked four just-released members down at the next tick and took
 // their cards back.
 func TestFleetUpOnAMemberWithAnOldBeatKeepsItUpAtTheNextTick(t *testing.T) {
@@ -30,7 +33,7 @@ func TestFleetUpOnAMemberWithAnOldBeatKeepsItUpAtTheNextTick(t *testing.T) {
 	ta.json("where", &w)
 	require.Equal(t, sprint.Up, w.Tables["fleet"]["m1"]["status"], "released and up at once")
 	dealt := cardsOf(w, "m1")
-	require.NotEqual(t, "0", w.Tables["fleet"]["m1"]["ready"], "the release dealt m1 cards")
+	require.Equal(t, "0", w.Tables["fleet"]["m1"]["ready"], "a release deals nothing via the level: m2 is below its width, so it keeps its cards")
 	ta.ok("tick")
 	ta.json("where", &w)
 	assert.Equal(t, sprint.Up, w.Tables["fleet"]["m1"]["status"], "m1 at the next tick")

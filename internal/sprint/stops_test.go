@@ -254,11 +254,12 @@ func TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn(t *testing.T) {
 	assert.Nil(t, r.openNote(sprint.NStopPinWaits, "p1-1"), "it waits on her no more: the stop closes")
 }
 
-// The pin's hour runs from the stop's latest note (sprint.PinReleased): a coordinator's wait
-// on the pin-waits stop writes a new one, so the hour starts again from the answer, and the
-// pin is not released at the first hour (ledger v1.2.5-candidate 8: the comment said the
-// clock never restarts).
-func TestACoordinatorAnswerRestartsThePinHour(t *testing.T) {
+// A wait on the pin-waits stop is refused and extends nothing (Stella's read of #123): the stop
+// names a card on the work table, so the coordinator's wait, the verb's path (Store.Wait), is
+// refused like every wait on a judgment that holds a card (wait_refused.go, WaitRefusalIn), and
+// the pin is released PinReleaseBound of running time after the stop. Before, the wait wrote a
+// new note and the hour started again from the answer (ledger v1.2.5-candidate 8).
+func TestAWaitOnThePinStopIsRefusedAndExtendsNothing(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
 	r.tickBeating(time.Second, "m1", "m2")
@@ -268,23 +269,19 @@ func TestACoordinatorAnswerRestartsThePinHour(t *testing.T) {
 	r.tickBeating(time.Second, "m1", "m2")
 	stop := r.openNote(sprint.NStopPinWaits, "p1-1")
 	require.NotNil(t, stop, "the pin waits on her: the stop")
+	assert.NotContains(t, stop.Decisions, "wait", "the stop offers no wait")
 
-	// half the hour in, the coordinator waits the stop for a minute
+	// half the bound in, the coordinator waits the stop for a minute: refused
 	r.tickBeating(sprint.PinReleaseBound/2, "m1", "m2")
-	r.mu.Lock()
-	until := r.now.Add(time.Minute)
-	r.mu.Unlock()
-	r.must(store.WaitStep(sprint.WaitReq{Note: stop.ID, Until: until, Who: "coordinator"}))
+	_, _, err := r.st.Wait(r.ctx, stop.ID, r.st.Now().Add(time.Minute))
+	require.Error(t, err, "a wait on a stop that names a card is refused")
+	assert.Contains(t, err.Error(), "a wait would park it")
+	require.NotNil(t, r.openNote(sprint.NStopPinWaits, "p1-1"), "the stop stands, unanswered")
 
-	// the first hour passes: the clock started again at the answer, so the pin still holds
-	r.tickBeating(sprint.PinReleaseBound/2+time.Minute, "m1", "m2")
+	// the bound passes from the stop, not from the refused answer: the pin is released
+	r.tickBeating(sprint.PinReleaseBound/2+time.Second, "m1", "m2")
 	r.tickBeating(time.Second, "m1", "m2")
-	require.Equal(t, sprint.Ready, r.snap().Work.Card("p1-1").Col, "an hour from the stop but not from the answer: the pin holds")
-
-	// an hour after the answer (and its raise again), it is offered on
-	r.tickBeating(sprint.PinReleaseBound, "m1", "m2")
-	r.tickBeating(time.Second, "m1", "m2")
-	require.Equal(t, sprint.Working, r.snap().Work.Card("p1-1").Col, "an hour past the answer, the pin is offered on")
+	require.Equal(t, sprint.Working, r.snap().Work.Card("p1-1").Col, "released at the bound in running time, no extension")
 }
 
 func TestJudgmentsLateOnTheCoordinatorArePushedAndEscalatePastAWait(t *testing.T) {
