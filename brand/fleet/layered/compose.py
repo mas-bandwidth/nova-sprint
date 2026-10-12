@@ -33,21 +33,13 @@ top = ground_y - toe_y
 cx = left + toe_x
 cy = ground_y
 
-# Project the actual silhouette onto the horizontal track from upper-left light.
-sx, shear, depth = .72, .50, .055
-inverse = (1/sx, -shear/(sx*depth), toe_x-cx/sx+shear*cy/(sx*depth),
-           0, -1/depth, toe_y+cy/depth)
-projected = robot.getchannel('A').transform(background.size, Image.Transform.AFFINE,
-                                           inverse, Image.Resampling.BICUBIC)
-projected = projected.filter(ImageFilter.GaussianBlur(3.5)).point(lambda v: round(v*.27))
-shadow = Image.new('RGBA', background.size, (8, 23, 49, 0))
-shadow.putalpha(projected)
-# Tight grounded contact, exactly beneath the rear shoe's opaque toe edge.
-contact = Image.new('RGBA', background.size)
-d = ImageDraw.Draw(contact)
-d.ellipse((cx-22, cy-3, cx+24, cy+3), fill=(5, 17, 37, 125))
-contact = contact.filter(ImageFilter.GaussianBlur(1.15))
-shadow = Image.alpha_composite(shadow, contact)
+# Build independent cast and contact layers, then composite them below the robot.
+from render_shadow import render_shadow
+cast, contact = render_shadow(robot.getchannel('A'), background.size,
+                              (toe_x, toe_y), (cx, cy))
+cast.save(ROOT / 'cast-shadow.png')
+contact.save(ROOT / 'contact-shadow.png')
+shadow = Image.alpha_composite(cast, contact)
 placed = Image.new('RGBA', background.size)
 placed.alpha_composite(robot, (left, top))
 composite = Image.alpha_composite(Image.alpha_composite(background, shadow), placed)

@@ -6,7 +6,10 @@ Working candidate, October 11, 2026; not a claim of final approval.
 - `robot-source.png`: separate transparent robot generated from the same reference, with a rear-foot push-off pose, white/blue shell, orange shoes and two diagonal cyan eye strokes. Original lossless output.
 - `robot-trimmed.png`: trimmed and scaled character used by the compositor.
 - `robot-placed.png`: character on a full-size transparent canvas.
-- `shadow.png`: projected silhouette and tight rear-toe contact shadow, on transparency.
+- `cast-shadow.png`: independently rendered projected silhouette, softened with distance from the ground.
+- `contact-shadow.png`: tight rear-toe contact occlusion.
+- `shadow.png`: combined transparent shadow layer.
+- `render_shadow.py`: separate cast/contact shadow renderer.
 - `composite.png`: finished lossless composite.
 - `placement.json`: exact placement, source hashes and background preservation check.
 
