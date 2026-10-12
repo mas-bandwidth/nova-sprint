@@ -56,6 +56,7 @@ import (
 // they are their own table and `nova-swarm lint --rules` does not count them as its checks.
 // paths-at-base and donewhen-test-name answer from CardBaseRemedies.
 var BriefBaseRemedies = map[string]string{
+	"paths-read-marker":    PathsReadRemedy,
 	"pr-carry":             "a card that finishes an open pull request starts from the PR's own head, never from its base: add `CARRY: head=<the PR's full head sha> branch=<the PR branch>` to the brief's header (the CARRY: line brief --widen writes, less the attempt), so the slot is staged from the PR head and the worker merges the base itself; add the brief again",
 	"paths-cover-named":    "every repository path START: and THE TASK name as a file to change is in PATHS: (or NEW:); mark a START entry the card only reads `(read)`; apply the corrected PATHS: line add printed",
 	"paths-cover-test":     "PATHS: covers the TEST package's `_test` files (`<pkg>/*_test.go`, or the new test file by name), since the card lands with the test it names; apply the corrected PATHS: line add printed",
@@ -66,6 +67,21 @@ var BriefBaseRemedies = map[string]string{
 	"tier-set":             "line 1 names the card's tier, `tier: flash|pro|heavy|frontier`; a card with no tier, or `-`, was dealt to friends who could not serve it",
 	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the frontier tier's work: write `tier: frontier` on line 1, or take tla/ out of PATHS: and give the model to its own card",
 	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
+}
+
+// PathsReadRemedy is the correction for read-only metadata written in PATHS.
+const PathsReadRemedy = "move the read-only file to START with (read) and keep only files the card writes in PATHS"
+
+// PathsReadRefusal names the first PATHS entry carrying START's (read) marker
+// (docs/SPEC-CARD-CONTRACT.md, the write allowlist). It validates the value,
+// without changing the path lists the overlap and TLA gates read.
+func PathsReadRefusal(value string) string {
+	for _, entry := range strings.Split(value, ",") {
+		if strings.Contains(entry, "(read)") {
+			return fmt.Sprintf("PATHS entry %q uses (read), which is START metadata; %s", strings.TrimSpace(entry), PathsReadRemedy)
+		}
+	}
+	return ""
 }
 
 // LedgerKind is the KIND: of a ledger card, the card nova-card generate cuts from a
@@ -133,6 +149,10 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 	}
 	pathsF := h["PATHS"]
 	if !pathsF.found {
+		return out, nil
+	}
+	if why := PathsReadRefusal(pathsF.value); why != "" {
+		add("paths-read-marker", pathsF.line, why)
 		return out, nil
 	}
 	paths := headerList(pathsF.value)

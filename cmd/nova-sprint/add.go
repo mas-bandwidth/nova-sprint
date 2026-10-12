@@ -55,7 +55,8 @@ func (a *app) holdPathsAdmit(verbName string, stderr io.Writer, briefs ...briefC
 	var lines []string
 	first := ""
 	for _, b := range briefs {
-		if _, ok := swarm.CardHeaderValue([]byte(b.brief), "PATHS"); !ok {
+		paths, hasPaths := swarm.CardHeaderValue([]byte(b.brief), "PATHS")
+		if !hasPaths {
 			continue
 		}
 		cb := swarm.ReadCardBase([]byte(b.brief))
@@ -65,15 +66,23 @@ func (a *app) holdPathsAdmit(verbName string, stderr io.Writer, briefs ...briefC
 		if cb.Ref == "" || cb.Named == "" {
 			continue
 		}
+		id := b.id
+		if id == "" {
+			id = "-"
+		}
+		if why := swarm.PathsReadRefusal(paths); why != "" {
+			if first == "" {
+				first = why
+			}
+			lines = append(lines, fmt.Sprintf("LINT DRIFT card=%s check=paths-read-marker line=%d: %s remedy=%s",
+				oneline.Field(id), pathsHeaderLine(b.brief), oneline.Escape(oneline.Cap(why, oneline.TailBytes)), oneline.Escape(swarm.PathsReadRemedy)))
+			continue
+		}
 		k := key{cb.Named, cb.Ref, cb.Sha}
 		tree, ok := trees[k]
 		if !ok {
 			tree = a.admissionTree(ctx, l, cb)
 			trees[k] = tree
-		}
-		id := b.id
-		if id == "" {
-			id = "-"
 		}
 		for _, miss := range sprint.PathsAdmission(b.brief, tree) {
 			if first == "" {
@@ -91,7 +100,7 @@ func (a *app) holdPathsAdmit(verbName string, stderr io.Writer, briefs ...briefC
 	for _, x := range lines {
 		fmt.Fprintln(stderr, x)
 	}
-	return refuse(stderr, verbName, fmt.Sprintf("%d PATHS admission finding(s) at the base, the first %s; nothing was written", len(lines), oneline.Cap(first, 300)))
+	return refuse(stderr, verbName, fmt.Sprintf("%d PATHS admission finding(s), the first %s; nothing was written", len(lines), oneline.Cap(first, 300)))
 }
 
 // admissionTree is the BASE tip in the lander's clone: the file list, and a plain grep

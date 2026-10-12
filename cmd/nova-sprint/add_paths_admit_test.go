@@ -58,3 +58,22 @@ func TestHoldPathsAdmitSkipsOnlyAnOmittedRepoOrBase(t *testing.T) {
 		assert.False(t, strings.Contains(stderr, "MISSING:"))
 	})
 }
+
+func TestHoldPathsAdmitNamesReadMarkerBeforeRepoLookup(t *testing.T) {
+	t.Parallel()
+	for _, paths := range []string{"a.go (read), b.go", "(read)"} {
+		t.Run(paths, func(t *testing.T) {
+			t.Parallel()
+			var stderr bytes.Buffer
+			brief := "RESULT: c tier: pro\nREPO: not-a-repo\nBASE: sprint/s\nPATHS: " + paths + "\n\nTHE TASK. Read the fixture.\n"
+			code := (&app{}).holdPathsAdmit("add", &stderr, briefCheck{id: "c1", brief: brief})
+			require.Equal(t, 2, code)
+			assert.Contains(t, stderr.String(), "card=c1 check=paths-read-marker")
+			assert.Contains(t, stderr.String(), "PATHS entry")
+			assert.Contains(t, stderr.String(), "START")
+			assert.NotContains(t, stderr.String(), "MISSING:")
+			assert.NotContains(t, stderr.String(), "nearest file")
+			assert.NotContains(t, stderr.String(), "finding(s) at the base")
+		})
+	}
+}
