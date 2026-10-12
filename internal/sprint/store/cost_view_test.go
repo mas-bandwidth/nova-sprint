@@ -17,7 +17,7 @@ import (
 func TestTheWhereRecordCountsTiersAndCostsByTier(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"), route("pro-a", "pro"), route("heavy-a", "heavy"))
-	h.must(SetStep(sprint.SetReq{Attempts: "6", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("6")
 	// three tiers across two streams: s1 a flash card and a pro card, s2 a heavy card
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-f"}, Brief: briefOf("flash", "")}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-p"}, Brief: briefOf("pro", "")}))
@@ -74,7 +74,7 @@ func TestTheWhereRecordCountsTiersAndCostsByTier(t *testing.T) {
 func TestPerLandedUsesTotalSpendOnLandedCards(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
-	h.must(SetStep(sprint.SetReq{Attempts: "6", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("6")
 
 	// Create three cards: two landed ($1 each, one with failed attempt), one in-flight ($10)
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"landed-1"}, Brief: briefOf("flash", "")}))

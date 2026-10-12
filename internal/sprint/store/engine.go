@@ -196,6 +196,11 @@ type Step struct {
 	// no tier array: a worker's ACL reads routes and route:*
 	// only (pkg/redisacl, the member role), and pricing needs no more.
 	Prices bool
+	// Bars says the step reads the sprint row's bars alone (routes.go, BarsReader: the
+	// plain keys sprint:<field>, which every role reads), before its tables: a step that
+	// asks the attempt cap (sprint.AttemptsCap: finish, read, merge, set) without the
+	// route set a worker may not read. Routes covers it: a step with both reads once.
+	Bars bool
 	// Readers says the step asks, or reads what the ask would do: it plans
 	// with the readers' states (sprint.Snapshot.ReaderStates), read after its
 	// tables, or ReaderStates when given: a tick reads them once and every
@@ -525,6 +530,12 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			return res, err
 		}
 	}
+	var bars Bars
+	if step.Bars && !step.Routes {
+		if bars, err = st.sprintBars(ctx); err != nil {
+			return res, err
+		}
+	}
 	var answered map[string]string
 	if len(step.Answers) > 0 {
 		if answered, err = st.B.Answered(ctx, step.Answers); err != nil {
@@ -656,6 +667,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		if step.Prices {
 			snap.Routes = priced
+		}
+		if step.Bars && !step.Routes {
+			bars.into(snap)
 		}
 		snap.Answered = answered
 		if step.NoRoom != nil {

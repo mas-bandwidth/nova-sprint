@@ -116,17 +116,20 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 		assert.Zero(t, w.s.Work.Card("s1-1").Int("reworks"), "a failure no class names waits for a person")
 		assert.Len(t, openOf(w, NWorkFailed, "s1-1"), 1)
 	})
-	t.Run("a harness fault at the attempt bound does not reach the brief's bound", func(t *testing.T) {
+	t.Run("a harness fault below the attempt cap is reworked, at it the coordinator's", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		w.s.Work.SetProp(PropAttempts, "1")
+		w.s.MaxAttempts = "2"
 		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
 		dealWith(w, amy)
 		startLanes(w, amy)
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: harnessFaults["lane died"]}))
 		rules(w, on(amy))
-		assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("reworks"), "a harness fault never counts toward the brief's bound: it is reworked, the brief not judged")
-		assert.Empty(t, openOf(w, NBriefWrong, "s1-1"), "no brief's judgment for an attempt whose worker never ran")
+		assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("reworks"), "below the cap a harness fault is reworked, the brief not judged")
+		assert.Empty(t, openOf(w, NBriefWrong, "s1-1"), "no brief's judgment below the cap")
+		// a harness fault counts toward the attempt cap as every attempt does (the owner,
+		// 2026-10-12): the next one, at the cap, is the coordinator's
+		assert.Equal(t, 1, AttemptsSince(w.s.Work.Card("s1-1")), "the harness fault's attempt counted; the rework's counts once it is dealt")
 	})
 	t.Run("the same fault on many machine cards: each reworked on its tier", func(t *testing.T) {
 		t.Parallel()

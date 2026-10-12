@@ -133,7 +133,7 @@ var Decisions = map[string][]string{
 	NHarnessFault:      {"rebrief", "drop"},     // the same harness fault twice, or on many cards: the card waits, never redealt
 	NBriefDefect:       {DecisionRecut, "drop"}, // never a redeal of the brief as cut
 	NReadBroken:        {"rework with the finding", "ask another reader", "drop"},
-	NBriefWrong:        {"brief", "drop"}, // never rework: a --fix changes the brief not at all (brief_bound.go)
+	NBriefWrong:        {"brief", "drop"}, // steps_edit.go's init adds the carry and the re-tier: the coordinator's decisions at the attempt cap (brief_bound.go)
 	NConflict:          {"resolve and resume", "rework", "drop"},
 	NRed:               {"take the suspect off and resume", "rework the suspect"},
 	NCross:             {"rank that card first", "look at both", "return", "drop"}, // never wait: it holds the stream (wait_refused.go)

@@ -87,18 +87,18 @@ func TestReworkReworksACardWhoseLastTwoFindingsMatch(t *testing.T) {
 	})
 }
 
-// The judgment raised for a card at the brief's bound on repeated failed work names the brief,
-// not the worker: the two matching reports and their attempts, and its decisions are brief and
-// drop, never rework. A broken finding at the bound is reworked, never left, so the bound itself
-// is shown on failed work.
+// The judgment raised for a card at the attempt cap on repeated failed work names the brief,
+// not the worker: the attempts and their findings, and its decisions are the coordinator's
+// (carry, brief, re-tier, drop). The rework between the attempts is the machine's (a rule's):
+// the seat's own rework is a decision and opens a fresh window (brief_bound.go).
 func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
 	h.addReady("s1", 1, briefOf("flash", ""))
-	h.must(SetStep(sprint.SetReq{Attempts: "2", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("2")
 	h.must(DealStep(sprint.DealReq{}))
 	h.finishAttempt("s1-1", true, "the tests fail")
-	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: "tester"}))
+	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: "tick", PerCard: map[string]sprint.ReworkCard{"s1-1": {Fix: "r", Rule: sprint.RuleFailed, Said: "redealt"}}}))
 	h.finishAttempt("s1-1", true, "the tests fail")
 	assert.Empty(t, h.openOf(sprint.NWorkFailed), "the second failure is the brief's, not the worker's")
 	open := h.openOf(sprint.NBriefWrong)
@@ -107,7 +107,7 @@ func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	assert.Equal(t, "a card has reached its bound: the brief is wrong, not the worker", n.Type)
 	assert.Contains(t, n.What, "the brief is wrong, not the worker")
 	assert.Contains(t, n.What, "findings: attempt 1: r; attempt 2: r")
-	assert.Equal(t, []string{sprint.DecisionCarry, "brief", "drop"}, n.Decisions)
+	assert.Equal(t, []string{sprint.DecisionCarry, "brief", sprint.DecisionReTier, "drop"}, n.Decisions)
 	// the carry is printed first: the card reworked from its last pushed head, its brief kept
 	cmds := h.commandsOf(sprint.NBriefWrong)
 	require.NotEmpty(t, cmds)
