@@ -250,12 +250,19 @@ brief verb and the bound).
 - Unit, `cmd/nova-sprint/tier_verb_test.go`:
   `TestTierRefusesAReTierWithoutAReason` (`tier --set` with no, an empty or a
   blank `--reason` is refused and writes nothing).
+- Unit, `cmd/nova-sprint/brief_verb_test.go`:
+  `TestBriefTierRequiresAReasonWithoutABriefEdit` (`brief --tier` without a brief
+  edit requires a non-blank `--reason`, exit 2, nothing written);
+  `TestBriefTierWithBriefFileRequiresAReason` (`brief --tier --brief-file` without
+  `--reason` is refused, exit 2, nothing written).
 - Functional (`-tags functional`), `cmd/nova-sprint/brief_edit_functional_test.go`:
   `TestABriefEditKeepsARelinkedNeedOnTheStore` (a relink, then `brief
   --brief-file` with the stale DEPENDS-ON on the test's own redis, `--redis` on
   every verb, HOME and XDG_CONFIG_HOME the test's own: the need kept
   and its NOTE, a new need added beside it, and `bound: same task` on a card
-  dealt).
+  dealt); `TestBriefTierWithBriefFileRequiresAReason` (a card, then
+  `brief --tier --brief-file` without `--reason` refused with nothing written,
+  with `--reason` accepted; reason visible on the card).
 
 
 ### The landing stall (v1.2.14)
