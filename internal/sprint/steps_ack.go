@@ -85,8 +85,12 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			// The tick's condition may still hold (the fleet's failure: held until a new failure
 			// of its class finishes after the ack, rules.go TickFleetFailure): the acknowledgement is
 			// kept on it, so the tick does not write it again until it has
-			// cleared and come back.
-			u.Notes = append(u.Notes, acknowledged(n, entries, r.Who, s.Now))
+			// cleared and come back. A rate or health judgment (reads_window.go) carries
+			// its numbers at ack time in the acknowledgement, so the tick can tell when
+			// they have crossed a new threshold and raise it again (releaseAckedHealth).
+			a := acknowledged(n, entries, r.Who, s.Now)
+			a.What = withAckBase(a.What, readsAckBase(s, n))
+			u.Notes = append(u.Notes, a)
 		}
 		p.Units = append(p.Units, u)
 	}

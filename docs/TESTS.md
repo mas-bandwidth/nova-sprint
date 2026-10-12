@@ -673,6 +673,21 @@ default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`;
   `--stuck 1m`, a card needing a card that is no card) and one healthy card; each
   flag appears on its line and none on the healthy one, and the same in `--json`.
 
+## An acknowledged rate or health judgment stays quiet (v1.2.14)
+
+A rate or health judgment the seat has acked is not raised again while its numbers are the
+same episode: it stays quiet until its numbers cross a new threshold or its stated quiet
+period passes, and the push says why it is back.
+
+- `TestAckedHealthJudgmentStaysQuiet` (`internal/sprint/reads_window_twin_test.go`): the
+  broken-reads-outrun judgment is raised; the seat acks it (the ack is accepted); more broken
+  reads in the same episode stay quiet (one notice, never re-raised with the same numbers);
+  after thirty minutes of running time still broken, the quiet period has passed and it is
+  raised again.
+- `TestAnAckedHealthJudgmentIsRaisedAgainSayingWhy` (`internal/sprint/reads_window_test.go`):
+  when an acknowledged broken-reads-outrun judgment's quiet period has passed and its condition
+  still holds, the next push says why it is back ("quiet period has passed").
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
