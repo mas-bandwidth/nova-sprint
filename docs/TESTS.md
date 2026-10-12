@@ -449,6 +449,22 @@ a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
   its own, no `NOVA_*` variable and PATH the binary's directory and the
   system's, so no verb can reach a seat config or a live sprint server.
 
+### Priority raises a selected set in one call
+
+`cmd/nova-sprint/priority_set_test.go`,
+`TestPriorityRaisesASelectedSetInOneCall`: `priority` takes the shared
+selector of `cmd/nova-sprint/select.go` (`--who`, `--state`, `--ids-file`, or
+`--stream` with any of them, and `--dry-run`). The test admits five cards in
+two streams on a private store (named explicitly with `--redis`; HOME and
+XDG_CONFIG_HOME are temporary directories and no `NOVA_*` variable is read,
+so no host record or server can take a verb), writes an ids file of three and
+runs `priority --ids-file raise.txt --critical --reason 'next point release'`:
+exactly those three are critical, one `priority set` timeline entry each, and
+the stream default is unchanged, so a card added later is still normal; the
+output is one line per card and `selected=3`. `--dry-run` plans the same step
+and writes nothing. An ids file naming a read card refuses the whole call with
+nothing written.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two

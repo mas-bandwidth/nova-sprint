@@ -2600,7 +2600,22 @@
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
    :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
-  (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
+   (fix "priority-raises-a-selected-set-in-one-call" :release "v1.2.14" :status "planned"
+    :title "priority takes the shared selector, raising a set in one call"
+    :text "priority now takes the shared selector of cmd/nova-sprint/select.go (--who, --state,
+     --ids-file, or --stream with any of them, and --dry-run), as brief, recut, rework and return
+     do: selWords gains priority (its base words only, so --stream alone keeps its one-stream
+     meaning), and cmdPrioritySel builds one PriorityStep over sprint.Selected, setting every
+     selected card or none. --stream alone still sets every card of the stream and the stream's
+     default for cards added later; with another selector word it selects only and leaves the
+     default as it is. A card in the set that is a read or work card refuses the whole call with
+     nothing written, as a single-card set does. Output is one line per card and the total.
+     Tests: cmd/nova-sprint/priority_set_test.go TestPriorityRaisesASelectedSetInOneCall (five
+     cards in two streams, an ids file of three, one timeline entry each, the stream default
+     unchanged, --dry-run writing nothing, a read card refusing), docs/SPEC-SPRINT.md \"One
+     selector, one step\" and section 1 \"Priority\"."
+    :origin "this card, priority-raises-a-selected-set-in-one-call.w1.g2.e19, finished in its own worktree on sprint/priority-raises-a-selected-set-in-one-call.w1.g2.e19; the seat ran priority <id> --critical in a shell loop per card and priority --stream also changed the stream's default")
+   (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
    :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
    :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
     verb (nova-friend <verb>, nova-swarm <verb>, nova-sprint <verb>, nova-config <verb> in a play, a

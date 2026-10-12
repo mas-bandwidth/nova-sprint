@@ -1631,7 +1631,11 @@ default) and `low` (it fills only an idle lane).
   priority on stream just means one verb call sets priority for all cards in the stream"),
   and the stream's default, which seeds the cards added to the stream later (a later card's
   own PRIORITY line wins); a held stream is set all the same and the output says it is held
-  and that none of its cards is dealt until `unhold`; `priority <id>...` prints each card's
+  and that none of its cards is dealt until `unhold`; `priority` also takes the shared
+  selector (`--who`, `--state`, `--ids-file`, or `--stream` with any of them, and
+  `--dry-run`), `priority --ids-file raise.txt --critical --reason '<why>'` setting every
+  selected card in one call and no stream default (docs/SPEC-SPRINT.md, "One selector, one
+  step"); `priority <id>...` prints each card's
   level and its source (`set`, `computed`, `default`, `read`). Every change is a `priority
   set` note on the card's timeline (`log --card`) with the actor and the reason, and the
   default's change a `stream priority set` note on the stream's (`log --stream`). A
@@ -1643,7 +1647,7 @@ default) and `low` (it fills only an idle lane).
   low s2-1, s2-2 (+3); stream defaults s2 low`; in `--json` `priorities` by level,
   `stream_priorities`, and each work row's `priority`, the stream's default)
   (`TestPrioritySetsACardAndItsStream`, `TestAStreamsDefaultSeedsNewCards`,
-  `TestPriorityRefusesAReadCard`).
+  `TestPriorityRefusesAReadCard`, `TestPriorityRaisesASelectedSetInOneCall`).
 - **A read inherits its primary's level.** A read's level is the higher of `reader` and its
   primary's own level (`sprint.ReadPriority`): the reads of a blocker, critical, fix or high
   primary go to the front of the read queue (the owner, 2026-10-06: "that work stream jumps to
@@ -2054,8 +2058,8 @@ names, as before.
 
 **One selector, one step** (the owner, 2026-10-04, after the coordinator changed hundreds
 of cards one process at a time and a recut of 195 pinned cards did not finish: "BATCH
-EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank` and `drop` take one
-selector grammar, combinable, every flag given holding of a card it selects:
+EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank`, `drop` and `priority`
+take one selector grammar, combinable, every flag given holding of a card it selects:
 
 - `--stream <s>`: the cards of the stream;
 - `--who <friend.<name>|friend|none>`: the cards whose WHO line names that friend (a hard
@@ -2076,6 +2080,11 @@ written. `--dry-run` plans the same step on one read and prints `<VERB> OK DRY-R
 the model tiers' routes, which a `rework` reads when it runs). A selector call gives no
 id. `rework`, `return` and `drop` keep their `--stream` (a stream's cards, one step before
 this) unless `--who`, `--state` or `--ids-file` comes with it (cmd/nova-sprint/select.go).
+`priority` keeps its `--stream` too: alone it is the one-stream call (every card of the
+stream and the stream's default), and with `--who`, `--state` or `--ids-file` it selects
+only, one `PriorityStep` over `sprint.Selected`, setting every selected card or none and
+leaving the stream's default as it is (`cmdPriority`/`cmdPrioritySel`,
+`TestPriorityRaisesASelectedSetInOneCall`).
 
 `brief` and `recut` by selector take a transform of each card's own brief instead of a
 whole file, made on its header block (`sprint.BriefEdit`): `--set-base <branch>` (every
