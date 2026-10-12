@@ -110,14 +110,11 @@ func TestTheStartLevelLeavesADealtCardOnAMemberThatCanStartItOnTheStore(t *testi
 
 	// 2. m1's width falls to 2 while it holds d1 cards: it cannot start its
 	// ready card, and m2 has a free lane, so the card goes to m2
-	if d1 > 2 {
-		run("fleet up m1 --width 2")
-		run("tick")
-		s = load()
-		require.Equal(t, "m2", s.Fleet.Card(id).Row, "%s moves off m1, over its width, onto m2's free lane", id)
-		require.Greater(t, s.Fleet.Card(id).Int("gen"), gen, "%s is dealt again at a new generation", id)
-	} else {
-		t.Logf("the deal gave m1 %d cards: the over-width half needs 3", d1)
-	}
+	require.Greater(t, d1, 2, "the deal gave m1 %d cards: the over-width half needs 3", d1)
+	run("fleet up m1 --width 2")
+	run("tick")
+	s = load()
+	require.Equal(t, "m2", s.Fleet.Card(id).Row, "%s moves off m1, over its width, onto m2's free lane", id)
+	require.Greater(t, s.Fleet.Card(id).Int("gen"), gen, "%s is dealt again at a new generation", id)
 	t.Logf("wall time %s", time.Since(wall).Round(time.Millisecond))
 }
