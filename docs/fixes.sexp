@@ -2971,14 +2971,12 @@
      catchup, ahead and nomark keep their meanings (each fails LoadIsSnapshot), and noepochkey keys entries
      by table alone so a load of the old epoch is served after a clear (LoadIsOfItsEpoch). The card also
      names a norevguard witness (the keep's revision guard dropped) as a LoadIsSnapshot failure, but that is
-     unsatisfiable: the guard only keeps the newest read (an efficiency), while the serve-time mark check
-     (which nomark drops) is the correctness guard (loadcache.go keepLoaded: \"its own mark is checked when it
-     is used\"), so a cache that regresses still serves the right records. Attempt 4 dropped the guard and
-     ran the broken model through TLC: it explores the same 3,001,085 states (923,562 distinct) as the
-     whole model and violates no invariant, confirming the guard is efficiency, not correctness; no such
-     witness is added and the card ends not-done on it. The records read is one trip, not the code's
-     1024-record chunks, named as a v1.2.17 candidate."
-    :origin "this card, tla-loadcache-trips-and-epoch-keys.w4, replacing the dropped card
+     unsatisfiable: the guard only keeps the newest read, pruning work (an efficiency), while the serve-time
+     mark check (which nomark drops, loadcache.go:154) is the correctness guard, so a cache that regresses
+     still serves the right records; dropping the guard explores the same 923,562 distinct states and
+     violates nothing, so no such witness is added and the module says so at the Keep action. The records
+     read is one trip, not the code's 1024-record chunks, named as a v1.2.17 candidate."
+    :origin "this card, tla-loadcache-trips-and-epoch-keys.w5, replacing the dropped card
      tla-loadcache-separate-trips-and-epoch-keys; the v1.2.16 pass (the owner, 2026-10-11 ~23:55Z: are all
      the TLA models up to date and checked, or this pass runs in v1.2.16)")
    (fix "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch" :release "v1.2.14" :status "planned"

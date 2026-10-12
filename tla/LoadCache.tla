@@ -67,14 +67,17 @@
 \*                   records at it
 \* Reversed witnesses (Broken): "catchup" (the catch-up misses the last write its
 \* stream names), "ahead" (a cache later than the shape used as it is),
-\* "nomark" (the mark is not checked), "noepochkey" (entries keyed by table alone:
-\* a load of the old epoch is served after a clear). The card also names a
+\* "nomark" (the serve-time mark check is dropped, the correctness guard: a store
+\* that lost its last writes and wrote others to or past the cached revision gives
+\* the cache's lost history as its own), "noepochkey" (entries keyed by table
+\* alone: a load of the old epoch is served after a clear). The card also names a
 \* "norevguard" witness (the keep's revision guard dropped) as a LoadIsSnapshot
 \* failure, but that expectation is unsatisfiable as modelled: the keep's
-\* revision guard only keeps the newest read (an efficiency), while the serve-time
-\* mark check (which "nomark" drops) is the correctness guard, so a cache that
-\* regresses still serves the right records. That witness is not added, and no
-\* new invariant is substituted in; the card ends not-done on that point.
+\* revision guard only keeps the newest read (it prunes work, an efficiency),
+\* while the serve-time mark check (which "nomark" drops) is the correctness
+\* guard, so a cache that regresses still serves the right records. That witness
+\* is not added, and no new invariant is substituted in; "nomark" is the
+\* load-bearing witness the guard protects.
 
 EXTENDS Naturals, Sequences, FiniteSets
 
@@ -224,7 +227,8 @@ Records(l) ==
 
 \* the entry kept, the lock taken only to store, with the revision guard: a
 \* cache that holds the table at a later revision of the same epoch keeps the
-\* later entry
+\* later entry. The revision guard prunes work (the newest read wins); the
+\* serve-time mark check (Take, above) is the correctness guard.
 Keep(l) ==
   /\ pc[l] = "keep" /\ vep[l] = ep
   /\ LET t == cur[l]
