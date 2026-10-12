@@ -301,6 +301,39 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 	return r, true, nil
 }
 
+// SeatAndServer reads the seat's record and the server's heartbeat in one
+// exchange where the store reads many keys in one (getKeys): where --json
+// carries both under a fixed round-trip budget, so the server's record must not
+// cost a trip of its own. Its answers are exactly Seat's (the seat moved) and
+// Server's (the server is fresh, no older than ServerTTL).
+func (st *Store) SeatAndServer(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, error) {
+	var s sprint.SeatChange
+	var r ServerRecord
+	kv, ok := st.B.(KV)
+	if !ok {
+		return s, false, r, false, nil // a backend that keeps no keys has neither
+	}
+	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer})
+	if err != nil {
+		return s, false, r, false, err
+	}
+	if oks[0] {
+		if err := json.Unmarshal([]byte(vals[0]), &s); err != nil {
+			return s, false, r, false, err
+		}
+	}
+	fresh := false
+	if oks[1] {
+		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
+			return s, false, r, false, err
+		}
+		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
+			r = ServerRecord{}
+		}
+	}
+	return s, s.Holder != "", r, fresh, nil
+}
+
 // ServerActor is the actor the server runs as, by its record: "" with no
 // record, or one older than ServerTTL.
 func (st *Store) ServerActor(ctx context.Context) (string, error) {

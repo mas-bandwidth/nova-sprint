@@ -1752,8 +1752,11 @@ func (r *Redis) GetKeys(ctx context.Context, names []string) ([]string, []bool, 
 	}
 	vals, oks := make([]string, len(names)), make([]bool, len(names))
 	for i := range names {
-		if i < len(got) {
-			vals[i], oks[i] = got[i].(string)
+		if i >= len(got) {
+			continue
+		}
+		if v, ok := got[i].(string); ok {
+			vals[i], oks[i] = v, true
 		}
 	}
 	return vals, oks, nil
