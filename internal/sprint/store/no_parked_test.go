@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // A wait never parks a card (docs/SPEC-SPRINT.md section 8, "Judgments that hold a card";
@@ -377,4 +378,31 @@ func TestAnOkFinishThenNoRoomReworkDoesNotReopenTheAlarm(t *testing.T) {
 	h.tick(time.Minute)
 	h.machine()
 	assert.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "the old failure of s1-1 is no new one after the ack")
+}
+
+// clearLastFinish leaves the card as one persisted before the upgrade that writes last_finish.
+func (h *harness) clearLastFinish(id string) {
+	h.t.Helper()
+	s := h.snap()
+	c := s.Work.Card(id)
+	_, err := h.st.B.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: h.st.Names.Table(sprint.Work), Epoch: fmt.Sprint(s.Epoch), ExpectedTableRevision: fmt.Sprint(s.Work.Revision),
+		OperationID: "clear-last-finish-" + id, Members: []ntable.BatchMemberEntry{{ID: c.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(c.Rev)}, Unset: []string{sprint.FieldLastFinish}}}})
+	require.NoError(h.t, err)
+}
+
+// The rollout: the fleet's failure counts finishes recorded after the upgrade (last_finish).
+// A card whose failure was recorded before it is not counted, with no guessing; its next
+// finish writes last_finish, so its first failure after the upgrade is counted, and every
+// card finishes again within its attempt bound, so the gap closes by itself.
+func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testing.T) {
+	t.Parallel()
+	h := failedThenNoRoom(t) // three cards failed the same way, the rules off, members up
+	h.clearLastFinish("s1-1")
+	h.machine()
+	require.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "s1-1's failure predates last_finish: two cards counted, no alarm")
+	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: h.st.Actor}))
+	h.machine()
+	h.failTake("s1-1.w2", "step 2 broken: exec: go: Permission denied")
+	h.machine()
+	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "its first failure after the upgrade is counted: three cards")
 }

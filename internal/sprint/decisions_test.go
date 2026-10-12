@@ -553,7 +553,7 @@ func TestEveryDecisionPrintsItsCommands(t *testing.T) {
 			n := Note{ID: "n-1.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1", "s2-1"}, StreamLevel: level}
 			g := Group{ID: n.ID, Kind: Judgment, Type: typ, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: ds}
 			got := map[string]bool{}
-			for _, c := range commands(g, n, "dev-") {
+			for _, c := range commands(g, n, "dev-", nil) {
 				if len(c.Lines) > 0 {
 					got[c.Decision] = true
 				}
@@ -639,7 +639,7 @@ func TestTheMergeDecisionPrintsOneRunnableLandLine(t *testing.T) {
 	n := Note{ID: "n-1.1", Kind: Judgment, Type: NMergeLate, Stream: "s1", Primaries: []string{"s1-1"}, StreamLevel: true}
 	g := Group{ID: n.ID, Kind: Judgment, Type: NMergeLate, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: []string{"merge --stream s1"}}
 	var lines []string
-	for _, c := range commands(g, n, "dev-") {
+	for _, c := range commands(g, n, "dev-", nil) {
 		if c.Decision == "merge --stream s1" {
 			lines = c.Lines
 		}

@@ -290,7 +290,7 @@ func silenceRefusal(s *Snapshot, u Unit, pr string) string {
 	g := Group{ID: n.ID, Kind: Judgment, Type: n.Type, Stream: n.Stream, Size: len(members), Notes: []string{n.ID},
 		Members: members, Decisions: removeDecision(n.Decisions, "ack")}
 	var lines []string
-	for _, c := range commands(g, n, "") {
+	for _, c := range commands(g, n, "", nil) {
 		lines = append(lines, c.Decision+": "+strings.Join(c.Lines, " && "))
 	}
 	why := fmt.Sprintf("%s is the last judgment on %s, which would then be held by nobody (no read outstanding, nothing the tick would do, no other judgment open on it); decide instead", n.ID, pr)
@@ -316,7 +316,7 @@ func notAckable(n Note, entries []Open) string {
 	}
 	g := Group{ID: n.ID, Kind: Judgment, Type: n.Type, Stream: n.Stream, Size: len(members), Notes: []string{n.ID}, Members: members, Decisions: n.Decisions}
 	var lines []string
-	for _, c := range commands(g, n, "") {
+	for _, c := range commands(g, n, "", nil) {
 		lines = append(lines, c.Decision+": "+strings.Join(c.Lines, " && "))
 	}
 	why := fmt.Sprintf("ack does not answer %s (%s): its decisions are", n.ID, n.Type)
