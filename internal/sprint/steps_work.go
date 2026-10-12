@@ -519,6 +519,10 @@ func Add(s *Snapshot, r AddReq) Plan {
 		}
 		gateSaid := ""
 		if a.brief != "" && !a.gate {
+			// Extract and store the tier from line 1 of the brief
+			if t, _ := cardhdr.ReadModel(a.brief); t.Tier != "" && cardhdr.IsRoute(t.Tier) {
+				fields[FieldTier] = t.Tier
+			}
 			fields["brief"] = a.brief
 			if a.rules != "" {
 				fields[FieldRules] = a.rules

@@ -204,6 +204,16 @@ finish-t32-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --o
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
+### Card tier from line 1
+
+A card's tier is read from line 1 of its brief (`... tier: flash|pro|heavy|frontier`). The
+add` verb stores this tier in the card's `FieldTier` field when admitting the card. This
+stored tier is used by the deal to determine which route tier the work card draws from.
+
+Tests for the tier storage and deal flow:
+- `internal/sprint/tier_admit_test.go`: unit tests for tier storage on admit and deal
+- `cmd/nova-sprint/tier_admit_functional_test.go`: functional tests for `add --brief-file` with tier on line 1
+
 ### No ghost reads (v1.2.14)
 
 A read working on a member is named by its member's beat, or within the grace
