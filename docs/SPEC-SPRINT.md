@@ -2135,8 +2135,10 @@ never blocks a card once the successor lands. A brief edit, an add, or a twin wh
 `DEPENDS-ON: old` stores the need as the successor and prints `NOTE need <old> is now <new> (relinked <time>
 by <actor>)`. `relink old new` re-points the need on every open card that names old -- waiting, ready,
 working, review or merging, not only waiting -- and a merging or review card keeps its column and attempt.
-Rule 11 (and every needs check: deal, take, land) resolves needs through the alias map, so a need whose
-alias target has landed is met. `drop` of a card with no successor refuses while any card names it as a
+Rule 11 and every needs check -- the run loop's own (`TickNeeds` and its `goneNamedNeeds`, which judges
+a need gone by its resolved successor), deal, take, land -- resolves needs through the alias map, so a
+need whose alias target has landed is met, and a merging or review card whose stored need is a dropped id
+with a landed successor raises no judgment after a tick. `drop` of a card with no successor refuses while any card names it as a
 need, unless `--cascade` or `--replaced-by <id>`; the brief verb runs the same dropped-card lint as add, so
 a brief that names a dropped card is refused (`check=dropped-card`). The model is tla/SprintRules.tla,
 `NoLiveNeedNamesADroppedId`.
