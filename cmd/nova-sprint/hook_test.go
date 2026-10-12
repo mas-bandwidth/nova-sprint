@@ -1466,9 +1466,12 @@ func TestHookPrintsChallengeOnStoreWithNoBusStream(t *testing.T) {
 	default:
 	}
 
-	// end the hook cleanly
+	// end the hook cleanly. The unhook runs on its own app: the running hook's
+	// app must not be mutated by a second runInto while its goroutine reads it.
+	unhooker := newApp(ta.a.getenv)
+	unhooker.hookSock = ta.a.hookSock
 	var out, errs bytes.Buffer
-	code := runInto(client, strings.Fields("unhook"), &out, &errs)
+	code := runInto(unhooker, strings.Fields("unhook"), &out, &errs)
 	require.Equal(t, 0, code, out.String()+errs.String())
 	select {
 	case code := <-done:

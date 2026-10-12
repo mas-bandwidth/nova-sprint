@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // --- the hook-gate race on a server switch (#99) ---
@@ -36,8 +38,15 @@ func TestStallASwitchedServerNeverRollsBackOnTheHookGate(t *testing.T) {
 	r.tick() // the deal
 	require.Equal(t, []string{"s1-1"}, r.work("m1"))
 	r.toMerging([]string{"reader-a", "reader-b"}, "s1-1")
-	// seed a route and the sprint git_identity, as nova-config apply writes on every live store
-	r.do("apply", "--redis", r.addr, "--routes", "flash-a", "--git-identity", "nova-sprint <nova-sprint@mas-bandwidth.com>")
+	// Seed a route and the sprint git_identity directly, as nova-config apply writes them
+	// on every live store (the stall_ledger functional test does the same): the lander reads
+	// the identity with the routes and refuses to commit without one, so the pass ends in a
+	// card refusal (exit 1), not a rollback.
+	c := redis.NewClient(&redis.Options{Addr: r.addr})
+	t.Cleanup(func() { _ = c.Close() })
+	require.NoError(t, c.SAdd(context.Background(), config.RoutesKey, "flash-a").Err())
+	require.NoError(t, c.HSet(context.Background(), config.RouteKey("flash-a"), "name", "flash-a", "tier", "flash", "provider", "p", "model", "m", "enabled", "true").Err())
+	require.NoError(t, c.Set(context.Background(), config.SprintKey(config.FieldGitIdentity), config.DefaultGitIdentity, 0).Err())
 
 	// the switch: target is the server's binary, its previous build marked so a rollback shows
 	bin, err := os.ReadFile(r.bin)

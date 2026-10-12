@@ -295,13 +295,20 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 		return true
 	}, 3*time.Second, 10*time.Millisecond)
 	replayed := second.next(t, "push")
+	// #93 adds a repeating warning push while a judgment waits; the fixture's judgments
+	// are 1 to 3 minutes old, so it arrives too. The replay and the warning are counted
+	// apart, in whatever order the server sends them; the replay checks stay unchanged.
+	var warn hookMsg
+	if replayed.What == hookWarnWhat {
+		warn = replayed
+		replayed = second.next(t, "push")
+	} else {
+		warn = second.next(t, "push")
+	}
 	require.Equal(t, pending, replayed.What)
 	require.Equal(t, ids[acked], replayed.ID, "legacy record has no high-water mark, so session binding handles the numeric overlap")
 	require.NotEqual(t, acked, replayed.What)
 	require.NotEqual(t, held, replayed.What)
-	// #93 adds a repeating warning push while a judgment waits; the fixture's judgments
-	// are 1 to 3 minutes old, so the warning arrives and counts apart from replays.
-	warn := second.next(t, "push")
 	require.Equal(t, hookWarnWhat, warn.What, "the waiting-judgment warning arrived")
 	second.requireNoFrame(t, 150*time.Millisecond)
 	stale := second.send(t, hookMsg{T: "ack", ID: replayed.ID, Session: first.session})
