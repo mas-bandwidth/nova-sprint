@@ -19,7 +19,9 @@ import (
 // from the last pushed head, the record saying what changed and why. These run on the twin.
 
 // boundWorld is a sprint whose attempt cap is one, with n cards of stream s1 each failed
-// once: each in review at its brief's bound, its brief-defect judgment open.
+// once by a worker that ran and reported (a verdict): each in review at its brief's bound,
+// its brief-defect judgment open. The report is a finding, not an attempt that ended without
+// a worker report, which the brief bound no longer counts (docs/SPEC-SPRINT.md, the bounds).
 func boundWorld(t *testing.T, n int) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
@@ -31,7 +33,7 @@ func boundWorld(t *testing.T, n int) *testApp {
 	}
 	ta.deal(n)
 	for i := 1; i <= n; i++ {
-		ta.failOnce("m1", "s1-"+strconv.Itoa(i)+".w1@1", "no RESULT.md")
+		ta.failOnce("m1", "s1-"+strconv.Itoa(i)+".w1@1", "tests red")
 		pr := ta.primary("s1-" + strconv.Itoa(i))
 		require.Equal(t, sprint.Review, pr.Col)
 		_, at := sprint.AtBriefBound(pr, "", 1)

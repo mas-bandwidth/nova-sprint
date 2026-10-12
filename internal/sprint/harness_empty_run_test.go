@@ -197,15 +197,16 @@ func TestTheFailedFinishRecordsTheFriendAnEmptyRunLeaves(t *testing.T) {
 func TestTheFailedRuleCarriesTheEmptyRunFriendOnItsEarlyReturns(t *testing.T) {
 	t.Parallel()
 	w, _, _ := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
-	w.s.Work.SetProp(PropAttempts, "1") // the next attempt is the brief's bound
+	w.s.Work.SetProp(PropAttempts, "1") // the cap is one attempt
 	pr := w.s.Work.Card("s1-1")
 	require.Equal(t, "1", pr.F("attempt"), "one attempt run, the cap reached")
 
-	// the brief's bound: left to a mind, the friend still on the answer
+	// an empty run never counts toward the brief's bound (docs/SPEC-SPRINT.md, the bounds):
+	// reworked, not left to a mind, and the friend still on the answer
 	a := RuleAnswer{}
 	require.True(t, ruleHarness(w.s, &a, pr), "the failed rule answers the harness fault")
-	require.Equal(t, ActLeft, a.Act, "at its brief's bound the card is left to a mind")
-	assert.Equal(t, "amy", a.set[FieldFriendsLeft], "the early return carries the friend the empty run left")
+	require.Equal(t, ActRework, a.Act, "an empty run does not reach the brief's bound: it is reworked")
+	assert.Equal(t, "amy", a.set[FieldFriendsLeft], "the rework carries the friend the empty run left")
 	assert.Contains(t, a.Why, "never again on friend amy")
 
 	// a brief defect: the other early return, the same write

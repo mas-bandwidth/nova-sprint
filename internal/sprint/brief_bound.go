@@ -205,7 +205,10 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	if cap <= 0 {
 		cap = AttemptsDefault
 	}
-	if since := attempt - briefAt; since >= cap {
+	// The count is the attempts since the brief last changed whose worker ran and
+	// reported (ranSince): an attempt that ended without a worker report says nothing
+	// about the brief and does not count toward the cap (docs/SPEC-SPRINT.md, the bounds).
+	if since := ranSince(c, briefAt); since >= cap {
 		spent := MoneyText(CardCostOf(c).Total.Charged)
 		if spent == "-" {
 			spent = ""

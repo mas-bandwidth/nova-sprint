@@ -1974,6 +1974,31 @@ bound" on a card past the count says the same and offers the same. `answer` appl
 only a verb the judgment prints, so it cannot rework such a card
 (`TestTheAnswerPathCannotReworkACardAtTheBriefBound`), and the verb refuses it besides.
 
+**The two bounds count only attempts whose worker ran** (the owner, 2026-10-11,
+after a card reached its bound on the brief for five cards whose four attempts were
+idle-reaped, a harness fault, and a provider refusal: no worker ever ran, so the
+attempts say nothing about the brief: "Fix the fucking gaps in push notifications",
+"Make sure these watches become part of the tool", "we need to discover this earlier
+with card lint"). The brief bound counts only attempts whose worker ran and reported (a
+verdict, a pushed head); a card at its brief's bound or its attempt cap is there only on
+such attempts. An attempt that ended without a worker report (an idle reap, a harness
+fault, a lane refused, a push refused, a friend lane that never started) says nothing
+about the brief and does not count toward it: the primary's attempt records
+(`ran_attempts`, one line an attempt, `attempt <n>: yes` or `attempt <n>: no: <fault class>`) say whether each attempt's worker ran, and the brief bound reads them
+(`sprint.ranSince`), a card admitted before the field counting every attempt as having
+run. The record is written as each attempt ends (`sprint.recordRan`): an attempt whose
+worker ran and reported (a verdict, a pushed head) is `yes`, one that ended without a
+worker report (an idle reap, a harness fault, a lane refused, a push refused, a friend
+lane that never started) is `no` with its fault class, and the broken-lane judgment's
+text carries it. Four attempts that all ended without a worker report are a broken lane,
+not a broken brief: `sprint.AtLaneBroken` raises "the lane is broken, not the brief",
+naming the member or friend and the faults it ended on, and its offered actions are hold
+<member>, rework --tier <other tier>, and drop (`sprint.laneBroken.Remedy`)
+(`TestRanSinceCountsOnlyAttemptsThatRan`,
+`TestFourNonRunningAttemptsRaiseLaneBroken`,
+`TestLaneBrokenJudgmentNamesMemberAndRanRecords`);
+`TestLaneBrokenRemedyOffersHoldReworkDrop`, `TestRecordRanWritesTheAttemptRecord`).
+
 **The bound is two identical findings** (the card the-bound-is-two-identical-findings,
 after the night of 2026-10-05, when cards with the fix first in their brief still ran three
 and four lanes on one finding, reworded by its reader each time, before the attempt cap

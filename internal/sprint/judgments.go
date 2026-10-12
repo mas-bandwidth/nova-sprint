@@ -579,3 +579,12 @@ func landingStallKept(p Plan, moved string) Plan {
 	}
 	return p
 }
+
+// The lane-broken bound (docs/SPEC-SPRINT.md, the bounds): an attempt that ended
+// without a worker report (an idle reap, a harness fault, a lane refused, a push
+// refused, a friend lane that never started) says nothing about the brief. It does
+// not count toward the brief bound, which counts only attempts whose worker ran and
+// reported (a verdict, a pushed head). Four such attempts raise "the lane is broken,
+// not the brief" instead, naming the member or friend and the fault, with the offered
+// actions hold <member>, rework --tier <other tier>, and drop. The attempt record and
+// the lane-broken bound are in attempts.go and bounds.go.

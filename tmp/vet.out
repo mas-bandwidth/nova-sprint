@@ -1,17 +1,60 @@
+# a-never-run-attempt-is-not-evidence-against-the-brief.w11, gate, 2026-10-12T05:10:51Z
 # go vet ./cmd/nova-sprint ./internal/sprint
-# exit 0 (no findings)
+# vet exit 0
 
-# the card's STEP 4 gate names ./pkg/release/ ./cmd/nova-update/; this repo has no cmd/nova-update
-# (cmds: nova-sprint, nova-card, nova-work), so that path fails [setup failed] regardless of this change.
-$ go test -count=1 -timeout 600s ./pkg/release/ ./cmd/nova-update/
-?   	github.com/mas-bandwidth/nova-sprint/pkg/release	[no test files]
-FAIL	./cmd/nova-update [setup failed]  (stat .../cmd/nova-update: directory not found)
-
-# the tier gate actually run (this bench, nice -n 19, -count=1 -timeout 600s, GOFLAGS=-mod=readonly, NOVA_TEST_NO_HOST=1):
 $ go test -count=1 -timeout 600s ./internal/sprint/
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	22.293s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	15.406s
 
 $ go test -count=1 -timeout 600s ./cmd/nova-sprint/
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /home/ubuntu/rowan-working/tmp/slots/a-never-run-attempt-is-not-evidence-against-the-brief.w11.g1.e19/tmp/a-never-run-attempt-is-not-evidence-against-the-brief.w11/land-clash-test-1065524219/.git/
+[master (root-commit) a74bb48] base
+ 5 files changed, 15 insertions(+)
+ create mode 100644 cmd/nova-sprint/main.go
+ create mode 100644 go.mod
+ create mode 100644 internal/sprint/a.go
+ create mode 100644 internal/sprint/b.go
+ create mode 100644 internal/sprint/store_test.go
+Cloning into '.'...
+done.
+Switched to a new branch 'x'
+[x 5b0de21] head x
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Cloning into '.'...
+done.
+Switched to a new branch 'y'
+HEAD is now at a74bb48 base
+[y 64ff2b8] head y
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+From /home/ubuntu/rowan-working/tmp/slots/a-never-run-attempt-is-not-evidence-against-the-brief.w11.g1.e19/tmp/a-never-run-attempt-is-not-evidence-against-the-brief.w11/land-clash-test-1065524219/x
+ * [new branch]      x          -> x
+Merge made by the 'ort' strategy.
+ internal/sprint/a.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+From /home/ubuntu/rowan-working/tmp/slots/a-never-run-attempt-is-not-evidence-against-the-brief.w11.g1.e19/tmp/a-never-run-attempt-is-not-evidence-against-the-brief.w11/land-clash-test-1065524219/y
+ * [new branch]      y          -> y
+Merge made by the 'ort' strategy.
+ internal/sprint/b.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 --- FAIL: TestTheTwinSocketFitsAUnixSocketPath (0.00s)
-    backup_out_test.go:225: the throwaway redis-server's socket path is 334 bytes over the 100-byte Unix-socket limit (mkdir /tmp/nsb...: permission denied; the wall denies /tmp); set TMPDIR to a shorter directory
-FAIL (26.6s)  # environmental; backup_out_test.go is unchanged by this work
+    backup_out_test.go:225: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/backup_out_test.go:225
+        	Error:      	Received unexpected error:
+        	            	the throwaway redis-server's socket /home/ubuntu/rowan-working/tmp/slots/a-never-run-attempt-is-not-evidence-against-the-brief.w11.g1.e19/tmp/a-never-run-attempt-is-not-evidence-against-the-brief.w11/TestTheTwinSocketFitsAUnixSocketPath3204273289/001/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/twin.sock is 345 bytes and a Unix socket path holds at most 100, and no shorter private directory could be made (mkdir /tmp/nsb1085396801: permission denied); set TMPDIR to a shorter directory
+        	Test:       	TestTheTwinSocketFitsAUnixSocketPath
+TICK GATE UNDER LOAD: 3000 ready, 8 members of width 64, 32 siblings busy: 3 plans of 1024 units each in [722ms 274ms 404ms] with no history, [252ms 737ms 834ms] with 1000 ok attempts a member
+FAIL
+FAIL	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	21.337s
+FAIL

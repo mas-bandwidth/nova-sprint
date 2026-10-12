@@ -1872,6 +1872,12 @@ func briefStopAt(s *Snapshot, c *Card, reader, finding string) (briefStop, bool)
 	if b, ok := AtIdenticalFindings(c, reader, finding, s.IdenticalBound(c.Row)); ok {
 		return b, true
 	}
+	// the lane is broken, not the brief (docs/SPEC-SPRINT.md, the bounds): every one of
+	// the last LaneBrokenBound attempts ended without a worker report, so the brief's
+	// bound is never raised, and this is instead
+	if lb, ok := AtLaneBroken(s, c, LaneBrokenBound); ok {
+		return lb, true
+	}
 	if bb, ok := AtBriefBound(withField(c, "finding", ""), finding, s.AttemptsCap(c.Row)); ok {
 		return bb, true
 	}

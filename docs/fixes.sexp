@@ -2601,6 +2601,33 @@
    :title "A landing the hook gate refuses does not roll a switch back"
    :text "BLOCKER. server switch --rollback --window 30m restarts the server, the restart ends the seat's hook (the seat hook record says state=gone, why=the server restarted), and the new server's first landing pass, run as the coordinator before the seat hooks in again, is refused by the hook gate (nova-sprint land REFUSED: You must hook in first: run nova-sprint hook). landOnce counted any nonzero exit of the landing as a land failure and asked CheckRollbackOnLandFailure, and the store's open refuses through refuse, exit 2, the code of a pass fault, so the v1.2.12 switch rolled itself back to v1.2.11 1.5 seconds after it began; every switch with --rollback met the race. The hook gate's refusal is now the typed error hookGateError (coordinator.go coordinatorGate; storeCtx returns it), land reports it to landOnce through the app.land seam (cmdLand is unchanged for the command line, exit 2 and the same words), and landOnce, on it, does not ask the rollback check: the window, the binary and the switch state stay as they were, the pass prints one line, LAND WAITS for the seat's hook: <the gate's sentence>; nothing was landed, and the next pass tries again, and the loop's next pass is LandEvery as before, so it neither spins nor waits longer. The refusal is found by errors.As, never by its words. Only a landing that was let through and failed counts toward the rollback. Tests in cmd/nova-sprint/landloop_hookgate_test.go: TestAHookGateRefusalInTheWindowIsNotARollback (three passes in the window refused by the gate: no SERVER ROLLBACK, the switch stands, the state file is kept, one waits line each pass, the card is still queued; then, the seat hooked in, a failing landing rolls back), TestARealLandFailureInTheWindowStillRollsBack and, in hookgate_error_test.go, TestTheHookGateRefusalIsATypedError. tla/ServerSwitch.tla gains hooked, SwitchRestart, SeatHooksIn and LandHookRefused, every landing outcome now guarded by hooked, the invariant NoRollbackOnAHookRefusal and the reversed witness hookfault (MCServerSwitchBrokenHookfault, which counts the refusal as a land fault and rolls the switch back), run with TLC on hetzner2. docs/SPEC-SPRINT.md section 14 states the rule where the switch and its window are described."
    :origin "this card, a hand fix by the coordinator's child, 2026-10-11 ~21:00Z; the v1.2.12 switch (nova-sprint server switch --rollback --window 30m): SEAT HOOK state=gone why=the server restarted, then nova-sprint land REFUSED: You must hook in first, then SERVER ROLLBACK to v1.2.11 1.5 s later; code read at nova-sprint main f94ea09c (cmd/nova-sprint/landloop.go landOnce, internal/sprint/server_switch.go CheckRollbackOnLandFailure)")
+  (fix "a-never-run-attempt-is-not-evidence-against-the-brief" :release "v1.2.15" :status "planned"
+   :title "An attempt that never ran is not evidence against the brief"
+    :text "A card reached its bound on the brief for five cards whose four attempts were
+     idle-reaped (\"no RESULT.md shape\", \"claude -p exited 1\", a provider refusal): no
+     worker ever ran, so the attempts said nothing about the brief, and the seat's
+     re-submission sent the cards round again. An attempt that ended without a worker
+     report (an idle reap, a harness fault, a lane refused, a push refused, a friend lane
+     that never started) says nothing about the brief and does not count toward the brief
+     bound, which counts only attempts whose worker ran and reported (a verdict, a pushed
+     head): the primary's attempt records (ran_attempts, one line an attempt, \"attempt
+     <n>: yes\" or \"attempt <n>: no: <fault class>\") say whether each attempt's worker
+     ran, the brief bound reads them (sprint.ranSince), a card admitted before the field
+     counting every attempt as having run, and the record is written as each attempt ends
+     (sprint.recordRan). Four attempts that all ended without a worker report are a broken
+     lane, not a broken brief: sprint.AtLaneBroken raises \"the lane is broken, not the
+     brief\", naming the member or friend and the faults it ended on, carries the attempts'
+     ran record, and its offered actions are hold <member>, rework --tier <other tier>,
+     and drop (sprint.laneBroken.Remedy), never the brief bound's brief/drop. The wiring: the brief bound counts ranSince (brief_bound.go, AtBriefBound), the finish writes the record (steps_work.go) and raises the lane-broken judgment instead of the brief's, briefStopAt stops a broken lane before the brief's bound (steps_review.go), and the attempt line shows ran (route.go, AttemptLine). Tests:
+     TestRanSinceCountsOnlyAttemptsThatRan,
+     TestFourNonRunningAttemptsRaiseLaneBroken,
+     TestLaneBrokenJudgmentNamesMemberAndRanRecords,
+     TestLaneBrokenRemedyOffersHoldReworkDrop,
+     TestRecordRanWritesTheAttemptRecord,
+     TestAtBriefBoundCountsOnlyAttemptsThatRan,
+     TestBriefStopAtRaisesLaneBrokenNotBrief and
+     TestAttemptLineShowsRan (internal/sprint/bounds_test.go)."
+      :origin "this card, a-never-run-attempt-is-not-evidence-against-the-brief.w8; the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68 for 30 minutes with no push and review and fix held 150 cards: \"I shouldn't need to tell you this, you should just get a push notification about it\", \"Fix the fucking gaps in push notifications\", \"Make sure these watches become part of the tool\", \"We need a history and count of consumer cards launched, per-producer card, included in the producer card\", \"we need to discover this earlier with card lint ... or some sort of plan review\"")
 
   (fix "a-landing-pushes-each-repo-and-base-on-its-own-lane" :release "v1.2.15" :status "planned"
    :title "A land pass pushes each repository and base on its own lane"
