@@ -96,7 +96,7 @@ var coordinatorRules = []string{
 	"Every number is checked against its source before it is quoted, and the primary datum is measured rather than a derived view.",
 	"Every cap, budget and threshold is set from a measured distribution, with the numbers shown beside it.",
 	"A defect found in passing is fixed the same hour, failing test first, rather than parked on a ledger.",
-	"Every machinery fix is followed within the hour by a probe of 1 to 5 cards through the changed path.",
+	"Every system fix is followed within the hour by a probe of 1 to 5 cards through the changed path.",
 	"At the signs of a limit (fixes that do not hold, special cases multiplying), building upward stops: the layers are named, the list goes to the owner, and they are secured from the bottom, with an attempts record per approach.",
 	"When open pull requests climb or landings stall, nothing new starts until the wave lands.",
 	"During a stress run, every break is recorded with a receipt and the run does not stop for fixes that are not breakage; study at the end, then fix.",
