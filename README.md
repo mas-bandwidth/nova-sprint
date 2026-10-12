@@ -44,9 +44,7 @@ Agree on scope, capacity, spending limits, checks, and decisions that need
 you. Then give the fleet the next batch. Keep working alongside it, or
 leave it with a plan to continue while you are away.
 
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-
-**Free and open source forever.**
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). **Free and open source forever.**
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
