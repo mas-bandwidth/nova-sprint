@@ -298,6 +298,24 @@ brief verb and the bound).
   pins the refusal, exit 1, nothing written, when no attempt pushed a head and no
   `--carry` is given.
 
+### An unserved tier falls to the strongest served tier
+
+The setting `set --unserved-tier-falls-to` gives every card whose brief tier no route and
+no up friend serves the strongest served tier at or below the setting, written as a field
+of its own, so the deal can run it where something can take it; when the brief tier is
+served again the fallback is cleared on every card not yet taken, and a card the seat
+pinned is never touched (docs/SPEC-SPRINT.md section 5, "An unserved tier falls to the
+strongest served tier").
+
+- Unit, `internal/sprint/unserved_tier_test.go`:
+  `TestAnUnservedTierFallsToTheStrongestServedTier` (frontier cards with no frontier route
+  and no friend fall to heavy and are dealt on the heavy route with the note naming the
+  unserved tier; a seat-pinned card is untouched; when a frontier friend comes up the next
+  tick clears the fallback on the untaken cards and they go back to frontier).
+- Unit, `cmd/nova-sprint/card_tier_fallback_test.go`:
+  `TestCardAndWhereShowAFallbackTier` (`card` and `where --json --rows` show
+  `tier=<brief> (falls to <t>)` for a card with a fallback tier).
+
 ### One definition of what a PATHS entry covers (v1.2.13)
 
 A directory `PATHS` entry (trailing `/`) covers every file under it, a glob
