@@ -205,6 +205,8 @@ MCDirtyTickReadHalt.cfg	MCDirtyTickRead.tla	invariant	BeganRunning	ignore-termin
 MCDirtyTickReadCatchup.cfg	MCDirtyTickRead.tla	invariant	ViewIsSnapshot	ignore-terminal	dirtytickread-catchup	required	-
 MCDirtyTickReadLock.cfg	MCDirtyTickRead.tla	invariant	LockedApplyNotLost	ignore-terminal	dirtytickread-lock	required	-
 MCDirtyTickReadBrokenRunSeq.cfg	MCDirtyTickRead.tla	invariant	NoStaleRunCommit	ignore-terminal	dirtytickread-runseq	required	-
+MCDirtyTickReadBrokenEpoch.cfg	MCDirtyTickRead.tla	invariant	OldEpochPartWritesNothing	ignore-terminal	dirtytickread-epoch	required	-
+MCDirtyTickReadBrokenStartsAfterStop.cfg	MCDirtyTickRead.tla	invariant	StartsWorkNotAfterStop	ignore-terminal	dirtytickread-startsafterstop	required	-
 MCRouteIndex.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenRandom.cfg	MCRouteIndex.tla	invariant	RouteFair	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoAdvance.cfg	MCRouteIndex.tla	invariant	ExcludedNeverDrawn	ignore-terminal	routeindex	required	-
