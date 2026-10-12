@@ -152,7 +152,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 					}
 				}
 			}
-			p = briefDepends(s, p, c, b.Brief, needs, r.Tier, proposed)
+			p = briefDepends(s, p, c, b.Brief, needs, r.Tier, proposed, r.Reason)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -222,6 +222,13 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			set[FieldTier] = r.Tier
 		} else if recorded := c.F(FieldTier); recorded != "" && textTier.Tier != recorded {
 			p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+		} else if t := LineOneTier(b.Brief); t != "" {
+			// the tier the new line 1 names is the tier the card's next attempt is dealt on:
+			// a tier the machine raised it to before stands only when it is stronger
+			if now := c.F(FieldTierNow); now != "" && stronger(now, t) == t && now != t {
+				set[FieldTierNow] = t
+			}
+			p.Said = append(p.Said, b.ID+" tier="+stronger(t, c.F(FieldTierNow)))
 		}
 		// the brief's needs are the card's, not the text's (docs/SPEC-SPRINT.md, the needs):
 		// the text's DEPENDS-ON is the admission-time list, so a need a relink re-pointed
@@ -253,7 +260,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 		}
 		if c.Int("attempt") > 0 {
-			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting)
+			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
 			if orphan {
 				orphans[c.ID] = true
 			}
@@ -261,12 +268,20 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			continue
 		}
 		if toWaiting {
+			moved := fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s -> waiting, needs %s", c.ID, len(b.Brief), c.Row, c.Col, strings.Join(want, ","))
+			if r.Reason != "" {
+				moved += "; reason: " + r.Reason
+			}
 			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Waiting, set, unset...))},
-				Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s -> waiting, needs %s", c.ID, len(b.Brief), c.Row, c.Col, strings.Join(want, ","))})
+				Moved: moved})
 			continue
 		}
+		moved := fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)
+		if r.Reason != "" {
+			moved += "; reason: " + r.Reason
+		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
-			Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)})
+			Moved: moved})
 	}
 	if len(orphans) > 0 {
 		settle(&p, s, r.Who, orphans, nil)
@@ -300,7 +315,7 @@ func briefKept(s *Snapshot, id string) string {
 // is reset, since it counts attempts under one brief (FieldBriefAttempt, in set); the
 // rework's fix is the old brief's and is dropped; and the record, the next attempt's
 // why, says who edited it, at which attempt, and what changed (briefChange).
-func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string, toWaiting bool) (u Unit, orphan bool) {
+func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string, toWaiting bool, reason string) (u Unit, orphan bool) {
 	if c.F(FieldBriefDefect) != "" {
 		reworkPriority(s, c, set)
 		unset = append(unset, FieldBriefDefect)
@@ -355,6 +370,9 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	}
 	u = Unit{Key: c.ID, Stream: c.Row, Changes: changes, Closes: closesFor(s.Open, ReworkResolves, c.ID),
 		Moved: fmt.Sprintf("%s %s; %s -> %s, attempt %d next, from its last pushed head; %d cards retired", c.ID, said, c.Col, to, n+1, len(changes)-1)}
+	if reason != "" {
+		u.Moved += "; reason: " + reason
+	}
 	if orphan {
 		u.Moved += "; its orphan merge card off " + s.Merge.Placed(c.ID).Col
 	}
@@ -748,7 +766,7 @@ func dependsOnly(old, brief string) bool {
 // reversed witness "reviewneeds"). The brief decision and the grade were over
 // the same task and stay. tier, when non-empty, is the tier the edit sets
 // (--tier), written on the primary as the ordinary path writes it (FieldTier).
-func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, tier string, proposed map[string][]string) Plan {
+func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, tier string, proposed map[string][]string, reason string) Plan {
 	for _, n := range needs {
 		nc := s.Work.Card(n)
 		switch {
@@ -782,8 +800,12 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	} else {
 		unset = append(unset, "needs")
 	}
+	moved := fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)
+	if tier != "" && reason != "" {
+		moved += "; reason: " + reason
+	}
 	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
-		Moved: fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)})
+		Moved: moved})
 	return p
 }
 
@@ -867,7 +889,7 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	// returned to waiting or ready after an attempt (briefInPlace) through
 	// briefDepends, which refuses a ready card a need not landed.
 	if c.Col == Working || c.Col == Review {
-		q := briefDepends(s, p, c, brief, wants, "", nil)
+		q := briefDepends(s, p, c, brief, wants, "", nil, "")
 		if c.Col == Review && ReturnedAtAttempt(c) && len(q.Refused) == 0 {
 			// returned to review to have its needs set: that was the return's one cause, and
 			// the tick takes it back to merging on the reads that stand (FieldReturnedFor;

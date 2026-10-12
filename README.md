@@ -5,7 +5,7 @@
 
 ## What is it?
 
-**nova-sprint** puts different AI models to work across a fleet of machines.
+**nova-sprint** puts multiple AI models to work across a fleet of machines so you can get work done faster. 
 
 ## More lanes. Finish faster.
 
@@ -14,24 +14,27 @@ One worker can implement an API while another updates the client and a
 third tackles an unrelated fix. Different models and harnesses can work
 across the same fleet, each taking a bounded assignment.
 
-The **fleet** is the set of machines providing capacity linked across [tailscale](https://tailscale.com). 
+The **fleet** is a set of machines linked across [tailscale](https://tailscale.com). 
 **Workers** carry out the assignments. A machine's **width** sets how many work assignments
 it can run at once. Think of these as lanes: when one opens up, the system runs the next ready card on it.
 
 More lanes help when the work is independent. Dependencies have to land first.
 
-## Follow a card all the way home
+## A system for work
 
 Cards move through the system automatically:
 
-**Waiting → Ready → Working → Review → Merging → Landed**
+<img width="1182" height="193" alt="image" src="https://github.com/user-attachments/assets/20dcb37c-547d-454b-ae8f-178b8538abfb" />
 
 A card waits for its prerequisites, takes an available lane, and goes
-through implementation, independent review, checks, and landing. Findings
-go back for rework. Gates and decisions remain yours.
+through implementation, independent review, checks, and landing.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time. [See live demo](http://69.67.149.151/)
+estimated finish time. 
+
+<img width="2068" height="1151" alt="image" src="https://github.com/user-attachments/assets/eb290d6e-ee24-4b19-b908-93b10535b025" />
+
+[See a live demo](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
@@ -40,12 +43,10 @@ Agree on scope, capacity, spending limits, checks, and decisions that need
 you. Then give the fleet the next batch. Keep working alongside it... 
 or just come back in the morning.
 
+If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
+
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and system rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
-
-If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
-
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). Free and open source forever.
 
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)

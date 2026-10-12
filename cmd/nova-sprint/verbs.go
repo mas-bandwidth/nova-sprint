@@ -1424,12 +1424,17 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if *sentinel == "" {
+		// one stream: its default tier, if it names one, stands for a line 1 with none
+		one := ""
+		if len(streams) == 1 {
+			one = streams[0]
+		}
 		checks := make([]briefCheck, 0, len(ids))
 		for _, id := range ids {
-			checks = append(checks, briefCheck{id: id, brief: *brief})
+			checks = append(checks, briefCheck{id: id, brief: *brief, stream: one})
 		}
 		if len(ids) == 0 { // --count: the ids are made at the write
-			checks = append(checks, briefCheck{brief: *brief})
+			checks = append(checks, briefCheck{brief: *brief, stream: one})
 		}
 		if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
 			return code
@@ -1583,7 +1588,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	checks := make([]briefCheck, len(cards))
 	for i, cd := range cards {
-		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief}
+		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief, stream: stream}
 	}
 	if code := holdTlaRecords("add", stderr, checks...); code != 0 {
 		return code
@@ -2889,6 +2894,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
 	tier := fs.String("tier", "", "re-tier the card instead of replacing its brief: the tier ("+cardhdr.RouteList+") every later deal and read of the card draws its route from, kept on the card as rework --tier keeps it (it pins the card, never escalated past it); taken on a RUNNING machine and for a card dealt, where it applies to the next attempt; with --brief or --brief-file, the tier the edit sets, over the card's recorded tier and the text's line 1")
 	needsFromBrief := fs.Bool("needs-from-brief", false, "the brief edit's needs are the text's DEPENDS-ON whole (its admission-time list), over the rule that the card's needs are the truth and a text only adds new ones: the escape hatch when the coordinator means to re-derive them")
+	reason := fs.String("reason", "", "when --tier is given: why the card is this tier, recorded with the pin")
 	widen := fs.Bool("widen", false, "the card's brief edited in place with its PATHS widened by the PATHS-PROPOSED line of its latest attempt's report (the paths before any prose on that line) and a CARRY: line naming that attempt's pushed head, its next attempt starting from it; the same id, no twin; refused, exit 1, for no line, a glob that climbs out with .. or names no file at the base or the head")
 	repoDir := fs.String("repo-dir", "", "with --widen: the clone the base's and the head's files are read in (default: land's clone of the card's REPO:)")
 	var s sel
@@ -2906,12 +2912,16 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		case !cardhdr.IsRoute(*tier):
 			return refuse(stderr, "brief", "--tier wants "+cardhdr.RouteList+", found "+oneline.Escape(*tier))
 		}
-		if *brief == "" && *briefFile == "" {
+		why := strings.TrimSpace(*reason)
+		if why == "" {
+			return refuse(stderr, "brief", "--reason <why> is required when re-tiering")
+		}
+		if *brief == "" && *briefFile == "" && *widen == false {
 			st, err := a.store(*c)
 			if err != nil {
 				return refuse(stderr, "brief", err.Error())
 			}
-			return a.runStep("brief", *c, st, store.BriefStep(sprint.BriefReq{ID: ids[0], Tier: *tier, Who: c.actor}), stdout, stderr)
+			return a.runStep("brief", *c, st, store.BriefStep(sprint.BriefReq{ID: ids[0], Tier: *tier, Reason: why, Who: c.actor}), stdout, stderr)
 		}
 		// --tier with a brief: the tier the edit sets, over the recorded one and the text
 	}
@@ -2985,7 +2995,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, stdout, stderr)
+	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, *reason, stdout, stderr)
 }
 
 // briefWiden is brief <id> --widen: the card's brief with its PATHS widened by its latest
@@ -3008,7 +3018,7 @@ func (a *app) briefWiden(id, repoDir string, ans []string, c *common, stdout, st
 		return code
 	}
 	c.says = append(c.says, fmt.Sprintf("NEXT %s attempt %d starts from attempt %d head=%s", id, w.carry.Attempt+1, w.carry.Attempt, w.carry.Head))
-	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, ans, rs, c, st, "", false, stdout, stderr)
+	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, ans, rs, c, st, "", false, "", stdout, stderr)
 }
 
 // cmdBriefDir is brief --dir (docs/SPEC-SPRINT.md, the brief verb): one brief
@@ -3064,7 +3074,7 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code := lintBriefFiles("brief", cards, rs, c.max, stderr); code != 0 {
 		return code
 	}
-	return a.replaceBriefs(cards, ans, rs, c, st, "", false, stdout, stderr)
+	return a.replaceBriefs(cards, ans, rs, c, st, "", false, "", stdout, stderr)
 }
 
 // orNone is the ids comma separated, "none" for none.
@@ -3080,15 +3090,15 @@ func orNone(ids []string) string {
 // rules the member injects into it (cardRules); ans the judgments it answers.
 // tier, when set, is the tier the edit sets over each card's recorded tier and
 // the text's line 1; needsFromBrief takes each card's needs from the text's
-// DEPENDS-ON whole (--needs-from-brief).
-func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c *common, st *store.Store, tier string, needsFromBrief bool, stdout, stderr io.Writer) int {
+// DEPENDS-ON whole (--needs-from-brief); reason is the reason for re-tiering.
+func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c *common, st *store.Store, tier string, needsFromBrief bool, reason string, stdout, stderr io.Writer) int {
 	if st == nil { // --rules named the rule set: briefRules opened no store
 		var err error
 		if st, err = a.store(*c); err != nil {
 			return refuse(stderr, "brief", err.Error())
 		}
 	}
-	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief}
+	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief, Reason: reason}
 	texts := make([]string, len(cards))
 	checks := make([]briefCheck, len(cards))
 	for i, cd := range cards {
@@ -3845,6 +3855,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	display := fs.String("display", "", "the stream's display name, the label the dashboard's Work table shows in place of the key: one line of printable text, at most 60 bytes; default or none clears it (the stream's key is unchanged)")
 	prose := fs.String("prose", "", "the globs (PATHS globs, comma separated: security/**,ratings/**) of the files whose backquotes are their own, which the lander does not read for a code span; default takes them off")
 	seatAccept := fs.String("seat-accept", "", "on: the seat accepts the stream's cards by hand (a ready to accept judgment) instead of the tick accepting a card whose reads have all passed; off takes it off (the default: the tick accepts)")
+	defaultTier := fs.String("default-tier", "", "the tier (flash, pro or heavy) add stores a card of the stream with when its brief's line 1 names none; default takes it off, and the card checks then refuse a card brief with none (tier-line)")
 	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d, or default (the sprint's)", sprint.AttemptsMax))
 	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet dealt and every card queued to merge has its BASE line rewritten; refused when origin holds no such branch or a card's PATHS are absent at its tip; dealt and working cards keep their base")
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
@@ -3864,8 +3875,8 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 		}
 		*mark = map[bool]string{true: sprint.LandProtectedAny, false: sprint.ReadTierDefault}[*promotion]
 	}
-	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *display == "" && *prose == "" && *seatAccept == "" && *attempts == "" && *base == "") {
-		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --promotion[=false], --release <name>, --display <name>, --prose <glob,...|default>, --seat-accept <on|off>, --attempts <n|default> or --base <branch>")
+	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *display == "" && *prose == "" && *seatAccept == "" && *defaultTier == "" && *attempts == "" && *base == "") {
+		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --promotion[=false], --release <name>, --display <name>, --prose <glob,...|default>, --seat-accept <on|off>, --default-tier <flash|pro|heavy|default>, --attempts <n|default> or --base <branch>")
 	}
 	st, err := a.store(*c)
 	if err != nil {
@@ -3896,7 +3907,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 	}
-	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Display: *display, Prose: *prose, SeatAccept: *seatAccept, Attempts: *attempts, Base: *base, BaseChecked: baseChecked, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
+	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Display: *display, Prose: *prose, SeatAccept: *seatAccept, DefaultTier: *defaultTier, Attempts: *attempts, Base: *base, BaseChecked: baseChecked, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
 }
 
 // cmdStreamRemove takes the named streams off the work and merge tables:
