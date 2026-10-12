@@ -461,7 +461,10 @@ MCAdoptBrokenUndomigration.cfg	MCAdopt.tla	invariant	MigrationIsOneWay	ignore-te
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
 MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
+MCReadCardsLive.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
+MCReadCardsBrokenNamesHeld.cfg	MCReadCards.tla	temporal	NoGhostRead	ignore-terminal	readcards	required	-
+MCReadCardsBrokenNoLiveReturn.cfg	MCReadCards.tla	temporal	NoGhostRead	ignore-terminal	readcards	required	-
 MCReadVerdict.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictNeedOne.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictBrokenReadersOnly.cfg	MCReadVerdict.tla	temporal	AcceptedWorkCountsOk	ignore-terminal	readverdict	required	-
