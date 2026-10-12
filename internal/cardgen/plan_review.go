@@ -3,6 +3,7 @@ package cardgen
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -32,13 +33,15 @@ type SharedPathRow struct {
 }
 
 // SharedPathRows is the overlap table of a plan: one row per repository and path
-// named in PATHS by two or more cards, in first-named order, each with the cards
+// named in PATHS by two or more cards, in first-named path order then repository
+// order within each path, each with the cards
 // that name it, whether a lander-owned ledger covers it, and whether a needs edge
 // chains the cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
 func SharedPathRows(cards []CardPlan) []SharedPathRow {
 	type pathKey struct{ repo, path string }
 	byPath := map[pathKey][]string{}
 	var order []pathKey
+	pathRank := map[string]int{}
 	// Unknown identities overlap every repository naming that path. They are
 	// never evidence that two cards stage into separate repositories.
 	unknown := map[string][]string{}
@@ -47,6 +50,9 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 		repo := planRepo(c.Brief)
 		needs[c.ID] = briefNeeds(c.Brief)
 		for _, p := range headerPaths(c.Brief, "PATHS") {
+			if _, seen := pathRank[p]; !seen {
+				pathRank[p] = len(pathRank)
+			}
 			key := pathKey{repo, p}
 			if !containsString(byPath[key], c.ID) {
 				if len(byPath[key]) == 0 {
@@ -59,10 +65,13 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 			}
 		}
 	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return pathRank[order[i].path] < pathRank[order[j].path]
+	})
 	var rows []SharedPathRow
 	for _, key := range order {
 		ids := append([]string(nil), byPath[key]...)
-		if key.repo != "" {
+		if key.repo != "" && len(unknown[key.path]) > 0 {
 			// Keep plan order when an unresolved card preceded the known repository.
 			ids = nil
 			for _, c := range cards {

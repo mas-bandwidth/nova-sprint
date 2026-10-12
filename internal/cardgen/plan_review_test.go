@@ -170,9 +170,22 @@ func TestReviewRepositoryRowsKeepPlanOrderAndDeduplicatePaths(t *testing.T) {
 	})
 	require.Len(t, rows, 3)
 	assert.Equal(t, "src/x.go", rows[0].Path)
-	assert.Equal(t, "src/y.go", rows[1].Path)
-	assert.Equal(t, "src/x.go", rows[2].Path)
+	assert.Equal(t, "src/x.go", rows[1].Path)
+	assert.Equal(t, "src/y.go", rows[2].Path)
 	assert.Equal(t, []string{"unknown", "fix-a"}, rows[0].Cards)
-	assert.Equal(t, []string{"unknown", "fix-a"}, rows[1].Cards)
-	assert.Equal(t, []string{"unknown", "fix-b"}, rows[2].Cards)
+	assert.Equal(t, []string{"unknown", "fix-b"}, rows[1].Cards)
+	assert.Equal(t, []string{"unknown", "fix-a"}, rows[2].Cards)
+}
+
+func TestReviewFirstNamedPathOrderIncludesUnresolvedCards(t *testing.T) {
+	t.Parallel()
+	rows := SharedPathRows([]CardPlan{
+		{ID: "unknown", Brief: "# t\nPATHS: p.go q.go\n"},
+		{ID: "fix-a", Brief: "# t\nPATHS: q.go p.go\nREPO: owner/a\n"},
+	})
+	require.Len(t, rows, 2)
+	assert.Equal(t, "p.go", rows[0].Path)
+	assert.Equal(t, "q.go", rows[1].Path)
+	assert.Equal(t, []string{"unknown", "fix-a"}, rows[0].Cards)
+	assert.Contains(t, RefuseOverlaps(rows), "p.go is named in PATHS")
 }
