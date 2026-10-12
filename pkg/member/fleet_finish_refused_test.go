@@ -64,6 +64,31 @@ func TestRefusedPushedFinishStaysLiveThroughRetryBackoff(t *testing.T) {
 	assert.Equal(t, []string{"c1"}, g.r.started())
 }
 
+// STOP does not turn a pushed, completed generation into an orphan. Its finish is
+// already owed, even though applyReport released the running lane while it waits.
+func TestStopKeepsRefusedPushedFinishForRetry(t *testing.T) {
+	t.Parallel()
+	pu := &fakePusher{def: Push{Sha: fullSha}}
+	g, p := pushRig(t, pu, Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "landed"})
+	g.s.set("finish", 1, "REFUSED finish: no such column")
+	_, err := g.m.Tick(time.Unix(0, 0))
+	require.NoError(t, err)
+	require.Contains(t, g.m.finishRefused, "c1")
+	g.s.set("queue", 0, queueWith(t, "STOPPED", 7, working("c1", 1, &p)))
+	_, err = g.m.Tick(time.Unix(20, 0))
+	require.NoError(t, err)
+	assert.Empty(t, g.s.lines("stop-return"), "the pushed report remains this member's")
+	assert.Contains(t, g.m.finishRefused, "c1")
+	assert.Equal(t, "c1@1:held", g.m.liveWords())
+	g.s.set("queue", 0, queueWith(t, "RUNNING", 7, working("c1", 1, &p)))
+	g.s.set("finish", 0, "")
+	_, err = g.m.Tick(time.Unix(0, 0).Add(FinishRefusedRetry + time.Second))
+	require.NoError(t, err)
+	assert.Len(t, g.s.lines("finish"), 2, "the same finish is retried")
+	assert.Empty(t, g.s.lines("stop-return"))
+	assert.Equal(t, []string{"c1"}, g.r.started(), "the pushed generation is never run again")
+}
+
 // The same refusal FinishRefusedMax times hands the card back with stop-return instead of
 // running it: its run is refused, so the store must deal it again at the next generation.
 func TestTheSameRefusalHandsTheCardBackAfterFinishRefusedMax(t *testing.T) {

@@ -2000,6 +2000,11 @@ func (m *Member) machineStop(q queueOut, byID map[string]queueCard, now time.Tim
 			if gen <= 0 {
 				continue
 			}
+			if rf, held := m.finishRefused[id]; held && rf.gen == gen {
+				// The child completed and pushed before its finish was refused. It has no
+				// running lane, but its held finish still owns this generation.
+				continue
+			}
 			if g, handed := m.handedBack[id]; handed && g == gen {
 				continue
 			}
