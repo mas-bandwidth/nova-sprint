@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -44,37 +45,56 @@ func writeJava(t *testing.T, body string) string {
 	return path
 }
 
+// javaExecMu serializes writing an executable java script and running it. A
+// forked child inherits the parent's open descriptors, so when one test forks
+// while another still has the script open for writing, the exec fails with
+// ETXTBSY ("text file busy"). The lock spans the write and the exec, so a
+// script is never open for writing while a sibling test forks. It is held only
+// by the tests that run a written script; no other test in the package forks.
+var javaExecMu sync.Mutex
+
+// runJavaScript writes body as this package's java script in a fresh temp
+// directory and calls fn with its path while the exec lock is held.
+func runJavaScript(t *testing.T, body string, fn func(java string)) {
+	t.Helper()
+	javaExecMu.Lock()
+	defer javaExecMu.Unlock()
+	fn(writeJava(t, body))
+}
+
 // TestExecuteRunsTheJavaScript: Execute runs the java program and leaves its
 // combined output in the log, returning the exit status.
 func TestExecuteRunsTheJavaScript(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	java := writeJava(t, "echo 'Model checking completed. No error has been found.'\nexit 0\n")
-	r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
-	log := filepath.Join(dir, "out.log")
-	code := Execute(context.Background(), r, log)
-	if code != ExitPass {
-		t.Fatalf("Execute=%d want %d", code, ExitPass)
-	}
-	raw, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !contains(string(raw), "Model checking completed.") {
-		t.Fatalf("log does not hold TLC output: %q", raw)
-	}
+	runJavaScript(t, "echo 'Model checking completed. No error has been found.'\nexit 0\n", func(java string) {
+		r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
+		log := filepath.Join(dir, "out.log")
+		code := Execute(context.Background(), r, log)
+		if code != ExitPass {
+			t.Fatalf("Execute=%d want %d", code, ExitPass)
+		}
+		raw, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !contains(string(raw), "Model checking completed.") {
+			t.Fatalf("log does not hold TLC output: %q", raw)
+		}
+	})
 }
 
 // TestExecuteReportsTheProgramsExit: a java program that exits 13 returns 13.
 func TestExecuteReportsTheProgramsExit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	java := writeJava(t, "exit 13\n")
-	r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
-	code := Execute(context.Background(), r, filepath.Join(dir, "out.log"))
-	if code != 13 {
-		t.Fatalf("Execute=%d want 13", code)
-	}
+	runJavaScript(t, "exit 13\n", func(java string) {
+		r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
+		code := Execute(context.Background(), r, filepath.Join(dir, "out.log"))
+		if code != 13 {
+			t.Fatalf("Execute=%d want 13", code)
+		}
+	})
 }
 
 // TestExecuteTimesOutWhenTheContextEnds: a run that outlives its context is
@@ -82,14 +102,15 @@ func TestExecuteReportsTheProgramsExit(t *testing.T) {
 func TestExecuteTimesOutWhenTheContextEnds(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	java := writeJava(t, "sleep 5\nexit 0\n")
-	r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-	code := Execute(ctx, r, filepath.Join(dir, "out.log"))
-	if code != ExitTimeout {
-		t.Fatalf("Execute=%d want %d", code, ExitTimeout)
-	}
+	runJavaScript(t, "exec sleep 5\n", func(java string) {
+		r := Run{Java: java, Jar: filepath.Join(dir, "tlc.jar"), Dir: dir}
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		code := Execute(ctx, r, filepath.Join(dir, "out.log"))
+		if code != ExitTimeout {
+			t.Fatalf("Execute=%d want %d", code, ExitTimeout)
+		}
+	})
 }
 
 // TestCheckParallelRefusesWidthsOutsideTheRange: CheckParallel refuses widths

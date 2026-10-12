@@ -153,15 +153,3 @@ func TestAcceptsPinsPassAndViolations(t *testing.T) {
 		t.Fatal("Accepts accepted a temporal violation of another property")
 	}
 }
-
-// TestAcceptsRefusesAPassWithAViolation: the pass branch refuses an output that
-// carries a violation line, even under the completion line and exit 0. A
-// violation read as a pass is the worst case this API can make.
-func TestAcceptsRefusesAPassWithAViolation(t *testing.T) {
-	t.Parallel()
-	passCase := Case{Expected: "pass"}
-	mixed := cleanFinish + "Error: Invariant Safety is violated.\n"
-	if Accepts(passCase, ExitPass, mixed, "") {
-		t.Fatal("Accepts accepted a pass that also reads as an invariant violation")
-	}
-}

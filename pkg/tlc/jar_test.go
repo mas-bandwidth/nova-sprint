@@ -220,17 +220,13 @@ func TestJavaVersionRefusesGarbage(t *testing.T) {
 // with -version and returns what JavaVersion reads.
 func TestReadJavaVersionRunsTheJavaScript(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	java := filepath.Join(dir, "java")
-	script := "#!/bin/sh\nif [ \"$1\" = \"-version\" ]; then\n  echo 'openjdk version \"21.0.1\" 2025-04-15' >&2\n  exit 0\nfi\nexit 0\n"
-	if err := os.WriteFile(java, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	got, err := ReadJavaVersion(context.Background(), java)
-	if err != nil {
-		t.Fatalf("ReadJavaVersion: %v", err)
-	}
-	if got != "21.0.1" {
-		t.Fatalf("ReadJavaVersion=%q want 21.0.1", got)
-	}
+	runJavaScript(t, "exit 0\n", func(java string) {
+		got, err := ReadJavaVersion(context.Background(), java)
+		if err != nil {
+			t.Fatalf("ReadJavaVersion: %v", err)
+		}
+		if got != "21.0.1" {
+			t.Fatalf("ReadJavaVersion=%q want 21.0.1", got)
+		}
+	})
 }
