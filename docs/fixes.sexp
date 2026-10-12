@@ -98,7 +98,27 @@
      :title "The tier on line 1 is the tier a card is stored with and dealt on; the existing tier-line check stays, and a stream's --default-tier waives it"
      :text "Blocker. On 2026-10-12 ~00:05Z six cards admitted with tier: heavy or tier: pro on their RESULT line were dealt on flash (one landed on flash, one ran five attempts all on flash), and add said nothing. The RESULT line was read (cardhdr.ReadModel takes tier: anywhere on line 1), but startTier started every card that was not pro on flash: flash first, a heavy card climbing the ladder from flash. startTier now starts a card on the tier its line 1 names, flash, pro or heavy (sprint.LineOneTier, one rule for both line-1 forms), so a heavy card's first deal draws a heavy route and never flash; a card dealt below its ceiling before this keeps its tier_now and the ladder still carries it. add prints each card's stored tier on its line (tier=<t>) and brief prints the re-briefed card's (<id> tier=<t>), a stronger tier on the new line 1 raising the card's tier_now. No new refusal is added: the card checks' existing tier-line check stays the one rule. A card brief (a PATHS: line) whose line 1 names no tier is refused by the card checks' tier-line finding, the one rule the lint and the store read by, unless the stream it is added to names a default tier (stream set --default-tier, FieldDefaultTier, stored as the card's pinned tier); a free task that names none starts on flash. Seven existing tests that took a heavy brief to start on flash now say heavy, or model a card dealt on flash before this (tier_now flash). docs/CLI.md states the rule. Tests: TestTheTierLineIsReadOrRefusedByOneRuleInBothForms (internal/card/tier_line_test.go), TestTheTierOnLineOneIsReadInBothForms, TestAddStoresTheTierLineOneNamesOrItsStreamsDefault, TestAHeavyCardsFirstDealDrawsAHeavyRoute, TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow (internal/sprint/tier_line_test.go), TestAddPrintsTheTierEachCardIsStoredWith, TestBriefPrintsTheTierTheCardIsDealtOn (cmd/nova-sprint/tier_line_test.go) and the functional TestAHeavyCardIsDealtOnAHeavyRouteOnAStore (cmd/nova-sprint/tier_line_functional_test.go)."
      :origin "this card, from the seat, 2026-10-12 ~00:05Z (every-need-names-a-live-card-checked-every-second, landing-never-waits-on-the-seats-hook, a-moved-card-stops-its-old-run, rate-limit-judge-in-the-running-member, a-cleared-sprint-keeps-its-readers, a-bound-card-is-reworked-from-its-last-head-by-one-verb dealt on flash); the standing rule: never flash on heavy or frontier work; hand-landed outside the sprint at nova-sprint main a33bf857")
-    (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.14" :status "planned"
+     (fix "a-brief-declared-tier-is-the-cards-tier" :release "v1.2.14" :status "planned"
+      :title "A brief's RESULT-line tier is the card's tier from admission, with regression tests"
+      :text "The tier a brief declares on its RESULT line (RESULT: <id> sha=<sha12> tier: <t>) is the card's
+       tier from admission: add and brief --brief-file record it as the card's pin (frontier stays frontier;
+       the deal's unserved-tier judgment handles it) and the deal never gives a card to a route below that
+       tier; a brief with no tier on its RESULT line is refused by the card checks' tier-line finding with a
+       remedy; brief --tier still changes it later, with --reason as today. This is the behaviour hand-landed
+       as a-tier-on-line-one-is-the-tier-the-card-is-dealt-on (main a33bf857); this card adds the regression
+       tests that hold it: TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro and
+       TestAProBriefIsNeverDealtToFlash (a heavy brief is pinned heavy and never dealt to a flash or pro
+       route; a pro brief is never dealt to flash), TestACardBriefWithNoResultLineTierIsRefusedByLint (a
+       brief with no RESULT-line tier is refused by the lint) and TestABriefEditThatChangesTierChangesThePin
+       (a brief edit that changes the declared tier changes the pin) in internal/sprint/brief_tier_test.go,
+       and the functional TestABriefDeclaredTierIsTheCardsTierOnAStore
+       (cmd/nova-sprint/brief_tier_functional_test.go) on a real store with a flash and a heavy route.
+       docs/SPEC-CARD-CONTRACT.md, The RESULT-line tier, states it."
+      :origin "this card, a-brief-declared-tier-is-the-cards-tier.w2, from the coordinator, 2026-10-12 ~08:30Z:
+       of 162 open cards 92 declared heavy and 69 pro and none flash, yet flash routes served them; the rule
+       and its first fix were hand-landed as a-tier-on-line-one-is-the-tier-the-card-is-dealt-on; this card is
+       the regression coverage")
+     (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.14" :status "planned"
      :title "A member's environment exits are recorded, a 134 or 137 spends nothing, and the doctor names their rate"
      :text "A child that ends 134 or 137, or that leaves no result (why=no-result) at any exit,
       did not judge the card: it is an environment event of the member, recorded and counted as

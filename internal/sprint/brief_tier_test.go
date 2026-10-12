@@ -51,14 +51,14 @@ func TestACardBriefWithNoResultLineTierIsRefusedByLint(t *testing.T) {
 	// is refused with a tier-line finding. A free task (no PATHS:) is not refused.
 	const rest = "\nREPO: o/r\nPATHS: internal/x/*.go\n\nTHE TASK.\n"
 	const restFree = "\nREPO: o/r\n\nTHE TASK.\n"
-	
+
 	brief := "RESULT: s1-1 sha=000000000000" + rest
 	checks := []string{}
 	for _, f := range card.Checks("s1-1", brief, card.Options{}) {
 		checks = append(checks, f.Check)
 	}
 	assert.Equal(t, []string{"tier-line"}, checks, "a card brief whose line 1 names no tier is refused")
-	
+
 	briefFree := "c: the work (s1)" + restFree
 	checksFree := []string{}
 	for _, f := range card.Checks("s1-1", briefFree, card.Options{}) {
