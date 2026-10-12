@@ -8519,3 +8519,11 @@ friend reaches that friend's inbox by the route her judgments already take: the
 push loop writes a group addressed to someone to that actor's own inbox
 directory (`pushTarget.dirOf`, `~/<actor>-working/inbox/sprint-judgments`), the
 group carrying the note's addressee (`sprint.Group.To`).
+
+## The consumer record
+
+Each producer card carries the history of every consumer the machine launched for it, recorded on the card as it happens, keyed by epoch (a clear drops it with the epoch; every key carries it). A consumer is an attempt (wN: the member or friend, its route and model), a read (rN: the reader) or the landing.
+
+Each record holds: epoch, kind (work, read, land), who (member/friend/reader, empty for the landing), route and model, taken (when it was launched), ended (when it ended, empty while out), outcome (empty while out) and first_line (its outcomes first line, when it has one). The card prints it as a CONSUMERS block: the counts (attempts N, reads M, landings K, cost) then one line per consumer, newest last; `card <id> --json` carries the list, and `view cards --json` carries the counts per card.
+
+The producer/consumer check (every-producer-card-has-its-consumer-out-after-the-tick) reads the same record: a card in working, review or fix whose newest consumer has ended, and no newer one is out, is the stall it names (check rule 13).

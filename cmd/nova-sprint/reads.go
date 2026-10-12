@@ -2438,6 +2438,9 @@ type cardView struct {
 	// What it cost: each consumer (a work card's take, a read) with its record, and
 	// the totals, computed from the consumers' records (sprint.CardCost).
 	Cost sprint.CardCostView `json:"cost"`
+	// The consumer history: who the machine launched for this card and how each
+	// ended, with the counts (sprint.ConsumersOf).
+	Consumers sprint.ConsumersView `json:"consumers"`
 	// The story: its timeline from the log, and the words given (reports,
 	// findings, fixes, reasons) whole.
 	Timeline []storyLine `json:"timeline"`
@@ -2510,7 +2513,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		tier, ceiling := sprint.CardTiers(v.Primary)
 		level, source := sprint.CardPriority(v.Primary)
 		b, _ := json.Marshal(cardView{Primary: v.Primary, Column: v.Primary.Col, Tier: tier, Ceiling: ceiling, Grade: v.Primary.F(sprint.FieldGrade), Who: v.Primary.F(sprint.FieldWho), Priority: level, PrioritySource: source, Work: v.Work, Reads: v.Reads, Merge: v.Merge, Open: v.Open, Needs: v.Needs, NeededBy: v.NeededBy, Held: held,
-			Cost: sprint.CardCostOf(v.Primary), Timeline: events, Texts: texts})
+			Cost: sprint.CardCostOf(v.Primary), Consumers: sprint.ConsumersOf(v.Primary), Timeline: events, Texts: texts})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -2530,6 +2533,10 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		}
 		// what it cost: a line per consumer that ended, and the totals
 		for _, line := range sprint.CardCostOf(v.Primary).CostLines() {
+			fmt.Fprintln(stdout, oneline.Escape(line))
+		}
+		// the consumer history: the counts, then one line per consumer, newest last
+		for _, line := range sprint.ConsumersOf(v.Primary).ConsumerLines() {
 			fmt.Fprintln(stdout, oneline.Escape(line))
 		}
 		epoch := uint64(0)

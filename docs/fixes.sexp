@@ -2497,6 +2497,22 @@
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
      attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+  (fix "a-card-carries-its-consumer-history" :release "v1.2.15" :status "planned"
+   :title "A card carries its consumer history"
+   :text "A producer card now records every consumer the machine launched for it as it
+    happens, keyed by epoch: an attempt (wN: member or friend, its route and model, taken at,
+    ended at, outcome and its first line), a read (rN: reader, asked at, ended at, verdict and
+    its finding's first line) and the landing (at, outcome). `nova-sprint card <id>` prints a
+    CONSUMERS block: the counts (attempts N, reads M, landings K, cost) then one line per
+    consumer, newest last; `card <id> --json` carries the list; `view cards --json` carries the
+    counts per card; a clear drops it with the epoch (every key carries it). The producer/
+    consumer check (every-producer-card-has-its-consumer-out-after-the-tick) reads the same
+    record: a card in working, review or fix whose newest consumer has ended and no newer one is
+    out is the stall it names. Tests: internal/sprint/consumers_test.go (red first)."
+   :origin "this card, a-card-carries-its-consumer-history.w2; the owner, 2026-10-11: \"We
+    need a history and count of consumer cards launched, per-producer card, included in the
+    producer card\", \"Make sure these watches become part of the tool\", after a seat landed sat
+    at 68 with no push and the review and fix columns held 150 cards")
   (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
    :title "A landing whose every conflict is a shared ledger lands"
    :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals

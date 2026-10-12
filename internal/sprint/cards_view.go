@@ -24,6 +24,12 @@ type CardRow struct {
 	Col    string `json:"col"`
 	Tier   string `json:"tier"`
 	Holder string `json:"holder,omitempty"` // the member or friend running it; "" when no one is
+	// The consumer counts (docs/SPEC-SPRINT.md, "the consumer record"): how many
+	// attempts, reads and landings the machine launched for the primary. Only the
+	// list (no --by) carries them; a counting --by never lists the rows.
+	Attempts int `json:"attempts"`
+	Reads    int `json:"reads"`
+	Landings int `json:"landings"`
 }
 
 // CardTier is the tier the dealer reads on the primary c: the tier its last deal drew
@@ -64,7 +70,8 @@ func CardRows(s *Snapshot, f CardsFilter) []CardRow {
 				if IsSentinel(c) {
 					continue
 				}
-				r := CardRow{ID: c.ID, Stream: stream, Col: string(col), Tier: CardTier(c), Holder: CardHolder(s, c)}
+				cons := ConsumersOf(c)
+				r := CardRow{ID: c.ID, Stream: stream, Col: string(col), Tier: CardTier(c), Holder: CardHolder(s, c), Attempts: cons.Attempts, Reads: cons.Reads, Landings: cons.Landings}
 				if f.Holder == "" || r.Holder == f.Holder {
 					out = append(out, r)
 				}

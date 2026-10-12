@@ -241,6 +241,15 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 	for _, f := range Cycles(s) {
 		out = append(out, Violation{11, f.String()})
 	}
+	// 13. Every producer card has its consumer out (docs/SPEC-SPRINT.md, "the
+	// consumer record"): a card in working or review whose newest consumer has
+	// ended, and no newer one is out, is the stall it names. Only cards that
+	// carry a consumer record are judged.
+	for _, c := range s.Work.Column(Working, Review) {
+		if ConsumersOf(c).Stalled() {
+			out = append(out, Violation{13, fmt.Sprintf("%s is %s and its newest consumer has ended; none is out", c.ID, c.Col)})
+		}
+	}
 	// 10. A step that did not finish: the fence holds it.
 	if pending != nil {
 		out = append(out, Violation{10, "operation " + pending.ID + " (" + pending.Verb + ") is pending; run: nova-sprint repair"})
