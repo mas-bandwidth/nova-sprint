@@ -107,7 +107,6 @@ func ParseCLI(path string) ([]Verb, error) {
 // where only fenced blocks and `###` headings declare.
 func ParseReference(text string) []Verb { return parseLines(text, false) }
 
-
 func parseLines(text string, fenced bool) []Verb {
 	var (
 		verbs   []Verb

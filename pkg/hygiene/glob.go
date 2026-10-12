@@ -108,4 +108,3 @@ func matchSegments(pat, segs []string) bool {
 	}
 	return len(segs) == 0
 }
-

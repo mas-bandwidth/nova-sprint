@@ -13,4 +13,3 @@ type Runner func(ctx context.Context, dir string, args ...string) (string, error
 // once the read has taken longer than a tenth of a second: a program says what
 // it is doing when what it is doing takes long enough to look like a hang.
 type Progress func(done, total int)
-

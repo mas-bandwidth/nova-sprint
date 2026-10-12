@@ -30,4 +30,3 @@ const MinExampleCommands = 3
 // sentenceBreak is a sentence ending inside the line: a full stop, a semicolon,
 // a question or an exclamation mark with more words after it.
 var sentenceBreak = regexp.MustCompile(`[.;?!] `)
-

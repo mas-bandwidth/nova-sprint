@@ -16,7 +16,6 @@ type Authors map[string]string
 // Author returns the recorded author of a verb, or "" when there is none.
 func (a Authors) Author(key string) string { return a[normalizeKey(key)] }
 
-
 // wrote reports whether `by` is the author of this verb. Names are compared
 // case-insensitively and trimmed, and nothing else: a receipt that spells a
 // name differently is a receipt with a different name, and the ledger says who
@@ -484,4 +483,3 @@ func Gate(verbs []Verb, receipts []Receipt, authors Authors, requireAll bool) ([
 	}
 	return findings, summary
 }
-
