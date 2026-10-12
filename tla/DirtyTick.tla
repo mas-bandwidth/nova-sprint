@@ -833,21 +833,24 @@ LiveOn == "liverun" \in DOMAIN Scn /\ Scn.liverun
 \* outside event, on only where the scenario turns it on (Scn.liverun), and
 \* counted against MaxActs.
 \*
-\* StartLevel is the fleet's level (tla/Level.tla, steps_work.go level, round.go
-\* levelTo), cited, not modelled again: a card dealt to an up member and not
-\* taken (no take of it applied or queued) moves to another up member whose
-\* backlog (its cards held less its width) is at least two below, within that
-\* member's room. Level.tla holds the loop and its order; here it is one move
-\* a tick, chosen once (CHOOSE).
+\* StartLevel is the fleet's level under the free rule (tla/Level.tla Rule
+\* "free", ChoiceFree; the code card the-start-level-never-moves-a-card-off-a-free-lane
+\* brings steps_work.go level and round.go levelTo to it): a card dealt to an up
+\* member and not taken (no take of it applied or queued) moves off the member
+\* most over its width that has such a card, onto an up member holding fewer
+\* cards than its width, within that member's room. No mean and no gap of two.
+\* Level.tla holds the loop and its order; here it is one move a tick, chosen
+\* once (CHOOSE).
 LevelUp(S) == {m \in Machines : S.stat[m] = "up" /\ ~Off(S, m)}
+Over(S, m) == Cardinality(S.mc[m]) - Width[m]
+LevelMovable(S, m) == {c \in S.mc[m] : ~S.tk[c] /\ Count(S.q["fleet"], LAMBDA e : e.c = c /\ e.k \in {"take", "fin"}) = 0}
+LevelTargets(S, m) == {m2 \in LevelUp(S) : m2 # m /\ Over(S, m2) < 0 /\ Room(S, m2) > 0}
+LevelSources(S) == {m \in LevelUp(S) : Over(S, m) > 0 /\ LevelMovable(S, m) # {} /\ LevelTargets(S, m) # {}}
 LevelMoves(S) ==
   {x \in Machines \X Machines \X Cards :
      LET m == x[1]  m2 == x[2]  c == x[3] IN
-     /\ m \in LevelUp(S) /\ m2 \in LevelUp(S) /\ m # m2
-     /\ c \in S.mc[m] /\ ~S.tk[c]
-     /\ Count(S.q["fleet"], LAMBDA e : e.c = c /\ e.k \in {"take", "fin"}) = 0
-     /\ (Cardinality(S.mc[m]) - Width[m]) - (Cardinality(S.mc[m2]) - Width[m2]) >= 2
-     /\ Room(S, m2) > 0}
+     /\ m \in LevelSources(S) /\ \A o \in LevelSources(S) : Over(S, o) <= Over(S, m)
+     /\ c \in LevelMovable(S, m) /\ m2 \in LevelTargets(S, m)}
 Lvl(S) ==
   IF LevelMoves(S) = {} THEN S
   ELSE LET x == CHOOSE y \in LevelMoves(S) : TRUE
