@@ -76,24 +76,30 @@ func TestTheLevelMovesTheExcessOntoFreeLanesOnly(t *testing.T) {
 	assert.Equal(t, map[string]int{"source": 8, "free": 4, "full": 6}, perMember(w.s))
 }
 
-// The target rolls the deal's index: a source (width 4, four working and four
-// ready: excess 4) gives one card to each of four members with one free lane,
+// The target rolls the deal's index: a source (width 4, four working and six
+// ready: excess 6) gives one card to each of four members with one free lane,
 // in index order from the deal's cursor past the source, so every free lane
-// takes its card once (round.go, nextLane from the deal's index).
+// takes its card once (round.go, nextLane from the deal's index). Then no free
+// lane is left: the source keeps its last two cards, and the full member f
+// (width 4, four working: no free lane, but room under DealAhead times its
+// width) is never a target. Under the mean rule the fifth card went to f.
 func TestTheLevelTargetsRollTheIndex(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	upWidths(t, w, memberWidth{"a", 4}, memberWidth{"b", 4}, memberWidth{"c", 4}, memberWidth{"d", 4}, memberWidth{"e", 4})
+	upWidths(t, w, memberWidth{"a", 4}, memberWidth{"b", 4}, memberWidth{"c", 4}, memberWidth{"d", 4}, memberWidth{"e", 4}, memberWidth{"f", 4})
 	for i := 0; i < 4; i++ {
 		putWorkCard(w, fmt.Sprintf("a-working-%d", i), "a", Working, float64(i), nil)
 	}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 6; i++ {
 		putWorkCard(w, fmt.Sprintf("a-ready-%d", i), "a", Ready, float64(10+i), nil)
 	}
 	for _, m := range []string{"b", "c", "d", "e"} {
 		for i := 0; i < 3; i++ {
 			putWorkCard(w, fmt.Sprintf("%s-working-%d", m, i), m, Working, float64(20+i), nil)
 		}
+	}
+	for i := 0; i < 4; i++ {
+		putWorkCard(w, fmt.Sprintf("f-working-%d", i), "f", Working, float64(30+i), nil)
 	}
 	// the index just past a: the first scan starts at b.
 	w.s.Fleet.SetProps(map[string]string{PropDealIndex: "a"})
@@ -106,7 +112,7 @@ func TestTheLevelTargetsRollTheIndex(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, []string{"b", "c", "d", "e"}, to, "the level did not roll the index: %v", movedLines(p))
+	assert.Equal(t, []string{"b", "c", "d", "e"}, to, "the level did not roll the index over the free lanes alone: %v", movedLines(p))
 	w.must(p)
-	assert.Equal(t, map[string]int{"a": 4, "b": 4, "c": 4, "d": 4, "e": 4}, perMember(w.s))
+	assert.Equal(t, map[string]int{"a": 6, "b": 4, "c": 4, "d": 4, "e": 4, "f": 4}, perMember(w.s))
 }
