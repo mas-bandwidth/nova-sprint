@@ -152,7 +152,7 @@ func activeStopLeases(s *sprint.Snapshot) []StopLease {
 	return active
 }
 
-// unsettledStopDebt enforces StopReturn.tla ExplicitStart against each exact
+// unsettledStopDebt enforces tla/StopFence.tla ExplicitStart against each exact
 // same-owner return receipt (docs/SPEC-SPRINT.md section 14), as tla/LiveRuns.tla Start
 // reads it (v1.2.6): an entry is open while it still owns its card (stopOwned: working on
 // its row at the captured generation), unless its row's fresh live set names the card held

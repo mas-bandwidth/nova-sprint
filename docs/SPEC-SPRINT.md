@@ -7547,7 +7547,10 @@ oldest alias; a review where every card waits on the coordinator is named the se
 as such), the accepted and not merged (count, with each stream's merge state), the lander's
 last refusal (card and reason) and the base's red CI (the check). A sprint with nothing in
 review or merging raises none. The episode clears on the next landing, with the happened
-`landing again after <d>` and both properties empty. The model is its own card,
+`landing again after <d>` (from the episode's start to the landing) and both properties
+empty; a landing the tick sees only once the stall holds again still ends the old episode
+first, and the stall after it is a new one. A plan that only writes the episode's stamps
+carries a unit of its own, since the store's tick passes over an empty plan. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
 
 Every landing is also pushed to the coordinator as it happens (`sprint.landingPush`, the
@@ -7555,7 +7558,13 @@ merge step): one happened `landed <card>` per landing line, with the card's stre
 head, the one-line `:title` and `:text` of its fixes ledger entry (read by the lander from
 the landed head and carried onto the merge event), and the attempts and reads it took. A batch of landings in one tick
 is one push with one line per card, addressed to the coordinator and needing no ack beyond
-the hook's. The owner, 2026-10-11: "you should also get this push notification, so you as
+the hook's. The push stays inside the field bound and every landed card keeps its line: the
+ledger texts share what the lines' facts leave (each at most 600 bytes), and only when the
+facts alone overflow are the lines that fit kept and the rest counted on the last line,
+"... and N more landed: <ids>". The count is always whole; the ids are whole and as many as
+the bound leaves, and when they do not all fit (ids that alone pass 64 KiB) the line says so,
+"(partial list, M named)": no id is cut partway. The landing and episode stamps are RFC3339 to the nanosecond and compared as times,
+so a sub-second bound orders a landing against the episode it came before. The owner, 2026-10-11: "you should also get this push notification, so you as
 coordinator can read the card that landed and keep on top of things".
 
 ### The server

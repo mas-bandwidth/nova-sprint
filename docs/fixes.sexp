@@ -814,13 +814,25 @@
     the judgments section, names the stall, its bound, its breakdown and its clear. Every landing
     is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
     <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
-    entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
-    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
-    Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
-    TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
-    TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
-    TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
-    TestTickDeadlinesRaisesTheLandingStall, TestLandingStallSurvivesTicksShorterThanTheBound."
+    entry (read by the lander from the landed head and carried on the merge step), and the attempts
+    and reads it took; a batch in one tick is one push with a line a card, inside the field bound.
+    A landing the tick sees only after the stall holds again still ends the old episode first. A
+    plan that only writes the episode's stamps carries a unit of its own: the store's tick passes
+    over an empty plan, so on a real store a sprint that had not yet landed never began its
+    episode (found by the functional test); that unit is keyed by the property, as the status
+    record's is, the reference model carries the landing-stall properties (refmodel.CarriedProps),
+    and the differential test names the stall judgment the engine's until the model card lands. A
+    batch push shares the bound among its ledger texts so every landed card keeps its line (a cut
+    of the joined note dropped the lines past 64 KiB; past the facts the last line counts every card
+    left out and lists whole ids only, saying when the list is partial), and the landing and episode stamps are
+    nanosecond RFC3339 compared as times, so a sub-second bound never takes the last landing for a
+    new one. The functional test names its private store with --redis on every verb and fails on
+    any forward to a sprint server. The
+    model card tla-sprintrules-landing-stall-liveness is its own card. Unit tests in
+    internal/sprint/landing_stall_test.go, internal/sprint/store/landing_stall_reads_test.go and
+    cmd/nova-sprint/land_test.go; the functional test
+    TestALandingStallIsJudgedAndClearedByALandingOnTheStore on a real store (docs/TESTS.md, the
+    landing stall)."
    :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
     hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
     need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
@@ -2380,6 +2392,10 @@
    :title "The fleet alarm and idle count measure working work cards only"
    :text "Both the fleet backlog alarm and FleetWorking now count the work cards on up members, excluding working read cards. Before, a reader card could carry the alarm numerator across its 50% threshold and clear the work alarm, then start another episode when the read ended, while work stayed below threshold. TestTheFleetAlarmIgnoresReadsCrossingTheThreshold and TestTheIdleFleetCountsWorkNotReads pin both directions; TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds still proves that real work crossing the threshold clears once."
    :origin "this hand fix, 2026-10-11; source defect reviewed at nova-sprint main c28d55fccdadbe80f89bbb2efb1ae99d548ace2a; scoped card the-fleet-alarm-counts-working-work-cards-only")
+  (fix "tla-sprint-models-come-home-to-nova-sprint" :release "v1.2.14" :status "planned"
+   :title "The friend take, redeal clock and STOP fence models live with nova-sprint"
+   :text "Models and comments only; no product change. Three nova-tools modules that model nova-sprint code move here from nova-tools dev 2314d437fedb33d148e75346ab5582ec552e7962, byte for byte apart from names and header comments: FriendReadyTake (five cases: the pass and the reversed witnesses NoFill, PastWidth, Stranger and NoJudge), FriendRedealLate (two: the pass and StaleStands), and nova-tools' StopReturn, a different machine from this repository's StopReturn, which arrives as StopFence (eight cases with its StaleTick and StalePart instances; the reversed witnesses Premature, LateRead, Unfenced, Orphan, StaleTick and StalePart). nova-sprint's own tla/StopReturn.tla is untouched. Each header names the nova-sprint code it models with current line numbers (friendDealPass, not the friendDeal that does not exist). CASES rows in groups friendreadytake, friendredeallate and stopfence with fresh TLC records; COVERAGE rows friend-ready-take, friend-redeal-late and stop-fence, partial with what stays outside each preserved machine; README rows. The citations of StopReturn's ExplicitStart, NoOrphanDebt and Report in store/machine_transition.go, store/fleet_rows.go and store/tick.go now name tla/StopFence.tla, and friend_take.go's cite of tla/FriendReadyTake.tla is now true. Removing them from nova-tools is tla-moved-sprint-models-leave-nova-tools."
+   :origin "card tla-sprint-models-come-home-to-nova-sprint, hand-landed 2026-10-11 outside the sprint from its pushed head 527f407b (w2.g10.e17, refused at landing for ledger conflicts); v1.2.12 inventory item T33 and the nova-tools drift read at dev 2314d437f")
   (fix "tla-provider-funds" :release "v1.2.14" :status "planned"
    :title "ProviderFunds models a provider's refusal rest, its judgments and the all-out stop"
    :text "Models only, no product change. New tla/ProviderFunds.tla instantiates tla/RouteRest.tla once per
