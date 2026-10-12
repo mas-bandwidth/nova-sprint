@@ -1336,6 +1336,11 @@ func AtRedealBound(s *Snapshot, pr *Card) *Card {
 // StagingTakes is the work card's launches refused at staging, in the order of their
 // generations (FieldStagingTake).
 func StagingTakes(wc *Card) (takes []ProviderTake, gens []int) {
+	// a card with no generation has no staging takes: read the field once, so the
+	// deal's scan of the fleet (mirrorRefusals) pays no Atoi error per card
+	if wc.F("gen") == "" {
+		return nil, nil
+	}
 	for g := 1; g <= wc.Int("gen"); g++ {
 		if v := wc.F(FieldStagingTake + itoa(g)); v != "" {
 			takes, gens = append(takes, parseTake(v)), append(gens, g)
