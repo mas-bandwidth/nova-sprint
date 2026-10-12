@@ -99,6 +99,8 @@ func TestTheTickRaisesReadersBehindWhenReadsWaitTheWindow(t *testing.T) {
 // a flash route and the reader reader-m1: open and written read the store's judgments (the
 // Mem's or the Redis's, readers_behind_functional_test.go).
 func readersBehind(h *harness, open func(string) []sprint.Open, written func(string) int) {
+	h.readersTable() // this fixture consumes standalone readers
+
 	t := h.t
 	h.beat()
 	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {

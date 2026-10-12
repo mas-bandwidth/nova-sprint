@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +42,9 @@ type testApp struct {
 	quiet map[string]bool
 	// queue is the merge queues land asks, a fake: no forge is asked
 	queue *heldQueue
+	// oldReaders marks tests that intentionally exercise the legacy readers table.
+	// The default fixture remains propertyless; these tests opt out explicitly.
+	oldReaders bool
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -120,8 +124,41 @@ func (ta *testApp) beat() {
 func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	code := runInto(ta.a, ta.withEpoch(split(line)), &out, &errb)
+	args := split(line)
+	code := runInto(ta.a, ta.withEpoch(args), &out, &errb)
+	if code == 0 && ta.oldReaders && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
+		ta.readersTableOn(args)
+	}
 	return code, out.String(), errb.String()
+}
+
+// readersTableOn opts an explicitly legacy fixture out of read cards after
+// its init, forwarding the init's store and coordinator identity.
+func (ta *testApp) readersTableOn(initArgs []string) {
+	ta.t.Helper()
+	args := []string{"set", "--read-cards", "off"}
+	actor := false
+	coordinator := ""
+	for i, a := range initArgs {
+		switch {
+		case (a == "--redis" || a == "--actor") && i+1 < len(initArgs):
+			args = append(args, a, initArgs[i+1])
+			actor = actor || a == "--actor"
+		case strings.HasPrefix(a, "--redis=") || strings.HasPrefix(a, "--actor="):
+			args = append(args, a)
+			actor = actor || strings.HasPrefix(a, "--actor=")
+		case a == "--coordinator" && i+1 < len(initArgs):
+			coordinator = initArgs[i+1]
+		case strings.HasPrefix(a, "--coordinator="):
+			coordinator = strings.TrimPrefix(a, "--coordinator=")
+		}
+	}
+	if !actor && coordinator != "" {
+		args = append(args, "--actor", coordinator)
+	}
+	var out, errb bytes.Buffer
+	code := runInto(ta.a, args, &out, &errb)
+	require.Equal(ta.t, 0, code, "%s: %s%s", strings.Join(args, " "), out.String(), errb.String())
 }
 
 // withEpoch is a report as an outside actor makes it: with the epoch its

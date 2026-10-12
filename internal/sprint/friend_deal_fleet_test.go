@@ -30,6 +30,7 @@ func fleetBrief(tier string) string {
 // putReads places n read cards working on the friend's row, as the ask places hers, each
 // of a primary in review in stream reads.
 func putReads(w *world, friend string, n int) {
+	w.readersTable() // these synthetic records are unmarked legacy reads
 	row := FriendRow(friend)
 	if !w.s.Fleet.HasRow(row) {
 		w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), row))

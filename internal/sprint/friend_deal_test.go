@@ -423,6 +423,7 @@ func TestABuilderFriendIsDealtWork(t *testing.T) {
 func TestAReaderOnlyFriendIsAskedARead(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
+	w.readersTable() // explicit legacy reader-table fixture
 	putReview(w, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
 	askReaders(t, w, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}}})
 	require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend whose roles name reader is asked the read")
@@ -441,10 +442,12 @@ func TestABuilderOnlyFriendIsAskedNoRead(t *testing.T) {
 func TestAFriendWithNoRolesIsDealtWorkAndAskedARead(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"))
+	w.readersTable() // explicit legacy reader-table fixture
 	dealStarted(w, FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"})
 	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "a friend with no role list is dealt work, as before roles")
 
 	w2 := newWorld(t, "reader-a", "reader-b")
+	w2.readersTable() // the pre-role standalone ask
 	putReview(w2, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
 	askReaders(t, w2, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}})
 	require.NotNil(t, w2.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend with no role list is asked the read, as before roles")

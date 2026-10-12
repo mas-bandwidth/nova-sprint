@@ -48,6 +48,8 @@ func indexPast(names []string, value string) string {
 // seqFleet is eight machines of the width, each beating, the machine
 // running, and no card yet.
 func seqFleet(h *harness, width int) {
+	h.readersTable() // this fixture consumes standalone readers
+
 	h.t.Helper()
 	h.mu.Lock()
 	h.live = append([]string(nil), widthMembers...)

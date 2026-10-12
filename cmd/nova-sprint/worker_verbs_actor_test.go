@@ -115,6 +115,7 @@ func TestRemindWithoutAnActorIsRefused(t *testing.T) {
 func newWorkerApp(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.oldReaders = true // these worker verbs exercise the legacy readers table
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b")
 	return ta
 }

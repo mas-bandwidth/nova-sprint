@@ -158,6 +158,10 @@ func newLandedRig(t *testing.T) *landedRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// This rig consumes the standalone legacy readers table.
+	readMode, readErr := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
+	require.NoError(t, readErr)
+	require.Empty(t, readMode.Refused)
 	return r
 }
 

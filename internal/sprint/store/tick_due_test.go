@@ -242,6 +242,8 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	h.m = NewMem()
 	h.st.B = h.m
 	require.NoError(t, h.st.Init(h.ctx))
+	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
+	h.readersTable()
 	h.beat()
 	// one reader up: a pro card needs two, so fewer than two are up
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a"}))
@@ -314,6 +316,7 @@ func TestAWaitedTickJudgmentComesBackAfterItsTime(t *testing.T) {
 func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // this judgment is specifically the empty legacy readers table
 	h.beat()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
@@ -336,6 +339,7 @@ func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
 func TestAReviewCardAddedAfterTheJudgmentIsNamedByIt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // this judgment is specifically the empty legacy readers table
 	h.beat()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))

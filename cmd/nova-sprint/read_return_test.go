@@ -18,6 +18,7 @@ import (
 func TestReadReturnIsAskedOfAnotherReaderByTheNextTick(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // this test intentionally exercises the legacy readers table
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.ok("reader away reader-c")
 	ta.inReview(1)

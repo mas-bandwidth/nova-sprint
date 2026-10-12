@@ -35,6 +35,7 @@ var crReaders = []string{"reader-a", "reader-b", "reader-c"}
 
 func crSprint(t *testing.T, seed uint64) *crWorld {
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	w := &crWorld{h: h, rng: rand.New(rand.NewPCG(seed, 7)), crossAge: map[string]int{}, readyToAccept: map[string]int{}}
 	for _, m := range crMembers {
 		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))

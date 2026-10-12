@@ -30,6 +30,8 @@ type world struct {
 func newWorld(readers ...string) *world {
 	s := &sprint.Snapshot{Now: t0, Work: sprint.NewTable(sprint.Work), Readers: sprint.NewTable(sprint.Readers),
 		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator"}
+	// The existing reference model is intentionally of the legacy readers table.
+	s.Work.SetProp(sprint.PropReadCards, sprint.SwitchOff)
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{s: s}
 }

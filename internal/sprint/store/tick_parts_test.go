@@ -110,6 +110,8 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 	h2.m = NewMem()
 	h2.st.B = h2.m
 	require.NoError(t, h2.st.Init(h2.ctx))
+	require.NoError(t, h2.m.SetCoordinator(h2.ctx, h2.st.Actor))
+	h2.readersTable()
 	require.NoError(t, h2.m.RowsAdd(h2.ctx, "t-readers", []string{"reader-a"}))
 	h2.beat()
 	h2.beat()
@@ -427,6 +429,7 @@ func TestOwnerWorkWaitsForStartWhileCoordinatorCanLandStopped(t *testing.T) {
 // three rounds from that round (0 never), while the outside actors go on.
 func sprintOf(t *testing.T, n, stopAt int) *harness {
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	for _, s := range []string{"s1", "s2", "s3"} {

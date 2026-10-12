@@ -699,6 +699,7 @@ func TestARedealtCardAfterATakeIsLateNotTaken(t *testing.T) {
 func TestTwoLateReadsOfOnePrimaryAreTwoJudgments(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", IDs: []string{"p"}}))
 	h.startMachine()

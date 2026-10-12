@@ -24,6 +24,7 @@ import (
 func TestAnyUnitWithRoomAtOrAboveTheReadTierServesARead(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // this test intentionally exercises the legacy readers table
 	home, prev := t.TempDir(), ta.a.getenv
 	ta.a.getenv = func(k string) string {
 		if k == "HOME" {

@@ -91,6 +91,7 @@ func TestReadsTogetherAtReaderWidthTakeFourReadsPerLanding(t *testing.T) {
 	r := &readsRig{
 		serverRig: newServerRig(t,
 			"nova-sprint init --readers reader-m1,reader-m2 --members m1:2,m2:1",
+			"nova-sprint set --read-cards off",
 			"nova-sprint add --stream s1 --count 3 --brief-file "+proBriefFile(t), // pro: two reads each
 			"nova-sprint start",
 			"nova-sprint tick",

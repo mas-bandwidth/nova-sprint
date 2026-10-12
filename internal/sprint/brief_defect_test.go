@@ -40,6 +40,7 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 			t.Parallel()
 			assert.Equal(t, tc.reason, BriefDefectOf(tc.report))
 			w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
+			w.readersTable() // explicit legacy reader-table fixture
 			dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 			row := FriendRow("amy")
 			w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))

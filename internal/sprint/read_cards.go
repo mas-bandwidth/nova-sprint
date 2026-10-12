@@ -13,8 +13,8 @@ import (
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
-// cards in ||"; "Just remove the complexity. just deal it."). While the sprint's read_cards
-// setting is on (set --read-cards on), the tick's deal deals every read a primary in review
+// cards in ||"; "Just remove the complexity. just deal it."). The sprint's read_cards
+// setting is on by default, so the tick's deal deals every read a primary in review
 // still needs AT ONCE, before its work cards, each a read card on the fleet table cut and
 // dealt in one step to a different reader: a friend whose roles name reader and whose tiers
 // hold the read's tier, or a member up whose reader row (reader-<m>) is neither held nor
@@ -24,21 +24,23 @@ import (
 // inherited (ReadPriority). The review is unchanged: a read card's verdict closes the read on
 // the primary as read --ok|--broken does (friendReadCloseUnit, readCardVerb), and the primary
 // leaves review only by the existing rules. The model is tla/ReadCards.tla. With the setting
-// off, the readers table's ask and the friends' read ask, as before; they retire next release.
+// off (set --read-cards off), the readers table's ask and the friends' read ask, as before;
+// they retire next release.
 
-// PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord.
+// PropReadCards is the work table's read-card switch; only off disables it.
 const PropReadCards = "read_cards"
 
-// ReadCardsOnWord is the setting's on word; any other value is off.
+// ReadCardsOnWord is the setting's on word; off is the only disabling value.
 const ReadCardsOnWord = "on"
 
 // ReadCardsOn says the sprint asks its reads as read cards (PropReadCards).
+// Absence and default are on; an explicit off keeps the legacy readers-table flow.
 func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
-		return false
+		return true
 	}
 	v, _ := s.Work.Prop(PropReadCards)
-	return v == ReadCardsOnWord
+	return v != SwitchOff
 }
 
 // FieldReadCard marks a read card the deal cut (read_cards.go), "1": a friend's read asked

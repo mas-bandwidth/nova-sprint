@@ -167,6 +167,7 @@ func readsOn(s *sprint.Snapshot, reader string) []*sprint.Card {
 func TestAHeldMachinesReaderIsAskedNothingUntilItIsReleased(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	flashSetup(t, h, 2)
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m1", Who: "tester"}))
 	h.machine() // the deal gives m2 the cards
@@ -200,6 +201,7 @@ func TestAHeldMachinesReaderIsAskedNothingUntilItIsReleased(t *testing.T) {
 func TestADrainingReadersAskedReadsReturnToAnotherReader(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	flashSetup(t, h, 2)
 	h.machine()
 	h.work("m1")
@@ -244,6 +246,7 @@ func TestADrainingReadersAskedReadsReturnToAnotherReader(t *testing.T) {
 func TestAProbedMemberThatDrainsIsDealtNothingAndItsReaderIsAskedNothing(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	flashSetup(t, h, 8)
 	// m1 passed its probe and then its binary is replaced: it drains
 	h.live = []string{"m2"}
