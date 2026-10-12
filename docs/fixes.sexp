@@ -3190,8 +3190,12 @@
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
      :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
-   (fix "a-card-in-review-always-has-a-read-the-ask-can-reach" :release "v1.2.14" :status "planned"
-    :title "A card in review always has a read the ask can reach"
+    (fix "the-landing-unhooked-test-arms-only-its-own-coordinator" :release "v1.2.14" :status "planned"
+     :title "The landing-unhooked functional test arms the hook gate for a name of its own, never the coordinator's"
+     :text "TestLandingUnhookedLandsOnARealServer (cmd/nova-sprint/landing_unhooked_functional_test.go) runs in parallel and armed the hook gate (hookTests) for the shared coordinator name, so every other parallel land rig acting as coordinator was refused with 'You must hook in first' (how TestLandedRecordsAPushFoundOnTheBranch failed); it now acts and arms as 'landing-unhooked', its own name, as the land-identity test does."
+     :origin "the coordinator, 2026-10-12")
+    (fix "a-card-in-review-always-has-a-read-the-ask-can-reach" :release "v1.2.14" :status "planned"
+     :title "A card in review always has a read the ask can reach"
     :text "A finish card sat in review at attempt 2 with no read out: its attempt-1 read had
      been withdrawn by a friend's hold and its attempt-2 read ended with no verdict (a
      return, ran=false). The ask verb was refused \"asked already: its reads are out\" while
