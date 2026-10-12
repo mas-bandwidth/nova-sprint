@@ -65,6 +65,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 		for _, id := range ids {
 			workIDs = append(workIDs, id+".w1@1")
 		}
+		run("fleet beat m1") // m1's cards are not redealt as stale
 		run("tick")
 		run("tick")
 		run("take --as m1 --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
@@ -82,14 +83,18 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	}
 
 	run("init --readers reader-a,reader-b --members m1")
+	// one held card keeps the sprint open, so the dev-is-behind judgment still runs
+	run("add --stream s0 --count 1 --one --held --land-protected any")
 	run("start")
 	run("fleet beat m1")
 
 	// Two repositories with no sprint branch: cards on main, and cards on dev. The mark
 	// admits the protected bases (docs/SPEC-SPRINT.md section 7, add --land-protected).
-	run("add --stream s1 --land-protected any --count 2 --brief-file " + briefFile("main.md", "tier: pro\nREPO: "+mainRepo+"\nBASE: main\n"))
-	run("add --stream s2 --land-protected any --count 2 --brief-file " + briefFile("dev.md", "tier: pro\nREPO: "+devRepo+"\nBASE: dev\n"))
+	// Stream s2 is added only after s1 lands: a take --limit takes per member, not per
+	// stream, so the two streams' cards must not be dealt together.
+	run("add --stream s1 --land-protected any --count 2 --brief-file " + briefFile("main.md", passingBrief("tier: pro\nREPO: "+mainRepo+"\nBASE: main\n")))
 	land("s1", []string{"s1-1", "s1-2"})
+	run("add --stream s2 --land-protected any --count 2 --brief-file " + briefFile("dev.md", passingBrief("tier: pro\nREPO: "+devRepo+"\nBASE: dev\n")))
 	land("s2", []string{"s2-1", "s2-2"})
 
 	// Past the age threshold, the main and dev cards still raise no judgment.
@@ -99,7 +104,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 
 	// A sprint branch in a repository that has a dev branch: s2's repository already has dev
 	// cards landed, so the sprint-branch card counts.
-	run("add --stream s2 --count 2 --brief-file " + briefFile("sprint.md", "tier: pro\nREPO: "+devRepo+"\nBASE: sprint/base\n"))
+	run("add --stream s2 --count 2 --brief-file " + briefFile("sprint.md", passingBrief("tier: pro\nREPO: "+devRepo+"\nBASE: sprint/base\n")))
 	land("s2", []string{"s2-3", "s2-4"})
 	clock = clock.Add(sprint.PromoteAge + time.Minute)
 	run("tick")

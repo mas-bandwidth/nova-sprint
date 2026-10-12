@@ -54,13 +54,14 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	out := run("brief", "work", "--brief-file", path)
 	assert.Contains(t, out, "brief edited in place", "a working card takes the brief for its next attempt")
 	assert.Contains(t, out, "working, waits for dep after this attempt", "the brief names the state")
+	run("tick") // the machine applies the brief edit: the card names the need
 
 	// no invariant judgment: check stays OK, and the state is named on the card
 	assert.Contains(t, run("check"), "CHECK OK", "a need added to a working card is not a broken invariant")
 	assert.Contains(t, run("card", "work"), "working, waits for dep after this attempt")
 
 	// the attempt finishes; the card then waits for the need
-	run("finish", "--as", "m1", "work.w1@1", "--report", "done")
+	run("finish", "--as", "m1", "work.w1@1", "--epoch", "0", "--report", "done")
 	pr := run("card", "work")
 	assert.Contains(t, pr, "waiting", "the card waits for the need once its attempt ends")
 	assert.Contains(t, pr, "dep", "it waits for dep")
