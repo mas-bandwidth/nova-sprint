@@ -140,17 +140,10 @@ func sprintVerbs() map[string]map[string]bool {
 	return table
 }
 
-// foreignVerbs is the verbs of the tools the runbook and docs/COORDINATOR-TOOLS.md
-// name that nova-sprint does not build, each read once from those docs. A line
-// that names one of these tools with a verb not here is refused; the tools'
-// flags are not checked because their FlagSets live in nova-tools.
-var foreignVerbs = map[string]map[string]bool{
-	"nova-swarm":   {"lint": true, "template": true, "disk-guard": true, "member": true, "mirror": true, "install": true},
-	"nova-friend":  {"check": true, "ping": true, "ping-install": true, "wait-pong": true, "status": true, "install": true, "run": true},
-	"nova-config":  {"machine": true, "friend": true, "loop": true, "apply": true, "route": true, "migrate": true, "sprint": true, "tier": true},
-	"nova-bus":     {"log": true, "peek": true, "send": true, "recv": true},
-	"nova-secrets": {"exec": true},
-}
+// foreignVerbs (foreign_verbs.go, package scope) is the verbs of the tools the runbook
+// and docs/COORDINATOR-TOOLS.md name that nova-sprint does not build, each read once
+// from those docs. A line that names one of these tools with a verb not there is
+// refused; the tools' flags are not checked because their FlagSets live in nova-tools.
 
 // checkCommand checks one command line, the words of a code span: leading
 // environment words are skipped, a word that is not a nova tool ends the check

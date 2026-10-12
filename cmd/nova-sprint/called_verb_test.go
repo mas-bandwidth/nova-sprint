@@ -66,3 +66,35 @@ func TestCalledVerbsIgnoresAnotherToolAndAShellBuiltIn(t *testing.T) {
 		t.Fatalf("calledVerbs = %+v, want none (nova-config is another tool, ls a shell built-in)", got)
 	}
 }
+
+// TestCalledVerbsIgnoresAProseLineThatNamesATool pins the gate: a line that only names a
+// tool — a Go comment or an error string, a loop's note — does not run it, so a word after
+// the name is not read as a verb. The table here refuses anything but "where", so the test
+// fails if the prose line is read at all.
+func TestCalledVerbsIgnoresAProseLineThatNamesATool(t *testing.T) {
+	diff := "diff --git a/pkg/config/loop.go b/pkg/config/loop.go\n" +
+		"--- a/pkg/config/loop.go\n" +
+		"+++ b/pkg/config/loop.go\n" +
+		"@@ -1,2 +1,4 @@\n" +
+		"+// a loop row ran `nova-sprint table` for days after nova-sprint lost it\n" +
+		"+\treturn fmt.Errorf(\"nova-sprint must be run from the repo root\")\n" +
+		"+func f() {\n"
+	only := func(tool string) []string { return []string{"where"} }
+	if got := calledVerbs(diff, only); len(got) != 0 {
+		t.Fatalf("calledVerbs = %+v, want none (both lines name a tool, neither runs it)", got)
+	}
+}
+
+// TestCalledVerbsRefusesTheMotivatingFriendCall exercises the lander's own table
+// (registeredVerbs, what land.go wires in): nova-friend registers no acceptance at the
+// recorded head, so the motivating line is refused through the real wiring, not a
+// synthetic callback.
+func TestCalledVerbsRefusesTheMotivatingFriendCall(t *testing.T) {
+	got := calledVerbs(friendFixtureDiff, registeredVerbs)
+	if len(got) != 1 {
+		t.Fatalf("calledVerbs = %+v, want one finding through registeredVerbs", got)
+	}
+	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "wait-pong") {
+		t.Fatalf("finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
+	}
+}

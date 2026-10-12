@@ -2148,16 +2148,12 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	}
 	// A changed line that runs one of the repository's own tools with a verb must call a
 	// verb the tool registers at the head (E6, docs/SPEC-SPRINT.md section 7): a missing
-	// verb refuses the head naming the file, the line and the tool's known verbs. Of the
-	// tools the check covers, nova-sprint is the one in this repository; a call of a tool
-	// the repository does not hold (nova-friend, nova-swarm, nova-config) or a shell
-	// built-in is not checked.
-	for _, f := range calledVerbs(diff, func(tool string) []string {
-		if tool == "sprint" {
-			return verbNames()
-		}
-		return nil
-	}) {
+	// verb refuses the head naming the file, the line and the tool's known verbs. The line
+	// is one that runs the tool — after indentation, a play's dash, a prompt, `run:`, `env`
+	// and `VAR=` — so prose that merely names a tool is not read (calledVerbs, toolCallRE).
+	// registeredVerbs holds nova-sprint to its own table and nova-friend, nova-swarm and
+	// nova-config to the runbook's list; a shell built-in is not checked.
+	for _, f := range calledVerbs(diff, registeredVerbs) {
 		why = append(why, f.String()+" (E6)")
 	}
 	// The attempt's start: an earlier attempt's pushed head when the card has one,

@@ -2545,9 +2545,12 @@
     workflow, a script or a doc command block) must call a verb the tool registers at the head; a
     missing verb refuses the head naming the file, the line and the tool's known verbs. Found by a
     read: nova-tools head bb01282b62 added `nova-friend acceptance` to fleet/seat-friend.yml while
-    cmd/nova-friend had no acceptance verb (the verb first appears at 2f8cb9126c). The check scans
-    the changed lines for the repository's own tools and holds each call to the tool's verb table at
-    the head; proof: the fixture of bb01282b62's fleet/seat-friend.yml against that head's
-    cmd/nova-friend verb table is refused, the same line where the verb is registered passes, and a
-    line naming a verb of another tool or a shell built-in is not checked."
-   :origin "this card, card-lint-a-called-verb-exists.w1.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w1.g2.e19")))
+    cmd/nova-friend had no acceptance verb (the verb first appears at 2f8cb9126c). The check reads
+    only a line that runs the tool — the tool beginning the command after a play's dash, a shell
+    prompt, a workflow's `run:`, `env` and leading `VAR=` assignments, never a tool merely named in
+    prose or a Go string — and holds each call to that tool's verb table at the head (nova-sprint's
+    own, and nova-friend, nova-swarm and nova-config through the runbook's list); proof: the fixture
+    of bb01282b62's fleet/seat-friend.yml is refused through the lander's own table, the same line
+    where the verb is registered passes, a line naming a verb of another tool or a shell built-in is
+    not checked, and a prose line that only names a tool is not refused."
+   :origin "this card, card-lint-a-called-verb-exists.w2.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w2.g2.e19")))
