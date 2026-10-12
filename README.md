@@ -3,10 +3,10 @@
   <img alt="Nova Sprint. Finish faster. Multiple models. Many machines. A white-and-blue robot in orange shoes sprints along a blue track." src="brand/fleet/banner-day.png">
 </picture>
 
-**nova-sprint** puts a fleet of AI workers to work. 
+## What is it?
 
-Work across different models and machines, with a system that automatically
-advances cards from **ready to landed** - through implementation, review, and merging.
+**nova-sprint** puts a fleet of AI workers to work across different models and machines, 
+with a system that automatically advances cards from **ready to landed** - through implementation, review, and merging.
 
 [Get started](docs/GETTING-STARTED.md)
 
