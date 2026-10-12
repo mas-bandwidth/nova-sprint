@@ -421,7 +421,7 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 			return "reader row"
 		}
 	}
-	t := s.readTierOf(pr)
+	t := s.readTierDrawn(pr)
 	if !s.FleetTakes(t) {
 		return "fleet set" // the fleet's tiers leave the read out (set --fleet-tiers)
 	}
@@ -454,7 +454,7 @@ func readTierDistance(s *Snapshot, u readUnit, pr *Card) int {
 		return len(capLadder) + want - at
 	}
 	if !u.friend {
-		e := s.readTierOf(pr)
+		e := s.readTierDrawn(pr)
 		if !s.readerServesTier(ReaderPrefix+u.name, e) {
 			e = tierBelow(e)
 		}
@@ -795,7 +795,7 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 				if ri != nil {
 					maps.Copy(fields, view.readRouteOf(ri, pr, nil))
 				} else {
-					fields[FieldTier] = view.readTierOf(pr)
+					fields[FieldTier] = view.readTierDrawn(pr)
 				}
 				// the first read of a flash card's attempt is a decide read, as the readers'
 				// ask places it (decideFields)

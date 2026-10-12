@@ -1072,12 +1072,16 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 				return why
 			}
 		}
-		if oks := okReaders(s, c); len(oks)+heavyReads < ReadsNeededIn(s, c) {
+		// the coordinator's own read through the read verb counts as one read, as
+		// accept --heavy's does; a card carries one coordinator read, so the two
+		// are the same read, never two
+		coord := coordinatorReadStanding(c)
+		if oks := okReaders(s, c); len(oks)+max(heavyReads, coord) < ReadsNeededIn(s, c) {
 			var names []string
 			for _, o := range oks {
 				names = append(names, o.F("reader"))
 			}
-			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+heavyReads, orDash(strings.Join(names, ",")))
+			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+max(heavyReads, coord), orDash(strings.Join(names, ",")))
 		}
 		if !r.Heavy && hasBrokenAtHead(s, c) {
 			// a broken read at the head outweighs any number of oks: accept never queues the

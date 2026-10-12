@@ -3489,6 +3489,16 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   sprint (below) raises the route its reads are drawn on and never their
   count. The reads per machine are unchanged: a reader still runs at its
   machine's width.
+- A card at a tier no reader serves is read one tier down: its read is drawn on
+  the strongest tier at or below its own with an enabled route and a reader up,
+  and the read card's tier says which ("read at heavy: no frontier reader"), so
+  a frontier card is read at heavy while a heavy reader is up. The coordinator
+  may read a card itself (`nova-sprint read --as <coordinator> --ok|--broken <card> --finding <text>`, section 6, the coordinator's read), recorded on the
+  primary at its attempt and head and counted as one of the reads the card needs
+  (`sprint.ReadsStanding`, `coordinatorReadStanding`); it is refused for the
+  card's own worker, and a broken coordinator read stands as a reader's broken
+  read (accept refuses the head). A card in review no reader can be asked raises
+  one judgment naming both remedies (reader add, wait).
 - The sprint may set the count instead (`nova-sprint set --reads <0|1|2|default>`,
   the work table's property `reads_needed`; the owner, 2026-10-06: "I'd like to
   waive the second read for the moment"): while it is set, every card in review
@@ -5096,7 +5106,7 @@ the tick would make, no other open judgment on it).
 | repair skipped changes the store refused as recorded | card (look), return, drop, rework, ack | yes |
 | an operation was stuck | check, ack | yes |
 | a reminder could not be delivered | goal set (a new route), goal drop, ack | yes |
-| cannot ask (enough readers are up, and a primary has fewer readers with no read card at its attempt, placed or retired, than its tier needs: one for a flash card, two for a pro card; one judgment per tick, `no eligible reader for <ids>`, every such primary a subject of it) | reader add, rework (a new attempt every reader may read), drop, wait | no |
+| cannot ask (enough readers are up, and a primary has fewer readers with no read card at its attempt, placed or retired, than its tier needs: one for a flash card, two for a pro card; one judgment per tick, `no eligible reader for <ids>`, every such primary a subject of it) | reader add, wait | no |
 | fewer than two readers up | reader up, reader add, wait | no |
 | no fleet member is up (when every member that beats is held, it says so and offers only fleet up and wait) | fleet beat (on a machine), fleet up (releases a hold), wait | no |
 | the fleet is starving (ready, sentinels aside, is under twice the up members' width while a wave is held: `the fleet is starving: ready <n> is under twice the width <2w>; release a wave: nova-sprint release <sentinel> --reason '<why>'`, raised once and updated in place every tick while it holds, naming the first held sentinel in work order; closed when no wave is held; `TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth`) | release (the wave's sentinel; never a single card), wait | no |
