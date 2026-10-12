@@ -721,6 +721,27 @@ default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`;
   `--stuck 1m`, a card needing a card that is no card) and one healthy card; each
   flag appears on its line and none on the healthy one, and the same in `--json`.
 
+### The reads review shows who holds each review read
+
+`nova-sprint reads --review` is the one answer to "who holds each review read"
+(`reads` is a new verb name beside the worker's `read`): one read of the work,
+fleet and readers tables, one line per primary in review with its attempt, then
+each of its read cards at that attempt — the reader (a member's reader row, or a
+friend), its state (`asked`, `reading`, `returned`, `withdrawn`, `ended`), for
+how long, and its last read outcome (its verdict, `no verdict (ran=false)` for a
+read that never ran, or the return or hold reason). A card with no read out and
+no open judgment is flagged `NO-READ-OUT`. It ends
+`READS OK review=<n> no-read-out=<n>`; `--json` is one object a line and
+`--stream` narrows it.
+
+- Functional, `cmd/nova-sprint/reads_review_test.go`:
+  `TestReadsReviewShowsWhoHoldsEachReviewRead`, on a private in-memory store
+  with the app's own clock: three primaries in review, one with a read reading
+  for a member, one whose read was withdrawn by a hold and another that ended
+  with no verdict, and one with no read at all; the holder and its duration are
+  asserted on the first, both outcomes on the second, `NO-READ-OUT` on the
+  third, and the same in `--json`.
+
 ## An acknowledged rate or health judgment stays quiet (v1.2.14)
 
 A rate or health judgment the seat has acked is not raised again while its numbers are the

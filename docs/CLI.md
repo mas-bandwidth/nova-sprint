@@ -180,6 +180,7 @@ nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--json]
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
+nova-sprint reads --review [--stream <s>] [--json]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
@@ -194,6 +195,14 @@ state and attempt, the ends of its last four attempts and the needs not yet
 landed with their states, and its flags: `NO-HOLDER`, `ATT>=4`, `FAILS=<n>`
 (six or more failed, idle-reaped, bound or brief-defect ends), `STUCK` (unchanged
 past `--stuck`, default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`; `--json` is one object a line, `--stream` narrows it.
+
+**`reads --review`** is the one answer to "who holds each review read" (`reads` is a new
+verb name beside the worker's `read`): one read of the work, fleet and readers tables prints one
+line per primary in review with its attempt, then each of its read cards at that attempt — the
+reader (a member's reader row, or a friend), its state (`asked`, `reading`, `returned`,
+`withdrawn`, `ended`), for how long, and its last read outcome (its verdict, `no verdict (ran=false)` for a read that never ran, or the return or hold reason). A card with no read out
+and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
+`--json` is one object a line, `--stream` narrows it.
 
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
