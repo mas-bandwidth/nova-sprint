@@ -1555,6 +1555,9 @@ func (l *lander) queueHead(ctx context.Context, stream string, pins []landCard) 
 	if why := headWhy(s, stream, pins); why != "" {
 		return why
 	}
+	if why := baseWhy(s, pins); why != "" {
+		return why
+	}
 	return l.pause(ctx, s, pins[0].repo, pins[0].base)
 }
 
@@ -1584,10 +1587,21 @@ func headWhy(s *sprint.Snapshot, stream string, pins []landCard) string {
 		if pr == nil || pr.F("head") != c.head || pr.F("attempt") != c.attempt {
 			return fmt.Sprintf("%s is at attempt %s head %s now, not attempt %s head %s as it was read and built (reworked since); run land again", c.id, dashed(pr.F("attempt")), dashed(pr.F("head")), dashed(c.attempt), dashed(c.head))
 		}
-		// a card re-pointed while the batch built (stream set --base reaches a merging
-		// card) is not pushed onto the base the batch was cut from: the next pass lands it
-		// on its new base (sprint.MarkLanding holds the same, inside the step)
-		if now := cardBaseNow(pr); c.base != "" && now != "" && now != c.base {
+	}
+	// no base check here: headWhy also guards the report step after the push (stepWith) and
+	// the return of a refused head, where a push is a fact to be reported whatever the brief
+	// names now; the base is held before the push, in queueHead and sprint.MarkLanding
+	return ""
+}
+
+// baseWhy is why the batch is not pushed: a pinned card whose BASE: is no longer the base
+// the batch was built onto (stream set --base reaches a merging card); "" when every pin
+// holds. Run before the push only (queueHead); the landing mark holds the same inside its
+// step (sprint.MarkLanding), and sprint.Set refuses the re-point itself once the mark is
+// made. The card is left queued and the next pass lands it on its new base.
+func baseWhy(s *sprint.Snapshot, pins []landCard) string {
+	for _, c := range pins {
+		if now := cardBaseNow(s.Work.Placed(c.id)); c.base != "" && now != "" && now != c.base {
 			return fmt.Sprintf("%s was re-pointed to BASE %s during the gate, not %s as it was read and built: it lands on the next pass on its new base; nothing pushed", c.id, now, c.base)
 		}
 	}

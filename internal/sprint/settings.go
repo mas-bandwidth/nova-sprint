@@ -623,6 +623,24 @@ func Set(s *Snapshot, r SetReq) Plan {
 			p.refuse("set", why)
 			return p
 		}
+		// THE FENCE. A card whose landing is marked (MarkLanding wrote FieldLandingHead on
+		// its merge card: the lander is between its mark and its push) is about to land on
+		// the base it was built onto. Re-pointing it here would leave the push on the old
+		// base with the brief on the new one; skipping it alone would leave one stream with
+		// two targets. So the whole base change is refused, naming the busy card, inside
+		// this step, the one that writes the base, so there is no interval between the
+		// check and the write; the seat runs the verb again when the pass has ended.
+		for _, st := range r.Streams {
+			for _, c := range streamSetBaseCards(s, st) {
+				if s.Merge == nil {
+					break
+				}
+				if m := s.Merge.Placed(c.ID); m != nil && m.F(FieldLandingHead) != "" {
+					p.refuse("set", fmt.Sprintf("%s of stream %s is landing (its landing is marked at head %s): stream set --base waits for the pass to end; nothing was written; run the verb again", c.ID, st, m.F(FieldLandingHead)))
+					return p
+				}
+			}
+		}
 	}
 	// a display name is one line of printable text, at most DisplayMax bytes: refused
 	// whole, nothing written, when it is not (stream set --display, docs/SPEC-SPRINT.md

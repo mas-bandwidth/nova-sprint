@@ -204,6 +204,32 @@ func TestStreamSetBaseRefusesWhenTheCheckedCardsMoved(t *testing.T) {
 		assert.Empty(t, p.Units, "a refusal writes nothing")
 	})
 
+	// A card whose landing is marked (MarkLanding wrote the landing head on its merge card:
+	// the lander is between its mark and its push onto the old base): the whole base change
+	// is refused, naming the card, inside the step that writes the base; nothing written,
+	// no card of the stream re-pointed, and the verb is run again when the pass has ended.
+	t.Run("a card landing", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t, "reader-a")
+		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		landing := w.s.Work.Placed("s1-2")
+		landing.Fields["attempt"] = "1"
+		landing.Fields["head"] = "0123456789abcdef0123456789abcdef01234567"
+		landing.Col = Merging
+		w.s.Merge.Put(&Card{ID: "s1-2", Row: "s1", Col: Queued, Rev: 1,
+			Fields: map[string]string{"kind": "merge", "primary": "s1-2", "stream": "s1", FieldLandingHead: "0123456789abcdef0123456789abcdef01234567"}})
+		checked := StreamSetBaseChecks(w.s, []string{"s1"}, base)
+		require.Len(t, checked, 2, "both cards are candidates: the fence is the step's, not the check's")
+		p := Set(w.s, req(checked))
+		require.Len(t, p.Refused, 1)
+		assert.Contains(t, p.Refused[0].Why, "s1-2 of stream s1 is landing (its landing is marked at head 0123456789abcdef0123456789abcdef01234567)")
+		assert.Contains(t, p.Refused[0].Why, "nothing was written")
+		assert.Empty(t, p.Units, "a refusal writes nothing: s1-1 is not re-pointed either")
+		assert.Equal(t, "old/branch", briefBase(w.s.Work.Placed("s1-1").F("brief")))
+		assert.Equal(t, "old/branch", briefBase(w.s.Work.Placed("s1-2").F("brief")))
+	})
+
 	// A card dealt while the check fetched: its brief is the one the check read, and it
 	// is re-pointed with the rest (its next attempt starts on the new base).
 	t.Run("a card dealt", func(t *testing.T) {

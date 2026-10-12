@@ -3307,17 +3307,27 @@
      candidates (baseChecksHeld) is unchanged: a card added, landed or revised between the check and the
      step still refuses the step whole. One NOTE line per card moved, naming both bases and the card's
      column. Since a merging card can now be re-pointed while the lander gates the batch it cut onto the
-     old base, the landing pins the base with the head and attempt (sprint.PushedPin gains Base; headWhy
-     before the push and sprint.MarkLanding inside the step hold the card's BASE: to it): a card re-pointed
+     old base, the landing pins the base with the head and attempt (sprint.PushedPin gains Base; queueHead
+     before the mark and sprint.MarkLanding inside its step hold the card's BASE: to it): a card re-pointed
      during the gate is refused the push, nothing pushed, left queued, and the next pass lands it on its
-     new base; before this the pass pushed the old target and reported LAND OK (a cold reader's probe).
+     new base; before this the pass pushed the old target and reported LAND OK (a cold reader's probe). The
+     interval after the mark is fenced in sprint.Set itself, the step that writes the base: while any card
+     of the stream is landing (its merge card carries the landing head), the whole base change is refused
+     naming that card, nothing written, and the seat runs the verb again when the pass has ended; skipping
+     the busy card alone would leave one stream with two targets. The lander reads the bases once more
+     immediately before the push (basePinnedWhy), a diagnostic of that fence that names the card and says
+     the fence did not hold. A push that happened is always reported as one: the report step after the
+     push (headWhy, reused there) never refuses on a base change, and never says nothing was pushed.
      docs/SPEC-SPRINT.md section 11 (stream set --base) and the verb's help say so. Tests:
      TestStreamSetBaseRepointsEveryUnlandedCard (one card in each of the six states; the landed one is
      kept, the working one's CARRY: line is kept), TestStreamSetBaseChecksTheRewrittenBriefs and
      TestStreamSetBaseRefusesWhenTheCheckedCardsMoved (a card dealt after the check is still re-pointed; a
-     card landed after it refuses the step) in internal/sprint/stream_set_base_test.go, and
-     TestACardRepointedDuringTheGateIsNotPushedOntoTheOldBase (cmd/nova-sprint/land_repoint_during_gate_test.go,
-     the real stream set --base run from the gate seam), each red before and green after."
+     card landed after it refuses the step; a card landing refuses it naming the card) in
+     internal/sprint/stream_set_base_test.go, TestACardRepointedDuringTheGateIsNotPushedOntoTheOldBase
+     (cmd/nova-sprint/land_repoint_during_gate_test.go, the real stream set --base run from the gate seam) and
+     TestStreamSetBaseIsRefusedWhileACardIsLanding (cmd/nova-sprint/land_repoint_after_mark_test.go: mark,
+     the real stream set --base from the beforePush seam refused naming the card, the push lands on the
+     pinned base), each red before and green after."
     :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12, epoch 19, server v1.2.13: stream set v1214b --base sprint/v1214b rewrote the waiting cards only, and two cards in review and merging landed on nova-sprint main; the owner: lock in fixes with tests so this does not happen again, fewer scripts, more Go")
    (fix "an-empty-stream-branch-follows-its-trunk" :release "v1.2.15" :status "planned"
     :title "A stream branch with no commits of its own follows its trunk before the batch is cut"

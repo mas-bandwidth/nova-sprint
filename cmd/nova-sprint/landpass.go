@@ -51,6 +51,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -341,6 +342,30 @@ func cardBaseNow(pr *sprint.Card) string {
 		return ""
 	}
 	return swarm.ReadCardBase([]byte(pr.F("brief"))).Ref
+}
+
+// basePinnedWhy is why the batch is not pushed, read immediately before the push: a pinned
+// card whose BASE: is no longer the base the batch was built onto; "" when every pin holds.
+// After the landing mark, sprint.Set refuses stream set --base whole while any card of the
+// stream is landing, so this read is a diagnostic of that fence: a refusal here names the
+// card and says the fence failed. Nothing is pushed; the card keeps its mark and the next
+// pass lands it on the base it names then.
+func (l *lander) basePinnedWhy(ctx context.Context, pins []landCard) string {
+	if l.dry || l.st == nil || len(pins) == 0 {
+		return ""
+	}
+	l.a.serial.Lock()
+	s, err := l.st.Load(ctx, []string{sprint.Work}, nil)
+	l.a.serial.Unlock()
+	if err != nil {
+		return "the cards' bases could not be read again before the push: " + oneline.Err(err) + "; nothing pushed"
+	}
+	for _, c := range pins {
+		if now := cardBaseNow(s.Work.Placed(c.id)); c.base != "" && now != "" && now != c.base {
+			return fmt.Sprintf("%s was re-pointed to BASE %s after its landing was marked, not %s as it was built: the stream set --base fence did not hold; nothing pushed, and the next pass lands it on its new base", c.id, now, c.base)
+		}
+	}
+	return ""
 }
 
 // landBatchMax is the most cards one batch merges. v1-4's batch of 99 cards spent 708 s
@@ -1222,6 +1247,14 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		}
 		if l.a.beforePush != nil {
 			l.a.beforePush(attempt)
+		}
+		// the last read before the push: every pinned card's BASE: is still the base the
+		// batch was built onto. The fence is sprint.Set, which refuses stream set --base
+		// whole while a card's landing is marked; a refusal here is that fence failing,
+		// said as such, and nothing is pushed (basePinnedWhy)
+		if why := f.basePinnedWhy(ctx, j.cards[:len(j.merged)]); why != "" {
+			j.refuse(why)
+			return
 		}
 		f.stage("push", "git push")
 		start = time.Now()

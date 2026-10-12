@@ -6871,10 +6871,15 @@ cards in review and merging kept `BASE: main` after a re-point and landed on
 main). A working card takes the new base for its next attempt; a card in review
 or merging keeps its head, which the lander checks against the new base when it
 lands, and is never re-dealt for the re-point alone. A landing pins each card's
-base with its head and attempt (`PushedPin`, `headWhy`, `MarkLanding`): a merging
+base with its head and attempt (`PushedPin`, `queueHead`, `MarkLanding`): a merging
 card re-pointed while the lander gates the batch it cut onto the old base is
 refused the push, nothing pushed, left queued, and the next pass lands it on its
-new base. It is refused whole,
+new base. Once the landing is marked, `Set` itself is the fence: while any card
+of the stream is landing, the whole base change is refused naming that card,
+nothing written, inside the step that writes the base, and the verb is run again
+when the pass has ended (skipping the busy card alone would give one stream two
+targets). A push that happened is always reported as one: the report step never
+refuses on a base change. It is refused whole,
 writing nothing, when origin holds no branch of the name, or when a card's
 `PATHS:` name something absent at its tip: the check `add` runs, held over each
 brief the rewrite would carry at the new base. The cards are
