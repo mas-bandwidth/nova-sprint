@@ -94,7 +94,10 @@ func TestFriendReconcileSettlesEachCardOnTheTwin(t *testing.T) {
 		return c
 	}
 	assert.Equal(t, sprint.Review, card("s1-1").Primary.Col, "the collected card goes to review")
-	assert.Equal(t, sprint.Working, card("s1-2").Primary.Col, "the kept card is hers still")
+	assert.Equal(t, sprint.Ready, card("s1-2").Primary.Col, "the Down owner is revoked by the tick")
+	recovered := card("s1-2").Work[0]
+	assert.Equal(t, sprint.Withdrawn, recovered.Col)
+	assert.NotEmpty(t, recovered.F(sprint.FieldRecoveryPending), "no branch-head reader means visible recovery debt")
 	assert.Equal(t, sprint.Ready, card("s1-3").Primary.Col, "the returned card is ready")
 	ta.beatUp("amy") // her session answers again, to be up for the deal
 	ta.ok("tick")
@@ -108,7 +111,7 @@ func TestFriendReconcileSettlesEachCardOnTheTwin(t *testing.T) {
 	// she has not had the chance to account for them, so they are kept, never returned
 	again := ta.ok("friend reconcile amy --root " + root + " --dry-run")
 	assert.Contains(t, again, "FRIEND-RECONCILE KEPT friend=amy card=s1-3.w2 job=s1-3.w2: the friend's QUEUE.json does not hold it, and was last written at")
-	assert.Contains(t, again, "collected=0 kept=3 returned=0 refused=0 strays=3")
+	assert.Contains(t, again, "collected=0 kept=2 returned=0 refused=0 strays=4")
 }
 
 func TestFriendReconcileRefusesWhatItCannotCompare(t *testing.T) {

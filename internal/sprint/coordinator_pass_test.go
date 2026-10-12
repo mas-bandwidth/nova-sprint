@@ -228,13 +228,14 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Equal(t, 1, deaf.Before, "the judgment counts its raises again")
 	assert.Contains(t, deaf.What, "25m3", "with her latest pong age")
 
-	// 31m: the friend holding her card has finished none in 30 minutes: idle, naming the card
+	// 31m: the stale owner is Down. Its retired lease cannot make it an idle owner.
 	fresh()
 	r.tick(10*time.Minute + 29*time.Second)
-	idle := r.open(sprint.NFriendIdle, sprint.FriendRow(holder))
-	require.NotNil(t, idle, "a friend holding working cards with no finish in 30 minutes is idle")
-	assert.Contains(t, idle.What, fc.ID)
-	assert.Contains(t, idle.What, "no finish yet")
+	assert.Nil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "a retired Down lease is not an idle live owner")
+	retired := r.snap().Fleet.Card(fc.ID)
+	require.Equal(t, sprint.Withdrawn, retired.Col)
+	assert.NotEmpty(t, retired.F(sprint.FieldRecoveryPending))
+	assert.Equal(t, sprint.Ready, r.snap().Work.Card("f1-1").Col)
 	assert.Equal(t, 2, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf), "deaf raised again at 30m31s")
 	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NCoordinatorBehind), "behind raised again at 30m31s")
 	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NCoordinatorBehind, ""), "one behind judgment an episode")
@@ -246,21 +247,16 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	r.tick(time.Second)
 	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "an answered ping closes deaf")
 	assert.Nil(t, r.open(sprint.NCoordinatorBehind, behind), "nothing late closes behind")
-	assert.NotNil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "idle holds while her card is unfinished")
+	assert.Nil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "a new proof does not resurrect the retired lease")
 
-	// 41m: idle raised again; then her card finishes (working to done): idle closes
+	// A later fresh proof permits future work, but cannot undo the committed
+	// revocation or bypass the still-unread branch head.
 	r.pongs["amy"] = r.clock()
 	fresh()
 	r.tick(10 * time.Minute)
-	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
-	s = r.snap()
-	fc = s.Fleet.Card(fc.ID)
-	r.must(store.FinishStep(sprint.FinishReq{As: fc.Row, Sel: sprint.Sel{IDs: []string{fc.ID}}, Gens: map[string]int{fc.ID: fc.Int("gen")}, Head: "abc", Who: fc.Row}))
-	r.pongs["amy"] = r.clock()
-	fresh()
-	r.tick(time.Second)
-	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "amy answers")
-	assert.Nil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "a finish closes idle")
+	assert.Equal(t, 0, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
+	assert.Equal(t, retired.Int("gen"), r.snap().Fleet.Card(fc.ID).Int("gen"))
+	assert.Nil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)))
 
 	// closed episodes stay closed: no push for a judgment that no longer holds. The status
 	// judgments of the friends' comings and goings are answered first, as the coordinator
@@ -272,11 +268,13 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 			r.must(store.AckStep(sprint.AckReq{Notes: []string{o.Note.ID}, Reason: "her steps are run", Who: "coordinator"}))
 		}
 	}
-	pushes := r.count(sprint.Happened, sprint.NRaisedAgain, "")
+	deafPushes := r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf)
+	idlePushes := r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle)
 	r.pongs["amy"] = r.clock()
 	fresh()
 	r.tick(10 * time.Minute)
-	assert.Equal(t, pushes, r.count(sprint.Happened, sprint.NRaisedAgain, ""), "nothing holds, nothing is pushed")
+	assert.Equal(t, deafPushes, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf), "the closed deaf episode is not pushed")
+	assert.Equal(t, idlePushes, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle), "the retired lease cannot raise an idle episode")
 
 	// a second episode is raised again from the start: amy goes quiet once more
 	fresh()
@@ -314,7 +312,53 @@ func TestThePassSparesAHeldFriendAnAcknowledgedJudgmentAndKeepsTheFinishSetting(
 	assert.Nil(t, r.open(sprint.NFriendIdle, fc.Row), "30m30s with no finish is inside the 45m window")
 
 	r.tick(15 * time.Minute)
-	assert.NotNil(t, r.open(sprint.NFriendIdle, fc.Row), "45m30s with no finish is idle")
+	assert.Nil(t, r.open(sprint.NFriendIdle, fc.Row), "the Down friend no longer owns a live lease")
+	assert.Equal(t, 45*time.Minute, r.snap().FriendFinishAfter(), "recovery preserves the configured finish window")
+	assert.Equal(t, sprint.Withdrawn, r.snap().Fleet.Card(fc.ID).Col)
+	assert.NotEmpty(t, r.snap().Fleet.Card(fc.ID).F(sprint.FieldRecoveryPending))
+}
+
+// A genuinely Up owner can still be idle. Session proofs keep presence fresh;
+// they do not count as completing a card or reset the finish window.
+func TestThePassJudgesAFreshUpOwnerIdleAtTheConfiguredFinishWindow(t *testing.T) {
+	t.Parallel()
+	for _, window := range []time.Duration{30 * time.Minute, 45 * time.Minute} {
+		t.Run(window.String(), func(t *testing.T) {
+			t.Parallel()
+			r := newPassRig(t)
+			fc := r.snap().Fleet.Card(r.snap().Work.Card("f1-1").F("work"))
+			require.NotNil(t, fc)
+			if window != 30*time.Minute {
+				set := store.SetStep(sprint.SetReq{Who: "coordinator"})
+				plan := set.Plan
+				set.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(plan(s), s, window.String()) }
+				r.must(set)
+			}
+			freshTick := func(d time.Duration) {
+				answerAt := r.clock().Add(d)
+				r.pongs["amy"], r.pongs["bob"] = answerAt, answerAt
+				r.tick(d)
+			}
+			for elapsed := time.Duration(0); elapsed < window; {
+				d := min(10*time.Minute, window-elapsed)
+				freshTick(d)
+				elapsed += d
+				assert.Nil(t, r.open(sprint.NFriendIdle, fc.Row), "not idle at or before the finish window")
+			}
+			freshTick(time.Minute)
+			idle := r.open(sprint.NFriendIdle, fc.Row)
+			require.NotNil(t, idle, "an Up owner past the finish window is idle")
+			assert.Contains(t, idle.What, fc.ID)
+			assert.Contains(t, idle.What, "no finish yet")
+			freshTick(10 * time.Minute)
+			assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
+			c := r.snap().Fleet.Card(fc.ID)
+			require.Equal(t, sprint.Working, c.Col)
+			r.must(store.FinishStep(sprint.FinishReq{As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}, Head: strings.Repeat("a", 40), Who: c.Row}))
+			freshTick(time.Second)
+			assert.Nil(t, r.open(sprint.NFriendIdle, fc.Row), "a real finish closes idle")
+		})
+	}
 }
 
 // A quiet friend whose session answers is never judged deaf: her daemon asks the session

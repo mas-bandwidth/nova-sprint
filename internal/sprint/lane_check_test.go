@@ -153,7 +153,7 @@ func TestALiveLaneIsLiveInsideItsCapAndOnAFreshBeat(t *testing.T) {
 	fc := s.Fleet.Card(s.Work.Card("f1-1").F("work"))
 	require.NotNil(t, fc)
 	holder, _ := sprint.FriendOfRow(fc.Row)
-	r.pongs[holder] = r.clock()
+	r.pongs[holder] = r.clock().Add(30 * time.Minute) // the session answers at this tick, not thirty minutes earlier
 	r.laneTick(30*time.Minute, holder, fc.ID)
 
 	s = r.snap()

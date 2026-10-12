@@ -60,21 +60,26 @@ func TestRunReconcilesFriendsEveryTick(t *testing.T) {
 		return c
 	}
 
-	t.Run("a phantom working count is returned by the next tick, one history line a card", func(t *testing.T) {
+	t.Run("Down recovery precedes queue reconciliation and revokes each lease once", func(t *testing.T) {
 		t.Parallel()
 		ta, root := tickReconcileApp(t, 4)
 		ta.a.sleep(sprint.FriendPongWindow) // her session's pong is out of its window: down, so the returned cards wait in ready
 		writeTestQueueFile(t, ta, root, "amy", `{"tasks":[]}`)
 		out := runTicks(t, ta, 1)
 		for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
-			assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card="+id+".w1: the friend's QUEUE.json, written at", id)
+			assert.Contains(t, out, "MOVED friend-recover: "+id+".w1 withdrawn gen=2", id)
 		}
-		assert.Contains(t, ta.ok("inbox"), "a friend's card returned to ready", "each return is pushed to the coordinator")
-		out += runTicks(t, ta, 2)
+		assert.Contains(t, ta.ok("inbox"), "a friend's card taken back to ready", "each revocation is pushed to the coordinator")
+		later := runTicks(t, ta, 2)
 		for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
-			assert.Equal(t, 1, strings.Count(out, "RETURNED friend=amy card="+id+".w1"), id)
-			assert.Equal(t, 1, strings.Count(ta.ok("log --card "+id), "returned by friend reconcile"), "one history line for %s", id)
-			assert.NotEqual(t, id+".w1", primary(ta, id).Primary.F("work"), "the work card she never ran is off the primary (the next pump moves it)")
+			assert.NotContains(t, later, "MOVED friend-recover: "+id+".w1 withdrawn", "no repeated revocation for %s", id)
+			c := primary(ta, id)
+			require.Len(t, c.Work, 1)
+			assert.Equal(t, sprint.Ready, c.Primary.Col)
+			assert.Equal(t, sprint.Withdrawn, c.Work[0].Col)
+			assert.Equal(t, 2, c.Work[0].Int("gen"), "no generation churn for %s", id)
+			assert.NotEmpty(t, c.Work[0].F(sprint.FieldRecoveryPending), "unavailable head evidence cannot become empty success")
+			assert.NotContains(t, ta.ok("log --card "+id), "returned by friend reconcile", "the retired lease is not returned again by reconcile")
 		}
 		assert.NotContains(t, out, "disagrees", "her row and her queue agree after the pass")
 	})

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // The friend stall ladder on the live path (docs/SPEC-SPRINT.md section
@@ -41,6 +43,13 @@ func (ta *testApp) later(d time.Duration) {
 func TestATickWakesAStalledFriendOnceAtEachWakeRung(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "friend amy", "amy")
+	// Short configured rungs fit inside the genuine session proof window. A Down
+	// owner is recovered, rather than sent stall wakes for a retired lease.
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	res, err := st.Run(context.Background(), store.SetStep(sprint.SetReq{Who: "coordinator", FriendStallAfter: "5m", FriendStallStep: "1m"}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused)
 	ta.ok("tick")
 	var c cardView
 	ta.json("card s1-1", &c)
@@ -49,7 +58,7 @@ func TestATickWakesAStalledFriendOnceAtEachWakeRung(t *testing.T) {
 	assert.Empty(t, ta.stallWakes("amy"), "a friend dealt a card now is not stalled")
 
 	// quiet past the stall bound: rung 1, one wake
-	ta.later(sprint.FriendStallAfterDefault + time.Minute)
+	ta.later(5*time.Minute + 30*time.Second)
 	ta.ok("tick")
 	require.Len(t, ta.stallWakes("amy"), 1, "rung 1 wakes her: %v", ta.stallWakes("amy"))
 	assert.Contains(t, ta.stallWakes("amy")[0], "turn 1")
@@ -59,15 +68,15 @@ func TestATickWakesAStalledFriendOnceAtEachWakeRung(t *testing.T) {
 	assert.Len(t, ta.stallWakes("amy"), 1, "a rung wakes her once, however many ticks see it")
 
 	// a step on: rung 2, the second wake
-	ta.later(sprint.FriendStallStepDefault)
+	ta.later(time.Minute)
 	ta.ok("tick")
 	wakes := ta.stallWakes("amy")
 	require.Len(t, wakes, 2, "rung 2 wakes her again: %v", wakes)
 	assert.Contains(t, wakes[1], "turn 2")
 
 	// a step on: rung 3 is the coordinator's judgment, and no wake
-	ta.later(sprint.FriendStallStepDefault)
+	ta.later(time.Minute)
 	ta.ok("tick")
 	assert.Len(t, ta.stallWakes("amy"), 2, "rungs past 2 wake no one")
-	assert.Contains(t, ta.ok("inbox"), "friend amy stalled 31m0s: coordinator note", "rung 3 tells the coordinator")
+	assert.Contains(t, ta.ok("inbox"), "friend amy stalled 7m30s: coordinator note", "rung 3 tells the coordinator")
 }
