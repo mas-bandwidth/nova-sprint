@@ -290,6 +290,21 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-landpass-dev-moves-only-by-stream-merge" :release "v1.2.15" :status "planned"
+     :title "The landing model keeps card batches on streams and certifies trunk merges serially"
+     :text "LandPass now has a bounded stream routing and certification abstraction alongside its
+      unchanged gate-pass rules: StreamLand lands batches on their own stream branches; StreamMerge
+      admits an ahead stream only with no inflight merge and a green or untouched trunk; CertDone
+      settles green or red. Per-card base follows stream migration in every unlanded column, and a
+      brief edit cannot rewrite it. DevMovesOnlyByStreamMerge, StreamMergesSerial and
+      CardLandsOnItsStream each have a reversed witness, with first violating states mapped to the
+      staged Go code in tla/README.md. The two-stream, one-card-per-stream control and all 13 legacy
+      cases pass their expected outcomes on Linux with the pinned TLC jar; tools/tlacheck generated
+      and merged the 17 records. This is a safety model, not a Go fix or a refinement proof; repeated
+      batches, branch fast-forward, crash recovery and liveness remain outside its bound."
+     :origin "Glenn and Rowan's accepted outside-sprint modelling request, 2026-10-12: epoch 19
+      protected-stream card landings and skipped review/merging BASE rewrites cancelled dev
+      certification. Stella's hand PR targets sprint/comfort.")
    (fix "tla-landpass-prefix-landing-and-unblamed-refusal" :release "v1.2.12" :status "planned"
     :title "The land pass model: a red gate lands the prefix and reworks the blamed head"
     :text "Models only, no product change. LandPass.tla's gate now does what cmd/nova-sprint/landpass.go does when the batch's tree is red: a bisection that blames one head cuts the batch to the prefix before it, pushes that prefix and reworks the blamed head with the stream going on (no longer stopped); a refusal that blames no head (a bench that did not run the gate, a cancelled gate, a bisect environment refusal) returns the batch to queued; and a batch whose tree tests read none of its files lands whole. The new invariant NoHeadPastItsBlame (no head at or after the blamed one lands in that pass) holds, as do LandsOnce and BaseKeepsLandings. Two reversed witnesses: landpastblame pushes the whole batch on a blamed red (fails NoHeadPastItsBlame), unblamedstops stops the stream on an unblamed refusal (fails UnblamedRefusalQueues). A comment on treeGateBase cites tla/LandPass.tla BaseRed."
