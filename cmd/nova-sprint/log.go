@@ -70,8 +70,12 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 			for _, w := range costs {
 				fmt.Fprintln(stdout, l.At.In(a.zone()).Format("15:04:05")+"  "+oneline.Escape(w))
 			}
-			if len(costs) > 0 && len(short.Set) == 0 && short.From == short.To && !short.Removed {
-				continue // the change was its cost records alone
+			short, consumers := sprint.SplitConsumers(short)
+			for _, w := range consumers {
+				fmt.Fprintln(stdout, l.At.In(a.zone()).Format("15:04:05")+"  "+oneline.Escape(w))
+			}
+			if (len(costs) > 0 || len(consumers) > 0) && len(short.Set) == 0 && short.From == short.To && !short.Removed {
+				continue // the change was its cost and consumer records alone
 			}
 			l = short
 		}

@@ -24,6 +24,11 @@ type CardRow struct {
 	Col    string `json:"col"`
 	Tier   string `json:"tier"`
 	Holder string `json:"holder,omitempty"` // the member or friend running it; "" when no one is
+	// The consumer history's counts (SPEC-SPRINT, "the consumer record"): how
+	// many attempts, reads and landings the primary's card carries.
+	Attempts int `json:"attempts"`
+	Reads    int `json:"reads"`
+	Landings int `json:"landings"`
 }
 
 // CardTier is the tier the dealer reads on the primary c: the tier its last deal drew
@@ -65,6 +70,9 @@ func CardRows(s *Snapshot, f CardsFilter) []CardRow {
 					continue
 				}
 				r := CardRow{ID: c.ID, Stream: stream, Col: string(col), Tier: CardTier(c), Holder: CardHolder(s, c)}
+				if v := ConsumersOf(c); len(v.Consumers) > 0 {
+					r.Attempts, r.Reads, r.Landings = v.Attempts, v.Reads, v.Landings
+				}
 				if f.Holder == "" || r.Holder == f.Holder {
 					out = append(out, r)
 				}
