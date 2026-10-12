@@ -125,6 +125,22 @@ func ReadCardBase(card []byte) CardBase {
 	return b
 }
 
+// ParseCardBase extracts the base repo and base sha from the card text (ReadCardBase).
+// ok is false when the card names no repo that can be staged.
+func ParseCardBase(card []byte) (baseRepo, baseSha string, ok bool) {
+	b := ReadCardBase(card)
+	if b.Repo == "" {
+		return "", "", false
+	}
+	return b.Repo, b.Sha, true
+}
+
+// CardNamesRepo reports whether the card names a repository at all, readable or not: such
+// a card that ends with nothing staged is a staging failure (STAGE FAIL reason=no-repo-staged).
+func CardNamesRepo(card []byte) bool {
+	return ReadCardBase(card).Named != ""
+}
+
 // CardStageBranch is the branch the staged checkout is on, so the card commits on a named
 // branch rather than a detached HEAD: worker/<label> from line 1 (RESULT: <label> sha=...),
 // worker/card when line 1 names no label.
