@@ -2640,4 +2640,15 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    both refused, only wait quieting it")
+   (fix "tlc-accepts-refuses-a-pass-that-reads-as-a-violation" :release "v1.2.15" :status "planned"
+    :title "Accepts refuses a pass that also reads as a violation"
+    :text "pkg/tlc's Accepts read a pass on exit 0 plus the completion line and ignored the
+     rest of the output, so a log that carried both the completion line and an invariant
+     violation line (Error: Invariant Safety is violated.) was accepted as a pass. The worst
+     case this API can make is a violation read as a pass, so the pass branch now also requires
+     that no violation was read (len(o.Violations) == 0). Non-zero exit codes already refused
+     violations; real TLC exits non-zero on one, so the mixed case is not reachable from real
+     output, but the guard is now explicit. Test: pkg/tlc/outcome_test.go,
+     TestAcceptsRefusesAPassWithAViolation (red first against the old branch)."
+    :origin "this card, tlc-records-jar-outcome-and-tlacheck-verbs-are-tested.w3.g2.e19, 2026-10-12")))

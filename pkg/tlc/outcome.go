@@ -120,7 +120,7 @@ func Accepts(c Case, code int, output, config string) bool {
 	o := Parse(output)
 	switch c.Expected {
 	case "pass":
-		return code == ExitPass && o.Completed
+		return code == ExitPass && o.Completed && len(o.Violations) == 0
 	case "temporal":
 		if code != ExitProperty {
 			return false
