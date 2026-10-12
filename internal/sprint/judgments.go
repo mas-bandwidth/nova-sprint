@@ -432,7 +432,9 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 // clear would never be written and the stall would never be raised.
 func landingStallKept(p Plan, moved string) Plan {
 	if len(p.Props) > 0 && p.Empty() {
-		p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: moved})
+		// keyed by the property it writes: the stamp's own unit, as the store
+		// reports it and the reference model words the property's move
+		p.Units = append(p.Units, Unit{Key: PropLandingStallSince, Moved: moved})
 	}
 	return p
 }

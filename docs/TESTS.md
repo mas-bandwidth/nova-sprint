@@ -75,18 +75,19 @@ FINISH OK moved=1 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done ok; s1-1 working -> review (finish by m1)
 MOVED ask: s1-1 asked of reader-a
+MOVED deadlines: landing-stall watch begins: 1 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=1 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --begin --epoch 0
 MOVED s1-1.r1.reader-a asked -> reading
-READ OK moved=1 refused=0 notes=0 op=read-t35-1
+READ OK moved=1 refused=0 notes=0 op=read-t36-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --ok --epoch 0
 MOVED s1-1.r1.reader-a reading -> ok
-READ OK moved=1 refused=0 notes=0 op=read-t36-1
+READ OK moved=1 refused=0 notes=0 op=read-t37-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -99,7 +100,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=3 op=merge-t41-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t42-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
@@ -187,8 +188,9 @@ FINISH OK moved=2 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done failed; s1-1 working -> review (finish by m1)
 MOVED drain: s1-2.w1 working -> done failed; s1-2 working -> review (finish by m1)
+MOVED deadlines: landing-stall watch begins: 2 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=0 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint answer --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl

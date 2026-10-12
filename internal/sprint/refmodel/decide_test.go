@@ -439,6 +439,8 @@ func TestDeadlinesJudgeAReadCardNotBegun(t *testing.T) {
 	w.drive(t, "s1-1", sprint.Review)
 	w.ask(t, "s1-1") // two reads outstanding: both asked at once (reads together, the interim rule)
 	snap := w.snapshot(nil)
+	// a card landed at the deadline: the landing stall (judgments.go) has tests of its own
+	snap.Tables.Work.SetProp(sprint.PropLastLanding, later(30*time.Minute).UTC().Format(time.RFC3339))
 	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)))
 	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
 	expect(t, got,
@@ -454,6 +456,8 @@ func TestDeadlinesJudgeAStreamWithNoMergeStep(t *testing.T) {
 	w.add(t, "s1", 1)
 	w.drive(t, "s1-1", sprint.Merging)
 	snap := w.snapshot(nil)
+	// a card landed at the deadline: the landing stall (judgments.go) has tests of its own
+	snap.Tables.Work.SetProp(sprint.PropLastLanding, later(30*time.Minute).UTC().Format(time.RFC3339))
 	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)))
 	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
 	expect(t, got, "open a stream has had no merge step past its deadline [stream:s1]")
