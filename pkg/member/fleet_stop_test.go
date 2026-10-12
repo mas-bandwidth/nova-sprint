@@ -216,6 +216,11 @@ func TestARefusedStopReturnIsTriedAgainWhateverTheWord(t *testing.T) {
 	c := r.child("c1")
 	s.set("queue", 0, queueWith(t, "STOPPED", 7, working("c1", 1, &p)))
 	s.set("stop-return", 2, "nova-sprint stop-return: unknown verb")
+	// STOP cancels a child that is still running; a child already completed before
+	// STOP keeps its report instead (TestStopKeepsAlreadyEndedReport).
+	_, err = m.Tick(time.Unix(9, 0))
+	require.NoError(t, err)
+	assert.Equal(t, 1, c.stops())
 	c.end(Result{OK: true, Head: "abc"})
 	for i := range 3 {
 		_, err = m.Tick(time.Unix(10+int64(i), 0))
@@ -391,6 +396,54 @@ func TestAQueueWithoutTheMachineWordRunsAsBefore(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, m.stopped)
 	assert.Equal(t, []string{"c1"}, r.started())
+}
+
+// A child that completed before STOP has a report to send, rather than work to cancel.
+// Its held live word keeps the claim until RUNNING accepts the report.
+func TestStopKeepsAlreadyEndedReport(t *testing.T) {
+	t.Parallel()
+	m, s, r, _ := stopRig(Config{As: "m", Width: 1})
+	p := pk("c1")
+	s.set("queue", 0, queueWith(t, "RUNNING", 7, ready("c1")))
+	s.set("take", 0, takeJSON(t, p))
+	_, err := m.Tick(time.Unix(0, 0))
+	require.NoError(t, err)
+	r.child("c1").end(Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Report: "done"})
+	s.set("queue", 0, queueWith(t, "STOPPED", 7, working("c1", 1, &p)))
+	_, err = m.Tick(time.Unix(1, 0))
+	require.NoError(t, err)
+	assert.Equal(t, 0, r.child("c1").stops())
+	assert.Empty(t, s.lines("stop-return"))
+	assert.Empty(t, s.lines("finish"))
+	assert.Equal(t, "c1@1:held", m.liveWords())
+	s.set("queue", 0, queueWith(t, "RUNNING", 7, working("c1", 1, &p)))
+	_, err = m.Tick(time.Unix(2, 0))
+	require.NoError(t, err)
+	assert.Len(t, s.lines("finish"), 1)
+}
+
+// The store can observe STOP between our RUNNING queue read and the finish. That refusal
+// does not release the claim: the same report must be sent after the machine resumes.
+func TestStopRefusedReportIsHeldAndRetried(t *testing.T) {
+	t.Parallel()
+	m, s, r, _ := stopRig(Config{As: "m", Width: 1})
+	p := pk("c1")
+	s.set("queue", 0, queueWith(t, "RUNNING", 7, ready("c1")))
+	s.set("take", 0, takeJSON(t, p))
+	_, err := m.Tick(time.Unix(0, 0))
+	require.NoError(t, err)
+	r.child("c1").end(Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Report: "done"})
+	s.set("queue", 0, queueWith(t, "RUNNING", 7, working("c1", 1, &p)))
+	s.set("finish", 1, "REFUSED finish: the machine is STOPPED: a late work or read report cannot finish")
+	_, err = m.Tick(time.Unix(1, 0))
+	require.NoError(t, err)
+	assert.Equal(t, "c1@1:held", m.liveWords())
+	assert.Equal(t, 1, m.Running())
+	s.set("finish", 0, "")
+	_, err = m.Tick(time.Unix(2, 0))
+	require.NoError(t, err)
+	assert.Len(t, s.lines("finish"), 2)
+	assert.Equal(t, 0, m.Running())
 }
 
 // A child that is no Stopper is left to end by itself and handed back when it has.

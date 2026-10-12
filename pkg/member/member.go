@@ -1451,6 +1451,13 @@ func (m *Member) applyReport(id string, l launch, ro *reportOut) int {
 		m.running[id] = l // left for the next pass
 		return 0
 	}
+	if ro.code == 1 && stoppedRefusal(ro.out) {
+		// STOP reached the store after our queue read. The completed report still owns
+		// this generation; keep it held and send it again when the machine runs.
+		fmt.Fprintf(m.out, "NOTE %s %s kept: the machine is STOPPED; it is reported again when it runs\n", ro.verb, id)
+		m.running[id] = l
+		return 0
+	}
 	if ro.code != 0 {
 		if ro.reads && ro.returnNoVerdict {
 			// a refused return of a read that reached no verdict leaves the launch spent
@@ -1969,6 +1976,11 @@ func (m *Member) machineStop(q queueOut, byID map[string]queueCard, now time.Tim
 			if l.busy || l.child == nil || l.stopped {
 				continue // its start is in flight: the next pass stops it
 			}
+			if l.res != nil || l.child.Done() {
+				// Its child already ended: keep its report at this generation until
+				// RUNNING, rather than returning completed work to ready.
+				continue
+			}
 			if s, ok := l.child.(Stopper); ok {
 				l.stopPid = s.Stop()
 			}
@@ -2310,9 +2322,14 @@ func (m *Member) noRoomArgs() []string {
 // remembered for the beat (Beat): every card this worker holds a launch for, and every
 // read it returned a moment ago.
 func (m *Member) haveWords() string {
-	have := make([]string, 0, len(m.running)+len(m.returnedAt))
+	have := make([]string, 0, len(m.running)+len(m.returnedAt)+len(m.finishRefused))
 	for id := range m.running {
 		have = append(have, id)
+	}
+	for id := range m.finishRefused {
+		if _, ours := m.running[id]; !ours {
+			have = append(have, id)
+		}
 	}
 	for id, at := range m.returnedAt {
 		// a read this reader handed back is held to be its own only until it may begin it
@@ -2331,7 +2348,7 @@ func (m *Member) haveWords() string {
 
 // liveWords records every held launch for the member beat.
 func (m *Member) liveWords() string {
-	live := make([]string, 0, len(m.running))
+	live := make([]string, 0, len(m.running)+len(m.finishRefused))
 	for id, l := range m.running {
 		if l.spent {
 			continue
@@ -2341,6 +2358,11 @@ func (m *Member) liveWords() string {
 			w += ":held"
 		}
 		live = append(live, w)
+	}
+	for id, rf := range m.finishRefused {
+		if _, ours := m.running[id]; !ours {
+			live = append(live, id+"@"+strconv.Itoa(max(rf.gen, 1))+":held")
+		}
 	}
 	sort.Strings(live)
 	words := strings.Join(live, ",")

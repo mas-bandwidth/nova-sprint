@@ -46,6 +46,24 @@ func TestARefusedFinishIsSentAgainNeverTheRun(t *testing.T) {
 	assert.Equal(t, []string{"c1"}, pu.cards(), "pushed once across every pass")
 }
 
+// A pushed generation remains owned during the retry backoff. The fleet's live grace is
+// one minute, the first retry is one minute, and later retries wait longer; omitting this
+// held word lets reconciliation redeal a generation whose branch was already pushed.
+func TestRefusedPushedFinishStaysLiveThroughRetryBackoff(t *testing.T) {
+	t.Parallel()
+	pu := &fakePusher{def: Push{Sha: fullSha}}
+	g, _ := pushRig(t, pu, Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "landed"})
+	g.s.set("finish", 1, "REFUSED finish: no such column")
+	_, err := g.m.Tick(time.Unix(0, 0))
+	require.NoError(t, err)
+	assert.Equal(t, "c1@1:held", g.m.liveWords())
+
+	_, err = g.m.Tick(time.Unix(30, 0))
+	require.NoError(t, err)
+	assert.Equal(t, "c1@1:held", g.m.liveWords())
+	assert.Equal(t, []string{"c1"}, g.r.started())
+}
+
 // The same refusal FinishRefusedMax times hands the card back with stop-return instead of
 // running it: its run is refused, so the store must deal it again at the next generation.
 func TestTheSameRefusalHandsTheCardBackAfterFinishRefusedMax(t *testing.T) {
