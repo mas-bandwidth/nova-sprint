@@ -7,10 +7,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
-// The lifecycle of a primary: six states and the legal moves between them,
+// The lifecycle of a primary: eight states and the legal moves between them,
 // in one table (docs/SPEC-SPRINT.md section 3). The TLA+ model
-// tla/SprintTables.tla has the same states and the same moves; compare the
-// two row by row.
+// tla/SprintTables.tla covers the post-promotion lifecycle; CardMachine.tla
+// separately checks the bounded plan/check prefix (see tla/COVERAGE.tsv).
 //
 // A primary's state is the work-table column it is placed in. A primary that
 // stops any other way than landing leaves the table (drop): its record,
@@ -19,8 +19,10 @@ import (
 // State is a primary's state: its column in the work table.
 type State = string
 
-// The six states. Landed is final.
+// The eight states. Landed is final.
 const (
+	Planned State = "plan"
+	Checked State = "check"
 	Waiting State = "waiting"
 	Ready   State = "ready"
 	Working State = "working"
@@ -30,7 +32,7 @@ const (
 )
 
 // States is every state, in the work table's column order.
-var States = []State{Waiting, Ready, Working, Review, Merging, Landed}
+var States = []State{Planned, Checked, Waiting, Ready, Working, Review, Merging, Landed}
 
 // The class of a move: mechanical moves need no decision; the coordinator's
 // moves are made only by the coordinator's verbs.
@@ -50,6 +52,9 @@ type Move struct {
 // Moves is the lifecycle: every legal move, and nothing else. Off the table
 // (drop) is legal from every open state and is not a state.
 var Moves = []Move{
+	{Planned, Checked, "check", Coordinator, "every set triage row passes"},
+	{Checked, Waiting, "promote", Coordinator, "the coordinator admits the checked plan"},
+	{Checked, Planned, "brief", Coordinator, "an edit invalidates the checked brief"},
 	{Waiting, Ready, "resolve", Mechanical, "everything it needs has landed"},
 	{Ready, Working, "deal", Mechanical, "a work card is cut and dealt"},
 	{Working, Review, "finish", Mechanical, "its work card finished, ok or failed"},
@@ -80,14 +85,15 @@ func Legal(from, to State) bool {
 // IsOpen says a primary in s has not landed: drop may take it off the table.
 func IsOpen(s State) bool {
 	switch s {
-	case Waiting, Ready, Working, Review, Merging:
+	case Planned, Checked, Waiting, Ready, Working, Review, Merging:
 		return true
 	}
 	return false
 }
 
-// Lawful holds a plan to the lifecycle: a primary is admitted waiting or
-// ready, every unit that moves a primary in the work table moves it by a row
+// Lawful holds a plan to the lifecycle: Add admits a primary in plan; legacy
+// waiting/ready creation remains valid for existing recovery plans. Every unit
+// that moves a primary in the work table moves it by a row
 // of Moves, and a primary leaves the table only from an open state. A primary
 // is admitted ready, or moves waiting -> ready, only when every one of its
 // needs has landed (before the step or in it) or was waived, judged against
@@ -227,7 +233,7 @@ func unlawful(u Unit, p *Plan) string {
 	// (merge) are the only path to landed.
 	for _, c := range u.Changes {
 		e := c.Entry
-		if c.Table == Work && e.Create != nil && e.Create.Col != Waiting && e.Create.Col != Ready {
+		if c.Table == Work && e.Create != nil && e.Create.Col != Planned && e.Create.Col != Waiting && e.Create.Col != Ready {
 			return "the lifecycle admits a primary waiting or ready, not " + e.Create.Col
 		}
 		if c.Table == Work && e.Create != nil && e.Set["kind"] == "sentinel" && e.Create.Col != Waiting {

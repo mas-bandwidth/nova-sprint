@@ -13,6 +13,7 @@ import (
 func TestLifecycleIsTheSpecTable(t *testing.T) {
 	t.Parallel()
 	legal := map[[2]State]bool{
+		{Planned, Checked}: true, {Checked, Waiting}: true, {Checked, Planned}: true,
 		{Waiting, Ready}: true, {Ready, Working}: true, {Working, Review}: true, {Working, Ready}: true,
 		{Review, Merging}: true, {Review, Working}: true, {Review, Ready}: true, {Merging, Review}: true, {Merging, Landed}: true,
 		{Merging, Working}: true, {Merging, Ready}: true,
@@ -53,6 +54,7 @@ func setup(t *testing.T, n int) *world {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: n}))
+	w.preparePlanned()
 	w.clean("setup")
 	return w
 }
@@ -440,4 +442,14 @@ func TestNoExportedFieldOfATableGivesItsCardsOrRows(t *testing.T) {
 	}
 	want := []string{"Name", "Epoch", "Revision", "Texts"}
 	require.Equal(t, want, exported, "the exported fields of a table are %v, want %v: a card or a row would be read past the index", exported, want)
+}
+
+// preparePlanned builds ready-work fixtures through the coordinator's production
+// lifecycle (docs/SPEC-SPRINT.md, plan and check columns).
+func (w *world) preparePlanned() {
+	w.t.Helper()
+	p, _ := ReviewPlan(w.s, TriageReq{AllPlan: true})
+	w.must(p)
+	w.must(PromotePlan(w.s, TriageReq{}))
+	w.must(Resolve(w.s, ResolveReq{}))
 }
