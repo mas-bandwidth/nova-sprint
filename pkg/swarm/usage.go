@@ -1,11 +1,5 @@
 package swarm
 
-import (
-	"fmt"
-	"strconv"
-	"strings"
-)
-
 // A field the provider did not report is the literal "-", never 0: a zero is a
 // measurement and a dash is an absence, and nova-tokens reads this file and reads "-" as
 // unknown, preserving the distinction between an absent value and a measured zero.
@@ -35,13 +29,6 @@ const Dash = "-"
 type UsageRow map[string]string
 
 // Int reads a numeric column, reporting whether it is a number at all -- a dash is not.
-func (r UsageRow) Int(name string) (int, bool) {
-	n, err := strconv.Atoi(strings.TrimSpace(r[name]))
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
 
 // ProviderUsage is what the harness's own accounting said, read from the data home the
 // dispatcher exported for THIS job -- one job, one database, which is why slots exist.
@@ -66,7 +53,6 @@ var TokenColumns = []string{"tokens_in", "tokens_out", "cache_write", "cache_rea
 var BudgetColumns = []string{"tokens_in", "tokens_out", "reasoning"}
 
 // Budget is the observed spend: the same arithmetic as Sum over BudgetColumns.
-func (u ProviderUsage) Budget() (sum int, seen int, partial bool) { return u.add(BudgetColumns) }
 
 // BudgetWord is the ceiling and what was observed under it, in the four spellings
 // the document names, and it is the ONE place either route renders them:
@@ -82,36 +68,10 @@ func (u ProviderUsage) Budget() (sum int, seen int, partial bool) { return u.add
 // holds for a native card too. Two renderings of one field is how
 // one of them drifts, and a reader who learned the field on one line would misread it on
 // the other.
-func BudgetWord(unmetered bool, tokens, spent int, observed, partial bool) string {
-	if unmetered {
-		return "unmetered"
-	}
-	switch {
-	case !observed:
-		return fmt.Sprintf("%s/%d", Dash, tokens)
-	case partial:
-		return fmt.Sprintf("%d+/%d", spent, tokens)
-	}
-	return fmt.Sprintf("%d/%d", spent, tokens)
-}
 
 // Sum adds the token columns that are present, and says whether any were missing, so that a
 // partial observation prints `budget=<n>+/<n>` with the plus rather than passing for a
 // whole one.
-func (u ProviderUsage) Sum() (sum int, seen int, partial bool) { return u.add(TokenColumns) }
-
-func (u ProviderUsage) add(columns []string) (sum int, seen int, partial bool) {
-	for _, c := range columns {
-		n, err := strconv.Atoi(strings.TrimSpace(u.Values[c]))
-		if err != nil {
-			partial = true
-			continue
-		}
-		sum += n
-		seen++
-	}
-	return sum, seen, partial && seen > 0
-}
 
 // ReadProviderUsage reads the provider's own accounting for one job, from the source the
 // worker description names. There are two: `opencode`, the job's own `opencode.db` in
@@ -123,13 +83,3 @@ func (u ProviderUsage) add(columns []string) (sum int, seen int, partial bool) {
 // deadline to end the job, and the second, three samples running, ends the job RUN
 // BUDGET-UNVERIFIABLE, because a numeric budget the tool has stopped being able to see is a
 // budget the caller believes is enforced and is not.
-func ReadProviderUsage(source, dataHome string) (ProviderUsage, error) {
-	switch source {
-	case UsageOpenCode:
-		return openCodeReader{}.read(dataHome)
-	case UsageNone, "":
-		return ProviderUsage{Values: map[string]string{}}, nil
-	default:
-		return ProviderUsage{}, fmt.Errorf("the usage source %q is not one this tool reads; it wants `%s` or `%s`", source, UsageOpenCode, UsageNone)
-	}
-}

@@ -481,13 +481,6 @@ pro opencode/deepseek-v4-pro
 // IsPulseTemplate reports whether name is one of the pulse card templates or the cost table
 // nova-pulse `cut` reads. They are cards cut renders, never task
 // templates to wrap.
-func IsPulseTemplate(name string) bool {
-	switch name {
-	case "read", "fix", "text", "replay", "drift", "tone", "models.tsv":
-		return true
-	}
-	return false
-}
 
 // Template returns one template by name.
 func Template(name string) (string, error) {
@@ -540,45 +533,7 @@ func TemplateNames() []string {
 // result is the report's shape, worker is a JSON worker description, setup and capacity
 // are forms, and the pulse names are the cards nova-pulse `cut` renders, all printed
 // verbatim for their own purpose.
-func IsCardTemplate(name string) bool {
-	switch name {
-	case "read-pr", "probe-row", "fix-card":
-		return true
-	}
-	return false
-}
 
 // WrapTemplate puts a task's own text under its template's conditions, with the file budget
 // written into the condition that names it, so the number in the prompt is the number the
 // machinery will hold the worker to.
-func WrapTemplate(name string, files int, text []byte) ([]byte, error) {
-	body, err := Template(name)
-	if err != nil {
-		return nil, err
-	}
-	if name == "result" {
-		return nil, fmt.Errorf("--template wants a task template (read-pr, probe-row, fix-card); `result` is the report's shape, printed by `template --name result`")
-	}
-	if name == "setup" {
-		return nil, fmt.Errorf("--template wants a task template (read-pr, probe-row, fix-card); `setup` is the per-friend agreement form of issue #184, printed by `template --name setup`")
-	}
-	if name == "capacity" {
-		return nil, fmt.Errorf("--template wants a task template (read-pr, probe-row, fix-card); `capacity` is the per-friend offer and routing-log form of issue #176, printed by `template --name capacity`")
-	}
-	if name == "card" {
-		return nil, fmt.Errorf("--template wants a task template (read-pr, probe-row, fix-card); `card` is a whole card with its RULES paragraph, printed by `template --name card`, the shape the coordinator starts from")
-	}
-	if IsPulseTemplate(name) {
-		return nil, fmt.Errorf("--template wants a task template (read-pr, probe-row, fix-card); `%s` is a nova-pulse card template of SPEC-PULSE rule 4, printed by `template --name %s`, not a task template", name, name)
-	}
-	body = strings.ReplaceAll(body, "<n> files", fmt.Sprintf("%d files", files))
-	var b strings.Builder
-	b.WriteString("## The conditions (they are worth more than the model)\n\n")
-	b.WriteString(body)
-	b.WriteString("\n## The task\n\n")
-	b.Write(text)
-	if len(text) > 0 && text[len(text)-1] != '\n' {
-		b.WriteString("\n")
-	}
-	return []byte(b.String()), nil
-}

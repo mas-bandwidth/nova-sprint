@@ -1,9 +1,7 @@
 package swarm
 
 import (
-	"os"
 	"path/filepath"
-	"strings"
 )
 
 // SHARED PER-BENCH CACHES (issue #1048). A native job downloads the Go toolchain and every
@@ -18,29 +16,15 @@ const (
 )
 
 // CacheRoot is the shared cache directory under a swarm root.
-func CacheRoot(root string) string { return filepath.Join(root, CacheDirName) }
 
 // GoModCacheDir is the shared module cache (GOMODCACHE) under a swarm root: the one name
 // native hands the child, so the directory made here is the one the child uses.
-func GoModCacheDir(root string) string { return filepath.Join(root, CacheDirName, "go-mod") }
 
 // GoBuildCacheDir is the shared build cache (GOCACHE) under a swarm root: the one the child
 // is handed, JOB.md names and the member's lazy cleaner holds under gocache.Limit.
 func GoBuildCacheDir(root string) string { return filepath.Join(root, CacheDirName, "go-build") }
 
 // NPMCacheDir is the shared npm cache (NPM_CONFIG_CACHE) under a swarm root.
-func NPMCacheDir(root string) string { return filepath.Join(root, CacheDirName, "npm") }
 
 // EnsureCacheDirs makes the three shared cache directories, so the child's first cache write
 // lands in a directory that exists inside the write set.
-func EnsureCacheDirs(root string) error {
-	if strings.TrimSpace(root) == "" {
-		return nil
-	}
-	for _, dir := range []string{GoModCacheDir(root), GoBuildCacheDir(root), NPMCacheDir(root), LispCacheDir(root)} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
-	return nil
-}

@@ -79,23 +79,6 @@ func LoadPoolIdentity(poolDir string) (StagingIdentity, error) {
 	return id, nil
 }
 
-// ParseIdentity reads a pool identity given on the command line, as a loop's
-// argv in nova-config carries it (`--identity <owner>,<name>,<email>`), so no
-// identity.tsv has to be written into a pool by hand: the owner is the text
-// before the first comma, the email the text after the last, the name what lies
-// between (a name may hold a comma). Each is required, and the email holds an @.
-func ParseIdentity(s string) (StagingIdentity, error) {
-	first, last := strings.Index(s, ","), strings.LastIndex(s, ",")
-	if first < 0 || first == last {
-		return StagingIdentity{}, fmt.Errorf("--identity %q: wants <owner>,<name>,<email>, the three columns of a pool's identity.tsv", s)
-	}
-	id := StagingIdentity{Owner: strings.TrimSpace(s[:first]), Name: strings.TrimSpace(s[first+1 : last]), Email: strings.TrimSpace(s[last+1:])}
-	if id.Owner == "" || id.Name == "" || !strings.Contains(id.Email, "@") {
-		return StagingIdentity{}, fmt.Errorf("--identity %q: owner, name and an email with an @ are all required: <owner>,<name>,<email>", s)
-	}
-	return id, nil
-}
-
 // StagingGitEnv is the environment the launcher exports with every job: the
 // bench's own git config cannot leak into what the worker commits or what the
 // machinery reads, and the pool's identity row is exported as author and
@@ -119,23 +102,12 @@ func StagingGitEnv(id StagingIdentity) []string {
 	return env
 }
 
-// StageCloneIdentity writes the machine's identity into the job clone's LOCAL
-// git config, so the commit the worker makes carries the machine's name
-// (config.DefaultGitIdentity, the sprint row's git_identity default), never the
-// pool's owner or the bench's config. The write itself runs with the bench config
-// blanked, so a hostile bench config cannot redirect where local lands.
-func StageCloneIdentity(repoDir string, id StagingIdentity) error {
-	return StageCloneIdentityAs(repoDir, id, config.DefaultGitIdentity)
-}
-
-// StageCloneIdentityAs is StageCloneIdentity with the sprint row's machine identity
+// StageCloneIdentityAs writes the machine's identity into the job clone's LOCAL git config
 // (gitIdentity, "Name <email>", the sprint's git_identity): when given it is the clone's
 // local author and committer, so the worker's clone commits as the machine; empty falls
 // back to the pool's identity. A launcher that reads the sprint row passes it, so a
 // rework-at-tip commit in the clone carries the configured identity, never the owner's
-// (docs/SPEC-SPRINT.md, the machine's commit identity). The live wrapper StageCloneIdentity
-// passes the machine's own default (config.DefaultGitIdentity), so a clone staged by the
-// launcher carries the machine, never the pool's owner.
+// (docs/SPEC-SPRINT.md, the machine's commit identity).
 func StageCloneIdentityAs(repoDir string, id StagingIdentity, gitIdentity string) error {
 	name, email := id.Name, id.Email
 	if parsed, ok := config.ParseGitIdentity(gitIdentity); ok {

@@ -22,15 +22,10 @@ package swarm
 // the log poll -- activityInterval below -- because reading the machine's process table ten
 // times a second to watch n quiet cards is a cost with no answer in it.
 
-import "time"
-
 // activityInterval is how often the tree is read, taken from the idle window the caller set:
 // a quarter of it, never faster than half a second and never slower than five. A card is
 // never killed for one quiet quarter -- the kill still needs the whole --idle -- so the
 // coarse poll costs nothing but the sample's own age.
-func activityInterval(idle time.Duration) time.Duration {
-	return min(max(idle/4, 500*time.Millisecond), 5*time.Second)
-}
 
 // activitySnapshot is one reading of a process tree's CPU activity: TreeCPU answers
 // the total CPU in nanoseconds across pid and its descendants, and whether the tree
@@ -57,29 +52,3 @@ type procSnapshot struct {
 // same counter and asks that the growth be a real share of the interval
 // rather than any increment at all. The second return is false when the platform cannot read
 // the table, or when the tree holds no live process at all: neither is an activity reading.
-func (s *procSnapshot) TreeCPU(pid int) (uint64, bool) {
-	if s == nil || !s.known || pid <= 0 {
-		return 0, false
-	}
-	var total uint64
-	live := false
-	seen := map[int]bool{}
-	stack := []int{pid}
-	for len(stack) > 0 {
-		p := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if seen[p] {
-			continue
-		}
-		seen[p] = true
-		if !s.live[p] {
-			continue
-		}
-		live = true
-		if c, ok := cpuOf(p); ok {
-			total += c
-		}
-		stack = append(stack, s.children[p]...)
-	}
-	return total, live
-}
