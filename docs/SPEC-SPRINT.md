@@ -2232,7 +2232,11 @@ that ends it, whatever the end (done, failed, no result, the provider's failure,
 at staging, a read of any verdict or none): the consumer record carries its route, model,
 tier, card, kind (work or read) and end, and its charged figure is the harness's own cost
 where it reported one, else its tokens at the route's prices (`costRecord`); a run that
-reported no token is counted unpriced, never as a zero. A launch's child appends one row
+reported no token is counted unpriced, never as a zero. A run whose route has no price sheet
+and whose harness actual is exactly zero is unpriced the same way, `unpriced=no-price-sheet`:
+the zero is no cost, so its tokens and its route are kept with no figure at all and the stream
+counts it among its unpriced runs (`unpriced_runs`), never as $0; a priced route, and a
+non-zero harness actual, are unchanged (`cardcost.Usage.Priced`). A launch's child appends one row
 per attempt to its job's `usage.tsv` before the summary line that carries the launch's
 spend; a launch stopped between the two still reports what the rows say
 (`member.ReceiptUsage`): every attempt's tokens summed, the model, and the harness's cost

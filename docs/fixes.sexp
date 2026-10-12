@@ -66,7 +66,10 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
+    :text "The next small product fixes, one concern each.")
+   (release "v1.2.17" :status "planned" :date "2026-10-12"
+    :text "The costs no price covers: a harness's exact zero on a route with no price sheet is
+     counted unpriced, never as $0."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -2577,4 +2580,23 @@
     is refused through the lander's own table, the same line where the verb is registered passes, a
     line naming a verb of another tool or a shell built-in is not checked, and a Markdown prose line
     whose first token is a tool name is not refused."
-   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")))
+   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")
+  (fix "a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced" :release "v1.2.17" :status "planned"
+   :title "A zero harness cost on an unpriced route is counted unpriced, never as $0.00"
+   :text "A Mercury 3 take on a route with no price sheet (pro-mercury3, pro-mercury3-pro) that
+    reported tokens and a harness actual of exactly zero recorded a cost of $0.00: Usage.Present
+    reads the zero actual as a real figure and Total.Add counts it as the record's charged figure, so
+    the zero stands in for a price and the run is not one of the stream's unpriced runs.
+    cardcost.Usage.Priced now drops the harness actual when the route has no price sheet (Predict's
+    no-price-sheet) and the actual is an exact zero (zeroCost), keeping the tokens and the route with
+    unpriced=no-price-sheet and no figure, so the record is counted among the stream's unpriced runs
+    (the work table's unpriced column) and adds nothing to charged. A record on a priced route, a
+    non-zero harness actual, a run that reported no token and a subscription read are unchanged. No
+    dashboard cell, column or row is added or removed. docs/SPEC-SPRINT.md, the section What a card
+    cost, states the rule. Test: TestAZeroHarnessCostOnAnUnpricedRouteIsCountedUnpriced
+    (internal/sprint/cost_test.go)."
+   :origin "this card, a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced.w1, from the seat,
+    2026-10-12 03:09Z: Mercury 3 takes on pro-mercury3 and pro-mercury3-pro (no price sheet) recorded
+    cost - or $0.00, and the $0.00 ones were summed as charged spend, so the stream's spend undercounts
+    and the unpriced count misses them; the config side (an enabled route with no price is refused at
+    apply) is a-enabled-route-with-no-price-is-refused-at-apply in nova-tools")))
