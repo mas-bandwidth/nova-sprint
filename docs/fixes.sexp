@@ -2421,12 +2421,17 @@
     NOTE names every property it kept against the text. The needs are the card's, not the text's: the
     edit starts from the card's needs, maps a name its relink record re-pointed to its twin (the
     relink record wins over the text's stale DEPENDS-ON, NOTEd `needs kept: <twin> (relinked from
-    <old> <time>)`), and adds only names the text holds that the card does not; a need the text drops
-    stays, unless `--needs-from-brief` takes the text whole. The tier is a card field (`tier`): a text
+    <old> <time>)`), and adds only names the text holds that the card does not, never a dropped card
+    the card's needs no longer name (the relink record keeps only the last relink); a need the text
+    drops stays, unless `--needs-from-brief` takes the text whole; the needs held to the batch's cycle
+    check are the ones the edit writes, never the text's list. The tier is a card field (`tier`): a text
     whose line 1 names another tier than the card's recorded one keeps the recorded one, NOTEd, unless
     `--tier <t>` names one, and `nova-sprint tier <card> --set <t> --reason` sets it without a text
-    edit (refusing a TLA path at a tier below frontier as the lint does). The bound hashes the task,
+    edit; both refuse a TLA path at a tier below frontier as the lint does. The bound hashes the task,
     not the text (the body and PATHS, NEW, SHARED, TEST and DONE-WHEN): an edit that changes only
     DEPENDS-ON, ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS or the tier keeps the count (`bound: same
-    task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`)."
-   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
+    task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`). Tests:
+    internal/sprint/brief_edit_test.go (red first) and the functional
+    TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
+    DEPENDS-ON, on a real store)."
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
