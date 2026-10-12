@@ -412,8 +412,10 @@ preference and the deals offer it on as a named pin is offered while she is not 
 friend up or a machine, with the pin-ignored judgment (`sprint.PinReleased`; the fault
 inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and more;
 `TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn`; tla/SprintRules.tla, Part "episodes").
-The hour runs from the stop's latest note: the coordinator's `ack` or `wait` on it writes a
-new one, so each answer starts the hour again (`TestACoordinatorAnswerRestartsThePinHour`). `add` and
+The bound runs, in running time, from the stop's latest note: the coordinator's `ack` writes
+a new one and starts it again; a `wait` on it is refused, since the stop names a card on the
+work table (a wait never parks a card), so it extends nothing and the pin is released at the
+bound (`TestAWaitOnThePinStopIsRefusedAndExtendsNothing`). `add` and
 `brief` refuse any other WHO value, a name that is no row of the friends table, and
 `WHO: friend` while the table has no row (exit 2, nothing written). A named friend's
 configured work restriction is held too: a card whose stream matches none of her

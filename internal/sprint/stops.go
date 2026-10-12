@@ -68,7 +68,9 @@ const (
 
 func init() {
 	TickDecisions[NStopMemberDown] = []string{"ack", "wait"}
-	TickDecisions[NStopPinWaits] = []string{"ack", "wait"}
+	// no wait: the stop names a card on the work table, so a wait on it is refused
+	// (wait_refused.go, WaitRefusalIn) and never extends the pin (PinReleased)
+	TickDecisions[NStopPinWaits] = []string{"ack"}
 	TickDecisions[NFriendStalled] = []string{"ack", "wait"}
 }
 
@@ -266,7 +268,9 @@ func pinStops(s *Snapshot, r TickReq) []Stop {
 			What: what, Effect: effect,
 			Undo:   "nova-sprint unpin " + pr.ID + " --reason '<why>', or bring her up",
 			Signal: NStopPinWaits, typ: NStopPinWaits, stream: pr.Row, primaries: []string{pr.ID},
-			decisions: []string{"unpin " + pr.ID + " --reason '<why>'", "ack", "wait"}})
+			// no wait: it names a card on the work table, so a wait is refused and never
+			// extends the pin (PinReleased; wait_refused.go, WaitRefusalIn)
+			decisions: []string{"unpin " + pr.ID + " --reason '<why>'", "ack"}})
 	}
 	return out
 }
@@ -286,10 +290,10 @@ const PinReleaseBound = DeadlineJudgment
 // (Stella's read of #123: a raw now-minus-At did). The deals then offer it on as a named pin is offered while
 // she is not up, to another friend or a machine, with the pin-ignored judgment (pinConds);
 // the stop stays while it waits ready, so the release itself does not restart the clock. The
-// clock is the At of the stop's note, open or acknowledged, and a coordinator's answer writes
-// a new one: an ack, or a wait (a hold at its own time, raised again as a new stop once its
-// review passes), restarts the hour. Each answer is the coordinator choosing to keep the pin
-// for now, so the release comes PinReleaseBound after the last answer, never sooner. The
+// clock is the At of the stop's note, open or acknowledged: an ack writes a new one and starts
+// the clock again. A wait never does: the stop names a card on the work table, so the wait
+// is refused (wait_refused.go, WaitRefusalIn; Stella's read of #123) and the pin is released
+// PinReleaseBound of running time after the stop, with no extension. The
 // fault inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and
 // more, and 5 behind them. Seats nil (the friends not read) releases nothing.
 // tla/WhoPreference.tla Release.
