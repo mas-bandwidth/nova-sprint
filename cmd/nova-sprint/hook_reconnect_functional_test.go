@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -135,18 +138,30 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(ctx, admin))
 	const name = "reconnect-seat"
+	home := t.TempDir()
 	var clockMu sync.Mutex
 	currentNow := time.Now().UTC()
 	clock := func() time.Time { clockMu.Lock(); defer clockMu.Unlock(); return currentNow }
 	advance := func(at time.Time) { clockMu.Lock(); currentNow = at; clockMu.Unlock() }
 	env := func(k string) string {
-		return map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": name}[k]
+		return map[string]string{
+			"NOVA_SPRINT_REDIS":  addr,
+			"NOVA_SPRINT_ACTOR":  name,
+			"NOVA_SPRINT_SERVER": "http://127.0.0.1:1", // hostile ambient seat: --redis must keep fixture local
+			"HOME":               home,
+			"XDG_CONFIG_HOME":    filepath.Join(home, ".config"),
+		}[k]
 	}
 	app := newApp(env)
 	app.now = clock
+	app.home = func() (string, error) { return home, nil }
+	app.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
+		t.Fatalf("fixture command was forwarded to ambient seat %s: %q", server, verbs)
+		return nil, errors.New("forwarding is refused in this test")
+	}
 	t.Cleanup(app.close)
 	var out, errs strings.Builder
-	require.Equal(t, 0, app.run([]string{"init", "--members", "m1", "--readers", "reader-a", "--owner", name}, &out, &errs), "%s%s", out.String(), errs.String())
+	require.Equal(t, 0, app.run([]string{"init", "--members", "m1", "--readers", "reader-a", "--owner", name, "--redis", addr}, &out, &errs), "%s%s", out.String(), errs.String())
 	app.bus = func(context.Context, bus.Message, func(string)) error { return nil }
 	app.serveAddr = addr
 	srv := httptest.NewServer(localHandler{app})
@@ -175,7 +190,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	require.Equal(t, "ok", first.send(t, hookMsg{T: "prove", Challenge: challenge}).T)
 	out.Reset()
 	errs.Reset()
-	require.Equal(t, 0, app.run([]string{"start"}, &out, &errs), "running-time fixture: %s%s", out.String(), errs.String())
+	require.Equal(t, 0, app.run([]string{"start", "--redis", addr}, &out, &errs), "running-time fixture: %s%s", out.String(), errs.String())
 	require.Eventually(t, func() bool {
 		h := app.hookHub()
 		h.mu.Lock()
@@ -232,6 +247,11 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 
 	app2 := newApp(env)
 	app2.now = clock
+	app2.home = func() (string, error) { return home, nil }
+	app2.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
+		t.Fatalf("reconnected fixture command was forwarded to ambient seat %s: %q", server, verbs)
+		return nil, errors.New("forwarding is refused in this test")
+	}
 	t.Cleanup(app2.close)
 	app2.serveAddr = addr
 	app2.bus = func(context.Context, bus.Message, func(string)) error { return nil }

@@ -65,6 +65,16 @@ var dKnown = []dKnownDiff{
 		}
 		return f.Kind == "state" && strings.Contains(f.Sig(), "open.other:raise the read tier of the stream?")
 	}},
+	// ENGINE only (judgments.go, the owner 2026-10-11; card a-landing-stall-is-a-judgment). The
+	// tick raises "landing stalled" when cards wait in review or merging and none has landed for
+	// the bound; the model knows no landing stall. The model is its own card,
+	// tla-sprintrules-landing-stall-liveness. An ack of it is the engine's too.
+	{"ENGINE the landing-stall judgment is the engine's, not the model's", func(f dFinding) bool {
+		if f.Kind == "refusal" && f.Seq[len(f.Seq)-1].Kind == "ack" && strings.Contains(f.Seq[len(f.Seq)-1].Type, "landing stalled") {
+			return true
+		}
+		return f.Kind == "state" && strings.Contains(f.Sig(), "open.other:landing stalled")
+	}},
 	// MODEL, found 2026-10-06 when reads went together (the seeds reach an accept sooner),
 	// and reachable on the code before it (replayed: CI red on a merging primary, a green
 	// landing of it, a tick): the engine's tick leaves no ci judgment open on the landed
