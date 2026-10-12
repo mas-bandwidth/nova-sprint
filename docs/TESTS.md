@@ -689,3 +689,11 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
 
+## End classification
+
+Classify every end by cause at the moment it is recorded: work (the child ran to its own end: ok, failed work, no result) vs not-its-fault (coordination, provider, environment, harness, clear). Ok% per machine and per route counts only work ends: ok over (ok + failed work + no result). Every other end is counted in its own named column, never in ok%.
+
+- `TestEndClassify` (`internal/sprint/end_classify_test.go`): a table test covering each end class — the work ends (ok, failed work, no result, nothing to do, no commit) and the not-its-fault ends (provider failure, rate limited, out of credit, staging refused, launch refused, pre-existing, the capped re-tier, needs not landed, a 134/137 environment exit). An unrecognised end counts as failed work. Asserts ok% counts only work ends.
+- `TestEndClassColumn` (`internal/sprint/end_classify_test.go`): each not-its-fault class maps to its own named fleet column; the work ends map to none.
+- `TestACappedLaneIsReDealtOnceAtTheNextTierUp`, `TestACappedFriendLaneIsReDealtOnceAtTheNextTierUp` (`internal/sprint/lane_cap_test.go`, `lane_cap_friend_test.go`): the coordinator's lane-cap re-tier files the card in the coordination column, never the failed cell.
+- `TestOkPercentCountsOnlyTheWorkAMachineDid` (functional, `cmd/nova-sprint/ok_percent_work_functional_test.go`): on a private redis-server with explicit `--redis` and a scrubbed environment, five cards are dealt to m1; one is dropped mid-run, one the provider refused, one died a 134 environment death, one failed the work for real and one landed ok. The machine's ok% counts exactly the one real failure: the drop, the refusal and the death withdraw or leave the table, never the failed cell.
