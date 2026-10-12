@@ -201,6 +201,7 @@ func TestStartBoundLevellingSkipsARestrictedRecipient(t *testing.T) {
 			id := tc.stream + "-1"
 			brief := "c: a restricted level\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: " + tc.kind + "\n\nThe task."
 			w.must(Add(w.s, AddReq{Stream: tc.stream, Cards: []CardAdd{{ID: id, Brief: brief}}}))
+			w.preparePlanned()
 			seats := func() []FriendSeat {
 				return []FriendSeat{
 					{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"},

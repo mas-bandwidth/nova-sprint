@@ -8524,3 +8524,56 @@ friend reaches that friend's inbox by the route her judgments already take: the
 push loop writes a group addressed to someone to that actor's own inbox
 directory (`pushTarget.dirOf`, `~/<actor>-working/inbox/sprint-judgments`), the
 group carrying the note's addressee (`sprint.Group.To`).
+
+### Plan and check columns
+
+Producer admission starts in `plan`, followed by `check`, `waiting`, `ready`,
+`working`, `review`, `merging`, and `landed`. `plan` and `check` belong to the
+coordinator. They are ordinary columns of the work table, not consumer states.
+The dealer and resolver leave both alone. Sentinels retain their separate
+waiting/release lifecycle. Existing cards keep their current state on upgrade.
+Before installing this build, add the two columns on a STOPPED store using
+`internal/sprint/store/migrations/0002_work_plan_check.sh`; LockedShape refuses a
+store missing them. Clear leaves both columns behind with the old epoch.
+
+`check <ids>`, `check --stream <s>`, or `check --all-plan` reviews the selected
+set against every admitted card and moves a card to `check` only when all of
+its rows pass. The table has seven named checks:
+
+* `shared-paths`: shared non-ledger files and overlapping paths within a repository;
+  shared ledger paths use the existing ledger classification.
+* `dependencies`: every dependency is admitted or landed, no reachable dependency
+  cycle, and a conformance card declares `EMITTER:` and depends on it.
+* `bench`: explicit `TOOLCHAINS:`, `TLC:`, and `SIBLINGS:` when model/code paths
+  or build commands require them. These are declarations, not availability probes.
+* `tier`: the existing model-path tier rule, which requires frontier for TLA+ work.
+* `size`: no brief exceeds 16,384 bytes; repeated nonempty line bytes are counted
+  alongside the full size so duplicated boilerplate is visible.
+* `landed`: a nonempty normalized `Done is:` acceptance paragraph must not match
+  an already landed card in the same repository.
+* `precedent`: the first report line of failed fleet attempts and retained per-attempt
+  findings whose primary has the same explicit `CLASS:`. This row is informational
+  and does not block a repair. The lookup currently covers retained records only;
+  an archived or prior-epoch producer catalog is not yet connected to this review.
+
+`promote <ids>` or `promote --stream <s>` moves checked cards to waiting. It
+refuses plan cards and rechecks the set against the current snapshot. A brief
+edit moves a checked card back to plan. Revision guards protect each move, and
+no check stores an alternative copy of the work table. The next resolve can
+move waiting to ready when dependencies hold. The selection forms are
+coordinator writes; bare `check` still audits invariants and bare `promote`
+with its release flags still schedules Git promotion.
+
+`check --json` with a selection carries `triage` and the committed step's
+`result`. `inbox --triage` reads the current plan/check table without changing it.
+The tick raises one judgment for all cards that have remained in these columns
+longer than `set --plan-max <duration>` (30 minutes by default, running time).
+It updates that judgment's count and closes it once the condition ends. View
+cards, coordinator counts and the work table expose both columns.
+
+The bounded CardMachine model checks plan/check/promote and the projection of
+clear onto those columns. `PlanningNotDealt` checks that a deal cannot increase
+a planning card's copy generation; its reversed witness deliberately does so.
+The model abstracts a successful triage and does not prove the text checks.
+Coordinator decisions have no fairness assumption; progress starts after
+promotion. AttemptsEpochs continues to model clear's epoch and stale-writer fence.

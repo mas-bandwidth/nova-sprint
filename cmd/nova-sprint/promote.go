@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os/exec"
@@ -205,7 +206,21 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 	repo := fs.String("repo-dir", "", "the clone the branch is cut in (default: the current directory)")
 	base := fs.String("base", "dev", "the branch the pull request targets, fetched and merged into the cut first (default dev)")
 	check := fs.String("check", "", "the tree gate, a command run on the frozen commit before the pull request (default: none)")
+	stream := fs.String("stream", "", "promote checked producer cards in this stream to waiting")
 	pos, err := parse(fs, args)
+	if err == nil && (len(pos) > 0 || *stream != "") {
+		mixed := ""
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "every", "landings", "dry-run", "once", "poll", "branch", "repo-dir", "base", "check":
+				mixed = f.Name
+			}
+		})
+		if mixed != "" {
+			return refuse(stderr, "promote", "card selection cannot be combined with release --"+mixed)
+		}
+		return a.cmdPlanReview("promote", *c, sprint.TriageReq{IDs: pos, Stream: *stream, Who: c.actor}, stdout, stderr)
+	}
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "promote", argErr("takes no words ", err, pos...))
 	}

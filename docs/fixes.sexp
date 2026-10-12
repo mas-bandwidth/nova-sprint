@@ -65,10 +65,28 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
-   (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
-  :items
-   ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
+    (release "v1.2.15" :status "planned"
+     :text "The next small product fixes, one concern each.")
+    (release "v1.3.0" :status "planned"
+     :text "The next small product fixes, one concern each."))
+   :items
+    ((fix "a-producer-card-is-planned-and-checked-before-it-waits" :release "v1.3.0" :status "planned"
+      :title "A producer card is planned and checked before it waits"
+      :text "A producer card is admitted straight into waiting, and what the set needs as a whole (shared
+       paths, dependency order, toolchains, tiers, sizes, duplicates of landed work) is found one attempt
+       at a time on the fleet. The card now lands in a new first column plan, never waiting; a check
+       (nova-sprint check) reviews the set as a whole and moves each card plan -> check only when every
+       triage row passes (shared paths, dependency order, bench headers, tier-class match, brief size and
+       prune, landed duplicates, the precedent log); promote moves check -> waiting and refuses a card
+       still in plan; the tick raises 'N cards in plan or check for longer than <bound>' so a planned set
+       is never forgotten; the coordinator's inbox shows the triage table on request; a clear drops both
+       columns with the epoch. Tests: internal/sprint/plan_test.go and triage_test.go (red first),
+       cmd/nova-sprint/triage_test.go; tla/CardMachine.tla gains the two states and their transitions with
+       a reversed witness TLC catches."
+      :origin "this card, a-producer-card-is-planned-and-checked-before-it-waits; the owner's 2026-10-11
+       seat rebrief: 'producer cards should have a new step plan in front, before waiting ... plan then
+       check then waiting then ready ... this adds the stuff from the hospital triage system'")
+     (fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
      :text "A member the inventory names and the fleet lacks was added down until it beats, so
       presence's beat brought it up at its width and dealt it work without any probe: the gate in
