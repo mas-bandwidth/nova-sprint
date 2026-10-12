@@ -2859,6 +2859,25 @@
     MCSprintRulesStall. The comment in judgments.go names the card and the module's actions, and
     TickLandingStall gains one comment line citing tla/SprintRules.tla LsTick; no other Go file changes."
    :origin "this card, tla-sprintrules-landing-stall-judgment, from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")
+  (fix "tla-no-route-raise-pin-clock-and-owner-alert" :release "v1.2.16" :status "planned"
+   :title "SprintRules models the no-route rule, the pin release on a running clock, and the owner alert's send-once"
+   :text "Models only, no product change. tla/SprintRules.tla gains three parts. Part noroute
+    (internal/sprint seat_answers.go TickRuleNoRoute): a ready card whose tier no route serves, raised
+    past its judgment's deadline to the nearest served tier above and pinned there, never down
+    (NoRouteNeverLowers), only unpinned and ready (NoRouteRaisesOnlyUnpinnedReady) and to the nearest
+    served (NoRouteRaisesToNearestServed), with the reversed witnesses MCSprintRulesNoRouteBrokenLowers
+    and MCSprintRulesNoRouteBrokenPinnedRaise and the control MCSprintRulesNoRoute. Part episodes' pin
+    release now runs on a clock that stops while the machine is STOPPED and reads the NPinReleased record
+    the tick writes (stops.go PinReleased, seat_answers.go releasePins; PinClockSkipsStopped, with the
+    reversed witness MCSprintRulesEpisodesBrokenStoppedCounts). Part alert (cmd/nova-sprint
+    seat_silent.go tellSeatSilent, seatSilentToken): a raise marked told only after its send succeeds
+    (ToldOnlyAfterSend), at most one message a raise across retries and restarts (NoSecondMessage), and
+    every raise told under fairness of the retry (EveryRaiseTold), with the reversed witnesses
+    MCSprintRulesAlertBrokenToldBeforeSend and MCSprintRulesAlertBrokenNewToken and the control
+    MCSprintRulesAlert. The sprintrules TLC group is re-run and its records merged. TickRuleNoRoute,
+    releasePins, PinReleased and tellSeatSilent/seatSilentToken each cite the module; no other Go file
+    changes."
+   :origin "this card, tla-no-route-raise-pin-clock-and-owner-alert, from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")
   (fix "tla-sprinttables-crash-and-repair-in-its-own-instance" :release "v1.2.16" :status "planned"
    :title "SprintTables models the CI observations, ack, crash and repair in an instance of their own"
    :text "Models only, no product change. tla/SprintTables.tla gains the outside events and the repair from internal/sprint/refmodel/actions.go: CiRed (a red CI observation on a placed primary opens the ci judgment and moves nothing), CiGreen (a green observation closes it), Ack (the coordinator answers the open ci judgment), Crash (a step over more than one table is cut before its last write, the work table: the fleet writes are committed, the work table is left at its pre-state, the deferred work-table write is held and the operation is pending) and Repair (the deferred write is applied and the operation releases). They live in CrashSpec, Spec plus the outside events, so the MCSprintTables and MCSprintTablesMerge cases, which run Spec, keep their state space and their 110 s budget. The new instance MCSprintTablesCrash (one flash primary, two members up, two readers) checks NoCardLostOrTwice and every earlier invariant across a crash at each cut step (Start, Finish, FleetDown and Drop), and the reversed witness MCSprintTablesCrashBrokenHalfstep (Broken \"halfstep\" drops the fence) fails NoCardLostOrTwice. refmodel/actions.go's CiRed, CiGreen, Ack, Crash and Repair comments cite the module. The sprinttables TLC group is re-run on this bench."
