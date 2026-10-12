@@ -113,9 +113,12 @@ before git in the staged Go, rather than somehow landing because its BASE is sta
 
 `SetBase(s, s)` migrates once to its stream branch. `BaseRewritePolicy` exposes two
 policies: the requested `all-unlanded` rewrite, and `preserve-cut-head` selected by
-`Broken = "baseskipsreview"`, which preserves working/review card bases and still
-repoints merge-queued cards. **This is an unresolved implementation policy choice.**
-The current Go intentionally preserves working heads already cut on the old base;
+`Broken = "baseskipsreview"`, which preserves working/review card bases in this
+bounded abstraction and still repoints merge-queued cards. The Go selector is
+broader: among eligible unlanded cards, it keeps every card with `attempt > 0`
+unless the card is in the merge queue's `Queued` cell.
+**This is an unresolved implementation policy choice.**
+The current Go intentionally preserves already-dealt heads on their old base;
 this model does not assert that rewriting an active head is safe or that the Go
 selector is simply defective. The stronger requested invariant
 `NoUnlandedCardBasesOnTrunk` says every existing unlanded card of a migrated stream
@@ -189,9 +192,11 @@ Hand mapping against staged Go `c3b0b1b142cddfeec489582a493cb2ff0a0022d9`:
   (`placeWhy`) returns an unmarked refusal before git. This is the distinction
   between the historical marked witness and the deliberately faulty unmarked one.
 - **Migration:** `internal/sprint/streams.go:407-421` selects never-dealt or
-  merge-queued cards; `cmd/nova-sprint/land.go:700` (`landQueue`) identifies the
-  queued merge candidates. Merging is repointed; already-cut working/review heads
-  can remain. `streams.go:433-436` only constructs candidates. The actual planned
+  merge-queued cards; `cmd/nova-sprint/land.go:699` (`landQueue`) identifies the
+  queued merge candidates. Every eligible unlanded card with `attempt > 0` that
+  is not merge-queued is kept, regardless of its work column; `deal` increments
+  the attempt at `internal/sprint/steps_work.go:1247`.
+  `streams.go:433-436` only constructs candidates. The actual planned
   write is `internal/sprint/settings.go:691-702`, using `briefOnBase` at
   `streams.go:350-356`. The old merging-card trace and old landing-only property
   were incorrect for this selector; the revised witness fails before landing.
@@ -216,6 +221,10 @@ missing empty-branch behavior and progress, and permissive terminal handling. Th
 revision responds to those findings; the earlier run evidence remains historical.
 Rowan accepted the revised design, including the unresolved working-head policy,
 on 2026-10-12 at 14:00:30Z. Design acceptance is not final implementation approval.
+His final cold read of `5c3196d6` at 14:28:33Z approved the models-only revision,
+independently reproducing all 22 results and checking the eight negative witnesses
+and the necessity of each weak-fairness conjunct. This records model review, not
+product implementation or landing.
 
 Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
 Linux, then use `tools/tlacheck merge --keep` as described above. The group contains
