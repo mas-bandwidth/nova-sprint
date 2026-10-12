@@ -1,8 +1,12 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
+	"time"
 )
 
 // An environment exit is a child that ended 134 or 137 (the opencode harness aborting under
@@ -112,4 +116,79 @@ func HarnessTail(out string, n int) string {
 		s += "\n"
 	}
 	return s
+}
+
+// EnvExitCounts is one member's count of its environment exits and its children in the
+// window, as the doctor names them (EnvExitCheck) and `nova-sprint stats --children` prints
+// them: how many of the member's children ended on its environment (Env) out of all its
+// children that ended in the window (N), the first line of the last environment exit's
+// harness tail (Last) and its primary to read (Card).
+type EnvExitCounts struct {
+	Member string
+	Env    int
+	N      int
+	Last   string
+	Card   string
+	// Exits is the histogram of the environment exits by child exit code
+	// (`environment exit=<n>`), so `nova-sprint stats --children` prints the
+	// per-member histogram of child exit codes for the window.
+	Exits map[string]int
+}
+
+// EnvExitChildren counts each member's environment exits over the attempt records on the
+// work cards of the snapshot (the current epoch's: the sprint's whole state is keyed by
+// epoch). A work card whose FieldEnvExit is set ended on the member's environment
+// (`ended=environment exit=<n>`, written by the finish's envExited); N counts every work
+// card that ended in the window (its finished or withdrawn stamp), so the doctor's rate is
+// env/N and its evidence is the last exit's harness tail and primary
+// (docs/SPEC-SPRINT.md, "An environment exit").
+func EnvExitChildren(s *Snapshot, now time.Time, window time.Duration) []EnvExitCounts {
+	if s == nil || s.Fleet == nil {
+		return nil
+	}
+	since := now.Add(-window)
+	within := func(v string) bool {
+		t, err := time.Parse(time.RFC3339, v)
+		return err == nil && !t.Before(since)
+	}
+	by := map[string]*EnvExitCounts{}
+	lastAt := map[string]time.Time{}
+	for _, wc := range s.Fleet.Cards() {
+		if wc.F("kind") != "work" || IsFriendRow(wc.Row) {
+			continue
+		}
+		member := wc.Row
+		c := by[member]
+		if c == nil {
+			c = &EnvExitCounts{Member: member}
+			by[member] = c
+		}
+		endAt := cmp.Or(wc.F("finished"), wc.F("withdrawn"))
+		if !within(endAt) {
+			continue
+		}
+		c.N++
+		if !strings.HasPrefix(wc.F(FieldEnvExit), "environment exit=") {
+			continue
+		}
+		c.Env++
+		if c.Exits == nil {
+			c.Exits = map[string]int{}
+		}
+		c.Exits[strings.TrimPrefix(wc.F(FieldEnvExit), "environment exit=")]++
+		at, _ := time.Parse(time.RFC3339, endAt)
+		if at.After(lastAt[member]) {
+			lastAt[member] = at
+			c.Last = strings.SplitN(strings.TrimSuffix(wc.F(FieldHarnessTail), "\n"), "\n", 2)[0]
+			c.Card = wc.F("primary")
+		}
+	}
+	out := make([]EnvExitCounts, 0, len(by))
+	for _, m := range slices.Sorted(maps.Keys(by)) {
+		if by[m].N == 0 {
+			continue // no children ended in the window: nothing to say
+		}
+		out = append(out, *by[m])
+	}
+	return out
 }

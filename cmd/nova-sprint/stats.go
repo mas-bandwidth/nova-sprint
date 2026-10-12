@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // cmdStats is the epoch's numbers since the last stats tidy or stats reset, the later
@@ -21,6 +26,7 @@ import (
 func (a *app) cmdStats(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stats")
 	routes := fs.Bool("routes", false, "the route table from the log over --since, instead of the live tables")
+	children := fs.Bool("children", false, "the per-member histogram of child exit codes for the last hour, from the attempt records on the work cards (a member's environment exits, ended=environment exit=<n>), so the seat reads them without ssh")
 	since := fs.String("since", "", "with --routes, the window start: a duration back from now (10m) or an RFC 3339 time; the last stats tidy of the routes when not given")
 	if pos, err := parse(fs, args); err != nil || len(pos) > 0 {
 		return refuse(stderr, "stats", argErr("takes no words ", err, pos...))
@@ -31,6 +37,9 @@ func (a *app) cmdStats(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "stats", err.Error())
+	}
+	if *children {
+		return a.cmdStatsChildren(st, stdout, stderr)
 	}
 	if *routes {
 		var from time.Time
@@ -80,6 +89,31 @@ func (a *app) cmdStats(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprint(stdout, statsText(ps))
 	fmt.Fprintf(stdout, "STATS OK epoch=%d primaries=%d members=%d readers=%d routes=%d%s\n", ps.Epoch, ps.Primaries, len(ps.Work), len(ps.Reads), len(ps.Routes), sinceWord)
+	return 0
+}
+
+// cmdStatsChildren prints the per-member histogram of child exit codes for the last hour,
+// from the attempt records on the work cards (docs/SPEC-SPRINT.md, "An environment exit"): a
+// member's children that ended on its environment (ended=environment exit=<n>, each exit code
+// its own bucket) out of all its children that ended in the window, so the seat reads the
+// fleet's environment-exit rate without ssh.
+func (a *app) cmdStatsChildren(st *store.Store, stdout, stderr io.Writer) int {
+	read, err := st.DoctorRead(context.Background())
+	if err != nil {
+		return a.readFailed("stats", err, stderr)
+	}
+	counts := sprint.EnvExitChildren(read.Snap, read.Snap.Now, time.Hour)
+	if len(counts) == 0 {
+		fmt.Fprintln(stdout, "CHILDREN none in the last hour")
+		return 0
+	}
+	for _, c := range counts {
+		var buckets []string
+		for _, code := range slices.Sorted(maps.Keys(c.Exits)) {
+			buckets = append(buckets, "exit_"+code+"="+strconv.Itoa(c.Exits[code]))
+		}
+		fmt.Fprintf(stdout, "CHILD %s children=%d env=%d %s last: %s\n", c.Member, c.N, c.Env, strings.Join(buckets, " "), oneline.Escape(c.Last))
+	}
 	return 0
 }
 

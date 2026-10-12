@@ -98,9 +98,14 @@
       (sprint.EnvExitCheck: DOCTOR FAIL member-env <m> child exits: <k> of <n> children in the last
       hour ended 134/137 with no result (<rate>%), last: <first line of the harness tail>
       remedy=nova-sprint card <id>). docs/SPEC-SPRINT.md, \"An environment exit\", states the rule.
-      Left for the follow-up: the finish wiring that records ended=environment exit=<n> and the
-      harness tail on the attempt and returns the card to ready without spending an attempt, and
-      the per-member stats --children histogram."
+      The finish carries the child's exit (--exit, FinishReq.Exit) and its harness output
+      (--harness, FinishReq.Harness), and envExited (steps_work.go) withdraws the work card WITHOUT
+      FieldTakeEnded (no redeal, no attempt spent) with ended=environment exit=<n> (FieldEnvExit)
+      and the tail (FieldHarnessTail) on it, the member not held; the doctor reads the attempt
+      records on the work cards, keyed by epoch (sprint.EnvExitChildren), and nova-sprint stats
+      --children prints the per-member histogram of child exit codes for the window. Tests
+      TestFinishRecordsAnEnvironmentExitOnTheAttempt, TestEnvExitChildrenCountsTheMemberEnvironmentExits,
+      TestDoctorNamesTheMemberEnvExitRate and TestDoctorNamesTheMemberEnvExitWarn."
      :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member.w1@1 epoch=17, 2026-10-11
       ~18:25Z; the seat's read of the fleet's native logs: hetzner1 81 of 328 ended 134 and 21 137,
       hetzner2 55/351 and 31, space 65/347 and 38, vision 68/289 and 25, b1 and b2 about 1 in 14,

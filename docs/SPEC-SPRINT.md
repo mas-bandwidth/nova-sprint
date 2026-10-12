@@ -7017,11 +7017,20 @@ the cause is on the card a reader reads (`sprint.EnvExit`, `sprint.EnvironmentEx
 by the epoch and names, under `member-env`, each member whose environment exits are over the
 rate over the last hour's children: over `EnvExitFailPct` (10%) with at least `EnvExitMinN`
 (10) children is a FAIL, from `EnvExitWarnPct` (3%) to 10% a WARN, below an OK, with no line
-under the floor (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`). `nova-sprint stats --children`
-prints the same counts as a per-member histogram of child exit codes for the window. Tests:
+under the floor (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`). The finish carries the child's
+exit (`--exit`, `FinishReq.Exit`) and its harness output (`--harness`, `FinishReq.Harness`), and
+`envExited` (steps_work.go) withdraws the work card WITHOUT `FieldTakeEnded` (no redeal, no
+attempt spent) with `ended=environment exit=<n>` (`FieldEnvExit`) and the tail (`FieldHarnessTail`)
+on it, and the member is not held. The doctor reads the attempt records on the work cards, keyed
+by epoch, with `sprint.EnvExitChildren`, and names each member over the rate. `nova-sprint stats
+--children` prints the same counts as a per-member histogram of child exit codes for the window.
+Tests:
 `TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
 `TestHarnessTailKeepsTheLastFortyLines`, `TestEnvExitRateThresholds`,
-`TestEnvExitCheckNamesTheRateAndTheCard`.
+`TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+`TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+`TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+`TestDoctorNamesTheMemberEnvExitRate`, `TestDoctorNamesTheMemberEnvExitWarn`.
 
 ### release-check-frame
 

@@ -2560,6 +2560,8 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	failed := fs.Bool("failed", false, "the work failed (default: ok); a card named by id whose attempt a deadline failed already, with no later attempt started, is finished by this report, LAND or HOLD, rather than refused")
 	head := fs.String("head", "", "the commit the work finished at, the head land merges (default: the card's id, for a run with no git: land refuses a head that is not a commit id)")
 	report := fs.String("report", "", "the worker's report")
+	exit := fs.Int("exit", 0, "the child's exit code, as the member read it (0: a clean end or unknown); a failed finish whose exit is 134 or 137, or any non-zero exit with a no-result report, is an environment exit, never the card's (docs/SPEC-SPRINT.md, \"An environment exit\")")
+	harness := fs.String("harness", "", "the child's harness output, so an environment exit keeps the last lines of it on the card (the cause a reader reads)")
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
@@ -2604,7 +2606,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return a.runStep("finish", *c, st, store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Failed: *failed,
-		Head: *head, Report: *report, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
+		Head: *head, Report: *report, Exit: *exit, Harness: *harness, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 // cmdProgress stamps progress on the work cards a worker holds: the late rule's sign that a

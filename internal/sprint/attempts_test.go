@@ -1,8 +1,12 @@
 package sprint
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // A child that ends 134 or 137, or that leaves no result at all, did not judge the card:
@@ -124,5 +128,158 @@ func TestEnvExitCheckNamesTheRateAndTheCard(t *testing.T) {
 	}
 	if _, ok := EnvExitCheck("m1", 0, 50, "", "x"); ok {
 		t.Fatal("an OK rate is no check")
+	}
+}
+
+// A finish whose child exit is 134 or 137, or any non-zero exit with a no-result report, is
+// an environment exit (docs/SPEC-SPRINT.md, "An environment exit"): the finish records it on
+// the attempt as `ended=environment exit=<n>` with the last HarnessTailLines of the harness
+// output, returns the card to ready at the same attempt, spends no attempt and no redeal
+// (no FieldTakeEnded), and does not hold the member. It is never failed work.
+func TestFinishRecordsAnEnvironmentExitOnTheAttempt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		exit   int
+		report string
+	}{
+		{"134 under landlock", 134, "no result: Error: Unknown: ChildProcess.spawn (opencode)"},
+		{"137 killed", 137, "no result: killed"},
+		{"any exit with no result", 1, "no result: the child wrote nothing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b strings.Builder
+			for i := 1; i <= 100; i++ {
+				b.WriteString(itoa(i) + "\n")
+			}
+			s, r := envExitSprint(t, tc.exit, tc.report, b.String())
+			p := Finish(s, r)
+			if len(p.Refused) != 0 {
+				t.Fatalf("the finish refused: %+v", p.Refused)
+			}
+			if len(p.Units) != 1 {
+				t.Fatalf("one unit, got %d: %+v", len(p.Units), p.Units)
+			}
+			u := p.Units[0]
+			wc := envExitEntryOf(u, "c1")
+			if wc.Move == nil || wc.Move.Col != Withdrawn {
+				t.Fatalf("the work card withdraws, not %+v", wc.Move)
+			}
+			if got := wc.Set[FieldEnvExit]; got != "environment exit="+itoa(tc.exit) {
+				t.Fatalf("ended = %q; want environment exit=%d", got, tc.exit)
+			}
+			if _, ok := wc.Set[FieldTakeEnded]; ok {
+				t.Fatal("an environment exit spends no redeal: FieldTakeEnded must not be set")
+			}
+			lines := strings.Split(strings.TrimRight(wc.Set[FieldHarnessTail], "\n"), "\n")
+			if len(lines) != HarnessTailLines || lines[0] != "61" || lines[HarnessTailLines-1] != "100" {
+				t.Fatalf("harness tail = %d lines first %q last %q", len(lines), lines[0], lines[HarnessTailLines-1])
+			}
+			pr := envExitEntryOf(u, "p1")
+			if pr.Move == nil || pr.Move.Col != Ready {
+				t.Fatalf("the primary returns to ready, not %+v", pr.Move)
+			}
+			if _, ok := pr.Set["attempt"]; ok {
+				t.Fatal("the attempt number is unchanged")
+			}
+			if _, ok := pr.Set["failed"]; ok {
+				t.Fatal("an environment exit is never failed work")
+			}
+			found := false
+			for _, n := range u.Notes {
+				if n.Type == NMemberEnvExit {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("no %s note: %+v", NMemberEnvExit, u.Notes)
+			}
+		})
+	}
+}
+
+// A clean end (exit 0) or a verdict is the card's own, never an environment exit: the
+// attempt is not marked `ended=environment exit=<n>`.
+func TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		exit   int
+		report string
+	}{
+		{"no result but exit zero", 0, "no result: nothing done"},
+		{"a verdict is the child's", 1, "verdict not-done; wrong scope"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, r := envExitSprint(t, tc.exit, tc.report, "")
+			p := Finish(s, r)
+			if len(p.Units) != 1 {
+				t.Fatalf("one unit, got %d: %+v", len(p.Units), p.Units)
+			}
+			u := p.Units[0]
+			wc := envExitEntryOf(u, "c1")
+			if got := wc.Set[FieldEnvExit]; got != "" {
+				t.Fatalf("ended = %q; want none", got)
+			}
+		})
+	}
+}
+
+// envExitSprint is a sprint with the member m1's work card c1 working for the primary p1, and
+// m1's failed finish of it at exit with report and the child's harness output.
+func envExitSprint(t *testing.T, exit int, report, harness string) (*Snapshot, FinishReq) {
+	t.Helper()
+	s := &Snapshot{Now: time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC), Work: NewTable(Work), Readers: NewTable(Readers),
+		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator"}
+	s.Work.SetRows([]string{"s1"})
+	s.Fleet.SetRows([]string{"m1"})
+	s.Work.Put(&Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{"kind": "primary", "stream": "s1", "work": "c1", "attempt": "3", "brief": "p1: a card\n\nThe task."}})
+	s.Fleet.Put(&Card{ID: "c1", Row: "m1", Col: Working, Fields: map[string]string{"kind": "work", "primary": "p1", "stream": "s1", "attempt": "3", "gen": "1", "member": "m1"}})
+	return s, FinishReq{Sel: Sel{IDs: []string{"c1"}}, As: "m1", Gens: map[string]int{"c1": 1},
+		Failed: true, Exit: exit, Report: report, Harness: harness}
+}
+
+// envExitEntryOf is the change the unit makes to the card id.
+func envExitEntryOf(u Unit, id string) ntable.BatchMemberEntry {
+	i := slices.IndexFunc(u.Changes, func(c Change) bool { return c.Entry.ID == id })
+	if i < 0 {
+		return ntable.BatchMemberEntry{}
+	}
+	return u.Changes[i].Entry
+}
+
+// EnvExitChildren counts each member's environment exits out of its children in the window
+// from the attempt records on the work cards (docs/SPEC-SPRINT.md, "An environment exit"),
+// and keeps the first line of the last harness tail and its primary for the doctor's line.
+func TestEnvExitChildrenCountsTheMemberEnvironmentExits(t *testing.T) {
+	now := time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC)
+	s := &Snapshot{Now: now, Work: NewTable(Work), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
+	s.Fleet.SetRows([]string{"m1", "m2"})
+	end := stamp(now)
+	old := stamp(now.Add(-2 * time.Hour))
+	put := func(id, member, ended, harness, at string) {
+		f := map[string]string{"kind": "work", "member": member, "primary": "p-" + id, "withdrawn": at}
+		if ended != "" {
+			f[FieldEnvExit], f[FieldHarnessTail] = ended, harness
+		}
+		s.Fleet.Put(&Card{ID: id, Row: member, Col: Withdrawn, Fields: f})
+	}
+	// m1: 8 clean children and 2 environment exits in the window
+	for i := 1; i <= 8; i++ {
+		put("c"+itoa(i), "m1", "", "", end)
+	}
+	put("c9", "m1", "environment exit=134", "Error: Unknown: ChildProcess.spawn (opencode)\nmore lines\n", end)
+	put("c10", "m1", "environment exit=137", "killed\n", stamp(now.Add(time.Minute)))
+	// m2: one environment exit, older than the window
+	put("d1", "m2", "environment exit=134", "stale\n", old)
+
+	got := EnvExitChildren(s, now, time.Hour)
+	if len(got) != 1 {
+		t.Fatalf("counts = %+v; want m1 alone", got)
+	}
+	c := got[0]
+	if c.Member != "m1" || c.Env != 2 || c.N != 10 {
+		t.Fatalf("m1 = %+v; want env=2 n=10", c)
+	}
+	if c.Card != "p-c10" || c.Last != "killed" {
+		t.Fatalf("m1 last = %q card %q; want the last exit's (c10)", c.Last, c.Card)
 	}
 }

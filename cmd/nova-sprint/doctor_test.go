@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -481,4 +482,67 @@ func TestFleetBeatDryRunWritesNothing(t *testing.T) {
 	if as, _, why := workerVerb([]string{"fleet", "beat", "--actor", "", "m1", "--load", "0", "--dry-run"}); why != "" || as != "m1" {
 		t.Fatalf("a dry-run beat with the CLI's --actor is a beat of m1: as=%q why=%q", as, why)
 	}
+}
+
+// A member whose children ended on its environment over the rate is named under member-env
+// (docs/SPEC-SPRINT.md, "An environment exit"): the counts come from the attempt records on
+// the work cards, keyed by epoch. A finish whose child exit is 134/137 records
+// `ended=environment exit=<n>` and the harness tail, and the doctor names the member, the
+// rate, the first line of the last tail and the card to read.
+func TestDoctorNamesTheMemberEnvExitRate(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 10")
+	ta.ok("start")
+	ta.ok("tick")
+	var q struct{ Cards []queueCard }
+	ta.json("queue --as m1", &q)
+	require.Len(t, q.Cards, 10, "m1's queue: %+v", q.Cards)
+	var ok, env []string
+	for _, c := range q.Cards {
+		if len(env) < 2 {
+			env = append(env, c.ID+"@"+strconv.Itoa(c.Gen))
+			continue
+		}
+		ok = append(ok, c.ID+"@"+strconv.Itoa(c.Gen))
+	}
+	ta.ok("take --as m1 --limit 100")
+	ta.ok("finish --as m1 " + strings.Join(ok, " "))
+	ta.ok("finish --as m1 " + strings.Join(env, " ") + " --failed --exit 134 --report 'no result: Error: Unknown: ChildProcess.spawn (opencode)' --harness 'Error: Unknown: ChildProcess.spawn (opencode)\nmore lines'")
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+
+	code, out, errs := ta.do("doctor --area fleet")
+	require.Equal(t, 1, code, "a member over the rate is RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR FAIL member-env m1 child exits: 2 of 10 children in the last hour ended 134/137 with no result (20%), last: Error: Unknown: ChildProcess.spawn (opencode) remedy=nova-sprint card s1-1", out)
+}
+
+// A member whose environment exits are between 3% and 10% is a WARN; below is OK and no line
+// at all.
+func TestDoctorNamesTheMemberEnvExitWarn(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 10")
+	ta.ok("start")
+	ta.ok("tick")
+	var q struct{ Cards []queueCard }
+	ta.json("queue --as m1", &q)
+	require.Len(t, q.Cards, 10)
+	var ok, env []string
+	for _, c := range q.Cards {
+		if len(env) < 1 {
+			env = append(env, c.ID+"@"+strconv.Itoa(c.Gen))
+			continue
+		}
+		ok = append(ok, c.ID+"@"+strconv.Itoa(c.Gen))
+	}
+	ta.ok("take --as m1 --limit 100")
+	ta.ok("finish --as m1 " + strings.Join(ok, " "))
+	ta.ok("finish --as m1 " + strings.Join(env, " ") + " --failed --exit 137 --report 'no result: killed' --harness 'killed'")
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+
+	code, out, errs := ta.do("doctor --area fleet")
+	require.Equal(t, 0, code, "a warn band is not RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR WARN member-env m1 child exits: 1 of 10 children in the last hour ended 134/137 with no result (10%), last: killed remedy=nova-sprint card s1-1", out)
 }

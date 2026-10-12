@@ -1591,6 +1591,14 @@ type FinishReq struct {
 	Failed bool
 	Head   string
 	Report string
+	// Exit is the child's exit code, as the member read it (0: a clean end or
+	// unknown). A failed finish whose exit is 134 or 137, or any non-zero exit
+	// whose report says no result, is an environment exit, never the card's
+	// (sprint.EnvExit; docs/SPEC-SPRINT.md, "An environment exit").
+	Exit int
+	// Harness is the child's harness output, so an environment exit keeps the last
+	// HarnessTailLines of it on the card (sprint.EnvironmentExitRecord).
+	Harness string
 	// SeatJudgment is a coordinator's concern about a worker report that does not
 	// change the worker's stated verdict or finish result.
 	SeatJudgment string
@@ -1719,6 +1727,18 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		kind, class, used := "", "", false
 		if r.Failed {
 			kind, class, used = finishKind(c, r)
+		}
+		// An environment exit (sprint.EnvExit: a child exit of 134 or 137, or any
+		// non-zero exit with a no-result report) did not judge the card: it is the
+		// member's environment event, recorded on the attempt as
+		// `ended=environment exit=<n>` with the harness tail, and the card returns to
+		// ready at the same attempt, spending no attempt and no redeal, and the member
+		// is not held (docs/SPEC-SPRINT.md, "An environment exit").
+		if r.Failed && !late {
+			if ended, env := EnvExit(r.Report, r.Exit); env {
+				p.Units = append(p.Units, envExited(s, c, pr, r, ended, who))
+				continue
+			}
 		}
 		// An environment fault is the member's: the card returns to ready untouched, the
 		// member is held and one judgment is pushed to the seat (EnvFault, envFaulted;
@@ -2279,6 +2299,17 @@ const (
 	// NMemberEnvFaulted is the happened note of a card returned to ready by an
 	// environment fault (never failed work).
 	NMemberEnvFaulted = "a card returned to ready: its member's environment faulted"
+	// NMemberEnvExit is the happened note of a card returned to ready by an
+	// environment exit (a child that ended 134/137 or with no result): never failed
+	// work, no attempt and no redeal spent, the member not held (sprint.EnvExit).
+	NMemberEnvExit = "a card returned to ready: its child ended on the member's environment"
+	// FieldEnvExit is the work card's record of an environment exit on the attempt:
+	// `ended=environment exit=<n>`, written by the finish (envExited), with the last
+	// HarnessTailLines of the child's harness output beside it (FieldHarnessTail), so
+	// the cause rides the card a reader reads (docs/SPEC-SPRINT.md, "An environment
+	// exit"; a-card-carries-its-consumer-history).
+	FieldEnvExit     = "ended"
+	FieldHarnessTail = "harness_tail"
 	// EnvProbePassed is the member's own probe's result when it passed.
 	EnvProbePassed = "passed"
 )
@@ -2407,6 +2438,20 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 	if upd != nil {
 		p.Updates = append(p.Updates, *upd)
 	}
+}
+
+// envExited is the unit of a finish whose child ended on the member's environment
+// (EnvExit): the work card withdraws WITHOUT FieldTakeEnded (withdrawUnit), so the take
+// spends none of the redeal bound and the attempt is unchanged, and its primary goes back
+// to ready where the deal draws it again; the member is NOT held (an environment exit is an
+// event, not a fault: the card may be read by the same member again). The attempt's record
+// keeps the ended word (`ended=environment exit=<n>`) and the last HarnessTailLines of the
+// child's harness output (FieldHarnessTail), so the cause is on the card a reader reads
+// (docs/SPEC-SPRINT.md, "An environment exit"; a-card-carries-its-consumer-history).
+func envExited(s *Snapshot, c, pr *Card, r FinishReq, ended, who string) Unit {
+	rec := EnvironmentExitRecord(r.Exit, r.Harness)
+	return withdrawUnit(s, c, map[string]string{FieldEnvExit: ended, FieldHarnessTail: rec.Harness}, nil,
+		NMemberEnvExit, who, "the child's environment exit ("+ended+") did not judge the card: "+oneLine(r.Report))
 }
 
 // envFaultNote is the judgment an environment fault raises for the member: its first cause
