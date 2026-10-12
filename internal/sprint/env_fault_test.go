@@ -112,35 +112,33 @@ func TestAnEnvironmentFailureHoldsTheMemberAndReturnsTheCard(t *testing.T) {
 	assert.Contains(t, why, "environment fault")
 }
 
-// A member's rejected push with child text does not envFault it: the child's sandbox words
-// are in the report's second half (after the "; "), and the reason (before "; ") carries
-// "[rejected] (non-fast-forward)", a branch refusal (envFault.go, EnvFault;
-// tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
-func TestARejectedPushIsNeverAnEnvironmentFault(t *testing.T) {
+// TestANonEnvFaultFinishHoldsNothing pins which failed finishes are NOT environment faults:
+// a rejected push (the branch's refusal, with the child's sandbox words in the second
+// half of the report) and a model/card failure hold no member, raise no environment
+// judgment, and leave the card in review as failed work (tla/ProviderBudget.tla).
+func TestANonEnvFaultFinishHoldsNothing(t *testing.T) {
 	t.Parallel()
-	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write"}))
-	assert.False(t, w.s.EnvHeld("m1"), "a rejected push is not an environment fault")
-	assert.Equal(t, Review, w.state("s1-1"), "the card is failed work")
-	assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
-}
 
-// A model or card failure on the same member is not an environment fault: it holds no
-// member, raises no environment judgment and leaves the card in review as failed work
-// (tla/ProviderBudget.tla).
-func TestAModelFailureDoesNotHoldTheMember(t *testing.T) {
-	t.Parallel()
-	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "verdict not-done: the tests are red"}))
-	assert.False(t, w.s.EnvHeld("m1"), "a model failure does not hold the member")
-	assert.Equal(t, Review, w.state("s1-1"), "it is failed work for the coordinator")
-	assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
+	cases := []struct {
+		name   string
+		report string
+	}{
+		{"TestARejectedPushIsNeverAnEnvironmentFault",
+			"push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write"},
+		{"TestAModelFailureDoesNotHoldTheMember", "verdict not-done: the tests are red"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := envFaultWorld(t)
+			wc := w.s.Work.Card("s1-1").F("work")
+			w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+			w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: tc.report}))
+			assert.False(t, w.s.EnvHeld("m1"), "not an environment fault")
+			assert.Equal(t, Review, w.state("s1-1"), "the card is failed work")
+			assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
+		})
+	}
 }
 
 // fleet up refuses a member whose last environment fault is not cleared until the member's

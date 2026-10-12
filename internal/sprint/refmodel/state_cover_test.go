@@ -45,26 +45,36 @@ func TestStateCoverJudgmentString(t *testing.T) {
 	}
 }
 
+// coverErrorFormat asserts that err is a target (a *T that implements error) and that
+// each case's error formats as its want string.
+func coverErrorFormat(t *testing.T, target any, err error, cases map[string]struct {
+	err  error
+	want string
+}) {
+	t.Helper()
+	assert.ErrorAs(t, err, target)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, tc.err.Error())
+		})
+	}
+}
+
 // TestStateCoverRefusalError covers (*Refusal).Error (state.go:314): a
 // refusal names why, in the words refuse gave it; a reason-less refusal is
 // still a refusal.
 func TestStateCoverRefusalError(t *testing.T) {
 	t.Parallel()
 	err := refuse("no up member for stream %s", "s1")
-	assert.ErrorAs(t, err, new(*Refusal))
-	for name, tc := range map[string]struct {
-		err  *Refusal
+	coverErrorFormat(t, new(*Refusal), err, map[string]struct {
+		err  error
 		want string
 	}{
 		"refuse formats its reason": {err: &Refusal{Why: "no up member for stream s1"}, want: "refused: no up member for stream s1"},
 		"the error refuse returned": {err: err.(*Refusal), want: "refused: no up member for stream s1"},
 		"a refusal with no reason":  {err: &Refusal{}, want: "refused: "},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, tc.err.Error())
-		})
-	}
+	})
 }
 
 // TestStateCoverChoiceErrorError covers (*ChoiceError).Error (state.go:324):
@@ -73,20 +83,14 @@ func TestStateCoverRefusalError(t *testing.T) {
 func TestStateCoverChoiceErrorError(t *testing.T) {
 	t.Parallel()
 	err := badChoice("%s is not the next member", "m2")
-	assert.ErrorAs(t, err, new(*ChoiceError))
-	for name, tc := range map[string]struct {
-		err  *ChoiceError
+	coverErrorFormat(t, new(*ChoiceError), err, map[string]struct {
+		err  error
 		want string
 	}{
 		"badChoice formats its reason":  {err: &ChoiceError{Why: "m2 is not the next member"}, want: "choice not allowed: m2 is not the next member"},
 		"the error badChoice returned":  {err: err.(*ChoiceError), want: "choice not allowed: m2 is not the next member"},
 		"a choice error with no reason": {err: &ChoiceError{}, want: "choice not allowed: "},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, tc.err.Error())
-		})
-	}
+	})
 }
 
 // TestStateCoverWC covers WC (state.go:331): a work card is its primary's id
