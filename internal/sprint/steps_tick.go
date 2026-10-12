@@ -131,7 +131,7 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NBound:             {"rework with a fix", "drop"},    // never wait: it holds its card (wait_refused.go)
 	NCannotAsk:         {"reader add", "rework", "drop"}, // never wait: it holds its card (wait_refused.go)
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
@@ -1704,6 +1704,10 @@ func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	// unanswered (seat_answers.go)
 	held := reraiseHeld(s, r)
 	p.Notes, p.Closes = append(p.Notes, held.Notes...), append(p.Closes, held.Closes...)
+	// a hard pin is released at its deadline in running time, judged here, where the
+	// STOPPED spans are (releasePins; PinReleased reads the record)
+	pins := releasePins(s, r)
+	p.Notes, p.Closes = append(p.Notes, pins.Notes...), append(p.Closes, pins.Closes...)
 	// a judgment the pass closes takes its overdue hold with it, in the same plan, so the
 	// next tick has nothing left to close (a level the pass escalates closes the one before)
 	closing := map[string]bool{}

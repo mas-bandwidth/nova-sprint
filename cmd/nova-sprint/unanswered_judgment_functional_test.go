@@ -236,8 +236,9 @@ func (r *ujRig) pushes(s *hookSession) []hookMsg {
 // hooked in and then silent, one card in each kind that held a card that night: within one
 // deadline every card with a safe default has moved with no seat verb (returned for its
 // missing read and read again, returned for its needs, pinned to a held friend, on a tier no
-// route serves), and the one card that needs a mind (returned by the seat) is named by "the
-// seat is not answering", on the hook's stream and on the owner's bus.
+// route serves), and the cards that need a mind (returned by the seat; pinned by the
+// coordinator to a tier no route serves) are named by "the seat is not answering", on the
+// hook's stream and on the owner's bus.
 func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	t.Parallel()
 	began := time.Now()
@@ -275,9 +276,16 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 		"Never kill a process you did not start.\nNever start a server on this machine.\n"+
 		"No `rm -rf` outside the job directory.\nReport what was not done.\n"), 0o600))
 	r.do("add --stream s4 --count 1 --one --brief-file " + pinned)
-	// s5-1: pinned to pro, which no route serves
-	r.do("add --stream s5 --count 1 --one")
-	r.do("brief s5-1 --tier pro")
+	// s5-1: its line 1 names pro, which no route serves; s6-1: pinned to pro by the
+	// coordinator (brief --tier), which the rule never overrides
+	pro := filepath.Join(t.TempDir(), "pro.md")
+	require.NoError(t, os.WriteFile(pro, []byte("c: a pro card tier: pro\n\nRULES.\n"+
+		"Work only in the job directory this card names.\nNever force-push or rebase a shared branch.\n"+
+		"Never kill a process you did not start.\nNever start a server on this machine.\n"+
+		"No `rm -rf` outside the job directory.\nReport what was not done.\n"), 0o600))
+	r.do("add --stream s5 --count 1 --one --brief-file " + pro)
+	r.do("add --stream s6 --count 1 --one")
+	r.do("brief s6-1 --tier pro")
 
 	s := r.hookIn()
 	r.do("start")
@@ -287,6 +295,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	assert.Equal(t, sprint.Merging, r.col("s2-1"), "returned for its needs, set: merging with no seat verb")
 	assert.Equal(t, sprint.Ready, r.col("s4-1"), "pinned to a held friend: waits, within the deadline")
 	assert.Equal(t, sprint.Ready, r.col("s5-1"), "no route serves pro: waits, within the deadline")
+	assert.Equal(t, sprint.Ready, r.col("s6-1"), "no route serves pro: waits, within the deadline")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "returned by the seat: the seat's")
 
 	r.step(sprint.DeadlineJudgment / 2)
@@ -294,13 +303,14 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.step(time.Second)
 	assert.Equal(t, sprint.Working, r.col("s4-1"), "the pin released at its deadline: dealt on")
 	assert.Equal(t, sprint.Working, r.col("s5-1"), "raised to heavy, the nearest served tier: dealt")
+	assert.Equal(t, sprint.Ready, r.col("s6-1"), "pinned to pro by the coordinator: stays put, never re-tiered")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
 
 	// the seat-not-answering judgment reached the hook's stream and the owner's bus,
 	// naming the card still held
 	var onHook bool
 	for _, p := range r.pushes(s) {
-		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") {
+		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") && strings.Contains(p.Text, "s6-1") {
 			onHook = true
 		}
 	}
@@ -310,7 +320,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.mu.Unlock()
 	var onBus bool
 	for _, m := range sent {
-		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && len(m.To) == 1 && m.To[0] == "glenn" {
+		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "s6-1") && len(m.To) == 1 && m.To[0] == "glenn" {
 			onBus = true
 		}
 	}

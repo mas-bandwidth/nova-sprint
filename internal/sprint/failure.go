@@ -118,8 +118,8 @@ const (
 	// finish recorded a failure class (failureSet). The fleet's failure reads it alone
 	// (rules.go lastFinishFailed), never the column or attempt arithmetic: a rework that falls
 	// back to ready moves the card without a finish (Stella's read R4, 2026-10-11).
-	FieldLastFinish = "last_finish"
-	FieldIdenticalAt  = "identical_at"
+	FieldLastFinish  = "last_finish"
+	FieldIdenticalAt = "identical_at"
 )
 
 // failureSet is what a failed finish at attempt on tier writes on its primary pr (the record,

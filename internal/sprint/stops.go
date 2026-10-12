@@ -280,7 +280,10 @@ const PinReleaseBound = DeadlineJudgment
 
 // PinReleased says the hard pin c (OnlyFriend) is a preference now: its friend is not up in
 // seats, and its pin-waits stop (NStopPinWaits, pinStops) has stood, open or acknowledged,
-// for PinReleaseBound or longer. The deals then offer it on as a named pin is offered while
+// for PinReleaseBound or longer of running time: the tick, which alone holds the STOPPED
+// spans, judges that and records it (releasePins, NPinReleased, seat_answers.go), and a
+// deal reads the record, so a machine stopped past the bound releases nothing on resume
+// (Stella's read of #123: a raw now-minus-At did). The deals then offer it on as a named pin is offered while
 // she is not up, to another friend or a machine, with the pin-ignored judgment (pinConds);
 // the stop stays while it waits ready, so the release itself does not restart the clock. The
 // clock is the At of the stop's note, open or acknowledged, and a coordinator's answer writes
@@ -305,7 +308,7 @@ func PinReleased(s *Snapshot, c *Card, seats []FriendSeat) bool {
 	}
 	for _, os := range [][]Open{s.Open, s.Acked} {
 		for _, o := range os {
-			if o.Note.Type == NStopPinWaits && o.Subject() == c.ID && !o.Note.At.IsZero() && s.Now.Sub(o.Note.At) >= PinReleaseBound {
+			if o.Note.Type == NStopPinWaits && o.Subject() == c.ID && pinReleaseRecorded(s, o.Note.ID) {
 				return true
 			}
 		}

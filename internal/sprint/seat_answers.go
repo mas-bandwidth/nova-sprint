@@ -39,21 +39,25 @@ const NSeatSilent = "the seat is not answering"
 // Before is the deadlines it has been raised at, so each deadline raises it once.
 const NHeldRaised = "a judgment holding a card was raised again"
 
+// NPinReleased is the record of a hard pin released at its deadline (releasePins): an
+// acknowledged-kind note (shown in no inbox) whose What is the id of the pin-waits stop's
+// note it releases. A new stop note (an ack or a wait writes one) has no record, so its
+// clock starts again.
+const NPinReleased = "a hard pin was released at its deadline"
+
 // SeatSilentDecision is the one decision of NSeatSilent: answer the judgments it names.
 // It offers neither ack nor wait: the alarm is quieted only by the answers.
 const SeatSilentDecision = "answer each judgment it names: nova-sprint inbox"
 
-// CardHolding is the judgment types that hold a card from moving on until they are
-// answered: the card waits on the seat while one is open.
-var CardHolding = []string{
-	NReadyToAccept, NReturned, NWorkFailed, NReportJudgment, NBound, NBriefWrong, NBriefDefect,
-	NReadBroken, NReadsExhausted, NStranded, NCIRed, NRepairSkipped, NStalled, NReadBranchMissing,
-	NNoRoute, NStopPinWaits, NConflict, NRed, NRejected, NBaseRed, NMissingBase, NBlocked,
-	NMissingNeed, NSentinelReached,
+// HoldsACard says a judgment of the type holds a card until it is answered: its type is a
+// kind of WaitRefused (wait_refused.go), the one table of the judgments that hold a card
+// from progressing. A kind that holds a card only when it names one (a stall,
+// WaitRefusedWhenItNamesACard) and the kinds a wait may hold (WaitAllowedOnACard: a
+// sentinel, a lateness, a friend's session) are not escalated here.
+func HoldsACard(typ string) bool {
+	_, ok := WaitRefused[typ]
+	return ok
 }
-
-// HoldsACard says a judgment of the type holds a card until it is answered.
-func HoldsACard(typ string) bool { return slices.Contains(CardHolding, typ) }
 
 // heldBy is one open judgment that holds cards past its deadline: its id and type, the
 // cards it holds, and how long it has been open in running time.
@@ -199,7 +203,10 @@ const PartRuleNoRoute = "rule no-route"
 // told the change in a note naming the card and both tiers. Never down: a card is never
 // moved to a weaker tier than the one no route serves, so a heavy card never goes to
 // flash; a card with no served tier above it (heavy, frontier), a friend's card, a brief
-// defect and a brief that pins its model stay held, and the alarm names them.
+// defect and a card whose tier is pinned (pinnedTier: the coordinator pinned it with
+// brief --tier, tier --set or rework --tier, its brief pins a model, or it is frontier)
+// stay held, and the alarm names them: a pin is the coordinator's word, and the rule never
+// overrides it.
 func TickRuleNoRoute(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if !r.AnswerRules || s.Work == nil {
@@ -222,6 +229,9 @@ func TickRuleNoRoute(s *Snapshot, r TickReq) (Plan, int) {
 			pr := s.Work.Placed(id)
 			if pr == nil || done[id] || pr.Col != Ready || IsSentinel(pr) || mindCard(pr) != "" {
 				continue
+			}
+			if m, bad := modelOf(pr); bad != "" || pinnedTier(pr, m) {
+				continue // a pinned tier is the coordinator's: it stays put, held
 			}
 			up := servedAbove(s, pr, from)
 			if up == "" {
@@ -280,4 +290,60 @@ func seatAcceptNotes(s *Snapshot, r TickReq) []Note {
 		out = append(out, n)
 	}
 	return out
+}
+
+// releasePins records each hard pin whose pin-waits stop (NStopPinWaits) has stood, open or
+// acknowledged, PinReleaseBound or longer of running time (r.running: the STOPPED spans do
+// not count), once per stop note (NPinReleased); PinReleased reads the record. A record whose
+// stop note is gone (the friend came up, the card moved on) is closed.
+func releasePins(s *Snapshot, r TickReq) Plan {
+	var p Plan
+	records := map[string][]Open{}
+	for _, o := range s.Acked {
+		if o.Note.Type == NPinReleased {
+			records[o.Note.What] = append(records[o.Note.What], o)
+		}
+	}
+	stops := map[string]bool{}
+	for _, os := range [][]Open{s.Open, s.Acked} {
+		for _, o := range os {
+			n := o.Note
+			if n.Type != NStopPinWaits || n.At.IsZero() {
+				continue
+			}
+			stops[n.ID] = true
+			if len(records[n.ID]) > 0 {
+				continue
+			}
+			age, ok := r.running(s.Now, stamp(n.At))
+			if !ok || age < PinReleaseBound {
+				continue
+			}
+			rec := Note{Kind: Acknowledged, Type: NPinReleased, Stream: n.Stream, Primaries: []string{o.Subject()}, Count: 1, What: n.ID, Who: r.who(), At: s.Now}
+			records[n.ID] = append(records[n.ID], Open{Note: rec})
+			p.Notes = append(p.Notes, rec)
+		}
+	}
+	for id, os := range records {
+		if stops[id] {
+			continue
+		}
+		for _, o := range os {
+			if o.Note.ID != "" {
+				p.Closes = append(p.Closes, o)
+			}
+		}
+	}
+	return p
+}
+
+// pinReleaseRecorded says the tick recorded the release of the pin-waits stop note id
+// (releasePins).
+func pinReleaseRecorded(s *Snapshot, id string) bool {
+	for _, o := range s.Acked {
+		if o.Note.Type == NPinReleased && o.Note.What == id {
+			return true
+		}
+	}
+	return false
 }

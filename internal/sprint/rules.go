@@ -777,7 +777,6 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 // recorded failure (its last finish failed that way).
 const RuleFleetWindow = time.Hour
 
-
 // TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
 // cards recorded within RuleFleetWindow of running time, in any column but landed (each card's
 // recorded failure, FieldFailure, and its last finish, FieldFinishedAt), and no open judgment

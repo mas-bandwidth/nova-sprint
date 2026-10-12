@@ -93,3 +93,21 @@ func TestAHeavyCardNoRouteServesIsNeverReTieredToFlash(t *testing.T) {
 	w.must(p)
 	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "a heavy card is never dealt on flash")
 }
+
+// A tier the coordinator pinned (brief --tier, tier --set, rework --tier: FieldTier) is the
+// coordinator's word: the rule never re-tiers it, though a route serves the tier above, and
+// the card stays held for the seat (the alarm names it). Before, a card pinned to pro was
+// raised to heavy past the deadline.
+func TestAPinnedCardNoRouteServesStaysOnItsPinnedTier(t *testing.T) {
+	t.Parallel()
+	w := noRouteWorld(t, cardhdr.RouteFlash, []Route{
+		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true, Deadline: 600},
+	}, map[string]string{FieldTier: cardhdr.RouteFlash})
+	w.tick(DeadlineJudgment + time.Minute)
+	w.answerRules("rule no-route")
+	assert.Equal(t, cardhdr.RouteFlash, w.s.Work.Card("s1-1").F(FieldTier), "the pin stays")
+	assert.Empty(t, w.notesOf(NRuleAnswered), "a pinned card is never re-tiered: left to the seat")
+	p, _ := TickDeal(w.s, TickReq{})
+	w.must(p)
+	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "never dealt on the tier above its pin")
+}
