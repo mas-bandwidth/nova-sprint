@@ -2972,6 +2972,7 @@
      findings. (f) The doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g)
      `card <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no
      primary\". Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards,
+     TestAFriendDealtReadIsAGhostByHerOwnBeat,
      TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain, TestASecondGhostAtOneAttemptPushesAJudgment,
      TestAReviewCardWithNoReadAndNoJudgmentIsImpossible, TestTheConsumersOutCheckIsNotVacuous,
      TestAskInsteadTakesBackAFleetReadCard (internal/sprint/ghost_read_test.go), and
