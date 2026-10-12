@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // Every attempt end is classed as the worker's own work or as coordination: everything the
@@ -119,19 +121,45 @@ func NewCoordinationCounter(epoch uint64) *CoordinationCounter {
 func (c *CoordinationCounter) Record(verdict, report, who string) (EndClass, CoordinationCause) {
 	class, cause := ClassEnd(verdict, report)
 	if class == EndCoordination {
-		if c.ByCause == nil {
-			c.ByCause = map[CoordinationCause]int{}
-		}
-		if c.ByWho == nil {
-			c.ByWho = map[string]int{}
-		}
-		c.Total++
-		c.ByCause[cause]++
-		if who != "" {
-			c.ByWho[who]++
-		}
+		c.Add(cause, who)
 	}
 	return class, cause
+}
+
+// Add is one coordination end of cause, suffered by who (a member or friend), added to the
+// counter. The classes from a producer's record use it directly (CoordinationCauseOfEnd).
+func (c *CoordinationCounter) Add(cause CoordinationCause, who string) {
+	if c.ByCause == nil {
+		c.ByCause = map[CoordinationCause]int{}
+	}
+	if c.ByWho == nil {
+		c.ByWho = map[string]int{}
+	}
+	c.Total++
+	c.ByCause[cause]++
+	if who != "" {
+		c.ByWho[who]++
+	}
+}
+
+// CoordinationCauseOfEnd names the coordination cause of a take's end word as the sprint
+// records it on the producer's cost record (cost.go, Consumer.End): the provider and
+// no-result ends, a staging refusal and a stop on unlanded needs are coordination by
+// construction, each at the card's nearest listed cause. "" for every other end (ok, a
+// plain failed take, which is the worker's). Unknown is never returned: a reason nothing
+// here names arrives as a report and classes through ClassEnd.
+func CoordinationCauseOfEnd(end string) CoordinationCause {
+	switch {
+	case strings.HasPrefix(end, cardhdr.EndProvider):
+		return CauseProviderLimit
+	case strings.HasPrefix(end, cardhdr.EndNoResult):
+		return CauseHarnessCrash
+	case strings.HasPrefix(end, cardhdr.EndStaging):
+		return CauseStagingRefused
+	case end == EndNeedsUnlanded:
+		return CauseUnlandedNeeds
+	}
+	return ""
 }
 
 // CauseTotal is the counter's ends of one cause.
