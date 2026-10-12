@@ -164,6 +164,67 @@ func TestThePeggedBoundIsTheSprintsSetting(t *testing.T) {
 	assert.Contains(t, open[0].Note.What, "member m1 at 95.0% for 2m0s with no card working")
 }
 
+// setPeggedBound is nova-sprint set --pegged-bound v, which must not be refused.
+func (h *harness) setPeggedBound(v string) {
+	h.t.Helper()
+	step := SetStep(sprint.SetReq{Who: h.st.Actor})
+	set := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithPeggedBound(set(s), s, v) }
+	h.must(step)
+}
+
+// (4b) A bound raised in the middle of an episode whose judgment is open neither closes
+// it nor raises it again: only the episode's real ends (the load under 90%, a card
+// working, held or down) close it, and no cleared note says under 90% of a member at
+// 95%. Found by a reader's probe of #146 at e6c993f8: the raised bound closed the open
+// judgment with "m1 beats at 95.0%, under 90%" and raised a second one at the new bound
+// in the same uninterrupted episode.
+func TestARaisedPeggedBoundMidEpisodeNeitherClosesNorRaisesAgain(t *testing.T) {
+	t.Parallel()
+	h := peggedSetup(t)
+	for range 11 {
+		h.pegStep("m1", 95)
+	}
+	open := h.openOf(sprint.NMemberPegged)
+	require.Len(t, open, 1, "the first judgment at 10m")
+	first := open[0].Note.ID
+	since := h.peggedSince("m1")
+	h.setPeggedBound("20m")
+	for range 12 { // to 22m into the episode, past the new bound
+		h.pegStep("m1", 95)
+		open = h.openOf(sprint.NMemberPegged)
+		require.Len(t, open, 1, "the episode stands: its judgment stays open")
+		require.Equal(t, first, open[0].Note.ID, "the same judgment, never closed and raised again")
+	}
+	assert.Equal(t, since, h.peggedSince("m1"), "one uninterrupted episode")
+	assert.Equal(t, 1, h.written(sprint.NMemberPegged), "no second judgment in one episode")
+	assert.Empty(t, h.clearedPegged(), "nothing cleared: the load never fell under 90%")
+	// the real end still closes it, and its note names the measured cause
+	h.pegStep("m1", 10)
+	assert.Empty(t, h.openOf(sprint.NMemberPegged))
+	assert.Equal(t, []string{sprint.NMemberPegged + ": m1 beats at 10.0%, under 90%"}, h.clearedPegged())
+	h.clean("bound raised mid-episode")
+}
+
+// (4c) The mirror: a bound lowered in the middle of an episode whose judgment is open
+// raises no second judgment, and closes nothing.
+func TestALoweredPeggedBoundMidEpisodeRaisesNoSecondJudgment(t *testing.T) {
+	t.Parallel()
+	h := peggedSetup(t)
+	for range 11 {
+		h.pegStep("m1", 95)
+	}
+	require.Len(t, h.openOf(sprint.NMemberPegged), 1, "the first judgment at 10m")
+	h.setPeggedBound("2m")
+	for range 5 {
+		h.pegStep("m1", 95)
+		require.Len(t, h.openOf(sprint.NMemberPegged), 1)
+	}
+	assert.Equal(t, 1, h.written(sprint.NMemberPegged), "no second judgment in one episode")
+	assert.Empty(t, h.clearedPegged())
+	h.clean("bound lowered mid-episode")
+}
+
 // (5) A held member raises none however it beats, and a held member's open judgment
 // closes; a member that stops beating goes down and raises none.
 func TestAHeldOrDownMemberRaisesNone(t *testing.T) {
@@ -195,5 +256,5 @@ func TestAHeldOrDownMemberRaisesNone(t *testing.T) {
 	o.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m1", Who: "tester"}))
 	o.pegStep("m1", 95)
 	assert.Empty(t, o.openOf(sprint.NMemberPegged), "held: the episode ends and its judgment closes")
-	assert.Equal(t, []string{sprint.NMemberPegged + ": m1 is not up"}, o.clearedPegged())
+	assert.Equal(t, []string{sprint.NMemberPegged + ": m1 is held"}, o.clearedPegged())
 }

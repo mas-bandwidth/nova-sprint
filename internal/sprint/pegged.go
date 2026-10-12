@@ -17,8 +17,10 @@ import (
 // for the pegged bound (nova-sprint set --pegged-bound, default PeggedBoundDefault) raises
 // one judgment, NMemberPegged, to the coordinator, through the same notify every kept
 // condition of the tick goes through: once an episode, never again while it stands (its
-// line is the facts at the raise), closed with one cleared note when its load falls under
-// HeavyLoadPercent, a card starts working there, or it is no longer up (held or down). A
+// line is the facts at the raise), closed with one cleared note naming the measured end
+// (PeggedEnd) only when its load falls under HeavyLoadPercent, a card starts working there,
+// or it is no longer up (held or down): once raised, it stands for the rest of the episode
+// whatever the bound says, so a change of the bound neither closes it nor raises it again. A
 // second episode raises again. The episode's start is the fleet property
 // PropPeggedSince(<member>), written by the presence part at the first tick that sees the
 // member pegged and removed at the first that does not. The model is tla/MemberPegged.tla
@@ -106,7 +108,12 @@ func tickPegged(s *Snapshot, r TickReq) (Plan, int) {
 			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: stamp(s.Now), Was: was, WasAbsent: !had})
 			p.Units = append(p.Units, Unit{Key: CtlID(m), Moved: fmt.Sprintf("%s pegged at %.1f%% with no card working since %s: a judgment at %s", m, b.Load, stamp(s.Now), bound)})
 		}
-		if d := s.Now.Sub(since); d >= bound {
+		// the condition stands once the stamp is the bound old, and, its judgment raised,
+		// for the rest of the episode whatever the bound says now: only the episode's
+		// real ends (PeggedEnd) close it, never a change of the bound (a reader's probe
+		// of #146 at e6c993f8: a bound raised mid-episode closed the open judgment with
+		// a false "under 90%" note and raised it again at the new bound)
+		if d := s.Now.Sub(since); d >= bound || peggedJudged(s, m) {
 			stands[MemberSubject(m)] = true
 			conds = append(conds, cond{typ: NMemberPegged, stream: MemberSubject(m), streamLevel: true,
 				what: peggedWhat(m, b.Load, d, since), decisions: peggedDecisions(m)})
@@ -118,17 +125,45 @@ func tickPegged(s *Snapshot, r TickReq) (Plan, int) {
 			continue // a wait run out on an episode that stands is raised again, not cleared
 		}
 		m := strings.TrimPrefix(o.Note.Stream, MemberSubject(""))
-		now := m + " is not up"
-		switch b := r.Beats[m]; {
-		case s.MemberCtl(m) != nil && s.MemberCtl(m).F("status") == Up && s.Fleet.Count(m, Working) > 0:
-			now = fmt.Sprintf("%s works %d cards", m, s.Fleet.Count(m, Working))
-		case s.MemberCtl(m) != nil && s.MemberCtl(m).F("status") == Up && MemberStatus(s.MemberCtl(m), b, s.Now) == Up:
-			now = fmt.Sprintf("%s beats at %.1f%%, under %.0f%%", m, b.Load, HeavyLoadPercent)
+		end := PeggedEnd(s, m, r.Beats[m])
+		if end == "" {
+			continue // still pegged: no end to name (a close here is a wait run out)
 		}
 		p.Notes = append(p.Notes, Note{Kind: Happened, Type: NAlarmCleared, Who: r.who(), To: s.Coordinator, At: s.Now,
-			What: NMemberPegged + ": " + now})
+			What: NMemberPegged + ": " + end})
 	}
 	return p, due
+}
+
+// peggedJudged says a judgment of the member's pegged episode is open, or held by the
+// coordinator's ack or wait (notify holds both as open).
+func peggedJudged(s *Snapshot, m string) bool {
+	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
+		if o.Note.Type == NMemberPegged && o.Note.Stream == MemberSubject(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// PeggedEnd is the measured end of the member's pegged episode, as its cleared note says
+// it: held, down, the cards working there, or its load under HeavyLoadPercent; "" while
+// it is pegged still (PeggedNow), so no note ever names an end the member never reached.
+func PeggedEnd(s *Snapshot, m string, b Beat) string {
+	ctl := s.MemberCtl(m)
+	switch {
+	case ctl == nil:
+		return m + " is not on the fleet table"
+	case ctl.F("status") == Held || ctl.F("held") != "":
+		return m + " is held"
+	case ctl.F("status") != Up || MemberStatus(ctl, b, s.Now) != Up:
+		return m + " is down"
+	case s.Fleet.Count(m, Working) > 0:
+		return fmt.Sprintf("%s works %d cards", m, s.Fleet.Count(m, Working))
+	case b.Load < HeavyLoadPercent:
+		return fmt.Sprintf("%s beats at %.1f%%, under %.0f%%", m, b.Load, HeavyLoadPercent)
+	}
+	return ""
 }
 
 // WithPeggedBound adds the pegged bound to set's plan (nova-sprint set --pegged-bound): a

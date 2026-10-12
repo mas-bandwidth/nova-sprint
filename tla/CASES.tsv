@@ -625,3 +625,5 @@ MCMemberPeggedBrokenNobound.cfg	MCMemberPegged.tla	invariant	RaisedOnlyPastBound
 MCMemberPeggedBrokenStale.cfg	MCMemberPegged.tla	invariant	ClosedWhenNotPegged	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenOnce.cfg	MCMemberPegged.tla	temporal	SecondEpisodeRaised	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenHeld.cfg	MCMemberPegged.tla	invariant	RaisedOnlyPastBound	ignore-terminal	memberpegged	required	-
+MCMemberPeggedBrokenRebound.cfg	MCMemberPegged.tla	invariant	ClosesOnlyOnARealEnd	ignore-terminal	memberpegged	required	-
+MCMemberPeggedBrokenReboundTwice.cfg	MCMemberPegged.tla	invariant	OneJudgmentPerPeggedEpisode	ignore-terminal	memberpegged	required	-
