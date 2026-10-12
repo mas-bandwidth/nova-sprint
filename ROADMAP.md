@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (208)
+- [The sprint system](#the-sprint-system) (208)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
@@ -16,13 +16,13 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 Prime Intellect's write-up of rewriting Prime Agent with AI workers (https://www.primeintellect.ai/blog/prime-agent-rust) names what made a large AI-built rewrite hold together. Each item is one of those lessons, checked against nova's code at dev 9ff68178: what already exists is named by file and line, and the item covers the rest.
 
-### The verifier is its own machine stage
+### The verifier is its own system stage
 
-A card's checks are written before the work starts. After the work, a verifier stage of the machine runs them in a fresh bench, apart from the reader, and its verdict is the merge gate: the named test must fail at the card's base and pass at its head, run by the machine rather than reported by the worker. This changes the card contract (the TEST line becomes a check the machine runs), the lander (one red-at-base, green-at-head run per card before the batch gate) and the reader's job (it reads a change already shown to do what the card says).
+A card's checks are written before the work starts. After the work, a verifier stage of the system runs them in a fresh bench, apart from the reader, and its verdict is the merge gate: the named test must fail at the card's base and pass at its head, run by the system rather than reported by the worker. This changes the card contract (the TEST line becomes a check the system runs), the lander (one red-at-base, green-at-head run per card before the batch gate) and the reader's job (it reads a change already shown to do what the card says).
 
-Already in the code: The card lint requires the named test to be absent at the base: rule donewhen-test-name, internal/swarm/lintbase.go:198-236 and internal/swarm/lintpaths.go:174-192. The member's native gate runs failing tests at the base only to classify a failure the worker already reported as not done (cmd/nova-swarm/nativegate.go:26-42). The lander's tree gate runs the batch at its head and reads the TEST line only to time the package (internal/sprint/gate_wall.go:46-59). No step runs the named test red at base and green at head as a gate; that is the gap. The machine gates before reads item, under the sprint machine, holds the cards that started on it.
+Already in the code: The card lint requires the named test to be absent at the base: rule donewhen-test-name, internal/swarm/lintbase.go:198-236 and internal/swarm/lintpaths.go:174-192. The member's native gate runs failing tests at the base only to classify a failure the worker already reported as not done (cmd/nova-swarm/nativegate.go:26-42). The lander's tree gate runs the batch at its head and reads the TEST line only to time the package (internal/sprint/gate_wall.go:46-59). No step runs the named test red at base and green at head as a gate; that is the gap. The system gates before reads item, under the sprint system, holds the cards that started on it.
 
-Why it waits: A new machine stage, not a fix.
+Why it waits: A new system stage, not a fix.
 
 ### The reader is a different model from the implementer
 
@@ -40,7 +40,7 @@ Already in the code: This is the rule for cards and friends today. A card is edi
 
 Why it waits: Mostly in place; the rest is a dealing policy change, listed once under the dealing policy item.
 
-## The sprint machine
+## The sprint system
 
 New verbs, stages and policies for nova-sprint. Each is new capability, so none of it fits the fixes-only ladder.
 
@@ -68,9 +68,9 @@ Why it waits: A policy change, not a fix.
 
 Replaces 5 open sprint cards, each mapped to `dealing-policy`.
 
-### Machine gates before reads
+### System gates before reads
 
-Checks the machine can make run before any reader is paid: a mechanical card is proved by the machine and not read, and the work lint proves that a card's test pins its change. This is where the verifier stage, under the lessons, starts.
+Checks the system can make run before any reader is paid: a mechanical card is proved by the system and not read, and the work lint proves that a card's test pins its change. This is where the verifier stage, under the lessons, starts.
 
 Why it waits: New capability.
 
@@ -228,7 +228,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 ### Automatic promotion to dev and drift alarms
 
-The machine promotes the base to dev itself and raises an alarm when the live server, a card branch or the base drifts.
+The system promotes the base to dev itself and raises an alarm when the live server, a card branch or the base drifts.
 
 Target: v1.3
 
@@ -282,7 +282,7 @@ Target: v1.3
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
-### One base branch, watched by the machine
+### One base branch, watched by the system
 
 Cards name only the real base, the server runs only from the base, and a periodic reminder shows when branches drift apart.
 
@@ -348,7 +348,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 ### Speculative dispatch, shared-path renaming and vector cards
 
-Long-range ideas for the card machine: deal a card on a need still in review, run cards that share paths in parallel and resolve at retire, and deal one batch of sub-cards with a verdict each. Each needs a model first and a measured gain.
+Long-range ideas for the card system: deal a card on a need still in review, run cards that share paths in parallel and resolve at retire, and deal one batch of sub-cards with a verdict each. Each needs a model first and a measured gain.
 
 Target: after v1.4
 
@@ -426,9 +426,9 @@ Target: v1.3
 
 From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
 
-### Timers on the sprint machine that wake an actor at a chosen time
+### Timers on the sprint system that wake an actor at a chosen time
 
-A remind verb writes a timer with a due time and note, and the machine wakes the named actor when it falls due.
+A remind verb writes a timer with a due time and note, and the system wakes the named actor when it falls due.
 
 Target: after v1.4
 
@@ -516,7 +516,7 @@ From: PR #5308
 
 ### where --costs carries tiers and cost by tier; a late tick reads running
 
-The dashboard reads tiers and per-card cost by tier from where. A running machine with a late tick reads running, not stopped.
+The dashboard reads tiers and per-card cost by tier from where. A running system with a late tick reads running, not stopped.
 
 Target: v1.3
 
@@ -588,7 +588,7 @@ From: PR #5532
 
 ### Dashboard live dot shows stopped, and a failed first read refuses
 
-The dashboard header dot turns red when the machine is stopped, green when running, and neutral when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of serving.
+The dashboard header dot turns red when the system is stopped, green when running, and neutral when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of serving.
 
 Target: v1.3
 
@@ -602,7 +602,7 @@ Target: after v1.4
 
 From: nova-sprint PR #3
 
-### The machine feeds itself: inherited twins, rule answers and an idle alarm
+### The system feeds itself: inherited twins, rule answers and an idle alarm
 
 Cards re-cut as twins inherit the state of the original, mechanical judgments are answered by rule, and an idle fleet raises an alarm. This reduces manual judgment when many cards are held.
 
@@ -666,7 +666,7 @@ Target: v1.3
 
 From: issue #2381; issue #2382
 
-### Machinery runs the gate and owns returned, verified and landed transitions
+### System runs the gate and owns returned, verified and landed transitions
 
 Harvest runs the gate itself outside the wall and records the result; a card's own gate claim is data. Returned, verified and landed are recorded transitions per item, head and base, and the landing lane is plain verbs with a model only for exceptions.
 
@@ -962,7 +962,7 @@ Target: after v1.4
 
 From: issue #3878; issue #4195
 
-### Remove the superseded sprint verbs and machinery in one batch
+### Remove the superseded sprint verbs and system in one batch
 
 Once the unused-verb check confirms it, the old friend-queue, routing, lander and sprint-file verbs are deleted together.
 
@@ -996,7 +996,7 @@ From: issue #4318; issue #4322; issue #4188; issue #4185; issue #4028
 
 ### The coordinator console is one grammar and settles what it can
 
-One spelling per concept, one receipt shape, fast quiet calls and a home screen. The machine settles what it can before waking the coordinator.
+One spelling per concept, one receipt shape, fast quiet calls and a home screen. The system settles what it can before waking the coordinator.
 
 Target: after v1.4
 
@@ -1060,7 +1060,7 @@ From: issue #1643
 
 ### A card goes from issue to landed with no coordinator hand step
 
-List what remains before accept, routing, reads and landing all run by machinery alone, and close each gap.
+List what remains before accept, routing, reads and landing all run by the system alone, and close each gap.
 
 Target: after v1.4
 
@@ -1274,7 +1274,7 @@ Target: after v1.4
 
 From: card from the sprint store (2026-10-10)
 
-### Brief defects and report form are judged by the machine
+### Brief defects and report form are judged by the system
 
 A card whose brief is wrong is shown as its own column, not as review. Report form is checked by lint at finish, and add applies the header fixes its lint computes.
 
@@ -1282,9 +1282,9 @@ Target: v1.3
 
 From: card from the sprint store (2026-10-10)
 
-### A hold that names its fix is applied by the machine
+### A hold that names its fix is applied by the system
 
-When a hold names its own fix, the machine applies it instead of waiting for the coordinator to read it.
+When a hold names its own fix, the system applies it instead of waiting for the coordinator to read it.
 
 Target: v1.3
 
@@ -1364,7 +1364,7 @@ From: card from the sprint store (2026-10-10)
 
 ### Failures and dealing never wait on the coordinator
 
-A failed attempt is handled by the machine, and the deal keeps friends supplied with work even when the coordinator is out, so no friend idles or polls for lack of cards.
+A failed attempt is handled by the system, and the deal keeps friends supplied with work even when the coordinator is out, so no friend idles or polls for lack of cards.
 
 Target: v1.3
 
@@ -1530,7 +1530,7 @@ Target: after v1.4
 
 From: nova-sprint commit 7a4988d (not carried by the re-seed, nova-sprint PR #28), remainder; card moved out of the sprint (work record, 2026-10-04)
 
-### Work lint, then a machine gate before a read, then gate lint
+### Work lint, then a system gate before a read, then gate lint
 
 One ordered stack: ten mechanical lint checks rework a finished attempt before any read; a bench gate runs the TEST line, vet and tests at the head before a read, and a red gate reworks without spending a read; reach analysis checks the TEST line can reach the change.
 
@@ -1694,7 +1694,7 @@ From: issue #3393
 
 A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts. The design agreed with the owner on 2026-10-11 has two levels. Inside a card, working splits into planning, then a plan read, then implementing: the plan is committed to the card's branch as PLAN.md, and implementing is a second take on the same branch, so a one-shot child starts from the file, not from memory; a refused plan is a re-plan take. Above cards, a plan node turns a roadmap entry into cards with their dependencies (its scope, the cards, their DEPENDS lines and a read), feeds a stream, holds the cap of about 10 unadmitted drafts, and is what nova-work later imports as a node. Both levels are modelled in TLA+ with the card machine before either is built.
 
-Why it waits: A new machine stage, not a fix.
+Why it waits: A new system stage, not a fix.
 
 Target: v1.3
 
@@ -1712,7 +1712,7 @@ From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five mon
 
 ### A precedent log
 
-An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again.
+An append-only log of the coordinator's decisions, which the system reads before it raises a judgment, so a question already settled is not asked again.
 
 Why it waits: New capability.
 
@@ -1750,7 +1750,7 @@ Replaces 3 open sprint cards, each mapped to `release-check-gates`.
 
 ### Friend and sprint chaos suites
 
-Faults injected on purpose into friends and into the sprint machine, each required to show and to recover within its bound.
+Faults injected on purpose into friends and into the sprint system, each required to show and to recover within its bound.
 
 Why it waits: New test capability beyond the v1.4 quality list.
 
@@ -2064,7 +2064,7 @@ Target: v1.4
 
 From: issue #5195
 
-### TLA+ models for the machine stop and the backup path
+### TLA+ models for the system stop and the backup path
 
 Models for how a stop returns reads and claimed cards, and for the promise that a backup path holds only a verified file. Each is checked on a small instance and cited from the code.
 
@@ -2220,7 +2220,7 @@ Target: v1.3
 
 From: issue #3185
 
-### Friend lifecycle and widths run as machinery: wake, take, refill, redistribute
+### Friend lifecycle and widths run through the system: wake, take, refill, redistribute
 
 A free child lane refills at once, a seat under its width with ready work gets one wake note from the tick, and redistribute is one verb and duty. Bulk assignment stays accurate by counting only cards actually taken.
 
@@ -2228,9 +2228,9 @@ Target: after v1.4
 
 From: issue #3635; issue #4095; issue #4096; issue #4098; issue #3915; card moved out of the sprint (work record, 2026-10-04)
 
-### The machine sends the width goal to idle or under-width friends
+### The system sends the width goal to idle or under-width friends
 
-The machine detects a friend who is idle or under width with ready cards and sends the take request itself. The deal is bounded by lanes actually started.
+The system detects a friend who is idle or under width with ready cards and sends the take request itself. The deal is bounded by lanes actually started.
 
 Target: v1.3
 

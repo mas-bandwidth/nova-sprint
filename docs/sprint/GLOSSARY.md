@@ -12,7 +12,7 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
 
 - **attempt** — one run of a primary's work card; a failed attempt is reworked or escalated.
   Defined: [SPEC-SPRINT.md, The cards](../SPEC-SPRINT.md#2-the-cards).
-- **coordinator** — the friend who holds the seat and decides; the machine moves cards, the coordinator judges.
+- **coordinator** — the friend who holds the seat and decides; the system moves cards, the coordinator judges.
   Defined: [SPEC-SPRINT.md, Notifications](../SPEC-SPRINT.md#8-notifications).
 - **dealer** — the tick step that cuts a work card for a ready primary and gives it to a fleet member or friend.
   Defined: [SPEC-SPRINT.md, The fleet](../SPEC-SPRINT.md#5-the-fleet).
@@ -48,8 +48,10 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
   Defined: [SPEC-SPRINT.md, Merging](../SPEC-SPRINT.md#7-merging).
 - **stream** — an ordered line of primaries that land one after another.
   Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables).
-- **tick** — one pass of the machine over every table: resolve, deal, rebalance, accept, merge.
-  Defined: [SPEC-SPRINT.md, The machine](../SPEC-SPRINT.md#14-the-machine).
+- **system** — nova-sprint, which coordinates work across fleet machines.
+  Defined: [SPEC-SPRINT.md, The system](../SPEC-SPRINT.md#14-the-system). Replaces: machine for nova-sprint itself.
+- **tick** — one pass of the system over every table: resolve, deal, rebalance, accept, merge.
+  Defined: [SPEC-SPRINT.md, The system](../SPEC-SPRINT.md#14-the-system).
 - **tier** — the strength class a card runs at (flash, pro, frontier); a card with none is dealt at flash.
   Defined: [SPEC-SPRINT.md, The fleet](../SPEC-SPRINT.md#5-the-fleet).
 - **work card** — the live card cut from a primary and dealt to a member for one attempt.

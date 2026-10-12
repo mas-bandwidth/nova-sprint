@@ -29,7 +29,7 @@
     hold together. Each item is one of those lessons, checked against nova's code at dev 9ff68178:
     what already exists is named by file and line, and the item covers the rest.")
   (group "sprint"
-   :title "The sprint machine"
+   :title "The sprint system"
    :text "New verbs, stages and policies for nova-sprint. Each is new capability, so none of it fits the
     fixes-only ladder.")
   (group "ops"
@@ -45,11 +45,11 @@
  (
   ; Lessons from Prime Agent's rewrite
   (item "verifier-stage" :group "lessons" :area "nova-sprint"
-   :title "The verifier is its own machine stage"
+   :title "The verifier is its own system stage"
    :text "A card's checks are written before the work starts. After the work, a verifier stage of the
-    machine runs them in a fresh bench, apart from the reader, and its verdict is the merge gate: the
-    named test must fail at the card's base and pass at its head, run by the machine rather than
-    reported by the worker. This changes the card contract (the TEST line becomes a check the machine
+    system runs them in a fresh bench, apart from the reader, and its verdict is the merge gate: the
+    named test must fail at the card's base and pass at its head, run by the system rather than
+    reported by the worker. This changes the card contract (the TEST line becomes a check the system
     runs), the lander (one red-at-base, green-at-head run per card before the batch gate) and the
     reader's job (it reads a change already shown to do what the card says)."
    :exists "The card lint requires the named test to be absent at the base: rule donewhen-test-name,
@@ -57,9 +57,9 @@
     gate runs failing tests at the base only to classify a failure the worker already reported as not
     done (cmd/nova-swarm/nativegate.go:26-42). The lander's tree gate runs the batch at its head and
     reads the TEST line only to time the package (internal/sprint/gate_wall.go:46-59). No step runs the
-    named test red at base and green at head as a gate; that is the gap. The machine gates before reads
-    item, under the sprint machine, holds the cards that started on it."
-   :why "A new machine stage, not a fix."
+    named test red at base and green at head as a gate; that is the gap. The system gates before reads
+    item, under the sprint system, holds the cards that started on it."
+   :why "A new system stage, not a fix."
    :date "2026-10-09")
   (item "reader-model-diversity" :group "lessons" :area "nova-sprint"
    :title "The reader is a different model from the implementer"
@@ -82,7 +82,7 @@
     rework-goes-to-the-same-worker-b, held under the dealing policy item."
    :why "Mostly in place; the rest is a dealing policy change, listed once under the dealing policy item."
    :date "2026-10-09")
-  ; The sprint machine
+  ; The sprint system
   (item "processor-layers" :group "sprint" :area "nova-sprint"
    :title "Processor layers 3 to 8"
    :text "The upper layers of the nova-sprint processor design: cards that name operands outside the
@@ -108,9 +108,9 @@
    :cards 5
    :date "2026-10-09")
   (item "machine-gates-before-reads" :group "sprint" :area "nova-sprint"
-   :title "Machine gates before reads"
-   :text "Checks the machine can make run before any reader is paid: a mechanical card is proved by the
-    machine and not read, and the work lint proves that a card's test pins its change. This is where
+   :title "System gates before reads"
+   :text "Checks the system can make run before any reader is paid: a mechanical card is proved by the
+    system and not read, and the work lint proves that a card's test pins its change. This is where
     the verifier stage, under the lessons, starts."
    :why "New capability."
    :cards 3
@@ -189,7 +189,7 @@
    :date "2026-10-09")
   (item "chaos-suites" :group "ops" :area "nova-sprint"
    :title "Friend and sprint chaos suites"
-   :text "Faults injected on purpose into friends and into the sprint machine, each required to show
+   :text "Faults injected on purpose into friends and into the sprint system, each required to show
     and to recover within its bound."
    :why "New test capability beyond the v1.4 quality list."
    :cards 2
@@ -341,7 +341,7 @@
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "auto-promotion-and-drift-alarms" :group "sprint"
    :title "Automatic promotion to dev and drift alarms"
-   :text "The machine promotes the base to dev itself and raises an alarm when the live server, a card
+   :text "The system promotes the base to dev itself and raises an alarm when the live server, a card
     branch or the base drifts."
    :date "2026-10-10"
    :release "v1.3"
@@ -412,7 +412,7 @@
    :release "v1.3"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "single-base-branch-discipline" :group "sprint"
-   :title "One base branch, watched by the machine"
+   :title "One base branch, watched by the system"
    :text "Cards name only the real base, the server runs only from the base, and a periodic reminder shows
     when branches drift apart."
    :date "2026-10-10"
@@ -510,7 +510,7 @@
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "speculative-dispatch-renaming-vector" :group "sprint"
    :title "Speculative dispatch, shared-path renaming and vector cards"
-   :text "Long-range ideas for the card machine: deal a card on a need still in review, run cards that
+   :text "Long-range ideas for the card system: deal a card on a need still in review, run cards that
     share paths in parallel and resolve at retire, and deal one batch of sub-cards with a verdict
     each. Each needs a model first and a measured gain."
    :date "2026-10-10"
@@ -615,8 +615,8 @@
    :release "v1.3"
    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "sprint-timers" :group "sprint"
-   :title "Timers on the sprint machine that wake an actor at a chosen time"
-   :text "A remind verb writes a timer with a due time and note, and the machine wakes the named actor
+   :title "Timers on the sprint system that wake an actor at a chosen time"
+   :text "A remind verb writes a timer with a due time and note, and the system wakes the named actor
     when it falls due."
    :date "2026-10-10"
    :release "after v1.4"
@@ -733,7 +733,7 @@
    :origin "PR #5335")
   (item "where-costs-by-tier-and-late-tick" :group "sprint"
    :title "where --costs carries tiers and cost by tier; a late tick reads running"
-   :text "The dashboard reads tiers and per-card cost by tier from where. A running machine with a late
+   :text "The dashboard reads tiers and per-card cost by tier from where. A running system with a late
     tick reads running, not stopped."
    :date "2026-10-10"
    :release "v1.3"
@@ -809,7 +809,7 @@
    :origin "PR #5532")
   (item "dashboard-status-dot-and-first-read" :group "sprint"
    :title "Dashboard live dot shows stopped, and a failed first read refuses"
-   :text "The dashboard header dot turns red when the machine is stopped, green when running, and neutral
+   :text "The dashboard header dot turns red when the system is stopped, green when running, and neutral
     when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of
     serving."
    :date "2026-10-10"
@@ -830,7 +830,7 @@
    :release "after v1.4"
    :origin "nova-sprint PR #3")
   (item "machine-feeds-itself-idle-alarm" :group "sprint"
-   :title "The machine feeds itself: inherited twins, rule answers and an idle alarm"
+   :title "The system feeds itself: inherited twins, rule answers and an idle alarm"
    :text "Cards re-cut as twins inherit the state of the original, mechanical judgments are answered by
     rule, and an idle fleet raises an alarm. This reduces manual judgment when many cards are held."
    :date "2026-10-10"
@@ -914,7 +914,7 @@
    :release "after v1.4"
    :origin "issue #2385")
   (item "landing-gate-and-transitions-owned-by-machinery" :group "sprint"
-   :title "Machinery runs the gate and owns returned, verified and landed transitions"
+   :title "System runs the gate and owns returned, verified and landed transitions"
    :text "Harvest runs the gate itself outside the wall and records the result; a card's own gate claim is
     data. Returned, verified and landed are recorded transitions per item, head and base, and the
     landing lane is plain verbs with a model only for exceptions."
@@ -1172,7 +1172,7 @@
    :release "after v1.4"
    :origin "issue #4189; issue #4186")
   (item "friend-lifecycle-automation" :group "friends"
-   :title "Friend lifecycle and widths run as machinery: wake, take, refill, redistribute"
+   :title "Friend lifecycle and widths run through the system: wake, take, refill, redistribute"
    :text "A free child lane refills at once, a seat under its width with ready work gets one wake note
     from the tick, and redistribute is one verb and duty. Bulk assignment stays accurate by counting
     only cards actually taken."
@@ -1204,7 +1204,7 @@
    :release "after v1.4"
    :origin "issue #3878; issue #4195")
   (item "remove-superseded-sprint-verbs" :group "sprint"
-   :title "Remove the superseded sprint verbs and machinery in one batch"
+   :title "Remove the superseded sprint verbs and system in one batch"
    :text "Once the unused-verb check confirms it, the old friend-queue, routing, lander and sprint-file
     verbs are deleted together."
    :date "2026-10-10"
@@ -1233,7 +1233,7 @@
    :origin "issue #4318; issue #4322; issue #4188; issue #4185; issue #4028")
   (item "coordinator-console-and-comfort" :group "sprint"
    :title "The coordinator console is one grammar and settles what it can"
-   :text "One spelling per concept, one receipt shape, fast quiet calls and a home screen. The machine
+   :text "One spelling per concept, one receipt shape, fast quiet calls and a home screen. The system
     settles what it can before waking the coordinator."
    :date "2026-10-10"
    :release "after v1.4"
@@ -1302,7 +1302,7 @@
    :origin "issue #1643")
   (item "cards-issue-to-landed-no-hand-step" :group "sprint"
    :title "A card goes from issue to landed with no coordinator hand step"
-   :text "List what remains before accept, routing, reads and landing all run by machinery alone, and
+   :text "List what remains before accept, routing, reads and landing all run by the system alone, and
     close each gap."
    :date "2026-10-10"
    :release "after v1.4"
@@ -1508,15 +1508,15 @@
    :release "after v1.4"
    :origin "card from the sprint store (2026-10-10)")
   (item "brief-and-form-checks-by-machine" :group "sprint"
-   :title "Brief defects and report form are judged by the machine"
+   :title "Brief defects and report form are judged by the system"
    :text "A card whose brief is wrong is shown as its own column, not as review. Report form is checked by
     lint at finish, and add applies the header fixes its lint computes."
    :date "2026-10-10"
    :release "v1.3"
    :origin "card from the sprint store (2026-10-10)")
   (item "machine-sends-width-goal-to-friends" :group "friends"
-   :title "The machine sends the width goal to idle or under-width friends"
-   :text "The machine detects a friend who is idle or under width with ready cards and sends the take
+   :title "The system sends the width goal to idle or under-width friends"
+   :text "The system detects a friend who is idle or under width with ready cards and sends the take
     request itself. The deal is bounded by lanes actually started."
    :date "2026-10-10"
    :release "v1.3"
@@ -1536,8 +1536,8 @@
    :release "v1.3"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "hold-fix-applied-by-machine" :group "sprint"
-   :title "A hold that names its fix is applied by the machine"
-   :text "When a hold names its own fix, the machine applies it instead of waiting for the coordinator to
+   :title "A hold that names its fix is applied by the system"
+   :text "When a hold names its own fix, the system applies it instead of waiting for the coordinator to
     read it."
    :date "2026-10-10"
    :release "v1.3"
@@ -1571,7 +1571,7 @@
    :release "v1.3"
    :origin "card from the sprint store (2026-10-10)")
   (item "tla-stop-and-backup-models" :group "docs"
-   :title "TLA+ models for the machine stop and the backup path"
+   :title "TLA+ models for the system stop and the backup path"
    :text "Models for how a stop returns reads and claimed cards, and for the promise that a backup path
     holds only a verified file. Each is checked on a small instance and cited from the code."
    :date "2026-10-10"
@@ -1657,7 +1657,7 @@
    :origin "card from the sprint store (2026-10-10)")
   (item "deal-never-waits-on-coordinator" :group "sprint"
    :title "Failures and dealing never wait on the coordinator"
-   :text "A failed attempt is handled by the machine, and the deal keeps friends supplied with work even
+   :text "A failed attempt is handled by the system, and the deal keeps friends supplied with work even
     when the coordinator is out, so no friend idles or polls for lack of cards."
    :date "2026-10-10"
    :release "v1.3"
@@ -1848,7 +1848,7 @@
    :origin "nova-sprint commit 7a4988d (not carried by the re-seed, nova-sprint PR #28), remainder; card
     moved out of the sprint (work record, 2026-10-04)")
   (item "gate-stack" :group "sprint"
-   :title "Work lint, then a machine gate before a read, then gate lint"
+   :title "Work lint, then a system gate before a read, then gate lint"
    :text "One ordered stack: ten mechanical lint checks rework a finished attempt before any read; a bench
     gate runs the TEST line, vet and tests at the head before a read, and a red gate reworks without
     spending a read; reach analysis checks the TEST line can reach the change."
@@ -2083,7 +2083,7 @@
   (item "a-plan-gate-before-code" :group "sprint" :date "2026-10-11"
    :title "A plan gate before code"
    :text "A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts. The design agreed with the owner on 2026-10-11 has two levels. Inside a card, working splits into planning, then a plan read, then implementing: the plan is committed to the card's branch as PLAN.md, and implementing is a second take on the same branch, so a one-shot child starts from the file, not from memory; a refused plan is a re-plan take. Above cards, a plan node turns a roadmap entry into cards with their dependencies (its scope, the cards, their DEPENDS lines and a read), feeds a stream, holds the cap of about 10 unadmitted drafts, and is what nova-work later imports as a node. Both levels are modelled in TLA+ with the card machine before either is built."
-   :why "A new machine stage, not a fix."
+   :why "A new system stage, not a fix."
    :release "v1.3"
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
   (item "a-review-audit" :group "sprint" :date "2026-10-11"
@@ -2094,7 +2094,7 @@
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
   (item "a-precedent-log" :group "sprint" :date "2026-10-11"
    :title "A precedent log"
-   :text "An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again."
+   :text "An append-only log of the coordinator's decisions, which the system reads before it raises a judgment, so a question already settled is not asked again."
    :why "New capability."
    :release "v1.3"
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))

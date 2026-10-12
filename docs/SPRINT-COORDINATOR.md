@@ -108,11 +108,11 @@ the owner's number or word (a width, a route, a release order) goes to the owner
 |---|---|---|
 | a reader found it broken | rework with the finding; each card's fix is its reader's finding. When the finding is wrong, ask another reader | `nova-sprint rework --group <id> --expect <n> --answers <id>`; `nova-sprint ask --group <id> --expect <n> --another --answers <id>` |
 | work came back failed | rework; each card's fix is the report its work gave. Drop only a card that cannot be done as written | `nova-sprint rework --group <id> --expect <n> --answers <id>`; `nova-sprint drop --group <id> --expect <n> --reason '<why>' --answers <id>` |
-| a primary is blocked on something dropped | ack with the reason when the card can run without it: the ack waives the dropped needs and writes who and when on the card (`card` shows each as waived), and the card is ready at once, or at the next tick on a RUNNING machine, when nothing else holds it (a held sentinel keeps its hold), so a chain behind a dropped card is mended with nothing dropped and added again; you own the risk that it runs without the dropped card's change. Drop the dependents when it cannot | `nova-sprint ack <note>,<note> --reason '<why nothing is to be done>'`; `nova-sprint drop --group <id> --expect <n> --reason '<why>' --answers <id>` |
+| a primary is blocked on something dropped | ack with the reason when the card can run without it: the ack waives the dropped needs and writes who and when on the card (`card` shows each as waived), and the card is ready at once, or at the next tick on a RUNNING system, when nothing else holds it (a held sentinel keeps its hold), so a chain behind a dropped card is mended with nothing dropped and added again; you own the risk that it runs without the dropped card's change. Drop the dependents when it cannot | `nova-sprint ack <note>,<note> --reason '<why nothing is to be done>'`; `nova-sprint drop --group <id> --expect <n> --reason '<why>' --answers <id>` |
 | stalled | `card <primary>`: its HELD line says what holds it; then the decision the judgment prints (for a primary asked already, `ask --another`) | `nova-sprint card <primary>`; `nova-sprint ask --group <id> --expect <n> --another --answers <id>` |
 | stream stopped: conflict on a card | return the card, rework it from the sprint branch's tip, resume the stream | `nova-sprint return <card> --reason conflict`; `nova-sprint rework <card> --fix '<fix>'`; `nova-sprint resume --stream <s> --did 'returned <card> for rework' --answers <id>` |
 | a work card is past its deadline | a card dealt and not taken waits or the fleet is levelled; a card taken and not finished goes to the load check of section 4 | `nova-sprint wait <id> --for 30m`; `nova-sprint fleet level`; `nova-sprint fleet down <m>` |
-| cannot ask | bring a reader up, or wait while reads end; when machinery that exhausts reads is the cause, drop the card and add it again after the fix | `nova-sprint reader add '<reader>'`; `nova-sprint wait <id> --for 30m`; `nova-sprint drop <card> --reason '<defect and its fix>' --answers <id>` |
+| cannot ask | bring a reader up, or wait while reads end; when system that exhausts reads is the cause, drop the card and add it again after the fix | `nova-sprint reader add '<reader>'`; `nova-sprint wait <id> --for 30m`; `nova-sprint drop <card> --reason '<defect and its fix>' --answers <id>` |
 | sentinel reached | release only when the gate for that wave is passed | `nova-sprint release <sentinel> --reason '<what you looked at and found>' --answers <id>` |
 
 Notes on the rows:
@@ -126,12 +126,12 @@ Notes on the rows:
   which no reader has read.
 - Past its deadline. A work card not taken is late 15 minutes after it was dealt (counted from the first deal
   since its last take); a card taken and not finished, 2 hours after its first take; a read, 30 minutes asked
-  or 2 hours begun ([SPEC-SPRINT.md section 14](SPEC-SPRINT.md#14-the-machine)). A card dealt and not taken
+  or 2 hours begun ([SPEC-SPRINT.md section 14](SPEC-SPRINT.md#14-the-system)). A card dealt and not taken
   is the member's queue, not the card's fault: `wait` while the member works through its width, or
   `fleet level` to move cards a member cannot start to one with free lanes. `fleet down <m>` is for the member
   that has held the card its whole deadline.
 - Cannot ask. A flash card needs one reader up and a pro card two different readers up (`where` shows the readers table). A drop on this ground
-  goes on the re-add list (section 3); fixes for the machinery are never made through the sprint.
+  goes on the re-add list (section 3); fixes for the system are never made through the sprint.
 - Sentinel reached. The other printed decisions are `add --stream <s> --before <sentinel> '<new id>' --brief
   '<brief>'` and `drop`. A judgment held for a wave not yet agreed stays open, never released to clear the
   inbox.
@@ -167,7 +167,7 @@ card is decided once (the record, `~/nova-sprint/decide/judgment.jsonl`, answers
 card round and round; each decision's outcome (landed, dropped, came back) is attached as the card's state says
 it, and `nova-decide calibrate --record ~/nova-sprint/decide/judgment.jsonl --decision judgment --question
 verb=rework --positive landed --negative came-back` reads the bar the record supports. The loop ends when the
-machine is STOPPED; it never composes a command the inbox did not print. Each line it applies carries the
+system is STOPPED; it never composes a command the inbox did not print. Each line it applies carries the
 decision's `--op`, recorded as applying before it runs and applied after, so a loop stopped between the two
 applies nothing twice; one ask that takes past `--timeout` (60s) is that card's failed row, and the loop goes on.
 
@@ -177,7 +177,7 @@ applies nothing twice; one ask that takes past `--timeout` (60s) is that card's 
   ledger belong to one stream, in order or chained with `--needs a,b` (primaries that must land first; a
   dropped or missing need raises its own judgment); `add` does not see two open cards naming one file.
 - A card is a brief, a child's whole brief (at most 16 KiB; `REPO:` and `BASE:` lines; a a `tier: pro|frontier`
-  line 1 is its ceiling, none is flash: every card is dealt on flash first and the machine escalates it a tier
+  line 1 is its ceiling, none is flash: every card is dealt on flash first and the system escalates it a tier
   at its bound below the ceiling). From files, the card's id being the file's name without `.md`:
 
   ```
@@ -211,7 +211,7 @@ applies nothing twice; one ask that takes past `--timeout` (60s) is that card's 
   the cards behind work in flight in one step; while any has not started it is refused, naming the first.
 - Repair cards go to the front of their stream: `nova-sprint add --stream <s> --before <first card> <id>
   --brief-file <path>`, or for a card already added `nova-sprint rank <id> --first`
-  (`nova-sprint move <id>... --stream <s>` moves cards between streams). A fix for the machinery itself is a
+  (`nova-sprint move <id>... --stream <s>` moves cards between streams). A fix for the system itself is a
   pull request, never a card.
 - The re-add list is a file the coordinator keeps (card id, brief file, reason, the fix it waits for); after the
   fix is installed each card is added again from its brief file.
@@ -262,14 +262,14 @@ applies nothing twice; one ask that takes past `--timeout` (60s) is that card's 
   tiers are flash and pro; a frontier card is the coordinator's and is never dealt. A tier's order is
   `nova-config tier set <tier> --routes <a>,<b>,<a> --as <coordinator>`, a route named twice taking two turns.
   Flash first on every card (cost rule 1, nova-tools#5174): line 1 of its brief is its ceiling, never its
-  first deal. An attempt at its bound below the ceiling is escalated by the machine (`tier_now`, a new
+  first deal. An attempt at its bound below the ceiling is escalated by the system (`tier_now`, a new
   attempt on the next tier, no judgment); at the ceiling the bound is your judgment. `rework <card> --tier
   <tier>` pins the card to a tier, its ceiling too, never escalated; `card <id>` prints `tier=` and
   `ceiling=` on its CARD OK line.
 - A provider's failure is not a verdict on a route: a run the provider failed is redealt, never failed work,
   leaving out the routes already drawn for the card. A limit or an empty balance never takes a route out of
   the deal; it clears by itself, and a route taken out for it stays out.
-- The machine rests a route by itself when three of its last ten ended takes left no result (rule 3 of
+- The system rests a route by itself when three of its last ten ended takes left no result (rule 3 of
   nova-tools#5174): no work card is drawn on it for 30 minutes, the inbox says so with the cards, and
   `nova-sprint routes` prints `rested_until`. That rest is the sprint's and ends by itself; the row change
   below is yours, for work that comes back bad.
@@ -403,13 +403,13 @@ checks, receipts and exit codes.
   whose `Verdict:` line holds the result. After PR 5126 `nova-sprint friend sync [--root <dir>]` reads those
   directories into the friends table (failed when the verdict's first word is HOLD, FAIL, FAILED or BROKEN);
   `friend down <friend>` holds a friend and `friend up` releases it.
-- Disk. Every per-card artifact is removed by the machinery itself, automatically and asynchronously; a scan
+- Disk. Every per-card artifact is removed by the system itself, automatically and asynchronously; a scan
   at a random time is not a plan. `df -h <slots volume>` and `du -sh <slots dir>` read the trend. A member
   starts no card while its volume has less than `--disk-floor` GiB free (default 10). After PR 5125 the member
   retires finished slots and holds the slots directory under `--slots-max-gb`; before it nothing removes them
   and the directory grows by about half a gigabyte a card. A filling volume is reported with the numbers and
   its member held with `fleet down <m>`.
-- The server. While the machine is RUNNING its log (`StandardOutPath` of the unit) prints `HH:MM:SS tick` at
+- The server. While the system is RUNNING its log (`StandardOutPath` of the unit) prints `HH:MM:SS tick` at
   least once a second. Three signs of a stall: the last `tick` line is more than 15 seconds old (`inbox` also
   shows `the machine is not ticking`); the server's resident size grows (`ps -o rss=,etime= -p <pid>` twice, a
   minute apart) while no tick prints; a store verb does not return (run `where`, `card` and `inbox` with a
@@ -448,7 +448,7 @@ changes it ([SPEC-SPRINT.md section 11](SPEC-SPRINT.md#11-verbs)). `nova-config 
 The coordinator's operating rules, numbered. Each is the rule in bold, why (the failure it prevents), what
 does it (the verb or setting; "judgment" where the seat decides and no verb acts), and the card that makes it
 mechanical where one is named. They were learned running sprints from 2026-10-02 to 2026-10-05; a rule the
-machine already keeps is still listed when the coordinator must know it to read what the machine did.
+system already keeps is still listed when the coordinator must know it to read what the system did.
 `TestEveryCoordinatorRuleNamesVerbsThatExist` fails when a rule names a verb, flag or setting the tools do not
 carry. `nova-sprint handover` prints each rule's number and sentence (after the card in "Open items").
 
@@ -625,7 +625,7 @@ resume.**
 
 R33. **What the owner states in words is locked as checked invariants; a lock changes only on the owner's own
 words.**
-    Why: the core machine's design drifted.
+    Why: the core system's design drifted.
     Done by: judgment.
 
 R34. **A release is a fast-forward promotion of a green revision on main, after a cold audit at that sha and
@@ -890,7 +890,7 @@ R86. **A defect found in passing is fixed the same hour, failing test first, rat
     Why: parked defects accumulated.
     Done by: judgment.
 
-R87. **Every machinery fix is followed within the hour by a probe of 1 to 5 cards through the changed path.**
+R87. **Every system fix is followed within the hour by a probe of 1 to 5 cards through the changed path.**
     Why: unproven fixes went to bulk runs.
     Done by: `nova-sprint quack --streams <s> --count 1 --repo <url>`.
 

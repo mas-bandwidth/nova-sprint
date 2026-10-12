@@ -236,7 +236,7 @@ result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
 verbs are the coordinator's alone (the first `init` names it: `--coordinator`,
 else the actor); `take`, `finish`, `read`, `fleet beat` and `friend beat` are the
 workers', whose actor is the member, reader or friend named; `merge` and `ci`
-are reports; `tick`, `run`, `friend clean` and `gc` are the machine's. Reads need no
+are reports; `tick`, `run`, `friend clean` and `gc` are the system's. Reads need no
 actor except `inbox --read`, which moves the coordinator's cursor. A set is
 ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 `--group <id>`, the id `inbox` prints, with `--expect <n>` the size it printed,
@@ -289,9 +289,9 @@ A running sprint needs nine units on its coordinator's machine: the store and th
 
 `nova-sprint demo load sprint-store-2026-10-04-2336.redis.txt.xz.part-*` loads a store backup (the RESTORE text dump, xz, split into parts) into a throwaway Redis on a free 127.0.0.1 port, with the function library of this nova-sprint binary (never the installed nova-redis's), and prints `where` against it and the line `DEMO UP --addr 127.0.0.1:<port>`: point any read verb at the demo with `--redis 127.0.0.1:<port>`. The parts are joined in name order and checked against the sum beside them when there is one: `<file>.sha256` (the hand backup's), else the line of `SHA256SUMS` naming the joined file (`backup --out`'s), or `--sha256 <hex>`. It takes no `--redis`: the only store it opens is the one it starts. The server's directory and the state file (`demo.json`: address, port, pid, directory) are under `--dir`, by default the user cache directory's `nova-sprint/demo`; a second load while one is up is refused. `nova-sprint demo stop` stops that Redis by the pid it recorded, only when the Redis at the recorded address is that pid, and removes the recorded directory and nothing else. The live store is never opened. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#demo-load-verb).
 
-### The machinery's scratch
+### The system's scratch
 
-`nova-sprint gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]` reclaims, on the machine it runs on (or, with `--machine`, on that machine through the fleet runner, which runs the same verb there), exactly the scratch the machinery made and no longer needs: the job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees, bench directories under `~/nova-bench` older than `--max-age` (default `2d`; days or a Go duration), and the go caches trimmed to their cap. It refuses a path under no known scratch root (the AI root: `--ai-root`, else `NOVA_AI_ROOT`, else `~/ai`, else the one the home's `<name>-working` links name, `<root>/<name>/working` or `<root>/buds/<name>/working`, as on a machine that exports none; the bench root; land's clone root; a plain `<home>/<name>-working` directory, as a bench keeps one), and keeps a clone with uncommitted work, a stash or unpushed commits. It prints one line per class, `GC jobs|reads|landers|bench|cache count=<n> bytes=<b> kept=<n> refused=<n> failed=<n>`, and `GC OK freed=<bytes> volume=<use%>`; `--dry-run` says `GC WOULD-REMOVE` and removes nothing. `nova-sprint run` runs it on every machine once an hour and as soon as a machine's volume is at 80%. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 1, "gc".
+`nova-sprint gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]` reclaims, on the machine it runs on (or, with `--machine`, on that machine through the fleet runner, which runs the same verb there), exactly the scratch the system made and no longer needs: the job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees, bench directories under `~/nova-bench` older than `--max-age` (default `2d`; days or a Go duration), and the go caches trimmed to their cap. It refuses a path under no known scratch root (the AI root: `--ai-root`, else `NOVA_AI_ROOT`, else `~/ai`, else the one the home's `<name>-working` links name, `<root>/<name>/working` or `<root>/buds/<name>/working`, as on a machine that exports none; the bench root; land's clone root; a plain `<home>/<name>-working` directory, as a bench keeps one), and keeps a clone with uncommitted work, a stash or unpushed commits. It prints one line per class, `GC jobs|reads|landers|bench|cache count=<n> bytes=<b> kept=<n> refused=<n> failed=<n>`, and `GC OK freed=<bytes> volume=<use%>`; `--dry-run` says `GC WOULD-REMOVE` and removes nothing. `nova-sprint run` runs it on every machine once an hour and as soon as a machine's volume is at 80%. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 1, "gc".
 
 ### A card re-cut as its twin
 
@@ -331,7 +331,7 @@ contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/m
 The owner, 2026-10-04: "i'd rather you hit this vs. hitting my dashboard which is for human
 eyes". `nova-sprint view coordinator` is everything that needs the seat now, ranked by the
 cards behind each item: open judgments, notes addressed to the coordinator, alarms (the
-machine stopped, the fleet idle, nothing ready, a review or merge backlog, a stream stopped),
+system stopped, the fleet idle, nothing ready, a review or merge backlog, a stream stopped),
 sentinels reached, and friends and machines that need a look, each with `next`, the exact
 command that acts on it. `nova-sprint view worker --as <member|friend>` is one worker's cards
 in order (brief, BASE, PATHS, deadline, attempt), its next step and its results not landed.
@@ -385,7 +385,7 @@ a balance at zero is rested until a balance over zero; one low on funds, a balan
 hour of its spend, until the balance is over it. One judgment of the provider says which (`a
 payment is the owner's`). `where --json` carries the `providers` table (balance, spend an hour,
 state) and `routes` each route's `balance=`. When every provider is out of credit, the tick
-stops the machine (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
+stops the system (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
 until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
 says one was paid. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
 
@@ -454,7 +454,7 @@ or `refused` after, so a pass stopped between the two is finished by the next
 through the same op and nothing is applied twice. One ask may take `--timeout`
 (60s by default); an ask past it, or one that fails, is that card's `failed` row,
 nothing is applied for it, and the pass exits 1. `--dry-run` applies and records
-nothing; `--every 60s` runs it as the seat's loop until the machine is STOPPED. Jev's key comes from `JEV_API_KEY`:
+nothing; `--every 60s` runs it as the seat's loop until the system is STOPPED. Jev's key comes from `JEV_API_KEY`:
 `nova-secrets exec --only JEV_API_KEY -- nova-sprint answer`. The
 contract is [SPEC-SPRINT.md section 8](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#answered-by-nova-decide)
 and [SPEC-NOVA-DECIDE.md section 13](SPEC-NOVA-DECIDE.md#13-the-judgment-decision).

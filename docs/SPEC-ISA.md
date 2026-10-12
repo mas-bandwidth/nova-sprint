@@ -28,7 +28,7 @@ Candidates: script, think, verify, merge, wait, fence, vector.
 | `wait` | `DEPENDS-ON` (its operand names what it waits for) | none | a primary's `needs` and `held`, and a sentinel's `kind` and `reached` | none: a waiting primary is not dealt and runs nothing | a waiting primary, a sentinel, or a held card |
 
 `think` and `verify` are the one list already: their kinds are its rows. `script`
-is a form of the steps, not a second list. `merge` and `wait` are machine
+is a form of the steps, not a second list. `merge` and `wait` are system
 instructions: they carry no child and no `KIND:` line, so they add no row to the
 list.
 

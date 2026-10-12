@@ -4,11 +4,11 @@ nova-sprint is a processor. Cards are its instructions. The coordinator is the f
 
 The instruction set page is [docs/SPEC-ISA.md](SPEC-ISA.md). The card `isa-spec` is that layer. The instruction format that runs today is the card contract.
 
-The machine is built in layers, bottom up, each secured before the next starts. A layer that is only metaphor does not start.
+The system is built in layers, bottom up, each secured before the next starts. A layer that is only metaphor does not start.
 
 ## The simplicity test
 
-A feature enters code only if it (a) removes concepts or code that exist today, (b) shows a measured gain in cost, wall clock or reliability from the counters, or (c) makes the machine easier to model and check in TLA+. Anything that is only metaphor goes in docs/PROCESSOR.md, not in code.
+A feature enters code only if it (a) removes concepts or code that exist today, (b) shows a measured gain in cost, wall clock or reliability from the counters, or (c) makes the system easier to model and check in TLA+. Anything that is only metaphor goes in docs/PROCESSOR.md, not in code.
 
 ## Mapping
 
@@ -33,7 +33,7 @@ Each row is MECHANISM and names the file or card that implements it, or METAPHOR
 
 ISA is the card: its header is the opcode (`pkg/cardhdr/cardhdr.go`) and its contract is the instruction format (`docs/SPEC-CARD-CONTRACT.md`). The assembler is `internal/cardgen/cardgen.go`: a structured source becomes briefs `nova-sprint add` admits. Out-of-order issue is the tick in `internal/sprint/steps_tick.go`: a card is admitted while its operands are not ready, and the tick dispatches it when they are. The reorder buffer is the merge queue (`internal/sprint/steps_merge.go`); retire is land, in order (`cmd/nova-sprint/land.go`, `tla/Land.tla`). Heterogeneous cores are the tiers and routes (`internal/sprint/route.go`): flash, pro, heavy and frontier are not one core. An interrupt is a judgment a stall raises (`internal/sprint/held.go`); the tick writes it. Counters are the pass's numbers (`internal/sprint/stats.go`) and the tick's store counters (`internal/sprint/store/stats.go`). The debugger is the inspection the coordinator already runs: `where`, `inbox` and `card` (`cmd/nova-sprint/verbs.go`, `docs/SPRINT-COORDINATOR.md`).
 
-Speculation has no code. A card does not run down a path whose operand has not held. Filling a ready queue ahead of a free core is issue, not speculation. Prediction has no code. A route's predicted price (`pkg/cardcost/predict.go`) is a cost figure, not a guess of which way a card goes, and it is not this row. Renaming has no code. A card keeps its id. A replace re-points needs (`internal/sprint/twins.go`); that is a new card, not a renamed register. SIMD has no code. One card is one instruction with one result. A count of cards is many instructions, not one instruction over many data. Caches have no code. The build cache and the where record are not a memory hierarchy the machine consults on a miss, and this metaphor adds none. Power has no code. Cost and wall clock are counter readings, not a power state that gates a core.
+Speculation has no code. A card does not run down a path whose operand has not held. Filling a ready queue ahead of a free core is issue, not speculation. Prediction has no code. A route's predicted price (`pkg/cardcost/predict.go`) is a cost figure, not a guess of which way a card goes, and it is not this row. Renaming has no code. A card keeps its id. A replace re-points needs (`internal/sprint/twins.go`); that is a new card, not a renamed register. SIMD has no code. One card is one instruction with one result. A count of cards is many instructions, not one instruction over many data. Caches have no code. The build cache and the where record are not a memory hierarchy the system consults on a miss, and this metaphor adds none. Power has no code. Cost and wall clock are counter readings, not a power state that gates a core.
 
 ## OUT OF ORDER
 
@@ -43,6 +43,6 @@ I/O stalls are a card waiting on a PR, a branch, a time. A PR is a primary in re
 
 Interrupt-driven release is the target: the tick releases a wait when its operand holds. Polling is a coordinator re-checking by hand. Interrupt-driven release is the target, and polling is not, because a coordinator re-checking by hand repeats a read the tick already made. The tick reads the sprint once. The release is part of that pass (`internal/sprint/steps_tick.go`). A stall the pass does not move raises its own interrupt, a judgment (`internal/sprint/held.go`), instead of waiting for someone to look.
 
-The coordinator is the front end that issues work and handles exceptions, never executes it. A member executes a work card. A friend executes a friend's card. A reader executes a read. The coordinator adds work and answers the exceptions the machine does not.
+The coordinator is the front end that issues work and handles exceptions, never executes it. A member executes a work card. A friend executes a friend's card. A reader executes a read. The coordinator adds work and answers the exceptions the system does not.
 
 The exception escalation vector is rule, bud, coordinator, owner. A rule answers a mechanical exception (`internal/sprint/rules.go`): failed work, a bound, a late card, a conflict, a base gate, a brief defect. What a rule does not answer climbs to a bud, then to the coordinator. What the coordinator does not answer is the owner's. That last step has no code path. It is not a package.
