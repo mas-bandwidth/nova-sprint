@@ -1412,3 +1412,71 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 		t.Fatal("the hook did not end after unhook")
 	}
 }
+
+// TestHookPrintsChallengeOnStoreWithNoBusStream verifies that when the seat's bus
+// stream does not exist yet (the first hook on a fresh store), the hook starts from
+// "0-0" as bus.WaitArm does and prints its challenge. Before the fix, an empty
+// cursor caused Redis to refuse the read, the hook ended HOOK BUS DOWN, and the
+// challenge was never printed.
+func TestHookPrintsChallengeOnStoreWithNoBusStream(t *testing.T) {
+	t.Parallel()
+	const name = "hook-no-stream"
+	ta, env := hookSprint(t, name)
+	srv := httptest.NewServer(localHandler{ta.a})
+	t.Cleanup(srv.Close)
+	env["NOVA_SPRINT_SERVER"] = srv.Listener.Addr().String()
+
+	client := newApp(ta.a.getenv)
+	client.hookSock = ta.a.hookSock
+	client.busOpen, client.now = ta.a.busOpen, ta.a.now
+
+	pr, pw, err := os.Pipe()
+	require.NoError(t, err)
+	defer pr.Close()
+	done := make(chan int, 1)
+	go func() {
+		var errb bytes.Buffer
+		code := runInto(client, []string{"hook"}, pw, &errb)
+		_ = pw.Close()
+		done <- code
+	}()
+
+	challenge := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			if strings.HasPrefix(sc.Text(), "HOOK CHALLENGE ") {
+				challenge <- sc.Text()
+				return
+			}
+		}
+	}()
+
+	select {
+	case line := <-challenge:
+		assert.Contains(t, line, "nova-sprint hook --prove ")
+	case <-time.After(time.Second):
+		t.Fatal("HOOK CHALLENGE was not printed on a store with no bus stream")
+	}
+
+	// the hook is still running when the challenge was read
+	select {
+	case code := <-done:
+		t.Fatalf("the hook exited (code %d) before the challenge was read", code)
+	default:
+	}
+
+	// end the hook cleanly. The unhook runs on its own app: the running hook's
+	// app must not be mutated by a second runInto while its goroutine reads it.
+	unhooker := newApp(ta.a.getenv)
+	unhooker.hookSock = ta.a.hookSock
+	var out, errs bytes.Buffer
+	code := runInto(unhooker, strings.Fields("unhook"), &out, &errs)
+	require.Equal(t, 0, code, out.String()+errs.String())
+	select {
+	case code := <-done:
+		require.Equal(t, 0, code)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the hook did not end after unhook")
+	}
+}

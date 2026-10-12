@@ -68,10 +68,7 @@
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each.")
    (release "v1.2.16" :status "planned"
-    :text "Every TLA+ model checked against the code.")
-   (release "v1.2.17" :status "planned" :date "2026-10-12"
-    :text "The costs no price covers: a harness's exact zero on a route with no price sheet is
-     counted unpriced, never as $0."))
+    :text "Every TLA+ model checked against the code."))
   :items
    ((fix "the-functional-tier-is-green-on-main-and-runs-per-pr" :release "v1.2.14" :status "planned"
      :title "The functional tier is green on main and runs for every pull request"
@@ -94,6 +91,10 @@
       held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
       witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
      :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+     (fix "the-dashboard-shows-the-friends-table-again" :release "v1.2.14" :status "planned"
+      :title "The friends table renders again in the sprint dashboard"
+      :text "The owner hid the friends table for the v1.2.* series with one CSS rule in internal/sprintdash/page/index.html (marked hide-friends-v1.2, 2026-10-11 ~21:55Z) and now asks for it back in v1.2.14. The rule is deleted, so the friends panel renders as it did before 2026-10-11; nothing else on the page changes, and the off-side dimming rule (.panel.off) stays. A page test, TestTheFriendsTableIsNotHidden (internal/sprintdash/page_test.go), asserts the friends panel is present and not hidden by any rule."
+      :origin "the owner, 2026-10-12 ~12:30Z: \"Please show the friends table in the sprint dashboard again\"")
     (fix "redis-routes-reads-the-sprint-settings-with-no-routes" :release "v1.2.14" :status "planned"
      :title "A Redis store with no routes still reads the sprint row's settings"
      :text "Redis.Routes returned early when SMEMBERS config.RoutesKey was empty (internal/sprint/store/routes.go), so none of the sprint row's settings were read (git_identity, the decide bars, answer_rules_off) while the in-memory twin returned them regardless (routes.go, mem.go): twin and Redis disagreed, and any Redis store with no routes lost git_identity, so land gave a misleading remedy. Routes now reads the set and every sprint-row setting in one pipeline, and the route hashes and tier arrays in a second only when a route exists, so round trips stay 1 with no routes and 2 with routes; the tier arrays are not read when no route exists. Tests: TestRedisRoutesWithNoRoutes, TestRedisRoutesWithNoRoutesAndBars, TestRedisRoutesWithNoRoutesMatchesTheTwin, TestRedisRoutesTripsNoRoutes (internal/sprint/store/routes_no_routes_test.go) and the functional TestRedisRoutesReadsTheSprintSettingsWithNoRoutes (internal/sprint/store/route_functional_test.go)."
@@ -1907,7 +1908,7 @@
    :text "Models only, no product change. tla/SeatHealth.tla was read against internal/sprint/friend_health.go, friend_stall.go and presence.go and drifted in four places, each brought to the code. A friend's health row can be deleted (Clear: friend health --clear, or the stall ladder's rung-5 release), so the row holds no proof to compare and an older proof is then accepted; ProofNeverGoesBack is restated to hold while the row exists. Rung 5 writes the row outside NotHealth (Rung5Down) with Seen = now and the current generation. FriendEvidence makes her up on her beat's proof (Prove) on a fresh beat and never counts a raw beat, and the code's three evidence windows (pong 10 m, proof 15 m, finish 30 m) are one DownAfter. OldSeatNeverUp is restated over the observation's word alone (the beat proof is not the seat's). A seventh reversed witness MCSeatHealthBrokenClearKeepsRow (Broken \"clearkeepsrow\") deletes the proof but keeps the row observed, then takes an older proof, failing the restated ProofNeverGoesBack; the six existing witnesses keep their results. presence.go and friend_stall.go each gain one comment line citing the module; tla/RUNS.tsv is merged and tla/COVERAGE.tsv notes her beat's down word and a finished card are still outside."
    :origin "card tla-seathealth-deleted-health-and-evidence, 2026-10-11: v1.2.12 inventory item T27 and section 9 (D10), at nova-sprint main 00c54ba2e")
 
-  (fix "every-verb-refuses-until-its-pushes-are-hooked" :release "v1.2.17" :status "planned"
+  (fix "every-verb-refuses-until-its-pushes-are-hooked" :release "v1.2.14" :status "planned"
    :title "Every verb the coordinator runs refuses until both its pushes are hooked"
    :text "The gate failed open: a verb outside the coordinator, seat and read classes, a store not named or not opening, the holder's --as, and the hook's own exemptions all let a verb run, and it checked the sprint push alone, never the bus; the seat ran for hours with its hook expired. Now every verb the seat's holder runs (all but hook, unhook, help, version, and the server's own life: run, tick without --answer-rules, server switch, seat install, selftest land) needs both the sprint push and the bus push live and proven, the caller judged on its actor before any --as. The refusal is one line that starts You must hook in first: run nova-sprint hook and goes on to the breadcrumb (which push is not live, and the exact hook, prove and unhook commands). It fails closed on a store not named or not opening, a record that cannot be read, or no NOVA_BUS_REDIS; the test seam can be off only inside a test binary. nova-sprint hook arms both pushes in one call (a subscription to the holder's own bus stream, and the server's hook stream), one answer to HOOK CHALLENGE <sprint>.<bus> proves both, and unhook closes both. The bus push's interim record is sprint-hook:<name> in the bus store, read through sprint.Hooker from a copy at most a second old kept fresh off the server's line, so nova-tools' hook module can replace it. Every second, a judgment waiting 10 s or longer is pushed as one warning (full text when the set changes, else one line) until it is answered; the look reads the inbox off the line. tla/SeatHook.tla gains the bus push (BusDrop, BothOrNeither) and the nobus reversed witness. A worker friend's gate lands later with nova-tools' hook client."
     :origin "this card, every-verb-refuses-until-its-pushes-are-hooked; the owner, 2026-10-11 ~19:45Z: \"Nothing works unless hooked in\"; landed by hand on his order")
@@ -2923,7 +2924,7 @@
    :title "SprintTables models the CI observations, ack, crash and repair in an instance of their own"
    :text "Models only, no product change. tla/SprintTables.tla gains the outside events and the repair from internal/sprint/refmodel/actions.go: CiRed (a red CI observation on a placed primary opens the ci judgment and moves nothing), CiGreen (a green observation closes it), Ack (the coordinator answers the open ci judgment), Crash (a step over more than one table is cut before its last write, the work table: the fleet writes are committed, the work table is left at its pre-state, the deferred work-table write is held and the operation is pending) and Repair (the deferred write is applied and the operation releases). They live in CrashSpec, Spec plus the outside events, so the MCSprintTables and MCSprintTablesMerge cases, which run Spec, keep their state space and their 110 s budget. The new instance MCSprintTablesCrash (one flash primary, two members up, two readers) checks NoCardLostOrTwice and every earlier invariant across a crash at each cut step (Start, Finish, FleetDown and Drop), and the reversed witness MCSprintTablesCrashBrokenHalfstep (Broken \"halfstep\" drops the fence) fails NoCardLostOrTwice. refmodel/actions.go's CiRed, CiGreen, Ack, Crash and Repair comments cite the module. The sprinttables TLC group is re-run on this bench."
    :origin "this card (tla-sprinttables-crash-and-repair-in-its-own-instance); the earlier tla-sprint-tables-crash-and-repair was deferred when SprintTables.tla grew about 600 lines and its instance no longer fit the 110 s budget")
-  (fix "a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced" :release "v1.2.17" :status "planned"
+  (fix "a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced" :release "v1.2.14" :status "planned"
    :title "A zero harness cost on an unpriced route is counted unpriced, never as $0.00"
    :text "A Mercury 3 take on a route with no price sheet (pro-mercury3, pro-mercury3-pro) that
     reported tokens and a harness actual of exactly zero recorded a cost of $0.00: Usage.Present
@@ -2942,15 +2943,15 @@
     cost - or $0.00, and the $0.00 ones were summed as charged spend, so the stream's spend undercounts
     and the unpriced count misses them; the config side (an enabled route with no price is refused at
     apply) is a-enabled-route-with-no-price-is-refused-at-apply in nova-tools")
-    (fix "the-tick-gate-drives-pushed-landings-not-a-bare-merge" :release "v1.2.17" :status "planned"
+    (fix "the-tick-gate-drives-pushed-landings-not-a-bare-merge" :release "v1.2.14" :status "planned"
      :title "The dirty tick gate drives pushed landings through the real CLI"
      :text "The functional dirty-tick driver now gives its finished cards a real pushed head and records queued merge batches through the CLI's named --landed <id>@<head> path, with --repo and a fetched origin/main. It still executes one ordinary bare merge and asserts the real store's refusal, preserving the regression boundary; the 1,200-card behavioral drive spans more than two full fleet widths, keeps its landing, distribution and settle checks and the one-second tick bound, and must finish in under a minute. Both tiers use this same size; the former 3,000-card bulk-load coverage is no longer claimed."
      :origin "outside-sprint card the-tick-gate-drives-pushed-landings-not-a-bare-merge, 2026-10-11")
-   (fix "hook-compact-prints-only-what-the-seat-acts-on" :release "v1.2.17" :status "planned"
+   (fix "hook-compact-prints-only-what-the-seat-acts-on" :release "v1.2.14" :status "planned"
     :title "hook --compact prints only what the seat acts on, and names an unanswered card-holding judgment"
     :text "The seat read the hook through hand filters: `script -q /dev/null` under a pty, `hookfilter.pl` keeping only HOOK lines, each JUDGMENT with its push number and its first detail line, and `overduewatch.py` polling `inbox` every 20 s for any card-holding judgment past 5 minutes. `nova-sprint hook --compact [--overdue <duration, default 5m>]` does it in the subscription itself. It is the same connection (the server's look, the PUSH ids, the session token), printing only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one line plus its first detail line -- a critical judgment keeps its `CRITICAL <n> behind:` prefix, so it reads `PUSH <id> CRITICAL <n> behind: JUDGMENT ...` and is never dropped --; HAPPENED pushes and the acknowledge/verb menus are not printed. Every line is one write to stdout, so a pipe, a file and a tty all see it at once with no pty. While the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered past --overdue prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the store's judgment list, never a poll of the inbox verb. New: cmd/nova-sprint/hook_compact.go (compactSay, compactOverdue, hookOverdueDefault); cmd/nova-sprint/hook.go carries --compact and --overdue into hookHold. Test: TestHookCompactPrintsOnlyWhatTheSeatActsOn (cmd/nova-sprint/hook_compact_test.go) runs the compact hook on a private store with its stdout a real OS pipe, proves it, raises one card-holding judgment and one HAPPENED note on the running hook and checks the JUDGMENT and its first detail line are read and the HAPPENED push is not, and one OVERDUE line is read past --overdue, a second after another interval, and none once answered; TestCompactSayPrintsACriticalJudgment pins that a critical judgment's group line is printed. docs/CLI.md, docs/SPRINT-COORDINATOR-SEAT.md and docs/SPEC-SPRINT.md state the flag."
      :origin "this card, hook-compact-prints-only-what-the-seat-acts-on.w3, from the seat, 2026-10-12 epoch 19: the seat ran `nova-sprint hook` under a pty piped through a hand hookfilter.pl and an overduewatch.py polling inbox every 20 s")
-    (fix "the-hygiene-kinds-embed-is-restored" :release "v1.2.17" :status "planned"
+    (fix "the-hygiene-kinds-embed-is-restored" :release "v1.2.14" :status "planned"
      :title "The toolchain's declared kinds load again from their embedded list"
      :text "Blocker. A dead-code deletion in card dead-code-in-the-seeded-card-and-dogfood-copies
       also deleted the `//go:embed kinds.txt` line above `var kindData string` at
@@ -3129,7 +3130,7 @@
      TestUnservedFallbackMovesReturnsSomething holds the duty red on a state with an unserved tier if
      its moves function returns nothing."
     :origin "this card, the-reference-model-knows-the-unserved-fallback-duty.w4, from the coordinator 2026-10-12 ~07:20Z (a bisect of the red unit tier: first bad 3852cb18, an-unserved-tier-falls-to-the-strongest-served-tier); checked against nova-sprint sprint/v1214-blocker")
-    (fix "the-dirty-drive-raises-dev-behind-and-promotes" :release "v1.2.17" :status "planned"
+    (fix "the-dirty-drive-raises-dev-behind-and-promotes" :release "v1.2.14" :status "planned"
      :title "The dirty tick drive lands each stream on its sprint branch, so dev is behind is raised and the coordinator promotes"
      :text "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch made dev is behind count only
       cards landed on a sprint branch, but the dirty tick drive's landing still recorded its 1,200
@@ -3141,7 +3142,7 @@
       refusal and the pushed landing checks are kept. TestTheDirtyTickDriveOnAStore is green: 1,200
       cards land, dev is behind is raised, and the coordinator promotes."
      :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")
-    (fix "four-functional-tests-tick-before-they-check" :release "v1.2.17" :status "planned"
+    (fix "four-functional-tests-tick-before-they-check" :release "v1.2.14" :status "planned"
      :title "The functional tests tick before they check the machine's work"
      :text "Four functional tests checked before the machine had applied their verbs: on a running
       machine most commands (finish, ask, read, accept, an in-place brief edit) are held until the next
@@ -3197,7 +3198,22 @@
      missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
-     :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+   (fix "hook-reads-empty-bus-stream-starts-at-0-0" :release "v1.2.14" :status "planned"
+    :title "The hook starts at cursor \"0-0\" when the seat's bus stream does not exist"
+    :text "Blocker. On a fresh store with no bus stream for the seat, the hook reads an empty cursor
+     from Tail, which Redis refuses, so the hook ends HOOK BUS DOWN and the challenge is never printed.
+     The hook now starts from \"0-0\" when the stream is absent, as bus.WaitArm does. The hook also waits
+     for the unhook write to complete before returning: a context cancellation under that write caused
+     \"unhook REFUSED: ... context canceled\" on two of three runs. Tests:
+     TestHookPrintsChallengeOnStoreWithNoBusStream (cmd/nova-sprint/hook_test.go) and the functional
+     TestHookFlushesAfterChallengeOnTheStore, TestAReconnectReplaysOnlyUnheldUnackedPushes,
+     TestStallASwitchedServerNeverRollsBackOnTheHookGate, and
+     TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs."
+    :origin "this card, the-hook-reads-an-empty-bus-stream-and-waits-for-its-unhook.w1, from the
+     coordinator, 2026-10-12 ~09:35Z, from a diagnosis on hetzner2 of four functional tests that fail on
+     main (b7683efc) and that no card owned. Walking main commit by commit, three break at cc424aa1 (the
+     two-push gate, #93).")
     (fix "the-landing-unhooked-test-arms-only-its-own-coordinator" :release "v1.2.14" :status "planned"
      :title "The landing-unhooked functional test arms the hook gate for a name of its own, never the coordinator's"
      :text "TestLandingUnhookedLandsOnARealServer (cmd/nova-sprint/landing_unhooked_functional_test.go) runs in parallel and armed the hook gate (hookTests) for the shared coordinator name, so every other parallel land rig acting as coordinator was refused with 'You must hook in first' (how TestLandedRecordsAPushFoundOnTheBranch failed); it now acts and arms as 'landing-unhooked', its own name, as the land-identity test does."

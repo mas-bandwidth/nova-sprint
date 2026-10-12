@@ -34,6 +34,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	const name = "hook-flush-func"
 	ctx := context.Background()
 	addr := testutil.Start(t)
+	busAddr := testutil.Start(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = c.Close() })
 	require.NoError(t, fn.Load(ctx, c))
@@ -44,6 +45,8 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 		switch k {
 		case "NOVA_SPRINT_REDIS":
 			return addr
+		case busRedisEnv:
+			return busAddr
 		case "NOVA_SPRINT_ACTOR":
 			return name
 		case "NOVA_SPRINT_SERVER":
@@ -52,8 +55,6 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 			return home
 		case "XDG_CONFIG_HOME":
 			return filepath.Join(home, ".config")
-		case busRedisEnv:
-			return addr
 		}
 		return ""
 	}

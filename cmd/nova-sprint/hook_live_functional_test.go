@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
@@ -64,29 +63,20 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	ctx := context.Background()
 	const name = "seat-hl"
 	addr := testutil.Start(t)
+	busAddr := testutil.Start(t)
 	admin := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(ctx, admin))
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home, busRedisEnv: addr}
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, busRedisEnv: busAddr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
 	var envMu sync.Mutex
 	getenv := func(k string) string { envMu.Lock(); defer envMu.Unlock(); return env[k] }
 	hookTests.Store(name, true)
 	t.Cleanup(func() { hookTests.Delete(name) })
 
-	// the bus store the hook's shared record and bus push live on, the way
-	// hookSprint gives its in-process rig one: an in-memory bustest fake behind
-	// the app's dial, never a socket, shared by the server and the seat's hook.
-	fake := bustest.NewFake(t0, name, "glenn")
-	fake.Sleep = func(time.Duration) { time.Sleep(5 * time.Millisecond) }
-	busOpen := func(context.Context, string, string) (*bus.Bus, func(), error) {
-		return &bus.Bus{Store: fake}, func() {}, nil
-	}
-
 	// the server, on a clock the test steps
 	srvApp := newApp(getenv)
 	t.Cleanup(srvApp.close)
-	srvApp.busOpen = busOpen
 	var clockMu sync.Mutex
 	now := time.Now().UTC().Truncate(time.Second)
 	srvApp.now = func() time.Time { clockMu.Lock(); defer clockMu.Unlock(); return now }
@@ -114,11 +104,10 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// the seat's side holds no store: every coordinator verb goes to the server
-	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home, busRedisEnv: addr}
+	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), busRedisEnv: busAddr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
 	client := newApp(func(k string) string { return clientEnv[k] })
 	t.Cleanup(client.close)
 	client.hookSock = srvApp.hookSock
-	client.busOpen = busOpen
 	seat := func(line string) (int, string) {
 		var out, errb bytes.Buffer
 		code := runInto(client, split(line), &out, &errb)
@@ -127,11 +116,10 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	hookIn := func() (*hlLines, chan int) {
 		t.Helper()
 		lines := &hlLines{}
-		errs := &lockedBuffer{}
 		pr, pw := io.Pipe()
 		done := make(chan int, 1)
 		go func() {
-			code := runInto(client, []string{"hook"}, pw, errs)
+			code := runInto(client, []string{"hook"}, pw, io.Discard)
 			_ = pw.CloseWithError(io.EOF)
 			done <- code
 		}()
@@ -150,7 +138,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 				}
 			}
 			return false
-		}, 10*time.Second, 20*time.Millisecond, "the challenge: %s", errs)
+		}, 10*time.Second, 20*time.Millisecond, "the challenge")
 		code, out := seat("hook --prove " + chal)
 		require.Equal(t, 0, code, out)
 		return lines, done
