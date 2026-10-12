@@ -896,25 +896,39 @@ func (r *Redis) openOf(ctx context.Context, open map[string]string) ([]sprint.Op
 	return out, nil
 }
 
-func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
+// rangeSince is the NotesSince and LogSince read: the stream's entries after
+// a cursor (all when after is empty), up to max, in one XRANGE, returning the
+// entries whose decode succeeds and their stream ids. decode returns an error
+// for an entry the caller does not count, and that entry is skipped whole.
+func rangeSince[T any](ctx context.Context, c redis.UniversalClient, key, after string, max int, decode func(map[string]any) (T, error)) ([]T, []string, error) {
 	start := "-"
 	if after != "" {
 		start = "(" + after
 	}
-	msgs, err := r.C.XRangeN(ctx, r.key(keyInbox), start, "+", int64(max)).Result()
+	msgs, err := c.XRangeN(ctx, key, start, "+", int64(max)).Result()
 	if err != nil {
 		return nil, nil, err
 	}
-	var notes []sprint.Note
+	var out []T
 	var ids []string
 	for _, m := range msgs {
-		var n sprint.Note
-		if s, ok := m.Values["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
-			notes = append(notes, n)
+		t, err := decode(m.Values)
+		if err == nil {
+			out = append(out, t)
 			ids = append(ids, m.ID)
 		}
 	}
-	return notes, ids, nil
+	return out, ids, nil
+}
+
+func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
+	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, func(v map[string]any) (sprint.Note, error) {
+		var n sprint.Note
+		if s, ok := v["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
+			return n, nil
+		}
+		return n, errors.New("no note")
+	})
 }
 
 func (r *Redis) Tails(ctx context.Context) (string, string, error) {
@@ -934,24 +948,13 @@ func (r *Redis) Tails(ctx context.Context) (string, string, error) {
 }
 
 func (r *Redis) LogSince(ctx context.Context, after string, max int) ([]sprint.Line, []string, error) {
-	start := "-"
-	if after != "" {
-		start = "(" + after
-	}
-	msgs, err := r.C.XRangeN(ctx, r.key(keyLog), start, "+", int64(max)).Result()
-	if err != nil {
-		return nil, nil, err
-	}
-	var lines []sprint.Line
-	var ids []string
-	for _, m := range msgs {
+	return rangeSince(ctx, r.C, r.key(keyLog), after, max, func(v map[string]any) (sprint.Line, error) {
 		var l sprint.Line
-		if s, ok := m.Values["line"].(string); ok && json.Unmarshal([]byte(s), &l) == nil {
-			lines = append(lines, l)
-			ids = append(ids, m.ID)
+		if s, ok := v["line"].(string); ok && json.Unmarshal([]byte(s), &l) == nil {
+			return l, nil
 		}
-	}
-	return lines, ids, nil
+		return l, errors.New("no line")
+	})
 }
 
 func (r *Redis) Cursor(ctx context.Context) (string, error) {
