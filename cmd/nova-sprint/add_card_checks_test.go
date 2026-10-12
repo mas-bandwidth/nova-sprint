@@ -74,3 +74,25 @@ func TestBriefRunsTheSameDroppedCardLintAsAdd(t *testing.T) {
 	assert.NotContains(t, out, "MOVED", "brief wrote nothing")
 	assert.NotContains(t, ta.primary("tgt").F("brief"), "s0-1", "the brief was not replaced")
 }
+
+// A dropped card with a successor is an alias for the dropped-card lint too (item
+// 1, item 2; docs/SPEC-SPRINT.md, the alias): an add or a brief whose text names
+// the old hyphenated id is admitted, stores the successor, and NOTEs it. Only a
+// dropped card with no successor is refused (TestBriefRunsTheSameDroppedCardLintAsAdd).
+func TestAddAndBriefAdmitAnAliasedDroppedId(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead --owner ada")
+	ta.ok("add --stream s0 --count 2 --actor lead") // s0-1, s0-2
+	ta.ok("add --stream s1 --one s0-succ --actor lead --brief-file " + writeHeaderBrief(t, t.TempDir(), "s0-succ", "-", "internal/succ.go"))
+	// drop s0-1 replaced by its successor: s0-1 becomes an alias of s0-succ
+	ta.ok("drop s0-1 --replaced-by s0-succ --reason recut --actor lead")
+
+	out := ta.ok("add --stream s1 --one --actor lead --brief-file " + writeHeaderBrief(t, t.TempDir(), "dep", "s0-1", "internal/dep.go"))
+	assert.Contains(t, out, "need s0-1 is now s0-succ", "add NOTEs the alias: %s", out)
+	assert.Equal(t, "s0-succ", ta.primary("dep").F("needs"), "add stores the successor, never the old id")
+
+	out = ta.ok("brief s0-2 --actor lead --brief-file " + writeHeaderBrief(t, t.TempDir(), "s0-2", "s0-1", "internal/tgt.go"))
+	assert.Contains(t, out, "need s0-1 is now s0-succ", "brief NOTEs the alias: %s", out)
+	assert.Equal(t, "s0-succ", ta.primary("s0-2").F("needs"), "brief stores the successor, never the old id")
+}
