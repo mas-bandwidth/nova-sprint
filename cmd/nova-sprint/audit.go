@@ -12,6 +12,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
+// audit is a read: any actor may run it (coordinator.go's verb classes).
+func init() { verbClasses["audit"] = classRead }
+
 // cmdAudit is one answer to "is anything blocked, stuck or looped": every
 // unlanded primary with its holders, ages, ends and needs, and its flags
 // (docs/SPEC-SPRINT.md section 11; sprint.Audit). One line per primary, then

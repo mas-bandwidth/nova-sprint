@@ -162,7 +162,10 @@ func auditHolder(s *Snapshot, pr *Card) (holder, lane, since string) {
 		if f, ok := FriendOfRow(w.Row); ok {
 			name = f
 		}
-		at := cmp.Or(w.F("taken"), w.F("dealt"))
+		// the one deadline reads a work card's deal and take stamps; own is
+		// "taken" while it works, "dealt" while it waits.
+		field, _, _, own := WorkDeadline(s, w)
+		at := w.F(cmp.Or(own, field))
 		return name, w.Row, at
 	}
 	return "", "", ""
