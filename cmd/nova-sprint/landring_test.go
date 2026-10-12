@@ -73,20 +73,17 @@ func TestTheBenchRingSpreadsStreamsOverTheBenches(t *testing.T) {
 	}
 }
 
-// Through the land loop's bench seam: with two benches up and the Go lane of the slot the
-// stream hashes to held by someone else, the gate steps to the next slot's bench, runs
-// there, and the LAND line names the bench, the ring and the slot. The held lane is left
-// as it was, and the lander waits in no queue after.
-func TestAHeldFirstSlotLaneSendsTheGateToTheNextBench(t *testing.T) {
-	t.Parallel()
-	r := newLandRig(t)
+// twoBenchLandRig arranges a land rig for the bench seam both a held first slot and a
+// refused stage need: main carries the Go module, stage adds the stream's cards, and the
+// two benches vision and space are up on a clean fleet, in the fleet's order. It returns
+// the two benches up.
+func twoBenchLandRig(t *testing.T, r *landRig, stage func()) []string {
+	t.Helper()
 	r.git(r.worker, "switch", "-q", "--detach", "origin/main")
 	r.files("the module", goModule)
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	r.git(r.worker, "fetch", "-q", "origin")
-	r.ok("add --stream s1 --count 1 --one")
-	heads := map[string]string{"s1-1": r.card("s1-1", map[string]string{"ok.go": "package main\n\nfunc ok() {}\n"})}
-	r.queued(heads, "s1-1")
+	stage()
 	for _, m := range []string{"vision", "space"} {
 		r.ok("fleet beat " + m + " --load 1 --cores 8")
 		r.ok("fleet up " + m + " --probe passed")
@@ -104,6 +101,20 @@ func TestAHeldFirstSlotLaneSendsTheGateToTheNextBench(t *testing.T) {
 	require.NoError(t, err)
 	hosts := s.UpMembers()
 	require.ElementsMatch(t, []string{"vision", "space"}, hosts, "the two benches up, in the fleet's order")
+	return hosts
+}
+
+// Through the land loop's bench seam: with two benches up and the Go lane of the slot the
+// stream hashes to held by someone else, the gate steps to the next slot's bench, runs
+// there, and the LAND line names the bench, the ring and the slot. The held lane is left
+// as it was, and the lander waits in no queue after.
+func TestAHeldFirstSlotLaneSendsTheGateToTheNextBench(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	hosts := twoBenchLandRig(t, r, func() {
+		r.ok("add --stream s1 --count 1 --one")
+		r.queued(map[string]string{"s1-1": r.card("s1-1", map[string]string{"ok.go": "package main\n\nfunc ok() {}\n"})}, "s1-1")
+	})
 	ring := benchRing("s1", hosts)
 	slot := int(fnv64a("s1") % 2)
 	require.Equal(t, hosts[slot], ring[0], "the stream's slot on the ring")

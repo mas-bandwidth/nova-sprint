@@ -43,16 +43,9 @@ func writeBaseBrief(t *testing.T, dir, repo, id, base string) string {
 // (TestLandRefusesAProtectedBaseUntilTheStreamIsMarked).
 func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
-	dir := t.TempDir()
 	// add reads each brief at its base (the brief checks): a twin of the repository holds
 	// every card's file on dev and on the sprint branch, and the pin is its commit
-	files := map[string]string{}
-	for _, id := range []string{"d1", "d2", "k1", "n1", "m1", "m2"} {
-		files["internal/"+id+".go"] = "package internal\n"
-	}
-	repo, sha := twinRemote(t, ta, files, "dev", "sprint/mechanical-2026-10-02")
+	ta, repo, sha, dir := protectedBaseFixture(t, []string{"d1", "d2", "k1", "n1", "m1", "m2"}, "dev", "sprint/mechanical-2026-10-02")
 	onDev := writeBaseBrief(t, dir, repo, "d1", "dev")
 	pinned := writeBaseBrief(t, dir, repo, "d2", "dev@"+sha)
 	onSprint := writeBaseBrief(t, dir, repo, "k1", "sprint/mechanical-2026-10-02")
@@ -93,13 +86,7 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 
 	t.Run("the lander", func(t *testing.T) {
 		t.Parallel()
-		r := newLandRig(t)
-		for _, b := range []string{"dev", "sprint/s1"} {
-			r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
-		}
-		r.git(r.worker, "fetch", "-q", "origin") // r.head starts the card from refs/remotes/origin/sprint/s1
-		r.ok("add --stream s1 --count 1 --one")
-		r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
+		r := landRigWithSprintBranch(t)
 		r.ok("stream set s1 --land-protected default") // queued marks every stream; s1 is an ordinary stream again
 		dev := r.git(r.remote, "rev-parse", "dev")
 		for _, land := range []string{"land --repo-dir " + r.clone + " --base dev --dry-run", "land --repo-dir " + r.clone + " --base dev"} {

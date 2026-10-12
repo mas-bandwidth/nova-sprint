@@ -16,16 +16,9 @@ import (
 // or main on a plain stream before any git, naming the stream and the mark's flag.
 func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
-	dir := t.TempDir()
 	// add reads each brief at its base (the brief checks): a twin of the repository holds
 	// every card's file on main, dev and the sprint branch, and the pin is its commit
-	files := map[string]string{}
-	for _, id := range []string{"p1", "p2", "d1", "n1", "m1", "m2"} {
-		files["internal/"+id+".go"] = "package internal\n"
-	}
-	repo, sha := twinRemote(t, ta, files, "main", "dev", "sprint/mechanical-2026-10-02")
+	ta, repo, sha, dir := protectedBaseFixture(t, []string{"p1", "p2", "d1", "n1", "m1", "m2"}, "main", "dev", "sprint/mechanical-2026-10-02")
 	onMain := writeBaseBrief(t, dir, repo, "p1", "main")
 	onMain2 := writeBaseBrief(t, dir, repo, "p2", "main@"+sha)
 	onDev := writeBaseBrief(t, dir, repo, "d1", "dev")
@@ -79,13 +72,7 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 		for _, base := range []string{"dev", "main"} {
 			t.Run(base, func(t *testing.T) {
 				t.Parallel()
-				r := newLandRig(t)
-				for _, b := range []string{"dev", "sprint/s1"} {
-					r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
-				}
-				r.git(r.worker, "fetch", "-q", "origin")
-				r.ok("add --stream s1 --count 1 --one")
-				r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
+				r := landRigWithSprintBranch(t)
 				r.ok("stream set s1 --promotion=false") // queued marks every stream; s1 is plain again
 				tip := r.git(r.remote, "rev-parse", base)
 				for _, land := range []string{"land --repo-dir " + r.clone + " --base " + base + " --dry-run", "land --repo-dir " + r.clone + " --base " + base} {
@@ -104,6 +91,37 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 			})
 		}
 	})
+}
+
+// protectedBaseFixture is the stream setup the protected-base tests share: a fresh app on
+// a twin of the repository whose every card's file exists on each anchor branch (the pin
+// is its commit), and a brief directory. It returns the app, the repo, the pin sha and the
+// brief directory.
+func protectedBaseFixture(t *testing.T, ids []string, anchors ...string) (ta *testApp, repo, sha, dir string) {
+	t.Helper()
+	ta = newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	dir = t.TempDir()
+	files := map[string]string{}
+	for _, id := range ids {
+		files["internal/"+id+".go"] = "package internal\n"
+	}
+	repo, sha = twinRemote(t, ta, files, anchors...)
+	return ta, repo, sha, dir
+}
+
+// landRigWithSprintBranch is the rig the protected-base lander tests land one card from:
+// dev and sprint/s1 exist on origin, and s1's one queued card has its head on sprint/s1.
+func landRigWithSprintBranch(t *testing.T) *landRig {
+	t.Helper()
+	r := newLandRig(t)
+	for _, b := range []string{"dev", "sprint/s1"} {
+		r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
+	}
+	r.git(r.worker, "fetch", "-q", "origin")
+	r.ok("add --stream s1 --count 1 --one")
+	r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
+	return r
 }
 
 // promotionStream makes stream the promotion stream before a card cut on dev or main is

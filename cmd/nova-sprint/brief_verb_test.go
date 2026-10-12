@@ -162,29 +162,42 @@ func TestBriefOnAWorkingCardIsAccepted(t *testing.T) {
 	assert.Contains(t, ta.primary("a-1").F("why"), "brief edited in place")
 }
 
-// brief <id> --tier <t> without a brief edit requires a non-blank --reason (docs/SPEC-SPRINT.md
-// section 11, the tier verb): a pin with no why cannot be judged later, so none, empty or blanks
-// only is refused (a usage refusal, exit 2) and writes nothing; with a reason the card is pinned
-// and the record names the reason. A brief edit that does not change the tier needs no reason.
-func TestBriefTierRequiresAReasonWithoutABriefEdit(t *testing.T) {
-	t.Parallel()
+// reTierVerbs is the table over the verb for the re-tier reason rule (docs/SPEC-SPRINT.md
+// section 11): brief --tier and tier --set differ only in the verb and its flag, so each
+// row builds its verb's command with the trailing reason flag (or none).
+var reTierVerbs = map[string]func(reason string) string{
+	"brief --tier": func(reason string) string { return "brief a-1 --tier heavy" + reason },
+	"tier --set":   func(reason string) string { return "tier a-1 --set heavy" + reason },
+}
+
+// assertReTierNeedsAReason pins the re-tier rule for one verb from reTierVerbs: a re-tier
+// with no --reason, an empty one or one of blanks only is refused (a usage refusal, exit 2),
+// writes nothing, and says --reason; with a reason the card is pinned and the record names
+// the reason.
+func assertReTierNeedsAReason(t *testing.T, verb string) {
+	t.Helper()
+	cmd := reTierVerbs[verb]
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --one --stream a a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "-", "internal/a1.go"))
-	for _, line := range []string{
-		"brief a-1 --tier heavy",
-		"brief a-1 --tier heavy --reason ''",
-		"brief a-1 --tier heavy --reason '   '",
-	} {
-		code, _, errs := ta.do(line)
-		assert.Equal(t, 2, code, line)
-		assert.Contains(t, errs, "--reason", line)
+	for _, reason := range []string{"", " --reason ''", " --reason '   '"} {
+		code, _, errs := ta.do(cmd(reason))
+		assert.Equal(t, 2, code, verb+reason)
+		assert.Contains(t, errs, "--reason", verb+reason)
 	}
 	assert.Equal(t, "", ta.primary("a-1").F(sprint.FieldTier), "a refused re-tier writes nothing")
 
-	out := ta.ok("brief a-1 --tier heavy --reason 'a heavy card'")
+	out := ta.ok(cmd(" --reason 'a heavy card'"))
 	assert.Contains(t, out, "reason: a heavy card")
 	assert.Equal(t, "heavy", ta.primary("a-1").F(sprint.FieldTier))
+}
+
+// brief <id> --tier <t> without a brief edit requires a non-blank --reason (docs/SPEC-SPRINT.md
+// section 11, the tier verb): a pin with no why cannot be judged later. A brief edit that
+// does not change the tier needs no reason.
+func TestBriefTierRequiresAReasonWithoutABriefEdit(t *testing.T) {
+	t.Parallel()
+	assertReTierNeedsAReason(t, "brief --tier")
 }
 
 // brief <id> --tier <t> --brief-file <path> requires a non-blank --reason (the same rule
