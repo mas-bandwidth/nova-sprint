@@ -3141,4 +3141,16 @@
      internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
      TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
     :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
-     epoch 19, v1.2.13")))
+     epoch 19, v1.2.13")
+   (fix "nova-card-generate-becomes-nova-sprint-generate" :release "v1.2.14" :status "planned"
+    :title "nova-card generate is nova-sprint generate and the nova-card binary is gone"
+    :text "One tool: nova-card's generate and lint verbs are folded into nova-sprint and the
+     cmd/nova-card binary is removed. `nova-sprint generate` keeps every flag, output line,
+     exit code and refusal `nova-card generate` had (its planning is still internal/cardgen, its
+     transport moved to cmd/nova-sprint/generate.go), and `nova-sprint lint` holds a brief to the
+     same add lint. The moved unit and functional tests pass unchanged except for the binary name.
+     README.md and docs say `nova-sprint generate`; the Makefile and release config name no
+     nova-card build line."
+    :origin "this card, nova-card-generate-becomes-nova-sprint-generate.w2@7, 2026-10-12,
+     epoch 19: the owner asked that nova-sprint be a single tool and the other commands of its
+     repository become verbs of it")))

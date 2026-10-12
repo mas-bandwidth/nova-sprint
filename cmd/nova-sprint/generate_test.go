@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,16 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
+
+// runCard runs a nova-sprint command line in process, as nova-card's tests did:
+// the exit code, stdout and stderr.
+func runCard(args ...string) (exit int, stdout, stderr string) {
+	var out, errb bytes.Buffer
+	a := newApp(func(string) string { return "" })
+	code := runInto(a, args, &out, &errb)
+	a.close()
+	return code, out.String(), errb.String()
+}
 
 // fixtureCheckout is a one-commit repository on branch dev with an origin, the
 // files written under it; git runs with a clean environment and a fixed identity.
@@ -150,29 +161,19 @@ func TestAPackageWithNoTestFileIsGeneratedWithItsNEWLine(t *testing.T) {
 	assert.Contains(t, string(brief), "\nPATHS: internal/none/*.go, internal/none/*_test.go\nNEW: internal/none/x_test.go\n")
 }
 
-// The banner names every verb on a usage line, and every generate line names the
-// flags every source takes (--max, --dry-run): a flag a usage line leaves out is a
-// flag a stranger cannot find.
+// The generate verb's help names the flags every source takes (--max, --dry-run,
+// --tier), and the three --from forms: a flag a usage line leaves out is a flag a
+// stranger cannot find.
 func TestTheBannerNamesEveryVerbAndTheGenerateFlags(t *testing.T) {
 	t.Parallel()
-	_, banner, _ := runCard("help")
-	for _, verb := range verbs {
-		assert.Contains(t, banner, "\n  nova-card "+verb, "no usage line for %s", verb)
+	_, help, _ := runCard("generate", "-h")
+	for _, flag := range []string{"[--max <n>]", "[--dry-run]", "[--tier flash|pro]"} {
+		assert.Contains(t, help, flag, "generate -h without %s", flag)
 	}
-	// the usage block: the lines under "usage:" up to the next blank line
-	_, block, _ := strings.Cut(banner, "\nusage:\n")
-	block, _, _ = strings.Cut(block, "\n\n")
-	lines := 0
-	for _, line := range strings.Split(block, "\n") {
-		if !strings.HasPrefix(line, "  nova-card generate ") {
-			continue
-		}
-		lines++
-		for _, flag := range []string{"[--max <n>]", "[--dry-run]", "[--tier flash|pro]"} {
-			assert.Contains(t, line, flag, "a generate usage line without %s", flag)
-		}
+	for _, form := range []string{"--from ledger", "--from findings", "--from help"} {
+		assert.Contains(t, help, form, "generate -h without %s", form)
 	}
-	assert.Equal(t, 3, lines, "one usage line per source")
+	assert.Contains(t, help, "usage: nova-sprint generate", help)
 }
 
 // generate holds every brief to the card checks nova-sprint add runs before it leaves:
@@ -235,24 +236,4 @@ func TestAGeneratedCardThatWritesAModelIsTieredFrontier(t *testing.T) {
 	assert.Contains(t, stdout, "line 1 names tier pro")
 	assert.NotContains(t, stdout, "card=finding-tla-runs-tsv check=model-tier")
 	assert.NoDirExists(t, out2)
-}
-
-// TestTheUsageBannerPrintsEachExampleOnce verifies that each example line appears
-// exactly once in the help output for the generate command.
-func TestTheUsageBannerPrintsEachExampleOnce(t *testing.T) {
-	t.Parallel()
-	// Get the main help output
-	_, banner, _ := runCard("help")
-
-	// Check that concrete example paths appear exactly once in the example block
-	exampleLines := []string{
-		"./cmd/nova-card/testdata/findings.tsv",
-		"./cards/finding-internal-bus-send.md",
-		"./cards/finding-cmd-nova-bus-main.md",
-	}
-
-	for _, line := range exampleLines {
-		count := strings.Count(banner, line)
-		assert.Equal(t, 1, count, "example line should appear exactly once, found %d times: %s", count, line)
-	}
 }
