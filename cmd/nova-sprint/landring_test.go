@@ -73,6 +73,31 @@ func TestTheBenchRingSpreadsStreamsOverTheBenches(t *testing.T) {
 	}
 }
 
+// twoBenchesRing brings up vision and space as the only up benches and returns the
+// fleet's hosts and the ring over them for stream s1: the arrange both gate-stepping
+// tests start from.
+func (r *landRig) twoBenchesRing() (hosts, ring []string) {
+	r.t.Helper()
+	for _, m := range []string{"vision", "space"} {
+		r.ok("fleet beat " + m + " --load 1 --cores 8")
+		r.ok("fleet up " + m + " --probe passed")
+	}
+	var w whereView
+	r.json("where", &w)
+	for name, row := range w.Tables["fleet"] {
+		if name != "vision" && name != "space" && row["status"] == sprint.Up {
+			r.ok("fleet down " + name)
+		}
+	}
+	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(r.t, err)
+	s, err := st.Load(context.Background(), []string{sprint.Fleet}, nil)
+	require.NoError(r.t, err)
+	hosts = s.UpMembers()
+	require.ElementsMatch(r.t, []string{"vision", "space"}, hosts, "the two benches up, in the fleet's order")
+	return hosts, benchRing("s1", hosts)
+}
+
 // Through the land loop's bench seam: with two benches up and the Go lane of the slot the
 // stream hashes to held by someone else, the gate steps to the next slot's bench, runs
 // there, and the LAND line names the bench, the ring and the slot. The held lane is left
@@ -87,24 +112,7 @@ func TestAHeldFirstSlotLaneSendsTheGateToTheNextBench(t *testing.T) {
 	r.ok("add --stream s1 --count 1 --one")
 	heads := map[string]string{"s1-1": r.card("s1-1", map[string]string{"ok.go": "package main\n\nfunc ok() {}\n"})}
 	r.queued(heads, "s1-1")
-	for _, m := range []string{"vision", "space"} {
-		r.ok("fleet beat " + m + " --load 1 --cores 8")
-		r.ok("fleet up " + m + " --probe passed")
-	}
-	var w whereView
-	r.json("where", &w)
-	for name, row := range w.Tables["fleet"] {
-		if name != "vision" && name != "space" && row["status"] == sprint.Up {
-			r.ok("fleet down " + name)
-		}
-	}
-	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
-	require.NoError(t, err)
-	s, err := st.Load(context.Background(), []string{sprint.Fleet}, nil)
-	require.NoError(t, err)
-	hosts := s.UpMembers()
-	require.ElementsMatch(t, []string{"vision", "space"}, hosts, "the two benches up, in the fleet's order")
-	ring := benchRing("s1", hosts)
+	hosts, ring := r.twoBenchesRing()
 	slot := int(fnv64a("s1") % 2)
 	require.Equal(t, hosts[slot], ring[0], "the stream's slot on the ring")
 	held, next := ring[0], ring[1]
