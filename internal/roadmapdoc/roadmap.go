@@ -20,8 +20,13 @@ The shape:
 	 :groups ((group "<id>" :title "..." :text "...") ...)
 	 :items ((item "<id>" :group "<group id>" :title "..." :text "..." :date "YYYY-MM-DD"
 	          [:why "..."] [:area "..."] [:exists "..."] [:cards <n>]
-	          [:origin "<where it came from: issue #n, PR #n, a card>"] [:release "<target release>"]
+	          [:origin "<where it came from: issue #n, PR #n, a card>"] [:release "v1.2.x|v1.3|v1.4|later"]
 	          [:kept (:<key> "<value>" ...)]) ...))
+
+:release takes exactly four values (the owner, 2026-10-12): v1.2.x (a point release),
+v1.3, v1.4 (stabilization: no features) and later (a list, not a release); any other
+is refused. A v1.3 item's :text ends with a "Done when:" sentence, the observable
+behaviour that proves it done; a v1.3 item without one is refused.
 
 :kept holds the fields a move between docs/roadmap.sexp and docs/fixes.sexp
 carried that have no meaning where the record now is (an item's :why on a fix,
@@ -94,6 +99,14 @@ type Item struct {
 }
 
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// Releases are the four values :release takes (the owner, 2026-10-12): the point
+// releases as one bucket, the two numbered releases, and the later list.
+var Releases = map[string]bool{"v1.2.x": true, "v1.3": true, "v1.4": true, "later": true}
+
+// AcceptanceMark opens the sentence every v1.3 item ends its :text with: the
+// observable behaviour, measurable on the bench, that proves the item done.
+const AcceptanceMark = "Done when:"
 
 // Decode reads one roadmap file and returns it, or every shape problem of the file
 // together in one error.
@@ -198,6 +211,15 @@ func (d *decoder) date(at string, vals map[string]worklang.Form) string {
 	return v
 }
 
+// release returns the :release value, "" when absent; a value outside Releases is a problem.
+func (d *decoder) release(at string, vals map[string]worklang.Form) string {
+	v := d.str(at, vals, "release")
+	if v != "" && !Releases[v] {
+		d.fail(at, ":release %q wants v1.2.x, v1.3, v1.4 or later", v)
+	}
+	return v
+}
+
 // count returns the positive integer value of key k, 0 when the key is absent.
 func (d *decoder) count(at string, vals map[string]worklang.Form, k string) int {
 	f, ok := vals[k]
@@ -270,7 +292,7 @@ func (d *decoder) doc(top worklang.Form) *Doc {
 			continue
 		}
 		seen(at, "scheduled", id)
-		doc.Scheduled = append(doc.Scheduled, Note{ID: id, Release: d.str(at, v, "release"), Title: d.str(at, v, "title"), Text: d.str(at, v, "text"), Date: d.date(at, v)})
+		doc.Scheduled = append(doc.Scheduled, Note{ID: id, Release: d.release(at, v), Title: d.str(at, v, "title"), Text: d.str(at, v, "text"), Date: d.date(at, v)})
 	}
 	for i, f := range d.list("top", vals, "done") {
 		at := fmt.Sprintf(":done[%d]", i)
@@ -304,9 +326,12 @@ func (d *decoder) doc(top worklang.Form) *Doc {
 		seen(at, "item", id)
 		it := Item{ID: id, Group: d.str(at, v, "group"), Title: d.str(at, v, "title"), Text: d.str(at, v, "text"),
 			Why: d.str(at, v, "why"), Date: d.date(at, v), Area: d.str(at, v, "area"), Exists: d.str(at, v, "exists"),
-			Cards: d.count(at, v, "cards"), Origin: d.str(at, v, "origin"), Release: d.str(at, v, "release"), Kept: d.kept(at, v)}
+			Cards: d.count(at, v, "cards"), Origin: d.str(at, v, "origin"), Release: d.release(at, v), Kept: d.kept(at, v)}
 		if it.Group != "" && !groups[it.Group] {
 			d.fail(at, ":group %q names no (group ...) record", it.Group)
+		}
+		if it.Release == "v1.3" && !strings.Contains(flat(it.Text), AcceptanceMark) {
+			d.fail(at, "a v1.3 item's :text wants a %q sentence, the behaviour that proves it done", AcceptanceMark)
 		}
 		used[it.Group] = true
 		doc.Items = append(doc.Items, it)

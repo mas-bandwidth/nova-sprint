@@ -187,7 +187,7 @@ func writeRoadmap(path string, cards []*sprint.Card, date string) error {
 // TASK sentence as its title, aimed after the fixes-only ladder.
 func renderRoadmapItem(id, title, text, date string) string {
 	return fmt.Sprintf("  (item %s :group %s\n   :title %s\n   :text %s\n   :date %s\n   :release %s\n   :origin %s)\n",
-		sexp(id), sexp("sprint"), sexp(title), sexp(text), sexp(date), sexp("after v1.4"), sexp("card moved out of the sprint (work record, "+date+")"))
+		sexp(id), sexp("sprint"), sexp(title), sexp(text), sexp(date), sexp("later"), sexp("card moved out of the sprint (work record, "+date+")"))
 }
 
 // sexp is a string as a roadmap-data string literal.

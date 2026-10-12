@@ -1371,16 +1371,6 @@
     line mixing a path with prose on the same line was incorrectly allowed."
    :origin "dogfood 2026-10-10: add refused briefs over a path segment")
 
-  (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
-   :title "nova-work roadmap check, list, add, remove, pull, done, note and render"
-   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb
-    refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
-   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)"
-   :kept (:item-group "sprint"
-          :item-date "2026-10-10"
-          :item-release "after v1.4"
-           :earlier-title "nova-work roadmap check, add, remove, pull and note"))
-
    (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
     :title "A machine fault hold clears itself once the member is healthy"
     :text "A hold the machine places for a failure (a harness fault, a failed take, or the member going
@@ -1911,18 +1901,6 @@
    :text "A hold of a member whose beat is up hands back only its dealt, untaken ready cards. Taken work and reads stay on the worker at their generation and finish there, even with --return. A down member still returns dead working cards. The hold note names the taken cards that stay."
     :origin "card hold-return-leaves-taken-cards-with-their-worker.w2, 2026-10-11")
 
-  (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
-   :title "Extract the roadmap tool into nova-roadmap"
-   :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
-    tools/roadmap and the nova-work roadmap verbs (about 3,100 lines with their tests), and in
-    nova-tools as internal/roadmap, internal/roadmap/sexp and tools/roadmap (about 1,300 lines with
-    their tests, about 930 without), with two diverging copies of the generator. Unify the s-expression format first; then one module and one CLI, nova-roadmap, living
-    in this repository (a module and cmd/nova-roadmap): it reads and writes the data, renders
-    ROADMAP.md and FIXES.md, and runs the sync check. Both repositories use it and delete their own
-    copies: this one its internal copies, nova-tools by importing nova-roadmap from this repository.
-    Net fewer lines. Its s-expressions stay importable later as a node by nova-work; that import is a
-    v1.3 item, not this one."
-   :origin "the owner, 2026-10-11: v1.2.13 contraction, pass 4 (shared code into modules); nova-roadmap lives in nova-sprint")
   (fix "briefs-by-reference" :release "v1.2.13" :status "planned"
    :title "Brief boilerplate moves into the card contract"
    :text "A brief names the card contract instead of carrying its text, so briefs are shorter and the

@@ -386,7 +386,7 @@ func TestARoundTripIsLossless(t *testing.T) {
 	full := `(item "item-full" :group "beta" :date "2026-09-01"
    :title "Full" :text "Every field,
     wrapped across lines." :why "It waits." :area "sprint" :exists "half"
-   :cards 3 :release "after v1.4" :origin "issue #9")
+   :cards 3 :release "later" :origin "issue #9")
   `
 	raw := strings.Replace(fixtureRoadmap, `(item "item-b1"`, full+`(item "item-b1"`, 1)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, RoadmapFile), []byte(raw), 0o644))
@@ -402,7 +402,7 @@ func TestARoundTripIsLossless(t *testing.T) {
 	assert.Equal(t, before.Text, fx.Text, "the text keeps its bytes")
 	assert.Equal(t, []roadmapdoc.Pair{{Key: "item-group", Value: "beta"}, {Key: "item-date", Value: "2026-09-01"},
 		{Key: "item-why", Value: "It waits."}, {Key: "item-area", Value: "sprint"}, {Key: "item-exists", Value: "half"},
-		{Key: "item-cards", Value: "3"}, {Key: "item-release", Value: "after v1.4"}}, fx.Kept)
+		{Key: "item-cards", Value: "3"}, {Key: "item-release", Value: "later"}}, fx.Kept)
 
 	s = load(t, dir)
 	require.NoError(t, s.Pull("", "beta", "item-full"))

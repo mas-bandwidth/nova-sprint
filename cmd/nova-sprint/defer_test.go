@@ -76,7 +76,7 @@ func TestDeferWritesWaitingCardsToTheRoadmapAndDropsThem(t *testing.T) {
 		if it.ID == "x2" || it.ID == "x3" {
 			assert.Contains(t, it.Text, "THE TASK. Defer "+it.ID+" to the roadmap", "the whole brief is written: %q", it.Text)
 			assert.Contains(t, it.Text, "It waits on", "the whole brief is written: %q", it.Text)
-			assert.Equal(t, "after v1.4", it.Release)
+			assert.Equal(t, "later", it.Release)
 			assert.Contains(t, it.Origin, "card moved out of the sprint")
 			assert.Equal(t, "sprint", it.Group)
 		}
