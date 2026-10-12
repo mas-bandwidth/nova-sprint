@@ -1207,21 +1207,21 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, std
 // used and where it was named (addr, from: env or seat-record). (docs/SPEC-SPRINT.md,
 // "The server".)
 func hookSay(w io.Writer, name, addr, from string, m hookMsg) {
+	var b strings.Builder
 	switch m.T {
 	case "hello":
-		fmt.Fprintf(w, "HOOK CONNECTED name=%s session=%s server=%s from=%s: not hooked until the challenge below is answered\n", oneline.Field(m.Name), oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from))
+		fmt.Fprintf(&b, "HOOK CONNECTED name=%s session=%s server=%s from=%s: not hooked until the challenge below is answered\n", oneline.Field(m.Name), oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from))
 	case "challenge":
-		fmt.Fprintf(w, "HOOK CHALLENGE %s: answer now, before anything else: nova-sprint hook --prove %s --actor %s\n", m.Challenge, m.Challenge, oneline.Field(name))
+		fmt.Fprintf(&b, "HOOK CHALLENGE %s: answer now, before anything else: nova-sprint hook --prove %s --actor %s\n", m.Challenge, m.Challenge, oneline.Field(name))
 	case "push":
-		var b strings.Builder
 		fmt.Fprintf(&b, "PUSH %d %s session=%s: read it, then acknowledge: nova-sprint hook --ack %d --session %s --actor %s\n", m.ID, oneline.Field(m.What), oneline.Field(m.Session), m.ID, oneline.Field(m.Session), oneline.Field(name))
 		for _, l := range strings.Split(strings.TrimRight(m.Text, "\n"), "\n") {
 			b.WriteString("  " + l + "\n")
 		}
-		_, _ = io.WriteString(w, b.String())
 	case "bye":
-		fmt.Fprintf(w, "HOOK BYE name=%s: %s\n", oneline.Field(name), oneline.Escape(m.Why))
+		fmt.Fprintf(&b, "HOOK BYE name=%s: %s\n", oneline.Field(name), oneline.Escape(m.Why))
 	case "refused":
-		fmt.Fprintf(w, "HOOK REFUSED name=%s: %s\n", oneline.Field(name), oneline.Escape(m.Why))
+		fmt.Fprintf(&b, "HOOK REFUSED name=%s: %s\n", oneline.Field(name), oneline.Escape(m.Why))
 	}
+	_, _ = io.WriteString(w, b.String())
 }
