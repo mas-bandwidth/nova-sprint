@@ -181,7 +181,60 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 			}
 		}
 	}
+	// The gate-host rule (docs/SPEC-SPRINT.md, the gate-host rule): the gate runs on the
+	// member the card is dealt to, inside the wall, never over ssh, so a STEP that tells the
+	// worker to ssh to a named host or run the gate "on <host>" is refused with the remedy
+	// naming GATE-NEEDS.
+	for i, line := range strings.Split(brief, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "STEP:") {
+			continue
+		}
+		if gateNeedsHost(line, o.Names) {
+			add(GateHostCheck, i+1, "this STEP tells the worker to ssh to a named host or run the gate on a named host, which the sprint forbids; "+GateHostRemedy)
+		}
+	}
 	return out
+}
+
+// GateHostCheck is the check name of the gate-host lint finding, and GateHostRemedy its
+// remedy (docs/SPEC-SPRINT.md, the gate-host rule): a brief's gate runs on the member it is
+// dealt to, inside the wall, never over ssh to a named host, so the brief names the gate's
+// needs on a GATE-NEEDS line instead of naming a host.
+const (
+	GateHostCheck  = "gate-needs-host"
+	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
+)
+
+// gateNeedsHostRE finds `ssh <token>` or `on <token>` in a STEP line; the token is held
+// host-like by gateNeedsHost, so an ordinary "on the member" (no host) passes.
+var gateNeedsHostRE = regexp.MustCompile(`(?i)\b(ssh|on)\s+([a-z][a-z0-9-]*)\b`)
+
+// gateNeedsHost says a STEP line names a host it runs its gate on: `ssh <host>` or
+// `on <host>`, where host is host-like (hostLike).
+func gateNeedsHost(line string, names []string) bool {
+	for _, m := range gateNeedsHostRE.FindAllStringSubmatch(line, -1) {
+		if hostLike(m[2], names) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostLike says tok is a host the lint refuses to run a gate on: a fleet member/host
+// name, or a token that carries a digit or hyphen and is not a stop word ("the", "a",
+// "this", "its"). "the" in "on the member" names no host and passes.
+func hostLike(tok string, names []string) bool {
+	tok = strings.ToLower(tok)
+	for _, n := range names {
+		if strings.ToLower(strings.TrimSpace(n)) == tok {
+			return true
+		}
+	}
+	switch tok {
+	case "the", "a", "this", "its":
+		return false
+	}
+	return strings.ContainsAny(tok, "0123456789-")
 }
 
 // byRE is a By: trailer named in a line and the word after it, past any <, backquote,

@@ -1110,6 +1110,15 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, benchRefusal(bench))
 			continue
 		}
+		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
+		// to a member whose facts satisfy every need, and a card no member up satisfies is
+		// never dealt; the deal raises the one judgment naming the need (NGateNeeds,
+		// gateNeedsJudgment), at once, never a silent wait.
+		members, gateWhy := s.GateHostPool(c, members)
+		if len(members) == 0 {
+			p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
+			continue
+		}
 		roomWhy := noRoomWhy
 		if len(bench) > 0 {
 			roomWhy = benchRoom(bench)
