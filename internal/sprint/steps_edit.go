@@ -222,6 +222,13 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			set[FieldTier] = r.Tier
 		} else if recorded := c.F(FieldTier); recorded != "" && textTier.Tier != recorded {
 			p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+		} else if t := LineOneTier(b.Brief); t != "" {
+			// the tier the new line 1 names is the tier the card's next attempt is dealt on:
+			// a tier the machine raised it to before stands only when it is stronger
+			if now := c.F(FieldTierNow); now != "" && stronger(now, t) == t && now != t {
+				set[FieldTierNow] = t
+			}
+			p.Said = append(p.Said, b.ID+" tier="+stronger(t, c.F(FieldTierNow)))
 		}
 		// the brief's needs are the card's, not the text's (docs/SPEC-SPRINT.md, the needs):
 		// the text's DEPENDS-ON is the admission-time list, so a need a relink re-pointed

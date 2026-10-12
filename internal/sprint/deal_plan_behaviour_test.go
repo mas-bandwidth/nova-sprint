@@ -160,8 +160,11 @@ func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 		{Name: "big", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "big", Enabled: true},
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: heavy\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
+	// a card dealt on flash below its ceiling before line 1 became the tier it is dealt on:
+	// the escalation ladder still carries it
+	w.s.Work.Card("s1-1").Fields[FieldTierNow] = "flash"
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	require.Equal(t, "flash", w.s.Work.Card("s1-1").F(FieldTierNow), "its first deal is on flash")
+	require.Equal(t, "flash", w.s.Work.Card("s1-1").F(FieldTierNow), "its deal is on flash")
 	wc := w.s.Fleet.Card("s1-1.w1")
 	w.must(Take(w.s, TakeReq{As: wc.Row, Sel: Sel{IDs: []string{wc.ID}}, Gens: gensOf(w.s, wc.ID)}))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
