@@ -13,10 +13,8 @@ import (
 )
 
 const MinSopsVersion = "3.13.3"
-const MinAgeKeygenVersion = "1.3.2"
 
 var sopsVersionRegex = regexp.MustCompile(`^sops (\d+)\.(\d+)\.(\d+)`)
-var ageKeygenVersionRegex = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)`)
 
 // runOr is the one seam every helper process runs through: the scripted fake a verb
 // supplies, or the real child. The fake travels as a field of the verb's options (or a
@@ -97,34 +95,6 @@ func CheckSopsVersion(run execCommand, sopsPath string) (string, error) {
 
 	if major < 3 || (major == 3 && minor < 13) || (major == 3 && minor == 13 && patch < 3) {
 		return fmt.Sprintf("%d.%d.%d", major, minor, patch), fmt.Errorf("sops version %d.%d.%d is too old; minimum required is %s; run: brew upgrade sops", major, minor, patch, MinSopsVersion)
-	}
-
-	return fmt.Sprintf("%d.%d.%d", major, minor, patch), nil
-}
-
-// CheckAgeKeygenVersion probes the age-keygen binary.
-func CheckAgeKeygenVersion(run execCommand, ageKeygenPath string) (string, error) {
-	if !filepathIsExecutable(ageKeygenPath) {
-		return "", fmt.Errorf("age-keygen binary %s is absent or not executable; run: brew install age", ageKeygenPath)
-	}
-
-	out, err := runOr(run)(nil, []string{"PATH=/usr/bin:/bin"}, "", ageKeygenPath, "--version")
-	if err != nil {
-		return "", fmt.Errorf("age-keygen version probe failed: %w", err)
-	}
-
-	trimmed := strings.TrimSpace(string(out))
-	match := ageKeygenVersionRegex.FindStringSubmatch(trimmed)
-	if match == nil {
-		return "", fmt.Errorf("unable to parse age-keygen version from %q; expected format 'vX.Y.Z'", trimmed)
-	}
-
-	major, _ := strconv.Atoi(match[1])
-	minor, _ := strconv.Atoi(match[2])
-	patch, _ := strconv.Atoi(match[3])
-
-	if major < 1 || (major == 1 && minor < 3) || (major == 1 && minor == 3 && patch < 2) {
-		return fmt.Sprintf("%d.%d.%d", major, minor, patch), fmt.Errorf("age-keygen version %d.%d.%d is too old; minimum required is %s; run: brew upgrade age", major, minor, patch, MinAgeKeygenVersion)
 	}
 
 	return fmt.Sprintf("%d.%d.%d", major, minor, patch), nil
