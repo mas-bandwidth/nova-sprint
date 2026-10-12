@@ -46,8 +46,6 @@ var verbExit = map[string]string{
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
 // states one (docs/STANDARD.md: `effect: inspection|local write|delivery`).
 var verbEffect = map[string]string{
-	"generate":          "local write: creates --out and writes one .md per card and manifest.tsv into it; nothing when a brief is red; --dry-run plans, lints and prints the manifest, and writes nothing",
-	"lint":              "inspection: reads a brief and holds it to the add's lint, writes nothing",
 	"hold":              "local write: holds the named members, readers, friends or streams in the sprint's store (--return also hands back their begun work); --dry-run writes nothing",
 	"unhold":            "local write: releases the named holds in the sprint's store; --dry-run writes nothing",
 	"fleet hold":        "local write: holds the named fleet members in the sprint's store, as hold does (--return also hands back their begun work); --dry-run writes nothing",
