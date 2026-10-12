@@ -22,7 +22,8 @@ import (
 // A real server on a private store writes its heartbeat, and where --json on
 // that store carries the server's own version as server_version plus server
 // (version, commit, started, at). The environment is scrubbed: HOME and
-// XDG_CONFIG_HOME in a TempDir and no NOVA_*; every verb names the store with
+// XDG_CONFIG_HOME in a TempDir, no NOVA_SPRINT_SERVER, and the actor named
+// (init records who acts); every verb names the store with
 // an explicit --redis. The heartbeat write costs one SET with an expiry a
 // second, which this measures (docs/SPEC-SPRINT.md section 14,
 // server_version-heartbeat-w1).
@@ -35,7 +36,7 @@ func TestServerHeartbeatOnAStoreWhereJSONReads(t *testing.T) {
 	require.NoError(t, fn.Load(ctx, c))
 
 	home := t.TempDir()
-	env := map[string]string{"HOME": home, "XDG_CONFIG_HOME": home}
+	env := map[string]string{"NOVA_SPRINT_ACTOR": "coordinator", "HOME": home, "XDG_CONFIG_HOME": home}
 	a := newApp(func(k string) string { return env[k] })
 	t.Cleanup(a.close)
 	a.home = func() (string, error) { return home, nil }

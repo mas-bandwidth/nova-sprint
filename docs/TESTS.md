@@ -55,6 +55,10 @@ derivation, its end after an ok finish and its lapse past `StagingMirrorWindow`.
 `ssh` or `git push` from inside nova-sprint: the need is a line and a judgment, and the fleet's
 own mirror refresh serves it.
 
+The functional tier (`go test -tags functional -count=1 ./...`, `make functional`) runs for every pull request and push to main on a GitHub-hosted
+ubuntu-latest runner — `make functional-gate` is the CI form, with `NOVA_CI=1`,
+redis-server installed, and each package bounded at two minutes (`-timeout 120s`); over the bound is the test's defect.
+
 ### First run
 
 ```text
