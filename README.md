@@ -50,6 +50,4 @@ or just come back in the morning.
 
 If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). Free and open source forever.
-
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)
