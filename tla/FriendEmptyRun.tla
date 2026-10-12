@@ -38,12 +38,16 @@ EXTENDS Integers, FiniteSets
 \* not copy the primary's onto it), so a friend the primary left is not seen.
 \* FleetCard: the card has no WHO line, so the cap's answer may deal it
 \* (AttemptCapDeal skips a friend's card); FALSE is a WHO: friend card.
-CONSTANTS MaxAttempts, Cap, Named, FleetCard, BadNoLeft, BadMachineLeft, BadCapLeft, BadRuleLeft, BadLevelLeft, BriefDefect
+\* 2026-10-12 (the owner: "max attempts before you do judgement and decide what to do"):
+\* the cap's own deal is retired; a card at the cap is dealt to a friend only after the
+\* coordinator's decision (Decide: a re-tier), which opens a fresh window of Cap attempts
+\* (since: the attempts since the last decision). BadCapUndecided is the deal as it was.
+CONSTANTS MaxAttempts, Cap, Named, FleetCard, BadNoLeft, BadMachineLeft, BadCapLeft, BadRuleLeft, BadLevelLeft, BriefDefect, BadCapUndecided
 Friends == {"amy", "bob"}
 Machine == "m1"
 None == "none"
-VARIABLES place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty
-vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+VARIABLES place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since
+vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 
 \* left: the primary's friends_left; wleft: the current work card's; pinned:
 \* the friend the cap's answer wrote into the brief; emptyOn: every friend whose
@@ -52,31 +56,41 @@ vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, la
 Init == /\ place = None /\ state = "ready" /\ attempt = 0
         /\ left = {} /\ wleft = {} /\ pinned = None
         /\ emptyOn = {} /\ emptyUnpinned = {} /\ lastEmpty = FALSE
+        /\ decided = FALSE /\ since = 0
 
 \* the friends' deal: a ready card to a friend it has not left (cardLeft reads
 \* the primary's); a named card to its friend alone; the work card carries left
-Deal(f) == /\ state = "ready" /\ attempt < Cap
+Deal(f) == /\ state = "ready" /\ since < Cap /\ attempt < MaxAttempts
            /\ f \notin left
            /\ (Named => f = "amy")
-           /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1
+           /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1 /\ since' = since + 1
            /\ wleft' = IF BadLevelLeft THEN {} ELSE left
-           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty, decided>>
 
 \* the machines' deal of an unnamed card: the work card carries the primary's
 \* friends_left (BadMachineLeft: it does not)
-MachineDeal == /\ state = "ready" /\ attempt < Cap /\ ~Named /\ FleetCard
-               /\ place' = Machine /\ state' = "queued" /\ attempt' = attempt + 1
+MachineDeal == /\ state = "ready" /\ since < Cap /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
+               /\ place' = Machine /\ state' = "queued" /\ attempt' = attempt + 1 /\ since' = since + 1
                /\ wleft' = IF BadMachineLeft THEN {} ELSE left
-               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty, decided>>
 
-\* the attempt cap's default answer: a card at its brief's bound (not a friend's
-\* card: AttemptCapDeal skips those) to a friend it has not left (BadCapLeft:
-\* any), created working on her row (brief_bound.go), pinned to her from then on
+\* the coordinator's decision on a card at its cap (brief, rework --tier, carry: the
+\* re-tier that reaches a friend tier; brief_bound.go FieldDecidedAttempt): the attempts
+\* since it start again
+Decide == /\ state = "ready" /\ since >= Cap /\ ~decided
+          /\ decided' = TRUE /\ since' = 0
+          /\ UNCHANGED <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+
+\* a card at its cap dealt to a friend (not a friend's card) it has not left (BadCapLeft:
+\* any), created working on her row, pinned to her from then on: only after the
+\* coordinator's decision (BadCapUndecided: the cap's default answer of 2026-10-04, which
+\* dealt it with no decision), the deal spending the decision
 CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
+              /\ (decided \/ BadCapUndecided)
               /\ (pinned = None \/ f = pinned)
               /\ (BadCapLeft \/ f \notin left)
-              /\ place' = f /\ state' = "working" /\ attempt' = attempt + 1
-              /\ pinned' = f /\ wleft' = left
+              /\ place' = f /\ state' = "working" /\ attempt' = attempt + 1 /\ since' = since + 1
+              /\ pinned' = f /\ wleft' = left /\ decided' = FALSE
               /\ UNCHANGED <<left, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the rebalance moves a queued attempt off the machine to a friend's idle lane,
@@ -84,7 +98,7 @@ CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~
 Rebalance(f) == /\ state = "queued" /\ place = Machine
                 /\ f \notin (IF BadMachineLeft THEN wleft ELSE wleft \cup left)
                 /\ place' = f
-                /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+                /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 
 \* the four friend moves that read cardLeft (the work card's wleft and the
 \* primary's left) and move a ready attempt to a friend's lane: the friends'
@@ -93,17 +107,17 @@ Rebalance(f) == /\ state = "queued" /\ place = Machine
 FriendMove(f) == /\ state = "queued" /\ place \in Friends /\ place /= f
                  /\ f \notin (IF BadLevelLeft THEN wleft ELSE wleft \cup left)
                  /\ place' = f
-                 /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+                 /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 
 \* a lane takes the queued attempt
 Start == /\ state = "queued" /\ state' = "working"
-         /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+         /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 
 \* the lane ends the attempt: ok, or empty (no report; only a friend's lane in
 \* this model, a machine's rework avoids its member already: reworkAvoid)
 FinishOk == /\ state = "working"
             /\ state' = "done" /\ place' = None
-            /\ UNCHANGED <<attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+            /\ UNCHANGED <<attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 FinishEmpty == /\ state = "working" /\ place \in Friends
                /\ state' = "review" /\ emptyOn' = emptyOn \cup {place}
                /\ emptyUnpinned' = IF Named \/ pinned /= None THEN emptyUnpinned
@@ -112,13 +126,13 @@ FinishEmpty == /\ state = "working" /\ place \in Friends
                /\ left' = IF Named \/ pinned /= None \/ BadNoLeft \/ BadRuleLeft THEN left
                           ELSE left \cup {place}
                /\ lastEmpty' = TRUE
-               /\ UNCHANGED <<place, attempt, wleft, pinned>>
+               /\ UNCHANGED <<place, attempt, wleft, pinned, decided, since>>
 
 \* a machine's attempt fails (any failure; the machine is not left, its rework
 \* avoids the member: reworkAvoid)
 MachineFail == /\ state = "working" /\ place = Machine
                /\ state' = "review" /\ lastEmpty' = FALSE
-               /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+               /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, decided, since>>
 
 \* the failed rule's answer: below the brief's bound a rework, at it the
 \* brief's judgment left to a mind (ruleHarness returns early; the card waits
@@ -132,10 +146,10 @@ Rework == /\ state = "review"
           /\ state' = "ready" /\ place' = None
           /\ left' = IF lastEmpty /\ ~Named /\ pinned = None /\ ~BadNoLeft /\ (~BadRuleLeft \/ attempt < Cap \/ BriefDefect)
                      THEN left \cup {place} ELSE left
-          /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+          /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty, decided, since>>
 
 Next == \/ \E f \in Friends : Deal(f) \/ Rebalance(f) \/ CapDeal(f) \/ FriendMove(f)
-        \/ MachineDeal \/ Start
+        \/ MachineDeal \/ Start \/ Decide
         \/ FinishOk \/ FinishEmpty \/ MachineFail \/ Rework
 Spec == Init /\ [][Next]_vars
 
@@ -145,6 +159,10 @@ TypeOK == /\ place \in Friends \cup {Machine, None}
           /\ left \subseteq Friends /\ wleft \subseteq Friends
           /\ pinned \in Friends \cup {None}
           /\ emptyOn \subseteq Friends /\ emptyUnpinned \subseteq Friends
+          /\ decided \in BOOLEAN /\ since \in 0..MaxAttempts
+\* THE ATTEMPT CAP (the owner, 2026-10-12): no card is dealt more than Cap attempts without a
+\* coordinator decision in between (brief_bound.go AtAttemptCap; the deal's refusal)
+NoAttemptPastCapWithoutDecision == since <= Cap
 \* an any-friend card is never queued or working on a friend whose lane ran it
 \* empty while it was hers to leave, however it got there
 NeverBackToTheEmptyLane ==

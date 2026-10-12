@@ -12,13 +12,13 @@ import (
 
 // A friend row with a class holds only cards whose tier her class covers, unless the card is
 // pinned to her (dealt-packet-carries-the-tier.w2): the friend deal gates every card on her
-// tiers (friendTakes), and the one deal that places a card outside them, the attempt cap's
-// default answer (AttemptCapDeal), writes her WHO line onto it first. Every packet on her row
-// names a tier (DealtTier), so a runner that hands back a tier it does not do can tell its own
-// pinned card from a card dealt to it in error.
+// tiers (friendTakes). Every packet on her row names a tier (DealtTier), so a runner that hands
+// back a tier it does not do can tell its own pinned card from a card dealt to it in error. A
+// machine's card at its attempt cap is dealt to no friend at all (the cap's friend deal of
+// 2026-10-04 is retired; brief_bound.go): it waits for the coordinator.
 func TestAFriendRowHoldsItsTiersUnlessTheCardIsPinnedToHer(t *testing.T) {
 	t.Parallel()
-	w := capWorld(t) // s1-1: a machine's card, no tier (flash), past the attempt cap
+	w := capWorld(t) // s1-1: a machine's card, no tier (flash), at the attempt cap
 	w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{
 		{ID: "s2-1", Brief: friendBrief("friend")}, // flash, any friend
 		{ID: "s2-2", Brief: "c: a friend's card tier: frontier\nREPO: mas-bandwidth/nova-tools\nWHO: friend\n\nThe task."}, // frontier, any friend
@@ -29,7 +29,7 @@ func TestAFriendRowHoldsItsTiersUnlessTheCardIsPinnedToHer(t *testing.T) {
 		{Name: "gus", Width: 4, Status: Up, Class: cardhdr.RouteFrontier},
 		{Name: "pam", Width: 4, Status: Up, Class: cardhdr.RoutePro},
 	}
-	capDeal(w, seats...)
+	w.part(TickDeal, TickReq{Friends: seats})
 
 	held := map[string]string{}
 	for _, f := range seats {
@@ -47,11 +47,12 @@ func TestAFriendRowHoldsItsTiersUnlessTheCardIsPinnedToHer(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]string{
-		"s1-1": "gus flash",    // the attempt cap's friend card: pinned to gus by its WHO line
 		"s2-1": "fay flash",    // flash: the flash friend
 		"s2-2": "gus frontier", // frontier: the frontier friend
 		"s2-3": "pam pro",      // named fay, who does not do pro: passed over for the pro friend
 	}, held)
-	assert.Equal(t, FriendRow("gus"), w.s.Primary("s1-1").F(FieldWho), "the one card outside her class is pinned to her")
+	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "the card at its attempt cap is dealt to no friend: the coordinator's")
+	assert.Empty(t, w.s.Primary("s1-1").F(FieldWho), "and gains no WHO line")
+	assert.Len(t, capJudgmentsOn(w.s, "s1-1"), 1, "its judgment is raised")
 	assert.Empty(t, Check(w.s, nil))
 }

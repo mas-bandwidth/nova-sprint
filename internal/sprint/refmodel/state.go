@@ -180,13 +180,14 @@ func (s State) AttemptsCap(stream string) int {
 
 // AtBriefBound says the landing's refusal of the primary's head the way way is at its brief's
 // bound (sprint.AtBriefBound): the same refusal as the one its last rework answered, at an
-// attempt since its brief was replaced, or its stream's attempt cap counted from that brief.
+// attempt since its brief was replaced, or its stream's attempt cap counted from the
+// coordinator's last decision on the card (sprint.AttemptsSince: every attempt counts).
 func (s State) AtBriefBound(p, way string) bool {
 	pr := s.Primaries[p]
 	if pr.Refused != "" && pr.Refused == way && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt {
 		return true
 	}
-	return pr.Attempt-pr.BriefAt >= s.AttemptsCap(pr.Stream)
+	return pr.Attempt-pr.DecidedAt >= s.AttemptsCap(pr.Stream)
 }
 
 // Subjects that are not a primary.
@@ -228,6 +229,9 @@ type Primary struct {
 	// finding is that refusal (sprint.LandRefusedFinding), "" otherwise.
 	BriefAt int
 	Refused string
+	// DecidedAt is its attempt at the coordinator's last decision on it, 0 for none
+	// (sprint.FieldDecidedAttempt): the attempt cap counts every attempt after it.
+	DecidedAt int
 	// RefusedHead is the attempt whose head the landing last refused (sprint.FieldLandRefusedHead,
 	// every way but files outside its PATHS), 0 when none: while it is its head, it is never
 	// offered to accept again (RefusedAtHead; tla/Land.tla NoOfferAtRefusedHead).
@@ -304,7 +308,8 @@ type State struct {
 	Pending   string // the verb of the pending operation (D1), "" when none
 	// Coordinator is the one actor who releases sentinels.
 	Coordinator string
-	// Cap is the sprint's attempt cap, 0 for none (sprint.PropAttempts).
+	// Cap is the sprint's attempt cap, 0 for none (nova-config's sprint row max_attempts,
+	// sprint.Snapshot.MaxAttempts).
 	Cap int
 	// DealLast and AskLast are the rolling indexes of the deal and the ask
 	// (tla/SprintEvents.tla dcur and acur): each a

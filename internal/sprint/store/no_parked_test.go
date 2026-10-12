@@ -82,7 +82,7 @@ func TestPastTheBoundItStaysASeatJudgment(t *testing.T) {
 	t.Parallel()
 	h := ruled(t)
 	h.addReady("s1", 1, briefOf("flash", ""))
-	h.must(SetStep(sprint.SetReq{Attempts: "2", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("2")
 	h.must(DealStep(sprint.DealReq{}))
 	h.finishAttempt("s1-1", true, "")
 	h.startMachine()

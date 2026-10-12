@@ -71,7 +71,10 @@ words:
                coordinator said routes rest; a take with no result never rests it; routes prints rested_until
   bound        a card tried no more on its tier: its work card redealt 3 times, or its second try
                failed the way its first did (the second identical failure: two takes with no result,
-               or two attempts with the same reason); a card reached its bound, answered by rework or drop
+               or two attempts with the same reason); a card reached its bound, answered by rework or drop;
+               and the attempt cap: max_attempts attempts (nova-config sprint set --max_attempts <n>, default 4)
+               since the coordinator's last decision on the card, every attempt counted, then one judgment
+               and no deal until the coordinator decides (brief, rework --tier, rework --carry, drop)
   head         the commit a work card finished at (finish --head, default the work card's id);
                reads and merges are of that head
   the stream's base  a first attempt's base in its packet: the branch its brief's BASE: line names

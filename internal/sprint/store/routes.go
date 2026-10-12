@@ -108,6 +108,10 @@ type Bars struct {
 	// machine makes (git_identity: "Name <email>"); "" is none configured, which the landing
 	// refuses.
 	GitIdentity string
+	// MaxAttempts is the sprint row's attempt bound (max_attempts): the attempts one card
+	// runs before the sprint raises one judgment to the coordinator (sprint.AttemptsCap);
+	// "" or unparseable is the default, sprint.AttemptsDefault.
+	MaxAttempts string
 }
 
 // fields is each bar by its sprint row field (config.SprintKey(field) holds it).
@@ -124,18 +128,90 @@ func (b *Bars) fields() map[string]*string {
 		config.FieldDecideJudgment:           &b.Judgment,
 		config.FieldAnswerRulesOff:           &b.RulesOff,
 		config.FieldGitIdentity:              &b.GitIdentity,
+		config.FieldMaxAttempts:              &b.MaxAttempts,
 	}
 }
 
 // into is the set as the snapshot carries it.
 func (rs RouteSet) into(s *sprint.Snapshot) {
 	s.Routes, s.Tiers = rs.Routes, rs.Tiers
-	s.DecideBounce, s.DecideReview, s.DecideGrade = rs.Bars.Bounce, rs.Bars.Review, rs.Bars.Grade
-	s.DecideAttemptNoResult, s.DecideAttemptNothingToDo = rs.Bars.AttemptNoResult, rs.Bars.AttemptNothingToDo
-	s.DecideScoreBar = rs.Bars.Score
-	s.DecideGateFlaky, s.DecideGatePreexisting = rs.Bars.GateFlaky, rs.Bars.GatePreexisting
-	s.RulesOff = sprint.Split(rs.Bars.RulesOff)
-	s.GitIdentity = rs.Bars.GitIdentity
+	rs.Bars.into(s)
+}
+
+// into is the bars as the snapshot carries them.
+func (b Bars) into(s *sprint.Snapshot) {
+	s.DecideBounce, s.DecideReview, s.DecideGrade = b.Bounce, b.Review, b.Grade
+	s.DecideAttemptNoResult, s.DecideAttemptNothingToDo = b.AttemptNoResult, b.AttemptNothingToDo
+	s.DecideScoreBar = b.Score
+	s.DecideGateFlaky, s.DecideGatePreexisting = b.GateFlaky, b.GatePreexisting
+	s.RulesOff = sprint.Split(b.RulesOff)
+	s.GitIdentity = b.GitIdentity
+	s.MaxAttempts = b.MaxAttempts
+}
+
+// BarsReader is a store that holds the sprint row's bars alone (config.SprintKey(field)):
+// what a worker's step reads for the attempt cap (Step.Bars; finish, read, merge, set),
+// keys every role reads (pkg/redisacl, the sprint family) and never a tier's array, which
+// the member role may not read (TestEveryStepReadsOnlyKeysItsRoleMayRead).
+type BarsReader interface {
+	// Bars is the sprint row's bars and the round trips the read made.
+	Bars(ctx context.Context) (Bars, int64, error)
+}
+
+// sprintBars is the sprint row's bars a step plans with when it reads no route set
+// (Step.Bars): the attempt cap among them (sprint.AttemptsCap); the zero Bars when the store
+// holds none.
+func (st *Store) sprintBars(ctx context.Context) (Bars, error) {
+	br, ok := st.B.(BarsReader)
+	if !ok {
+		return Bars{}, nil
+	}
+	b, _, err := br.Bars(ctx)
+	if err != nil {
+		return Bars{}, fmt.Errorf("the sprint row's bars (%s): %w", config.SprintKey("<field>"), err)
+	}
+	return b, nil
+}
+
+// Bars reads the sprint row's bars in one pipeline: one round trip, the plain keys
+// config.SprintKey(field) alone.
+func (r *Redis) Bars(ctx context.Context) (Bars, int64, error) {
+	var b Bars
+	fields := b.fields()
+	pipe := r.C.Pipeline()
+	gets := make(map[string]interface{ Val() string }, len(fields))
+	for f := range fields {
+		gets[f] = pipe.Get(ctx, config.SprintKey(f))
+	}
+	if err := redisconn.Exec(ctx, pipe); err != nil {
+		return Bars{}, 1, err
+	}
+	for f, v := range fields {
+		*v = gets[f].Val()
+	}
+	return b, 1, nil
+}
+
+// Bars is the bars the setters gave the store (SetDecideBars, SetMaxAttempts, ...).
+func (m *Mem) Bars(context.Context) (Bars, int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail("routes"); err != nil {
+		return Bars{}, 0, err
+	}
+	return m.bars, 0, nil
+}
+
+// RoutesInto reads the routes and the sprint row's bars (Routes) into the snapshot, as a
+// step with Routes set plans with them: what a reader of a loaded snapshot calls when it
+// asks a question the bars decide (the attempt cap, sprint.AttemptsCap; the rules off).
+func (st *Store) RoutesInto(ctx context.Context, s *sprint.Snapshot) error {
+	set, err := st.routes(ctx)
+	if err != nil {
+		return err
+	}
+	set.into(s)
+	return nil
 }
 
 // routes is the routes a dealing step plans with, by name, and the tiers'
@@ -265,6 +341,14 @@ func (m *Mem) Routes(context.Context) (RouteSet, int64, error) {
 		tiers[t] = append([]string(nil), a...)
 	}
 	return RouteSet{Routes: append([]sprint.Route(nil), m.routes...), Tiers: tiers, Bars: m.bars}, 0, nil
+}
+
+// SetMaxAttempts gives the store the sprint row's attempt bound, as nova-config's apply
+// does a live one (sprint:max_attempts); "" is none applied (sprint.AttemptsDefault).
+func (m *Mem) SetMaxAttempts(n string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bars.MaxAttempts = n
 }
 
 // SetGateBars gives the store the gate decision's flaky and pre-existing bars, as

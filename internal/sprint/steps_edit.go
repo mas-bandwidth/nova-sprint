@@ -77,6 +77,12 @@ type BriefReq struct {
 	// Reason is why a re-tier names (nova-sprint tier --set <t> --reason): recorded
 	// with the tier, for the log.
 	Reason string
+	// ByRule marks a brief edit the machine makes (the read-broken rule's widen,
+	// rules_read.go; the widen rule, widen.go): it replaces the brief and resets the
+	// same-finding bound (FieldBriefAttempt) as any edit, but it is no coordinator decision,
+	// so the attempt cap's count (FieldDecidedAttempt) stands (brief_bound.go; the owner,
+	// 2026-10-12). A person's or the seat's edit leaves it false and resets the count.
+	ByRule bool
 }
 
 // Brief replaces primaries' briefs in place (nova-sprint brief; docs/SPEC-SPRINT.md,
@@ -196,6 +202,14 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			if c.Int("attempt") > 0 {
 				p.Said = append(p.Said, "bound: new task (count reset)")
 			}
+		}
+		// the attempt cap counts attempts since the coordinator last decided (brief_bound.go,
+		// FieldDecidedAttempt): a person's or the seat's edit is a decision, whatever it
+		// changed, and opens a fresh window; a rule's widen (ByRule) is a machine's act and
+		// leaves the count standing, so no widen loop can run a card past the cap unseen
+		if !r.ByRule && c.Int("attempt") > 0 {
+			set[FieldDecidedAttempt] = c.F("attempt")
+			p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
 		}
 		if b.Rules != "" {
 			set[FieldRules] = b.Rules
@@ -617,8 +631,18 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	if r.Reason != "" {
 		moved += "; reason: " + r.Reason
 	}
-	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{FieldTier: r.Tier}))},
-		Moved: moved})
+	set := map[string]string{FieldTier: r.Tier}
+	u := Unit{Key: c.ID, Stream: c.Row}
+	if c.Int("attempt") > 0 {
+		// a re-tier is a coordinator decision on the card: the attempt cap's count starts
+		// again from here (brief_bound.go, FieldDecidedAttempt), and the cap's judgment is
+		// answered by it
+		set[FieldDecidedAttempt] = c.F("attempt")
+		moved += fmt.Sprintf("; max attempts: decided at attempt %d", c.Int("attempt"))
+		u.Closes = closesFor(s.Open, []string{NBriefWrong}, c.ID)
+	}
+	u.Changes, u.Moved = []Change{change(Work, setEntry(c, set))}, moved
+	p.Units = append(p.Units, u)
 	return p
 }
 
@@ -673,10 +697,18 @@ func IsCoordinationDefect(reason string) bool {
 // mind's, so a bound is never reset under nova-decide's feet and a loop of redeals avoided.
 const DecisionCarry = "carry on from its last head"
 
+// DecisionReTier is the attempt cap's re-tier: the card reworked with a fix on a higher tier
+// (rework --tier), a coordinator's decision that opens a fresh window of attempts
+// (brief_bound.go, FieldDecidedAttempt; since 2026-10-12, when the cap's friend deal was
+// retired and a friend tier is reached by this decision). Like the carry it is no verb the
+// automatic answer chooses (decide.VerbOf reads neither), so a card at its cap is never
+// reworked under nova-decide's feet: the mind decides.
+const DecisionReTier = "re-tier: rework with a fix on a higher tier"
+
 func init() {
-	// the carry is the bound judgment's first printed action, ahead of brief and drop
-	// (rework --carry; docs/SPEC-SPRINT.md, rework; inbox.go, commands)
-	Decisions[NBriefWrong] = []string{DecisionCarry, "brief", "drop"}
+	// the carry is the bound judgment's first printed action, ahead of brief, the re-tier
+	// and drop (rework --carry; docs/SPEC-SPRINT.md, rework; inbox.go, commands)
+	Decisions[NBriefWrong] = []string{DecisionCarry, "brief", DecisionReTier, "drop"}
 }
 
 // carriedHead is a card's latest pushed head among its dealt attempts: the attempt it is the

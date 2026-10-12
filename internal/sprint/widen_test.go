@@ -176,7 +176,7 @@ func TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.widenCard()
-		r.must(store.SetStep(sprint.SetReq{Attempts: "1", Who: "coordinator"}))
+		r.m.SetMaxAttempts("1")
 		r.refusedE12("w-1", "w", "docs/NOTE.md")
 		bound := r.openOnCard(sprint.NBriefWrong, "w-1")
 		require.Len(t, bound, 1, "attempt 1 of a brief whose cap is 1: the bound's judgment")
@@ -195,6 +195,7 @@ func TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.widenCard()
+		r.m.SetMaxAttempts("8") // the widen cap, not the attempt cap (4 attempts run here), is the bound under test
 		for i := 1; i <= sprint.MaxWidens; i++ {
 			file := "docs/NOTE" + strconv.Itoa(i) + ".md"
 			r.refusedE12("w-1", "w", file)

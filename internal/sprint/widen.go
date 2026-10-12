@@ -293,7 +293,7 @@ func widenInPlace(s *Snapshot, r TickReq, a widenAnswer) Plan {
 	files := fileNames(a.files)
 	pr := a.pr
 	carry := fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), pr.F("head"))
-	p := Brief(s, BriefReq{ID: pr.ID, Brief: SharedWidened(PathsWidened(pr.F("brief"), files, carry), files), Rules: pr.F(FieldRules), Who: r.who()})
+	p := Brief(s, BriefReq{ID: pr.ID, Brief: SharedWidened(PathsWidened(pr.F("brief"), files, carry), files), Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
 	if len(p.Refused) > 0 {
 		return Plan{}
 	}

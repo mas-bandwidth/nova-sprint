@@ -567,8 +567,47 @@ a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
   `TestAReadsEnvironmentExitsAreCappedAndJudgedOnce`,
   `TestAReadersTableReadsEnvironmentExitsAreCapped`.
 - Unit, `internal/sprint/brief_bound_test.go`:
-  `TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap` (a frontier friend
-  newly up with room deals a card at the environment-exit cap no attempt 5).
+  `TestACardAtBothCapsIsDealtToNoOne` (a card at the attempt cap and the
+  environment-exit cap, with a frontier friend up with room, is dealt no attempt 5
+  and held by one judgment).
+
+The attempt cap (docs/SPEC-SPRINT.md, the bounds; the owner, 2026-10-12: "max attempts
+should be configurable in nova-config, and default to 4"; "max attempts before you do
+judgement and decide what to do"), each test red on the base of 2026-10-12 before the fix
+and green after it:
+
+- Behaviour on the twin store, `internal/sprint/max_attempts_test.go`, every rule on,
+  driving the real deal, take, finish, read, rule and merge steps:
+  `TestACardsFourthAttemptRaisesOneJudgmentAndNoFifthIsDealt` (four attempts ending as a
+  deadline, a finding outside PATHS widened by rule, a finding inside PATHS reworked by
+  rule and failed work: one judgment naming `max_attempts 4`, and twenty ticks deal no
+  attempt 5; red before: the deadline did not count and the widen reset the count, so
+  attempt 5 was dealt), `TestACoordinatorsDecisionOpensAFreshWindowOfAttempts` (the
+  seat's `brief` answers the judgment and attempts 5 to 8 run, the eighth ending as a
+  landing refused in the shared ledgers alone; the second judgment at 8 and no attempt 9;
+  red before: no judgment after four attempts), `TestMaxAttemptsFromNovaConfigBoundsTheCap`
+  (sprint:max_attempts "2" bounds at 2, a stream's own 6 holds over it, "x", "" and "0"
+  are the default 4), `TestSetAttemptsIsRefusedNamingNovaConfig` (`set --attempts` refuses
+  naming `nova-config sprint set --max_attempts <n>` and what the sprint reads now; the
+  stream's own stays).
+- Unit, `internal/sprint/brief_bound_test.go`:
+  `TestACardAtTheCapIsDealtToNoOneUntilTheCoordinatorDecides` (a frontier friend up with
+  room is dealt no attempt 5; the judgment is raised once and names every attempt's
+  finding and the re-tier; `brief --tier` is the decision that answers it),
+  `TestACardAtTheCapIsNotRedealtToAMachine`; `internal/sprint/bounds_test.go`:
+  `TestAttemptsSinceCountsEveryAttemptSinceTheDecision`,
+  `TestAtBriefBoundCountsEveryAttemptSinceTheDecision`.
+- Store, `internal/sprint/store/attempt_cap_test.go`: `TestFailedWorkReachesTheAttemptCapToo`
+  (the machine's rework between the attempts), `TestTheSeatsReworkAtTheCapIsADecisionAndOpensAFreshWindow`,
+  `TestTheAttemptCapIsNovaConfigsMaxAttemptsAndTheStreams`.
+- Unit, `pkg/config/kind_test.go`: `TestTheSprintRowsMaxAttemptsDefaultsToFour`,
+  `TestCheckSprintHoldsMaxAttemptsToAWholeNumberFromOneToTheCeiling` (0, -1, 101, "x" and
+  "2.5" refused naming the field and the remedy; 1, 4, 100 and "" accepted).
+- TLC, `tla/SprintRules.tla` Parts reads and answers (`NoAttemptPastCapWithoutDecision`,
+  reversed by `MCSprintRulesReadsBrokenWidenResets.cfg`,
+  `MCSprintRulesReadsBrokenRuleReworkAtBound.cfg` and
+  `MCSprintRulesAnswersBrokenDeadlineFree.cfg`) and `tla/FriendEmptyRun.tla`
+  (`MCFriendEmptyRunBrokenCapUndecided.cfg`), recorded in `tla/RUNS.tsv`.
 - Unit, `cmd/nova-sprint/doctor_test.go`: `TestDoctorNamesTheMemberEnvExitRate`,
   `TestDoctorNamesTheMemberEnvExitWarn`,
   `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,

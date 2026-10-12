@@ -394,7 +394,7 @@ one answer to each judgment (every one prints its own, filled in):
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
   a reader found it broken    rework --group <id> --expect <n> --answers <notes>  (each fix is the reader's finding; a read with a finding is reworked by rule read-broken, a friend's card too, so only one with no finding or at its brief's bound comes here; no wait parks it)
   read's branch not on origin push the branch, then ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
-  the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, or drop <id>; never rework (the same finding twice, or over 5 attempts on one brief)
+  the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, rework <id> --fix <text> --tier <t> (re-tier), rework <id> --carry --fix <text>, or drop <id>; the same finding twice, or max_attempts attempts (nova-config's sprint row, default 4) since your last decision on the card
   conflict on a card          resume --stream <s> --did '<what you did>' --answers <note>  (land merges again, regenerating the ledgers; a conflict outside them: rework or drop)
   stream branch red           return <suspect> --answers <note>, then resume --stream <s> --did 'returned <suspect>' --answers <note>
   needs another stream first  rank <other> --first, then resume --stream <s> once <other> has landed
@@ -1171,15 +1171,13 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	coordinator := fs.String("coordinator", "", "the sprint's coordinator, the one actor who releases sentinels (default: the actor); the seat then moves by coordinator <name>")
 	owner := fs.String("owner", "", "the sprint's owner, who may give the seat and whose name a take of it carries (coordinator --take --approved-by); set once, never changed (else "+OwnerEnv+")")
 	rules := fs.String("rules", "", "the child rules file every brief is held to: one required sentence per line, its path recorded for the sprint (default: the built-in general rules; add --rules <file> overrides it for one add)")
-	attempts := fs.String("attempts", "", fmt.Sprintf("the sprint's attempt cap: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d (default %d; later: nova-sprint set --attempts <n>)", sprint.AttemptsMax, sprint.AttemptsDefault))
+	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "init", err.Error())
 	}
 	if *attempts != "" {
-		if _, err := sprint.ParseAttempts(*attempts); err != nil {
-			return refuse(stderr, "init", err.Error())
-		}
+		return refuse(stderr, "init", "--attempts is retired: the sprint's attempt cap is nova-config's sprint row max_attempts; run: "+sprint.MaxAttemptsSetting+"; a stream's own: nova-sprint stream set <s> --attempts <n>")
 	}
 	if len(pos) > 0 {
 		return refuse(stderr, "init", "takes no words, found "+pos[0])
@@ -1266,13 +1264,6 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	if rulesPath != "" {
 		if err := st.SetRulesPath(ctx, rulesPath); err != nil {
 			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
-			return 1
-		}
-	}
-	if *attempts != "" {
-		// the sprint's attempt cap, as set --attempts writes it (the coordinator's: init names them)
-		if res, err := st.Run(ctx, store.SetStep(sprint.SetReq{Attempts: *attempts, Who: *coordinator})); err != nil || len(res.Refused) > 0 {
-			fmt.Fprintf(stderr, "%s init: --attempts: %v %v\n", prog, err, res.Refused)
 			return 1
 		}
 	}
@@ -3867,7 +3858,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	merging := fs.String("alarm-merging", "", "the backlog alarm on merging: a judgment, once an episode, while more primaries than this whole number are merging; off takes it off (the default)")
 	fleet := fs.String("alarm-fleet", "", "the backlog alarm on the fleet: a judgment, once an episode, while the members up work fewer cards than this percent (1 to 100) of their width with a primary ready or waiting; off takes it off (the default)")
 	readyAlarm := fs.String("alarm-ready", "", "the backlog alarm on the feed: on raises a judgment, once an episode, while no primary is ready and one waits; off takes it off (the default)")
-	attempts := fs.String("attempts", "", fmt.Sprintf("the attempt cap: how many attempts one brief may run before the card is the coordinator's as a brief defect (brief, drop; never dealt again); 1 to %d, or default (%d); a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsMax, sprint.AttemptsDefault))
+	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d: the attempts one card runs between two coordinator decisions before it is the coordinator's as one judgment); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
 	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under her working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
 	landingStallBound := fs.String("landing-stall-bound", "", fmt.Sprintf("how long cards may wait in review or merging without a landing before the coordinator is judged stalled: a duration, or default (%s)", sprint.LandingStallBound))
 	fleetWork := fs.String("fleet", "", "the fleet's work: off and the deal hands no work card to a machine (its readers still read; no fleet idle alarm), on deals again (the default)")
@@ -3968,7 +3959,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	prose := fs.String("prose", "", "the globs (PATHS globs, comma separated: security/**,ratings/**) of the files whose backquotes are their own, which the lander does not read for a code span; default takes them off")
 	seatAccept := fs.String("seat-accept", "", "on: the seat accepts the stream's cards by hand (a ready to accept judgment) instead of the tick accepting a card whose reads have all passed; off takes it off (the default: the tick accepts)")
 	defaultTier := fs.String("default-tier", "", "the tier (flash, pro or heavy) add stores a card of the stream with when its brief's line 1 names none; default takes it off, and the card checks then refuse a card brief with none (tier-line)")
-	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d, or default (the sprint's)", sprint.AttemptsMax))
+	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's (nova-config's sprint row max_attempts, default %d): how many attempts one card runs between two coordinator decisions before it is the coordinator's as one judgment; 1 to %d, or default (the sprint's)", sprint.AttemptsDefault, sprint.AttemptsMax))
 	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet landed (waiting, ready, dealt, working, review or merging) has its BASE line rewritten, a working card taking it for its next attempt and a card in review or merging keeping its head, re-checked against the new base when it lands; refused when origin holds no such branch or a card's PATHS are absent at its tip; landed cards keep their base")
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
 	ans := fs.String("answers", "", "the judgment notifications this answers, comma separated")

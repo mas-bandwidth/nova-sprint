@@ -83,7 +83,7 @@ func FinishStep(r sprint.FinishReq) Step {
 	// a member may read (sprint's cost.go; Step.Prices); a failed finish reads them too,
 	// with or without its usage: the second identical failure below its ceiling escalates
 	// the card in the finish, by the tiers its routes serve (sprint.NextTier)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "finish", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work), Mirrors: true, Prices: r.Usage != "" || r.Failed, ReportsWork: true,
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "finish", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work), Mirrors: true, Prices: r.Usage != "" || r.Failed, ReportsWork: true, Bars: true,
 		Friends: true,
 		Extras:  sprint.NamedExtras(sprint.Fleet, r.IDs),
 		Plan:    func(s *sprint.Snapshot) sprint.Plan { return sprint.Finish(s, r) }}
@@ -121,13 +121,13 @@ func ReadStep(r sprint.ReadReq) Step {
 		// a read card on a member's row (sprint read_cards.go) is read as hers is: a name
 		// that is no reader-<m> is a fleet row
 		if _, isReader := sprint.ReaderMachine(rd); sprint.IsFriendRow(rd) || !isReader {
-			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return,
+			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
 				Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 		}
 	}
 	// a read that reports what it spent prices it with the routes alone, the keys a
 	// reader may read (sprint's cost.go; Step.Prices)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return,
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 }
 
@@ -155,7 +155,7 @@ func AcceptStep(r sprint.AcceptReq) Step {
 // (read --as <coordinator> --ok|--broken <card> --finding <text>): it records the
 // read on the primary, counted as one of the reads the card needs.
 func CoordinatorReadStep(r sprint.CoordinatorReadReq) Step {
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, ReportsWork: r.Verdict != "ok",
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, ReportsWork: r.Verdict != "ok", Bars: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.CoordinatorRead(s, r) }}
 }
 
@@ -235,14 +235,14 @@ func MergeStep(r sprint.MergeReq) Step {
 	// The landing push reads live consumer state from Readers and Fleet. Completed
 	// friend read cards retire from Fleet, so friendReadCloseUnit stores their
 	// reader/attempt/head identity on Work before the push.
-	return Step{Args: ArgsOf(r), Verb: "merge", Load: tables(sprint.Merge, sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true,
+	return Step{Args: ArgsOf(r), Verb: "merge", Load: tables(sprint.Merge, sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, Bars: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
 }
 
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
 // a stream's read tier (sprint.Set).
 func SetStep(r sprint.SetReq) Step {
-	return Step{Args: ArgsOf(r), Verb: "set", Load: tables(sprint.Work, sprint.Merge),
+	return Step{Args: ArgsOf(r), Verb: "set", Load: tables(sprint.Work, sprint.Merge), Bars: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Set(s, r) }}
 }
 

@@ -91,15 +91,24 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, "no broken read of attempt "+pr.F("attempt")+" with a finding stands: a mind's")
 		return
 	}
+	// the attempt cap (brief_bound.go; the owner, 2026-10-12): a card that has run its cap's
+	// attempts since the coordinator last decided is the coordinator's, whatever its reader
+	// found and wherever: no rework and no widen by rule (the read raises the cap's judgment
+	// in place of this one, steps_review.go; this is the guard behind it;
+	// tla/SprintRules.tla NoAttemptPastCapWithoutDecision)
+	if bb, ok := AtAttemptCap(pr, s.AttemptsCap(pr.Row)); ok {
+		left(a, bb.String())
+		return
+	}
 	out := FilesOutsidePaths(pr.F("brief"), finding)
 	if spent := WidensSpent(pr); len(out) > 0 && spent != "" {
 		left(a, spent)
 		return
 	}
-	// a widened brief is the bound's remedy (the bound counts attempts from it), so only a
-	// finding outside PATHS past the widen cap is left at the bound; a finding inside PATHS
-	// at any bound is reworked with the finding as the fix (tla/SprintRules.tla, Part
-	// "reads": ReworkAtBound)
+	// below the cap: a finding outside PATHS under the widen cap widens the brief in place (a
+	// machine's act: the attempt cap's count stands, BriefReq.ByRule); a finding inside PATHS
+	// is reworked with the finding as the fix, the same-finding bound outweighed by the broken
+	// verdict
 	a.Card, a.fix = pr.ID, cutText(finding, MaxCardTextBytes)
 	if len(out) > 0 {
 		a.files = out
@@ -196,7 +205,7 @@ func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
 		if head := pr.F("head"); typedrec.IsFullSha(head) {
 			carry = fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), head)
 		}
-		p := Brief(s, BriefReq{ID: pr.ID, Brief: PathsWidened(pr.F("brief"), a.files, carry), Rules: pr.F(FieldRules), Who: r.who()})
+		p := Brief(s, BriefReq{ID: pr.ID, Brief: PathsWidened(pr.F("brief"), a.files, carry), Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
 		if len(p.Refused) > 0 {
 			continue
 		}

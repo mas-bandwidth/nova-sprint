@@ -984,30 +984,6 @@ func friendEscalateUnit(s *Snapshot, c, prev *Card, card, row, tier string) Unit
 	return u
 }
 
-// friendWithFree is the up friend of one of the classes with the most free width in
-// free, the first by name among equals, whose work restriction the card c is within;
-// "" when none has room. AttemptCapDeal passes the free width it has left in this plan,
-// decremented after each deal. Never a friend the card has left for good (cardLeft: an
-// empty run, ruleHarness): its brief would gain WHO: friend <her> and pin every later
-// rework to the lane that ran it empty.
-func friendWithFree(seats []FriendSeat, free map[string]int, c *Card, classes ...string) string {
-	gone := cardLeft(c, nil)
-	var up []string
-	for _, f := range seats {
-		if f.Status == Up && slices.Contains(classes, f.Class) && friendRestrictionAllows(f, c) && !slices.Contains(gone, f.Name) {
-			up = append(up, f.Name)
-		}
-	}
-	slices.Sort(up)
-	name := ""
-	for _, n := range up {
-		if free[n] > 0 && (name == "" || free[n] > free[name]) {
-			name = n
-		}
-	}
-	return name
-}
-
 // friendDealUnit is one friend's card dealt: its work card on her row, ready whatever her
 // lanes, untaken and with no deadline running until she starts it (friendStartUnits;
 // docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it), and its

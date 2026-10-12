@@ -8,10 +8,12 @@ import (
 
 // The lane-broken bound (docs/SPEC-SPRINT.md, the bounds): an attempt that ended
 // without a worker report (an idle reap, a harness fault, a lane refused, a push
-// refused, a friend lane that never started) says nothing about the brief. It does
-// not count toward the brief bound, which counts only attempts whose worker ran and
-// reported (a verdict, a pushed head). Four such attempts raise "the lane is broken,
-// not the brief" instead, naming the member or friend and the fault.
+// refused, a friend lane that never started) says nothing about the brief. Four such
+// attempts raise "the lane is broken, not the brief" instead, naming the member or
+// friend and the fault. Since 2026-10-12 every attempt counts toward the attempt cap
+// whatever ended it (brief_bound.go, AttemptsSince; the owner: the bound is on the
+// machine's retries between two coordinator decisions), so the lane-broken bound is
+// checked first and the cap is the outer one.
 
 // brokenLaneWorld is a world with s1-1 a machine's card whose four attempts all ended
 // without a worker report: empty run (idle reap) and harness faults, the brief bound
@@ -26,16 +28,19 @@ func brokenLaneWorld(t *testing.T) *world {
 	return w
 }
 
-// TestRanSinceCountsOnlyAttemptsThatRan pins that an attempt that ended without a
-// worker report does not count toward the brief bound: four attempts, only two of
-// which ran, count two toward the bound, and legacy attempts with no record count as
-// having run (docs/SPEC-SPRINT.md, the bounds).
-func TestRanSinceCountsOnlyAttemptsThatRan(t *testing.T) {
+// TestAttemptsSinceCountsEveryAttemptSinceTheDecision pins the attempt cap's count
+// (brief_bound.go, AttemptsSince): every attempt since the coordinator last decided on
+// the card, whatever ended it; a card never decided on counts from its first attempt;
+// a decision at attempt n leaves the attempts after it.
+func TestAttemptsSinceCountsEveryAttemptSinceTheDecision(t *testing.T) {
 	c := &Card{Fields: map[string]string{"attempt": "4"}}
 	c.Fields[FieldRanAttempts] = "attempt 1: yes\nattempt 2: yes\nattempt 3: no: idle reap\nattempt 4: no: harness fault"
-	require.Equal(t, 2, ranSince(c, 0), "two attempts that ran count toward the brief bound")
-	legacy := &Card{Fields: map[string]string{"attempt": "4"}}
-	require.Equal(t, 4, ranSince(legacy, 0), "legacy attempts with no record count as having run")
+	require.Equal(t, 4, AttemptsSince(c), "an idle reap and a harness fault count as attempts")
+	c.Fields[FieldDecidedAttempt] = "3"
+	require.Equal(t, 1, AttemptsSince(c), "one attempt since the decision at attempt 3")
+	c.Fields[FieldBriefAttempt] = "4"
+	require.Equal(t, 1, AttemptsSince(c), "a replaced brief alone is no decision")
+	require.Equal(t, 0, AttemptsSince(&Card{Fields: map[string]string{}}), "a card never dealt")
 }
 
 // TestFourNonRunningAttemptsRaiseLaneBroken pins that four attempts that all ended
@@ -96,21 +101,30 @@ func TestRecordRanWritesTheAttemptRecord(t *testing.T) {
 	require.Equal(t, "attempt 1: no: harness fault", got, "an attempt's record is replaced, not doubled")
 }
 
-// TestAtBriefBoundCountsOnlyAttemptsThatRan pins the brief bound's count (brief_bound.go,
-// AtBriefBound): the attempt cap counts only attempts whose worker ran and reported, so
-// four attempts of which only two ran are under a cap of four. Today they all counted as
-// brief evidence: this is the failing line.
-func TestAtBriefBoundCountsOnlyAttemptsThatRan(t *testing.T) {
+// TestAtBriefBoundCountsEveryAttemptSinceTheDecision pins the attempt cap's count
+// (brief_bound.go, AtBriefBound): four attempts of which two ended without a worker
+// report reach a cap of four (the owner, 2026-10-12: every attempt kind counts), a
+// replaced brief does not reset it (a rule's widen, the cap's old friend deal and stream
+// set --base all replace the brief), and the coordinator's decision does.
+func TestAtBriefBoundCountsEveryAttemptSinceTheDecision(t *testing.T) {
 	c := &Card{ID: "x", Fields: map[string]string{"attempt": "4",
 		FieldRanAttempts: "attempt 1: yes\nattempt 2: yes\nattempt 3: no: idle reap\nattempt 4: no: harness fault"}}
-	_, atBound := AtBriefBound(c, "", 4)
-	require.False(t, atBound, "two attempts that ran do not reach the four-attempt cap: the brief bound counts only attempts whose worker ran and reported")
+	bb, atBound := AtBriefBound(c, "", 4)
+	require.True(t, atBound, "four attempts reach the cap, two of them harness faults")
+	require.Equal(t, 4, bb.Since, "the bound counts every attempt")
+	require.Equal(t, 4, bb.Cap)
+	require.Contains(t, bb.String(), "brief defect after 4 attempts (max_attempts 4) without a coordinator decision")
+	require.Contains(t, bb.Remedy(), "rework x --fix <text> --tier <a higher tier>", "the re-tier is offered")
 
-	ran4 := &Card{ID: "y", Fields: map[string]string{"attempt": "4",
-		FieldRanAttempts: "attempt 1: yes\nattempt 2: yes\nattempt 3: yes\nattempt 4: yes"}}
-	bb, atBound := AtBriefBound(ran4, "", 4)
-	require.True(t, atBound, "four attempts that ran reach the cap")
-	require.Equal(t, 4, bb.Since, "the bound counts the four attempts that ran")
+	widened := withField(c, FieldBriefAttempt, "3")
+	_, atBound = AtBriefBound(widened, "", 4)
+	require.True(t, atBound, "a replaced brief alone is no decision: still at the cap")
+
+	decided := withField(c, FieldDecidedAttempt, "3")
+	_, atBound = AtBriefBound(decided, "", 4)
+	require.False(t, atBound, "one attempt since the decision at attempt 3: under the cap")
+	_, atBound = AtBriefBound(withField(decided, "attempt", "7"), "", 4)
+	require.True(t, atBound, "four attempts since the decision reach it again")
 }
 
 // TestBriefStopAtRaisesLaneBrokenNotBrief pins the wiring of the lane-broken bound into

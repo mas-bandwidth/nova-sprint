@@ -11,15 +11,16 @@ import (
 // whether the worker ran and reported, and, when it did not, the fault class the
 // attempt ended on. An attempt that ended without a worker report (an idle reap, a
 // harness fault, a lane refused, a push refused, a friend lane that never started)
-// says nothing about the brief and does not count toward the brief bound, which counts
-// only attempts whose worker ran and reported.
+// says nothing about the brief: the lane-broken bound (AtLaneBroken, bounds.go) reads the
+// record to tell a broken lane from a wrong brief. Since 2026-10-12 every attempt counts
+// toward the attempt cap whatever ended it (brief_bound.go, AttemptsSince): the owner's
+// bound is on the machine's retries between two coordinator decisions.
 
 // FieldRanAttempts is the primary's record of whether each attempt's worker ran and
 // reported, one line per attempt ("attempt <n>: yes" or "attempt <n>: no: <fault
 // class>"), written as each attempt ends. An attempt that ended without a worker
-// report is recorded no with its fault class; only attempts whose worker ran and
-// reported count toward the brief bound. Absent, every attempt is counted as having
-// run.
+// report is recorded no with its fault class, which the lane-broken bound reads. Absent,
+// every attempt is counted as having run.
 const FieldRanAttempts = "ran_attempts"
 
 // attemptRun is one attempt's record: whether its worker ran and reported, and, when
@@ -102,23 +103,4 @@ func recordRan(prev string, n int, ran bool, fault string) string {
 		lines = append(lines, fmt.Sprintf("attempt %d: %s", k, out[k]))
 	}
 	return strings.Join(lines, "\n")
-}
-
-// ranSince is the attempts since the brief last changed whose worker ran and reported:
-// the attempts recorded yes in FieldRanAttempts, and every attempt with no record
-// (legacy cards, recorded before the field). Only these count toward the brief bound
-// (docs/SPEC-SPRINT.md, the bounds).
-func ranSince(c *Card, briefAt int) int {
-	runs := ranAttempts(c)
-	count := 0
-	for n := briefAt + 1; n <= c.Int("attempt"); n++ {
-		if r, ok := runs[n]; ok {
-			if r.ran {
-				count++
-			}
-		} else {
-			count++
-		}
-	}
-	return count
 }

@@ -1444,19 +1444,30 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				continue
 			}
 		}
-		// the brief's bound: the same finding twice (briefStopAt), or too many attempts on one
-		// brief, and the brief is wrong, not the worker; a --fix changes the brief not at all,
-		// so it does not lift it (brief_bound.go). A broken finding at the bound is still
-		// reworked with the finding as the fix: the broken verdict outweighs the bound
-		// (tla/SprintRules.tla, Part "reads": ReworkAtBound), so only a non-broken bound (a
-		// failure's attempt cap) refuses. The review circuit breaker also refuses rework after
-		// 4 consecutive rounds with new findings or 6 substantive rounds.
+		// The attempt cap (brief_bound.go; the owner, 2026-10-12): a rule never reworks a card
+		// at its cap, whatever its readers found (the broken verdict no longer outweighs it;
+		// tla/SprintRules.tla NoAttemptPastCapWithoutDecision), since a card at the cap is the
+		// coordinator's. The seat's rework is the coordinator's decision: it passes the cap and
+		// opens a fresh window (FieldDecidedAttempt, below).
+		if one.Rule != "" {
+			if bb, ok := AtAttemptCap(c, s.AttemptsCap(c.Row)); ok {
+				p.refuse(c.ID, bb.Why())
+				stays()
+				continue
+			}
+		}
+		// the brief's bound: the same finding twice (briefStopAtDecision), or a broken lane,
+		// and the brief is wrong, not the worker; a --fix changes the brief not at all, so it
+		// does not lift it (brief_bound.go). A broken finding at the bound is still reworked
+		// with the finding as the fix: the broken verdict outweighs the same-finding bound. The
+		// review circuit breaker also refuses rework after 4 consecutive rounds with new
+		// findings or 6 substantive rounds.
 		if !r.Carry {
 			// a carry resets the bound (the brief gains its CARRY: line, below): the bound
 			// and the breaker are deliberately passed, since the card is sent on from its
 			// own pushed head (docs/SPEC-SPRINT.md, rework --carry)
 			if fb := brokenFindings(s, c); fb == "" {
-				if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
+				if bb, ok := briefStopAtDecision(s, c, finderOf(s, c), ""); ok {
 					p.refuse(c.ID, bb.Why())
 					stays()
 					continue
@@ -1555,6 +1566,13 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			set["brief"] = PathsWidened(c.F("brief"), nil, member.CarryLine(member.Carry{Card: c.ID, Attempt: carryAttempt, Head: carryHead}))
 			set[FieldBriefAttempt] = c.F("attempt")
 			unset = append(unset, FieldBriefDefect)
+		}
+		if one.Rule == "" {
+			// the seat's (or a person's) rework, --tier and --carry included, is a coordinator
+			// decision on the card: the attempt cap's count starts again from this attempt
+			// (brief_bound.go, FieldDecidedAttempt); a rule's rework is the machine's and
+			// leaves it standing
+			set[FieldDecidedAttempt] = c.F("attempt")
 		}
 		if bound != nil {
 			// the attempt ended at its bound: its end is the primary's record of its failed
@@ -1913,9 +1931,23 @@ func AtIdenticalFindings(c *Card, reader, finding string, bound int) (IdenticalF
 // briefStopAt is the primary's brief's bound, the identical-finding bound first: its
 // readers' finding at its current attempt (reader the first that found it broken) the
 // same as the attempts before it, as many as the stream's IdenticalBound, else the
-// attempt cap's attempts on one brief (AtBriefBound, its own whole-text repeat taken
-// over by the bound here, so a setting above 2 holds for it too).
+// attempt cap's attempts since the coordinator last decided (AtBriefBound, its own
+// whole-text repeat taken over by the bound here, so a setting above 2 holds for it too).
 func briefStopAt(s *Snapshot, c *Card, reader, finding string) (briefStop, bool) {
+	if b, ok := briefStopAtDecision(s, c, reader, finding); ok {
+		return b, true
+	}
+	if bb, ok := AtBriefBound(withField(c, "finding", ""), finding, s.AttemptsCap(c.Row)); ok {
+		return bb, true
+	}
+	return nil, false
+}
+
+// briefStopAtDecision is briefStopAt without the attempt cap: the bounds that still refuse
+// the coordinator's own rework (the identical finding, the broken lane), since the
+// coordinator's rework is the decision the attempt cap waits for (brief_bound.go,
+// FieldDecidedAttempt) and is never refused by it.
+func briefStopAtDecision(s *Snapshot, c *Card, reader, finding string) (briefStop, bool) {
 	if b, ok := AtIdenticalFindings(c, reader, finding, s.IdenticalBound(c.Row)); ok {
 		return b, true
 	}
@@ -1924,9 +1956,6 @@ func briefStopAt(s *Snapshot, c *Card, reader, finding string) (briefStop, bool)
 	// bound is never raised, and this is instead
 	if lb, ok := AtLaneBroken(s, c, LaneBrokenBound); ok {
 		return lb, true
-	}
-	if bb, ok := AtBriefBound(withField(c, "finding", ""), finding, s.AttemptsCap(c.Row)); ok {
-		return bb, true
 	}
 	return nil, false
 }

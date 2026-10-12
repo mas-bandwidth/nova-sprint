@@ -21,7 +21,11 @@ const (
 func TestContinueAnswersABoundFromTheCarriedHead(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1 --attempts 2")
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	// the cap is two (nova-config's max_attempts on the twin); the seat's rework at attempt 1
+	// is a decision (brief_bound.go, FieldDecidedAttempt), so it is the second identical
+	// failure (rule 2, the bound judgment) that stops the card at attempt 2
+	ta.m.SetMaxAttempts("2")
 	ta.ok("add --stream s1 s1-1 --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "s1-1", "the work", ""))
 	ta.deal(1)
 	ta.ok("take --as m1 s1-1.w1@1")
@@ -33,7 +37,7 @@ func TestContinueAnswersABoundFromTheCarriedHead(t *testing.T) {
 
 	pr := ta.primary("s1-1")
 	require.Equal(t, sprint.Review, pr.Col, "at the bound in review")
-	_ = ta.group(sprint.NBriefWrong, "s1") // the bound judgment is open
+	_ = ta.group(sprint.NBound, "s1") // the bound judgment is open
 
 	out := ta.ok("continue s1-1 --note x")
 	require.Contains(t, out, "CONTINUE OK")
