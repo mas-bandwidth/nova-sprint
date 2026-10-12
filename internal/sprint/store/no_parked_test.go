@@ -204,7 +204,7 @@ func TestAFrontierTierFailureReworksOnItsTier(t *testing.T) {
 	h.failTake("s1-1.w1", "verdict not-done; the tests fail at TestA: internal/x/a.go:12")
 	h.st.AnswerRules = false // the queue drained with no answer, then the brief made frontier
 	h.machine()
-	h.setPrimary("s1-1", map[string]string{"brief": briefOf("frontier", "")})
+	h.setPrimaryPinned("s1-1", map[string]string{"brief": briefOf("frontier", "")})
 	a := answerOf(t, h, sprint.NWorkFailed, "s1-1")
 	assert.Equal(t, sprint.ActRework, a.Act, a.Why)
 	assert.Empty(t, a.Tier, "on its tier: no tier above frontier")
@@ -402,7 +402,7 @@ func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testi
 	h.machine()
 	report := "step 2 broken: exec: go: Permission denied"
 	h.failTake("s1-1.w1", report)
-	h.machine()                // the finish lands on the card
+	h.machine()               // the finish lands on the card
 	h.clearLastFinish("s1-1") // as a card persisted before the upgrade
 	h.failTake("s1-2.w1", report)
 	h.failTake("s1-3.w1", report)
@@ -413,4 +413,19 @@ func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testi
 	h.failTake("s1-1.w2", report)
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "its first failure after the upgrade is counted: three cards")
+}
+
+// setPrimaryPinned is setPrimary through the store pinned to the sprint's epoch, the
+// view the tick and the snapshot read: after a finish and a tick the unpinned backend
+// can read a table revision behind it.
+func (h *harness) setPrimaryPinned(id string, set map[string]string) {
+	h.t.Helper()
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	s := h.table()
+	c := s.Work.Card(id)
+	require.NotNil(h.t, c)
+	_, err = pinned.B.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: pinned.Names.Table(sprint.Work), Epoch: fmt.Sprint(s.Epoch), ExpectedTableRevision: fmt.Sprint(s.Work.Revision),
+		OperationID: "set-primary-pinned-" + id, Members: []ntable.BatchMemberEntry{{ID: c.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(c.Rev)}, Set: set}}})
+	require.NoError(h.t, err)
 }
