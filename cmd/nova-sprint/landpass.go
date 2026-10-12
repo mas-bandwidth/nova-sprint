@@ -107,6 +107,10 @@ type landShared struct {
 	// streams that worked in a worktree of it this pass, for the removal of the rest.
 	pruned map[string]bool
 	used   map[string]map[string]bool
+	// branchMu guards branchLines: the LAND BRANCH lines the pass prints for the stream
+	// branches it created on origin (ensureStreamBranch), one per created branch.
+	branchMu    sync.Mutex
+	branchLines []string
 }
 
 // locks is the pass's shared locks, made once.
@@ -453,6 +457,13 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 	}
 	mu.Unlock()
 	laneWg.Wait()
+	// The stream branches the pass made on origin, said with the other notes when the
+	// streams have all joined (ensureStreamBranch appended them under branchMu from each
+	// stream's goroutine; report prints baseNotes as one NOTE line each).
+	l.shared.branchMu.Lock()
+	l.baseNotes = append(l.baseNotes, l.shared.branchLines...)
+	l.shared.branchLines = nil
+	l.shared.branchMu.Unlock()
 	return failed
 }
 
@@ -590,6 +601,10 @@ func (l *lander) prepare(ctx context.Context, s *sprint.Snapshot, j *landJob) {
 		j.refuse(why)
 		return
 	}
+	if why := l.ensureStreamBranch(ctx, s, clone, b.Repo, j.stream, b.Base); why != "" {
+		j.refuse(why)
+		return
+	}
 	if out, err := l.git(ctx, clone, "status", "--porcelain", "--untracked-files=no"); err != nil || out != "" || l.repoDir == "" && l.merging(ctx, clone) {
 		if err != nil || l.repoDir != "" {
 			j.refuse("the clone " + clone + " is not clean (" + firstLine(out, err) + "); commit or discard its changes, then run land again")
@@ -611,6 +626,35 @@ func (l *lander) prepare(ctx context.Context, s *sprint.Snapshot, j *landJob) {
 	b.Times = &landTimes{}
 	// The cut includes the base gate. It runs with this stream's merge (launch, prepareCut)
 	// so a stalled gate cannot hold the pass, which prepares and lands the other streams.
+}
+
+// ensureStreamBranch makes the stream's branch on origin when origin lacks it, in the
+// lander's kept clone, before any card of the stream lands: sprint/<stream> cut from the
+// trunk's tip, one LAND BRANCH line (docs/SPEC-SPRINT.md section 7, the sprint branch). A
+// card of a stream whose branch origin lacks and cannot be made is held, never landed on
+// the trunk. why is the refusal when it cannot, "" when it is present or made.
+func (l *lander) ensureStreamBranch(ctx context.Context, s *sprint.Snapshot, clone, repo, stream, base string) string {
+	if base != sprint.StreamBranch(s, stream) {
+		return "" // the card names no stream branch: nothing to make
+	}
+	if out, err := l.git(ctx, clone, "rev-parse", "--verify", "refs/remotes/origin/"+base+"^{commit}"); err == nil && strings.TrimSpace(out) != "" {
+		return "" // origin holds it already
+	}
+	trunk := sprint.Trunk(s, stream)
+	if _, err := l.fetched(ctx, clone, "fetch", "--no-tags", "origin", "+refs/heads/"+trunk+":refs/remotes/origin/"+trunk); err != nil {
+		return "the trunk " + trunk + " could not be fetched to cut the stream branch " + base + ": " + firstLine("", err)
+	}
+	at, err := l.git(ctx, clone, "rev-parse", "--verify", "refs/remotes/origin/"+trunk+"^{commit}")
+	if err != nil {
+		return "the trunk " + trunk + " has no tip on origin to cut the stream branch " + base + " from: " + firstLine("", err)
+	}
+	if _, err := l.fetched(ctx, clone, "push", "origin", at+":refs/heads/"+base); err != nil {
+		return "the stream branch " + base + " could not be created on origin at " + at + ": " + firstLine("", err)
+	}
+	l.locks().branchMu.Lock()
+	l.locks().branchLines = append(l.locks().branchLines, "LAND BRANCH stream="+stream+" repo="+repo+" branch="+base+" at="+at)
+	l.locks().branchMu.Unlock()
+	return ""
 }
 
 // prepareCut cuts the branch and gates its base in this stream's bounded worker.

@@ -517,6 +517,26 @@ Without `--once` the verb repeats every `--every`. `--dry-run` prints the cut it
 or the promotion in flight, and writes, enqueues and records nothing. The contract is
 [SPEC-SPRINT.md section 11](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), promote.
 
+### The stream branch
+
+Every stream lands on its own branch `sprint/<stream>`; a card cut on dev or main is re-cut
+onto it at `add`, never landed straight on dev or main. The landing flow is one sentence:
+"The landing flow: card heads land in a batch on their stream's branch sprint/<stream>,
+oldest first, one writer per stream; stream branches merge one at a time into dev (main where
+a repository has no dev); a card never lands on dev or main." A stream's branch and trunk are
+fields of its control card (`stream_branch`, `trunk`): the first `add` of a stream writes both
+in the same step as its first card, the branch `sprint/<stream>` and the trunk the protected
+branch the card's `BASE:` names (dev, or main; dev when it names none); a card naming a
+non-protected branch keeps that branch as the stream's. `add` re-cuts a card cut on dev or
+main onto the stream's branch, saying so on one `NOTE` line per add naming the branch, the
+trunk and quoting the landing flow. The lander creates an absent stream branch on origin at
+the trunk's tip before it lands any card of the stream, one `NOTE` line `LAND BRANCH stream=<s> repo=<r>
+branch=sprint/<s> at=<sha>`; a card of a stream whose branch origin lacks is held, never
+landed on the trunk. No setting turns this on or off: a cleared sprint (an epoch bump) builds
+the same on its first add. The promotion stream (`stream set --promotion` / `--land-protected`)
+is the exception: its cards land on the protected branch the mark names. The contract is
+[SPEC-SPRINT.md section 7](SPEC-SPRINT.md#7-merging).
+
 ### The fleet is idle
 
 When the fleet works under half its width for 5 minutes while cards wait, the run loop's
