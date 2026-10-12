@@ -176,17 +176,19 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 				name += ":" + c.Model
 			}
 			z := sampleOf(routes, name)
-			switch {
-			case c.Kind == "read" && c.End != "returned", c.Kind == "work" && c.End == "ok":
-				z.ok++
-			case strings.HasPrefix(c.End, cardhdr.EndProvider), strings.HasPrefix(c.End, cardhdr.EndNoResult):
-				z.provider++
-			case c.End == EndNeedsUnlanded:
-				// a stop on needs not landed is a coordination failure (needs_stop.go): neither
-				// ok nor failed for the route or model
-			default:
-				z.failed++
-			}
+		switch ClassifyEnd(c.End) {
+		case EndClassOK:
+			z.ok++
+		case EndClassFailedWork:
+			z.failed++
+		case EndClassNoResult:
+			// no result counts as work end: the sprint deals the card again
+			z.failed++
+		case EndClassProvider:
+			z.provider++
+		default:
+			// coordination, environment, harness, clear: neither ok nor failed
+		}
 			if wall, ok := wallSeconds(c.Usage.Wall); ok {
 				z.wall = append(z.wall, wall)
 			}
