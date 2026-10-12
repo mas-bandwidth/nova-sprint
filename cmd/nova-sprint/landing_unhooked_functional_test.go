@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
@@ -34,6 +35,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
+	require.NoError(t, c.Set(context.Background(), "sprint:git_identity", config.DefaultGitIdentity, 0).Err())
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
 		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
@@ -49,7 +51,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	dir := t.TempDir()
 	remote, worker, clone := filepath.Join(dir, "remote.git"), filepath.Join(dir, "worker"), filepath.Join(dir, "clone")
 	g := func(wd string, args ...string) string {
-		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd}, args...)
+		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd, Env: []string{"GIT_AUTHOR_NAME=nova-sprint", "GIT_AUTHOR_EMAIL=nova-sprint@mas-bandwidth.com", "GIT_COMMITTER_NAME=nova-sprint", "GIT_COMMITTER_EMAIL=nova-sprint@mas-bandwidth.com"}, OwnRepo: wd != ""}, args...)
 		require.NoError(t, err, "git %v: %s", args, res.Stderr)
 		return strings.TrimSpace(string(res.Stdout))
 	}
@@ -81,9 +83,10 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 
 	for _, l := range []string{
 		"init --readers reader-a,reader-b --members m1",
-		"add --stream s1 --count 1",
+		"add --stream s1 --count 1 --one",
 		"fleet beat m1", "start", "tick", "tick",
 		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0",
+		"queue --as reader-a", "queue --as reader-b",
 		"ask",
 		"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0",
 		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0",
@@ -91,6 +94,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	} {
 		run(l)
 	}
+	run("tick")
 
 	// the seat's hook lapses: its live-until passes with no prove renewing it. Arm the hook
 	// gate for the coordinator with no live hook record, as the server holds it once hooked.

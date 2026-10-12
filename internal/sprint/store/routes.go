@@ -195,25 +195,41 @@ func (st *Store) cached(ctx context.Context, c *RouteCache) (RouteSet, error) {
 // the set names a route (the arrays and the bars ride in it, so the tick's trips
 // do not rise; with no route a read card has none to draw, and no decide read).
 func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
-	names, err := r.C.SMembers(ctx, config.RoutesKey).Result()
-	if err != nil || len(names) == 0 {
-		return RouteSet{}, 1, err
-	}
 	pipe := r.C.Pipeline()
-	hs := make(map[string]interface{ Val() map[string]string }, len(names))
-	for _, n := range names {
-		hs[n] = pipe.HGetAll(ctx, config.RouteKey(n))
-	}
-	arrays := make(map[string]interface{ Val() string }, len(config.RouteTiers))
+	namesCmd := pipe.SMembers(ctx, config.RoutesKey)
+	var set RouteSet
+	hs := make(map[string]interface{ Val() map[string]string })
+	arrays := make(map[string]interface{ Val() string })
 	for _, t := range config.RouteTiers {
 		arrays[t] = pipe.HGet(ctx, config.TierKey(t), "routes")
 	}
-	var set RouteSet
+	if err := redisconn.Exec(ctx, pipe); err != nil {
+		return RouteSet{}, 1, err
+	}
+	names := namesCmd.Val()
+	if len(names) == 0 {
+		pipe2 := r.C.Pipeline()
+		bars := map[string]interface{ Val() string }{}
+		for f := range set.Bars.fields() {
+			bars[f] = pipe2.Get(ctx, config.SprintKey(f))
+		}
+		if err := redisconn.Exec(ctx, pipe2); err != nil {
+			return RouteSet{}, 1, err
+		}
+		for f, v := range set.Bars.fields() {
+			*v = bars[f].Val()
+		}
+		return RouteSet{Routes: []sprint.Route{}, Bars: set.Bars}, 1, nil
+	}
+	pipe2 := r.C.Pipeline()
+	for _, n := range names {
+		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
+	}
 	bars := map[string]interface{ Val() string }{}
 	for f := range set.Bars.fields() {
-		bars[f] = pipe.Get(ctx, config.SprintKey(f))
+		bars[f] = pipe2.Get(ctx, config.SprintKey(f))
 	}
-	if err := redisconn.Exec(ctx, pipe); err != nil {
+	if err := redisconn.Exec(ctx, pipe2); err != nil {
 		return RouteSet{}, 2, err
 	}
 	out := make([]sprint.Route, 0, len(names))
