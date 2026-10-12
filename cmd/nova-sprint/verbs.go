@@ -3879,6 +3879,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
+	pegged := fs.String("pegged-bound", "", fmt.Sprintf("how long a member up with no card working may beat at %.0f%% load or more before it is a judgment to the coordinator (member-pegged, once an episode): a duration, or default (%s)", sprint.HeavyLoadPercent, sprint.PeggedBoundDefault))
 	unserved := fs.String("unserved-tier-falls-to", "", "the tier an unserved card falls to: heavy, pro or flash gives every card whose brief tier no route and no up friend serves the strongest served tier at or below it, and clears it when the tier is served again; off (the default) keeps today's behaviour")
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -3897,6 +3898,10 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
+	}
+	if *pegged != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithPeggedBound(set(s), s, *pegged) }
 	}
 	if *base != "" {
 		set := step.Plan
