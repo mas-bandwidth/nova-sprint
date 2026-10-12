@@ -204,11 +204,16 @@ MCDirtyTickW29.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirt
 MCDirtyTickW30.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickW31.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickRead.cfg	MCDirtyTickRead.tla	pass	-	ignore-terminal	dirtytickread	required	-
+MCDirtyTickReadTwoParts.cfg	MCDirtyTickRead.tla	pass	-	ignore-terminal	dirtytickread-twoparts	required	-
 MCDirtyTickReadAcquire.cfg	MCDirtyTickRead.tla	invariant	TwinIsTheStore	ignore-terminal	dirtytickread-acquire	required	-
 MCDirtyTickReadHalt.cfg	MCDirtyTickRead.tla	invariant	BeganRunning	ignore-terminal	dirtytickread-halt	required	-
 MCDirtyTickReadCatchup.cfg	MCDirtyTickRead.tla	invariant	ViewIsSnapshot	ignore-terminal	dirtytickread-catchup	required	-
 MCDirtyTickReadLock.cfg	MCDirtyTickRead.tla	invariant	LockedApplyNotLost	ignore-terminal	dirtytickread-lock	required	-
 MCDirtyTickReadBrokenRunSeq.cfg	MCDirtyTickRead.tla	invariant	NoStaleRunCommit	ignore-terminal	dirtytickread-runseq	required	-
+MCDirtyTickReadBrokenEpoch.cfg	MCDirtyTickRead.tla	invariant	OldEpochPartWritesNothing	ignore-terminal	dirtytickread-epoch	required	-
+MCDirtyTickReadBrokenStartsAfterStop.cfg	MCDirtyTickRead.tla	invariant	StartsWorkNotAfterStop	ignore-terminal	dirtytickread-startsafterstop	required	-
+MCDirtyTickReadBrokenHeld.cfg	MCDirtyTickRead.tla	invariant	HeldEpochIsTheWrite	ignore-terminal	dirtytickread-held	required	-
+MCDirtyTickReadBrokenNoDrain.cfg	MCDirtyTickRead.tla	invariant	StoppedStepDrainsFirst	ignore-terminal	dirtytickread-nodrain	required	-
 MCRouteIndex.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenRandom.cfg	MCRouteIndex.tla	invariant	RouteFair	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoAdvance.cfg	MCRouteIndex.tla	invariant	ExcludedNeverDrawn	ignore-terminal	routeindex	required	-

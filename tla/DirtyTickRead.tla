@@ -18,8 +18,26 @@
 \*                names none)
 \*   running      the machine's state, read with the fence
 \*   runseq       the machine's run: bumped by Start (the fence taken), the
-\*                generation a part records when it begins and must still hold
-\*                to commit (engine.go's StaleRun refusal)
+\*                generation a tick part records when it begins (tick.go's
+\*                TickRunSeq) and must still hold to commit (engine.go's
+\*                StaleRun refusal, a Halts step's alone)
+\*   stopRevoked  a run's STOP has committed (engine.go:597-608): a StartsWork
+\*                or ReportsWork part is refused, and a RequiresStopped part
+\*                is refused while it is not; the tick part (kind "plain")
+\*                halts on its first read of a STOPPED machine instead
+\*                (BeganRunning). A Stop sets it, a Start clears it; the
+\*                epoch's initial stopped setup state would leave it FALSE,
+\*                which this model does not reach.
+\*   epoch        the sprint's epoch; an outside Clear advances it (clear.go,
+\*                AdvanceEpoch). Clear here is the advance alone: the code's
+\*                clear stops the machine first (Stop, its own action here),
+\*                so a Clear while the machine runs is a behaviour the code
+\*                does not have, kept as an over-approximation.
+\*   queued       the work table's queue length: a step other than the pump
+\*                queues its work-table changes while the machine runs; a
+\*                STOPPED machine's queue is drained before any step
+\*                (engine.go:609-626): a worker part's own drain in Close
+\*                (MustDrain), another step's in Drain.
 \*
 \* THE TICK'S TWIN.
 \*   tv           the twin holds the tables (a read cut short, or a dropped
@@ -28,11 +46,40 @@
 \*   trec, trev   the records it holds and the revision of each table it is at
 \*
 \* A PART OF THE TICK (pc).
+\*   pkind        the part's kind: "plain" (the tick's read: it halts on a
+\*                first read that finds the machine STOPPED), "start"
+\*                (StartsWork: refused once StopRevoked), "report"
+\*                (ReportsWork: refused once StopRevoked), or "require"
+\*                (RequiresStopped: refused while StopRevoked is FALSE).
+\*   vpinned      the step holds an epoch (engine.go's step.Epoch not nil):
+\*                a tick part always holds the epoch its tick began at
+\*                (tick.go: TickPartStep(..., &t.at, ...)), so it is refused
+\*                after a clear; a worker part (start, report, require) holds
+\*                one only when its caller named it (--epoch, a lander's or a
+\*                friend's held epoch), chosen at its first read, and repins
+\*                otherwise.
+\*   vheld        the epoch the step holds (step.Epoch; 0 and unread when
+\*                vpinned is FALSE): chosen at the first read, any epoch the
+\*                sprint has been at, so a caller's --epoch or a tick's at a
+\*                clear has already left is in reach.
+\*   vepoch       the epoch the part's store is pinned to: the sprint's epoch
+\*                at its first read (Run's st.pin), kept apart from vheld. A
+\*                step whose vheld is not vepoch is refused at that read
+\*                (engine.go:566); past it, vepoch never moves for a part that
+\*                holds an epoch.
 \*   "idle"  -> Begin: the view's exchange (the fence first: a pending
-\*              operation waits; the shapes: each table's revision). A part's
-\*              FIRST read that finds the machine STOPPED halts the part
-\*              (it begins nothing); a part that begins records the runseq
-\*              it began under; a later read of a part in flight goes on.
+\*              operation waits; the shapes: each table's revision, and the
+\*              part's kind and pinned epoch). A part's FIRST read that finds
+\*              the machine STOPPED halts the part (it begins nothing); a part
+\*              that begins records the runseq it began under. A later read
+\*              whose shapes are at another epoch than the one the part is
+\*              pinned to (errCleared, pipeline_load.go / twin.go) is, for a
+\*              part that holds no epoch, the epoch repin: it adopts the epoch
+\*              the sprint is at and reads again (engine.go:555-562, repin,
+\*              continue); and for a part that holds one, the refusal: it
+\*              writes nothing and the part is done (engine.go:566-575,
+\*              ClearedError). Otherwise a later read of a part in flight goes
+\*              on.
 \*   "view"  -> CatchUp(t): a table whose revision moved since the twin's is
 \*              brought to the shape's revision: the records its change stream
 \*              names between the two, read again (refused, and read again
@@ -42,11 +89,18 @@
 \*              and the trailing fence of pipeline_load.go, one step here).
 \*              Close: the fence again, last: the same generation and nothing
 \*              pending, or the read is taken again.
-\*   "plan"  -> Commit: the part's write, at the generation its view read
-\*              (the Acquire), the run it began under still current (else
-\*              refused StaleRun, writing nothing), its receipt applied to the
-\*              twin (the record, and the table's revision the store left); or
-\*              Lost: the generation moved, and the part reads again.
+\*   "plan"  -> Commit: the part's write. A clear since its read leaves the
+\*              write at an epoch the sprint has left, and the table layer
+\*              refuses it as stale (clear.go: the old epoch is frozen from the
+\*              advance; tla/AttemptsEpochs.tla OldEpochWritesNothing): it
+\*              writes nothing and the part is done. Else a fence on its kind
+\*              (engine.go:597-608) or, for a tick part, the run it began
+\*              under moving (engine.go:582-590, StaleRun) refuses it, writing
+\*              nothing; else
+\*              it commits at the generation its view read (the Acquire), its
+\*              receipt applied to the twin (the record, and the table's
+\*              revision the store left); or Lost: the generation moved, and
+\*              the part reads again.
 \*   PassOver: a part with nothing to do on the twin is passed over, reading
 \*              no store (it writes nothing: nothing to check).
 \*   Drop: any path the engine does not know the end of drops the twin.
@@ -58,25 +112,47 @@
 \* Release; its write names its record in the change stream). D: a display
 \* cell, outside the fence (the table's revision moves; no record changes;
 \* no generation). Stop / Start: the machine's state, each read and written
-\* under the fence (the generation steps), Start bumping runseq.
+\* under the fence (the generation steps), Stop revoking and Start bumping
+\* runseq. Clear: the sprint's epoch, advanced by an outside clear. Queue /
+\* Drain: a step queues a work-table change while the machine runs, and a
+\* STOPPED machine's queue is drained before any step (a queue length here;
+\* the queued changes themselves are DirtyTick.tla's).
 \*
 \* WHAT IS CHECKED.
 \*   ViewIsSnapshot   a part that plans, at the generation the store is at
 \*                    with nothing pending, plans on the store's records
 \*   TwinIsTheStore   a twin at the store's generation, nothing pending,
 \*                    holds the store's records
-\*   BeganRunning     no part writes that found the machine STOPPED at its
-\*                    first read
+\*   BeganRunning     no tick part (kind "plain") writes that found the
+\*                    machine STOPPED at its first read
 \*   TwinNotAhead     the twin is never at a revision the table has not reached
 \*   LockedApplyNotLost  a part that plans under its lock still holds the fence
 \*                    at the generation it read: its write cannot be lost
-\*   NoStaleRunCommit no part commits under a runseq other than the one current
-\*                    at its commit (a part that began before STOP then START
-\*                    reads the new generation but is refused StaleRun)
+\*   NoStaleRunCommit no tick part commits under a runseq other than the one
+\*                    current at its commit (a part that began before STOP then
+\*                    START reads the new generation but is refused StaleRun)
+\*   OldEpochPartWritesNothing  no part writes at an epoch other than the one
+\*                    its store is pinned to: a part that holds an epoch the
+\*                    sprint left writes nothing, and a part that holds none
+\*                    writes only after it repinned to the epoch the sprint is
+\*                    at
+\*   StartsWorkNotAfterStop     no StartsWork part commits once StopRevoked
+\*   HeldEpochIsTheWrite        no part that holds an epoch writes from a store
+\*                    pinned to another epoch
+\*   StoppedStepDrainsFirst     no worker part commits on a STOPPED machine
+\*                    while its queue holds changes
+\*
+\* The epoch is fenced twice: Run's read check (the repin or the refusal) and
+\* the table layer's stale refusal of the write. A witness that drops only
+\* Run's read check is held by the table layer's refusal (a clear since the
+\* read is caught at the write), so the reversed witness "epoch" drops both.
 
 EXTENDS Naturals, Sequences, FiniteSets
 
-CONSTANTS Tables, Keys, Vals, MaxW, MaxD, MaxParts, MaxStarts,
+CONSTANTS Tables, Keys, Vals, MaxW, MaxD, MaxParts, MaxStarts, MaxEpoch, MaxQ,
+          Kinds,  \* the part kinds a part may be ("plain" always; the worker
+                  \* kinds "start", "report", "require" in every case but the
+                  \* two-part one, which checks the tick part alone)
           Broken \* "none"; a reversed witness breaks one rule: "lock" (the
                  \* lock marks the part locked without taking the fence),
                  \* "acquire" (the
@@ -85,27 +161,40 @@ CONSTANTS Tables, Keys, Vals, MaxW, MaxD, MaxParts, MaxStarts,
                  \* read of a STOPPED machine), "catchup" (the catch-up misses
                  \* the last write its change stream names), "runseq" (the
                  \* commit drops the runseq check: a part whose run moved under
-                 \* it commits anyway)
+                 \* it commits anyway), "epoch" (the epoch fence dropped: the
+                 \* read neither repins nor refuses a part whose epoch moved,
+                 \* and the write is not refused as stale: a part commits at an
+                 \* epoch its store is not pinned to), "startsafterstop" (a
+                 \* StartsWork part commits after a stop revoked it),
+                 \* "held" (the first read's comparison of the held epoch
+                 \* with the store's pinned one dropped: a stale held epoch
+                 \* is written at the pinned one), "nodrain" (a worker part
+                 \* on a STOPPED machine plans on the queued view, no drain)
 
 ASSUME 0 \in Vals
+ASSUME "plain" \in Kinds /\ Kinds \subseteq {"plain", "start", "report", "require"}
 
-VARIABLES gen, pend, rec, rev, log, running, runseq,
+VARIABLES gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued,
           locked, lost, stale,
           tv, tg, trec, trev,
-          pc, vgen, vrunseq, vrev, first, began, parts,
+          pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts,
+          wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue,
           wn, dn, wt, wk, wv
 
-vars == <<gen, pend, rec, rev, log, running, runseq, locked, lost, stale, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv>>
+vars == <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, locked, lost, stale, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue, wn, dn, wt, wk, wv>>
 
 Zero == [t \in Tables |-> [k \in Keys |-> 0]]
 
 Init ==
   /\ gen = 0 /\ pend = "none" /\ rec = Zero /\ rev = [t \in Tables |-> 0]
   /\ log = [t \in Tables |-> <<>>] /\ running = TRUE /\ runseq = 0
+  /\ stopRevoked = FALSE /\ epoch = 0 /\ queued = 0
   /\ tv = FALSE /\ tg = 0 /\ trec = Zero /\ trev = [t \in Tables |-> 0]
-  /\ pc = "idle" /\ vgen = 0 /\ vrunseq = 0 /\ vrev = [t \in Tables |-> 0]
+  /\ pc = "idle" /\ pkind = "plain" /\ vpinned = FALSE /\ vheld = 0 /\ vepoch = 0 /\ vgen = 0 /\ vrunseq = 0 /\ vrev = [t \in Tables |-> 0]
   /\ first = TRUE /\ began = TRUE /\ parts = 0
   /\ locked = FALSE /\ lost = FALSE /\ stale = FALSE
+  /\ wroteOldEpoch = FALSE /\ wroteAfterStop = FALSE
+  /\ wroteOffHeld = FALSE /\ wroteOverQueue = FALSE
   /\ wn = 0 /\ dn = 0 /\ wv = 0
   /\ wt = (CHOOSE t \in Tables : TRUE)
   /\ wk = (CHOOSE k \in Keys : TRUE)
@@ -120,74 +209,165 @@ Named(t, from, to) ==
 \* the fence is free for the part: nothing in flight, or the part's own lock
 Free == pend = "none" \/ (locked /\ pend = "t")
 
+\* The part's read. Its first read pins the store to the sprint's epoch
+\* (vepoch, Run's st.pin) and chooses whether the step holds an epoch and which
+\* (vheld, step.Epoch): a tick part holds its tick's (&t.at), a worker part the
+\* one its caller named or none, and either may be one a clear has already
+\* left. A step that holds an epoch other than the one its store is pinned to
+\* is refused at that read, writing nothing (engine.go:566, *step.Epoch !=
+\* snap.Epoch; "held" drops this comparison alone). A later read whose shapes
+\* are at another epoch repins a part that holds none (it reads again) and
+\* refuses one that holds one (errCleared, engine.go:555-575). "epoch" drops
+\* the repin and the errCleared refusal.
 Begin ==
   /\ pc = "idle" /\ parts < MaxParts /\ Free
-  /\ IF first /\ ~running /\ Broken # "halt"
-       THEN \* the part's first read finds the machine STOPPED: it begins nothing
-            /\ parts' = parts + 1 /\ first' = TRUE
-            /\ UNCHANGED <<pc, vgen, vrunseq, vrev, began>>
-       ELSE /\ pc' = "view" /\ vgen' = gen /\ vrev' = rev
-            /\ vrunseq' = IF first THEN runseq ELSE vrunseq
-            /\ began' = IF first THEN running ELSE began
-            /\ first' = FALSE
-            /\ UNCHANGED parts
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, trec, trev, wn, dn, wt, wk, wv, locked, lost, stale>>
+  /\ IF first
+       THEN \* a new part pins the epoch and run it begins under, and chooses
+            \* its kind and whether the step holds the epoch
+            /\ pkind' \in Kinds
+            /\ vpinned' \in IF pkind' = "plain" THEN {TRUE} ELSE BOOLEAN
+            /\ vheld' \in IF vpinned' THEN 0..epoch ELSE {0}
+            /\ vepoch' = epoch /\ vrunseq' = runseq /\ began' = running
+            /\ IF vpinned' /\ vheld' # epoch /\ Broken # "held"
+                 THEN \* the step holds an epoch the sprint had left before its
+                      \* store was pinned: refused (ClearedError), writing
+                      \* nothing, and the part is done
+                      /\ parts' = parts + 1
+                      /\ UNCHANGED <<pc, vgen, vrev, first>>
+               ELSE IF ~running /\ pkind' = "plain" /\ Broken # "halt"
+                 THEN \* a tick part's first read finds the machine STOPPED: it
+                      \* begins nothing (a worker part does not halt: its fence
+                      \* refuses it)
+                      /\ parts' = parts + 1
+                      /\ UNCHANGED <<pc, vgen, vrev, first>>
+                 ELSE /\ pc' = "view" /\ vgen' = gen /\ vrev' = rev
+                      /\ first' = FALSE
+                      /\ UNCHANGED parts
+            /\ UNCHANGED <<pend, locked, lost>>
+       ELSE IF epoch # vepoch /\ Broken # "epoch"
+         THEN IF vpinned
+                THEN \* the step holds an epoch the sprint has left: refused
+                     \* (ClearedError), writing nothing, and the part is done;
+                     \* a lock it holds is released unwritten
+                     /\ parts' = parts + 1 /\ first' = TRUE
+                     /\ locked' = FALSE /\ lost' = FALSE
+                     /\ pend' = IF locked THEN "none" ELSE pend
+                     /\ UNCHANGED <<pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, began>>
+                ELSE \* the epoch repin: a step that holds no epoch adopts the
+                     \* one the sprint is at, and reads again (continue)
+                     /\ vepoch' = epoch
+                     /\ UNCHANGED <<pc, pkind, vpinned, vheld, vgen, vrunseq, vrev, began, parts, first, pend, locked, lost>>
+         ELSE \* a part in flight reads again: its kind, pinned epoch and run
+              \* are fixed
+              /\ pc' = "view" /\ vgen' = gen /\ vrev' = rev
+              /\ UNCHANGED <<pkind, vpinned, vheld, vepoch, vrunseq, began, parts, first, pend, locked, lost>>
+  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, wn, dn, wt, wk, wv, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 CatchUp(t) ==
   /\ pc = "view" /\ tv /\ trev[t] # vrev[t]
   /\ IF rev[t] = vrev[t]
-       THEN \* the records named since the twin's revision, read at the shape's
-            /\ trec' = [trec EXCEPT ![t] = [k \in Keys |-> IF k \in Named(t, trev[t], IF Broken = "catchup" THEN vrev[t] - 1 ELSE vrev[t]) THEN rec[t][k] ELSE trec[t][k]]]
-            /\ trev' = [trev EXCEPT ![t] = vrev[t]]
-            /\ UNCHANGED pc
-       ELSE \* the table moved after its shape: read again
-            /\ pc' = "idle" /\ UNCHANGED <<trec, trev>>
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+        THEN \* the records named since the twin's revision, read at the shape's
+             /\ trec' = [trec EXCEPT ![t] = [k \in Keys |-> IF k \in Named(t, trev[t], IF Broken = "catchup" THEN vrev[t] - 1 ELSE vrev[t]) THEN rec[t][k] ELSE trec[t][k]]]
+             /\ trev' = [trev EXCEPT ![t] = vrev[t]]
+             /\ UNCHANGED pc
+        ELSE \* the table moved after its shape: read again
+             /\ pc' = "idle" /\ UNCHANGED <<trec, trev>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, vgen, vrunseq, vrev, first, began, parts, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 ReadWhole ==
   /\ pc = "view" /\ ~tv
   /\ IF \A t \in Tables : rev[t] = vrev[t]
-       THEN /\ tv' = TRUE /\ trec' = rec /\ trev' = vrev /\ UNCHANGED pc
-       ELSE /\ pc' = "idle" /\ UNCHANGED <<tv, trec, trev>>
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tg, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+        THEN /\ tv' = TRUE /\ trec' = rec /\ trev' = vrev /\ UNCHANGED pc
+        ELSE /\ pc' = "idle" /\ UNCHANGED <<tv, trec, trev>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tg, vgen, vrunseq, vrev, first, began, parts, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+
+\* A fence on the part's kind refuses it (engine.go:597-608): a StartsWork or
+\* ReportsWork part once StopRevoked, a RequiresStopped part while it is not.
+\* "startsafterstop" drops the StartsWork fence.
+KindRefused ==
+  \/ (pkind = "start" /\ stopRevoked /\ Broken # "startsafterstop")
+  \/ (pkind = "report" /\ stopRevoked)
+  \/ (pkind = "require" /\ ~stopRevoked)
+
+\* A worker part its kind's fence lets on, reading a STOPPED machine whose
+\* queue holds changes, drains the queue before it plans (engine.go:609-626:
+\* the fences first, then fence.Queued > 0 && !step.Pump && !fence.Running,
+\* DrainStep run under the fence, and the part reads again). "nodrain" drops
+\* the drain: the part plans on the queued view.
+MustDrain ==
+  /\ pkind # "plain" /\ ~KindRefused
+  /\ ~running /\ queued > 0 /\ Broken # "nodrain"
 
 Close ==
   /\ pc = "view" /\ tv /\ \A t \in Tables : trev[t] = vrev[t]
   /\ IF gen = vgen /\ Free
-       THEN pc' = "plan" /\ tg' = vgen
-       ELSE pc' = "idle" /\ UNCHANGED tg
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, trec, trev, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+        THEN IF MustDrain
+               THEN \* the drain, its own step under the fence (the part's lock,
+                    \* if it holds one, is the fence), then the part reads again
+                    /\ queued' = 0 /\ gen' = IF locked THEN gen ELSE gen + 1
+                    /\ pc' = "idle" /\ UNCHANGED tg
+               ELSE pc' = "plan" /\ tg' = vgen /\ UNCHANGED <<gen, queued>>
+        ELSE pc' = "idle" /\ UNCHANGED <<tg, gen, queued>>
+  /\ UNCHANGED <<pend, rec, rev, log, running, runseq, stopRevoked, epoch, tv, trec, trev, vgen, vrunseq, vrev, first, began, parts, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
+\* The part's write. A clear since its read leaves the write at an epoch the
+\* sprint has left, and the table layer refuses it as stale, writing nothing
+\* (the part is done). Then a fence on its kind (engine.go:597-608) and, for a
+\* tick part, the run it began under (engine.go:582-590, StaleRun) refuse it,
+\* else it commits
+\* at the generation its view read, else it is lost. "epoch" drops the stale
+\* refusal; "startsafterstop" drops the StartsWork fence; "runseq" drops the
+\* run check.
 Commit(t, k, v) ==
   /\ pc = "plan"
-  /\ IF (gen = vgen /\ Free) \/ Broken = "acquire"
-       THEN /\ IF (runseq = vrunseq) \/ Broken = "runseq"
-                THEN \* the Acquire at the generation read (or, locked, the lock
-                     \* handed to the operation: the generation is the one the
-                     \* lock set); the run it began under still current; the
-                     \* write; the receipt on the twin; the fence released
-                     /\ gen' = IF locked THEN gen ELSE gen + 1
-                     /\ rec' = [rec EXCEPT ![t][k] = v]
-                     /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
-                     /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {k}>>)]
-                     /\ trec' = [trec EXCEPT ![t][k] = v]
-                     /\ trev' = [trev EXCEPT ![t] = rev[t] + 1]
-                     /\ tg' = IF locked THEN gen ELSE gen + 1
-                     /\ pend' = IF locked THEN "none" ELSE pend
-                     /\ locked' = FALSE /\ lost' = FALSE
-                     /\ stale' = (stale \/ (runseq # vrunseq))
-                     /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
-                ELSE \* the run moved under the part: its commit is refused
-                     \* (StaleRun), it writes nothing, and the part is done
-                     /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
-                     /\ pend' = IF locked THEN "none" ELSE pend
-                     /\ locked' = FALSE /\ lost' = FALSE
-                     /\ UNCHANGED <<gen, rec, rev, log, tg, trec, trev, stale>>
-       ELSE \* lost to another writer: the part reads again (it began: no
-            \* halt), and takes the fence before that read (Lock)
-            /\ pc' = "idle" /\ lost' = TRUE
-            /\ UNCHANGED <<gen, pend, rec, rev, log, tg, trec, trev, parts, first, locked, stale>>
-  /\ UNCHANGED <<running, runseq, tv, vgen, vrunseq, vrev, began, wn, dn, wt, wk, wv>>
+  /\ IF epoch # vepoch /\ Broken # "epoch"
+        THEN \* the write of an epoch the sprint has left: refused as stale,
+             \* writing nothing, and the part is done
+             /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+             /\ locked' = FALSE /\ lost' = FALSE
+             /\ pend' = IF locked THEN "none" ELSE pend
+             /\ UNCHANGED <<gen, rec, rev, log, tg, trec, trev, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+        ELSE IF KindRefused
+             THEN \* refused (a fence on its kind holds): writing nothing, the
+                  \* part is done
+                  /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+                  /\ locked' = FALSE /\ lost' = FALSE
+                  /\ pend' = IF locked THEN "none" ELSE pend
+                  /\ UNCHANGED <<gen, rec, rev, log, tg, trec, trev, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+             ELSE IF (gen = vgen /\ Free) \/ Broken = "acquire"
+                  THEN /\ IF pkind # "plain" \/ runseq = vrunseq \/ Broken = "runseq"
+                           THEN \* the Acquire at the generation read (or, locked,
+                                \* the lock handed to the operation: the
+                                \* generation is the one the lock set); the run it
+                                \* began under still current; the write; the
+                                \* receipt on the twin; the fence released
+                                /\ gen' = IF locked THEN gen ELSE gen + 1
+                                /\ rec' = [rec EXCEPT ![t][k] = v]
+                                /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
+                                /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {k}>>)]
+                                /\ trec' = [trec EXCEPT ![t][k] = v]
+                                /\ trev' = [trev EXCEPT ![t] = rev[t] + 1]
+                                /\ tg' = IF locked THEN gen ELSE gen + 1
+                                /\ pend' = IF locked THEN "none" ELSE pend
+                                /\ locked' = FALSE /\ lost' = FALSE
+                                /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+                                /\ stale' = (stale \/ (pkind = "plain" /\ runseq # vrunseq))
+                                /\ wroteOldEpoch' = (wroteOldEpoch \/ (vepoch # epoch))
+                                /\ wroteAfterStop' = (wroteAfterStop \/ (pkind = "start" /\ stopRevoked))
+                                /\ wroteOffHeld' = (wroteOffHeld \/ (vpinned /\ vheld # vepoch))
+                                /\ wroteOverQueue' = (wroteOverQueue \/ (pkind # "plain" /\ ~running /\ queued > 0))
+                           ELSE \* the run moved under the part: its commit is
+                                \* refused (StaleRun), it writes nothing, and the
+                                \* part is done
+                                /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+                                /\ pend' = IF locked THEN "none" ELSE pend
+                                /\ locked' = FALSE /\ lost' = FALSE
+                                /\ UNCHANGED <<gen, rec, rev, log, tg, trec, trev, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+                  ELSE \* lost to another writer: the part reads again (it began:
+                       \* no halt), and takes the fence before that read (Lock)
+                       /\ pc' = "idle" /\ lost' = TRUE
+                       /\ UNCHANGED <<gen, pend, rec, rev, log, tg, trec, trev, parts, first, locked, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+  /\ UNCHANGED <<running, runseq, stopRevoked, epoch, queued, tv, vgen, vrunseq, vrev, began, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv>>
 
 \* A part that lost a try takes the fence before its next read: once, and
 \* only while nothing else holds it (lock.go). The broken witness marks the
@@ -196,9 +376,9 @@ Lock ==
   /\ pc = "idle" /\ lost /\ ~locked /\ pend = "none"
   /\ locked' = TRUE
   /\ IF Broken = "lock"
-       THEN UNCHANGED <<gen, pend>>
-       ELSE pend' = "t" /\ gen' = gen + 1
-  /\ UNCHANGED <<rec, rev, log, running, runseq, lost, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, stale>>
+        THEN UNCHANGED <<gen, pend>>
+        ELSE pend' = "t" /\ gen' = gen + 1
+  /\ UNCHANGED <<rec, rev, log, running, runseq, stopRevoked, epoch, queued, lost, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 \* A part with nothing to write ends; a lock it holds is released unwritten.
 NoWrite ==
@@ -206,17 +386,17 @@ NoWrite ==
   /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
   /\ locked' = FALSE /\ lost' = FALSE
   /\ pend' = IF locked THEN "none" ELSE pend
-  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, tv, tg, trec, trev, vgen, vrunseq, vrev, began, wn, dn, wt, wk, wv, stale>>
+  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, vgen, vrunseq, vrev, began, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 PassOver ==
   /\ pc = "idle" /\ first /\ ~locked /\ parts < MaxParts
   /\ parts' = parts + 1
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, wn, dn, wt, wk, wv, locked, lost, stale>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 Drop ==
   /\ pc = "idle" /\ tv
   /\ tv' = FALSE
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 --------------------------------------------------------------------------------
 \* THE OTHER WRITERS
@@ -224,7 +404,7 @@ Drop ==
 WAcquire(t, k, v) ==
   /\ pend = "none" /\ wn < MaxW
   /\ pend' = "w" /\ gen' = gen + 1 /\ wt' = t /\ wk' = k /\ wv' = v
-  /\ UNCHANGED <<rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, locked, lost, stale>>
+  /\ UNCHANGED <<rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 WApply ==
   /\ pend = "w"
@@ -232,29 +412,52 @@ WApply ==
   /\ rev' = [rev EXCEPT ![wt] = rev[wt] + 1]
   /\ log' = [log EXCEPT ![wt] = Append(log[wt], <<rev[wt] + 1, {wk}>>)]
   /\ pend' = "applied"
-  /\ UNCHANGED <<gen, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+  /\ UNCHANGED <<gen, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 WRelease ==
   /\ pend = "applied"
   /\ pend' = "none" /\ wn' = wn + 1
-  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, dn, wt, wk, wv, locked, lost, stale>>
+  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 Display(t) ==
   /\ dn < MaxD
   /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
   /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {}>>)]
   /\ dn' = dn + 1
-  /\ UNCHANGED <<gen, pend, rec, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, wt, wk, wv, locked, lost, stale>>
+  /\ UNCHANGED <<gen, pend, rec, running, runseq, stopRevoked, epoch, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 Stop ==
   /\ running /\ pend = "none"
-  /\ running' = FALSE /\ gen' = gen + 1
-  /\ UNCHANGED <<pend, rec, rev, log, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, runseq>>
+  /\ running' = FALSE /\ stopRevoked' = TRUE /\ gen' = gen + 1
+  /\ UNCHANGED <<pend, rec, rev, log, runseq, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, epoch, queued, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 Start ==
   /\ ~running /\ pend = "none" /\ runseq < MaxStarts
-  /\ running' = TRUE /\ gen' = gen + 1 /\ runseq' = runseq + 1
-  /\ UNCHANGED <<pend, rec, rev, log, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
+  /\ running' = TRUE /\ stopRevoked' = FALSE /\ gen' = gen + 1 /\ runseq' = runseq + 1
+  /\ UNCHANGED <<pend, rec, rev, log, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, epoch, queued, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+
+\* The epoch an outside clear advances (clear.go, AdvanceEpoch): a later read
+\* of a part pinned to the old one finds its shapes at the new epoch
+\* (errCleared), and a write of the old one is refused as stale.
+Clear ==
+  /\ epoch < MaxEpoch
+  /\ epoch' = epoch + 1
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+
+\* A step other than the pump queues its work-table change while the machine
+\* runs (engine.go:609: fence.Queued). Queued is the length of that queue.
+Queue ==
+  /\ running /\ queued < MaxQ
+  /\ queued' = queued + 1
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
+
+\* A STOPPED machine has no next tick: the queue it left is drained before any
+\* step (engine.go:609-626): here another step's drain, under the fence (the
+\* part's own drain is in Close).
+Drain ==
+  /\ ~running /\ queued > 0 /\ pend = "none"
+  /\ queued' = 0 /\ gen' = gen + 1
+  /\ UNCHANGED <<pend, rec, rev, log, running, runseq, stopRevoked, epoch, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 Next ==
   \/ Begin \/ ReadWhole \/ Close \/ PassOver \/ Drop \/ Lock \/ NoWrite
@@ -263,7 +466,7 @@ Next ==
   \/ \E t \in Tables, k \in Keys, v \in Vals : WAcquire(t, k, v)
   \/ WApply \/ WRelease
   \/ \E t \in Tables : Display(t)
-  \/ Stop \/ Start
+  \/ Stop \/ Start \/ Clear \/ Queue \/ Drain
 
 Spec == Init /\ [][Next]_vars
 
@@ -274,8 +477,15 @@ TypeOK ==
   /\ pc \in {"idle", "view", "plan"}
   /\ pend \in {"none", "w", "applied", "t"}
   /\ locked \in BOOLEAN /\ lost \in BOOLEAN /\ stale \in BOOLEAN
-  /\ tv \in BOOLEAN /\ running \in BOOLEAN
+  /\ tv \in BOOLEAN /\ running \in BOOLEAN /\ stopRevoked \in BOOLEAN
   /\ runseq \in 0..MaxStarts /\ vrunseq \in 0..MaxStarts
+  /\ pkind \in {"plain", "start", "report", "require"}
+  /\ vpinned \in BOOLEAN
+  /\ epoch \in 0..MaxEpoch /\ vepoch \in 0..MaxEpoch
+  /\ queued \in 0..MaxQ
+  /\ wroteOldEpoch \in BOOLEAN /\ wroteAfterStop \in BOOLEAN
+  /\ vheld \in 0..MaxEpoch
+  /\ wroteOffHeld \in BOOLEAN /\ wroteOverQueue \in BOOLEAN
 
 \* A part that plans, at the generation the store is at with nothing pending,
 \* plans on the store's records.
@@ -292,15 +502,37 @@ LockedApplyNotLost ==
 TwinIsTheStore ==
   (tv /\ pc = "idle" /\ tg = gen /\ pend = "none") => trec = rec
 
-\* No part writes that found the machine STOPPED at its first read.
-BeganRunning == pc = "plan" => began
+\* No tick part (kind "plain") writes that found the machine STOPPED at its
+\* first read.
+BeganRunning == (pc = "plan" /\ pkind = "plain") => began
 
 \* The twin is never at a revision its table has not reached.
 TwinNotAhead == \A t \in Tables : trev[t] <= rev[t]
 
-\* No part commits under a runseq other than the one current at its commit:
-\* a part that began before STOP then START reads the new generation but is
-\* refused (StaleRun), never committed.
+\* No tick part commits under a runseq other than the one current at its
+\* commit: a part that began before STOP then START reads the new generation
+\* but is refused (StaleRun), never committed. A worker part has no run check
+\* (engine.go:582 is a Halts step's): its fences are its kind's.
 NoStaleRunCommit == ~stale
+
+\* No part writes at an epoch other than the one its store is pinned to: a
+\* part that holds an epoch the sprint has left writes nothing, and a part
+\* that holds none writes only once repinned to the epoch the sprint is at.
+OldEpochPartWritesNothing == ~wroteOldEpoch
+
+\* No StartsWork part commits once a stop revoked it: the fence refuses it.
+StartsWorkNotAfterStop == ~wroteAfterStop
+
+\* No part that holds an epoch writes from a store pinned to another: a step
+\* that names an epoch a clear had already left before its store was pinned
+\* (a stale --epoch, or a tick's at) is refused at its first read, never
+\* written at the epoch its store pinned. The flag is the first read's
+\* comparison (vheld against vepoch); a clear after that read is
+\* OldEpochPartWritesNothing's alone.
+HeldEpochIsTheWrite == ~wroteOffHeld
+
+\* No worker part commits on a STOPPED machine while its queue holds changes:
+\* the queue is drained before the step plans.
+StoppedStepDrainsFirst == ~wroteOverQueue
 
 =============================================================================
