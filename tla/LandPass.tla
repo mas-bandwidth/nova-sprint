@@ -1,15 +1,14 @@
 ------------------------------- MODULE LandPass -------------------------------
-\* STREAM FLOW (2026-10-12). Alongside the historical pass, StreamFlowSpec models
-\* per-stream landed batches sbranch, a trunk sequence of merge/card moves, one
-\* inflight stream and its none/running/green/red/cancelled certification, and each
-\* card's base. StreamLand lands on the stream; StreamMerge admits an ahead branch
-\* only with no inflight merge and green certification (or an untouched trunk);
-\* CertDone releases it. SetBase rewrites every unlanded column and BriefEdit cannot
-\* rewrite base. DevMovesOnlyByStreamMerge, StreamMergesSerial and
-\* CardLandsOnItsStream catch direct protected landing, overlap during certification,
-\* and review/merging cards skipped by SetBase, respectively. The old batch-set base
-\* is now batchBase. This is a second abstraction, not a composition/refinement of
-\* the gate machine; its old state is frozen, while legacy specs freeze flow state.
+\* STREAM FLOW (2026-10-12, revised after Rowan's cold read). StreamFlowSpec
+\* models per-card base and the land_protected mark, stream batches, trunk moves,
+\* inflight certification, and empty branches following sibling trunk advances.
+\* SetBase compares rewrite-all with the existing preserve-cut-head selector;
+\* an independent BriefEdit mutation tests postmigration routing. StreamLand and
+\* StreamMerge separate branch landing from serialized certification admission;
+\* CertDone and an explicitly successful Fix support weakly fair completion.
+\* Reversed witnesses cover each rule and adversarial red/retry cycles. The old
+\* batch-set base is batchBase. This is a separate abstraction, not a composition
+\* or refinement of the legacy gate machine; each spec freezes the other's state.
 \*
 \* nova-sprint land, the pass in two phases (cmd/nova-sprint/landpass.go; the owner,
 \* 2026-10-07: "We can do merges across work streams in parallel. The only thing that
@@ -183,8 +182,8 @@ VARIABLES phase, cut, batchBase, green, running, pushes, collided, cached, stuck
 
 legacyVars == <<phase, cut, batchBase, green, running, pushes, collided, cached, stuck>>
 
-VARIABLES sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree
-flowVars == <<sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree>>
+VARIABLES sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes
+flowVars == <<sbranch, trunk, inflight, cert, base, column, streamBase, integrated, landedAt, moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 vars == <<legacyVars, flowVars>>
 
 Trees == SUBSET Streams
@@ -415,22 +414,28 @@ LegacyNext ==
 
 
 \* ---- stream branches and trunk certification (separate abstraction) ----
-\* Boolean fault switches derive from the existing configuration constant Broken,
-\* so all historical configurations keep their exact parameter interface.
+\* Fault/policy selectors reuse Broken so historical configurations need no edits.
 BugCardOntoDev == Broken = "cardontodev"
 BugMergeBeforeCert == Broken = "mergebeforecert"
 BugBaseSkipsReview == Broken = "baseskipsreview"
+BugBriefBase == Broken = "briefbase"
+BugEmptyStale == Broken = "emptystale"
+BugRedRetry == Broken = "redretry"
+BugNoRepair == Broken = "norepair"
+BugUnmarkedLanding == Broken = "unmarkedlanding"
+\* The current Go selector preserves already-cut working/review heads. Rewrite-all
+\* is the requested stronger policy, not a claim that changing an active head's
+\* base is already the agreed Go implementation. Merging/queued is repointed.
+BaseRewritePolicy == IF BugBaseSkipsReview THEN "preserve-cut-head" ELSE "all-unlanded"
 None == "none"
 TrunkBranch == "trunk"
-Cards == Streams \X Heads
+\* With two Heads this is three cards: two in the first stream, one in the other.
+Cards == {c \in Streams \X Heads : c[1] = Order[1] \/ c[2] = CHOOSE h \in Heads : \A k \in Heads : h <= k}
 Stream(c) == c[1]
 Columns == {"absent", "waiting", "ready", "working", "review", "merging", "landed"}
 Unlanded == {c \in Cards : column[c] \notin {"absent", "landed"}}
 
-\* One finite batch per stream in this bound. Initial streams are legacy trunk-based;
-\* AddCard inherits that configured base, then SetBase migrates the stream and all
-\* existing unlanded cards. No landing in the correct system precedes migration.
-FlowIdle ==
+FlowStart(protected) ==
   /\ sbranch = [s \in Streams |-> {}]
   /\ trunk = <<>>
   /\ inflight = None
@@ -441,12 +446,20 @@ FlowIdle ==
   /\ integrated = [s \in Streams |-> {}]
   /\ landedAt = [c \in Cards |-> None]
   /\ moveFree = <<>>
+  /\ landProtected = protected
+  /\ edited = {}
+  /\ branchTrunk = [s \in Streams |-> 0]
+  /\ firstLandCut = [s \in Streams |-> 0]
+  /\ firstLandTrunk = [s \in Streams |-> 0]
+  /\ markedPushes = <<>>
+FlowIdle == FlowStart({})
 
 AddCard(c) ==
   /\ column[c] = "absent"
   /\ base' = [base EXCEPT ![c] = streamBase[Stream(c)]]
   /\ column' = [column EXCEPT ![c] = "waiting"]
-  /\ UNCHANGED <<sbranch, trunk, inflight, cert, streamBase, integrated, landedAt, moveFree>>
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 
 AdvanceCard(c) ==
   /\ column[c] \in {"waiting", "ready", "working", "review"}
@@ -454,53 +467,72 @@ AdvanceCard(c) ==
                                          [] @ = "ready" -> "working"
                                          [] @ = "working" -> "review"
                                          [] OTHER -> "merging"]
-  /\ UNCHANGED <<sbranch, trunk, inflight, cert, base, streamBase, integrated, landedAt, moveFree>>
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, base, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 
-\* The new base b must name the stream branch. The legacy trunk is an initial
-\* migration condition, not an allowed destination of the repaired set verb.
 SetBase(s, b) ==
   /\ b = s /\ streamBase[s] = TrunkBranch
   /\ streamBase' = [streamBase EXCEPT ![s] = b]
   /\ base' = [c \in Cards |->
        IF Stream(c) = s /\ c \in Unlanded
-          /\ ~(BugBaseSkipsReview /\ column[c] \in {"review", "merging"})
+          /\ ~(BaseRewritePolicy = "preserve-cut-head" /\ column[c] \in {"working", "review"})
        THEN b ELSE base[c]]
-  /\ UNCHANGED <<sbranch, trunk, inflight, cert, column, integrated, landedAt, moveFree>>
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, column, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 
-\* Arbitrary brief text, including a proposed BASE, is projected away: its write
-\* cannot change routing. A brief edit is a stuttering step in this abstraction.
+\* One attempted brief edit per card. Its payload is independent input, not a
+\* pre-checked invariant; the fault writes its proposed BASE into the real state.
 BriefEdit(c, proposedBase) ==
-  /\ c \in Unlanded /\ proposedBase \in Streams \cup {TrunkBranch}
-  /\ UNCHANGED flowVars
+  /\ c \in Unlanded \ edited /\ proposedBase \in {Stream(c), TrunkBranch}
+  /\ edited' = edited \cup {c}
+  /\ base' = IF BugBriefBase THEN [base EXCEPT ![c] = proposedBase] ELSE base
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, column, streamBase, integrated, landedAt,
+                 moveFree, landProtected, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 
-Batch(s) == {c \in Cards : Stream(c) = s /\ column[c] = "merging"}
-Eligible(s) == Batch(s) # {} /\ \A c \in Cards : Stream(c) = s => column[c] = "merging"
-Destination(s) == base[CHOOSE c \in Batch(s) : TRUE]
+\* Singleton batches, oldest first; the first stream can land a second batch
+\* while a frozen snapshot of its first is being certified on the trunk.
+ReadyBatch(s) == {c \in Cards : Stream(c) = s /\ column[c] = "merging"
+                  /\ \A d \in Cards : Stream(d) = s /\ d[2] < c[2] => column[d] = "landed"}
+Batch(s) == ReadyBatch(s)
+Eligible(s) == Batch(s) # {}
 MoveAllowed == inflight = None /\ (cert = "green" \/ trunk = <<>>)
 
-\* The lander uses each card's BASE, not the stream control's base. Keeping this
-\* routing visible makes a skipped review/merging rewrite fail at the actual push.
+\* A sibling can advance the trunk while this stream is empty. Fast-forward is
+\* separate from that move, but must finish before the stream's first landing.
+FollowTrunk(s) ==
+  /\ sbranch[s] = {} /\ branchTrunk[s] < Len(trunk)
+  /\ branchTrunk' = [branchTrunk EXCEPT ![s] = Len(trunk)]
+  /\ UNCHANGED <<sbranch, trunk, inflight, cert, base, column, streamBase, integrated,
+                 landedAt, moveFree, landProtected, edited, firstLandCut, firstLandTrunk, markedPushes>>
+
 StreamLand(s) ==
   /\ Eligible(s) /\ streamBase[s] = s
-  /\ \A c \in Batch(s) : base[c] = Destination(s)
-  /\ Destination(s) = s
+  /\ \A c \in Batch(s) : base[c] = s
+  /\ sbranch[s] # {} \/ branchTrunk[s] = Len(trunk) \/ BugEmptyStale
   /\ sbranch' = [sbranch EXCEPT ![s] = @ \cup Batch(s)]
   /\ column' = [c \in Cards |-> IF c \in Batch(s) THEN "landed" ELSE column[c]]
   /\ landedAt' = [c \in Cards |-> IF c \in Batch(s) THEN s ELSE landedAt[c]]
-  /\ UNCHANGED <<trunk, inflight, cert, base, streamBase, integrated, moveFree>>
+  /\ firstLandCut' = IF sbranch[s] = {} THEN [firstLandCut EXCEPT ![s] = branchTrunk[s]] ELSE firstLandCut
+  /\ firstLandTrunk' = IF sbranch[s] = {} THEN [firstLandTrunk EXCEPT ![s] = Len(trunk)] ELSE firstLandTrunk
+  /\ UNCHANGED <<trunk, inflight, cert, base, streamBase, integrated, moveFree,
+                 landProtected, edited, branchTrunk, markedPushes>>
 
-\* The unsafe protected-branch compatibility path is exposed only by a fault:
-\* direct legacy landing, or a stale card BASE after the stream was migrated.
+\* The actual land_protected mark is independent of the skip-base fault. An
+\* unmarked stream is refused before git (land.go placeWhy); only the explicit
+\* unmarkedlanding mutation removes that guard. The normal design forbids even
+\* marked direct pushes; cardontodev restores the historical marked exception.
 CardOntoTrunk(s) ==
-  /\ Eligible(s)
-  /\ BugCardOntoDev \/ (BugBaseSkipsReview /\ streamBase[s] = s)
+  /\ Eligible(s) /\ (BugCardOntoDev \/ BugUnmarkedLanding)
+  /\ s \in landProtected \/ BugUnmarkedLanding
   /\ \A c \in Batch(s) : base[c] = TrunkBranch
   /\ trunk' = Append(trunk, <<"card", Batch(s)>>)
   /\ moveFree' = Append(moveFree, MoveAllowed)
+  /\ markedPushes' = Append(markedPushes, s \in landProtected)
   /\ cert' = IF cert = "running" THEN "cancelled" ELSE "running"
   /\ column' = [c \in Cards |-> IF c \in Batch(s) THEN "landed" ELSE column[c]]
   /\ landedAt' = [c \in Cards |-> IF c \in Batch(s) THEN TrunkBranch ELSE landedAt[c]]
-  /\ UNCHANGED <<sbranch, inflight, base, streamBase, integrated>>
+  /\ UNCHANGED <<sbranch, inflight, base, streamBase, integrated, landProtected,
+                 edited, branchTrunk, firstLandCut, firstLandTrunk>>
 
 StreamMerge(s) ==
   /\ sbranch[s] \ integrated[s] # {}
@@ -510,23 +542,51 @@ StreamMerge(s) ==
   /\ integrated' = [integrated EXCEPT ![s] = sbranch[s]]
   /\ inflight' = s
   /\ cert' = "running"
-  /\ UNCHANGED <<sbranch, base, column, streamBase, landedAt>>
+  /\ UNCHANGED <<sbranch, base, column, streamBase, landedAt, landProtected, edited,
+                 branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
 
 CertDone(r) ==
   /\ cert = "running" /\ r \in {"green", "red"}
   /\ cert' = r
   /\ inflight' = None
-  /\ UNCHANGED <<sbranch, trunk, base, column, streamBase, integrated, landedAt, moveFree>>
+  /\ UNCHANGED <<sbranch, trunk, base, column, streamBase, integrated, landedAt, moveFree,
+                 landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+CertFinish == \E r \in {"green", "red"} : CertDone(r)
+
+\* Fix is a SUCCESSFUL repair-and-recertification of the same trunk move, not a
+\* new merge. Weak fairness of this action is the explicit recovery assumption.
+\* redretry weakens it to a mere retry: fair red/retry cycles then defeat liveness.
+Fix ==
+  /\ cert = "red" /\ ~BugNoRepair
+  /\ cert' = IF BugRedRetry THEN "running" ELSE "green"
+  /\ UNCHANGED <<sbranch, trunk, inflight, base, column, streamBase, integrated, landedAt,
+                 moveFree, landProtected, edited, branchTrunk, firstLandCut, firstLandTrunk, markedPushes>>
+
+FlowComplete ==
+  /\ \A c \in Cards : column[c] = "landed" /\ c \in integrated[Stream(c)]
+  /\ inflight = None /\ cert = "green"
+\* The only explicit stutter is completed work. Incomplete wedges are deadlocks,
+\* not "ignore-terminal" passes. Brief edits are finite, non-stuttering events.
+Quiesce == FlowComplete /\ UNCHANGED flowVars
 
 FlowNext ==
   \/ \E c \in Cards : AddCard(c) \/ AdvanceCard(c)
                         \/ \E b \in Streams \cup {TrunkBranch} : BriefEdit(c, b)
-  \/ \E s \in Streams : SetBase(s, s) \/ StreamLand(s) \/ CardOntoTrunk(s) \/ StreamMerge(s)
-  \/ \E r \in {"green", "red"} : CertDone(r)
+  \/ \E s \in Streams : SetBase(s, s) \/ FollowTrunk(s) \/ StreamLand(s)
+                         \/ CardOntoTrunk(s) \/ StreamMerge(s)
+  \/ CertFinish \/ Fix \/ Quiesce
 
-StreamFlowInit == LegacyInit /\ FlowIdle /\ stuck = {} /\ \A T \in Trees : green[T]
+StreamFlowInit ==
+  /\ LegacyInit /\ stuck = {} /\ \A T \in Trees : green[T]
+  /\ \E protected \in SUBSET Streams : FlowStart(protected)
 StreamFlowNext == FlowNext /\ UNCHANGED legacyVars
 StreamFlowSpec == StreamFlowInit /\ [][StreamFlowNext]_vars
+StreamFlowFairSpec ==
+  /\ StreamFlowSpec
+  /\ \A c \in Cards : WF_flowVars(AddCard(c)) /\ WF_flowVars(AdvanceCard(c))
+  /\ \A s \in Streams : WF_flowVars(SetBase(s, s)) /\ WF_flowVars(FollowTrunk(s))
+                         /\ WF_flowVars(StreamLand(s)) /\ WF_flowVars(StreamMerge(s))
+  /\ WF_flowVars(CertFinish) /\ WF_flowVars(Fix)
 
 FlowTypeOK ==
   /\ sbranch \in [Streams -> SUBSET Cards]
@@ -539,20 +599,38 @@ FlowTypeOK ==
   /\ streamBase \in [Streams -> Streams \cup {TrunkBranch}]
   /\ landedAt \in [Cards -> Streams \cup {TrunkBranch, None}]
   /\ moveFree \in Seq(BOOLEAN) /\ Len(moveFree) = Len(trunk)
+  /\ landProtected \subseteq Streams /\ edited \subseteq Cards
+  /\ branchTrunk \in [Streams -> 0..Len(trunk)]
+  /\ firstLandCut \in [Streams -> 0..Len(trunk)]
+  /\ firstLandTrunk \in [Streams -> 0..Len(trunk)]
+  /\ markedPushes \in Seq(BOOLEAN)
 
-DevMovesOnlyByStreamMerge == \A i \in 1..Len(trunk) : trunk[i][1] = "merge"
-\* A history bit records the PRE-state guard at every append, so a later CertDone
-\* cannot hide an earlier overlap. Red certification also blocks the next merge.
-StreamMergesSerial == cert # "cancelled" /\ \A i \in 1..Len(moveFree) : moveFree[i]
+TrunkMovesOnlyByStreamMerge == \A i \in 1..Len(trunk) : trunk[i][1] = "merge"
+DevMovesOnlyByStreamMerge == TrunkMovesOnlyByStreamMerge
+\* PRE-state guard history survives CertDone and detects overlapping certification
+\* admission. The forge's merge queue already serializes actual Git trunk writes.
+OneStreamMergeInflightPerTrunk == cert # "cancelled" /\ \A i \in 1..Len(moveFree) : moveFree[i]
+StreamMergesSerial == OneStreamMergeInflightPerTrunk
+ProtectedLandingRequiresMark == \A i \in 1..Len(markedPushes) : markedPushes[i]
 CardLandsOnItsStream ==
   \A c \in Cards : column[c] = "landed" =>
     landedAt[c] = Stream(c) /\ c \in sbranch[Stream(c)]
+NoUnlandedCardBasesOnTrunk ==
+  \A c \in Unlanded : streamBase[Stream(c)] = Stream(c) => base[c] = Stream(c)
+EmptyStreamFollowsTrunk ==
+  \A s \in Streams : sbranch[s] # {} => firstLandCut[s] = firstLandTrunk[s]
 SetBaseReachesEveryUnlanded ==
   [][\A s \in Streams : SetBase(s, s) =>
        \A c \in Unlanded : Stream(c) = s => base'[c] = s]_vars
 BriefEditKeepsBase ==
   [][\A c \in Cards : \A b \in Streams \cup {TrunkBranch} :
        BriefEdit(c, b) => base' = base]_vars
+LandedEventuallyIntegrated ==
+  \A c \in Cards : [](column[c] = "landed" => <>(c \in integrated[Stream(c)]))
+AllFlowWorkCompletes == <>FlowComplete
+\* This structural invariant catches a partial-completion terminal even in a
+\* witness run: no broad stutter is used to conceal a missing repair action.
+NoPartialCompletionWedge == FlowComplete \/ ENABLED StreamFlowNext
 
 Init == LegacyInit /\ FlowIdle
 Next == LegacyNext /\ UNCHANGED flowVars
