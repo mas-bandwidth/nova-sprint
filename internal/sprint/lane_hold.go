@@ -103,6 +103,41 @@ func laneSet(s *Snapshot, c *Card, row string, n int) (set map[string]string, un
 	return set, unset
 }
 
+// stitchLaneTake writes a lane's fields into the acts a take by count (LaneTake)
+// or by id (NamedLaneTake) took, the rule both share: the lane set on each unit's
+// card entry, its unsets dropped and never the lane's own, and the moved line
+// names the lane when it names one.
+func stitchLaneTake(s *Snapshot, one Plan, as string, lane int) Plan {
+	for i := range one.Units {
+		u := &one.Units[i]
+		c := s.Fleet.Card(u.Key)
+		if c == nil {
+			continue
+		}
+		set, unset := laneSet(s, c, as, lane)
+		for j := range u.Changes {
+			e := &u.Changes[j].Entry
+			if e.ID != c.ID {
+				continue
+			}
+			merged := maps.Clone(e.Set)
+			if merged == nil {
+				merged = map[string]string{}
+			}
+			maps.Copy(merged, set)
+			e.Set = nonEmpty(merged)
+			// each field unset once, and never the lane's own: the lane's move sets them
+			all := slices.DeleteFunc(append(slices.Clone(e.Unset), unset...), func(n string) bool { return n == FieldLane || n == FieldLaneAt })
+			slices.Sort(all)
+			e.Unset = unsetPresent(c, slices.Compact(all))
+		}
+		if lane != 0 {
+			u.Moved += " lane=" + laneOf(lane)
+		}
+	}
+	return one
+}
+
 // LaneTake is a lane's take: nothing moves when the lane holds a card already (the verb says
 // which); else a working card on its row that no lane holds becomes the lane's; else the
 // next ready card is taken to the lane, as a take by count of one (takeOne: the row's
@@ -154,33 +189,7 @@ func LaneTake(s *Snapshot, r TakeReq) Plan {
 	q := r
 	q.Sel = Sel{Limit: 1}
 	one := takeOne(s, q)
-	for i := range one.Units {
-		u := &one.Units[i]
-		c := s.Fleet.Card(u.Key)
-		if c == nil {
-			continue
-		}
-		set, unset := laneSet(s, c, r.As, r.Lane)
-		for j := range u.Changes {
-			e := &u.Changes[j].Entry
-			if e.ID != c.ID {
-				continue
-			}
-			merged := maps.Clone(e.Set)
-			if merged == nil {
-				merged = map[string]string{}
-			}
-			maps.Copy(merged, set)
-			e.Set = nonEmpty(merged)
-			// each field unset once: the store refuses a name twice (the take's own and the lane's)
-			// each field unset once, and never the lane's own: the take sets them
-			all := slices.DeleteFunc(append(slices.Clone(e.Unset), unset...), func(n string) bool { return n == FieldLane || n == FieldLaneAt })
-			slices.Sort(all)
-			e.Unset = unsetPresent(c, slices.Compact(all))
-		}
-		u.Moved += " lane=" + laneOf(r.Lane)
-	}
-	return one
+	return stitchLaneTake(s, one, r.As, r.Lane)
 }
 
 // readerLaneTake is a reader's lane given its read: a read reading on its row that no lane
