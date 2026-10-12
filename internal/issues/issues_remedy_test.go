@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// hostile are values a caller may hand nova-work that a shell would split,
+// hostile are values a caller may hand nova-sprint issues that a shell would split,
 // expand, chain or read as something else if a remedy printed them bare.
 var hostile = []struct{ name, value string }{
 	{"space", "work trees"},
@@ -103,7 +103,7 @@ func TestARemedyKeepsEveryValueOneShellWord(t *testing.T) {
 					assert.Equal(t, out, after(args, "--out"), "--out in %q", args)
 					assert.Equal(t, h.value, after(args, "--gh"), "--gh in %q", args)
 					assert.Equal(t, "3", after(args, "--max-calls"), "--max-calls in %q", args)
-					assert.Equal(t, []string{"nova-work", "import"}, args[:2])
+					assert.Equal(t, []string{"nova-sprint", "issues", "import"}, args[:3])
 				})
 
 			check("gh login", func() github { return answering(h.value, errors.New("exit status 4: not logged in")) },
@@ -118,7 +118,7 @@ func TestARemedyKeepsEveryValueOneShellWord(t *testing.T) {
 				func(args []string) {
 					assert.Equal(t, big, after(args, "--tree"), "--tree in %q", args)
 					assert.Equal(t, against, after(args, "--against"), "--against kept in %q", args)
-					assert.Equal(t, []string{"nova-work", "verify"}, args[:2])
+					assert.Equal(t, []string{"nova-sprint", "issues", "verify"}, args[:3])
 				})
 
 			unreadable := filepath.Join(dir, "dir "+h.value)

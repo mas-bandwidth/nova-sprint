@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func (g github) verifyTree(c *tool.Call) *tool.Out {
 		return refused
 	}
 	if tree.Source != "github" {
-		return withTree(tool.Refuse(fmt.Sprintf("the tree's source is %q; this verb reads github trees", tree.Source)), path, "nova-work verify -h")
+		return withTree(tool.Refuse(fmt.Sprintf("the tree's source is %q; this verb reads github trees", tree.Source)), path, "nova-sprint issues verify -h")
 	}
 	for _, r := range repos(c) {
 		if o, _, _ := strings.Cut(r, "/"); o != tree.Org {
@@ -41,7 +41,7 @@ func (g github) verifyTree(c *tool.Call) *tool.Out {
 		}
 	}
 	if o := c.Refused(); o != nil {
-		o.Remedy = "nova-work verify -h"
+		o.Remedy = "nova-sprint issues verify -h"
 		return o
 	}
 	if against := c.Str("against"); against != "" {
@@ -158,7 +158,7 @@ func readTree(c *tool.Call, flag string) (*workfile.Tree, []byte, *tool.Out) {
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, nil, refuse(err.Error()+"; import writes a tree file with --out", "nova-work import -h")
+		return nil, nil, refuse(err.Error()+"; import writes a tree file with --out", "nova-sprint issues import -h")
 	}
 	if fi.Size() > int64(maxBytes) {
 		return nil, nil, refuse(fmt.Sprintf("the file is %d bytes, past --max-bytes=%d", fi.Size(), maxBytes),
@@ -181,7 +181,7 @@ func readTree(c *tool.Call, flag string) (*workfile.Tree, []byte, *tool.Out) {
 // refuseTree is every problem of a tree file in one refusal.
 func refuseTree(err error, flag, path string) *tool.Out {
 	o := tool.Refuse(treeProblems(err)...)
-	o.Remedy = "nova-work verify -h"
+	o.Remedy = "nova-sprint issues verify -h"
 	return o.Fact(flag, path)
 }
 

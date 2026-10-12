@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"bytes"
@@ -33,11 +33,11 @@ func checkImport(c *tool.Call) {
 		c.Problem(fmt.Sprintf("the directory of --out %q does not exist; make it first, or name a file in one that does", out))
 	}
 	if dry && len(repos(c)) == 0 {
-		c.Problem(fmt.Sprintf("--dry-run with no --repo reads every repository of --org %s, up to --max-calls %d calls; name one repository and run: nova-work import --org %s --repo %s/<name> --dry-run",
+		c.Problem(fmt.Sprintf("--dry-run with no --repo reads every repository of --org %s, up to --max-calls %d calls; name one repository and run: nova-sprint issues import --org %s --repo %s/<name> --dry-run",
 			org, c.Int("max-calls"), oneline.ShellWord(org), oneline.ShellWord(org)))
 	}
 	if out != "" && !c.Bool("replace") && fileExists(out) {
-		c.Problem(fmt.Sprintf("--out %s exists; pass --replace to replace it: nova-work import --org %s --out %s --replace",
+		c.Problem(fmt.Sprintf("--out %s exists; pass --replace to replace it: nova-sprint issues import --org %s --out %s --replace",
 			oneline.ShellWord(out), oneline.ShellWord(org), oneline.ShellWord(out)))
 	}
 	for _, r := range repos(c) {
@@ -66,7 +66,7 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 		q, err = workgh.Replay(fixture)
 		if err != nil {
 			o := tool.Refuse(err.Error())
-			o.Remedy = "nova-work import -h"
+			o.Remedy = "nova-sprint issues import -h"
 			return o.Fact("org", org).Fact("fixture", fixture)
 		}
 	} else {
@@ -104,7 +104,7 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 		o := tool.Refuse(err.Error())
 		o.Remedy = ghRemedy(ghPath)
 		if fixture != "" {
-			o.Remedy = "nova-work import -h"
+			o.Remedy = "nova-sprint issues import -h"
 		}
 		if errors.Is(err, workgh.ErrBudget) {
 			o.Remedy = importAgain(c, 2*c.Int("max-calls"))
@@ -155,7 +155,7 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 	data, err := workfile.Encode(tree)
 	if err != nil {
 		o := tool.Refuse("the tree cannot be written without loss: " + err.Error())
-		o.Remedy = "nova-work import -h"
+		o.Remedy = "nova-sprint issues import -h"
 		return ended(o)
 	}
 	// The round trip through the file, before anything is written: the tree
@@ -178,7 +178,7 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 	if !dry {
 		if err := writeFile(out, data); err != nil {
 			o := tool.Refuse(fmt.Sprintf("write %s: %v", out, err))
-			o.Remedy = "nova-work import -h"
+			o.Remedy = "nova-sprint issues import -h"
 			return ended(o)
 		}
 		outField = out
@@ -216,7 +216,7 @@ func importAgain(c *tool.Call, n int) string {
 // inputs (CLI-STYLE (k)). Every value is one shell word (oneline.ShellWord),
 // so a path with a blank, a quote or a $ is pasted back as that path.
 func again(c *tool.Call, verb string, order []string, set map[string]string) string {
-	cmd := []string{"nova-work", verb}
+	cmd := []string{"nova-sprint issues", verb}
 	for _, name := range order {
 		v, override := set[name]
 		switch {

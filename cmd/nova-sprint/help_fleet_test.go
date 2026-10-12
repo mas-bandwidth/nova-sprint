@@ -43,6 +43,12 @@ func TestVerbHelpNamesItsUsageAndTheColdWords(t *testing.T) {
 	t.Parallel()
 	a := newApp(func(string) string { return "" })
 	for _, v := range verbs {
+		if strings.HasPrefix(v.name, "issues ") {
+			// The issues group is the folded-in nova-work tool (internal/issues):
+			// its -h is that tool's own, not an app-native verb's, so the first
+			// line is not a syntax quotation of this table. Its own tests hold it.
+			continue
+		}
 		var out, errb bytes.Buffer
 		args := append(strings.Fields(v.name), "-h")
 		code := runInto(a, args, &out, &errb)

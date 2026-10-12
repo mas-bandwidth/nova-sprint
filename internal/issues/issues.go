@@ -1,4 +1,4 @@
-// Command nova-work holds every issue of every repository of an organization
+// Command nova-sprint issues holds every issue of every repository of an organization
 // in one tree file, with each issue's full contents, and proves the tree
 // holds exactly what the source holds (docs/SPEC-WORK-V1.md section 1).
 //
@@ -7,12 +7,13 @@
 // writes to the source: the GitHub seam refuses any document that is not a
 // query. The dispatch, the banner, the help, the version verb, the refusals
 // and the output (typed lines or --json of one value) are pkg/tool's.
-package main
+package issues
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,14 @@ import (
 
 var version string
 
-func main() { os.Exit(workTool(realGitHub()).Main()) }
+// New is the issues group's tool over the real GitHub.
+func New() *tool.Tool { return workTool(realGitHub()) }
+
+// Main is the issues group's entry point: run the sub-tool over the process's
+// argument list (once the group's verb already consumed) and its streams.
+func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return New().Run(args, stdin, stdout, stderr)
+}
 
 // github is how the verbs reach GitHub and the clock: where gh is found, the
 // query that runs it, and the time. main's runs the real gh; a test's answers
@@ -46,11 +54,11 @@ func realGitHub() github {
 // preAlpha is the tool's stage, in the same words in its banner, every verb's
 // -h, docs/CLI.md, docs/SPEC-WORK-V1.md and the README row (internal/docs
 // holds the README, the banner source and the reference to it).
-const preAlpha = "nova-work is pre-alpha: not ready for production use."
+const preAlpha = "nova-sprint issues is pre-alpha: not ready for production use."
 
 func workTool(gh github) *tool.Tool {
 	return &tool.Tool{
-		Name:  "nova-work",
+		Name:  "nova-sprint issues",
 		What:  "every issue of an organization's repositories in one tree file, verified field for field; a repository's roadmap and fixes edited as data",
 		Stage: preAlpha,
 		Stamp: version,
@@ -134,7 +142,7 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 const roadmapUsageNote = `roadmap: the verbs edit this repository's own docs/roadmap.sexp and docs/fixes.sexp and write
 ROADMAP.md and FIXES.md in the same step, locally, with no GitHub call per entry. The old roadmap
 verbs, which edited the private work record's roadmaps/*.sexp, are gone (the v1.2.3 re-seed);
-these replace them. nova-work roadmap -h lists them; nova-work help roadmap check gives the shapes.`
+these replace them. nova-sprint issues roadmap -h lists them; nova-sprint issues help roadmap check gives the shapes.`
 
 const importDetail = `Reads every issue (open and closed) of every repository of --org (or of each
 --repo) with its full contents: number, url, node id, title, body, state and
@@ -148,7 +156,7 @@ as the import does (every issue, read-only, the calls IMPORT PLAN counts),
 checks the round trip, and writes nothing: it needs gh and the network.
 --fixture <dir> reads recorded GraphQL pages from that directory (call-01.json,
 call-02.json, each with vars and reply) instead of gh, so no login is needed.
-The first run of import is: nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --fixture ./calls --dry-run
+The first run of import is: nova-sprint issues import --org $ORG --repo $ORG/$REPO --page-size 15 --fixture ./calls --dry-run
 
 output: IMPORT OK with the counts, bytes=, the tree's sha256=, calls= (GraphQL
 calls), points= (what GitHub charged), rest=0 and gh= (the gh run); then
@@ -174,7 +182,7 @@ on its updated time and the fields that changed: that is the check working.
 --against <file> puts a second tree where GitHub stands: want is its value,
 MISSING is in it and not in --tree. Nothing is read from the network. To try
 verify with no gh: save the minimal tree below as a.lisp, copy it to b.lisp
-with :archived true, and run nova-work verify --tree a.lisp --against b.lisp:
+with :archived true, and run nova-sprint issues verify --tree a.lisp --against b.lisp:
 one VERIFY DRIFT line for field=archived, under VERIFY FAILED, exit 1.
 
 the tree file (docs/SPEC-WORK-V1.md section 1.2) is one (work-tree "v1" ...)
@@ -275,7 +283,7 @@ func (g github) open(c *tool.Call, verb string) (workgh.Query, string, *tool.Out
 	found, err := g.lookPath(prog)
 	if err != nil {
 		o := tool.Refuse(fmt.Sprintf("the GitHub CLI %q is not found (%v); install it, or name it with --gh <path>", prog, err))
-		o.Remedy = "nova-work " + verb + " -h"
+		o.Remedy = "nova-sprint issues " + verb + " -h"
 		return nil, "", o
 	}
 	return g.query(found), found, nil

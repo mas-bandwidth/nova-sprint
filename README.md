@@ -1,6 +1,6 @@
 ![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-cute-wave-left.png)
 
-_Note: the `nova-card` command was folded into nova-sprint: `nova-card generate` became `nova-sprint generate` and the binary is gone._
+_Note: the `nova-card` command was folded into nova-sprint: `nova-card generate` became `nova-sprint generate` and the binary is gone. The `nova-work` command was folded in too: `nova-work import`, `verify` and `roadmap` are now `nova-sprint issues import`, `issues verify` and `issues roadmap`, and that binary is gone._
 
 ## The Problem
 

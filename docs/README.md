@@ -25,7 +25,7 @@ through review and landing.
 The README describes the v1.0.0 product. Command references, implementation
 notes, and recorded results describe the code or revision they name. In
 particular, card generation now lives under `nova-sprint card`, while the
-GitHub issue mirror still uses `nova-work`. Use the help shipped with your build for its exact spelling. A
+GitHub issue mirror is `nova-sprint issues`. Use the help shipped with your build for its exact spelling. A
 planned feature in a design note is not an executable example.
 
 ## When you need the details

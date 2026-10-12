@@ -4,7 +4,7 @@
 never evaluates it. This page specifies the reader: the five kinds of form, the tokens it
 refuses, the three bounds it enforces and the shape of a refusal.
 
-The living caller is nova-work's tree file. `internal/workfile` reads it with
+The living caller is `nova-sprint issues`' tree file. `internal/workfile` reads it with
 `worklang.Read(file, data, limits)` and checks the shape of the records itself
 ([SPEC-WORK-V1.md](SPEC-WORK-V1.md) section 1); the reader knows nothing of the records and
 returns a `Form`. The second caller is the roadmap: `internal/roadmapdoc` reads `docs/roadmap.sexp`

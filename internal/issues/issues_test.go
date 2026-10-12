@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"context"
@@ -179,9 +179,9 @@ func TestImportFixtureFirstRunIsWhatTheHelpPrints(t *testing.T) {
 	t.Parallel()
 	help := workMain(unreachable(t)).Run("import", "-h")
 	require.Equal(t, 0, help.Code, help.Stderr)
-	const printed = "nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --fixture ./calls --dry-run"
+	const printed = "nova-sprint issues import --org $ORG --repo $ORG/$REPO --page-size 15 --fixture ./calls --dry-run"
 	require.Contains(t, help.Stdout, printed, "import -h does not print the fixture first run:\n%s", help.Stdout)
-	line := strings.TrimPrefix(printed, "nova-work ")
+	line := strings.TrimPrefix(printed, "nova-sprint issues ")
 	line = strings.ReplaceAll(line, "$ORG", "mas-bandwidth")
 	line = strings.ReplaceAll(line, "$REPO", "reliable")
 	line = strings.ReplaceAll(line, "./calls", recording)
@@ -197,7 +197,7 @@ func TestImportFixtureFirstRunIsWhatTheHelpPrints(t *testing.T) {
 	bad := workMain(unreachable(t)).Run("import", "--org", "mas-bandwidth", "--repo", "mas-bandwidth/reliable", "--fixture", empty, "--dry-run")
 	assert.Equal(t, 2, bad.Code, bad.Stdout+bad.Stderr)
 	assert.Contains(t, bad.Stderr, "no call-*.json", bad.Stderr)
-	assert.Contains(t, bad.Stderr, "run: nova-work import -h", bad.Stderr)
+	assert.Contains(t, bad.Stderr, "run: nova-sprint issues import -h", bad.Stderr)
 }
 
 // TestTheDryRunSaysWhatItReads: a dry run is not offline. It reads GitHub as
@@ -228,7 +228,7 @@ func TestTheBudgetIsCheckedBeforeTheIssuesAreRead(t *testing.T) {
 	require.Equal(t, 2, res.Code, diag)
 	require.Contains(t, res.Stderr, "IMPORT REFUSED org=mas-bandwidth calls=1 points=1 gh=/bin/gh: the plan needs about 3 calls and --max-calls is 2; "+
 		"narrow it with --repo or raise --max-calls; "+
-		"run: nova-work import --org mas-bandwidth --repo mas-bandwidth/reliable --dry-run --page-size 15 --max-calls 3\n", diag)
+		"run: nova-sprint issues import --org mas-bandwidth --repo mas-bandwidth/reliable --dry-run --page-size 15 --max-calls 3\n", diag)
 	require.Contains(t, res.Stderr, "IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=2 page_size=15\n", diag)
 }
 
@@ -249,12 +249,12 @@ func TestImportRefusesAnOrgWideDryRunAndAnExistingOut(t *testing.T) {
 		{
 			name: "org-wide dry run",
 			args: []string{"import", "--org", "mas-bandwidth", "--dry-run"},
-			want: "nova-work import --org mas-bandwidth --repo mas-bandwidth/<name> --dry-run",
+			want: "nova-sprint issues import --org mas-bandwidth --repo mas-bandwidth/<name> --dry-run",
 		},
 		{
 			name: "existing out",
 			args: []string{"import", "--org", "mas-bandwidth", "--out", tree},
-			want: "nova-work import --org mas-bandwidth --out " + oneline.ShellWord(tree) + " --replace",
+			want: "nova-sprint issues import --org mas-bandwidth --out " + oneline.ShellWord(tree) + " --replace",
 		},
 	}
 	for _, tc := range cases {
@@ -290,11 +290,11 @@ func TestACouldNotRunIsRefusedInPlainWords(t *testing.T) {
 			"IMPORT REFUSED org=acme calls=1 points=0 gh=/x/gh: /x/gh api graphql: exit status 4: To get started with GitHub CLI, please run:  gh auth login",
 			"/x/gh auth status"},
 		{"a file that is no tree", unreachable(t), []string{"verify", "--tree", notATree},
-			"VERIFY REFUSED tree=" + notATree + ": workfile: file=" + notATree + " (root): want a (work-tree ...) record", "nova-work verify -h"},
+			"VERIFY REFUSED tree=" + notATree + ": workfile: file=" + notATree + " (root): want a (work-tree ...) record", "nova-sprint issues verify -h"},
 		{"no tree there", unreachable(t), []string{"verify", "--tree", filepath.Join(dir, "none.lisp")},
-			"VERIFY REFUSED tree=" + filepath.Join(dir, "none.lisp") + ": stat ", "nova-work import -h"},
+			"VERIFY REFUSED tree=" + filepath.Join(dir, "none.lisp") + ": stat ", "nova-sprint issues import -h"},
 		{"gh not found", unreachable(t), []string{"import", "--org", "o", "--dry-run", "--repo", "o/r", "--gh", "/nonexistent/gh-cli"},
-			`IMPORT REFUSED: the GitHub CLI "/nonexistent/gh-cli" is not found`, "nova-work import -h"},
+			`IMPORT REFUSED: the GitHub CLI "/nonexistent/gh-cli" is not found`, "nova-sprint issues import -h"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -325,19 +325,19 @@ func TestRefusalsNameTheFlag(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"bare import", []string{"import"}, []string{"IMPORT REFUSED", "--org is required", "--out is required unless --dry-run", "run: nova-work help"}},
+		{"bare import", []string{"import"}, []string{"IMPORT REFUSED", "--org is required", "--out is required unless --dry-run", "run: nova-sprint issues help"}},
 		{"bad calls and page size", []string{"import", "--org", "o", "--dry-run", "--page-size", "0", "--max-calls", "0"}, []string{"--max-calls must be positive", "--page-size must be 1 to 100"}},
 		{"out and dry run", []string{"import", "--org", "o", "--dry-run", "--out", "t.lisp"}, []string{"--out and --dry-run exclude each other"}},
 		{"missing out dir", []string{"import", "--org", "o", "--out", "/nonexistent-dir/t.lisp"}, []string{"does not exist"}},
 		{"repo not in org", []string{"import", "--org", "o", "--dry-run", "--repo", "p/r"}, []string{"--repo p/r is not in --org o"}},
 		{"bad repo name", []string{"import", "--org", "o", "--dry-run", "--repo", "bad"}, []string{"IMPORT REFUSED", "--repo", "is not owner/name"}},
-		{"bogus flag", []string{"import", "--bogus"}, []string{"IMPORT REFUSED", "unknown flag --bogus", "--org", "run: nova-work import -h"}},
-		{"bare verify", []string{"verify"}, []string{"VERIFY REFUSED", "--tree is required", "run: nova-work help"}},
+		{"bogus flag", []string{"import", "--bogus"}, []string{"IMPORT REFUSED", "unknown flag --bogus", "--org", "run: nova-sprint issues import -h"}},
+		{"bare verify", []string{"verify"}, []string{"VERIFY REFUSED", "--tree is required", "run: nova-sprint issues help"}},
 		{"bad max-bytes", []string{"verify", "--tree", "t.lisp", "--max-bytes", "0"}, []string{"--max-bytes must be positive"}},
 		{"two repos outside the tree org", []string{"verify", "--tree", tree, "--repo", "p/one", "--repo", "q/two"},
 			[]string{"--repo p/one is not in the tree's organization o", "--repo q/two is not in the tree's organization o"}},
 		{"unknown verb", []string{"frob"}, []string{"REFUSED", `unknown verb "frob"`, "import", "verify"}},
-		{"no verb", []string{}, []string{"REFUSED", "no verb given", "import", "verify", "run: nova-work help", "\n  NOTE " + preAlpha + "\n"}},
+		{"no verb", []string{}, []string{"REFUSED", "no verb given", "import", "verify", "run: nova-sprint issues help", "\n  NOTE " + preAlpha + "\n"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -394,7 +394,7 @@ func TestVersionAndItsAliasPrintTheBuildIdentity(t *testing.T) {
 			res := workMain(unreachable(t)).Run(arg)
 			diag := fmt.Sprintf("%s: exit %d, stdout %q, stderr %q; want the identity line at exit 0", arg, res.Code, res.Stdout, res.Stderr)
 			assert.Equal(t, 0, res.Code, diag)
-			assert.True(t, strings.HasPrefix(res.Stdout, "nova-work "), diag)
+			assert.True(t, strings.HasPrefix(res.Stdout, "nova-sprint"), diag)
 			assert.Empty(t, res.Stderr, diag)
 		})
 	}
@@ -462,7 +462,7 @@ func TestVerifyNamesEveryTreeProblemInOneRun(t *testing.T) {
 	assert.Contains(t, res.Stderr, ":state wants a keyword or ()", diag)
 	assert.Contains(t, res.Stderr, ":author wants a string", diag)
 	assert.Equal(t, 3, strings.Count(res.Stderr, "VERIFY REFUSED"), diag)
-	assert.Contains(t, res.Stderr, "run: nova-work verify -h", diag)
+	assert.Contains(t, res.Stderr, "run: nova-sprint issues verify -h", diag)
 }
 
 // TestVerifyAgainstASecondTreeReadsNoNetwork (tool ledger K3): verify
@@ -476,7 +476,7 @@ func TestVerifyAgainstASecondTreeReadsNoNetwork(t *testing.T) {
 	testkit.WriteFile(t, a, minimalTree)
 	testkit.WriteFile(t, b, strings.Replace(minimalTree, ":archived false", ":archived true", 1))
 	help := workMain(unreachable(t)).Run("verify", "-h")
-	require.Contains(t, help.Stdout, "nova-work verify --tree a.lisp --against b.lisp", "verify -h no longer shows the example this test runs")
+	require.Contains(t, help.Stdout, "nova-sprint issues verify --tree a.lisp --against b.lisp", "verify -h no longer shows the example this test runs")
 
 	cases := []struct {
 		name   string
@@ -493,7 +493,7 @@ func TestVerifyAgainstASecondTreeReadsNoNetwork(t *testing.T) {
 		{"a GitHub flag beside it", []string{"verify", "--tree", a, "--against", b, "--gh", "gh", "--page-size", "5"}, 2, "",
 			[]string{"VERIFY REFUSED: --gh reads GitHub and --against reads no network", "VERIFY REFUSED: --page-size reads GitHub"}},
 		{"no second tree", []string{"verify", "--tree", a, "--against", filepath.Join(dir, "none.lisp")}, 2, "",
-			[]string{"VERIFY REFUSED against=" + filepath.Join(dir, "none.lisp") + ": stat ", "; run: nova-work import -h\n"}},
+			[]string{"VERIFY REFUSED against=" + filepath.Join(dir, "none.lisp") + ": stat ", "; run: nova-sprint issues import -h\n"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -514,7 +514,7 @@ func TestVerifyAgainstASecondTreeReadsNoNetwork(t *testing.T) {
 
 // TestStatusGrammar pins the standard's three words after the verb (OK,
 // REFUSED, FAILED; docs/STANDARD.md section 2) and their exit codes for every
-// verb of nova-work: OK is 0, FAILED (verify found differences) is 1, and a run
+// verb of nova-sprint issues: OK is 0, FAILED (verify found differences) is 1, and a run
 // that could not go on, the budget included, is REFUSED at 2.
 func TestStatusGrammar(t *testing.T) {
 	t.Parallel()
@@ -646,7 +646,7 @@ func TestTheVerbsRenderJSON(t *testing.T) {
 func TestABareCommandRefusesWithItsStage(t *testing.T) {
 	t.Parallel()
 	res := workMain(unreachable(t)).Run()
-	require.Equal(t, 2, res.Code, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
-	require.Empty(t, res.Stdout, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
-	require.Equal(t, "WORK REFUSED: no verb given; the verbs are import, verify, roadmap check, roadmap list, roadmap add, roadmap remove, roadmap pull, roadmap done, roadmap note, roadmap render, help, version; run: nova-work help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
+	require.Equal(t, 2, res.Code, "bare nova-sprint issues: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
+	require.Empty(t, res.Stdout, "bare nova-sprint issues: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
+	require.Equal(t, "SPRINT ISSUES REFUSED: no verb given; the verbs are import, verify, roadmap check, roadmap list, roadmap add, roadmap remove, roadmap pull, roadmap done, roadmap note, roadmap render, help, version; run: nova-sprint issues help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-sprint issues: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
 }

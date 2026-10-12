@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"encoding/json"
@@ -168,24 +168,24 @@ func TestHelpNamesTheRoadmapVerbsAndWhereTheOldOnesWent(t *testing.T) {
 	_, examples, ok := strings.Cut(help.Stdout, "example:\n")
 	require.True(t, ok, help.Stdout)
 	for _, v := range []string{"check", "list", "add", "remove", "pull", "done", "note", "render"} {
-		assert.Contains(t, help.Stdout, "  nova-work roadmap "+v+" ", "usage of roadmap %s", v)
-		assert.Equal(t, 1, strings.Count(examples, "nova-work roadmap "+v+" ")+strings.Count(examples, "nova-work roadmap "+v+"\n"), "one example of roadmap %s:\n%s", v, examples)
+		assert.Contains(t, help.Stdout, "  nova-sprint issues roadmap "+v+" ", "usage of roadmap %s", v)
+		assert.Equal(t, 1, strings.Count(examples, "nova-sprint issues roadmap "+v+" ")+strings.Count(examples, "nova-sprint issues roadmap "+v+"\n"), "one example of roadmap %s:\n%s", v, examples)
 	}
 	assert.Contains(t, help.Stdout, "The old roadmap\nverbs, which edited the private work record's roadmaps/*.sexp, are gone")
 	assert.Contains(t, help.Stdout, "these replace them")
 
 	group := workMain(unreachable(t)).Run("roadmap", "-h")
 	assert.Equal(t, 0, group.Code)
-	assert.Contains(t, group.Stdout, "nova-work roadmap done")
+	assert.Contains(t, group.Stdout, "nova-sprint issues roadmap done")
 	_, groupExamples, ok := strings.Cut(group.Stdout, "example:\n")
 	require.True(t, ok, group.Stdout)
 	for _, v := range []string{"check", "list", "add", "remove", "pull", "done", "note", "render"} {
-		assert.Contains(t, groupExamples, "  nova-work roadmap "+v, "roadmap -h has no example of %s:\n%s", v, group.Stdout)
+		assert.Contains(t, groupExamples, "  nova-sprint issues roadmap "+v, "roadmap -h has no example of %s:\n%s", v, group.Stdout)
 	}
 	assert.Contains(t, group.Stdout, "are gone (the v1.2.3 re-seed);\nthese replace them")
 	one := workMain(unreachable(t)).Run("help", "roadmap", "pull")
 	assert.Equal(t, 0, one.Code)
-	assert.Contains(t, one.Stdout, "The old nova-work roadmap verbs edited the private work record's")
+	assert.Contains(t, one.Stdout, "The old nova-sprint issues roadmap verbs edited the private work record's")
 }
 
 func TestRoadmapVerbsMeetTheStandard(t *testing.T) {
@@ -199,20 +199,20 @@ func TestRoadmapVerbsMeetTheStandard(t *testing.T) {
 func TestTheRoadmapExamplesRunInOrder(t *testing.T) {
 	t.Parallel()
 	documented := []string{
-		"nova-work roadmap check",
-		"nova-work roadmap list --release v1.2.6 --state planned",
-		`nova-work roadmap add --id my-fix --release v1.2.6 --title "What the fix does" --origin "PR #12"`,
-		"nova-work roadmap remove --id my-old-fix",
-		"nova-work roadmap pull --id my-item --release v1.2.6",
-		`nova-work roadmap done --id my-fix --evidence "PR #12"`,
-		`nova-work roadmap note --id my-fix --text "Needs the store migration first."`,
-		"nova-work roadmap render",
+		"nova-sprint issues roadmap check",
+		"nova-sprint issues roadmap list --release v1.2.6 --state planned",
+		`nova-sprint issues roadmap add --id my-fix --release v1.2.6 --title "What the fix does" --origin "PR #12"`,
+		"nova-sprint issues roadmap remove --id my-old-fix",
+		"nova-sprint issues roadmap pull --id my-item --release v1.2.6",
+		`nova-sprint issues roadmap done --id my-fix --evidence "PR #12"`,
+		`nova-sprint issues roadmap note --id my-fix --text "Needs the store migration first."`,
+		"nova-sprint issues roadmap render",
 	}
-	all, err := onboarding.ExampleLines(workTool(realGitHub()).Banner(), "nova-work")
+	all, err := onboarding.ExampleLines(workTool(realGitHub()).Banner(), "nova-sprint issues")
 	require.NoError(t, err)
 	var got []string
 	for _, e := range all {
-		if strings.HasPrefix(e, "nova-work roadmap ") {
+		if strings.HasPrefix(e, "nova-sprint issues roadmap ") {
 			got = append(got, e)
 		}
 	}
@@ -225,10 +225,9 @@ func TestTheRoadmapExamplesRunInOrder(t *testing.T) {
 	pages := workMain(unreachable(t)).Run("roadmap", "render", "--repo", dir)
 	require.Equal(t, 0, pages.Code, pages.Stdout+pages.Stderr)
 	for _, line := range got {
-		words, err := onboarding.Steps("nova-work", []string{"$ " + line})
+		words, err := onboarding.SplitShell(strings.TrimPrefix(line, "nova-sprint issues "))
 		require.NoError(t, err, line)
-		require.Len(t, words, 1, line)
-		res := workMain(unreachable(t)).Run(append(words[0].Args, "--repo", dir)...)
+		res := workMain(unreachable(t)).Run(append(words, "--repo", dir)...)
 		require.Equal(t, 0, res.Code, "%s\n%s%s", line, res.Stdout, res.Stderr)
 	}
 	res := workMain(unreachable(t)).Run("roadmap", "check", "--repo", dir)

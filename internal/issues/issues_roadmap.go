@@ -1,4 +1,4 @@
-package main
+package issues
 
 import (
 	"fmt"
@@ -199,7 +199,7 @@ an item), and a move back restores it.
 render: writes the pages from the data; --file/--out renders data kept
         elsewhere (a roadmap held in the private work repository) to a page.
 
-The old nova-work roadmap verbs edited the private work record's
+The old nova-sprint issues roadmap verbs edited the private work record's
 roadmaps/*.sexp ((:roadmap ... :releases ...) with streams of cards). The
 v1.2.3 re-seed left them out; these verbs replace them, on the repository's own
 docs/roadmap.sexp and docs/fixes.sexp.`
@@ -251,7 +251,7 @@ func ids(c *tool.Call) []string { return c.Get("id").([]string) }
 // refuse is a refusal whose remedy is the verb's own help.
 func refuse(verb, why string) *tool.Out {
 	o := tool.Refuse(oneLine(why))
-	o.Remedy = "nova-work roadmap " + verb + " -h"
+	o.Remedy = "nova-sprint issues roadmap " + verb + " -h"
 	return o
 }
 
@@ -265,7 +265,7 @@ func (g github) edit(c *tool.Call, verb string, apply func(s *roadmap.Set) error
 	s, err := roadmap.Load(c.Str("repo"), g.today())
 	if err != nil {
 		o := refuse(verb, err.Error()+"; nothing written")
-		o.Remedy = "nova-work roadmap check --repo " + c.Str("repo")
+		o.Remedy = "nova-sprint issues roadmap check --repo " + c.Str("repo")
 		return o
 	}
 	if err := apply(s); err != nil {
@@ -300,7 +300,7 @@ func roadmapList(c *tool.Call) *tool.Out {
 	s, err := roadmap.Load(c.Str("repo"), "")
 	if err != nil {
 		o := refuse("list", err.Error())
-		o.Remedy = "nova-work roadmap check --repo " + c.Str("repo")
+		o.Remedy = "nova-sprint issues roadmap check --repo " + c.Str("repo")
 		return o
 	}
 	found := s.Find(roadmap.Query{File: c.Str("file"), Place: c.Str("release") + c.Str("group"), State: c.Str("state"), Text: c.Str("text")})

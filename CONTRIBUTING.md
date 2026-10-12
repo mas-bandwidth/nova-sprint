@@ -11,7 +11,7 @@ helps.
 |---|---|
 | `cmd/nova-sprint` | The sprint commands, server, and dashboard entry point. |
 | `internal/card`, `internal/cardgen` | Card generation and linting behind `nova-sprint card`. |
-| `cmd/nova-work` | GitHub issue import and verification. |
+| `internal/issues` | The `nova-sprint issues` group (`import`, `verify`, `roadmap`), folded in from `cmd/nova-work`. |
 | `internal/sprint`, `internal/sprintdash` | Coordination and the browser view. |
 | `internal/cardgen`, `internal/workfile`, `internal/workgh`, `internal/worklang` | Card and work-tree implementation. |
 | `internal/work` | The proposed durable sprint-program store; see its [status note](internal/work/NOTE.md). |

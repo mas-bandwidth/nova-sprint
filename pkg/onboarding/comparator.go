@@ -222,7 +222,7 @@ var Volatile = []VolatileField{
 		What:       "a name a recorded fixture carries, written in the document as the variable the reader sets",
 		NeedsPath:  true,
 		Repeatable: true,
-		// A transcript run against a RECORDING (nova-work's GitHub fixture, a
+		// A transcript run against a RECORDING (the issues group's GitHub fixture, a
 		// public repository of the project's own organization) prints the names
 		// the recording carries, and the reader's run prints theirs: the document
 		// writes the shell variable the reader sets ($ORG), the test names the

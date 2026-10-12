@@ -816,9 +816,9 @@ plans and lints, prints the manifest and the `CARDS OK` line with
 0 done; 1 a brief is red and nothing was written; 2 could not run.
 
 
-## nova-work
+## nova-sprint issues
 
-nova-work is pre-alpha: not ready for production use.
+nova-sprint issues is pre-alpha: not ready for production use.
 
 Every issue of every repository of a GitHub organization in one tree file, with
 each issue's full contents, and a check that the file holds exactly what GitHub
@@ -827,9 +827,9 @@ use it. It reads GitHub only (no GitLab, no Gitea), never writes to GitHub (the
 seam refuses any GraphQL document that is not a query), and captures the fields
 SPEC-WORK-V1 section 1.3 lists, not reactions or other timeline events.
 
-**Try it with no login.** `nova-work verify -h` prints the tree's grammar and a
+**Try it with no login.** `nova-sprint issues verify -h` prints the tree's grammar and a
 minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
-`:archived true`, and run `nova-work verify --tree a.lisp --against b.lisp`: one
+`:archived true`, and run `nova-sprint issues verify --tree a.lisp --against b.lisp`: one
 `VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1. The same
 file against itself is `VERIFY OK ... differences=0`, exit 0.
 
@@ -837,7 +837,7 @@ file against itself is `VERIFY OK ... differences=0`, exit 0.
 you can read: export `ORG` and `REPO`, then run the three lines of the banner's
 `example:` block in a scratch directory (a dry run, the import to
 `./tree.lisp`, the verify). The executed transcript of that sitting, with every
-line of output, is in [TESTS.md](TESTS.md#nova-work).
+line of output, is in [TESTS.md](TESTS.md#nova-sprint issues).
 
 **Output.** One result per run: `IMPORT OK`, `VERIFY OK`, `VERIFY FAIL` (exit 1,
 the differences as `VERIFY MISSING`, `EXTRA` or `DRIFT` lines, values quoted),
@@ -864,14 +864,14 @@ no network at all.
 ### roadmap check, list, add, remove, pull, done, note, render
 
 ```
-nova-work roadmap check  [--repo <dir>]
-nova-work roadmap list   [--repo <dir>] [--file roadmap|fixes] [--release <v> | --group <g>] [--state <s>] [--text <t>] [--max <n>]
-nova-work roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>]
-nova-work roadmap remove [--repo <dir>] --id <id>...
-nova-work roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>)
-nova-work roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit>
-nova-work roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>]
-nova-work roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>]
+nova-sprint issues roadmap check  [--repo <dir>]
+nova-sprint issues roadmap list   [--repo <dir>] [--file roadmap|fixes] [--release <v> | --group <g>] [--state <s>] [--text <t>] [--max <n>]
+nova-sprint issues roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>]
+nova-sprint issues roadmap remove [--repo <dir>] --id <id>...
+nova-sprint issues roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>)
+nova-sprint issues roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit>
+nova-sprint issues roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>]
+nova-sprint issues roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>]
 ```
 
 Edit and read a repository's own work record: `docs/roadmap.sexp` (rendered to

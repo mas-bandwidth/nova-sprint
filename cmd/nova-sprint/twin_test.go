@@ -135,6 +135,12 @@ func TestARestoreRefusesADocumentItDoesNotKnow(t *testing.T) {
 func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 	t.Parallel()
 	for _, v := range verbs {
+		if strings.HasPrefix(v.name, "issues ") {
+			// The issues group is the folded-in nova-work tool (internal/issues):
+			// its -h is that tool's own, whose per-verb help is not the app's
+			// example-block shape. Its own tests hold it.
+			continue
+		}
 		if !assert.NotEmpty(t, v.example, "verb %q has no example", v.name) {
 			continue
 		}
@@ -151,8 +157,8 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 	ta.ok("add --stream s1 --count 9")
 	for _, v := range verbs {
 		switch v.name {
-		case "run", "play", "dashboard", "teardown", "fleet sync", "goal set", "goal show", "brief", "defer", "fsck seat":
-			continue // run and play tick for ever; dashboard serves until interrupted (its own tests); teardown drops the sprint; fleet sync and fsck seat read a config store; a goal is set from a file; a brief is read from a file and linted; defer writes a checkout's roadmap and needs a waiting card
+		case "run", "play", "dashboard", "teardown", "fleet sync", "goal set", "goal show", "brief", "defer", "fsck seat", "issues import", "issues verify", "issues roadmap":
+			continue // run and play tick for ever; dashboard serves until interrupted (its own tests); teardown drops the sprint; fleet sync and fsck seat read a config store; a goal is set from a file; a brief is read from a file and linted; defer writes a checkout's roadmap and needs a waiting card; the issues group reads GitHub and a tree file, apart from the sprint
 		}
 		line := v.example
 		if v.name == "watch" {

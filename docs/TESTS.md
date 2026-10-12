@@ -696,9 +696,9 @@ tools/release-accept.sh when it lands):
   check and its tests are owed again by the card `every-producer-card-has-its-consumer-out-after-the-tick`.
 
 
-## nova-work
+## nova-sprint issues
 
-Run by `cmd/nova-work/firstrun_test.go` against a recorded conversation with
+Run by the issues group's tests (`internal/issues`) against a recorded conversation with
 GitHub (`internal/workgh/testdata/reliable`: one public repository of twenty
 issues, read at fifteen a page), so no network is used and no process is
 started. `$ORG` and `$REPO` are yours: the test stands them for the recording's
@@ -717,18 +717,18 @@ Requires: a gh login that can read the repository (`gh auth status`); import
 ### First run
 
 ```text
-$ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --dry-run
+$ nova-sprint issues import --org $ORG --repo $ORG/$REPO --page-size 15 --dry-run
 IMPORT OK org=$ORG out=- repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh dry_run=true
 IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
 IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
 IMPORT NOTE the dry run read GitHub as the import does (calls=3, read-only) and wrote nothing
 
-$ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp
+$ nova-sprint issues import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp
 IMPORT OK org=$ORG out=./tree.lisp repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh
 IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
 IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
 
-$ nova-work verify --tree ./tree.lisp --repo $ORG/$REPO --page-size 15
+$ nova-sprint issues verify --tree ./tree.lisp --repo $ORG/$REPO --page-size 15
 VERIFY OK tree=./tree.lisp sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 repos=1 issues=20 comments=74 calls=3 points=3 rest=0 seconds=0.0 differences=0 missing=0 extra=0 drift=0 gh=./gh
 ```
 
