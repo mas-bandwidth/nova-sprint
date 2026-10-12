@@ -107,11 +107,6 @@ func ParseCLI(path string) ([]Verb, error) {
 // where only fenced blocks and `###` headings declare.
 func ParseReference(text string) []Verb { return parseLines(text, false) }
 
-// ParseHelp is the same rules over a binary's own `help` output, which is a
-// usage block and nothing else: there are no fences to be inside of, so every
-// line is read as a command line.
-func ParseHelp(text string) []Verb { return parseLines(text, true) }
-
 func parseLines(text string, fenced bool) []Verb {
 	var (
 		verbs   []Verb

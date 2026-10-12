@@ -2,9 +2,7 @@ package onboarding
 
 import (
 	"fmt"
-	"os"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -640,15 +638,6 @@ func Recorded(doc, run string) Norm {
 // Elide declares a normalisation this package has no constructor for. The name
 // is what a reader of the failing test is told is not compared, so it says what
 // the value IS rather than what it looks like.
-func Elide(name, pattern, as string) (Norm, error) {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return Norm{}, err
-	}
-	return Norm{Name: name, Re: re, As: as}, nil
-}
-
-// Result is what a reader saw when they typed one documented command.
 type Result struct {
 	Code           int
 	Stdout, Stderr string
@@ -817,39 +806,6 @@ type Runner func(s Step) (Result, error)
 // and meets no requirement, and then threw the skips away: every step that
 // stated a precondition was skipped and a whole block could turn its test green
 // having run nothing, printing nothing and counting nothing.
-func Execute(steps []Step, run Runner, norms ...Norm) []Problem {
-	problems, skips := ExecuteWith(steps, run, benchConditions(), norms...)
-	if len(steps) > 0 && len(skips) == len(steps) {
-		lines := make([]string, 0, len(skips))
-		for _, s := range skips {
-			lines = append(lines, s.String())
-		}
-		return append(problems, Problem{Step: skips[0].Step, Message: fmt.Sprintf(
-			"every step of this block was skipped: it ran nothing, so it proved nothing.\n%s\nIf these preconditions are right, this bench cannot execute this block and something else must; if they are wrong, they are a defect in the document.",
-			strings.Join(lines, "\n"))})
-	}
-	for _, s := range skips {
-		problems = append(problems, Problem{Step: s.Step, Message: s.String()})
-	}
-	return problems
-}
-
-// benchConditions is what THIS bench can offer, for the caller who did not say.
-// A requirement is met when the environment already names it: the value is
-// never read, printed or copied, only its presence asked after.
-func benchConditions() Conditions {
-	return Conditions{
-		GOOS: runtime.GOOS,
-		Have: func(requirement string) bool {
-			_, set := os.LookupEnv(requirement)
-			return set
-		},
-	}
-}
-
-// Conditions is what this bench can offer a transcript. A step whose stated
-// Platform is not this one, or whose stated Requires this bench cannot meet, is
-// SKIPPED and returned as a Skip rather than run and failed.
 type Conditions struct {
 	// GOOS is the platform, normally runtime.GOOS. An empty GOOS means no step
 	// may be skipped for its platform, so a platform-bound step runs and fails
@@ -869,39 +825,6 @@ type Skip struct {
 	Why  string
 }
 
-func (s Skip) String() string {
-	return fmt.Sprintf("SKIP-PRECONDITION\n  %s\nwhy=%s", s.Step.Line, s.Why)
-}
-
-// ExecuteWith is Execute against a bench that may not be able to run every step.
-//
-// A SKIPPED STEP DOES NOT STOP THE SITTING, and that is a judgement worth
-// stating: the transcripts are sittings, so a skipped step can leave a later one
-// comparing against a state that never happened. It is still better than the
-// alternative, because the steps that DO run are then compared rather than
-// silently abandoned, and a consequent failure names the command it is under --
-// which a reader can follow back to the skip printed above it. A section whose
-// later steps depend on a skipped one wants its `Requires:` on those steps too,
-// and one that does not is a defect in the document, not a pass.
-func ExecuteWith(steps []Step, run Runner, cond Conditions, norms ...Norm) ([]Problem, []Skip) {
-	var problems []Problem
-	var skips []Skip
-	for _, s := range steps {
-		if why := s.SkipReason(cond.GOOS, cond.Have); why != "" {
-			skips = append(skips, Skip{Step: s, Why: why})
-			continue
-		}
-		res, err := run(s)
-		if err != nil {
-			return append(problems, Problem{Step: s, Message: fmt.Sprintf("the documented command\n  %s\ncould not be run: %v", s.Line, err)}), skips
-		}
-		problems = append(problems, Compare(s, res, norms)...)
-	}
-	return problems, skips
-}
-
-// Block indents a set of lines for a failure message, so the document's block
-// and the tool's stand under each other and can be read side by side.
 func Block(lines []string) string {
 	if len(lines) == 0 {
 		return "  (nothing)"
@@ -921,34 +844,3 @@ func Block(lines []string) string {
 // The two tokens must stand as two whole tokens: an unanchored pattern here was
 // a ReplaceAll over every line of every step of the sitting, which is the thing
 // the Norm contract above exists to forbid.
-func GoBuild() Norm {
-	return Norm{
-		Name: "<goos>/<goarch> go<version> (the machine this run is on)",
-		Re:   regexp.MustCompile(`[a-z0-9]+/[a-z0-9]+ go[0-9]+(\.[0-9]+)*`),
-		As:   "<the machine this run is on>",
-		run:  true,
-	}
-}
-
-// Version declares the version word of a `version` line: the word a build
-// stamps itself with.
-//
-// It has to be declared, and the reason is worth writing down. Under `go test`
-// the binary is not stamped and every one of these tools prints `devel`
-// (pkg/buildinfo's Unknown). A build a reader makes -- `go build
-// ./cmd/nova-review && ./nova-review version` -- prints the stamp, today
-// `v0.16.0-dev.<base>.0.<date>-<sha>`. So a transcript that pastes `devel` is
-// green under `go test` and FALSE for the reader it is written for, and one
-// that pastes the stamp is true for the reader and red in the test, and the sha
-// in it changes with every commit. The document therefore shows what a reader
-// sees, and the word is compared as a SHAPE: a stamp or `devel`, and nothing
-// else -- a tool that answered `unknown`, or printed nothing at all, still
-// fails.
-func Version() Norm {
-	return Norm{
-		Name: "the version word (`devel` under `go test`, a stamp in a build)",
-		Re:   regexp.MustCompile(`devel|v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*`),
-		As:   "<the version of this build>",
-		run:  true,
-	}
-}

@@ -108,23 +108,3 @@ func matchSegments(pat, segs []string) bool {
 	}
 	return len(segs) == 0
 }
-
-// matchesStray answers whether a path is on the stray list for this card kind. A
-// pattern with no `/` is a BASE NAME rule and matches anywhere in the tree; a pattern
-// with a `/` matches the whole repo-relative path.
-func matchesStray(rules []strayRule, kind, p string) (string, bool) {
-	base := path.Base(p)
-	for _, r := range rules {
-		if r.except[kind] && kind != "" {
-			continue
-		}
-		subject := base
-		if strings.Contains(r.pattern, "/") {
-			subject = p
-		}
-		if MatchGlob(r.pattern, subject) {
-			return r.pattern, true
-		}
-	}
-	return "", false
-}

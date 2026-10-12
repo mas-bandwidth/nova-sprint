@@ -16,9 +16,6 @@ type Authors map[string]string
 // Author returns the recorded author of a verb, or "" when there is none.
 func (a Authors) Author(key string) string { return a[normalizeKey(key)] }
 
-// Set records an author for a verb key.
-func (a Authors) Set(key, author string) { a[normalizeKey(key)] = strings.TrimSpace(author) }
-
 // wrote reports whether `by` is the author of this verb. Names are compared
 // case-insensitively and trimmed, and nothing else: a receipt that spells a
 // name differently is a receipt with a different name, and the ledger says who
@@ -56,14 +53,6 @@ type Row struct {
 	Open int
 }
 
-// Line is the row as the ledger prints it. A tool with no verbs prints
-// `verb=-`: its bare invocation is a unit like any other, and a unit with no
-// row can never be dogfooded.
-func (r Row) Line() string {
-	return fmt.Sprintf("DOGFOOD tool=%s verb=%s by=%s at=%s ok=%s issue=%s open=%d",
-		r.Tool, r.Verb, r.By, r.At, r.OK, r.Issue, r.Open)
-}
-
 // Summary is the count line under the rows.
 type Summary struct {
 	Verbs       int // verbs docs/CLI.md declares
@@ -79,12 +68,6 @@ type Summary struct {
 	// that silently leaves evidence out is worse than no count, so this one
 	// is printed on the line whether it is zero or not.
 	Unmatched int
-}
-
-// Line is the summary as the ledger prints it.
-func (s Summary) Line() string {
-	return fmt.Sprintf("DOGFOOD OK verbs=%d dogfooded=%d by-nonauthor=%d open-edges=%d unfiled=%d unmatched=%d",
-		s.Verbs, s.Dogfooded, s.ByNonAuthor, s.OpenEdges, s.Unfiled, s.Unmatched)
 }
 
 // Ledger reads the receipts against the verbs and returns one row per verb, in
@@ -244,20 +227,6 @@ type Strand struct {
 	Receipt Receipt
 	File    string // where the stranded receipt lives
 	Nearest string // the closest declared verb, or "" when nothing is close
-}
-
-// Line is the strand as the ledger and the gate print it.
-func (s Strand) Line() string {
-	where := s.File
-	if where == "" {
-		where = "(receipt)"
-	}
-	nearest := "nothing close enough to suggest"
-	if s.Nearest != "" {
-		nearest = "nearest declared: " + s.Nearest
-	}
-	return fmt.Sprintf("DOGFOOD NOTE stranded %s: tool=%s verb=%s by=%s (%s)",
-		where, s.Receipt.Tool, s.Receipt.Spelling(), s.Receipt.By, nearest)
 }
 
 // Stranded returns every receipt naming a verb the reference does not declare,
@@ -513,20 +482,4 @@ func Gate(verbs []Verb, receipts []Receipt, authors Authors, requireAll bool) ([
 		}
 	}
 	return findings, summary
-}
-
-// GateLine is the gate's green line: what it checked and what it found.
-func (s Summary) GateLine(requireAll bool) string {
-	require := "no"
-	if requireAll {
-		require = "yes"
-	}
-	return fmt.Sprintf("DOGFOOD GATE OK verbs=%d by-nonauthor=%d open-edges=%d unfiled=%d unmatched=%d require-all=%s",
-		s.Verbs, s.ByNonAuthor, s.OpenEdges, s.Unfiled, s.Unmatched, require)
-}
-
-// GateCountLine is the gate's red count line: the total, and how much of it was
-// printed under the ceiling.
-func (s Summary) GateCountLine(findings, shown int) string {
-	return fmt.Sprintf("DOGFOOD GATE FAIL verbs=%d findings=%d shown=%d unmatched=%d", s.Verbs, findings, shown, s.Unmatched)
 }
