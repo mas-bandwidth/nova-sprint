@@ -810,13 +810,17 @@
     the judgments section, names the stall, its bound, its breakdown and its clear. Every landing
     is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
     <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
-    entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
-    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
-    Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
-    TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
-    TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
-    TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
-    TestTickDeadlinesRaisesTheLandingStall, TestLandingStallSurvivesTicksShorterThanTheBound."
+    entry (read by the lander from the landed head and carried on the merge step), and the attempts
+    and reads it took; a batch in one tick is one push with a line a card, inside the field bound.
+    A landing the tick sees only after the stall holds again still ends the old episode first. A
+    plan that only writes the episode's stamps carries a unit of its own: the store's tick passes
+    over an empty plan, so on a real store a sprint that had not yet landed never began its
+    episode (found by the functional test). The
+    model card tla-sprintrules-landing-stall-liveness is its own card. Unit tests in
+    internal/sprint/landing_stall_test.go, internal/sprint/store/landing_stall_reads_test.go and
+    cmd/nova-sprint/land_test.go; the functional test
+    TestALandingStallIsJudgedAndClearedByALandingOnTheStore on a real store (docs/TESTS.md, the
+    landing stall)."
    :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
     hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
     need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
