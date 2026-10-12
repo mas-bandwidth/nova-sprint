@@ -48,4 +48,3 @@ func realExecCommand(stdin io.Reader, env []string, dir, name string, args ...st
 	}
 	return out.Bytes(), nil
 }
-
