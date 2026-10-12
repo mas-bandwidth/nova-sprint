@@ -312,14 +312,15 @@ type lander struct {
 	dry, twin                  bool // twin: a mem twin, which has no git
 	// conflictKind and conflictPaths are what the last merge that stopped on unmerged paths
 	// left (mergeHead): the conflict fact carries them (conflictCard).
-	conflictKind  string
-	conflictPaths []string
-	out           []landBatch
-	epoch         uint64              // the epoch land read: every report is fenced to it
-	diffs         map[string]string   // each card's merge diff, as checkCard read it, for its score
-	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
-	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
-	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
+	conflictKind    string
+	conflictPaths   []string
+	conflictEntries []string
+	out             []landBatch
+	epoch           uint64              // the epoch land read: every report is fenced to it
+	diffs           map[string]string   // each card's merge diff, as checkCard read it, for its score
+	scope           map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
+	prose           map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
+	toScore         []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
 	// toCost is the red gates' decide calls, each split over its batch's cards, written on
 	// the cards after the whole pass (landgate.go, recordGateCosts)
 	toCost []sprint.DecideCostReq
@@ -789,7 +790,8 @@ func headNotCommit(stream string, c landCard) string {
 // conflictCard is a card that did not merge, with git's words.
 type conflictCard struct {
 	landCard
-	why string
+	why     string
+	entries []string
 	// kind and paths are the conflict's files, as the merge left them unmerged: "file" when
 	// one is a file no generated ledger owns, "ledger" when every one is a ledger whose
 	// resolution failed, "" when the card failed for any other cause (sprint.MergeReq,
@@ -859,7 +861,7 @@ func (l *lander) returnCard(stream string, f conflictCard) bool {
 // recorded it and the stream goes on.
 func (l *lander) conflict(stream string, f conflictCard) bool {
 	b := landBatch{Stream: stream, Status: "refused", Cards: 1, IDs: []string{f.id}}
-	recorded, stopped := l.fact(b, sprint.MergeReq{Stream: stream, Batch: 1, Conflict: f.id, Note: f.why, ConflictKind: f.kind, ConflictPaths: f.paths}, []landCard{f.landCard}, "conflict", f.why)
+	recorded, stopped := l.fact(b, sprint.MergeReq{Stream: stream, Batch: 1, Conflict: f.id, Note: f.why, ConflictKind: f.kind, ConflictPaths: f.paths, ConflictEntries: f.entries}, []landCard{f.landCard}, "conflict", f.why)
 	return recorded && !stopped
 }
 
@@ -1684,7 +1686,7 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 		}
 		l.cardTips = append(l.cardTips, before)
 		var refused, env string
-		l.conflictKind, l.conflictPaths = "", nil // the merge below says, when it stops on unmerged paths
+		l.conflictKind, l.conflictPaths, l.conflictEntries = "", nil, nil // the merge below says, when it stops on unmerged paths
 		refused, env, card.resolved = l.mergeHead(ctx, dir, stream, *card)
 		if refused == "" && env == "" && card.resolved == "" {
 			// a plain merge of two sides that each regenerated the map (remap)
@@ -1708,7 +1710,7 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 		case env != "":
 			return nil, failed, env + "; no card is blamed and nothing was pushed or reported"
 		case refused != "":
-			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: isEmptyCommitFinding(refused)}, ""
+			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, entries: slices.Clone(l.conflictEntries), emptyCommit: isEmptyCommitFinding(refused)}, ""
 		}
 		merged = append(merged, card.id)
 	}
@@ -1932,10 +1934,11 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 				}
 				// the evidence ledgers merged entry by entry and staged (land_ledgers.go),
 				// on top of the roadmap data; they regenerate no page
-				var edata []string
+				var edata, entries []string
 				var ewhy, eenv string
-				rest, edata, ewhy, eenv = l.stageEvidenceUnion(ctx, dir, rest)
+				rest, edata, ewhy, entries, eenv = l.stageEvidenceUnion(ctx, dir, rest)
 				if eenv != "" || ewhy != "" {
+					l.conflictEntries = entries
 					env, why = eenv, "; "+ewhy
 					if ewhy == "" {
 						why = ""

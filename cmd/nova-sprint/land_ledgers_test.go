@@ -142,8 +142,9 @@ func TestLandMergesEvidenceLedgers(t *testing.T) {
 }
 
 // TestLandRefusesAMalformedEvidenceLedger is (3): an evidence entry the lander cannot merge
-// (both sides changing one entry) stops the stream with the path, as merge --conflict-kind
-// ledger does; it never reworks the card.
+// (both sides changing one entry, one malformed) stops the stream with the path and both
+// entries in the durable judgment/inbox, as merge --conflict-kind ledger does; it never
+// reworks the card (docs/SPEC-LANDING.md, the ledgers).
 func TestLandRefusesAMalformedEvidenceLedger(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
@@ -168,6 +169,10 @@ func TestLandRefusesAMalformedEvidenceLedger(t *testing.T) {
 	assert.Contains(t, errs, "docs/roadmap-evidence/fixed-x.sexp conflicts")
 	assert.Contains(t, errs, "the stream is stopped")
 	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
+	inbox := r.ok("inbox")
+	assert.Contains(t, inbox, `:title "one"`, "the durable judgment shows the tip's conflicting entry")
+	assert.Contains(t, inbox, `:title "two"`, "the durable judgment shows the card's conflicting entry")
+	assert.Contains(t, inbox, `:origin #.(x)`, "the malformed form is preserved for diagnosis")
 	r.clean()
 }
 

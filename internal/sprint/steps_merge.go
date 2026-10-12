@@ -34,10 +34,14 @@ type MergeReq struct {
 	// FieldConflictPaths), which the conflict rule reads (rules.go). "" is not known.
 	ConflictKind  string   `json:",omitempty"`
 	ConflictPaths []string `json:",omitempty"`
-	Cross         string   // "<card>=<other>": a card that needs a card of another stream first
-	Red           bool     // the stream branch went red on the batch
-	Suspects      []string // with Red: the cards of the batch the caller suspects
-	Rejected      bool     // the merge queue rejected the batch
+	// ConflictEntries are both sides of an unresolved generated-ledger entry; the stop
+	// judgment keeps them with the reason so the inbox can show what needs repair
+	// (docs/SPEC-LANDING.md, the ledgers).
+	ConflictEntries []string `json:",omitempty"`
+	Cross           string   // "<card>=<other>": a card that needs a card of another stream first
+	Red             bool     // the stream branch went red on the batch
+	Suspects        []string // with Red: the cards of the batch the caller suspects
+	Rejected        bool     // the merge queue rejected the batch
 	// BaseRed is the lander's base-gate rule's stop (docs/SPEC-SPRINT.md section 8, answered by
 	// rule): the base failed its tree gate at its tip three times, and this is the error. The
 	// stream stops with the judgment NBaseRed; no card moves.
@@ -396,6 +400,9 @@ func MergeStep(s *Snapshot, r MergeReq) Plan { return Lawful(mergeStep(s, r)) }
 func mergeStep(s *Snapshot, r MergeReq) Plan {
 	var p Plan
 	p.on(s)
+	if len(r.ConflictEntries) > 0 {
+		r.Note += "\nunresolved ledger entries:\n" + strings.Join(r.ConflictEntries, "\n")
+	}
 	// The note is written whole into the refused card's why (landRefused) and so into a
 	// tick step: a note over the card text bound is refused here, loudly, at its source,
 	// never cut and never carried into a step the store would refuse on every tick

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -307,14 +308,14 @@ func evidenceAddMerged(file string, ours, theirs, merged []byte) error {
 // resolved; card is why one is refused (a malformed entry, the lander's own failure, which
 // the merge reports with the conflict-kind ledger and stops the stream), env a git failure
 // that is not the card's.
-func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []string) (rest, data []string, card, env string) {
+func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []string) (rest, data []string, card string, entries []string, env string) {
 	for _, p := range paths {
 		if !cardgen.EvidenceLedger(p) {
 			rest = append(rest, p)
 			continue
 		}
 		if q := onDiskLink(dir, []string{p}); q != "" {
-			return nil, nil, p + " conflicts and " + q + " is a symlink, which the resolution would write through", ""
+			return nil, nil, p + " conflicts and " + q + " is a symlink, which the resolution would write through", nil, ""
 		}
 		var sides [3][]byte
 		baseMissing := false
@@ -325,7 +326,7 @@ func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []str
 					baseMissing = true
 					continue
 				}
-				return nil, nil, p + " conflicts and has no stage " + strconv.Itoa(i+1) + " to resolve from (added or removed on one side)", ""
+				return nil, nil, p + " conflicts and has no stage " + strconv.Itoa(i+1) + " to resolve from (added or removed on one side)", nil, ""
 			}
 			sides[i] = res.Stdout
 		}
@@ -346,17 +347,131 @@ func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []str
 			}
 			byForm, ferr := mergeByForm(p, base, sides[1], sides[2])
 			if ferr != nil {
-				return nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error(), ""
+				return nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error(), evidenceConflictEntries(p, sides[1], sides[2]), ""
 			}
 			merged = byForm
 		}
 		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(p)), merged, 0o644); err != nil {
-			return nil, nil, "", "the merged " + p + " could not be written: " + err.Error()
+			return nil, nil, "", nil, "the merged " + p + " could not be written: " + err.Error()
 		}
 		if _, err := l.git(ctx, dir, "add", "--", p); err != nil {
-			return nil, nil, "", "the merged " + p + " could not be staged: " + firstLine("", err)
+			return nil, nil, "", nil, "the merged " + p + " could not be staged: " + firstLine("", err)
 		}
 		data = append(data, p)
 	}
-	return rest, data, "", ""
+	return rest, data, "", nil, ""
+}
+
+// evidenceConflictEntries keeps the two sides of an unresolved generated-ledger entry in
+// the durable judgment (docs/SPEC-LANDING.md, the ledgers). When a reader cannot decode a
+// side, retain its raw bytes rather than losing the malformed entry that caused the stop.
+func evidenceConflictEntries(file string, ours, theirs []byte) []string {
+	decoded := [2]map[string]string{}
+	for i, side := range [][]byte{ours, theirs} {
+		decoded[i], _ = evidenceEntries(file, side)
+	}
+	keys := unionKeysString(decoded[0], decoded[1])
+	var entries []string
+	if decoded[0] != nil && decoded[1] != nil {
+		for _, key := range keys {
+			if decoded[0][key] != decoded[1][key] {
+				entries = append(entries, "tip evidence entry "+key+": "+decoded[0][key], "card evidence entry "+key+": "+decoded[1][key])
+			}
+		}
+		return entries
+	}
+	// A malformed side cannot go through the evidence reader. Extract its raw item forms,
+	// then pair the entry whose ID matches a readable entry on the other side.
+	ids := map[string]bool{}
+	for _, m := range decoded {
+		for key := range m {
+			ids[key] = true
+		}
+	}
+	for i, side := range [][]byte{ours, theirs} {
+		forms := evidenceRawItems(side)
+		matched := false
+		for _, form := range forms {
+			if key := rawEvidenceEntryKey(form); key != "" && ids[key] {
+				entries = append(entries, []string{"tip", "card"}[i]+" evidence entry "+key+": "+form)
+				matched = true
+			}
+		}
+		if !matched {
+			for _, form := range forms {
+				entries = append(entries, []string{"tip", "card"}[i]+" evidence entry: "+form)
+			}
+		}
+	}
+	return entries
+}
+
+// evidenceRawItems extracts balanced item forms even when a value inside one does not read.
+func evidenceRawItems(data []byte) []string {
+	marker := bytes.Index(data, []byte(":items"))
+	if marker < 0 {
+		return nil
+	}
+	open := bytes.IndexByte(data[marker+len(":items"):], '(')
+	if open < 0 {
+		return nil
+	}
+	startAt := marker + len(":items") + open
+	var out []string
+	depth, start := 0, -1
+	quoted, escaped, comment := false, false, false
+	for i := startAt; i < len(data); i++ {
+		c := data[i]
+		if comment {
+			if c == '\n' {
+				comment = false
+			}
+			continue
+		}
+		if quoted {
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				quoted = false
+			}
+			continue
+		}
+		switch c {
+		case ';':
+			comment = true
+		case '"':
+			quoted = true
+		case '(':
+			if depth == 1 {
+				start = i
+			}
+			depth++
+		case ')':
+			if depth == 1 { // the :items list closes
+				return out
+			}
+			depth--
+			if depth == 1 && start >= 0 {
+				out = append(out, strings.TrimSpace(string(data[start:i+1])))
+				start = -1
+			}
+		}
+	}
+	return out
+}
+
+var evidenceEntryKeyRE = regexp.MustCompile(`^\(\s*([^\s()]+)\s+"((?:\\.|[^"\\])*)"`)
+
+func rawEvidenceEntryKey(form string) string {
+	m := evidenceEntryKeyRE.FindStringSubmatch(form)
+	if len(m) != 3 {
+		return ""
+	}
+	id, err := strconv.Unquote(`"` + m[2] + `"`)
+	if err != nil {
+		return ""
+	}
+	return m[1] + ":" + id
 }
