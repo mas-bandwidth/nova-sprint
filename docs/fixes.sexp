@@ -2527,8 +2527,11 @@
     ready (a bench fault, not the worker's). docs/SPEC-CARD-CONTRACT.md gains the SIBLINGS header and
      docs/SPEC-STAGING.md the siblings directory, the mirror and the refusal. Delivered:
      cmd/nova-sprint/add_lint.go (holdCardChecks governs the admission), internal/cardgen/cardgen.go
-     (LintSiblingPath) and internal/sprint/stage_siblings.go (StageSiblings, ParseSiblings) with their
-     tests; rework w6 widens the card's PATHS to name those three files, so the delivered scope lands."
+     (LintSiblingPath), internal/sprint/stage_siblings.go (StageSiblings, ParseSiblings) and
+     pkg/friend/stage.go (Stage parses the brief's SIBLINGS header and stages each sibling, then JOB.md is
+     written with the SIBLING_ lines; a sibling that cannot be staged refuses the stage) with their
+     tests; rework w6 widens the card's PATHS to name those three files, and rework w9 wires the staging
+     path a reader found had no caller, so the delivered scope lands."
     :origin "this card, a-card-stages-its-sibling-runtimes.w1 (rework w2: the add command's admission now holds
     the sibling-path rule), a-card-stages-its-sibling-runtimes.w2; the owner, 2026-10-11 ~12:20-12:45 PM ET: \"I
     shouldn't need to tell you this, you should just get a push notification about it\", \"Fix the fucking gaps in
