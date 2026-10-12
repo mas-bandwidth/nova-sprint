@@ -75,18 +75,19 @@ FINISH OK moved=1 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done ok; s1-1 working -> review (finish by m1)
 MOVED ask: s1-1 asked of reader-a
+MOVED deadlines: landing-stall watch begins: 1 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=1 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --begin --epoch 0
 MOVED s1-1.r1.reader-a asked -> reading
-READ OK moved=1 refused=0 notes=0 op=read-t35-1
+READ OK moved=1 refused=0 notes=0 op=read-t36-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --ok --epoch 0
 MOVED s1-1.r1.reader-a reading -> ok
-READ OK moved=1 refused=0 notes=0 op=read-t36-1
+READ OK moved=1 refused=0 notes=0 op=read-t37-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -99,7 +100,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=3 op=merge-t41-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t42-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
@@ -187,8 +188,9 @@ FINISH OK moved=2 refused=0 notes=1 op=finish-t32-1
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done failed; s1-1 working -> review (finish by m1)
 MOVED drain: s1-2.w1 working -> done failed; s1-2 working -> review (finish by m1)
+MOVED deadlines: landing-stall watch begins: 2 review, 0 merging, no landing yet
 TABLES rows changed: work=1 readers=0 merge=0 fleet=0
-TICK OK state=RUNNING idle=no moved=2 notes=0
+TICK OK state=RUNNING idle=no moved=3 notes=0
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint answer --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
@@ -223,6 +225,83 @@ release acceptance (`make release-accept`).
   `pkg/member` members in the test process over the command's verbs, on the
   sprint's clock; neither starts an OS process.
 
+### A brief edit keeps the needs, tier and bound (v1.2.14)
+
+A `brief` edit replaces the card's whole text, but what a verb set stays the
+card's: the needs a relink re-pointed, the tier a re-tier pinned, and the bound
+count a routing-only edit must not reset (docs/SPEC-SPRINT.md, the needs, the
+brief verb and the bound).
+
+- Unit, `internal/sprint/brief_edit_test.go`:
+  `TestBriefKeepsANeedRelinkedToItsTwin`,
+  `TestBriefAddsANewNeedAndKeepsADroppedOne`,
+  `TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief`,
+  `TestABriefChangingOnlyDependsKeepsARelinkedNeed`,
+  `TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
+  `TestADependsOnlyBriefTierFlagOverridesTheText`,
+  `TestBriefKeepsARecordedTierAgainstTheText`,
+  `TestBriefTierFlagOverridesTheText`,
+  `TestAMetadataOnlyBriefKeepsTheBoundCount`,
+  `TestBriefTierRefusesATLAPathBelowFrontier`,
+  `TestANewTaskBriefResetsTheBoundCount`,
+  `TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck`,
+  `TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced`,
+  `TestABriefTierFlagRefusesATLAPathBelowFrontier`.
+- Unit, `cmd/nova-sprint/tier_verb_test.go`:
+  `TestTierRefusesAReTierWithoutAReason` (`tier --set` with no, an empty or a
+  blank `--reason` is refused and writes nothing).
+- Functional (`-tags functional`), `cmd/nova-sprint/brief_edit_functional_test.go`:
+  `TestABriefEditKeepsARelinkedNeedOnTheStore` (a relink, then `brief
+  --brief-file` with the stale DEPENDS-ON on the test's own redis, `--redis` on
+  every verb, HOME and XDG_CONFIG_HOME the test's own: the need kept
+  and its NOTE, a new need added beside it, and `bound: same task` on a card
+  dealt).
+
+
+### The landing stall (v1.2.14)
+
+Cards that wait in review or merging with no landing for the bound (one
+minute, `set --landing-stall-bound`) raise one "landing stalled" judgment to
+the coordinator with its breakdown, re-raised each bound and cleared by the
+next landing with "landing again after <d>"; every landing is pushed to the
+coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
+
+- Unit, `internal/sprint/landing_stall_test.go`:
+  `TestLandingStallIsJudgedWhenCardsWaitAndNothingLands`,
+  `TestLandingStallNamesTheRedCI`, `TestLandingStallIsReRaisedEachBound`,
+  `TestLandingStallClearsOnTheNextLanding`, `TestNoStallWithNothingWaiting`,
+  `TestLandingStallClosesItsJudgmentWhenWaitingClears`,
+  `TestLandingReadCountsCombineFleetAndLegacyConsumersOnce`,
+  `TestLandingReadCountsAnActiveUnmarkedFleetRead`,
+  `TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads`,
+  `TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead`,
+  `TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall`,
+  `TestEveryLandingIsPushedToTheCoordinator`,
+  `TestMergeWritesTheLandingStallFacts`, `TestMergeWritesTheLandersLastRefusal`,
+  `TestTickDeadlinesRaisesTheLandingStall`,
+  `TestLandingStallStartsBeforeTheFirstLanding`,
+  `TestLandingStallSurvivesTicksShorterThanTheBound`,
+  `TestLandingStallBoundIsSettable`,
+  `TestALandingSeenLateEndsTheOldStallBeforeANewOne`,
+  `TestALandingPushOfLongLedgerTextsStaysInsideTheFieldBound`,
+  `TestALandingStallStampAloneIsAPlanTheTickWrites`,
+  `TestALandingPushOfAHundredCardsKeepsEveryCardsLine`,
+  `TestLandingLinesNameEveryCardWhenTheFactsAloneOverflow`,
+  `TestASubSecondBoundNeverTakesTheLastLandingForANewOne`,
+  `TestALandingOverflowOfIDsPastTheBoundCountsAllAndCutsNoID`.
+- Unit, `internal/sprint/store/landing_stall_reads_test.go`:
+  `TestLandingPushCountsFinishedFriendReadsAfterAccept`,
+  `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.
+- Unit, `cmd/nova-sprint/land_test.go`:
+  `TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead`.
+- Functional (`-tags functional`), `cmd/nova-sprint/landing_stall_functional_test.go`:
+  `TestALandingStallIsJudgedAndClearedByALandingOnTheStore`, on a private
+  redis-server with the machine's own clock and a one-second bound: the stall
+  is raised to the coordinator, and the landing pushes "landed" and closes it.
+  Every verb names the private store with `--redis`; the app sees only the
+  test's own environment (its home and config directory are temporary, no
+  `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
+  a live sprint server.
 
 ## nova-card
 

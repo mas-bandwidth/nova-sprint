@@ -155,6 +155,7 @@ func RowCardCounts(s *Snapshot) (rows map[string]map[string]int, all ReadCardCou
 
 // halfLoad is a load counted in slots with a read at half a slot, rounded up: the room a
 // work card needs is whole.
+// tla/DirtyTick.tla Load, Room and ReadFits (ReadCost "half")
 func halfLoad(work, reads int) int { return work + (reads+1)/2 }
 
 // readUnit is one unit the read-card ask may deal a read to: a friend's row or a member's.
@@ -955,6 +956,7 @@ func readCardsWaitingCount(s *Snapshot) int {
 // ready card). Its snapshot includes the cards it places and takes back, which the work of
 // the same deal is dealt on. With read cards off, nothing and the snapshot as it is.
 // tla/ReadCards.tla Deal
+// tla/DirtyTick.tla Pump (reads before work under ReadCost "half"; ReadsBeforeWork)
 func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 	if !s.ReadCardsOn() || s.Fleet == nil {
 		return s, Plan{}

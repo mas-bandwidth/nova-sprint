@@ -710,9 +710,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			last.Notes = append(last.Notes, l)
 		}
 		// The landing-stall facts (judgments.go): the work table's stamp of the
-		// last landing, so the tick's landing-stall alarm measures from here.
+		// last landing, to the nanosecond, so the tick's landing-stall alarm
+		// measures from here and orders it against its episode's start.
 		was, had := s.Work.Prop(PropLastLanding)
-		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLastLanding, Value: now, Was: was, WasAbsent: !had})
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLastLanding, Value: landingStamp(s.Now), Was: was, WasAbsent: !had})
 		lands := map[string]bool{}
 		for _, id := range landed {
 			lands[id] = true
