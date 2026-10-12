@@ -47,6 +47,19 @@ const (
 	FieldDecideGatePreexisting = "decide_gate_preexisting"
 )
 
+// NReviewNoReader is the judgment that a primary in review wants a read and
+// the readers table has no row at all: there is no one to ask. It is raised
+// once by the tick for the sprint (TickAsk), naming the primaries in review
+// that want a read, and it closes when a reader row exists. A primary in review
+// is never a silent idle for want of a reader (docs/SPEC-SPRINT.md section 8).
+const NReviewNoReader = "review has no reader"
+
+// reviewNoReader is the text of the judgment: the primaries in review that
+// want a read, and the empty readers table.
+func reviewNoReader(ids []string) string {
+	return fmt.Sprintf("%s for %s: the readers table is empty", NReviewNoReader, strings.Join(ids, ", "))
+}
+
 // gateFields is the bars every deal of a work card carries, at the deal (a redeal takes
 // the row's bars then): the sprint row's that are set. A bar left out is unset: its member's
 // native still records and shows each gate decision, and takes no route on that bar.

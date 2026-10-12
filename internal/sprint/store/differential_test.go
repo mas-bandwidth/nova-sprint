@@ -119,6 +119,23 @@ var dKnown = []dKnownDiff{
 		}
 		return sigHas("another", "open.accept=yes/no", "primary.pair")(f)
 	}},
+	// MODEL behind. A clear keeps the readers (a-cleared-sprint-keeps-its-readers,
+	// SPEC-SPRINT section 13): the engine keeps the reader rows across a clear; the
+	// model is owed the same (refmodel Clear), so once a sequence clears, the model
+	// asks its rounds without the readers the engine kept and the reads it places
+	// (and the round it leaves) differ. The divergence is the model's gap, not the
+	// engine's: it is every state finding after a clear, whatever fields it names.
+	{"MODEL the model's clear drops the readers the engine keeps", func(f dFinding) bool {
+		if f.Kind != "state" {
+			return false
+		}
+		for _, a := range f.Seq {
+			if a.Kind == "clear" {
+				return true
+			}
+		}
+		return false
+	}},
 }
 
 func dClassify(f dFinding) (string, bool) {
