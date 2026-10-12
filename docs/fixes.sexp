@@ -2560,4 +2560,21 @@
     internal/sprint/brief_edit_test.go (red first) and the functional
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
-   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
+  (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
+   :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
+   :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
+    verb (nova-friend <verb>, nova-swarm <verb>, nova-sprint <verb>, nova-config <verb> in a play, a
+    workflow, a script or a doc command block) must call a verb the tool registers at the head; a
+    missing verb refuses the head naming the file, the line and the tool's known verbs. Found by a
+    read: nova-tools head bb01282b62 added `nova-friend acceptance` to fleet/seat-friend.yml while
+    cmd/nova-friend had no acceptance verb (the verb first appears at 2f8cb9126c). The check reads
+    only a line that runs the tool — the tool beginning the command after a play's dash, a shell
+    prompt, a workflow's `run:`, `env` and leading `VAR=` assignments, and in a Markdown file only
+    inside a fenced code block, never a tool merely named in prose or a Go string — and holds each
+    call to that tool's verb table at the head (nova-sprint's own, and nova-friend, nova-swarm and
+    nova-config through the runbook's list); proof: the fixture of bb01282b62's fleet/seat-friend.yml
+    is refused through the lander's own table, the same line where the verb is registered passes, a
+    line naming a verb of another tool or a shell built-in is not checked, and a Markdown prose line
+    whose first token is a tool name is not refused."
+   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")))
