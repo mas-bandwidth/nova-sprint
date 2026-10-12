@@ -1988,6 +1988,42 @@ func answeredIn(notes []Note, id string) bool {
 	return slices.ContainsFunc(notes, func(n Note) bool { return n.Kind == Decided && n.Answers == id })
 }
 
+// readCardOnTable is the read card named id, placed on a friend's fleet row or a
+// reader's row; nil when no such read is placed. A read card lives on the fleet
+// table (a friend's row) or the readers table, never the work table, so the
+// coordinator's return looks it up here (docs/SPEC-SPRINT.md section 1, friend
+// reconcile).
+func readCardOnTable(s *Snapshot, id string) *Card {
+	if s.Fleet != nil {
+		if c := s.Fleet.Placed(id); c != nil && isRead(c) {
+			return c
+		}
+	}
+	if s.Readers != nil {
+		if c := s.Readers.Placed(id); c != nil && isRead(c) {
+			return c
+		}
+	}
+	return nil
+}
+
+// returnReadUnit is the coordinator's return of a read card on a friend's (or a
+// reader's) row: the card leaves its table retired returned (RetiredByReturned:
+// no verdict, not a read), so the ask places it again (docs/SPEC-SPRINT.md
+// section 1, friend reconcile). It is the same hand-back the reader's own
+// read --return applies, run here by the coordinator's return verb.
+func returnReadUnit(s *Snapshot, c *Card, reason, who string) Unit {
+	table := Readers
+	if IsFriendRow(c.Row) {
+		table = Fleet
+	}
+	set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": cutText(reason, MaxCardTextBytes)}
+	n := happened(NReadReturned, c.F("stream"), s.Now, c.F("primary"))
+	n.Who, n.Attempt, n.What = who, c.Int("attempt"), who+" returned "+c.ID+": "+reason
+	return Unit{Key: c.F("primary"), Stream: c.F("stream"), Changes: []Change{change(table, removeEntry(c, set))},
+		Moved: c.ID + " " + c.Col + " -> returned (retired: " + who + " returned it)", Notes: []Note{n}}
+}
+
 // Return moves merging -> review: off the merge queue (or stuck), into the
 // merge table's hidden returned column, so a later accept moves it back. The
 // primary is marked returned at its attempt (FieldReturnedAttempt): the
@@ -1995,18 +2031,51 @@ func answeredIn(notes []Note, id string) bool {
 // again only at a new attempt with its own reads.
 func Return(s *Snapshot, r ReturnReq) Plan {
 	var p Plan
-	chosen := pick(&p, r.Sel, s.Work.Column(Merging), rowOf, func(c *Card) string {
-		if orphanMerge(s, c) != nil {
-			return ""
+	// a read card on a friend's (or a reader's) row is handed back to the deal:
+	// the coordinator's return works on a friend's read, not only the reader's own
+	// read --return (docs/SPEC-SPRINT.md section 1, friend reconcile). The read
+	// card lives on the fleet table (a friend's row) or the readers table, never
+	// the work table, so the named ids are split: reads go to returnReadUnit, the
+	// rest to the merging -> review move below.
+	sel := r.Sel
+	named := len(sel.IDs) > 0 || sel.Only != nil
+	if named {
+		ids := sel.IDs
+		if sel.Only != nil {
+			ids = sel.Only
 		}
-		if why := inState(c, Merging); why != "" {
-			return why
+		var workIDs []string
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if seen[id] {
+				p.refuse(id, "named twice")
+				continue
+			}
+			seen[id] = true
+			if c := readCardOnTable(s, id); c != nil {
+				p.Units = append(p.Units, returnReadUnit(s, c, r.Reason, r.Who))
+				continue
+			}
+			workIDs = append(workIDs, id)
 		}
-		if m := s.Merge.Placed(c.ID); m != nil && m.Col != Queued && m.Col != Stuck {
-			return "not queued or stuck in merge (it is " + placeWord(m) + ")"
-		}
-		return "" // queued, stuck, or no merge card at all: return takes it back
-	}, s.primaryCard)
+		sel.IDs = workIDs
+		sel.Only = nil
+	}
+	var chosen []*Card
+	if !named || len(sel.IDs) > 0 {
+		chosen = pick(&p, sel, s.Work.Column(Merging), rowOf, func(c *Card) string {
+			if orphanMerge(s, c) != nil {
+				return ""
+			}
+			if why := inState(c, Merging); why != "" {
+				return why
+			}
+			if m := s.Merge.Placed(c.ID); m != nil && m.Col != Queued && m.Col != Stuck {
+				return "not queued or stuck in merge (it is " + placeWord(m) + ")"
+			}
+			return "" // queued, stuck, or no merge card at all: return takes it back
+		}, s.primaryCard)
+	}
 	leaving := map[string]bool{}
 	for _, c := range chosen {
 		m := s.Merge.Placed(c.ID)
