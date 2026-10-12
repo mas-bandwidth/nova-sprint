@@ -15,9 +15,19 @@ import (
 // 2026-10-06) names, in the order the lock writes them, to take a v1.2.9 fleet
 // table to the build's locked shape.
 var lockedFleetCommands = []string{
+	"nova-table col add fleet provider --after okpct",
+	"nova-table col add fleet coordination --after provider",
+	"nova-table col add fleet environment --after coordination",
+	"nova-table col add fleet harness --after environment",
+	"nova-table col add fleet no_result --after harness",
+	"nova-table col add fleet redealt --after no_result",
 	"nova-table col add fleet finished --after withdrawn",
-	"nova-table col add fleet redealt --after okpct",
 	"nova-table set fleet --hide finished",
+	"nova-table set fleet --hide provider",
+	"nova-table set fleet --hide coordination",
+	"nova-table set fleet --hide environment",
+	"nova-table set fleet --hide harness",
+	"nova-table set fleet --hide no_result",
 }
 
 // oldFleet makes the twin's fleet table the v1.2.9 shape: fleetBeforeVerdicts
@@ -66,7 +76,7 @@ func TestLockedShapeRefusesTheFleetTableBeforeTheVerdictsMigration(t *testing.T)
 		m.mu.Lock()
 		ft := m.tables[fleet]
 		ft.def.Columns, _ = ntable.ParseColumns(lockedFleet)
-		ft.def.Hidden = []string{sprint.Withdrawn, sprint.Finished, sprint.DoneOK, sprint.DoneFailed, sprint.DoneDefect, sprint.Ctl}
+		ft.def.Hidden = []string{sprint.Withdrawn, sprint.Finished, sprint.DoneOK, sprint.DoneFailed, sprint.DoneDefect, sprint.ProviderFailures, sprint.Coordination, sprint.Environment, sprint.Harness, sprint.NoResult, sprint.Ctl}
 		m.mu.Unlock()
 		assert.NoError(t, st.LockedShape(ctx))
 	})

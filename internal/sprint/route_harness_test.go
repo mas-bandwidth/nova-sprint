@@ -209,7 +209,7 @@ func TestACardItsLaunchersRefusedAtStagingIsJudged(t *testing.T) {
 	require.Equal(t, []string{"m1"}, StagingRefusers(w.s.Fleet.Card("s1-1.w1")))
 	p, _ := TickDeal(w.s, TickReq{})
 	w.must(p)
-	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "dealt to no member")
+	assert.Equal(t, Coordination, w.s.Fleet.Card("s1-1.w1").Col, "dealt to no member")
 	j := tierJudgment(w, cardhdr.RouteFlash)
 	require.NotNil(t, j, "the tier's one judgment is raised")
 	assert.Equal(t, []string{"s1-1"}, j.Primaries)

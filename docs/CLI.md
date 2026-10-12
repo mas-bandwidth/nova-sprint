@@ -183,7 +183,7 @@ nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--jso
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint reads --review [--stream <s>] [--json]
-nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
+nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run] [--recompute]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
@@ -308,6 +308,22 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
 <group>` (fleet, friend, reader, goal, stream) prints one group's.
+
+### ok% and the end classes
+
+A machine's and a route's ok% counts only the work the machine did: ok over (ok + failed
+work + no result). Every take's end is classed at the moment it is recorded, by its cause:
+work (ok, failed work, no result — the child ran to its own end) versus not-its-fault
+(provider, coordination, environment, harness, clear). A not-its-fault end files in its own
+named fleet column — `provider` (a provider refusal, a missing key), `coordination` (a move,
+drop, re-brief, re-tier or sprint clear), `environment` (a 134/137 environment death) and
+`harness` (a harness fault) — never in the failed cell, so it is never counted in ok%.
+`no_result` is a work end and sits in the ok% denominator, never as ok.
+
+`stats tidy --recompute` recomputes those counters from the stored take ends with the new
+classes (dry-run first: `stats tidy --recompute --dry-run` prints what it would write and
+writes nothing). Run it once after the classes change so the page shows accurate figures at
+once.
 
 ### A card's priority
 

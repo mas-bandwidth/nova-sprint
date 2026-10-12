@@ -98,7 +98,7 @@ func (s *Snapshot) launchersOf(c, wc *Card, ms []string) (out []string, why stri
 // whose route is drawn afresh), refused the members taken out for it.
 func (s *Snapshot) dealPool(c *Card, up []string) (pool []string, wc *Card, refused []string) {
 	pool = onlyBench(up, Bench(c))
-	if w := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); w != nil && w.Col == Withdrawn && !redealBound(w) {
+	if w := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); w != nil && Redealable(w) && !redealBound(w) {
 		wc, refused = w, StagingRefusers(w)
 		pool = without(pool, refused)
 	}
@@ -1105,6 +1105,8 @@ func AttemptLine(wc *Card) string {
 		}
 	case wc.Col == Withdrawn:
 		end = "withdrawn"
+	case NotItsFaultCol(wc.Col):
+		end = wc.Col
 	case !wc.Placed():
 		end = "retired"
 	}
@@ -1229,7 +1231,7 @@ func RouteStats(routes []Route, fleet *Table) []RouteStat {
 		}
 		return &out[i]
 	}
-	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn, ProviderFailures, Coordination, Environment, Harness, NoResult) {
 		name := c.F(FieldRoute)
 		if name == "" {
 			continue
@@ -1259,6 +1261,9 @@ func RouteStats(routes []Route, fleet *Table) []RouteStat {
 		}
 		if c.Col == Withdrawn && c.F(FieldProviderError) != "" {
 			continue // dealt again at the next deal: no take of it is on this route now
+		}
+		if NotItsFaultCol(c.Col) {
+			continue // a take that ended not-its-fault or with no result: dealt again, never ok or failed here
 		}
 		if c.Col == DoneDefect {
 			continue // a brief defect (brief_defect.go): the brief's, never the route's
