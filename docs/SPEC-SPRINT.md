@@ -1631,7 +1631,11 @@ default) and `low` (it fills only an idle lane).
   priority on stream just means one verb call sets priority for all cards in the stream"),
   and the stream's default, which seeds the cards added to the stream later (a later card's
   own PRIORITY line wins); a held stream is set all the same and the output says it is held
-  and that none of its cards is dealt until `unhold`; `priority <id>...` prints each card's
+  and that none of its cards is dealt until `unhold`; `priority` also takes the shared
+  selector (`--who`, `--state`, `--ids-file`, or `--stream` with any of them, and
+  `--dry-run`), `priority --ids-file raise.txt --critical --reason '<why>'` setting every
+  selected card in one call and no stream default (docs/SPEC-SPRINT.md, "One selector, one
+  step"); `priority <id>...` prints each card's
   level and its source (`set`, `computed`, `default`, `read`). Every change is a `priority
   set` note on the card's timeline (`log --card`) with the actor and the reason, and the
   default's change a `stream priority set` note on the stream's (`log --stream`). A
@@ -1643,7 +1647,7 @@ default) and `low` (it fills only an idle lane).
   low s2-1, s2-2 (+3); stream defaults s2 low`; in `--json` `priorities` by level,
   `stream_priorities`, and each work row's `priority`, the stream's default)
   (`TestPrioritySetsACardAndItsStream`, `TestAStreamsDefaultSeedsNewCards`,
-  `TestPriorityRefusesAReadCard`).
+  `TestPriorityRefusesAReadCard`, `TestPriorityRaisesASelectedSetInOneCall`).
 - **A read inherits its primary's level.** A read's level is the higher of `reader` and its
   primary's own level (`sprint.ReadPriority`): the reads of a blocker, critical, fix or high
   primary go to the front of the read queue (the owner, 2026-10-06: "that work stream jumps to
@@ -2054,8 +2058,8 @@ names, as before.
 
 **One selector, one step** (the owner, 2026-10-04, after the coordinator changed hundreds
 of cards one process at a time and a recut of 195 pinned cards did not finish: "BATCH
-EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank` and `drop` take one
-selector grammar, combinable, every flag given holding of a card it selects:
+EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank`, `drop` and `priority`
+take one selector grammar, combinable, every flag given holding of a card it selects:
 
 - `--stream <s>`: the cards of the stream;
 - `--who <friend.<name>|friend|none>`: the cards whose WHO line names that friend (a hard
@@ -2076,6 +2080,11 @@ written. `--dry-run` plans the same step on one read and prints `<VERB> OK DRY-R
 the model tiers' routes, which a `rework` reads when it runs). A selector call gives no
 id. `rework`, `return` and `drop` keep their `--stream` (a stream's cards, one step before
 this) unless `--who`, `--state` or `--ids-file` comes with it (cmd/nova-sprint/select.go).
+`priority` keeps its `--stream` too: alone it is the one-stream call (every card of the
+stream and the stream's default), and with `--who`, `--state` or `--ids-file` it selects
+only, one `PriorityStep` over `sprint.Selected`, setting every selected card or none and
+leaving the stream's default as it is (`cmdPriority`/`cmdPrioritySel`,
+`TestPriorityRaisesASelectedSetInOneCall`).
 
 `brief` and `recut` by selector take a transform of each card's own brief instead of a
 whole file, made on its header block (`sprint.BriefEdit`): `--set-base <branch>` (every
@@ -2232,7 +2241,11 @@ that ends it, whatever the end (done, failed, no result, the provider's failure,
 at staging, a read of any verdict or none): the consumer record carries its route, model,
 tier, card, kind (work or read) and end, and its charged figure is the harness's own cost
 where it reported one, else its tokens at the route's prices (`costRecord`); a run that
-reported no token is counted unpriced, never as a zero. A launch's child appends one row
+reported no token is counted unpriced, never as a zero. A run whose route has no price sheet
+and whose harness actual is exactly zero is unpriced the same way, `unpriced=no-price-sheet`:
+the zero is no cost, so its tokens and its route are kept with no figure at all and the stream
+counts it among its unpriced runs (`unpriced_runs`), never as $0; a priced route, and a
+non-zero harness actual, are unchanged (`cardcost.Usage.Priced`). A launch's child appends one row
 per attempt to its job's `usage.tsv` before the summary line that carries the launch's
 spend; a launch stopped between the two still reports what the rows say
 (`member.ReceiptUsage`): every attempt's tokens summed, the model, and the harness's cost
@@ -3662,8 +3675,12 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   cards wait): the tick raises one judgment, `fewer than two readers up:
   <readers and their states>`, for the sprint (not one for each primary),
   closed when enough are up or no such primary waits; `reader up` and
-  `reader add` answer it.
-  The system's tick asks for every such primary; `ask` is the coordinator's
+  `reader add` answer it. With no reader row at all there is no one to ask:
+  the tick raises one judgment, `review has no reader for <ids>: the readers table is empty`, for the sprint, naming the primaries in review that want a
+  read, closed when a reader row exists (a clear keeps the readers, section
+  13). A primary in review is never a silent idle for want of a reader;
+  `reader add` answers it.
+  The machine's tick asks for every such primary; `ask` is the coordinator's
   own. Each read card the ask creates carries a route as a work card does
   (`route`, `model`, `tokens`, `usd`, `deadline`), and `tier`, the tier it is drawn
   from: the tier of the card it reads, the tier the deal draws that card's
@@ -7418,11 +7435,13 @@ Fleet Working or Readers Reading after STOP; it lists each `card@gen` and its
 owner row. A stop-returned lease, or a captured lease whose card is no longer
 working, does not block. Otherwise clear finishes a pending operation, or
 abandons it at the epoch it started at, then advances the epoch once. It does
-not restore or delete the old shape. Every table and sprint record is keyed by
-epoch, so the new epoch starts with no stream, reader, work, merge,
-lease, stop receipt, alarm, inbox or session state by construction; the
-fleet's members carry over (their rows, widths, status and holds), but their
-work cards do not. The
+not restore the old work or delete anything. Every table and sprint record is
+keyed by epoch, so the new epoch starts with no stream, work, merge, read
+card, lease, stop receipt, alarm, inbox or session state by construction. A
+clear is tabula rasa for the sprint's work, never for its configuration: the
+fleet's members (their rows, widths, status and holds) and the readers (their
+reader rows and the tiers they read, `reader add` and `reader set --tiers`
+wrote) carry over, but their work cards and read cards do not. The
 old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer still holding it is refused as stale: nothing of that
 epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
@@ -7442,13 +7461,18 @@ epoch, where the system is STOPPED until `start`. Clear prints the epoch
 before and after, what the epoch before the advance held as counts, the
 system's state before, and the sprint line.
 
-Clear does not carry stream rows or their archived/hidden status,
-reader rows, goals, leases, stop debt, alarms or notification cursors
-into the next epoch; the fleet's members carry over with their rows, widths,
-status and holds, but without their work cards. Adding a stream after clear creates it fresh, whether its
-name was previously active, removed or archived. This blank-slate rule
-supersedes earlier table-entry descriptions that said a clear kept streams or
-kept an archived stream archived.
+Clear does not carry stream rows or their archived/hidden status, goals,
+leases, stop debt, alarms or notification cursors into the next epoch. The
+sprint's configuration carries over: the fleet's members with their rows,
+widths, status and holds, and the readers with their rows and the tiers they
+read (restoreMembers, internal/sprint/store/clear.go), but neither carries its
+work cards or read cards. Adding a stream after clear creates it fresh, whether its
+name was previously active, removed or archived. This blank-slate-for-work
+rule supersedes earlier table-entry descriptions that said a clear kept
+streams or kept an archived stream archived; the readers are not a stream and
+are kept. A primary left in review with no read out and no reader row raises
+the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
+sprint with its readers gone still tells the coordinator rather than idling.
 
 <a id="14-the-machine"></a>
 

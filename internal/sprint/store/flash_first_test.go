@@ -1,14 +1,12 @@
 package store
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Flash first on every card (the owner, 2026-10-02, cost rule 1 of nova-tools#5174:
@@ -19,15 +17,14 @@ import (
 // the coordinator's as before. On the mem twin, injected clock, no socket.
 
 // setPrimary writes fields onto a primary as a step that wrote them would leave it, on
-// the store's own backend (the mem twin, or Redis in the functional tier).
+// the store's own backend (the mem twin, or Redis in the functional tier). It guards on
+// the work table as stored (setPrimaryOnTable), not on h.snap(): while the queue holds a
+// change, the snapshot's WithQueue overlay reads the work table one revision ahead and the
+// queued cards' revisions bumped, so a write guarded on it is refused ("mem: table revision
+// mismatch").
 func (h *harness) setPrimary(id string, set map[string]string) {
 	h.t.Helper()
-	s := h.snap()
-	c := s.Work.Card(id)
-	require.NotNil(h.t, c)
-	_, err := h.st.B.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: h.st.Names.Table(sprint.Work), Epoch: fmt.Sprint(s.Epoch), ExpectedTableRevision: fmt.Sprint(s.Work.Revision),
-		OperationID: "set-primary-" + id, Members: []ntable.BatchMemberEntry{{ID: c.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(c.Rev)}, Set: set}}})
-	require.NoError(h.t, err)
+	h.setPrimaryOnTable(id, set)
 }
 
 // boundOut ends every take of the primary's live work card without a finish, as a

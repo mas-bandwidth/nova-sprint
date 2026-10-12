@@ -449,6 +449,22 @@ a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
   its own, no `NOVA_*` variable and PATH the binary's directory and the
   system's, so no verb can reach a seat config or a live sprint server.
 
+### Priority raises a selected set in one call
+
+`cmd/nova-sprint/priority_set_test.go`,
+`TestPriorityRaisesASelectedSetInOneCall`: `priority` takes the shared
+selector of `cmd/nova-sprint/select.go` (`--who`, `--state`, `--ids-file`, or
+`--stream` with any of them, and `--dry-run`). The test admits five cards in
+two streams on a private store (named explicitly with `--redis`; HOME and
+XDG_CONFIG_HOME are temporary directories and no `NOVA_*` variable is read,
+so no host record or server can take a verb), writes an ids file of three and
+runs `priority --ids-file raise.txt --critical --reason 'next point release'`:
+exactly those three are critical, one `priority set` timeline entry each, and
+the stream default is unchanged, so a card added later is still normal; the
+output is one line per card and `selected=3`. `--dry-run` plans the same step
+and writes nothing. An ids file naming a read card refuses the whole call with
+nothing written.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
@@ -617,6 +633,26 @@ older than the TTL, so a stale version is never shown.
   `NOVA_*`): after ticks, `where --json` states the server's own version, and one heartbeat
   write is one SET.
 
+### The audit names every blocked, stuck or looped card
+
+`nova-sprint audit` is the one answer to "is anything blocked, stuck or looped":
+one read of the work, fleet and readers tables, one line per unlanded primary
+with its id, stream, state, tier and attempt, its holder (the member or friend
+whose working card holds it, the lane and since when) or `-`, the age in its
+current state and attempt, the ends of its last four attempts and the needs not
+yet landed with their states, and its flags: `NO-HOLDER` (ready past the dealt
+bound, or working with no holder), `ATT>=4`, `FAILS=<n>` (six or more failed,
+idle-reaped, bound or brief-defect ends), `STUCK` (unchanged past `--stuck`,
+default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`;
+`--json` is one object a line and `--stream` narrows it.
+
+- Unit, `cmd/nova-sprint/audit_test.go`:
+  `TestAuditNamesEveryBlockedStuckOrLoopedCard`, on a private in-memory store
+  with the app's own clock: one card of each trouble (a ready card past the dealt
+  bound, an attempt-4 card, a card with six failed ends, a card unchanged past
+  `--stuck 1m`, a card needing a card that is no card) and one healthy card; each
+  flag appears on its line and none on the healthy one, and the same in `--json`.
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
@@ -672,4 +708,66 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   a judgment naming no attempt, and one whose card is still at the attempt it was raised for,
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
+
+## Tests that fail under load are made deterministic
+
+The owner's standing rule: tests are bounded and never flaky; a test that fails
+under load is the test's defect. These tests failed on a shared bench (hetzner2,
+load average 30-36) and are now deterministic, each by its exact name:
+
+- `TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued`
+  (`cmd/nova-sprint/landpass_test.go`): the caller's cancel is delivered at a
+  synchronization point the test controls — the combined gate suspends in its
+  `gateRan` seam until the test has canceled — so the cancel always arrives
+  inside the gate and never races wall time, however loaded the bench.
+- `TestTickDrainAndDealUnderTheGateAtLoad`
+  (`internal/sprint/deal_load_bench_test.go`): the deal's sub-second gate is
+  held on the CI path by counts (the deal parses each ready brief exactly once;
+  the drain's moves are bounded by the deal's queued output), never by a
+  wall-clock bound on a shared bench. The wall itself is measured only by
+  `BenchmarkTickDealAtLoad` and `BenchmarkTickDrainAtLoad`, outside the gate.
+- `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`
+  (`internal/sprint/store/idle_test.go`): it was seen red on a hetzner2 base
+  run; its dependency was the stale end-note rule it pinned (every end of an
+  idle episode was a working-again note), already fixed by b70990f6 (`idleEnd`:
+  only the fleet working at half its width again clears; otherwise the
+  episode-ended note). No production change was owed; the inert sort tie-break
+  added for it was dropped, and the test passes 50/50 under load.
+- `TestCRTwoRunLoopsAtOnce`
+  (`internal/sprint/store/machine_twoloops_test.go`): it failed 2 of 8 on clean
+  main with "the sprint is busy: other operations kept the fence moving". The
+  real cause was the outside store's no-op `Sleep`: it made the store's
+  documented fence backoff (the wait between its `FenceTries`) never yield, so
+  an outside verb's fenced read spent all its tries inside one tick loop's fence
+  hold and gave up. The test now keeps the store's real `Sleep`, so the designed
+  backoff spaces the tries as a run loop's verb has in production. The test's
+  outer retry of `FenceBusyError` (`busyTries`) is the last-resort bound the
+  test exists to assert; it is correct because, with the real backoff, a verb
+  reaches it only if a fence stayed busy past the store's own documented
+  `RetryBudget` — the starvation the test pins — and its failure names the
+  losing verb and the store's own read count.
+- The shared helper `setPrimary` (`internal/sprint/store/flash_first_test.go`)
+  read `h.snap()`, whose `WithQueue` overlay reads the work table a revision
+  ahead while the queue holds a change, so a write guarded on it was refused
+  ("mem: table revision mismatch"); it now guards on the unoverlaid table
+  (`setPrimaryOnTable`, `internal/sprint/store/no_parked_test.go`), so a test
+  may set a primary after a finish and a tick.
+
+The card's owed step — "run the package 10x under load and name the
+`cmd/nova-sprint` test that failed once in #110's gate" — was run as
+`go test -count=10 ./cmd/nova-sprint` under load. The tests that failed are the
+ones that shell out to `git`: `TestTheLanderLandsTheBaseFixFirst`,
+`TestLandMergesSameReleaseBlockEntries`,
+`TestLandReviewReusedOperationCannotClaimAnotherBatchLanded`,
+`TestServerReviewLandingAllowsATickAndCoordinatorWriteBeforePush` and
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`. Their failures
+are the bench's process table, not the tests' logic: every one is
+`fork/exec .../shim/git: resource temporarily unavailable` / `Cannot fork` from
+a `git` call, except `TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`,
+which fails its own assertion — `LAND REFUSED ... git ls-tree: fork/exec ...: resource temporarily unavailable` — because the same exhaustion hit its
+`git ls-tree`. `TestTheTwinSocketFitsAUnixSocketPath` also failed, and it is
+environmental: this sandbox's `TMPDIR` exceeds the 100-byte Unix-socket limit
+and its `/tmp` fallback is denied. The test named for #110's gate is therefore
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`, the one whose own
+assertion a loaded bench turns red by starving its `git` call of a process.
 

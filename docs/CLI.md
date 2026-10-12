@@ -89,7 +89,7 @@ nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-ru
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
 nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>]
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
-nova-sprint priority <id>... | (<id>... | --stream <s>) (--blocker | --critical | --high | --normal | --low) --reason <text>
+nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
@@ -178,11 +178,21 @@ nova-sprint funded <provider> --reason <text>
 nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--json]
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
+nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+**`audit`** is the one answer to "is anything blocked, stuck or looped": one
+read of the work, fleet and readers tables prints one line per unlanded primary
+with its id, stream, state, tier, attempt, holder (the member or friend whose
+working card holds it, the lane and since when) or `-`, the age in its current
+state and attempt, the ends of its last four attempts and the needs not yet
+landed with their states, and its flags: `NO-HOLDER`, `ATT>=4`, `FAILS=<n>`
+(six or more failed, idle-reaped, bound or brief-defect ends), `STUCK` (unchanged
+past `--stuck`, default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`; `--json` is one object a line, `--stream` narrows it.
 
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
@@ -280,6 +290,11 @@ read card is reader or its primary's higher level, a primary normal unless its b
 stream's default or `priority` sets it. `priority s1-4 --high --reason '<why>'` sets one card,
 `priority --stream s2 --low --reason '<why>'` sets, in one call, every card now in the stream
 (its own level overwritten) and the stream's default for cards added later, and `priority s1-4` prints the level and where it comes from;
+`priority` also takes the shared selector (`--who`, `--state`, `--ids-file`, or `--stream`
+with any of them, and `--dry-run`), setting every selected card in one call and no stream
+default: `priority --ids-file raise.txt --critical --reason 'next point release'` sets the
+three cards the file names, one line per card and the total, or none (an id that is no card,
+or names a read or work card, refuses the whole call with nothing written);
 each change is on the card's timeline (`log --card`) with the actor and the reason. Every
 deal places the cards above reader first, then the reads, then normal and low work in the
 room the reads leave; `where` prints the levels beside the critical list and the backup

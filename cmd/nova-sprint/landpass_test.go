@@ -255,11 +255,23 @@ func TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued(t *testing.T)
 	defer cancel()
 	r.a.landCtx = ctx
 	var gates atomic.Int32
+	combinedStarted := make(chan struct{})
+	release := make(chan struct{})
+	// The cancel is delivered at a synchronization point the test controls: the combined
+	// tree gate (the pass's fourth and last gate) suspends in its gateRan seam until the
+	// test cancels, so the cancel always arrives during the gate, never by racing wall time
+	// against a gate count, however the shared machine is loaded.
 	r.a.gateRan = func(string, bool) {
-		if gates.Add(1) == 4 { // base, both batches, then the combined tree
-			cancel()
+		if gates.Add(1) == 4 {
+			close(combinedStarted)
+			<-release
 		}
 	}
+	go func() {
+		<-combinedStarted
+		cancel()
+		close(release)
+	}()
 	code, out, errs := r.do("land --land-parallel 2")
 	r.a.landCtx = nil
 	assert.Equal(t, 1, code, out+errs)

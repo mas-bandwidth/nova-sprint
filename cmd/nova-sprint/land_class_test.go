@@ -175,13 +175,15 @@ func TestTheLocalGateReportsTheFirstRedInClassOrder(t *testing.T) {
 	t.Parallel()
 	stages := gateRuns(true, []string{"internal/ci", "internal/docs"}, nil)
 	l := &lander{}
+	gofmtDone := make(chan struct{})
 	fake := func(_ context.Context, _ string, run []string) (string, error) {
 		cmd := strings.Join(run, " ")
 		switch {
 		case cmd == "gofmt -l .":
+			defer close(gofmtDone)
 			return "bad.go", errors.New("exit status 1")
 		case strings.Contains(cmd, "go vet -tags functional"):
-			time.Sleep(50 * time.Millisecond)
+			<-gofmtDone
 			return "later red", errors.New("exit status 1")
 		}
 		return "", nil

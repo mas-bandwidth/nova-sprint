@@ -79,14 +79,7 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 		for _, base := range []string{"dev", "main"} {
 			t.Run(base, func(t *testing.T) {
 				t.Parallel()
-				r := newLandRig(t)
-				for _, b := range []string{"dev", "sprint/s1"} {
-					r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
-				}
-				r.git(r.worker, "fetch", "-q", "origin")
-				r.ok("add --stream s1 --count 1 --one")
-				r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
-				r.ok("stream set s1 --promotion=false") // queued marks every stream; s1 is plain again
+				r := plainStreamRig(t)
 				tip := r.git(r.remote, "rev-parse", base)
 				for _, land := range []string{"land --repo-dir " + r.clone + " --base " + base + " --dry-run", "land --repo-dir " + r.clone + " --base " + base} {
 					code, out, errs := r.do(land)
@@ -104,6 +97,22 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 			})
 		}
 	})
+}
+
+// plainStreamRig is a land rig with origin's dev and sprint/s1 pushed, one queued card
+// (s1-1) cut on sprint/s1, and s1 back to a plain stream: queued marks every stream
+// land-protected any, and the protected-base lander tests start from a stream that is not.
+func plainStreamRig(t *testing.T) *landRig {
+	t.Helper()
+	r := newLandRig(t)
+	for _, b := range []string{"dev", "sprint/s1"} {
+		r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
+	}
+	r.git(r.worker, "fetch", "-q", "origin")
+	r.ok("add --stream s1 --count 1 --one")
+	r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
+	r.ok("stream set s1 --land-protected default") // s1 is a plain stream again
+	return r
 }
 
 // promotionStream makes stream the promotion stream before a card cut on dev or main is

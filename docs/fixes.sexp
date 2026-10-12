@@ -68,7 +68,10 @@
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each.")
    (release "v1.2.16" :status "planned"
-    :text "Every TLA+ model checked against the code."))
+    :text "Every TLA+ model checked against the code.")
+   (release "v1.2.17" :status "planned" :date "2026-10-12"
+    :text "The costs no price covers: a harness's exact zero on a route with no price sheet is
+     counted unpriced, never as $0."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -1882,8 +1885,12 @@
   (fix "every-producer-card-has-its-consumer-out-after-the-tick" :release "v1.2.14" :status "planned"
    :title "Every producer card has its consumer out after the tick"
    :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
-   :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
-   (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
+    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+   (fix "a-cleared-sprint-keeps-its-readers" :release "v1.2.14" :status "planned"
+    :title "A clear is tabula rasa for the work, never for the readers"
+    :text "clear emptied the readers table with the work, so a sprint cleared and started on its defaults (no reader add between) had no reader to ask: every finished card sat in review while the tick reported idle with no judgment and no alarm (the release-acceptance progress test re-added the readers by hand to pass). The readers are the sprint's configuration, as the fleet's members are. restoreMembers (internal/sprint/store/clear.go) now writes the readers' rows at the new epoch beside the members' rows, so a clear keeps them, and their read cards stay the old epoch's with the rest of the work. A primary left in review with no read out and an empty readers table is never a silent idle: TickAsk raises one judgment, review has no reader (NReviewNoReader, internal/sprint/steps_review.go), naming the primaries in review that want a read and closing when a reader row exists. The card also keeps the readers' tiers across a clear: the tiers are a text cell of the readers table (Shape/ShapeOf carry them, and restoreMembers and restore write the cells beside the rows), so a reader set --tiers pro or flash does not silently revert to the default when the sprint is cleared; and the review-has-no-reader judgment is rewritten in place as primaries join or leave review, so a card that enters review while the readers table is still empty is named too (steps_tick.go's update list), never frozen at the tick that first raised it. TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (cmd/nova-sprint/release_accept_progress_test.go) now passes with no reader add after the clear, TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick raises the judgment in one tick, the clear tests assert the readers carry over and TestClearKeepsTheReadersTiers asserts a non-default tier survives (docs/SPEC-SPRINT.md section 13)."
+    :origin "this card, a-cleared-sprint-keeps-its-readers.w3 and w4; the release-acceptance child, 2026-10-11 ~23:05Z, writing TestReleaseAcceptAClearedSprintLandsWithNoSeatAction; the w4 reader's finding of 2026-10-12: clear kept the readers' rows but dropped their tiers cell, and NReviewNoReader froze the primaries it named")
+    (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
     :title "DirtyTick models ConsumersOut at each tick's end"
     :text "tla/DirtyTick.tla gains ConsumersOut, an action property checked at each tick's end: every working card's attempt is held by a machine up, every review card's read is held by a reader up (unless judged stranded, no route, at its bound, or its read already said ok), and every ready card a route serves and a free up slot could take is dealt in the same tick. The fix \"consumersout\" re-pumps the work table in the settle loop (sub-ticks until the consumer queue is empty, bound MaxSub 32, reaching it a judgment SettleBoundJudged). tla/MCDirtyTickConsumers.tla and .cfg (width 2) check it, with four reversed witnesses (a deal of one card per tick, a settle loop cut after one sub-tick, a read asked in the next tick instead of this one, a member-down whose attempts are not re-dealt) that TLC must fail."
     :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card tla-dirtytick-consumers-out-at-the-tick-end-2.w7; continued by card tla-dirtytick-consumers-out-at-the-tick-end-2.w9")
@@ -2552,6 +2559,34 @@
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
      attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+   (fix "a-card-stages-its-sibling-runtimes" :release "v1.2.15" :status "planned"
+    :title "A card that reads a sibling repository stages it from the mirror or the forge"
+    :text "The schema conformance cards compare a leg against sibling repositories (mas-bandwidth/serialize,
+    serialize.c, serialize.cs); their harness expected ../serialize next to the checkout, and on the fleet
+    the job directory had no sibling, so the cards came back \"the C++ reference corpus (../serialize) ...
+    absent\" after a full attempt each. A brief that names a sibling path (../<name>) is now refused at
+    admission unless it carries a SIBLINGS header naming the repositories (owner/name@ref, comma separated),
+    with the path quoted (cardgen.LintSiblingPath, internal/cardgen/cardgen.go), and the add command holds the
+    rule at admission (cmd/nova-sprint/add_lint.go holdCardChecks). At staging the member clones each
+    SIBLINGS repository at its ref into $JOB/siblings/<name> from the bench mirror (~/nova-bench/mirror/<name>.git)
+    where one exists, else from the forge from outside the wall (the member's staging runs outside the wall;
+    the card's lane never fetches), and JOB.md names each as SIBLING_<NAME>=$JOB/siblings/<name> so the harness
+    is pointed there; a sibling that cannot be staged refuses the stage with the name and the card returns to
+    ready (a bench fault, not the worker's). docs/SPEC-CARD-CONTRACT.md gains the SIBLINGS header and
+     docs/SPEC-STAGING.md the siblings directory, the mirror and the refusal. Delivered:
+     cmd/nova-sprint/add_lint.go (holdCardChecks governs the admission), internal/cardgen/cardgen.go
+     (LintSiblingPath), internal/sprint/stage_siblings.go (StageSiblings, ParseSiblings) and
+     pkg/friend/stage.go (Stage parses the brief's SIBLINGS header and stages each sibling, then JOB.md is
+     written with the SIBLING_ lines; a sibling that cannot be staged refuses the stage) with their
+     tests; rework w6 widens the card's PATHS to name those three files, and rework w9 wires the staging
+     path a reader found had no caller, so the delivered scope lands."
+    :origin "this card, a-card-stages-its-sibling-runtimes.w1 (rework w2: the add command's admission now holds
+    the sibling-path rule), a-card-stages-its-sibling-runtimes.w2; the owner, 2026-10-11 ~12:20-12:45 PM ET: \"I
+    shouldn't need to tell you this, you should just get a push notification about it\", \"Fix the fucking gaps in
+    push notifications\", \"Make sure these watches become part of the tool\", \"We need a history and count of
+    consumer cards launched, per-producer card, included in the producer card\", \"we need to discover this earlier
+    with card lint ... or some sort of plan review\"; the seat's own record of the day; the schema cards' failed
+     attempts of 2026-10-11 for c, cs and rust")
    (fix "the-lander-merges-evidence-ledgers" :release "v1.2.15" :status "planned"
     :title "The lander merges the evidence ledgers entry by entry"
     :text "The generated ledgers docs/roadmap-evidence/fixed-<leg>.sexp are one entry per card,
@@ -2602,7 +2637,22 @@
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
    :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
-  (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
+   (fix "priority-raises-a-selected-set-in-one-call" :release "v1.2.14" :status "planned"
+    :title "priority takes the shared selector, raising a set in one call"
+    :text "priority now takes the shared selector of cmd/nova-sprint/select.go (--who, --state,
+     --ids-file, or --stream with any of them, and --dry-run), as brief, recut, rework and return
+     do: selWords gains priority (its base words only, so --stream alone keeps its one-stream
+     meaning), and cmdPrioritySel builds one PriorityStep over sprint.Selected, setting every
+     selected card or none. --stream alone still sets every card of the stream and the stream's
+     default for cards added later; with another selector word it selects only and leaves the
+     default as it is. A card in the set that is a read or work card refuses the whole call with
+     nothing written, as a single-card set does. Output is one line per card and the total.
+     Tests: cmd/nova-sprint/priority_set_test.go TestPriorityRaisesASelectedSetInOneCall (five
+     cards in two streams, an ids file of three, one timeline entry each, the stream default
+     unchanged, --dry-run writing nothing, a read card refusing), docs/SPEC-SPRINT.md \"One
+     selector, one step\" and section 1 \"Priority\"."
+    :origin "this card, priority-raises-a-selected-set-in-one-call.w1.g2.e19, finished in its own worktree on sprint/priority-raises-a-selected-set-in-one-call.w1.g2.e19; the seat ran priority <id> --critical in a shell loop per card and priority --stream also changed the stream's default")
+   (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
    :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
    :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
     verb (nova-friend <verb>, nova-swarm <verb>, nova-sprint <verb>, nova-config <verb> in a play, a
@@ -2646,4 +2696,96 @@
   (fix "tla-an-environment-death-spends-no-redeal" :release "v1.2.16" :status "planned"
    :title "A child killed by its environment (134/137) spends no redeal and no attempt, and is capped before a card-holding judgment"
    :text "The TLA+ models gain the environment death that v1.2.14's doctor recorded (a-doctor-reports-the-child-exit-code-rate-per-member): a take ending on the member's environment (exit 134 or 137, sprint.HardEnvExit) is not the card's failure, so it spends no redeal and no attempt, and the card returns to ready at its attempt, up to EnvExitCardCap (3) environment deaths an attempt before the tick raises the card-holding bound judgment (NBound). tla/DirtyTick.tla adds the EnvEnd action, the env counter and the AtEB hold, with EnvDeathSpendsNoRedeal (an environment death never moves rdl or att) and EnvDeathsBounded (at most EnvCap per attempt), and the reversed witnesses envspends (an environment death counted as a redeal) and envnocap (no cap); tla/AttemptsEpochs.tla gains the EnvEnds path on its TakeEnds, with EnvDeathSpendsNoRedeal and the matching envspends witness. Checked against the code: internal/sprint/steps_work.go envExited, AtEnvExitBound, HardEnvExit, EnvExitCardCap."
-   :origin "this card, tla-an-environment-death-spends-no-redeal, the v1.2.16 TLA+ pass owed by a-doctor-reports-the-child-exit-code-rate-per-member")))
+   :origin "this card, tla-an-environment-death-spends-no-redeal, the v1.2.16 TLA+ pass owed by a-doctor-reports-the-child-exit-code-rate-per-member")
+  (fix "tla-pass-nova-sprint-coverage-rows-1-to-26" :release "v1.2.16" :status "planned"
+   :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 1 to 26"
+   :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 1 to 26 (card-lifecycle to fault-hold-clear).
+    Each module's actions and properties are checked against the code its row cites at file:line on
+    main; every CASES.tsv config of those modules runs under TLC to its declared result and every
+    reversed witness still fails its named property; and each 2026-10-11 fix to these machines carries
+    its property and a reversed witness or the row's note names it a gap. Rows owed to cards already on
+    the table stay theirs (named, not redone); a missing rule is a gap for a new card, not a rewrite.
+    The TLC check is green on a Linux bench: every CASES.tsv config of these modules has a current
+    tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
+    frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+  (fix "tla-sprintrules-landing-stall-judgment" :release "v1.2.16" :status "planned"
+   :title "SprintRules models the landing stall, Part stall, with the reversed witnesses nostall and noclear"
+   :text "Models only, no product change. tla/SprintRules.tla gains Part stall, the model of the
+    landing-stall alarm (internal/sprint/judgments.go TickLandingStall, run from the deadlines part): a
+    running-time clock lsclk that advances only while the machine is not stopped (lsstopped, the code's
+    r.Stopped), the cards waiting in review or merging (lswait), the last landing's stamp (lslast), and the
+    episode's start and last push (lssince, lssaid). The tick end raises one NLandingStall judgment when
+    cards wait and the last landing is the bound (StallBound, the code's LandingStallBound) of running time
+    ago, re-raises it each bound it still holds, and a landing (LsLand) clears the episode with the code's
+    NLandingAgain. The invariant StallNotYoung (the judgment is never open while the last landing is younger
+    than the bound) and the liveness StallLive (a card in review with its reads done and ok is landed or the
+    stall is raised, under fairness of the running tick and the machine starting again) are checked, with
+    the reversed witnesses MCSprintRulesStallBrokenNoStall (the tick never raises: StallLive) and
+    MCSprintRulesStallBrokenNoClear (a landing does not clear: StallNotYoung), and the control
+    MCSprintRulesStall. The comment in judgments.go names the card and the module's actions, and
+    TickLandingStall gains one comment line citing tla/SprintRules.tla LsTick; no other Go file changes."
+   :origin "this card, tla-sprintrules-landing-stall-judgment, from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")
+  (fix "tla-sprinttables-crash-and-repair-in-its-own-instance" :release "v1.2.16" :status "planned"
+   :title "SprintTables models the CI observations, ack, crash and repair in an instance of their own"
+   :text "Models only, no product change. tla/SprintTables.tla gains the outside events and the repair from internal/sprint/refmodel/actions.go: CiRed (a red CI observation on a placed primary opens the ci judgment and moves nothing), CiGreen (a green observation closes it), Ack (the coordinator answers the open ci judgment), Crash (a step over more than one table is cut before its last write, the work table: the fleet writes are committed, the work table is left at its pre-state, the deferred work-table write is held and the operation is pending) and Repair (the deferred write is applied and the operation releases). They live in CrashSpec, Spec plus the outside events, so the MCSprintTables and MCSprintTablesMerge cases, which run Spec, keep their state space and their 110 s budget. The new instance MCSprintTablesCrash (one flash primary, two members up, two readers) checks NoCardLostOrTwice and every earlier invariant across a crash at each cut step (Start, Finish, FleetDown and Drop), and the reversed witness MCSprintTablesCrashBrokenHalfstep (Broken \"halfstep\" drops the fence) fails NoCardLostOrTwice. refmodel/actions.go's CiRed, CiGreen, Ack, Crash and Repair comments cite the module. The sprinttables TLC group is re-run on this bench."
+   :origin "this card (tla-sprinttables-crash-and-repair-in-its-own-instance); the earlier tla-sprint-tables-crash-and-repair was deferred when SprintTables.tla grew about 600 lines and its instance no longer fit the 110 s budget")
+  (fix "a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced" :release "v1.2.17" :status "planned"
+   :title "A zero harness cost on an unpriced route is counted unpriced, never as $0.00"
+   :text "A Mercury 3 take on a route with no price sheet (pro-mercury3, pro-mercury3-pro) that
+    reported tokens and a harness actual of exactly zero recorded a cost of $0.00: Usage.Present
+    reads the zero actual as a real figure and Total.Add counts it as the record's charged figure, so
+    the zero stands in for a price and the run is not one of the stream's unpriced runs.
+    cardcost.Usage.Priced now drops the harness actual when the route has no price sheet (Predict's
+    no-price-sheet) and the actual is an exact zero (zeroCost), keeping the tokens and the route with
+    unpriced=no-price-sheet and no figure, so the record is counted among the stream's unpriced runs
+    (the work table's unpriced column) and adds nothing to charged. A record on a priced route, a
+    non-zero harness actual, a run that reported no token and a subscription read are unchanged. No
+    dashboard cell, column or row is added or removed. docs/SPEC-SPRINT.md, the section What a card
+    cost, states the rule. Test: TestAZeroHarnessCostOnAnUnpricedRouteIsCountedUnpriced
+    (internal/sprint/cost_test.go)."
+   :origin "this card, a-zero-harness-cost-on-an-unpriced-route-is-counted-unpriced.w1, from the seat,
+    2026-10-12 03:09Z: Mercury 3 takes on pro-mercury3 and pro-mercury3-pro (no price sheet) recorded
+    cost - or $0.00, and the $0.00 ones were summed as charged spend, so the stream's spend undercounts
+    and the unpriced count misses them; the config side (an enabled route with no price is refused at
+    apply) is a-enabled-route-with-no-price-is-refused-at-apply in nova-tools")
+   (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
+    :title "Tests that failed on a loaded bench are made deterministic by their real cause"
+    :text "The owner's standing rule: tests are bounded and never flaky; a test that fails under load is
+     the test's defect. (1) TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued
+     (cmd/nova-sprint/landpass_test.go) failed once in a full gate under load: it canceled the land
+     caller from a gate-count callback, so the cancel raced wall time. The cancel is now delivered at a
+     synchronization point the test controls: the combined gate suspends in its gateRan seam until the
+     test has canceled, so however loaded the bench the cancel always arrives inside the gate.
+     (2) TestTickDrainAndDealUnderTheGateAtLoad (internal/sprint/deal_load_bench_test.go) failed once
+     at 9.83s under load: it held a sub-second wall-clock bound on a shared bench. The bound is removed
+     from the CI test (the gate's meaning is held by counts: the deal parses each ready brief once, and
+     the drain's moves are bounded by the deal's queued output) and the wall itself is measured only by
+     BenchmarkTickDealAtLoad and BenchmarkTickDrainAtLoad, outside the gate. (3)
+     TestTheIdleAlarmNamesTheRootsOnceAnEpisode (internal/sprint/store/idle_test.go) was seen red on a
+     hetzner2 base run; its dependency was the stale end-note rule it pinned (every episode end was a
+     working-again note), already fixed by b70990f6 (idleEnd: only the fleet working at half its width
+     again clears; else the episode-ended note). No production change was owed and an inert sort
+     tie-break added for it was dropped; the test passes 50/50 under load. (4) TestCRTwoRunLoopsAtOnce
+     (internal/sprint/store/machine_twoloops_test.go) failed 2 of 8 on clean main with 'the sprint is
+     busy: other operations kept the fence moving'. The real cause: the harness sets the outside
+     store's Sleep to a no-op, so the store's documented fence backoff (the wait between its FenceTries)
+     never yielded; an outside verb's read spent all its tries inside one tick loop's fence hold and
+     gave up. The test now keeps the store's real Sleep, so the designed backoff spaces the tries as a
+     run loop's verb has in production. The test's remaining outer retry of FenceBusyError (busyTries)
+     is a last-resort bound, and it is correct: with the real Sleep an outside verb reaches it only if
+     a fence stayed busy past the store's own documented RetryBudget, which is exactly the starvation
+     this test exists to catch, and its failure names the losing verb and the store's own read count.
+     The shared test helper setPrimary also read h.snap(), whose WithQueue overlay reads the work table
+     a revision ahead while the queue holds a change, so a write guarded on it was refused ('mem: table
+     revision mismatch'); setPrimary now guards on the unoverlaid table (setPrimaryOnTable,
+     internal/sprint/store/no_parked_test.go). The owed #110 step was run: cmd/nova-sprint 10x under
+     load. The tests that failed are the ones that shell out to git; their failures are the bench's
+     process table, not the tests' logic (fork/exec shim/git: resource temporarily unavailable /
+     Cannot fork), and the one whose own assertion the exhaustion turns red is
+     TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush, named for #110's gate.
+     TestTheTwinSocketFitsAUnixSocketPath also failed, environmental (this sandbox's TMPDIR exceeds the
+     100-byte Unix-socket limit and its /tmp fallback is denied). Named in docs/TESTS.md."
+    :origin "this card, two-tests-that-fail-under-load-are-made-deterministic.w4, attempt 5; the #111
+     author's gate on hetzner2, 2026-10-11 ~23:48Z at load 30-36; #122's description for the idle red;
+     #111's author for the two-run-loops red and the setPrimary overlay")))
