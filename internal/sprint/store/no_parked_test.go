@@ -204,7 +204,7 @@ func TestAFrontierTierFailureReworksOnItsTier(t *testing.T) {
 	h.failTake("s1-1.w1", "verdict not-done; the tests fail at TestA: internal/x/a.go:12")
 	h.st.AnswerRules = false // the queue drained with no answer, then the brief made frontier
 	h.machine()
-	h.setPrimary("s1-1", map[string]string{"brief": briefOf("frontier", "")})
+	h.setPrimaryOnTable("s1-1", map[string]string{"brief": briefOf("frontier", "")})
 	a := answerOf(t, h, sprint.NWorkFailed, "s1-1")
 	assert.Equal(t, sprint.ActRework, a.Act, a.Why)
 	assert.Empty(t, a.Tier, "on its tier: no tier above frontier")
@@ -402,7 +402,7 @@ func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testi
 	h.machine()
 	report := "step 2 broken: exec: go: Permission denied"
 	h.failTake("s1-1.w1", report)
-	h.machine()                // the finish lands on the card
+	h.machine()               // the finish lands on the card
 	h.clearLastFinish("s1-1") // as a card persisted before the upgrade
 	h.failTake("s1-2.w1", report)
 	h.failTake("s1-3.w1", report)
@@ -413,4 +413,18 @@ func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testi
 	h.failTake("s1-1.w2", report)
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "its first failure after the upgrade is counted: three cards")
+}
+
+// setPrimaryOnTable is setPrimary guarded on the work table as stored (h.table()), not on
+// h.snap(): while the queue holds a change, the snapshot's WithQueue overlay
+// (sprint.WithQueue) reads the work table one revision ahead and the queued cards' revisions
+// bumped, as the pump will leave them, so a write guarded on it is refused.
+func (h *harness) setPrimaryOnTable(id string, set map[string]string) {
+	h.t.Helper()
+	s := h.table()
+	c := s.Work.Card(id)
+	require.NotNil(h.t, c)
+	_, err := h.st.B.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: h.st.Names.Table(sprint.Work), Epoch: fmt.Sprint(s.Epoch), ExpectedTableRevision: fmt.Sprint(s.Work.Revision),
+		OperationID: "set-primary-on-table-" + id, Members: []ntable.BatchMemberEntry{{ID: c.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(c.Rev)}, Set: set}}})
+	require.NoError(h.t, err)
 }
