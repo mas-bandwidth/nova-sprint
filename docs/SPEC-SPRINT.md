@@ -6219,8 +6219,12 @@ worked it, up to its brief's bound. The classes (`sprint.HarnessFault`, first ma
 died (`the runner ended job`, a lane that ended with no report); a step the result carries no
 line for; `HOLD: not started`; refused at staging (a bench mirror missing); a push refused
 (the head not on the staged commit); a misread staged base tip; a LAND with no Head; a
-verdict PENDING or none; a report that begins with its `Cost:` line; a provider's 5xx; a
-deadline or a lane cap with no result; no `RESULT.md`. A HOLD whose report names a file and
+verdict PENDING or none; a report that begins with its `Cost:` line; a provider's 5xx; a wall
+denial (a report that carries a wall's `denied_path=` after `wall=<name>` other than `-` and
+`none-by-flag`, or that begins `wall: denied_path=<p>`; matched before `deadline`, so the
+incident's `deadline: no RESULT.md shape ... wall=landlock denied_path=/tmp/test_stall.go` is
+this class and never a deadline; its rework names the denied path and the remedy, `Write scratch files only under $TMPDIR, inside the job directory; never under /tmp.`); a deadline or
+a lane cap with no result; no `RESULT.md`. A HOLD whose report names a file and
 line (`sprint.HoldFindings`) is reworked with its report, the findings, as the fix. A harness
 fault is not the fleet's either: many cards failing the same way are each reworked, never
 left as a shared failure, since the rework stays on the tier. A harness fault is reworked on

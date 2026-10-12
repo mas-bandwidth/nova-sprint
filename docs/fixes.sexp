@@ -3080,4 +3080,23 @@
      missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
-    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")))
+     :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+    (fix "a-wall-denial-is-its-own-harness-fault-class" :release "v1.2.15" :status "planned"
+     :title "A wall denial is its own harness fault class, and its rework names the denied path and the remedy"
+     :text "The sprint classes a failed attempt whose report carries a wall denial as its own harness
+      fault, wall denial, never as deadline, and the rework it sends tells the next attempt the denied path
+      and the remedy. The incident's report read \"deadline: no RESULT.md shape ... wall=landlock
+      denied_path=/tmp/test_stall.go\": harnessFaultClasses matched the deadline class first and no class
+      read denied_path=, so the rework (HarnessFix) named no path and attempt 2 was sent the same trap.
+      harnessFaultClasses gains {wall denial, ...} before deadline and before no result, matching a report
+      that carries denied_path= after wall=<name> (any wall but - and none-by-flag), or that begins
+      wall: denied_path=; a report from a run with no wall (wall=- or wall=none-by-flag) is not this class.
+      The class name is the constant ClassWallDenial, beside ClassEmptyRun; it is a harness fault like the
+      others, so HarnessFaultBounded holds unchanged (tla/SprintRules.tla, Part answers). The failed rule's
+      rework for ClassWallDenial carries, in its fix, the denied path read from the report's denied_path=
+      field and the sentence Write scratch files only under $TMPDIR, inside the job directory; never under
+      /tmp.; every other class's text is byte-for-byte unchanged. docs/SPEC-SPRINT.md section 8's rules
+      table's row failed gains wall denial in its class list, ordered before deadline. Tests:
+      TestAWallDenialIsItsOwnHarnessFaultClass and TestAWallDenialReworkNamesThePathAndTheRemedy
+      (internal/sprint/harness_wall_denial_test.go); TestHarnessFaultBudgetClass keeps passing unchanged."
+     :origin "the coordinator, 2026-10-12: a worker's /tmp write was denied by the wall and the sprint classed the attempt as a deadline")))

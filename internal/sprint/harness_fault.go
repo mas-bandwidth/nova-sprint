@@ -39,6 +39,11 @@ var harnessFaultClasses = []struct {
 	{"verdict none", regexp.MustCompile(`\bverdict none\b`)},
 	{"cost line", regexp.MustCompile(`(^|: |; )Cost: `)},
 	{"provider 5xx", regexp.MustCompile(`(?i)^provider failure|\b5[0-9][0-9] (bad gateway|internal server error|service unavailable|gateway timeout)\b|\b(status|http|code)[ :=]*5[0-9][0-9]\b|internal server error|bad gateway|service unavailable|gateway timeout`)},
+	// a wall denial, before "deadline": the incident's report read "deadline: no RESULT.md
+	// shape ... wall=landlock denied_path=/tmp/test_stall.go", and the deadline class took it
+	// first, so the rework named no path and attempt 2 was sent the same trap. A wall name of
+	// "-" or "none-by-flag" is no wall: the report is not this class.
+	{ClassWallDenial, regexp.MustCompile(`(?m)^wall:\s*denied_path=|\bwall=[A-Za-z0-9_]+\b[;\s][^\n]*?\bdenied_path=`)},
 	{"deadline", regexp.MustCompile(`(?i)deadline[^.;]*no (result|report)|\bcapped at [0-9]`)},
 	{"budget", regexp.MustCompile(`\bPROMPT-DEFECT\b.*\breason=budget\b`)},
 	{"no result", regexp.MustCompile(`(?i)^no result:|no RESULT\.md`)},
@@ -47,6 +52,18 @@ var harnessFaultClasses = []struct {
 // ClassEmptyRun is the harness fault of a run that wrote no report.
 // Its rework never goes back to the worker it ran on (ruleHarness, emptyRunLeft).
 const ClassEmptyRun = "empty run"
+
+// ClassWallDenial is the harness fault of an attempt the wall denied a path to: the report
+// carries a denied_path= after a wall name other than "-" or "none-by-flag" (wall=<name> ...
+// denied_path=<p>), or begins wall: denied_path=<p>. It is a harness fault like the others,
+// reworked on its tier at most once a card, so HarnessFaultBounded holds unchanged
+// (docs/SPEC-SPRINT.md section 8, the rules table's row failed; tla/SprintRules.tla, Part
+// "answers": the bound checks the harness-fault count whatever the class).
+const ClassWallDenial = "wall denial"
+
+// WallDenialScratchRemedy is the sentence a wall-denial rework carries the next attempt:
+// where a scratch file may be written, never /tmp.
+const WallDenialScratchRemedy = "Write scratch files only under $TMPDIR, inside the job directory; never under /tmp."
 
 // A harness fault is reworked on the same tier at most once per card. The second harness
 // fault of the same class on the same card, or the same harness-fault class on
@@ -93,9 +110,31 @@ func HoldFindings(report string) bool {
 	return reportHolds(report) && findingLineRE.MatchString(report)
 }
 
+// deniedPathRE reads a report's denied_path= field: the path the wall refused.
+var deniedPathRE = regexp.MustCompile(`denied_path=([^\s;]+)`)
+
+// deniedPath is the path a report's denied_path= field names, "" when it names none.
+func deniedPath(report string) string {
+	m := deniedPathRE.FindStringSubmatch(report)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimRight(m[1], ":")
+}
+
 // HarnessFix is the fix of an attempt that ended on a harness fault: the fault, and the
-// attempt done again from the staged tip, where its work may stand already.
+// attempt done again from the staged tip, where its work may stand already. A wall denial
+// names the denied path and the remedy beside them (ClassWallDenial); every other class's
+// text is unchanged.
 func HarnessFix(attempt, class, report string) string {
+	if class == ClassWallDenial {
+		remedy := WallDenialScratchRemedy
+		if p := deniedPath(report); p != "" {
+			remedy = "the path " + p + " was denied by the wall; " + remedy
+		}
+		return cutText(fmt.Sprintf("attempt %s ended on a harness fault (%s), not a finding: %s; %s; start from the staged tip (the work may be on the branch already), check what the branch holds, complete the card, run its gate, push, and report LAND with its full Head",
+			attempt, class, strings.TrimSpace(report), remedy), MaxCardTextBytes)
+	}
 	return cutText(fmt.Sprintf("attempt %s ended on a harness fault (%s), not a finding: %s; start from the staged tip (the work may be on the branch already), check what the branch holds, complete the card, run its gate, push, and report LAND with its full Head",
 		attempt, class, strings.TrimSpace(report)), MaxCardTextBytes)
 }
