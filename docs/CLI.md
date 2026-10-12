@@ -205,6 +205,14 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
 
+**stats and coordination failures**. `stats` prints its stages, work, reads and routes
+tables and then one line, `coordination failures: N total (cause: n; ...)`, the epoch's
+coordination ends by cause (`sprint.CoordinationCounter`, end_class.go); `stats --json`
+carries the same under `coordination` (`total`, `by_cause`, `by_who`, the member or friend
+who suffered each). A coordination end is everything the machine, the bench, the harness,
+unlanded needs, and the rest (SPEC-SPRINT.md, coordination failures) — never the worker's,
+and never counted in a row's `ok%` or toward a card's bound.
+
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
 that is the tier the card is stored with and dealt on: a `tier: heavy` card's first deal draws
