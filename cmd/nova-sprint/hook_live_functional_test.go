@@ -25,11 +25,74 @@ import (
 
 // hlLines is the hook's stdout as the seat's Monitor reads it: every line, as it comes.
 type hlLines struct {
-	mu    sync.Mutex
-	lines []string
+	mu              sync.Mutex
+	lines           []string
+	holdNextPushes  bool
+	pushesSeen      int
+	publishedFirst  bool
+	held            []string
+	heldPushesTotal int
 }
 
-func (h *hlLines) add(l string) { h.mu.Lock(); h.lines = append(h.lines, l); h.mu.Unlock() }
+func (h *hlLines) add(l string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.holdNextPushes && ackableHookPush(l) {
+		h.pushesSeen++
+		if !h.publishedFirst {
+			h.held = append(h.held, l)
+			if h.pushesSeen == 2 {
+				h.lines = append(h.lines, h.held[0])
+				h.held = h.held[1:]
+				h.publishedFirst = true
+				h.heldPushesTotal++
+			}
+			return
+		}
+		h.held = append(h.held, l)
+		h.heldPushesTotal++
+		return
+	}
+	h.lines = append(h.lines, l)
+}
+
+// holdLaterPushes drains the hook's stream until two ackable pushes are in hand,
+// publishes only the first, and keeps the rest hidden until the test releases them.
+// This makes the record-before-frames ordering observable without blocking the hook
+// process or its pipe writer.
+func (h *hlLines) holdLaterPushes() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.holdNextPushes, h.pushesSeen, h.publishedFirst = true, 0, false
+}
+
+func (h *hlLines) releaseHeldPushes() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.holdNextPushes = false
+	h.lines = append(h.lines, h.held...)
+	h.held = nil
+	h.publishedFirst = false
+}
+
+func (h *hlLines) heldPushCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.heldPushesTotal
+}
+
+func ackableHookPush(line string) bool {
+	f := strings.Fields(line)
+	if len(f) < 3 || f[0] != "PUSH" {
+		return false
+	}
+	for _, w := range f[2:] {
+		if strings.HasPrefix(strings.TrimSuffix(w, ":"), "session=") {
+			return true
+		}
+	}
+	return false
+}
 
 func (h *hlLines) all() []string {
 	h.mu.Lock()
@@ -179,6 +242,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	}
 
 	lines, done := hookIn()
+	lines.holdLaterPushes()
 	code, out := seat("add --stream s1 --count 1 --one")
 	require.Equal(t, 0, code, out)
 	code, out = seat("start")
@@ -187,6 +251,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	// three bounds and more: each turn the seat acts (a verb, or an acknowledgement of a
 	// push it was sent), then 14 minutes pass and the server's look runs
 	var acked uint64
+	var sawPendingBeforeRelease bool
 	for turn := 1; turn <= 4; turn++ {
 		code, out = seat("remind --in 1m --note turn-" + strconv.Itoa(turn) + " --for " + name)
 		require.Equal(t, 0, code, "turn %d: %s", turn, out)
@@ -194,10 +259,26 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 		direct("tick")
 		require.Eventually(t, func() bool { ids := pushIDs(lines); return len(ids) > 0 && ids[len(ids)-1] > acked },
 			10*time.Second, 20*time.Millisecond, "turn %d: a push:\n%s", turn, strings.Join(lines.all(), "\n"))
-		ids := pushIDs(lines)
-		acked = ids[len(ids)-1]
-		code, out = seat("hook --ack " + strconv.FormatUint(acked, 10) + " --session " + sessionOf(lines, acked))
-		require.Equal(t, 0, code, "turn %d: %s\n%s", turn, out, strings.Join(lines.all(), "\n"))
+		// A look records every new push before writing its frames. The first frame
+		// can reach the stream before the later frames from that same look, so ACK
+		// the visible maximum until the server confirms no recorded push remains.
+		// Otherwise a later frame can be pending for the whole silent-bound step.
+		var ackOut string
+		require.Eventually(t, func() bool {
+			ids := pushIDs(lines)
+			if len(ids) == 0 {
+				return false
+			}
+			acked = ids[len(ids)-1]
+			code, ackOut = seat("hook --ack " + strconv.FormatUint(acked, 10) + " --session " + sessionOf(lines, acked))
+			require.Equal(t, 0, code, "turn %d: %s\n%s", turn, ackOut, strings.Join(lines.all(), "\n"))
+			if turn == 1 && !sawPendingBeforeRelease && !strings.Contains(ackOut, "unacked=0") {
+				sawPendingBeforeRelease = true
+				lines.releaseHeldPushes()
+			}
+			return strings.Contains(ackOut, "unacked=0")
+		}, 10*time.Second, 20*time.Millisecond, "turn %d: all delivered pushes acknowledged; last ACK: %s\n%s",
+			turn, ackOut, strings.Join(lines.all(), "\n"))
 		// and the seat answers the reminder's judgment, so the next reminder is one of its own
 		for _, l := range lines.all() {
 			if f := strings.Fields(l); len(f) > 2 && f[0] == "PUSH" && f[1] == strconv.FormatUint(acked, 10) {
@@ -208,6 +289,11 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 		time.Sleep(hookLook + 500*time.Millisecond) // the server's look at the stepped clock
 		code, out = seat("where")
 		require.Equal(t, 0, code, "turn %d, %s of sprint clock: the hook lapsed: %s", turn, time.Duration(turn)*14*time.Minute, out)
+		if turn == 1 {
+			require.True(t, sawPendingBeforeRelease, "the first visible frame's ACK must expose later recorded pushes")
+			require.Greater(t, lines.heldPushCount(), 0, "the fixture held later push frames while continuing to drain the stream")
+			require.GreaterOrEqual(t, len(pushIDs(lines)), 2, "the later push is visible before the silent-bound step")
+		}
 	}
 	assert.Equal(t, 1, lines.count("HOOK CHALLENGE "), "a challenge only on the new connection")
 	assert.Zero(t, lines.count("HOOK BYE"), "no lapse")
