@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -25,6 +26,11 @@ func TestConsumerRecordNeverWritesTheQueuedEntrysMap(t *testing.T) {
 	require.NotNil(t, s.Work.Card("p1")) // the table's lazy mutex is made before the loops start
 	queued := map[string]string{"ci": "green", "landed": stamp(s.Now)}
 	e := moveEntry(pr, "s1", Landed, queued)
+	// e.Set is the queued map itself (moveEntry keeps the map it is given), so
+	// the expectation is an independent copy taken before anything runs: a write
+	// into the queued map changes e.Set and queued alike, and only this copy
+	// can show it.
+	want := maps.Clone(e.Set)
 	q := []QueuedChange{{Entry: &e, Verb: "merge", Actor: "machine"}}
 
 	var recorded Plan
@@ -40,7 +46,8 @@ func TestConsumerRecordNeverWritesTheQueuedEntrysMap(t *testing.T) {
 	}()
 	wg.Wait()
 
-	require.Equal(t, queued, e.Set, "the queued entry's map was written by the consumer record")
+	require.Equal(t, want, e.Set, "the queued entry's map was written by the consumer record")
+	require.NotContains(t, queued, FieldConsumerPrefix+"7:land", "the consumer record reached the queued map")
 	var set map[string]string
 	for _, u := range recorded.Units {
 		for _, ch := range u.Changes {
