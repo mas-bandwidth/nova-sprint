@@ -66,7 +66,11 @@ func hookInOverdue(t *testing.T, a *app) (chan hookMsg, *hookSession) {
 				require.Equal(t, "ok", m.T, m.Why)
 				h := a.hookHub()
 				h.mu.Lock()
-				sess := h.cur
+				var sess *hookSession
+				for _, v := range h.cur {
+					sess = v
+					break
+				}
 				h.mu.Unlock()
 				require.NotNil(t, sess, "the proven session is the hub's")
 				return lines, sess

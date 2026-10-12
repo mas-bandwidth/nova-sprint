@@ -205,7 +205,11 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	require.Eventually(t, func() bool {
 		h := app.hookHub()
 		h.mu.Lock()
-		s := h.cur
+		var s *hookSession
+		for _, v := range h.cur {
+			s = v
+			break
+		}
 		h.mu.Unlock()
 		if s == nil {
 			return false
@@ -278,7 +282,11 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	require.Eventually(t, func() bool {
 		h := app2.hookHub()
 		h.mu.Lock()
-		s := h.cur
+		var s *hookSession
+		for _, v := range h.cur {
+			s = v
+			break
+		}
 		h.mu.Unlock()
 		if s == nil {
 			return false
@@ -305,7 +313,11 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	second.tell(t, hookMsg{T: "alive"})
 	h := app2.hookHub()
 	h.mu.Lock()
-	s := h.cur
+	var s *hookSession
+	for _, v := range h.cur {
+		s = v
+		break
+	}
 	h.mu.Unlock()
 	require.NotNil(t, s)
 	require.Eventually(t, func() bool {

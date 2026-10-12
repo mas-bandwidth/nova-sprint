@@ -207,7 +207,10 @@ func (r *ujRig) hookIn() *hookSession {
 				h := r.a.hookHub()
 				h.mu.Lock()
 				defer h.mu.Unlock()
-				return h.cur
+				for _, v := range h.cur {
+					return v
+				}
+				return nil
 			}
 		case <-time.After(10 * time.Second):
 			r.t.Fatal("the proof was not answered")

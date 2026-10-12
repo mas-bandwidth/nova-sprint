@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 )
 
 // The v1.2.12 switch rolled itself back 1.5 seconds after it began: the restart dropped the
@@ -53,6 +55,18 @@ func newSwitchedRig(t *testing.T) *switchedRig {
 	now := t0
 	r.a.now = func() time.Time { return now }
 	r.a.executable = func() (string, error) { return target, nil }
+	// the gate's bus push is live over an in-memory bus store, as the hook process arms it
+	fake := bustest.NewFake(t0, seat)
+	r.a.busOpen = func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
+	getenv := r.a.getenv
+	r.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus:test"
+		}
+		return getenv(k)
+	}
 	require.NoError(t, sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
 		Binary: candidate, Target: target, Rollback: true, Window: 15 * time.Minute, Now: func() time.Time { return now },
 	}))
@@ -74,7 +88,7 @@ func (r *switchedRig) gate(t *testing.T, armed bool) {
 }
 
 // hookLive records a live, proven hook for the coordinator, as the server's hook session
-// does once the seat answers its challenge.
+// does once the seat answers its challenge: the sprint push and the bus push both live.
 func (r *switchedRig) hookLive(t *testing.T) {
 	t.Helper()
 	st, err := r.a.store(common{redis: "mem:0"})
@@ -83,6 +97,11 @@ func (r *switchedRig) hookLive(t *testing.T) {
 	require.NoError(t, writeHook(context.Background(), st, sprint.HookRecord{
 		Name: r.seat, Session: "s1", State: sprint.HookHooked, Since: now, Proven: now, Live: now.Add(time.Hour),
 	}))
+	hk, err := r.a.hooker(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, hk.Arm(context.Background(), r.seat, now))
+	require.NoError(t, hk.Prove(context.Background(), r.seat, now))
+	r.a.hookerForget(r.seat)
 }
 
 func (r *switchedRig) binary(t *testing.T) string {

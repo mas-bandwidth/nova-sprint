@@ -36,6 +36,7 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 
 	client := newApp(ta.a.getenv)
 	client.hookSock = ta.a.hookSock
+	client.busOpen = ta.a.busOpen // the twin's bus store: the hook arms its bus push there
 	client.backend = ta.a.backend // the compact process reads the server's judgment list from the same private store
 	client.now = ta.a.now         // one clock: ages are the store's
 	client.sleep = ta.a.sleep
