@@ -162,10 +162,15 @@ func statsText(ps sprint.PassStats) string {
 		routes.Rows = append(routes.Rows, row(r.Route, "takes", n(r.Takes), "ok", n(r.OK), "failed", n(r.Failed), "provider", n(r.Provider),
 			"run wall", measureText(r.RunWall)))
 	}
+	coord := ""
+	if ps.Coordination != nil {
+		coord = ps.Coordination.Line() + "\n"
+	}
 	return ntable.Render(stages, ntable.RenderOpts{Title: "stages"}) + statsLegend["stages"] + "\n" +
 		ntable.Render(work, ntable.RenderOpts{Title: "work"}) + statsLegend["work"] + "\n" +
 		ntable.Render(reads, ntable.RenderOpts{Title: "reads"}) + statsLegend["reads"] + "\n" +
-		ntable.Render(routes, ntable.RenderOpts{Title: "routes"}) + statsLegend["routes"] + "\n"
+		ntable.Render(routes, ntable.RenderOpts{Title: "routes"}) + statsLegend["routes"] + "\n" +
+		coord
 }
 
 // statsLegend is the line under each stats table saying what its columns
