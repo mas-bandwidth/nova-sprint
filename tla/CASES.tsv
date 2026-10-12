@@ -476,6 +476,7 @@ MCLiveRunsSettleByLegacy.cfg	MCLiveRuns.tla	invariant	NoReportLostAll|NoRunRetur
 MCLiveRunsBrokenLegacyReturned.cfg	MCLiveRuns.tla	invariant	LegacyNeverReturned	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenNoGrace.cfg	MCLiveRuns.tla	invariant	NoRunReturned	ignore-terminal	liveruns	required	-
 MCFriendEmptyRun.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunMax5.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunNamed.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunBrokenNoLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunBrokenMachineLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-

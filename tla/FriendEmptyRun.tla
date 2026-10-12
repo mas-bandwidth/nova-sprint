@@ -65,14 +65,18 @@ Deal(f) == /\ state = "ready" /\ since < Cap /\ attempt < MaxAttempts
            /\ (Named => f = "amy")
            /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1 /\ since' = since + 1
            /\ wleft' = IF BadLevelLeft THEN {} ELSE left
-           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty, decided>>
+           \* a deal spends the decision whose window it runs in (brief_bound.go: the cap
+           \* counts every attempt since FieldDecidedAttempt, whichever deal made it)
+           /\ decided' = FALSE
+           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the machines' deal of an unnamed card: the work card carries the primary's
 \* friends_left (BadMachineLeft: it does not)
 MachineDeal == /\ state = "ready" /\ since < Cap /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
                /\ place' = Machine /\ state' = "queued" /\ attempt' = attempt + 1 /\ since' = since + 1
                /\ wleft' = IF BadMachineLeft THEN {} ELSE left
-               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty, decided>>
+               /\ decided' = FALSE \* the deal spends the decision, as Deal does
+               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the coordinator's decision on a card at its cap (brief, rework --tier, carry: the
 \* re-tier that reaches a friend tier; brief_bound.go FieldDecidedAttempt): the attempts
@@ -87,6 +91,8 @@ Decide == /\ state = "ready" /\ since >= Cap /\ ~decided
 \* dealt it with no decision), the deal spending the decision
 CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
               /\ (decided \/ BadCapUndecided)
+              \* inside the window the decision opened (BadCapUndecided deals past it)
+              /\ (since < Cap \/ BadCapUndecided)
               /\ (pinned = None \/ f = pinned)
               /\ (BadCapLeft \/ f \notin left)
               /\ place' = f /\ state' = "working" /\ attempt' = attempt + 1 /\ since' = since + 1
