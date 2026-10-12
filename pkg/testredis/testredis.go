@@ -67,13 +67,8 @@ import (
 // binary can still run the rest of the suite.
 const CIEnv = "NOVA_CI"
 
-// Absent is Start's answer when redis-server is not on PATH. CI fails closed.
+// absent is Start's answer when redis-server is not on PATH. CI fails closed.
 // A skip here would let a green run be a run that never executed the store.
-func Absent(t testing.TB, cause error) {
-	t.Helper()
-	absent(t, cause, os.Getenv)
-}
-
 func absent(t testing.TB, cause error, getenv func(string) string) {
 	t.Helper()
 	if cause == nil {
@@ -119,21 +114,6 @@ func StartServer(t testing.TB, extra ...string) *Server {
 func Program(t testing.TB) string {
 	t.Helper()
 	return real.program(t)
-}
-
-// FreePort is a loopback port that was free a moment ago, as text. The kernel
-// chose it. Redis treats --port 0 as "do not listen", so a test that starts a
-// server itself takes the port here and hands it over.
-func FreePort(t testing.TB) string {
-	t.Helper()
-	return real.freePort(t)
-}
-
-// User is the extra arguments of a server that requires a login: the default
-// user off, and one named user with a password and every permission. A client
-// that does not log in is answered NOAUTH.
-func User(name, password string) []string {
-	return []string{"--user", "default", "off", "--user", name, "on", ">" + password, "~*", "&*", "+@all"}
 }
 
 // Server is one running throwaway redis-server.
