@@ -15,9 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // The stall and stuck classes of 2026-10-11, clipped in (docs/TESTS.md, "Stall and stuck
@@ -44,6 +46,11 @@ type stallRig struct {
 func newStallRig(t *testing.T) *stallRig {
 	t.Helper()
 	addr, a, do, run := releaseStore(t, "coordinator")
+	// The sprint row's git_identity, as nova-config's apply writes it: without it a land
+	// refuses with exit 2 and the switched server counts that as a land fault in the window.
+	c := redis.NewClient(&redis.Options{Addr: addr})
+	t.Cleanup(func() { _ = c.Close() })
+	require.NoError(t, c.Set(context.Background(), config.SprintKey(config.FieldGitIdentity), config.DefaultGitIdentity, 0).Err())
 	return &stallRig{t: t, addr: addr, a: a, do: do, run: run, bin: releaseBinary(t), home: t.TempDir()}
 }
 
