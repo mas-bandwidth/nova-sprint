@@ -170,7 +170,7 @@
         A, B needing A; drop A --replaced-by A2; land A2; brief-edit B with the text still naming A;
         B's need is A2, B is dealt, no judgment raised). The model is tla/SprintRules.tla,
         NoLiveNeedNamesADroppedId."
-      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w5, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; the w2/w3 heads carried on as one commit on this card's branch; the w5 attempt finishes the alias recorded under relink and replace, the add and brief storing the successor, the brief dropped-card lint, docs/SPEC-SPRINT.md and docs/CLI.md, and the TLA+ invariant and broken witness")
+      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w7, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; the w5 attempt carried the alias, the add and brief storing the successor, the brief dropped-card lint, the TLA+ invariant and broken witness, and the docs; the w7 attempt finishes rule 11's land check (internal/sprint/lifecycle.go unmet resolves a need through the alias map) and the rule-11 test (TestRuleElevenResolvesANeedThroughTheAlias)")
      (fix "the-read-deal-counts-the-queue-and-fills-free-lanes-first" :release "v1.2.12" :status "planned"
      :title "The read deal counts the queue and fills free lanes first"
      :text "The read deal measured the wrong thing. readUnitsOf counted a unit's idle lanes from its
