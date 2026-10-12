@@ -706,11 +706,11 @@ func TestTheMergeBareIsRefused(t *testing.T) {
 	defer a.close()
 	for _, l := range []string{"init --readers reader-a --members m1:64", "add --stream a --count 10", "fleet beat m1", "start", "tick", "tick"} {
 		var out, errb bytes.Buffer
-		code := a.run(strings.Fields(l), &out, &errb)
+		code := runOnStore(a, addr, strings.Fields(l), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", l, code, out.String(), errb.String())
 	}
 	var out, errb bytes.Buffer
-	code := a.run(strings.Fields("merge --stream a --batch 10 --epoch 0"), &out, &errb)
+	code := runOnStore(a, addr, strings.Fields("merge --stream a --batch 10 --epoch 0"), &out, &errb)
 	require.NotZero(t, code, "bare merge should be refused on a real store")
 	require.Contains(t, errb.String(), "a bare merge records the queue's head as landed with no push")
 }
