@@ -1,6 +1,7 @@
-# nova-sprint CI: build, vet and the unit tier, cut down from nova-tools'
-# ci.yml to this module. GitHub-hosted runners only: nova-tools' self-hosted
-# runners are registered to nova-tools and are not shared with this repository.
+# nova-sprint CI: build, vet, the unit tier and the functional tier, cut down
+# from nova-tools' ci.yml to this module. Both tiers run on GitHub-hosted
+# ubuntu-latest runners; the functional tier (below) installs redis-server and
+# runs make functional-gate for every pull request and push to main.
 name: CI
 
 on:
