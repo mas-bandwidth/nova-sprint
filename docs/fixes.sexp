@@ -2961,6 +2961,23 @@
      PATHS so they stay uncited, named as a gap. The bench TLC check is green: go run ./tools/tlacheck
      groups --root . --stale prints [] and the ci gate TestEveryStateMachineHasACurrentModel passes."
     :origin "this card, tla-pass-nova-sprint-coverage-rows-27-to-52.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+   (fix "tla-loadcache-trips-and-epoch-keys" :release "v1.2.16" :status "planned"
+    :title "LoadCache splits the not-held take into its trips and keys entries by epoch"
+    :text "Models only, no product change. tla/LoadCache.tla splits the not-held Take into its trips (mark,
+     ids, records, keep), each its own step outside the lock, with the keep's revision guard; the catch-up
+     stays atomic under the lock, and the entries are keyed by <<table, epoch>> with an outside Clear that
+     advances the epoch. LoadIsSnapshot holds with the records read as one trip, and the new
+     LoadIsOfItsEpoch holds that a load takes the records of the epoch it read. The reversed witnesses
+     catchup, ahead and nomark keep their meanings (each fails LoadIsSnapshot), and noepochkey keys entries
+     by table alone so a load of the old epoch is served after a clear (LoadIsOfItsEpoch). The card also
+     names a norevguard witness (the keep's revision guard dropped) as a LoadIsSnapshot failure, but that is
+     unsatisfiable as modelled: the guard only keeps the newest read (an efficiency), while the serve-time
+     mark check (which nomark drops) is the correctness guard, so a cache that regresses still serves the
+     right records; no such witness is added and the card ends not-done on it. The records read is one trip,
+     not the code's 1024-record chunks, named as a v1.2.17 candidate."
+    :origin "this card, tla-loadcache-trips-and-epoch-keys.w3, replacing the dropped card
+     tla-loadcache-separate-trips-and-epoch-keys; the v1.2.16 pass (the owner, 2026-10-11 ~23:55Z: are all
+     the TLA models up to date and checked, or this pass runs in v1.2.16)")
    (fix "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch" :release "v1.2.14" :status "planned"
     :title "dev is behind counts only cards landed on a sprint branch, named by id when primary is empty"
     :text "The dev is behind judgment counted every landed card whose base field was empty, and named
