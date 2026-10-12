@@ -330,8 +330,8 @@ drop, re-brief, re-tier or sprint clear), `environment` (a 134/137 environment d
 
 `stats tidy --recompute` recomputes those counters from the stored take ends with the new
 classes (dry-run first: `stats tidy --recompute --dry-run` prints what it would write and
-writes nothing). Run it once after the classes change so the page shows accurate figures at
-once.
+writes nothing), and writes the counters to the store's `stats:recompute` record, read back
+by `RecomputeStatsRecord`.
 
 ### A card's priority
 

@@ -16,8 +16,8 @@ import (
 // stored take ends (the primaries' cost records, CardCostOf), classified by
 // sprint.ClassifyEnd: ok, failed work, no result, provider, coordination, environment
 // and harness. It changes no card: it says what the counters are under the new classes,
-// and with dryRun false it writes the counters to the recompute record (keyStatsRecompute)
-// so the page reads them at once; dry-run prints the same figures and writes nothing
+// and with dryRun false it writes the counters to the recompute record (keyStatsRecompute),
+// read back by RecomputeStatsRecord; dry-run prints the same figures and writes nothing
 // (dry-run first: `stats tidy --recompute --dry-run`).
 func (st *Store) RecomputeStats(ctx context.Context, asJSON, dryRun bool, stdout, stderr io.Writer) error {
 	const verb = "stats tidy --recompute"
@@ -88,14 +88,14 @@ func (st *Store) RecomputeStats(ctx context.Context, asJSON, dryRun bool, stdout
 }
 
 // keyStatsRecompute is the recompute record: the end-class counters recomputed from the
-// stored take ends, written by stats tidy --recompute so the page reads accurate figures
-// at once.
+// stored take ends, written by stats tidy --recompute and read back by
+// RecomputeStatsRecord.
 const keyStatsRecompute = "stats:recompute"
 
-// RecomputeStatsRecord reads the recompute record back (stats tidy --recompute). The
-// dashboard's stats page reads it to show the recomputed figures at once; the store's own
-// test reads it back to prove the write is stored and readable. ok is false when no
-// recompute has been written.
+// RecomputeStatsRecord reads the recompute record back (stats tidy --recompute). It is
+// the reader of the record the recompute verb writes: the store's own test reads it back
+// to prove the write is stored and readable. ok is false when no recompute has been
+// written.
 func (st *Store) RecomputeStatsRecord(ctx context.Context) (rec RecomputeRecord, ok bool, err error) {
 	kv, err := st.kv()
 	if err != nil {
