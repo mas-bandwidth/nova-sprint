@@ -269,6 +269,10 @@ func Add(s *Snapshot, r AddReq) Plan {
 	seen := map[string]bool{}
 	for i, id := range ids {
 		needs := append([]string(nil), needsOf(i)...)
+		// A need naming a dropped card's successor is stored as the successor
+		// (need_alias.go): the alias outlives the drop, so the old id never comes
+		// back and the NOTE names it.
+		needs, aliasNotes := ResolveNeedAliases(s, needsOf(i))
 		// A need names a primary that can still land: one on the table
 		// (waiting, ready, working, review, merging or landed), a sentinel, or
 		// one of this add. missing is the needs that name no record at all;
@@ -337,6 +341,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		}
 		seen[id] = true
 		a := admit{id: id, score: scores[i], needs: needs, brief: brief, model: modelSaid, rules: rulesOf(i), bench: strings.Join(bench, ","), repo: repoOf(i), base: baseOf(i), gate: r.IsGate(id), sent: isSent(i)}
+		p.Said = append(p.Said, aliasNotes...)
 		if st := sentinelBefore(s, r.Stream, a.score); st != nil && !a.sent {
 			a.behind = st.ID // it waits behind the stop by its place; nothing is written of it
 		}
@@ -739,8 +744,13 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	var out []string
 	waived := Split(c.F("waived"))
 	for _, n := range Split(c.F("needs")) {
-		if s.StateOf(n) != Landed && !landing[n] && !contains(waived, n) {
-			out = append(out, n)
+		// a dropped card's successor is the need (need_alias.go): the stored name is
+		// resolved through the alias map before it is judged landed or waived.
+		t := AliasOf(s, n)
+		if s.StateOf(t) != Landed && !landing[t] && !contains(waived, n) && !contains(waived, t) {
+			if !contains(out, t) {
+				out = append(out, t)
+			}
 		}
 	}
 	return out
@@ -818,13 +828,16 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 		}
 	}
 	for _, n := range named {
+		// a need on a dropped id is shown as its successor (need_alias.go): the alias
+		// is the new id, not the old one that can never come back.
+		t := AliasOf(s, n)
 		st := "not on the table"
-		if nc := s.Work.Card(n); nc.Placed() {
+		if nc := s.Work.Card(t); nc.Placed() {
 			st = nc.Col
 		} else if nc != nil {
 			st = "off the table (" + orDash(nc.F("outcome")) + ")"
 		}
-		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n)}
+		ns := NeedState{ID: t, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n) || contains(Split(c.F("waived")), t)}
 		if ns.Waived {
 			ns.WaivedBy, ns.WaivedAt = c.F("waived_by"), c.F("waived_at")
 		}
@@ -849,8 +862,9 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 func droppedNeeds(s *Snapshot, needs []string) []string {
 	var out []string
 	for _, n := range needs {
-		if c := s.Work.Card(n); c != nil && !c.Placed() && c.F("outcome") == "dropped" {
-			out = append(out, n)
+		t := AliasOf(s, n)
+		if c := s.Work.Card(t); c != nil && !c.Placed() && c.F("outcome") == "dropped" {
+			out = append(out, t)
 		}
 	}
 	return out
@@ -861,8 +875,9 @@ func droppedNeeds(s *Snapshot, needs []string) []string {
 func missingNeeds(s *Snapshot, needs []string) []string {
 	var out []string
 	for _, n := range needs {
-		if s.Work.Card(n) == nil {
-			out = append(out, n)
+		t := AliasOf(s, n)
+		if s.Work.Card(t) == nil {
+			out = append(out, t)
 		}
 	}
 	return out

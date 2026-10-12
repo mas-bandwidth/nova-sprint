@@ -45,3 +45,32 @@ func TestAddHoldsABriefToTheCardChecks(t *testing.T) {
 	out = ta.ok("add --stream s1 --one --actor lead --brief-file " + write("path-exempt", header+"\nTHE TASK. See /home/ada/projects/.\n"))
 	assert.Contains(t, out, "MOVED path-exempt -> ready")
 }
+
+// brief runs the same dropped-card lint as add (one lint for both, holdCardChecks):
+// the same text that names a dropped card is refused by add and by brief, each with the
+// same finding, and neither writes (docs/SPEC-SPRINT.md, the brief verb and the alias).
+func TestBriefRunsTheSameDroppedCardLintAsAdd(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead --owner ada")
+	ta.ok("add --stream s0 --count 2 --actor lead")
+	ta.ok("add --stream s1 --one --actor lead --brief-file " + writeHeaderBrief(t, t.TempDir(), "tgt", "-", "internal/tgt.go"))
+	ta.ok("drop s0-1 --reason obsolete --actor lead")
+	header := "RESULT: c sha=0123456789ab tier: pro\nPATHS: internal/x/*.go, internal/x/*_test.go\nTEST: internal/x TestY\n"
+	text := header + "\nTHE TASK. Finish what s0-1 began."
+	write := func(name string) string {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, name+".md")
+		require.NoError(t, os.WriteFile(path, []byte(passingBrief(text)), 0o600))
+		return path
+	}
+	code, _, stderr := ta.do("add --stream s1 --one --actor lead --brief-file " + write("add"))
+	assert.Equal(t, 2, code, "add refuses: %s", stderr)
+	assert.Contains(t, stderr, "check=dropped-card line=5", "add: %s", stderr)
+	code, out, stderr := ta.do("brief tgt --actor lead --brief-file " + write("brief"))
+	assert.Equal(t, 2, code, "brief refuses: %s%s", out, stderr)
+	assert.Contains(t, stderr, "check=dropped-card line=5", "brief: %s", stderr)
+	assert.NotContains(t, out, "MOVED", "brief wrote nothing")
+	assert.NotContains(t, ta.primary("tgt").F("brief"), "s0-1", "the brief was not replaced")
+}
