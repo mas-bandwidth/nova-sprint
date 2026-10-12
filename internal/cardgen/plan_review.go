@@ -31,41 +31,82 @@ type SharedPathRow struct {
 	Edge   bool
 }
 
-// SharedPathRows is the overlap table of a plan: one row per path named in PATHS
-// by two or more of the plan's cards, in first-named order, each with the cards
+// SharedPathRows is the overlap table of a plan: one row per repository and path
+// named in PATHS by two or more cards, in first-named order, each with the cards
 // that name it, whether a lander-owned ledger covers it, and whether a needs edge
 // chains the cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
 func SharedPathRows(cards []CardPlan) []SharedPathRow {
-	byPath := map[string][]string{}
-	var order []string
+	type pathKey struct{ repo, path string }
+	byPath := map[pathKey][]string{}
+	var order []pathKey
+	// Unknown identities overlap every repository naming that path. They are
+	// never evidence that two cards stage into separate repositories.
+	unknown := map[string][]string{}
+	needs := map[string][]string{}
 	for _, c := range cards {
+		repo := planRepo(c.Brief)
+		needs[c.ID] = briefNeeds(c.Brief)
 		for _, p := range headerPaths(c.Brief, "PATHS") {
-			if !containsString(byPath[p], c.ID) {
-				byPath[p] = append(byPath[p], c.ID)
+			key := pathKey{repo, p}
+			if !containsString(byPath[key], c.ID) {
+				if len(byPath[key]) == 0 {
+					order = append(order, key)
+				}
+				byPath[key] = append(byPath[key], c.ID)
 			}
-			if len(byPath[p]) == 1 {
-				order = append(order, p)
+			if repo == "" && !containsString(unknown[p], c.ID) {
+				unknown[p] = append(unknown[p], c.ID)
 			}
 		}
 	}
-	needs := map[string][]string{}
-	for _, c := range cards {
-		needs[c.ID] = briefNeeds(c.Brief)
-	}
 	var rows []SharedPathRow
-	for _, p := range order {
-		ids := byPath[p]
+	for _, key := range order {
+		ids := append([]string(nil), byPath[key]...)
+		if key.repo != "" {
+			// Keep plan order when an unresolved card preceded the known repository.
+			ids = nil
+			for _, c := range cards {
+				if (containsString(byPath[key], c.ID) || containsString(unknown[key.path], c.ID)) && !containsString(ids, c.ID) {
+					ids = append(ids, c.ID)
+				}
+			}
+		}
 		if len(ids) < 2 {
 			continue
 		}
 		rows = append(rows, SharedPathRow{
-			Path:   p,
-			Cards:  append([]string(nil), ids...),
-			Ledger: LedgerInPaths(p),
-			Edge:   anyEdge(needs, ids),
+			Path: key.path, Cards: ids,
+			Ledger: LedgerInPaths(key.path), Edge: anyEdge(needs, ids),
 		})
 	}
 	return rows
+}
+
+// planRepo uses the effective staging repository, including base-repo precedence.
+// An unreadable identity stays unknown. Normalization follows cmd/nova-sprint's
+// normRepo/sameRepo: scheme and user do not distinguish a repository, host case
+// does not matter, path case does, and a trailing slash and .git are ignored.
+// Keep this small local copy aligned until a shared repository helper is needed.
+func planRepo(brief string) string {
+	u := swarm.ReadCardBase([]byte(brief)).Repo
+	if swarm.CardRepoURL(u) == "" {
+		return ""
+	}
+	u = strings.TrimSpace(u)
+	host, path := "", u
+	if i := strings.Index(u, "://"); i >= 0 {
+		host, path, _ = strings.Cut(u[i+3:], "/")
+	} else if colon := strings.Index(u, ":"); colon > 0 && !strings.Contains(u[:colon], "/") {
+		host, path = u[:colon], u[colon+1:]
+	}
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		host = host[at+1:]
+	}
+	path = strings.TrimSuffix(strings.TrimSuffix(path, "/"), ".git")
+	if host == "" {
+		return path
+	}
+	return strings.ToLower(host) + "/" + strings.TrimPrefix(path, "/")
 }
 
 // anyEdge says a needs edge chains two of the cards: one reaches the other

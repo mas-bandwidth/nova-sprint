@@ -1,6 +1,7 @@
 package cardgen
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,4 +75,104 @@ func TestHeaderPaths(t *testing.T) {
 	require.Equal(t, []string{"src/a.go", "src/b.go"}, headerPaths("t\nPATHS: src/a.go src/b.go\n", "PATHS"))
 	require.Empty(t, headerPaths("t\nPATHS: none\n", "PATHS"))
 	require.Empty(t, headerPaths("t\nPATHS: -\n", "PATHS"))
+}
+
+// These briefs use the repository staging actually reads, including base-repo
+// overrides, rather than a raw REPO label.
+func TestReviewRepositoryIdentity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, a, b string
+		overlap    bool
+	}{
+		{"distinct repositories", "REPO: mas-bandwidth/nova-tools", "REPO: mas-bandwidth/nova-sprint", false},
+		{"same repository", "REPO: mas-bandwidth/nova-tools", "REPO: mas-bandwidth/nova-tools", true},
+		{"owner name and HTTPS", "REPO: mas-bandwidth/nova-tools", "REPO: https://github.com/mas-bandwidth/nova-tools.git", true},
+		{"HTTPS and scp", "REPO: https://forge.test/owner/name.git", "REPO: git@forge.test:owner/name", true},
+		{"HTTPS and SSH", "REPO: https://forge.test/owner/name", "REPO: ssh://git@forge.test/owner/name.git/", true},
+		{"host case", "REPO: https://Forge.TEST/owner/name.git", "REPO: https://forge.test/owner/name", true},
+		{"path case", "REPO: https://forge.test/Owner/name.git", "REPO: https://forge.test/owner/name.git", false},
+		{"local alias", "REPO: /srv/git/name.git", "REPO: /srv/git/name", true},
+		{"local path case", "REPO: /srv/git/Repo.git", "REPO: /srv/git/repo.git", false},
+		{"override joins different labels", "REPO: mas-bandwidth/nova-tools\nbase-repo: https://forge.test/owner/name.git", "REPO: mas-bandwidth/nova-sprint\nbase-repo: git@forge.test:owner/name", true},
+		{"override splits same labels", "REPO: mas-bandwidth/nova-tools\nbase-repo: https://forge.test/owner/name.git", "REPO: mas-bandwidth/nova-tools\nbase-repo: https://forge.test/owner/other.git", false},
+		{"unnamed and known", "", "REPO: mas-bandwidth/nova-tools", true},
+		{"unresolved and known", "REPO: unresolved", "REPO: mas-bandwidth/nova-tools", true},
+		{"different unresolved labels", "REPO: unresolved-a", "REPO: unresolved-b", true},
+		{"unresolved override", "REPO: mas-bandwidth/nova-tools\nbase-repo: unresolved", "REPO: mas-bandwidth/nova-sprint", true},
+		{"body does not supply identity", "\nREPO: mas-bandwidth/nova-tools", "REPO: mas-bandwidth/nova-sprint", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cards := []CardPlan{
+				{ID: "fix-a", Brief: "# t\nPATHS: src/x.go\n" + tc.a + "\n"},
+				{ID: "fix-b", Brief: "# t\nPATHS: src/x.go\n" + tc.b + "\n"},
+			}
+			rows := SharedPathRows(cards)
+			if !tc.overlap {
+				require.Empty(t, rows)
+				return
+			}
+			require.Len(t, rows, 1)
+			assert.Equal(t, "src/x.go", rows[0].Path)
+			assert.Equal(t, []string{"fix-a", "fix-b"}, rows[0].Cards)
+			assert.Contains(t, RefuseOverlaps(rows), "neither needs the other")
+		})
+	}
+}
+
+func TestReviewKnownRepositoryKeepsLedgerAndNeeds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		path, needs  string
+		ledger, edge bool
+	}{
+		{"FIXES.md", "", true, false},
+		{"src/x.go", "fix-a", false, true},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			brief := func(repo, needs string) string {
+				b := strings.Replace(planBrief(tc.path, "", needs), "REPO: r", "REPO: "+repo, 1)
+				return b
+			}
+			rows := SharedPathRows([]CardPlan{
+				{ID: "fix-a", Brief: brief("mas-bandwidth/nova-tools", "")},
+				{ID: "fix-b", Brief: brief("https://github.com/mas-bandwidth/nova-tools.git", tc.needs)},
+			})
+			require.Len(t, rows, 1)
+			assert.Equal(t, tc.ledger, rows[0].Ledger)
+			assert.Equal(t, tc.edge, rows[0].Edge)
+			assert.Empty(t, RefuseOverlaps(rows))
+		})
+	}
+}
+
+func TestReviewUnresolvedRepositoryOverlapsEachKnownRepository(t *testing.T) {
+	t.Parallel()
+	rows := SharedPathRows([]CardPlan{
+		{ID: "fix-a", Brief: "# t\nPATHS: src/x.go\nREPO: owner/a\n"},
+		{ID: "fix-b", Brief: "# t\nPATHS: src/x.go\nREPO: owner/b\n"},
+		{ID: "unknown", Brief: "# t\nPATHS: src/x.go\nNeeds: fix-a\n"},
+	})
+	require.Len(t, rows, 2)
+	assert.Equal(t, []string{"fix-a", "unknown"}, rows[0].Cards)
+	assert.True(t, rows[0].Edge)
+	assert.Equal(t, []string{"fix-b", "unknown"}, rows[1].Cards)
+	assert.False(t, rows[1].Edge)
+	assert.Contains(t, RefuseOverlaps(rows), "fix-b and unknown")
+}
+
+func TestReviewRepositoryRowsKeepPlanOrderAndDeduplicatePaths(t *testing.T) {
+	t.Parallel()
+	rows := SharedPathRows([]CardPlan{
+		{ID: "unknown", Brief: "# t\nPATHS: src/x.go src/x.go, src/y.go\n"},
+		{ID: "fix-a", Brief: "# t\nPATHS: src/x.go src/y.go\nREPO: owner/a\n"},
+		{ID: "fix-b", Brief: "# t\nPATHS: src/x.go\nREPO: owner/b\n"},
+	})
+	require.Len(t, rows, 3)
+	assert.Equal(t, "src/x.go", rows[0].Path)
+	assert.Equal(t, "src/y.go", rows[1].Path)
+	assert.Equal(t, "src/x.go", rows[2].Path)
+	assert.Equal(t, []string{"unknown", "fix-a"}, rows[0].Cards)
+	assert.Equal(t, []string{"unknown", "fix-a"}, rows[1].Cards)
+	assert.Equal(t, []string{"unknown", "fix-b"}, rows[2].Cards)
 }
