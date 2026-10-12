@@ -3080,4 +3080,20 @@
      missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
-    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")))
+    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+   (fix "brief-set-base-reaches-a-card-in-review" :release "v1.2.14" :status "planned"
+    :title "brief --set-base by selector reaches a waiting, working or review card; the step loads every table the in-place edit reads"
+    :text "Blocker. nova-sprint brief --ids-file <f> --set-base <b> (and brief --stream <s> --set-base <b>, and a --dry-run of either)
+     panicked whenever the selection held a card an attempt was dealt for (working or in review): the plan dereferenced a nil
+     *Table in sprint.(*Table).index (state.go:210) on a nil *Table, recovered and re-panicked by main.recoverHelp
+     (cmd/nova-sprint/verbhelp.go:167). A card with an attempt is edited in place (sprint.Brief, briefInPlace, steps_edit.go), and
+     that plan reads its attempt's work card (the fleet table, FieldWaitsAfter and the withdrawn work card), its open reads (the
+     readers table, brokenFindings) and its merge card (the merge table, orphanMerge) for the finding, the retired reads and the
+     orphan merge; brokenFindings calls s.Readers.Of unguarded, so a nil readers table is the dereference. The batch path built its
+     step with Load: []string{sprint.Work}, while the single-card brief step (store.BriefStep) already loads Work, Readers, Fleet and
+     Merge. brief by selector now loads store.All and sets Mirrors, as store.BriefStep does, so a waiting, a working and a review card
+     all take the BASE: rewrite and no verb panics on a table the selector did not load. Tests:
+     TestBriefSetBaseByIDsFileMovesEverySelectedCardsBase and TestBriefSetBaseByStreamMovesEverySelectedCardsBase
+     (cmd/nova-sprint/brief_set_base_review_test.go), each over a waiting, a working and a review card, with and without --dry-run,
+     red with the reported panic before the fix and green after."
+    :origin "this card, brief-set-base-takes-a-card-in-review-r2.w1, from the coordinator, 2026-10-12 ~10:30Z, server v1.2.13: brief --ids-file <f> --set-base <b> panicked in sprint.(*Table).index on a nil *Table whenever the selection held a card in review; five cards in review could not be moved off BASE: main/dev and one of them landed on main")))
