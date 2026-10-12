@@ -222,7 +222,7 @@ func Relink(s *Snapshot, r RelinkReq) Plan {
 			why = append(why, "relink "+old+" "+r.New+" names a card as its own twin: a card relinked to itself")
 		case c.Placed() && c.Col == Landed:
 			why = append(why, old+" landed: what needed it went on")
-		case len(twinDependents(s, []string{old})) == 0:
+		case len(twinDependents(s, []string{old})) == 0 && !needsAliasRecord(s, old):
 			why = append(why, "nothing waits on "+old+" (no waiting card needs it, or each waived it)")
 		}
 		seen[old] = true

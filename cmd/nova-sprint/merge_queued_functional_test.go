@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -87,10 +88,18 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	run("tick")
 	out = run("where")
 	require.Contains(t, out, "DONE", "after the pump:\n%s", out)
-	// the tick archives a stream when its last card lands, and the headline counts
-	// only the streams on the table (stream archive; the owner, 2026-10-06): the two
-	// landed cards are on the archived line, not in the work rows
-	require.Contains(t, out, "1 archived stream, 2 cards landed", "after the pump:\n%s", out)
+	// the sprint is done and the two cards are landed on the table (the tick does not
+	// archive: streams are archived only by stream archive), carried by the JSON view
+	var done struct {
+		Landed int64 `json:"landed"`
+		All    int64 `json:"all"`
+		Done   bool  `json:"done"`
+	}
+	j := run("where --json")
+	require.NoError(t, json.Unmarshal([]byte(j), &done), "after the pump:\n%s", j)
+	require.True(t, done.Done, "after the pump:\n%s", j)
+	require.Equal(t, int64(2), done.Landed, "after the pump:\n%s", j)
+	require.Equal(t, int64(2), done.All, "after the pump:\n%s", j)
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the pump:\n%s", out)
 }

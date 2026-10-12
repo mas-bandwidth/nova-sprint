@@ -108,3 +108,18 @@ func aliasUnits(s *Snapshot, olds []string, nw, who string) []Unit {
 	}
 	return out
 }
+
+// needsAliasRecord says a relink of this old id has something to do even when no
+// card names it any more: the card is off the table (dropped) and records no
+// successor yet, so the relink writes the alias that outlives the drop. It is
+// false for a placed card (a relink of an id with nothing waiting has nothing to
+// do) and for one that already records a successor (the alias is already there);
+// relink still refuses those as "nothing waits on <old>" (need_alias.go).
+func needsAliasRecord(s *Snapshot, old string) bool {
+	c := s.Work.Card(old)
+	if c == nil || c.Placed() {
+		return false
+	}
+	_, ok := replacedByOf(c)
+	return !ok
+}

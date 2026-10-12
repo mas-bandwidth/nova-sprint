@@ -55,6 +55,10 @@ derivation, its end after an ok finish and its lapse past `StagingMirrorWindow`.
 `ssh` or `git push` from inside nova-sprint: the need is a line and a judgment, and the fleet's
 own mirror refresh serves it.
 
+The functional tier (`go test -tags functional -count=1 ./...`, `make functional`) runs for every pull request and push to main on a GitHub-hosted
+ubuntu-latest runner — `make functional-gate` is the CI form, with `NOVA_CI=1`,
+redis-server installed, and each package bounded at two minutes (`-timeout 120s`); over the bound is the test's defect.
+
 ### First run
 
 ```text
@@ -261,6 +265,28 @@ the functional ones are release acceptance (`make release-accept`).
   `TestAMemberKilledSilentGivesItsReadsBackByTheDownPath`. Both run
   `pkg/member` members in the test process over the command's verbs, on the
   sprint's clock; neither starts an OS process.
+
+### A card in review always has a read the ask can reach (v1.2.14)
+
+A read that ends without a verdict, or is withdrawn by a hold or a return, is
+re-asked of another reader at the next tick for the card's current attempt. The
+ask verb and the tick share one definition of "asked at this attempt"
+(`askedAtAttempt`, `internal/sprint/readers.go`), so the ask verb's two refusals
+and the no-stall rule's decisions never contradict each other; a card in review
+with no read out and no open judgment is a ConsumersOut violation at `TickCheck`.
+
+- Unit, `internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReach`.
+- Functional (`-tags functional`), on a private store (explicit `--redis`, a
+  scrubbed env whose HOME and XDG_CONFIG_HOME are the test's own, no `NOVA_*`
+  variable from the machine),
+  `cmd/nova-sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_functional_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore`. It runs the verbs to
+  put the card in review at attempt 2, withdraws the attempt-1 read by a hold
+  and ends the attempt-2 read with no verdict, and asserts `ask` and
+  `ask --another` agree (neither refusal is given) and the next tick's ask
+  re-asks the attempt of another reader. The consumers-out gap it leaves is the
+  tick's postcondition the unit test asserts directly (ConsumersOut).
 
 ### A brief edit keeps the needs, tier and bound (v1.2.14)
 
@@ -933,6 +959,12 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
 - `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
 - `TestConsumersOutWorkingCardWithNoAttempt`, `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards`, `TestConsumersOutReviewCardWithNoReadAndNoJudgment` (`internal/sprint/consumers_out_test.go`) and `TestEveryProducerCard` (functional, `cmd/nova-sprint/consumers_functional_test.go`): the consumers-out postcondition — a working card with no live attempt, a review card whose reads are all for other cards, and a review card with no read and no open judgment each raise one judgment naming the card, and a real store whose readers table is emptied raises it within one tick.
+- `TestDropRefusesACardAnUnlandedCardNeeds`, `TestDropWithWaiveLeavesNoStrandedNeed` (`internal/sprint/missing_need_test.go`) and `TestDropRefusesANeededCardAndWaiveLeavesNone`, `TestDropGroupRefusesANeededCard`, `TestDropWithRelinkRepointsTheNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (a), drop of a card an unlanded card needs is refused naming the dependants — by id or as a group — and `--waive` and `--relink` each pass and leave no stranded need.
+- `TestEveryStateAlertsTheCoordinatorOfAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b), a real store and the seat hooked in, a need taken off the table by a store edit (a path that can strand it) for a card in each state (waiting, ready, working, review, merging), and the coordinator's hook stream receives the judgment naming the card and the missing need within one second of running time each time; `TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): the judgment stays open, repeats at its deadline, and clears when answered with `needs set`; `TestTickNeedsJudgesAGoneNeedInEveryUnlandedState`, `TestTickNeedsHoldsAndClears` (`internal/sprint/missing_need_test.go`): the same judgment per state, its non-doubling while open and its closing when the need is set away.
+- `TestNeedsSetOnAMergingCardWithAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b)'s second part, needs set on a merging card whose need is gone succeeds in place.
+- `TestAcceptRefusesACardWhoseNeedHasNotLanded` (`internal/sprint/missing_need_test.go`): rule (c), accept refuses a card whose need has not landed.
+- `make release-accept` runs all of the above and fails if any one is renamed, moved or red.
+- `TestFirstAddWritesTheStreamBranchAndTrunk`, `TestAddRewritesADevBaseToTheStreamBranch`, `TestAMainOnlyRepositoryTakesMainAsTrunk`, `TestAClearedSprintMakesTheSameStreamBranch`, `TestLandingFlowIsOneSentence` (`internal/sprint/stream_branch_test.go`) and `TestANewStreamLandsOnItsOwnBranchWithNoSetting` (functional, `cmd/nova-sprint/stream_branch_functional_test.go`): a new stream writes its branch `sprint/<stream>` and trunk on its first add, a card cut on dev or main is re-cut onto the branch with one NOTE quoting the landing flow, a cleared sprint builds the same with no setting, and a real landing with defaults only puts both heads on origin's `sprint/s` while dev is unchanged.
 
 ## A finish-PR card starts from the PR's own head
 

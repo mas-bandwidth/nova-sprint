@@ -2967,13 +2967,14 @@ func (a *app) cmdRedo(args []string, stdout, stderr io.Writer) int {
 }
 
 func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
-	var reason, ans *string
-	var cascade *bool
-	var replacedBy *string
+	var reason, ans, relink, replacedBy *string
+	var cascade, waive *bool
 	return a.setVerb("drop", args, stdout, stderr, true, func(fs flagSet) {
 		reason = fs.String("reason", "", "why it leaves the table; kept with its record")
 		ans = fs.String("answers", "", answersWords)
-		cascade = fs.Bool("cascade", false, "drop too every waiting primary that needs a card named, and their dependants, with the same reason; without it a card another open primary still needs is refused, naming the dependants")
+		cascade = fs.Bool("cascade", false, "drop too every unlanded card that needs a card named, and their dependants, with the same reason; without it a card another unlanded card still needs is refused, naming the dependants")
+		relink = fs.String("relink", "", "re-point the needs of every unlanded card that names a card being dropped at this primary instead; not with --cascade or --waive")
+		waive = fs.Bool("waive", false, "remove the need from every unlanded card that names a card being dropped, recorded with the reason; not with --cascade or --relink")
 		replacedBy = fs.String("replaced-by", "", "the successor the dropped card becomes an alias of, recorded as relink records it: a need on the dropped id resolves to it and is not refused")
 	}, func(ids []string, s *sel) string {
 		if *reason == "" || len(ids) == 0 && s.stream == "" && s.col == "" {
@@ -2984,7 +2985,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}
-		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, ReplacedBy: *replacedBy, Who: c.actor})
+		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, ReplacedBy: *replacedBy, Who: c.actor})
 	})
 }
 
