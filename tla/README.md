@@ -83,6 +83,157 @@ checks it against [`tla2tools.sha256`](tla2tools.sha256) before
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
 
+## LandPass stream routing and certification
+
+`MCLandPassStreamFlow.cfg` checks `StreamFlowFairSpec`, a separate abstraction
+alongside the existing LandPass gate/pass specifications. This is **not** a
+composition or refinement proof between them. The old batch-set variable is
+`batchBase`; `base[c]` is the card destination. Legacy specifications freeze the
+flow state and keep their original fairness over `legacyVars`; the flow freezes
+the legacy pass with a green oracle. All 13 historical cases retain their expected
+outcomes and independently check the old gate and refusal rules.
+
+The flow bound is **two streams and three cards**, represented by `<<stream,
+head>>`: s1 has heads 1 and 2, s2 has head 1. A batch contains one card and each
+stream lands its oldest unfinished head first. A second batch may land on the
+stream while its earlier snapshot is being certified. `sbranch[s]` contains its
+landed cards, `integrated[s]` the last snapshot merged into trunk, and `trunk`
+records `<<"merge", s>>` or `<<"card", batch>>`. `inflight` and `cert` distinguish
+certification admission from branch readiness. `moveFree` retains the **pre-state**
+admission guard at every append, so finishing certification cannot erase overlap.
+
+Initially branches are empty and legacy stream destinations name trunk. `AddCard`
+inherits its configured destination before or after migration. `AdvanceCard`
+visits waiting, ready, working, review and merging; landed is the sixth real
+lifecycle column, while absent is model-only. `landProtected` independently ranges
+over all subsets of streams. `CardOntoTrunk` requires the actual stream mark:
+`BugCardOntoDev` restores the historical **marked** exception; the independent
+`BugUnmarkedLanding` mutation removes the mark guard. An unmarked card is refused
+before git in the staged Go, rather than somehow landing because its BASE is stale.
+
+`SetBase(s, s)` migrates once to its stream branch. `BaseRewritePolicy` exposes two
+policies: the requested `all-unlanded` rewrite, and `preserve-cut-head` selected by
+`Broken = "baseskipsreview"`, which preserves working/review card bases in this
+bounded abstraction and still repoints merge-queued cards. The Go selector is
+broader: among eligible unlanded cards, it keeps every card with `attempt > 0`
+unless the card is in the merge queue's `Queued` cell.
+**This is an unresolved implementation policy choice.**
+The current Go intentionally preserves already-dealt heads on their old base;
+this model does not assert that rewriting an active head is safe or that the Go
+selector is simply defective. The stronger requested invariant
+`NoUnlandedCardBasesOnTrunk` says every existing unlanded card of a migrated stream
+names that stream, and the preserve policy violates it immediately at migration,
+without a protected mark or any landing. Settling that discrepancy may require
+explicit recutting/restaging; no Go repair is made or assumed here.
+
+`BriefEdit(c, proposedBase)` is a real finite event: one attempted edit per card,
+with an independently chosen own-stream or trunk BASE. Normally it preserves
+routing; `BugBriefBase` writes that input to `base[c]` and independently violates
+the same postmigration invariant. The control also checks the action properties
+`SetBaseReachesEveryUnlanded` and `BriefEditKeepsBase`.
+
+An empty branch records the trunk revision it follows. A sibling merge can advance
+trunk while that branch is empty. `FollowTrunk(s)` fast-forwards it separately;
+`StreamLand(s)` must wait for that revision before the **first** landing.
+`EmptyStreamFollowsTrunk` compares the actual cut revision and trunk revision
+recorded at that landing. `BugEmptyStale` drops the first-land guard and produces a
+real stale landing after a sibling merge. The model permits temporary empty-branch
+lag before landing; it does not assert atomic updates to every branch on each move.
+
+`StreamMerge(s)` admits a snapshot only when it is ahead, no merge is inflight,
+and cert is green or trunk has never moved. `CertDone` may answer green **or red**;
+red blocks new admission. `Fix` is explicitly a **successful repair and
+recertification of the same trunk revision**, without another trunk move. This
+is the recovery assumption, not a proof that arbitrary broken code can be fixed.
+The weakly fair specification schedules every card's add/advance, every stream's
+migration/follow/landing/merge, certification completion, and successful Fix.
+It checks both `LandedEventuallyIntegrated` and the stronger
+`AllFlowWorkCompletes`, so a run where nothing lands is not a vacuous progress pass.
+Safety invariants are checked over the full reachable graph and do not depend on
+these fairness assumptions, even though the same control also checks liveness.
+
+A mere fair retry is insufficient: `BugRedRetry` replaces successful Fix with
+red-to-running retry, allowing an adversarial running/red cycle forever. Its
+liveness witness leaves real landed cards unintegrated. `BugNoRepair` removes Fix
+and exposes an incomplete terminal state. All new cases use deadlock policy
+`check`, including the control. `Quiesce` is the only explicit stutter and is
+available only when every card is landed and integrated, cert green, and no merge
+inflight. Brief edits are one-shot state changes, so cannot conceal a wedge.
+`NoPartialCompletionWedge` additionally gives a named invariant counterexample for
+the missing-repair case. No terminal state is silently waived.
+
+`TrunkMovesOnlyByStreamMerge` and `OneStreamMergeInflightPerTrunk` are the requested
+names; `DevMovesOnlyByStreamMerge` and `StreamMergesSerial` remain aliases for old
+callers. `CardLandsOnItsStream` is retained. Direct pushes during running
+certification set cert cancelled; serialization rejects both cancellation and
+admission while a previous certification is inflight. **GitHub's merge queue
+already serializes actual Git merges onto trunk.** The overlap witness concerns
+coordinated admission/certification and cancellation, not simultaneous Git writes.
+
+The eight negative cases distinguish historical behavior, a policy discrepancy,
+and deliberate mutations. State numbers below are from the revised measured run:
+
+| Configuration suffix | Selector | Expected violation / first bad state |
+|---|---|---|
+| `BrokenCardOntoDev` | `cardontodev` | Historical marked route: `DevMovesOnlyByStreamMerge`, state 7 with `landProtected = {s1}`. |
+| `BrokenReviewKeepsBase` | `baseskipsreview` | Preserve-cut policy versus requested stronger rule: `NoUnlandedCardBasesOnTrunk`, state 5, working card still on trunk immediately after migration. |
+| `BrokenBriefBase` | `briefbase` | Mutated brief write: `NoUnlandedCardBasesOnTrunk`, state 4, migrated waiting card edited back to trunk. |
+| `BrokenMergeBeforeCert` | `mergebeforecert` | Mutated admission guard: `StreamMergesSerial`, state 16, s1's second snapshot admitted while its first is running, `moveFree = <<TRUE, FALSE>>`. Other-stream overlap is enabled by the same mutation. |
+| `BrokenEmptyStale` | `emptystale` | Mutated first-land guard: `EmptyStreamFollowsTrunk`, state 16, s2 first lands at cut 0 while trunk is 1 after s1's merge. |
+| `BrokenUnmarkedLanding` | `unmarkedlanding` | Mutated mark guard: `ProtectedLandingRequiresMark`, state 7, direct trunk push with `landProtected = {}`. |
+| `BrokenNoRepair` | `norepair` | Missing recovery: `NoPartialCompletionWedge`, state 23, all cards landed, s2 unintegrated, cert red, no enabled step. |
+| `BrokenRedRetry` | `redretry` | Retry is not successful repair: `LandedEventuallyIntegrated`, cycle 27-28, both s1 cards landed but never integrated while s2's trunk revision retries red forever. |
+
+Hand mapping against staged Go `c3b0b1b142cddfeec489582a493cb2ff0a0022d9`:
+
+- **Protected routing:** `cmd/nova-sprint/landpass.go:299-302` reads the card's
+  BASE and line 323 calls `ProtectedLandWhy`; `internal/sprint/protected.go:48-50`
+  permits a matching `land_protected` mark. `cmd/nova-sprint/land.go:756-759`
+  (`placeWhy`) returns an unmarked refusal before git. This is the distinction
+  between the historical marked witness and the deliberately faulty unmarked one.
+- **Migration:** `internal/sprint/streams.go:407-421` selects never-dealt or
+  merge-queued cards; `cmd/nova-sprint/land.go:699` (`landQueue`) identifies the
+  queued merge candidates. Every eligible unlanded card with `attempt > 0` that
+  is not merge-queued is kept, regardless of its work column; `deal` increments
+  the attempt at `internal/sprint/steps_work.go:1247`.
+  `streams.go:433-436` only constructs candidates. The actual planned
+  write is `internal/sprint/settings.go:691-702`, using `briefOnBase` at
+  `streams.go:350-356`. The old merging-card trace and old landing-only property
+  were incorrect for this selector; the revised witness fails before landing.
+- **Brief editing:** `internal/sprint/steps_edit.go:168-187` admits a permitted
+  brief edit and writes `b.Brief`; landpass.go:299-302 later reads its BASE. The
+  mutant makes that routing change explicit; the desired design instead preserves
+  the routing field independently of prose.
+- **Admission/certification:** `cmd/nova-sprint/promote.go:354-370` watches an
+  existing pending promotion, lines 644-667 wait for checks before enqueue, and
+  lines 821-840 read one clone's pending state. They are local guards, not the
+  global per-trunk admission rule. `sprint.NextStreamMerge` is absent at this
+  staged head. `promote.go:597-620` and `:728-746` identify red runs and judgments;
+  successful Fix is the explicit environmental recovery obligation beyond them.
+- **Empty branches:** `landpass.go:362-363` uses the card's base to construct a
+  landing job. Automatic empty-stream following is absent from that staged path;
+  FollowTrunk and its first-land guard specify the sibling fix's intended behavior.
+  Revision counters abstract ancestry, not a full Git object graph or E12 check.
+
+Rowan's independent cold read rejected the earlier readiness claim: it found the
+missing mark, incorrect merging-selector mapping, coupled skip/landing witness,
+missing empty-branch behavior and progress, and permissive terminal handling. This
+revision responds to those findings; the earlier run evidence remains historical.
+Rowan accepted the revised design, including the unresolved working-head policy,
+on 2026-10-12 at 14:00:30Z. Design acceptance is not final implementation approval.
+His final cold read of `5c3196d6` at 14:28:33Z approved the models-only revision,
+independently reproducing all 22 results and checking the eight negative witnesses
+and the necessity of each weak-fairness conjunct. This records model review, not
+product implementation or landing.
+
+Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
+Linux, then use `tools/tlacheck merge --keep` as described above. The group contains
+13 unchanged historical cases, the revised control, and eight negatives (22 total).
+A witness's runner PASS means TLC reported its declared violation. This bounded
+model omits crash recovery, dynamic stream membership, arbitrary batch sizes and
+full Git ancestry; it makes no claim that the staged Go implements every requested
+policy or that certification is guaranteed green without successful repair.
+
 ## The models in detail
 
 These rows and the `Level` section moved here from nova-tools' `tla/README.md` at v1.2.3, with the

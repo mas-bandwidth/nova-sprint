@@ -319,6 +319,27 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-landpass-dev-moves-only-by-stream-merge" :release "v1.2.15" :status "planned"
+     :title "The landing model checks stream routing, empty branches and certification progress"
+     :text "LandPass keeps its 13 legacy gate-pass cases and adds a separate two-stream, three-card
+      routing/certification abstraction. It models actual land_protected marks; per-card bases after
+      migration; a brief edit that cannot change routing; first landing only after an empty branch
+      follows sibling trunk advances; and one snapshot admitted per trunk while certification runs.
+      Eight negative cases distinguish the historical marked exception, the unresolved preserve-cut
+      working/review policy versus the requested rewrite-all rule, and mutations of brief writes,
+      admission, first-land freshness, mark guards and recovery. The control checks safety without
+      fairness assumptions, and eventual integration of every landed batch plus full completion
+      under weak fairness and explicitly successful repair. A fair red/retry cycle is a real
+      liveness counterexample; a missing repair produces an incomplete terminal violation. All new
+      cases check deadlocks and only completed work may quiesce. The 22 cases pass their expected
+      outcomes on Linux with the pinned TLC jar; tools/tlacheck generated and merged the records.
+      README maps counterexamples to actual Go reads and writes and records Rowan's independent
+      cold-read corrections; it does not claim that this model resolves active-head policy, refines
+      the gate model, implements the sibling Go fixes, or proves arbitrary repairs succeed."
+     :origin "Glenn and Rowan's accepted outside-sprint request, 2026-10-12, following epoch 19
+      protected-stream landings and dev certification cancellations. Rowan's cold read superseded
+      the earlier readiness claim and accepted the revised design at 14:00:30Z; final implementation
+      acceptance remains a separate review. Hand PR targets sprint/comfort, assigned to v1.2.15.")
    (fix "tla-landpass-prefix-landing-and-unblamed-refusal" :release "v1.2.12" :status "planned"
     :title "The land pass model: a red gate lands the prefix and reworks the blamed head"
     :text "Models only, no product change. LandPass.tla's gate now does what cmd/nova-sprint/landpass.go does when the batch's tree is red: a bisection that blames one head cuts the batch to the prefix before it, pushes that prefix and reworks the blamed head with the stream going on (no longer stopped); a refusal that blames no head (a bench that did not run the gate, a cancelled gate, a bisect environment refusal) returns the batch to queued; and a batch whose tree tests read none of its files lands whole. The new invariant NoHeadPastItsBlame (no head at or after the blamed one lands in that pass) holds, as do LandsOnce and BaseKeepsLandings. Two reversed witnesses: landpastblame pushes the whole batch on a blamed red (fails NoHeadPastItsBlame), unblamedstops stops the stream on an unblamed refusal (fails UnblamedRefusalQueues). A comment on treeGateBase cites tla/LandPass.tla BaseRed."
