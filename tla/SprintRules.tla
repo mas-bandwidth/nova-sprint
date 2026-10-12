@@ -76,6 +76,8 @@
 \*   "silent"     replace drops raising no blocked judgment, without re-pointing:
 \*                NoDanglingNeed (a waiting card needs a dropped card and no judgment
 \*                says so)
+\*   "noalias"    a brief, add or twin re-adding the old id keeps it live:
+\*                NoLiveNeedNamesADroppedId
 \*   "nocap"      the failed rule redeals on the same tier for ever: RuleAttemptsBounded
 \*   "down"       the bound rule may lower the tier: LadderClimbs
 \*   "unservedtier" a rule climbs to the next tier whether a route serves it or not:
@@ -271,8 +273,9 @@ Init ==
 -----------------------------------------------------------------------------
 \* Part "twins".
 
-\* The waiting cards that need x and would be re-pointed.
-Dependents(x) == {d \in Waiters : col[d] = "waiting" /\ x \in need[d]}
+\* The cards that need x and would be re-pointed: every open column, not only waiting
+\* (the code's relink rewrites the need on whatever column names old).
+Dependents(x) == {d \in Waiters : col[d] # "landed" /\ x \in need[d]}
 
 \* drop x: off the table; every waiting card that needs it is told (Drop's blocked
 \* judgment, one per card, naming the dropped need)
@@ -331,9 +334,31 @@ Resolve(d) ==
   /\ col' = [col EXCEPT ![d] = "open"]
   /\ UNCHANGED <<need, blocked, twin>>
 
+\* A brief edit, an add, or a twin whose text names the old card o as a need
+\* (`DEPENDS-ON: o`). Through the alias the need is stored as the successor t, never
+\* as the dropped id; only the noalias defect stores o itself and lets it block.
+BriefNamesOld(d) ==
+  /\ d \in Waiters
+  /\ col[d] \in {"waiting", "open"}
+  /\ need' = [need EXCEPT ![d] = need[d] \cup {IF twin["o"] # None /\ Broken # "noalias" THEN twin["o"] ELSE "o"}]
+  /\ UNCHANGED <<col, blocked, twin>>
+
+AddNamesOld(d) ==
+  /\ d \in Waiters
+  /\ col[d] \in {"waiting", "open"}
+  /\ need' = [need EXCEPT ![d] = need[d] \cup {IF twin["o"] # None /\ Broken # "noalias" THEN twin["o"] ELSE "o"}]
+  /\ UNCHANGED <<col, blocked, twin>>
+
+TwinNamesOld(d) ==
+  /\ d \in Waiters
+  /\ col[d] \in {"waiting", "open"}
+  /\ need' = [need EXCEPT ![d] = need[d] \cup {IF twin["o"] # None /\ Broken # "noalias" THEN twin["o"] ELSE "o"}]
+  /\ UNCHANGED <<col, blocked, twin>>
+
 TwinNext ==
   \/ DropOld \/ AddTwin \/ Replace \/ Relink
   \/ \E x \in TwinIds : LandTwin(x) \/ Resolve(x)
+  \/ \E d \in Waiters : BriefNamesOld(d) \/ AddNamesOld(d) \/ TwinNamesOld(d)
 
 \* No waiting card needs an id that has a twin: the twin took over every edge.
 TwinsInherit ==
