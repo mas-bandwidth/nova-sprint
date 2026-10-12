@@ -21,8 +21,7 @@ out the assignments. A machine's **width** sets how many work assignments
 it can run at once. Think of those slots as lanes: when one opens, the
 machine can send the next ready card down it.
 
-More lanes help when the work is independent. Dependencies still have to
-land first. Your work runs as wide as possible without going out of control.
+More lanes help when the work is independent. Dependencies have to land first.
 
 ## Follow a card all the way home
 
