@@ -96,10 +96,10 @@ func TestAnEnvironmentExitOnARealStore(t *testing.T) {
 	env134, env0 := q.Cards[8], q.Cards[9]
 	ok("finish", "--as", "m1", env134.ID+"@"+strconv.Itoa(env134.Gen), "--epoch", epoch, "--failed", "--exit", "134",
 		"--report", "no result: aborted", "--harness", "an earlier tail\nAborted (core dumped)")
-	assert.Contains(t, tick(), env134.ID+" working -> withdrawn gen=2, environment exit=134 ended on m1's environment (no attempt spent)")
+	assert.Contains(t, tick(), env134.ID+" working -> environment gen=2, environment exit=134 ended on m1's environment (no attempt spent)")
 	ok("finish", "--as", "m1", env0.ID+"@"+strconv.Itoa(env0.Gen), "--epoch", epoch, "--failed", "--exit", "0",
 		"--report", "no result: no RESULT.md shape", "--harness", "Error: Unknown: ChildProcess.spawn (opencode)\nAborted")
-	assert.Contains(t, tick(), env0.ID+" working -> withdrawn gen=2, the child left no result; "+env0.Primary+" working -> ready")
+	assert.Contains(t, tick(), env0.ID+" working -> no_result gen=2, the child left no result; "+env0.Primary+" working -> ready")
 
 	// each environment exit is on its work card, dealt again to m1 at the same attempt; its
 	// primary is working on it again at attempt 1, never failed, with the take's record ending

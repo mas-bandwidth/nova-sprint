@@ -35,7 +35,7 @@ func TestAnOutOfCreditTakeSpendsNoRedeal(t *testing.T) {
 	w.must(p)
 
 	c := w.s.Fleet.Card(wc)
-	assert.Equal(t, Withdrawn, c.Col)
+	assert.Equal(t, ProviderFailures, c.Col)
 	assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
 	assert.Zero(t, c.Int("redeals"), "the redeal is unspent")
 	takes, _ := ProviderTakes(c)

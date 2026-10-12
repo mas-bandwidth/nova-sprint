@@ -64,12 +64,16 @@ type ReaderStat struct {
 // on the route and is not a take of it; a take whose record names no route (a read
 // returned unpriced) counts on its card's route. RunWall is over the takes' usage walls.
 type RouteTakes struct {
-	Route    string  `json:"route"`
-	Takes    int     `json:"takes"`
-	OK       int     `json:"ok"`
-	Failed   int     `json:"failed"`
-	Provider int     `json:"provider_failures"`
-	RunWall  Measure `json:"run_wall"`
+	Route        string  `json:"route"`
+	Takes        int     `json:"takes"`
+	OK           int     `json:"ok"`
+	Failed       int     `json:"failed"`
+	NoResult     int     `json:"no_result"`
+	Provider     int     `json:"provider_failures"`
+	Coordination int     `json:"coordination"`
+	Environment  int     `json:"environment"`
+	Harness      int     `json:"harness"`
+	RunWall      Measure `json:"run_wall"`
 }
 
 // PassStats is the epoch's numbers, members, readers and routes in name order. Since,
@@ -177,15 +181,27 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 			}
 			z := sampleOf(routes, name)
 			switch {
-			case c.Kind == "read" && c.End != "returned", c.Kind == "work" && c.End == "ok":
+			case c.Kind == "read" && c.End != "returned":
 				z.ok++
-			case strings.HasPrefix(c.End, cardhdr.EndProvider), strings.HasPrefix(c.End, cardhdr.EndNoResult):
-				z.provider++
-			case c.End == EndNeedsUnlanded:
-				// a stop on needs not landed is a coordination failure (needs_stop.go): neither
-				// ok nor failed for the route or model
-			default:
+			case c.Kind == "read":
 				z.failed++
+			case c.Kind == "work":
+				switch ClassifyEnd(c.End) {
+				case EndClassOK:
+					z.ok++
+				case EndClassNoResult:
+					z.noResult++
+				case EndClassProvider:
+					z.provider++
+				case EndClassCoordination, EndClassClear:
+					z.coordination++
+				case EndClassEnvironment:
+					z.environment++
+				case EndClassHarness:
+					z.harness++
+				default:
+					z.failed++
+				}
 			}
 			if wall, ok := wallSeconds(c.Usage.Wall); ok {
 				z.wall = append(z.wall, wall)
@@ -204,7 +220,8 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 	}
 	for _, name := range slices.Sorted(maps.Keys(routes)) {
 		z := routes[name]
-		ps.Routes = append(ps.Routes, RouteTakes{Route: name, Takes: z.n, OK: z.ok, Failed: z.failed, Provider: z.provider, RunWall: measure(z.wall)})
+		ps.Routes = append(ps.Routes, RouteTakes{Route: name, Takes: z.n, OK: z.ok, Failed: z.failed, NoResult: z.noResult,
+			Provider: z.provider, Coordination: z.coordination, Environment: z.environment, Harness: z.harness, RunWall: measure(z.wall)})
 	}
 	return ps
 }
@@ -238,8 +255,8 @@ func anyCardSince(s *Snapshot, p *Card, since time.Time) bool {
 
 // samples are one member's, reader's or route's cards and their samples, in seconds.
 type samples struct {
-	n, ok, failed, provider int
-	wait, wall, lag         []float64
+	n, ok, failed, noResult, provider, coordination, environment, harness int
+	wait, wall, lag                                                       []float64
 }
 
 // sampleOf is the name's samples, counted one card more, made on first meeting.
