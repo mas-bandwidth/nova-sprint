@@ -126,7 +126,7 @@ func TestBrokenReadsOutrunningOkRaiseOneNotice(t *testing.T) {
 	}
 	assert.Contains(t, what, "top findings: ")
 	assert.Contains(t, what, fmt.Sprintf("%q", missingFinding[:sprint.FindingClassLen]), "the finding classes, by their first 60 characters")
-	assert.Equal(t, []string{"look at the readers", "raise the read tier", "act"}, open[0].Note.Decisions)
+	assert.Equal(t, []string{"look at the readers", "raise the read tier", "ack", "act"}, open[0].Note.Decisions)
 	assert.Len(t, written, 1)
 
 	// more broken reads in the same episode: still the one notice, its counts brought up to date
@@ -154,6 +154,43 @@ func TestBrokenReadsOutrunningOkRaiseOneNotice(t *testing.T) {
 	r.until(func() bool { _, o := r.judged(sprint.NBrokenReadsOutrun); return len(o) == 1 })
 	written, _ = r.judged(sprint.NBrokenReadsOutrun)
 	assert.Len(t, written, 2, "the next episode is told again")
+}
+
+// An acknowledged rate or health judgment stays quiet while its condition holds
+// until its numbers cross a new threshold or its stated quiet period passes, and
+// the next push says why it is back (docs/SPEC-SPRINT.md section 8).
+func TestAckedHealthJudgmentStaysQuiet(t *testing.T) {
+	t.Parallel()
+	r := newReadsRig(t, 60, map[string]string{"reader-a": "broken", "reader-b": "ok", "reader-c": "broken"})
+	r.until(func() bool { return r.total("ok")+r.total("broken") >= sprint.ReadsWindowMin })
+	r.tick()
+	_, open := r.judged(sprint.NBrokenReadsOutrun)
+	require.Len(t, open, 1, "raised before the ack")
+
+	// the seat acknowledges it; the ack is accepted
+	res, err := r.st.Run(r.ctx, store.AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "looked", Who: "coordinator"}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused, "an acknowledged rate judgment stays quiet, it is not refused")
+
+	// more broken reads in the same episode: the judgment stays quiet, one notice
+	r.round()
+	r.round()
+	r.tick()
+	written, open := r.judged(sprint.NBrokenReadsOutrun)
+	assert.Len(t, written, 1, "acked: not raised again with the same numbers")
+	assert.Empty(t, open)
+
+	// thirty minutes of running time on, still broken, the quiet period has passed:
+	// it is raised again
+	for range 8 {
+		r.mu.Lock()
+		r.now = r.now.Add(5 * time.Minute)
+		r.mu.Unlock()
+		r.round()
+		r.tick()
+	}
+	written, _ = r.judged(sprint.NBrokenReadsOutrun)
+	assert.Len(t, written, 2, "back after the quiet period: %v", written)
 }
 
 func TestOkReadsOutrunningBrokenRaiseNoNotice(t *testing.T) {

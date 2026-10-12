@@ -43,5 +43,25 @@ func TestAMachineOnTwoRowsIsOneReader(t *testing.T) {
 	require.Equal(t, 6, b[0].OtherTally.ok)
 	conds := readsWindowConds(s, TickReq{})
 	require.Len(t, conds, 2)
-	require.Equal(t, []string{"hold m2", "hold " + ReaderPrefix + "m2", "look at the reader", "act"}, conds[1].decisions)
+	require.Equal(t, []string{"hold m2", "hold " + ReaderPrefix + "m2", "look at the reader", "ack", "act"}, conds[1].decisions)
+}
+
+// An acknowledged rate judgment is raised again when its quiet period has passed
+// or its numbers cross a new threshold, and the push says why it is back
+// (docs/SPEC-SPRINT.md section 8; TestAckedHealthJudgmentStaysQuiet).
+func TestAnAckedHealthJudgmentIsRaisedAgainSayingWhy(t *testing.T) {
+	t.Parallel()
+	s := &Snapshot{Now: t0, Readers: NewTable(Readers), Fleet: NewTable(Fleet)}
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, ReadVerdict{At: t0.Add(-time.Duration(5+6*i) * time.Second), Reader: ReaderPrefix + "m2", Verdict: "broken", Tier: "pro", Finding: "x"}.line())
+	}
+	s.Readers.SetProp(PropReadsWindow, strings.Join(lines, "\n"))
+	// the quiet period has passed: acked 31 minutes ago, the condition still holds
+	a := Note{Kind: Acknowledged, Type: NBrokenReadsOutrun, StreamLevel: true, At: t0.Add(-31 * time.Minute),
+		What: withAckBase("broken reads outrun ok reads", "0/20")}
+	s.Acked = []Open{{Key: OpenKey("ack-1", StreamSubject("")), Note: a}}
+	conds := readsWindowConds(s, TickReq{})
+	require.Len(t, conds, 1, "the condition still holds")
+	require.Contains(t, conds[0].what, "quiet period has passed", "the push says why it is back")
 }

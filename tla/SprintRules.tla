@@ -1,7 +1,7 @@
 ----------------------------- MODULE SprintRules -----------------------------
 \* The machine feeds itself (the coordinator, for the owner, 2026-10-04 at 1:36 PM: "I want this
 \* sort of oh no fleet is idle, do judgement, release more cards thing -- i want this
-\* more automated."). Six small state machines of nova-sprint, each its own Part, each
+\* more automated."). Ten small state machines of nova-sprint, each its own Part, each
 \* checked alone; docs/SPEC-SPRINT.md section 2 ("A card replaced by its twin") and
 \* section 8 ("Answered by rule", and the idle alarm in section 14), internal/sprint
 \* twins.go, rules.go and idle.go, cmd/nova-sprint landgo.go (the base gate).
@@ -52,6 +52,21 @@
 \*   has not started taken back and dealt again, a late read asked of another reader once
 \*   an attempt, and a HOLD that waits for its card and reworks the primary once it lands.
 \*
+\* Part "stall": the landing stall (judgments.go TickLandingStall, run from the deadlines
+\*   part): when cards wait in review or merging and the last landing is StallBound of
+\*   running time ago, the tick end raises one NLandingStall judgment, re-raised each bound,
+\*   cleared on a landing; stopped time does not count (lsclk is running time).
+\*
+\* Part "conflict": one card whose head the lander refused (internal/sprint rules.go,
+\*   ruleConflict, ruleRedo, ruleBrief; redo.go Return). The card is on a tier (flash, pro,
+\*   heavy; the failed and bound rules raised it, Part "rules"): the lander refuses its head
+\*   one of the ways RefusalWay places (a file conflict, files outside PATHS, the lander's
+\*   other checks, the tree gate, a merge clash) and the stream stops. The conflict rule
+\*   returns the card and sets its tier to flash (FieldTierNow flash), recording the way;
+\*   the redo reworks it on the current tip, one attempt more; the same way twice is a brief
+\*   defect, marked and held for a mind. A refusal the rule cannot place (a generated
+\*   ledger, a head origin does not hold) is a mind's, not modelled.
+\*
 \* Part "late" also has a reachability witness, MCSprintRulesLateReachReturn: the design
 \* still returns a card (gen > 0), so NeverReturned fails there.
 \*
@@ -91,6 +106,8 @@
 \*   "faultnobound" the harness rule reworks a card at its attempt bound: AnswerAttemptsBounded
 \*   "takestarted" the friend-take rule takes back a card the friend started:
 \*                FriendKeepsStarted
+\*   "conflictkeeps" the conflict rule leaves the tier a failure raised it to:
+\*                ConflictResetsToFlash
 \*   "answersmind" the read-broken answer leaves a non-empty finding at the brief's bound to a
 \*                mind instead of reworking it: PartsAgree
 \*   "parkfailed" failed work below its bound that no harness class names is left to the seat,
@@ -100,6 +117,8 @@
 \*                ReworkHasAFix
 \*   "identicalrework" the second identical failure is reworked as failed work on its tier
 \*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
+\*   "nostall"    the tick never raises the landing-stall judgment: StallLive
+\*   "noclear"    a landing does not clear the episode: StallNotYoung
 
 EXTENDS Integers, FiniteSets
 
@@ -130,7 +149,9 @@ VARIABLES col, need, blocked, twin,               \* twins
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, \* answers
           pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
-          jf, jfstarted, jr, jrasked, jh, jhlanded \* judgments
+          jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
+          lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
+          ctier, cst, crefused, cway, catt           \* conflict
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
@@ -141,7 +162,9 @@ idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
+stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
+conflictVars == <<ctier, cst, crefused, cway, catt>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -150,6 +173,9 @@ AnFindings == {"f1", "f2", "empty"}
 \* a failure with no report to take as a fix, and the same failure as the attempt before
 \* (sprint.AtIdenticalFailure: the bound's, never a rework on its tier)
 AnFails == {"harness", "hold", "other", "noreport", "same"}
+
+\* -- conflict: the ways RefusalWay places a refusal (rules.go)
+ConflictWays == {"conflict", "paths", "checks", "gate", "clash"}
 
 TypeOK ==
   /\ col \in [TwinIds -> Cols]
@@ -204,6 +230,16 @@ TypeOK ==
   /\ jf \in {"open", "taken"} /\ jfstarted \in BOOLEAN
   /\ jr \in {"open", "asked", "mind"} /\ jrasked \in Nat
   /\ jh \in {"waiting", "off", "reworked", "mind"} /\ jhlanded \in BOOLEAN
+  /\ lsclk \in 0..MaxClock
+  /\ lsstopped \in BOOLEAN
+  /\ lswait \in 0..2
+  /\ lslast \in (0..MaxClock) \cup {-1}
+  /\ lssince \in (0..MaxClock) \cup {-1}
+  /\ lssaid \in (0..MaxClock) \cup {-1}
+  /\ lsjudged \in BOOLEAN
+  /\ ctier \in 1..3 /\ cst \in {"working", "refused", "returned", "brief", "done"}
+  /\ crefused \in ConflictWays \cup {None} /\ cway \in ConflictWays \cup {None}
+  /\ catt \in 1..Cap
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -228,6 +264,9 @@ Init ==
   /\ jf = "open" /\ jfstarted = FALSE
   /\ jr = "open" /\ jrasked = 0
   /\ jh = "waiting" /\ jhlanded = FALSE
+  /\ lsclk = 0 /\ lsstopped = FALSE /\ lswait = 1
+  /\ lslast = -1 /\ lssince = -1 /\ lssaid = -1 /\ lsjudged = FALSE
+  /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -386,7 +425,8 @@ RuleNext == WorkFails \/ WorkBounds \/ WorkLands \/ RuleFailed \/ RuleBound \/ M
 \* The rules make at most Cap attempts a tier on three tiers: they never loop.
 RuleAttemptsBounded == attempts <= 3 * Cap
 
-\* A rule never lowers a card's tier.
+\* No rule but the conflict rule lowers a card's tier: the failed and bound rules here
+\* only raise it (Part "conflict" is the one rule that resets a card to flash).
 LadderClimbs == [][tier' >= tier]_ruleVars
 
 \* A rule escalates only to a tier a route serves, or to a friend's card.
@@ -1045,24 +1085,173 @@ AskedOnceAnAttempt == jrasked <= 1
 HoldNeedReworksOnlyLanded == jh = "reworked" => jhlanded
 
 -----------------------------------------------------------------------------
+\* Part "stall": the landing stall (internal/sprint judgments.go, TickLandingStall; run from
+\* the deadlines part). When cards wait in review or merging and the work table's last
+\* landing is StallBound (the code's LandingStallBound, Window here) or more of running time
+\* ago, the tick end raises one NLandingStall judgment to the coordinator; it is re-raised
+\* each bound it still holds, and a landing breaks the episode and clears it (the code's
+\* NLandingAgain). The code's clear is the tick after the landing; here the landing clears in
+\* one step, so StallNotYoung holds at every state. Stopped time does not count: lsclk is
+\* running time, one step a tick, advanced only while the machine runs.
+\*   lsclk    running time, one step a tick.
+\*   lsstopped the machine is STOPPED (an outside event); a stopped tick adds no running time.
+\*   lswait   the cards waiting in review or merging (0, 1 or 2); the model's only way a card
+\*            leaves waiting is to land, so "nothing waits" is the landing's own clear.
+\*   lslast   the running-time stamp of the last landing; -1 none.
+\*   lssince  the episode's start stamp; -1 no episode.
+\*   lssaid   the episode's last push stamp; -1 none.
+\*   lsjudged the NLandingStall judgment is open.
+
+StallBound == Window
+
+\* the outside: a card enters review or merging
+LsWait ==
+  /\ lswait < 2
+  /\ lswait' = lswait + 1
+  /\ UNCHANGED <<lsclk, lsstopped, lslast, lssince, lssaid, lsjudged>>
+
+\* the outside: a card lands (the merge step writes last_landing); a landing breaks the
+\* episode and clears it (the "noclear" defect leaves the judgment open)
+LsLand ==
+  /\ lswait > 0
+  /\ lslast' = lsclk /\ lswait' = lswait - 1
+  /\ IF Broken = "noclear"
+       THEN UNCHANGED <<lssince, lssaid, lsjudged>>
+       ELSE /\ lssince' = -1 /\ lssaid' = -1 /\ lsjudged' = FALSE
+  /\ UNCHANGED <<lsclk, lsstopped>>
+
+\* the outside: the machine is STOPPED or starts again
+LsStop ==
+  /\ ~lsstopped /\ lsstopped' = TRUE
+  /\ UNCHANGED <<lsclk, lswait, lslast, lssince, lssaid, lsjudged>>
+LsStart ==
+  /\ lsstopped /\ lsstopped' = FALSE
+  /\ UNCHANGED <<lsclk, lswait, lslast, lssince, lssaid, lsjudged>>
+
+\* the tick end's alarm: the first tick that sees waiting cards with no landing starts the
+\* episode; later ticks raise once the running-time age reaches the bound, re-raising each
+\* bound the condition still holds (the "nostall" defect raises none)
+LsTick ==
+  /\ lsclk < MaxClock
+  /\ LET now == IF lsstopped THEN lsclk ELSE lsclk + 1
+         waiting == lswait > 0
+         hasLand == lslast # -1
+         starts == waiting /\ ~hasLand /\ lssince = -1
+         age == now - (IF hasLand THEN lslast ELSE lssince)
+         stalled == waiting /\ (hasLand \/ lssince # -1) /\ age >= StallBound /\ Broken # "nostall"
+         due == (lssaid = -1) \/ (now - lssaid >= StallBound)
+     IN /\ lsclk' = now
+        /\ IF starts
+             THEN /\ lssince' = now
+                  /\ UNCHANGED <<lsstopped, lswait, lslast, lssaid, lsjudged>>
+           ELSE IF stalled
+             THEN /\ lssince' = IF lssince = -1 THEN now ELSE lssince
+                  /\ IF due
+                       THEN /\ lsjudged' = TRUE /\ lssaid' = now
+                       ELSE UNCHANGED <<lsjudged, lssaid>>
+                  /\ UNCHANGED <<lsstopped, lswait, lslast>>
+           ELSE UNCHANGED <<lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
+
+LsNext == LsWait \/ LsLand \/ LsStop \/ LsStart \/ LsTick
+
+\* The landing-stall judgment is never open while the last landing is younger than the
+\* bound: it opens only once the last landing is StallBound or more of running time ago (or
+\* there has been none).
+StallNotYoung == lsjudged => (lslast = -1 \/ lsclk - lslast >= StallBound)
+
+\* A card in review with its reads done and ok (it can land) is landed or the stall is
+\* raised: with no landing yet, waiting cards are judged once the bound of running time
+\* passes, under fairness of the running tick and the machine starting again.
+StallLive == (lswait > 0 /\ lslast = -1) ~> (lsjudged \/ lslast # -1)
+\* Part "conflict": one card whose head the lander refused (internal/sprint rules.go
+\* ruleConflict, ruleRedo, ruleBrief; redo.go Return). The card is on a tier (flash, pro,
+\* heavy; the failed and bound rules raised it, Part "rules"): the lander refuses its head
+\* one of the ways RefusalWay places, and the stream stops on the conflict. The conflict
+\* rule returns the card and sets its tier to flash, recording the way (RuleConflictReturn);
+\* the redo reworks it on the current tip, one attempt more (RuleConflictRedo); the same
+\* way twice is a brief defect, marked and held for a mind (RuleConflictBrief). A refusal
+\* the rule cannot place (a generated ledger, a head origin does not hold) is a mind's,
+\* not modelled.
+
+\* the outside: the failed and bound rules raised the card a tier (Part "rules")
+Rise ==
+  /\ cst = "working" /\ ctier < 3
+  /\ ctier' = ctier + 1
+  /\ UNCHANGED <<cst, crefused, cway, catt>>
+
+\* the outside: the lander refuses the head the way w; the stream stops on the
+\* conflict, the card stuck in its merge
+Refuse(w) ==
+  /\ cst = "working" /\ w \in ConflictWays
+  /\ cst' = "refused" /\ cway' = w
+  /\ UNCHANGED <<ctier, crefused, catt>>
+
+\* the outside: the head lands, no conflict
+Lands ==
+  /\ cst = "working"
+  /\ cst' = "done"
+  /\ UNCHANGED <<ctier, crefused, cway, catt>>
+
+\* the conflict rule: the first refusal of a way returns the card and sets its tier to
+\* flash; the conflictkeeps defect leaves the tier the failure raised it to
+RuleConflictReturn ==
+  /\ cst = "refused" /\ crefused # cway
+  /\ ctier' = IF Broken = "conflictkeeps" THEN ctier ELSE 1
+  /\ crefused' = cway /\ cst' = "returned" /\ cway' = None
+  /\ UNCHANGED catt
+
+\* the conflict rule's brief-defect answer: the same way twice is the same finding twice,
+\* the brief is wrong, not the worker: marked, the stream held for a mind
+RuleConflictBrief ==
+  /\ cst = "refused" /\ crefused = cway
+  /\ cst' = "brief" /\ cway' = None
+  /\ UNCHANGED <<ctier, crefused, catt>>
+
+\* the redo: the returned card reworked on the current tip, one attempt more, on flash
+\* (where the return left it)
+RuleConflictRedo ==
+  /\ cst = "returned" /\ catt < Cap
+  /\ cst' = "working" /\ catt' = catt + 1
+  /\ UNCHANGED <<ctier, crefused, cway>>
+
+ConflictNext ==
+  \/ Rise \/ Lands
+  \/ \E w \in ConflictWays : Refuse(w)
+  \/ RuleConflictReturn \/ RuleConflictBrief \/ RuleConflictRedo
+
+\* The conflict rule's return resets the card to flash: whatever tier a failure left it
+\* on, a returned card is redone at flash.
+ConflictResetsToFlash == cst = "returned" => ctier = 1
+
+\* LadderClimbs restated for Part "conflict": no rule but the conflict rule lowers a tier;
+\* the tier falls only on the conflict rule's return.
+OnlyConflictLowers == [][ctier' < ctier => cst = "refused" /\ cst' = "returned"]_conflictVars
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
 
-\* The rules and a mind act when they may; the outside is unfair.
+\* The rules and a mind act when they may; the outside is unfair. The stall's running tick
+\* and the machine's start are fair (a stopped machine adds no running time, so a stall can
+\* only be owed once the machine has run the bound).
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

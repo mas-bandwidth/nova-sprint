@@ -441,6 +441,29 @@ func preferredFriend(names []string, lanes, free map[string]int) string {
 	return best
 }
 
+// machineTakesAtOnce says an up machine has an idle lane and can draw a deal of c (an
+// enabled route of its tier it can launch): the friend deal leaves a card whose chosen
+// friend has no idle lane to the machines, which start it at once, rather than queueing
+// it behind her working lanes (docs/SPEC-SPRINT.md section 1,
+// friend-deal-idle-lanes-first.w1; a friend with no free lane is not dealt work while
+// another member that serves the card's tier has a free lane).
+func (s *Snapshot) machineTakesAtOnce(c *Card) bool {
+	if len(s.Routes) == 0 {
+		return false // no routes: the machines serve no tier, and the friends are the deal
+	}
+	members := s.UpMembers()
+	loads := memberLoads(s, members)
+	for _, m := range members {
+		if s.Width(m)-loads[m] <= 0 {
+			continue // no idle lane
+		}
+		if _, why, byFriend := s.routeServed(c, nil, m); why == "" && !byFriend {
+			return true
+		}
+	}
+	return false
+}
+
 // Members is the fleet's machines: its rows but the friends' (FriendRow), in row order.
 func (s *Snapshot) Members() []string {
 	var out []string
@@ -688,6 +711,15 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		}
 		if name == "" || slices.Contains(left, name) || free[name] <= 0 || !friendRestrictionAllows(seat[name], c) {
 			continue // no friend it may go to is up with room: the fleet's, or (only) it waits ready
+		}
+		// a friend with no idle lane gives way to a machine that serves the card's tier and
+		// has one: the machine starts it at once, where a queue behind her working lanes
+		// would leave it dealt and untaken (docs/SPEC-SPRINT.md section 1,
+		// friend-deal-idle-lanes-first.w1; a friend with no free lane is not dealt work while
+		// another member that serves its tier has a free lane). A hard pin waits for its
+		// friend alone, never a machine (OnlyFriend).
+		if !hard && lanes[name] <= 0 && s.machineTakesAtOnce(c) {
+			continue
 		}
 		card := WorkCardID(c.ID, c.Int("attempt")+1)
 		if (wc == nil || escalated) && s.Fleet.Card(card) != nil {

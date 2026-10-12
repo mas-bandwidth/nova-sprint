@@ -491,6 +491,7 @@ func stampOrEmpty(t time.Time) string {
 // in one tick. The same card refused the same way again is a brief defect: marked, the
 // stream left stopped and its judgment kept for a mind. A conflict in a ledger, or a
 // refusal the rule cannot place (RefusalWay ""), needs a mind.
+// tla/SprintRules.tla RuleConflictReturn RuleConflictBrief
 func ruleConflict(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleConflict
 	ctl := s.StreamCtl(a.open.Note.Stream)
@@ -547,6 +548,7 @@ func refusalSaid(way string, ctl *Card) string {
 
 // ruleRedo: a card the conflict rule returned, in review at that attempt: reworked with the
 // fix "redo the same change on the current tip".
+// tla/SprintRules.tla RuleConflictRedo
 func ruleRedo(s *Snapshot, a *RuleAnswer) {
 	pr := s.Work.Placed(a.Subject)
 	if pr == nil || pr.Col != Review || pr.F(FieldRuleRedo) == "" || pr.F(FieldRuleRedo) != pr.F("attempt") {

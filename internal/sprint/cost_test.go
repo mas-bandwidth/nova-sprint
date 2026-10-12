@@ -78,6 +78,66 @@ func TestPastTheBoundTheTotalStaysExactAndTheListIsCut(t *testing.T) {
 	assert.Contains(t, v.CostLines()[len(v.CostLines())-1], " cut=3", "the total line says the list was cut")
 }
 
+// A zero harness cost on a route with no price sheet is not $0.00: a record whose
+// run reported tokens, whose route has no sheet and whose harness actual is exactly
+// zero keeps its tokens and its route, says unpriced=no-price-sheet and carries no
+// figure, so it is one of the stream's unpriced runs and adds nothing to charged. A
+// priced route still prices the record, and a non-zero harness actual on the unpriced
+// route is still its charged figure.
+func TestAZeroHarnessCostOnAnUnpricedRouteIsCountedUnpriced(t *testing.T) {
+	t.Parallel()
+	unpriced := Route{Name: "pro-mercury3", Tier: "pro", Provider: "mercury", Model: "mercury-3", Enabled: true}
+	priced := Route{Name: "pro-a", Tier: "pro", Provider: "openrouter", Model: "vendor/m", Enabled: true,
+		Prices: cardcost.Prices{Input: "1", Output: "10", ReasoningAsOutput: true}}
+	noSheet := Route{Name: "pro-mercury3-pro", Tier: "pro", Provider: "mercury", Model: "mercury-3-pro", Enabled: true}
+	s := &Snapshot{Now: t0, Fleet: NewTable(Fleet), Work: NewTable(Work), Routes: []Route{unpriced, noSheet, priced}}
+	s.Work.SetRows([]string{"s1"})
+
+	// take books one work take as the finish step does: its route priced by costRecord.
+	take := func(id, route, usage string) *Card {
+		c := &Card{ID: id, Row: "s1", Col: Working, Fields: map[string]string{}}
+		u := cardcost.ParseUsage(costRecord(s, usage, route, "", false, "", ""))
+		book(c, Consumer{Kind: "work", Card: id, Key: id + "#g0", End: "ok", At: stamp(t0), Usage: u})
+		s.Work.Put(c)
+		return c
+	}
+
+	// the unpriced route with a zero harness actual: unpriced, tokens and route kept,
+	// no dollar figure, not charged.
+	zero := take("s1-zero", "pro-mercury3", "input=1000 output=100 actual_usd=0 actual_by=harness")
+	zu := CardCostOf(zero).Consumers[0].Usage
+	assert.Equal(t, cardcost.WhyNoSheet, zu.Unpriced)
+	assert.Equal(t, "pro-mercury3", zu.Route)
+	assert.Empty(t, zu.Actual)
+	assert.Equal(t, cardcost.CostNone, zu.Present())
+	assert.Equal(t, int64(1000), zu.Tokens.Input, "the tokens are kept")
+	zt := CardCostOf(zero).Total
+	assert.Equal(t, 1, zt.Records)
+	assert.Empty(t, zt.Charged, "the zero actual is not charged")
+	assert.Equal(t, 0, zt.ChargedOf)
+
+	// the same take on a priced route is charged its prediction.
+	p := take("s1-priced", "pro-a", "input=1000000 output=100000")
+	pt := CardCostOf(p).Total
+	assert.Equal(t, "2", pt.Charged)
+	assert.Equal(t, 1, pt.ChargedOf)
+
+	// a non-zero harness actual on the unpriced route is still charged.
+	nz := take("s1-nonzero", "pro-mercury3-pro", "input=1000 output=100 actual_usd=0.5 actual_by=harness")
+	nzu := CardCostOf(nz).Consumers[0].Usage
+	assert.Equal(t, "0.5", nzu.Actual)
+	assert.Equal(t, cardcost.CostActual, nzu.Present())
+	nzt := CardCostOf(nz).Total
+	assert.Equal(t, "0.5", nzt.Charged)
+	assert.Equal(t, 1, nzt.ChargedOf)
+
+	// the stream counts the zero-cost unpriced take among its unpriced runs, and its
+	// spend is only the priced take's and the non-zero actual's.
+	tc := StreamTierCosts(s)["s1"]
+	assert.Equal(t, 1, tc.UnpricedRuns, "the zero harness cost on the unpriced route is an unpriced run")
+	assert.Equal(t, "$2.50", tc.TotalCost)
+}
+
 func TestARecordReadsBackAsTheConsumer(t *testing.T) {
 	t.Parallel()
 	c := Consumer{Kind: "work", Card: "s1-1.w2", Attempt: 2, Take: 1, Gen: 3, Who: "m1", Route: "flash-a", Model: "opencode/m", End: "provider failure",

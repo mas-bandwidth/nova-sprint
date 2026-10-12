@@ -1,8 +1,11 @@
 package sprint
 
-// Shape is what a sprint keeps across a clear: its streams, its readers, and
-// its fleet members with their status and the coordinator's holds. The tables, their columns and the view
-// are the table layer's and carry across by themselves.
+import "strings"
+
+// Shape is what a sprint keeps across a clear: its streams, its readers and
+// the tiers they read, and its fleet members with their status and the
+// coordinator's holds. The tables, their columns and the view are the table
+// layer's and carry across by themselves.
 type Shape struct {
 	Streams []string          `json:"streams"`
 	Readers []string          `json:"readers"`
@@ -15,6 +18,9 @@ type Shape struct {
 	// Width is each member's width its control card names (width.go); a
 	// member with the default is not in it.
 	Width map[string]string `json:"width,omitempty"`
+	// ReaderTiers is each reader's tiers cell (reader_tiers.go): a reader
+	// with the default (an empty cell) is not in it.
+	ReaderTiers map[string]string `json:"reader_tiers,omitempty"`
 }
 
 // ShapeOf is a snapshot's shape.
@@ -45,6 +51,14 @@ func ShapeOf(s *Snapshot) Shape {
 				sh.Width = map[string]string{}
 			}
 			sh.Width[m] = w
+		}
+	}
+	for _, rd := range sh.Readers {
+		if tiers := s.readerTiersStored(rd); strings.TrimSpace(tiers) != "" {
+			if sh.ReaderTiers == nil {
+				sh.ReaderTiers = map[string]string{}
+			}
+			sh.ReaderTiers[rd] = tiers
 		}
 	}
 	return sh

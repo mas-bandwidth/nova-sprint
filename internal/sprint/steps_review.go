@@ -47,6 +47,19 @@ const (
 	FieldDecideGatePreexisting = "decide_gate_preexisting"
 )
 
+// NReviewNoReader is the judgment that a primary in review wants a read and
+// the readers table has no row at all: there is no one to ask. It is raised
+// once by the tick for the sprint (TickAsk), naming the primaries in review
+// that want a read, and it closes when a reader row exists. A primary in review
+// is never a silent idle for want of a reader (docs/SPEC-SPRINT.md section 8).
+const NReviewNoReader = "review has no reader"
+
+// reviewNoReader is the text of the judgment: the primaries in review that
+// want a read, and the empty readers table.
+func reviewNoReader(ids []string) string {
+	return fmt.Sprintf("%s for %s: the readers table is empty", NReviewNoReader, strings.Join(ids, ", "))
+}
+
 // gateFields is the bars every deal of a work card carries, at the deal (a redeal takes
 // the row's bars then): the sprint row's that are set. A bar left out is unset: its member's
 // native still records and shows each gate decision, and takes no route on that bar.
@@ -1327,8 +1340,8 @@ var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefW
 // of the attempt's work card, that member only when no other has room; the
 // index moved past it and written with the step) and the primary moves
 // review -> working in the same step; its read cards are retired, and the
-// fixed work is asked round the readers when it returns. With no member up, or none below its width (tla/DirtyTick.tla,
-// WidthRespected), the primary moves review -> ready with the fix and the
+// fixed work is asked round the readers when it returns. With no member up, or none below twice its width (tla/DirtyTick.tla,
+// HoldRespected), the primary moves review -> ready with the fix and the
 // tick's deal cuts its card when a member has room.
 //
 // A primary that takes no rework is refused with what to run instead, by its
@@ -1523,8 +1536,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			unset = append(unset, FieldPassedHead)
 		}
 		var u Unit
-		// the next member round the fleet with room (width.go; tla/DirtyTick.tla, WidthRespected):
-		// none up, or none below its width, and the primary waits ready for the tick's deal
+		// the next member round the fleet with room (width.go; tla/DirtyTick.tla, HoldRespected):
+		// none up, or none below twice its width, and the primary waits ready for the tick's deal
 		m := ""
 		_, friend := FriendCard(c)
 		bench := Bench(c)

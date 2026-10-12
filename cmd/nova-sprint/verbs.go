@@ -196,6 +196,7 @@ func init() {
 		{"stats tidy", "(--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]", "stats tidy --all --reason 'a fresh start' --dry-run", (*app).cmdStatsTidy},
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
 		{"stats", "[--routes [--since <10m|RFC3339>]]", "stats", (*app).cmdStats},
+		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
 		{"doctor", "", "doctor", (*app).cmdDoctor},
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},
 		{"clear", "--confirm sprint", "clear --confirm sprint", (*app).cmdClear},
@@ -409,6 +410,7 @@ one answer to each judgment (every one prints its own, filled in):
   sentinel reached            release <sentinel> --reason '<what you found>' --answers <note>
   returned to review          rework, accept (its reads standing) or drop --group <id> --expect <n> --answers <notes>
   stranded in review          rework or drop (or ask, if never asked) --group <id> --expect <n> --answers <notes>
+  review has no reader         reader add <reader>, or wait <note> --for 30m
   no frontier reader has room reader add <reader> --tiers frontier, or wait <note> --for 30m
   stalled                     card <primary> (HELD says what holds it), then the decision it prints, or ack <note> --reason '<why>'
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'

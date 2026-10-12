@@ -8,19 +8,20 @@
 \* heads of their streams; a1 to a3 (s1) and b1, b2 (s2) for the turns.
 EXTENDS DirtyTick
 
-MCCardOrder == <<"g1", "g2", "a1", "b1", "a2", "b2", "a3", "c1", "c2", "c3">>
+MCCardOrder == <<"g1", "g2", "a1", "b1", "a2", "b2", "a3", "c1", "c2", "c3", "c4">>
 MCStreamOf == [c \in {MCCardOrder[i] : i \in 1..Len(MCCardOrder)} |->
                  IF c \in {"c2", "g2", "b1", "b2"} THEN "s2" ELSE "s1"]
 MCPos == [c \in {MCCardOrder[i] : i \in 1..Len(MCCardOrder)} |->
             CASE c \in {"g1", "g2", "a1", "b1"} -> 1
               [] c \in {"a2", "b2"} -> 2
               [] c = "a3" -> 3
-              [] c = "c1" -> 2 [] c = "c2" -> 2 [] c = "c3" -> 3]
+               [] c = "c1" -> 2 [] c = "c2" -> 2 [] c = "c3" -> 3 [] c = "c4" -> 3]
 MCMOrder == <<"m1", "m2">>
 MCROrder == <<"r1", "r2">>
 MCSOrder == <<"s1", "s2">>
 MCWidth == [m \in {"m1", "m2"} |-> 1]
 MCWidthTwo == [m \in {"m1", "m2"} |-> 2]
+MCDealAhead == 2
 MCHost == [r \in {"r1", "r2"} |-> IF r = "r1" THEN "m1" ELSE "m2"]
 
 InOrder == SelectSeq(MCCardOrder, LAMBDA c : c \in Cards)
@@ -40,10 +41,15 @@ ScnCold == [Base EXCEPT !.up = {}, !.live = {}]
 \* c1 reviewed on r1 (host m1), m1 down: a card waiting for a reader.
 ScnBlind == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.up = {}, !.live = {},
                          !.q = Queues(<<>>, <<E("ask", "c1", "-")>>, <<>>, <<>>)]
-\* c1 ready, c2 finished and asking for a read; one machine of width 1 that
-\* hosts the only reader.
+\* c1 ready, c2 and c3 finished and asking for reads; one machine of width 1
+\* (DealAhead times its width: two slots), which the deal and one read fill,
+\* so the second read must wait for the next tick's room.
 ScnWidth == [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
-                         !.q = Queues(<<>>, <<E("ask", "c2", "-")>>, <<>>, <<>>)]
+                         !.q = Queues(<<>>, <<E("ask", "c2", "-"), E("ask", "c3", "-")>>, <<>>, <<>>)]
+\* The same under read cards (ReadCost "half"): the card and both reads fit
+\* m1's two slots, two reads rounding up to one (the positive half-read
+\* control, MCDirtyTickWidthHalf).
+ScnWidthHalf == [readCost |-> "half"] @@ ScnWidth
 \* c1 merging, its merge recorded.
 ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
                         !.q = Queues(<<>>, <<>>, <<E("merged", "c1", "-")>>, <<>>)]
@@ -131,6 +137,23 @@ ScnHandBack == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.hand = TRUE, !
 \* The same with the machines' lapses on: r1's host may go down after r1
 \* returns the read, leaving the card no reader up (STRANDED).
 ScnHandBackLapse == [ScnHandBack EXCEPT !.lapse = TRUE]
+
+\* THE READ-CARDS ROOM (ReadCost "half"). One machine of width 1 (two slots),
+\* three cards in review asking for reads on its one reader, and a fourth card
+\* to be added and dealt: under the code's rounding up the three reads and the
+\* card over-fill the machine, but the witness "floorreads" rounds the reads
+\* down and deals the card, and HoldRespected catches it.
+ScnFloorreads == [readCost |-> "half"] @@
+                 [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "none" ELSE "review"],
+                              !.q = Queues(<<>>, <<E("ask", "c2", "-"), E("ask", "c3", "-"), E("ask", "c4", "-")>>, <<>>, <<>>)]
+
+\* THE LANES. c1 and c2 dealt to m1 (width 1 holds two: DealAhead times its
+\* width), its worker asks to take both: the fleet applies one take and
+\* refuses the other at m1's width (takeOne); the witness "nolanes" drops the
+\* guard, so it takes both and LanesRespected catches it.
+ScnLanes == [Base EXCEPT !.col = [c \in Cards |-> "working"],
+                        !.mc = [m \in Machines |-> IF m = "m1" THEN {"c1", "c2"} ELSE {}],
+                        !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
 
 \* THE BOUND ACROSS ATTEMPTS. c1 dealt to m1 and not taken; its worker may take
 \* it and its machine lapse and beat again, so an attempt reaches its redeal

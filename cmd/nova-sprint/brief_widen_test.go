@@ -16,6 +16,24 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 )
 
+// heldCard runs one card of stream s to a held finish, its report report: the card is cut
+// on main (the promotion stream alone takes it), dealt and taken, its attempt pushes b.go,
+// a file the base has not, and the finish reports the HOLD. It returns the card's id and
+// its pushed head.
+func (r *landRig) heldCard(s, report string) (id, head string) {
+	r.t.Helper()
+	id = s + "-1"
+	brief := writeBrief(r.t, "fix the empty case, tier: pro\nREPO: "+r.remote+"\nBASE: main\nPATHS: a.go\nTEST: none a fixture of brief --widen")
+	r.promotionStream(s) // the card is cut on main, which the promotion stream alone takes
+	r.ok("add --stream " + s + " --count 1 --one --brief-file " + brief)
+	r.deal(1)
+	r.ok("take --as m1 " + id + ".w1@1")
+	head = r.head(id, "main", "b.go", "package b\n")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/"+id)
+	r.ok("finish --as m1 " + id + ".w1@1 --failed --head " + head + " --branch sprint/" + id + " --report '" + report + "'")
+	return id, head
+}
+
 // brief <id> --widen (docs/SPEC-SPRINT.md section 2, "recut-widen-r.w1: a HOLD's
 // PATHS-PROPOSED line widens the card in place"): a card whose attempt came back held for
 // PATHS too narrow, its report carrying PATHS-PROPOSED, has its brief edited in place, the
@@ -32,24 +50,10 @@ func TestBriefWidenKeepsTheId(t *testing.T) {
 	r.commit("a.go", "package a\n", "a.go at the base")
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	r.git(r.worker, "fetch", "-q", "origin")
-	brief := writeBrief(t, "fix the empty case, tier: pro\nREPO: "+r.remote+"\nBASE: main\nPATHS: a.go\nTEST: none a fixture of brief --widen")
-	// held runs one card of stream s to a held finish: its attempt pushed b.go, a file the
-	// base has not, and the report says report
-	held := func(s, report string) (id, head string) {
-		id = s + "-1"
-		r.promotionStream(s) // the card is cut on main, which the promotion stream alone takes
-		r.ok("add --stream " + s + " --count 1 --one --brief-file " + brief)
-		r.deal(1)
-		r.ok("take --as m1 " + id + ".w1@1")
-		head = r.head(id, "main", "b.go", "package b\n")
-		r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/"+id)
-		r.ok("finish --as m1 " + id + ".w1@1 --failed --head " + head + " --branch sprint/" + id + " --report '" + report + "'")
-		return id, head
-	}
 
 	// the union, in place, and the next attempt starts from the held head
 	{
-		id, head := held("s1", "HOLD: the fix needs b.go; PATHS-PROPOSED: b.go, README,b.go")
+		id, head := r.heldCard("s1", "HOLD: the fix needs b.go; PATHS-PROPOSED: b.go, README,b.go")
 
 		// recut --widen is retired: it names the verb to run, and writes nothing
 		applies := r.applies()
@@ -92,7 +96,7 @@ func TestBriefWidenKeepsTheId(t *testing.T) {
 			{"climbs out, and names no file", "s3", "HOLD: PATHS-PROPOSED: ../x.go,c.go,b.go",
 				[]string{"../x.go climbs out", "c.go names no file at main or at the head"}},
 		} {
-			id, _ := held(c.stream, c.report)
+			id, _ := r.heldCard(c.stream, c.report)
 			before := r.applies()
 			code, out, errs := r.do("brief " + id + " --widen --repo-dir " + r.clone)
 			assert.Equal(t, 1, code, "%s: %s%s", c.name, out, errs)
@@ -210,24 +214,12 @@ func TestAWidenReadsThePathBeforeTheProse(t *testing.T) {
 	r.commit("cmd/nova-sprint/pushproof.go", "package main\n", "a hyphenated path at the base")
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	r.git(r.worker, "fetch", "-q", "origin")
-	brief := writeBrief(t, "fix the empty case, tier: pro\nREPO: "+r.remote+"\nBASE: main\nPATHS: a.go\nTEST: none a fixture of brief --widen")
-	held := func(s, report string) (id, head string) {
-		id = s + "-1"
-		r.promotionStream(s)
-		r.ok("add --stream " + s + " --count 1 --one --brief-file " + brief)
-		r.deal(1)
-		r.ok("take --as m1 " + id + ".w1@1")
-		head = r.head(id, "main", "b.go", "package b\n")
-		r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/"+id)
-		r.ok("finish --as m1 " + id + ".w1@1 --failed --head " + head + " --branch sprint/" + id + " --report '" + report + "'")
-		return id, head
-	}
 
 	// every item's path is read before its prose: the hyphen stays in the path, while the em
 	// dash, the semicolon and the parenthetical are the writers' reasons, and the paths after
 	// the first prose are read too
 	{
-		id, head := held("s1", "HOLD: more PATHS; PATHS-PROPOSED: cmd/nova-sprint/pushproof.go — pushJudgments calls a.seatInbox at line 498, b.go; the fix needs the new file, README (the map)")
+		id, head := r.heldCard("s1", "HOLD: more PATHS; PATHS-PROPOSED: cmd/nova-sprint/pushproof.go — pushJudgments calls a.seatInbox at line 498, b.go; the fix needs the new file, README (the map)")
 		out := r.ok("brief " + id + " --widen --repo-dir " + r.clone)
 		assert.Contains(t, out, "NEXT "+id+" attempt 2 starts from attempt 1 head="+head)
 		got := r.ok("card " + id + " --brief")
@@ -237,7 +229,7 @@ func TestAWidenReadsThePathBeforeTheProse(t *testing.T) {
 
 	// an item with no path before its prose is refused, the item printed, nothing written
 	{
-		id, _ := held("s2", "HOLD: more PATHS; PATHS-PROPOSED: — because the path was forgotten, b.go")
+		id, _ := r.heldCard("s2", "HOLD: more PATHS; PATHS-PROPOSED: — because the path was forgotten, b.go")
 		before := r.applies()
 		code, out, errs := r.do("brief " + id + " --widen --repo-dir " + r.clone)
 		assert.Equal(t, 1, code, out+errs)

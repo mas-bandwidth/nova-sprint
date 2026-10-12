@@ -5,7 +5,9 @@
 \* actions.go Start, Take, Finish, FleetDown, FleetUp), the reads and the
 \* accept (refmodel actions.go Ask, AskAnother, ReadStart, Read, Accept, held
 \* to the code's ReadsNeededIn) and the merge side (refmodel actions.go Rework,
-\* Drop, Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume).
+\* Drop, Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume),
+\* and the outside events and the repair (refmodel actions.go CiRed, CiGreen,
+\* Ack, Crash, Repair).
 \* A primary's six states and the lawful moves
 \* between them, in one table, plus its named needs (a variable: needs set and
 \* a brief edit's DEPENDS-ON rewrite them), the fleet (each member up or down, a
@@ -104,6 +106,31 @@
 \*   Rank(p)         a card ranked first (marked ranked), refused for a landed
 \*                   primary (G6).
 \*
+\* The outside events and the repair (refmodel actions.go) follow the code:
+\*   CiRed(p)       a red CI observation on a placed primary in any state opens
+\*                  the ci judgment (the "red" cell) and moves nothing.
+\*   CiGreen(p)     a green observation closes the ci judgment. The module keeps
+\*                  only the open red: the green apart from none is read only by
+\*                  the accept-holds logic, which is the merge card's.
+\*   Ack(n)         the coordinator answers the open ci judgment on a card and
+\*                  closes it (the blocked and skipped judgments the code also
+\*                  answers are the reads and merge cards').
+\*   Crash          a step over more than one table is cut before its last
+\*                  write, the work table: the fleet writes are committed, the
+\*                  work table is left at its pre-state, the deferred work-table
+\*                  write is held in pendstate and the operation is pending.
+\*   Repair         the deferred work-table write is applied and the operation
+\*                  releases.
+\* Only the steps over more than one table are cut: Start, Finish, FleetDown and
+\* Drop; a move, waive, a CI observation and an ack write one table, and Take
+\* and FleetUp write only the fleet table, so none of them is cut. While an
+\* operation is pending, the fence (D1: Free) holds: no action but repair runs.
+\*
+\* Two specs: Spec (the ordinary steps alone) and CrashSpec (Spec plus the
+\* outside events and the repair). The MCSprintTables and MCSprintTablesMerge
+\* instances run Spec, whose state space the ci, pending and pendstate
+\* variables (frozen there) do not change; the crash instance runs CrashSpec.
+\*
 \* THE RULES. Invariants: TypeOK, NoNeedCycle, Rule11 (docs/SPEC-SPRINT.md
 \* section 9, rule 11, for the states nothing moves back to waiting: a primary
 \* in review, merging or landed has every named need landed or waived; a ready
@@ -122,15 +149,19 @@
 \* cells and cause say it is) and RankRefusesLanded (G6: a landed primary is
 \* never ranked).
 \*
-\* Refmodel invariants not stated here. The pending-operation fence (D1: Free)
-\* is left out: this module has no pending operation, a step is one atomic
-\* move, so there is nothing for the fence to fence. G3 (ExhaustNote, the
+\* Refmodel invariants not stated here. The pending-operation fence (D1: Free,
+\* actions.go free, the refusal "operation %s is pending (D1: Free)" that
+\* guards every one of these actions) is held: a step over more than one table
+\* is cut before its last write, the work table, and the operation stays pending
+\* until repair; the crash's writes are all or nothing, so NoCardLostOrTwice and
+\* every earlier invariant hold across a crash at any step. G3 (ExhaustNote, the
 \* reads-exhausted or stranded judgment) needs read cards and their judgments,
 \* which this module's accept stands in for and does not have. F3 (a stopped
-\* stream's judgment and a skipped repair) is left to the crash-and-repair
-\* card. F4 and D6 (a merge need placed, in another stream and not landed; a
-\* stop on a cross-stream need) are left out: a stop here is always a conflict
-\* on a card of the stream itself, and no merge card names a need.
+\* stream's judgment and a skipped repair) is left out: this module's ack
+\* answers only the ci judgment. F4 and D6 (a merge need placed, in another
+\* stream and not landed; a stop on a cross-stream need) are left out: a stop
+\* here is always a conflict on a card of the stream itself, and no merge card
+\* names a need.
 \*
 \* Reversed witnesses (Broken), one per rule, each a cfg that must fail:
 \*   "insert"       the add move runs ready -> waiting without inserting
@@ -162,6 +193,11 @@
 \*   "comeback"     a dropped card is admitted again (NoCardLostOrTwice).
 \*   "withdrawmet"  a working card whose needs have all landed is withdrawn
 \*                  to waiting (WorkingToWaitingOnlyOnNeeds).
+\*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
+\*                  (its fleet writes committed, its work-table write pending)
+\*                  and other actions may act on the half-written table; a
+\*                  repair then applies the stale deferred write
+\*                  (NoCardLostOrTwice).
 \* TypeOK has no witness: it is the shape of the variables, not a rule.
 EXTENDS Naturals, FiniteSets
 
@@ -238,9 +274,19 @@ Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
 \* rules), so a flag is the plan of that step and never a state carried on.
 NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
 
-VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked
+\* A red CI observation on a primary: none or an open red (refmodel Primary.CI
+\* and the ci judgment; a green observation and an ack both close the red, and
+\* the accept-holds logic that reads the green apart from none is the merge
+\* card's, not here).
+CIVals == {"", "red"}
 
-vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+\* The verbs a crash can cut: the steps over more than one table, cut before
+\* their last write, the work table.
+Verbs == {"start", "finish", "fleetdown", "drop"}
+
+VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
+
+vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
 
 TypeOK ==
   /\ state \in [Card -> Cells]
@@ -256,9 +302,21 @@ TypeOK ==
   /\ sstream \in [Streams -> SCells]
   /\ scause \in [Streams -> SCauses]
   /\ ranked \in [Card -> BOOLEAN]
+  /\ pending \in Verbs \cup {""}
+  /\ ci \in [Card -> CIVals]
+  /\ pendstate \in [Card -> Cells]
 
 \* Up: the members up now (refmodel State.Up).
 Up == {m \in Member : members[m] = "up"}
+
+\* Free: no operation is pending (the D1 fence). Every action that is not a
+\* crash or a repair runs only while it holds; the reversed witness "halfstep"
+\* drops it, so a step cut by a crash is left half-written and other actions may
+\* act on the half-written table.
+Free == pending = ""
+
+\* FenceOK: the step may run (the fence is free, or the witness drops it).
+FenceOK == \/ Broken = "halfstep" \/ Free
 
 \* ------------------------------------------------------------- the merge side
 
@@ -359,13 +417,18 @@ Init ==
   /\ sstream = [s \in Streams |-> "waiting"]
   /\ scause = [s \in Streams |-> "none"]
   /\ ranked = [c \in Card |-> FALSE]
+  /\ pending = ""
+  /\ ci = [c \in Card |-> ""]
+  /\ pendstate = InitOf
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
-\* step carries no plan flag.
+\* step carries no plan flag. The deferred write tracks the work table.
 Move(c, to) ==
   /\ state' = [state EXCEPT ![c] = to]
   /\ everLanded' = IF to = "landed" THEN everLanded \cup {c} ELSE everLanded
-  /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+  /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+  /\ pendstate' = IF Free THEN state' ELSE pendstate
+  /\ pending' = pending
   /\ flags' = NoFlags
 
 \* ------------------------------------------------------------ the reads
@@ -407,6 +470,7 @@ RetireOutstanding(c) ==
 \* lands it. The reversed witness "needless" drops the needs check.
 Resolve ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "waiting"
     /\ PositionClear(c)
@@ -419,6 +483,7 @@ Resolve ==
 \* needs have not landed (unmet, lifecycle.go).
 Start ==
   \E c \in Card, m \in Member :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
     /\ Broken = "dealunmet" \/ NeedsMet(c)
@@ -427,31 +492,39 @@ Start ==
     /\ state' = [state EXCEPT ![c] = "working"]
     /\ wplace' = [wplace EXCEPT ![c] = "ready"]
     /\ wmember' = [wmember EXCEPT ![c] = m]
-    /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Take (refmodel Take): the worker on an up member moves a dealt (ready) work
 \* card to working. The primary's state does not change.
 Take ==
   \E c \in Card :
+    /\ FenceOK
     /\ state[c] = "working"
     /\ wplace[c] = "ready"
     /\ members[wmember[c]] = "up"
     /\ NeedsMet(c)
     /\ wplace' = [wplace EXCEPT ![c] = "working"]
-    /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Finish (refmodel Finish): working -> review; the work card finishes in its
 \* member's working cell.
 Finish ==
   \E c \in Card :
+    /\ FenceOK
     /\ state[c] = "working"
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
     /\ state' = [state EXCEPT ![c] = "review"]
     /\ wplace' = [wplace EXCEPT ![c] = "finished"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Withdraw: working -> ready, the work card withdrawn with its attempt
@@ -460,11 +533,14 @@ Finish ==
 \* TickFriendRedeal, finishPlan's return to ready).
 Withdraw ==
   \E c \in Card :
+    /\ FenceOK
     /\ state[c] = "working"
     /\ wplace[c] \in {"ready", "working", "finished"}
     /\ state' = [state EXCEPT ![c] = "ready"]
     /\ wplace' = [wplace EXCEPT ![c] = "withdrawn"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* FleetDown (refmodel FleetDown): the member goes down; its ready and working
@@ -474,6 +550,7 @@ Withdraw ==
 \* that went down.
 FleetDown ==
   \E m \in Up :
+    /\ FenceOK
     /\ members' = [members EXCEPT ![m] = "down"]
     /\ \/ /\ Broken = "downkeeps"
           /\ UNCHANGED <<state, wplace, wmember>>
@@ -486,21 +563,27 @@ FleetDown ==
           /\ state' = [c \in Card |-> IF c \in HeldOn(m) THEN "ready" ELSE state[c]]
           /\ wplace' = [c \in Card |-> IF c \in HeldOn(m) THEN "withdrawn" ELSE wplace[c]]
           /\ wmember' = wmember
-    /\ UNCHANGED <<needs, waived, everLanded, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* FleetUp (refmodel FleetUp): the member comes up.
 FleetUp ==
   \E m \in Member :
+    /\ FenceOK
     /\ members[m] = "down"
     /\ members' = [members EXCEPT ![m] = "up"]
-    /\ UNCHANGED <<state, needs, waived, everLanded, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<state, needs, waived, everLanded, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Ask (refmodel Ask): the primary in review asks one more read of a reader
 \* other than its worker, distinct from the readers already standing.
 Ask ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
     /\ ~BrokenRead(c)
@@ -508,45 +591,57 @@ Ask ==
     /\ Cardinality(LiveReads(c)) < ReadsNeeded(c)
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* AskAnother (refmodel AskAnother): one more reader for a primary already
 \* asked, answering a broken read or reads exhausted.
 AskAnother ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
     /\ LiveReads(c) # {}
     /\ (BrokenRead(c) \/ Cardinality(LiveReads(c)) >= ReadsNeeded(c))
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* ReadStart (refmodel ReadStart): the reader moves its own asked read to
 \* reading.
 ReadStart ==
   \E r \in Reader :
+    /\ FenceOK
     /\ \E c \in Card :
          /\ rplace[c][r] = "asked"
          /\ rplace' = [rplace EXCEPT ![c][r] = "reading"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Read (refmodel Read): the reader records ok or broken.
 Read ==
   \E r \in Reader :
+    /\ FenceOK
     /\ \E c \in Card, v \in {"ok", "broken"} :
          /\ rplace[c][r] \in {"asked", "reading"}
          /\ rplace' = [rplace EXCEPT ![c][r] = v]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* accept: review -> merging when the primary has the reads its tier needs and
 \* no broken read stands at its head (steps_review.go Accept, TickAccept).
 Accept ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
     /\ \/ Acceptable(c)
@@ -556,7 +651,9 @@ Accept ==
     /\ state' = [state EXCEPT ![c] = "merging"]
     /\ RetireOutstanding(c)
     /\ IF MergeSide THEN Queue(c) ELSE UNCHANGED MergeVars
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* NextAttempt(c, from): rework and redo (and a brief edited in place on a card
@@ -566,6 +663,7 @@ Accept ==
 \* (from = merging) leaves the merge cell returned and the stream follows (G4);
 \* rework (from = review) does not touch the merge side.
 NextAttempt(c, from) ==
+  /\ FenceOK
   /\ state[c] = from
   /\ \/ \E m \in Up :
           /\ NeedsMet(c)
@@ -579,7 +677,9 @@ NextAttempt(c, from) ==
   /\ IF MergeSide /\ from = "merging"
      THEN Returned(c)
      ELSE UNCHANGED <<mg, sstream, scause, ranked>>
-  /\ UNCHANGED <<needs, waived, everLanded, members>>
+  /\ UNCHANGED <<needs, waived, everLanded, members, ci>>
+  /\ pendstate' = IF Free THEN state' ELSE pendstate
+  /\ pending' = pending
   /\ flags' = NoFlags
 
 \* rework: review -> working (a member is up) or review -> ready.
@@ -592,12 +692,15 @@ Rework == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "review")
 \* (the store refused it).
 Return ==
   \E c \in Card :
+    /\ FenceOK
     /\ \/ /\ state[c] = "merging"
           /\ state' = [state EXCEPT ![c] = "review"]
           /\ IF MergeSide THEN Returned(c) ELSE UNCHANGED MergeVars
-          /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
+          /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ci>>
        \/ Broken = "unland" /\ state[c] = "landed" /\ ~IsSentinel(c)
           /\ Move(c, "review")
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* redo: merging -> working (a member is up) or merging -> ready.
@@ -609,6 +712,7 @@ Redo == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "merging")
 \* the batch MergeGreen instead).
 Merge ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "merging"
     /\ state' = [state EXCEPT ![c] = "landed"]
@@ -619,7 +723,9 @@ Merge ==
             /\ Follows(StreamOf[c])
             /\ ranked' = [ranked EXCEPT ![c] = FALSE]
        ELSE UNCHANGED <<mg, sstream, scause, ranked>>
-    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* merge green: the batch (the stream's queued cards, all of them here: a prefix
@@ -627,6 +733,7 @@ Merge ==
 \* stream's state follows (G4).
 MergeGreen ==
   \E s \in Streams :
+    /\ FenceOK
     /\ sstream[s] = "merging"
     /\ Queued(s) # {}
     /\ state' = [c \in Card |-> IF c \in Queued(s) THEN "landed" ELSE state[c]]
@@ -635,13 +742,16 @@ MergeGreen ==
     /\ scause' = scause
     /\ Follows(s)
     /\ ranked' = [c \in Card |-> IF c \in Queued(s) THEN FALSE ELSE ranked[c]]
-    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* SkipMerge (Broken "skip"): the reads card's witness, a card lands straight
 \* from review (MovesOnlyByTable fails).
 SkipMerge ==
   /\ Broken = "skip"
+  /\ FenceOK
   /\ \E c \in Card :
       /\ state[c] = "review"
       /\ ~IsSentinel(c)
@@ -653,13 +763,16 @@ SkipMerge ==
 \* stream itself.
 MergeStop ==
   \E s \in Streams, c \in Card :
+    /\ FenceOK
     /\ sstream[s] = "merging"
     /\ c \in Queued(s)
     /\ state' = state
     /\ mg' = [mg EXCEPT ![c] = "stuck"]
     /\ scause' = [scause EXCEPT ![s] = "conflict"]
     /\ sstream' = [sstream EXCEPT ![s] = "stopped"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* MergeRefused (refmodel MergeRefused): the landing's refusal of the card's
@@ -668,36 +781,45 @@ MergeStop ==
 \* (redo); the card leaves merge into returned, the stream follows (G4).
 MergeRefused ==
   \E s \in Streams, c \in Card :
+    /\ FenceOK
     /\ sstream[s] = "merging"
     /\ c \in Queued(s)
     /\ \/ state' = [state EXCEPT ![c] = "review"]
        \/ state' = [state EXCEPT ![c] = "ready"]
     /\ Returned(c)
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* MergeRed (refmodel MergeRed): the branch red (or the queue rejected the
 \* batch); the stream stops, no card moves.
 MergeRed ==
   \E s \in Streams :
+    /\ FenceOK
     /\ sstream[s] = "merging"
     /\ state' = state
     /\ mg' = mg
     /\ scause' = [scause EXCEPT ![s] = "red"]
     /\ sstream' = [sstream EXCEPT ![s] = "stopped"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Resume (refmodel Resume): a stopped stream resumes; the stuck cards queue
 \* again, the cause clears, the stream's state follows (G4).
 Resume ==
   \E s \in Streams :
+    /\ FenceOK
     /\ sstream[s] = "stopped"
     /\ state' = state
     /\ mg' = [c \in Card |-> IF c \in Stuck(s) THEN "queued" ELSE mg[c]]
     /\ scause' = [scause EXCEPT ![s] = "none"]
     /\ Follows(s)
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* Rank (refmodel Rank): a card ranked first (the mark ranked set), refused for
@@ -705,14 +827,18 @@ Resume ==
 \* and the merge takes the whole queue, so the merge order is a choice.
 Rank ==
   \E c \in Card :
+    /\ FenceOK
     /\ IsOpen(state[c])
     /\ ranked' = [ranked EXCEPT ![c] = TRUE]
-    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause>>
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ci>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* release: waiting -> landed, a sentinel only, and only by the plan's release.
 Release ==
   \E c \in Card :
+    /\ FenceOK
     /\ IsSentinel(c)
     /\ state[c] = "waiting"
     /\ state' = [state EXCEPT ![c] = "landed"]
@@ -723,17 +849,22 @@ Release ==
             /\ scause' = scause
             /\ Follows(StreamOf[c])
        ELSE UNCHANGED <<mg, sstream, scause, ranked>>
-    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = [NoFlags EXCEPT !.releasing = TRUE]
 
 \* add: ready -> waiting as the effect of inserting a sentinel in front. The
 \* reversed witness "insert" lets it run without inserting.
 AddMove ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
     /\ state' = [state EXCEPT ![c] = "waiting"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = [NoFlags EXCEPT !.inserting = (Broken # "insert")]
 
 \* NeedsSet: needs set, and a brief edit's DEPENDS-ON (steps_edit.go NeedsSet,
@@ -752,6 +883,7 @@ NeedsSet ==
    LET c == rw[1]
        N == rw[2]
    IN
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ c \notin N
     /\ state[c] \in {"waiting", "ready", "working", "review"}
@@ -782,7 +914,9 @@ NeedsSet ==
        \/ /\ state[c] = "waiting"
           /\ ~MetWith(c, N)
           /\ state' = state
-    /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* NeedsWait (steps_tick.go needsWaits, PR #96): a ready primary whose named
@@ -790,6 +924,7 @@ NeedsSet ==
 \* waits again: ready -> waiting.
 NeedsWait ==
   \E c \in Card :
+    /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
     /\ ~NeedsMet(c)
@@ -805,12 +940,15 @@ NeedsWait ==
 \* landed, "withdrawready" (#96's) runs it working -> ready instead.
 NeedsWithdraw ==
   \E c \in Card :
+    /\ FenceOK
     /\ state[c] = "working"
     /\ Broken = "withdrawmet" \/ ~NeedsMet(c)
     /\ wplace[c] \in {"ready", "working"}
     /\ state' = [state EXCEPT ![c] = IF Broken = "withdrawready" THEN "ready" ELSE "waiting"]
     /\ wplace' = [wplace EXCEPT ![c] = "none"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = NoFlags
 
 \* drop: off the table, from an open state, never a card another open card
@@ -819,6 +957,7 @@ NeedsWithdraw ==
 \* work card leaves the fleet with it.
 Drop ==
   \E c \in Card :
+    /\ FenceOK
     /\ \/ IsOpen(state[c]) /\ ~Needed(c)
        \/ state[c] = "landed"
     /\ state' = [state EXCEPT ![c] = "off"]
@@ -830,12 +969,15 @@ Drop ==
             /\ Follows(StreamOf[c])
             /\ UNCHANGED ranked
        ELSE UNCHANGED <<mg, sstream, scause, ranked>>
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, ci>>
+    /\ pendstate' = IF Free THEN state' ELSE pendstate
+    /\ pending' = pending
     /\ flags' = [NoFlags EXCEPT !.removing = (state[c] = "landed")]
 
 \* The reversed witness "comeback": a dropped card is admitted again.
 Comeback ==
   /\ Broken = "comeback"
+  /\ FenceOK
   /\ \E c \in Card : state[c] = "off" /\ Move(c, "waiting")
 
 \* waive: the coordinator waives a need; a waived need counts as met. The ack
@@ -843,21 +985,25 @@ Comeback ==
 \* (steps_ack.go waive).
 Waive ==
   \E c \in Card :
-    \E n \in needs[c] \ waived[c] :
-      /\ waived' = [waived EXCEPT ![c] = waived[c] \cup {n}]
-      /\ \/ state' = state
-         \/ /\ ~IsSentinel(c)
-            /\ state[c] = "waiting"
-            /\ PositionClear(c)
-            /\ \A x \in needs[c] : x \in everLanded \/ x \in waived'[c]
-            /\ state' = [state EXCEPT ![c] = "ready"]
-      /\ UNCHANGED <<needs, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
-      /\ flags' = NoFlags
+    /\ FenceOK
+    /\ \E n \in needs[c] \ waived[c] :
+         /\ waived' = [waived EXCEPT ![c] = waived[c] \cup {n}]
+         /\ \/ state' = state
+            \/ /\ ~IsSentinel(c)
+               /\ state[c] = "waiting"
+               /\ PositionClear(c)
+               /\ \A x \in needs[c] : x \in everLanded \/ x \in waived'[c]
+               /\ state' = [state EXCEPT ![c] = "ready"]
+         /\ UNCHANGED <<needs, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+         /\ pendstate' = IF Free THEN state' ELSE pendstate
+         /\ pending' = pending
+         /\ flags' = NoFlags
 
 \* LandUnmerged (Broken "landunmerged"): a card lands from review, no merge;
 \* review -> landed is not a Moves row (MovesOnlyByTable fails).
 LandUnmerged ==
   /\ Broken = "landunmerged"
+  /\ FenceOK
   /\ \E c \in Card :
       /\ state[c] = "review"
       /\ ~IsSentinel(c)
@@ -867,22 +1013,170 @@ LandUnmerged ==
       /\ scause' = scause
       /\ Follows(StreamOf[c])
       /\ ranked' = [ranked EXCEPT ![c] = FALSE]
-      /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+      /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, ci>>
+      /\ pendstate' = IF Free THEN state' ELSE pendstate
+      /\ pending' = pending
       /\ flags' = NoFlags
 
 \* ReturnLost (Broken "returnlost"): a card returned from merging is dropped,
 \* its record lost (state "lost"); NoCardLostOrTwice fails.
 ReturnLost ==
   /\ Broken = "returnlost"
+  /\ FenceOK
   /\ \E c \in Card :
       /\ state[c] = "merging"
       /\ state' = [state EXCEPT ![c] = "lost"]
       /\ mg' = [mg EXCEPT ![c] = "returned"]
       /\ scause' = scause
       /\ Follows(StreamOf[c])
-      /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+      /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked, ci>>
+      /\ pendstate' = IF Free THEN state' ELSE pendstate
+      /\ pending' = pending
       /\ flags' = NoFlags
 
+\* ------------------------------------------------------------- ci, ack
+
+\* CiRed (refmodel CiRed): a red CI observation on a placed primary records
+\* red and opens the ci judgment; it moves nothing.
+CiRed ==
+  \E c \in Card :
+    /\ FenceOK
+    /\ state[c] \in States
+    /\ ci' = [ci EXCEPT ![c] = "red"]
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
+    /\ flags' = NoFlags
+
+\* CiGreen (refmodel CiGreen): a green CI observation on a placed primary
+\* closes the ci judgment (the module keeps the open red, the only part of the
+\* observation the table reads). The exhausted and stranded judgments the code
+\* writes when the last judgment in review closes are the reads and merge
+\* cards', not here.
+CiGreen ==
+  \E c \in Card :
+    /\ FenceOK
+    /\ state[c] \in States
+    /\ ci' = [ci EXCEPT ![c] = ""]
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
+    /\ flags' = NoFlags
+
+\* Ack (refmodel Ack): the coordinator answers the open ci judgment on one
+\* card and closes it. The blocked and skipped judgments the code also answers,
+\* and the waive of a dropped need the blocked ack names, are the reads and
+\* merge cards' (the module's Waive waives a stored need).
+Ack ==
+  \E c \in Card :
+    /\ FenceOK
+    /\ ci[c] = "red"
+    /\ ci' = [ci EXCEPT ![c] = ""]
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+    /\ pendstate' = IF Free THEN state ELSE pendstate
+    /\ pending' = pending
+    /\ flags' = NoFlags
+
+\* ------------------------------------------------------------- crash, repair
+
+\* CrashStart .. CrashDrop (refmodel Crash): the process writing a step over
+\* more than one table is cut before its last write, the work table. The steps
+\* cut here are Start, Finish, FleetDown and Drop (the fleet tables and the
+\* work table); a move, waive, a CI observation and an ack write one table, and
+\* Take and FleetUp write only the fleet table, so none of them is cut. The
+\* reads and merge steps (accept, rework, return, redo and the merge moves)
+\* write the work table too, but they are modelled atomic here. The state the
+\* crash leaves is the step's but for the work table, which is left at the
+\* pre-state and held in pendstate for the repair; the fleet writes are
+\* committed; the operation stays pending.
+CrashStart ==
+  \E c \in Card, m \in Member :
+    /\ Free
+    /\ ~IsSentinel(c)
+    /\ state[c] = "ready"
+    /\ Broken = "dealunmet" \/ NeedsMet(c)
+    /\ wplace[c] \in {"none", "withdrawn"}
+    /\ members[m] = "up"
+    /\ state' = state
+    /\ pendstate' = [state EXCEPT ![c] = "working"]
+    /\ wplace' = [wplace EXCEPT ![c] = "ready"]
+    /\ wmember' = [wmember EXCEPT ![c] = m]
+    /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pending' = "start"
+    /\ flags' = flags
+
+CrashFinish ==
+  \E c \in Card :
+    /\ Free
+    /\ state[c] = "working"
+    /\ wplace[c] = "working"
+    /\ members[wmember[c]] = "up"
+    /\ state' = state
+    /\ pendstate' = [state EXCEPT ![c] = "review"]
+    /\ wplace' = [wplace EXCEPT ![c] = "finished"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pending' = "finish"
+    /\ flags' = flags
+
+CrashFleetDown ==
+  \E m \in Up :
+    /\ Free
+    /\ members' = [members EXCEPT ![m] = "down"]
+    /\ \/ /\ Broken = "downkeeps"
+          /\ UNCHANGED <<state, wplace, wmember>>
+          /\ pendstate' = state
+       \/ /\ Up \ {m} # {}
+          /\ state' = state
+          /\ pendstate' = state
+          /\ wplace' = [c \in Card |-> IF c \in HeldOn(m) THEN "ready" ELSE wplace[c]]
+          /\ \E r \in [HeldOn(m) -> Up \ {m}] :
+               wmember' = [c \in Card |-> IF c \in HeldOn(m) THEN r[c] ELSE wmember[c]]
+       \/ /\ Up \ {m} = {}
+          /\ state' = state
+          /\ pendstate' = [c \in Card |-> IF c \in HeldOn(m) THEN "ready" ELSE state[c]]
+          /\ wplace' = [c \in Card |-> IF c \in HeldOn(m) THEN "withdrawn" ELSE wplace[c]]
+          /\ wmember' = wmember
+    /\ UNCHANGED <<needs, waived, everLanded, rplace, mg, sstream, scause, ranked, ci>>
+    /\ pending' = "fleetdown"
+    /\ flags' = flags
+
+CrashDrop ==
+  \E c \in Card :
+    /\ Free
+    /\ \/ IsOpen(state[c]) /\ ~Needed(c)
+       \/ state[c] = "landed"
+    /\ state' = state
+    /\ pendstate' = [state EXCEPT ![c] = "off"]
+    /\ wplace' = [wplace EXCEPT ![c] = "none"]
+    /\ RetireOutstanding(c)
+    /\ IF MergeSide
+       THEN /\ mg' = [mg EXCEPT ![c] = "none"]
+            /\ scause' = scause
+            /\ Follows(StreamOf[c])
+            /\ UNCHANGED ranked
+       ELSE UNCHANGED <<mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, ci>>
+    /\ pending' = "drop"
+    /\ flags' = [NoFlags EXCEPT !.removing = (state[c] = "landed")]
+
+\* Crash: a crash on any of the steps that write more than one table.
+Crash ==
+  \/ CrashStart \/ CrashFinish \/ CrashFleetDown \/ CrashDrop
+
+\* Repair (refmodel Repair): the deferred work-table write is applied from the
+\* operation record and the operation releases.
+Repair ==
+  /\ pending \in Verbs
+  /\ state' = pendstate
+  /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
+  /\ pendstate' = state'
+  /\ pending' = ""
+  /\ flags' = flags
+
+\* The ordinary steps, without the outside events. The instances that leave the
+\* outside events off run Spec; its state space is the module's own, the ci,
+\* pending and pendstate variables frozen (so it does not grow). The crash
+\* instance runs CrashSpec, which adds the outside events and the repair.
 Next ==
   \/ Resolve \/ Start \/ Take \/ Finish \/ Withdraw \/ FleetDown \/ FleetUp
   \/ Ask \/ AskAnother \/ ReadStart \/ Read
@@ -892,7 +1186,15 @@ Next ==
   \/ MergeSide /\ (MergeGreen \/ MergeStop \/ MergeRefused \/ MergeRed \/ Resume \/ Rank)
   \/ SkipMerge \/ LandUnmerged \/ ReturnLost
 
+\* The outside events and the repair are only in the crash instance's spec, so
+\* every MCSprintTables case (which runs Spec) keeps its budget.
+CrashNext ==
+  \/ Next
+  \/ CiRed \/ CiGreen \/ Ack
+  \/ Crash \/ Repair
+
 Spec == Init /\ [][Next]_vars
+CrashSpec == Init /\ [][CrashNext]_vars
 
 \* ------------------------------------------------------------- the rules
 
