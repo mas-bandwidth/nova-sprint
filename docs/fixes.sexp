@@ -2885,8 +2885,23 @@
    (fix "hook-compact-prints-only-what-the-seat-acts-on" :release "v1.2.17" :status "planned"
     :title "hook --compact prints only what the seat acts on, and names an unanswered card-holding judgment"
     :text "The seat read the hook through hand filters: `script -q /dev/null` under a pty, `hookfilter.pl` keeping only HOOK lines, each JUDGMENT with its push number and its first detail line, and `overduewatch.py` polling `inbox` every 20 s for any card-holding judgment past 5 minutes. `nova-sprint hook --compact [--overdue <duration, default 5m>]` does it in the subscription itself. It is the same connection (the server's look, the PUSH ids, the session token), printing only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one line plus its first detail line -- a critical judgment keeps its `CRITICAL <n> behind:` prefix, so it reads `PUSH <id> CRITICAL <n> behind: JUDGMENT ...` and is never dropped --; HAPPENED pushes and the acknowledge/verb menus are not printed. Every line is one write to stdout, so a pipe, a file and a tty all see it at once with no pty. While the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered past --overdue prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the store's judgment list, never a poll of the inbox verb. New: cmd/nova-sprint/hook_compact.go (compactSay, compactOverdue, hookOverdueDefault); cmd/nova-sprint/hook.go carries --compact and --overdue into hookHold. Test: TestHookCompactPrintsOnlyWhatTheSeatActsOn (cmd/nova-sprint/hook_compact_test.go) runs the compact hook on a private store with its stdout a real OS pipe, proves it, raises one card-holding judgment and one HAPPENED note on the running hook and checks the JUDGMENT and its first detail line are read and the HAPPENED push is not, and one OVERDUE line is read past --overdue, a second after another interval, and none once answered; TestCompactSayPrintsACriticalJudgment pins that a critical judgment's group line is printed. docs/CLI.md, docs/SPRINT-COORDINATOR-SEAT.md and docs/SPEC-SPRINT.md state the flag."
-    :origin "this card, hook-compact-prints-only-what-the-seat-acts-on.w3, from the seat, 2026-10-12 epoch 19: the seat ran `nova-sprint hook` under a pty piped through a hand hookfilter.pl and an overduewatch.py polling inbox every 20 s")
-   (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
+     :origin "this card, hook-compact-prints-only-what-the-seat-acts-on.w3, from the seat, 2026-10-12 epoch 19: the seat ran `nova-sprint hook` under a pty piped through a hand hookfilter.pl and an overduewatch.py polling inbox every 20 s")
+    (fix "the-hygiene-kinds-embed-is-restored" :release "v1.2.17" :status "planned"
+     :title "The toolchain's declared kinds load again from their embedded list"
+     :text "Blocker. A dead-code deletion in card dead-code-in-the-seeded-card-and-dogfood-copies
+      also deleted the `//go:embed kinds.txt` line above `var kindData string` at
+      pkg/hygiene/data.go:31, so kindData was empty, the declared kinds list was empty, and
+      pkg/swarm/lintheader.go refused every KIND: line (\"is not a kind this toolchain declares;
+      one of: \"), reddening 23 tests across cmd/nova-card, internal/card, internal/cardgen and
+      pkg/swarm. The `//go:embed kinds.txt` directive is restored directly above `var kindData
+      string`. pkg/hygiene/data_test.go holds it red-first: TestKindDataIsEmbedded asserts kindData
+      is non-empty, and TestKindsDeclareEveryKindInKindsTxt reads kinds.txt and asserts every kind
+      it lists is declared by Kinds(), so a deletion of the embed can never pass the unit tier
+      again."
+     :origin "this card, the-hygiene-kinds-embed-is-restored, from the coordinator, 2026-10-12
+      ~07:20Z, a bisect of the red unit tier on nova-sprint main (evidence: the seat's
+      coldread/main-unit-tier-red-2026-10-12.evidence.txt); first bad 5f879511 (inner 37c10c09)")
+    (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
     :title "Tests that failed on a loaded bench are made deterministic by their real cause"
     :text "The owner's standing rule: tests are bounded and never flaky; a test that fails under load is
      the test's defect. (1) TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued
