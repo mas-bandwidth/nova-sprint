@@ -8,8 +8,6 @@
 **nova-sprint** puts a fleet of AI workers to work across different models and machines, 
 with a system that automatically advances cards from **ready to landed** - through implementation, review, and merging.
 
-[Get started](docs/GETTING-STARTED.md)
-
 ## More lanes. More work moving.
 
 Speed comes from **width**: independent work running at the same time.
