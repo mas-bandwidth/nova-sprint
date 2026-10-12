@@ -31,7 +31,11 @@ type logMem struct {
 	rev bool
 }
 
-func (l *logMem) add(s string) { l.mu.Lock(); l.logShared.log = append(l.logShared.log, s); l.mu.Unlock() }
+func (l *logMem) add(s string) {
+	l.mu.Lock()
+	l.logShared.log = append(l.logShared.log, s)
+	l.mu.Unlock()
+}
 
 func (l *logMem) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error) {
 	r, err := l.Mem.Apply(ctx, m)
