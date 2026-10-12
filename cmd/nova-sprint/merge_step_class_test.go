@@ -22,12 +22,16 @@ const mergeStepStoreImport = "github.com/mas-bandwidth/nova-sprint/internal/spri
 // the merge verb has its own push and ancestor guards, and the lander supplies
 // the pins those guards establish. Keep the direct caller set exact.
 func TestOnlyTheMergeVerbAndLanderCallStoreMergeStep(t *testing.T) {
+	t.Parallel()
+
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	require.NoError(t, err)
 	require.Empty(t, mergeStepCallerProblems(root))
 }
 
 func TestMergeStepCallerGuardRejectsOtherFunctionsAndFiles(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	write := func(path, body string) {
 		t.Helper()
@@ -39,7 +43,8 @@ func TestMergeStepCallerGuardRejectsOtherFunctionsAndFiles(t *testing.T) {
 	write("cmd/nova-sprint/verbs.go", `package main
 import stepStore "`+mergeStepStoreImport+`"
 type app struct{}
-func (*app) cmdMerge() { _ = stepStore.MergeStep(nil) }
+func external()
+func (*app) cmdMerge() { _ = stepStore.MergeStep(nil); func() { _ = stepStore.MergeStep(nil) }() }
 func (*app) helper() { _ = stepStore.MergeStep(nil) }
 func unrelated() { _ = stepStore.MergeStep(nil) }
 `)
@@ -62,9 +67,10 @@ func unrelatedType() { _ = other.MergeStep(nil) }
 `)
 
 	problems := mergeStepCallerProblems(root)
-	require.Len(t, problems, 3, "only the same-file other method, same-file free function, and other file are reported")
-	require.Contains(t, strings.Join(problems, "\n"), "cmd/nova-sprint/verbs.go:5: func app.helper")
-	require.Contains(t, strings.Join(problems, "\n"), "cmd/nova-sprint/verbs.go:6: func unrelated")
+	require.Len(t, problems, 4, "only the same-file other method, same-file free function, nested function literal, and other file are reported")
+	require.Contains(t, strings.Join(problems, "\n"), "cmd/nova-sprint/verbs.go:6: func app.helper")
+	require.Contains(t, strings.Join(problems, "\n"), "cmd/nova-sprint/verbs.go:7: func unrelated")
+	require.Contains(t, strings.Join(problems, "\n"), "cmd/nova-sprint/verbs.go:5: func function literal")
 	require.Contains(t, strings.Join(problems, "\n"), "internal/elsewhere/caller.go:3: func accidental")
 }
 
@@ -105,6 +111,9 @@ func mergeStepCallerProblems(root string) []string {
 			}
 			caller := mergeStepCallerName(fd)
 			allowed := mergeStepCallerAllowed(rel, caller)
+			if fd.Body == nil {
+				continue
+			}
 			problems = appendMergeStepCalls(problems, fset, rel, caller, allowed, fd.Body, aliases, dotImport)
 		}
 		return nil
