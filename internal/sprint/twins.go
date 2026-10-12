@@ -36,13 +36,17 @@ type RelinkReq struct {
 	Who    string
 }
 
-// twinDependents is the waiting cards whose needs name one of olds they did not waive, in
-// work order.
+// twinDependents is the open cards whose needs name one of olds they did not
+// waive, whatever their column (waiting, ready, working, review, merging), in
+// work order: relink re-points every card that names the old id, not only the
+// waiting ones (need_alias.go).
 func twinDependents(s *Snapshot, olds []string) []*Card {
 	var out []*Card
-	for _, c := range s.Work.Column(Waiting) {
-		if len(dependentOlds(c, olds)) > 0 {
-			out = append(out, c)
+	for _, col := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, c := range s.Work.Column(col) {
+			if len(dependentOlds(c, olds)) > 0 {
+				out = append(out, c)
+			}
 		}
 	}
 	return out
@@ -231,7 +235,10 @@ func Relink(s *Snapshot, r RelinkReq) Plan {
 		return refuseAll(cyc)
 	}
 	weights, _ := twinWeights(s, deps, r.Old, r.New, nil, nil)
-	units, bad := mergeCardChanges(append(units, weights...))
+	// the old ids become aliases of the twin, recorded on their kept records, so the
+	// successor outlives the drop and no path can bring the old id back as a need
+	// (need_alias.go).
+	units, bad := mergeCardChanges(append(append(units, aliasUnits(s, r.Old, r.New, r.Who)...), weights...))
 	if bad != "" {
 		return refuseAll(bad)
 	}
@@ -378,6 +385,9 @@ func Replace(s *Snapshot, r AddReq) Plan {
 			all = append(all, u)
 		}
 	}
+	// every replaced id becomes an alias of the twin, recorded on its kept record
+	// (need_alias.go), so no path can bring the old id back as a need.
+	all = append(all, aliasUnits(s, r.Replaces, nw, r.Who)...)
 	all, bad := mergeCardChanges(append(all, weights...))
 	if bad != "" {
 		return refuseAll(bad)
