@@ -31,6 +31,7 @@ func friendWorld(t *testing.T, briefs ...string) *world {
 		cards = append(cards, CardAdd{ID: "s1-" + itoa(i+1), Brief: b})
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Cards: cards}))
+	w.preparePlanned()
 	return w
 }
 
