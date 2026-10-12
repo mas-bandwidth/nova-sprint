@@ -45,9 +45,42 @@ func hookSprint(t *testing.T, name string) (*testApp, map[string]string) {
 	ta.a.getenv = func(k string) string { mu.Lock(); defer mu.Unlock(); return env[k] }
 	hookTests.Store(name, true)
 	t.Cleanup(func() { hookTests.Delete(name) })
+	hs := &hookSync{writes: make(chan struct{}, 64)}
+	hookSyncs.Store(ta, hs)
+	t.Cleanup(func() { hookSyncs.Delete(ta) })
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
+		return &hookSignalKV{Mem: ta.m, writes: hs.writes}, nil
+	}
 	ta.ok("init --readers reader-a,reader-b --members m1,m2 --owner glenn")
 	ta.a.serveAddr = "mem:0"
 	return ta, env
+}
+
+// hookSync is the sync point a test app signals when it writes the seat's hook
+// record, so the tests wait on the write instead of polling the store.
+type hookSync struct {
+	writes chan struct{}
+}
+
+// hookSyncs maps each test app to its hook-record write signal.
+var hookSyncs sync.Map // *testApp -> *hookSync
+
+// hookSignalKV embeds the test's in-memory store and signals writes on each one
+// a hook record is written (store.KeySeatHook).
+type hookSignalKV struct {
+	*store.Mem
+	writes chan struct{}
+}
+
+func (h *hookSignalKV) SetKey(ctx context.Context, name, value string) error {
+	err := h.Mem.SetKey(ctx, name, value)
+	if err == nil && name == store.KeySeatHook {
+		select {
+		case h.writes <- struct{}{}:
+		default:
+		}
+	}
+	return err
 }
 
 // lined runs f holding the server's line, as every verb the server runs does: the
@@ -163,18 +196,42 @@ func (ta *testApp) hookSession() *hookSession {
 	return h.cur
 }
 
-// waitHook waits for the record to say state.
+// waitHook waits for the record to say state, waking on a hook-record write
+// signal rather than polling the store; a lost signal fails in seconds.
 func (ta *testApp) waitHook(state string) sprint.HookRecord {
 	ta.t.Helper()
-	for range 500 {
-		if rec, ok := ta.hookRecord(); ok && rec.State == state && (state != sprint.HookHooked || rec.Session != "") {
+	return ta.waitHookWhere(state, func(rec sprint.HookRecord) bool {
+		return rec.State == state && (state != sprint.HookHooked || rec.Session != "")
+	}, "the record never said "+state)
+}
+
+// waitNewSession waits for a hook record whose session differs from old.
+func (ta *testApp) waitNewSession(old string) sprint.HookRecord {
+	ta.t.Helper()
+	return ta.waitHookWhere("", func(rec sprint.HookRecord) bool {
+		return rec.Session != "" && rec.Session != old
+	}, "the session never changed from "+old)
+}
+
+// waitHookWhere waits until want is satisfied, waking on each hook-record write;
+// a write signal that never comes fails the test after a bound.
+func (ta *testApp) waitHookWhere(state string, want func(sprint.HookRecord) bool, label string) sprint.HookRecord {
+	ta.t.Helper()
+	for {
+		if rec, ok := ta.hookRecord(); ok && want(rec) {
 			return rec
 		}
-		time.Sleep(10 * time.Millisecond)
+		v, _ := hookSyncs.Load(ta)
+		if v == nil {
+			ta.t.Fatal("no hook sync point installed")
+		}
+		select {
+		case <-v.(*hookSync).writes:
+		case <-time.After(10 * time.Second):
+			rec, _ := ta.hookRecord()
+			ta.t.Fatalf("%s: %+v", label, rec)
+		}
 	}
-	rec, _ := ta.hookRecord()
-	ta.t.Fatalf("the record never said %s: %+v", state, rec)
-	return rec
 }
 
 // The owner, 2026-10-10: "This is not optional. Every command fails with 'You must
@@ -374,10 +431,7 @@ func TestADropIsGoneAndUnhookIsAway(t *testing.T) {
 	d.next("hello")
 	d.next("challenge")
 	rec = ta.waitHook(sprint.HookHooked)
-	for rec.Session == first.Session {
-		time.Sleep(10 * time.Millisecond)
-		rec, _ = ta.hookRecord()
-	}
+	rec = ta.waitNewSession(first.Session)
 	assert.True(t, rec.Proven.IsZero())
 	ta.refusedFirst("where", sprint.HookFirst)
 
@@ -602,14 +656,6 @@ func (ta *testApp) hookCIRedOnce(card, run string) {
 	ta.t.Helper()
 	ta.a.sleep(time.Second)
 	ta.ok("ci " + card + " --red --run " + run)
-}
-
-func (ta *testApp) hookTick() {
-	ta.t.Helper()
-	st, err := ta.a.store(common{redis: "mem:0", actor: sprint.MachineActor})
-	require.NoError(ta.t, err)
-	_, err = st.Tick(context.Background())
-	require.NoError(ta.t, err)
 }
 
 // A running-time wait on a timer judgment survives a server restart. A separate

@@ -66,7 +66,9 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
+    :text "The next small product fixes, one concern each.")
+   (release "v1.2.16" :status "planned"
+    :text "Every TLA+ model checked against the code."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -93,6 +95,45 @@
      :title "The tier on line 1 is the tier a card is stored with and dealt on; the existing tier-line check stays, and a stream's --default-tier waives it"
      :text "Blocker. On 2026-10-12 ~00:05Z six cards admitted with tier: heavy or tier: pro on their RESULT line were dealt on flash (one landed on flash, one ran five attempts all on flash), and add said nothing. The RESULT line was read (cardhdr.ReadModel takes tier: anywhere on line 1), but startTier started every card that was not pro on flash: flash first, a heavy card climbing the ladder from flash. startTier now starts a card on the tier its line 1 names, flash, pro or heavy (sprint.LineOneTier, one rule for both line-1 forms), so a heavy card's first deal draws a heavy route and never flash; a card dealt below its ceiling before this keeps its tier_now and the ladder still carries it. add prints each card's stored tier on its line (tier=<t>) and brief prints the re-briefed card's (<id> tier=<t>), a stronger tier on the new line 1 raising the card's tier_now. No new refusal is added: the card checks' existing tier-line check stays the one rule. A card brief (a PATHS: line) whose line 1 names no tier is refused by the card checks' tier-line finding, the one rule the lint and the store read by, unless the stream it is added to names a default tier (stream set --default-tier, FieldDefaultTier, stored as the card's pinned tier); a free task that names none starts on flash. Seven existing tests that took a heavy brief to start on flash now say heavy, or model a card dealt on flash before this (tier_now flash). docs/CLI.md states the rule. Tests: TestTheTierLineIsReadOrRefusedByOneRuleInBothForms (internal/card/tier_line_test.go), TestTheTierOnLineOneIsReadInBothForms, TestAddStoresTheTierLineOneNamesOrItsStreamsDefault, TestAHeavyCardsFirstDealDrawsAHeavyRoute, TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow (internal/sprint/tier_line_test.go), TestAddPrintsTheTierEachCardIsStoredWith, TestBriefPrintsTheTierTheCardIsDealtOn (cmd/nova-sprint/tier_line_test.go) and the functional TestAHeavyCardIsDealtOnAHeavyRouteOnAStore (cmd/nova-sprint/tier_line_functional_test.go)."
      :origin "this card, from the seat, 2026-10-12 ~00:05Z (every-need-names-a-live-card-checked-every-second, landing-never-waits-on-the-seats-hook, a-moved-card-stops-its-old-run, rate-limit-judge-in-the-running-member, a-cleared-sprint-keeps-its-readers, a-bound-card-is-reworked-from-its-last-head-by-one-verb dealt on flash); the standing rule: never flash on heavy or frontier work; hand-landed outside the sprint at nova-sprint main a33bf857")
+    (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.14" :status "planned"
+     :title "A member's environment exits are recorded, a 134 or 137 spends nothing, and the doctor names their rate"
+     :text "A child that ends 134 or 137, or that leaves no result (why=no-result) at any exit,
+      did not judge the card: it is an environment event of the member, recorded and counted as
+      one, and at 134 or 137 it no longer consumes the card's attempts or its readers. sprint.EnvExit (internal/sprint/steps_work.go)
+      is the one classifier; the finish carries the child's exit and harness output (--exit,
+      --harness) and so does a read's return. A work card's environment exit at 134 or 137 is
+      recorded ended=environment exit=<n>, withdrawn without take_ended, so the deal deals the
+      same work card again at the same attempt with no redeal spent, the member not held; a
+      no-result at another exit is recorded and counted the same way but stays the ended take
+      the owner's rules make it (redeal counted, rule 2, flash first); a member's read returned
+      at 134 or 137 is retired by environment, not in spentBy, so the member may read it again.
+      A 134 or 137 is bounded per card per attempt: the work card records each by member and code
+      (env_exit_history), and at EnvExitCardCap (3) the card is dealt no more and the tick raises
+      one bound judgment, a kind wait refuses, naming the card, the members and the codes, until
+      the seat reworks or drops it; the attempt cap's default answer deals such a card no next
+      attempt. A read identity is bounded the same way (env_exit_reads on the primary, EnvReadCap
+      3: the read retired as returned, spending its reader, and one bound judgment). Only a
+      134/137 spends nothing: a no-result routed by a decision over its bar is that decision's.
+      The doctor's k counts the 134/137s, as its line says. The last 40
+      lines of the harness output (at most 16 KiB) ride the run's card and its primary, and the
+      take's or run's consumer record on the primary ends environment exit=<n>. The doctor counts
+      each member's children over the last hour from those attempt records on the epoch's cards
+      (sprint.EnvExitChildren) and prints DOCTOR FAIL member-env <m> child exits: <k> of <n>
+      children in the last hour ended 134/137 with no result (<rate>%), last: <first tail line>
+      remedy=nova-sprint card <id> over 10% with n >= 10, WARN from 3% to 10%, OK below;
+      nova-sprint stats --children prints the per-member exit-code histogram. Hand-landed after
+      the fleet's four attempts: attempt 3's classifier wanted a non-zero exit for the no-result
+      case, which the card does not, and attempt 4 ended with no commit. Owed: the member
+      passing --exit and --harness from its child (nova-tools), and the TLA+ models (DirtyTick
+      BoundClasses, AttemptsEpochs TakeEnds) gaining the 134/137 exit and its cap (v1.2.16). docs/SPEC-SPRINT.md, An
+      environment exit, states the rule; functional TestAnEnvironmentExitOnARealStore drives it
+      on a real store."
+     :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member, epoch 17, 2026-10-11
+      ~18:25Z; the seat's read of the fleet's native logs: hetzner1 81 of 328 ended 134 and 21 137,
+      hetzner2 55/351 and 31, space 65/347 and 38, vision 68/289 and 25, b1 and b2 about 1 in 14,
+      mini-m5 none; every 134 the opencode harness aborting after Error: Unknown: ChildProcess.spawn
+      inside the landlock sandbox, logged why=no-result, the card's read or attempt coming back
+      no verdict or not-done; hand-landed by the seat's child after the card reached its bound")
     (fix "a-moved-card-stops-its-old-run" :release "v1.2.14" :status "planned"
      :title "When a card moves, the old member stops the old generation within one beat"
      :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."
@@ -2537,6 +2578,34 @@
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
      attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+   (fix "a-card-stages-its-sibling-runtimes" :release "v1.2.15" :status "planned"
+    :title "A card that reads a sibling repository stages it from the mirror or the forge"
+    :text "The schema conformance cards compare a leg against sibling repositories (mas-bandwidth/serialize,
+    serialize.c, serialize.cs); their harness expected ../serialize next to the checkout, and on the fleet
+    the job directory had no sibling, so the cards came back \"the C++ reference corpus (../serialize) ...
+    absent\" after a full attempt each. A brief that names a sibling path (../<name>) is now refused at
+    admission unless it carries a SIBLINGS header naming the repositories (owner/name@ref, comma separated),
+    with the path quoted (cardgen.LintSiblingPath, internal/cardgen/cardgen.go), and the add command holds the
+    rule at admission (cmd/nova-sprint/add_lint.go holdCardChecks). At staging the member clones each
+    SIBLINGS repository at its ref into $JOB/siblings/<name> from the bench mirror (~/nova-bench/mirror/<name>.git)
+    where one exists, else from the forge from outside the wall (the member's staging runs outside the wall;
+    the card's lane never fetches), and JOB.md names each as SIBLING_<NAME>=$JOB/siblings/<name> so the harness
+    is pointed there; a sibling that cannot be staged refuses the stage with the name and the card returns to
+    ready (a bench fault, not the worker's). docs/SPEC-CARD-CONTRACT.md gains the SIBLINGS header and
+     docs/SPEC-STAGING.md the siblings directory, the mirror and the refusal. Delivered:
+     cmd/nova-sprint/add_lint.go (holdCardChecks governs the admission), internal/cardgen/cardgen.go
+     (LintSiblingPath), internal/sprint/stage_siblings.go (StageSiblings, ParseSiblings) and
+     pkg/friend/stage.go (Stage parses the brief's SIBLINGS header and stages each sibling, then JOB.md is
+     written with the SIBLING_ lines; a sibling that cannot be staged refuses the stage) with their
+     tests; rework w6 widens the card's PATHS to name those three files, and rework w9 wires the staging
+     path a reader found had no caller, so the delivered scope lands."
+    :origin "this card, a-card-stages-its-sibling-runtimes.w1 (rework w2: the add command's admission now holds
+    the sibling-path rule), a-card-stages-its-sibling-runtimes.w2; the owner, 2026-10-11 ~12:20-12:45 PM ET: \"I
+    shouldn't need to tell you this, you should just get a push notification about it\", \"Fix the fucking gaps in
+    push notifications\", \"Make sure these watches become part of the tool\", \"We need a history and count of
+    consumer cards launched, per-producer card, included in the producer card\", \"we need to discover this earlier
+    with card lint ... or some sort of plan review\"; the seat's own record of the day; the schema cards' failed
+     attempts of 2026-10-11 for c, cs and rust")
    (fix "the-lander-merges-evidence-ledgers" :release "v1.2.15" :status "planned"
     :title "The lander merges the evidence ledgers entry by entry"
     :text "The generated ledgers docs/roadmap-evidence/fixed-<leg>.sexp are one entry per card,
@@ -2587,7 +2656,22 @@
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
    :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
-  (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
+   (fix "priority-raises-a-selected-set-in-one-call" :release "v1.2.14" :status "planned"
+    :title "priority takes the shared selector, raising a set in one call"
+    :text "priority now takes the shared selector of cmd/nova-sprint/select.go (--who, --state,
+     --ids-file, or --stream with any of them, and --dry-run), as brief, recut, rework and return
+     do: selWords gains priority (its base words only, so --stream alone keeps its one-stream
+     meaning), and cmdPrioritySel builds one PriorityStep over sprint.Selected, setting every
+     selected card or none. --stream alone still sets every card of the stream and the stream's
+     default for cards added later; with another selector word it selects only and leaves the
+     default as it is. A card in the set that is a read or work card refuses the whole call with
+     nothing written, as a single-card set does. Output is one line per card and the total.
+     Tests: cmd/nova-sprint/priority_set_test.go TestPriorityRaisesASelectedSetInOneCall (five
+     cards in two streams, an ids file of three, one timeline entry each, the stream default
+     unchanged, --dry-run writing nothing, a read card refusing), docs/SPEC-SPRINT.md \"One
+     selector, one step\" and section 1 \"Priority\"."
+    :origin "this card, priority-raises-a-selected-set-in-one-call.w1.g2.e19, finished in its own worktree on sprint/priority-raises-a-selected-set-in-one-call.w1.g2.e19; the seat ran priority <id> --critical in a shell loop per card and priority --stream also changed the stream's default")
+   (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
    :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
    :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
     verb (nova-friend <verb>, nova-swarm <verb>, nova-sprint <verb>, nova-config <verb> in a play, a
@@ -2603,4 +2687,40 @@
     is refused through the lander's own table, the same line where the verb is registered passes, a
     line naming a verb of another tool or a shell built-in is not checked, and a Markdown prose line
     whose first token is a tool name is not refused."
-   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")))
+   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")
+  (fix "a-judgment-outlived-by-its-card-closes-itself" :release "v1.2.14" :status "planned"
+   :title "A judgment its card has moved past closes itself"
+   :text "A judgment whose card moved past the state it was raised for stayed open forever:
+    the 2026-10-12 j127, a brief defect still in the inbox after its card was re-briefed and
+    dealt on to attempt 5 in review. ack was refused (its decisions are the re-cut, never ack),
+    brief --answers was refused (this step resolves no obligation of it), and only wait quieted
+    it. A judgment records the attempt it was raised at (Note.Attempt), and the tick now closes
+    one whose card left that state, answered by the card's move: the card reached another
+    attempt, or (for a brief-defect or brief-bound judgment) its brief was replaced since
+    (movedOn, judgments_retire.go, run from RetireJudgments at the tick's check). A
+    brief-defect judgment is outlived once the card no longer carries the defect
+    (FieldBriefDefect, unset by the re-brief) and a brief-bound one once the brief was replaced
+    at or after its attempt (FieldBriefAttempt); a reader's finding on a brief edited before it
+    is not outlived by the edit. The close is one decided note, `answered by the card's move:
+    <id> ...`, written by the machine, so the inbox never shows a judgment about a state the
+    card has left. An outlived judgment holds no card that still needs its decision, so ack now
+    answers it with a reason (Ack, steps_ack.go: the ack is refused only while the card still
+    needs the decision, and the refusal names the verbs that answer it). Tests:
+    internal/sprint/judgment_moves_on_test.go, TestJudgmentClosesWhenItsCardMovesOn and
+    TestAJudgmentStaysWhenItsCardHasNotMovedOn (red first), and TestAMovedOnJudgmentCanBeAcked."
+   :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
+    j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
+    after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
+    both refused, only wait quieting it")
+  (fix "tla-pass-nova-sprint-coverage-rows-1-to-26" :release "v1.2.16" :status "planned"
+   :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 1 to 26"
+   :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 1 to 26 (card-lifecycle to fault-hold-clear).
+    Each module's actions and properties are checked against the code its row cites at file:line on
+    main; every CASES.tsv config of those modules runs under TLC to its declared result and every
+    reversed witness still fails its named property; and each 2026-10-11 fix to these machines carries
+    its property and a reversed witness or the row's note names it a gap. Rows owed to cards already on
+    the table stay theirs (named, not redone); a missing rule is a gap for a new card, not a rewrite.
+    The TLC check is green on a Linux bench: every CASES.tsv config of these modules has a current
+    tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
+    frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")))

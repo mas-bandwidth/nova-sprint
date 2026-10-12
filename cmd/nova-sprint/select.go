@@ -26,7 +26,10 @@ import (
 
 // selWords is the words that make a call of the verb a selector call. --stream is one for
 // the verbs that did not take it before; rework, return and drop keep their --stream (a
-// stream's cards, one step already) unless another selector word is given with it.
+// stream's cards, one step already) unless another selector word is given with it. priority
+// keeps its --stream too: alone it is the one-stream call (every card and the stream's
+// default), and with --who, --state or --ids-file it selects only (docs/SPEC-SPRINT.md,
+// "One selector, one step").
 func selWords(verb string) []string {
 	w := []string{"who", "state", "ids-file"}
 	switch verb {
@@ -34,6 +37,8 @@ func selWords(verb string) []string {
 		w = append(w, "stream", "set-base", "drop-who")
 	case "release", "rank":
 		w = append(w, "stream")
+	case "priority":
+		// base words only: --stream alone keeps its one-stream meaning (cmdPriorityOne)
 	}
 	return w
 }
@@ -70,7 +75,11 @@ func (f *selFlags) register(fs flagSet) {
 	fs.StringVar(&f.who, "who", "", "select the cards whose WHO line names this worker: friend.<name> (or the name alone) for one friend, friend for any friend's card, none for a card that names no friend")
 	fs.StringVar(&f.state, "state", "", "select the cards in this state: "+strings.Join(sprint.SelectorStates, ", ")+" (waiting is not held)")
 	fs.StringVar(&f.idsFile, "ids-file", "", "select the cards this file names, one id a line (blank lines and # lines skipped); an id that is no card on the table, or that the rest of the selector does not hold of, refuses the whole call")
-	fs.BoolVar(&f.dry, "dry-run", false, "list what the call would change, one line per card and the total, and write nothing")
+	// --dry-run is the selector path's own; a verb that already registers it (priority,
+	// whose one-stream path takes it too) keeps that flag, and c.dry is read in selVerb.
+	if fs.Lookup("dry-run") == nil {
+		fs.BoolVar(&f.dry, "dry-run", false, "list what the call would change, one line per card and the total, and write nothing")
+	}
 }
 
 // selector is the flags as a selector, or why they do not make one.
@@ -135,7 +144,7 @@ func (a *app) selVerb(verb string, args []string, stdout, stderr io.Writer, extr
 	if why != "" {
 		return refuse(stderr, verb, why)
 	}
-	if f.dry {
+	if f.dry || c.dry {
 		return a.selDry(verb, *c, st, step, stdout, stderr)
 	}
 	return a.runStep(verb, *c, st, step, stdout, stderr)

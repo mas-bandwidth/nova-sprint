@@ -16,14 +16,6 @@ import (
 // not dealt again: one judgment "brief defect after N attempts, $X spent" lists every attempt's
 // finding, with the decisions brief and drop; rework refuses it with the same line.
 
-// brokenDifferently runs the primary's live attempt to a broken read whose finding names the
-// attempt, so no two attempts fail the same way.
-func (h *harness) brokenDifferently(id string) {
-	h.t.Helper()
-	a := h.snap().Work.Card(id).F("attempt")
-	h.attemptFoundBroken(id, "internal/f"+a+".go:"+a+": wrong in attempt "+a)
-}
-
 func TestABrokenFindingIsReworkedPastTheAttemptCap(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))

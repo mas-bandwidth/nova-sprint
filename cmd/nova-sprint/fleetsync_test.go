@@ -105,17 +105,6 @@ func (ta *testApp) fleetRows() map[string]fleetRow {
 	return out
 }
 
-// ctlStatus is the status the member's control card stores, not the view's
-// derived one (the view shows up for any member with a fresh beat).
-func (ta *testApp) ctlStatus(member string) string {
-	ta.t.Helper()
-	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
-	require.NoError(ta.t, err)
-	snap, err := st.Load(context.Background(), []string{sprint.Fleet, sprint.Work}, nil)
-	require.NoError(ta.t, err)
-	return snap.MemberCtl(member).F("status")
-}
-
 // dealIndex is the fleet table's rolling index, as the store holds it.
 func (ta *testApp) dealIndex() string {
 	ta.t.Helper()

@@ -25,11 +25,13 @@ type briefCheck struct {
 }
 
 // holdCardChecks holds each brief of an add to the card checks nova-card generate holds
-// it to before it leaves (card.Checks): a card brief names a tier on line 1 and a
-// TEST whose package PATHS names; no brief carries the name of the sprint's coordinator,
-// its owner or a friend outside double-quoted words, nor names a card dropped off the
-// table. One red brief refuses the whole call, exit 2, nothing written, every finding on
-// its own LINT DRIFT line.
+// it to before it leaves (card.Checks) and to the sibling-path rule (cardgen.LintSiblingPath,
+// docs/SPEC-CARD-CONTRACT.md, the SIBLINGS header): a card brief names a tier on line 1
+// and a TEST whose package PATHS names; no brief carries the name of the sprint's
+// coordinator, its owner or a friend outside double-quoted words, nor names a card dropped
+// off the table, nor names a sibling path its SIBLINGS header does not cover. One red
+// brief refuses the whole call, exit 2, nothing written, every finding on its own LINT
+// DRIFT line.
 func (a *app) holdCardChecks(verbName string, st *store.Store, stderr io.Writer, briefs ...briefCheck) int {
 	var tokens []string
 	given := false
@@ -72,6 +74,7 @@ func (a *app) holdCardChecks(verbName string, st *store.Store, stderr io.Writer,
 			}
 			red = append(red, f)
 		}
+		red = append(red, cardgen.LintSiblingPath(b.id, b.brief)...)
 	}
 	if len(red) == 0 {
 		return 0

@@ -92,9 +92,10 @@ type StreamsView struct {
 	Mixed   []string    `json:"mixed,omitempty"`
 }
 
-// StreamRepos is the repositories a stream's cards name: the union of its control
-// card's repo field (every add records there) and the cards placed in its row.
-func StreamRepos(s *Snapshot, stream string) []string {
+// streamFieldValues reads a field of a stream's control card and its placed
+// cards, deduplicated and sorted: the rule StreamRepos and StreamBasesOf share
+// (the repositories and bases a stream's cards name, each from its field).
+func streamFieldValues(s *Snapshot, stream, field string) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(v string) {
@@ -106,39 +107,26 @@ func StreamRepos(s *Snapshot, stream string) []string {
 		}
 	}
 	if ctl := s.StreamCtl(stream); ctl != nil {
-		add(ctl.F(FieldRepo))
+		add(ctl.F(field))
 	}
 	for _, c := range s.Work.Cards() {
 		if c.Placed() && c.Row == stream {
-			add(c.F(FieldRepo))
+			add(c.F(field))
 		}
 	}
 	sort.Strings(out)
 	return out
 }
 
+// StreamRepos is the repositories a stream's cards name: the union of its control
+// card's repo field (every add records there) and the cards placed in its row.
+func StreamRepos(s *Snapshot, stream string) []string {
+	return streamFieldValues(s, stream, FieldRepo)
+}
+
 // StreamBases is the bases a stream's cards name, as StreamRepos reads the repositories.
 func StreamBasesOf(s *Snapshot, stream string) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(v string) {
-		for _, b := range Split(v) {
-			if !seen[b] {
-				seen[b] = true
-				out = append(out, b)
-			}
-		}
-	}
-	if ctl := s.StreamCtl(stream); ctl != nil {
-		add(ctl.F(FieldBase))
-	}
-	for _, c := range s.Work.Cards() {
-		if c.Placed() && c.Row == stream {
-			add(c.F(FieldBase))
-		}
-	}
-	sort.Strings(out)
-	return out
+	return streamFieldValues(s, stream, FieldBase)
 }
 
 // StreamTitle is the first sentence of a brief's THE TASK: the text after `THE TASK.`

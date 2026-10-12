@@ -20,7 +20,6 @@ package testkit
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -51,29 +50,6 @@ func (m Main) RunIn(stdin string, args ...string) Result {
 	return Result{Code: code, Stdout: out.String(), Stderr: errb.String()}
 }
 
-// OK is Run that fails the test unless the exit code is 0, naming the
-// arguments and both streams.
-func (m Main) OK(t testing.TB, args ...string) Result {
-	t.Helper()
-	return m.OKIn(t, "", args...)
-}
-
-// OKIn is OK with stdin holding the given text.
-func (m Main) OKIn(t testing.TB, stdin string, args ...string) Result {
-	t.Helper()
-	r := m.RunIn(stdin, args...)
-	require.Equal(t, 0, r.Code, "run %q: stdout=%q stderr=%q", args, r.Stdout, r.Stderr)
-	return r
-}
-
-// NoStdin is the entry point in the shape that reads no stdin, as
-// testverbhelp.Run takes it.
-func (m Main) NoStdin() func(args []string, stdout, stderr io.Writer) int {
-	return func(args []string, stdout, stderr io.Writer) int {
-		return m(args, strings.NewReader(""), stdout, stderr)
-	}
-}
-
 // WriteFile writes body to path with mode 0o644, making the parent
 // directories first, and fails the test on any error.
 func WriteFile(t testing.TB, path, body string) {
@@ -88,13 +64,4 @@ func ReadFile(t testing.TB, path string) string {
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	return string(raw)
-}
-
-// ReadJSON decodes the JSON file at path into a T, failing the test when the
-// file cannot be read or does not decode.
-func ReadJSON[T any](t testing.TB, path string) T {
-	t.Helper()
-	var v T
-	require.NoError(t, json.Unmarshal([]byte(ReadFile(t, path)), &v), "decode %s", path)
-	return v
 }

@@ -269,6 +269,21 @@ brief verb and the bound).
   with `--reason` accepted; reason visible on the card).
 
 
+### One definition of what a PATHS entry covers (v1.2.13)
+
+A directory `PATHS` entry (trailing `/`) covers every file under it, a glob
+covers its matches at the head, and a literal names one file that may be new;
+the lander's E12 check, the add and brief checks and the card lint read that one
+`diffcheck.Covers` (docs/SPEC-SPRINT.md section 7, the lander's checks; section
+11, the brief checks). A head refused by E12 names, for each file, the entry it
+was expected to match.
+
+- Functional, `cmd/nova-sprint/pathcover_test.go`:
+  `TestLanderAcceptsNewFileUnderDirectoryPaths`: a card whose brief names
+  `pkg/thing/` and whose head adds `pkg/thing/new.go` is admitted and lands,
+  where before the directory entry covered nothing and the head was refused E12.
+
+
 ### Every streaming verb flushes every line
 
 A seat's monitor sees a streaming verb's lines the moment they are written:
@@ -296,6 +311,23 @@ there is no `log -f` stream to guard.
   within 1s while the watch still runs; then interrupts it and waits for it to
   end; `TestWatchWakeFlushesTheWake` runs `watch --wake` with its stdout a real
   OS pipe and asserts its WAKE line is readable within 1s.
+
+### The ready to merge notice and its hook push
+
+The "ready to merge" notice names only the cards newly accepted and the group's
+count, one line; it never accumulates the primaries of every accept the group has
+seen, and an informational HAPPENED push is not re-pushed on reconnect once
+acknowledged. `hook --quiet-happened` makes the seat receive judgments and
+challenges only, not the informational HAPPENED pushes.
+
+- Unit, `cmd/nova-sprint/ready_merge_push_test.go`:
+  `TestReadyToMergePushNamesOnlyTheNewCard` writes two "ready to merge" happened
+  notes on one stream, proves a hook, and asserts the push names the newly
+  queued card and the group's count only -- never the earlier accepted card --
+  and that after acknowledging it, a reconnect re-pushes no "ready to merge"
+  group. `TestHookQuietHappenedOmitsInformationalPushes` sets the hook's
+  quiet-happened mode and asserts the informational happened push is not
+  delivered.
 
 ### The landing stall (v1.2.14)
 
@@ -375,6 +407,63 @@ card dealt to it.
   next tick moves the card onto the free lane. Every verb names the private
   store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
   forward fails the test, so no verb can reach a live sprint server.
+### An environment exit
+
+A child that ends 134 or 137, or leaves no result at any exit, is the member's
+environment, never the card's (docs/SPEC-SPRINT.md, "An environment exit";
+a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
+
+- Unit, `internal/sprint/attempts_test.go`:
+  `TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
+  `TestHarnessTailKeepsTheLastFortyLines`,
+  `TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
+  `TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+  `TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+  `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+  `TestAReadsEnvironmentExitSpendsNoReader`,
+  `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+  `TestTheDealRefusesACardAtTheEnvironmentExitCap`,
+  `TestADecidedNothingToDoIsNeverAnEnvironmentExit`,
+  `TestAReadsEnvironmentExitsAreCappedAndJudgedOnce`,
+  `TestAReadersTableReadsEnvironmentExitsAreCapped`.
+- Unit, `internal/sprint/brief_bound_test.go`:
+  `TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap` (a frontier friend
+  newly up with room deals a card at the environment-exit cap no attempt 5).
+- Unit, `cmd/nova-sprint/doctor_test.go`: `TestDoctorNamesTheMemberEnvExitRate`,
+  `TestDoctorNamesTheMemberEnvExitWarn`,
+  `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+  `TestStatsChildrenPrintsThePerMemberExitHistogram`,
+  `TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal` (three 134/137
+  exits on one card at one attempt raise one bound judgment naming the card,
+  the members and the codes, and the card is dealt no more),
+  `TestAReworkResetsTheEnvironmentExitCount`.
+- Functional (`-tags functional`), `cmd/nova-sprint/envexit_functional_test.go`:
+  `TestAnEnvironmentExitOnARealStore`, on a private redis-server with a
+  nova-sprint binary it builds: ten cards finish on m1, two of them as
+  environment exits (134, and a no-result at exit 0); each goes back to ready
+  at the same attempt with its ended word and harness tail (the 134 spending
+  no redeal, the no-result an ended take as the owner's rules say),
+  the doctor prints the `member-env` FAIL line and `stats --children` the
+  histogram, and the next tick deals the same work cards again. Every
+  invocation passes `--redis` and `--actor`, with HOME and XDG_CONFIG_HOME
+  its own, no `NOVA_*` variable and PATH the binary's directory and the
+  system's, so no verb can reach a seat config or a live sprint server.
+
+### Priority raises a selected set in one call
+
+`cmd/nova-sprint/priority_set_test.go`,
+`TestPriorityRaisesASelectedSetInOneCall`: `priority` takes the shared
+selector of `cmd/nova-sprint/select.go` (`--who`, `--state`, `--ids-file`, or
+`--stream` with any of them, and `--dry-run`). The test admits five cards in
+two streams on a private store (named explicitly with `--redis`; HOME and
+XDG_CONFIG_HOME are temporary directories and no `NOVA_*` variable is read,
+so no host record or server can take a verb), writes an ids file of three and
+runs `priority --ids-file raise.txt --critical --reason 'next point release'`:
+exactly those three are critical, one `priority set` timeline entry each, and
+the stream default is unchanged, so a card added later is still normal; the
+output is one line per card and `selected=3`. `--dry-run` plans the same step
+and writes nothing. An ids file naming a read card refuses the whole call with
+nothing written.
 
 ## nova-card
 
@@ -492,6 +581,39 @@ from it; `cmd/nova-sprint/reads.go groupText`).
   with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
   wait and names the action.
 
+### The machine's commit identity
+
+Every commit the sprint machine makes carries the sprint row's `git_identity`
+(`nova-config sprint set --git_identity 'Name <email>'`), never the host's global
+git config; the landing refuses to commit when none is configured, and `doctor`
+fails when its email equals the host's global `user.email`
+(docs/SPEC-SPRINT.md section 7, the machine's commit identity).
+
+- Unit, `cmd/nova-sprint/land_identity_test.go`:
+  `TestLandCommitCarriesTheConfiguredIdentity` (a landing commit's author and
+  committer are the configured identity even when HOME carries a different global
+  user.email), `TestLandRefusesWhenNoIdentityIsConfigured` (the landing refuses,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `cmd/nova-sprint/promote_end_to_end_test.go`:
+  `TestPromoteCarriesACutToARecordedPromotion/clean` reads the promotion cut's
+  `%an <%ae>|%cn <%ce>` and holds it to the configured identity;
+  `TestPromoteRefusesWithoutAMachineIdentity` (the promotion refuses to cut,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `pkg/swarm/stage_identity_test.go`:
+  `TestReworkAtTipCarriesTheConfiguredIdentity`: the rework-at-tip commit
+  (`restageAtTip`) carries the configured identity even when the host's global
+  git config and environment name the owner; `TestStageJobCloneCarriesTheConfiguredIdentity`:
+  the live launcher entry points `StageJob`/`StageCloneIdentity` (and their
+  `As` variants) write the machine's identity into the worker's clone's local
+  git config at clone time, never the pool's owner; `TestStageCardReworkCarriesTheConfiguredIdentity`:
+  the live `StageCard` entry point writes the machine's default identity into the
+  clone's local config and the rework-at-tip carry commit carries it, even when
+  the host's global config names the owner.
+- Functional (`-tags functional`), `cmd/nova-sprint/land_identity_functional_test.go`:
+  `TestLandCommitIdentityOnARealStore` (a real landing on a private store, explicit
+  `--redis`, scrubbed env with a planted global git config, reads
+  `git log --format='%an <%ae>|%cn <%ce>'`).
+
 ### The server's version heartbeat (v1.2.16)
 
 While `nova-sprint run` runs it writes one heartbeat a second to the store (one `SET` with an
@@ -549,3 +671,21 @@ The base is still merged in by the worker, never replaced.
   `CARRY: head=<pr head> branch=<pr branch>` is admitted and dealt, the packet names the PR
   head as the base the slot stages from, and a commit built on that staged head has the PR
   head as an ancestor.
+
+## A judgment its card has moved past closes itself (v1.2.14)
+
+A judgment that outlives the state it was raised for closes itself at the next tick,
+answered by the card's move, and can be acked with a reason because it holds no card that
+still needs its decision (docs/SPEC-SPRINT.md section 8, "A judgment retires with its card";
+docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
+
+- Unit, `internal/sprint/judgment_moves_on_test.go`:
+  `TestJudgmentClosesWhenItsCardMovesOn`: a card ends attempt 1 on a brief defect (the
+  judgment carries `Attempt: 1`), ack is refused while the card is still that card, the
+  coordinator re-briefs it in place, and the next `TickCheck` closes the judgment with one
+  decided note, `answered by the card's move: s1-2 was re-briefed`, written by the machine
+  and gone from the inbox; a second tick finds nothing more. `TestAJudgmentStaysWhenItsCardHasNotMovedOn`:
+  a judgment naming no attempt, and one whose card is still at the attempt it was raised for,
+  stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
+  reason before the tick is closed, recorded as the card's move.
+

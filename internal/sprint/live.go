@@ -250,15 +250,6 @@ func LiveHeldAt(b Beat, id string, gen int, now time.Time) bool {
 	return ok && e.Held && e.Gen == max(gen, 1)
 }
 
-// LiveNamesAt says the row's fresh live set names the card at gen, running or held: its
-// worker still has it (a child runs it, or its report waits in the outbox), so the beat does
-// not show the job gone (Store.settleStopDebtByBeat: a machine's beat that carries a live set
-// names its jobs as a friend's does; tla/StopReturn.tla SettleByBeat, d.id \notin beat).
-func LiveNamesAt(b Beat, id string, gen int, now time.Time) bool {
-	e, ok := liveOf(b, now).now[id]
-	return ok && e.Gen == max(gen, 1)
-}
-
 // LiveNamedAt says the beat carries a live set and it names the card at gen, running or
 // held, whether or not that beat is fresh: the owner's last beat since the STOP keeps its
 // word for the settle (Store.settleStopDebtByBeat; tla/StopReturn.tla SettleByBeat, d.id

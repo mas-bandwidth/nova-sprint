@@ -267,6 +267,9 @@ type hookSession struct {
 	ended   bool
 	done    chan struct{}
 	endOnce sync.Once
+	// quietHappened says the seat wants judgments and challenges only: the
+	// informational happened pushes are not delivered (hook --quiet-happened).
+	quietHappened bool
 }
 
 func (a *app) hookHub() *hookHub {
@@ -348,7 +351,7 @@ func (a *app) serveHook(w http.ResponseWriter, r *http.Request, local bool) {
 		_ = conn.Close() // ignored: the hook never began
 		return
 	}
-	a.hookRun(context.Background(), name, &deadlineConn{Conn: conn, r: brw.Reader}, hookLook)
+	a.hookRun(context.Background(), name, &deadlineConn{Conn: conn, r: brw.Reader}, hookLook, r.URL.Query().Get("quiet_happened") == "1")
 }
 
 // deadlineConn is the hook's connection: reads through the buffer the upgrade read, and
@@ -369,8 +372,11 @@ func (d *deadlineConn) Write(p []byte) (int, error) {
 // at once (SeatHook.tla, Hook), its hello and first challenge sent, the looks every
 // look, and the session's lines read until the connection ends. An end that is not
 // unhook is a drop, recorded gone and told (Drop).
-func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser, look time.Duration) {
+func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser, look time.Duration, quiet ...bool) {
 	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, acked: map[string]bool{}, done: make(chan struct{})}
+	if len(quiet) > 0 {
+		s.quietHappened = quiet[0]
+	}
 	if err := s.start(ctx); err != nil {
 		// start may fail before publication, or after the new session and its
 		// HookHooked record have been published (for example, if hello cannot
@@ -742,6 +748,9 @@ func (s *hookSession) look(ctx context.Context) {
 			if !forCoordinator(g) {
 				continue
 			}
+			if s.quietHappened && g.Kind == sprint.Happened {
+				continue // hook --quiet-happened: judgments and challenges only
+			}
 			allKeys, keys := deliveryKeys(g, v.Open, now, stopped)
 			for _, k := range allKeys {
 				active[k] = true
@@ -965,6 +974,7 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	prove := fs.String("prove", "", "the challenge the hook's stream showed (HOOK CHALLENGE <c>): the session's answer, carried over the running hook's connection; the hook counts once the server takes it")
 	ack := fs.Uint64("ack", 0, "acknowledge every push the hook's stream showed up to this id (PUSH <id>), over the running hook's connection")
 	session := fs.String("session", "", "the session token printed on the PUSH line being acknowledged")
+	quiet := fs.Bool("quiet-happened", false, "receive judgments and challenges only: the informational HAPPENED pushes are not delivered")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, name, argErr("takes no words ", err, pos...))
@@ -993,7 +1003,7 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	return a.hookHold(ctx, addr, from, c.actor, stdout, stderr)
+	return a.hookHold(ctx, addr, from, c.actor, *quiet, stdout, stderr)
 }
 
 // cmdUnhook is nova-sprint unhook: the seat stops, over the running hook's connection;
@@ -1107,7 +1117,7 @@ func (r *hookRelay) answered(m hookMsg) bool {
 // socket for the session's lines opened, and every line from the server said on stdout,
 // one event per line for the Monitor. Exit 0 after unhook; 1 for any other end, which
 // the server records as gone.
-func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, stderr io.Writer) int {
+func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet bool, stdout, stderr io.Writer) int {
 	const verb = "hook"
 	sock, err := a.hookSocket(name)
 	if err != nil {
@@ -1132,7 +1142,11 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, std
 		return a.unanswered(verb, addr, err, stderr)
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "GET %s?as=%s HTTP/1.1\r\nHost: %s\r\nUpgrade: %s\r\nConnection: Upgrade\r\n\r\n", hookPath, url.QueryEscape(name), addr, hookUpgrade)
+	quietParam := ""
+	if quiet {
+		quietParam = "&quiet_happened=1"
+	}
+	fmt.Fprintf(conn, "GET %s?as=%s%s HTTP/1.1\r\nHost: %s\r\nUpgrade: %s\r\nConnection: Upgrade\r\n\r\n", hookPath, url.QueryEscape(name), quietParam, addr, hookUpgrade)
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
 	if err != nil {

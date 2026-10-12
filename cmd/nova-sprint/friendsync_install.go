@@ -113,10 +113,31 @@ func (a *app) cmdFriendSyncInstall(args []string, stdout, stderr io.Writer) int 
 	return 0
 }
 
+// cmdFriendSyncUninstall is friend sync uninstall (docs/SPEC-SPRINT.md, "The friend
+// sync loop as a service"): the shared uninstall body, the friend sync loop's unit
+// (seatinstall.go cmdSeatUninstall is the other caller).
 func (a *app) cmdFriendSyncUninstall(args []string, stdout, stderr io.Writer) int {
-	const name = "friend sync uninstall"
+	return a.uninstallUnit(args, stdout, stderr, "friend sync uninstall", "FRIEND-SYNC UNINSTALL",
+		sprint.FriendSyncUnitFile,
+		func(in sprint.SeatInstaller, goos string) (sprint.SeatResult, error) {
+			return in.UninstallFriendSync(goos)
+		})
+}
+
+// uninstallUnit is the body seat uninstall and friend sync uninstall share the
+// way they share it: the flag parse, the unit lookup and the remove. What
+// differs is the unit kind (the file its name is on this OS, fileOf, and the
+// installer method that unloads and removes it, remove) and the words the verb
+// says (name, and the label its lines begin with). The rule both callers keep:
+// exit 0 done (the unit was removed, or was not there), 1 it did not unload or
+// remove (FAILED names it), 2 usage; a --dry-run says the unit and whether it
+// is there and unloads and removes nothing. Its callers' output, exit codes and
+// error text are its own, byte for byte.
+func (a *app) uninstallUnit(args []string, stdout, stderr io.Writer, name, label string,
+	fileOf func(goos string) string,
+	remove func(in sprint.SeatInstaller, goos string) (sprint.SeatResult, error)) int {
 	fs, c := a.verbSetup(name)
-	dir := fs.String("dir", "", "the directory the unit was written into (default: as friend sync install's)")
+	dir := fs.String("dir", "", "the directory the unit was written into (default: as "+strings.TrimSuffix(name, " uninstall")+" install's)")
 	dry := fs.Bool("dry-run", false, "say which unit would be unloaded and removed, and unload and remove nothing")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
@@ -129,9 +150,9 @@ func (a *app) cmdFriendSyncUninstall(args []string, stdout, stderr io.Writer) in
 		}
 	}
 	if *dry {
-		file := sprint.FriendSyncUnitFile(goos)
+		file := fileOf(goos)
 		if file == "" {
-			return refuse(stderr, name, "friend sync uninstall removes a launchd agent (macOS) or a systemd user unit (Linux), and "+goos+" has neither")
+			return refuse(stderr, name, name+" removes a launchd agent (macOS) or a systemd user unit (Linux), and "+goos+" has neither")
 		}
 		path := filepath.Join(*dir, file)
 		_, serr := os.Stat(path)
@@ -141,10 +162,10 @@ func (a *app) cmdFriendSyncUninstall(args []string, stdout, stderr io.Writer) in
 			fmt.Fprintln(stdout, string(b))
 			return 0
 		}
-		fmt.Fprintf(stdout, "FRIEND-SYNC UNINSTALL DRY-RUN unit=%s present=%t; nothing was unloaded or removed\n", oneline.Field(path), there)
+		fmt.Fprintf(stdout, "%s DRY-RUN unit=%s present=%t; nothing was unloaded or removed\n", label, oneline.Field(path), there)
 		return 0
 	}
-	r, err := a.seatInstaller(goos, *dir).UninstallFriendSync(goos)
+	r, err := remove(a.seatInstaller(goos, *dir), goos)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s FAILED: %s\n", prog, name, oneline.Escape(err.Error()))
 		return 1
@@ -155,9 +176,9 @@ func (a *app) cmdFriendSyncUninstall(args []string, stdout, stderr io.Writer) in
 		return 0
 	}
 	if !r.Changed {
-		fmt.Fprintf(stdout, "FRIEND-SYNC UNINSTALL OK unit=%s removed=false: no unit there; nothing was changed\n", oneline.Field(r.Path))
+		fmt.Fprintf(stdout, "%s OK unit=%s removed=false: no unit there; nothing was changed\n", label, oneline.Field(r.Path))
 		return 0
 	}
-	fmt.Fprintf(stdout, "FRIEND-SYNC UNINSTALL OK unit=%s removed=true\n", oneline.Field(r.Path))
+	fmt.Fprintf(stdout, "%s OK unit=%s removed=true\n", label, oneline.Field(r.Path))
 	return 0
 }

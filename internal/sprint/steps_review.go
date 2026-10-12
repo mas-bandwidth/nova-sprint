@@ -411,6 +411,12 @@ type ReadReq struct {
 	// finding against the work, not a read; the tick asks it again.
 	Return bool   `json:",omitempty"`
 	Reason string `json:",omitempty"`
+	// Exit and Harness are, with Return, the reader's child's exit code (0: a clean end or
+	// unknown) and its harness output: a return whose child ended 134 or 137 is an
+	// environment exit (EnvExit, HardEnvExit), which spends no reader and keeps the harness
+	// tail on the card (docs/SPEC-SPRINT.md, "An environment exit").
+	Exit    int    `json:",omitempty"`
+	Harness string `json:",omitempty"`
 	// Usage is what the read spent, as the reader read it from its child
 	// (cardcost.Usage): kept on the read card, timed and priced (cost.go).
 	Usage string `json:",omitempty"`
@@ -592,6 +598,46 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			returns := c.Int(FieldReasked) + 1
 			run := nextTake(c, FieldReadTake)
 			rec := readCostRecord(s, c, r.Usage, c.F("asked"), cmp.Or(c.F("begun"), stamp(s.Now)))
+			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) {
+				// an environment exit is no read and no return of the reader's own: back in
+				// asked, stamped returned, its re-asks NOT counted, the ended word and the
+				// harness tail on the card and the run's record on the primary with that end
+				// (docs/SPEC-SPRINT.md, "An environment exit")
+				er := EnvironmentExitRecord(r.Exit, r.Harness)
+				fields, unset := er.envExitFields()
+				set := map[string]string{FieldReadTake + itoa(run): rec, FieldReturned: stamp(s.Now)}
+				maps.Copy(set, fields)
+				record(pr, readConsumer(s, c, run, ended, rec))
+				// the read identity's count, on the primary (EnvReadCap, readEnvExitCount):
+				// several readers of one primary in the one step accumulate on the pending
+				// history here (costs[pr.ID][FieldEnvExitReads]), never the primary's original
+				// field each time, so one reader's exit is not overwritten by the next
+				history, capped := "", false
+				if pr != nil && pr.Placed() {
+					base := costs[pr.ID][FieldEnvExitReads]
+					if base == "" {
+						base = pr.F(FieldEnvExitReads)
+					}
+					history, capped = envExitCountFrom(base, readAttempt(c), c.Row, r.Exit)
+					costs[pr.ID][FieldEnvExitReads] = history
+				}
+				if capped {
+					// at the cap: retired as a return of the reader's own, which spends it at
+					// the attempt, and one bound judgment holds the card
+					n.What += "; " + ended + ": the read's environment cap is reached, the read is retired"
+					set["retired"], set["retired_by"] = stamp(s.Now), RetiredByReturned
+					p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+						Changes: []Change{change(Readers, removeEntry(c, set))},
+						Moved:   c.ID + " " + c.Col + " -> returned (retired: " + ended + ", the read's environment cap reached)",
+						Notes:   []Note{n, envReadBound(s, pr, c.ID, c.Row, history)}})
+					continue
+				}
+				n.What += "; " + ended + ": the child ended on the reader's environment, not counted toward its re-asks"
+				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+					Changes: []Change{change(Readers, moveEntry(c, c.Row, Asked, set, append([]string{"begun"}, unset...)...))},
+					Moved:   c.ID + " " + c.Col + " -> asked (returned: " + ended + ")", Notes: []Note{n}})
+				continue
+			}
 			if RefusedReturn(r.Reason) {
 				// a read refused is not a read (RetiredByRefused): it never ran, so it counts
 				// toward no bound and marks nothing against its reader; it is retired off the
@@ -1294,7 +1340,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 	// withdrawn and dealt no more): rework is its next attempt
 	pool := s.Work.Column(Review)
 	for _, c := range s.Work.Column(Ready) {
-		if AtRedealBound(s, c) != nil {
+		// or at its environment-exit cap (AtEnvExitBound): its bound judgment's answer
+		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil {
 			pool = append(pool, c)
 		}
 	}
@@ -1302,7 +1349,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		if c.Placed() && c.Col == Merging {
 			return "merging: return it first: nova-sprint return " + c.ID
 		}
-		if AtRedealBound(s, c) != nil {
+		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil {
 			return ""
 		}
 		return reworkWhy(c)
@@ -1386,6 +1433,11 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		var retire []Change
 		if bound != nil {
 			retire = append(retire, change(Fleet, removeEntry(bound, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+		} else if env := AtEnvExitBound(s, c); env != nil {
+			// the attempt held at its environment-exit cap: its withdrawn work card is retired,
+			// its record kept, and the new attempt starts with no count (no failure is recorded:
+			// the environment, not the card, ended it)
+			retire = append(retire, change(Fleet, removeEntry(env, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
 		}
 		for _, rc := range s.Readers.Of(c.ID) {
 			if rc.Col == Broken {
@@ -2042,19 +2094,12 @@ func Drop(s *Snapshot, r DropReq) Plan {
 	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
 		all = append(all, s.Work.Column(st)...)
 	}
-	chosen := pick(&p, r.Sel, all, rowOf, func(c *Card) string {
-		if !c.Placed() {
-			return "not on the table (" + orDash(c.F("outcome")) + ")"
-		}
+	chosen, dropping := pickedForDrop(&p, r.Sel, all, func(c *Card) string {
 		if !IsOpen(c.Col) {
 			return "landed; landed is final"
 		}
 		return ""
 	}, s.primaryCard)
-	dropping := map[string]bool{}
-	for _, c := range chosen {
-		dropping[c.ID] = true
-	}
 	if r.Cascade {
 		// Grow the set of dropping cards: every waiting primary that needs
 		// one of them goes too, and their dependants in turn (a cascade), so

@@ -580,54 +580,6 @@ func (b *Bus) Peek(ctx context.Context, as string) (pending, fresh []Entry, err 
 // logLimit bounds one read of the log; the caller caps what it shows.
 const logLimit = 10000
 
-// WaitMax bounds the message lines one wait prints (SPEC-BUS.md, the verbs:
-// wait); the entries past them stay for the next run.
-const WaitMax = 5
-
-// WaitRead bounds the entries one blocking read of a wait takes: one batch
-// holds the skipped and the counted of one burst, and the decision over it
-// is one pure function (SPEC-BUS.md, the verbs: wait).
-const WaitRead = 100
-
-// WaitPick is the wait's decision over one batch of entries, a pure function
-// (SPEC-BUS.md, the verbs: wait): the first WaitMax entries not from me whose
-// subject starts with none of skips (matched without case), in order, and the
-// cursor past every entry the walk saw -- a skipped entry moves it -- so a
-// caller that re-arms with it misses nothing between runs. The walk stops at
-// the WaitMax-th entry that counts, and the entries after it stay for the
-// next run.
-func WaitPick(entries []Entry, me string, skips []string) (kept []Entry, after string) {
-	prefixes := make([]string, len(skips))
-	for i, s := range skips {
-		prefixes[i] = strings.ToLower(s)
-	}
-	for _, e := range entries {
-		m := e.Message()
-		if m.From == me || hasPrefix(m.Subject, prefixes) {
-			after = e.Entry // a skipped entry moves the cursor and is not printed
-			continue
-		}
-		kept = append(kept, e)
-		if len(kept) == WaitMax {
-			return kept, e.Entry
-		}
-		after = e.Entry
-	}
-	return kept, after
-}
-
-// hasPrefix is whether the subject starts with one of the prefixes, without
-// case.
-func hasPrefix(subject string, prefixes []string) bool {
-	s := strings.ToLower(subject)
-	for _, p := range prefixes {
-		if p != "" && strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
-}
-
 // WaitArm is the cursor a wait on as starts from: after when given (the
 // stream's tail is not read), else the stream's last entry id read once
 // ("0-0" when the stream is not there). A name the roster does not hold is

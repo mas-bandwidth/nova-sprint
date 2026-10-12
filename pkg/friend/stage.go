@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -65,6 +66,10 @@ const (
 type Packet struct {
 	Card, Job, Repo, Base, BaseSha, Branch string
 	Attempt                                int
+	// Brief is the card's brief, read for the SIBLINGS header that points the harness at
+	// the sibling checkouts a stage clones (docs/SPEC-CARD-CONTRACT.md, the SIBLINGS
+	// header; docs/SPEC-STAGING.md, the siblings). Empty stages no sibling.
+	Brief string
 }
 
 var (
@@ -82,7 +87,7 @@ func PacketOf(h HeldCard) (Packet, bool) {
 	if (h.Kind != "" && h.Kind != "work") || !strings.HasPrefix(h.Brief, "STATUS: nova-sprint card ") {
 		return Packet{}, false
 	}
-	p := Packet{Card: h.Card, Job: h.Job, Repo: h.Repo, Base: h.Base, Branch: h.Branch, Attempt: h.Attempt}
+	p := Packet{Card: h.Card, Job: h.Job, Repo: h.Repo, Base: h.Base, Branch: h.Branch, Attempt: h.Attempt, Brief: h.Brief}
 	status, _, _ := strings.Cut(h.Brief, "\n")
 	if m := statusBranchRE.FindStringSubmatch(status); p.Branch == "" && m != nil {
 		p.Branch = m[1]
@@ -176,6 +181,10 @@ type Stager struct {
 	Dir string
 	URL func(repo string) string
 	Env []string
+	// SiblingMirror is the directory that holds the bench mirrors a stage clones a SIBLINGS
+	// repository from, one bare mirror per repository named <name>.git (default
+	// ~/nova-bench/mirror). A sibling with no mirror there is cloned from the forge.
+	SiblingMirror string
 
 	mu      sync.Mutex
 	repos   map[string]*sync.Mutex
@@ -249,7 +258,7 @@ func (s *Stager) Stage(ctx context.Context, p Packet) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return sha, s.writeJob(p, sha)
+		return sha, s.stageAndWrite(p, sha)
 	}
 	lock := s.repoLock(p.Repo)
 	lock.Lock()
@@ -295,7 +304,39 @@ func (s *Stager) Stage(ctx context.Context, p Packet) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return head, s.writeJob(p, head)
+	return head, s.stageAndWrite(p, head)
+}
+
+// stageAndWrite stages the sibling repositories p's brief names and writes JOB.md naming
+// each, so the harness is pointed at $JOB/siblings/<name> (docs/SPEC-STAGING.md, the
+// siblings). A sibling that cannot be staged refuses the stage with its name, so the card
+// returns to ready (a bench fault, not the worker's).
+func (s *Stager) stageAndWrite(p Packet, sha string) error {
+	siblings, err := s.stageSiblings(p)
+	if err != nil {
+		return &NotStageable{Repo: p.Repo, Card: p.Card, Job: p.Job, Why: err.Error(), Remedy: "mirror or stage the sibling repository on this bench, then the card is staged again"}
+	}
+	return s.writeJob(p, sha, siblings)
+}
+
+// stageSiblings clones each repository a brief names in its SIBLINGS header at its ref into
+// $JOB/siblings/<name> and answers the JOB.md lines naming each
+// (SIBLING_<NAME>=$JOB/siblings/<name>), from the bench mirror where one exists else from
+// the forge (docs/SPEC-CARD-CONTRACT.md, the SIBLINGS header; docs/SPEC-STAGING.md, the
+// siblings). A brief with no SIBLINGS header stages none. A sibling that cannot be staged
+// is refused with its name.
+func (s *Stager) stageSiblings(p Packet) ([]string, error) {
+	siblings := sprint.ParseSiblings(p.Brief)
+	if len(siblings) == 0 {
+		return nil, nil
+	}
+	mirror := s.SiblingMirror
+	if mirror == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			mirror = filepath.Join(home, "nova-bench", "mirror")
+		}
+	}
+	return sprint.StageSiblings(JobDir(s.Dir, p.Job), mirror, siblings)
 }
 
 // stageScratch is where a job's worktree is added before it is moved in, under its job dir.
@@ -580,19 +621,32 @@ func (s *Stager) worktreeOf(checkout string) (repo, mirror string, ok bool) {
 // JobText is a staged job's JOB.md: the card-contract shape (docs/SPEC-CARD-CONTRACT.md), the
 // checkout, the branch, the outbox report and the finish.
 func JobText(dir string, p Packet, sha string) string {
+	return jobText(dir, p, sha, nil)
+}
+
+// jobText is JobText with the sibling lines a stage cloned, so JOB.md points the harness at
+// each $JOB/siblings/<name> (docs/SPEC-CARD-CONTRACT.md, the SIBLINGS header;
+// docs/SPEC-STAGING.md, the siblings). No sibling lines writes JobText's own JOB.md.
+func jobText(dir string, p Packet, sha string, siblings []string) string {
 	attempt := max(p.Attempt, 1)
 	checkout := filepath.Join(JobDir(dir, p.Job), "repo")
 	outbox := filepath.Join(dir, "outbox", p.Job)
+	sibs := ""
+	if len(siblings) > 0 {
+		sibs = "\nThe sibling repositories this card reads (read each as $SIBLING_<NAME>):\n" +
+			strings.Join(siblings, "\n") + "\n"
+	}
 	return fmt.Sprintf("# JOB: work %s, attempt %d\n\n"+
 		"The staged checkout: %s (a git worktree of %s at %s, %s, on branch %s).\n"+
+		"%s"+
 		"Work there; commit as the brief says; push the branch (git push -u origin %s).\n"+
 		"Finish: write %s with 'Verdict: LAND|HOLD|FAIL' and 'Head: <sha>' on the first two lines, then the report; RESULT.md beside it with the same head. The coordinator syncs the outbox.\n"+
 		"If the push is refused, leave the report with Verdict: HOLD naming 'no push' and the coordinator pushes from this checkout.\n",
-		p.Card, attempt, checkout, p.Repo, p.Base, sha, p.Branch, p.Branch, filepath.Join(outbox, "REPORT.md"))
+		p.Card, attempt, checkout, p.Repo, p.Base, sha, sibs, p.Branch, p.Branch, filepath.Join(outbox, "REPORT.md"))
 }
 
-func (s *Stager) writeJob(p Packet, sha string) error {
-	err := atomicfile.WriteFile(filepath.Join(JobDir(s.Dir, p.Job), JobFile), []byte(JobText(s.Dir, p, sha)), 0o644, atomicfile.NoReplace())
+func (s *Stager) writeJob(p Packet, sha string, siblings []string) error {
+	err := atomicfile.WriteFile(filepath.Join(JobDir(s.Dir, p.Job), JobFile), []byte(jobText(s.Dir, p, sha, siblings)), 0o644, atomicfile.NoReplace())
 	if errors.Is(err, fs.ErrExist) {
 		return nil // staged by another hand between the look and the write
 	}

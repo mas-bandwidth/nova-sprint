@@ -3,9 +3,7 @@ package friend
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sandbox"
 )
 
 // The delivery modes (pkg/config FriendModes, the friend row's mode).
@@ -891,37 +888,8 @@ func (l *loop) saveLanes(now time.Time) {
 	}
 }
 
-// ReadLanes is the lanes' state in stateDir; none is an empty state.
-func ReadLanes(stateDir string) (LaneState, error) {
-	var s LaneState
-	_, err := read(filepath.Join(stateDir, LanesFile), &s) // a file not there is found=false and no error
-	return s, err
-}
-
-// WriteLanes is the lanes' state written whole to stateDir.
-func WriteLanes(stateDir string, s LaneState) error {
-	return write(filepath.Join(stateDir, LanesFile), s)
-}
-
 // LanesFile is the lanes' state in the state directory.
 const LanesFile = "lanes.json"
-
-// ParseRow reads the friend's row off her beat's answer (nova-sprint friend
-// beat prints row_mode=<mode> row_width=<n>, as friend sync last wrote her
-// nova-config row); ok is false when the answer carries none.
-func ParseRow(answer string) (mode string, width int, ok bool) {
-	for _, w := range strings.Fields(answer) {
-		if v, found := strings.CutPrefix(w, "row_mode="); found {
-			mode, ok = v, true
-		}
-		if v, found := strings.CutPrefix(w, "row_width="); found {
-			if n, err := strconv.Atoi(v); err == nil {
-				width = n
-			}
-		}
-	}
-	return mode, width, ok
-}
 
 // laneKey marks a context as a lane's: what a lane's harness runs under it runs inside
 // the lane's wall (Wall.Exec).
@@ -955,137 +923,8 @@ type Wall struct {
 	Deny      []string // the coordinator's self, never written inside the wall (sandbox.LaneProfile.Deny)
 }
 
-// Args is the wall verb and its flags, up to and with the "--" the command follows.
-func (w Wall) Args() []string {
-	profile := w.Profile
-	if profile == "" {
-		profile = sandbox.ProfileFriend
-	}
-	args := []string{WallVerb, "--profile", profile, "--dir", w.Dir}
-	for _, d := range w.Deny {
-		args = append(args, "--deny", d)
-	}
-	if w.ConfigDir != "" {
-		args = append(args, "--config-dir", w.ConfigDir)
-	}
-	for _, j := range w.Jobs {
-		args = append(args, "--job", j)
-	}
-	for _, r := range w.Reads {
-		args = append(args, "--read", r)
-	}
-	return append(args, "--")
-}
-
-// Exec is run with every lane's child inside the wall: a command whose context is a
-// lane's (LaneContext) runs as `<Self> wall <flags> -- <name> <args>`, in the same
-// directory and with the same stdin; any other runs as it was. With no Self the lane's
-// command is refused, never run unwalled.
-func (w Wall) Exec(run Exec) Exec {
-	return func(ctx context.Context, dir, name string, args []string, stdin string) (string, int, error) {
-		if !InLane(ctx) {
-			return run(ctx, dir, name, args, stdin)
-		}
-		if len(w.Self) == 0 {
-			return "", 0, fmt.Errorf("a lane's %s cannot be walled: no program runs the wall, and a lane child never runs outside it", name)
-		}
-		argv := append(append(append([]string{}, w.Self[1:]...), w.Args()...), name)
-		return run(ctx, dir, w.Self[0], append(argv, args...), stdin)
-	}
-}
-
 // listFlag is a flag given any number of times.
 type listFlag []string
-
-func (l *listFlag) String() string     { return strings.Join(*l, ",") }
-func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
-
-// RunWall is the wall verb: args are its flags, "--", and the command; env is the
-// environment the command gets inside the wall (its HOME is the one the deny list is
-// under). It prints nothing on stdout but the command's own, so a harness's answer is
-// read through it as it is; a refusal is one WALL REFUSED line per problem on stderr
-// and sandbox.ExitRefused. The answer is the command's exit.
-func RunWall(args, env []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet(WallVerb, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	profile := fs.String("profile", sandbox.ProfileFriend, "the wall profile: "+strings.Join(sandbox.LaneProfiles, ", "))
-	dir := fs.String("dir", "", "the friend's working directory")
-	configDir := fs.String("config-dir", "", "the friend's CLAUDE_CONFIG_DIR, and the HOME inside the wall")
-	var jobs, reads, deny listFlag
-	fs.Var(&deny, "deny", "a path no write inside the wall reaches, the coordinator's self; ~/ is under HOME (repeatable, at least one)")
-	fs.Var(&jobs, "job", "a job directory outside --dir, writable inside the wall (repeatable)")
-	fs.Var(&reads, "read", "a directory the harness reads, beyond the system roots (repeatable)")
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
-		}
-		return sandbox.ExitRefused
-	}
-	refused := func(reason, text string) int {
-		fmt.Fprintf(stderr, "WALL REFUSED reason=%s %s\n", reason, oneLine(text, 400))
-		return sandbox.ExitRefused
-	}
-	if fs.NArg() == 0 {
-		return refused("no_command", "nothing after --; usage: nova-friend wall --profile <p> --dir <d> --deny <self>... [--config-dir <c>] [--job <j>]... [--read <r>]... -- <command> <args>")
-	}
-	home := ""
-	for _, kv := range env {
-		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
-			home = v
-		}
-	}
-	cwd, _ := os.Getwd() // ignored: no cwd is the profile's working directory
-	lp := sandbox.LaneProfile{Name: *profile, Work: *dir, Jobs: jobs, ConfigDir: *configDir, Reads: reads, Deny: deny, Home: home}
-	in, err := lp.Input(cwd, fs.Args())
-	if err != nil {
-		return refused("bad_profile", err.Error())
-	}
-	p, bad := sandbox.Build(in)
-	if len(bad) > 0 {
-		code := sandbox.ExitRefused
-		for _, r := range bad {
-			refused(r.Reason, r.Text)
-			code = max(code, r.Code())
-		}
-		return code
-	}
-	child := append(sandbox.ChildEnv(env, p.Tmp), "HOME="+p.Home)
-	if *configDir != "" {
-		child = append(child, "CLAUDE_CONFIG_DIR="+*configDir)
-	}
-	code, err := sandbox.Run(p, child, stdin, stdout, stderr, nil)
-	if err != nil {
-		reason := "sandbox_failed"
-		if r, ok := err.(sandbox.Refusal); ok {
-			reason = r.Reason
-		}
-		refused(reason, err.Error())
-	}
-	return code
-}
-
-// ParseProfile reads the friend's wall profile off her beat's answer (row_profile=<name>,
-// beside row_mode and row_width); ok is false when the answer carries none.
-func ParseProfile(answer string) (profile string, ok bool) {
-	for _, w := range strings.Fields(answer) {
-		if v, found := strings.CutPrefix(w, "row_profile="); found {
-			profile, ok = v, true
-		}
-	}
-	return profile, ok
-}
-
-// RowConfigDir reads the friend row's config_dir off her beat's answer
-// (row_config_dir=<dir>, the directory her claude lanes run with as
-// CLAUDE_CONFIG_DIR); empty when the answer carries none.
-func RowConfigDir(answer string) string {
-	for _, w := range strings.Fields(answer) {
-		if v, found := strings.CutPrefix(w, "row_config_dir="); found {
-			return v
-		}
-	}
-	return ""
-}
 
 // laneRules is her row's lane rules; none when the parity is not wired.
 func (d *Daemon) laneRules() LaneRules {

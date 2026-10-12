@@ -55,9 +55,18 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			p.refuse(id, why)
 			continue
 		}
+		// Any judgment can be acked with a reason unless it holds a card that
+		// still needs the decision: one whose card has moved past the state it
+		// was raised for holds none, and the ack is recorded as the card's move
+		// (outlived, judgments_retire.go).
+		moved := ""
 		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
-			p.refuse(id, notAckable(n, entries))
-			continue
+			ev, ok := outlived(s, n, entries)
+			if !ok {
+				p.refuse(id, notAckable(n, entries))
+				continue
+			}
+			moved = ev
 		}
 		if n.StreamLevel && s.StreamCtl(n.Stream).F("state") == StreamStopped {
 			p.refuse(id, "stream "+n.Stream+" is stopped: its judgment stays open until it resumes; run: nova-sprint resume --stream "+n.Stream+" --did <what was done>")
@@ -65,7 +74,13 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		}
 		closing[id] = true
 		u := Unit{Key: id, Stream: n.Stream, Closes: entries, Moved: fmt.Sprintf("%s (%s) acknowledged: %s", id, n.Type, r.Reason)}
-		u.Notes = append(u.Notes, decided(entries[0], "ack: "+r.Reason, r.Who, s.Now))
+		what := "ack: " + r.Reason
+		if moved != "" {
+			// the card is not the one the judgment was raised for: it holds no
+			// decision, so the ack just records the card's move.
+			what = MovedOnPrefix + moved
+		}
+		u.Notes = append(u.Notes, decided(entries[0], what, r.Who, s.Now))
 		if TickKept(n.Type) || n.Type == NFleetFailure {
 			// The tick's condition may still hold (the fleet's failure: held until a new failure
 			// of its class finishes after the ack, rules.go TickFleetFailure): the acknowledgement is

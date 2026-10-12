@@ -11,13 +11,24 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
-// cmdPriority sets or prints a card's priority (docs/SPEC-SPRINT.md section 1, "Priority";
+// cmdPriority is priority's front door: a call naming one of the shared selector's words
+// other than --stream (--who, --state, --ids-file, or --stream with any of them) takes the
+// selector path (cmdPrioritySel, docs/SPEC-SPRINT.md, "One selector, one step"); every other
+// call is the one-stream call as it was (cmdPriorityOne).
+func (a *app) cmdPriority(args []string, stdout, stderr io.Writer) int {
+	if selCall("priority", args) {
+		return a.cmdPrioritySel(args, stdout, stderr)
+	}
+	return a.cmdPriorityOne(args, stdout, stderr)
+}
+
+// cmdPriorityOne sets or prints a card's priority (docs/SPEC-SPRINT.md section 1, "Priority";
 // sprint.SetPriority): with a level (--blocker, --critical, --fix, --high, --normal, --low) it sets
 // each primary named, or in one call every card now in --stream (its own level overwritten)
 // and the stream's default for cards added later, each change on the card's timeline (the
 // default's on the stream's) with the actor and the required reason; with
 // none it prints each card's level and where it comes from. reader is a read card's, never set.
-func (a *app) cmdPriority(args []string, stdout, stderr io.Writer) int {
+func (a *app) cmdPriorityOne(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("priority")
 	stream := fs.String("stream", "", "one call sets every card now in the stream, whatever its column and whatever level it had (its own included), and the stream's default for cards added later (a later card's own PRIORITY line wins over the default); a held stream is set and the output says it is held")
 	reason := fs.String("reason", "", "why (required to set), recorded on each card's timeline, and the stream's, with the actor")
@@ -55,6 +66,49 @@ func (a *app) cmdPriority(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "priority", "wants --reason <text>: why the level changes, recorded on each card's timeline")
 	}
 	return a.runStep("priority", *c, st, store.PriorityStep(sprint.PriorityReq{IDs: ids, Stream: *stream, Level: level[0], Reason: *reason, Who: c.actor}), stdout, stderr)
+}
+
+// cmdPrioritySel is priority's selector path (docs/SPEC-SPRINT.md, "One selector, one step"):
+// one PriorityStep over the cards sprint.Selected selects, set to the one level with the
+// reason, every selected card or none. --stream with another selector word selects only: the
+// stream's default for cards added later is left as it is (only cmdPriorityOne's one-stream
+// call sets it).
+func (a *app) cmdPrioritySel(args []string, stdout, stderr io.Writer) int {
+	var reason *string
+	levels := map[string]*bool{}
+	var level string
+	return a.selVerb("priority", args, stdout, stderr, func(fs flagSet) func() string {
+		reason = fs.String("reason", "", "why (required to set), recorded on each selected card's timeline with the actor")
+		for _, l := range sprint.PrioritySettable {
+			levels[l] = fs.Bool(l, false, "set the level "+l)
+		}
+		return func() string {
+			var chosen []string
+			for _, l := range sprint.PrioritySettable {
+				if *levels[l] {
+					chosen = append(chosen, l)
+				}
+			}
+			if len(chosen) > 1 {
+				return "one level at a time: --" + strings.Join(chosen, ", --")
+			}
+			if len(chosen) == 0 {
+				return "priority by selector wants one of --" + strings.Join(sprint.PrioritySettable, ", --") + " and --reason <text>"
+			}
+			level = chosen[0]
+			if strings.TrimSpace(*reason) == "" {
+				return "wants --reason <text>: why the level changes, recorded on each card's timeline"
+			}
+			return ""
+		}
+	}, func(q sprint.Selector, c *common, _ *store.Store) (store.Step, string) {
+		r := sprint.PriorityReq{Level: level, Reason: *reason, Who: c.actor}
+		return selectStep("priority", q, r, func(ids []string) store.Step {
+			r := r
+			r.IDs = ids
+			return store.PriorityStep(r)
+		}), ""
+	})
 }
 
 // printPriority prints each primary's level and its source (sprint.CardPriority), one line a
