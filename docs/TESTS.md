@@ -617,6 +617,26 @@ older than the TTL, so a stale version is never shown.
   `NOVA_*`): after ticks, `where --json` states the server's own version, and one heartbeat
   write is one SET.
 
+### The audit names every blocked, stuck or looped card
+
+`nova-sprint audit` is the one answer to "is anything blocked, stuck or looped":
+one read of the work, fleet and readers tables, one line per unlanded primary
+with its id, stream, state, tier and attempt, its holder (the member or friend
+whose working card holds it, the lane and since when) or `-`, the age in its
+current state and attempt, the ends of its last four attempts and the needs not
+yet landed with their states, and its flags: `NO-HOLDER` (ready past the dealt
+bound, or working with no holder), `ATT>=4`, `FAILS=<n>` (six or more failed,
+idle-reaped, bound or brief-defect ends), `STUCK` (unchanged past `--stuck`,
+default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`;
+`--json` is one object a line and `--stream` narrows it.
+
+- Unit, `cmd/nova-sprint/audit_test.go`:
+  `TestAuditNamesEveryBlockedStuckOrLoopedCard`, on a private in-memory store
+  with the app's own clock: one card of each trouble (a ready card past the dealt
+  bound, an attempt-4 card, a card with six failed ends, a card unchanged past
+  `--stuck 1m`, a card needing a card that is no card) and one healthy card; each
+  flag appears on its line and none on the healthy one, and the same in `--json`.
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
