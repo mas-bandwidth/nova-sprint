@@ -18,7 +18,7 @@ import (
 func TestLandCommitCarriesTheConfiguredIdentity(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
-	r.m.SetGitIdentity("nova-sprint <nova-sprint@mas-bandwidth.com>")
+	r.m.SetGitIdentity("nova-sprint <nova-sprint@example.invalid>")
 
 	// A fresh HOME with a global git config naming a different identity: the host's global
 	// config the machine must never commit as.
@@ -42,7 +42,7 @@ func TestLandCommitCarriesTheConfiguredIdentity(t *testing.T) {
 	// The landing commit's author and committer are the configured identity, not the rig's
 	// env identity and not the planted global config.
 	got := r.git(r.remote, "log", "-1", "--format=%an <%ae>|%cn <%ce>", "main")
-	assert.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
+	assert.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>", got)
 	r.clean()
 }
 
