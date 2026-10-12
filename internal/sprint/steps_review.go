@@ -2242,17 +2242,27 @@ func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
 }
 
 // goneNamedNeeds is a primary's named needs that name a card that is absent or
-// off the table: the needs rule (b) forbids on an unlanded card. A need the
-// coordinator waived is not counted (it is not owed any more).
+// off the table: the needs rule (b) forbids on an unlanded card. Each need is
+// resolved through the alias map first (need_alias.go), so a dropped id with a
+// live successor is met; the successor is what is reported. A need the
+// coordinator waived is not counted (it is not owed any more), whether the
+// waiver names the stored id or its successor.
 func goneNamedNeeds(s *Snapshot, c *Card) []string {
 	waived := Split(c.F("waived"))
 	var out []string
 	for _, n := range Split(c.F("needs")) {
-		if contains(waived, n) {
+		// a dropped card's successor is the need (need_alias.go): resolve the
+		// stored name through the alias map before it is judged gone, so a need
+		// whose alias target is live never reads as gone. The reader's finding on
+		// attempt 17: judging the raw stored name raised NNeedsGone on a
+		// merging/review card whose stored need was a dropped id with a landed
+		// successor, the fourteen-card state of 2026-10-11.
+		t := AliasOf(s, n)
+		if contains(waived, n) || contains(waived, t) {
 			continue
 		}
-		if s.Work.Placed(n) == nil {
-			out = append(out, n)
+		if s.Work.Placed(t) == nil {
+			out = append(out, t)
 		}
 	}
 	return out

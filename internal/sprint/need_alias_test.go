@@ -128,6 +128,57 @@ func TestRuleElevenResolvesANeedThroughTheAlias(t *testing.T) {
 	}
 }
 
+// The tick's needs check resolves through the alias too (item 3): after one
+// TickNeeds the merging card whose stored need is the dropped id names no
+// judgment, because the alias target landed. The reader's finding on attempt 17:
+// goneNamedNeeds judged the raw stored name, so this state raised NNeedsGone.
+func TestTickNeedsResolvesANeedThroughTheAlias(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1) // s1-1 ready
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"twin"}}))
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	require.Equal(t, Waiting, w.state("b"), "b waits on s1-1")
+
+	// the successor lands, then the dropped card aliases it: b's stored need is
+	// still s1-1, resolved to the landed twin.
+	accepted(w, "twin")
+	w.must(MergeStep(w.s, MergeReq{Stream: "s2"}))
+	require.Equal(t, Landed, w.state("twin"), "the successor landed")
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "recut", ReplacedBy: "twin", Who: "coordinator"}))
+
+	w.must(Resolve(w.s, ResolveReq{}))
+	require.Equal(t, Ready, w.state("b"), "b resolves once the alias target lands")
+	accepted(w, "b")
+	require.Equal(t, Merging, w.state("b"), "b is merging with the successor landed")
+
+	// one tick: the need resolves to the landed twin, so no judgment is raised.
+	p, _ := TickNeeds(w.s, TickReq{})
+	require.Empty(t, p.Notes, "a need whose alias target has landed raises no judgment: %+v", p.Notes)
+}
+
+// The tick's needs check resolves a review card's need through the alias too
+// (item 3): the SOURCE's fourteen cards sat in merging and review; a review
+// card whose stored need is a dropped id with a landed successor is silent.
+func TestTickNeedsLeavesAReviewCardOnAnAliasAlone(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1) // s1-1 ready
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"twin"}}))
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+
+	accepted(w, "twin")
+	w.must(MergeStep(w.s, MergeReq{Stream: "s2"}))
+	require.Equal(t, Landed, w.state("twin"), "the successor landed")
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "recut", ReplacedBy: "twin", Who: "coordinator"}))
+
+	// b is a review card whose stored need is the dropped id, resolved to the
+	// landed twin.
+	c := w.s.Work.Card("b")
+	c.Col = Review
+	w.s.Work.cells = nil
+	p, _ := TickNeeds(w.s, TickReq{})
+	require.Empty(t, p.Notes, "a review card on a landed alias target raises no judgment: %+v", p.Notes)
+}
+
 // drop of a card with no successor refuses while ANY card names it as a need,
 // whatever its column (item 4): a working card that names the dropped id is
 // refused too, not only a waiting primary (steps_review.go, openNeeding).
