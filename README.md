@@ -22,7 +22,7 @@ it can run at once. Think of those slots as lanes: when one opens, the
 machine can send the next ready card down it.
 
 More lanes help when the work is independent. Dependencies still have to
-land first. Even excellent shoes cannot outrun a missing API.
+land first. Your work runs as wide as possible without going out of control.
 
 ## Follow a card all the way home
 
