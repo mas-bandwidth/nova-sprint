@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,6 +135,70 @@ func TestBriefWidenKeepsTheId(t *testing.T) {
 		assert.True(t, fr.Failed)
 		assert.Equal(t, sha, fr.Head)
 		assert.Contains(t, fr.Report, "; PATHS-PROPOSED: b.go")
+	})
+}
+
+// A long PATHS-PROPOSED line reaches the seat whole (the report itself may be cut to a cap,
+// but the line must not be: a cut path is no file to widen): a friend's HOLD whose report is
+// one paragraph long enough that the paragraph's cap lands inside the line still carries the
+// line whole, so `brief --widen` widens every proposed path
+// (docs/SPEC-SPRINT.md section 2, "recut-widen-r.w1"; the bug of 2026-10-12: two workers'
+// lines reached the sprint cut off mid-word and the seat widened by hand).
+func TestWidenTakesEveryProposedPathOfALongLine(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.commit("a.go", "package a\n", "a.go at the base")
+	var paths []string
+	require.NoError(t, os.MkdirAll(filepath.Join(r.worker, "internal/release"), 0o755))
+	for i := range 10 {
+		p := fmt.Sprintf("internal/release/f%02d_test.go", i)
+		paths = append(paths, p)
+		r.commit(p, "package release\n", p)
+	}
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	r.git(r.worker, "fetch", "-q", "origin")
+	lead := "fix the empty case, tier: pro\nREPO: " + r.remote + "\nBASE: main\nPATHS: a.go\nTEST: none a fixture of brief --widen"
+	brief := writeBrief(t, lead)
+	r.promotionStream("s1")
+	r.ok("add --stream s1 --count 1 --one --brief-file " + brief)
+	r.deal(1)
+	r.ok("take --as m1 s1-1.w1@1")
+	head := r.head("s1-1", "main", "b.go", "package b\n")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/s1-1")
+
+	// her report is one paragraph: the prose before the proposal pushes the paragraph's cut
+	// into the line, as the worker's report of 2026-10-12 did (a blank line would hide it)
+	prose := strings.Repeat("The base does not hold the file I need for the fix. ", 18)
+	report := "Verdict: HOLD\nHead: " + head + "\n\n" + prose + member.ProposedKey + " " + strings.Join(paths, ", ") + "\n"
+	p := sprint.Packet{Card: "s1-1.w1", Primary: "s1-1", Attempt: 1, Gen: 1, Epoch: 0, Branch: "sprint/s1-1", Brief: passingBrief(lead)}
+	fr, err := friendFinish(context.Background(), "amy", p, report, func(_ context.Context, repo, _ string) (string, error) {
+		require.Equal(t, r.remote, repo, "the tip is read of the card's repository")
+		return head, nil
+	})
+	require.NoError(t, err)
+	require.True(t, fr.Failed)
+	for _, path := range paths {
+		require.Contains(t, fr.Report, path, "the finish report carries the line whole")
+	}
+	r.ok("finish --as m1 s1-1.w1@1 --failed --head " + head + " --branch sprint/s1-1 --report '" + fr.Report + "'")
+
+	out := r.ok("brief s1-1 --widen --repo-dir " + r.clone)
+	assert.Contains(t, out, "NEXT s1-1 attempt 2 starts from attempt 1 head="+head)
+	got := r.ok("card s1-1 --brief")
+	assert.Contains(t, got, "\nPATHS: a.go,"+strings.Join(paths, ",")+"\n", "every proposed path of the long line is widened")
+
+	// the member carries a line longer than the report cut whole into its finish report
+	t.Run("the member carries a long line whole", func(t *testing.T) {
+		var long []string
+		for i := range 10 {
+			long = append(long, fmt.Sprintf("internal/release/very_long_name_for_a_test_file_%02d_test.go", i))
+		}
+		line := member.ProposedKey + " " + strings.Join(long, ",")
+		require.Greater(t, len(line), 500, "the line itself fills the cut")
+		carried := member.CarryProposed("held", member.Result{Report: "held\n" + line})
+		globs, ok := member.PathsProposed(carried)
+		require.True(t, ok)
+		assert.Equal(t, long, globs, "every path of the line is carried whole")
 	})
 }
 

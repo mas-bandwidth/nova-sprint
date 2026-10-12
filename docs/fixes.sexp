@@ -2755,6 +2755,18 @@
     tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
     frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
    :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+  (fix "a-paths-proposed-line-reaches-the-seat-whole" :release "v1.2.15" :status "planned"
+   :title "A PATHS-PROPOSED line reaches the seat whole"
+   :text "A report cut to a cap could cut its PATHS-PROPOSED line mid-word, so `brief --widen`
+    refused (\"names no file\") and the seat widened by hand (2026-10-12: two workers' lines
+    reached the sprint cut as `pkg/release/*_tes` and `internal/sprint/steps_tick.go, interna`).
+    The friend finish drops a capped paragraph's cut tail and carries the whole line once
+    (friendFinish, cmd/nova-sprint/friendcards.go); the member's CarryProposed
+    (pkg/member/member.go) drops any line already in the report and keeps the whole line even
+    when it alone fills the 500-byte report cut; and PathsProposed and proposals read the last
+    PATHS-PROPOSED line, the whole one a cut report carries at its end. Test:
+    cmd/nova-sprint/brief_widen_test.go TestWidenTakesEveryProposedPathOfALongLine."
+   :origin "this card, a-paths-proposed-line-reaches-the-seat-whole.w2.g2.e19; the seat widened by hand when the two workers' lines of 2026-10-12 reached the sprint cut off mid-word")
   (fix "tla-sprintrules-landing-stall-judgment" :release "v1.2.16" :status "planned"
    :title "SprintRules models the landing stall, Part stall, with the reversed witnesses nostall and noclear"
    :text "Models only, no product change. tla/SprintRules.tla gains Part stall, the model of the

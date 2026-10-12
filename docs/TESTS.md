@@ -776,6 +776,26 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
 
+## A long PATHS-PROPOSED line reaches the seat whole
+
+A worker's HOLD proposes the PATHS its card lacked on a `PATHS-PROPOSED:` line in its report;
+`brief <id> --widen` reads that line and widens the card in place (docs/SPEC-SPRINT.md section
+2, "recut-widen-r.w1"). A report long enough to be cut to a cap must never have that cut land
+inside the line: a path cut mid-word names no file and the widen is refused, so the seat
+widens by hand (the bug of 2026-10-12: two workers' lines reached the sprint cut as
+`pkg/release/*_tes` and `internal/sprint/steps_tick.go, interna`). The friend finish drops a
+capped paragraph's cut tail and carries the whole line once (`friendFinish`,
+`cmd/nova-sprint/friendcards.go`), the member's `CarryProposed` (`pkg/member/member.go`) drops
+any line already in the report and keeps the whole line even when it alone fills the 500-byte
+report cut, and `PathsProposed` and `proposals` read the last `PATHS-PROPOSED` line, the whole
+one a cut report carries at its end.
+
+- Unit, `cmd/nova-sprint/brief_widen_test.go`:
+  `TestWidenTakesEveryProposedPathOfALongLine`: a friend's HOLD whose report is one paragraph
+  long enough that its cap lands inside a ten-path `PATHS-PROPOSED` line carries the line
+  whole, and `brief --widen` widens all ten paths; the member's `CarryProposed` carries a line
+  longer than the report cut whole.
+
 ## Tests that fail under load are made deterministic
 
 The owner's standing rule: tests are bounded and never flaky; a test that fails
