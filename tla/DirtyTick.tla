@@ -838,13 +838,17 @@ LiveOn == "liverun" \in DOMAIN Scn /\ Scn.liverun
 \* brings steps_work.go level and round.go levelTo to it): a card dealt to an up
 \* member and not taken (no take of it applied or queued) moves off the member
 \* most over its width that has such a card, onto an up member holding fewer
-\* cards than its width, within that member's room. No mean and no gap of two.
+\* held slots than its width, counting reads with their rounded load,
+\* within that member's separate DealAhead room. No mean and no gap of two.
 \* Level.tla holds the loop and its order; here it is one move a tick, chosen
 \* once (CHOOSE).
 LevelUp(S) == {m \in Machines : S.stat[m] = "up" /\ ~Off(S, m)}
-Over(S, m) == Cardinality(S.mc[m]) - Width[m]
+Over(S, m) == HoldLoad(Cardinality(S.mc[m]), Cardinality(S.mr[m])) - Width[m]
+\* Reversed target-only witness: two half reads fill a lane even with no work.
+TargetOver(S, m) == IF Broken = "levelontoreads"
+                    THEN Cardinality(S.mc[m]) - Width[m] ELSE Over(S, m)
 LevelMovable(S, m) == {c \in S.mc[m] : ~S.tk[c] /\ Count(S.q["fleet"], LAMBDA e : e.c = c /\ e.k \in {"take", "fin"}) = 0}
-LevelTargets(S, m) == {m2 \in LevelUp(S) : m2 # m /\ Over(S, m2) < 0 /\ Room(S, m2) > 0}
+LevelTargets(S, m) == {m2 \in LevelUp(S) : m2 # m /\ TargetOver(S, m2) < 0 /\ Room(S, m2) > 0}
 LevelSources(S) == {m \in LevelUp(S) : Over(S, m) > 0 /\ LevelMovable(S, m) # {} /\ LevelTargets(S, m) # {}}
 LevelMoves(S) ==
   {x \in Machines \X Machines \X Cards :
@@ -1247,6 +1251,13 @@ StartOncePerTick ==
      /\ act' = "StartLevel" => phase = "level" /\ phase' \in {"levelreads", "work"}
      /\ act' = "StartLevelReads" => phase = "levelreads" /\ phase' = "work"
      /\ act' = "PumpWork" => phase = "work"]_vars
+\* Independent pre-state destination occupancy: do not reuse Over or
+\* LevelTargets, so a work-only target rule cannot validate itself.
+StartLevelOntoFree ==
+  [][act' = "StartLevel" =>
+       \A m \in Machines : mc'[m] \ mc[m] # {} =>
+         Cardinality(mc[m]) + (IF ReadCost = "half"
+           THEN (Cardinality(mr[m]) + 1) \div 2 ELSE Cardinality(mr[m])) < Width[m]]_vars
 \* One pump a tick, and every tick has it.
 WorkPumpedOnce == pumps <= 1
 WorkPumpedEveryTick == [][act' = "TickEnd" => pumps = 1]_vars

@@ -589,3 +589,9 @@ MCStopFenceUnfenced.cfg	MCStopFence.tla	invariant	NoLaunchCommittedOnStop	ignore
 MCStopFenceOrphan.cfg	MCStopFence.tla	invariant	NoOrphanDebt	ignore-terminal	stopfence	required	-
 MCStopFenceStaleTick.cfg	MCStopFenceStaleTick.tla	invariant	NoStaleTickStop	ignore-terminal	stopfence	required	-
 MCStopFenceStalePart.cfg	MCStopFenceStalePart.tla	invariant	NoStaleTickPart	ignore-terminal	stopfence	required	-
+MCDirtyTickLevelOntoReads.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick	required	-
+MCDirtyTickBrokenLevelOntoReads.cfg	MCDirtyTick.tla	action	StartLevelOntoFree	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickLevelSourceReads.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick	required	-
+MCDirtyTickProbeLevelSourceReads.cfg	MCDirtyTick.tla	invariant	ProbeNoStartLevel	ignore-terminal	dirtytick-probes	required	-
+MCDirtyTickProbeStartLevel.cfg	MCDirtyTick.tla	invariant	ProbeNoStartLevel	ignore-terminal	dirtytick-probes	required	-
+MCDirtyTickProbeStartLevelReads.cfg	MCDirtyTick.tla	invariant	ProbeNoStartLevelReads	ignore-terminal	dirtytick-probes	required	-

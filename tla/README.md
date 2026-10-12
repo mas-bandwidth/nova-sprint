@@ -171,3 +171,21 @@ Only names and source/header comments changed. `StopFence` includes its
 `StopReturn`. Their groups are `friendreadytake`, `friendredeallate`, and
 `stopfence`. Coverage stays partial for the concrete differences recorded in
 `COVERAGE.tsv`; fresh TLC passes do not erase those differences.
+
+### DirtyTick start-level mixed-read controls
+
+`StartLevel` measures donor excess and destination free lanes as held work plus
+rounded read occupancy (`ceil(reads/2)` for half reads), separately from the
+`DealAhead` holding limit. `StartLevelOntoFree` checks a moved-to member's
+pre-state occupancy directly, without calling the placement selectors.
+`MCDirtyTickLevelOntoReads` holds two half reads on a width-one destination;
+`MCDirtyTickBrokenLevelOntoReads` restores only the old work-only destination
+test and must violate that action property. The unmodified old selector also
+fails the positive full-read destination control.
+
+`MCDirtyTickStart` gives m2 width two, so its two half reads leave room for
+one work move. The registered `ProbeStartLevel` and `ProbeStartLevelReads`
+cases each reach their named physical move. `MCDirtyTickLevelSourceReads`
+puts one work card and one half read on a width-one donor; its separate
+reachability probe requires the move that a work-only donor test skips.
+These are bounded start-phase checks, not a model of the full Level loop.
