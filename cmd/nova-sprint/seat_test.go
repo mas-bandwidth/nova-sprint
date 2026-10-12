@@ -246,7 +246,11 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 // once), and the note of a taken seat goes to the old holder's.
 func TestThePushFollowsTheSeat(t *testing.T) {
 	t.Parallel()
-	ta, held := heldAndWaiting(t)
+	ta, _ := heldAndWaiting(t)
+	// a judgment addressed to the seat (the held one is a timer, addressed to its actor): it
+	// follows the seat
+	ta.failOnce("m1", "s2-1.w1@1", "tests red")
+	seatNote := ta.group(sprint.NWorkFailed, "s2").Notes[0]
 	home := t.TempDir()
 	ta.a.home = func() (string, error) { return home, nil }
 	for _, who := range []string{"coordinator", "rowan"} {
@@ -266,8 +270,8 @@ func TestThePushFollowsTheSeat(t *testing.T) {
 	out := ta.ok("inbox --wait --push seat --timeout 200ms")
 	old := filepath.Join(home, "coordinator-working", "inbox", "sprint-judgments")
 	next := filepath.Join(home, "rowan-working", "inbox", "sprint-judgments")
-	assert.FileExists(t, filepath.Join(old, held.Notes[0]+".md"), out)
-	assert.FileExists(t, filepath.Join(next, held.Notes[0]+".md"), "the open judgment follows the seat:\n%s", out)
+	assert.FileExists(t, filepath.Join(old, seatNote+".md"), out)
+	assert.FileExists(t, filepath.Join(next, seatNote+".md"), "the open judgment follows the seat:\n%s", out)
 	assert.Contains(t, out, "NOTE the seat is rowan's: pushing to "+next+"\n", out)
 	var takenNote string
 	for _, g := range ta.inboxGroups() {
