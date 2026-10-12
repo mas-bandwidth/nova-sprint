@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // A heavy card is dealt on heavy (the seat, 2026-10-12 ~00:05Z: six cards admitted with
@@ -26,7 +28,8 @@ import (
 // heavy route as nova-config's apply writes them; a card whose RESULT line says tier: heavy
 // is admitted by add, which says tier=heavy, and the tick's first deal of it draws the heavy
 // route, never the flash one. The environment is the store's address and the seat's name,
-// HOME and XDG_CONFIG_HOME in the test's own directory, nothing else.
+// HOME and XDG_CONFIG_HOME in the test's own directory, nothing else; the app's home is that
+// directory and its forward fails the test.
 func TestAHeavyCardIsDealtOnAHeavyRouteOnAStore(t *testing.T) {
 	t.Parallel()
 	began := time.Now()
@@ -44,6 +47,13 @@ func TestAHeavyCardIsDealtOnAHeavyRouteOnAStore(t *testing.T) {
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "seat-tl", "HOME": home, "XDG_CONFIG_HOME": home}
 	a := newApp(func(k string) string { return env[k] })
 	t.Cleanup(a.close)
+	// the app's home is the test's own, and its forward fails the test: every verb names the
+	// private store with --redis, and none can reach a live sprint server (forward.go)
+	a.home = func() (string, error) { return home, nil }
+	a.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
+		t.Fatalf("a verb was forwarded to a sprint server at %s: %q", addr, verbs)
+		return nil, errors.New("forwarding is refused in this test")
+	}
 	do := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
