@@ -815,7 +815,9 @@
     A landing the tick sees only after the stall holds again still ends the old episode first. A
     plan that only writes the episode's stamps carries a unit of its own: the store's tick passes
     over an empty plan, so on a real store a sprint that had not yet landed never began its
-    episode (found by the functional test). The
+    episode (found by the functional test); that unit is keyed by the property, as the status
+    record's is, the reference model carries the landing-stall properties (refmodel.CarriedProps),
+    and the differential test names the stall judgment the engine's until the model card lands. The
     model card tla-sprintrules-landing-stall-liveness is its own card. Unit tests in
     internal/sprint/landing_stall_test.go, internal/sprint/store/landing_stall_reads_test.go and
     cmd/nova-sprint/land_test.go; the functional test
