@@ -1896,6 +1896,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// stays failed, never a fresh finish waiting on a reader's verdict
 			into = DoneFailed
 		}
+		// the attempt's ran record (docs/SPEC-SPRINT.md, the bounds): yes when its worker ran
+		// and reported (a verdict, a pushed head), no with its fault class when it ended without
+		// a worker report (an idle reap, a harness fault, a lane refused, a push refused, a
+		// friend lane that never started), the fault the failed report names (HarnessFault).
+		ran, fault := true, ""
+		if r.Failed && !passed && defect == "" {
+			if class := HarnessFault(r.Report); class != "" {
+				ran, fault = false, class
+			}
+		}
 		cardSet := map[string]string{"ok": okWord, "head": head, "finished": stamp(s.Now)}
 		if !r.Reported.IsZero() {
 			at := r.Reported
@@ -1925,6 +1935,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		if defect != "" {
 			cardSet[FieldBriefDefect] = defect
+		}
+		// the work card carries its attempt's ran record too, so `card <id>`'s attempts list
+		// shows it (route.go, AttemptLine): "yes", or "no: <fault class>" (docs/SPEC-SPRINT.md,
+		// the bounds).
+		cardSet[FieldRanAttempts] = "yes"
+		if !ran {
+			cardSet[FieldRanAttempts] = "no"
+			if fault != "" {
+				cardSet[FieldRanAttempts] += ": " + fault
+			}
 		}
 		set := map[string]string{"head": head, "result": result}
 		maps.Copy(set, finishStamps(pr, c, s.Now))
@@ -1977,9 +1997,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 		}
 		attempt := pr.Int("attempt")
+		// the primary's ran record, this attempt added (recordRan, judgments.go): the brief
+		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
+		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)
+		set[FieldRanAttempts] = ranAttempts
 		// the brief's bound as this finish leaves the card (brief_bound.go): the same failure
-		// escalates below the ceiling only under the attempt cap
-		bb, atBound := AtBriefBound(withField(pr, FieldCostTotal, set[FieldCostTotal]), r.Report, s.AttemptsCap(pr.Row))
+		// escalates below the ceiling only under the attempt cap, counting only attempts whose
+		// worker ran and reported
+		bb, atBound := AtBriefBound(withField(withField(pr, FieldCostTotal, set[FieldCostTotal]), FieldRanAttempts, ranAttempts), r.Report, s.AttemptsCap(pr.Row))
 		if next := s.NextTier(pr); identical && next != "" && !atBound {
 			// the second identical failure below its ceiling (rules 1 and 2, nova-tools#5174:
 			// "Flash first on every card; pro only on escalation"): no judgment; the primary
@@ -2025,6 +2050,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			n := judgment(NBriefDefect, pr.Row, s.Now, 0, pr.ID)
 			n.Who, n.Attempt, n.Card = who, attempt, c.ID
 			n.What = "a brief defect, " + defect + ": re-cut the brief; " + r.Report
+			u.Notes = append(u.Notes, n)
+		} else if lb, broken := AtLaneBroken(s, withField(pr, FieldRanAttempts, ranAttempts), LaneBrokenBound); broken {
+			// the lane is broken, not the brief (docs/SPEC-SPRINT.md, the bounds): every one
+			// of the last attempts ended without a worker report, so the brief's judgment is
+			// not raised, and this one is instead
+			n := judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID)
+			n.Who, n.Attempt, n.What = who, attempt, lb.Why()+"; attempt "+itoa(attempt)+" failed: "+r.Report
 			u.Notes = append(u.Notes, n)
 		} else if atBound {
 			// the attempt cap on one brief, whatever this attempt's failure: the brief is

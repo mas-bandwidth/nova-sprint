@@ -116,7 +116,7 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 		assert.Zero(t, w.s.Work.Card("s1-1").Int("reworks"), "a failure no class names waits for a person")
 		assert.Len(t, openOf(w, NWorkFailed, "s1-1"), 1)
 	})
-	t.Run("at the attempt bound: the brief's judgment", func(t *testing.T) {
+	t.Run("a harness fault at the attempt bound does not reach the brief's bound", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
 		w.s.Work.SetProp(PropAttempts, "1")
@@ -125,8 +125,8 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 		startLanes(w, amy)
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: harnessFaults["lane died"]}))
 		rules(w, on(amy))
-		assert.Zero(t, w.s.Work.Card("s1-1").Int("reworks"), "never past the attempt bound")
-		assert.Len(t, openOf(w, NBriefWrong, "s1-1"), 1, "the brief's judgment stands")
+		assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("reworks"), "a harness fault never counts toward the brief's bound: it is reworked, the brief not judged")
+		assert.Empty(t, openOf(w, NBriefWrong, "s1-1"), "no brief's judgment for an attempt whose worker never ran")
 	})
 	t.Run("the same fault on many machine cards: each reworked on its tier", func(t *testing.T) {
 		t.Parallel()
