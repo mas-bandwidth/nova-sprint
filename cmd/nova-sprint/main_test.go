@@ -24,6 +24,36 @@ import (
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 
+// errUnitTestSocket is the unit tier's answer to a hook process asking where to
+// listen: a unit test opens no socket (Glenn, 2026-10-12: "don't use real time, or
+// sockets or external service calls in unit tests"; internal/ci
+// TestUnitTestsUseNoRealTimeSocketsOrServices). A test that runs a hook process is a
+// functional test.
+var errUnitTestSocket = errors.New("a unit test opens no socket: a test that runs a hook process is a functional test (//go:build functional)")
+
+// testHookSock is where a test app's hook process takes its session's lines. In the
+// unit tier it refuses (errUnitTestSocket); the functional tier sets it to shortSock,
+// a real unix socket of the test's own (hook_sock_functional_test.go).
+var testHookSock = func(*testing.T) func(string) (string, error) {
+	return func(string) (string, error) { return "", errUnitTestSocket }
+}
+
+// step moves the test's clock.
+func (ta *testApp) step(d time.Duration) {
+	ta.mu.Lock()
+	ta.now = ta.now.Add(d)
+	ta.mu.Unlock()
+}
+
+// subjects is every message the app sent on the friends' bus, as subject -> to.
+func subjects(ta *testApp) []string {
+	var out []string
+	for _, m := range ta.sent {
+		out = append(out, m.Subject+" -> "+strings.Join(m.To, ","))
+	}
+	return out
+}
+
 // testApp is the command over an in-memory store, its clock stepped by hand.
 type testApp struct {
 	t   *testing.T
@@ -50,8 +80,8 @@ func newTestApp(t *testing.T) *testApp {
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }
 	ta.a.sleep = func(d time.Duration) { ta.mu.Lock(); ta.now = ta.now.Add(d); ta.mu.Unlock(); ta.beat() }
 	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return ta.m, nil }
-	// a hook's socket is the test's own, short enough for a unix socket's path
-	ta.a.hookSock = shortSock(t)
+	// a hook's socket: none in the unit tier, the test's own in the functional tier
+	ta.a.hookSock = testHookSock(t)
 	// a broken read's branch is checked against origin only by a test that gives a tip
 	ta.a.readTip, ta.a.readHeads = nil, nil
 	// the friends' bus: every message sent is kept, none goes anywhere

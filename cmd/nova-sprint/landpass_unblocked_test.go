@@ -144,7 +144,7 @@ func TestLandFallbackGateDeadlineDoesNotBlameCard(t *testing.T) {
 	go func() { code, out, errs = r.do("land"); close(done) }()
 	select {
 	case <-fallback:
-		deadline <- time.Now()
+		deadline <- t0
 	case <-t.Context().Done():
 		t.Fatal("bisection gate never began")
 	}
@@ -239,7 +239,7 @@ func stuckBehind(t *testing.T, parallel int, sameCommit bool) {
 	case <-t.Context().Done():
 		t.Fatal("s1 never reached its wait behind s2")
 	}
-	deadline <- time.Now() // s2's own bound: its gate is cancelled and the wait it held is freed
+	deadline <- t0 // s2's own bound: its gate is cancelled and the wait it held is freed
 	select {
 	case <-done:
 	case <-t.Context().Done():

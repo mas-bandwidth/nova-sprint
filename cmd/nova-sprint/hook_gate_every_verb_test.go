@@ -1,3 +1,8 @@
+//go:build functional
+
+// The hook's gate on every verb, with the caller's hook run as a process of its own
+// against an httptest listener, read within real-time bounds. A functional test
+// (RULES 6a: no real time or sockets in a unit test).
 package main
 
 import (

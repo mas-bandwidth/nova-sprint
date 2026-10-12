@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -109,28 +110,33 @@ func TestSeatCheckProbesOnlyAMemberWithAMachineRow(t *testing.T) {
 	assert.Equal(t, []string{"hulk", "m1"}, *probed)
 }
 
+// The probes run in a synctest bubble, on its fake clock: the bound is exactly the
+// probes' one bound, never a machine's speed, and serial probes, which would never all
+// start, deadlock the bubble and fail the test.
 func TestSeatCheckRunsEveryProbeAtOnceUnderOneBound(t *testing.T) {
 	t.Parallel()
-	ta, _ := offlineApp(t, everyMachine, nil)
-	var started sync.WaitGroup
-	started.Add(3) // captain, hulk and the control m1
-	o := ta.a.outside
-	o.probeBound = 2 * time.Second
-	o.hostProbe = func(ctx context.Context, host string) hostAnswer {
-		started.Done()
-		started.Wait() // each probe waits for the others: serial probes would never all start
-		if host == "m1" {
-			return hostAnswer{Answered: true}
+	synctest.Test(t, func(t *testing.T) {
+		ta, _ := offlineApp(t, everyMachine, nil)
+		var started sync.WaitGroup
+		started.Add(3) // captain, hulk and the control m1
+		o := ta.a.outside
+		o.probeBound = 2 * time.Second
+		o.hostProbe = func(ctx context.Context, host string) hostAnswer {
+			started.Done()
+			started.Wait() // each probe waits for the others: serial probes would never all start
+			if host == "m1" {
+				return hostAnswer{Answered: true}
+			}
+			<-ctx.Done() // a host that never answers: the one bound ends every probe
+			return classifyDial(ctx.Err())
 		}
-		<-ctx.Done() // a host that never answers: the one bound ends every probe
-		return classifyDial(ctx.Err())
-	}
-	ta.a.outside = o
-	t0 := time.Now()
-	code, out, _ := ta.do("seat check")
-	assert.Less(t, time.Since(t0), 4*time.Second, "one bound over all the probes, not one per probe")
-	assert.Equal(t, 0, code, out)
-	assert.Contains(t, out, "offline=captain,hulk")
+		ta.a.outside = o
+		t0 := time.Now()
+		code, out, _ := ta.do("seat check")
+		assert.Less(t, time.Since(t0), 4*time.Second, "one bound over all the probes, not one per probe")
+		assert.Equal(t, 0, code, out)
+		assert.Contains(t, out, "offline=captain,hulk")
+	})
 }
 
 // The seat is itself a fleet member ("studio"): reaching itself proves nothing of its
@@ -163,16 +169,6 @@ func TestSeatCheckNeverUsesThisMachineAsTheControl(t *testing.T) {
 		assert.Contains(t, out, "offline=captain,hulk")
 		assert.Equal(t, []string{"captain", "hulk", "m2"}, *probed, "m2, not this machine m1, is the control")
 	})
-}
-
-func TestSelfByAddressKnowsThisMachine(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	self := selfByAddress(func() string { return "studio" })
-	assert.True(t, self(ctx, "Studio"), "its own hostname, any case")
-	assert.True(t, self(ctx, "localhost"), "a name that resolves to loopback")
-	assert.False(t, self(ctx, "no-such-member.invalid"), "a name that does not resolve is not this machine")
 }
 
 // The real check probes: removing the probe or the self test from realOutside fails here.

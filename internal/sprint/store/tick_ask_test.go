@@ -232,9 +232,8 @@ func TestALostBatchIsCountedAsDue(t *testing.T) {
 	h.clean("after the next tick")
 
 	// the budget's share of the tick's deadline is read on the store's clock
-	dl := time.Now().Add(time.Hour)
-	ctx, cancel := context.WithDeadline(context.Background(), dl)
-	defer cancel()
+	dl := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	ctx := deadlineCtx{context.Background(), dl}
 	require.Equal(t, 1500*time.Millisecond, askBudget(ctx, dl.Add(-3*time.Second)))
 	require.Equal(t, AskBudget, askBudget(context.Background(), t0))
 }
@@ -275,10 +274,19 @@ func TestTheAskBeginsNoStepPastHalfItsTick(t *testing.T) {
 	require.Equal(t, t0.Add(AskBy), askUntil(bg, t0, t0.Add(300*time.Millisecond)), "the ask's own start does not move the tick's half")
 	require.Equal(t, t0.Add(AskBudget), askUntil(bg, time.Time{}, t0))
 	dl := t0.Add(400 * time.Millisecond)
-	ctx, cancel := context.WithDeadline(bg, dl)
-	defer cancel()
+	ctx := deadlineCtx{bg, dl}
 	require.Equal(t, t0.Add(200*time.Millisecond), askUntil(ctx, t0, t0), "half of the tick's deadline when that is sooner")
 }
+
+// deadlineCtx is a context that names a deadline and runs no timer: askBudget and
+// askUntil read ctx.Deadline alone, so the test's deadline is on its own clock, never
+// the wall's (RULES 6a).
+type deadlineCtx struct {
+	context.Context
+	dl time.Time
+}
+
+func (c deadlineCtx) Deadline() (time.Time, bool) { return c.dl, true }
 
 // friendRead closes a friend's read of the primary at its attempt with her
 // report, as friend sync does (cmd/nova-sprint friendcards.go).

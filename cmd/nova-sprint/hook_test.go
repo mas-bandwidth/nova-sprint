@@ -1,3 +1,9 @@
+//go:build functional
+
+// The hook's server side on a live hook session: real goroutines answering on a
+// pipe within real-time bounds, a hook process on its own unix socket, an
+// httptest listener. A functional test (RULES 6a: no real time or sockets in a
+// unit test).
 package main
 
 import (
@@ -446,14 +452,6 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	assert.Contains(t, sent, "seat "+name+" is gone -> glenn")
 }
 
-func subjects(ta *testApp) []string {
-	var out []string
-	for _, m := range ta.sent {
-		out = append(out, m.Subject+" -> "+strings.Join(m.To, ","))
-	}
-	return out
-}
-
 // A seat that drops without unhook is recorded gone at once and the owner told
 // (SeatHook.tla, Drop; RecordTrue); unhook records it away and tells the owner
 // (Unhook); a new hook replaces the one open, whose proof does not carry over.
@@ -757,13 +755,6 @@ func TestAnotherSeatsProofLeavesALapseOpen(t *testing.T) {
 	d.next("hello")
 	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
 	assert.Equal(t, map[string]int{first: 1}, lapsesOf(ta), "another seat's proof leaves the first seat's lapse open")
-}
-
-// step moves the test's clock.
-func (ta *testApp) step(d time.Duration) {
-	ta.mu.Lock()
-	ta.now = ta.now.Add(d)
-	ta.mu.Unlock()
 }
 
 // restartTestServer creates a fresh app over the same persisted sprint, like the

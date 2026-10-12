@@ -1,3 +1,7 @@
+//go:build functional
+
+// The streaming verbs read off a real OS pipe within real-time bounds while they run:
+// a functional test (RULES 6a: no real time in a unit test).
 package main
 
 import (

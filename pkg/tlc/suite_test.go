@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -46,7 +47,13 @@ func successfulFake(ctx context.Context, _ Run, log string) int {
 	return ExitPass
 }
 
+// The suite's own waits and the fake cases' run on a synctest bubble's fake clock:
+// what each test bounds is the order of events, never the machine's speed (RULES 6a).
 func TestRunSuiteRunsUpToParallelCasesAtOnce(t *testing.T) {
+	synctest.Test(t, testRunSuiteRunsUpToParallelCasesAtOnce)
+}
+
+func testRunSuiteRunsUpToParallelCasesAtOnce(t *testing.T) {
 	root, cases, jar := suiteFixture(t, 8)
 	var mu sync.Mutex
 	active, peak := 0, 0
@@ -95,6 +102,10 @@ func TestRunSuiteRunsUpToParallelCasesAtOnce(t *testing.T) {
 }
 
 func TestRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder(t *testing.T) {
+	synctest.Test(t, testRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder)
+}
+
+func testRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder(t *testing.T) {
 	root, cases, jar := suiteFixture(t, 4)
 	o := suiteOptions(root, cases, jar, t.TempDir())
 	o.Parallel = 4
@@ -144,6 +155,10 @@ func TestRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder(t *testing.T) {
 }
 
 func TestRunSuiteBudgetExhaustionRecordsUnstartedCases(t *testing.T) {
+	synctest.Test(t, testRunSuiteBudgetExhaustionRecordsUnstartedCases)
+}
+
+func testRunSuiteBudgetExhaustionRecordsUnstartedCases(t *testing.T) {
 	root, cases, jar := suiteFixture(t, 4)
 	o := suiteOptions(root, cases, jar, t.TempDir())
 	o.Parallel = 2

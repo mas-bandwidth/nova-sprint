@@ -89,7 +89,7 @@ func TestSeatInstallVerbWritesLoadsAndRemovesTheUnit(t *testing.T) {
 	assert.Equal(t, []string{"darwin load " + unit}, calls)
 	// the push target is recorded with it: the push loop reaches the session through it
 	assert.Contains(t, out, "push: opencode into "+session)
-	st := &store.Store{B: m, Names: sprint.Names{}, Now: time.Now}
+	st := &store.Store{B: m, Names: sprint.Names{}, Now: func() time.Time { return t0 }}
 	rec, ok, err := readPush(context.Background(), st, "rowan")
 	require.NoError(t, err)
 	require.True(t, ok)

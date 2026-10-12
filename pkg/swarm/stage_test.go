@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -285,16 +286,19 @@ func TestStageCardRefusesARemoteRepoWithoutAMirror(t *testing.T) {
 	assert.Contains(t, err.Error(), "starts with '-'")
 }
 
-// stageTimedOut reports whether a staging call ended because the deadline passed.
+// stageTimedOut reports whether a staging call ended because the deadline passed. The
+// deadline passes on a synctest bubble's fake clock, never the wall's.
 func TestStageTimedOutReadsTheDeadline(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer cancel()
-	<-ctx.Done()
-	assert.True(t, stageTimedOut(ctx, ctx.Err()))
-	assert.True(t, stageTimedOut(ctx, context.DeadlineExceeded))
-	assert.True(t, stageTimedOut(ctx, exec.ErrWaitDelay))
-	assert.False(t, stageTimedOut(context.Background(), errors.New("other")))
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		<-ctx.Done()
+		assert.True(t, stageTimedOut(ctx, ctx.Err()))
+		assert.True(t, stageTimedOut(ctx, context.DeadlineExceeded))
+		assert.True(t, stageTimedOut(ctx, exec.ErrWaitDelay))
+		assert.False(t, stageTimedOut(context.Background(), errors.New("other")))
+	})
 }
 
 // mirrorKeepsObjects reads the mirror's gc.auto and writes it when absent, so a borrowing

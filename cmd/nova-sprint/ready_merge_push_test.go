@@ -1,3 +1,7 @@
+//go:build functional
+
+// The hook's pushes on a live hook session (hook_test.go's hookOn), read within its
+// real-time bounds. A functional test (RULES 6a: no real time in a unit test).
 package main
 
 import (
