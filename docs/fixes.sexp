@@ -2937,7 +2937,28 @@
      working, review or fix whose newest consumer has ended and no newer one is out is the stall it
      names (sprint.CheckConsumers). A clear drops the history with the epoch. The log's timeline prints
      a consumer record as one short line, the record whole behind log --card and --json."
-      :origin "this card, a-card-carries-its-consumer-history.w14, attempt 14; w11 recorded attempts and reads but never the landing, so the landings count was always 0; w12 recorded the landing (kind land, its taken and outcome) on the primary as it moves to Landed; w13 carried w12's work onto the tip of main; w14 carried attempt 13's work onto the base tip 460f878d, resolving the cmd/nova-sprint/reads.go conflict (kept main's shown tier with the card's consumers field)")
+       :origin "this card, a-card-carries-its-consumer-history.w14, attempt 14; w11 recorded attempts and reads but never the landing, so the landings count was always 0; w12 recorded the landing (kind land, its taken and outcome) on the primary as it moves to Landed; w13 carried w12's work onto the tip of main; w14 carried attempt 13's work onto the base tip 460f878d, resolving the cmd/nova-sprint/reads.go conflict (kept main's shown tier with the card's consumers field)")
+   (fix "a-dealt-read-is-held-or-returned-and-ask-agrees-with-itself" :release "v1.2.15" :status "planned"
+    :title "One read predicate, and a dealt read is held or returned every tick"
+    :text "Blocker. A read card the read-card deal places sat working on a member that never ran it, and the two
+     ask verbs disagreed on whether it was asked: `ask` counted the fleet read cards through friendReadLive while
+     `ask --another` counted the readers table only, so no ask reached a fleet read card, and a card in review was
+     silently idle. (a) ReadsOut (internal/sprint/readers.go) is the one predicate: a primary's reads at its current
+     attempt, from the readers table and the fleet read cards, each marked live, ghost or closed with its verdict;
+     ask, ask --another, ask --instead, ReadsWanted, readCardsWanted/readCardsStanding, heavyRead and the doctor's
+     readers check all rest on it, and a read card working on a row whose beat has not named it for LiveGrace (or
+     whose row is down, stale or held) reads as a ghost and does not stand. (c) A dealt read is held or returned
+     every tick, never only at deal time: a read card working on a row whose fresh beat names it held for more than
+     HeldGrace (at most twice LiveGrace) is a ghost too, retired lost (spending no one) and dealt again in the same
+     tick's deal; the second ghost at one primary's attempt pushes one judgment (a read was lost twice) naming each
+     card, row and reason (tla-readcards-review-has-a-live-read-or-a-judgment). (e) A broken verdict whose finding is
+     empty or whitespace is no verdict: the read returns it, so no card rests in review on empty findings. (f) The
+     doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g) `card
+     <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no primary\".
+     Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards,
+     TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain, TestASecondGhostAtOneAttemptPushesAJudgment
+     (internal/sprint/ghost_read_test.go)."
+    :origin "this card, from the owner, 2026-10-12 ~04:25Z: \"OK these ghost reads are scary. Please fix.\"")
    (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
     :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"
     :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 27 to 52 (friend-empty-run to stop-fence).
