@@ -13,6 +13,7 @@ import (
 // A header key inside the header block the gate reads passes: LintHeaderStranded
 // answers nothing (docs/SPEC-SPRINT.md section 2, the card header).
 func TestLintHeaderStrandedAcceptsAKeyInTheHeader(t *testing.T) {
+	t.Parallel()
 	raw := []byte("RESULT: c1 sha=000000000000 tier: flash\n" +
 		"KIND: fix\n" +
 		"DEPENDS-ON: -\n" +
@@ -27,6 +28,7 @@ func TestLintHeaderStrandedAcceptsAKeyInTheHeader(t *testing.T) {
 // A header key written below the first prose line is one finding naming the key and
 // its line: the gate reads only the header block, so the key would never be read.
 func TestLintHeaderStrandedNamesAKeyBelowTheProse(t *testing.T) {
+	t.Parallel()
 	raw := []byte("RESULT: c1 sha=000000000000 tier: flash\n" +
 		"KIND: fix\n" +
 		"PATHS: internal/x.go\n" +
@@ -51,6 +53,7 @@ func TestLintHeaderStrandedNamesAKeyBelowTheProse(t *testing.T) {
 // A sentence that merely mentions a key mid-line is not a `KEY: value` line and draws
 // no finding: only a line that starts with the key is a header key below the block.
 func TestLintHeaderStrandedIgnoresAMentionMidLine(t *testing.T) {
+	t.Parallel()
 	raw := []byte("RESULT: c1 sha=000000000000 tier: flash\n" +
 		"KIND: fix\n" +
 		"PATHS: internal/x.go\n" +
@@ -183,6 +186,7 @@ func TestCardParentPathsNamesParentPathsButNotQuotedOnes(t *testing.T) {
 // Every key the card header names is refused when it sits below the prose: one finding
 // each, in line order, naming the key.
 func TestLintHeaderStrandedNamesEveryStrandedHeaderKey(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"KIND", "PATHS", "TEST", "LEGS", "SOURCE", "START", "STOP",
 		"DEPENDS-ON", "PRIORITY", "NEW", "SHARED", "REPO", "BASE", "tier", "RESULT"} {
 		raw := []byte("RESULT: c1 sha=000000000000 tier: flash\n" +

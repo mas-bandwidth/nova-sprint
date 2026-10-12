@@ -17,7 +17,7 @@ exported symbols appears in that set.
 activity.go, benchsize.go, cardbudget.go, cardresult.go, contract.go,
 deadline.go, declaremodel.go, fence.go, headless.go, inputlimit.go, key.go,
 launchfail.go, lease.go, lintcontract.go, mirror.go, nativeasked.go,
-nativebudget.go, nativeidle.go, opencode.go, pathcase.go, prewarm.go,
+nativebudget.go, nativeidle.go, pathcase.go, prewarm.go,
 providercause.go, providererr.go, providerproxy.go, providerread.go,
 providers.go, publicclass.go, result.go, resultformat.go, slot.go,
 slotweight.go, staging.go, timeline.go, timeout.go, toolchain.go, usage.go,
