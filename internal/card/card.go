@@ -189,7 +189,7 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 		if !strings.HasPrefix(strings.TrimSpace(line), "STEP:") {
 			continue
 		}
-		if gateNeedsHostRE.MatchString(line) {
+		if gateNeedsHost(line, o.Names) {
 			add(GateHostCheck, i+1, "this STEP tells the worker to ssh to a named host or run the gate on a named host, which the sprint forbids; "+GateHostRemedy)
 		}
 	}
@@ -205,8 +205,37 @@ const (
 	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
 )
 
-// gateNeedsHostRE is a host-based gate instruction in a STEP line: `ssh <host>` or `on <host>`.
-var gateNeedsHostRE = regexp.MustCompile(`(?i)(\bssh\s+[a-z][a-z0-9-]*\b|\bon\s+[a-z][a-z0-9-]*\b)`)
+// gateNeedsHostRE finds `ssh <token>` or `on <token>` in a STEP line; the token is held
+// host-like by gateNeedsHost, so an ordinary "on the member" (no host) passes.
+var gateNeedsHostRE = regexp.MustCompile(`(?i)\b(ssh|on)\s+([a-z][a-z0-9-]*)\b`)
+
+// gateNeedsHost says a STEP line names a host it runs its gate on: `ssh <host>` or
+// `on <host>`, where host is host-like (hostLike).
+func gateNeedsHost(line string, names []string) bool {
+	for _, m := range gateNeedsHostRE.FindAllStringSubmatch(line, -1) {
+		if hostLike(m[2], names) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostLike says tok is a host the lint refuses to run a gate on: a fleet member/host
+// name, or a token that carries a digit or hyphen and is not a stop word ("the", "a",
+// "this", "its"). "the" in "on the member" names no host and passes.
+func hostLike(tok string, names []string) bool {
+	tok = strings.ToLower(tok)
+	for _, n := range names {
+		if strings.ToLower(strings.TrimSpace(n)) == tok {
+			return true
+		}
+	}
+	switch tok {
+	case "the", "a", "this", "its":
+		return false
+	}
+	return strings.ContainsAny(tok, "0123456789-")
+}
 
 // byRE is a By: trailer named in a line and the word after it, past any <, backquote,
 // quote or asterisk; a By: inside a longer key (Co-Authored-By:) is no By:.

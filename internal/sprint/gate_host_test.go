@@ -63,7 +63,14 @@ func TestGateHostLintRefusesHostInstructionsInAStep(t *testing.T) {
 		require.NotEmpty(t, got, line)
 		assert.Contains(t, got[0], card.GateHostRemedy, line)
 	}
-	assert.Empty(t, card.Checks("c", "CARD: c\nSTEP: build\nTASK\nbuild the card\n", card.Options{}))
+	// A STEP that names no host — "on the member", an ordinary prose "on" — passes:
+	// only a host-like token (a fleet host name, or a digit/hyphen token that is not a
+	// stop word) is refused.
+	for _, line := range []string{"STEP: build", "STEP: run go test -count=1 ./internal/sprint/... on the member this card was dealt to, and read the last line"} {
+		for _, f := range card.Checks("c", "CARD: c\n"+line+"\nTASK\nrun the gate\n", card.Options{}) {
+			assert.NotEqual(t, card.GateHostCheck, f.Check, line)
+		}
+	}
 }
 
 // TestAGateNeedsLinuxCardIsNeverDealtToADarwinMember: the deal gives a GATE-NEEDS linux
