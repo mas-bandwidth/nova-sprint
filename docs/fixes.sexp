@@ -2903,11 +2903,17 @@
      attempt, from the readers table and the fleet read cards, each marked live, ghost or closed with its verdict;
      ask, ask --another, ask --instead, ReadsWanted, readCardsWanted/readCardsStanding, heavyRead and the doctor's
      readers check all rest on it, and a read card working on a row whose beat has not named it for LiveGrace (or
-     whose row is down, stale or held) reads as a ghost and does not stand. (e) A broken verdict whose finding is
+     whose row is down, stale or held) reads as a ghost and does not stand. (c) A dealt read is held or returned
+     every tick, never only at deal time: a read card working on a row whose fresh beat names it held for more than
+     HeldGrace (at most twice LiveGrace) is a ghost too, retired lost (spending no one) and dealt again in the same
+     tick's deal; the second ghost at one primary's attempt pushes one judgment (a read was lost twice) naming each
+     card, row and reason (tla-readcards-review-has-a-live-read-or-a-judgment). (e) A broken verdict whose finding is
      empty or whitespace is no verdict: the read returns it, so no card rests in review on empty findings. (f) The
      doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the cards. (g) `card
      <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's story instead of \"no primary\".
-     Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards (internal/sprint/ghost_read_test.go)."
+     Tests: TestAskAndAskAnotherAgreeOnAsked, TestDoctorCountsFleetReadCards,
+     TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain, TestASecondGhostAtOneAttemptPushesAJudgment
+     (internal/sprint/ghost_read_test.go)."
     :origin "this card, from the owner, 2026-10-12 ~04:25Z: \"OK these ghost reads are scary. Please fix.\"")
    (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
     :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"

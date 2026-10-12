@@ -293,6 +293,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	if s == nil || s.Fleet == nil {
 		return p
 	}
+	ghosted := map[string][]string{} // the primary's ghosts retired lost this tick, for the judgment below
 	for _, row := range s.Fleet.Rows() {
 		b := RowBeat(beats, row)
 		live := liveOf(b, s.Now)
@@ -308,7 +309,28 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		working := slices.Clone(s.Fleet.Cell(row, Working))
 		SortCards(working)
 		for _, c := range working {
-			if _, ok := live.names(c); ok {
+			if e, ok := live.names(c); ok {
+				if !e.Held || !isRead(c) {
+					continue // running, or a held work card (its report waits): alive
+				}
+				// a read card its row's beat names held: its child ended and its report was not
+				// taken, so no one reads it (docs/SPEC-SPRINT.md section 6, the reads). Past
+				// HeldGrace it is a ghost, retired lost and dealt again, as a read not named is
+				// below (tla-readcards-review-has-a-live-read-or-a-judgment).
+				gen := max(c.Int("gen"), 1)
+				if c.F("held_since") == "" {
+					p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+						Changes: []Change{change(Fleet, setEntry(c, map[string]string{"held_since": stamp(s.Now)}))},
+						Moved:   fmt.Sprintf("%s held on %s (its report waits)", c.ID, row)})
+					continue
+				}
+				held := stampAt(c, "held_since")
+				if s.Now.Sub(held) <= HeldGrace {
+					continue
+				}
+				why := fmt.Sprintf("held: %s's beats name %s held for %s", row, LiveKey(c.ID, gen), s.Now.Sub(held).Truncate(time.Second))
+				p.Units = append(p.Units, readLostUnit(s, c, gen, why, stopped))
+				ghosted[c.F("primary")] = append(ghosted[c.F("primary")], c.ID+" on "+orDash(c.F("reader"))+" ("+why+")")
 				continue
 			}
 			gen := max(c.Int("gen"), 1)
@@ -331,6 +353,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				// deal picks, this one included (v1.2.14, a-member-hands-back-a-read-it-is-not-
 				// running; tla/ReadCards.tla LiveReturn, NamedOrWithinGrace)
 				p.Units = append(p.Units, readLostUnit(s, c, gen, why, stopped))
+				ghosted[c.F("primary")] = append(ghosted[c.F("primary")], c.ID+" on "+orDash(c.F("reader"))+" ("+why+")")
 				continue
 			}
 			set := map[string]string{
@@ -350,7 +373,41 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				Moved:   fmt.Sprintf("%s working -> ready on %s gen=%d (%s)", c.ID, row, gen+1, why)})
 		}
 	}
+	// The second ghost at one primary's attempt pushes one judgment (docs/SPEC-SPRINT.md
+	// section 6, the reads; tla-readcards-review-has-a-live-read-or-a-judgment): count the
+	// read cards retired lost at each primary's current attempt, and judge the ones with two
+	// or more, once, naming each card, row and reason. The judgment is an alarm, never a hold:
+	// the deal asks the read again whatever its member's beats say.
+	if s.Work != nil && s.Fleet != nil {
+		for _, pr := range s.Work.Column(Review) {
+			attempt := max(pr.Int("attempt"), 1)
+			var lost []string
+			for _, c := range s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+".") {
+				if isRead(c) && c.F("retired_by") == RetiredByLost {
+					lost = append(lost, c.ID+" on "+orDash(c.F("reader"))+" ("+orDash(c.F("lost_reason"))+")")
+				}
+			}
+			lost = append(lost, ghosted[pr.ID]...)
+			if len(lost) < 2 || openLostTwice(s, pr.ID) {
+				continue
+			}
+			n := judgment(NLostTwice, pr.Row, s.Now, 0, pr.ID)
+			n.What = "a read was lost twice at attempt " + itoa(attempt) + ": " + strings.Join(lost, "; ")
+			p.Notes = append(p.Notes, n)
+		}
+	}
 	return p
+}
+
+// openLostTwice says the primary already has the lost-twice judgment open on it: the
+// judgment is raised once while it stands, never anew each tick.
+func openLostTwice(s *Snapshot, id string) bool {
+	for _, o := range s.Open {
+		if o.Note.Type == NLostTwice && o.Subject() == id {
+			return true
+		}
+	}
+	return false
 }
 
 // readLostUnit is the reconcile's return of a read card its row's live set has not named for

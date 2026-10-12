@@ -75,6 +75,83 @@ func TestAskAndAskAnotherAgreeOnAsked(t *testing.T) {
 	}
 }
 
+// TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain pins the held bound
+// (docs/SPEC-SPRINT.md section 6, the reads): a working read card whose row's fresh beat
+// names it held past HeldGrace is a ghost, retired lost (spending no one) and dealt to
+// another unit in the same tick's deal (tla-readcards-review-has-a-live-read-or-a-judgment).
+func TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain(t *testing.T) {
+	t.Parallel()
+	w := readCardsWorld(t, 4, "m1", "m2", "m3")
+	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+	dealReads(t, w, nil)
+	reads := readCardsOf(w, "s1-1")
+	require.Len(t, reads, 1)
+	rc := reads[0]
+	first := rc.Row
+	w.must(Take(w.s, TakeReq{As: first, Sel: Sel{Limit: -1}, Who: first}))
+	rc = w.s.Fleet.Card(rc.ID)
+	require.Equal(t, Working, rc.Col)
+	gen := max(rc.Int("gen"), 1)
+	b := memberBeat(Beat{}, w.s.Now, LiveKey(rc.ID, gen))
+	reconcile(w, b) // named running: alive
+
+	b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+	reconcile(w, b)
+	require.Equal(t, Working, w.s.Fleet.Card(rc.ID).Col, "named held, within HeldGrace: the read stays working")
+	require.NotEmpty(t, w.s.Fleet.Card(rc.ID).F("held_since"), "the held mark is recorded")
+
+	w.tick(HeldGrace + time.Second)
+	b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+	reconcile(w, b)
+	old := w.s.Fleet.Card(rc.ID)
+	require.NotNil(t, old)
+	require.False(t, old.Placed(), "the held read is off the member's row")
+	require.Equal(t, RetiredByLost, old.F("retired_by"), "retired lost: no reader spent")
+	require.Equal(t, gen, old.Int("lost_from_gen"))
+	require.Contains(t, old.F("lost_reason"), "held")
+	dealReads(t, w, nil)
+	again := readCardsOf(w, "s1-1")
+	require.Len(t, again, 1, "the read is dealt again in the same tick's deal")
+	require.NotEqual(t, rc.ID, again[0].ID, "a fresh card of the attempt")
+	require.NotEqual(t, first, again[0].Row, "dealt to another unit")
+}
+
+// TestASecondGhostAtOneAttemptPushesAJudgment pins the one judgment (docs/SPEC-SPRINT.md
+// section 6, the reads): a read card whose row's beat names it held past HeldGrace is a
+// ghost; the second ghost at one primary's attempt pushes one judgment naming each card,
+// row and reason (tla-readcards-review-has-a-live-read-or-a-judgment).
+func TestASecondGhostAtOneAttemptPushesAJudgment(t *testing.T) {
+	t.Parallel()
+	w := readCardsWorld(t, 4, "m1", "m2")
+	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+	for i := 0; i < 2; i++ {
+		dealReads(t, w, nil)
+		reads := readCardsOf(w, "s1-1")
+		require.Len(t, reads, 1)
+		rc := reads[0]
+		first := rc.Row
+		w.must(Take(w.s, TakeReq{As: first, Sel: Sel{Limit: -1}, Who: first}))
+		rc = w.s.Fleet.Card(rc.ID)
+		gen := max(rc.Int("gen"), 1)
+		b := memberBeat(Beat{}, w.s.Now, LiveKey(rc.ID, gen))
+		reconcile(w, b)
+		b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+		reconcile(w, b)
+		w.tick(HeldGrace + time.Second)
+		b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+		reconcile(w, b)
+		require.False(t, w.s.Fleet.Card(rc.ID).Placed(), "ghost %d retired lost", i+1)
+	}
+	var lost []Note
+	for _, n := range w.notes {
+		if n.Type == NLostTwice {
+			lost = append(lost, n)
+		}
+	}
+	require.Len(t, lost, 1, "one judgment for two ghosts at one attempt: %v", w.notes)
+	require.Contains(t, lost[0].Primaries, "s1-1")
+}
+
 // TestDoctorCountsFleetReadCards pins the doctor's readers check counting the fleet read
 // cards the readers-table check cannot see (docs/SPEC-SPRINT.md section 6, the reads): a
 // read card working on a row whose fresh beat has not named it for LiveGrace is a ghost,

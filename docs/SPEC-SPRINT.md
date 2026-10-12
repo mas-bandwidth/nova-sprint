@@ -3448,7 +3448,13 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   stand. A broken verdict whose finding is empty or whitespace is no verdict: the read returns
   it. The doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the
   cards; `card <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's
-  story.
+  story. A dealt read is held or returned every tick, never only at deal time: a read card
+  working on a row whose fresh beat names it held for more than `HeldGrace` (at most twice
+  `LiveGrace`) is a ghost too, retired lost (spending no one) and dealt again in the same
+  tick's deal; the second ghost at one primary's attempt pushes one judgment ("a read was
+  lost twice") naming each card, row and reason. The twin is
+  `tla-readcards-review-has-a-live-read-or-a-judgment`, which models the bound as
+  `ReviewHasLiveReadOrJudgment`.
 
 - **The interim rules of 2026-10-06, until read cards** (the owner, 7:25 PM ET: "fix it
   now, to work around it"; the read-cards change (PR 5392) replaces
