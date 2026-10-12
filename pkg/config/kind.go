@@ -215,6 +215,19 @@ const (
 	DefaultFriendMode = FriendModeBatch
 )
 
+// FriendPronounSets are the friend row's explicit pronoun choices, matching nova-config.
+var FriendPronounSets = []string{"she/her", "he/him", "they/them"}
+
+const DefaultFriendPronouns = "they/them"
+
+// FriendPronouns reads the stored choice, defaulting only an unstated value.
+func FriendPronouns(r Row) string {
+	if p := r.Fields["pronouns"]; p != "" {
+		return p
+	}
+	return DefaultFriendPronouns
+}
+
 // FriendMode is a friend row's delivery mode: its mode field,
 // DefaultFriendMode when the row has none.
 func FriendMode(r Row) string {
@@ -496,6 +509,7 @@ var Kinds = []*Kind{
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
 			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs she works at once, the width nova-sprint friend sync sets on her friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
 			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how her daemon hands her work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
+			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
 			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, her account's login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
 			{Name: "token_cap", Type: TypeInt, Default: strconv.FormatInt(DefaultFriendTokenCap, 10), Help: "tokens one card may spend (input, cached input, output and reasoning summed) before a one-shot lane stops its own run and holds the card; " + strconv.FormatInt(DefaultFriendTokenCap, 10) + " by default, and 0 is no cap"},
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},

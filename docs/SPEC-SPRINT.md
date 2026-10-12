@@ -214,8 +214,12 @@ completions at or after it, so a reset shows `done 0` until the next completion.
 readers' verdicts on its work), so reads never move it.
 
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
-<friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>`, her nova-config row
-as friend sync last copied it, which is how her daemon reads her delivery mode;
+<friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>
+row_pronouns=<she/her|he/him|they/them>`, her nova-config row as friend sync last
+copied it, which is how her daemon reads her delivery mode and explicit pronouns.
+A pronoun-only change is copied by the next sync and returned by both plain and
+JSON beats; a legacy roster defaults to they/them. The PostgreSQL column comes
+from the shared migration 0038;
 docs/SPEC-FRIEND.md, one-shot lanes), which her own machinery
 runs every second (`FriendBeatEvery`) beside her harness (it writes
 `friend-beat:<friend>`, the time to the second, with what she reports of her
