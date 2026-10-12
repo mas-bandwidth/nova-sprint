@@ -5,7 +5,7 @@
 
 ## What is it?
 
-**nova-sprint** puts a fleet of AI workers to work across a fleet of machines linked by [tailscale](https://tailscale.com).
+**nova-sprint** puts a fleet of AI models to work across a fleet of machines linked by [tailscale](https://tailscale.com).
 
 ## More lanes. Finish faster.
 
