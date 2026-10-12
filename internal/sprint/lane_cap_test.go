@@ -30,7 +30,7 @@ func TestACappedLaneIsReDealtOnceAtTheNextTierUp(t *testing.T) {
 	assert.Contains(t, pr.F(FieldCostRecord+"s1-1.w1#g1"), "end=capped at=")
 	assert.Contains(t, pr.F(FieldCostRecord+"s1-1.w1#g1"), "lane_cap=15m0s lane_overrun=3s")
 	wc := w.s.Fleet.Card("s1-1.w1")
-	assert.Equal(t, DoneFailed, wc.Col)
+	assert.Equal(t, Coordination, wc.Col)
 	assert.Equal(t, "15m0s", wc.F(FieldLaneCap))
 	assert.Equal(t, "3s", wc.F(FieldLaneOverrun))
 	cons := CardCostOf(pr)

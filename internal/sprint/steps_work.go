@@ -1793,7 +1793,11 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// tla/ProviderBudget.tla). A late report is the deadline's failed attempt and takes
 		// none of this.
 		if r.Failed && kind == "" && !late {
-			if cause := EnvFault(r.Report); cause != "" {
+			cause := EnvFault(r.Report)
+			if cause == "" {
+				cause = EnvDeathFault(r.Report)
+			}
+			if cause != "" {
 				envFaulted(s, c, pr, r, cause, who, &p, envSeen)
 				continue
 			}
@@ -2361,6 +2365,7 @@ const (
 	EnvTool    = "tool"
 	EnvSandbox = "sandbox"
 	EnvDisk    = "disk"
+	EnvDeath   = "death" // a 134/137 environment death: the machine killed the child, never the work
 	EnvOther   = "environment"
 )
 
@@ -2396,6 +2401,24 @@ func EnvFault(report string) string {
 		if c.re.MatchString(reason) {
 			return c.cause
 		}
+	}
+	return ""
+}
+
+// envDeathRE is the words of a 134/137 environment death: the child died on the
+// machine's environment (a sandbox cap, an abort, a signal kill), never on the work.
+var envDeathRE = regexp.MustCompile(`(?i)exit status 13[47]|signal: (killed|abort)|\bSIG(KILL|ABRT)\b|\b13[47]\b\s*(environment death|exit|signal|abort|killed)`)
+
+// EnvDeathFault classifies a failed finish's reason as a 134/137 environment death: its
+// cause (EnvDeath), or "" when it is none. The reason is the text before the first "; ",
+// as EnvFault reads it.
+func EnvDeathFault(report string) string {
+	reason := report
+	if i := strings.Index(report, "; "); i >= 0 {
+		reason = report[:i]
+	}
+	if envDeathRE.MatchString(reason) {
+		return EnvDeath
 	}
 	return ""
 }
