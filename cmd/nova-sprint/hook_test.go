@@ -1246,7 +1246,7 @@ func TestHookRenewBatchAndFailedWritePreserveTheLease(t *testing.T) {
 	s := ta.hookSession()
 	before, _ := ta.hookRecord()
 	ta.step(20 * time.Second)
-	s.touch(ta.a.now())
+	s.touch()
 	s.renewLive(context.Background())
 	after, _ := ta.hookRecord()
 	require.Equal(t, before, after, "less than one batch leaves the stored lease unchanged")
@@ -1254,7 +1254,7 @@ func TestHookRenewBatchAndFailedWritePreserveTheLease(t *testing.T) {
 	require.False(t, sprint.HookLive(after, true, name, ta.a.now()), "gate expires ten seconds before the last act's silence bound")
 	s.look(context.Background())
 	require.False(t, s.isEnded(), "gate expiry is not a silent lapse")
-	s.touch(ta.a.now())
+	s.touch()
 	ta.failHookWrite(1)
 	s.renewLive(context.Background())
 	after, _ = ta.hookRecord()
@@ -1345,4 +1345,132 @@ func TestHookKeepaliveCannotProveOrAcknowledge(t *testing.T) {
 	require.Equal(t, before.Unacked, after.Unacked)
 	require.Equal(t, before.Acked, after.Acked)
 	require.Contains(t, sprint.HookGate(after, true, name, ta.a.now()), "You must acknowledge push")
+}
+
+// Receipt and lapse use one mutex-ordered clock, not a timestamp sampled before
+// waiting for the session. This check needs no scheduler sleeps.
+func TestHookActivitySamplesTimeUnderItsMutex(t *testing.T) {
+	t.Parallel()
+	ta, _ := hookSprint(t, "hook-receipt-clock")
+	c := ta.hookOn("hook-receipt-clock")
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	clock := ta.a.now
+	now := clock().Add(time.Second)
+	underLock := false
+	ta.a.now = func() time.Time {
+		if s.mu.TryLock() {
+			s.mu.Unlock()
+		} else {
+			underLock = true
+		}
+		return now
+	}
+	s.touch()
+	ta.a.now = clock
+	require.True(t, underLock, "receipt time must be sampled at the mutex linearization point")
+}
+
+func TestHookLapseRechecksReceiptAndAcceptsEquality(t *testing.T) {
+	t.Parallel()
+	const name = "hook-lapse-recheck"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	ta.step(sprint.HookSilentBound)
+	s.look(context.Background())
+	require.False(t, s.isEnded(), "equality is live, not a lapse")
+	rec, _ := ta.hookRecord()
+	require.True(t, sprint.HookLive(rec, true, name, ta.a.now()), "the stored gate also accepts equality")
+	// A receipt at the exact bound wins before a later lapse attempt whose old
+	// snapshot was taken before that receipt. The NoteStep must reread the act.
+	s.touch()
+	ta.step(time.Nanosecond)
+	s.lapse(context.Background())
+	require.False(t, s.isEnded(), "a stale snapshot must not lapse an accepted receipt")
+	require.Empty(t, lapsesOf(ta))
+}
+
+type pauseLapseAcquire struct {
+	*store.Mem
+	entered, release chan struct{}
+	once             sync.Once
+	fail             bool
+}
+
+func (f *pauseLapseAcquire) AtEpoch(epoch uint64, old bool) store.Backend { return f }
+func (f *pauseLapseAcquire) Acquire(ctx context.Context, gen uint64, op store.OpRecord) (bool, error) {
+	first := false
+	f.once.Do(func() { first = true; close(f.entered); <-f.release })
+	if first && f.fail {
+		return false, errors.New("paused lapse note refused")
+	}
+	return f.Mem.Acquire(ctx, gen, op)
+}
+
+func TestHookLapseClaimOrdersConcurrentReceipt(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("note-fails-%t", fail), func(t *testing.T) {
+			t.Parallel()
+			name := fmt.Sprintf("hook-claim-%t", fail)
+			ta, _ := hookSprint(t, name)
+			c := ta.hookOn(name)
+			c.next("hello")
+			require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+			s := ta.hookSession()
+			f := &pauseLapseAcquire{Mem: ta.m, entered: make(chan struct{}), release: make(chan struct{}), fail: fail}
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(f.release) }) }
+			t.Cleanup(release)
+			ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return f, nil }
+			ta.step(sprint.HookSilentBound + time.Nanosecond)
+			done := make(chan struct{})
+			go func() { s.lapse(context.Background()); close(done) }()
+			select {
+			case <-f.entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("lapse did not reach NoteStep")
+			}
+			// The claim has happened, but the store has not committed. mu must be free:
+			// this receipt cannot undo a successful lapse, and must survive a failed one.
+			touched := make(chan struct{})
+			go func() { s.touch(); close(touched) }()
+			select {
+			case <-touched:
+			case <-time.After(3 * time.Second):
+				t.Fatal("activity blocked behind the store write")
+			}
+			s.mu.Lock()
+			claimed, acted := s.lapseClaimed, s.acted
+			s.mu.Unlock()
+			require.True(t, claimed)
+			require.Equal(t, ta.a.now(), acted)
+			release()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("lapse did not finish")
+			}
+			if !fail {
+				require.True(t, s.isEnded(), "an act after the claim cannot cancel a successful lapse")
+				require.Equal(t, map[string]int{name: 1}, lapsesOf(ta))
+				return
+			}
+			require.False(t, s.isEnded())
+			s.mu.Lock()
+			claimed = s.lapseClaimed
+			s.mu.Unlock()
+			require.False(t, claimed, "failed note releases the claim")
+			s.look(context.Background())
+			require.False(t, s.isEnded(), "the concurrent receipt survives a failed note")
+			require.Empty(t, lapsesOf(ta))
+			ta.step(sprint.HookSilentBound + time.Nanosecond)
+			s.look(context.Background())
+			require.True(t, s.isEnded(), "a later actual silence still lapses")
+			require.Equal(t, map[string]int{name: 1}, lapsesOf(ta))
+		})
+	}
 }

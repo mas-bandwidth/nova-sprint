@@ -269,11 +269,12 @@ type hookSession struct {
 	// proves only that the transport is alive (the client's process holds the stream),
 	// never that the seat, or a person, is attending: the pushes and the lapse judgment
 	// are how a seat that is not attending is told (docs/SPEC-SPRINT.md, "The hook").
-	acted   time.Time
-	liveAt  time.Time // the Live the record was last written with
-	ended   bool
-	done    chan struct{}
-	endOnce sync.Once
+	acted        time.Time
+	liveAt       time.Time // the Live the record was last written with
+	ended        bool
+	lapseClaimed bool // a mutex-ordered lapse decision awaiting its NoteStep
+	done         chan struct{}
+	endOnce      sync.Once
 }
 
 func (a *app) hookHub() *hookHub {
@@ -501,7 +502,7 @@ func (s *hookSession) read(ctx context.Context) string {
 			// the hook client's keepalive, every sprint.HookKeepalive while its process holds
 			// the stream: the transport is alive (no more: it is no proof the seat attends),
 			// so a connected hook is not lapsed for a quiet seat; answered by nothing
-			s.touch(s.a.now())
+			s.touch()
 		case "unhook":
 			s.end(ctx, sprint.HookAway, "nova-sprint unhook")
 			_ = s.send(hookMsg{T: "ok", Of: "unhook", Req: m.Req, Name: s.name}) // ignored: the end is recorded
@@ -601,7 +602,7 @@ func (s *hookSession) ack(ctx context.Context, id uint64, session string) hookMs
 	if err != nil {
 		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
 	}
-	s.touch(s.a.now()) // an acknowledgement is an act of the seat
+	s.touch() // an acknowledgement is an act of the seat
 	return hookMsg{T: "ok", ID: id, Unacked: rec.Unacked, Live: rec.Live}
 }
 
@@ -683,7 +684,7 @@ func (s *hookSession) look(ctx context.Context) {
 		s.end(ctx, sprint.HookGone, fmt.Sprintf("the challenge sent at %s was not answered within %s", chalAt.UTC().Format(time.RFC3339), sprint.HookAnswerBound))
 		return
 	case !proven.IsZero() && now.Sub(acted) > sprint.HookSilentBound:
-		s.lapse(ctx, acted)
+		s.lapse(ctx)
 		return
 	}
 	s.renewLive(ctx)
@@ -795,11 +796,17 @@ func (s *hookSession) look(ctx context.Context) {
 	}
 }
 
-// touch records an act at now: the proof, an acknowledgement, a coordinator verb, or the
-// client's keepalive (transport only). The next look moves the record's Live on from it.
-func (s *hookSession) touch(now time.Time) {
+// touch accepts activity at the session mutex, sampling its clock only after taking
+// that mutex (SPEC-SPRINT.md, The hook). A socket read waiting for this lock is not
+// yet an accepted receipt. A previously claimed lapse cannot be cancelled, but an
+// act during its NoteStep is retained if that write fails and the claim is released.
+func (s *hookSession) touch() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ended {
+		return
+	}
+	now := s.a.now()
 	if now.After(s.acted) {
 		s.acted = now
 	}
@@ -851,16 +858,46 @@ func (s *hookSession) renewLive(ctx context.Context) {
 // that fails leaves the subscription as it is, says so on the SEAT HOOK line, and the next
 // look (hookLook later) tries again (Stella's read of #124: the lapse is never told without
 // its judgment).
-func (s *hookSession) lapse(ctx context.Context, acted time.Time) {
-	why := fmt.Sprintf("no act past %s: the last at %s (no verb, no acknowledgement, and no keepalive from the hook client: the transport went quiet too)", sprint.HookSilentBound, acted.UTC().Format(time.RFC3339))
+func (s *hookSession) lapse(ctx context.Context) {
+	var why string
+	claimed := false
 	err := s.a.onLine(ctx, func(st *store.Store) error {
+		// The look's earlier snapshot is only a hint. Order the final decision
+		// with receipts under mu, while holding the normal serial -> mu order.
+		// Never hold mu across the store operation: a claim records the decision.
+		// Do not take the hub mutex here: replacement holds it while waiting
+		// for the serial line. The durable session is authoritative on this line.
+		r, ok, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		if !ok || r.Session != s.id {
+			return nil
+		}
+		s.mu.Lock()
+		acted := s.acted
+		if s.ended || s.lapseClaimed || s.proven.IsZero() || !s.a.now().After(acted.Add(sprint.HookSilentBound)) {
+			s.mu.Unlock()
+			return nil
+		}
+		s.lapseClaimed, claimed = true, true
+		s.mu.Unlock()
+		why = fmt.Sprintf("no act past %s: the last at %s (no verb, no acknowledgement, and no keepalive from the hook client: the transport went quiet too)", sprint.HookSilentBound, acted.UTC().Format(time.RFC3339))
 		n := sprint.Note{Kind: sprint.Judgment, Type: sprint.NHookLapsed, StreamLevel: true, Who: s.name, What: s.name + "'s hook lapsed: " + why + "; run: nova-sprint hook",
 			Decisions: []string{"nova-sprint hook", "ack"}}
-		_, err := st.Run(ctx, store.NoteStep("hook", n))
+		_, err = st.Run(ctx, store.NoteStep("hook", n))
 		return err
 	})
 	if err != nil {
+		if claimed {
+			s.mu.Lock()
+			s.lapseClaimed = false
+			s.mu.Unlock()
+		}
 		s.a.serveSay("SEAT HOOK name=%s: the lapse's judgment could not be written, tried again at the next look: %s", s.name, oneline.Escape(err.Error()))
+		return
+	}
+	if !claimed {
 		return
 	}
 	_ = s.send(hookMsg{T: "bye", Why: why + ": the seat is recorded gone; run nova-sprint hook again"}) // ignored: it is ended either way
@@ -904,7 +941,7 @@ func (a *app) seatActs(actor string) {
 	cur := h.cur
 	h.mu.Unlock()
 	if cur != nil && cur.name == actor {
-		cur.touch(a.now())
+		cur.touch()
 	}
 }
 

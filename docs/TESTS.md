@@ -452,3 +452,6 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestHookRenewBatchAndFailedWritePreserveTheLease`: a 20-second act leaves the lease unchanged, the gate refuses before silence lapses, and a failed renewal preserves the record and retries.
 - `TestHookLapseFailedNoteRetriesBeforeEnding`: a refused NoteStep acquisition writes no judgment and ends nothing; retry writes one lapse and tells the owner once.
 - `TestHookKeepaliveCannotProveOrAcknowledge`: transport activity neither proves a new session nor changes pending ACK state or its blocking age.
+
+- `TestHookActivitySamplesTimeUnderItsMutex` and `TestHookLapseRechecksReceiptAndAcceptsEquality`: clock sampling is mutex-ordered, deadline equality stays live, and a stale look cannot lapse a newer accepted receipt.
+- `TestHookLapseClaimOrdersConcurrentReceipt`: a paused NoteStep leaves the session mutex free; later activity cannot cancel a successful lapse but is retained when the note fails, after which a later actual silence still lapses.
