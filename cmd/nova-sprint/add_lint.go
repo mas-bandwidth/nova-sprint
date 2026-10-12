@@ -18,6 +18,10 @@ import (
 // briefCheck is one brief of an add held to the card checks, under the id it is admitted as.
 type briefCheck struct {
 	id, brief string
+	// stream is the stream the brief is added to, "" when it is not one stream: a stream
+	// that names a default tier (stream set --default-tier) stands for a line 1 that names
+	// none, so its tier-line finding is not held (the card is stored with the default)
+	stream string
 }
 
 // holdCardChecks holds each brief of an add to the card checks nova-card generate holds
@@ -51,8 +55,23 @@ func (a *app) holdCardChecks(verbName string, st *store.Store, stderr io.Writer,
 	}
 	opts := card.Options{Names: personal(names), Dropped: droppedIDs(s)}
 	var red []cardgen.LintFinding
+	defaults := map[string]string{}
 	for _, b := range briefs {
-		red = append(red, card.Checks(b.id, b.brief, opts)...)
+		for _, f := range card.Checks(b.id, b.brief, opts) {
+			if f.Check == "tier-line" && b.stream != "" {
+				t, ok := defaults[b.stream]
+				if !ok {
+					if t, err = streamDefaultTier(ctx, st, b.stream); err != nil {
+						return a.readFailed(verbName, err, stderr)
+					}
+					defaults[b.stream] = t
+				}
+				if t != "" {
+					continue // stored with the stream's default tier (sprint.FieldDefaultTier)
+				}
+			}
+			red = append(red, f)
+		}
 	}
 	if len(red) == 0 {
 		return 0
@@ -92,4 +111,17 @@ func personal(names []string) []string {
 		}
 	}
 	return out
+}
+
+// streamDefaultTier is the tier the stream names for a card whose line 1 names none
+// (sprint.FieldDefaultTier, stream set --default-tier); "" when it names none.
+func streamDefaultTier(ctx context.Context, st *store.Store, stream string) (string, error) {
+	s, err := st.Load(ctx, []string{sprint.Merge}, nil)
+	if err != nil {
+		return "", err
+	}
+	if ctl := s.StreamCtl(stream); ctl != nil {
+		return ctl.F(sprint.FieldDefaultTier), nil
+	}
+	return "", nil
 }

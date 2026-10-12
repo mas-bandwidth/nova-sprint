@@ -62,7 +62,7 @@ func TestADealtPacketAlwaysNamesItsTier(t *testing.T) {
 		assert.Equal(t, now, p.Tier, "the packet of %s names the tier its card is on", p.Card)
 	}
 	assert.Equal(t, map[string]string{
-		"s1-1": "flash", // the brief's line 1 is its ceiling: dealt on flash first, to the flash friend
+		"s1-1": "heavy", // the brief's line 1 is the tier it is dealt on: heavy, never flash
 		"s1-2": "flash", // no tier: the default
 		"s1-3": "pro",   // brief --tier pins it over line 1
 		"f1-1": "flash", // a friend's card with no tier: the default, on the flash friend

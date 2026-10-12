@@ -55,6 +55,8 @@ func TestACardWithTwoProviderFailuresGoesToAFriendNotAnUnfundedRoute(t *testing.
 				{Name: "fl", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 				{Name: "pr", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true},
 			}
+			// on flash below its ceiling, from before line 1 was its start
+			w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RouteFlash
 			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 			pr := w.s.Primary("s1-1")
 			require.Equal(t, cardhdr.RouteFlash, pr.F(FieldTierNow), "flash first")
