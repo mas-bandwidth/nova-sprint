@@ -229,9 +229,7 @@ type Plan struct {
 	Tier    string
 	Skipped []string
 	// Shared is true when two cards of the plan name one file in their PATHS and
-	// neither needs the other; such a pair is refused unless the path is a lander-
-	// owned ledger or a needs edge chains them (docs/SPEC-CARD-CONTRACT.md, the
-	// shared-path rule).
+	// neither needs the other: the add needs --allow-shared-paths.
 	Shared bool
 }
 
@@ -243,9 +241,8 @@ const MaxPaths = 8
 // every ledger: the lander resolves a ledger conflict as the union of removals, so
 // adjacent deletions of one file no longer conflict (docs/SPEC-CARD-CONTRACT.md
 // section 6, generated cards). Every card shares the ledger's path and none needs
-// another, so Shared notes the overlap; the ledger's path is a lander-owned ledger,
-// so the pair is admitted even without an edge; a generated ledger
-// (docs/SPEC-SPRINT.md section 7) plans the same. prefix opens every id;
+// another, so Shared tells the add it wants --allow-shared-paths; a generated
+// ledger (docs/SPEC-SPRINT.md section 7) plans the same. prefix opens every id;
 // tier "" takes the ledger's own; max keeps the first max cards (0 is all), cut
 // before the plan is rendered so no kept card needs a cut one.
 func PlanLedger(l Ledger, rows []Row, prefix, tier string, max int) Plan {
@@ -284,9 +281,8 @@ func PlanLedger(l Ledger, rows []Row, prefix, tier string, max int) Plan {
 	for i := range p.Cards {
 		p.Cards[i].Wave = 1
 	}
-	// every card is wave 1 and names the ledger in PATHS, and none needs another;
-	// the ledger is a lander-owned ledger, so the pair is admitted (docs/SPEC-CARD-
-	// CONTRACT.md, the shared-path rule)
+	// every card is wave 1 and names the ledger in PATHS, and none needs another:
+	// two cards make the add want --allow-shared-paths
 	p.Shared = len(cards) > 1
 	return p
 }
