@@ -5846,7 +5846,7 @@ to one friend waits while she is not up. A judgment that holds a card (a kind of
 internal/sprint/wait_refused.go: the one table of the judgments a card waits on the seat
 for, the same table `wait` refuses by) is never left unanswered. Two rules.
 
-(a) What has a safe default the machine answers itself, with no seat verb:
+(a) What has a safe default the system answers itself, with no seat verb:
 
 - **Reads passed: accepted.** A card in review whose required reads have all passed at its
   head is accepted by the tick, never a "ready to accept" judgment, also after a return
@@ -5860,7 +5860,7 @@ for, the same table `wait` refuses by) is never left unanswered. Two rules.
   has stood DeadlineJudgment of running time (PinReleaseBound; it was an hour). The tick
   judges the deadline, since it alone holds the STOPPED spans, and records the release
   (`a hard pin was released at its deadline`, an acknowledged note naming the stop's note);
-  the deals read the record, so a machine stopped past the deadline releases nothing when
+  the deals read the record, so a system stopped past the deadline releases nothing when
   it resumes.
 - **No route serves its tier: raised.** Once "no route serves the tier" is past its
   deadline, each ready card it holds is raised to the nearest tier above its own that a
