@@ -29,8 +29,7 @@ Cards move through the system automatically:
 <img width="1182" height="193" alt="image" src="https://github.com/user-attachments/assets/20dcb37c-547d-454b-ae8f-178b8538abfb" />
 
 A card waits for its prerequisites, takes an available lane, and goes
-through implementation, independent review, checks, and landing. Findings
-go back for rework.
+through implementation, independent review, checks, and landing.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
 estimated finish time. 
