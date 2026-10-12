@@ -22,6 +22,7 @@ import (
 func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) (*world, FriendSeat) {
 	t.Helper()
 	w := newWorld(t)
+	w.readersTable() // this priority fixture exercises legacy full-width reads
 	w.s.Work.SetRows([]string{"s1", "s2", "s3"})
 	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}
 	if working > 0 {
@@ -246,6 +247,7 @@ func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T, tiers map[string]string, readers ...string) *world {
 		w := newWorld(t, readers...)
+		w.readersTable() // these tier assertions observe the readers table
 		w.s.Routes = []Route{
 			{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 			{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "p", Enabled: true},

@@ -51,6 +51,7 @@ func TestLandingPushCountsFinishedFriendReadsAfterAccept(t *testing.T) {
 func TestLandingPushCountsActiveFriendReadsWithReadCardsOff(t *testing.T) {
 	t.Parallel()
 	h := inReview(t, 1)
+	h.readersTable()
 	require.False(t, h.snap().ReadCardsOn(), "exercise the supported legacy friend-ask path")
 	for _, rd := range []string{"reader-a", "reader-b", "reader-c"} {
 		require.NoError(t, h.st.SetReaderAway(h.ctx, rd, true, "coordinator"))

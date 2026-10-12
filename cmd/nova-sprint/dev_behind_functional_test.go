@@ -83,6 +83,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	}
 
 	run("init --readers reader-a,reader-b --members m1")
+	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	// one held card keeps the sprint open, so the dev-is-behind judgment still runs
 	run("add --stream s0 --count 1 --one --held --land-protected any")
 	run("start")

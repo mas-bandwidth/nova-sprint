@@ -70,7 +70,11 @@
    (release "v1.2.16" :status "planned"
     :text "Every TLA+ model checked against the code."))
   :items
-   ((fix "hook-refusal-counts-only-its-own-writes" :release "v1.2.16" :status "planned"
+   ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
+     :title "Read cards are on by default"
+     :origin "The owner, 2026-10-12, surgical sieve item 1: default to the working sprint machine."
+     :text "A missing read_cards work-table property kept fresh, existing and cleared sprints on the legacy readers-table producer. Only an explicit off now disables read cards; absent, default and on use the card producer. The CLI help and reset result say the same default. Real command regressions cover fresh and existing propertyless stores, repeated init preserving explicit on and off, set default and clear restoring on, and the explicit-off legacy producer. Generic test harnesses stay propertyless; fixtures and diagnostic walks intentionally using the legacy readers table opt off, and the reference model carries that setting. The exact first-run transcript and real walkthrough exercise native member read cards on the default, and cleared-sprint release acceptance lands through those reads without seat actions. No new property, config field, migration, alarm, warning or model.")
+    (fix "hook-refusal-counts-only-its-own-writes" :release "v1.2.16" :status "planned"
      :title "The hook refusal fixture counts only its own writes"
      :text "Tests only. refusedFirst read Mem.Calls outside the server's control line while hookServerStart's background Coordinator read incremented the same map. It now holds the existing line across both apply-count reads and the refused command, keeping the exit, output, hook breadcrumb and no-write assertions. TestHookRefusalCountsOnlyItsOwnWrites queues the refusal behind the line, commits a real in-memory AddStep, then releases it: the old helper attributes that preceding write to the refused command, while the fixed helper counts only its own turn. No production store API or hook behavior changes."
      :origin "The full cmd/nova-sprint race gate at 3378f509, 2026-10-12: Mem.count versus testApp.applies in TestADropIsGoneAndUnhookIsAway; the implicated source predates the run-output change.")

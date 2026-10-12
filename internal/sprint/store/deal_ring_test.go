@@ -42,6 +42,8 @@ func (r ringTick) String() string {
 // ringFleet adds the members as the owner's fleet has them (rows, down until
 // they beat), then has every one of them beat.
 func ringFleet(h *harness) {
+	h.readersTable() // this fixture consumes standalone readers
+
 	h.t.Helper()
 	for _, m := range ringMembers {
 		h.must(FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "tester", Probe: sprint.EnvProbePassed}))

@@ -33,7 +33,8 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 		t.Helper()
 		return world.runVerb(strings.Fields(line)...)
 	}
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "add --stream s1 --count 2", "fleet beat m1", "start",
+	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+		"add --stream s1 --count 2", "fleet beat m1", "start",
 		// the first tick's fleet update (last in the tick) brings m1 up; the
 		// second tick's pump deals to it
 		"tick", "tick",

@@ -326,6 +326,10 @@ func newDHarness(t testing.TB) *dHarness {
 	require.NoError(t, h.st.Init(h.ctx))
 	require.NoError(t, h.m.RowsAdd(h.ctx, "d-readers", dReaders))
 	require.NoError(t, h.m.SetCoordinator(h.ctx, dCoordinator))
+	// The reference model's ask is the supported legacy readers-table flow.
+	res, err := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: dCoordinator}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused)
 	h.model = refmodel.New(dReaders, nil, dCoordinator)
 	h.Acted, h.Tried = map[string]int{}, map[string]int{}
 	h.seen = map[string]map[string]bool{}
@@ -648,6 +652,12 @@ func (h *dHarness) engine(a dAction, pre refmodel.State) (refused string, cutOK 
 		return run(ResolveStep(sprint.ResolveReq{Sel: sprint.Sel{IDs: a.IDs}})), cutOK
 	case "clear":
 		_, err := h.st.Clear(h.ctx)
+		if err == nil {
+			// Clear restores default-on; this model continues testing the legacy ask.
+			res, setErr := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: dCoordinator}))
+			require.NoError(h.t, setErr)
+			require.Empty(h.t, res.Refused)
+		}
 		return engineErr(err, nil), cutOK
 	}
 	require.FailNow(h.t, fmt.Sprintf("unknown action %q", a.Kind))

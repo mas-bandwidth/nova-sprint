@@ -32,6 +32,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		t.Parallel()
 		// no paid reader: amy (width 1, room 2) takes s1-1 and s1-2, and s1-3 has no one
 		w := newWorld(t)
+		w.readersTable() // this group explicitly tests the pre-card ask
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
@@ -79,6 +80,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 	t.Run("a paid reader with room takes it and no judgment is raised", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // this group explicitly tests the pre-card ask
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
 		}
@@ -90,6 +92,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 	t.Run("a read below frontier that waits is no frontier judgment", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
+		w.readersTable() // this group explicitly tests the pre-card ask
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: pro\n", 1, float64(i+1), primHead)
@@ -101,6 +104,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 	t.Run("the hold of a waiting read says the judgment's cause", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
+		w.readersTable() // this group explicitly tests the pre-card ask
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
@@ -115,6 +119,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 	t.Run("no friend or reader up reads frontier is said when that is the cause", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
+		w.readersTable() // this group explicitly tests the pre-card ask
 		putReview(w, "s1-1", body("s1-1"), 1, 1, primHead)
 		require.Equal(t, "no friend or reader up reads frontier", frontierWhy(w.s, nil, &Plan{}, w.s.Work.Card("s1-1")))
 	})

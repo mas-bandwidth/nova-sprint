@@ -20,7 +20,7 @@ import (
 )
 
 // TestANewStreamLandsOnItsOwnBranchWithNoSetting runs a real landing on a private store
-// with defaults only (no --base, no --land-protected): two cards cut on dev, added to a
+// with default landing settings (no --base, no --land-protected): two cards cut on dev, added to a
 // new stream s, are finished, accepted and landed, and origin gains sprint/s holding both
 // heads, oldest first, while origin's dev is unchanged (docs/SPEC-SPRINT.md section 7, the
 // sprint branch).
@@ -92,6 +92,7 @@ func TestANewStreamLandsOnItsOwnBranchWithNoSetting(t *testing.T) {
 	}
 
 	run("init --readers reader-a,reader-b --members m1")
+	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	run("add --stream s s-1 --one --brief-file " + briefFile("s-1"))
 	run("add --stream s s-2 --one --brief-file " + briefFile("s-2"))
 	run("fleet beat m1")

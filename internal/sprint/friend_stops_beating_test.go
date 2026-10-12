@@ -17,6 +17,7 @@ func TestAFriendWhoStopsBeatingIsDownAndHerCardsComeBack(t *testing.T) {
 	t.Parallel()
 
 	w := friendWorld(t, friendBrief("only friend amy"))
+	w.readersTable() // explicit legacy reader-table fixture
 	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.NotNil(t, wc, "amy holds a work card")

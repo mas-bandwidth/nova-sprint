@@ -143,6 +143,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	perStream := drivePerStream
 	total := driveStreams * perStream
 	do(world, "init", "--readers", "reader-a,reader-b,reader-c", "--members", strings.Join(spec, ","))
+	do(world, "set", "--read-cards", "off") // the drive has three standalone legacy reader actors
 	// Each stream's cards are cut on its sprint branch, as the coordinator cuts them,
 	// and the drive's landing pushes them there (THE LANDING FLOW): the dev-is-behind
 	// rule counts only cards landed on a sprint branch.

@@ -164,6 +164,7 @@ func TestARefuserBelowItsRoomDoesNotStallACardItRefused(t *testing.T) {
 func TestARefuserBelowItsRoomStillStallsACardItMayTake(t *testing.T) {
 	t.Parallel()
 	w, x, _ := refusedAtStaging(t, 5)
+	w.readersTable() // explicit legacy reader-table fixture
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-3.w1"}}, Gens: gensOf(w.s, "s1-3.w1")}))
 	require.Zero(t, widthHeld(w, x))
 	w.s.Fleet.Put(&Card{ID: "s1-5.w1", Row: x, Col: Done, Score: 5, Rev: 1, Fields: map[string]string{"kind": "work", "primary": "s1-5"}})

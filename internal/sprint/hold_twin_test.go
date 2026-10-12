@@ -49,6 +49,10 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// This rig consumes the standalone legacy readers table.
+	readMode, readErr := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
+	require.NoError(t, readErr)
+	require.Empty(t, readMode.Refused)
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()

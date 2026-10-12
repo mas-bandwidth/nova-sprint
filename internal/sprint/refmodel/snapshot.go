@@ -94,7 +94,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 // facts and episode (the deadlines duty, sprint.TickLandingStall), and the unserved tier's
 // fallback setting (the unserved fallback duty, sprint.TickUnservedFallback).
 var CarriedProps = []string{sprint.PropStatusSeen, sprint.PropLastLanding, sprint.PropLandRefusal,
-	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo}
+	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo, sprint.PropReadCards}
 
 func cloneTable(t *sprint.Table) *sprint.Table {
 	if t == nil {

@@ -73,7 +73,8 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "add --stream s1 --count 2", "fleet beat m1", "start",
+	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+		"add --stream s1 --count 2", "fleet beat m1", "start",
 		"tick", "tick", // the fleet update brings m1 up; the next pump deals
 		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0",
 		"queue --as reader-a", "queue --as reader-b", // the readers ask for their queues: they are up

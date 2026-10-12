@@ -66,16 +66,19 @@ top-level test runs exactly once.
 ### First run
 
 ```text
-$ nova-sprint init --readers reader-a,reader-b --members m1
-INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-a,reader-b
+$ nova-sprint init --readers reader-m2 --members m1,m2
+INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-m2
 MOVED m1 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
+STOPPED
+MOVED m2 added, down until it beats
+FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t2-1
 STOPPED
 NOTE a twin beats every member at every verb: each member added is up after the next nova-sprint tick
 
 $ nova-sprint add --stream s1 --count 1 --one
 MOVED s1-1 -> ready stream=s1 score=1
-ADD OK stream=s1 cards=1 before=- moved=1 refused=0 notes=0 op=add-t2-1
+ADD OK stream=s1 cards=1 before=- moved=1 refused=0 notes=0 op=add-t3-1
 NOTE the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>
 STOPPED  0/1 0.0%
 
@@ -86,9 +89,10 @@ nothing is ticking between commands in a twin: tick by hand: nova-sprint tick
 
 $ nova-sprint tick
 MOVED presence: m1 up
-MOVED presence: status seen: m1 up
-TABLES rows changed: work=0 readers=0 merge=0 fleet=1
-TICK OK state=RUNNING idle=no moved=2 notes=2
+MOVED presence: m2 up
+MOVED presence: status seen: m1 up, m2 up
+TABLES rows changed: work=0 readers=0 merge=0 fleet=2
+TICK OK state=RUNNING idle=no moved=3 notes=3
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -105,35 +109,45 @@ PACKET s1-1.w1 attempt=1 gen=1 epoch=0
   base: the stream's base
   notes: none
   report it: nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --branch sprint/s1-1.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
-TAKE OK moved=1 refused=0 notes=0 op=take-t31-1
+TAKE OK moved=1 refused=0 notes=0 op=take-t32-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --report done
 MOVED s1-1.w1 working -> done ok; s1-1 working -> review
-FINISH OK moved=1 refused=0 notes=1 op=finish-t32-1
+FINISH OK moved=1 refused=0 notes=1 op=finish-t33-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
 MOVED drain: s1-1.w1 working -> done ok; s1-1 working -> review (finish by m1)
-MOVED ask: s1-1 asked of reader-a
+MOVED deal: s1-1 asked of m2 (read cards)
 MOVED deadlines: landing-stall watch begins: 1 review, 0 merging, no landing yet
-TABLES rows changed: work=1 readers=1 merge=0 fleet=0
+TABLES rows changed: work=1 readers=0 merge=0 fleet=1
 TICK OK state=RUNNING idle=no moved=3 notes=0
 0/1 0.0% -> ETA -  machine: running
 
-$ nova-sprint read --as reader-a --begin --epoch 0
-MOVED s1-1.r1.reader-a asked -> reading
-READ OK moved=1 refused=0 notes=0 op=read-t36-1
+$ nova-sprint take --as m2 --epoch 0
+MOVED s1-1.r1.m2 fleet ready -> working member=m2 gen=1
+PACKET s1-1.r1.m2 attempt=1 gen=1 epoch=0
+  tier: flash
+  work: attempt 1 by m1
+  head: s1-1.w1
+  branch: sprint/s1-1.w1.g1.e0
+  report:
+    done
+  notes: none
+  attribution: the By: line, the Co-Authored-By trailer and the model or harness named are never a finding and never decide a verdict
+  report it: nova-sprint read --as m2 (--ok | --broken) s1-1.r1.m2 --epoch 0 --finding '<file:line, and what to change>'
+TAKE OK moved=1 refused=0 notes=0 op=take-t37-1
 0/1 0.0% -> ETA -  machine: running
 
-$ nova-sprint read --as reader-a --ok --epoch 0
-MOVED s1-1.r1.reader-a reading -> ok
-READ OK moved=1 refused=0 notes=0 op=read-t37-1
+$ nova-sprint read --as m2 --ok s1-1.r1.m2@1 --epoch 0
+MOVED s1-1.r1.m2 working -> ok (retired: read by m2)
+READ OK moved=1 refused=0 notes=0 op=read-t38-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
-MOVED drain: s1-1 asked of reader-a (tick ask by machine); s1-1.r1.reader-a reading -> ok (read by reader-a)
-MOVED accept: s1-1 review -> merging queued (ok from reader-a)
+MOVED drain: s1-1.r1.m2 working -> ok (retired: read by m2) (read by m2)
+MOVED accept: s1-1 review -> merging queued (ok from m2)
 MOVED verdicts: s1-1.w1 finished -> ok (the readers' verdict)
 TABLES rows changed: work=1 readers=0 merge=1 fleet=1
 TICK OK state=RUNNING idle=no moved=3 notes=2
@@ -141,7 +155,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=3 op=merge-t42-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t43-1
 0/1 0.0% -> ETA -  machine: running
 ```
 

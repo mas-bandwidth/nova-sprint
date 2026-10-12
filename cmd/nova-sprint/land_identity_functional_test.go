@@ -79,6 +79,7 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	git(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 
 	run("init --readers reader-a,reader-b --members m1")
+	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	run("add --stream s1 --count 1 --one")
 	run("fleet beat m1")
 	run("start")
