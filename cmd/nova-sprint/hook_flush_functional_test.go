@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
@@ -53,11 +55,22 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 			return home
 		case "XDG_CONFIG_HOME":
 			return filepath.Join(home, ".config")
+		case busRedisEnv:
+			return addr
 		}
 		return ""
 	}
 	a := newApp(env)
 	t.Cleanup(a.close)
+	// the bus store the hook's shared record and bus push live on, the way
+	// hookSprint gives its in-process rig one: an in-memory bustest fake behind
+	// the app's dial, never a socket, shared by the server and the hook process.
+	fake := bustest.NewFake(t0, name, "glenn")
+	fake.Sleep = func(time.Duration) { time.Sleep(5 * time.Millisecond) }
+	busOpen := func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
+	a.busOpen = busOpen
 	a.home = func() (string, error) { return home, nil }
 	a.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
 		t.Fatalf("fixture command was forwarded to server %s: %q", server, verbs)
@@ -72,6 +85,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 
 	client := newApp(env)
 	client.hookSock = shortSock(t)
+	client.busOpen = busOpen
 
 	pr, pw, err := os.Pipe()
 	require.NoError(t, err)

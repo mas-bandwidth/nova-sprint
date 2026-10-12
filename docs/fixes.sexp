@@ -73,7 +73,11 @@
     :text "The costs no price covers: a harness's exact zero on a route with no price sheet is
      counted unpriced, never as $0."))
   :items
-   ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
+   ((fix "the-functional-tier-is-green-on-main-and-runs-per-pr" :release "v1.2.14" :status "planned"
+     :title "The functional tier is green on main and runs for every pull request"
+     :text "The functional tier was not run per PR, and functional tests failed on main: the store's TestRedis* family (the harness added readers to the twin table name t-readers instead of the store's), TestRedisClear and TestRedisTeardownLeavesNoKeyAndNothingElse (a clear blanks the readers and the tests drove on without re-adding them), TestEveryProducerCard (never loaded the store's function library, and --count 1 wants --one), and TestAMergeBeforeThePumpOnTheStore (asserted an archived-stream headline the view no longer writes). The store harness now adds readers by the store's own table name (readers) and re-adds them after a clear; consumers loads fn and passes --one; the merge test verifies the done view over --json. The tier is a make target (make functional / functional-gate) bounded at two minutes per package, run per pull request and push to main on a GitHub-hosted ubuntu-latest runner with redis-server installed (runs-on: ubuntu-latest, sudo apt-get install redis-server) and NOVA_CI=1 in .github/workflows/ci.yml; docs/TESTS.md says it runs per PR. The rest of the tier was then brought green, each fixed at its cause in the test (each stale against main's current CLI): the server heartbeat test names the actor init requires; the finish-PR brief carries the RULES paragraph the card lint requires and its take names --epoch; the unanswered-judgment rig passes --reason to brief --tier; the brief-edit test ticks after an add on a running machine (a move is queued until the next tick) and checks the refused re-tier left the tier flash, not heavy; the fleet-sync test proves the members the sync added (a sync-added member is held until its probe passes) before the width-0 hold is the sync's to make; the generated-directory test's seat proof is left to the generated-ledger card (its exec shape broke the no-verb-outside-helper guard, so it is reverted here); the land-identity test beats its readers (queue --as reader) before it asks; and the tick's wall-clock gate is tagged !functional so the functional tier, which runs every package in parallel, leaves the deal-load gate to the unit tier's run alone, where it holds. The coordinator's 2026-10-12 diagnosis (hetzner2) then split the still-failing functional tests into three sibling cards — redis-routes-reads-the-sprint-settings-with-no-routes (land identity), four-functional-tests-tick-before-they-check (need-on-working, lift wake, dev-is-behind, merge-before-pump) and generated-ledger-cards-chain-and-the-generate-test-runs-the-hook (the generate test) — leaving this card the brief-edit fix, the per-PR functional CI job and the generate-exec revert; the full tier goes green when those cards land."
+     :origin "this card; the release-acceptance child, 2026-10-11 ~23:05Z")
+    (fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
      :text "A member the inventory names and the fleet lacks was added down until it beats, so
       presence's beat brought it up at its width and dealt it work without any probe: the gate in
@@ -94,11 +98,31 @@
       :title "The friends table renders again in the sprint dashboard"
       :text "The owner hid the friends table for the v1.2.* series with one CSS rule in internal/sprintdash/page/index.html (marked hide-friends-v1.2, 2026-10-11 ~21:55Z) and now asks for it back in v1.2.14. The rule is deleted, so the friends panel renders as it did before 2026-10-11; nothing else on the page changes, and the off-side dimming rule (.panel.off) stays. A page test, TestTheFriendsTableIsNotHidden (internal/sprintdash/page_test.go), asserts the friends panel is present and not hidden by any rule."
       :origin "the owner, 2026-10-12 ~12:30Z: \"Please show the friends table in the sprint dashboard again\"")
+    (fix "redis-routes-reads-the-sprint-settings-with-no-routes" :release "v1.2.14" :status "planned"
+     :title "A Redis store with no routes still reads the sprint row's settings"
+     :text "Redis.Routes returned early when SMEMBERS config.RoutesKey was empty (internal/sprint/store/routes.go), so none of the sprint row's settings were read (git_identity, the decide bars, answer_rules_off) while the in-memory twin returned them regardless (routes.go, mem.go): twin and Redis disagreed, and any Redis store with no routes lost git_identity, so land gave a misleading remedy. Routes now reads the set and every sprint-row setting in one pipeline, and the route hashes and tier arrays in a second only when a route exists, so round trips stay 1 with no routes and 2 with routes; the tier arrays are not read when no route exists. Tests: TestRedisRoutesWithNoRoutes, TestRedisRoutesWithNoRoutesAndBars, TestRedisRoutesWithNoRoutesMatchesTheTwin, TestRedisRoutesTripsNoRoutes (internal/sprint/store/routes_no_routes_test.go) and the functional TestRedisRoutesReadsTheSprintSettingsWithNoRoutes (internal/sprint/store/route_functional_test.go)."
+      :origin "the coordinator, 2026-10-12 ~08:35Z, from a diagnosis of the functional tier on sprint/v1214-blocker")
+     (fix "the-stall-rig-names-a-git-identity-so-its-land-passes-are-not-faults" :release "v1.2.14" :status "planned"
+      :title "The stall rig seeds the sprint row's git_identity, so a land pass waits or lands instead of refusing and being counted as a rollback fault"
+      :text "newStallRig (cmd/nova-sprint/stall_harness_functional_test.go) never seeded the sprint row's git_identity, so since 5f988e28 a land refused with exit 2 and the switched server in TestStallASwitchedServerNeverRollsBackOnTheHookGate counted that as a land fault in the rollback window and restored the previous binary; it now seeds it with config.DefaultGitIdentity as stall_ledger_functional_test.go does, so the land pass waits or lands instead of refusing."
+      :origin "the coordinator, 2026-10-12")
      (fix "a-card-holding-judgment-is-never-left-unanswered" :release "v1.2.14" :status "planned"
      :title "A judgment that holds a card is answered by the machine when it has a safe default, and escalates to the seat and the owner when it does not"
      :text "Blocker. At 2026-10-12 00:06Z eleven card-holding judgments had sat unanswered 5 to 169 minutes while the seat was busy elsewhere and its hook kept lapsing. (a) The safe defaults run without the seat: a card whose required reads have all passed is accepted by the tick, also after a return whose one cause is mechanical (returned_for: repair's rule-6 return for a missing read, and a return answered by needs set while the card is back in review); a stream set to seat-accept (stream set --seat-accept on) keeps the hand step, the tick raising ready to accept once; a hard pin to a friend held or down is released at DeadlineJudgment of running time (PinReleaseBound, an hour before; the tick records the release, so a stopped machine releases nothing on resume); and a ready card no route serves is raised, past its judgment's deadline, to the nearest tier above its own that a route or a friend up serves (rule no-route, a note naming both tiers), never down, so never flash for heavy, and never over a pinned tier. (b) Every other card-holding judgment (a kind of sprint.WaitRefused, the one table) is raised again at each deadline it passes unanswered, and one sprint-level judgment, the seat is not answering, names every card held and for how long, is raised again every PassEvery, is sent by the server to the owner on the bus as well as the hook (marked told only once sent, retried under one bus token, so never twice), refuses wait and ack, and closes when the judgments it names are answered. The refmodel's AcceptHeld mirrors returned_for. TLA+ owed to the v1.2.16 pass (tla/SprintRules.tla): a liveness property that every card-holding judgment is answered or escalated within its deadline, with the old unbounded wait as its reversed witness. Tests: TestATwoReadsPassedCardIsMergingAfterOneTickWithNoSeatVerb, TestACardReturnedForItsNeedsIsMergingAfterOneTick, TestASeatAcceptStreamKeepsItsCardForTheSeat, TestACardReturnedByTheSeatStaysForTheSeat (cmd/nova-sprint/seat_answers_test.go), TestAHardPinToAHeldFriendIsReleasedAtItsDeadline, TestAPinIsNotReleasedByTheTimeTheMachineWasStopped (internal/sprint/seat_answers_test.go), TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce (internal/sprint/store/seat_silent_bound_test.go), TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline, TestAHeavyCardNoRouteServesIsNeverReTieredToFlash, TestAPinnedCardNoRouteServesStaysOnItsPinnedTier (internal/sprint/seat_answers_rule_test.go), TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken, TestARestartedServerTellsTheOwnerOfARaiseOnce, TestASeatSilentRaiseNoLongerOpenIsForgotten (cmd/nova-sprint/seat_silent_test.go), and the functional TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore (cmd/nova-sprint/unanswered_judgment_functional_test.go)."
      :origin "this card, from the owner, 2026-10-12 ~00:08Z: \"This must never happen again. Fix it. Add unit and/or functional tests so this never happens again, and then add to the next point release.\"; hand-landed outside the sprint at nova-sprint main 3e659a3a")
-(fix "a-tier-on-line-one-is-the-tier-the-card-is-dealt-on" :release "v1.2.14" :status "planned"
+    (fix "the-unanswered-judgment-test-gives-its-re-tier-a-reason" :release "v1.2.14" :status "planned"
+     :title "A test that re-tiers a card now passes --reason"
+     :text "TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore re-tiers card s6-1 and must pass --reason with --tier, as the brief rule requires. The test also adds a negative check that re-tier without --reason is refused."
+     :origin "this card; checked against nova-sprint main on branch sprint/the-unanswered-judgment-test-gives-its-re-tier-a-reason.w1.g1.e19")
+     (fix "every-need-names-a-live-card-checked-every-second" :release "v1.2.14" :status "planned"
+     :title "A drop never strands a need; the run loop checks every unlanded card's needs each second; a card never enters merging with a need not landed"
+     :text "Blocker. The owner, 2026-10-11 ~23:25Z: \"this must never happen again. We must have a process that checks all card dependencies and if they don't exist, once per-second, you are alerted via push notification.\" Three cards were dropped while live cards still needed them, and five cards sat in merging up to 205 minutes needing a card that no longer existed. (a) drop, and any verb that takes a card off the table, of a card an unlanded card needs is refused, naming each dependent, unless the call says what happens to each: --relink <new id> re-points the dependants' needs at the new card, --waive removes the need from each dependent (recorded with the reason), or --cascade drops the dependants too. The refusal reads every unlanded state (waiting, ready, working, review, merging), not only waiting primaries (internal/sprint/steps_review.go, unlandedNeeding). (b) The tick's needs part (TickNeeds, internal/sprint/steps_review.go; PartNeeds in TickEnd) reads every unlanded card's needs each tick, in every state, and a need naming a card that is absent or off the table raises one judgment, \"a card needs a card that is gone\" (NNeedsGone), at once, naming the card, its state, the missing need, and the two answers (needs set <id> --needs <rest>, or drop); it stays open, the overdue part repeats it at its deadline until it is answered, and it closes when the need is landed, waived or re-pointed. A card in merging or review with a missing need is answerable by needs set in place (NeedsSet now takes a merging card whose need is gone; internal/sprint/steps_edit.go). (c) Accept refuses a card whose need has not landed, so no card enters merging needing a card that is gone (internal/sprint/steps_review.go). docs/SPEC-SPRINT.md section 11 and docs/CLI.md state the three rules. Tests: TestDropRefusesACardAnUnlandedCardNeeds, TestDropWithWaiveLeavesNoStrandedNeed, TestAcceptRefusesACardWhoseNeedHasNotLanded, TestTickNeedsJudgesAGoneNeedInEveryUnlandedState, TestTickNeedsHoldsAndClears (internal/sprint/missing_need_test.go) and the functional TestEveryStateAlertsTheCoordinatorOfAGoneNeed, TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt, TestDropRefusesANeededCardAndWaiveLeavesNone, TestDropGroupRefusesANeededCard, TestDropWithRelinkRepointsTheNeed, TestNeedsSetOnAMergingCardWithAGoneNeed (cmd/nova-sprint/missing_need_functional_test.go); make release-accept clips them in. TLA+ owed (tla/SprintRules.tla, the twins part: need, NoDanglingNeed; tla/Holds.tla: cardNeeds, NamedWaits): the invariant every need of an unlanded card names a live card, with a dropped need on a merging card as its reversed witness."
+     :origin "this card, every-need-names-a-live-card-checked-every-second.w2, from the owner, 2026-10-11 ~23:25Z; docs/TESTS.md Release acceptance")
+    (fix "tla-every-need-names-a-live-card" :release "v1.2.14" :status "planned"
+     :title "SprintTables proves every need of an unlanded card names a live card, with a dropped need on a merging card as its reversed witness"
+     :text "Models only, no product change. The needs live in three modules: tla/SprintTables.tla owns the needs variable and the needs invariants (NoNeedCycle, NeedsLandFirst, NeedsHeldIntoWorking, NeedsWithdrawalWaits); tla/SprintRules.tla owns the twins part need and NoDanglingNeed (a waiting card that needs a dropped card has a judgment that says so); tla/Holds.tla owns cardNeeds for the cross-stream held need. The invariant owed across them is NoDanglingNeed widened: every need of an unlanded card (waiting, ready, working, review, merging) names a live card (on the table or landed), so no card waits or merges in silence on a card that no longer exists. The reversed witness is a dropped need on a merging card (five cards sat in merging up to 205 minutes needing a card that was gone), the thing rules (a)-(c) of every-need-names-a-live-card-checked-every-second close. Drift kept out: SprintRules' NoDanglingNeed today covers waiting cards alone; the widened invariant and the drop --relink/--waive and TickNeeds actions are owed to the v1.2.16 TLA+ pass."
+     :origin "this card, every-need-names-a-live-card-checked-every-second.w5, 2026-10-11 ~23:25Z; the TLA+ note owed by rule (5)")
+    (fix "a-tier-on-line-one-is-the-tier-the-card-is-dealt-on" :release "v1.2.14" :status "planned"
      :title "The tier on line 1 is the tier a card is stored with and dealt on; the existing tier-line check stays, and a stream's --default-tier waives it"
      :text "Blocker. On 2026-10-12 ~00:05Z six cards admitted with tier: heavy or tier: pro on their RESULT line were dealt on flash (one landed on flash, one ran five attempts all on flash), and add said nothing. The RESULT line was read (cardhdr.ReadModel takes tier: anywhere on line 1), but startTier started every card that was not pro on flash: flash first, a heavy card climbing the ladder from flash. startTier now starts a card on the tier its line 1 names, flash, pro or heavy (sprint.LineOneTier, one rule for both line-1 forms), so a heavy card's first deal draws a heavy route and never flash; a card dealt below its ceiling before this keeps its tier_now and the ladder still carries it. add prints each card's stored tier on its line (tier=<t>) and brief prints the re-briefed card's (<id> tier=<t>), a stronger tier on the new line 1 raising the card's tier_now. No new refusal is added: the card checks' existing tier-line check stays the one rule. A card brief (a PATHS: line) whose line 1 names no tier is refused by the card checks' tier-line finding, the one rule the lint and the store read by, unless the stream it is added to names a default tier (stream set --default-tier, FieldDefaultTier, stored as the card's pinned tier); a free task that names none starts on flash. Seven existing tests that took a heavy brief to start on flash now say heavy, or model a card dealt on flash before this (tier_now flash). docs/CLI.md states the rule. Tests: TestTheTierLineIsReadOrRefusedByOneRuleInBothForms (internal/card/tier_line_test.go), TestTheTierOnLineOneIsReadInBothForms, TestAddStoresTheTierLineOneNamesOrItsStreamsDefault, TestAHeavyCardsFirstDealDrawsAHeavyRoute, TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow (internal/sprint/tier_line_test.go), TestAddPrintsTheTierEachCardIsStoredWith, TestBriefPrintsTheTierTheCardIsDealtOn (cmd/nova-sprint/tier_line_test.go) and the functional TestAHeavyCardIsDealtOnAHeavyRouteOnAStore (cmd/nova-sprint/tier_line_functional_test.go)."
      :origin "this card, from the seat, 2026-10-12 ~00:05Z (every-need-names-a-live-card-checked-every-second, landing-never-waits-on-the-seats-hook, a-moved-card-stops-its-old-run, rate-limit-judge-in-the-running-member, a-cleared-sprint-keeps-its-readers, a-bound-card-is-reworked-from-its-last-head-by-one-verb dealt on flash); the standing rule: never flash on heavy or frontier work; hand-landed outside the sprint at nova-sprint main a33bf857")
@@ -189,6 +213,10 @@
      :title "When a card moves, the old member stops the old generation within one beat"
      :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."
      :origin "this card; seat process survey 2026-10-11 ~23:25Z: 43 live runs, 11 for moved cards, old runs kept going; quarter of fleet runs were waste.")
+    (fix "the-reconnect-test-tolerates-the-judgments-waiting-push" :release "v1.2.14" :status "planned"
+     :title "The reconnect test's no-replay window tolerates the waiting-judgment warning push"
+     :text "TestAReconnectReplaysOnlyUnheldUnackedPushes's requireNoFrame now skips the WARNING-judgments-waiting status push that the fixture's minutes-old judgments make the hub repeat every second, so it is no longer read as a replay, while every acknowledged or held frame still fails."
+     :origin "the coordinator, 2026-10-12")
     (fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
      :title "The rebalance levels reads every tick, all at once"
      :text "The Rebalance (internal/sprint/rebalance.go) skipped every card whose kind was not work, so a member that was idle when a burst of reads was dealt sat with dozens of read cards queued while the rest of the fleet had idle lanes, and nothing moved them until it drained its own queue (the owner, 2026-10-11 ~18:50Z: \"it seems like we could possibly rebalance this a bit better\", \"Not one card at a time per-tick\", \"This should NOT be manual.\"; the same shape ~12:40Z). The rebalance now has a read pass: a read card queued ready on a unit whose lanes all work goes, in the same rebalance and the same tick, to a unit with an idle lane whose reader row serves the read's tier and that has not read the card at this attempt, as many as the idle lanes take (a read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a reader row that does not serve its tier, or to a reader that already read it; it keeps its attempt and is dealt again under the new reader's identity, the record on the row it left retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the tick's level part is unchanged, the rebalance is its own part after the deal. The read-card dealer now keeps an epoch-scoped fleet cursor per read tier (read_deal_index_<tier>), persists it through TickDeal, and deals each read cheapest first (an idle lane, then the nearest served tier, then the most idle lanes) with the cursor breaking a tie; a reader that refused the read at staging is skipped, and ineligible, duplicate, and full readers are skipped. Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick, TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow, TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt, and TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff in internal/sprint/rebalance_reads_test.go, TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor, refusal, and restart coverage in internal/sprint/deal_test.go (docs/SPEC-SPRINT.md section 1, the rebalance and read-card deal)."
@@ -2578,6 +2606,31 @@
     no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
     spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
    :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
+   (fix "a-new-stream-lands-on-its-own-stream-branch-by-default" :release "v1.2.14" :status "planned"
+    :title "A new stream lands on its own branch sprint/<stream>, never straight on dev or main"
+    :text "Blocker. Nothing in the tool made a stream branch: a new stream landed wherever its cards'
+     BASE: line pointed, so 20 of 31 streams were created with cards on dev or main and carried the mark
+     land_protected, the lander merged every card head straight onto dev or main, each landing cancelled
+     dev's certification run (13 of 15 cancelled) and the v1.2.14 cut was blocked. Now every stream lands on
+     its own branch sprint/<stream>. The landing flow is one sentence, sprint.LandingFlow: \"The landing
+     flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per
+     stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never
+     lands on dev or main.\" A stream's branch and trunk are fields of its control card (FieldStreamBranch,
+     FieldTrunk): the first add writes both in the same step as its first card, the branch sprint/<stream>
+     and the trunk the protected branch the card's BASE: names (dev, or main; dev when it names none), and a
+     card naming a non-protected branch keeps that branch as the stream's. add re-cuts a card cut on dev or
+     main onto the stream's branch (briefOnBase), saying so on one NOTE line per add naming the branch, the
+     trunk and quoting sprint.LandingFlow; the card is staged from and lands on the stream branch. The land
+     pass creates an absent stream branch on origin at origin/<trunk>'s tip in the lander's kept clone before
+     it lands any card of the stream, one NOTE line LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>; a
+     card of a stream whose branch origin lacks is held, never landed on the trunk. No setting turns this on
+     or off: a cleared sprint builds the same on its first add. docs/SPEC-SPRINT.md section 7 and docs/CLI.md
+     say it. Tests: TestFirstAddWritesTheStreamBranchAndTrunk, TestAddRewritesADevBaseToTheStreamBranch,
+     TestAMainOnlyRepositoryTakesMainAsTrunk, TestAClearedSprintMakesTheSameStreamBranch,
+     TestLandingFlowIsOneSentence (internal/sprint/stream_branch_test.go) and the functional
+     TestANewStreamLandsOnItsOwnBranchWithNoSetting (cmd/nova-sprint/stream_branch_functional_test.go), named
+     in docs/TESTS.md under Release acceptance."
+    :origin "the owner, 2026-10-12 ~05:15Z: \"My dude, land in a batch, to a branch that corresponds to the work stream, then serially merge those branches into dev.\" / \"this is the 15th time\" / \"We have designed this together multiple times. Lock it in bro!\"; evidence, epoch 19, server v1.2.13: 20 of 31 streams were created with cards on dev or main and carried the stream mark land_protected")
    (fix "a-shared-non-ledger-path-is-refused-at-admission" :release "v1.2.15" :status "planned"
     :title "Two cards sharing a path no lander-owned ledger covers are refused at admission"
      :text "Card lint refused two admitted cards sharing a path without a needs edge, and offered
@@ -2834,6 +2887,13 @@
     tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
     frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
    :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+  (fix "chain-ledger-cards-that-share-files" :release "v1.2.14" :status "planned"
+   :title "Cards that share PATHS files are chained with DEPENDS-ON"
+   :text "Cards generated from a ledger that share files (like internal/ci/*.go) now chain with DEPENDS-ON
+    so no two independent cards share a file. The add no longer wants --allow-shared-paths; each card
+    carries its dependency on the one before it in ledger order. nova-card's output no longer mentions
+    --allow-shared-paths."
+   :origin "this card, generated-ledger-cards-chain-and-the-generate-test-runs-the-hook.w1")
   (fix "a-paths-proposed-line-reaches-the-seat-whole" :release "v1.2.15" :status "planned"
    :title "A PATHS-PROPOSED line reaches the seat whole"
    :text "A report cut to a cap could cut its PATHS-PROPOSED line mid-word, so `brief --widen`
@@ -2893,8 +2953,23 @@
    (fix "hook-compact-prints-only-what-the-seat-acts-on" :release "v1.2.17" :status "planned"
     :title "hook --compact prints only what the seat acts on, and names an unanswered card-holding judgment"
     :text "The seat read the hook through hand filters: `script -q /dev/null` under a pty, `hookfilter.pl` keeping only HOOK lines, each JUDGMENT with its push number and its first detail line, and `overduewatch.py` polling `inbox` every 20 s for any card-holding judgment past 5 minutes. `nova-sprint hook --compact [--overdue <duration, default 5m>]` does it in the subscription itself. It is the same connection (the server's look, the PUSH ids, the session token), printing only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one line plus its first detail line -- a critical judgment keeps its `CRITICAL <n> behind:` prefix, so it reads `PUSH <id> CRITICAL <n> behind: JUDGMENT ...` and is never dropped --; HAPPENED pushes and the acknowledge/verb menus are not printed. Every line is one write to stdout, so a pipe, a file and a tty all see it at once with no pty. While the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered past --overdue prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the store's judgment list, never a poll of the inbox verb. New: cmd/nova-sprint/hook_compact.go (compactSay, compactOverdue, hookOverdueDefault); cmd/nova-sprint/hook.go carries --compact and --overdue into hookHold. Test: TestHookCompactPrintsOnlyWhatTheSeatActsOn (cmd/nova-sprint/hook_compact_test.go) runs the compact hook on a private store with its stdout a real OS pipe, proves it, raises one card-holding judgment and one HAPPENED note on the running hook and checks the JUDGMENT and its first detail line are read and the HAPPENED push is not, and one OVERDUE line is read past --overdue, a second after another interval, and none once answered; TestCompactSayPrintsACriticalJudgment pins that a critical judgment's group line is printed. docs/CLI.md, docs/SPRINT-COORDINATOR-SEAT.md and docs/SPEC-SPRINT.md state the flag."
-    :origin "this card, hook-compact-prints-only-what-the-seat-acts-on.w3, from the seat, 2026-10-12 epoch 19: the seat ran `nova-sprint hook` under a pty piped through a hand hookfilter.pl and an overduewatch.py polling inbox every 20 s")
-   (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
+     :origin "this card, hook-compact-prints-only-what-the-seat-acts-on.w3, from the seat, 2026-10-12 epoch 19: the seat ran `nova-sprint hook` under a pty piped through a hand hookfilter.pl and an overduewatch.py polling inbox every 20 s")
+    (fix "the-hygiene-kinds-embed-is-restored" :release "v1.2.17" :status "planned"
+     :title "The toolchain's declared kinds load again from their embedded list"
+     :text "Blocker. A dead-code deletion in card dead-code-in-the-seeded-card-and-dogfood-copies
+      also deleted the `//go:embed kinds.txt` line above `var kindData string` at
+      pkg/hygiene/data.go:31, so kindData was empty, the declared kinds list was empty, and
+      pkg/swarm/lintheader.go refused every KIND: line (\"is not a kind this toolchain declares;
+      one of: \"), reddening 23 tests across cmd/nova-card, internal/card, internal/cardgen and
+      pkg/swarm. The `//go:embed kinds.txt` directive is restored directly above `var kindData
+      string`. pkg/hygiene/data_test.go holds it red-first: TestKindDataIsEmbedded asserts kindData
+      is non-empty, and TestKindsDeclareEveryKindInKindsTxt reads kinds.txt and asserts every kind
+      it lists is declared by Kinds(), so a deletion of the embed can never pass the unit tier
+      again."
+     :origin "this card, the-hygiene-kinds-embed-is-restored, from the coordinator, 2026-10-12
+      ~07:20Z, a bisect of the red unit tier on nova-sprint main (evidence: the seat's
+      coldread/main-unit-tier-red-2026-10-12.evidence.txt); first bad 5f879511 (inner 37c10c09)")
+    (fix "tests-that-fail-under-load-are-made-deterministic" :release "v1.2.15" :status "planned"
     :title "Tests that failed on a loaded bench are made deterministic by their real cause"
     :text "The owner's standing rule: tests are bounded and never flaky; a test that fails under load is
      the test's defect. (1) TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued
@@ -3039,11 +3114,53 @@
      and docs/TESTS.md state it. Tests: TestAnUnservedTierFallsToTheStrongestServedTier
      (internal/sprint/unserved_tier_test.go) and TestCardAndWhereShowAFallbackTier
      (cmd/nova-sprint/card_tier_fallback_test.go)."
-    :origin "this card, an-unserved-tier-falls-to-the-strongest-served-tier.w3, from the coordinator,
-     2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
-     frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
-     every unlanded frontier card of four repositories, then undid the pins by hand when the friend
-     came back; one setting replaces the hand pinning")
+     :origin "this card, an-unserved-tier-falls-to-the-strongest-served-tier.w3, from the coordinator,
+      2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
+      frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
+      every unlanded frontier card of four repositories, then undid the pins by hand when the friend
+      came back; one setting replaces the hand pinning")
+   (fix "the-reference-model-knows-the-unserved-fallback-duty" :release "v1.2.14" :status "planned"
+    :title "The reference model decides the unserved fallback part"
+    :text "The reference model (internal/sprint/refmodel) had no duty for the tick's unserved fallback
+     part (PartUnservedFallback, steps_tick.go, between cap deal and deal), so its differential tests
+     could not hold the reference to the store on it: the tick's part set or cleared a card's fallback
+     tier and the reference said nothing. Decide now runs DutyUnservedFallback between DutyCapDeal and
+     DutyDeal, built through partOn like every other duty, and carries the setting the part reads
+     (PropUnservedTierFallsTo) in CarriedProps, so the unserved fallback duty decides what the part
+     decides. The walks gain anUnservedTierFallsBack, a scenario that serves flash alone so a ready pro
+     primary's tier is unserved and falls to flash, then serves pro again so the fallback clears, so the
+     binding test compares the part on 32 samples with moves (at least 10), and
+     TestUnservedFallbackMovesReturnsSomething holds the duty red on a state with an unserved tier if
+     its moves function returns nothing."
+    :origin "this card, the-reference-model-knows-the-unserved-fallback-duty.w4, from the coordinator 2026-10-12 ~07:20Z (a bisect of the red unit tier: first bad 3852cb18, an-unserved-tier-falls-to-the-strongest-served-tier); checked against nova-sprint sprint/v1214-blocker")
+    (fix "the-dirty-drive-raises-dev-behind-and-promotes" :release "v1.2.17" :status "planned"
+     :title "The dirty tick drive lands each stream on its sprint branch, so dev is behind is raised and the coordinator promotes"
+     :text "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch made dev is behind count only
+      cards landed on a sprint branch, but the dirty tick drive's landing still recorded its 1,200
+      cards against origin/main, a protected branch, so the drive never raised the judgment and the
+      coordinator never promoted. The drive now cuts each stream's cards on its sprint branch
+      (BASE: sprint/<stream> in the brief) and pushes and records each landing there the way the real
+      landing flow does (merge --landed ... --base-ref origin/sprint/<stream>), never by loosening what
+      dev is behind counts and never by fabricating a landing in non-test code; the bare merge's exit-2
+      refusal and the pushed landing checks are kept. TestTheDirtyTickDriveOnAStore is green: 1,200
+      cards land, dev is behind is raised, and the coordinator promotes."
+     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")
+    (fix "four-functional-tests-tick-before-they-check" :release "v1.2.17" :status "planned"
+     :title "The functional tests tick before they check the machine's work"
+     :text "Four functional tests checked before the machine had applied their verbs: on a running
+      machine most commands (finish, ask, read, accept, an in-place brief edit) are held until the next
+      tick, and the tests checked before any tick. Each test is fixed, never the product, and nothing
+      they assert is loosened. TestANeedAddedToAWorkingCardIsNotABrokenInvariant ticks right after the
+      brief edit and passes --epoch 0 to the finish; TestReadOkDoneAndTheWakeOnTheStore's merge step
+      gets the store address (recordMergeOn), since the app from newFunctionalTestApp carries no Redis;
+      TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches wraps its briefs in passingBrief (they lacked
+      the RULES paragraph), adds stream s2 only after s1 lands, adds one held card so the sprint never
+      finishes and the judgment still runs, and beats m1 at the top of land so its cards are not redealt
+      as stale; TestAMergeBeforeThePumpOnTheStore asserts what the merge prints about the stream
+      (archiving is manual, so no archived-stream line appears). go test -tags functional
+      -run 'NeedAddedToAWorkingCard|ReadOkDoneAndTheWake|DevIsBehindCountsOnly|MergeBeforeThePump'
+      ./cmd/nova-sprint/ and go test ./internal/ci/ are green."
+     :origin "this card, four-functional-tests-tick-before-they-check.w1, from the coordinator, 2026-10-12 ~08:35Z, from a diagnosis of the functional tier on sprint/v1214-blocker @ a70a3ffe")
    (fix "add-and-the-tick-keep-a-bench-mirror-for-every-named-repo" :release "v1.2.14" :status "planned"
     :title "Add and the tick keep a bench mirror for every named repo"
     :text "When add admits cards whose REPO: line (or a stream's repos) names a repository, and when
@@ -3100,3 +3217,43 @@
      coordinator, 2026-10-12 ~09:35Z, from a diagnosis on hetzner2 of four functional tests that fail on
      main (b7683efc) and that no card owned. Walking main commit by commit, three break at cc424aa1 (the
      two-push gate, #93).")))
+     :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+    (fix "the-landing-unhooked-test-arms-only-its-own-coordinator" :release "v1.2.14" :status "planned"
+     :title "The landing-unhooked functional test arms the hook gate for a name of its own, never the coordinator's"
+     :text "TestLandingUnhookedLandsOnARealServer (cmd/nova-sprint/landing_unhooked_functional_test.go) runs in parallel and armed the hook gate (hookTests) for the shared coordinator name, so every other parallel land rig acting as coordinator was refused with 'You must hook in first' (how TestLandedRecordsAPushFoundOnTheBranch failed); it now acts and arms as 'landing-unhooked', its own name, as the land-identity test does."
+     :origin "the coordinator, 2026-10-12")
+    (fix "a-card-in-review-always-has-a-read-the-ask-can-reach" :release "v1.2.14" :status "planned"
+     :title "A card in review always has a read the ask can reach"
+    :text "A finish card sat in review at attempt 2 with no read out: its attempt-1 read had
+     been withdrawn by a friend's hold and its attempt-2 read ended with no verdict (a
+     return, ran=false). The ask verb was refused \"asked already: its reads are out\" while
+     `ask --another` was refused \"not asked yet at attempt 2\", the two refusals contradicting
+     each other, check showed no violation, and the seat had to rework a finished card to get
+     reads asked again. The two refusals held two definitions of \"asked at this attempt\": the
+     ask verb's --another counted only the readers table (readsAt) while the no-stall rule's
+     decisions and the plain ask read ReadsWanted, so a read on the fleet table (a read card)
+     or a withdrawn one made them disagree. One function, askedAtAttempt (readers.go), now
+     decides both: a read of the attempt anywhere on either table, whatever its state
+     (placed, retired with a verdict, returned, withdrawn or taken back), was asked. Ask's
+     eligible (steps_review.go) and the no-stall rule's decisions (held.go) both call it, so
+     the ask verb and the tick never contradict. A read that ended with no verdict, or was
+     withdrawn by a hold or a return, is re-asked of another reader at the next tick for the
+     card's current attempt (TickAsk). A card in review with no read out and no open judgment
+     is a ConsumersOut violation at TickCheck (a card in review is a producer whose consumer
+     is a read), so the seat is told rather than the card sitting silent. Tests:
+     internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
+     TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
+    :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
+      epoch 19, v1.2.13")
+    (fix "the-functional-hook-rigs-name-a-bus-store" :release "v1.2.14" :status "planned"
+     :title "The functional hook and generate rigs name a bus store"
+     :text "The two nova-sprint hook functional tests and the nova-card generate functional test named no bus store, so since b82faec7 the hook refused before printing a challenge and they timed out; each in-process rig now names one (busRedisEnv in its environment and a bustest fake behind the app's busOpen, as hookSprint does), the nova-card rig's built binary gets NOVA_BUS_REDIS set to the test's own Redis, and the live rig captures the hook's stderr and names it in its challenge-wait failure."
+     :origin "the coordinator, 2026-10-12")
+    (fix "the-sprint-functional-package-runs-within-a-minute" :release "v1.2.14" :status "planned"
+     :title "cmd/nova-sprint's functional package runs sharded across three CI jobs, inside the two-minute bound"
+     :text "CI's functional job on nova-sprint#138 failed only because cmd/nova-sprint's functional package hit go test's two-minute bound (panic: test timed out after 2m0s, 120.108s at run 38259438225, earlier runs ~116.6s), the package queued behind its own parallel slots on the runner's four cores rather than stuck. It is CPU-bound at four cores (~62s alone at default parallelism over 1275 top-level tests; raising -parallel just stretches every heavy test), so sharding is the fix. The functional job now runs the tier as a matrix of a rest leg plus three shard legs: tools/testshard reads `go test -list` names, deals the sorted list round-robin into three shards and prints an anchored -run pattern for each, each shard runs under make functional-gate-shard SHARD=k SHARDS=3, and the remaining packages run under make functional-gate-rest. Measured after at four cores, each shard is well inside the two-minute bound (21.7s/24.3s/25.7s) and every top-level test runs exactly once; the package's whole-run wall drops from ~84.2s beside the tier (the ~117-120s CI shape) to the longest shard's ~25.7s."
+     :origin "the coordinator, 2026-10-12")
+    (fix "the-card-in-review-store-test-beats-its-member-before-the-deal" :release "v1.2.14" :status "planned"
+    :title "The store test for a review card beats its member before the deal"
+    :text "TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore ran start, tick, tick, take, finish without ever beating m1, so m1 never came up, nothing was dealt, and finish refused s1-1.w1 as not on the table; it now beats m1 before start, queues its readers up so the tick asks the read, and asserts the card is working before the take."
+    :origin "the coordinator, 2026-10-12")))

@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// LandingFlow is the landing flow: stream branches hold cards in a batch, then
+// merge serially into dev; a card never lands on dev or main (docs/SPEC-SPRINT.md
+// section 7, the sprint branch).
+const LandingFlow = "The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main."
+
 // Every stream lands on the sprint branch, and promotion alone reaches dev
 // (docs/SPEC-SPRINT.md section 7, the sprint branch): a card cut on dev is merged by
 // the lander straight onto it and ejects the merge queue's promotion run, so add admits
@@ -32,6 +37,53 @@ func SprintBase(s *Snapshot) string {
 	return ""
 }
 
+// StreamBranch is the branch a stream's cards land on, as its control card records it
+// (FieldStreamBranch): sprint/<stream> when it records none (docs/SPEC-SPRINT.md section 7,
+// the sprint branch).
+func StreamBranch(s *Snapshot, stream string) string {
+	if b := s.StreamCtl(stream).F(FieldStreamBranch); b != "" {
+		return b
+	}
+	return "sprint/" + stream
+}
+
+// Trunk is the trunk a stream's branch is cut from, as its control card records it
+// (FieldTrunk): dev, or main where the repository has no dev, dev when it records none
+// (docs/SPEC-SPRINT.md section 7, the sprint branch).
+func Trunk(s *Snapshot, stream string) string {
+	if t := s.StreamCtl(stream).F(FieldTrunk); t != "" {
+		return t
+	}
+	return DevBranch
+}
+
+// branchAndTrunk is a stream's branch and trunk from its control card's recorded fields
+// and an add's cards' bases: the trunk is the protected branch a card names (main when any
+// names main, else dev), and the branch is the recorded one, or sprint/<stream> when none
+// is, or a non-protected branch a card names, which the stream keeps (docs/SPEC-SPRINT.md
+// section 7, the sprint branch).
+func branchAndTrunk(ctl *Card, stream string, bases []string) (branch, trunk string) {
+	branch, trunk = "sprint/"+stream, DevBranch
+	if ctl != nil {
+		if b := ctl.F(FieldStreamBranch); b != "" {
+			branch = b
+		}
+		if t := ctl.F(FieldTrunk); t != "" {
+			trunk = t
+		}
+	}
+	for _, b := range bases {
+		switch {
+		case b == "main":
+			trunk = "main"
+		case b == DevBranch:
+		case b != "":
+			branch = b // a non-protected branch: the stream keeps it as its branch
+		}
+	}
+	return branch, trunk
+}
+
 // IsPromotionStream says the stream is the promotion stream: its control card carries
 // the mark FieldLandProtected, which only the coordinator's `nova-sprint stream set <s>
 // --land-protected <owner/name,...|any>` writes (Set) and `--land-protected default`
@@ -40,22 +92,23 @@ func IsPromotionStream(s *Snapshot, stream string) bool {
 	return s.StreamCtl(stream).F(FieldLandProtected) != ""
 }
 
-// SprintBranchWhy is why add or brief refuses card into stream, "" when it may: the
-// stream is not the promotion stream, and its BASE is not the sprint's base when one is
-// recorded, or is dev when none is (docs/SPEC-SPRINT.md section 7, the sprint branch). A
-// card naming no BASE lands on the lander's --base and is admitted. The remedy re-cuts
-// the card on the sprint's base, or marks the stream.
+// SprintBranchWhy is why add or brief refuses card into stream, "" when it may: a card cut
+// on a protected branch (dev or main) is admitted and re-cut on the stream's branch, and a
+// card naming no BASE, the sprint's base, or in the promotion stream is admitted as it is
+// (docs/SPEC-SPRINT.md section 7, the sprint branch). Only a card cut on a non-protected
+// branch other than the sprint's base is refused, and only once the coordinator recorded
+// the sprint's base (set --base); with none recorded, every branch is admitted. The remedy
+// re-cuts the card on the sprint's base, or marks the stream.
 func SprintBranchWhy(s *Snapshot, stream, base, card string) string {
 	sprintBase := SprintBase(s)
-	if base == "" || base == sprintBase || sprintBase == "" && base != DevBranch || IsPromotionStream(s, stream) {
+	if base == "" || slices.Contains(ProtectedBranches, base) || base == sprintBase || IsPromotionStream(s, stream) {
+		return ""
+	}
+	if sprintBase == "" {
 		return ""
 	}
 	mark := ", or, for the promotion stream, run: nova-sprint stream set " + stream + " --land-protected <owner/name,...|any>"
-	if sprintBase == "" {
-		return "card " + card + " is cut on " + DevBranch + ", and stream " + stream + " is not the promotion stream: every stream lands on the sprint branch, and promotion alone reaches " + DevBranch +
-			"; nothing was written; re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on)" + mark
-	}
-	return "card " + card + " is cut on " + base + ", not the sprint's base " + sprintBase + ", and stream " + stream + " is not the promotion stream: every stream lands on the sprint's base, and promotion alone reaches " + DevBranch +
+	return "card " + card + " is cut on " + base + ", not the sprint's base " + sprintBase + ", and stream " + stream + " is not the promotion stream: every stream lands on its branch, and promotion alone reaches " + DevBranch +
 		"; nothing was written; re-cut the card with BASE: " + sprintBase + mark
 }
 

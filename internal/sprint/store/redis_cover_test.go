@@ -86,6 +86,7 @@ const (
 	coverString coverKind = iota + 1
 	coverHash
 	coverList
+	coverSet
 	coverZSet
 	coverStream
 )
@@ -95,6 +96,7 @@ type coverVal struct {
 	s      string
 	h      map[string]string
 	list   []string
+	set    map[string]struct{}
 	z      []redis.Z
 	stream []redis.XMessage
 	seq    int64
@@ -150,6 +152,8 @@ func (db *coverDB) apply(cmd redis.Cmder) error {
 		return db.cmdHExists(cmd, coverStr(args, 1), coverStr(args, 2))
 	case "hmget":
 		return db.cmdHMGet(cmd, coverStr(args, 1), args[2:])
+	case "smembers":
+		return db.cmdSMembers(cmd, coverStr(args, 1))
 	case "hgetall":
 		return db.cmdHGetAll(cmd, coverStr(args, 1))
 	case "del":
@@ -296,6 +300,21 @@ func (db *coverDB) cmdHMGet(cmd redis.Cmder, key string, fields []any) error {
 		if s, ok := v.h[coverStr(fields, i)]; ok {
 			out[i] = s
 		}
+	}
+	return coverFill(cmd, out)
+}
+
+func (db *coverDB) cmdSMembers(cmd redis.Cmder, key string) error {
+	v := db.keys[key]
+	if v == nil {
+		return coverFill(cmd, []string{})
+	}
+	if v.kind != coverSet {
+		return errCoverWrongType
+	}
+	out := make([]string, 0, len(v.set))
+	for k := range v.set {
+		out = append(out, k)
 	}
 	return coverFill(cmd, out)
 }
@@ -529,6 +548,19 @@ func (db *coverDB) list(key string) (*coverVal, error) {
 		return v, nil
 	}
 	if v.kind != coverList {
+		return nil, errCoverWrongType
+	}
+	return v, nil
+}
+
+func (db *coverDB) set(key string) (*coverVal, error) {
+	v := db.keys[key]
+	if v == nil {
+		v = &coverVal{kind: coverSet, set: map[string]struct{}{}}
+		db.keys[key] = v
+		return v, nil
+	}
+	if v.kind != coverSet {
 		return nil, errCoverWrongType
 	}
 	return v, nil

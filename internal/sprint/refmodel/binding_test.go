@@ -109,6 +109,9 @@ func loadSample(tb testing.TB, s sample) *loaded {
 			l.props(stored, carried)
 		}
 	}
+	if len(t.Routes) > 0 {
+		l.m.SetRoutes(t.Routes)
+	}
 	l.judgments(t)
 	_, l.inbox, _ = l.m.Tails(l.ctx)
 	return l
@@ -182,7 +185,9 @@ func (l *loaded) run(s sample, part string) (store.Result, int) {
 	due := 0
 	for _, p := range sprint.TickParts {
 		if p.Name == part {
-			res, err := l.st.Run(l.ctx, store.TickPartStep(p.Name, p.Fn, req, nil, nil, &due))
+			step := store.TickPartStep(p.Name, p.Fn, req, nil, nil, &due)
+			step.Routes = true // the reference decides on the snapshot's routes; the store reads the same
+			res, err := l.st.Run(l.ctx, step)
 			l.must(err)
 			return res, due
 		}

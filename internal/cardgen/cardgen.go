@@ -229,7 +229,8 @@ type Plan struct {
 	Tier    string
 	Skipped []string
 	// Shared is true when two cards of the plan name one file in their PATHS and
-	// neither needs the other: the add needs --allow-shared-paths.
+	// neither needs the other. PlanLedger chains every ledger card to the one
+	// before it, so a generated ledger plan is never shared.
 	Shared bool
 }
 
@@ -237,14 +238,12 @@ type Plan struct {
 const MaxPaths = 8
 
 // PlanLedger groups a ledger's rows by file (one card per file, in ledger order),
-// computes each card's PATHS and TEST, and plans one wave with no dependency for
-// every ledger: the lander resolves a ledger conflict as the union of removals, so
-// adjacent deletions of one file no longer conflict (docs/SPEC-CARD-CONTRACT.md
-// section 6, generated cards). Every card shares the ledger's path and none needs
-// another, so Shared tells the add it wants --allow-shared-paths; a generated
-// ledger (docs/SPEC-SPRINT.md section 7) plans the same. prefix opens every id;
-// tier "" takes the ledger's own; max keeps the first max cards (0 is all), cut
-// before the plan is rendered so no kept card needs a cut one.
+// computes each card's PATHS and TEST, and plans one wave with every card chained
+// to the one before it with DEPENDS-ON: no two independent cards share the
+// ledger's path, so the add admits them as they are (docs/SPEC-CARD-CONTRACT.md
+// section 6, generated cards). prefix opens every id; tier "" takes the ledger's
+// own; max keeps the first max cards (0 is all), cut before the plan is rendered
+// so no kept card needs a cut one.
 func PlanLedger(l Ledger, rows []Row, prefix, tier string, max int) Plan {
 	if tier == "" {
 		tier = l.Tier
@@ -281,9 +280,12 @@ func PlanLedger(l Ledger, rows []Row, prefix, tier string, max int) Plan {
 	for i := range p.Cards {
 		p.Cards[i].Wave = 1
 	}
-	// every card is wave 1 and names the ledger in PATHS, and none needs another:
-	// two cards make the add want --allow-shared-paths
-	p.Shared = len(cards) > 1
+	// chain cards that share files (the ledger) so no two independent cards share a file
+	if len(cards) > 1 {
+		for i := 1; i < len(cards); i++ {
+			p.Cards[i].Deps = append(p.Cards[i].Deps, p.Cards[i-1].ID)
+		}
+	}
 	return p
 }
 

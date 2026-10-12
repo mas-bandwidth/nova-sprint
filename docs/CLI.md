@@ -88,7 +88,8 @@ nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect 
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
-nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>]
+nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id>, or --waive removes the need from each (recorded with the reason): no drop strands a need
+nova-sprint needs set <id> (--needs <a,b> | --clear) [--answers <note>]   # the coordinator's alone: re-point a card's needs in place; a card in merging or review whose need is gone is answerable here
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
 nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
@@ -515,6 +516,25 @@ cleanup that fails is a refusal naming the keys that remain. Every step prints a
 Without `--once` the verb repeats every `--every`. `--dry-run` prints the cut it would make,
 or the promotion in flight, and writes, enqueues and records nothing. The contract is
 [SPEC-SPRINT.md section 11](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), promote.
+
+### The stream branch
+
+Every stream lands on its own branch `sprint/<stream>`; a card cut on dev or main is re-cut
+onto it at `add`, never landed straight on dev or main. The landing flow is one sentence:
+"The landing flow: card heads land in a batch on their stream's branch sprint/<stream>,
+oldest first, one writer per stream; stream branches merge one at a time into dev (main where
+a repository has no dev); a card never lands on dev or main." A stream's branch and trunk are
+fields of its control card (`stream_branch`, `trunk`): the first `add` of a stream writes both
+in the same step as its first card, the branch `sprint/<stream>` and the trunk the protected
+branch the card's `BASE:` names (dev, or main; dev when it names none); a card naming a
+non-protected branch keeps that branch as the stream's. `add` re-cuts a card cut on dev or
+main onto the stream's branch, saying so on one `NOTE` line per add naming the branch, the
+trunk and quoting the landing flow. The lander creates an absent stream branch on origin at
+the trunk's tip before it lands any card of the stream, one `NOTE` line `LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>`; a card of a stream whose branch origin lacks is held, never
+landed on the trunk. No setting turns this on or off: a cleared sprint (an epoch bump) builds
+the same on its first add. The promotion stream (`stream set --promotion` / `--land-protected`)
+is the exception: its cards land on the protected branch the mark names. The contract is
+[SPEC-SPRINT.md section 7](SPEC-SPRINT.md#7-merging).
 
 ### The fleet is idle
 

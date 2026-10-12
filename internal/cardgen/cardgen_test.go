@@ -104,10 +104,10 @@ func TestMergePathsFoldsPastTheCeiling(t *testing.T) {
 }
 
 // The lander unions every generated ledger conflict, so adjacent deletions of one
-// file no longer conflict at land: every ledger plans one wave, every card carries
-// DEPENDS-ON: -, and the cards share the ledger's path with no need between them,
-// so the CARDS line says shared-paths=yes and the add wants --allow-shared-paths.
-func TestALedgerPlanIsOneWaveWithSharedPathsAndNoDependencyChain(t *testing.T) {
+// file no longer conflict at land: every ledger plans one wave, and cards that share
+// files (like the ledger) are chained with DEPENDS-ON so no two independent cards
+// share a file.
+func TestALedgerPlanIsOneWaveWithChainedCards(t *testing.T) {
 	t.Parallel()
 	l := Ledgers["serial-tests"]
 	rows, _ := ParseLedger(l, "# ceiling: 5\n"+
@@ -119,20 +119,28 @@ func TestALedgerPlanIsOneWaveWithSharedPathsAndNoDependencyChain(t *testing.T) {
 	require.Len(t, rows, 5, "the plan under test covers a ledger of five rows")
 	p := PlanLedger(l, rows, "", "", 0)
 	assert.Equal(t, 1, p.Waves, "a ledger plan is one wave")
-	assert.True(t, p.Shared, "the cards share the ledger's path with no need between them: the add wants --allow-shared-paths")
-	for _, c := range p.Cards {
+	for i, c := range p.Cards {
 		assert.Equal(t, 1, c.Wave, c.ID)
-		assert.Empty(t, c.Deps, c.ID)
-		assert.Contains(t, Render(header, c), "\nDEPENDS-ON: -\n", c.ID)
+		if i == 0 {
+			assert.Empty(t, c.Deps, "first card has no dependencies")
+			assert.Contains(t, Render(header, c), "\nDEPENDS-ON: -\n", c.ID)
+		} else {
+			assert.Equal(t, []string{p.Cards[i-1].ID}, c.Deps, c.ID)
+			assert.Contains(t, Render(header, c), "\nDEPENDS-ON: "+p.Cards[i-1].ID+"\n", c.ID)
+		}
 	}
 
 	g := Ledgers["generality-fixtures"]
 	grows, _ := ParseLedger(g, "a/one.md recorded\nb/two.md recorded\nc/three.md recorded\n")
 	gp := PlanLedger(g, grows, "", "", 0)
 	assert.Equal(t, 1, gp.Waves)
-	for _, c := range gp.Cards {
+	for i, c := range gp.Cards {
 		assert.Equal(t, 1, c.Wave)
-		assert.Empty(t, c.Deps)
+		if i == 0 {
+			assert.Empty(t, c.Deps)
+		} else {
+			assert.Equal(t, []string{gp.Cards[i-1].ID}, c.Deps)
+		}
 	}
 	assert.Equal(t, "pro", gp.Tier)
 	assert.Equal(t, "flash", PlanLedger(g, grows, "", "flash", 0).Tier, "--tier overrides the ledger's default")
@@ -247,16 +255,16 @@ func TestTheOKLineAndTheDeadline(t *testing.T) {
 
 // --max cuts before the plan is rendered: the kept cards are the whole plan, so no
 // card needs a cut one (the add refuses a need that is no card of the add), the
-// plan is one wave, and the kept cards share the ledger with no need between them.
+// plan is one wave, and the kept cards are chained with DEPENDS-ON.
 func TestMaxCutsBeforeThePlanIsRendered(t *testing.T) {
 	t.Parallel()
 	l := Ledgers["serial-tests"]
 	rows, _ := ParseLedger(l, serialFixture)
 	p := PlanLedger(l, rows, "", "", 2)
 	require.Len(t, p.Cards, 2)
-	assert.Empty(t, p.Cards[1].Deps, "no card needs another, cut or kept")
+	assert.Empty(t, p.Cards[0].Deps, "first card has no dependencies")
+	assert.Equal(t, []string{p.Cards[0].ID}, p.Cards[1].Deps, "second card chains to first")
 	assert.Equal(t, 1, p.Waves)
-	assert.True(t, p.Shared, "the two kept cards share the ledger with no need between them")
 	assert.Len(t, PlanLedger(l, rows, "", "", 0).Cards, 4, "0 is all")
 	assert.Len(t, PlanLedger(l, rows, "", "", 9).Cards, 4, "a max past the plan keeps every card")
 	fs, _ := ParseFindings("a/x.go:1\twrong\tfix\ta TestA\nb/y.go:1\twrong\tfix\tb TestB\n")

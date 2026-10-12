@@ -9,13 +9,16 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
 	@echo "make vet         go vet ./..."
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
-	@echo "make functional  go test -tags functional ./... (needs redis-server on PATH)"
+	@echo "make functional  go test -tags functional -count=1 ./... (needs redis-server on PATH)"
+	@echo "make functional-gate  the tier as CI runs it: NOVA_CI=1 and a 2-minute bound per package"
+	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint (its rest leg)"
+	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
@@ -42,8 +45,35 @@ test: vet
 	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./...
 	$(NO_AUTO_MAINTENANCE) $(GO) test -count=1 -run '$(TICK_GATE_TEST)' ./internal/sprint/
 
+# the functional tier: the real store's tests. Bounded at two minutes per
+# package (the standing rule: one minute ideally, two max; over the bound is
+# the test's defect). Needs redis-server on PATH.
 functional:
-	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -tags functional ./...
+	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s ./...
+
+# functional-gate is the tier as CI runs it per pull request: the same
+# two-minute-per-package bound, with NOVA_CI=1 so a missing redis-server fails
+# closed instead of skipping.
+functional-gate:
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s ./...
+
+# functional-gate-rest runs the tier without ./cmd/nova-sprint, which the
+# functional job's matrix runs sharded across three legs
+# (.github/workflows/ci.yml).
+FUNCTIONAL_REST := $(filter-out %/cmd/nova-sprint,$(shell $(GO) list ./...))
+
+functional-gate-rest:
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s $(FUNCTIONAL_REST)
+
+# functional-gate-shard runs one shard of ./cmd/nova-sprint's functional package:
+# SHARD names the shard (1..SHARDS) and SHARDS the number of them; both are
+# refused unless named, like tlc-require.
+SHARD_PATTERN = $(shell $(GO) test -tags functional -list . ./cmd/nova-sprint | $(GO) run ./tools/testshard --shard $(SHARD) --of $(SHARDS))
+
+functional-gate-shard:
+	@test -n "$(SHARD)" || { echo "make functional-gate-shard needs SHARD (1..SHARDS)" >&2; exit 2; }
+	@test -n "$(SHARDS)" || { echo "make functional-gate-shard needs SHARDS (the number of shards)" >&2; exit 2; }
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -tags functional -count=1 -timeout 120s -run '$(SHARD_PATTERN)' ./cmd/nova-sprint
 
 # the release gate (docs/TESTS.md, "Release acceptance"): the checks a point release passed by
 # a ten-minute live watch, as tests in parallel, under one minute on a bench and failed past
