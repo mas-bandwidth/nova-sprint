@@ -267,6 +267,11 @@ records, its needs, its place in line and its hold from one read of the tables
 one JSON object a line: `id`, `stream`, `column`, `score`, `needs`, `brief_len` and
 the other fields (the brief's text is `card <id> --brief`); `card --stream <s> --json` prints one stream's.
 
+`card` also names a read card by its own identity: `card <primary>.r<n>.<reader>[.g<n>]`
+prints the read card's place (its fleet or readers-table row and column, or how it was
+retired) and falls through to its primary's story, instead of "no primary"
+(docs/SPEC-SPRINT.md section 6, the reads).
+
 A card's live `column` comes from its table row in `card <id> --json`,
 `card --all --json`, `where --json --rows` and `needs --json`. The rows listing
 keeps `state` as a deprecated alias of `column` for one release. `needs` labels
