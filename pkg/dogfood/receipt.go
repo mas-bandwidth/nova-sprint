@@ -15,7 +15,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/readregular"
 )
 
@@ -62,10 +61,6 @@ var edgeMarker = regexp.MustCompile(`(?i)(^|[^a-z])edges?:`)
 // receiptIDShape is what an ID looks like: the eight hex characters a content
 // hash gives, which is also what ends a receipt's filename.
 var receiptIDShape = regexp.MustCompile(`^[0-9a-f]{8}$`)
-
-// IsReceiptID reports whether a string is a receipt id, so that the verb which
-// takes one from a caller and the record which stores it ask the same question.
-func IsReceiptID(s string) bool { return receiptIDShape.MatchString(strings.TrimSpace(s)) }
 
 // RecordsAnEdge reports whether this receipt found something: the verb did not
 // do what the run needed, or the notes name an edge in the shape the family
@@ -194,84 +189,6 @@ func hasControl(s string) bool {
 	return strings.ContainsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' || unicode.IsControl(r) })
 }
 
-// Record appends one receipt to the receipts directory and returns the file it
-// wrote. The append is a new file per receipt, written to a temporary name in
-// the same directory and renamed into place, because two benches recording at
-// once must not interleave halves of two JSON lines into one file — the
-// directory is the append-only log, and each file is one atomic entry.
-func Record(dir string, r Receipt) (string, error) { return record(dir, r, true) }
-
-// PlanRecord is Record with nothing written: every check Record makes (the
-// receipt, the directory as MkdirAll would make it, the file as the atomic write
-// would check it), the same error, and the path the receipt would take.
-func PlanRecord(dir string, r Receipt) (string, error) { return record(dir, r, false) }
-
-func record(dir string, r Receipt, write bool) (string, error) {
-	if strings.TrimSpace(dir) == "" {
-		return "", errors.New("receipts: no directory given; refusing to guess")
-	}
-	if errs := r.Validate(); len(errs) > 0 {
-		return "", errs[0]
-	}
-	line, err := json.Marshal(r)
-	if err != nil {
-		return "", fmt.Errorf("receipts: %w", err)
-	}
-	line = append(line, '\n')
-
-	// The filename ends in the receipt's own ID, so the id the gate prints and
-	// the file on disk are the same eight characters.
-	sum, err := receiptSum(r)
-	if err != nil {
-		return "", fmt.Errorf("receipts: %w", err)
-	}
-	name := fmt.Sprintf("%s-%s-%s-%s-%s.json",
-		strings.ReplaceAll(r.Time().Format("20060102T150405Z"), ":", ""),
-		slug(r.Tool), slug(r.Verb), slug(r.By), sum)
-	final := filepath.Join(dir, name)
-	if !write {
-		if err := atomicfile.CheckAfterMkdirAll(filepath.Clean(final), 0o600, atomicfile.ExactMode()); err != nil {
-			return "", fmt.Errorf("receipts: %w", err)
-		}
-		return final, nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("receipts: %w", err)
-	}
-	if err := atomicfile.Write(filepath.Clean(final), line, 0o600, atomicfile.ExactMode()); err != nil {
-		return "", fmt.Errorf("receipts: %w", err)
-	}
-	return final, nil
-}
-
-// slug makes one filename-safe word out of a name that may hold spaces (a
-// two-word verb) or characters a filesystem argues about. It never returns "".
-func slug(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		return "x"
-	}
-	if len(out) > 40 {
-		out = out[:40]
-	}
-	return out
-}
-
-// ReadReceipts reads every receipt in a directory. A file holds one JSON
-// object per line, so a receipts directory written by hand — or appended to by
-// an older tool — reads the same as one Record wrote. Blank lines are skipped;
-// anything else that will not parse, or will not validate, comes back as a
-// failure naming the file and the line, and never as a quietly shorter ledger.
-//
 // The directory is read shallowly: subdirectories are somebody else's records.
 func ReadReceipts(dir string) ([]Receipt, []Failure, error) {
 	if strings.TrimSpace(dir) == "" {

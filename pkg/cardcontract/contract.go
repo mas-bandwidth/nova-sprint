@@ -4,19 +4,6 @@
 // PATH so the child meets the frame through the commands it already knows.
 package cardcontract
 
-import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
-)
-
 // Frame is what the member knows of one launch and hands native as a file: the repository
 // and the commit to stage, the branch the checkout is on (and the member pushes), the
 // attempt, what the attempt before left, the tier and the model. It is the packet's, never
@@ -97,53 +84,8 @@ func For(family string) Profile {
 	return plain{family: family}
 }
 
-// familyWords are the words of a model id (provider/model) that name its family, in order.
-var familyWords = []struct{ family, word string }{
-	{"claude", "claude"}, {"claude", "anthropic"},
-	{"openai", "openai"}, {"openai", "gpt"},
-	{"gemini", "gemini"}, {"gemini", "google"},
-	{"grok", "grok"}, {"grok", "xai"},
-	{"deepseek", "deepseek"},
-}
-
-// FamilyOf is the family of a model id: the first family word it carries, else plain.
-func FamilyOf(model string) string {
-	m := strings.ToLower(model)
-	for _, fw := range familyWords {
-		if strings.Contains(m, fw.word) {
-			return fw.family
-		}
-	}
-	return "plain"
-}
-
 // FrameName is the file name the member writes a frame under, beside the card file.
 const FrameName = ".frame.json"
-
-// WriteFrame writes a frame as JSON at path.
-func WriteFrame(path string, f Frame) error {
-	b, err := json.MarshalIndent(f, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicfile.Write(path, append(b, '\n'), 0o644)
-}
-
-// ReadFrame reads the frame at path; a frame with no kind or no card is refused.
-func ReadFrame(path string) (Frame, error) {
-	var f Frame
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return f, err
-	}
-	if err := json.Unmarshal(b, &f); err != nil {
-		return f, fmt.Errorf("the frame %s is not JSON: %w", path, err)
-	}
-	if (f.Kind != "work" && f.Kind != "read") || f.Card == "" {
-		return f, fmt.Errorf("the frame %s wants kind work or read and a card, got kind %q card %q", path, f.Kind, f.Card)
-	}
-	return f, nil
-}
 
 // JobName is the frame's text in the job directory, the first thing the child reads.
 const JobName = "JOB.md"
@@ -167,164 +109,9 @@ const FinishName = ".sprint/finish.md"
 // member counts the child's commits from.
 const StagedName = "staged"
 
-// maxRecord is the ceiling a job file read whole into memory carries, the same ceiling
-// readRegular gives pkg/swarm's dispatcher files: a finish and a push record are a few
-// lines, and a planted file at their names must not set the member's memory.
-const maxRecord = 16 * 1024 * 1024
-
-// readRecord is os.ReadFile for a job file the walled child can rewrite (security#66
-// finding 1): FinishName and PushedName live in the job directory, the child's first
-// --write, and the member reads them outside the wall into the card's result and the pull
-// request body. A SYMLINK there would have the member read past the wall what the wall
-// exists to keep from it, and a FIFO would park the read with no deadline, so the posture is
-// pkg/swarm's readRegular, copied small because swarm imports this package: a path that
-// is not a regular file is no record at all, the outcome an absent file already has. The
-// Lstat refuses the link and the pipe, the open runs through an os.Root, which follows no
-// component however freshly planted, so a link swapped in after the Lstat is refused too,
-// the fstat asks the open file the same question, and the size caps the read. The O_NONBLOCK
-// readRegular also carries has no portable spelling in this one file; a FIFO that slips in
-// between the Lstat and the open could still park it, and the reads happen at the finish,
-// when the launch has ended.
-func readRecord(job, name string) ([]byte, error) {
-	root, err := os.OpenRoot(job)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	notRegular := func(fi fs.FileInfo) error {
-		return fmt.Errorf("%s: not a regular file (%s): %w", name, fi.Mode().Type().String(), fs.ErrInvalid)
-	}
-	fi, err := root.Lstat(name)
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, notRegular(fi)
-	}
-	f, err := root.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	if fi, err = f.Stat(); err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, notRegular(fi)
-	}
-	if fi.Size() > maxRecord {
-		return nil, fmt.Errorf("%s: %d bytes passes the %d a job record carries: %w", name, fi.Size(), maxRecord, fs.ErrInvalid)
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, maxRecord+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(raw)) > maxRecord {
-		return nil, fmt.Errorf("%s: %d bytes passes the %d a job record carries: %w", name, int64(len(raw)), maxRecord, fs.ErrInvalid)
-	}
-	return raw, nil
-}
-
-// IsFinish is whether raw is the finish the gh shim recorded in the job, byte for byte:
-// native publishes that record as the card's result when the child wrote no RESULT.md.
-func IsFinish(job string, raw []byte) bool {
-	b, err := readRecord(job, FinishName)
-	return err == nil && string(b) == string(raw)
-}
-
-// ReadFinish is the finish the gh shim recorded in the job directory, and whether
-// there is one (an empty file is none).
-func ReadFinish(job string) (typedrec.CardResult, bool) {
-	b, err := readRecord(job, FinishName)
-	if err != nil || len(strings.TrimSpace(string(b))) == 0 {
-		return typedrec.CardResult{}, false
-	}
-	return typedrec.ParseCardResult(b), true
-}
-
-// Install writes JOB.md into the job directory and the profile's shims into shimDir.
-func Install(p Profile, f Frame, s Staged, shimDir string) error {
-	if err := atomicfile.Write(filepath.Join(s.Job, JobName), []byte(p.JobText(f, s)), 0o644); err != nil {
-		return fmt.Errorf("JOB.md: %w", err)
-	}
-	if err := os.MkdirAll(shimDir, 0o755); err != nil {
-		return err
-	}
-	for _, sh := range p.Shims(f, s) {
-		if err := atomicfile.Write(filepath.Join(shimDir, sh.Name), []byte(sh.Script), 0o755, atomicfile.ExactMode()); err != nil {
-			return fmt.Errorf("the %s shim: %w", sh.Name, err)
-		}
-	}
-	return nil
-}
-
 // RecipesName is the directory recipes are kept in, in the member's root, and staged into,
 // in the job directory.
 const RecipesName = "recipes"
-
-// StageRecipes copies the recipe files a frame names from the member's recipes directory
-// into <job>/recipes, each at its own relative path (docs/SPEC-CARD-CONTRACT.md, staged
-// recipes): a brief holds 16 KiB, a recipe a card works from can be larger, and the wall
-// gives the child no forge to fetch one from. A name that is not a local relative path, or
-// is not a regular file in the recipes directory, refuses the whole staging; every source is
-// opened through an os.Root of the recipes directory, so no path component, a symlinked
-// directory included, leaves it, and a refusal names the Stage line and the reason.
-func StageRecipes(f Frame, job string) error {
-	if len(f.Stage) == 0 {
-		return nil
-	}
-	root, err := os.OpenRoot(f.Recipes)
-	if err != nil {
-		return fmt.Errorf("Stage: the recipes directory %s: %w", f.Recipes, err)
-	}
-	defer root.Close()
-	for _, rel := range f.Stage {
-		if !filepath.IsLocal(rel) {
-			return fmt.Errorf("Stage: %q is not a path inside the recipes directory", rel)
-		}
-		fi, err := root.Lstat(rel)
-		if err != nil || !fi.Mode().IsRegular() {
-			return fmt.Errorf("Stage: %s is not a regular file inside %s (put it there, or drop the Stage: line)", rel, f.Recipes)
-		}
-		src, err := root.Open(rel)
-		if err != nil {
-			return fmt.Errorf("Stage: %s cannot be opened inside %s: %w", rel, f.Recipes, err)
-		}
-		b, err := io.ReadAll(src)
-		src.Close()
-		if err != nil {
-			return fmt.Errorf("Stage: %s: %w", rel, err)
-		}
-		to := filepath.Join(job, RecipesName, rel)
-		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-			return err
-		}
-		if err := atomicfile.Write(to, b, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Prompt is the harness prompt of a framed card: JOB.md first, then the card.
-func Prompt(job, card string) string {
-	return "Read " + filepath.Join(job, JobName) + " first.\n\n" + card
-}
-
-// LastPushed is the last head the git shim recorded in the job directory, "" when none.
-func LastPushed(job string) (branch, head string) {
-	b, err := readRecord(job, PushedName)
-	if err != nil {
-		return "", ""
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		f := strings.Split(line, "\t")
-		if len(f) >= 2 && typedrec.IsSha(strings.TrimSpace(f[1])) {
-			branch, head = strings.TrimSpace(f[0]), strings.TrimSpace(f[1])
-		}
-	}
-	return branch, head
-}
 
 // BrokenFindingText is what every profile's read JOB.md says of a broken verdict
 // (docs/SPEC-CARD-CONTRACT.md section 3): it names the defect, or it is no verdict.

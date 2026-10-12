@@ -3,7 +3,6 @@ package cardcontract
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // Carry is how a rework's checkout was staged (docs/SPEC-CARD-CONTRACT.md, where a rework
@@ -78,15 +77,4 @@ func short12(s string) string {
 		return s[:12]
 	}
 	return orDash(s)
-}
-
-// ParseCarryLine is the words of the last carry line in native's log, "" when it has none.
-func ParseCarryLine(log []byte) string {
-	words := ""
-	for _, l := range strings.Split(string(log), "\n") {
-		if rest, ok := strings.CutPrefix(strings.TrimRight(l, "\r"), CarryLinePrefix); ok {
-			words = strings.TrimSpace(rest)
-		}
-	}
-	return words
 }
