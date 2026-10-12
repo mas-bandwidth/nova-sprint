@@ -64,6 +64,11 @@ func (st *Store) DoctorRead(ctx context.Context) (DoctorRead, error) {
 		return DoctorRead{}, err
 	}
 	snap.Friends = req.Friends
+	// The beats are the tick's own read (fleetBeats above): the doctor's readers check
+	// and ReadsOut mark a read card working on a row a ghost from the row's own beat, so
+	// the snapshot the doctor reads must carry them (readCardGhost, live.go;
+	// docs/SPEC-SPRINT.md section 6, the reads). nil beats leave every ghost live.
+	snap.Beats = req.Beats
 	out.Snap = snap
 	if out.ReaderBeats, err = pinned.readerBeats(ctx, snap.Readers); err != nil {
 		return DoctorRead{}, err

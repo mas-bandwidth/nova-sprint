@@ -477,24 +477,12 @@ func tierBelow(t string) string {
 }
 
 // readCardsStanding is the primary's reads that stand at its attempt, both tables: the
-// fleet's read cards placed or retired with a verdict (fleetReadLive), and the readers
-// table's live reads (the readers table's reads asked before the setting, which close as
-// they always did); broken says one of them found it broken.
+// fleet's read cards placed or retired with a verdict, and the readers table's live reads
+// (the readers table's reads asked before the setting, which close as they always did); a
+// read card working on a row whose beat names it a ghost does not stand (ReadsOut marks it),
+// so the deal asks it again; broken says one of them found it broken.
 func readCardsStanding(s *Snapshot, pr *Card, idx map[string][]*Card) (standing int, broken bool) {
-	var placed, oks, brk []*Card
-	if idx != nil {
-		placed, oks, brk = fleetReadLiveOf(s, pr, idx[pr.ID])
-	} else {
-		placed, oks, brk = friendReadLive(s, pr)
-	}
-	standing = len(placed) + len(oks) + len(brk)
-	broken = len(brk) > 0
-	if s.Readers != nil {
-		for _, rc := range liveReadsAt(s, pr, readAttempt(pr)) {
-			standing++
-			broken = broken || rc.Col == Broken
-		}
-	}
+	standing, _, broken = readsOutStanding(ReadsOut(s, pr))
 	return standing, broken
 }
 

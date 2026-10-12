@@ -1161,7 +1161,16 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 		view.Friends = req.Friends
 		settled = &view
 	}
-	for _, q := range sprint.ConsumersOut(settled) {
+	if settled.Beats == nil {
+		// the beats the check's one predicate reads (ReadsOut -> readCardGhost) to mark a
+		// read card working on a row a ghost: the twin's snapshot carries none, so set the
+		// tick's own beats here or the check counts every ghost a live read
+		// (docs/SPEC-SPRINT.md section 6, the reads).
+		view := *settled
+		view.Beats = req.Beats
+		settled = &view
+	}
+	for _, q := range sprint.ConsumersOutFull(settled) {
 		if !slices.ContainsFunc(t.res.Quiet, func(x sprint.LaneQuiet) bool { return x.Type == q.Type && x.Subject == q.Subject }) {
 			t.res.Quiet = append(t.res.Quiet, q)
 		}
