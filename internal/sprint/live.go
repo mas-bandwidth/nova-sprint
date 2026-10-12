@@ -290,6 +290,14 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	}
 	for _, row := range s.Fleet.Rows() {
 		b := RowBeat(beats, row)
+		// a friend who has stopped beating is down: her daemon alone runs her lanes,
+		// so unlike a silent machine, whose children may still run, her dealt and
+		// taken cards and reads come back to the deal the moment she is past the beat
+		// bound (docs/SPEC-SPRINT.md section 1, a friend's health; FriendReturn).
+		if f, ok := FriendOfRow(row); ok && b.Beaten() && s.Now.Sub(b.At) > FriendBeatBound {
+			p = friendStoppedReturn(s, p, f, row, b)
+			continue
+		}
 		live := liveOf(b, s.Now)
 		if !live.known || !b.Fresh(s.Now) {
 			// only the owner's fresh beat is its word that a run is gone: a worker gone
@@ -344,6 +352,35 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				Changes: []Change{change(Fleet, moveEntry(c, c.Row, Ready, set, unset...))},
 				Moved:   fmt.Sprintf("%s working -> ready on %s gen=%d (%s)", c.ID, row, gen+1, why)})
 		}
+	}
+	return p
+}
+
+// friendStoppedReturn is the reconcile on a friend's row whose beat is past the beat bound:
+// she is down, and every card working on her row comes back to the deal. A read card goes
+// back to the read deal (readLostUnit: retired lost, spending no reader). A work card is
+// retired off her row by FriendReturn, its primary moved working -> ready with its carry
+// head kept, so the next taker gets it (docs/SPEC-SPRINT.md section 1, friend reconcile).
+// It is the same plan the run loop's friend reconcile applies, run here by the tick because
+// a friend who stopped beating cannot hand her own cards back.
+func friendStoppedReturn(s *Snapshot, p Plan, f, row string, b Beat) Plan {
+	why := "her daemon stopped beating " + ago(s.Now.Sub(b.At))
+	working := slices.Clone(s.Fleet.Cell(row, Working))
+	SortCards(working)
+	var back []FriendReturnCard
+	for _, c := range working {
+		if isRead(c) {
+			gen := max(c.Int("gen"), 1)
+			p.Units = append(p.Units, readLostUnit(s, c, gen, why, false))
+			continue
+		}
+		back = append(back, FriendReturnCard{ID: c.ID, Gen: c.Int("gen"), Why: why})
+	}
+	if len(back) > 0 {
+		q := FriendReturn(s, FriendReturnReq{Friend: f, Who: LiveReturnVerb, Cards: back, Push: true})
+		p.Units = append(p.Units, q.Units...)
+		p.Notes = append(p.Notes, q.Notes...)
+		p.Refused = append(p.Refused, q.Refused...)
 	}
 	return p
 }

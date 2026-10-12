@@ -253,13 +253,16 @@ func TestAFriendFlappingForAnHourIsTwoPushes(t *testing.T) {
 	r := newTransitionRig(t)
 	row := sprint.FriendRow("amy")
 	r.tick(time.Second)
-	r.up("", r.st.Now())
+	start := r.st.Now()
+	r.up("", start)
 	notes := r.statusNotes(row)
 	require.Len(t, notes, 1)
 	first := notes[0]
 	flapsFrom := ""
 	for k := range 60 {
 		r.advance(time.Minute)
+		// her daemon beats within the beat bound: a pong is evidence she is up
+		r.daemon("", start, start)
 		r.answered()
 		_, err := r.st.Hold(r.ctx, sprint.HoldReq{Names: []string{"amy"}, Who: "coordinator", Reason: "flap", Release: k%2 == 1})
 		require.NoError(t, err)
