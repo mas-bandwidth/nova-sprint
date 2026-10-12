@@ -234,6 +234,7 @@ func TestLandGatesTheCombinedTreeOnceWhenFilesCollide(t *testing.T) {
 		map[string]map[string]string{"a1": {"NOTES.md": "fine\n\nand a1\n"}},
 		map[string]map[string]string{"b1": {"NOTES.md": "b1 first\n\nfine\n"}})
 	gates := gateCount(r)
+	buildBothBeforeAnyPush(r)
 	out := r.ok("land --land-parallel 2")
 	assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
 	assert.Contains(t, out, "LAND OK stream=s2 cards=1 base=main")
@@ -260,13 +261,16 @@ func TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued(t *testing.T)
 	// The cancel is delivered at a synchronization point the test controls: the combined
 	// tree gate (the pass's fourth and last gate) suspends in its gateRan seam until the
 	// test cancels, so the cancel always arrives during the gate, never by racing wall time
-	// against a gate count, however the shared machine is loaded.
+	// against a gate count, however the shared machine is loaded. The fourth gate is the
+	// combined one only when s2's batch is cut from the old base (buildBothBeforeAnyPush):
+	// cut from the moved tip, the pass has three gates and no combined gate to cancel.
 	r.a.gateRan = func(string, bool) {
 		if gates.Add(1) == 4 {
 			close(combinedStarted)
 			<-release
 		}
 	}
+	buildBothBeforeAnyPush(r)
 	go func() {
 		<-combinedStarted
 		cancel()
@@ -312,6 +316,9 @@ func TestLandRefusesARedCombinedTreeForThePassAndStopsNoStream(t *testing.T) {
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"main.go": "package main\n\nvar n = 1\n\nfunc main() {}\n"}},
 		map[string]map[string]string{"b1": {"main.go": "package main\n\nfunc main() {}\n\nvar n = 2\n"}})
+	// the collision is a combined-tree finding only when s2's batch is cut from the old base;
+	// cut from the moved tip, b1 alone fails its own gate and the head is blamed at once
+	buildBothBeforeAnyPush(r)
 	code, out, errs := r.do("land --land-parallel 2")
 	assert.Equal(t, 1, code, out+errs)
 	assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
@@ -439,7 +446,7 @@ func TestCutBranchClearsStagedDeletionOnTheSameBranch(t *testing.T) {
 // new base and never "merged again" (found 2026-10-12: 13 of 320 runs of the prefix test
 // under load gated the second batch once, not twice). The first push waits here until the
 // second stream's batch has run its own phase-1 gate, which comes after its cut and merge.
-// Call it after gateCount, which it wraps.
+// Call it after gateCount or the test's own gateRan, which it wraps.
 func buildBothBeforeAnyPush(r *landRig) {
 	built := make(chan struct{})
 	var once sync.Once
