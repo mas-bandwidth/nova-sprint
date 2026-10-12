@@ -2963,7 +2963,7 @@
      through the read-card deal: ask --another cuts one more fleet read card for a primary already asked, and ask
      --instead <member, reader-<member> or friend> takes back that unit's live fleet read card (retired_by
      coordinator, spending no one) and deals it to another unit in the same step; every refusal names the reads that
-     stand and who holds each. (d) The tick's postcondition (sprint.ConsumersOut, internal/sprint/consumers_out.go) is
+     stand and who holds each. (d) The tick's postcondition (sprint.ConsumersOutFull, internal/sprint/readers.go) is
      the invariant, checked every tick in place of the vacuous block: a primary in review has a live read held by a row
      whose queue lists it (read through ReadsOut, so a fleet read card holds it), or the ok reads it needs, or an open
      judgment on it; a primary working or in fix has its own work card working on an up row, or a judgment; a breach

@@ -3557,7 +3557,7 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   `LiveGrace`) is a ghost too, retired lost (spending no one) and dealt again in the same
   tick's deal; the second ghost at one primary's attempt pushes one judgment ("a read was
   lost twice") naming each card, row and reason. The tick's postcondition
-  (`sprint.ConsumersOut`, internal/sprint/consumers_out.go) is the same invariant: a primary
+  (`sprint.ConsumersOutFull`, internal/sprint/readers.go) is the same invariant: a primary
   in review has a live read held by a row whose queue lists it, or the ok reads it needs, or
   an open judgment on it — read through `ReadsOut`, so a fleet read card holds its primary —
   and a primary working has its own work card working on an up row or a judgment; a breach

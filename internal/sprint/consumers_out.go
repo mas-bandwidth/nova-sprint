@@ -91,48 +91,17 @@ func friendUp(s *Snapshot, name string) bool {
 	return false
 }
 
-// reviewConsumerOut is the one quiet of a review primary with no live read out
-// for it and no open judgment that names it, and whether it is missing. The
-// read out is the one predicate (ReadsOut, docs/SPEC-SPRINT.md section 6, the
-// reads): a live read held by a row whose queue lists it (a readers-table read
-// asked or reading, a fleet read card placed, a friend's read), or the ok reads
-// it needs, so a fleet read card the readers table cannot see still holds its
-// primary.
+// reviewConsumerOut is the one quiet of a review primary with no read out for
+// it and no open judgment that names it, and whether it is missing.
 func reviewConsumerOut(s *Snapshot, c *Card) (LaneQuiet, bool) {
-	if reviewHasLiveRead(s, c) || acceptable(s, c) || heldByJudgment(s, c.ID) {
+	if readOutFor(s, c.ID) || heldByJudgment(s, c.ID) {
 		return LaneQuiet{}, false
 	}
 	return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "no read asked for it"}, true
 }
 
-// reviewHasLiveRead says a review primary has, at its current attempt, a live
-// read held by a row whose queue lists it: a readers-table read asked or
-// reading, a fleet read card (a member's or a friend's) the one predicate
-// ReadsOut marks live rather than ghost, or a read that found it broken (its
-// judgment holds it). The ok reads it needs are acceptable's, checked by the
-// caller. tla-readcards-review-has-a-live-read-or-a-judgment.
-func reviewHasLiveRead(s *Snapshot, c *Card) bool {
-	if readOutFor(s, c.ID) {
-		return true
-	}
-	for _, ro := range ReadsOut(s, c) {
-		switch ro.State {
-		case ReadLive:
-			return true
-		case ReadClosed:
-			if ro.Verdict == "broken" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// readOutFor says a read card in asked or reading names the primary on the
-// readers table: a read out for this card, never "any read". The fleet read
-// cards are ReadsOut's (the one predicate); this is the readers table's part,
-// read straight off its cards so a snapshot whose rows are not loaded still
-// sees the read out.
+// readOutFor says a read card in asked or reading names the primary: a read
+// out for this card, never "any read".
 func readOutFor(s *Snapshot, id string) bool {
 	if s.Readers == nil {
 		return false

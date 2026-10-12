@@ -1170,7 +1170,7 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 		view.Beats = req.Beats
 		settled = &view
 	}
-	for _, q := range sprint.ConsumersOut(settled) {
+	for _, q := range sprint.ConsumersOutFull(settled) {
 		if !slices.ContainsFunc(t.res.Quiet, func(x sprint.LaneQuiet) bool { return x.Type == q.Type && x.Subject == q.Subject }) {
 			t.res.Quiet = append(t.res.Quiet, q)
 		}

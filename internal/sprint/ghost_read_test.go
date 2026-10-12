@@ -169,7 +169,7 @@ func TestTheConsumersOutCheckIsNotVacuous(t *testing.T) {
 		},
 		nil,
 	)
-	require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOut(s)),
+	require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOutFull(s)),
 		"s1-1 has no work card: a breach, while s1-2's work card works elsewhere")
 }
 
@@ -185,13 +185,13 @@ func TestAReviewCardWithNoReadAndNoJudgmentIsImpossible(t *testing.T) {
 		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
 		dealReads(t, w, nil)
 		require.Len(t, readCardsOf(w, "s1-1"), 1, "its read card is dealt")
-		require.Empty(t, quietSubjects(ConsumersOut(w.s)), "a fleet read card is a live read out")
+		require.Empty(t, quietSubjects(ConsumersOutFull(w.s)), "a fleet read card is a live read out")
 	})
 	t.Run("no read and no judgment is a breach", func(t *testing.T) {
 		t.Parallel()
 		w := readCardsWorld(t, 4, "m1", "m2")
 		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
-		require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOut(w.s)),
+		require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOutFull(w.s)),
 			"a review primary with no read and no judgment is a breach")
 	})
 	t.Run("a broken read with an empty finding is returned", func(t *testing.T) {
@@ -295,4 +295,3 @@ func TestDoctorCountsFleetReadCards(t *testing.T) {
 	require.Contains(t, joined, rc.ID, "the ghost names its card: %s", joined)
 	require.Contains(t, joined, LiveKey(rc.ID, gen), "the ghost names the card at its generation: %s", joined)
 }
-

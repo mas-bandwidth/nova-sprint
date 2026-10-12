@@ -656,6 +656,75 @@ func readsOutStanding(out []ReadOut) (standing, ghosts int, broken bool) {
 	return standing, ghosts, broken
 }
 
+// ConsumersOutFull is the tick's consumers-out postcondition with its review half read
+// through the one predicate (ReadsOut, docs/SPEC-SPRINT.md section 6, the reads): every
+// producer card (working, review) has its consumer out after the tick. It is what the
+// store's tick calls (store/tick.go) in place of consumers_out.go's ConsumersOut, whose
+// review half reads the readers table alone; this one also holds a review primary by its
+// fleet read card (a member's or a friend's, live), by the ok reads it needs (acceptable)
+// or by an open judgment, so a card in review with no live read and no judgment is the
+// breach the invariant names (tla-readcards-review-has-a-live-read-or-a-judgment).
+func ConsumersOutFull(s *Snapshot) []LaneQuiet {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	fromRecord := map[string]string{}
+	for _, v := range CheckConsumers(s) {
+		if f := strings.Fields(v.Detail); len(f) > 0 {
+			fromRecord[f[0]] = v.Detail
+		}
+	}
+	var out []LaneQuiet
+	for _, c := range s.Work.Cards() {
+		switch c.Col {
+		case Working:
+			if q, missing := workingConsumerOut(s, c); missing {
+				out = append(out, withRecordWhy(c, q, fromRecord))
+			}
+		case Review:
+			if q, missing := reviewConsumerOutFull(s, c); missing {
+				out = append(out, withRecordWhy(c, q, fromRecord))
+			}
+		}
+	}
+	return out
+}
+
+// reviewConsumerOutFull is the one quiet of a review primary with no live read out for it
+// and no open judgment that names it, and whether it is missing. The read out is the one
+// predicate (ReadsOut, docs/SPEC-SPRINT.md section 6, the reads): a live read held by a
+// row whose queue lists it (a readers-table read asked or reading, a fleet read card
+// placed, a friend's read), or the ok reads it needs, so a fleet read card the readers
+// table cannot see still holds its primary.
+func reviewConsumerOutFull(s *Snapshot, c *Card) (LaneQuiet, bool) {
+	if reviewHasLiveRead(s, c) || acceptable(s, c) || heldByJudgment(s, c.ID) {
+		return LaneQuiet{}, false
+	}
+	return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "no read asked for it"}, true
+}
+
+// reviewHasLiveRead says a review primary has, at its current attempt, a live read held by
+// a row whose queue lists it: a readers-table read asked or reading, a fleet read card (a
+// member's or a friend's) the one predicate ReadsOut marks live rather than ghost, or a
+// read that found it broken (its judgment holds it). The ok reads it needs are acceptable's,
+// checked by the caller. tla-readcards-review-has-a-live-read-or-a-judgment.
+func reviewHasLiveRead(s *Snapshot, c *Card) bool {
+	if readOutFor(s, c.ID) {
+		return true
+	}
+	for _, ro := range ReadsOut(s, c) {
+		switch ro.State {
+		case ReadLive:
+			return true
+		case ReadClosed:
+			if ro.Verdict == "broken" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // readsWantedOf is ReadsWanted over the reads that stand, live.
 func readsWantedOf(s *Snapshot, pr *Card, live []*Card) int {
 	// Workaround (the coordinator, 2026-10-06 7:47 PM ET; the owner: 6:02 PM: "send out multiple consumer
