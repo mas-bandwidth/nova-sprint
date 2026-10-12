@@ -285,6 +285,8 @@ Failed work and broken reads rework themselves, and no wait parks a card
 - `TestAnAckedFleetFailureHoldsUntilANewFailure` (internal/sprint/store/no_parked_test.go)
 - `TestARepairedFailureDoesNotReopenAnAckedFleetFailure` (internal/sprint/store/no_parked_test.go)
 - `TestTheFleetFailureIsRaisedWithTheRulesOff` (internal/sprint/store/no_parked_test.go)
+- `TestANoRoomReworkKeepsARealFailureCounted` (internal/sprint/store/no_parked_test.go)
+- `TestAnOkFinishThenNoRoomReworkDoesNotReopenTheAlarm` (internal/sprint/store/no_parked_test.go)
 - `TestAPinnedModelFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
 - `TestAFrontierTierFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
 - `TestTheSameFailureOnManyCardsIsReworkedOnItsTier` (internal/sprint/store/rule_answers_test.go)

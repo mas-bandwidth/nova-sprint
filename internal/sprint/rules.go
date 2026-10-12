@@ -811,22 +811,13 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	return p, 0
 }
 
-// lastFinishFailed says the card's last finish is the failure it records: the attempt that
-// last finished (the current one once it is in review or merging, the one before while its
-// next attempt is on its way) is the attempt its failure was recorded at (FieldFailureAt).
+// lastFinishFailed says the card's last finish is the failure it records: its last finish
+// (FieldLastFinish, written by every finish) failed, at the attempt the failure was recorded
+// at (FieldFailureAt). It reads no column and does no attempt arithmetic: a rework that falls
+// back to ready moves a card without a finish and without a new attempt.
 func lastFinishFailed(c *Card) bool {
-	last := c.Int("attempt")
-	switch c.Col {
-	case Waiting, Ready, Working:
-		last--
-	case Review:
-		if c.F("result") != "failed" {
-			return false // its last finish (a late report, a repair) was not the failure
-		}
-	default:
-		return false // merging: its last finish succeeded
-	}
-	return last > 0 && c.F(FieldFailureAt) == itoa(last)
+	at := c.F(FieldFailureAt)
+	return at != "" && c.F(FieldLastFinish) == at+":failed"
 }
 
 // failedSinceAck says the class may be raised: no acknowledgement of its judgment is held, or

@@ -320,3 +320,61 @@ func TestTheFleetFailureIsRaisedWithTheRulesOff(t *testing.T) {
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "the alarm does not depend on the rules")
 }
+
+// failedThenNoRoom is three cards of s1 failed the same way at attempt 1, the rules off (the
+// seat answers), and both members down, so a rework finds no room and falls back to ready
+// without a new attempt.
+func failedThenNoRoom(t *testing.T) *harness {
+	t.Helper()
+	h := ruled(t)
+	h.st.AnswerRules = false
+	n := sprint.RuleSameFailureCards
+	h.addReady("s1", n, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	for i := 1; i <= n; i++ {
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), "step 2 broken: exec: go: Permission denied")
+	}
+	return h
+}
+
+// A real failure stays counted after a rework with no room moves its card to ready without a
+// finish or a new attempt (Stella's read R4: the column arithmetic skipped it).
+func TestANoRoomReworkKeepsARealFailureCounted(t *testing.T) {
+	t.Parallel()
+	h := failedThenNoRoom(t)
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m2"}))
+	for i := 1; i <= sprint.RuleSameFailureCards; i++ {
+		id := fmt.Sprintf("s1-%d", i)
+		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{id}}, Who: h.st.Actor}))
+		require.Equal(t, sprint.Ready, h.state(id), "%s: no room: back to ready", id)
+		require.Equal(t, 1, h.snap().Work.Card(id).Int("attempt"), "%s: no new attempt", id)
+	}
+	h.machine()
+	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "three cards whose last finish failed: the fleet's failure")
+}
+
+// A card whose failure was followed by a successful finish does not count when a review-driven
+// rework with no room moves it to ready: its last finish succeeded, so an acked alarm is not
+// reopened by the old failure.
+func TestAnOkFinishThenNoRoomReworkDoesNotReopenTheAlarm(t *testing.T) {
+	t.Parallel()
+	h := failedThenNoRoom(t)
+	h.machine()
+	open := h.judgmentsOf(sprint.NFleetFailure)
+	require.Len(t, open, 1)
+	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "mended", Who: h.st.Actor}))
+	h.tick(time.Minute)
+	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: h.st.Actor}))
+	h.machine()
+	h.finishAttempt("s1-1", false, "0123456789abcdef0123456789abcdef01234567") // attempt 2 succeeds
+	require.Equal(t, sprint.Review, h.state("s1-1"))
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m2"}))
+	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "the reader's fix", Who: h.st.Actor}))
+	require.Equal(t, sprint.Ready, h.state("s1-1"), "no room: back to ready")
+	h.tick(time.Minute)
+	h.machine()
+	assert.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "the old failure of s1-1 is no new one after the ack")
+}
