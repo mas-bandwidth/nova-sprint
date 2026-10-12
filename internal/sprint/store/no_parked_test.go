@@ -392,8 +392,7 @@ func (h *harness) clearLastFinish(id string) {
 
 // The rollout: the fleet's failure counts finishes recorded after the upgrade (last_finish).
 // A card whose failure was recorded before it is not counted, with no guessing; its next
-// finish writes last_finish, so its first failure after the upgrade is counted, and every
-// card finishes again within its attempt bound, so the gap closes by itself.
+// finish, if any, writes last_finish, so its first failure after the upgrade is counted.
 func TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish(t *testing.T) {
 	t.Parallel()
 	h := ruled(t)
