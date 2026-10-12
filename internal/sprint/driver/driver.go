@@ -92,12 +92,13 @@ type Silence struct {
 // every verb it runs gets (the store), and they are printed
 // with each command line so the line can be typed by hand.
 type Driver struct {
-	Run    func(args []string, stdout, stderr io.Writer) int
-	Base   []string
-	Facts  Facts
-	Clock  Clock
-	Out    io.Writer
-	Config Config
+	Run       func(args []string, stdout, stderr io.Writer) int
+	Base      []string
+	Facts     Facts
+	Clock     Clock
+	Out       io.Writer
+	Config    Config
+	MergeStep func(stream string, batch int, who string, stdout, stderr io.Writer) int
 	// Header is a line Loop prints once, before its first tick, when it has
 	// read that it may play; a Loop that refuses to play prints nothing.
 	Header string
@@ -568,20 +569,32 @@ func (d *Driver) tick(tick int, c Config, w where) {
 			}
 			return out
 		}
-		args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch)}
 		out := d.Facts.Merge(s, batch, others)
 		switch {
 		case out.Conflict != "":
-			args = append(args, "--conflict", out.Conflict)
+			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--conflict", out.Conflict}
+			d.run(false, append(args, held...)...)
 		case out.Cross != "":
-			args = append(args, "--cross", out.Cross)
+			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--cross", out.Cross}
+			d.run(false, append(args, held...)...)
 		case out.Red:
-			args = append(args, "--red")
+			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--red"}
 			for _, x := range out.Suspects {
 				args = append(args, "--suspect", x)
 			}
+			d.run(false, append(args, held...)...)
+		default:
+			if d.MergeStep != nil {
+				var b bytes.Buffer
+				code := d.MergeStep(s, c.Batch, "", &b, &b)
+				if code != 0 {
+					continue
+				}
+			} else {
+				args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch)}
+				d.run(false, append(args, held...)...)
+			}
 		}
-		d.run(false, append(args, held...)...)
 	}
 }
 

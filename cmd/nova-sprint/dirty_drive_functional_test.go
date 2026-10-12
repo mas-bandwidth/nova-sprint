@@ -674,3 +674,26 @@ func tail(s string, n int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestTheMergeBareIsRefused(t *testing.T) {
+	t.Parallel()
+	addr := testutil.Start(t)
+	c := redis.NewClient(&redis.Options{Addr: addr})
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	err := fn.Load(ctx, c)
+	require.NoError(t, err)
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}
+	a := newApp(func(k string) string { return env[k] })
+	defer a.close()
+	for _, l := range []string{"init --readers reader-a --members m1:64", "add --stream a --count 10", "fleet beat m1", "start", "tick", "tick"} {
+		var out, errb bytes.Buffer
+		code := a.run(strings.Fields(l), &out, &errb)
+		require.Zero(t, code, "%s: exit %d\n%s%s", l, code, out.String(), errb.String())
+	}
+	var out, errb bytes.Buffer
+	code := a.run(strings.Fields("merge --stream a --batch 10 --epoch 0"), &out, &errb)
+	require.NotZero(t, code, "bare merge should be refused on a real store")
+	require.Contains(t, errb.String(), "a bare merge records the queue's head as landed with no push")
+}
