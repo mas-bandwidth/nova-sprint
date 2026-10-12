@@ -152,6 +152,62 @@ func TestASecondGhostAtOneAttemptPushesAJudgment(t *testing.T) {
 	require.Contains(t, lost[0].Primaries, "s1-1")
 }
 
+// TestTheConsumersOutCheckIsNotVacuous pins (d): a working primary with no work card is a
+// breach while another card works elsewhere, so the check keys on the primary's own work
+// card, never "any fleet card anywhere is working" (docs/SPEC-SPRINT.md section 6, the
+// reads).
+func TestTheConsumersOutCheckIsNotVacuous(t *testing.T) {
+	t.Parallel()
+	s := consumersOutSnap(
+		[]*Card{
+			{ID: "s1-1", Row: "s1", Col: Working, Fields: map[string]string{}},
+			{ID: "s1-2", Row: "s1", Col: Working, Fields: map[string]string{"work": "s1-2.w1"}},
+		},
+		[]*Card{
+			{ID: "s1-2.w1", Row: "m1", Col: Working, Fields: map[string]string{"gen": "1"}},
+			{ID: CtlID("m1"), Row: "m1", Col: Ctl, Fields: map[string]string{"status": Up}},
+		},
+		nil,
+	)
+	require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOut(s)),
+		"s1-1 has no work card: a breach, while s1-2's work card works elsewhere")
+}
+
+// TestAReviewCardWithNoReadAndNoJudgmentIsImpossible pins (d) and (e): after a tick a
+// review primary with no live read and no judgment does not exist — a live fleet read card
+// holds it, and no read and no judgment is a breach; a broken read with an empty finding is
+// returned, not a verdict (docs/SPEC-SPRINT.md section 6, the reads).
+func TestAReviewCardWithNoReadAndNoJudgmentIsImpossible(t *testing.T) {
+	t.Parallel()
+	t.Run("a live fleet read card holds it", func(t *testing.T) {
+		t.Parallel()
+		w := readCardsWorld(t, 4, "m1", "m2")
+		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+		dealReads(t, w, nil)
+		require.Len(t, readCardsOf(w, "s1-1"), 1, "its read card is dealt")
+		require.Empty(t, quietSubjects(ConsumersOut(w.s)), "a fleet read card is a live read out")
+	})
+	t.Run("no read and no judgment is a breach", func(t *testing.T) {
+		t.Parallel()
+		w := readCardsWorld(t, 4, "m1", "m2")
+		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+		require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOut(w.s)),
+			"a review primary with no read and no judgment is a breach")
+	})
+	t.Run("a broken read with an empty finding is returned", func(t *testing.T) {
+		t.Parallel()
+		w := readCardsWorld(t, 4, "m1", "m2")
+		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+		dealReads(t, w, nil)
+		rc := readCardsOf(w, "s1-1")[0]
+		w.must(Take(w.s, TakeReq{As: rc.Row, Sel: Sel{Limit: -1}, Who: rc.Row}))
+		p := readCardVerb(w.s, ReadReq{Sel: Sel{IDs: []string{rc.ID}}, As: rc.Row, Verdict: "broken", Finding: "  ", Who: rc.Row}, rc.Row, rc.Row)
+		w.must(p)
+		require.Equal(t, RetiredByReturned, w.s.Fleet.Card(rc.ID).F("retired_by"), "an empty finding is no verdict")
+		require.Empty(t, w.s.Fleet.Card(rc.ID).F("verdict"), "no verdict is written")
+	})
+}
+
 // TestDoctorCountsFleetReadCards pins the doctor's readers check counting the fleet read
 // cards the readers-table check cannot see (docs/SPEC-SPRINT.md section 6, the reads): a
 // read card working on a row whose fresh beat has not named it for LiveGrace is a ghost,

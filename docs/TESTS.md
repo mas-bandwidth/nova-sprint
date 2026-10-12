@@ -866,6 +866,8 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestDoctorCountsFleetReadCards` (`internal/sprint/ghost_read_test.go`): a read card working on a row whose fresh beat has not named it for LiveGrace is a ghost, and the doctor's readers check FAILs naming the card.
 - `TestADealtReadAbsentFromItsMembersQueueIsReturnedAndAskedAgain` (`internal/sprint/ghost_read_test.go`): a working read card whose row's fresh beat names it held past HeldGrace is retired lost (spending no one) and dealt to another unit in the same tick's deal.
 - `TestASecondGhostAtOneAttemptPushesAJudgment` (`internal/sprint/ghost_read_test.go`): the second ghost at one primary's attempt pushes one judgment naming each card, row and reason.
+- `TestAReviewCardWithNoReadAndNoJudgmentIsImpossible` (`internal/sprint/ghost_read_test.go`): a live fleet read card holds its primary (the one predicate sees it), a review primary with no read and no judgment is a breach, and a broken read with an empty finding is returned, not a verdict.
+- `TestTheConsumersOutCheckIsNotVacuous` (`internal/sprint/ghost_read_test.go`): a working primary with no work card is a breach while another card works elsewhere, so the check keys on the primary's own work card, never any fleet card working.
 
 ## A finish-PR card starts from the PR's own head
 
