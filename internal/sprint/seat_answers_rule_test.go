@@ -77,37 +77,37 @@ func TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline(t *testin
 	assert.Equal(t, "pro-a", wc.F(FieldRoute), "on a route of the tier it was raised to")
 }
 
-// Never down: a heavy card no route serves is never re-tiered to flash, though a flash
-// route serves; with no served tier above heavy it stays held, for the seat (the alarm
-// names it).
-func TestAHeavyCardNoRouteServesIsNeverReTieredToFlash(t *testing.T) {
+// TestANoRouteServeCardStaysOnItsTier pins that the no-route rule never moves a card down
+// a tier: a heavy card no route serves is never re-tiered to flash though a flash route
+// serves, and a card the coordinator pinned to a tier stays on that tier though a route
+// serves above it. Either way the card stays held for the seat (the alarm names it).
+func TestANoRouteServeCardStaysOnItsTier(t *testing.T) {
 	t.Parallel()
-	w := noRouteWorld(t, cardhdr.RouteHeavy, []Route{
-		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
-	}, map[string]string{FieldTier: cardhdr.RouteHeavy})
-	w.tick(DeadlineJudgment + time.Minute)
-	w.answerRules("rule no-route")
-	assert.Equal(t, cardhdr.RouteHeavy, w.s.Work.Card("s1-1").F(FieldTier), "never down a tier")
-	assert.Empty(t, w.notesOf(NRuleAnswered), "nothing above heavy is served: left to the seat")
-	p, _ := TickDeal(w.s, TickReq{})
-	w.must(p)
-	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "a heavy card is never dealt on flash")
-}
 
-// A tier the coordinator pinned (brief --tier, tier --set, rework --tier: FieldTier) is the
-// coordinator's word: the rule never re-tiers it, though a route serves the tier above, and
-// the card stays held for the seat (the alarm names it). Before, a card pinned to pro was
-// raised to heavy past the deadline.
-func TestAPinnedCardNoRouteServesStaysOnItsPinnedTier(t *testing.T) {
-	t.Parallel()
-	w := noRouteWorld(t, cardhdr.RouteFlash, []Route{
-		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true, Deadline: 600},
-	}, map[string]string{FieldTier: cardhdr.RouteFlash})
-	w.tick(DeadlineJudgment + time.Minute)
-	w.answerRules("rule no-route")
-	assert.Equal(t, cardhdr.RouteFlash, w.s.Work.Card("s1-1").F(FieldTier), "the pin stays")
-	assert.Empty(t, w.notesOf(NRuleAnswered), "a pinned card is never re-tiered: left to the seat")
-	p, _ := TickDeal(w.s, TickReq{})
-	w.must(p)
-	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "never dealt on the tier above its pin")
+	cases := []struct {
+		name   string
+		tier   string
+		routes []Route
+		fields map[string]string
+	}{
+		{"TestAHeavyCardNoRouteServesIsNeverReTieredToFlash", cardhdr.RouteHeavy,
+			[]Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600}},
+			map[string]string{FieldTier: cardhdr.RouteHeavy}},
+		{"TestAPinnedCardNoRouteServesStaysOnItsPinnedTier", cardhdr.RouteFlash,
+			[]Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true, Deadline: 600}},
+			map[string]string{FieldTier: cardhdr.RouteFlash}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := noRouteWorld(t, tc.tier, tc.routes, tc.fields)
+			w.tick(DeadlineJudgment + time.Minute)
+			w.answerRules("rule no-route")
+			assert.Equal(t, tc.tier, w.s.Work.Card("s1-1").F(FieldTier), "the tier never moves down")
+			assert.Empty(t, w.notesOf(NRuleAnswered), "left to the seat")
+			p, _ := TickDeal(w.s, TickReq{})
+			w.must(p)
+			assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "never dealt on a lower tier")
+		})
+	}
 }

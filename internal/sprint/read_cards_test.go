@@ -114,47 +114,35 @@ func TestMemberReaderWithAllTiersGetsAsked(t *testing.T) {
 	}
 }
 
-// TestMemberReaderWithEnabledRouteGetsAsked verifies that a member's reader row can serve
-// a tier when there's an enabled route for that tier.
-func TestMemberReaderWithEnabledRouteGetsAsked(t *testing.T) {
+// TestMemberReaderWithRouteTiersGetsAsked pins that a member's reader row with explicit
+// tier configuration serves a tier whether or not a route for it is enabled: the reader
+// row's tiers, not the route table, decide the member's reads.
+func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 	t.Parallel()
-	w := readCardsWorld(t, 4, "m1", "m2")
-	w.s.Readers.Texts = map[string]map[string]string{
-		"reader-m1": {ReaderTiers: "flash,pro,heavy,frontier"},
-		"reader-m2": {ReaderTiers: "flash,pro,heavy,frontier"},
-	}
-	// Set up an enabled pro route
-	w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: true}}
-	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	seats := []FriendSeat{}
-	dealReads(t, w, seats)
-	reads := readCardsOf(w, "s1-1")
-	require.Len(t, reads, 1, "one read asked to m2 (m1 is the worker)")
-	require.Equal(t, "m2", reads[0].Row)
-}
 
-// TestMemberReaderWithoutEnabledRouteNotAsked verifies that a member's reader row with
-// all tiers configured CANNOT serve a tier when there's NO enabled route for that tier.
-// TestMemberReaderWithExplicitTiersGetsAskedRegardlessOfRoutes verifies that a member's reader row
-// with explicit tier configuration (flash,pro,heavy,frontier) is asked even when no route
-// is enabled for a tier (the fix for the issue where readers with all tiers configured
-// were not being asked when no route was enabled).
-func TestMemberReaderWithExplicitTiersGetsAskedRegardlessOfRoutes(t *testing.T) {
-	t.Parallel()
-	w := readCardsWorld(t, 4, "m1", "m2")
-	w.s.Readers.Texts = map[string]map[string]string{
-		"reader-m1": {ReaderTiers: "flash,pro,heavy,frontier"},
-		"reader-m2": {ReaderTiers: "flash,pro,heavy,frontier"},
+	cases := []struct {
+		name    string
+		enabled bool
+	}{
+		{"TestMemberReaderWithEnabledRouteGetsAsked", true},
+		{"TestMemberReaderWithExplicitTiersGetsAskedRegardlessOfRoutes", false},
 	}
-	// Set up a DISABLED pro route - the reader should still be able to serve pro
-	// because it has explicit tier configuration.
-	w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: false}}
-	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	seats := []FriendSeat{}
-	dealReads(t, w, seats)
-	reads := readCardsOf(w, "s1-1")
-	require.Len(t, reads, 1, "one read asked to m2 (m1 is the worker) even with disabled pro route")
-	require.Equal(t, "m2", reads[0].Row)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := readCardsWorld(t, 4, "m1", "m2")
+			w.s.Readers.Texts = map[string]map[string]string{
+				"reader-m1": {ReaderTiers: "flash,pro,heavy,frontier"},
+				"reader-m2": {ReaderTiers: "flash,pro,heavy,frontier"},
+			}
+			w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: tc.enabled}}
+			putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
+			dealReads(t, w, []FriendSeat{})
+			reads := readCardsOf(w, "s1-1")
+			require.Len(t, reads, 1, "one read asked to m2 (m1 is the worker)")
+			require.Equal(t, "m2", reads[0].Row)
+		})
+	}
 }
 
 // TestMemberReaderWithoutExplicitTiersNeedsEnabledRoute verifies that a member's reader row

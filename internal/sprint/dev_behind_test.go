@@ -47,59 +47,34 @@ func landed(id, brief string, promotionTime time.Time, minutes int) *sprint.Card
 // sprintBaseBrief is a brief cut on a base branch of a repository.
 func sprintBaseBrief(repo, base string) string { return "REPO: " + repo + "\nBASE: " + base + "\n" }
 
-// TestDevBehindACardWithNoBaseDoesNotCount: an absent base never counts, whatever its
-// repository.
-func TestDevBehindACardWithNoBaseDoesNotCount(t *testing.T) {
+// TestDevBehindUncountedBases: the bases that never count toward the judgment, each a
+// single card landed forty minutes after the promotion: an absent base, a card landed
+// straight onto dev or main, and a sprint branch whose repository has no dev branch.
+func TestDevBehindUncountedBases(t *testing.T) {
 	t.Parallel()
 	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
 
-	// A card with no base field and no BASE: line, on a repository with no dev branch.
-	c := landed("no-base", "REPO: mas-bandwidth/widgets\n", promotionTime, 40)
-	s := devBehindSnap(promotionTime, c)
+	cases := []struct {
+		name  string
+		id    string
+		brief string
+	}{
+		{"TestDevBehindACardWithNoBaseDoesNotCount", "no-base", "REPO: mas-bandwidth/widgets\n"},
+		{"TestDevBehindACardOnDevDoesNotCount", "on-dev", sprintBaseBrief("mas-bandwidth/nova-tools", "dev")},
+		{"TestDevBehindACardOnMainDoesNotCount", "on-main", sprintBaseBrief("mas-bandwidth/nova-sprint", "main")},
+		{"TestDevBehindASprintBranchWithoutADevBranchDoesNotCount", "schema-1", sprintBaseBrief("mas-bandwidth/schema", "sprint/schema-finish")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := landed(tc.id, tc.brief, promotionTime, 40)
+			s := devBehindSnap(promotionTime, c)
 
-	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "a card with no base never counts")
-	assert.Equal(t, 0, lag.Count)
-}
-
-// TestDevBehindACardOnDevDoesNotCount: a card landed straight onto dev never counts.
-func TestDevBehindACardOnDevDoesNotCount(t *testing.T) {
-	t.Parallel()
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	c := landed("on-dev", sprintBaseBrief("mas-bandwidth/nova-tools", "dev"), promotionTime, 40)
-	s := devBehindSnap(promotionTime, c)
-
-	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "a card landed on dev never counts")
-	assert.Equal(t, 0, lag.Count)
-}
-
-// TestDevBehindACardOnMainDoesNotCount: a card landed onto main never counts.
-func TestDevBehindACardOnMainDoesNotCount(t *testing.T) {
-	t.Parallel()
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	c := landed("on-main", sprintBaseBrief("mas-bandwidth/nova-sprint", "main"), promotionTime, 40)
-	s := devBehindSnap(promotionTime, c)
-
-	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "a card landed on main never counts")
-	assert.Equal(t, 0, lag.Count)
-}
-
-// TestDevBehindASprintBranchWithoutADevBranchDoesNotCount: a sprint branch whose
-// repository has no dev branch never counts (rule (c)'s schema case).
-func TestDevBehindASprintBranchWithoutADevBranchDoesNotCount(t *testing.T) {
-	t.Parallel()
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	c := landed("schema-1", sprintBaseBrief("mas-bandwidth/schema", "sprint/schema-finish"), promotionTime, 40)
-	s := devBehindSnap(promotionTime, c)
-
-	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "a sprint branch in a repository with no dev branch never counts")
-	assert.Equal(t, 0, lag.Count)
+			lag, ok := sprint.DevBehind(s)
+			assert.False(t, ok, "%s: never counts", tc.name)
+			assert.Equal(t, 0, lag.Count)
+		})
+	}
 }
 
 // TestDevBehindASprintBranchWithADevBranchCountsNamedByID: a sprint branch whose
