@@ -50,6 +50,11 @@ func TestARepeatedHarnessFaultIsDealtTwiceNotThriceAndRaisesTheJudgment(t *testi
 		assert.Contains(t, o.Note.What, "push refused", "names the class")
 		assert.Contains(t, o.Note.What, "s1-1", "names the card")
 	}
+	// the deal part sees the harness block's own record, never the generic bound the finish
+	// overrode: the harness judgment alone holds the card, no bound judgment beside it
+	dealWith(w)
+	assert.Empty(t, openOf(w, NBound, "s1-1"), "the harness judgment alone holds the card: no bound judgment beside it")
+	assert.Len(t, openOf(w, NHarnessFault, "s1-1"), 1, "and the harness judgment stands")
 }
 
 // TestThreeCardsWithTheSameHarnessFaultRaiseOneGroupedJudgment drives the real tick end (the

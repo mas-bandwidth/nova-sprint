@@ -1991,7 +1991,8 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// reworked again, and raises the NHarnessFault judgment, not the generic bound.
 			if h := HarnessFault(r.Report); h != "" && h == pr.F(FieldHarnessClass) {
 				harnessAt = h
-				identical = false // the harness bound is the more specific one: no generic bound, no escalation
+				identical = false             // the harness bound is the more specific one: no generic bound, no escalation
+				delete(set, FieldIdenticalAt) // failureSet wrote it: the harness bound, not the generic one, holds the card
 				set[FieldHarnessAt] = itoa(pr.Int("attempt"))
 			}
 			set[FieldLastFinish] = pr.F("attempt") + ":failed"
