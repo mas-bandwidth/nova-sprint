@@ -2,9 +2,55 @@ package sprint
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestConsumerHistoryFollowsTheCommittedTakeAndFinish(t *testing.T) {
+	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
+	wc := &Card{ID: "p1.w1", Row: "member1", Col: Ready, Fields: map[string]string{"kind": "work", "primary": "p1", "gen": "1", "route": "sol"}}
+	s := &Snapshot{Epoch: 7, Now: time.Date(2026, 10, 11, 20, 1, 0, 0, time.UTC), Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: logCoverTable(Fleet, []string{"member1"}, wc), Readers: NewTable(Readers), Merge: NewTable(Merge)}
+	launch := Applied(s, Plan{Units: []Unit{{Key: wc.ID, Stream: "s1", Changes: []Change{change(Fleet, moveEntry(wc, wc.Row, Working, map[string]string{"taken": stamp(s.Now)}))}}}})
+	for _, u := range launch.Units {
+		for _, ch := range u.Changes {
+			if ch.Table == Work {
+				for k, v := range ch.Entry.Set {
+					pr.Fields[k] = v
+				}
+			}
+		}
+	}
+	started := ConsumersOf(pr)
+	require.Equal(t, 1, started.Attempts)
+	require.Equal(t, "member1", started.Consumers[0].Who)
+	require.Empty(t, started.Consumers[0].Ended)
+	wc.Col = Working
+	wc.Fields["taken"] = stamp(s.Now)
+	s.Now = s.Now.Add(time.Minute)
+	end := Applied(s, Plan{Units: []Unit{{Key: wc.ID, Stream: "s1", Changes: []Change{change(Fleet, moveEntry(wc, wc.Row, Finished, map[string]string{"report": "done well\nmore detail", "result": "ok"}))}}}})
+	for _, u := range end.Units {
+		for _, ch := range u.Changes {
+			if ch.Table == Work {
+				for k, v := range ch.Entry.Set {
+					pr.Fields[k] = v
+				}
+			}
+		}
+	}
+	got := ConsumersOf(pr)
+	require.Equal(t, 1, got.Attempts)
+	require.Equal(t, "2026-10-11T20:02:00Z", got.Consumers[0].Ended)
+	require.Equal(t, "done well", got.Consumers[0].FirstLine)
+}
+
+func TestConsumerRecordPreservesTimestampsAndWords(t *testing.T) {
+	want := ConsumerRec{Key: "p1.w1#g1", Epoch: 7, Kind: "work", Taken: "2026-10-11T20:01:00Z", Ended: "2026-10-11T20:02:00Z", FirstLine: "provider refused a route"}
+	got := parseConsumerRec(encodeConsumerRec(want))
+	require.Equal(t, want.Taken, got.Taken)
+	require.Equal(t, want.Ended, got.Ended)
+	require.Equal(t, want.FirstLine, got.FirstLine)
+}
 
 func TestConsumersRecordedOnTheCardKeyedByEpoch(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
@@ -55,8 +101,9 @@ func TestStalledIsTheNewestConsumerEndedAndNoneOut(t *testing.T) {
 	}
 	require.False(t, ConsumersOf(pr).Stalled(), "the newest consumer is out")
 
-	set["consumer:w2"] = encodeConsumerRec(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2", Ended: "e2", Outcome: "ok"})
-	pr.Fields["consumer:w2"] = set["consumer:w2"]
+	k := consumerField(ConsumerRec{Key: "w2", Epoch: 8})
+	set[k] = encodeConsumerRec(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2", Ended: "e2", Outcome: "ok"})
+	pr.Fields[k] = set[k]
 	require.True(t, ConsumersOf(pr).Stalled(), "the newest consumer ended again: none is out")
 }
 

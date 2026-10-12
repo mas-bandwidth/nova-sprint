@@ -1,7 +1,9 @@
 package sprint
 
 import (
+	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,10 +37,10 @@ type ConsumerRec struct {
 // ConsumersView is a producer card's consumer history as the card and view print it:
 // the counts, then one line per consumer, newest last.
 type ConsumersView struct {
-	Attempts int          `json:"attempts"`
-	Reads    int          `json:"reads"`
-	Landings int          `json:"landings"`
-	Cost     string       `json:"cost"`
+	Attempts  int           `json:"attempts"`
+	Reads     int           `json:"reads"`
+	Landings  int           `json:"landings"`
+	Cost      string        `json:"cost"`
 	Consumers []ConsumerRec `json:"consumers"`
 }
 
@@ -52,7 +54,7 @@ const (
 // and carrying its epoch. It writes to the card's changes (set); it is idempotent per
 // key, so a step planned again never doubles a record.
 func AddConsumer(pr *Card, set map[string]string, r ConsumerRec) {
-	key := FieldConsumerPrefix + r.Key
+	key := consumerField(r)
 	if pr.F(key) != "" || set[key] != "" {
 		return
 	}
@@ -62,24 +64,23 @@ func AddConsumer(pr *Card, set map[string]string, r ConsumerRec) {
 	set[key] = encodeConsumerRec(r)
 }
 
+func consumerField(r ConsumerRec) string {
+	return FieldConsumerPrefix + strconv.FormatUint(r.Epoch, 10) + ":" + r.Key
+}
+
 // encodeConsumerRec is a consumer record as the card carries it.
 func encodeConsumerRec(r ConsumerRec) string {
-	return strings.Join([]string{
-		"epoch=" + strconv.FormatUint(r.Epoch, 10),
-		"kind=" + r.Kind,
-		"who=" + orDash(r.Who),
-		"route=" + orDash(r.Route),
-		"model=" + orDash(r.Model),
-		"taken=" + orDash(r.Taken),
-		"ended=" + orDash(strings.ReplaceAll(r.Ended, " ", "-")),
-		"outcome=" + orDash(r.Outcome),
-		"first_line=" + orDash(r.FirstLine),
-	}, " ")
+	b, _ := json.Marshal(r)
+	return string(b)
 }
 
 // parseConsumerRec reads a consumer record back.
 func parseConsumerRec(line string) ConsumerRec {
 	var r ConsumerRec
+	if strings.HasPrefix(line, "{") {
+		_ = json.Unmarshal([]byte(line), &r)
+		return r
+	}
 	undash := func(v string) string {
 		if v == "-" {
 			return ""
@@ -122,7 +123,9 @@ func ConsumersOf(pr *Card) ConsumersView {
 	for k, line := range pr.Fields {
 		if strings.HasPrefix(k, FieldConsumerPrefix) {
 			rec := parseConsumerRec(line)
-			rec.Key = strings.TrimPrefix(k, FieldConsumerPrefix)
+			if rec.Key == "" {
+				rec.Key = strings.TrimPrefix(k, FieldConsumerPrefix)
+			}
 			v.Consumers = append(v.Consumers, rec)
 		}
 	}
@@ -148,6 +151,156 @@ func ConsumersOf(pr *Card) ConsumersView {
 	}
 	v.Cost = cardcost.ParseTotal(pr.F(FieldCostTotal)).String()
 	return v
+}
+
+// recordConsumerTransitions implements the consumer record in SPEC-SPRINT.
+// The store calls it after lifecycle filtering, so the producer record and the
+// consumer's actual launch/end are one fenced plan, including friend and member
+// paths that reach the same table transitions through different verbs.
+func recordConsumerTransitions(s *Snapshot, p Plan) Plan {
+	if s == nil || s.Work == nil {
+		return p
+	}
+	updates := map[string]map[string]string{}
+	last := map[string]int{}
+	for i, u := range p.Units {
+		for _, ch := range u.Changes {
+			e := ch.Entry
+			if ch.Table != Fleet && ch.Table != Readers {
+				continue
+			}
+			var c *Card
+			if ch.Table == Fleet && s.Fleet != nil {
+				c = s.Fleet.Card(e.ID)
+			} else if ch.Table == Readers && s.Readers != nil {
+				c = s.Readers.Card(e.ID)
+			}
+			field := func(k string) string {
+				if v := e.Set[k]; v != "" {
+					return v
+				}
+				if c != nil {
+					return c.F(k)
+				}
+				return ""
+			}
+			primary := field("primary")
+			pr := s.Work.Card(primary)
+			if pr == nil || primary == "" {
+				continue
+			}
+			kind := field("kind")
+			if ch.Table == Readers {
+				kind = "read"
+			}
+			if kind != "work" && kind != "read" {
+				continue
+			}
+			oldCol, newCol := "", ""
+			if c != nil {
+				oldCol, newCol = c.Col, c.Col
+			}
+			if e.Create != nil {
+				newCol = e.Create.Col
+			}
+			if e.Move != nil {
+				newCol = e.Move.Col
+			}
+			if e.Remove {
+				newCol = "retired"
+			}
+			start := (kind == "work" && oldCol != Working && newCol == Working) ||
+				(kind == "read" && (e.Create != nil || (e.Set["asked"] != "" && oldCol == Asked)))
+			end := (kind == "work" && oldCol == Working && newCol != Working) ||
+				(kind == "read" && (oldCol == Asked || oldCol == Reading || oldCol == Working) &&
+					(newCol == OK || newCol == Broken || newCol == "retired" || (e.Set[FieldReturned] != "")))
+			if !start && !end {
+				continue
+			}
+			gen := max(atoiOr(field("gen")), 1)
+			key := e.ID + "#g" + itoa(gen)
+			if kind == "read" {
+				key = e.ID + "#r" + itoa(max(1, atoiOr(field(FieldReasked))+1))
+			}
+			r := ConsumerRec{Key: key, Epoch: s.Epoch, Kind: kind, Who: field("reader"), Route: field(FieldRoute), Model: field(FieldModel)}
+			if r.Who == "" {
+				if c != nil {
+					r.Who = c.Row
+				} else if e.Create != nil {
+					r.Who = e.Create.Row
+				}
+			}
+			f := consumerField(r)
+			if line := updates[primary][f]; line != "" {
+				r = parseConsumerRec(line)
+			} else if line := pr.F(f); line != "" {
+				r = parseConsumerRec(line)
+			}
+			if start && r.Taken == "" {
+				r.Taken = field("asked")
+				if kind == "work" {
+					r.Taken = field("taken")
+				}
+				if r.Taken == "" {
+					r.Taken = stamp(s.Now)
+				}
+			}
+			if end {
+				if r.Taken == "" {
+					r.Taken = field("asked")
+					if kind == "work" {
+						r.Taken = field("taken")
+					}
+					if r.Taken == "" {
+						r.Taken = stamp(s.Now)
+					}
+				}
+				r.Ended = stamp(s.Now)
+				r.Outcome = field("verdict")
+				if r.Outcome == "" {
+					r.Outcome = field("result")
+				}
+				if r.Outcome == "" {
+					r.Outcome = field("retired_by")
+				}
+				if r.Outcome == "" {
+					r.Outcome = newCol
+				}
+				words := field("report")
+				if kind == "read" {
+					words = field("finding")
+					if words == "" {
+						words = field(FieldRefused)
+					}
+				}
+				r.FirstLine = strings.TrimSpace(strings.SplitN(words, "\n", 2)[0])
+			}
+			if updates[primary] == nil {
+				updates[primary] = map[string]string{}
+			}
+			updates[primary][f] = encodeConsumerRec(r)
+			last[primary] = i
+		}
+	}
+	for primary, set := range updates {
+		i := last[primary]
+		attached := false
+		for j := range p.Units[i].Changes {
+			ch := &p.Units[i].Changes[j]
+			if ch.Table == Work && ch.Entry.ID == primary {
+				if ch.Entry.Set == nil {
+					ch.Entry.Set = map[string]string{}
+				}
+				maps.Copy(ch.Entry.Set, set)
+				attached = true
+				break
+			}
+		}
+		if !attached {
+			p.Units[i].Changes = append(p.Units[i].Changes, change(Work, setEntry(s.Work.Card(primary), set)))
+		}
+	}
+	return p
 }
 
 // Stalled is the producer/consumer check's read of the record (docs/
