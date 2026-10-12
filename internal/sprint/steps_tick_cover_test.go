@@ -35,7 +35,7 @@ func TestStepsTickCoverAcceptsAReviewPrimaryAtItsOkReads(t *testing.T) {
 	assert.Equal(t, MachineActor, n.Who, "the tick records its own note as the machine")
 	assert.Equal(t, w.s.Coordinator, n.To, "the note is addressed to the coordinator")
 	assert.Equal(t, "s1", n.Stream)
-	assert.Equal(t, []string{"s1-1"}, n.Primaries)
+	assert.Equal(t, 1, n.Count)
 	assert.Contains(t, n.What, "1 accepted and queued to merge: s1-1")
 	assert.Contains(t, n.What, "run: nova-sprint land --stream s1")
 	w.clean("after the accept")

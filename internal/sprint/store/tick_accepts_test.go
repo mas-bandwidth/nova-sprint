@@ -10,7 +10,6 @@ package store
 // (the pump takes every okd card nothing holds; CoordAccept is for a held one).
 
 import (
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -171,9 +170,9 @@ func TestTheSeatIsToldWhatWasAcceptedNotAskedToAccept(t *testing.T) {
 	assert.Equal(t, sprint.Happened, n.Kind, "a notice, not a decision")
 	assert.Empty(t, n.Decisions, "nothing to answer")
 	assert.Equal(t, h.table().Coordinator, n.To, "addressed to the seat")
-	got := slices.Clone(n.Primaries)
-	slices.Sort(got)
-	assert.Equal(t, all, got, "every primary accepted, named")
+	for _, id := range all {
+		assert.Contains(t, n.What, id, "every primary accepted, named in the notice")
+	}
 	assert.Equal(t, 3, n.Count)
 	assert.Contains(t, n.What, "3 accepted and queued to merge")
 	assert.Contains(t, n.What, "nova-sprint land --stream s1")

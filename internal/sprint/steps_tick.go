@@ -554,8 +554,14 @@ func acceptedNotice(p Plan, ids []string, now time.Time, who, to string) (Note, 
 	if len(streams) == 1 {
 		stream = streams[0]
 	}
-	n := happened(NReadyToMerge, stream, now, accepted...)
+	// The notice names only the cards newly queued (the group's count) and
+	// never accumulates the primaries of every accept the group has seen, which
+	// re-listed every card ever accepted in a ready to merge group
+	// (docs/SPEC-SPRINT.md, the ready to merge notice). The names are in the
+	// note's What; the group's count is the cards accepted.
+	n := happened(NReadyToMerge, stream, now)
 	n.Who, n.To = who, to
+	n.Count = len(accepted)
 	// the thing to run is land (git merges and pushes, then the merge step); merge alone
 	// records a landing without touching git; nova-sprint run --land lands by itself
 	lands := make([]string, len(streams))
