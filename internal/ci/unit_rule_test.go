@@ -32,41 +32,29 @@ import (
 //
 // TestUnitTestsUseNoRealTimeSocketsOrServices reads every test file of the module
 // and fails, naming file, line and call, on any unit-tier use of the forbidden
-// calls. There is no allowlist that hides an offender: unitRuleBurnDown below names
-// the files still being moved, and fails when one of them stops offending, so it
-// can only shrink.
+// calls. The one allowance is unit_rule_allowed.txt beside this file: the files that
+// broke the rule when it was written, allowed until moved (v1.3). A listed file that
+// stops offending fails the test until its line is removed, and an offender not
+// listed fails it: the list only shrinks, and a new offender is red at once.
 
-// unitRuleBurnDown is the files that still break the rule, each to be moved behind
-// the functional tag or onto a fake. A listed file that no longer offends fails
-// the test until its line is removed, and an offender not listed fails it too: the
-// list only shrinks, to zero.
-//
-// TODO (2026-10-12, the v1.2.16 unit-test rule, PR 2 of 2): the 20 files below are
-// the inventory left after the first moves (55 uses: 50 of real time, four of them
-// require.Eventually; 4 sockets; 1 service). Each is a move to the functional tier
-// or onto a fake, with its assertions kept; a file leaves this list the same turn it
-// is fixed.
-var unitRuleBurnDown = []string{
-	"cmd/nova-sprint/fleet_back_test.go",             // require.Eventually on the adopter's goroutine
-	"cmd/nova-sprint/friend_start_test.go",           // a job file aged against the wall clock
-	"cmd/nova-sprint/friendcards_cover_test.go",      // a spent wall-clock deadline
-	"cmd/nova-sprint/friendcards_verb_test.go",       // SyncInbox given the wall clock (as the file times are)
-	"cmd/nova-sprint/friendclean_test.go",            // cache entries aged against the wall clock
-	"cmd/nova-sprint/land_beat_test.go",              // a two-minute wall bound on the beat loop
-	"cmd/nova-sprint/land_class_test.go",             // time.After bounds on the side-by-side gate
-	"cmd/nova-sprint/landpass_lanes_test.go",         // time.After bounds on the lanes' locks
-	"cmd/nova-sprint/landring_test.go",               // a two-minute wall bound on the beat loop
-	"cmd/nova-sprint/landstage_test.go",              // a two-minute wall bound on the beat loop
-	"cmd/nova-sprint/tick_deadline_test.go",          // time.After bounds on the watchdog
-	"cmd/nova-sprint/tick_gate_test.go",              // the deal's wall measured under load
-	"cmd/nova-sprint/where_cost_perf_test.go",        // -tags perf: a wall-clock bound by design, not yet behind functional
-	"internal/sprint/deal_load_bench_test.go",        // the deal's wall measured and logged
-	"internal/sprint/store/machine_twoloops_test.go", // the store's real fence backoff
-	"internal/sprint/store/waitlog_test.go",          // a 30 s wall bound on a wait never woken
-	"internal/sprintdash/events_test.go",             // httptest.NewServer, DefaultClient, Eventually
-	"internal/sprintdash/fresh_test.go",              // httptest.NewServer
-	"internal/sprintdash/pageview_test.go",           // httptest.NewServer
-	"internal/sprintdash/serverpy_test.go",           // require.Eventually
+// unitRuleAllowedFile names the files still allowed to break the rule, one slash
+// path from the module root a line, '#' lines comments (unit_rule_allowed.txt).
+const unitRuleAllowedFile = "unit_rule_allowed.txt"
+
+// unitRuleAllowed reads unitRuleAllowedFile.
+func unitRuleAllowed(t *testing.T) []string {
+	t.Helper()
+	b, err := os.ReadFile(unitRuleAllowedFile)
+	require.NoError(t, err)
+	var out []string
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // unitRuleFinding is one forbidden use: the file (slash path from the module
@@ -415,17 +403,19 @@ func moduleTestFiles(t *testing.T, root string) map[string][]byte {
 }
 
 // TestUnitTestsUseNoRealTimeSocketsOrServices is the rule's lock: every unit-tier
-// test file of the module, read, with no forbidden use outside the burn-down list,
-// and no file left on the list that no longer offends.
+// test file of the module, read, with no forbidden use outside unit_rule_allowed.txt,
+// and no file left on that list that no longer offends.
 func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 	files := moduleTestFiles(t, "../..")
 	require.NotEmpty(t, files, "the scan read no test files")
 	findings, err := scanUnitRule(files)
 	require.NoError(t, err)
 
+	unitRuleBurnDown := unitRuleAllowed(t)
 	listed := map[string]bool{}
 	for _, f := range unitRuleBurnDown {
-		require.False(t, listed[f], "%s is listed twice", f)
+		require.False(t, listed[f], "%s is listed twice in %s", f, unitRuleAllowedFile)
+		require.NotNil(t, files[f], "%s names %s, which is no test file of the module: remove the line", unitRuleAllowedFile, f)
 		listed[f] = true
 	}
 	offending := map[string]bool{}
@@ -448,9 +438,9 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 			len(unlisted), strings.Join(unlisted, "\n"))
 	}
 	if len(stale) > 0 {
-		t.Errorf("these files keep the rule now: remove them from unitRuleBurnDown (it only shrinks):\n%s", strings.Join(stale, "\n"))
+		t.Errorf("these files keep the rule now: remove them from %s (it only shrinks):\n%s", unitRuleAllowedFile, strings.Join(stale, "\n"))
 	}
-	t.Logf("unit-rule burn-down: %d files still listed", len(unitRuleBurnDown))
+	t.Logf("unit-rule: %d files still allowed in %s", len(unitRuleBurnDown), unitRuleAllowedFile)
 }
 
 // TestTheUnitRuleScanSeesAKnownYesAndAKnownNo proves the scan on cases whose answer

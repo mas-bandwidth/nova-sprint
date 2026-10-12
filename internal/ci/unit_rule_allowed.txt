@@ -1,0 +1,31 @@
+# unit_rule_allowed.txt: the unit-tier test files (no functional build tag) that still
+# use real time, a real socket or an outside service, read by internal/ci
+# TestUnitTestsUseNoRealTimeSocketsOrServices. One slash path from the module root a
+# line; a line beginning with # is a comment.
+#
+# allowed until moved, v1.3 (listed 2026-10-12: 41 files, 125 uses on sprint/comfort c0a08276; 20 left after the first moves, 55 uses)
+#
+# A file leaves this list the turn it is moved behind //go:build functional or put onto
+# a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble). A listed file
+# that keeps the rule fails the lint until its line is removed; a file not listed that
+# breaks it fails the lint. The list only shrinks.
+cmd/nova-sprint/fleet_back_test.go
+cmd/nova-sprint/friend_start_test.go
+cmd/nova-sprint/friendcards_cover_test.go
+cmd/nova-sprint/friendcards_verb_test.go
+cmd/nova-sprint/friendclean_test.go
+cmd/nova-sprint/land_beat_test.go
+cmd/nova-sprint/land_class_test.go
+cmd/nova-sprint/landpass_lanes_test.go
+cmd/nova-sprint/landring_test.go
+cmd/nova-sprint/landstage_test.go
+cmd/nova-sprint/tick_deadline_test.go
+cmd/nova-sprint/tick_gate_test.go
+cmd/nova-sprint/where_cost_perf_test.go
+internal/sprint/deal_load_bench_test.go
+internal/sprint/store/machine_twoloops_test.go
+internal/sprint/store/waitlog_test.go
+internal/sprintdash/events_test.go
+internal/sprintdash/fresh_test.go
+internal/sprintdash/pageview_test.go
+internal/sprintdash/serverpy_test.go
