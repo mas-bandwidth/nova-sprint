@@ -52,6 +52,7 @@ var verbClasses = map[string]string{
 	"tick": classMachine, "run": classMachine, "friend clean": classMachine, "seat install": classMachine, "seat uninstall": classMachine, "selftest land": classMachine, "server switch": classMachine,
 
 	"inbox": classRead, "card": classRead, "log": classRead, "check": classRead, "where": classRead, "watch": classRead, "dashboard": classRead, "routes": classRead, "rules": classRead, "stats": classRead, "bases": classRead,
+	"generate": classRead, "lint": classRead,
 	"goal show": classRead, "handover": classRead, "seat": classRead, "seat push": classRead, "hook": classRead, "unhook": classRead, "lane list": classRead, "fsck seat": classRead, "doctor": classRead,
 
 	"coordinator": classSeat,

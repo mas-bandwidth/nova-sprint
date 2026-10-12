@@ -51,6 +51,8 @@ var verbs []verb
 
 func init() {
 	verbs = []verb{
+		{"generate", "(--from ledger --ledger <name> | --from findings --file <tsv> | --from help --tool <name>) --out <dir> [--repo-dir <dir>] [--repo <owner/name>] [--base <branch>] [--sha <40hex>] [--bin-dir <dir>] [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>] [--dropped <id>] [--dry-run]", "generate --from findings --file testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards --dry-run", (*app).cmdGenerate},
+		{"lint", "--card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]", "lint --card testdata/findings.tsv", (*app).cmdLint},
 		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
 		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>] [--plan <dir>: print the plan review's overlap table and exit 0 without admitting]", "add --stream s1 --count 100", (*app).cmdAdd},
 		{"quack", "--streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]", "quack --streams a,b --count 2 --repo https://example.com/quack.git", (*app).cmdQuack},

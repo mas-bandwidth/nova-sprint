@@ -108,7 +108,9 @@ func hookArmed(name string) bool {
 // verb that starts or replaces the server cannot wait on it. help, -h and version run
 // before the gate (main.go, run), and a verb's own -h is its help. Every other verb, the
 // machine's adopt, seat uninstall and friend clean among them, is gated for the holder.
-var hookExempt = map[string]bool{"hook": true, "unhook": true, "run": true, "tick": true, "server switch": true, "seat install": true, "selftest land": true}
+var hookExempt = map[string]bool{"hook": true, "unhook": true, "run": true, "tick": true, "server switch": true, "seat install": true, "selftest land": true,
+	// generate and lint are local-file verbs that open no store and take no hook
+	"generate": true, "lint": true}
 
 // hookExemptCall says the call of verb with these words is exempt: tick is, but not
 // tick --answer-rules, which answers judgments as the coordinator (the word read as the
