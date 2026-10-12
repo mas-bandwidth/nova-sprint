@@ -178,11 +178,21 @@ nova-sprint funded <provider> --reason <text>
 nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--json]
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
+nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+**`audit`** is the one answer to "is anything blocked, stuck or looped": one
+read of the work, fleet and readers tables prints one line per unlanded primary
+with its id, stream, state, tier, attempt, holder (the member or friend whose
+working card holds it, the lane and since when) or `-`, the age in its current
+state and attempt, the ends of its last four attempts and the needs not yet
+landed with their states, and its flags: `NO-HOLDER`, `ATT>=4`, `FAILS=<n>`
+(six or more failed, idle-reaped, bound or brief-defect ends), `STUCK` (unchanged
+past `--stuck`, default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`; `--json` is one object a line, `--stream` narrows it.
 
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
