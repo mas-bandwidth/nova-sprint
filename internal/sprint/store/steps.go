@@ -200,9 +200,30 @@ func DeferStep(r sprint.DeferReq) Step {
 
 // BriefStep is the coordinator replacing the briefs of primaries in place, on a
 // running machine as on a stopped one (sprint.Brief); all or none. It reads what a
-// rework reads: a card in review edited in place opens its next attempt.
+// rework reads: a card in review edited in place opens its next attempt. It reads
+// the cards' needs and each text's needs as well, placed or not: a need that names
+// a dropped card with a successor is resolved through the alias (sprint.AliasOf,
+// need_alias.go), and only its record, kept off the table, tells the successor.
 func BriefStep(r sprint.BriefReq) Step {
 	return Step{Answers: r.Answers, Named: true, Args: ArgsOf(r), Verb: "brief", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true,
+		Extras: func(s *sprint.Snapshot) map[string][]string {
+			var ids []string
+			add := func(id string, needs []string) {
+				ids = append(ids, needs...)
+				if id != "" {
+					if c := s.Work.Placed(id); c != nil {
+						ids = append(ids, sprint.Split(c.F("needs"))...)
+					}
+				}
+			}
+			for _, b := range r.Cards {
+				add(b.ID, b.Needs)
+			}
+			if len(r.Cards) == 0 {
+				add(r.ID, r.Needs)
+			}
+			return map[string][]string{sprint.Work: ids}
+		},
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Brief(s, r) }}
 }
 

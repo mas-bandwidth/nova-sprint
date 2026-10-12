@@ -2108,17 +2108,21 @@ func orEmpty(c *Card, id string) *Card {
 	return c
 }
 
-// waitingNeeding is the waiting primaries that name id and are not dropping:
-// the dependants a drop without cascade refuses, read from every waiting
-// card's needs field (docs/SPEC-SPRINT.md section 11).
-func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
+// openNeeding is the open primaries that name id and are not dropping: the
+// dependants a drop without cascade refuses, read from every open column's
+// needs field, not only waiting (docs/SPEC-SPRINT.md section 11; a ready,
+// working, review or merging card that names the dropped id is refused too,
+// so a no-successor drop can never leave a need on a dropped id to block it).
+func openNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
 	var out []string
-	for _, w := range s.Work.Column(Waiting) {
-		if dropping[w.ID] {
-			continue
-		}
-		if contains(Split(w.F("needs")), id) {
-			out = append(out, w.ID)
+	for _, col := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, w := range s.Work.Column(col) {
+			if dropping[w.ID] {
+				continue
+			}
+			if contains(Split(w.F("needs")), id) {
+				out = append(out, w.ID)
+			}
 		}
 	}
 	return out
@@ -2131,15 +2135,19 @@ type DropReq struct {
 	Answers []string
 	// Cascade drops, with the cards the selection names, every waiting
 	// primary that needs one of them, and their dependants too. Without it a
-	// card a waiting primary still needs is refused, naming the dependants
+	// card any open primary still needs is refused, naming the dependants
 	// (docs/SPEC-SPRINT.md section 11).
 	Cascade bool
-	Who     string
+	// ReplacedBy is the successor a dropped card becomes an alias of: the drop
+	// records the alias as relink does (need_alias.go), so a need on the dropped
+	// id resolves to the successor and the card naming it is not refused.
+	ReplacedBy string
+	Who        string
 }
 
 // Drop takes open primaries off the table with the reason: their record,
 // outcome and reason are kept; their live work card, unread read cards and
-// merge place go with them. A waiting primary that needs one is a dependant:
+// merge place go with them. An open primary that needs one is a dependant:
 // without Cascade the drop is refused for that card, naming the dependants;
 // with it the dependants and their dependants go too (docs/SPEC-SPRINT.md
 // section 11).
@@ -2184,13 +2192,17 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		chosen = kept
 	} else {
 		// Without Cascade a card another waiting primary still needs is
-		// refused for that card, naming the dependants, and nothing moves.
+		// refused for that card, naming the dependants, and nothing moves. A
+		// card dropped --replaced-by a successor becomes an alias of it, so a
+		// need on it resolves to the successor and is not refused (need_alias.go).
 		var kept []*Card
 		for _, c := range chosen {
-			if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
-				p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
-				dropping[c.ID] = false
-				continue
+			if r.ReplacedBy == "" {
+				if deps := openNeeding(s, c.ID, dropping); len(deps) > 0 {
+					p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
+					dropping[c.ID] = false
+					continue
+				}
 			}
 			kept = append(kept, c)
 		}
@@ -2211,8 +2223,13 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		if m := s.Merge.Placed(c.ID); m != nil {
 			u.Changes = append(u.Changes, change(Merge, removeEntry(m, map[string]string{"dropped": stamp(s.Now)})))
 		}
-		u.Changes = append(u.Changes, change(Work, removeEntry(c, map[string]string{
-			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)})))
+		dropped := map[string]string{
+			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)}
+		if r.ReplacedBy != "" {
+			// the dropped card becomes an alias of its successor (need_alias.go).
+			dropped[FieldReplacedBy] = fmt.Sprintf("%s %s by %s", r.ReplacedBy, stamp(s.Now), orDash(r.Who))
+		}
+		u.Changes = append(u.Changes, change(Work, removeEntry(c, dropped)))
 		u.Closes = closesFor(s.Open, nil, c.ID)
 		answerListed(&u, s.Open, r.Answers, "drop", c.Row, "dropped "+c.ID+"; "+r.Reason, r.Who, s.Now, c.ID)
 		u.Moved = fmt.Sprintf("%s %s -> off the table (%s)", c.ID, c.Col, r.Reason)

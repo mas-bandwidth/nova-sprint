@@ -90,11 +90,15 @@ func (a *app) holdCardChecks(verbName string, st *store.Store, stderr io.Writer,
 // whose id has no hyphen is not looked for.
 var idTokenRE = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9._~]*(?:-[A-Za-z0-9._~]*[A-Za-z0-9])+`)
 
-// droppedIDs is every card of the snapshot kept off the table with the outcome dropped.
+// droppedIDs is every card of the snapshot kept off the table with the outcome
+// dropped, but no card that records a successor (FieldReplacedBy): a dropped card
+// with a successor is an alias, not off the table for this lint, since a brief that
+// names the old id stores the successor (need_alias.go; docs/SPEC-SPRINT.md, the
+// alias). Only a dropped card with no successor is refused by name.
 func droppedIDs(s *sprint.Snapshot) []string {
 	var out []string
 	for _, c := range s.Work.Cards() {
-		if !c.Placed() && c.F("outcome") == "dropped" {
+		if !c.Placed() && c.F("outcome") == "dropped" && c.F(sprint.FieldReplacedBy) == "" {
 			out = append(out, c.ID)
 		}
 	}
