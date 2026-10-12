@@ -538,6 +538,10 @@ type Snapshot struct {
 	// row, answer_rules_off), read with the routes (docs/SPEC-SPRINT.md section 8, answered by
 	// rule; rules.go).
 	RulesOff []string
+	// GitIdentity is the sprint row's author and committer for every commit the sprint
+	// machine makes (nova-config's sprint row, git_identity), read with the routes; "" is
+	// none configured, which the landing refuses.
+	GitIdentity string
 	// ReaderStates is each reader's state as the store derives it (ReaderState:
 	// up, away or down), read by a step that asks (docs/SPEC-SPRINT.md section
 	// 6); nil is none read, and every reader is held up.

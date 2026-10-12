@@ -14,6 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // landRig is the sprint over the in-memory store beside a local bare git
@@ -547,21 +548,23 @@ func TestLandReviewAWrongEpochPushesNothing(t *testing.T) {
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
 }
 
-// A git that fails for a reason that is not the card's (here an empty
-// identity) blames no card: nothing is reported, the card stays queued, the
-// stream keeps merging, and land exits non-zero with git's reason.
+// A git that fails for a reason that is not the card's (here a pre-merge-commit hook that
+// refuses) blames no card: nothing is reported, the card stays queued, the stream keeps
+// merging, and land exits non-zero with git's reason.
 func TestLandReviewAGitEnvironmentFailureBlamesNoCard(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
 	r.ok("add --stream s1 --count 2")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n"), "s1-2": r.head("s1-2", "main", "b.txt", "b\n")}, "s1-1", "s1-2")
-	r.a.gitEnv = append(append([]string(nil), r.env...), "GIT_AUTHOR_NAME=", "GIT_COMMITTER_NAME=")
+	hook := filepath.Join(r.clone, ".git", "hooks", "pre-merge-commit")
+	require.NoError(t, os.MkdirAll(filepath.Dir(hook), 0o755))
+	require.NoError(t, testbin.WriteExecutable(hook, []byte("#!/bin/sh\necho the merge is refused by the test >&2\nexit 1\n"), 0o755))
 	before := r.git(r.remote, "rev-parse", "main")
 	code, _, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2")
 	assert.Contains(t, errs, "the merge of s1-1 failed in git, not on its changes")
-	assert.Contains(t, errs, "empty ident name")
+	assert.Contains(t, errs, "the merge is refused by the test")
 	assert.Contains(t, errs, "no card is blamed and nothing was pushed or reported")
 	assert.NotContains(t, errs, "fact=")
 	assert.Equal(t, before, r.git(r.remote, "rev-parse", "main"))

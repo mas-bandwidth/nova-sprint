@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // DefaultStageTimeout is the hard timeout for card staging (120 s).
@@ -327,6 +328,9 @@ type StageOptions struct {
 	// pushed carried on top where it applies cleanly (restageAtTip). A first attempt leaves it
 	// nil and is staged as before.
 	Rework *Rework
+	// GitIdentity, when set, is the author and committer the clone's local config is set to
+	// ("Name <email>"), the sprint row's git_identity; "" sets the placeholder worker identity.
+	GitIdentity string
 
 	// git, when set, builds every staging git call in place of stageGit: a test's seam for
 	// a step git itself would not fail.
@@ -550,11 +554,19 @@ func StageCard(opts StageOptions) (StageResult, error) {
 	head := strings.TrimSpace(string(headOut))
 
 	// A checkout whose identity could not be set would take the model's commits under no
-	// name, found only when it commits: the stage fails here instead, saying which.
-	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.name", "worker").CombinedOutput(); err != nil {
+	// name, found only when it commits: the stage fails here instead, saying which. The
+	// configured identity (the sprint row's git_identity) is set when given, else the
+	// placeholder worker identity.
+	name, email := "worker", "worker@example.com"
+	var identity []string
+	if id, ok := config.ParseGitIdentity(opts.GitIdentity); ok {
+		name, email = id.Name, id.Email
+		identity = id.Env()
+	}
+	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.name", name).CombinedOutput(); err != nil {
 		return fail("config user.name", out, err)
 	}
-	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.email", "worker@example.com").CombinedOutput(); err != nil {
+	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.email", email).CombinedOutput(); err != nil {
 		return fail("config user.email", out, err)
 	}
 
@@ -563,7 +575,7 @@ func StageCard(opts StageOptions) (StageResult, error) {
 		var what string
 		var out []byte
 		var err error
-		if carry, what, out, err = restageAtTip(ctx, stageCmd, opts.TargetDir, branch, cb.Ref, *opts.Rework, &fetchTime, &checkoutTime); err != nil {
+		if carry, what, out, err = restageAtTip(ctx, stageCmd, opts.TargetDir, branch, cb.Ref, *opts.Rework, identity, &fetchTime, &checkoutTime); err != nil {
 			return fail(what, out, err)
 		}
 		if carry != nil {

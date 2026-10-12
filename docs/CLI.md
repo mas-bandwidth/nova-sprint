@@ -434,6 +434,19 @@ Xoff, and nova-config's sprint row turns single ones off: `nova-config sprint se
 --answer_rules_off late,conflict`, then `nova-config apply`. The contract is
 [SPEC-SPRINT.md section 8](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#answered-by-rule).
 
+### The machine's commit identity
+
+Every commit the sprint machine makes (land, merge, rework-at-tip, the promotion's cut,
+ledger and roadmap writes) carries an explicit author and committer, the sprint row's
+`git_identity`: `nova-config sprint set --git_identity 'Name <email>'` (default
+`nova-sprint <nova-sprint@mas-bandwidth.com>`), then `nova-config apply`. The landing and
+the promotion refuse to commit, naming the setting, when none is configured; `nova-sprint
+doctor` reports the identity in use and fails when its email equals the host's global
+`user.email`. A worker's clone gets the identity in its local git config at clone time
+(`pkg/swarm`, `StageJobAs`/`StageCloneIdentityAs`): the launcher reads the sprint row's
+`git_identity` and passes it, so a rework-at-tip commit carries it
+too. The contract is [SPEC-SPRINT.md section 7](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#7-merging).
+
 ### Promoting the sprint branch into dev
 
 `nova-sprint promote --once --branch <sprint branch> --repo-dir <clone>` carries one

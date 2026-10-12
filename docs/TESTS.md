@@ -509,6 +509,36 @@ from it; `cmd/nova-sprint/reads.go groupText`).
   with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
   wait and names the action.
 
+### The machine's commit identity
+
+Every commit the sprint machine makes carries the sprint row's `git_identity`
+(`nova-config sprint set --git_identity 'Name <email>'`), never the host's global
+git config; the landing refuses to commit when none is configured, and `doctor`
+fails when its email equals the host's global `user.email`
+(docs/SPEC-SPRINT.md section 7, the machine's commit identity).
+
+- Unit, `cmd/nova-sprint/land_identity_test.go`:
+  `TestLandCommitCarriesTheConfiguredIdentity` (a landing commit's author and
+  committer are the configured identity even when HOME carries a different global
+  user.email), `TestLandRefusesWhenNoIdentityIsConfigured` (the landing refuses,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `cmd/nova-sprint/promote_end_to_end_test.go`:
+  `TestPromoteCarriesACutToARecordedPromotion/clean` reads the promotion cut's
+  `%an <%ae>|%cn <%ce>` and holds it to the configured identity;
+  `TestPromoteRefusesWithoutAMachineIdentity` (the promotion refuses to cut,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `pkg/swarm/stage_identity_test.go`:
+  `TestReworkAtTipCarriesTheConfiguredIdentity`: the rework-at-tip commit
+  (`restageAtTip`) carries the configured identity even when the host's global
+  git config and environment name the owner; `TestStageJobCloneCarriesTheConfiguredIdentity`:
+  the live launcher entry points `StageJobAs`/`StageCloneIdentityAs` write the
+  configured identity into the worker's clone's local git config at clone time;
+  `StageJob` (the pool identity) still writes the pool's when none is given.
+- Functional (`-tags functional`), `cmd/nova-sprint/land_identity_functional_test.go`:
+  `TestLandCommitIdentityOnARealStore` (a real landing on a private store, explicit
+  `--redis`, scrubbed env with a planted global git config, reads
+  `git log --format='%an <%ae>|%cn <%ce>'`).
+
 ### The server's version heartbeat (v1.2.16)
 
 While `nova-sprint run` runs it writes one heartbeat a second to the store (one `SET` with an

@@ -311,6 +311,11 @@ func TestPromoteCarriesACutToARecordedPromotion(t *testing.T) {
 			require.Contains(t, out, step, "each step is printed as it goes")
 		}
 		require.Equal(t, cut, ta.promotedSha(), "the promotion is recorded in the store")
+		// the cut is the machine's own commit: it carries the configured identity, never
+		// the twin's environment or the host's global git config (docs/SPEC-SPRINT.md, the
+		// machine's commit identity).
+		require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>",
+			w.git(w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", cut), "the cut carries the configured identity")
 		ta.clean()
 	})
 
@@ -565,4 +570,26 @@ func TestPromoteCarriesACutToARecordedPromotion(t *testing.T) {
 		require.NotContains(t, out, "the next pass cuts afresh", "the closed pull request is not claimed cleared")
 		require.Contains(t, w.state(), "promote.branch", "the in-flight key remains")
 	})
+}
+
+// TestPromoteRefusesWithoutAMachineIdentity proves the promotion refuses to cut, naming the
+// setting, when the sprint row names no git_identity: the cut is the machine's own commit
+// and must never be taken under the host's global git config (docs/SPEC-SPRINT.md, the
+// machine's commit identity).
+func TestPromoteRefusesWithoutAMachineIdentity(t *testing.T) {
+	t.Parallel()
+	w := newPromoteTwin(t)
+	w.onDev(map[string]string{"devonly": "dev\n"})
+	f := &fakeForge{}
+	useForge(t, w, f)
+	ta := promoteApp(t, w)
+	ta.m.SetGitIdentity("")
+
+	code, out, errs := ta.do("promote --once --branch sprint/live --poll 1m --repo-dir " + w.dir)
+	require.Equal(t, 2, code, "%s\n%s", out, errs)
+	require.Contains(t, errs, "git_identity")
+	require.Contains(t, errs, "nova-config sprint set --git_identity")
+	require.Empty(t, f.calls, "nothing reaches the forge")
+	require.Empty(t, w.git(w.bare, "branch", "--list", "promo/*"), "nothing is cut")
+	ta.clean()
 }

@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 )
 
@@ -123,9 +124,23 @@ func StagingGitEnv(id StagingIdentity) []string {
 // the bench's config held. The write itself runs with the bench config
 // blanked, so a hostile bench config cannot redirect where local lands.
 func StageCloneIdentity(repoDir string, id StagingIdentity) error {
+	return StageCloneIdentityAs(repoDir, id, "")
+}
+
+// StageCloneIdentityAs is StageCloneIdentity with the sprint row's machine identity
+// (gitIdentity, "Name <email>", the sprint's git_identity): when given it is the clone's
+// local author and committer, so the worker's clone commits as the machine; empty falls
+// back to the pool's identity. A launcher that reads the sprint row passes it, so a
+// rework-at-tip commit in the clone carries the configured identity, never the owner's
+// (docs/SPEC-SPRINT.md, the machine's commit identity).
+func StageCloneIdentityAs(repoDir string, id StagingIdentity, gitIdentity string) error {
+	name, email := id.Name, id.Email
+	if parsed, ok := config.ParseGitIdentity(gitIdentity); ok {
+		name, email = parsed.Name, parsed.Email
+	}
 	for _, kv := range [][2]string{
-		{"user.name", id.Name},
-		{"user.email", id.Email},
+		{"user.name", name},
+		{"user.email", email},
 		{"commit.gpgsign", "false"},
 		{"core.hooksPath", "/dev/null"},
 	} {
@@ -204,13 +219,22 @@ func escapes(p, root string) bool {
 // is refused by path. repoDir is the job clone and may be empty where the
 // worker has not cloned yet.
 func StageJob(poolDir, jobRoot, repoDir string) error {
+	return StageJobAs(poolDir, jobRoot, repoDir, "")
+}
+
+// StageJobAs is StageJob with the sprint row's machine identity (gitIdentity, "Name
+// <email>", the sprint's git_identity): the clone's local config is set from it, so every
+// commit the machine makes in the clone (a rework-at-tip carry included) carries the
+// configured identity. Empty falls back to the pool's identity. A launcher that knows the
+// sprint row passes it (docs/SPEC-SPRINT.md, the machine's commit identity).
+func StageJobAs(poolDir, jobRoot, repoDir, gitIdentity string) error {
 	id, err := LoadPoolIdentity(poolDir)
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(repoDir) != "" {
 		if _, serr := os.Stat(filepath.Join(repoDir, ".git")); serr == nil {
-			if err := StageCloneIdentity(repoDir, id); err != nil {
+			if err := StageCloneIdentityAs(repoDir, id, gitIdentity); err != nil {
 				return err
 			}
 		}
