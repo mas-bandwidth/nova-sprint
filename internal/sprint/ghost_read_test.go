@@ -295,3 +295,34 @@ func TestDoctorCountsFleetReadCards(t *testing.T) {
 	require.Contains(t, joined, rc.ID, "the ghost names its card: %s", joined)
 	require.Contains(t, joined, LiveKey(rc.ID, gen), "the ghost names the card at its generation: %s", joined)
 }
+
+// TestAReadHeldPastHeldGraceIsAGhost pins (c)'s held bound on the one predicate: a read card
+// working on a row whose fresh beat names it held for more than HeldGrace is a ghost to
+// readCardGhost and ReadsOut, and the doctor's readers check FAILs naming it — a read whose
+// child ended and whose report was never taken is not left "alive" to the 60-minute deadline
+// (docs/SPEC-SPRINT.md section 6, the reads; tla-readcards-review-has-a-live-read-or-a-judgment).
+func TestAReadHeldPastHeldGraceIsAGhost(t *testing.T) {
+	t.Parallel()
+	w, rc, gen, b := takenRead(t)
+	b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+	reconcile(w, b) // the held mark is recorded
+	require.NotEmpty(t, w.s.Fleet.Card(rc.ID).F("held_since"), "the held mark is recorded")
+	w.tick(HeldGrace + time.Second)
+	b = memberBeat(b, w.s.Now, LiveKey(rc.ID, gen)+":"+LiveHeld)
+	w.s.Beats = map[string]Beat{"m2": b}
+	ghost, why := readCardGhost(w.s, rc)
+	require.True(t, ghost, "a read held past HeldGrace is a ghost: %s", why)
+	require.Contains(t, why, "held", "the ghost names the held bound: %s", why)
+	var state string
+	for _, ro := range ReadsOut(w.s, w.s.Work.Card("s1-1")) {
+		if ro.Card.ID == rc.ID {
+			state = ro.State
+		}
+	}
+	require.Equal(t, ReadGhost, state, "ReadsOut marks the held read ghost, never live")
+	in := DoctorInput{Snap: w.s, Req: TickReq{Beats: w.s.Beats}, ReaderBeats: map[string]Beat{"reader-m1": {At: w.s.Now}, "reader-m2": {At: w.s.Now}}}
+	cs := DoctorReaders(in)
+	joined := lines(failsOn(cs, CheckReaders))
+	require.NotEmpty(t, joined, "a held ghost fails the readers check: %s", lines(cs))
+	require.Contains(t, joined, rc.ID, "the held ghost names its card: %s", joined)
+}

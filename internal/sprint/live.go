@@ -496,8 +496,19 @@ func readCardGhost(s *Snapshot, c *Card) (bool, string) {
 		return true, fmt.Sprintf("%s's beat names nothing live (stale, down or held)", c.Row)
 	}
 	if e, named := live.names(c); named {
-		_ = e
-		return false, "" // named running or held: the read is alive (its report waits)
+		if !e.Held || !isRead(c) {
+			return false, "" // running, or a held work card (its report waits): alive
+		}
+		// a read card its row's beat names held: its child ended and its report was not
+		// taken. Alive within HeldGrace (the report may still come); past it, a ghost, read
+		// ghost here so the one predicate and the doctor see it, and the reconcile retires
+		// it lost (docs/SPEC-SPRINT.md section 6, the reads; tla-readcards-review-has-a-live-
+		// read-or-a-judgment).
+		held := stampAt(c, "held_since")
+		if held.IsZero() || s.Now.Sub(held) <= HeldGrace {
+			return false, ""
+		}
+		return true, fmt.Sprintf("held: %s's beats name %s held for %s", c.Row, LiveKey(c.ID, gen), s.Now.Sub(held).Truncate(time.Second))
 	}
 	// not named at all: within LiveGrace the read may still be running; past it, a ghost
 	since := b.LiveSince
