@@ -109,21 +109,29 @@ const (
 // holds the member's control card: its status and its width (width.go), which
 // the width column shows beside working.
 const (
-	Done       = "done"
-	OkPct      = "okpct"
-	Finished   = "finished"
-	Redealt    = "redealt"
-	DoneOK     = "ok"
-	DoneFailed = "failed"
+	Done         = "done"
+	OkPct        = "okpct"
+	Finished     = "finished"
+	Redealt      = "redealt"
+	DoneOK       = "ok"
+	DoneFailed   = "failed"
 	// DoneDefect (hidden) holds a member's work cards that ended on a brief defect
 	// (brief_defect.go): in neither done nor ok%, so a brief no worker could do is never
 	// the worker's failure.
 	DoneDefect = "defect"
-	Status     = "status"
-	Active     = "active" // friends.active: how long ago her session last wrote a file
-	Tokens     = "tokens" // friends.tokens: her cards' usage summed, compact or in dollars
-	Load       = "load"
-	Withdrawn  = "withdrawn"
+	// ProviderFailures, Coordination, Environment, Harness (hidden) count the member's
+	// work cards by end class: provider failures, coordination (moved/dropped/clear),
+	// environment faults (134/137/native refused), and harness faults. These counts do
+	// not include in ok% but appear in the dashboard tooltip alongside ok%.
+	ProviderFailures = "provider"
+	Coordination     = "coordination"
+	Environment      = "environment"
+	Harness          = "harness"
+	Status           = "status"
+	Active           = "active" // friends.active: how long ago her session last wrote a file
+	Tokens           = "tokens" // friends.tokens: her cards' usage summed, compact or in dollars
+	Load             = "load"
+	Withdrawn        = "withdrawn"
 )
 
 // Stream states (the merge table's state column).
@@ -264,8 +272,8 @@ func (n Names) Definitions() []ntable.Table {
 		mk(Work, "waiting,ready,working,review,merging,landed,cost:text:sum"),
 		mk(Readers, "asked,reading,ok,broken,tiers:text"),
 		mk(Merge, "queued,merged,stuck,ci:text,state:text,since:text,returned,ctl:first:none", Since, Returned, Ctl),
-		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none",
-			Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, Ctl),
+		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,provider,coordination,environment,harness,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none",
+			Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, ProviderFailures, Coordination, Environment, Harness, Ctl),
 	}
 }
 
