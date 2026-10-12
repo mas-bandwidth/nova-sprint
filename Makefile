@@ -9,13 +9,14 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
 	@echo "make vet         go vet ./..."
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
 	@echo "make functional  go test -tags functional ./... (needs redis-server on PATH)"
+	@echo "make release-accept  run the release gate's tests (needs redis-server on PATH)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
@@ -43,6 +44,9 @@ test: vet
 
 functional:
 	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -tags functional ./...
+
+release-accept:
+	./tools/release-accept.sh
 
 roadmap:
 	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md

@@ -22,6 +22,7 @@ const (
 	FnRowsHide       = "ns_table_rows_hide"
 	FnDropDefinition = "ns_table_drop_definition"
 	FnRowDel         = "ns_table_row_del"
+	FnClear          = "ns_table_clear"
 	FnCellAdd        = "ns_table_cell_add"
 	FnRead           = "ns_table_read"
 	FnCheck          = "ns_table_check"
@@ -1110,6 +1111,17 @@ func RowDel(ctx context.Context, c redis.Cmdable, name, key string, opts ...Writ
 	}
 	n, err := replyCount(reply)
 	return n != 0, err
+}
+
+// Clear empties the table at its active epoch: every row and its cells and the
+// table's properties are removed, the table's definition kept. A row with a
+// column bound is refused, so nothing it guards is lost by the clear.
+func Clear(ctx context.Context, c redis.Cmdable, name string, opts ...WriteOptions) (int64, error) {
+	reply, err := (operation{table: name}).write(ctx, c, FnClear, opts)
+	if err != nil {
+		return 0, err
+	}
+	return replyCount(reply)
 }
 
 // Single-member helpers use the same list operation and wire protocol.
