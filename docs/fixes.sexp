@@ -2500,7 +2500,7 @@
      ledger with a LEDGERS line in its AGENTS.md or nova.sexp, read at staging, included), and a
      malformed entry stops the stream with the conflict-kind ledger and both sides' conflicting
      entries in the judgment, never a rework."
-    :origin "this card, the-lander-merges-evidence-ledgers.w1; previously w4 in v1.2.14; the owner, 2026-10-11 ~12:20-12:45 PM ET")
+    :origin "this card, the-lander-merges-evidence-ledgers.w1; previously w4 in v1.2.14; the owner, 2026-10-11 ~12:20-12:45 PM ET; verified in w7 on 2026-10-12")
    (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
    :title "A landing whose every conflict is a shared ledger lands"
    :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals
