@@ -24,3 +24,17 @@ func TestTheCoinGlyphIsTheOnlyAddition(t *testing.T) {
 	served := get(t, newRig(t).s, "/").Body.String()
 	assert.Contains(t, served, `id="coin"`, "the served page carries the glyph")
 }
+
+// TestTheFriendsTableIsNotHidden holds the friends panel visible: the owner hid the friends
+// table for the v1.2.* series with one CSS rule (marked /* hide-friends-v1.2 */) and now asks
+// for it back in v1.2.14 (the owner, 2026-10-12 ~12:30Z: "Please show the friends table in the
+// sprint dashboard again"). The rule is gone, so the panel renders as it did before 2026-10-11;
+// this test guards it: the friends panel is present, not hidden by attribute, and no hide-friends
+// rule remains on the page.
+func TestTheFriendsTableIsNotHidden(t *testing.T) {
+	t.Parallel()
+	index := string(file("index.html"))
+	assert.Contains(t, index, `<section class="panel friends">`, "the friends panel is on the page")
+	assert.NotContains(t, index, `<section class="panel friends" hidden`, "the friends panel is not hidden by attribute")
+	assert.NotContains(t, index, "hide-friends", "no hide-friends rule remains on the page")
+}
