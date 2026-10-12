@@ -3046,8 +3046,20 @@
      and docs/TESTS.md state it. Tests: TestAnUnservedTierFallsToTheStrongestServedTier
      (internal/sprint/unserved_tier_test.go) and TestCardAndWhereShowAFallbackTier
      (cmd/nova-sprint/card_tier_fallback_test.go)."
-    :origin "this card, an-unserved-tier-falls-to-the-strongest-served-tier.w3, from the coordinator,
-     2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
-     frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
-     every unlanded frontier card of four repositories, then undid the pins by hand when the friend
-     came back; one setting replaces the hand pinning")))
+     :origin "this card, an-unserved-tier-falls-to-the-strongest-served-tier.w3, from the coordinator,
+      2026-10-12 epoch 19: with the only frontier friend held, no route and no up friend served tier
+      frontier, and the frontier cards sat in ready; the seat ran pinfrontier.sh to brief --tier heavy
+      every unlanded frontier card of four repositories, then undid the pins by hand when the friend
+      came back; one setting replaces the hand pinning")
+    (fix "the-dirty-drive-raises-dev-behind-and-promotes" :release "v1.2.17" :status "planned"
+     :title "The dirty tick drive lands each stream on its sprint branch, so dev is behind is raised and the coordinator promotes"
+     :text "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch made dev is behind count only
+      cards landed on a sprint branch, but the dirty tick drive's landing still recorded its 1,200
+      cards against origin/main, a protected branch, so the drive never raised the judgment and the
+      coordinator never promoted. The drive now cuts each stream's cards on its sprint branch
+      (BASE: sprint/<stream> in the brief) and pushes and records each landing there the way the real
+      landing flow does (merge --landed ... --base-ref origin/sprint/<stream>), never by loosening what
+      dev is behind counts and never by fabricating a landing in non-test code; the bare merge's exit-2
+      refusal and the pushed landing checks are kept. TestTheDirtyTickDriveOnAStore is green: 1,200
+      cards land, dev is behind is raised, and the coordinator promotes."
+     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")))
