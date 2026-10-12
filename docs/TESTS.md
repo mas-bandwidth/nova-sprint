@@ -289,6 +289,14 @@ brief verb and the bound).
   `brief --tier --brief-file` without `--reason` refused with nothing written,
   with `--reason` accepted; reason visible on the card).
 
+- Unit, `cmd/nova-sprint/continue_test.go` (the in-memory harness): `TestContinueAnswersABoundFromTheCarriedHead`
+  (v1.2.17, the continue verb) pins the continue step: admits a card, records two attempts with pushed heads
+  and a bound judgment, runs `continue <card> --note x`, and asserts the brief has
+  exactly one `CARRY:` line at the second head, the note is last, the judgment is
+  answered, the bound is reset, and the card is back in ready; `TestContinueCarriesAnExplicitSha`
+  pins `--carry <sha>` on a card with no pushed head; `TestContinueRefusesWithoutACarriedHead`
+  pins the refusal, exit 1, nothing written, when no attempt pushed a head and no
+  `--carry` is given.
 
 ### One definition of what a PATHS entry covers (v1.2.13)
 

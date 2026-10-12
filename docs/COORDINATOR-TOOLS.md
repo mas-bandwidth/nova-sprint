@@ -61,6 +61,13 @@ sprint-table-live) when they name a card in place of a verb. Still waiting on a 
 verbs, the wake alarms, friend-sync, friend-beat and friend-ping. The bash `nova-loop` wrapper's verb is
 `nova-config loop run <name>`, the loop register's own line; no new program under `cmd/`.
 
+The hand pair that continued a card at its bound (read its admitted brief from a local copy, read its
+last pushed head from `card` ATTEMPT lines, write the brief back with a `CARRY:` line and a dated
+coordinator note, then `brief <card> --brief-file <f> --answers <judgment>`) is replaced by
+`nova-sprint continue <card> --note <text> [--carry <branch|sha>] [--answers <judgment>]`: one verb,
+one store step, no local brief copy, from the card's admitted brief and its last pushed head in the
+store (docs/SPEC-SPRINT.md, the continue verb).
+
 ## Not in the table, and why
 
 - Not the coordinator's tools: `com.nova.redis` and `com.nova.bus2-redis` run `redis-server` with a config
