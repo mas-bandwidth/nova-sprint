@@ -407,6 +407,53 @@ func Add(s *Snapshot, r AddReq) Plan {
 			}
 		}
 	}
+	// A stream's branch and trunk (docs/SPEC-SPRINT.md section 7, the sprint branch): a
+	// card cut on a protected branch (dev or main) is re-cut on the stream's branch, and the
+	// first add writes both fields on the stream's control card in the same step as its first
+	// card. The trunk is the protected branch a card names (dev when none does, main when one
+	// names main), and a card naming a non-protected branch keeps that branch as the stream's.
+	// The promotion stream is the exception: its cards land on the protected branch the mark
+	// names, so they are not re-cut.
+	if len(in) > 0 && !IsPromotionStream(s, r.Stream) {
+		var bases []string
+		for i := range in {
+			bases = append(bases, in[i].base)
+		}
+		branch, trunk := branchAndTrunk(ctl, r.Stream, bases)
+		rewrote := false
+		for i := range in {
+			if !slices.Contains(ProtectedBranches, in[i].base) {
+				continue
+			}
+			in[i].brief = briefOnBase(in[i].brief, branch)
+			in[i].base = branch
+			rewrote = true
+		}
+		if rewrote {
+			p.Said = append(p.Said, "stream "+r.Stream+" lands on "+branch+", trunk "+trunk+": "+LandingFlow)
+		}
+		if ctl == nil || ctl.F(FieldStreamBranch) == "" || ctl.F(FieldTrunk) == "" {
+			set := map[string]string{FieldStreamBranch: branch, FieldTrunk: trunk}
+			merged := false
+			for i := range head {
+				if head[i].Entry.ID == CtlID(r.Stream) {
+					if head[i].Entry.Set == nil {
+						head[i].Entry.Set = map[string]string{}
+					}
+					maps.Copy(head[i].Entry.Set, set)
+					merged = true
+					break
+				}
+			}
+			if !merged {
+				if ctl != nil {
+					head = append(head, change(Merge, setEntry(ctl, set)))
+				} else {
+					head = append(head, change(Merge, createEntry(CtlID(r.Stream), r.Stream, Ctl, 0, set)))
+				}
+			}
+		}
+	}
 	// What the admitted change in the cards already in line.
 	mods := map[string]*mod{}
 	var past, pulled []string
@@ -1108,6 +1155,15 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		members := onlyBench(up, bench)
 		if len(members) == 0 {
 			p.refuse(c.ID, benchRefusal(bench))
+			continue
+		}
+		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
+		// to a member whose facts satisfy every need, and a card no member up satisfies is
+		// never dealt; the deal raises the one judgment naming the need (NGateNeeds,
+		// gateNeedsJudgment), at once, never a silent wait.
+		members, gateWhy := s.GateHostPool(c, members)
+		if len(members) == 0 {
+			p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			continue
 		}
 		roomWhy := noRoomWhy
@@ -1976,6 +2032,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 		}
 		identical := false
+		harnessAt := ""
 		if r.Failed && !passed && defect == "" {
 			set["failed"] = itoa(pr.Int("failed") + 1)
 			if late {
@@ -1984,6 +2041,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// rule 2: the attempt before failed the same way, so this is the bound's (failure.go);
 			// a decided class is the class when the decision routed the finish
 			identical = failureSet(pr, pr.Int("attempt"), r.Report, class, cardTierOf(pr), set)
+			// THE HARNESS-FAULT BOUND (HarnessFaultBounded): a harness fault is reworked on the
+			// same tier at most once per card. A failed finish of the same harness-fault class as
+			// the rework before (FieldHarnessClass, carried by it) is the second: it is never
+			// reworked again, and raises the NHarnessFault judgment, not the generic bound.
+			if h := HarnessFault(r.Report); h != "" && h == pr.F(FieldHarnessClass) {
+				harnessAt = h
+				identical = false             // the harness bound is the more specific one: no generic bound, no escalation
+				delete(set, FieldIdenticalAt) // failureSet wrote it: the harness bound, not the generic one, holds the card
+				set[FieldHarnessAt] = itoa(pr.Int("attempt"))
+			}
 			set[FieldLastFinish] = pr.F("attempt") + ":failed"
 		} else {
 			set[FieldLastFinish] = pr.F("attempt") + ":ok" // a pass, a late LAND, a defect: no failure recorded
@@ -2086,6 +2153,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// wrong, not the worker (brief_bound.go)
 			n := judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
 			n.Who, n.Attempt, n.What = who, attempt, bb.Why()+"; attempt "+itoa(attempt)+" failed: "+r.Report
+			u.Notes = append(u.Notes, n)
+		} else if harnessAt != "" {
+			// the second identical harness fault (HarnessFaultBounded): the harness-fault
+			// judgment at once, never a third rework on the same tier; the card waits for it
+			n := Note{Kind: Judgment, Type: NHarnessFault, Stream: pr.Row, Primaries: []string{pr.ID}, Count: 1, At: s.Now, Who: who, Marked: true,
+				Card: c.ID, Attempt: attempt, What: harnessBoundWhat(c.ID, attempt, harnessAt, c.Row, r.Report, pr.ID),
+				Decisions: append([]string(nil), Decisions[NHarnessFault]...)}
 			u.Notes = append(u.Notes, n)
 		} else if identical {
 			// the second identical failure (rule 2): the bound's judgment at once, in the words

@@ -336,10 +336,13 @@ func (a *app) cmdDropSel(args []string, stdout, stderr io.Writer) int {
 	if !selCall("drop", args) {
 		return a.cmdDrop(args, stdout, stderr)
 	}
-	var reason, ans *string
+	var reason, ans, relink *string
+	var waive *bool
 	return a.selVerb("drop", args, stdout, stderr, func(fs flagSet) func() string {
 		reason = fs.String("reason", "", "why every selected card leaves the table; kept with its record")
 		ans = fs.String("answers", "", answersWords)
+		relink = fs.String("relink", "", "re-point the needs of every unlanded card that names a card being dropped at this primary instead")
+		waive = fs.Bool("waive", false, "remove the need from every unlanded card that names a card being dropped, recorded with the reason")
 		return func() string {
 			if strings.TrimSpace(*reason) == "" {
 				return "drop by selector wants --reason <text>"
@@ -347,7 +350,7 @@ func (a *app) cmdDropSel(args []string, stdout, stderr io.Writer) int {
 			return ""
 		}
 	}, func(q sprint.Selector, c *common, st *store.Store) (store.Step, string) {
-		r := sprint.DropReq{Reason: *reason, Answers: answers(*ans), Who: c.actor}
+		r := sprint.DropReq{Reason: *reason, Answers: answers(*ans), Relink: *relink, Waive: *waive, Who: c.actor}
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}

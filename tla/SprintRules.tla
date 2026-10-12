@@ -37,7 +37,9 @@
 \*   loops (rules_read.go ruleReadBroken, harness_fault.go ruleHarness, steps_work.go
 \*   lateFinish): a broken read with a finding reworks the card with it, at the brief's bound
 \*   too (a mind's rework there, as Part reads does), a broken read with none is a mind's;
-\*   work failed on a harness fault or a HOLD with findings is reworked with the failure, any
+\*   work failed on a harness fault or a HOLD with findings is reworked with the failure, a
+\*   harness fault at most once a card (the second identical one, or the same class on
+\*   RuleSameFailureCards cards within the window, is judged, never redealt), any
 \*   other failure is a mind's; a deadline fails an attempt while the worker's report is still
 \*   on its way, and that report, a LAND or a HOLD, arriving while no later attempt has
 \*   started, finishes the attempt. Every rework is one attempt more and starts from the
@@ -119,6 +121,11 @@
 \*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
 \*   "nostall"    the tick never raises the landing-stall judgment: StallLive
 \*   "noclear"    a landing does not clear the episode: StallNotYoung
+\*   "harnessredeal" the harness rule reworks the second identical harness fault a third time
+\*                instead of judging it: HarnessFaultBounded
+\*   "groupredeal" the harness rule redeals a card the fleet's grouped harness-fault judgment
+\*                holds (the same harness-fault class on RuleSameFailureCards cards):
+\*                HarnessFleetHeld
 
 EXTENDS Integers, FiniteSets
 
@@ -147,7 +154,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
-          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, \* answers
+          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, \* answers
           pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
@@ -159,7 +166,7 @@ lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, 
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
-anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
+anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
@@ -221,7 +228,8 @@ TypeOK ==
   /\ anfail \in AnFails \cup {None}
   /\ anlast \in AnFindings \cup {None}
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
-  /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings
+  /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
+  /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
@@ -257,7 +265,7 @@ Init ==
   /\ anst = "working" /\ anatt = 1 /\ anreworks = 0 /\ anhead = 0 /\ ancarry = 0
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
-  /\ anhold = FALSE /\ anfixed = {}
+  /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
@@ -659,7 +667,7 @@ AnReadBroken(f) ==
   /\ f \notin anfixed
   /\ anhead' = anatt /\ anfind' = f
   /\ anst' = IF f # "empty" /\ AnAtBound(f) THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
 \* the brief's judgment instead)
@@ -668,7 +676,7 @@ AnWorkFails(k) ==
   /\ k = "same" => anreworks > 0
   /\ anhead' = anatt /\ anfail' = k
   /\ anst' = IF anatt >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
 \* still on its way
@@ -676,7 +684,7 @@ AnDeadline ==
   /\ anst = "working" /\ ~anland
   /\ anhead' = anatt /\ anfail' = "harness" /\ anland' = TRUE
   /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's HOLD is
 \* still on its way
@@ -684,7 +692,7 @@ AnDeadlineHold ==
   /\ anst = "working" /\ ~anhold
   /\ anhead' = anatt /\ anfail' = "harness" /\ anhold' = TRUE
   /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt>>
 
 \* the outside: the worker's late LAND arrives. While its attempt is failed and no later
 \* attempt has started, finish takes it: the attempt is done. Once a later attempt has
@@ -699,7 +707,7 @@ AnLateLand ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 
 \* the outside: the worker's late HOLD arrives; it finishes the attempt a late LAND does
 AnLateHold ==
@@ -712,7 +720,7 @@ AnLateHold ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt>>
 
 \* a rework with fix f ("empty": no fix): one attempt more, from the head the attempt before
 \* pushed; a later attempt started, so a late report still on its way is for the attempt the
@@ -733,14 +741,25 @@ RuleAnBroken ==
   /\ anfind # "empty" \/ Broken = "nofinding"
   /\ AnRework(anfind)
   /\ anlast' = anfind
+  /\ anharness' = anharness
+  /\ anfleet' = anfleet /\ anredealt' = anredealt
 
 \* the failed rule: a harness fault, or a HOLD with findings, reworks the card with the
-\* failure as its fix
+\* failure as its fix. A harness fault is reworked on the same tier at most once per card
+\* (HarnessFaultBounded): the second identical one is judged, never redealt a third time; and
+\* the fleet's grouped judgment holds a card whose class RuleSameFailureCards cards hold
+\* (HarnessFleetHeld): the groupredeal defect redeals it anyway.
 RuleAnHarness ==
   /\ \/ anst = "failed"
      \/ Broken = "faultnobound" /\ anst = "bound"
   /\ anfail \in {"harness", "hold"}
+  \* the fleet's grouped one is judged, never reworked (the groupredeal defect redeals it)
+  /\ anfail = "hold" \/ anfleet < 2 \/ Broken = "groupredeal"
+  /\ anfail = "hold" \/ anharness = 0 \/ Broken = "harnessredeal"
   /\ AnRework(anfail)
+  /\ anharness' = IF anfail = "harness" THEN anharness + 1 ELSE anharness
+  /\ anredealt' = (anredealt \/ (anfail = "harness" /\ anfleet = 2))
+  /\ anfleet' = anfleet
   /\ UNCHANGED anlast
 
 \* the failed rule on any other failure below the bound (rules.go ruleFailed; the owner,
@@ -755,29 +774,45 @@ RuleAnFailed ==
      \/ anfail = "same" /\ Broken = "identicalrework"
   /\ AnRework(IF anfail = "noreport" THEN "empty" ELSE anfail)
   /\ UNCHANGED anlast
+  /\ anharness' = anharness
+  /\ anfleet' = anfleet /\ anredealt' = anredealt
 
 \* a mind: a broken read with no finding, a card at its bound (and, broken, a failure no class
-\* names, left to the seat below its bound); and
+\* names, left to the seat below its bound), the second identical harness fault (which the
+\* harness bound judges, never redealt a third time), and the fleet's grouped harness-fault
+\* judgment (the same class on RuleSameFailureCards cards within the window); and
 \* at the bound a non-empty finding is still reworked with it (as Part reads does), the
 \* finding marked fixed so it is not read again
 AnMind ==
   /\ \/ anst = "broken" /\ anfind = "empty"
      \/ anst = "failed" /\ anfail = "other" /\ Broken = "parkfailed"
      \/ anst = "failed" /\ anfail = "noreport" /\ Broken # "noreportrework"
+     \/ anst = "failed" /\ anfail = "harness" /\ anharness = 1
+     \/ anst = "failed" /\ anfail = "harness" /\ anfleet = 2
      \/ anst = "bound" /\ (anfind = None \/ Broken = "answersmind")
   /\ anst' = "judged"
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
 
 AnMindRework ==
   /\ anst = "bound" /\ anfind \notin {None, "empty"} /\ Broken # "answersmind"
   /\ anst' = "working"
   /\ anfixed' = anfixed \cup {anfind}
   /\ anfind' = None
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfail, anlast, anland, anlost, anfixless, anhold>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anharness, anfleet, anredealt>>
+
+\* the outside: another card of the fleet fails the same harness-fault class, counted by
+\* TickHarnessFleet toward RuleSameFailureCards; two such cards and this one are the fleet's
+\* grouped judgment, which holds this card. It happens only while this card works: the tick
+\* reads the fleet whole, before the rules answer this card's failure.
+AnFleetFails ==
+  /\ anst = "working"
+  /\ anfleet < 2
+  /\ anfleet' = anfleet + 1
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt>>
 
 AnNext ==
   \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold
-  \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework
+  \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework \/ AnFleetFails
   \/ \E f \in AnFindings : AnReadBroken(f)
   \/ \E k \in AnFails : AnWorkFails(k)
 
@@ -810,14 +845,26 @@ AnAnswered == (anst \in {"broken", "failed", "bound"}) ~> (anst \notin {"broken"
 \* seat: the machine reworks it with its report or its finding (or a late report finishes it).
 \* Only past the bound, or with no finding, is it a mind's (rules.go ruleFailed and
 \* ruleReadBroken; wait_refused.go).
-\* Failed work with no report, and the second identical failure (the bound's), are outside it.
+\* Failed work with no report, the second identical failure (the bound's), and the second
+\* identical harness fault (the harness bound's judgment: HarnessFaultBounded) and the fleet's
+\* grouped harness-fault judgment (HarnessFleetHeld) are outside it.
 FailedWithAFindingNeverParked ==
-  ((anst = "failed" /\ anfail \in {"harness", "hold", "other"}) \/ (anst = "broken" /\ anfind # "empty"))
+  ((anst = "failed" /\ anfail \in {"harness", "hold", "other"} /\ ~(anfail = "harness" /\ (anharness = 1 \/ anfleet = 2))) \/ (anst = "broken" /\ anfind # "empty"))
     ~> (anst \in {"working", "done"})
 
 \* The second identical failure is never failed work the rule reworks on its tier: it is the
 \* bound's (rules.go ruleFailed leaves it to ruleBound).
 IdenticalIsBound == anfail = "same" => anst # "failed"
+
+\* A harness fault is reworked on the same tier at most once per card: the second identical
+\* one raises the NHarnessFault judgment, never a third redeal (harness_fault.go ruleHarness).
+HarnessFaultBounded == anharness <= 1
+
+\* A card whose harness-fault class the fleet holds (the same class on RuleSameFailureCards
+\* cards within the window) is held by the one grouped NHarnessFault judgment and never
+\* redealt; the groupredeal defect redeals it (harness_fault.go ruleHarness; rules.go
+\* TickHarnessFleet).
+HarnessFleetHeld == ~anredealt
 
 \* The reversed witness: a mind still answers a card past the bound or with nothing to take as
 \* a fix (MCSprintRulesAnswersReachMindJudges: TLC reaches "judged" and so breaks it). "judged"

@@ -170,9 +170,12 @@ func ReworkStep(r sprint.ReworkReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Rework(s, r) }}
 }
 
-// ReturnStep is the coordinator sending merging primaries back to review.
+// ReturnStep is the coordinator sending merging primaries back to review, and
+// handing a read on a friend's (or a reader's) row back to the deal: the fleet
+// table holds a friend's read card (docs/SPEC-SPRINT.md section 1, friend
+// reconcile).
 func ReturnStep(r sprint.ReturnReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "return", Load: tables(sprint.Work, sprint.Readers, sprint.Merge),
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "return", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge),
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Return(s, r) }}
 }
 

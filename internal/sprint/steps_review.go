@@ -145,8 +145,8 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		if r.Instead != "" {
 			return insteadHeld(s, c, r.Instead)
 		}
-		asked := len(readsAt(s, c, c.Int("attempt")))
-		if another && asked == 0 {
+		asked := askedAtAttempt(s, c)
+		if another && !asked {
 			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
 		}
 		if !another && ReadsWanted(s, c) == 0 {
@@ -1132,6 +1132,13 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 				return why
 			}
 		}
+		// a card never enters merging with a need that is not landed (rule (c),
+		// every-need-names-a-live-card-checked-every-second): the accept checks it,
+		// so a card whose need is dropped or absent waits in review for the
+		// coordinator (needs set, or drop)
+		if needs := NamedWaits(s, c, nil); len(needs) > 0 {
+			return "needs " + strings.Join(needs, ", ") + " not landed"
+		}
 		// the coordinator's own read through the read verb counts as one read, as
 		// accept --heavy's does; a card carries one coordinator read, so the two
 		// are the same read, never two
@@ -1340,7 +1347,7 @@ type ReworkCard struct {
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
-var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound}
+var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:
@@ -1988,6 +1995,42 @@ func answeredIn(notes []Note, id string) bool {
 	return slices.ContainsFunc(notes, func(n Note) bool { return n.Kind == Decided && n.Answers == id })
 }
 
+// readCardOnTable is the read card named id, placed on a friend's fleet row or a
+// reader's row; nil when no such read is placed. A read card lives on the fleet
+// table (a friend's row) or the readers table, never the work table, so the
+// coordinator's return looks it up here (docs/SPEC-SPRINT.md section 1, friend
+// reconcile).
+func readCardOnTable(s *Snapshot, id string) *Card {
+	if s.Fleet != nil {
+		if c := s.Fleet.Placed(id); c != nil && isRead(c) {
+			return c
+		}
+	}
+	if s.Readers != nil {
+		if c := s.Readers.Placed(id); c != nil && isRead(c) {
+			return c
+		}
+	}
+	return nil
+}
+
+// returnReadUnit is the coordinator's return of a read card on a friend's (or a
+// reader's) row: the card leaves its table retired returned (RetiredByReturned:
+// no verdict, not a read), so the ask places it again (docs/SPEC-SPRINT.md
+// section 1, friend reconcile). It is the same hand-back the reader's own
+// read --return applies, run here by the coordinator's return verb.
+func returnReadUnit(s *Snapshot, c *Card, reason, who string) Unit {
+	table := Readers
+	if IsFriendRow(c.Row) {
+		table = Fleet
+	}
+	set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": cutText(reason, MaxCardTextBytes)}
+	n := happened(NReadReturned, c.F("stream"), s.Now, c.F("primary"))
+	n.Who, n.Attempt, n.What = who, c.Int("attempt"), who+" returned "+c.ID+": "+reason
+	return Unit{Key: c.F("primary"), Stream: c.F("stream"), Changes: []Change{change(table, removeEntry(c, set))},
+		Moved: c.ID + " " + c.Col + " -> returned (retired: " + who + " returned it)", Notes: []Note{n}}
+}
+
 // Return moves merging -> review: off the merge queue (or stuck), into the
 // merge table's hidden returned column, so a later accept moves it back. The
 // primary is marked returned at its attempt (FieldReturnedAttempt): the
@@ -1995,18 +2038,51 @@ func answeredIn(notes []Note, id string) bool {
 // again only at a new attempt with its own reads.
 func Return(s *Snapshot, r ReturnReq) Plan {
 	var p Plan
-	chosen := pick(&p, r.Sel, s.Work.Column(Merging), rowOf, func(c *Card) string {
-		if orphanMerge(s, c) != nil {
-			return ""
+	// a read card on a friend's (or a reader's) row is handed back to the deal:
+	// the coordinator's return works on a friend's read, not only the reader's own
+	// read --return (docs/SPEC-SPRINT.md section 1, friend reconcile). The read
+	// card lives on the fleet table (a friend's row) or the readers table, never
+	// the work table, so the named ids are split: reads go to returnReadUnit, the
+	// rest to the merging -> review move below.
+	sel := r.Sel
+	named := len(sel.IDs) > 0 || sel.Only != nil
+	if named {
+		ids := sel.IDs
+		if sel.Only != nil {
+			ids = sel.Only
 		}
-		if why := inState(c, Merging); why != "" {
-			return why
+		var workIDs []string
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if seen[id] {
+				p.refuse(id, "named twice")
+				continue
+			}
+			seen[id] = true
+			if c := readCardOnTable(s, id); c != nil {
+				p.Units = append(p.Units, returnReadUnit(s, c, r.Reason, r.Who))
+				continue
+			}
+			workIDs = append(workIDs, id)
 		}
-		if m := s.Merge.Placed(c.ID); m != nil && m.Col != Queued && m.Col != Stuck {
-			return "not queued or stuck in merge (it is " + placeWord(m) + ")"
-		}
-		return "" // queued, stuck, or no merge card at all: return takes it back
-	}, s.primaryCard)
+		sel.IDs = workIDs
+		sel.Only = nil
+	}
+	var chosen []*Card
+	if !named || len(sel.IDs) > 0 {
+		chosen = pick(&p, sel, s.Work.Column(Merging), rowOf, func(c *Card) string {
+			if orphanMerge(s, c) != nil {
+				return ""
+			}
+			if why := inState(c, Merging); why != "" {
+				return why
+			}
+			if m := s.Merge.Placed(c.ID); m != nil && m.Col != Queued && m.Col != Stuck {
+				return "not queued or stuck in merge (it is " + placeWord(m) + ")"
+			}
+			return "" // queued, stuck, or no merge card at all: return takes it back
+		}, s.primaryCard)
+	}
 	leaving := map[string]bool{}
 	for _, c := range chosen {
 		m := s.Merge.Placed(c.ID)
@@ -2108,20 +2184,171 @@ func orEmpty(c *Card, id string) *Card {
 	return c
 }
 
+// NNeedsGone is the run loop's needs check (rule (b),
+// every-need-names-a-live-card-checked-every-second): an unlanded card in any state
+// (waiting, ready, working, review, merging) names a card that is absent or off the
+// table. It is pushed at once, naming the card, its state, the missing need, and the
+// two answers (needs set, or drop), and repeated at its deadline until answered.
+const NNeedsGone = "a card needs a card that is gone"
+
+func init() {
+	TickDecisions[NNeedsGone] = []string{"drop"}
+	WaitRefused[NNeedsGone] = "needs set <id> --needs <rest>, or drop it"
+}
+
+// unlandedNeeding is the unlanded primaries that name id and are not dropping:
+// the dependants a drop without cascade relink/waive refuses, read from every
+// unlanded card's needs field (Waiting, Ready, Working, Review, Merging).
+func unlandedNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
+	var out []string
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, c := range s.Work.Column(st) {
+			if dropping[c.ID] {
+				continue
+			}
+			if contains(Split(c.F("needs")), id) {
+				out = append(out, c.ID)
+			}
+		}
+	}
+	return out
+}
+
 // waitingNeeding is the waiting primaries that name id and are not dropping:
 // the dependants a drop without cascade refuses, read from every waiting
 // card's needs field (docs/SPEC-SPRINT.md section 11).
 func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
+	return unlandedNeeding(s, id, dropping)
+}
+
+// goneNamedNeeds is a primary's named needs that name a card that is absent or
+// off the table: the needs rule (b) forbids on an unlanded card. A need the
+// coordinator waived is not counted (it is not owed any more).
+func goneNamedNeeds(s *Snapshot, c *Card) []string {
+	waived := Split(c.F("waived"))
 	var out []string
-	for _, w := range s.Work.Column(Waiting) {
-		if dropping[w.ID] {
+	for _, n := range Split(c.F("needs")) {
+		if contains(waived, n) {
 			continue
 		}
-		if contains(Split(w.F("needs")), id) {
-			out = append(out, w.ID)
+		if s.Work.Placed(n) == nil {
+			out = append(out, n)
 		}
 	}
 	return out
+}
+
+// stillGone says any of the needs a judgment named is still gone.
+func stillGone(gone, named []string) bool {
+	for _, n := range named {
+		if contains(gone, n) {
+			return true
+		}
+	}
+	return false
+}
+
+// TickNeeds is the run loop's needs check (rule (b),
+// every-need-names-a-live-card-checked-every-second): every unlanded card's needs
+// are read each tick, in every state (waiting, ready, working, review, merging),
+// and a need naming a card that is absent or off the table raises one judgment,
+// NNeedsGone, at once -- naming the card, its state, the missing need, and the two
+// answers (needs set <id> --needs <rest>, or drop) -- held open, and so repeated
+// at its deadline by the overdue part, until it is answered. A waiting card is
+// left to the resolve part, which already judges the same facts (NBlocked,
+// NMissingNeed) as it moves it; every other unlanded state is judged here. A
+// judgment whose need is landed, waived or re-pointed closes.
+func TickNeeds(s *Snapshot, r TickReq) (Plan, int) {
+	var p Plan
+	opens := map[string][]Open{}
+	for _, o := range s.Open {
+		opens[o.Subject()] = append(opens[o.Subject()], o)
+	}
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, c := range s.Work.Column(st) {
+			if IsSentinel(c) {
+				continue
+			}
+			gone := goneNamedNeeds(s, c)
+			// a needs-gone judgment whose need is no longer gone closes: the
+			// coordinator set the need away, or it came back on the table
+			for _, o := range opens[c.ID] {
+				if o.Note.Type == NNeedsGone && !stillGone(gone, o.Note.Needs) {
+					p.Closes = append(p.Closes, o)
+				}
+			}
+			if st == Waiting || len(gone) == 0 {
+				continue // waiting is the resolve part's; and no gone need is no judgment
+			}
+			if left := unblocked(opens[c.ID], c.ID, gone, NNeedsGone); len(left) == 0 {
+				continue // an open judgment already names it
+			} else {
+				gone = left
+			}
+			n := judgment(NNeedsGone, c.Row, s.Now, 0, c.ID)
+			n.What = fmt.Sprintf("%s (%s) needs %s, which is gone: nova-sprint needs set %s --needs <rest>, or nova-sprint drop %s --reason <why>", c.ID, c.Col, Preview(gone, ","), c.ID, c.ID)
+			n.Needs, n.Who, n.Card = gone, r.who(), c.ID
+			n.Decisions = append([]string(nil), TickDecisions[NNeedsGone]...)
+			p.Notes = append(p.Notes, n)
+		}
+	}
+	return p, 0
+}
+
+// NeedsSetLive is needs set as the store runs it (nova-sprint needs set): a
+// merging card whose need is gone is answerable in place (rule (b),
+// every-need-names-a-live-card-checked-every-second) -- it stays merging and
+// lands once its needs are landed -- while every other card takes NeedsSet,
+// which still refuses a merging card whose needs all live.
+func NeedsSetLive(s *Snapshot, r NeedsSetReq) Plan {
+	c := s.Work.Placed(r.ID)
+	if c == nil || c.Col != Merging || len(goneNamedNeeds(s, c)) == 0 {
+		return NeedsSet(s, r)
+	}
+	var p Plan
+	p.on(s)
+	if why := notCoordinator(s, r.Who, "needs set"); why != "" {
+		p.refuse(r.ID, why)
+		return p
+	}
+	wants := r.Needs
+	if r.Clear {
+		wants = nil
+	}
+	seen := map[string]bool{}
+	var why []string
+	for _, n := range wants {
+		switch {
+		case n == c.ID:
+			why = append(why, n+" is the card itself")
+		case seen[n]:
+			why = append(why, n+" is named twice")
+		case s.Work.Placed(n) == nil:
+			why = append(why, n+" is no primary on the table")
+		}
+		seen[n] = true
+	}
+	if len(why) > 0 {
+		p.refuse(c.ID, strings.Join(why, "; ")+"; nothing was changed")
+		return p
+	}
+	if why := needsCycle(s, c.ID, wants); why != "" {
+		p.refuse(c.ID, why)
+		return p
+	}
+	brief := setBriefNeeds(c.F("brief"), wants)
+	set := map[string]string{"brief": brief}
+	var unset []string
+	if len(wants) > 0 {
+		set["needs"] = strings.Join(wants, ",")
+	} else {
+		unset = append(unset, "needs")
+	}
+	u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
+		Moved: fmt.Sprintf("%s needs %s in place (merging) stream=%s", c.ID, orDash(set["needs"]), c.Row)}
+	p.Units = append(p.Units, u)
+	answered(&p, s, r.Answers, r.Who)
+	return Lawful(p)
 }
 
 // DropReq is the coordinator taking primaries off the table.
@@ -2129,20 +2356,25 @@ type DropReq struct {
 	Sel
 	Reason  string
 	Answers []string
-	// Cascade drops, with the cards the selection names, every waiting
-	// primary that needs one of them, and their dependants too. Without it a
-	// card a waiting primary still needs is refused, naming the dependants
+	// Cascade drops, with the cards the selection names, every unlanded card
+	// that needs one of them, and their dependants too. Without it a card an
+	// unlanded card still needs is refused, naming the dependants
 	// (docs/SPEC-SPRINT.md section 11).
 	Cascade bool
-	Who     string
+	// Relink re-points the needs of dependents to a new card id.
+	Relink string
+	// Waive removes the need from each dependent, recorded with the reason.
+	Waive bool
+	Who   string
 }
 
 // Drop takes open primaries off the table with the reason: their record,
 // outcome and reason are kept; their live work card, unread read cards and
-// merge place go with them. A waiting primary that needs one is a dependant:
+// merge place go with them. A primary unlanded that needs one is a dependant:
 // without Cascade the drop is refused for that card, naming the dependants;
-// with it the dependants and their dependants go too (docs/SPEC-SPRINT.md
-// section 11).
+// with it the dependants and their dependants go too. --relink re-points the
+// need of each dependent to a new card; --waive removes the need from each
+// dependent (docs/SPEC-SPRINT.md section 11).
 func Drop(s *Snapshot, r DropReq) Plan {
 	var p Plan
 	var all []*Card
@@ -2156,21 +2388,23 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		return ""
 	}, s.primaryCard)
 	if r.Cascade {
-		// Grow the set of dropping cards: every waiting primary that needs
+		// Grow the set of dropping cards: every unlanded card that needs
 		// one of them goes too, and their dependants in turn (a cascade), so
-		// no waiting primary is left blocked on a dropped card
+		// no unlanded card is left blocked on a dropped card
 		// (docs/SPEC-SPRINT.md section 11).
 		for grew := true; grew; {
 			grew = false
-			for _, w := range s.Work.Column(Waiting) {
-				if dropping[w.ID] {
-					continue
-				}
-				for _, n := range Split(w.F("needs")) {
-					if dropping[n] {
-						dropping[w.ID] = true
-						grew = true
-						break
+			for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+				for _, w := range s.Work.Column(st) {
+					if dropping[w.ID] {
+						continue
+					}
+					for _, n := range Split(w.F("needs")) {
+						if dropping[n] {
+							dropping[w.ID] = true
+							grew = true
+							break
+						}
 					}
 				}
 			}
@@ -2182,13 +2416,73 @@ func Drop(s *Snapshot, r DropReq) Plan {
 			}
 		}
 		chosen = kept
+	} else if r.Relink != "" || r.Waive {
+		// --relink or --waive: the drop proceeds, and every unlanded card that
+		// names one of the dropping cards no longer names a card that is gone:
+		// its need is re-pointed at the new card (--relink) or removed and
+		// recorded with the reason (--waive), so no unlanded card is left
+		// stranded (rule (a), every-need-names-a-live-card-checked-every-second).
+		if r.Relink != "" && s.Work.Placed(r.Relink) == nil {
+			p.refuse(r.Relink, r.Relink+" is no primary on the table; nothing was changed")
+			return p
+		}
+		// one rewrite per dependent, however many dropping cards it names
+		dependents := map[string]bool{}
+		for _, c := range chosen {
+			for _, dep := range unlandedNeeding(s, c.ID, dropping) {
+				dependents[dep] = true
+			}
+		}
+		names := slices.Sorted(maps.Keys(dependents))
+		var dropIDs []string
+		for _, c := range chosen {
+			dropIDs = append(dropIDs, c.ID)
+		}
+		for _, depID := range names {
+			dep := s.Work.Placed(depID)
+			if dep == nil {
+				continue
+			}
+			var next, waivedAdd []string
+			for _, n := range Split(dep.F("needs")) {
+				if !dropping[n] {
+					next = append(next, n)
+					continue
+				}
+				if r.Relink != "" {
+					if !contains(next, r.Relink) {
+						next = append(next, r.Relink)
+					}
+				} else if r.Waive {
+					waivedAdd = append(waivedAdd, n)
+				}
+			}
+			set := map[string]string{"brief": setBriefNeeds(dep.F("brief"), next)}
+			var unset []string
+			if len(next) > 0 {
+				set["needs"] = strings.Join(next, ",")
+			} else {
+				unset = append(unset, "needs")
+			}
+			if len(waivedAdd) > 0 {
+				set["waived"] = strings.Join(append(Split(dep.F("waived")), waivedAdd...), ",")
+				set["waived_by"], set["waived_at"] = r.Who, stamp(s.Now)
+			}
+			u := Unit{Key: depID, Stream: dep.Row, Changes: []Change{change(Work, setEntry(dep, set, unset...))}}
+			if r.Relink != "" {
+				u.Moved = fmt.Sprintf("%s needs -> %s (re-pointed by drop %s)", depID, r.Relink, strings.Join(dropIDs, ","))
+			} else {
+				u.Moved = fmt.Sprintf("%s needs waived (%s): %s", depID, r.Reason, strings.Join(waivedAdd, ","))
+			}
+			p.Units = append(p.Units, u)
+		}
 	} else {
-		// Without Cascade a card another waiting primary still needs is
+		// Without Cascade/relink/waive a card another unlanded card still needs is
 		// refused for that card, naming the dependants, and nothing moves.
 		var kept []*Card
 		for _, c := range chosen {
-			if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
-				p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
+			if deps := unlandedNeeding(s, c.ID, dropping); len(deps) > 0 {
+				p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade, --relink, or --waive", c.ID, strings.Join(deps, ", ")))
 				dropping[c.ID] = false
 				continue
 			}

@@ -1,10 +1,5 @@
 package swarm
 
-import (
-	"path/filepath"
-	"strings"
-)
-
 // A READ VERDICT OR A BRANCH WHOSE RUN CARRIES A KNOWN FAILURE SIGNATURE WAS NOT EARNED.
 //
 // A card runs `go test` as a gate and writes its verdict on RESULT.md line 1 or 2; when the
@@ -41,29 +36,10 @@ var failureSignatures = []failureSignature{
 
 // findFailureSignature scans a run's capture for the first known failure signature and
 // returns it — the matched text and its class — or ok=false when none is present.
-func findFailureSignature(raw []byte) (sig, class string, ok bool) {
-	text := string(raw)
-	for _, s := range failureSignatures {
-		if strings.Contains(text, s.signature) {
-			return s.signature, s.class, true
-		}
-	}
-	return "", "", false
-}
 
 // failureSignatureInFile reads the harness-output.log at path and returns the first known
 // failure signature it carries, or ok=false. An absent or unreadable capture is no
 // signature: it is read with readRegular, so a symlink or FIFO is read as no record at all.
-func failureSignatureInFile(path string) (sig, class string, ok bool) {
-	raw, err := readRegular(path)
-	if err != nil {
-		return "", "", false
-	}
-	return findFailureSignature(raw)
-}
 
 // harnessOutputBeside is the run's own capture beside a RESULT.md: `verify` scans RESULT.md
 // and this file, the same name `native` writes walled or not (issue #608).
-func harnessOutputBeside(resultPath string) string {
-	return filepath.Join(filepath.Dir(resultPath), "harness-output.log")
-}

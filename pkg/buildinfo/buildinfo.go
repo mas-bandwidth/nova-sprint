@@ -237,21 +237,6 @@ type Source struct {
 	BuildHost string
 }
 
-// Extras returns the Source as a slice of key=value tokens, the shape Line takes as its
-// variadic extras. The four tokens appear in a fixed order -- repo, revision, dirty,
-// build_host -- so the writer and the reader cannot disagree about which field is
-// which. Dirty is ALWAYS emitted (true OR false), because a Source the reader can
-// extract is one the writer wrote whole, and a missing dirty field is a Source the
-// reader is forced to refuse.
-func (s Source) Extras() []string {
-	return []string{
-		"repo=" + s.Repository,
-		"revision=" + s.Revision,
-		"dirty=" + strconv.FormatBool(s.Dirty),
-		"build_host=" + s.BuildHost,
-	}
-}
-
 // sourceKeys is the set of keys FindSource reads from Extras.
 var sourceKeys = map[string]bool{"repo": true, "revision": true, "dirty": true, "build_host": true}
 
@@ -300,20 +285,4 @@ func (f Fields) FindSource() (Source, bool) {
 		Dirty:      dirty == "true",
 		BuildHost:  host,
 	}, true
-}
-
-// PartialSource reports whether the line named source but FindSource could not read it
-// whole: it carries at least one of the four keys and yet FindSource returned ok=false,
-// whether for a missing key, a repeated key or a malformed dirty (SPEC-VERSION item 6).
-// A line with none of the four, and one FindSource reads, are both false.
-func (f Fields) PartialSource() bool {
-	if _, ok := f.FindSource(); ok {
-		return false
-	}
-	for _, e := range f.Extras {
-		if k, _, found := strings.Cut(e, "="); found && sourceKeys[k] {
-			return true
-		}
-	}
-	return false
 }

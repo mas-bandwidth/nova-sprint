@@ -11,6 +11,15 @@ system moves cards without mistakes and tells the coordinator what needs it.
 The coordinator's day, as a runbook for whoever holds the seat, is
 [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md).
 
+## The gate-host rule
+
+A brief may name a `GATE-NEEDS:` line listing the gate's needs
+(e.g., `GATE-NEEDS: linux, tla`). The deal matches a card to a
+member only when the member's facts satisfy every need. A card no member
+can satisfy is a judgment at once; it is never silently waited for.
+The coordinator machine (the Studio) is never dealt a card whose
+`GATE-NEEDS:` it cannot meet and is never named as a gate host.
+
 ## 1. The tables
 
 ```
@@ -1876,6 +1885,26 @@ member is left the no-launcher judgment (noLauncher) says so with that why,
 and a later ok finish by that member of a card of it ends the refusal at once
 (mirrorRefusals, staging_repo.go); tla/CardContract.tla, StageRefused
 and Restage), ok (set
+
+**The mirror need** (mirror_need.go). A repository that a card names and no
+member carries, or that a member refused at staging for want of a bench mirror
+(`no bench mirror for <url>`, mirrorRefusals), is a need of the fleet: one row
+per repository, the members that lack it and when it was raised (`MirrorNeed`,
+`mirrorNeeds`). `add` records the repository on its stream's control card
+(`FieldRepo`, by `sprint.Add`) and prints one `MIRROR <repo> needed on <members>`
+line per repository it admits (sprint.MirrorNotice; cmd/nova-sprint/add.go), so
+the seat asks for the mirror the moment the sprint knows the repository is
+needed. The tick keeps the need while it is not served within its bound (the
+refusal's `StagingMirrorWindow`, one hour, or until a member finishes a card of
+the repository ok) and raises one judgment per repository, `NMirrorNeed`, naming
+the members that lack it; the judgment's remedy is the fleet's own mirror refresh
+for that repository (`nova-swarm mirror`, the card
+every-bench-carries-every-mirror-a-card-can-name), run on the coordinator
+machine, which holds the credentials. A card of a repository a member lacks is
+not redealt to that member while another member that has it is free
+(stagingRepoWhy, `notLaunching`, `launchersOf`). nova-sprint runs no ssh and no
+`git push` for it: the need is a line and a judgment, and the fleet's loop serves
+it.
 only when finished), head, report. It takes its primary's score. The primary
 names its live work card.
 
@@ -2662,6 +2691,23 @@ judged from where the plan's pre-state places the card, and is refused when
 the pre-state does not hold it. A primary is working if and only if
 it has a live work card. Nothing retries by itself. Nothing leaves review
 except by the coordinator.
+
+**The live-need rules (every-need-names-a-live-card-checked-every-second).**
+Three rules hold a need to a live card. (a) A drop, and every verb that takes a
+card off the table, of a card any unlanded card needs is refused, naming each
+dependant, unless the call says what happens to each: `drop <card> --relink <new id>`
+re-points the dependants' needs at the new card, `--waive` removes the need from
+each (recorded with the reason), or `--cascade` drops the dependants too. The
+refusal reads every unlanded state -- waiting, ready, working, review, merging --
+not only waiting primaries. (b) The tick's needs part (`TickNeeds`) reads every
+unlanded card's needs each tick, in every state, and a need naming a card that is
+absent or off the table raises one judgment, "a card needs a card that is gone",
+at once, naming the card, its state, the missing need and the two answers
+(`needs set <id> --needs <rest>`, or `drop`); it stays open and the overdue part
+repeats it at its deadline until it is answered, and it closes when the need is
+landed, waived or re-pointed. A card in merging or review with a missing need is
+answerable by `needs set` in place. (c) `accept` refuses a card whose need has
+not landed, so no card enters merging with a need that is not landed.
 
 ## 4. Order
 
@@ -4308,23 +4354,34 @@ carry the machine's identity (the sprint row's `git_identity`, default
 the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
 so a machine commit in a clone carries the configured identity too.
 
-**The sprint branch.** Every stream lands on the sprint branch, and promotion
-alone reaches dev: a card cut on dev is merged by the lander straight onto it and
-ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
-`BASE: dev` restarted that run at every landing). So `add` refuses, per card and
-all or none, nothing written, a card whose brief names `BASE: dev` (a pinned
-`dev@<sha>` too, as the lander reads the line) in a stream that is not the
-promotion stream, its remedy the sprint branch: re-cut the card with `BASE:` the
-branch its stream lands on; `quack` is held to the same rule, its default base
-the test repository's sprint branch, `sprint/quack`. The promotion stream is the
+**The sprint branch.** Every stream lands on its own branch, `sprint/<stream>`,
+and a card cut on dev or main is re-cut onto it at add, never landed straight on
+dev or main (found 2026-10-04, when cards cut with `BASE: dev` restarted the
+promotion run at every landing). The landing flow is one sentence,
+`sprint.LandingFlow`: "The landing flow: card heads land in a batch on their
+stream's branch sprint/<stream>, oldest first, one writer per stream; stream
+branches merge one at a time into dev (main where a repository has no dev); a card
+never lands on dev or main." A stream's branch and trunk are fields of its control
+card (`stream_branch`, `trunk`, `sprint.FieldStreamBranch` and `FieldTrunk`): the
+first add of a stream writes both in the same step as its first card, the branch
+`sprint/<stream>` and the trunk the protected branch the card's `BASE:` names (dev,
+or main; dev when it names none); a card naming a non-protected branch keeps that
+branch as the stream's. `add` re-cuts a card cut on dev or main onto the stream's
+branch (the rewrite `stream set --base` does, `briefOnBase`), saying so on one NOTE
+line per add naming the branch, the trunk and quoting `sprint.LandingFlow`. The
+lander creates an absent stream branch on origin at the trunk's tip in its kept
+clone before it lands any card of the stream, one NOTE line `LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>`; a card of a stream whose branch origin lacks is
+held, never landed on the trunk. No setting turns this on or off: a cleared sprint
+(an epoch bump) builds the same on its first add. The promotion stream is the
 stream whose control card carries the mark `land_protected`, written only by the
 coordinator's `nova-sprint stream set <s> --land-protected <owner/name,...|any>`
-and taken off by `--land-protected default` (`sprint.IsPromotionStream`). A card
-naming no `BASE:` lands on the lander's `--base` (`sprint.SprintBranchWhy`). The
-lander holds the same line from the other side: it refuses, in `placeWhy`, before
-any git, a batch whose effective base (the card's `BASE:`, else `--base`) is dev
-in a stream that is not the promotion stream, naming the sprint branch and the
-mark (the protected branches, below).
+and taken off by `--land-protected default` (`sprint.IsPromotionStream`): it is the
+exception whose cards land on the protected branch the mark names. A card naming no
+`BASE:` lands on the stream's branch (`sprint.SprintBranchWhy`). The lander holds
+the same line from the other side: it refuses, in `placeWhy`, before any git, a
+batch whose effective base (the card's `BASE:`, else `--base`) is dev or main in a
+stream that is not the promotion stream, naming the sprint branch and the mark (the
+protected branches, below).
 
 accept places the primary in merge `queued` with its score, and retires, in
 the same step, every read card of the primary still asked or reading (marked
@@ -6071,7 +6128,7 @@ rules` prints the same answers, read-only: one `RULE` line per judgment and subj
 
 | rule | judgment | answer |
 |---|---|---|
-| `failed` | work came back failed (a take with no result is redealt by the system, section 5, and reaches here as its bound) | a harness fault (`sprint.HarnessFault`) or a HOLD with findings (`sprint.HoldFindings`) is reworked at once on its tier with the failure as its fix, a friend's card too, below its brief's bound (below); any other failure: the next attempt (rework, the report its fix) on the next route of its tier, the routes it drew left out; the `RuleAttemptCap`-th (2) failure on one tier (`rule_tier`, `rule_fails` on the primary) a new attempt one tier up (`rework --tier`: flash to pro to heavy, the first tier above that a route serves); past heavy, a friend's card (`who=friend`: the friends' deal gives it to a friend up with room) |
+| `failed` | work came back failed (a take with no result is redealt by the system, section 5, and reaches here as its bound) | a harness fault (`sprint.HarnessFault`) or a HOLD with findings (`sprint.HoldFindings`) is reworked at once on its tier with the failure as its fix, a friend's card too, below its brief's bound (below), a harness fault at most once a card (the second identical harness fault raises `the same harness fault`, below); any other failure: the next attempt (rework, the report its fix) on the next route of its tier, the routes it drew left out; the `RuleAttemptCap`-th (2) failure on one tier (`rule_tier`, `rule_fails` on the primary) a new attempt one tier up (`rework --tier`: flash to pro to heavy, the first tier above that a route serves); past heavy, a friend's card (`who=friend`: the friends' deal gives it to a friend up with room) |
 | `bound` | a card reached its bound (its redeal bound at its ceiling, or the second identical failure) | a new attempt one tier up, as `failed`'s climb; past heavy, a friend's card. A card every member up refused at staging, or at its brief's bound, is left |
 | `late` | a work card is past its deadline | with progress in the last 10 minutes (the work card's `progress` stamp: the server's time of its holder's last `progress` verb, which the member sends every 3 minutes while its child prints and the friend daemon while a lane's turn on the card prints; a stamp from before the card's take is another holder's and counts as none) a wait of 30 minutes, once a generation (`rule_waited`). The default is wait only: a working card whose holder has stamped no progress since its take is held 30 minutes at a time and never returned by this rule, so a member that does not stamp never loses an honest long child to it (`tla/SprintRules.tla`, `NeverStampedNeverReturned`). A card whose holder stamped and then went silent past the 10 minutes, or whose one wait is spent, is returned and dealt again once its holder has had its own whole deadline (withdrawn, the take ended: it spends a redeal, so a card late again and again reaches its bound and climbs); a card just dealt again is held until its holder's own deadline. Each answer keeps a hold on the condition until the time it names, and the tick raises it again then if it still holds. A card on a friend's row is `friend-take`'s |
 | `friend-take` | a work card is past its deadline, on a friend's row (dealt and never taken, or working and not finished) | one she has not started (no `progress` stamp, and her beat names neither the card, its job nor its primary running: `friendStarted`) is taken back to ready (`friend take`, `rule take`; `taken_from` her row) and the next tick's deal places it again, never on her. One she started stays hers (a friend keeps the cards she started); a card pinned to her alone (`WHO: only friend`), a brief defect, and a card of a friend the tick holds no seat of are left. A card taken back and dealt to the next friend is measured from her own deal (the later of `dealt` and `untaken_since`, as the start bound measures it), never from the take-back or the time it waited withdrawn, and a never-taken judgment raised before her deal (while the card sat withdrawn, past the dealt bound of no friend) closes on her deal (`LateStands`: the clock it was measured by started before the note), so the rule has nothing to answer against her on the first friend's clock; her own bound raises its own judgment (2026-10-08: one card, seven generations in thirty minutes, the first take-back two seconds after the deal; `TestACardTakenBackFromOneFriendGetsTheNextFriendsOwnBound`) |
@@ -6119,7 +6176,8 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   work came back failed, a reader found it broken, ready to accept, reads exhausted, stranded in
   review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
   dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
-  stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), and a stall that
+  stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), the same harness
+  fault, and a stall that
   names a card (`sprint.WaitRefusedWhenItNamesACard`: it holds the card in place), cannot ask, the
   base branch is gone, a read branch missing, no route serves the tier, a ready card is not dealt,
   and a merging card names a base not on origin. The kinds that hold a card are derived from the
@@ -6158,10 +6216,14 @@ merging of a stream a stream-level one stops; `TestAStoppedStreamCountsTheCardsI
 model is tla/SprintRules.tla, Part "answers": `FailedWithAFindingNeverParked` (failed work with
 a report, and a broken read with a finding, below the bound is reworked or finished, never held
 on the seat) and `IdenticalIsBound` (the second identical failure is the bound's, never a rework
-on its tier), with the reversed witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
+on its tier), and `HarnessFaultBounded` (a harness fault is reworked on its tier at most once a
+card: the second identical one raises the judgment, never a third redeal), with the reversed
+witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
 left to the seat), `MCSprintRulesAnswersBrokenNoReportRework` (failed work with no report
 reworked with no fix, `ReworkHasAFix`), `MCSprintRulesAnswersBrokenIdenticalRework` (the second
-identical failure reworked on its tier) and `MCSprintRulesAnswersReachMindJudges` (a mind still
+identical failure reworked on its tier), `MCSprintRulesAnswersBrokenHarnessRedeal` (the second
+identical harness fault reworked a third time, `HarnessFaultBounded`) and
+`MCSprintRulesAnswersReachMindJudges` (a mind still
 answers a card past the bound or with nothing to take as a fix).
 
 #### A broken read with a finding reworks the card
@@ -6189,7 +6251,19 @@ verdict PENDING or none; a report that begins with its `Cost:` line; a provider'
 deadline or a lane cap with no result; no `RESULT.md`. A HOLD whose report names a file and
 line (`sprint.HoldFindings`) is reworked with its report, the findings, as the fix. A harness
 fault is not the fleet's either: many cards failing the same way are each reworked, never
-left as a shared failure, since the rework stays on the tier. A card at its attempt bound
+left as a shared failure, since the rework stays on the tier. A harness fault is reworked on
+the same tier at most once a card: the second identical harness fault on one card, or the same
+harness-fault class on `RuleSameFailureCards` (3) cards within `HarnessFaultWindow` (30
+minutes), raises one `the same harness fault` judgment, the fleet's one grouped judgment
+naming the class, the cards, the members and the first refusal line; the card waits for it and
+is not redealt, so the failure is never retried blind on the same tier (tla/SprintRules.tla,
+Part "answers": `HarnessFaultBounded`, reversed witness `MCSprintRulesAnswersBrokenHarnessRedeal`,
+and `HarnessFleetHeld` (the fleet's one grouped judgment holds every card it names, never
+redealing it), reversed witness `MCSprintRulesAnswersBrokenGroupRedeal`;
+`TestARepeatedHarnessFaultIsDealtTwiceNotThriceAndRaisesTheJudgment`,
+`TestThreeCardsWithTheSameHarnessFaultRaiseOneGroupedJudgment`,
+`TestAnsweringTheGroupedHarnessFaultReleasesTheCardItAnswers`,
+`TestAHarnessFaultFollowedByAnOkTakeRaisesNothing`). A card at its attempt bound
 keeps the `the brief is wrong` judgment, a brief defect stays a person's, and a HOLD naming a
 card that has not landed is `hold-need`'s. A failure outside every class stays the judgment
 `work came back failed` (`TestAHarnessFaultFailureReworksTheCardByRule`).
@@ -7044,15 +7118,36 @@ read of the store and a write of the state file, never run by the sprint's serve
 (the owner, 2026-10-10, after the seat answered PROOF files by hand while nothing in its session read the pushes, and about 1,200 went unread for hours: "You MUST be required to 'hook' in as coordinator." "This is not optional. Every command fails with 'You must hook in first'." "Until you call 'nova-sprint hook'." "and then when you stop, you go 'nova-sprint unhook'." "And you must PROVE YOU HAVE HOOKED IN before it will allow you to do anything.") It replaces the push proof: `seat watch`, the `PROOF-<nonce>` files and `seat pong` are gone. The model is `tla/SeatHook.tla`; the code is `cmd/nova-sprint/hook.go` and `internal/sprint/hook.go`.
 
 - **The subscription is the server's.** The seat's session runs `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set. It opens one connection to the server's loopback listener (`GET /api/hook?as=<seat>`, upgraded to `nova-sprint-hook`; the fleet's listener refuses it) and holds it. Only the seat's holder hooks in; a second hook replaces the first, whose connection is closed with `HOOK BYE ... replaced`. The server writes its word in the store key `seat-hook` (`sprint.HookRecord`: name, subscription id, state `hooked`, `away` or `gone`, since, the last proof, the time it is live until, why it ended, and the pushes not acknowledged with the oldest), and only the server writes it.
-- **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <c>: answer now, before anything else: nova-sprint hook --prove <c> --actor <seat>`, and for each open judgment or note, `PUSH <id> <judgment> session=<token>: read it, then acknowledge: nova-sprint hook --ack <id> --session <token> --actor <seat>`, with the text indented under it. Push IDs come from a persistent monotone sequence, preserved across server restart, reconnect and epoch reset. A pre-upgrade record may have no saved sequence; session-token validation also protects that migration from old ACKs. On reconnect, the hook replays each durable unacknowledged judgment with a fresh, higher ID and the new connection's session token; acknowledge only from the command printed on the current connection. The server looks every 2 seconds. `nova-sprint hook --quiet-happened` delivers judgments and challenges only, not the informational HAPPENED pushes (`TestHookQuietHappenedOmitsInformationalPushes`).
+- **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <s>.<b>: answer now, before anything else: nova-sprint hook --prove <s>.<b> --actor <seat>` (the sprint half and the bus half: one answer proves both pushes, "The two pushes" below), and for each open judgment or note, `PUSH <id> <judgment> session=<token>: read it, then acknowledge: nova-sprint hook --ack <id> --session <token> --actor <seat>`, with the text indented under it. Push IDs come from a persistent monotone sequence, preserved across server restart, reconnect and epoch reset. A pre-upgrade record may have no saved sequence; session-token validation also protects that migration from old ACKs. On reconnect, the hook replays each durable unacknowledged judgment with a fresh, higher ID and the new connection's session token; acknowledge only from the command printed on the current connection. The server looks every 2 seconds. `nova-sprint hook --quiet-happened` delivers judgments and challenges only, not the informational HAPPENED pushes (`TestHookQuietHappenedOmitsInformationalPushes`).
 - **Compact.** `nova-sprint hook --compact` is the same subscription for a session read by a person or a model, not a Monitor: it prints only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to its group line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix, so it is never dropped), dropping HAPPENED pushes and the acknowledge/verb menus. Every line is one `write(2)` to stdout, so it is read at once on a pipe, a file or a tty with no pty (the seat's hand `hookfilter.pl` is gone). With `--overdue <duration>` (default `5m`), while the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the server's judgment list, never a poll of the inbox verb. (`TestHookCompactPrintsOnlyWhatTheSeatActsOn`, `TestCompactSayPrintsACriticalJudgment`; `cmd/nova-sprint/hook_compact.go`.)
-- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the last act. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
-- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): the recorded `Live` therefore trails the last act's by at most 30 seconds and one look (2 seconds), a bound, never a lapse. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open. Replay and the durable acknowledgement are the stream's and the acknowledgement's, above and below (`HookStays`, `SingleLapse`, `CommandSafe`; tla/SeatHook.tla, Part "cadence").
+- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <s>.<b>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which checks the bus half off its own bus subscription, records the bus push proven, and writes the server's half on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the last act. The challenge is in the stream and the bus alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`, `BothOrNeither`).
+- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): the recorded `Live` therefore trails the last act's by at most 30 seconds and one look (2 seconds), a bound, never a lapse. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open.
 - **Acknowledgement.** `nova-sprint hook --ack <id> --session <token>` acknowledges every push up to that ID, over the same connection and only for the session token printed on its `PUSH` line. Missing `--session` is refused locally with `hook --ack requires --session <token> from the PUSH line; nothing was changed`; a stale or foreign token is refused by the server with `this acknowledgement belongs to another hook session; copy the session token from the PUSH line`. Both refusals leave the durable acknowledgement state unchanged. Numeric-only ACKs from pre-upgrade clients are refused, so an old client cannot acknowledge new work by guessing an ID. After reconnect, read the replayed `PUSH` line and copy its current token. A push delivered and unacknowledged for 10 minutes blocks every coordinator command, naming it (`AckedOrBlocking`): `You must acknowledge push <id> first (<judgment>, delivered <time>, unacknowledged past 10m0s; <n> unacknowledged): read it in the hook's stream, then run the session-bound command shown there.`
-- **The gate.** Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` (exit 1, nothing else printed, nothing written) unless the record holds a live, proven hook for the seat's holder: every coordinator verb, and every read and seat verb the holder runs (`view`, `card`, `where`, `inbox`, `seat check`, `seat push`, `coordinator <name>`, ...). There is no override flag. The workers' verbs (`take`, `finish`, `progress`, `read`, the beats, `lane take`, `remind`), the reports, the system's verbs, `hook` and `unhook`, anyone else's reads, and the first `init` on a store with no holder are never refused. The gate runs before the verb (`hookFirst` in cmd/nova-sprint/main.go's run), on the server for a verb sent there, and again where the verb opens the store (`coordinatorOnly`).
+- **The gate.** See "The two pushes" below: since 2026-10-11 every verb the seat's holder runs (all but `hook`, `unhook`, help, version and the machine's verbs: `run`, `tick` without `--answer-rules`, `server switch`, `seat install`, `selftest land`) fails with one line that starts `You must hook in first: run nova-sprint hook` (exit 1, nothing else printed, nothing written) unless the sprint push (this record: live and proven) and the bus push are both live; a delivered push unacknowledged past its bound refuses too, naming it. It fails closed: no store named, a store that does not open, a record that cannot be read, or no `NOVA_BUS_REDIS` refuses with the reason. There is no override flag. The gate runs before the verb (`hookFirst` in cmd/nova-sprint/main.go's run), on the server for a verb sent there, and again where the verb opens the store (`coordinatorOnly`); the first `init` on a store with no holder is never refused.
 - **The end.** `nova-sprint unhook` ends the hook over its connection: the record says `away`, the owner is told, and the hook exits 0 (`HOOK ENDED`). A seat that drops without unhook (the hook process ends, the connection breaks, an interrupt) is recorded `gone` at once and the owner told; the hook exits 1 (`HOOK DROPPED`). A server that starts finds a record an earlier server left `hooked`, records it `gone` (the subscription went with that server) and tells the owner. The owner is told by one bus message (`seat <name> is away|gone`) and the server's `SEAT HOOK` line.
 - **Status.** `view coordinator`'s summary ends `| hook state=<s> proven=<RFC3339|-> unacked=<n>`; `seat check` draws `MACHINERY hook OK holder=<seat> state=hooked unacked=<n> proven=<age> ago` or `DOWN ... proven=- why="<the gate's line>" remedy="nova-sprint hook"`. The record is a key of the sprint, and teardown removes it.
 - Tests: `cmd/nova-sprint/hook_test.go` (`TestEveryCoordinatorCommandFailsUntilHookedIn`, `TestAProvenHookRunsAndAPushBlocksUntilAcknowledged`, `TestADropIsGoneAndUnhookIsAway`, `TestTheHookFromTheCommandLine`); `internal/sprint/hook_test.go`.
+
+### The two pushes
+
+(the owner, 2026-10-11: "Nothing works unless hooked in, including bus, friend comms, sprint as friend, sprint as coordinator." "If you are not hooked in to push notifications, every verb except "nova-sprint hook" must fail, and tell you to hook in. For a coordinator, this is hooking into to sprint push notifications and message bus push notifications." "You can "nova-sprint unhook" to unhook from the notifications." "And the error leads you with breadcrumbs to what you need to do -- which is to HOOK IN (here is exactly how)". The seat had run for hours with its hook expired and its pushes unread.)
+
+The seat's holder holds two pushes, both live, or every verb it runs fails closed: the **sprint push** (judgments and notes for the coordinator over the server's hook stream; its word is the store key `seat-hook`, "The hook" above) and the **bus push** (messages to the holder's name on the message bus, `bus2:to:<name>`). The code is `internal/sprint/hook.go` (`HookGateCall`, `HookShared`, `Hooker`, `HookBreadcrumb`, `JudgmentWarnings`) and `cmd/nova-sprint/hook.go` (`hookedIn`, `hookFirst`, `busHooker`, `hookerShared`, `hookHold`); the model is `tla/SeatHook.tla` (the bus push: `BusDrop`, `BothOrNeither`, the witness `nobus`).
+
+A worker friend's gate (her bus push and her work push) is not this one: it lands with nova-tools' hook module and its client (`github.com/mas-bandwidth/nova-tools/hook`, its `docs/SPEC-HOOK.md` and `tla/Hook.tla`: the keys `hook:rec:<name>`, `hook:live:<name>:<push>`, `hook:proof:<name>:<push>`, `hook:chal:<name>`, `hook:names` in the bus Redis) and a per-friend record the server writes, modelled. Until then no friend is judged here.
+
+- **Who and what is gated.** The caller is the actor (`--actor`, else `NOVA_SPRINT_ACTOR`), judged against the seat's holder before anything else: a worker verb's `--as` names its worker and never takes the holder past the gate. For the holder every verb is gated but these, the full exempt set: `hook` and `unhook` (the way in and out); `run`, `tick` (but not `tick --answer-rules`, which answers judgments as the coordinator), `server switch`, `seat install` and `selftest land` (the server's own life: the hook is a stream from the server, so a verb that starts or replaces the server cannot wait on it). help, `-h` and version never reach the gate. The machine's `adopt`, `seat uninstall` and `friend clean` are gated for the holder. Anyone else (the owner, a fleet member, a reader, a friend, a read with no actor) is not judged by this gate.
+- **The bus push's record (interim).** One hash in the bus store (`NOVA_BUS_REDIS`), `sprint-hook:<name>`, with the fields `role` (`coordinator`), `pushes` (`sprint,bus`), `armed_at`, `proved_at` and `unhooked_at` (RFC 3339 UTC; empty or absent is never), outside the hook module's `hook:` namespace. The bus push is live when the record is armed for the coordinator, proven at or after `armed_at`, not unhooked at or after `armed_at`, and within 15 minutes of its proof (`HookSharedBound` = `HookEvery` + `HookAnswerBound`). The gate reads it through `sprint.Hooker`, so the hook module replaces this record behind that interface once it is tagged.
+- **Off the line.** The gate reads the bus push's record from a copy at most one second old (`hookerShared`); a server keeps each copy fresh every half second off its line of control (`hookerRefresh`) and dials the bus store at its start, so a gate taken on the line reads memory. A copy older than a second is read again before the gate answers; a read that fails refuses. The server drops its copy when it takes a proof and when the hook ends, so the next gate reads afresh.
+- **One hook, both pushes.** `nova-sprint hook --actor <seat>` arms both: it opens the bus store (refused, with nothing armed, when `NOVA_BUS_REDIS` is not set), subscribes to the holder's own bus stream from its tail, connects to the server's hook stream, and records the bus push armed. Every message to the holder on the bus is printed as `BUS <entry> from=<n> kind=<k> subject="<s>"` with its body indented under it; every server push as `PUSH <id> ...`.
+- **One answer proves both.** Each server challenge is paired with a bus half: the hook sends `nova-sprint hook bus challenge <b>` to the holder's own bus stream and prints the challenge only once that message comes back off its subscription, as `HOOK CHALLENGE <s>.<b>: ... nova-sprint hook --prove <s>.<b> --actor <seat>`. The hook process checks the bus half (the one it read back) and records the bus push proven, then hands the server its half; the bus half counts once, cleared only after the server takes the answer. A half, or an answer with no live subscription, proves nothing, and a bus proof alone opens nothing (the gate wants both). The server challenges again every 10 minutes; an answer later than 5 minutes unhooks the sprint push, and the bus push lapses 15 minutes after its last proof.
+- **The breadcrumb.** The gate's one line leads with the rule and goes on to the way in: `You must hook in first: run nova-sprint hook --actor <seat> (the <push> push is not live; the coordinator <seat> wants the sprint push and the bus push live, both armed by that one command, under a Monitor); then answer the HOOK CHALLENGE it prints: nova-sprint hook --prove <challenge> --actor <seat>; to stop: nova-sprint unhook --actor <seat>`. When the gate cannot judge, the parenthesis says why in place of the push.
+- **Fail closed.** The holder is refused, with the reason in the breadcrumb, when no sprint store is named, when the store does not open, when the seat's record or the bus push's record cannot be read, and when `NOVA_BUS_REDIS` is not set. A machine is never unarmed: the test seam (`hookArmed`) can only be off inside a test binary (`testing.Testing`).
+- **Unhook.** `nova-sprint unhook --actor <seat>` closes both over the running hook: the server records the sprint push away (the owner told), and the hook process records `unhooked_at`; from then every gated verb refuses until `hook` again. A hook that drops is recorded gone by the server at once; its bus push lapses with its bound.
+- **What the gate refuses that runs as the holder.** The server runs as the holder (`NOVA_SPRINT_ACTOR=<seat>`, seat.go), so while the seat is not hooked these are refused too: the seat's push loop (`inbox --wait --push seat`, installed by `seat install`), the dashboard's coordinator view (`view coordinator`, as before), the friend sync loop and the answer loop when they run as the holder, and the holder's own friend lane (`lane take --as friend.<seat>`, judged on the actor). The run loop, the tick and the server's switch are not.
+- **Adopting this gate, in order.** (1) The server's loop record (nova-config's loop row the nova-tools loops play renders) gains `NOVA_BUS_REDIS`, and `NOVA_BUS_REDIS_USER` and `NOVA_BUS_REDIS_PASSWORD_ENV` with the secret in `nova-secrets --only` when the bus store has a login, through the play; (2) bootout and bootstrap the server's unit so the environment lands; (3) `nova-sprint seat check` shows `MACHINERY bus OK` (the bus store answers: `SeatCheckBus`); (4) the seat's session sets the same variables and runs `nova-sprint hook --actor <seat>` under a Monitor and proves it; (5) then canary. A server without `NOVA_BUS_REDIS` refuses every verb of the holder with `NOVA_BUS_REDIS is not set` in the breadcrumb.
+- **The waiting-judgment warning.** (the owner, 2026-10-11: "Any card waiting for judgement should alert you via warning every second once it has been in this state for 10 seconds or longer." "These must be push notifications.") Every look of the coordinator's hook (each second) that finds a judgment open 10 seconds or longer (`sprint.JudgmentWarnAfter`; a quiet one too; a judgment computed at read time, `machine:stopped` or `stale:<stream>`, from when the hook first saw it) pushes one warning over the hook, a push of its own number. When the set of judgments changed it is the full text: `PUSH <id> WARNING-judgments-waiting: answer the judgments below; an ack does not silence it`, then `WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>; answer each ...` and, for each judgment, `<alias> <id> cards=<cards> waited=<d>` with the commands that answer it indented under it. While the set is the same it is one line a second: `PUSH <id> WARNING-judgments-waiting: WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>`. It repeats every second until each is answered: an ack of the warning push does not silence it, it is never an open push (it never blocks the gate), and nothing turns it off. The look reads the inbox off the server's line (the read lane), and takes the line only to record a new push.
+- Tests: `cmd/nova-sprint/hook_gate_every_verb_test.go` (`TestEveryVerbRefusesTheCoordinatorUntilHooked`, `TestTheBreadcrumbHooksTheCallerIn`, `TestTheCoordinatorWantsBothPushes`, `TestTheGateReadsTheBusPushOffTheLine`, `TestTheGateFailsClosed`, `TestAWaitingJudgmentIsPushedAsAWarningEverySecond`, `TestAReadTimeJudgmentIsWarnedFromWhenFirstSeen`, `TestTheWarningArrivesAsAPushLineOnTheHook`); `internal/sprint/hook_test.go` (`TestTheGateWantsBothPushesLive`, `TestTheSharedRecordSaysEachPush`, `TestAJudgmentWaitingTenSecondsIsWarnedEverySecond`).
 
 ### The push target
 

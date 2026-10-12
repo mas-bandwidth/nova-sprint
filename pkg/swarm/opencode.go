@@ -1,19 +1,8 @@
 package swarm
 
 import (
-	"bytes"
-	"context"
 	"errors"
-	"fmt"
-	"math/big"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // THE USAGE SOURCE IS THE DATABASE THE HARNESS WRITES (SPEC-SWARM rule 12, rule 13).
@@ -55,12 +44,6 @@ const usageSettlePause = 50 * time.Millisecond
 // exports, then the HOME/.local/share spelling OpenCode derives from HOME on Linux -- the
 // bench carries its auth.json there. Both are joined to the job's own data home, so both are
 // this job's database and never another job's.
-func OpenCodeStoreLocations(dataHome string) []string {
-	return []string{
-		filepath.Join(dataHome, filepath.FromSlash(OpenCodeDB)),
-		filepath.Join(dataHome, ".local", "share", "opencode", "opencode.db"),
-	}
-}
 
 // usageTimeout is how long this tool waits for one query before saying so. It is a property
 // of the tool, like a deadline, and never a fact about anybody's data: the supervisor
@@ -99,12 +82,6 @@ type openCodeReader struct {
 
 // binary resolves the one program this source runs: the reader's own lookup, else the
 // process's PATH.
-func (r openCodeReader) binary() (string, error) {
-	if r.lookPath != nil {
-		return r.lookPath(SQLiteBinary)
-	}
-	return exec.LookPath(SQLiteBinary)
-}
 
 // read reads one job's accounting out of its own database, resolving the one program
 // through the reader's own lookup.
@@ -113,32 +90,12 @@ func (r openCodeReader) binary() (string, error) {
 // yet. A database that is there and cannot be read IS one, and rule 13 ends the job
 // BUDGET-UNVERIFIABLE on the third such sample, because a numeric budget the tool has
 // stopped being able to see is a budget the caller believes is enforced and is not.
-func (r openCodeReader) read(dataHome string) (ProviderUsage, error) {
-	path, err := findOpenCodeStore(dataHome)
-	if err != nil {
-		return ProviderUsage{}, err
-	}
-	if path == "" {
-		// The harness has written no database at either standard location yet: it has
-		// reported nothing, which is an absence and not a failure.
-		return ProviderUsage{Values: map[string]string{}}, nil
-	}
-	bin, err := r.binary()
-	if err != nil {
-		return ProviderUsage{}, fmt.Errorf("%w: the usage source %s could not be read: %s is not on PATH, and `usage: opencode` reads that database with `%s -readonly`",
-			ErrNoSQLite, path, SQLiteBinary, SQLiteBinary)
-	}
-	rows, err := queryOpenCodeWaiting(bin, path)
-	if err != nil {
-		return ProviderUsage{}, err
-	}
-	if len(rows) == 0 {
-		// The database exists and holds no message with tokens: the harness has started and
-		// reported nothing yet, which is an absence and not a failure.
-		return ProviderUsage{Values: map[string]string{}}, nil
-	}
-	return foldOpenCodeRows(rows)
-}
+
+// The harness has written no database at either standard location yet: it has
+// reported nothing, which is an absence and not a failure.
+
+// The database exists and holds no message with tokens: the harness has started and
+// reported nothing yet, which is an absence and not a failure.
 
 // LiveSampleLimit is the least ONE live sample is given, whatever the interval (SPEC-SWARM
 // rule 13d): "a read is given 5 seconds whatever the interval, no sample starts while one is
@@ -165,65 +122,16 @@ const LiveSampleLimit = 5 * time.Second
 // harness having reported nothing yet, which is an absence and not a failure. The three
 // cases rule 13d keeps apart -- nothing observed, a partial observation, a read that FAILS
 // -- are the caller's to tell apart, and this function's error is the third of them.
-func ReadJobUsageLiveWithin(dataHome string, limit time.Duration) (ProviderUsage, error) {
-	path, err := findOpenCodeStore(dataHome)
-	if err != nil {
-		return ProviderUsage{}, err
-	}
-	if path == "" {
-		return ProviderUsage{Values: map[string]string{}}, nil
-	}
-	bin, err := (openCodeReader{}).binary()
-	if err != nil {
-		return ProviderUsage{}, fmt.Errorf("%w: the usage source %s could not be read: %s is not on PATH, and `usage: opencode` reads that database with `%s -readonly`",
-			ErrNoSQLite, path, SQLiteBinary, SQLiteBinary)
-	}
-	rows, err := queryOpenCode(bin, path, limit)
-	if err != nil {
-		return ProviderUsage{}, err
-	}
-	if len(rows) == 0 {
-		return ProviderUsage{Values: map[string]string{}}, nil
-	}
-	return foldOpenCodeRows(rows)
-}
 
 // findOpenCodeStore is the first of the standard locations that holds a database, or an
 // empty path when none does. A location that exists but cannot be stat'd is an error, not a
 // silent absence: the path is this tool's own and a read that stopped is a fact.
-func findOpenCodeStore(dataHome string) (string, error) {
-	for _, path := range OpenCodeStoreLocations(dataHome) {
-		st, err := os.Stat(path)
-		if err == nil {
-			if st.IsDir() {
-				continue
-			}
-			return path, nil
-		}
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("the usage source %s could not be read: %s", path, redactedReason(err))
-		}
-	}
-	return "", nil
-}
 
 // queryOpenCodeWaiting runs the one statement, and while a write-ahead log sits beside the
 // database it waits for the writer to checkpoint it, up to usageSettleWait. The read lands
 // in the window between the harness spending and its connection closing, when the `-wal` is
 // present and `sqlite3 -readonly` answers `database is locked`; recording a dash for that
 // window loses tokens the harness really spent.
-func queryOpenCodeWaiting(bin, path string) ([][]string, error) {
-	return walWait{
-		first:  usageTimeout,
-		settle: usageSettleWait,
-		pause:  usageSettlePause,
-		query: func(path string, limit time.Duration) ([][]string, error) {
-			return queryOpenCode(bin, path, limit)
-		},
-		now:   time.Now,
-		sleep: time.Sleep,
-	}.read(path)
-}
 
 // walWait is that retry with its clock and its read named, so the waiting itself can be
 // held by a test that turns on no clock of its own and starts no process. `first` is what
@@ -273,68 +181,17 @@ type walWait struct {
 // most one usageWaitDelay. That holds however the drain arises -- a child killed at its
 // deadline or one that exited leaving a pipe open -- so the bound does not rest on
 // `sqlite3` spawning no children.
-func (w walWait) read(path string) ([][]string, error) {
-	rows, err := w.query(path, w.first)
-	if err == nil {
-		return rows, nil
-	}
-	deadline := w.now().Add(w.settle)
-	for {
-		if !walPending(path) {
-			return nil, err
-		}
-		if !w.now().Before(deadline) {
-			return nil, err
-		}
-		w.sleep(w.pause)
-		// The pause spent part of the window, so the retry is allowed what is left AFTER
-		// it -- never the figure taken before it, and never a fresh query timeout.
-		remaining := deadline.Sub(w.now())
-		if remaining <= 0 {
-			return nil, err
-		}
-		if rows, err = w.query(path, remaining); err == nil {
-			return rows, nil
-		}
-	}
-}
+
+// The pause spent part of the window, so the retry is allowed what is left AFTER
+// it -- never the figure taken before it, and never a fresh query timeout.
 
 // walPending says whether the database has a write-ahead log beside it that sqlite3 cannot
 // replay read-only. That file, and not the error text, is what a retry waits on.
-func walPending(path string) bool {
-	_, err := os.Stat(path + "-wal")
-	return err == nil
-}
 
 // queryOpenCode runs the one statement, read-only, under the timeout, through the resolved
 // `sqlite3` the caller names. The database is the job's own and this tool never writes it:
 // `-readonly` is that promise kept by the program that opens it, and `-tabs` is the shape
 // the rows come back in.
-func queryOpenCode(bin, path string, limit time.Duration) ([][]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-readonly", "-tabs", path, messagesSQL)
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	cmd.WaitDelay = usageWaitDelay
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("the usage source %s could not be read: %s did not answer within %s",
-			path, SQLiteBinary, limit)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("the usage source %s could not be read: %s: %v: %s",
-			path, SQLiteBinary, err, oneLine(errb.String()))
-	}
-	var rows [][]string
-	for _, line := range strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		rows = append(rows, strings.Split(line, "\t"))
-	}
-	return rows, nil
-}
 
 // foldOpenCodeRows sums the message rows into the columns the usage file carries.
 //
@@ -342,72 +199,10 @@ func queryOpenCode(bin, path string, limit time.Duration) ([][]string, error) {
 // measurement and a dash is an absence, and nova-tokens reads this file and reads a dash as
 // unknown. So a token type no message reported stays a dash, and one that some message
 // reported is the sum of the messages that did.
-func foldOpenCodeRows(rows [][]string) (ProviderUsage, error) {
-	values := map[string]string{}
-	sums := make([]int64, len(TokenColumns))
-	reported := make([]bool, len(TokenColumns))
-	maxInt := int64(^uint(0) >> 1)
-	var total int64
-	provider, model := "", ""
-	cost, costed := new(big.Rat), false
-	for rowIndex, row := range rows {
-		if len(row) != 2+len(TokenColumns)+1 {
-			return ProviderUsage{}, fmt.Errorf("opencode usage row %d column count is invalid", rowIndex+1)
-		}
-		if v := strings.TrimSpace(row[0]); v != "" {
-			provider = v
-		}
-		if v := strings.TrimSpace(row[1]); v != "" {
-			model = v
-		}
-		for i, column := range TokenColumns {
-			cell := strings.TrimSpace(row[2+i])
-			if cell == "" || cell == Dash {
-				continue
-			}
-			n, err := strconv.ParseInt(cell, 10, 64)
-			if err != nil || n < 0 || n > maxInt {
-				return ProviderUsage{}, fmt.Errorf("opencode usage row %d column %s is not a nonnegative host integer", rowIndex+1, column)
-			}
-			if sums[i] > maxInt-n {
-				return ProviderUsage{}, fmt.Errorf("opencode usage row %d column %s exceeds the host integer maximum", rowIndex+1, column)
-			}
-			if total > maxInt-n {
-				return ProviderUsage{}, fmt.Errorf("opencode usage row %d column %s makes the token total exceed the host integer maximum", rowIndex+1, column)
-			}
-			sums[i] += n
-			total += n
-			reported[i] = true
-		}
-		// the message's cost, exactly: a float the store printed, never added as a float
-		if cell := strings.TrimSpace(row[2+len(TokenColumns)]); cell != "" && cell != Dash {
-			r, ok := new(big.Rat).SetString(cell)
-			if !ok || r.Sign() < 0 {
-				return ProviderUsage{}, fmt.Errorf("opencode usage row %d column cost is not a nonnegative number", rowIndex+1)
-			}
-			cost.Add(cost, r)
-			costed = true
-		}
-	}
-	if costed {
-		values["cost"] = cardcost.Text(cost)
-	}
-	for i, c := range TokenColumns {
-		if reported[i] {
-			values[c] = strconv.FormatInt(sums[i], 10)
-			continue
-		}
-		values[c] = Dash
-	}
-	values["provider"] = dashOr(provider)
-	values["model"] = dashOr(model)
-	// The message table holds no repository, and this reader never invents one: the usage
-	// row's `repo` is what the caller knew, or a dash.
-	values["repo"] = Dash
-	return ProviderUsage{Values: values, Observed: true, Turns: len(rows)}, nil
-}
+
+// the message's cost, exactly: a float the store printed, never added as a float
+
+// The message table holds no repository, and this reader never invents one: the usage
+// row's `repo` is what the caller knew, or a dash.
 
 // oneLine keeps a subprocess's complaint on the one line a RUN BUDGET-UNVERIFIABLE carries.
-func oneLine(s string) string {
-	return strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(s))
-}

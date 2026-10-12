@@ -43,6 +43,22 @@ real server and the server's own `unknown` (a caller gone before its verb ran, t
 path) over the real store and the server's entry point, and the store's typed `unknown` paths are
 covered by the table test over the typed paths.
 
+`TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo` (`internal/sprint/mirror_need_test.go`)
+pins the mirror need at both moments the sprint knows a repository is needed. It admits a card
+whose `REPO:` names a repository no member carries and checks the plan prints the `MIRROR <repo> needed on <members>` line and records the repository on the stream's control card; then it
+records a staging take whose error is `no bench mirror for <url>` for a second repository from
+one member and checks the tick keeps one need for that repository, names that member, raises
+exactly one judgment, and never redeals a card of that repository to the member that lacks the
+mirror while another member is free. `TestMirrorNeedFromAStagingRefusal`,
+`TestMirrorNeedEndsAfterAnOk` and `TestMirrorNeedEndsPastTheWindow` (same file) pin the need's
+derivation, its end after an ok finish and its lapse past `StagingMirrorWindow`. No test runs
+`ssh` or `git push` from inside nova-sprint: the need is a line and a judgment, and the fleet's
+own mirror refresh serves it.
+
+The functional tier (`go test -tags functional -count=1 ./...`, `make functional`) runs for every pull request and push to main on a GitHub-hosted
+ubuntu-latest runner — `make functional-gate` is the CI form, with `NOVA_CI=1`,
+redis-server installed, and each package bounded at two minutes (`-timeout 120s`); over the bound is the test's defect.
+
 ### First run
 
 ```text
@@ -249,6 +265,28 @@ the functional ones are release acceptance (`make release-accept`).
   `TestAMemberKilledSilentGivesItsReadsBackByTheDownPath`. Both run
   `pkg/member` members in the test process over the command's verbs, on the
   sprint's clock; neither starts an OS process.
+
+### A card in review always has a read the ask can reach (v1.2.14)
+
+A read that ends without a verdict, or is withdrawn by a hold or a return, is
+re-asked of another reader at the next tick for the card's current attempt. The
+ask verb and the tick share one definition of "asked at this attempt"
+(`askedAtAttempt`, `internal/sprint/readers.go`), so the ask verb's two refusals
+and the no-stall rule's decisions never contradict each other; a card in review
+with no read out and no open judgment is a ConsumersOut violation at `TickCheck`.
+
+- Unit, `internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReach`.
+- Functional (`-tags functional`), on a private store (explicit `--redis`, a
+  scrubbed env whose HOME and XDG_CONFIG_HOME are the test's own, no `NOVA_*`
+  variable from the machine),
+  `cmd/nova-sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_functional_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore`. It runs the verbs to
+  put the card in review at attempt 2, withdraws the attempt-1 read by a hold
+  and ends the attempt-2 read with no verdict, and asserts `ask` and
+  `ask --another` agree (neither refusal is given) and the next tick's ask
+  re-asks the attempt of another reader. The consumers-out gap it leaves is the
+  tick's postcondition the unit test asserts directly (ConsumersOut).
 
 ### A brief edit keeps the needs, tier and bound (v1.2.14)
 
@@ -598,6 +636,65 @@ wall time, the binary's build included; 41 of 41 passed each time.
 After the gate a release may still run a live canary of one card on one member of the
 adopted fleet; there is no timed watch.
 
+### Stall and stuck coverage
+
+Every fix of 2026-10-11 for a stall, a card stuck or the machine not working is held by a unit
+test and a functional test, and both are in `make release-accept` (the owner, 2026-10-11:
+"Each time we find these terrible breakages, we clip in with unit tests and functional tests,
+so this way of failing never happens again."). A functional test here is a real store (a
+redis-server on a port of its own, the function library loaded) with the binary under
+acceptance running the workers', the readers' and the machine's verbs (the tick, `run`), and
+the coordinator's verbs in process: the binary arms the seat's hook gate for every coordinator
+verb and a test cannot hook in (cmd/nova-sprint/stall_harness_functional_test.go). Each
+`TestStall...` test was red against the parent of its fix. A class whose fix is not on main has
+no test yet; its GAP line names the card or pull request that owes both, and that work adds them
+to this table and to tools/release-accept.sh. With these the gate is 70 tests; measured on
+hetzner2, 2026-10-11, three runs: 15.1 s, 8.1 s and 8.1 s of wall time, the build included.
+
+| class | fix | unit tests | functional tests |
+|---|---|---|---|
+| hook-gate race on a server switch: the restart drops the seat's hook, the first land pass is refused by the gate, and the switch rolled back 1.5 s in | #99 (846c7364) | `TestAHookGateRefusalInTheWindowIsNotARollback`, `TestARealLandFailureInTheWindowStillRollsBack`, `TestTheHookGateRefusalIsATypedError`, `TestCheckRollbackOnLandFailureExitCodes`, `TestServerSwitchVerbSwitchesAndRollsBack` | `TestStallASwitchedServerNeverRollsBackOnTheHookGate` (the switched binary's `run --land`, no seat hooked), `TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain` |
+| a card dealt or taken before its needs land; a needs-stop blamed on the worker | #96 (50aa393d) | `TestTheFriendsDealNeverDealsACardWithUnlandedNeeds`, `TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds`, `TestAMemberTakeRefusesACardWithUnlandedNeeds`, `TestAReadyCardWithAnUnlandedNeedIsNeverDealt`, `TestAStopOnUnlandedNeedsIsNotTheWorkers`, `TestANoUsageNeedsStopIsStillOneTake`, `TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand`, `TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded` | `TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore` |
+| landings stalled on conflicts in the shared ledgers alone (about 300 refusals to 35 landings an hour) | #100 (b1a020b2) | `TestALedgerOnlyConflictLandsWithBothSidesRows`, `TestASameIdFixConflictIsRefused`, `TestACodeConflictIsStillRefused`, `TestEvidenceFormsKeepBoth`, `TestEvidenceHistoryKeepsEveryRevision` | `TestStallALedgerOnlyConflictLandsOnTheStore` |
+| done read 0 for work read on fleet read cards, which never left finished | #94 (ee8fb936) | `TestADoneIsEveryCardTheRowCompleted`, `TestDoneCountsEveryKindOfCardFromTheLinesThatCompleteIt` | `TestStallDoneCountsEveryCompletionOnTheStore` |
+| the idle alarm: once an episode, and reads working are not work | #102 (tests), #106 (b2aa60ba) | `TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick`, `TestTickIdleAlarmsOnceAnEpisodeAndClears`, `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTickIdleAlarmTellsTheCoordinatorWhy`, `TestTheFleetAlarmIgnoresReadsCrossingTheThreshold`, `TestTheIdleFleetCountsWorkNotReads` | `TestStallTheIdleAlarmCountsWorkNotReadsOnTheStore` |
+| a need cycle through a working card: two cards waiting on each other for ever | #103 (8dd283b8, cf237351) | `TestLifecycleIsTheSpecTable`, `TestLawfulRefusesAMoveOutsideTheLifecycle`, `TestTheEngineHoldsEveryPlanToTheLifecycle`, `TestNeedsSetRefusesAnEditThatClosesACycle`, `TestNeedsSetSeesAWorkingCardsNeeds`, `TestSentinelSetSeesAWorkingCardsNeeds`, `TestRelinkSeesAWorkingCardsNeeds`, `TestABriefBatchCannotCloseACycleBetweenItsCards`, `TestAddRefusesACycle` | `TestStallANeedCycleThroughAWorkingCardIsRefusedOnTheStore` |
+| a refused tick step poisons the drain: a 40 KiB lander note in a card's why (16:35Z, 20 minutes frozen) | #91 (d30ab7f0) | `TestAnOverBoundMergeNoteIsRefusedAndTheTickStillDrains`, `TestAMergeNoteAtTheBoundIsTaken`, `TestMergeNoteOverTheBoundIsRefusedAtTheVerb`, `TestCardTextBoundIs64KiB`, `TestBoundedChecksKeepsWholeFindingsAndSaysWhatItLeftOut` | `TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain` |
+| a refused tick step poisons the drain: a brief over 16 KiB taken on a running machine (04:17Z, 37 minutes frozen) | brief-file-over-the-bound-is-refused (101b2e30) | `TestBriefFileOverTheBoundIsRefused`, `TestABriefOverTheBoundIsRefusedWhileRunning` | `TestStallAnOverBoundBriefNeverPoisonsTheDrain` |
+| a server build switched onto a store missing its locked columns: every finish refused for 40 minutes | server-refuses-to-run-on-a-store-missing-locked-columns (2788a093), doctor-preflight-checks-the-store-schema (3e55d518) | `TestShadowTickRefusesAStoreMissingTheLockedFleetColumns`, `TestRunRefusesAStoreMissingTheLockedFleetColumns`, `TestLockedShapeRefusesTheFleetTableBeforeTheVerdictsMigration`, `TestDoctorPreflightRefusesAStoreMissingTheLockedColumns` | `TestStallTheBinaryRefusesAStoreMissingItsLockedColumns` |
+| reads queued behind full lanes while a member sat idle (the rebalance skipped reads; fleet level moved 0) | the-rebalance-levels-reads-every-tick-all-at-once (77eb17e6) | `TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`, `TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`, `TestTheLevelVerbRebalancesTheReadsToo` | `TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore` |
+| a read the member is not running held working to the 60-minute deadline (ghost reads) | #112 (5d5959c6) | `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`, `TestAMemberRestartReturnsItsReadsAtOnce`, `TestAWorkingReadTheBeatNamesIsNeverReturned`, `TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost` | `TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`, `TestAMemberKilledSilentGivesItsReadsBackByTheDownPath` (#112's own, red-first there) |
+
+GAP lines, owed by work not on main (each adds its unit and functional test to the table and to
+tools/release-accept.sh when it lands):
+
+- GAP: any other whole-step refusal inside a tick step is still retried every second with no
+  judgment and no skip. Owed by card `a-poisoned-queued-change-never-stops-the-drain`.
+- GAP: read cards are off by default and a clear resets them off, so reads crawl one a tick.
+  Owed by PR #92 (defaults are the working machine).
+- GAP: a clear empties the readers table, so after a clear every finished card waits in review
+  with no judgment (`TestReleaseAcceptAClearedSprintLandsWithNoSeatAction` re-adds the readers to
+  pass). Owed by card `a-cleared-sprint-keeps-its-readers`.
+- GAP: a wait parks a judgment that holds a card (failed work, a broken read), and about 22 of 42
+  review cards froze. Owed by PR #111 (its tests are store tests on the twin; its functional test
+  is owed with it).
+- GAP: a card dropped while live cards need it strands them in merging and waiting with no
+  alarm. Owed by card `every-need-names-a-live-card-checked-every-second`.
+- GAP: a card the store moved to another member keeps its old run going on the first. Owed by
+  card `a-moved-card-stops-its-old-run`.
+- GAP: the server's land loop waits on the seat's hook, so landing stops while the seat is away.
+  Owed by card `landing-never-waits-on-the-seats-hook` (`TestStallASwitchedServerNeverRollsBackOnTheHookGate`
+  asserts no rollback only, so it stays green when landing stops waiting).
+- GAP: a seat's wait comes back overdue after a reconnect or a restart. Owed by card
+  `a-seat-wait-survives-a-reconnect-and-a-restart`.
+- GAP: a taken card given an unlanded need runs to review with it. Owed by card
+  `a-taken-card-given-an-unlanded-need-never-reaches-review-with-it`.
+- GAP: every producer card has its consumer out after the tick (on main, 56b4f817) is a check
+  that cannot fail as written: its working and fix branch reads a `primary` field no primary
+  carries, its review branch passes on any read card of the readers table and flags a card read on
+  fleet read cards, and `TestEveryProducerCard` asserts nothing. It is not in release-accept; the
+  check and its tests are owed again by the card `every-producer-card-has-its-consumer-out-after-the-tick`.
+
 
 ## nova-card
 
@@ -862,6 +959,12 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
 - `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
 - `TestConsumersOutWorkingCardWithNoAttempt`, `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards`, `TestConsumersOutReviewCardWithNoReadAndNoJudgment` (`internal/sprint/consumers_out_test.go`) and `TestEveryProducerCard` (functional, `cmd/nova-sprint/consumers_functional_test.go`): the consumers-out postcondition — a working card with no live attempt, a review card whose reads are all for other cards, and a review card with no read and no open judgment each raise one judgment naming the card, and a real store whose readers table is emptied raises it within one tick.
+- `TestDropRefusesACardAnUnlandedCardNeeds`, `TestDropWithWaiveLeavesNoStrandedNeed` (`internal/sprint/missing_need_test.go`) and `TestDropRefusesANeededCardAndWaiveLeavesNone`, `TestDropGroupRefusesANeededCard`, `TestDropWithRelinkRepointsTheNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (a), drop of a card an unlanded card needs is refused naming the dependants — by id or as a group — and `--waive` and `--relink` each pass and leave no stranded need.
+- `TestEveryStateAlertsTheCoordinatorOfAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b), a real store and the seat hooked in, a need taken off the table by a store edit (a path that can strand it) for a card in each state (waiting, ready, working, review, merging), and the coordinator's hook stream receives the judgment naming the card and the missing need within one second of running time each time; `TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): the judgment stays open, repeats at its deadline, and clears when answered with `needs set`; `TestTickNeedsJudgesAGoneNeedInEveryUnlandedState`, `TestTickNeedsHoldsAndClears` (`internal/sprint/missing_need_test.go`): the same judgment per state, its non-doubling while open and its closing when the need is set away.
+- `TestNeedsSetOnAMergingCardWithAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b)'s second part, needs set on a merging card whose need is gone succeeds in place.
+- `TestAcceptRefusesACardWhoseNeedHasNotLanded` (`internal/sprint/missing_need_test.go`): rule (c), accept refuses a card whose need has not landed.
+- `make release-accept` runs all of the above and fails if any one is renamed, moved or red.
+- `TestFirstAddWritesTheStreamBranchAndTrunk`, `TestAddRewritesADevBaseToTheStreamBranch`, `TestAMainOnlyRepositoryTakesMainAsTrunk`, `TestAClearedSprintMakesTheSameStreamBranch`, `TestLandingFlowIsOneSentence` (`internal/sprint/stream_branch_test.go`) and `TestANewStreamLandsOnItsOwnBranchWithNoSetting` (functional, `cmd/nova-sprint/stream_branch_functional_test.go`): a new stream writes its branch `sprint/<stream>` and trunk on its first add, a card cut on dev or main is re-cut onto the branch with one NOTE quoting the landing flow, a cleared sprint builds the same with no setting, and a real landing with defaults only puts both heads on origin's `sprint/s` while dev is unchanged.
 
 ## A finish-PR card starts from the PR's own head
 
@@ -985,3 +1088,20 @@ and its `/tmp` fallback is denied. The test named for #110's gate is therefore
 `TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`, the one whose own
 assertion a loaded bench turns red by starving its `git` call of a process.
 
+
+## A friend who stops beating is down and her cards come back
+
+`TestAFriendWhoStopsBeatingIsDownAndHerCardsComeBack`
+(`internal/sprint/friend_stops_beating_test.go`) starts a friend with a work
+card working and two frontier reads working on her fleet row, then stops her
+beat past the beat bound (`sprint.FriendBeatBound`). It pins the presence rule:
+with her session's pong fresh, `sprint.FriendEvidence` still says down, "down
+since <t>", because a friend is up only while her daemon beats within the beat
+bound; a session pong alone never makes her up. It pins that the coordinator's
+`return` (`sprint.Return`) works on her read, retiring it off her row. And it
+pins the tick's reconcile (`sprint.LiveReturns`,
+`LiveReturns.friendStoppedReturn`) hands both back to the deal: her work card
+is retired off her row by `sprint.FriendReturn` and its primary is ready again
+with its carry head kept, and her second read returns to the read deal
+(`readLostUnit`). A stopped beat, not just a stopped session, means her cards
+come back.

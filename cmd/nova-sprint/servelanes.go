@@ -117,6 +117,7 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	r.now, r.sleep, r.after, r.meter, r.home, r.screen, r.transport, r.checkTwin = a.now, a.sleep, a.after, a.meter, a.home, a.screen, a.transport, a.checkTwin
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	r.serveAddr = a.serveAddr
+	r.hk, r.busOpen = a.hk, a.busOpen // the server's hook records: the gate reads them on this lane too
 	l.read = r
 	a.lanes = l
 	return l
@@ -156,6 +157,7 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 	r := newApp(l.read.getenv)
 	b := l.b
 	r.now, r.serveAddr = l.now, l.read.serveAddr
+	r.hk, r.busOpen = l.read.hk, l.read.busOpen // the server's hook records, never a store per take
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)

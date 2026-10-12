@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -51,20 +50,6 @@ type Options struct {
 	Timeout time.Duration
 	// WaitDelay overrides subproc.WaitDelay when positive.
 	WaitDelay time.Duration
-}
-
-// Command builds the git child: -C, directory, environment, deadline and WaitDelay
-// applied, nothing started. The returned cancel is called once the child is waited for.
-func Command(ctx context.Context, o Options, args ...string) (*exec.Cmd, context.CancelFunc) {
-	b := build(ctx, o, args)
-	return b.Cmd, b.Cancel
-}
-
-// Prepare is Command for a caller that reads the stream itself and must tell a
-// deadline kill from its own failure: the Bounded carries the bound context, whose
-// subproc.Expired says the deadline ended the child.
-func Prepare(ctx context.Context, o Options, args ...string) subproc.Bounded {
-	return build(ctx, o, args)
 }
 
 func build(ctx context.Context, o Options, args []string) subproc.Bounded {

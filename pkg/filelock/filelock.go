@@ -205,17 +205,6 @@ func ParseStamp(s string) (Stamp, error) {
 	return stamp, nil
 }
 
-// ReadStamp reads and parses the Stamp from path without acquiring the lock.
-// It opens with O_RDONLY and does not block on FIFOs.
-func ReadStamp(path string) (Stamp, error) {
-	f, err := openFileSafe(path, os.O_RDONLY, 0)
-	if err != nil {
-		return Stamp{}, err
-	}
-	defer func() { _ = f.Close() }() // ignored: the open is read-only, a close error loses nothing
-	return readExistingStamp(f), nil
-}
-
 func readExistingStamp(f *os.File) Stamp {
 	if f == nil {
 		return Stamp{}

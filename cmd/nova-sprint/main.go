@@ -208,6 +208,10 @@ type app struct {
 	// lines, in place of the user's cache directory.
 	hooks    *hookHub
 	hookSock func(name string) (string, error)
+	// hk is this process's shared hook records (hook.go, hooker): the bus store
+	// NOVA_BUS_REDIS names, opened at the first gate that reads it and kept; the server's
+	// lane apps share their server's (servelanes.go), so a lane opens no store of its own.
+	hk *hookerBox
 	// seatSilent is what the run loop has told the owner of the seat not answering
 	// (seat_silent.go): each raise of the judgment once.
 	seatSilent seatSilentTold
@@ -374,6 +378,7 @@ func newApp(getenv func(string) string) *app {
 	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
+	a.hk = &hookerBox{}
 	a.landRoot = defaultLandRoot
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
@@ -741,7 +746,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 			return nil, err
 		}
 	}
-	if why, byHook, err := coordinatorGate(ctx, st, c); err != nil || why != "" {
+	if why, byHook, err := a.coordinatorGate(ctx, st, c); err != nil || why != "" {
 		if err == nil {
 			err = errors.New(why)
 			if byHook {

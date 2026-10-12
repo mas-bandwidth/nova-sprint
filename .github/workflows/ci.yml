@@ -1,6 +1,7 @@
-# nova-sprint CI: build, vet and the unit tier, cut down from nova-tools'
-# ci.yml to this module. GitHub-hosted runners only: nova-tools' self-hosted
-# runners are registered to nova-tools and are not shared with this repository.
+# nova-sprint CI: build, vet, the unit tier and the functional tier, cut down
+# from nova-tools' ci.yml to this module. Both tiers run on GitHub-hosted
+# ubuntu-latest runners; the functional tier (below) installs redis-server and
+# runs make functional-gate for every pull request and push to main.
 name: CI
 
 on:
@@ -65,6 +66,26 @@ jobs:
             git fetch --no-tags --depth=1 origin "${{ github.event.before }}"
           fi
           PAGELOCK_BASE=FETCH_HEAD go test -count=1 -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
+
+  # functional is the functional tier, run per pull request and push to main on
+  # ubuntu-latest: redis-server is installed as the store the tests spawn their
+  # own throwaway servers from, a missing redis-server fails closed under
+  # NOVA_CI=1, and each package is bounded at two minutes by make functional-gate.
+  functional:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GIT_CONFIG_PARAMETERS: "'maintenance.auto'='false'"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: redis-server
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: functional tier
+        run: make functional-gate
 
   # tick-gate is the wall-clock gate the split moved out of nova-tools'
   # certification.yml: the dirty tick drive against a real store, every tick

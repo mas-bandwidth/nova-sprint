@@ -35,9 +35,6 @@ const (
 	Slack int64 = Limit / 5
 )
 
-// SlackOf is the default slack of a limit: a fifth, so a trim stops at 80% of it.
-func SlackOf(limit int64) int64 { return limit / 5 }
-
 // Recent is the default floor (Bounds.Floor): how recently used an entry is never removed,
 // whatever the size. Go marks an entry used by setting
 // its modification time, and only when that is over an hour old (the go command's cache

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 )
 
 // The server's own land loop lands accepted cards as machine work, not as a
@@ -25,10 +27,23 @@ func (r *landRig) armHook(t *testing.T) {
 	t.Helper()
 	hookTests.Store("coordinator", true)
 	t.Cleanup(func() { hookTests.Delete("coordinator") })
+	// the gate's bus push is live over an in-memory bus store, as the hook process arms it
+	fake := bustest.NewFake(t0, "coordinator")
+	r.a.busOpen = func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
+	getenv := r.a.getenv
+	r.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus:test"
+		}
+		return getenv(k)
+	}
 }
 
 // hookLiveUnhooked records a live, proven hook for the coordinator, as the
-// server's hook session does once the seat answers its challenge.
+// server's hook session does once the seat answers its challenge: the sprint
+// push and the bus push both live.
 func (r *landRig) hookLiveUnhooked(t *testing.T) {
 	t.Helper()
 	st, err := r.a.store(common{redis: "mem:0"})
@@ -37,6 +52,11 @@ func (r *landRig) hookLiveUnhooked(t *testing.T) {
 	require.NoError(t, writeHook(context.Background(), st, sprint.HookRecord{
 		Name: "coordinator", Session: "s1", State: sprint.HookHooked, Since: now, Proven: now, Live: now.Add(time.Hour),
 	}))
+	hk, err := r.a.hooker(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, hk.Arm(context.Background(), "coordinator", now))
+	require.NoError(t, hk.Prove(context.Background(), "coordinator", now))
+	r.a.hookerForget("coordinator")
 }
 
 // The machine land loop lands queued accepted cards while the seat is unhooked:

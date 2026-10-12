@@ -62,6 +62,11 @@ const (
 	// while their sessions took no turn.
 	FriendPongWindow   = 10 * time.Minute
 	FriendFinishWindow = 30 * time.Minute
+	// FriendBeatBound is how stale a friend's last beat may be before the tick treats
+	// her as gone and hands her cards and reads back to the deal: her daemon alone runs
+	// her lanes, so a beat this old is a daemon that has stopped (docs/SPEC-SPRINT.md
+	// section 1, friend reconcile; a friend who stops beating is down).
+	FriendBeatBound = 30 * time.Minute
 )
 
 // Held is the status of a member the coordinator holds down.
@@ -330,6 +335,13 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	}
 	if f.Beat.SaysDown() {
 		return Down, beatSaysDownWhy(f.Beat)
+	}
+	// her daemon alone runs her lanes: a beat past the beat bound is a daemon that has
+	// stopped, and a session pong it carried is no evidence she is working. She is down
+	// since that beat, whatever the pong says (docs/SPEC-SPRINT.md section 1, a friend's
+	// health; a friend who stops beating is down).
+	if f.Beat.Beaten() && now.Sub(f.Beat.At) > FriendBeatBound {
+		return Down, "her daemon stopped beating " + ago(now.Sub(f.Beat.At)) + ": down since " + stamp(f.Beat.At)
 	}
 	pong := !f.Health.Seen.IsZero() && f.Health.State == Up && f.Health.Generation == f.Generation
 	if age := now.Sub(f.Health.Seen); pong && age >= 0 && age < FriendPongWindow {

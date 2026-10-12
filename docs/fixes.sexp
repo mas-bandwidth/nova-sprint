@@ -73,7 +73,11 @@
     :text "The costs no price covers: a harness's exact zero on a route with no price sheet is
      counted unpriced, never as $0."))
   :items
-   ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
+   ((fix "the-functional-tier-is-green-on-main-and-runs-per-pr" :release "v1.2.14" :status "planned"
+     :title "The functional tier is green on main and runs for every pull request"
+     :text "The functional tier was not run per PR, and functional tests failed on main: the store's TestRedis* family (the harness added readers to the twin table name t-readers instead of the store's), TestRedisClear and TestRedisTeardownLeavesNoKeyAndNothingElse (a clear blanks the readers and the tests drove on without re-adding them), TestEveryProducerCard (never loaded the store's function library, and --count 1 wants --one), and TestAMergeBeforeThePumpOnTheStore (asserted an archived-stream headline the view no longer writes). The store harness now adds readers by the store's own table name (readers) and re-adds them after a clear; consumers loads fn and passes --one; the merge test verifies the done view over --json. The tier is a make target (make functional / functional-gate) bounded at two minutes per package, run per pull request and push to main on a GitHub-hosted ubuntu-latest runner with redis-server installed (runs-on: ubuntu-latest, sudo apt-get install redis-server) and NOVA_CI=1 in .github/workflows/ci.yml; docs/TESTS.md says it runs per PR. The rest of the tier was then brought green, each fixed at its cause in the test (each stale against main's current CLI): the server heartbeat test names the actor init requires; the finish-PR brief carries the RULES paragraph the card lint requires and its take names --epoch; the unanswered-judgment rig passes --reason to brief --tier; the brief-edit test ticks after an add on a running machine (a move is queued until the next tick) and checks the refused re-tier left the tier flash, not heavy; the fleet-sync test proves the members the sync added (a sync-added member is held until its probe passes) before the width-0 hold is the sync's to make; the generated-directory test's seat proof is left to the generated-ledger card (its exec shape broke the no-verb-outside-helper guard, so it is reverted here); the land-identity test beats its readers (queue --as reader) before it asks; and the tick's wall-clock gate is tagged !functional so the functional tier, which runs every package in parallel, leaves the deal-load gate to the unit tier's run alone, where it holds. The coordinator's 2026-10-12 diagnosis (hetzner2) then split the still-failing functional tests into three sibling cards — redis-routes-reads-the-sprint-settings-with-no-routes (land identity), four-functional-tests-tick-before-they-check (need-on-working, lift wake, dev-is-behind, merge-before-pump) and generated-ledger-cards-chain-and-the-generate-test-runs-the-hook (the generate test) — leaving this card the brief-edit fix, the per-PR functional CI job and the generate-exec revert; the full tier goes green when those cards land."
+     :origin "this card; the release-acceptance child, 2026-10-11 ~23:05Z")
+    (fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
      :text "A member the inventory names and the fleet lacks was added down until it beats, so
       presence's beat brought it up at its width and dealt it work without any probe: the gate in
@@ -102,10 +106,22 @@
      :title "A test that re-tiers a card now passes --reason"
      :text "TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore re-tiers card s6-1 and must pass --reason with --tier, as the brief rule requires. The test also adds a negative check that re-tier without --reason is refused."
      :origin "this card; checked against nova-sprint main on branch sprint/the-unanswered-judgment-test-gives-its-re-tier-a-reason.w1.g1.e19")
+     (fix "every-need-names-a-live-card-checked-every-second" :release "v1.2.14" :status "planned"
+     :title "A drop never strands a need; the run loop checks every unlanded card's needs each second; a card never enters merging with a need not landed"
+     :text "Blocker. The owner, 2026-10-11 ~23:25Z: \"this must never happen again. We must have a process that checks all card dependencies and if they don't exist, once per-second, you are alerted via push notification.\" Three cards were dropped while live cards still needed them, and five cards sat in merging up to 205 minutes needing a card that no longer existed. (a) drop, and any verb that takes a card off the table, of a card an unlanded card needs is refused, naming each dependent, unless the call says what happens to each: --relink <new id> re-points the dependants' needs at the new card, --waive removes the need from each dependent (recorded with the reason), or --cascade drops the dependants too. The refusal reads every unlanded state (waiting, ready, working, review, merging), not only waiting primaries (internal/sprint/steps_review.go, unlandedNeeding). (b) The tick's needs part (TickNeeds, internal/sprint/steps_review.go; PartNeeds in TickEnd) reads every unlanded card's needs each tick, in every state, and a need naming a card that is absent or off the table raises one judgment, \"a card needs a card that is gone\" (NNeedsGone), at once, naming the card, its state, the missing need, and the two answers (needs set <id> --needs <rest>, or drop); it stays open, the overdue part repeats it at its deadline until it is answered, and it closes when the need is landed, waived or re-pointed. A card in merging or review with a missing need is answerable by needs set in place (NeedsSet now takes a merging card whose need is gone; internal/sprint/steps_edit.go). (c) Accept refuses a card whose need has not landed, so no card enters merging needing a card that is gone (internal/sprint/steps_review.go). docs/SPEC-SPRINT.md section 11 and docs/CLI.md state the three rules. Tests: TestDropRefusesACardAnUnlandedCardNeeds, TestDropWithWaiveLeavesNoStrandedNeed, TestAcceptRefusesACardWhoseNeedHasNotLanded, TestTickNeedsJudgesAGoneNeedInEveryUnlandedState, TestTickNeedsHoldsAndClears (internal/sprint/missing_need_test.go) and the functional TestEveryStateAlertsTheCoordinatorOfAGoneNeed, TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt, TestDropRefusesANeededCardAndWaiveLeavesNone, TestDropGroupRefusesANeededCard, TestDropWithRelinkRepointsTheNeed, TestNeedsSetOnAMergingCardWithAGoneNeed (cmd/nova-sprint/missing_need_functional_test.go); make release-accept clips them in. TLA+ owed (tla/SprintRules.tla, the twins part: need, NoDanglingNeed; tla/Holds.tla: cardNeeds, NamedWaits): the invariant every need of an unlanded card names a live card, with a dropped need on a merging card as its reversed witness."
+     :origin "this card, every-need-names-a-live-card-checked-every-second.w2, from the owner, 2026-10-11 ~23:25Z; docs/TESTS.md Release acceptance")
+    (fix "tla-every-need-names-a-live-card" :release "v1.2.14" :status "planned"
+     :title "SprintTables proves every need of an unlanded card names a live card, with a dropped need on a merging card as its reversed witness"
+     :text "Models only, no product change. The needs live in three modules: tla/SprintTables.tla owns the needs variable and the needs invariants (NoNeedCycle, NeedsLandFirst, NeedsHeldIntoWorking, NeedsWithdrawalWaits); tla/SprintRules.tla owns the twins part need and NoDanglingNeed (a waiting card that needs a dropped card has a judgment that says so); tla/Holds.tla owns cardNeeds for the cross-stream held need. The invariant owed across them is NoDanglingNeed widened: every need of an unlanded card (waiting, ready, working, review, merging) names a live card (on the table or landed), so no card waits or merges in silence on a card that no longer exists. The reversed witness is a dropped need on a merging card (five cards sat in merging up to 205 minutes needing a card that was gone), the thing rules (a)-(c) of every-need-names-a-live-card-checked-every-second close. Drift kept out: SprintRules' NoDanglingNeed today covers waiting cards alone; the widened invariant and the drop --relink/--waive and TickNeeds actions are owed to the v1.2.16 TLA+ pass."
+     :origin "this card, every-need-names-a-live-card-checked-every-second.w5, 2026-10-11 ~23:25Z; the TLA+ note owed by rule (5)")
     (fix "a-tier-on-line-one-is-the-tier-the-card-is-dealt-on" :release "v1.2.14" :status "planned"
      :title "The tier on line 1 is the tier a card is stored with and dealt on; the existing tier-line check stays, and a stream's --default-tier waives it"
      :text "Blocker. On 2026-10-12 ~00:05Z six cards admitted with tier: heavy or tier: pro on their RESULT line were dealt on flash (one landed on flash, one ran five attempts all on flash), and add said nothing. The RESULT line was read (cardhdr.ReadModel takes tier: anywhere on line 1), but startTier started every card that was not pro on flash: flash first, a heavy card climbing the ladder from flash. startTier now starts a card on the tier its line 1 names, flash, pro or heavy (sprint.LineOneTier, one rule for both line-1 forms), so a heavy card's first deal draws a heavy route and never flash; a card dealt below its ceiling before this keeps its tier_now and the ladder still carries it. add prints each card's stored tier on its line (tier=<t>) and brief prints the re-briefed card's (<id> tier=<t>), a stronger tier on the new line 1 raising the card's tier_now. No new refusal is added: the card checks' existing tier-line check stays the one rule. A card brief (a PATHS: line) whose line 1 names no tier is refused by the card checks' tier-line finding, the one rule the lint and the store read by, unless the stream it is added to names a default tier (stream set --default-tier, FieldDefaultTier, stored as the card's pinned tier); a free task that names none starts on flash. Seven existing tests that took a heavy brief to start on flash now say heavy, or model a card dealt on flash before this (tier_now flash). docs/CLI.md states the rule. Tests: TestTheTierLineIsReadOrRefusedByOneRuleInBothForms (internal/card/tier_line_test.go), TestTheTierOnLineOneIsReadInBothForms, TestAddStoresTheTierLineOneNamesOrItsStreamsDefault, TestAHeavyCardsFirstDealDrawsAHeavyRoute, TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow (internal/sprint/tier_line_test.go), TestAddPrintsTheTierEachCardIsStoredWith, TestBriefPrintsTheTierTheCardIsDealtOn (cmd/nova-sprint/tier_line_test.go) and the functional TestAHeavyCardIsDealtOnAHeavyRouteOnAStore (cmd/nova-sprint/tier_line_functional_test.go)."
      :origin "this card, from the seat, 2026-10-12 ~00:05Z (every-need-names-a-live-card-checked-every-second, landing-never-waits-on-the-seats-hook, a-moved-card-stops-its-old-run, rate-limit-judge-in-the-running-member, a-cleared-sprint-keeps-its-readers, a-bound-card-is-reworked-from-its-last-head-by-one-verb dealt on flash); the standing rule: never flash on heavy or frontier work; hand-landed outside the sprint at nova-sprint main a33bf857")
+    (fix "a-card-gate-runs-where-the-card-is-dealt" :release "v1.2.14" :status "planned"
+     :title "The gate runs on the member it is dealt to, inside the wall; the brief names its needs"
+     :text "A card brief names a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`). The deal matches a card to a member only when the member's facts satisfy every need. A card no member can satisfy is a judgment at once; it is never silently waited for. The brief lint refuses a brief that tells the worker to ssh to a named host or run its gate \"on hetzner2\"; such a brief must name the gate's needs on `GATE-NEEDS:` instead. Unit tests in internal/sprint/gate_host_test.go assert that a card with `GATE-NEEDS: linux` is never dealt to a darwin member, and a card needing tla is dealt only to a member whose facts carry the TLA jar. A functional test in cmd/nova-sprint/gate_host_functional_test.go admits a card with `GATE-NEEDS: linux`, ticks, and asserts it is dealt only to the linux member; it admits an unsatisfiable card and asserts the judgment. SPEC-CARD-CONTRACT.md documents `GATE-NEEDS:`; SPEC-SPRINT.md documents the deal rule."
+     :origin "this card, from the seat, 2026-10-12 ~06:50Z (the largest single cause of bounded cards); the owner's rule of 2026-10-11 cited at internal/sprint/steps_work.go near line 2526")
 (fix "landing-never-waits-on-the-seats-hook" :release "v1.2.14" :status "planned"
      :title "The server's own land loop lands accepted cards whether or not the seat is hooked; a hand land by the coordinator is still refused until hooked"
      :text "The server's own automatic landing of accepted cards is machine work, not a coordinator command: the server's land loop runs as the coordinator, so the hook gate refused it whenever the seat's hook was down (a server restart, a dropped stream, a seat away), and since #99 the loop waited forever instead of rolling back, with no bound and no judgment. Fleet reliability must not depend on the seat being hooked. The loop's landing is now exempt from the hook gate by its own identity (the app's landLazy mark, which only the loop sets; never by an --as or a flag a caller can pass): it runs and lands whether or not the seat is hooked. The hook gate is kept for the coordinator commands a person or seat runs: land by hand, accept, rework and the rest are still refused until the seat hooks in. A land must require the seat for a step, the loop already raises one judgment after its deadline bound (raiseIfStuck, LandDeadline) rather than waiting silently. The split is stated in docs/SPEC-SPRINT.md section 14 (machine landing vs coordinator landing). Tests, red first: TestTheServersLandLoopLandsWhileTheSeatIsUnhooked and TestAHandLandIsStillRefusedUntilHooked (cmd/nova-sprint/landloop_unhooked_test.go); TestAHookGateRefusalInTheWindowIsNotARollback is updated: a hand land's hook refusal is no rollback fault, and the machine loop lands while unhooked. Functional: TestLandingUnhookedLandsOnARealServer (cmd/nova-sprint/landing_unhooked_functional_test.go), named in docs/TESTS.md under Release acceptance. TLA+ owed to the v1.2.16 pass (tla/ServerSwitch.tla): landing progresses with the seat unhooked, with the old gate as a reversed witness."
@@ -1883,6 +1899,10 @@
    :text "Models only, no product change. tla/SeatHealth.tla was read against internal/sprint/friend_health.go, friend_stall.go and presence.go and drifted in four places, each brought to the code. A friend's health row can be deleted (Clear: friend health --clear, or the stall ladder's rung-5 release), so the row holds no proof to compare and an older proof is then accepted; ProofNeverGoesBack is restated to hold while the row exists. Rung 5 writes the row outside NotHealth (Rung5Down) with Seen = now and the current generation. FriendEvidence makes her up on her beat's proof (Prove) on a fresh beat and never counts a raw beat, and the code's three evidence windows (pong 10 m, proof 15 m, finish 30 m) are one DownAfter. OldSeatNeverUp is restated over the observation's word alone (the beat proof is not the seat's). A seventh reversed witness MCSeatHealthBrokenClearKeepsRow (Broken \"clearkeepsrow\") deletes the proof but keeps the row observed, then takes an older proof, failing the restated ProofNeverGoesBack; the six existing witnesses keep their results. presence.go and friend_stall.go each gain one comment line citing the module; tla/RUNS.tsv is merged and tla/COVERAGE.tsv notes her beat's down word and a finished card are still outside."
    :origin "card tla-seathealth-deleted-health-and-evidence, 2026-10-11: v1.2.12 inventory item T27 and section 9 (D10), at nova-sprint main 00c54ba2e")
 
+  (fix "every-verb-refuses-until-its-pushes-are-hooked" :release "v1.2.17" :status "planned"
+   :title "Every verb the coordinator runs refuses until both its pushes are hooked"
+   :text "The gate failed open: a verb outside the coordinator, seat and read classes, a store not named or not opening, the holder's --as, and the hook's own exemptions all let a verb run, and it checked the sprint push alone, never the bus; the seat ran for hours with its hook expired. Now every verb the seat's holder runs (all but hook, unhook, help, version, and the server's own life: run, tick without --answer-rules, server switch, seat install, selftest land) needs both the sprint push and the bus push live and proven, the caller judged on its actor before any --as. The refusal is one line that starts You must hook in first: run nova-sprint hook and goes on to the breadcrumb (which push is not live, and the exact hook, prove and unhook commands). It fails closed on a store not named or not opening, a record that cannot be read, or no NOVA_BUS_REDIS; the test seam can be off only inside a test binary. nova-sprint hook arms both pushes in one call (a subscription to the holder's own bus stream, and the server's hook stream), one answer to HOOK CHALLENGE <sprint>.<bus> proves both, and unhook closes both. The bus push's interim record is sprint-hook:<name> in the bus store, read through sprint.Hooker from a copy at most a second old kept fresh off the server's line, so nova-tools' hook module can replace it. Every second, a judgment waiting 10 s or longer is pushed as one warning (full text when the set changes, else one line) until it is answered; the look reads the inbox off the line. tla/SeatHook.tla gains the bus push (BusDrop, BothOrNeither) and the nobus reversed witness. A worker friend's gate lands later with nova-tools' hook client."
+    :origin "this card, every-verb-refuses-until-its-pushes-are-hooked; the owner, 2026-10-11 ~19:45Z: \"Nothing works unless hooked in\"; landed by hand on his order")
   (fix "the-work-deal-fills-free-lanes-first-round-robin" :release "v1.2.12" :status "planned"
    :title "The deal fills free lanes first, then the room, round the fleet"
    :text "The deal's eligible set was wrong; its cursor was right. Every placement of a work card on a member (dealPlan's next for a new attempt, a redeal and an escalation; downPlan's placement for a held or down member's cards) picked the first member from the deal's cursor below DealAhead times its width, so a member at its width (16 working, 16 < 32) was as eligible as an idle one: on 2026-10-11 hetzner2 sat at 0/16 working and idle while b2 and hetzner1, both 16/16, were each given a ready card. The placement now goes through one function, round.nextFree(up, q, lanes, room, avoid), in two scans from the cursor: first the members with a free lane (q below the width, q the member's ready and working cards, a read at half a slot), and only when no member that may take the card has one, the members with q below DealAhead times the width; the guards each caller passes (launchersOf, StagingRefusers, onlyBench, notLaunching) narrow up before both scans, so a member with a free lane that cannot launch the card's route or refused it at staging is skipped in both. The cursor moves past the member placed, so placements roll ((index++) % n) over the eligible set; TickDeal's widthRoom bound is unchanged. The owner, 2026-10-11 ~19:05-19:20Z: \"Please log cards to fix this deal and rebalance. It's shit.\"; \"cards only may accrue per-fleet or friend, if there are not other machines/friends ready to do that work right now!\"; tla/WhoPreference.tla, DealFreeLanesFirst. The rework's avoid (round.next) and the rebalance are unchanged; the model is a separate card."
@@ -1896,7 +1916,7 @@
   (fix "hold-return-leaves-taken-cards-with-their-worker" :release "v1.2.12" :status "planned"
    :title "Keep taken cards with a live fleet member during hold --return"
    :text "A hold of a member whose beat is up hands back only its dealt, untaken ready cards. Taken work and reads stay on the worker at their generation and finish there, even with --return. A down member still returns dead working cards. The hold note names the taken cards that stay."
-   :origin "card hold-return-leaves-taken-cards-with-their-worker.w2, 2026-10-11")
+    :origin "card hold-return-leaves-taken-cards-with-their-worker.w2, 2026-10-11")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
@@ -2574,6 +2594,31 @@
     no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
     spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
    :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
+   (fix "a-new-stream-lands-on-its-own-stream-branch-by-default" :release "v1.2.14" :status "planned"
+    :title "A new stream lands on its own branch sprint/<stream>, never straight on dev or main"
+    :text "Blocker. Nothing in the tool made a stream branch: a new stream landed wherever its cards'
+     BASE: line pointed, so 20 of 31 streams were created with cards on dev or main and carried the mark
+     land_protected, the lander merged every card head straight onto dev or main, each landing cancelled
+     dev's certification run (13 of 15 cancelled) and the v1.2.14 cut was blocked. Now every stream lands on
+     its own branch sprint/<stream>. The landing flow is one sentence, sprint.LandingFlow: \"The landing
+     flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per
+     stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never
+     lands on dev or main.\" A stream's branch and trunk are fields of its control card (FieldStreamBranch,
+     FieldTrunk): the first add writes both in the same step as its first card, the branch sprint/<stream>
+     and the trunk the protected branch the card's BASE: names (dev, or main; dev when it names none), and a
+     card naming a non-protected branch keeps that branch as the stream's. add re-cuts a card cut on dev or
+     main onto the stream's branch (briefOnBase), saying so on one NOTE line per add naming the branch, the
+     trunk and quoting sprint.LandingFlow; the card is staged from and lands on the stream branch. The land
+     pass creates an absent stream branch on origin at origin/<trunk>'s tip in the lander's kept clone before
+     it lands any card of the stream, one NOTE line LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>; a
+     card of a stream whose branch origin lacks is held, never landed on the trunk. No setting turns this on
+     or off: a cleared sprint builds the same on its first add. docs/SPEC-SPRINT.md section 7 and docs/CLI.md
+     say it. Tests: TestFirstAddWritesTheStreamBranchAndTrunk, TestAddRewritesADevBaseToTheStreamBranch,
+     TestAMainOnlyRepositoryTakesMainAsTrunk, TestAClearedSprintMakesTheSameStreamBranch,
+     TestLandingFlowIsOneSentence (internal/sprint/stream_branch_test.go) and the functional
+     TestANewStreamLandsOnItsOwnBranchWithNoSetting (cmd/nova-sprint/stream_branch_functional_test.go), named
+     in docs/TESTS.md under Release acceptance."
+    :origin "the owner, 2026-10-12 ~05:15Z: \"My dude, land in a batch, to a branch that corresponds to the work stream, then serially merge those branches into dev.\" / \"this is the 15th time\" / \"We have designed this together multiple times. Lock it in bro!\"; evidence, epoch 19, server v1.2.13: 20 of 31 streams were created with cards on dev or main and carried the stream mark land_protected")
    (fix "a-shared-non-ledger-path-is-refused-at-admission" :release "v1.2.15" :status "planned"
     :title "Two cards sharing a path no lander-owned ledger covers are refused at admission"
      :text "Card lint refused two admitted cards sharing a path without a needs edge, and offered
@@ -3103,4 +3148,68 @@
       (archiving is manual, so no archived-stream line appears). go test -tags functional
       -run 'NeedAddedToAWorkingCard|ReadOkDoneAndTheWake|DevIsBehindCountsOnly|MergeBeforeThePump'
       ./cmd/nova-sprint/ and go test ./internal/ci/ are green."
-     :origin "this card, four-functional-tests-tick-before-they-check.w1, from the coordinator, 2026-10-12 ~08:35Z, from a diagnosis of the functional tier on sprint/v1214-blocker @ a70a3ffe")))
+     :origin "this card, four-functional-tests-tick-before-they-check.w1, from the coordinator, 2026-10-12 ~08:35Z, from a diagnosis of the functional tier on sprint/v1214-blocker @ a70a3ffe")
+   (fix "add-and-the-tick-keep-a-bench-mirror-for-every-named-repo" :release "v1.2.14" :status "planned"
+    :title "Add and the tick keep a bench mirror for every named repo"
+    :text "When add admits cards whose REPO: line (or a stream's repos) names a repository, and when
+     the tick sees a staging refusal no bench mirror for <url> (mirrorRefusals,
+     internal/sprint/staging_repo.go), nova-sprint records a mirror need for that repository: one row
+     per repository, the members that lack it (from the refusals and from the members' beats, which
+     name the mirrors they carry) and when it was raised (MirrorNeed, mirrorNeeds,
+     internal/sprint/mirror_need.go). add records the repository on its stream's control card
+     (FieldRepo, by sprint.Add) and prints one MIRROR <repo> needed on <members> line per repository
+     it admits (sprint.MirrorNotice, cmd/nova-sprint/add.go, cmd/nova-sprint/verbs.go). The tick
+     raises one judgment per repository (NMirrorNeed), naming the members, only while the need is not
+     served within its bound (StagingMirrorWindow, or a member's ok finish of a card of the
+     repository), and a refused card is not redealt to a member that lacks the mirror while another
+     member that has it is free (stagingRepoWhy, notLaunching). The need is served by running the
+     fleet's mirror refresh for that repository (the nova-swarm verb the card
+     every-bench-carries-every-mirror-a-card-can-name delivers), on the coordinator machine, which
+     holds the credentials; no ssh or git push runs from inside nova-sprint's tests.
+     docs/SPEC-SPRINT.md (the mirror need), docs/TESTS.md state it. Tests:
+     TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo, TestMirrorNeedFromAStagingRefusal,
+     TestMirrorNeedEndsAfterAnOk and TestMirrorNeedEndsPastTheWindow
+     (internal/sprint/mirror_need_test.go)."
+    :origin "this card, add-and-the-tick-keep-a-bench-mirror-for-every-named-repo.w2, from the
+     coordinator, 2026-10-12 epoch 19: after staging refused cards with no bench mirror for <url>,
+     the seat ran monitorsync.sh by hand to clone each missing repository as a bare mirror and push it
+     to every fleet member; this card makes nova-sprint ask for it at the two moments it knows a repo
+     is needed")
+   (fix "stall-and-stuck-classes-of-2026-10-11-clipped-in" :release "v1.2.15" :status "planned"
+    :title "Every stall and stuck class of 2026-10-11 is held by a unit test and a functional test in release-accept"
+    :text "Tests only, no product change. Each fix of 2026-10-11 for a stall, a card stuck or the machine not
+     working is held by its unit tests and by a functional test on a real store, with the binary under
+     acceptance running the workers', the readers' and the machine's verbs, and every one is named in
+     tools/release-accept.sh. Ten new functional tests, each red against the parent of its fix: the switched
+     server's run --land never rolls back on the hook gate (#99); a need cycle through a working card is
+     refused and nothing waits on a loop (#103); a ledger-only conflict lands on the store (#100); done counts
+     a member's work and its fleet reads (#94); the idle alarm fires once an episode when the lanes hold only
+     reads (#106); an over-bound merge note and an over-bound brief are refused at the verb and the drain
+     goes on (#91, brief-file-over-the-bound-is-refused); the binary's shadow tick and run refuse a store
+     missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
+     reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
+     is not on main, naming the card or pull request that owes its tests."
+     :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+   (fix "a-card-in-review-always-has-a-read-the-ask-can-reach" :release "v1.2.14" :status "planned"
+    :title "A card in review always has a read the ask can reach"
+    :text "A finish card sat in review at attempt 2 with no read out: its attempt-1 read had
+     been withdrawn by a friend's hold and its attempt-2 read ended with no verdict (a
+     return, ran=false). The ask verb was refused \"asked already: its reads are out\" while
+     `ask --another` was refused \"not asked yet at attempt 2\", the two refusals contradicting
+     each other, check showed no violation, and the seat had to rework a finished card to get
+     reads asked again. The two refusals held two definitions of \"asked at this attempt\": the
+     ask verb's --another counted only the readers table (readsAt) while the no-stall rule's
+     decisions and the plain ask read ReadsWanted, so a read on the fleet table (a read card)
+     or a withdrawn one made them disagree. One function, askedAtAttempt (readers.go), now
+     decides both: a read of the attempt anywhere on either table, whatever its state
+     (placed, retired with a verdict, returned, withdrawn or taken back), was asked. Ask's
+     eligible (steps_review.go) and the no-stall rule's decisions (held.go) both call it, so
+     the ask verb and the tick never contradict. A read that ended with no verdict, or was
+     withdrawn by a hold or a return, is re-asked of another reader at the next tick for the
+     card's current attempt (TickAsk). A card in review with no read out and no open judgment
+     is a ConsumersOut violation at TickCheck (a card in review is a producer whose consumer
+     is a read), so the seat is told rather than the card sitting silent. Tests:
+     internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
+     TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
+    :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
+     epoch 19, v1.2.13")))

@@ -309,6 +309,8 @@ MCSprintRulesAnswersBrokenParkFailed.cfg	MCSprintRules.tla	temporal	FailedWithAF
 MCSprintRulesAnswersReachMindJudges.cfg	MCSprintRules.tla	invariant	ReachMindJudges	ignore-terminal	sprintrules	required	-
 MCSprintRulesAnswersBrokenNoReportRework.cfg	MCSprintRules.tla	invariant	ReworkHasAFix	ignore-terminal	sprintrules	required	-
 MCSprintRulesAnswersBrokenIdenticalRework.cfg	MCSprintRules.tla	invariant	IdenticalIsBound	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenHarnessRedeal.cfg	MCSprintRules.tla	invariant	HarnessFaultBounded	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenGroupRedeal.cfg	MCSprintRules.tla	invariant	HarnessFleetHeld	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodes.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodesBrokenPinForever.cfg	MCSprintRules.tla	invariant	PinWaitBounded	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodesBrokenPinSilent.cfg	MCSprintRules.tla	invariant	AwayIsJudged	ignore-terminal	sprintrules	required	-
@@ -533,6 +535,7 @@ MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-termin
 MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoBus.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenNoStartRewrite.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenOmitLive.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-

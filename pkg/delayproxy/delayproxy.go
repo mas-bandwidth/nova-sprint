@@ -181,22 +181,6 @@ type Proxy struct {
 	shortest atomic.Int64 // the least time any of them was held, in nanoseconds; noHold before the first
 }
 
-// Listen listens on addr, a host:port, and serves it: Serve over net.Listen.
-// Port 0 lets the kernel pick; Addr says which.
-func Listen(addr, target string, delay time.Duration, opts Options) (*Proxy, error) {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("listening on %s: %w", addr, err)
-	}
-	p, err := Serve(ln, target, delay, opts)
-	if err != nil {
-		// ignored: a close on the failure path; the Serve error is the one returned
-		_ = ln.Close()
-		return nil, err
-	}
-	return p, nil
-}
-
 // Serve accepts connections on ln and forwards each to target, a host:port
 // dialled once per client connection, holding every write of the client back
 // by delay. It owns ln from here on: Stop closes it. It refuses a target that
