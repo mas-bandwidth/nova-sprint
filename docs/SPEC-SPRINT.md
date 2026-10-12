@@ -4414,7 +4414,12 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. An empty commit is
+renamed it from the name its PATHS gives), which the review passed. The reading
+of what one `PATHS` entry covers is one function, `diffcheck.Covers`, and the
+same one the add and brief checks read (section 11): a directory entry (a
+trailing `/`) covers every file under it, a glob covers its matches at the head,
+and a literal names one file that may be new; a head refused by E12 names, for
+each file, the entry it was expected to match. An empty commit is
 read against the result the lander holds (`claimText`): an empty diff whose result claims
 changes (a verdict of ok, a step line with a commit sha, a non-empty diff stat) is refused
 as a claim the diff does not show, while an empty diff for which the lander holds no result
@@ -6971,7 +6976,11 @@ common failure modes can be more efficiently picked up with lint?" On the sprint
 PATHS, 24 docs or a SPEC left out of PATHS, 13 a dead or wrong base, 11 a named TEST that did
 not fit, 9 a class-test ledger outside PATHS. So `add` (the one-brief and the many-brief form)
 holds every card brief, one with a `PATHS:` line, to the brief checks before it writes, after
-the card checks (`card.Checks`) and `holdBase`.
+the card checks (`card.Checks`) and `holdBase`. The reading of what one `PATHS` entry covers
+is one function, `diffcheck.Covers`, shared with the lander's E12 check (section 7): a
+directory entry (a trailing `/`) covers every file under it, a glob covers its matches at the
+head, and a literal names one file that may be new, so the checks and the lander never
+disagree about a directory the card named.
 
 The evidence is the card's base. For a brief that names `REPO:` and `BASE:`, add takes the
 lander's clone of the repository (the clone land keeps under its root, section 7; made as land

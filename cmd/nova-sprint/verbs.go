@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -31,6 +30,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
@@ -1804,20 +1804,12 @@ func namesModel(entry string) bool {
 	return strings.HasPrefix(e, "tla/") && strings.HasSuffix(e, ".tla") || pathCovers(entry, "tla/Model.tla")
 }
 
-// pathCovers says a PATHS entry covers the file: the file itself, a directory over it
-// (tla, tla/), a tree glob over it (tla/**, tla/...) or a glob that matches it (tla/*).
+// pathCovers says a PATHS entry covers the file (diffcheck.Covers, the one reading of an
+// entry the lander's E12 check, the admission check and the card lint share): the file
+// itself, a directory over it (tla, tla/), a tree glob over it (tla/**, tla/...) or a
+// glob that matches it (tla/*).
 func pathCovers(entry, file string) bool {
-	e := strings.TrimSuffix(strings.TrimPrefix(entry, "./"), "/")
-	if e == file || strings.HasPrefix(file, e+"/") {
-		return true
-	}
-	for _, tree := range []string{"/**", "/..."} {
-		if dir, ok := strings.CutSuffix(e, tree); ok && strings.HasPrefix(file, dir+"/") {
-			return true
-		}
-	}
-	ok, _ := path.Match(e, file)
-	return ok
+	return diffcheck.Covers(entry, file)
 }
 
 // tlaMergeKeepRE is a command that merges runs onto the kept records: tlacheck merge
