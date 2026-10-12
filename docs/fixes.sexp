@@ -3080,4 +3080,19 @@
      missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
-    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")))
+    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+   (fix "hook-reads-empty-bus-stream-starts-at-0-0" :release "v1.2.17" :status "planned"
+    :title "The hook starts at cursor \"0-0\" when the seat's bus stream does not exist"
+    :text "Blocker. On a fresh store with no bus stream for the seat, the hook reads an empty cursor
+     from Tail, which Redis refuses, so the hook ends HOOK BUS DOWN and the challenge is never printed.
+     The hook now starts from \"0-0\" when the stream is absent, as bus.WaitArm does. The hook also waits
+     for the unhook write to complete before returning: a context cancellation under that write caused
+     \"unhook REFUSED: ... context canceled\" on two of three runs. Tests:
+     TestHookPrintsChallengeOnStoreWithNoBusStream (cmd/nova-sprint/hook_test.go) and the functional
+     TestHookFlushesAfterChallengeOnTheStore, TestAReconnectReplaysOnlyUnheldUnackedPushes,
+     TestStallASwitchedServerNeverRollsBackOnTheHookGate, and
+     TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs."
+    :origin "this card, the-hook-reads-an-empty-bus-stream-and-waits-for-its-unhook.w1, from the
+     coordinator, 2026-10-12 ~09:35Z, from a diagnosis on hetzner2 of four functional tests that fail on
+     main (b7683efc) and that no card owned. Walking main commit by commit, three break at cc424aa1 (the
+     two-push gate, #93).")))

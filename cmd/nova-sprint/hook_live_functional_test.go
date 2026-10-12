@@ -63,11 +63,12 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	ctx := context.Background()
 	const name = "seat-hl"
 	addr := testutil.Start(t)
+	busAddr := testutil.Start(t)
 	admin := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(ctx, admin))
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, busRedisEnv: busAddr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
 	var envMu sync.Mutex
 	getenv := func(k string) string { envMu.Lock(); defer envMu.Unlock(); return env[k] }
 	hookTests.Store(name, true)
@@ -103,7 +104,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// the seat's side holds no store: every coordinator verb goes to the server
-	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
+	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), busRedisEnv: busAddr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
 	client := newApp(func(k string) string { return clientEnv[k] })
 	t.Cleanup(client.close)
 	client.hookSock = srvApp.hookSock
@@ -142,11 +143,16 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 		require.Equal(t, 0, code, out)
 		return lines, done
 	}
-	// pushIDs is the push ids the stream showed, in order.
+	// pushIDs is the push ids the stream showed, in order. The repeating
+	// waiting-judgment warning is not one of them: it carries no session token and
+	// is not a replay, so it is skipped.
 	pushIDs := func(lines *hlLines) []uint64 {
 		var out []uint64
 		for _, l := range lines.all() {
 			if f := strings.Fields(l); len(f) > 1 && f[0] == "PUSH" {
+				if len(f) > 2 && strings.TrimSuffix(f[2], ":") == hookWarnWhat {
+					continue
+				}
 				id, _ := strconv.ParseUint(f[1], 10, 64)
 				out = append(out, id)
 			}
@@ -223,7 +229,8 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	again, _ := hookIn()
 	time.Sleep(hookLook + 500*time.Millisecond)
 	// replay is #115's durable acknowledgement: a reconnect replays only the pushes not
-	// acknowledged
-	assert.Zero(t, again.count("PUSH "), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
+	// acknowledged. The count is of open pushes: a repeating warning carries no session
+	// token and is not a replay, so it is not counted.
+	assert.Zero(t, len(pushIDs(again)), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }
