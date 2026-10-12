@@ -48,6 +48,11 @@ func bigSprint(t *testing.T) *testApp {
 	// landed cards stay in the headline
 	ta.ok("add --stream done --count 351 --actor lead")
 	ta.ok("add --stream f --count 149 --actor lead")
+	ta.ok("check --all-plan --actor lead")
+	for _, stream := range []string{"w1", "w2", "w3", "w4", "w5", "done", "f"} {
+		ta.ok("promote --stream " + stream + " --actor lead")
+	}
+	ta.ok("resolve --actor lead")
 	ta.ok("start --actor lead")
 	ta.mu.Lock()
 	ta.now = ta.now.Add(2 * time.Hour)

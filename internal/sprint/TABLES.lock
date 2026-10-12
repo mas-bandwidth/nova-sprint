@@ -194,6 +194,9 @@
 # added and the friends table's shape stands. Held by
 # TestDealerNeverDealsAFriendOutsideHerStreams and
 # TestAddAndBriefRefuseNamedFriendOutsideRestrictions.
+# Change, 2026-10-11: Glenn asked for plan, check before waiting.
+work.plan count sum shown
+work.check count sum shown
 work.waiting count sum shown
 work.ready count sum shown
 work.working count sum shown
