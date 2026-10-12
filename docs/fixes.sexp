@@ -119,7 +119,7 @@
         A2). The remaining work (the alias recorded by relink and replace themselves, docs/SPEC-
         SPRINT.md and docs/CLI.md, rule 11's needs resolution, and the TLA+ note) is owed: this
         entry is partial."
-      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w2, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; branch sprint/a-replaced-card-is-an-alias-every-need-follows.w2.g2.e19; the alias write from relink and replace is deferred because the store retried and lost on an off-table record's place expectation")
+      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w3, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; the w2 head carried on as one commit on this card's branch; the w3 attempt keeps the twin-server functional test and the readers resolving needs through the alias; the alias recorded under relink's own write, docs/SPEC-SPRINT.md and docs/CLI.md, and the TLA+ note are still owed")
      (fix "the-read-deal-counts-the-queue-and-fills-free-lanes-first" :release "v1.2.12" :status "planned"
      :title "The read deal counts the queue and fills free lanes first"
      :text "The read deal measured the wrong thing. readUnitsOf counted a unit's idle lanes from its
