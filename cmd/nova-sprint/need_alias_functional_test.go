@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
@@ -26,17 +25,10 @@ func TestADroppedCardWithASuccessorIsAnAliasOnTheStore(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
-	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator", "HOME": home, "XDG_CONFIG_HOME": t.TempDir()}
-	a := newApp(func(k string) string { return env[k] })
-	a.home = func() (string, error) { return home, nil }
-	defer a.close()
+	ta := newFunctionalTestApp(t, addr)
 	run := func(args ...string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
-		require.Equal(t, 0, code, "%v: %d %s%s", args, code, out.String(), errb.String())
-		return out.String()
+		return ta.runVerb(args...)
 	}
 	dir := t.TempDir()
 	run("init", "--readers", "reader-a,reader-b", "--members", "m1")
@@ -63,7 +55,7 @@ func TestADroppedCardWithASuccessorIsAnAliasOnTheStore(t *testing.T) {
 	run("read", "--as", "reader-b", "--begin", "--limit", "10", "--epoch", "0")
 	run("read", "--as", "reader-b", "--ok", "--limit", "10", "--epoch", "0")
 	run("accept", "A2")
-	recordMerge(t, a, "a", 10, "0")
+	recordMerge(t, ta.a, "a", 10, "0")
 
 	// a brief edit of B whose text still names A stores the successor and NOTEs it
 	out := run("brief", "B", "--brief-file", writeHeaderBrief(t, t.TempDir(), "B", "A", "internal/b.go,internal/b_test.go"))
