@@ -83,7 +83,7 @@ func TestFleetDownAndLevelGoRoundTheFleet(t *testing.T) {
 	sLevel.Members["m1"] = refmodel.Up
 
 	// Set up ready queues all well under the width (64): no member is over its
-	// width, so the level moves nothing (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane).
+	// width, so the level moves nothing (tla/Level.tla NeverOffAFreeLane (lands with #127)).
 	// m1: 0 cards; m2..m6: 1 card each (d02..d06); m7..m8: 2 cards each.
 	sLevel.Work = map[string]refmodel.WorkCard{}
 	sLevel.Primaries = map[string]refmodel.Primary{}
@@ -104,7 +104,7 @@ func TestFleetDownAndLevelGoRoundTheFleet(t *testing.T) {
 	sLevel.DealLast = "8"
 
 	// No member holds more cards than its width, so the level moves nothing and
-	// the index does not move (round.levelTo; NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane).
+	// the index does not move (round.levelTo; tla/Level.tla NeverOffAFreeLane (lands with #127)).
 	sAfterLevel, err := refmodel.Level(sLevel, nil)
 	require.NoError(t, err, "Level on the fleet failed: %v", err)
 	require.Equal(t, "8", sAfterLevel.DealLast, "DealLast after Level: %q, want 8 (unchanged)", sAfterLevel.DealLast)

@@ -78,8 +78,8 @@ func movedLines(p Plan) []string {
 
 // The wedge's shape under the free-lane rule: every member is at or above its
 // width (A 6, T 5, S 4, U 5), so no member has a free lane and the level moves
-// nothing, however long the queues (round.levelTo, nextLane; NeverOffAFreeLane,
-// owed by card tla-level-moves-only-onto-a-free-lane). The card that the mean rule moved to S stays on A.
+// nothing, however long the queues (round.levelTo, nextLane; tla/Level.tla
+// NeverOffAFreeLane (lands with #127)). The card that the mean rule moved to S stays on A.
 func TestLevelLeavesTheWedgeWhenNoLaneIsFree(t *testing.T) {
 	t.Parallel()
 	w := wedgeWorld(t)

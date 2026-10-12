@@ -3140,7 +3140,7 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 // to the next member round the fleet past the deal's index with a free lane
 // (held below its width) and no refuser, bench or launch exclusion of the card
 // (round.levelTo, nextLane). So a card moves only when its member cannot start
-// it, and only to a member that can (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane; the
+// it, and only to a member that can (tla/Level.tla NeverOffAFreeLane (lands with #127); the
 // owner, 2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend,
 // if there are not other machines/friends ready to do that work right now!").
 // A member at or below its width keeps every card dealt to it: it will take

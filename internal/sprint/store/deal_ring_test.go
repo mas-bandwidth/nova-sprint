@@ -436,8 +436,8 @@ func dealRingMemberDownAndLevel(t *testing.T, h *harness) {
 
 	// 5. m1 beats again and comes up. No member holds more cards than its width
 	// (64): a card moves only off a member over its width, and only onto a free
-	// lane, so the level moves nothing (round.levelTo, nextLane; NeverOffAFreeLane,
-	// owed by card tla-level-moves-only-onto-a-free-lane). m1 stays empty and the index stays put.
+	// lane, so the level moves nothing (round.levelTo, nextLane; tla/Level.tla
+	// NeverOffAFreeLane (lands with #127)). m1 stays empty and the index stays put.
 	h.setLive(ringMembers...)
 	h.tick(time.Second)
 	h.machine()

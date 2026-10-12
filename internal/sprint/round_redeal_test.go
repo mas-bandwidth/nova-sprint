@@ -213,7 +213,7 @@ func TestADownMembersCardsGoRoundTheFleet(t *testing.T) {
 // The level moves a card only off a member over its width, and only onto a
 // member with a free lane: twelve cards on m1 with seven members idle and no
 // member over its width (64) is no move at all, whatever the queues' imbalance
-// (round.levelTo, nextLane; NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane). The index stays
+// (round.levelTo, nextLane; tla/Level.tla NeverOffAFreeLane (lands with #127)). The index stays
 // where it was.
 func TestTheLevelGoesRoundTheFleet(t *testing.T) {
 	t.Parallel()

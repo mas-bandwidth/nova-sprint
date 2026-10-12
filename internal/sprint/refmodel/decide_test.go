@@ -109,7 +109,7 @@ func TestPresenceBringsAMemberUpWhenItBeatsAndLevelsTheQueues(t *testing.T) {
 	got := refmodel.PresenceMoves(w.snapshot(w.fresh()), later(0))
 	// m1 holds three ready cards, well under its width (64): no member is over
 	// its width, so the level moves nothing (round.levelTo, nextLane;
-	// NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane). The deal's counter is untouched.
+	// tla/Level.tla NeverOffAFreeLane (lands with #127)). The deal's counter is untouched.
 	expect(t, got,
 		"set fleet ctl-m2 since=2030-01-02T03:04:05Z,status=up",
 		"prop fleet status_seen=m1=up,0,-,-,0,- m2=up,0,-,-,0,-", // the first sight of each member, recorded as the presence part leaves it: no judgment
@@ -309,8 +309,8 @@ func TestLevelMovesTheNewestFromTheLongestRoundTheFleet(t *testing.T) {
 	w.s.Fleet.Put(ctl)
 	got := refmodel.LevelMoves(w.snapshot(w.fresh()), later(0))
 	// m1 holds two ready cards, under its width (64): no member is over its
-	// width, so the level moves nothing (round.levelTo, nextLane; NeverOffAFreeLane,
-	// owed by card tla-level-moves-only-onto-a-free-lane).
+	// width, so the level moves nothing (round.levelTo, nextLane; tla/Level.tla
+	// NeverOffAFreeLane (lands with #127)).
 	expect(t, got)
 }
 

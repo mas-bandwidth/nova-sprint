@@ -10,7 +10,7 @@ import (
 // ~19:05-19:20Z): the level moves a card onto the next member from the deal's
 // index with a free lane (held below its width) that did not refuse it, never
 // onto a member at or above its width and never by the mean (round.levelTo,
-// NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane). The mean rule and the gap of two are gone.
+// tla/Level.tla NeverOffAFreeLane (lands with #127)). The mean rule and the gap of two are gone.
 func TestLevelTargetPicksAFreeLane(t *testing.T) {
 	t.Parallel()
 	up := []string{"a", "b", "c"}
@@ -41,8 +41,8 @@ func TestLevelTargetPicksAFreeLane(t *testing.T) {
 
 // TestLevelStopsWhenNoFreeLaneRemains pins that the call ends: with every
 // member at or above its width (a and b over it, c full) there is no free lane,
-// so the level moves nothing and returns (round.levelTo; tla/Level.tla, MovesBounded; NeverOffAFreeLane is
-// owed by card tla-level-moves-only-onto-a-free-lane).
+// so the level moves nothing and returns (round.levelTo; tla/Level.tla, MovesBounded, and NeverOffAFreeLane, which
+// lands with #127).
 func TestLevelStopsWhenNoFreeLaneRemains(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 0, 2, "a", "b")

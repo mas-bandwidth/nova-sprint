@@ -26,7 +26,7 @@ const minSamplesWithMoves = 10
 // table's level reads rarely moves anything in the walks (7 of 1000), and the
 // whole old read path is being excised; the level now moves a card only off a
 // member holding more cards than its width (64), which the walks never reach
-// (a card moves only onto a free lane; NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane), so
+// (a card moves only onto a free lane; tla/Level.tla NeverOffAFreeLane (lands with #127)), so
 // it moves nothing on the walks. Each step is still compared on every sample
 // it is run on.
 var noFloor = map[string]bool{refmodel.DutyLevelReads: true, refmodel.DutyLevel: true}

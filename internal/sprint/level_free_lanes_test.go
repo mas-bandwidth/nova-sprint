@@ -26,7 +26,7 @@ func upWidths(t *testing.T, w *world, spec ...memberWidth) {
 // member cannot start it. batman (width 4) holds one ready card it can start,
 // hetzner1 (width 16) holds eleven working cards and is below its width, so no
 // member is over its width: the level moves nothing. Under the mean rule it
-// moved batman's card to hetzner1 (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane).
+// moved batman's card to hetzner1 (tla/Level.tla NeverOffAFreeLane (lands with #127)).
 func TestTheLevelLeavesADealtCardOnAnIdleMember(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")

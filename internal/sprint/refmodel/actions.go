@@ -1143,7 +1143,7 @@ func FleetUp(s State, m string, moves map[string]string) (State, error) {
 // moves only off a member holding more work cards than its width (cards it
 // cannot start), and only onto a member with a free lane (held below its
 // width, so it starts the card at once), the newest cards first (levelRound;
-// NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane). From the spec, not yet in the model
+// tla/Level.tla NeverOffAFreeLane (lands with #127)). From the spec, not yet in the model
 // (whose FleetUp moves half of the longest queue).
 func Level(s State, moves map[string]string) (State, error) {
 	if err := free(s); err != nil {
@@ -1192,7 +1192,7 @@ func floorDiv(a, b int) int {
 // held below its Width), its newest ready cards first, round the fleet past
 // DealLast, no refuser of the card (Refusers), at a new generation, and
 // DealLast moves past each target. A member at or below its width keeps every
-// card dealt to it (NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane; the owner, 2026-10-11
+// card dealt to it (tla/Level.tla NeverOffAFreeLane (lands with #127); the owner, 2026-10-11
 // ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if there are not
 // other machines/friends ready to do that work right now!"). A card moved is
 // not moved again, so the level ends within the ready cards. It returns the

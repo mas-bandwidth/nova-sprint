@@ -308,7 +308,7 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
 The level at the start of every tick moves a ready card only off a member
 holding more work cards than its width, and only onto the next member from the
 deal's index with a free lane (docs/SPEC-SPRINT.md, the rebalance;
-NeverOffAFreeLane, owed by card tla-level-moves-only-onto-a-free-lane). A member at or below its width keeps every
+tla/Level.tla NeverOffAFreeLane (lands with #127)). A member at or below its width keeps every
 card dealt to it.
 
 - Unit, `internal/sprint/level_free_lanes_test.go`:
