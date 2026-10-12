@@ -358,9 +358,11 @@ const PartLive = "live"
 func TickLive(s *Snapshot, r TickReq) (Plan, int) { return LiveReturns(s, r.Beats, false), 0 }
 
 // TickEnd is the tick's end, once the tables are settled: what is always
-// true held, the deadlines (with the backlog alarms, alarms.go), the overdue
-// judgments (with the coordinator's pass, coordinator_pass.go), and the done
-// part last. It writes notes, no table.
+// true held, the deadlines (with the backlog alarms, alarms.go, and the needs
+// check folded into the deadlines part by TickEndWith so it runs every tick
+// without an operation of its own), the overdue judgments (with the
+// coordinator's pass, coordinator_pass.go), and the done part last. It writes
+// notes, no table.
 var TickEnd = []TickPartDef{
 	{"check", TickCheck},
 	{"deadlines", TickDeadlines},
@@ -378,8 +380,12 @@ var TickEnd = []TickPartDef{
 // runs before the rule rework, which reworks nothing the widen rule leaves to a mind.
 func TickEndWith(rules, idle bool) []TickPartDef {
 	out := append([]TickPartDef(nil), TickEnd[:2]...)
-	// the fleet's failure is a judgment, not a rule answer: raised in the deadlines part, with the
-	// rules on or off, and in no step of its own (rules.go TickFleetFailure)
+	// the fleet's failure, the harness-fleet check and the needs check are
+	// judgments, not rule answers: raised in the deadlines part, with the rules on
+	// or off, and in no step of their own (rules.go TickFleetFailure and
+	// TickHarnessFleet; TickNeeds). Folding them in keeps the end at its four
+	// operations, so a tick with nothing for them consumes no operation id (the
+	// twin's ids are deterministic and the transcripts pin them).
 	out[1].Fn = tickDeadlinesAndFleetFailure
 	if rules {
 		for _, p := range TickRules {
@@ -397,13 +403,19 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 	return append(out, TickEnd[3:]...)
 }
 
-// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure judged in it.
+// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure,
+// the harness-fleet check and the run loop's needs check judged in it: four
+// plans folded into the deadlines part, so the needs check runs every tick
+// without an operation of its own (rule (b),
+// every-need-names-a-live-card-checked-every-second).
 func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p, n := TickDeadlines(s, r)
 	q, _ := TickFleetFailure(s, r)
 	p.Notes = append(p.Notes, q.Notes...)
 	h, _ := TickHarnessFleet(s, r)
 	p.Notes = append(p.Notes, h.Notes...)
+	needs, _ := TickNeeds(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, needs.Notes...), append(p.Closes, needs.Closes...), append(p.Updates, needs.Updates...)
 	return p, n
 }
 
@@ -1588,7 +1600,10 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 	for _, v := range Check(s, nil) {
 		c := cond{typ: NInvariant, what: v.String()}
 		for _, w := range strings.FieldsFunc(v.Detail, func(x rune) bool { return strings.ContainsRune(" ,():", x) }) {
-			if pr := s.Work.Card(w); pr != nil && !contains(c.primaries, w) {
+			// a judgment's subjects are cards on the table: a need a card names
+			// that is gone is not a primary to act on, and its empty row must not
+			// overwrite the stream the card names (rule 11, a gone need)
+			if pr := s.Work.Card(w); pr != nil && pr.Placed() && !contains(c.primaries, w) {
 				c.primaries = append(c.primaries, w)
 				c.stream = pr.Row
 			}

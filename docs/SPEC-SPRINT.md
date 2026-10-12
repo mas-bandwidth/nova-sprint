@@ -2692,6 +2692,23 @@ the pre-state does not hold it. A primary is working if and only if
 it has a live work card. Nothing retries by itself. Nothing leaves review
 except by the coordinator.
 
+**The live-need rules (every-need-names-a-live-card-checked-every-second).**
+Three rules hold a need to a live card. (a) A drop, and every verb that takes a
+card off the table, of a card any unlanded card needs is refused, naming each
+dependant, unless the call says what happens to each: `drop <card> --relink <new id>`
+re-points the dependants' needs at the new card, `--waive` removes the need from
+each (recorded with the reason), or `--cascade` drops the dependants too. The
+refusal reads every unlanded state -- waiting, ready, working, review, merging --
+not only waiting primaries. (b) The tick's needs part (`TickNeeds`) reads every
+unlanded card's needs each tick, in every state, and a need naming a card that is
+absent or off the table raises one judgment, "a card needs a card that is gone",
+at once, naming the card, its state, the missing need and the two answers
+(`needs set <id> --needs <rest>`, or `drop`); it stays open and the overdue part
+repeats it at its deadline until it is answered, and it closes when the need is
+landed, waived or re-pointed. A card in merging or review with a missing need is
+answerable by `needs set` in place. (c) `accept` refuses a card whose need has
+not landed, so no card enters merging with a need that is not landed.
+
 ## 4. Order
 
 A score is given once, at admission. Work cards, read cards and the merge place
