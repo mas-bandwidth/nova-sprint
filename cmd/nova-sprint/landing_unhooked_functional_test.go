@@ -37,7 +37,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	require.NoError(t, fn.Load(context.Background(), c))
 	require.NoError(t, c.Set(context.Background(), "sprint:git_identity", config.DefaultGitIdentity, 0).Err())
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "landing-unhooked",
 		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
@@ -98,8 +98,8 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 
 	// the seat's hook lapses: its live-until passes with no prove renewing it. Arm the hook
 	// gate for the coordinator with no live hook record, as the server holds it once hooked.
-	hookTests.Store("coordinator", true)
-	defer hookTests.Delete("coordinator")
+	hookTests.Store("landing-unhooked", true)
+	defer hookTests.Delete("landing-unhooked")
 
 	// a hand land by the coordinator is refused while the seat is unhooked
 	var out, errb bytes.Buffer
