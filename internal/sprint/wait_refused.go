@@ -58,6 +58,9 @@ var WaitRefused = map[string]string{
 	NBaseRed:  "mend the base (the base-gate rule resumes the stream once its tip is green), or resume",
 	// the fleet's failure: every card failing that way reworks itself to its bound meanwhile
 	NFleetFailure: "mend its cause (the toolchain, a member, a route or a provider) and ack it; the cards rework themselves to their bound meanwhile",
+	// a harness fault repeated: the second identical one on a card, or on many cards, holds
+	// the card until the cause is mended and it is rebriefed or dropped (harness_fault.go)
+	NHarnessFault: "mend the cause (the toolchain, a route or a provider), then rebrief it, or drop it",
 }
 
 // WaitAllowedOnACard is the kinds a rework discharges on its primary (ReworkResolves) that

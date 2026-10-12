@@ -402,6 +402,8 @@ func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p, n := TickDeadlines(s, r)
 	q, _ := TickFleetFailure(s, r)
 	p.Notes = append(p.Notes, q.Notes...)
+	h, _ := TickHarnessFleet(s, r)
+	p.Notes = append(p.Notes, h.Notes...)
 	return p, n
 }
 

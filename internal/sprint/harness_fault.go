@@ -48,6 +48,32 @@ var harnessFaultClasses = []struct {
 // Its rework never goes back to the worker it ran on (ruleHarness, emptyRunLeft).
 const ClassEmptyRun = "empty run"
 
+// A harness fault is reworked on the same tier at most once per card. The second harness
+// fault of the same class on the same card, or the same harness-fault class on
+// RuleSameFailureCards cards, raises one NHarnessFault judgment to the coordinator; the card
+// waits for it and is not redealt (docs/SPEC-SPRINT.md section 8, the rules table's row
+// failed; tla/SprintRules.tla, Part "answers", HarnessFaultBounded). FieldHarnessClass is
+// the harness-fault class of the last harness-fault rework on the primary, carried by the
+// rework onto the next attempt: the next finish that fails the same class is the second, and
+// writes the judgment instead of reworking a third time. FieldHarnessAt is the attempt that
+// did, written by that finish.
+const (
+	FieldHarnessClass = "harness_class"
+	FieldHarnessAt    = "harness_at"
+)
+
+// NHarnessFault is the judgment of a harness fault that repeated: the second identical one on
+// one card, or RuleSameFailureCards cards with the same harness-fault class (the fleet's, one
+// grouped judgment). It names the class, the cards, the members and the first refusal line,
+// and offers rebrief or drop; the card waits for it and is not redealt.
+const NHarnessFault = "the same harness fault"
+
+// harnessBoundWhat is the per-card judgment of the second identical harness fault.
+func harnessBoundWhat(wcard string, attempt int, class, member, report, primary string) string {
+	return fmt.Sprintf("%s: attempts %d and %d ended on the same harness fault (%s) on %s: not reworked on the same tier a third time; rebrief it, or drop it; first refusal: %s; its history: nova-sprint log --card %s",
+		wcard, attempt-1, attempt, class, member, cutText(report, MaxProviderErrorBytes), primary)
+}
+
 // HarnessFault is the class of a failed report that is a harness fault, "" when it is none.
 func HarnessFault(report string) string {
 	for _, c := range harnessFaultClasses {
@@ -112,6 +138,24 @@ func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 			leftWhy = ", never again on friend " + f
 		}
 	}
+	// THE BOUND (HarnessFaultBounded): a harness fault is reworked on the same tier at most
+	// once per card. The second identical harness fault is never reworked again: the finish
+	// raised its NHarnessFault judgment (steps_work.go), and it is left for it. This guard is
+	// the rule's own defense where that finish did not write it.
+	if class != "" && pr.F(FieldHarnessAt) == pr.F("attempt") && pr.Int("attempt") > 1 {
+		a.Act, a.Why = ActLeft, fmt.Sprintf("attempt %s ended on a harness fault (%s), as attempt %s did: the same harness fault twice: not reworked on the same tier a third time; the harness-fault judgment holds it", pr.F("attempt"), class, itoa(pr.Int("attempt")-1))
+		a.set = leftFields(gone)
+		return true
+	}
+	// THE FLEET'S GROUPED JUDGMENT (HarnessFaultBounded): the same harness-fault class on
+	// RuleSameFailureCards cards within HarnessFaultWindow raised one grouped NHarnessFault
+	// judgment (TickHarnessFleet), which names this card as a primary. The card waits for the
+	// judgment and is never reworked again, whatever attempt it is on.
+	if class != "" && harnessHeld(s, pr.ID) {
+		a.Act, a.Why = ActLeft, fmt.Sprintf("the same harness fault (%s) on the fleet: the grouped harness-fault judgment holds %s, never a redeal", class, pr.ID)
+		a.set = leftFields(gone)
+		return true
+	}
 	if pr.F(FieldBriefDefect) != "" {
 		a.Act, a.Why = ActLeft, mindCard(pr)+leftWhy
 		a.set = leftFields(gone)
@@ -123,15 +167,16 @@ func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 		return true
 	}
 	a.Act = ActRework
+	a.set = leftFields(gone)
 	if class == "" {
 		a.fix = cutText(report, MaxCardTextBytes)
 		a.Why = fmt.Sprintf("attempt %s held with findings: they are the fix, on the same tier", pr.F("attempt"))
 	} else {
 		a.fix = HarnessFix(pr.F("attempt"), class, report)
 		a.Why = fmt.Sprintf("attempt %s ended on a harness fault (%s): the failure is the fix, on the same tier", pr.F("attempt"), class)
+		a.set[FieldHarnessClass] = class // this rework is the first of the class: the next same class is the second
 	}
 	a.Why += leftWhy
-	a.set = leftFields(gone)
 	a.set[FieldNote] = cutText(RuleSaid(RuleFailed, a.Act+": "+a.Why), MaxCardTextBytes)
 	return true
 }
@@ -143,6 +188,18 @@ func leftFields(gone string) map[string]string {
 		return map[string]string{}
 	}
 	return map[string]string{FieldFriendsLeft: gone}
+}
+
+// harnessHeld says an open NHarnessFault judgment names the card as a primary: the second
+// identical harness fault on it (the finish wrote the judgment, steps_work.go), or the fleet's
+// grouped one (TickHarnessFleet). The card waits for it and is not reworked again.
+func harnessHeld(s *Snapshot, id string) bool {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NHarnessFault && o.Subject() == id {
+			return true
+		}
+	}
+	return false
 }
 
 // emptyRunFriend is the friend whose lane ran the work card wc empty, which the primary pr
