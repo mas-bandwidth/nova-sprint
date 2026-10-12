@@ -3076,4 +3076,19 @@
       dev is behind counts and never by fabricating a landing in non-test code; the bare merge's exit-2
       refusal and the pushed landing checks are kept. TestTheDirtyTickDriveOnAStore is green: 1,200
       cards land, dev is behind is raised, and the coordinator promotes."
-     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")))
+     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")
+   (fix "the-reference-model-reads-past-consumer-fields" :release "v1.2.14" :status "planned"
+    :title "The reference model's comparisons read past the store's consumer records"
+    :text "recordConsumerTransitions (plan.go) now passes every plan through the store's consumer
+     bookkeeping (sprint.FieldConsumerPrefix), so ask and presence plans carry extra consumer fields
+     and presence an extra set move. The reference model does not decide that bookkeeping, so the
+     refmodel tests' brief (internal/sprint/refmodel/decide_test.go) states a move without the
+     consumer fields, as render_log.go's SplitConsumers does, and leaves out a set move that has only
+     consumer fields; the expected moves are not widened to include them. TestAPlanOfOnlyConsumerFieldsComparesEqual
+     holds that a plan of only consumer fields compares equal to the same plan without them, and
+     TestAPlanWithARealFieldDifferenceStillFails that a real field difference still fails. The three
+     tests the carry turned red are green: TestPresenceTakesAMemberDownAndDealsItsCards,
+     TestAskAsksTheReadersOfAPrimaryInReview and TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded."
+    :origin "this card, the-reference-model-reads-past-consumer-fields.w1, from the coordinator, 2026-10-12
+     ~07:20Z (a bisect of the red unit tier on nova-sprint main: first bad 0aa5df9e,
+     a-card-carries-its-consumer-history); checked against nova-sprint sprint/v1214-blocker")))

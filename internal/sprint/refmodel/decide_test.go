@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // brief is a move as one short line: what it does to which card or judgment,
@@ -67,6 +68,55 @@ func withoutConsumers(set []string) []string {
 		out = append(out, kv)
 	}
 	return out
+}
+
+// planSets is a plan of one change setting fields on a work card, the shape the
+// store's consumer record rides on (sprint.Applied, plan.go).
+func planSets(id string, set map[string]string) sprint.Plan {
+	return sprint.Plan{Units: []sprint.Unit{{Changes: []sprint.Change{{
+		Table: sprint.Work,
+		Entry: ntable.BatchMemberEntry{ID: id, Set: set},
+	}}}}}
+}
+
+// The store writes a consumer record on every card a plan touches
+// (recordConsumerTransitions, plan.go; sprint.FieldConsumerPrefix). It is
+// bookkeeping the reference does not decide, so brief reads past it: a plan of
+// only consumer fields compares equal to the same plan with none.
+func TestAPlanOfOnlyConsumerFieldsComparesEqual(t *testing.T) {
+	t.Parallel()
+	snap := consumerSnapshot(t)
+	record := consumerRecord("s1-1")
+	only := refmodel.PlanMoves(refmodel.DutyPresence, snap, planSets("s1-1", map[string]string{record: "..."}))
+	require.NotEmpty(t, only, "the fixture: a plan setting a field makes a move")
+	assert.Equal(t, briefs(refmodel.PlanMoves(refmodel.DutyPresence, snap, sprint.Plan{})), briefs(only),
+		"a plan of only the store's consumer record is the plan without it")
+}
+
+// A field the reference does decide is not read past: a plan whose set differs
+// in a real field still differs, with the consumer record left out of the line.
+func TestAPlanWithARealFieldDifferenceStillFails(t *testing.T) {
+	t.Parallel()
+	snap := consumerSnapshot(t)
+	record := consumerRecord("s1-1")
+	only := refmodel.PlanMoves(refmodel.DutyPresence, snap, planSets("s1-1", map[string]string{record: "..."}))
+	real := refmodel.PlanMoves(refmodel.DutyPresence, snap, planSets("s1-1", map[string]string{record: "...", "asked": "reader-a"}))
+	assert.NotEqual(t, briefs(only), briefs(real), "a real field the plan sets still differs")
+	assert.Contains(t, briefs(real), "set work s1-1 asked=reader-a",
+		"the real field is stated and the consumer record is not")
+}
+
+// consumerSnapshot is a snapshot of one member and one ready primary.
+func consumerSnapshot(t *testing.T) *sprint.Snapshot {
+	t.Helper()
+	w := sprintOf(t, "m1")
+	w.add(t, "s1", 1)
+	return w.s
+}
+
+// consumerRecord is a consumer record as the store writes it on a card.
+func consumerRecord(id string) string {
+	return sprint.FieldConsumerPrefix + `0:` + id + `.w1#g2={"key":"` + id + `.w1#g2","epoch":0,"kind":"work","who":"m1"}`
 }
 
 // expect fails the test unless the moves are exactly the lines, in canonical
