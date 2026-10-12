@@ -279,6 +279,10 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 		l.prose = map[string][]string{}
 	}
 	l.prose[stream] = sprint.StreamProse(s, stream)
+	if l.trunks == nil {
+		l.trunks = map[string]string{}
+	}
+	l.trunks[stream] = sprint.Trunk(s, stream)
 	queue := landQueue(s, stream)
 	if len(queue) == 0 {
 		return refused("nothing queued to merge in stream " + stream + "; run: nova-sprint queue --stream " + stream)
@@ -432,9 +436,6 @@ type laneEvent struct {
 // each one atomic step on one base; BaseAdvancesGated, NoHeadOfLine). failed says a push
 // landed and its report did not.
 func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (failed bool) {
-	// the sprint's base, read once for the pass: the trunk a stream branch behind two
-	// trunks follows (followTrunk); the forks copy it
-	l.sprintBase = sprint.SprintBase(s)
 	queues := map[string][]landCard{}
 	var streams []string
 	for _, name := range order {
@@ -674,8 +675,17 @@ func (l *lander) ensureStreamBranch(ctx context.Context, s *sprint.Snapshot, clo
 	if base != sprint.StreamBranch(s, stream) {
 		return "" // the card names no stream branch: nothing to make
 	}
-	if out, err := l.git(ctx, clone, "rev-parse", "--verify", "refs/remotes/origin/"+base+"^{commit}"); err == nil && strings.TrimSpace(out) != "" {
+	// origin is asked, not the clone: the kept clone is --single-branch, so a stream branch
+	// origin holds has no remote-tracking ref here until something fetches it, and reading
+	// the ref alone took every existing stream branch for absent on the first land after a
+	// fresh clone: the trunk's tip was pushed over it (a silent fast-forward when the branch
+	// was behind, a rejected push and a held stream when it had commits of its own). One
+	// fetch of the branch by name answers both: it exists (and is now fetched), or origin
+	// says it does not (notOnOrigin) and it is made below.
+	if _, err := l.fetched(ctx, clone, "fetch", "--no-tags", "origin", "+refs/heads/"+base+":refs/remotes/origin/"+base); err == nil {
 		return "" // origin holds it already
+	} else if !containsAny(err.Error(), notOnOrigin) {
+		return "the stream branch " + base + " could not be fetched to see whether origin holds it: " + firstLine("", err)
 	}
 	trunk := sprint.Trunk(s, stream)
 	if _, err := l.fetched(ctx, clone, "fetch", "--no-tags", "origin", "+refs/heads/"+trunk+":refs/remotes/origin/"+trunk); err != nil {

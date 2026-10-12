@@ -3335,21 +3335,24 @@
      card staged on the newer trunk then carries the trunk's commits relative to the stream branch, and the
      lander's scope check counted their files as the card's (E12: changes files outside its PATHS), refusing
      correct heads; the seat fast-forwarded five stream branches by hand in one night. The rule: a stream
-     branch with no commits of its own is its trunk. Before the batch is cut (cmd/nova-sprint/land.go, cut,
-     followTrunk), the lander measures the fetched tip of the base against each trunk origin holds
-     (sprint.ProtectedBranches, all fetched first; a trunk origin lacks is skipped). A tip that EQUALS any
-     trunk's tip is level with that trunk and is never moved, whatever another trunk holds beyond it: a
-     branch level with main is not fast-forwarded to a dev that is main and more, which would import dev
-     into a stream cut on main (a cold reader's fixture against the first cut of this fix, which skipped
-     only the equal trunk and went on to dev). Otherwise, when the tip is a strict ancestor of a trunk, the
-     branch has nothing that trunk lacks, and it is pushed to the trunk's tip with a plain push, which git
+     branch with no commits of its own is its trunk. The trunk is the one the stream's control card
+     records (sprint.Trunk, written by the first add from its cards' bases: main when one names main, else
+     dev; read in openStream), never a guess among the protected branches: the first cut of this fix guessed
+     among dev and main and fast-forwarded a branch level with main to a dev that was main and more,
+     importing dev into a stream cut on main (a cold reader's fixture). Before the batch is cut
+     (cmd/nova-sprint/land.go, cut, followTrunk), the lander measures the fetched tip of the base against
+     the trunk's: equal, the branch is level with its trunk and is never moved; a strict ancestor, the
+     branch has nothing the trunk lacks, and it is pushed to the trunk's tip with a plain push, which git
      takes only as a fast-forward (never --force), so a branch that moved under the lander is left as it is
-     and the batch cuts from the tip the fetch found. When it is a strict ancestor of more than one trunk,
-     the trunk the sprint's base names (set --base, sprint.SprintBase, read once a pass) is its trunk; with
-     none named, the nearer (fewer commits ahead): a branch cut from main follows main, not a dev that is
-     main and more. A branch with a commit of its own or a trunk itself is never moved; a dry run never
-     reaches the cut. The follow is said on one NOTE line under the batch's line, landed or refused, naming
-     the branch, the trunk, its tip and how far behind the branch was, and its time counts as fetch time.
+     and the batch cuts from the tip the fetch found. A branch with a commit of its own, a trunk itself, or
+     a trunk origin does not hold: never moved; a dry run never reaches the cut. The follow is said on one
+     NOTE line under the batch's line, landed or refused, naming the branch, the trunk, its tip and how far
+     behind the branch was, and its time counts as fetch time. Beside it, ensureStreamBranch (which makes
+     a stream branch origin lacks from the trunk) now asks origin whether the branch exists by fetching it
+     by name: the kept clone is --single-branch, and reading its remote-tracking ref alone took every
+     existing stream branch for absent on the first land after a fresh clone, pushing the trunk's tip over
+     it (a silent fast-forward when behind, a rejected push and a held stream when it had commits of its
+     own).
      Tests (cmd/nova-sprint/stream_branch_follow_test.go, on a real git remote):
      TestAnEmptyStreamBranchFollowsItsTrunkBeforeTheFirstLand (the stream branch cut from main, main
      moved three commits, a card staged on the new main touching only its PATHS lands on the followed
