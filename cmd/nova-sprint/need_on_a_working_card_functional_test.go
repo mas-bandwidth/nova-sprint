@@ -4,14 +4,10 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,15 +17,12 @@ import (
 // attempt is legal until it ends. The brief verb and rule 11 agree: the card
 // names the state ("working, waits for <need> after this attempt"), check raises
 // no rule-11 violation, the attempt finishes, and the card then waits for the
-// need. The store is the test's own redis, named with --redis on every verb, and
-// the app reads no variable of the process environment (HOME and
-// XDG_CONFIG_HOME are the test's temporary directories).
+// need. The store is the test's own twin, named with --redis on every verb (no
+// server is started), and the app reads no variable of the process environment
+// (HOME and XDG_CONFIG_HOME are the test's temporary directories).
 func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	t.Parallel()
-	addr := testutil.Start(t)
-	c := redis.NewClient(&redis.Options{Addr: addr})
-	defer c.Close()
-	require.NoError(t, fn.Load(context.Background(), c))
+	addr := "mem:" + filepath.Join(t.TempDir(), "sprint.twin")
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_ACTOR": "coordinator", "HOME": home, "XDG_CONFIG_HOME": t.TempDir()}
 	a := newApp(func(k string) string { return env[k] })
@@ -52,6 +45,8 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	run("tick") // the fleet update brings m1 up
 	run("tick") // the pump deals to it
 	require.Contains(t, run("card", "work"), "working", "work must be dealt before the need is added")
+	// the member takes the attempt before the need is added: it keeps this attempt
+	run("take", "--as", "m1", "work.w1@1", "--epoch", "0")
 
 	// the coordinator adds DEPENDS-ON: dep to the working card with brief --brief-file.
 	// The body changes too, so the edit is an in-place brief, as the working card's is.
@@ -62,13 +57,15 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	assert.Contains(t, out, "brief edited in place", "a working card takes the brief for its next attempt")
 	assert.Contains(t, out, "working, waits for dep after this attempt", "the brief names the state")
 
-	// no invariant judgment: check stays OK, and the state is named on the card
+	// the change drains at the next tick; check raises no rule-11 violation and the
+	// card still names its state, because its attempt is legal until it ends
+	run("tick")
 	assert.Contains(t, run("check"), "CHECK OK", "a need added to a working card is not a broken invariant")
 	assert.Contains(t, run("card", "work"), "working, waits for dep after this attempt")
 
-	// the attempt finishes; the card then waits for the need
-	run("take", "--as", "m1", "--limit", "100")
-	run("finish", "--as", "m1", "work.w1@1", "--report", "done")
+	// the attempt finishes; the tick drains it and the card then waits for the need
+	run("finish", "--as", "m1", "work.w1@1", "--epoch", "0", "--report", "done")
+	run("tick")
 	pr := run("card", "work")
 	assert.Contains(t, pr, "waiting", "the card waits for the need once its attempt ends")
 	assert.Contains(t, pr, "dep", "it waits for dep")

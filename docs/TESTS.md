@@ -279,11 +279,12 @@ ends (docs/SPEC-SPRINT.md section 9, rule 11).
 
 - Functional (`-tags functional`),
   `cmd/nova-sprint/need_on_a_working_card_functional_test.go`:
-  `TestANeedAddedToAWorkingCardIsNotABrokenInvariant` (a card dealt to `m1`,
-  then `brief --brief-file` adds `DEPENDS-ON: dep` to the working card, on the
-  test's own redis with `--redis` on every verb, HOME and XDG_CONFIG_HOME the
-  test's own: `check` raises no rule-11 violation, the card names the state,
-  the finish moves it to waiting for `dep`, and `check` stays OK).
+  `TestANeedAddedToAWorkingCardIsNotABrokenInvariant` (a card dealt to `m1` and
+  taken, then `brief --brief-file` adds `DEPENDS-ON: dep` to the working card,
+  on the test's own twin file with `--redis mem:<file>` on every verb, no server
+  started, HOME and XDG_CONFIG_HOME the test's own: a tick drains the brief and
+  `check` raises no rule-11 violation, the card names the state, the finish moves
+  it to waiting for `dep`, and `check` stays OK).
 
 
 ### One definition of what a PATHS entry covers (v1.2.13)
