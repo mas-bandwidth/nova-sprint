@@ -120,7 +120,6 @@ func (s Step) SkipReason(goos string, have func(string) bool) string {
 // are the document's own bugs and are returned as errors rather than skipped: a
 // skipped line is exactly the abridgement this harness exists to catch.
 func Steps(tool string, lines []string) ([]Step, error) {
-	toolWords := strings.Fields(tool)
 	var steps []Step
 	for _, line := range lines {
 		cmd, isCommand := strings.CutPrefix(line, "$ ")
@@ -147,11 +146,11 @@ func Steps(tool string, lines []string) ([]Step, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot split the transcript line %q: %w", line, err)
 		}
-		if len(args) < len(toolWords) || !slices.Equal(args[:len(toolWords)], toolWords) {
+		if len(args) == 0 || args[0] != tool {
 			return nil, fmt.Errorf("the transcript line %q is not a %s command", line, tool)
 		}
 		steps = append(steps, Step{
-			Line: line, Args: args[len(toolWords):], Stdin: stdin,
+			Line: line, Args: args[1:], Stdin: stdin,
 			Platforms: decl.platforms, Requires: decl.requires, StderrWhole: decl.stderrWhole,
 		})
 	}

@@ -12,7 +12,7 @@ package swarm
 //     (pulse/cut.go at 27c9ffc66, and the example at
 //     that page, line 4);
 //   - `lint --card`'s `result-first` wanted `RESULT: ` -- with one
-//     (WORKER-CARDS.md practice 1, now in the retired reference repository, and docs/SPEC-SWARM.md:969,976);
+//     (WORKER-CARDS.md practice 1, now in the nova-work-old repository, and docs/SPEC-SWARM.md:969,976);
 //   - `gather` compares line 1 to line 1 and imposes no prefix of its own, so it follows
 //     whichever the other two settle on (pulse/harvest.go at 27c9ffc66, classifyResult).
 //

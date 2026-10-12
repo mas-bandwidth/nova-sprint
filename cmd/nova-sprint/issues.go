@@ -9,3 +9,13 @@
 // The per-verb dispatch lives in issues_import.go, issues_verify.go and
 // issues_roadmap.go.
 package main
+
+// init registers the issues group: the verbs are reads (they change nothing on
+// the sprint) and are exempt from the hook gate, like the other folded-in tools,
+// so they run without holding the seat.
+func init() {
+	for _, name := range []string{"issues import", "issues verify", "issues roadmap"} {
+		verbClasses[name] = classRead
+		hookExempt[name] = true
+	}
+}

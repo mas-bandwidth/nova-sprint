@@ -199,8 +199,8 @@ func headingVerb(line string) (string, bool) {
 // false when the line declares nothing at all.
 func declaredVerb(line string) (tool, verb string, ok bool) {
 	// A pasted help block puts the description in a second column, and the gap
-	// is what separates them: `nova-check ask            delivers ONE unit to
-	// the FRIEND who owns it` is the verb `ask`, while `nova-check plan check
+	// is what separates them: `nova-work ask            delivers ONE unit to
+	// the FRIEND who owns it` is the verb `ask`, while `nova-work plan check
 	// --file <path>` is the verb `plan check`. Two spaces or more end the
 	// command; one gap never does.
 	fields := strings.Fields(command(strings.TrimSpace(line)))
@@ -217,7 +217,7 @@ func declaredVerb(line string) (tool, verb string, ok bool) {
 		return "", "", false
 	}
 	// `<tool> is ...` is a sentence about the tool (a banner's stage line:
-	// "nova-check is pre-alpha: not ready for production use."), never a
+	// "nova-work is pre-alpha: not ready for production use."), never a
 	// command: no tool has a verb named is.
 	if len(fields) > 1 && fields[1] == "is" {
 		return "", "", false

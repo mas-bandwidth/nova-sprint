@@ -53,11 +53,13 @@ func TestTESTSFirstRunIsWhatTheToolPrints(t *testing.T) {
 	raw := testkit.ReadFile(t, filepath.Join("..", "..", "docs", "TESTS.md"))
 	lines, err := onboarding.FirstRun(raw, "nova-sprint issues")
 	require.NoError(t, err)
-	steps, err := onboarding.Steps("nova-sprint issues", lines)
+	// Steps matches a single-word tool name, so hand it the app's first word and
+	// keep the group's "issues" as the first argument of every step.
+	steps, err := onboarding.Steps("nova-sprint", lines)
 	require.NoError(t, err)
 	var commands []string
 	for _, s := range steps {
-		commands = append(commands, "nova-sprint issues "+strings.Join(s.Args, " "))
+		commands = append(commands, "nova-sprint "+strings.Join(s.Args, " "))
 	}
 	require.Equal(t, strings.Join(documentedExamples, "\n"), strings.Join(commands, "\n"), "the transcript runs %q and the banner's examples are %q; they are one list", commands, documentedExamples)
 
@@ -71,7 +73,8 @@ func TestTESTSFirstRunIsWhatTheToolPrints(t *testing.T) {
 			args = append(args, stand.Replace(a))
 		}
 		// Each line is its own conversation with GitHub, from the recording's first call.
-		res := workMain(recorded(t, filepath.Join(dir, "gh"))).Run(args...)
+		// args[0] is the group's "issues" word; the sub-tool's verbs follow it.
+		res := workMain(recorded(t, filepath.Join(dir, "gh"))).Run(args[1:]...)
 		assert.Equal(t, 0, res.Code, "the documented command %s exits %d; stderr: %s", s.Line, res.Code, res.Stderr)
 		got = append(got, onboarding.Result{Code: res.Code, Stdout: res.Stdout, Stderr: res.Stderr})
 	}

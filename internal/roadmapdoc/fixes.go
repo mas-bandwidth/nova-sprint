@@ -25,7 +25,7 @@ const FixesFormat = "v1"
 // Every fix names a release the file declares, and every release holds a fix. A
 // fix's status is planned, in-progress, done (landed, with its evidence in its
 // text, before its release is cut) or shipped; a release's is planned,
-// in-progress or shipped. nova-sprint issues roadmap edits the file (internal/roadmap);
+// in-progress or shipped. nova-work roadmap edits the file (internal/roadmap);
 // :kept is as in the roadmap (the fields a move carried), and is not rendered.
 
 // Fixes is a decoded fixes file.

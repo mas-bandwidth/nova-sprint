@@ -320,7 +320,7 @@ func TestCheckNamesAStalePageAndATornId(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, FixesPage), []byte("hand edited\n"), 0o644))
 	probs, err := Check(dir)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"FIXES.md differs from what its data renders; run: nova-sprint issues roadmap render"}, probs)
+	assert.Equal(t, []string{"FIXES.md differs from what its data renders; run: nova-work roadmap render"}, probs)
 	changed, err := Render(dir)
 	require.NoError(t, err)
 	assert.Equal(t, []string{FixesPage}, changed)
