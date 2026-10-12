@@ -390,7 +390,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		for _, pr := range s.Work.Column(Review) {
 			attempt := max(pr.Int("attempt"), 1)
 			var lost []string
-			for _, c := range s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+".") {
+			for _, c := range s.Fleet.WithPrefix(pr.ID + ".r" + itoa(attempt) + ".") {
 				if isRead(c) && c.F("retired_by") == RetiredByLost {
 					lost = append(lost, c.ID+" on "+orDash(c.F("reader"))+" ("+orDash(c.F("lost_reason"))+")")
 				}
