@@ -108,15 +108,19 @@ type proposal struct {
 	item, path string
 }
 
-// proposals is every item of the first PATHS-PROPOSED line of report, in the order written
+// proposals is every item of the last PATHS-PROPOSED line of report, in the order written
 // (docs/SPEC-CARD-CONTRACT.md section 4): the line runs to its end, each comma-separated item
 // is a path up to its first whitespace, dash or semicolon and the rest of the item is the
-// writer's reason, read as prose and ignored. ok is false when report has no such line.
+// writer's reason, read as prose and ignored. The last line, not the first: a report cut to
+// a cap may hold a fragment of the line, and the whole line the finish carries is appended
+// after it (member.CarryProposed), so the last one is the whole one. ok is false when
+// report has no such line.
 func proposals(report string) (ps []proposal, ok bool) {
-	_, rest, ok := strings.Cut(report, member.ProposedKey)
-	if !ok {
+	i := strings.LastIndex(report, member.ProposedKey)
+	if i < 0 {
 		return nil, false
 	}
+	rest := report[i+len(member.ProposedKey):]
 	rest, _, _ = strings.Cut(rest, "\n")
 	for _, item := range strings.Split(rest, ",") {
 		if item = strings.TrimSpace(item); item == "" {

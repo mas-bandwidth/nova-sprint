@@ -252,6 +252,13 @@ func (a *app) branchTip(ctx context.Context, repo, branch string) (string, error
 func friendFinish(ctx context.Context, name string, p sprint.Packet, report string, tip tipFn) (sprint.FinishReq, error) {
 	verdict, head, para := friendReportOf(report)
 	para = oneline.Cap(para, maxFriendReport)
+	// The cap above may have cut the report's PATHS-PROPOSED line, which by its nature names
+	// paths. The cut tail is dropped here and the whole line is carried once below, so no
+	// reader (brief --widen, the paths rule) meets a path cut mid-word
+	// (docs/SPEC-SPRINT.md section 2, "recut-widen-r.w1").
+	if i := strings.Index(para, member.ProposedKey); i >= 0 {
+		para = strings.TrimRight(para[:i], " \t;")
+	}
 	row := sprint.FriendRow(name)
 	r := sprint.FinishReq{Sel: sprint.Sel{IDs: []string{p.Card}}, As: row, Gens: map[string]int{p.Card: p.Gen}, Branch: p.Branch, Who: row}
 	if verdict == VerdictLand {

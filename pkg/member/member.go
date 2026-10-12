@@ -2057,16 +2057,20 @@ func finishReport(r Result, pu Push, branch string) (fin Finish, why, report str
 // (docs/SPEC-CARD-CONTRACT.md section 4, "recut-widen-r.w1"): PATHS-PROPOSED: <glob>[,<glob>...].
 const ProposedKey = "PATHS-PROPOSED:"
 
-// PathsProposed is the globs of the first PATHS-PROPOSED line in text, read to the end of its
+// PathsProposed is the globs of the last PATHS-PROPOSED line in text, read to the end of its
 // line or a ";", empty ones left out: the paths alone, read before any prose on that line.
 // Each comma-separated item is its first word, trimmed of quotes, emphasis and a closing
 // full stop; an item with words after its first ends the paths ("b.go, c.go because the
-// test needs it" is b.go and c.go). ok is false when text has no such line.
+// test needs it" is b.go and c.go). The last line, not the first: a report cut to a cap
+// may hold a fragment of the line, and the whole line the finish carries is appended after
+// it (CarryProposed; friendcards.go's friendFinish), so the last one is the whole one. ok
+// is false when text has no such line.
 func PathsProposed(text string) (globs []string, ok bool) {
-	_, rest, ok := strings.Cut(text, ProposedKey)
-	if !ok {
+	i := strings.LastIndex(text, ProposedKey)
+	if i < 0 {
 		return nil, false
 	}
+	rest := text[i+len(ProposedKey):]
 	rest, _, _ = strings.Cut(rest, "\n")
 	rest, _, _ = strings.Cut(rest, ";")
 	for _, item := range strings.Split(rest, ",") {
@@ -2085,18 +2089,27 @@ func PathsProposed(text string) (globs []string, ok bool) {
 }
 
 // CarryProposed is a finish's report with the child's PATHS-PROPOSED line, read from its
-// report and else its body, kept at the report's end within the 500-byte cut, so brief
-// --widen reads it off the card (docs/SPEC-SPRINT.md section 2, "recut-widen-r.w1"); the
-// report as it is when the child proposed nothing or the report holds the line already.
+// report and else its body, kept at the report's end, so brief --widen reads it off the
+// card (docs/SPEC-SPRINT.md section 2, "recut-widen-r.w1"); the report as it is when the
+// child proposed nothing. A report that already carries a (possibly cut) line has it
+// dropped: the whole line is the only one a reader meets, so the cut never cuts a path.
+// The report is cut to the 500-byte bound oneLine keeps, never the line itself: a line
+// that fills the bound is kept whole.
 func CarryProposed(report string, r Result) string {
 	globs, ok := PathsProposed(r.Report)
 	if !ok {
 		globs, ok = PathsProposed(r.Body)
 	}
-	if _, has := PathsProposed(report); !ok || has || len(globs) == 0 {
+	if !ok || len(globs) == 0 {
 		return report
 	}
-	line := cut("; " + ProposedKey + " " + strings.Join(globs, ","))
+	if i := strings.Index(report, ProposedKey); i >= 0 {
+		report = strings.TrimRight(report[:i], " \t;")
+	}
+	line := "; " + ProposedKey + " " + strings.Join(globs, ",")
+	if len(line) >= 500 {
+		return line // the line alone fills the cut: kept whole, never cut mid-path
+	}
 	return report[:min(len(report), 500-len(line))] + line
 }
 
