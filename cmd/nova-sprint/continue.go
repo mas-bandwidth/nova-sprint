@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
@@ -24,13 +23,15 @@ func init() { verbClasses["continue"] = classCoordinator }
 // place with a CARRY: line at the newest full head an attempt pushed (or the
 // --carry branch or sha), the continue note appended, its bound reset, its
 // bound and brief-defect judgments answered, and with --tier its tier
-// re-pinned. A branch --carry is resolved to its head through the card's repo
-// clone (one git ls-remote); a sha is taken as given and must be 40 hex.
+// re-pinned. A branch --carry is resolved to its head through the lander's clone
+// of the card's repository (one git ls-remote; --repo-dir for a card naming no
+// REPO: line, refused without one); a sha is taken as given and must be 40 hex.
 func (a *app) cmdContinue(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("continue")
 	note := fs.String("note", "", "the continue note appended to the brief, with the UTC time")
 	tier := fs.String("tier", "", "the tier to re-pin ("+cardhdr.RouteList+")")
 	carry := fs.String("carry", "", "the branch or sha to carry: a branch is resolved to its head; a sha must be 40 hex")
+	repoDir := fs.String("repo-dir", "", "a clone whose origin is asked for the carried branch, for a card whose brief names no REPO: line")
 	ans := fs.String("answers", "", answersWords)
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -52,7 +53,7 @@ func (a *app) cmdContinue(args []string, stdout, stderr io.Writer) int {
 	}
 	head := *carry
 	if head != "" && !typedrec.IsFullSha(head) {
-		// a branch: resolve it to its head through the card's repo clone
+		// a branch: resolve it to its head through the lander's clone of the card's repository
 		ctx := context.Background()
 		load, err := st.Load(ctx, []string{sprint.Work}, nil)
 		if err != nil {
@@ -62,23 +63,32 @@ func (a *app) cmdContinue(args []string, stdout, stderr io.Writer) int {
 		if pr == nil {
 			return refuse(stderr, "continue", "no primary "+id+" on the work table; nothing was changed")
 		}
-		remote := swarm.ReadCardBase([]byte(pr.F("brief"))).Repo
-		if remote == "" {
-			remote = "origin"
+		repo := swarm.ReadCardBase([]byte(pr.F("brief"))).Repo
+		l := &lander{a: a, repoDir: *repoDir}
+		var dir, why string
+		if repo != "" {
+			dir, why = l.clone(ctx, repo)
+		} else if *repoDir != "" {
+			dir = *repoDir
+		} else {
+			return refuse(stderr, "continue", id+" names no REPO: line and no --repo-dir was given; nothing was changed; run: nova-sprint continue "+id+" --carry "+oneline.Escape(head)+" --repo-dir <clone>")
 		}
-		res, err := gitrun.Run(ctx, gitrun.Options{Env: a.gitEnv}, "ls-remote", "--heads", "--", remote, "refs/heads/"+head)
+		if why != "" {
+			return refuse(stderr, "continue", "the lander's clone of "+oneline.Escape(repo)+" could not be had: "+oneline.Escape(why)+"; nothing was changed")
+		}
+		out, err := l.git(ctx, dir, "ls-remote", "--heads", "origin", "refs/heads/"+head)
 		if err != nil {
-			return refuse(stderr, "continue", "origin "+oneline.Escape(remote)+" could not be asked for "+oneline.Escape(head)+": "+oneline.Escape(strings.TrimSpace(string(res.Stderr)+" "+err.Error()))+"; nothing was changed")
+			return refuse(stderr, "continue", "origin "+oneline.Escape(repo)+" could not be asked for "+oneline.Escape(head)+": "+oneline.Escape(err.Error())+"; nothing was changed")
 		}
 		var sh string
-		for _, l := range strings.Split(string(res.Stdout), "\n") {
-			if got, ref, ok := strings.Cut(l, "\t"); ok && strings.TrimSpace(ref) == "refs/heads/"+head {
+		for _, line := range strings.Split(out, "\n") {
+			if got, ref, ok := strings.Cut(line, "\t"); ok && strings.TrimSpace(ref) == "refs/heads/"+head {
 				sh = strings.TrimSpace(got)
 				break
 			}
 		}
 		if sh == "" || !typedrec.IsFullSha(sh) {
-			return refuse(stderr, "continue", "no branch "+oneline.Escape(head)+" on origin "+oneline.Escape(remote)+"; nothing was changed")
+			return refuse(stderr, "continue", "no branch "+oneline.Escape(head)+" on origin "+oneline.Escape(repo)+"; nothing was changed")
 		}
 		head = sh
 	}

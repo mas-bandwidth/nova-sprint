@@ -239,7 +239,8 @@ stand)`) and a new task resets it (`bound: new task (count reset)`).
 and reached its brief's bound, without judging it wrong and without starting over: it
 edits the card's brief in place, a `CARRY: <card> attempt <n> head=<sha>` line at the
 newest full head any attempt pushed (or the `--carry <branch|sha>` head, a branch
-resolved to its head through the card's repo clone) written in its header, the
+resolved to its head through the lander's clone of the card's repository, `--repo-dir` for a card
+naming no `REPO:` line) written in its header, the
 continue note appended with the UTC time, its bound reset, every open bound and brief-defect
 judgment answered, and with `--tier` its tier re-pinned in the same step. A card
 in review goes back to ready, its open reads retired, its next attempt staged from
