@@ -3160,6 +3160,11 @@ func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer,
 	return refuse(stderr, verbName, joinWhy(refused))
 }
 
+// tier is the coordinator's alone, as brief --tier is (docs/SPEC-SPRINT.md
+// section 11, who may run each verb): without a class, needsActor and the
+// coordinator gate (coordinator.go) would let any actor re-tier a card.
+func init() { verbClasses["tier"] = classCoordinator }
+
 // cmdTier re-tiers one primary (nova-sprint tier <card> --set <t> --reason): the
 // tier every later deal and read draws its route from (sprint.Brief, briefTier),
 // without a text edit. A TLA path at a tier below frontier is refused, as the
