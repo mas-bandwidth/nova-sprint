@@ -43,6 +43,18 @@ real server and the server's own `unknown` (a caller gone before its verb ran, t
 path) over the real store and the server's entry point, and the store's typed `unknown` paths are
 covered by the table test over the typed paths.
 
+`TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo` (`internal/sprint/mirror_need_test.go`)
+pins the mirror need at both moments the sprint knows a repository is needed. It admits a card
+whose `REPO:` names a repository no member carries and checks the plan prints the `MIRROR <repo> needed on <members>` line and records the repository on the stream's control card; then it
+records a staging take whose error is `no bench mirror for <url>` for a second repository from
+one member and checks the tick keeps one need for that repository, names that member, raises
+exactly one judgment, and never redeals a card of that repository to the member that lacks the
+mirror while another member is free. `TestMirrorNeedFromAStagingRefusal`,
+`TestMirrorNeedEndsAfterAnOk` and `TestMirrorNeedEndsPastTheWindow` (same file) pin the need's
+derivation, its end after an ok finish and its lapse past `StagingMirrorWindow`. No test runs
+`ssh` or `git push` from inside nova-sprint: the need is a line and a judgment, and the fleet's
+own mirror refresh serves it.
+
 ### First run
 
 ```text

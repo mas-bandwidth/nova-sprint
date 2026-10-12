@@ -9,11 +9,36 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
+
+// mirrorNotice adds add's MIRROR line to the step's plan: for each repository the admitted
+// briefs name, the members that lack its bench mirror (sprint.MirrorNotice). The repository
+// is recorded on the stream's control card by sprint.Add (FieldRepo); the line is what
+// tells the seat to run the fleet's mirror refresh for it (docs/SPEC-SPRINT.md, the mirror
+// need). A refused add says nothing: no card was admitted, so no repository is needed.
+func mirrorNotice(step store.Step, rs []sprint.AddReq) store.Step {
+	plan := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		p := plan(s)
+		if len(p.Refused) > 0 {
+			return p
+		}
+		var repos []string
+		for _, r := range rs {
+			if r.Repo != "" {
+				repos = append(repos, r.Repo)
+			}
+		}
+		p.Said = append(p.Said, sprint.MirrorNotice(s, repos)...)
+		return p
+	}
+	return step
+}
 
 // holdPathsAdmit holds each brief that names PATHS, REPO and BASE to the admission check
 // (sprint.PathsAdmission; docs/SPEC-CARD-CONTRACT.md, what admission verifies). The tree

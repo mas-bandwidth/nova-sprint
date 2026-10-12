@@ -1876,6 +1876,26 @@ member is left the no-launcher judgment (noLauncher) says so with that why,
 and a later ok finish by that member of a card of it ends the refusal at once
 (mirrorRefusals, staging_repo.go); tla/CardContract.tla, StageRefused
 and Restage), ok (set
+
+**The mirror need** (mirror_need.go). A repository that a card names and no
+member carries, or that a member refused at staging for want of a bench mirror
+(`no bench mirror for <url>`, mirrorRefusals), is a need of the fleet: one row
+per repository, the members that lack it and when it was raised (`MirrorNeed`,
+`mirrorNeeds`). `add` records the repository on its stream's control card
+(`FieldRepo`, by `sprint.Add`) and prints one `MIRROR <repo> needed on <members>`
+line per repository it admits (sprint.MirrorNotice; cmd/nova-sprint/add.go), so
+the seat asks for the mirror the moment the sprint knows the repository is
+needed. The tick keeps the need while it is not served within its bound (the
+refusal's `StagingMirrorWindow`, one hour, or until a member finishes a card of
+the repository ok) and raises one judgment per repository, `NMirrorNeed`, naming
+the members that lack it; the judgment's remedy is the fleet's own mirror refresh
+for that repository (`nova-swarm mirror`, the card
+every-bench-carries-every-mirror-a-card-can-name), run on the coordinator
+machine, which holds the credentials. A card of a repository a member lacks is
+not redealt to that member while another member that has it is free
+(stagingRepoWhy, `notLaunching`, `launchersOf`). nova-sprint runs no ssh and no
+`git push` for it: the need is a line and a judgment, and the fleet's loop serves
+it.
 only when finished), head, report. It takes its primary's score. The primary
 names its live work card.
 
