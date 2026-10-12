@@ -2914,9 +2914,11 @@ func (a *app) cmdAccept(args []string, stdout, stderr io.Writer) int {
 
 func (a *app) cmdRework(args []string, stdout, stderr io.Writer) int {
 	var fix, ans, tier *string
+	var carry *bool
 	return a.setVerb("rework", args, stdout, stderr, false, func(fs flagSet) {
 		fix = fs.String("fix", "", "the fix for every primary; without it each takes its own: the finding of its broken read, or the report of its failed work; the next attempt is staged at the tip of the card's base branch, the last pushed attempt's work carried on top where it applies cleanly, and where it does not the child is told that work must be redone")
 		ans = fs.String("answers", "", answersWords)
+		carry = fs.Bool("carry", false, "keep each card's brief, record its latest pushed head as the brief's CARRY: line (the form --widen writes), reset its bound and open the next attempt staged from that head: the one verb that answers a bound judgment (a card has reached its bound) and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written")
 		tier = fs.String("tier", "", "the tier ("+cardhdr.RouteList+") this attempt and every later deal of the card draws its route from, over its brief's line 1, kept on the card: it pins the card, never escalated past it (flash first); a card whose brief pins a model is refused; at a redeal bound it never names a lower tier, and when the attempt before also ended at its bound on the card's tier the rework is refused unless it names a tier above (flash, pro, heavy, frontier) or the provider its takes failed on is back, which lifts it once per tier per card")
 	}, func(ids []string, s *sel) string {
 		var why []string
@@ -2928,7 +2930,7 @@ func (a *app) cmdRework(args []string, stdout, stderr io.Writer) int {
 		}
 		return strings.Join(why, "; ")
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.ReworkStep(sprint.ReworkReq{Sel: s.sel(ids), Fix: *fix, Answers: answers(*ans), Tier: *tier, Who: c.actor})
+		return store.ReworkStep(sprint.ReworkReq{Sel: s.sel(ids), Fix: *fix, Answers: answers(*ans), Tier: *tier, Carry: *carry, Who: c.actor})
 	})
 }
 

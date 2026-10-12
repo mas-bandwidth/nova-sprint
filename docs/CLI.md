@@ -85,7 +85,8 @@ nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <
 # reader serves is read one tier down: the read card's tier names the strongest tier with an
 # enabled route and a reader up ("read at heavy: no frontier reader").
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
-nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--answers <note>]
+nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
+# rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
 nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>]
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]

@@ -54,7 +54,7 @@ func TestFailedWorkReachesTheAttemptCapToo(t *testing.T) {
 	assert.Contains(t, open[0].Note.What, "s1-1: brief defect after 2 attempts, nothing priced; the brief is wrong, not the worker; findings: attempt 1: r; attempt 2: r")
 	assert.Contains(t, open[0].Note.What, "nova-sprint brief s1-1 --brief-file <path>", "the finish's cap judgment names the brief command")
 	assert.Contains(t, open[0].Note.What, "nova-sprint drop s1-1 --reason '<why>'", "and the drop command")
-	assert.Equal(t, []string{"brief", "drop"}, open[0].Note.Decisions)
+	assert.Equal(t, []string{sprint.DecisionCarry, "brief", "drop"}, open[0].Note.Decisions)
 	assert.Empty(t, h.openOf(sprint.NWorkFailed))
 	h.clean("failed work at the cap")
 }

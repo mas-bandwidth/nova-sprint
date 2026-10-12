@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
@@ -29,4 +30,21 @@ func TestTheAnswerPathCannotReworkACardAtTheBriefBound(t *testing.T) {
 	first := n
 	first.Type, first.Decisions = sprint.NReadBroken, append([]string(nil), sprint.Decisions[sprint.NReadBroken]...)
 	assert.Contains(t, allowedVerbs(cardCommands(first, "s1-1")), decide.VerbRework)
+}
+
+// A bound judgment offers the carry first: the card reworked from its last pushed head, its
+// brief kept and its bound reset (rework --carry; docs/SPEC-SPRINT.md, rework), ahead of
+// brief and drop. It is no verb the automatic answer chooses, so a bound is never reset under
+// nova-decide's feet.
+func TestABoundJudgmentPrintsTheCarryLineFirst(t *testing.T) {
+	t.Parallel()
+	n := sprint.Note{ID: "j1", Kind: sprint.Judgment, Type: sprint.NBriefWrong, Stream: "s1", Card: "s1-1", Primaries: []string{"s1-1"},
+		Decisions: append([]string(nil), sprint.Decisions[sprint.NBriefWrong]...), What: "s1-1 has failed the same way twice"}
+	cmds := cardCommands(n, "s1-1")
+	require.NotEmpty(t, cmds, "the bound judgment prints decisions")
+	assert.Equal(t, sprint.DecisionCarry, cmds[0].Decision, "the carry is printed first")
+	require.NotEmpty(t, cmds[0].Lines)
+	assert.Contains(t, cmds[0].Lines[0], "nova-sprint rework", "the carrying line is a rework")
+	assert.Contains(t, cmds[0].Lines[0], "--carry", "the carrying line names --carry")
+	assert.NotContains(t, allowedVerbs(cmds), decide.VerbRework, "the answer cannot choose the carry")
 }

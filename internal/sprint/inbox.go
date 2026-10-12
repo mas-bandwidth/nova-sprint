@@ -566,6 +566,11 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, cmd+"accept"+grp+ans)
 		case d == "ask another reader":
 			add(d, cmd+"ask"+subj+" --another"+subjAns)
+		case d == DecisionCarry:
+			// a card at its bound, or one that ended on a coordination brief defect: the
+			// brief is kept, its last pushed head carried, the bound reset, the next attempt
+			// staged from that head (rework --carry; docs/SPEC-SPRINT.md)
+			add(d, cmd+"rework"+subj+" --carry --fix "+fixText+subjAns)
 		case d == "brief":
 			// the brief is wrong, not the worker (brief_bound.go): corrected in place, the card's
 			// next attempt; one card takes one file, a group of several one file a card under a
