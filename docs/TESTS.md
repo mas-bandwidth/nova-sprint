@@ -99,7 +99,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=2 op=merge-t41-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t41-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
