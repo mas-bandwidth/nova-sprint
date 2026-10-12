@@ -32,6 +32,7 @@ func TestIdenticalFailureEscalationUsesReworkPriority(t *testing.T) {
 			}
 			pr := w.s.Work.Card("s1-1")
 			pr.Fields["brief"] = "c: repair output (s1) tier: heavy\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"
+			pr.Fields[FieldTierNow] = "flash" // on flash below its ceiling, from before line 1 was its start
 			pr.Fields[FieldPriority] = tc.level
 			// Keep the first retry's level to reproduce a pre-policy held attempt.
 			w.s.Work.SetProps(map[string]string{PropReworkPriority: ReworkKeep})

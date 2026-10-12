@@ -543,6 +543,14 @@ func Add(s *Snapshot, r AddReq) Plan {
 				set, said := gateTier(walls, a.brief)
 				maps.Copy(fields, set)
 				gateSaid = said
+				// a card whose line 1 names no tier takes its stream's default (a gate's
+				// measured wall may raise it, never lower it); one that names a tier is dealt on
+				// it by its brief alone (startTier)
+				if LineOneTier(a.brief) == "" {
+					if t := storedTier(ctl, a.brief); t != "" {
+						fields[FieldTier] = t
+					}
+				}
 			}
 		}
 		if kind == "primary" {
@@ -568,6 +576,14 @@ func Add(s *Snapshot, r AddReq) Plan {
 		}
 		if a.model != "" {
 			u.Moved += "; " + a.model
+		}
+		if kind == "primary" && a.brief != "" {
+			// the tier it was stored with, which its first deal draws: line 1's, the stream's
+			// default, or a gate's measured raise
+			stored := &Card{ID: a.id, Fields: fields}
+			if t := s.dealTierOf(stored); t != "" {
+				u.Moved += " tier=" + t
+			}
 		}
 		if r.Sentinel {
 			u.Moved = "sentinel " + u.Moved
@@ -3339,4 +3355,19 @@ func (r FleetReq) width() (string, bool) {
 		return itoa(r.Width), true
 	}
 	return "", false
+}
+
+// storedTier is the tier add stores a card with: the tier its brief's line 1 names, else
+// its stream's default (FieldDefaultTier), else "" (a card with no brief, or one whose
+// model decides).
+func storedTier(ctl *Card, brief string) string {
+	if t := LineOneTier(brief); t != "" {
+		return t
+	}
+	if ctl != nil && brief != "" {
+		if m, _ := cardhdr.ReadModel(brief); m.Pin == "" && m.Tier == "" {
+			return ctl.F(FieldDefaultTier)
+		}
+	}
+	return ""
 }

@@ -158,18 +158,37 @@ func decidedSets(r FinishReq, used bool, pr *Card, card, primary map[string]stri
 }
 
 // startTier is the tier a card with no tier yet (its first deal on a route) is drawn from:
-// the tier its brief's line 1 names when that is pro (the owner, 2026-10-03, after seven of
-// seven first flash attempts of pro cards died at the budget or the deadline with no result,
-// one dead attempt per card: a brief's tier is the card's starting tier, not only its
-// ceiling, and a card that says pro is never dealt below it), else flash first (cost rule 1
-// of nova-tools#5174, for briefs that say flash or say no tier). The grade (decide.go, Grade)
-// is recorded on the card and raises nothing: line 1 decides the start.
+// the tier its brief's line 1 names (the owner, 2026-10-03, after seven of seven first
+// flash attempts of pro cards died at the budget or the deadline with no result: a brief's
+// tier is the card's starting tier, not only its ceiling; and the standing rule, never flash
+// on heavy or frontier work: on 2026-10-12 six cards whose line 1 said tier: heavy were
+// dealt on flash), else flash for a card whose line 1 names none (a card add stored before
+// the tier was stored, or one with no brief). The grade (decide.go, Grade) is recorded on
+// the card and raises nothing: line 1 decides the start.
 func (s *Snapshot) startTier(c *Card, m cardhdr.Model) string {
-	if ceilingTier(c, m) == cardhdr.RoutePro {
-		return cardhdr.RoutePro
+	if t := ceilingTier(c, m); slices.Contains(tierLadder, t) {
+		return t
 	}
 	return cardhdr.RouteFlash
 }
+
+// LineOneTier is the tier a brief's line 1 names, the tier its card is stored with and
+// dealt on (add, brief): flash, pro or heavy, in either line-1 form (`<title> tier: <t>`,
+// or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`). "" when line 1 names none, its
+// model lines do not read, it pins a model (the model decides), or it names frontier (a
+// friends' tier, never a route's draw).
+func LineOneTier(brief string) string {
+	m, bad := cardhdr.ReadModel(brief)
+	if bad != "" || m.Pin != "" || !slices.Contains(tierLadder, m.Tier) {
+		return ""
+	}
+	return m.Tier
+}
+
+// FieldDefaultTier is a stream's control card's field: the tier its cards are stored with
+// when their brief's line 1 names none (stream set --default-tier); with none, the card
+// checks refuse a card brief whose line 1 names none (internal/card, tier-line).
+const FieldDefaultTier = "default_tier"
 
 // GradeReq is the decide lane's grades: each card's grade decision as it rides on the card.
 type GradeReq struct {

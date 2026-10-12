@@ -209,9 +209,13 @@ ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outc
 ### No ghost reads (v1.2.14)
 
 A read working on a member is named by its member's beat, or within the grace
-it goes back to the read deal (docs/SPEC-SPRINT.md, working means a live run;
-tla/ReadCards.tla NoGhostRead). These tests lock it in; the functional ones are
-release acceptance (`make release-accept`).
+it goes back to the read deal (docs/SPEC-SPRINT.md, working means a live run).
+The model, tla/ReadCards.tla NoGhostRead (liveness under LiveSpec), proves only
+that such a read eventually leaves working; the 60 s bound is pinned by these
+tests: `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
+`TestAMemberRestartReturnsItsReadsAtOnce` and
+`TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`. These tests lock it in;
+the functional ones are release acceptance (`make release-accept`).
 
 - Unit, `internal/sprint/read_lost_test.go`:
   `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
@@ -453,3 +457,5 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce` (`internal/sprint/store/seat_silent_bound_test.go`): a card at its bound (a mind's judgment) unanswered past its deadline raises the alarm once, never waited or acknowledged, raised again with the bound at the next deadline, cleared by the answer.
 - `TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline`, `TestAHeavyCardNoRouteServesIsNeverReTieredToFlash`, `TestAPinnedCardNoRouteServesStaysOnItsPinnedTier` (`internal/sprint/seat_answers_rule_test.go`): the no-route default, never down a tier, never over a pin.
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
+- `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
+- `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.

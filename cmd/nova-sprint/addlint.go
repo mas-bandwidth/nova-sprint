@@ -92,6 +92,11 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 			}
 		}
 		fs, fix := swarm.LintBrief([]byte(c.brief), bb)
+		if ctl := s.StreamCtl(c.stream); c.stream != "" && ctl != nil && ctl.F(sprint.FieldDefaultTier) != "" {
+			// the stream's default tier stands for a line 1 that names none (stream set
+			// --default-tier): the card is stored with it, so no tier-set finding holds it
+			fs = slices.DeleteFunc(fs, func(f swarm.CardHeaderFinding) bool { return f.Check == "tier-set" })
+		}
 		id := c.id
 		if id == "" {
 			id = "-"

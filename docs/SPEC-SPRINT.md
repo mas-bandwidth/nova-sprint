@@ -7484,8 +7484,13 @@ generation for `LiveGrace` (60 s) since its take or its last sighting goes back
 ready on its row at its next generation with `lost_from_gen` and `lost_reason`,
 its progress kept as a stop-return keeps it. A read card is held to the same
 rule (v1.2.14): a read working on a member is named by its member's latest
-beat, or within the grace (tla/ReadCards.tla NamedOrWithinGrace, NoGhostRead).
-Past it the read card leaves the fleet table retired `lost`, with
+beat, or within the grace it goes back to the read deal. The model proves only
+that a read with no child eventually leaves working (tla/ReadCards.tla
+NoGhostRead, liveness under LiveSpec); the 60 s bound is pinned by the Go tests
+TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat and
+TestAMemberRestartReturnsItsReadsAtOnce (internal/sprint/read_lost_test.go) and
+TestAMemberProcessKilledOrRestartedLeavesNoGhostRead
+(cmd/nova-sprint/read_lost_functional_test.go). Past the grace the read card leaves the fleet table retired `lost`, with
 `lost_from_gen` and `lost_reason`, spending no reader and marking no failure,
 and the next read-card ask deals the read again at its next generation to
 whichever reader the deal picks, that member included; it is never left in the

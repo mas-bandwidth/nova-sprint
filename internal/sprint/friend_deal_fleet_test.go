@@ -93,7 +93,7 @@ func TestAFlashFriendWithRoomIsDealtFleetFlashCards(t *testing.T) {
 		fleet = append(fleet, fleetBrief(""))
 	}
 	for range 6 {
-		fleet = append(fleet, fleetBrief("heavy")) // its ceiling: the machines deal it on flash first
+		fleet = append(fleet, fleetBrief("flash")) // line 1 says flash: the machines deal it on flash
 	}
 	proBob := "c: a friend's card tier: pro\nREPO: mas-bandwidth/nova-tools\nWHO: friend bob\n\nThe task."
 	who := []string{proBob, proBob, proBob}
@@ -181,14 +181,15 @@ func TestAnUntieredCardIsFlashForAFriend(t *testing.T) {
 	w := friendWorld(t, fleetBrief(""), fleetBrief("heavy"), fleetBrief("pro"))
 	pr := w.s.Work.Card("s1-1")
 	assert.Equal(t, "flash", w.s.dealTierOf(pr), "no tier line: flash, as the machines deal it")
-	assert.Equal(t, "flash", w.s.dealTierOf(w.s.Work.Card("s1-2")), "a heavy ceiling starts on flash")
+	assert.Equal(t, "heavy", w.s.dealTierOf(w.s.Work.Card("s1-2")), "a heavy brief starts on heavy, never flash")
 	assert.Equal(t, "pro", w.s.dealTierOf(w.s.Work.Card("s1-3")), "a pro brief starts on pro")
 	amy := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}}
 	dealWith(w, amy)
-	for _, id := range []string{"s1-1", "s1-2"} {
-		wc := w.s.Fleet.Card(WorkCardID(id, 1))
-		require.NotNil(t, wc, id)
-		assert.Equal(t, FriendRow("amy"), wc.Row, "%s is a flash friend's", id)
+	wc1 := w.s.Fleet.Card(WorkCardID("s1-1", 1))
+	require.NotNil(t, wc1)
+	assert.Equal(t, FriendRow("amy"), wc1.Row, "s1-1 is a flash friend's")
+	if wc2 := w.s.Fleet.Card(WorkCardID("s1-2", 1)); wc2 != nil {
+		assert.NotEqual(t, FriendRow("amy"), wc2.Row, "a heavy card is no flash friend's")
 	}
 	wc := w.s.Fleet.Card(WorkCardID("s1-3", 1))
 	require.NotNil(t, wc)
@@ -274,10 +275,10 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 }
 
 // A card dealt again to a friend whose primary names no tier_now gets the tier the deal drew
-// (a heavy ceiling, dealt on flash), so its reads follow the deal tier, not the ceiling.
+// (a card whose line 1 names no tier, dealt on flash), so its reads follow the deal tier.
 func TestARedealToAFriendWritesItsTierNow(t *testing.T) {
 	t.Parallel()
-	w := friendWorld(t, fleetBrief("heavy"))
+	w := friendWorld(t, fleetBrief(""))
 	bob := FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}}
 	dealWith(w, bob)
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
@@ -293,7 +294,7 @@ func TestARedealToAFriendWritesItsTierNow(t *testing.T) {
 	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card(wc.ID).Row)
 	now, ceiling := CardTiers(w.s.Work.Card("s1-1"))
 	assert.Equal(t, "flash", now, "the tier the deal drew")
-	assert.Equal(t, "heavy", ceiling)
+	assert.Equal(t, "flash", ceiling, "no tier on line 1: flash")
 }
 
 // where's dealt_fleet counts the work cards on her row whose primary carries no WHO line: a
