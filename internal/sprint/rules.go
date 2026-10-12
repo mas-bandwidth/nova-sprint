@@ -287,19 +287,28 @@ func mindCard(pr *Card) string {
 // findings, is reworked on its tier with the failure as its fix, a friend's card too
 // (ruleHarness). Any other failure: the first on a tier is redealt on the next route of the
 // tier (the rework's own fix, the report); the RuleAttemptCap-th goes a tier up; past
-// heavy, a friend's card.
+// heavy, a friend's card. A failure the fleet shares (sameFailure) or a brief with no ladder
+// (a pinned model, the frontier tier) is reworked on its tier with its report, never left to
+// the seat below the brief's bound (wait_refused.go).
 // tla/SprintRules.tla, Part "rules": RuleFailed
 func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleFailed
 	pr := s.Work.Placed(a.Subject)
+	friend := false
+	if pr != nil {
+		_, friend = FriendCard(pr)
+	}
 	switch {
 	case pr == nil || pr.Col != Review || pr.F("result") != "failed":
 		left(a, "not in review with failed work")
 		return
 	case holdsFor(s, pr) == "" && ruleHarness(s, a, pr):
 		return // a harness fault, or a HOLD with findings: the failure is the fix (harness_fault.go)
-	case mindCard(pr) != "":
+	case pr.F(FieldBriefDefect) != "":
 		left(a, mindCard(pr))
+		return
+	case friend:
+		left(a, mindCard(pr)) // a friend's failure outside the harness classes: her work needs a mind
 		return
 	case holdsFor(s, pr) != "":
 		ruleHoldNeed(s, a, pr, holdsFor(s, pr))
@@ -312,13 +321,6 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		left(a, bb.String())
 		return
 	}
-	// Budget exhaustion follows tier escalation, not identical failure binding.
-	if pr.F(FieldFailure) != "budget" {
-		if why := sameFailure(s, pr.F(FieldFailure)); why != "" {
-			left(a, why)
-			return
-		}
-	}
 	a.Card = pr.ID
 	tier := cardTierOf(pr)
 	fails := 1
@@ -326,6 +328,28 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		fails = pr.Int(FieldRuleFails) + 1
 	}
 	why := fmt.Sprintf("attempt %s failed, %d of %d on %s", pr.F("attempt"), fails, RuleAttemptCap, tier)
+	// Below its bound, failed work with a report never waits on the seat (wait_refused.go;
+	// tla/SprintRules.tla, FailedWithAFindingNeverParked): where the ladder has no rung to
+	// climb (a brief that pins its model or the frontier tier), or the failure is the fleet's
+	// and a climb would change nothing (sameFailure), it is reworked on its tier with its
+	// report as the fix, each attempt counted toward the bound. Budget exhaustion follows
+	// tier escalation, not the same-failure hold.
+	same := ""
+	if pr.F(FieldFailure) != "budget" {
+		same = sameFailure(s, pr.F(FieldFailure))
+	}
+	if stay := mindCard(pr); stay != "" || same != "" {
+		if stay == "" {
+			stay = same
+		}
+		if ownFix(s, pr) == "" {
+			left(a, stay+"; and no report to take as its fix")
+			return
+		}
+		a.Act, a.Why = ActRework, why+": reworked on "+tier+" with its report as the fix, never parked ("+stay+")"
+		a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: itoa(min(fails, RuleAttemptCap-1))}
+		return
+	}
 	if fails < RuleAttemptCap {
 		a.Act, a.Why = ActRework, why+": redealt on the next route of "+tier
 		a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: itoa(fails)}
@@ -732,6 +756,103 @@ func TickRuleRework(s *Snapshot, r TickReq) (Plan, int) {
 		return Plan{}, 0
 	}
 	return Rework(s, ReworkReq{Sel: Sel{Only: ids}, PerCard: per, Who: r.who()}), 0
+}
+
+// NFleetFailure is the one judgment of a failure the fleet shares (sameFailure: the same class on
+// RuleSameFailureCards or more cards), raised at once by the tick that first sees it, at the
+// cards' first failure: a broken toolchain, a member or a provider down is judged by a mind now,
+// while each card reworks itself on its tier to its bound meanwhile. It names the failure and
+// the cards, is sprint-level, takes no wait (wait_refused.go), and is acked once its cause is
+// mended; one is open per class at a time.
+const NFleetFailure = "the same failure on many cards: the fleet's, not the card's"
+
+// fleetFailureWhat opens the text of the judgment of the class.
+func fleetFailureWhat(class string) string { return "failure " + strconvQuote(class) + ": " }
+
+// strconvQuote is the class quoted for the judgment's text.
+func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
+
+// RuleFleetWindow is how far back, in running time, the fleet's failure counts a card's
+// recorded failure (its last finish failed that way).
+const RuleFleetWindow = time.Hour
+
+
+// TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
+// cards recorded within RuleFleetWindow of running time, in any column but landed (each card's
+// recorded failure, FieldFailure, and its last finish, FieldFinishedAt), and no open judgment
+// names: whether the cards failed in one tick or one a tick, and whatever rule then answers them
+// (a rework, the bound's, a mind's). It is a judgment, not an answer, so it runs with the rules
+// off too.
+func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
+	cards := map[string][]string{}
+	var classes []string
+	for _, c := range s.Work.Column(Waiting, Ready, Working, Review, Merging) {
+		class := c.F(FieldFailure)
+		if class == "" || !lastFinishFailed(c) {
+			continue
+		}
+		if d, ok := r.running(s.Now, c.F(FieldFinishedAt)); !ok || d > RuleFleetWindow {
+			continue
+		}
+		if _, seen := cards[class]; !seen {
+			classes = append(classes, class)
+		}
+		cards[class] = append(cards[class], c.ID)
+	}
+	var p Plan
+	for _, class := range classes {
+		ids := cards[class]
+		if len(ids) < RuleSameFailureCards || fleetFailureOpen(s, class) || !failedSinceAck(s, class, ids) {
+			continue
+		}
+		slices.Sort(ids)
+		n := judgment(NFleetFailure, "", s.Now, 0)
+		n.SprintLevel, n.Who = true, r.who()
+		n.What = cutText(fmt.Sprintf("%sthe same failure on %d cards (%s) within %s: the fleet's, not the card's; each is answered by its rule meanwhile; mend the cause (the toolchain, a member, a route or a provider), then ack this",
+			fleetFailureWhat(class), len(ids), strings.Join(ids, ","), RuleFleetWindow), MaxCardTextBytes)
+		p.Notes = append(p.Notes, n)
+	}
+	return p, 0
+}
+
+// lastFinishFailed says the card's last finish is the failure it records: its last finish
+// (FieldLastFinish, written by every finish) failed, at the attempt the failure was recorded
+// at (FieldFailureAt). It reads no column and does no attempt arithmetic: a rework that falls
+// back to ready moves a card without a finish and without a new attempt.
+func lastFinishFailed(c *Card) bool {
+	at := c.F(FieldFailureAt)
+	return at != "" && c.F(FieldLastFinish) == at+":failed"
+}
+
+// failedSinceAck says the class may be raised: no acknowledgement of its judgment is held, or
+// one of its cards' failures finished after the latest one (an ack holds the class until a new
+// failure of it).
+func failedSinceAck(s *Snapshot, class string, ids []string) bool {
+	var ackAt time.Time
+	for _, o := range s.Acked {
+		if o.Note.Type == NFleetFailure && strings.HasPrefix(o.Note.What, fleetFailureWhat(class)) && o.Note.At.After(ackAt) {
+			ackAt = o.Note.At
+		}
+	}
+	if ackAt.IsZero() {
+		return true
+	}
+	for _, id := range ids {
+		if c := s.Work.Placed(id); c != nil && stampAt(c, FieldFinishedAt).After(ackAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// fleetFailureOpen says an open judgment names the class's failure.
+func fleetFailureOpen(s *Snapshot, class string) bool {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NFleetFailure && strings.HasPrefix(o.Note.What, fleetFailureWhat(class)) {
+			return true
+		}
+	}
+	return false
 }
 
 // TickRuleLate answers the late work cards: a wait, a hold until the holder's own deadline,
