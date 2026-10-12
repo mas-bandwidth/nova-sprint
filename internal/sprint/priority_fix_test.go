@@ -218,7 +218,7 @@ func TestFixStateSeparatesReworkFromReadReview(t *testing.T) {
 	first.Fields[FieldPriority] = PriorityFix
 	other := w.s.Work.Card("s1-2")
 	other.Fields[FieldPriority] = PriorityCritical
-	assert.Equal(t, map[string]map[string]int{"s1": {Ready: 1}}, FixStateCounts(w.s))
+	assert.Empty(t, FixStateCounts(w.s), "a first attempt at level fix is ready, not a repair")
 	// A completed repair awaiting an independent read belongs in review.
 	w.place(w.s.Work, first.ID, first.Row, Review)
 	assert.Empty(t, FixStateCounts(w.s))
@@ -239,4 +239,40 @@ func TestFixStateIncludesACompletedBriefDefect(t *testing.T) {
 	require.Equal(t, DoneDefect, w.s.Fleet.Card("s1-1.w1").Col)
 	require.Equal(t, Review, w.s.Primary("s1-1").Col)
 	assert.Equal(t, map[string]map[string]int{"s1": {Review: 1}}, FixStateCounts(w.s))
+}
+
+// The dashboard's fix state is a repair: a primary at priority fix at a later attempt. A
+// card whose level is fix by its brief's PRIORITY line, never attempted, is ready (store
+// col ready) and counts under ready, beside the ready blocker and critical; measured
+// 2026-10-12 23:35Z on schema-vt-core: 20 ready, none attempted, drawn ready 9 fix 11.
+func TestFixStateIsAReworkNeverAFirstAttemptAtLevelFix(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	for id, level := range map[string]string{"s1-1": PriorityFix, "s1-2": PriorityBlocker, "s1-3": PriorityCritical, "s1-4": PriorityFix} {
+		w.s.Work.Card(id).Fields[FieldPriority] = level
+	}
+	for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
+		require.Equal(t, Ready, w.s.Work.Card(id).Col)
+	}
+	assert.Empty(t, FixStateCounts(w.s), "ready cards at levels fix, blocker and critical, none attempted, are all ready")
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	require.Equal(t, Working, w.s.Work.Card("s1-1").Col)
+	assert.Empty(t, FixStateCounts(w.s), "a first attempt at level fix is working, not fix")
+
+	t.Run("a rework at fix is at fix, ready or working", func(t *testing.T) {
+		t.Parallel()
+		w := heldFor(t, "the generated output is incorrect")
+		w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "return the calculated value", Who: "coordinator"}))
+		pr := w.s.Work.Card("s1-1")
+		require.Equal(t, PriorityFix, pr.F(FieldPriority))
+		require.Contains(t, []string{Ready, Working}, pr.Col)
+		assert.Equal(t, map[string]map[string]int{"s1": {pr.Col: 1}}, FixStateCounts(w.s))
+	})
+	t.Run("a critical rework keeps its red", func(t *testing.T) {
+		t.Parallel()
+		w := heldFor(t, "the generated output is incorrect")
+		w.s.Work.Card("s1-1").Fields[FieldPriority] = PriorityCritical
+		w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "return the calculated value", Who: "coordinator"}))
+		assert.Empty(t, FixStateCounts(w.s))
+	})
 }
