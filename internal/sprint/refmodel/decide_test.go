@@ -439,13 +439,16 @@ func TestDeadlinesJudgeAReadCardNotBegun(t *testing.T) {
 	w.drive(t, "s1-1", sprint.Review)
 	w.ask(t, "s1-1") // two reads outstanding: both asked at once (reads together, the interim rule)
 	snap := w.snapshot(nil)
-	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)))
+	// Each call plans from the unchanged snapshot: it also starts the landing-stall episode.
+	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)),
+		"prop work landing_stall_since=2030-01-02T03:34:05Z")
 	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
 	expect(t, got,
+		"prop work landing_stall_since=2030-01-02T03:34:06Z",
 		"open a read card is past its deadline [s1-1]",
 		"open a read card is past its deadline [s1-1]")
 	want := []string{"ask --another", "wait", "drop"}
-	assert.Equal(t, want, got[0].Decisions, "the decisions offered: %q, want %q", got[0].Decisions, want)
+	assert.Equal(t, want, got[1].Decisions, "the decisions offered: %q, want %q", got[1].Decisions, want)
 }
 
 func TestDeadlinesJudgeAStreamWithNoMergeStep(t *testing.T) {
@@ -454,11 +457,15 @@ func TestDeadlinesJudgeAStreamWithNoMergeStep(t *testing.T) {
 	w.add(t, "s1", 1)
 	w.drive(t, "s1-1", sprint.Merging)
 	snap := w.snapshot(nil)
-	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)))
+	// Each call plans from the unchanged snapshot: it also starts the landing-stall episode.
+	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)),
+		"prop work landing_stall_since=2030-01-02T03:34:05Z")
 	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
-	expect(t, got, "open a stream has had no merge step past its deadline [stream:s1]")
+	expect(t, got,
+		"prop work landing_stall_since=2030-01-02T03:34:06Z",
+		"open a stream has had no merge step past its deadline [stream:s1]")
 	want := []string{"merge --stream s1", "look", "wait"}
-	assert.Equal(t, want, got[0].Decisions, "the decisions offered: %q, want %q", got[0].Decisions, want)
+	assert.Equal(t, want, got[1].Decisions, "the decisions offered: %q, want %q", got[1].Decisions, want)
 }
 
 func TestOverdueMarksAJudgmentOncePastTenMinutes(t *testing.T) {

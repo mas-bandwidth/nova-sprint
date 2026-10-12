@@ -318,9 +318,11 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 	// condition, so each new level is a new judgment whatever quieted the one before
 	level := BehindLevel(s, r, since)
 	age, _ := r.running(s.Now, stamp(oldest))
+	// the cards the open judgments hold from progressing (wait_refused.go): the count that
+	// says the sprint crawls on the seat; only the level is the condition (condKey)
 	return []cond{{typ: NCoordinatorBehind, streamLevel: true,
-		what: fmt.Sprintf("%s%d: %d judgments wait past their deadline, the oldest %s for %s: %s; run: nova-sprint inbox",
-			behindLevelPrefix, level, n, oldestID, age.Truncate(time.Second), strings.Join(parts, "; ")),
+		what: fmt.Sprintf("%s%d: %d judgments wait past their deadline, the oldest %s for %s: %s; %d cards held by open judgments; run: nova-sprint inbox",
+			behindLevelPrefix, level, n, oldestID, age.Truncate(time.Second), strings.Join(parts, "; "), CardsHeldByJudgments(s)),
 		decisions: []string{"act", "wait"}}}
 }
 

@@ -553,12 +553,16 @@ func TestEveryDecisionPrintsItsCommands(t *testing.T) {
 			n := Note{ID: "n-1.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1", "s2-1"}, StreamLevel: level}
 			g := Group{ID: n.ID, Kind: Judgment, Type: typ, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: ds}
 			got := map[string]bool{}
-			for _, c := range commands(g, n, "dev-") {
+			for _, c := range commands(g, n, "dev-", nil) {
 				if len(c.Lines) > 0 {
 					got[c.Decision] = true
 				}
 			}
 			for _, d := range ds {
+				if (d == "wait" || strings.HasPrefix(d, "wait ")) && WaitRefusal(n) != "" {
+					assert.False(t, got[d], "%s: the inbox offers a wait the judgment refuses", typ)
+					continue
+				}
 				assert.True(t, got[d], "%s: the decision %q prints no command", typ, d)
 			}
 		}
@@ -581,7 +585,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 	all[NRemindFailed] = []string{"goal set friend-a --to <route>", "goal drop friend-a", "ack"}
 	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NScoredLow: true, NRaiseReadTier: true,
 		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendDeaf: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
-		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true}
+		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true, NFleetFailure: true}
 	for typ, ds := range all {
 		w := setup(t, 1)
 		n := Note{ID: "n-x.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, Decisions: ds, At: w.s.Now}
@@ -593,7 +597,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 			t.Errorf("%s lists ack and the ack was refused: %+v", typ, p.Refused)
 		case !ackable[typ] && (len(p.Refused) != 1 || len(p.Units) != 0 || !strings.Contains(p.Refused[0].Why, "ack does not answer")):
 			t.Errorf("%s does not list ack and the ack was not refused: %+v", typ, p)
-		case !ackable[typ] && TickKept(typ) && !strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"):
+		case !ackable[typ] && TickKept(typ) && WaitRefusal(n) == "" && !strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"):
 			t.Errorf("%s is kept by the tick and its refusal names no wait: %s", typ, p.Refused[0].Why)
 		}
 	}
@@ -635,7 +639,7 @@ func TestTheMergeDecisionPrintsOneRunnableLandLine(t *testing.T) {
 	n := Note{ID: "n-1.1", Kind: Judgment, Type: NMergeLate, Stream: "s1", Primaries: []string{"s1-1"}, StreamLevel: true}
 	g := Group{ID: n.ID, Kind: Judgment, Type: NMergeLate, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: []string{"merge --stream s1"}}
 	var lines []string
-	for _, c := range commands(g, n, "dev-") {
+	for _, c := range commands(g, n, "dev-", nil) {
 		if c.Decision == "merge --stream s1" {
 			lines = c.Lines
 		}

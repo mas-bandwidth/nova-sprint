@@ -30,7 +30,7 @@ func (ta *testApp) primary(id string) *sprint.Card {
 // manually hopping in and working around it and doing manual stuff."): a brief
 // that fails the card lint refused with nothing changed, replaced on a STOPPED
 // machine with the card's id, stream and score kept and its needs following the
-// new brief (none here, so cleared), and refused once the card is working.
+// rule (a text that drops a need keeps it), and refused once the card is working.
 func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -62,7 +62,7 @@ func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	assert.Equal(t, before.Row, after.Row)
 	assert.Equal(t, before.Col, after.Col)
 	assert.Equal(t, before.Score, after.Score)
-	assert.Equal(t, "", after.F("needs"), "the new brief names no need, so the edit clears the card's")
+	assert.Equal(t, "a-1", after.F("needs"), "the new brief names no need, but a text that drops a need keeps it (the text's DEPENDS-ON is the admission-time list)")
 
 	ta.ok("start")
 	out = ta.ok("brief a-1 --brief-file " + good)

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 )
 
 // t0 is the clock of every fixture: the tables are built at it and a duty
@@ -72,7 +73,7 @@ func (w *world) apply(p sprint.Plan) error {
 	for _, pw := range p.Props {
 		tb := w.s.T(pw.Table)
 		props := map[string]string{}
-		for _, n := range []string{sprint.PropDealIndex, sprint.PropAskIndex, sprint.PropStatusSeen} {
+		for _, n := range append([]string{sprint.PropDealIndex, sprint.PropAskIndex}, refmodel.CarriedProps...) {
 			if v, ok := tb.Prop(n); ok {
 				props[n] = v
 			}

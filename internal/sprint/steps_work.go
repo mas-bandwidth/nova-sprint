@@ -1028,6 +1028,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	p.on(s)
 	moves := roundMoves{}
 	ready := func(c *Card) string {
+		// tla/DirtyTick.tla Dealable (HeldStreams, HeldStreamNotDealt): a held stream's cards are dealt nowhere
 		if StreamHeld(s, c.Row) {
 			return "its stream " + c.Row + " is held by the coordinator (hold.go): nova-sprint unhold " + c.Row + " deals it again"
 		}
@@ -1923,6 +1924,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// rule 2: the attempt before failed the same way, so this is the bound's (failure.go);
 			// a decided class is the class when the decision routed the finish
 			identical = failureSet(pr, pr.Int("attempt"), r.Report, class, cardTierOf(pr), set)
+			set[FieldLastFinish] = pr.F("attempt") + ":failed"
+		} else {
+			set[FieldLastFinish] = pr.F("attempt") + ":ok" // a pass, a late LAND, a defect: no failure recorded
 		}
 		cons := workConsumer(s, c, 0, result, rec)
 		if capped {

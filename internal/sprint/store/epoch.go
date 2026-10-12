@@ -161,7 +161,8 @@ func (st *Store) SetReview(ctx context.Context, noteID string, at time.Time) err
 // Wait is the coordinator's wait on a judgment: for a condition the tick keeps
 // it is a step that closes the judgment and holds the condition until the time
 // (in running time); for any other it sets the judgment's review time. held
-// says it was the step, and res is its result.
+// says it was the step, and res is its result. A judgment that holds a card from
+// progressing (sprint.WaitRefused) is refused, naming what to run instead.
 func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Result, held bool, err error) {
 	st, err = st.pin(ctx)
 	if err != nil {
@@ -176,15 +177,35 @@ func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Res
 	if err != nil {
 		return res, false, err
 	}
+	var snap *sprint.Snapshot
 	for _, o := range open {
-		if o.Note.ID == noteID {
-			// the seat is not answering is quieted only by the answers it names: no review
-			// time is set on it either way (sprint.NSeatSilent)
-			if why := sprint.SeatSilentRefusal(o.Note.Type, "waited"); why != "" {
-				return res, false, errors.New(why)
+		if o.Note.ID != noteID {
+			continue
+		}
+		// the seat is not answering is quieted only by the answers it names: no review
+		// time is set on it either way (sprint.NSeatSilent)
+		if why := sprint.SeatSilentRefusal(o.Note.Type, "waited"); why != "" {
+			return res, false, errors.New(why)
+		}
+		if snap == nil {
+			if snap, err = st.shadowRead(ctx); err != nil {
+				return res, false, err
 			}
 		}
-		if o.Note.ID == noteID && o.Note.Kind == sprint.Judgment && sprint.TickKept(o.Note.Type) {
+		// a judgment that holds a card from progressing takes no wait, neither a hold nor a
+		// review time: a wait would park the card (sprint.WaitRefusalIn: the table, and any
+		// judgment naming a work-table card, wait_refused.go)
+		if why := sprint.WaitRefusalIn(snap, o.Note); why != "" {
+			coordinator, err := st.B.Coordinator(ctx)
+			if err != nil {
+				return res, false, err
+			}
+			if not := sprint.NotCoordinator(coordinator, st.Actor, "wait"); not != "" {
+				return res, false, errors.New(not) // the coordinator's verb first
+			}
+			return res, false, errors.New(why)
+		}
+		if o.Note.Kind == sprint.Judgment && sprint.TickKept(o.Note.Type) {
 			res, err = st.Run(ctx, WaitStep(sprint.WaitReq{Note: noteID, Until: at, Who: st.Actor}))
 			return res, true, err
 		}

@@ -41,6 +41,32 @@ func (ta *testApp) failOnce(member, card, report string) {
 	ta.ok("finish --as " + member + " " + card + " --failed --report '" + report + "'")
 }
 
+// timerOnce raises one timer judgment for the caller (remind, then the tick that finds it
+// due): a judgment a wait may hold, since it holds no card. Every judgment that holds a card
+// takes no wait (internal/sprint/wait_refused.go).
+func (ta *testApp) timerOnce(note string, actor ...string) {
+	ta.t.Helper()
+	as := ""
+	if len(actor) > 0 {
+		as = " --actor " + actor[0]
+	}
+	ta.a.sleep(time.Second) // each notification at its own clock reading
+	ta.ok("remind --in 1s --note " + note + as)
+	// a timer's time is running time, which a STOPPED machine does not spend: run the machine
+	// for the second it needs, and leave it as it was
+	started := false
+	if code, _, _ := ta.do("start" + as); code == 0 {
+		started = true
+	}
+	ta.mu.Lock()
+	ta.now = ta.now.Add(2 * time.Second)
+	ta.mu.Unlock()
+	ta.ok("tick" + as)
+	if started {
+		ta.ok("stop --reason 'the timer fixture' --until 1h" + as)
+	}
+}
+
 // I1: a group is named by an id that does not move when a newer group sorts
 // ahead of it; a number is refused and nothing changes.
 func TestAGroupIsNamedByItsIDNeverItsPosition(t *testing.T) {

@@ -131,8 +131,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop", "wait"},
-	NCannotAsk:         {"reader add", "rework", "drop", "wait"},
+	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"reader add", "rework", "drop"}, // never wait: it holds its card (wait_refused.go)
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
 	NAdoptFailed:       {"fleet up <m>", "wait"},                     // named per member (fleet_back.go)
@@ -144,7 +144,7 @@ var TickDecisions = map[string][]string{
 	NBrokenReadsOutrun: {"look at the readers", "raise the read tier", "act"},
 	NReaderBreaks:      {"look at the reader", "act"},
 	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
-	NNoRoute:           {"route add", "look at the card", "drop", "wait"},
+	NNoRoute:           {"route add", "look at the card", "drop"},
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
 	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
 	NProviderLow:    {"ack", "wait"}, // the same
@@ -369,6 +369,9 @@ var TickEnd = []TickPartDef{
 // runs before the rule rework, which reworks nothing the widen rule leaves to a mind.
 func TickEndWith(rules, idle bool) []TickPartDef {
 	out := append([]TickPartDef(nil), TickEnd[:2]...)
+	// the fleet's failure is a judgment, not a rule answer: raised in the deadlines part, with the
+	// rules on or off, and in no step of its own (rules.go TickFleetFailure)
+	out[1].Fn = tickDeadlinesAndFleetFailure
 	if rules {
 		for _, p := range TickRules {
 			if p.Name == PartRuleRework {
@@ -383,6 +386,14 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 		out = append(out, TickPartDef{PartIdle, TickIdle})
 	}
 	return append(out, TickEnd[3:]...)
+}
+
+// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure judged in it.
+func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
+	p, n := TickDeadlines(s, r)
+	q, _ := TickFleetFailure(s, r)
+	p.Notes = append(p.Notes, q.Notes...)
+	return p, n
 }
 
 // TickParts is every part with a planner in the order a tick first runs them:
@@ -786,6 +797,7 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // the fleet has room for goes in the one plan, one step, up to TickMaxDeal;
 // a withdrawn card is dealt again at a new generation. With no member up and primaries waiting to be dealt, the
 // coordinator is told once (N3), and the judgment closes when a member is up.
+// tla/DirtyTick.tla Pump (reads before work, ReadsBeforeWork) and Dealable (HeldStreamNotDealt).
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
 	// route_rest.go): no card of this tick is drawn on one, and the new rests are written

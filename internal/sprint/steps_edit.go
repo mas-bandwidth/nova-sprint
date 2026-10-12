@@ -2,10 +2,12 @@ package sprint
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // The coordinator's edits of primaries: brief replaces a primary's brief in place, on a
@@ -56,8 +58,16 @@ type BriefReq struct {
 	// Tier, with no Brief, re-tiers the card (nova-sprint brief --tier): the tier every
 	// later deal of the card draws its route from, written on the primary as FieldTier
 	// as rework --tier writes it; taken in any state, on a RUNNING machine and for a card
-	// dealt (it applies to the next attempt).
+	// dealt (it applies to the next attempt). With a Brief, it is the tier the edit sets,
+	// over the recorded one and the text's line 1.
 	Tier string
+	// NeedsFromBrief takes the brief edit's needs from the text's DEPENDS-ON whole
+	// (--needs-from-brief), over the rule that the card's needs are the truth and a text
+	// only adds new ones: the escape hatch when the coordinator means to re-derive them.
+	NeedsFromBrief bool
+	// Reason is why a re-tier names (nova-sprint tier --set <t> --reason): recorded
+	// with the tier, for the log.
+	Reason string
 }
 
 // Brief replaces primaries' briefs in place (nova-sprint brief; docs/SPEC-SPRINT.md,
@@ -74,21 +84,38 @@ type BriefReq struct {
 func Brief(s *Snapshot, r BriefReq) Plan {
 	var p Plan
 	p.on(s)
-	if r.Tier != "" {
+	cards := r.Cards
+	if len(cards) == 0 && r.Tier != "" && r.Brief == "" {
+		// re-tier alone (nova-sprint brief <id> --tier <t>, or nova-sprint tier --set):
+		// the tier every later deal draws, no text edit
 		return briefTier(s, p, r)
 	}
-	cards := r.Cards
 	if len(cards) == 0 {
 		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs}}
 	}
 	seen, orphans := map[string]bool{}, map[string]bool{}
+	// the needs each edit writes: the card's, not the text's (docs/SPEC-SPRINT.md, the
+	// needs): the text's DEPENDS-ON is the admission-time list, so a need a relink
+	// re-pointed stays its twin and a need the text drops stays, unless
+	// --needs-from-brief takes the text whole (briefNeedsKept)
+	kept, keptSaid := map[string][]string{}, map[string][]string{}
 	// every needs rewrite of the batch, judged together against the state with the
 	// whole batch applied (needsCycleWith): two edits that each pass alone may close
-	// a cycle between them
+	// a cycle between them. It is the needs the edits write, never the text's list,
+	// so a twin the rule keeps is held to the cycle check too.
 	proposed := map[string][]string{}
 	for _, b := range cards {
-		if c := s.Work.Placed(b.ID); c != nil && !IsSentinel(c) && !sameNeeds(Split(c.F("needs")), b.Needs) {
-			proposed[b.ID] = b.Needs
+		c := s.Work.Placed(b.ID)
+		if _, twice := kept[b.ID]; twice || c == nil || IsSentinel(c) {
+			continue // a card named twice is refused below; its first edit is the one judged
+		}
+		want := b.Needs
+		if !r.NeedsFromBrief {
+			want, keptSaid[b.ID] = briefNeedsKept(s, Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
+		}
+		kept[b.ID] = want
+		if !sameNeeds(Split(c.F("needs")), want) {
+			proposed[b.ID] = want
 		}
 	}
 	for _, b := range cards {
@@ -100,7 +127,32 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a DEPENDS-ON line alone is taken in any state, the machine running or the card dealt
 		if c != nil && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
 			seen[b.ID] = true
-			p = briefDepends(s, p, c, b.Brief, b.Needs, proposed)
+			// the needs rule holds on this path too (docs/SPEC-SPRINT.md, the needs):
+			// the text's DEPENDS-ON is the admission-time list, so a need the relink
+			// record re-pointed stays its twin and a need the text drops stays, unless
+			// --needs-from-brief takes the text whole (kept, above).
+			if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+				p.refuse(c.ID, why)
+				continue
+			}
+			needs := kept[b.ID]
+			p.Said = append(p.Said, keptSaid[b.ID]...)
+			// the bound and the tier behave as on the ordinary path: a DEPENDS-ON-only
+			// edit never changes the task, so the bound count stands, and the tier is a
+			// card field kept against the text's line 1 unless --tier names one, each
+			// said on a NOTE line (docs/SPEC-SPRINT.md, the brief: the bound and the tier).
+			if c.Int("attempt") > 0 {
+				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
+			}
+			if r.Tier == "" {
+				if recorded := c.F(FieldTier); recorded != "" {
+					textTier, _ := cardhdr.ReadModel(b.Brief)
+					if textTier.Tier != recorded {
+						p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+					}
+				}
+			}
+			p = briefDepends(s, p, c, b.Brief, needs, r.Tier, proposed)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -123,8 +175,19 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a brief that carries its own rules names none; a grade was of the brief replaced; a
 		// replaced brief is no longer the one its brief decision was asked over, so the card
 		// names that decision no more
-		// the brief's bound counts attempts from here (brief_bound.go)
-		set, unset := map[string]string{"brief": b.Brief, FieldBriefAttempt: c.F("attempt")}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
+		set, unset := map[string]string{"brief": b.Brief}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
+		// the brief's bound counts attempts under one task, not one text (brief_bound.go):
+		// an edit that changes only a routing line or the tier is the same task and keeps
+		// the count; a new task resets it (FieldBriefAttempt). The same text again is
+		// refused above (sameLines).
+		if c.Int("attempt") > 0 && sameTask(c.F("brief"), b.Brief) {
+			p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
+		} else {
+			set[FieldBriefAttempt] = c.F("attempt")
+			if c.Int("attempt") > 0 {
+				p.Said = append(p.Said, "bound: new task (count reset)")
+			}
+		}
 		if b.Rules != "" {
 			set[FieldRules] = b.Rules
 		} else {
@@ -147,12 +210,27 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		} else {
 			unset = append(unset, FieldBench)
 		}
-		// the brief's needs are the DEPENDS-ON lines it carries (docs/SPEC-SPRINT.md,
-		// needs and the deal): the ordinary path writes them whenever they differ
-		// from the card's — a brief that drops its DEPENDS-ON clears them — and a
-		// ready card that gains a need not landed moves ready -> waiting with them,
-		// in this same unit (unmet and Lawful accept the move).
-		cur, want := Split(c.F("needs")), b.Needs
+		// the tier is a card field (FieldTier): a brief whose line 1 names another tier
+		// than the card's recorded one keeps the recorded one, NOTEd, unless --tier <t>
+		// names one (docs/SPEC-SPRINT.md, the tier).
+		textTier, _ := cardhdr.ReadModel(b.Brief)
+		if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
+		if r.Tier != "" {
+			set[FieldTier] = r.Tier
+		} else if recorded := c.F(FieldTier); recorded != "" && textTier.Tier != recorded {
+			p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+		}
+		// the brief's needs are the card's, not the text's (docs/SPEC-SPRINT.md, the needs):
+		// the text's DEPENDS-ON is the admission-time list, so a need a relink re-pointed
+		// stays its twin and a need the text drops stays, unless --needs-from-brief takes
+		// the text whole. A text that names a need the card does not have adds it (kept,
+		// above, by briefNeedsKept).
+		cur := Split(c.F("needs"))
+		want := kept[b.ID]
+		p.Said = append(p.Said, keptSaid[b.ID]...)
 		toWaiting := false
 		if !sameNeeds(cur, want) {
 			if why := needsCycleWith(s, c.ID, proposed); why != "" {
@@ -304,6 +382,120 @@ func sameLines(old, brief string) bool {
 	return len(linesNotIn(old, brief)) == 0 && len(linesNotIn(brief, old)) == 0
 }
 
+// sameTask says two briefs are the same task: their taskOf strings match. The
+// brief's bound counts attempts under one task, not one text, so an edit that
+// changes only a routing line or the tier keeps the count (docs/SPEC-SPRINT.md,
+// the bound).
+func sameTask(old, brief string) bool { return taskOf(old) == taskOf(brief) }
+
+// tierLineRE is the tier field on line 1 (cardhdr.ReadModel's own), stripped
+// from the task hash: the tier is not the task.
+var tierLineRE = regexp.MustCompile(`\btier:\s*[A-Za-z0-9_-]+`)
+
+// taskOf is what the brief's bound hashes: the body and the PATHS, NEW, SHARED,
+// TEST and DONE-WHEN lines. Line 1's tier and the routing lines (DEPENDS-ON,
+// ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS) and every other header line are not
+// the task, so an edit of them alone does not reset the count (docs/SPEC-SPRINT.md,
+// the bound).
+func taskOf(brief string) string {
+	var keep []string
+	inHeader := true
+	for i, l := range strings.Split(brief, "\n") {
+		if i == 0 {
+			// line 1's tier is not the task; the rest of the line (the title) is
+			l = strings.TrimSpace(tierLineRE.ReplaceAllString(l, ""))
+		} else if inHeader {
+			if key, v, ok := cardhdr.KeyValue(l); ok {
+				switch key {
+				case "PATHS", "NEW", "SHARED", "TEST", "DONE-WHEN":
+					keep = append(keep, key+": "+v)
+				}
+				continue
+			}
+			if strings.TrimSpace(l) == "" {
+				continue // a blank line does not end the header block (the gate's rule)
+			}
+			inHeader = false
+		}
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		keep = append(keep, strings.TrimSpace(l))
+	}
+	return strings.Join(keep, "\n")
+}
+
+// relinkMap reads a card's relink record (FieldRelinked): the ids it re-pointed,
+// the twin they became, and the stamp; nil, "" and "" when there is none.
+func relinkMap(relinked string) (olds []string, nw, stamp string) {
+	left, right, ok := strings.Cut(relinked, " -> ")
+	if !ok {
+		return nil, "", ""
+	}
+	olds = Split(left)
+	f := strings.Fields(right)
+	if len(f) < 2 {
+		return olds, "", ""
+	}
+	return olds, f[0], f[1]
+}
+
+// briefNeedsKept is a brief edit's needs, the card's and not the text's
+// (docs/SPEC-SPRINT.md, the needs): it starts from the card's current needs, maps
+// a name the relink re-pointed to its twin, and adds only names the text holds
+// that the card does not; a need the text drops stays. A name the text holds that
+// the card no longer needs and that is off the table (a card kept, not placed: a
+// dropped one) is not added back: the relink record keeps only the last relink,
+// so an earlier one's old name is told by this, and a dropped need would only
+// block the card. notes is the NOTE line per property kept against the text: a
+// twin the relink record put in place of a name the text still holds, a stale
+// name left out, and a need the text drops.
+func briefNeedsKept(s *Snapshot, cur, want []string, relinked string) (needs, notes []string) {
+	olds, nw, stamp := relinkMap(relinked)
+	needs = append([]string(nil), cur...)
+	named := map[string]bool{} // the card's needs the text accounts for
+	for _, n := range want {
+		switch {
+		case nw != "" && contains(olds, n):
+			named[nw] = true
+			if !contains(needs, nw) {
+				needs = append(needs, nw)
+			}
+			notes = append(notes, fmt.Sprintf("needs kept: %s (relinked from %s %s)", nw, n, orDash(stamp)))
+		case contains(needs, n):
+			named[n] = true
+		case keptOffTable(s, n):
+			notes = append(notes, fmt.Sprintf("needs kept: %s not added (%s, and the card's needs no longer name it)", n, placeWord(s.Work.Card(n))))
+		default:
+			named[n] = true
+			needs = append(needs, n)
+		}
+	}
+	for _, n := range cur {
+		if !named[n] {
+			notes = append(notes, fmt.Sprintf("needs kept: %s (the text's DEPENDS-ON drops it; --needs-from-brief takes the text whole)", n))
+		}
+	}
+	return needs, notes
+}
+
+// keptOffTable says the id is a card the work table keeps but has not placed (a card
+// dropped, off the table): never a need a brief edit adds back.
+func keptOffTable(s *Snapshot, id string) bool {
+	c := s.Work.Card(id)
+	return c != nil && !c.Placed()
+}
+
+// tierBelowFrontierForTLA is why a brief edit's --tier is refused: a tier below
+// frontier for a brief whose PATHS or NEW covers tla/ (the lint's tla-is-frontier
+// rule, as briefTier refuses it for tier --set); "" when tier is unset or allowed.
+func tierBelowFrontierForTLA(id, tier, brief string) string {
+	if tier == "" || tier == cardhdr.RouteFrontier || !briefCoversTLA(brief) {
+		return ""
+	}
+	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the frontier tier's work: --tier " + tier + " is below frontier and refused (the lint's tla-is-frontier rule); nothing was changed"
+}
+
 // sameNeeds says two need lists are the same, in order: the ordinary brief path
 // writes a card's needs only when they differ from the brief's (steps_edit.go).
 func sameNeeds(a, b []string) bool {
@@ -365,14 +557,34 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	case c.F(FieldTier) == r.Tier:
 		p.refuse(c.ID, c.ID+" is pinned to tier "+r.Tier+" already; nothing was changed")
 		return p
+	case r.Tier != cardhdr.RouteFrontier && briefCoversTLA(c.F("brief")):
+		p.refuse(c.ID, c.ID+"'s PATHS covers tla/, a TLA+ model, and a model is the frontier tier's work: a tier below frontier is refused (the lint's tla-is-frontier rule); nothing was changed")
+		return p
 	}
 	if m, _ := cardhdr.ReadModel(c.F("brief")); m.Pin != "" {
 		p.refuse(c.ID, "its brief pins model "+m.Pin+", which it runs on whatever its tier; nothing was changed")
 		return p
 	}
+	moved := fmt.Sprintf("%s tier pinned to %s (was %s): its next deal draws from it stream=%s %s attempt=%d", c.ID, r.Tier, orDash(c.F(FieldTier)), c.Row, c.Col, c.Int("attempt"))
+	if r.Reason != "" {
+		moved += "; reason: " + r.Reason
+	}
 	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{FieldTier: r.Tier}))},
-		Moved: fmt.Sprintf("%s tier pinned to %s (was %s): its next deal draws from it stream=%s %s attempt=%d", c.ID, r.Tier, orDash(c.F(FieldTier)), c.Row, c.Col, c.Int("attempt"))})
+		Moved: moved})
 	return p
+}
+
+// briefCoversTLA says the brief's PATHS or NEW covers tla/ (the lint's
+// tla-is-frontier rule): a TLA+ model, the frontier tier's work, so a tier below
+// frontier is refused.
+func briefCoversTLA(brief string) bool {
+	for _, e := range swarm.CardPaths([]byte(brief)) {
+		e = strings.TrimSpace(e)
+		if e == "tla" || strings.HasPrefix(e, "tla/") {
+			return true
+		}
+	}
+	return false
 }
 
 // briefStarted is the remedy of a brief refused for a card merging or landed (a
@@ -526,15 +738,17 @@ func dependsOnly(old, brief string) bool {
 // state, on a RUNNING machine and for a card dealt (it applies to the next
 // attempt), since re-pointing a card's needs after a drop is not a change of
 // its task (the comfort list of 2026-10-03, item 2). The card's needs become
-// the line's: each a primary on the table, not the card itself, never closing a
+// needs, which Brief maps through the needs rule (briefNeedsKept) before it
+// calls: each a primary on the table, not the card itself, never closing a
 // cycle (needsCycle, cycle.go: the check add makes). A ready card takes no need
 // that has not landed; a dealt card that does goes working -> waiting at the
 // tick (needsWithdrawals, needsStopReturned); a card in review takes none,
 // since nothing moves it back and an accept would carry the need past it
 // (docs/SPEC-SPRINT.md section 9, rule 11; tla/SprintTables.tla Rule11 and its
 // reversed witness "reviewneeds"). The brief decision and the grade were over
-// the same task and stay.
-func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, proposed map[string][]string) Plan {
+// the same task and stay. tier, when non-empty, is the tier the edit sets
+// (--tier), written on the primary as the ordinary path writes it (FieldTier).
+func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, tier string, proposed map[string][]string) Plan {
 	for _, n := range needs {
 		nc := s.Work.Card(n)
 		switch {
@@ -560,6 +774,9 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, pr
 		return p
 	}
 	set, unset := map[string]string{"brief": brief}, []string(nil)
+	if tier != "" {
+		set[FieldTier] = tier
+	}
 	if len(needs) > 0 {
 		set["needs"] = strings.Join(needs, ",")
 	} else {
@@ -581,9 +798,10 @@ type NeedsSetReq struct {
 
 // NeedsSet sets a primary's needs directly, in place of dropping the card and
 // adding it again (the owner, 2026-10-11: "I hate twins." / "Fix your tools.").
-// A card's needs are otherwise read once at add, and a brief edit beyond its
-// DEPENDS-ON: line drops them, so a card admitted with the wrong needs could be
-// corrected only by a twin. NeedsSet writes the same fields the brief edit does
+// A card's needs are otherwise read once at add, and a brief edit keeps them
+// (it only adds a name its text holds, briefNeedsKept, unless --needs-from-brief),
+// so a card admitted with the wrong needs could be corrected only by a twin or a
+// whole-text re-derive. NeedsSet writes the same fields the brief edit does
 // (steps_edit.go, Brief and briefDepends): it rewrites the brief's needs line so
 // card <id> shows the truth, and moves the card by the lifecycle: a ready card
 // that gains a need not landed moves ready -> waiting, a waiting card whose new
@@ -649,7 +867,7 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	// returned to waiting or ready after an attempt (briefInPlace) through
 	// briefDepends, which refuses a ready card a need not landed.
 	if c.Col == Working || c.Col == Review {
-		q := briefDepends(s, p, c, brief, wants, nil)
+		q := briefDepends(s, p, c, brief, wants, "", nil)
 		if c.Col == Review && ReturnedAtAttempt(c) && len(q.Refused) == 0 {
 			// returned to review to have its needs set: that was the return's one cause, and
 			// the tick takes it back to merging on the reads that stand (FieldReturnedFor;
