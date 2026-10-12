@@ -2957,4 +2957,36 @@
      TestDevBehindTheJudgmentNeverCarriesAnEmptyName,
      TestDevBehindNoRepositoryHasSprintAndDevNeverRaises, and the functional
      TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches."
-    :origin "this card, dev-is-behind-counts-only-cards-landed-on-a-sprint-branch.w3; the coordinator, 2026-10-12 ~04:30Z (a false dev is behind judgment for cards on dev/main and on sprint branches of repositories without a dev branch); checked against nova-sprint main")))
+    :origin "this card, dev-is-behind-counts-only-cards-landed-on-a-sprint-branch.w3; the coordinator, 2026-10-12 ~04:30Z (a false dev is behind judgment for cards on dev/main and on sprint branches of repositories without a dev branch); checked against nova-sprint main")
+  (fix "release-acceptance-is-a-parallel-functional-suite" :release "v1.2.14" :status "planned"
+   :title "The release gate is a parallel functional suite under a minute, not a ten-minute watch"
+   :text "Tests and tooling only, no product change. A point release was accepted by a ten-minute live
+    watch of the server after server switch --rollback --window 30m, and a hand canary. Each check the
+    watch looked for is now a test, each on its own store and in parallel, and make release-accept
+    (tools/release-accept.sh) runs exactly that set against a given build (NOVA_SPRINT_BIN, the canary's
+    binary; unset, the tree's is built), with NOVA_CI=1 so a missing redis-server fails, go test's
+    and a bound of 120 s on the whole run (the clock started before the build, the build and the tests
+    killed when it passes). Every run of the binary is given --redis naming the test's own store and an
+    environment scrubbed of every NOVA_ variable with HOME and XDG_CONFIG_HOME its own, so no verb is
+    forwarded to a server NOVA_SPRINT_SERVER or the seat's record names;
+    TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer proves it against an outside listener named
+    both ways, after witnesses that the listener catches a verb named either way. The script names every test; a name that does not run and pass fails the
+    gate by its count. New tests: TestReleaseAcceptTicksOfABusySprintNeverFail (40 ticks of a busy sprint
+    on a real store with the world played between them, every tick exit 0, no panic, no REFUSED drain,
+    check clean after), TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore (a dealt card whose need is
+    named goes working -> waiting and is never taken), TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild
+    (on the release's binary: init, the member's beat, the ticks, and one member's take and
+    finish ok of one card on a real store),
+    TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (after a clear the tick, the members, the
+    readers and the land pass land every card with no seat verb after start; the readers are re-added
+    after the clear because of a known defect, the clear blanking them, which the card
+    a-cleared-sprint-keeps-its-readers owes; when it lands the re-add goes and the test proves the
+    defaults) and
+    TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain (after the switch the hook-gate refusals roll
+    nothing back and the next pass with the seat hooked lands the queued card on the new build). The
+    switch rig names its own coordinator (newLandRigAs), so the hook-gate tests run in parallel. The
+    rest of the set is the existing tests of needs (#96), ledger landing (#100), done (#94), the idle
+    alarm (#102, #106) and the lifecycle (#103), listed in docs/TESTS.md, Release acceptance.
+    docs/SPRINT-COORDINATOR.md section 7 names the gate as step 0 of the install; a live canary of one
+    card on one member may follow, with no timed watch."
+   :origin "hand-landed by a child of the seat, 2026-10-11, for the owner's ask: move the release checks into functional tests that run in parallel in under a minute, two at most")))

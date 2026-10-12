@@ -545,6 +545,42 @@ output is one line per card and `selected=3`. `--dry-run` plans the same step
 and writes nothing. An ids file naming a read card refuses the whole call with
 nothing written.
 
+### Release acceptance
+
+`make release-accept` is the release gate of a point release. It replaces the ten-minute live
+watch on the server after `server switch --rollback --window 30m` and the hand canary (the
+owner, 2026-10-11: "I don't have time to wait 10 minutes for long checks each time you want to
+test a new point release."). Each check the watch looked for is a test that pins the
+behaviour, each on its own store (a fresh redis-server on a port of its own, or the in-memory
+twin) and run in parallel; the set runs in under a minute on a bench and fails at two
+(the script's clock starts before the build, and the build and the tests are killed when
+the run passes 120 s). Every run of the binary is given `--redis <the test's own store>` and an
+environment scrubbed of every `NOVA_` variable, with HOME and XDG_CONFIG_HOME its own, so no
+verb is forwarded to a sprint server that NOVA_SPRINT_SERVER or a seat record names
+(`TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer` proves it against an outside
+listener named both ways). `tools/release-accept.sh` holds the list of names; every name must run and
+pass, so a test renamed or deleted fails the gate by its count instead of leaving the set.
+`NOVA_SPRINT_BIN=<path>` names the build the canary runs (the release's binary); unset, the
+tree's own is built once. It needs `redis-server` on PATH and fails, never skips, without one
+(`NOVA_CI=1`). Measured on hetzner2 (32 cores), 2026-10-11, three runs: 5.4 s, 5.3 s and 7.2 s of
+wall time, the binary's build included; 41 of 41 passed each time.
+
+| check | tests |
+|---|---|
+| 1. server switch: the restart drops the seat's hook, the new build never rolls back on the hook gate's refusal (#99), and keeps landing | `TestAHookGateRefusalInTheWindowIsNotARollback`, `TestARealLandFailureInTheWindowStillRollsBack`, `TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain`, `TestServerSwitchVerbSwitchesAndRollsBack`, `TestTheHookGateRefusalIsATypedError`, `TestCheckRollbackOnLandFailureExitCodes` |
+| 2. ticks: N ticks of a busy sprint on a real store, none failed, no panic, no `REFUSED drain`, `check` clean after | `TestReleaseAcceptTicksOfABusySprintNeverFail` |
+| 3. needs (#96): never dealt with needs unlanded, a dealt one withdrawn working -> waiting, ready once they land, a needs-stop never the worker's | `TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore`, `TestTheFriendsDealNeverDealsACardWithUnlandedNeeds`, `TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds`, `TestAMemberTakeRefusesACardWithUnlandedNeeds`, `TestAReadyCardWithAnUnlandedNeedIsNeverDealt`, `TestAStopOnUnlandedNeedsIsNotTheWorkers`, `TestANoUsageNeedsStopIsStillOneTake`, `TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand`, `TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded` |
+| 4. ledger landing (#100): fixes.sexp by id, RUNS/CASES/COVERAGE.tsv as a union, evidence keeps both revisions, FIXES.md regenerated; a code conflict still refused | `TestALedgerOnlyConflictLandsWithBothSidesRows`, `TestASameIdFixConflictIsRefused`, `TestACodeConflictIsStillRefused`, `TestEvidenceFormsKeepBoth`, `TestEvidenceHistoryKeepsEveryRevision` |
+| 5. done (#94): a row's done is its completions (work and fix cards that reached ok, reads with a verdict) | `TestADoneIsEveryCardTheRowCompleted`, `TestDoneCountsEveryKindOfCardFromTheLinesThatCompleteIt` |
+| 6. idle alarm (#102, #106): once an episode, reads are not work | `TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick`, `TestTickIdleAlarmsOnceAnEpisodeAndClears`, `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTickIdleAlarmTellsTheCoordinatorWhy`, `TestTheFleetAlarmIgnoresReadsCrossingTheThreshold`, `TestTheIdleFleetCountsWorkNotReads` |
+| 7. lifecycle (#103): every move lawful; no need cycle through needs set, sentinel set, relink or a brief batch | `TestLifecycleIsTheSpecTable`, `TestLawfulRefusesAMoveOutsideTheLifecycle`, `TestTheEngineHoldsEveryPlanToTheLifecycle`, `TestNeedsSetRefusesAnEditThatClosesACycle`, `TestNeedsSetSeesAWorkingCardsNeeds`, `TestSentinelSetSeesAWorkingCardsNeeds`, `TestRelinkSeesAWorkingCardsNeeds`, `TestABriefBatchCannotCloseACycleBetweenItsCards`, `TestAddRefusesACycle` |
+| 8. progress: a cleared sprint deals, works, reads, accepts and lands with no seat action after start. The readers are re-added after the clear because of a known defect (the clear blanks them); the card a-cleared-sprint-keeps-its-readers owes the fix, and when it lands the re-add goes and the test proves the defaults too | `TestReleaseAcceptAClearedSprintLandsWithNoSeatAction` |
+| 9. canary: never reaching a configured server (`TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer`); on the release's binary, init, the member's beat, the ticks, and one member's take and finish ok of one card (the binary refuses a store whose function library is not its own) | `TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild`, `TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer` |
+
+After the gate a release may still run a live canary of one card on one member of the
+adopted fleet; there is no timed watch.
+
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
