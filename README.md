@@ -5,7 +5,7 @@
 
 **nova-sprint** puts a fleet of AI workers to work on your backlog. Different
 models, many machines, and a system that moves cards from **ready to landed**
-automatically—through implementation, review, checks, and merging.
+automatically - through implementation, review, checks, and merging.
 
 [Get started](docs/GETTING-STARTED.md) · [See the live dashboard](http://69.67.149.151/)
 
