@@ -97,6 +97,8 @@ Rest(p) ==
 \* storing RouteRest's separate low Raise flag. Recompute on every transition:
 \* credit/auth beat low; coordinator rest suppresses low; ending a rest clears
 \* its judgment and reveals low if still present; a non-low read clears low.
+\* Judgment is a definition of providerConds' answer, not a checked property:
+\* no invariant restates it (one would hold by definition and could not fail).
 Judgment(p) == IF rest[p] = "credit" THEN "funds"
                ELSE IF rest[p] = "auth" THEN "key"
                ELSE IF rest[p] = "none" /\ low[p] THEN "low"
@@ -138,10 +140,6 @@ PFTypeOK ==
     /\ ended \in [Providers -> BOOLEAN]
     /\ running \in BOOLEAN /\ friendUp \in BOOLEAN
     /\ event \in {"init", "credit", "auth", "ignored", "balance", "payment", "funded", "wake", "coord", "stop", "start"}
-JudgmentsMatch == \A p \in Providers :
-    /\ (Judgments[p] = "funds") <=> (rest[p] = "credit")
-    /\ (Judgments[p] = "key") <=> (rest[p] = "auth")
-    /\ (Judgments[p] = "low") <=> (low[p] /\ rest[p] = "none")
 StopOnlyWhenAllOut == [][running /\ ~running' => AllOut]_pvars
 LowNeverStops == [][running /\ ~running' => \A p \in Providers : ~low[p] \/ Out(p)]_pvars
 NoFundsStopWhileFriendUp == [][friendUp /\ running => running']_pvars

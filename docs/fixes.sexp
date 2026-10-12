@@ -2388,12 +2388,12 @@
     it) or with no launch time, so a refusal rests the provider only from a take launched after the last rest
     ended (providerRestsDue, internal/sprint/provider_funds.go: e.taken.After(last.Mark())); a payment the poll
     sees, funded and the coordinator's wake each end the rest and set that mark (balance.go, Funded,
-    route_coordinator.go: Until = now). The balance poll writes no rest. Judgments is providerConds' one
-    judgment a provider: out of funds or refused key before low, low only while no rest of its own holds.
+    route_coordinator.go: Until = now). The balance poll writes no rest. Judgments defines providerConds' one
+    judgment a provider (a definition, not a checked property): out of funds or refused key before low, low only while no rest of its own holds.
     AllOutOfCredit stops the machine only when every provider rests for credit (RouteRest.Out), and
     friendsKeepRunning drops the stop while a friend is up; START is the coordinator's and is refused while all
     are out unless a friend is up. Invariants and properties: LowNeverStops, NoFundsStopWhileFriendUp,
-    StartIsTheCoordinators, StopOnlyWhenAllOut, RefusalsAfterLastEnd, JudgmentsMatch. Reversed witnesses:
+    StartIsTheCoordinators, StopOnlyWhenAllOut, RefusalsAfterLastEnd. Reversed witnesses:
     lowisout (Out counts a low balance; fails LowNeverStops), nofriendexception (drops friendsKeepRunning; fails
     NoFundsStopWhileFriendUp) and stalerefusal (drops the launch-after-the-mark guard; fails
     RefusalsAfterLastEnd). provider_funds.go gains comment lines citing the module, and AllOutOfCredit's comment
