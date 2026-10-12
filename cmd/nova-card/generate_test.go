@@ -64,7 +64,7 @@ func TestReadCheckoutReadsTheBranchAndNoneAtADetachedHEAD(t *testing.T) {
 	assert.Contains(t, stderr, "no base branch")
 }
 
-// A directory cut by --max is admitted as it is: no kept card needs a cut one.
+// A directory cut by --max is admitted as it is: kept cards are chained with DEPENDS-ON.
 func TestMaxLeavesNoNeedOnACutCard(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
@@ -81,7 +81,7 @@ func TestMaxLeavesNoNeedOnACutCard(t *testing.T) {
 	exit, stdout, stderr := runCard("generate", "--from", "ledger", "--ledger", "serial-tests", "--repo-dir", repo, "--repo", "o/r", "--base", "dev", "--sha", strings.Repeat("ab", 20), "--out", filepath.Join(t.TempDir(), "cards"), "--max", "2", "--dry-run")
 	require.Equal(t, 0, exit, stderr)
 	assert.Contains(t, stdout, "cards=2 waves=1 tier=flash dry-run=yes")
-	assert.Contains(t, stdout, "serial-tests-cmd-b-b\tcmd/b/b_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\t-\n")
+	assert.Contains(t, stdout, "serial-tests-cmd-b-b\tcmd/b/b_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\tserial-tests-cmd-a-a\n")
 	assert.NotContains(t, stdout, "serial-tests-cmd-c-c", "the cut card is named nowhere")
 }
 
