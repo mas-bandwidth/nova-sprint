@@ -216,7 +216,7 @@ func TestThePlannersDoNotModifyWhatTheyRead(t *testing.T) {
 		c.Tables.Now = s.now
 		before := dump(c)
 		for _, p := range sprint.TickParts {
-			plan, _ := p.Fn(c.Tables, sprint.TickReq{Who: sprint.MachineActor, Beats: c.Beats, Friends: c.Friends})
+			plan, _ := p.Fn(c.Tables, sprint.TickReq{Who: sprint.MachineActor, Beats: c.Beats, RecoveryHeads: c.RecoveryHeads, Friends: c.Friends})
 			sprint.Applied(c.Tables, plan)
 			if after := dump(c); after != before {
 				require.Failf(t, "assertion failed", "snapshot %d: the tick's part %s changed what it read:\n%s", i, p.Name, firstDifference(before, after))

@@ -181,7 +181,7 @@ func (l *loaded) judgments(t *sprint.Snapshot) {
 func (l *loaded) run(s sample, part string) (store.Result, int) {
 	l.tb.Helper()
 	m := store.Machine{Spans: s.snap.Stopped}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: s.snap.Beats, Friends: s.snap.Friends}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: s.snap.Beats, RecoveryHeads: s.snap.RecoveryHeads, Friends: s.snap.Friends}
 	due := 0
 	for _, p := range sprint.TickParts {
 		if p.Name == part {
@@ -254,7 +254,7 @@ func appliedMatters(s sample) map[string]bool {
 	tabs := c.Tables
 	tabs.Now = s.now
 	m := store.Machine{Spans: c.Stopped}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: c.Beats, Friends: c.Friends}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: c.Beats, RecoveryHeads: c.RecoveryHeads, Friends: c.Friends}
 	out := map[string]bool{}
 	if !c.Running {
 		return out

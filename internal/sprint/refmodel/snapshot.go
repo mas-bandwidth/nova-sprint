@@ -39,6 +39,8 @@ type Snapshot struct {
 	// class): whom the deal gives a friend's card. nil is none
 	// read, and no friend is dealt a card; the friend stall reads her fleet row.
 	Friends []sprint.FriendSeat
+	// RecoveryHeads is independently supplied immutable old-branch evidence.
+	RecoveryHeads []sprint.RecoveryHead
 }
 
 // Clone is a copy of the snapshot that shares nothing with it, so what is done
@@ -53,6 +55,7 @@ func (s Snapshot) Clone() Snapshot {
 	c.Goals = sprint.Goals{People: slices.Clone(s.Goals.People), Noted: maps.Clone(s.Goals.Noted)}
 	c.Untold = slices.Clone(s.Untold)
 	c.Friends = slices.Clone(s.Friends)
+	c.RecoveryHeads = slices.Clone(s.RecoveryHeads)
 	return c
 }
 
@@ -76,7 +79,7 @@ func (s Snapshot) stopped() func(from, to time.Time) time.Duration {
 
 // tickReq is what the tick is given beside its tables.
 func (s Snapshot) tickReq() sprint.TickReq {
-	return sprint.TickReq{Who: sprint.MachineActor, Stopped: s.stopped(), Beats: s.Beats, Friends: s.Friends}
+	return sprint.TickReq{Who: sprint.MachineActor, Stopped: s.stopped(), Beats: s.Beats, Friends: s.Friends, RecoveryHeads: s.RecoveryHeads}
 }
 
 func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
@@ -86,6 +89,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 	c := *s
 	c.Work, c.Readers, c.Merge, c.Fleet = cloneTable(s.Work), cloneTable(s.Readers), cloneTable(s.Merge), cloneTable(s.Fleet)
 	c.Open, c.Acked = cloneOpen(s.Open), cloneOpen(s.Acked)
+	c.RecoveryHeads = slices.Clone(s.RecoveryHeads)
 	return &c
 }
 
@@ -94,7 +98,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 // facts and episode (the deadlines duty, sprint.TickLandingStall), and the unserved tier's
 // fallback setting (the unserved fallback duty, sprint.TickUnservedFallback).
 var CarriedProps = []string{sprint.PropStatusSeen, sprint.PropLastLanding, sprint.PropLandRefusal,
-	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo, sprint.PropReadCards}
+	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo, sprint.PropReadCards, sprint.PropRecoveryCursor}
 
 func cloneTable(t *sprint.Table) *sprint.Table {
 	if t == nil {

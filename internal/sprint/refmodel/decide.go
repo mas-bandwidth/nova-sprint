@@ -14,6 +14,8 @@ import (
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
 const (
+	DutyFriendRecover    = "friend-recover"    // revoke derived Down leases and leave exact old-branch debt
+	DutyRecoveryHeads    = "recovery-heads"    // accept a successful exact branch snapshot before new admission
 	DutyLive             = "live"              // a working card its row's live set has not named for the grace goes back ready (v1.2.6)
 	DutyStrangers        = "strangers"         // tell of a machine that beats and is no member
 	DutyPresence         = "presence"          // a member's status follows its beats
@@ -38,7 +40,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyUnservedFallback, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyFriendRecover, DutyLive, DutyRecoveryHeads, DutyLevel, DutyLevelReads, DutyResolve, DutyUnservedFallback, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -51,7 +53,9 @@ type Duty struct {
 
 // Duties is every duty of today's tick in the order the machine runs them.
 var Duties = []Duty{
+	{DutyFriendRecover, FriendRecoverMoves},
 	{DutyLive, LiveMoves},
+	{DutyRecoveryHeads, RecoveryHeadMoves},
 	{DutyLevel, LevelMoves},
 	{DutyLevelReads, LevelReadsMoves},
 	{DutyResolve, ResolveMoves},
@@ -100,6 +104,14 @@ func Decide(s Snapshot, now time.Time) []Move {
 	}
 	return sortMoves(out)
 }
+
+// FriendRecoverMoves revokes live leases of derived Down friends without
+// spending attempts; absent receivers leave unowned work or review pending.
+func FriendRecoverMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyFriendRecover) }
+
+// RecoveryHeadMoves resolves exact immutable branch facts. Unavailable evidence
+// stays debt and cannot be interpreted as successful absence.
+func RecoveryHeadMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyRecoveryHeads) }
 
 // LiveMoves is the reconcile at the tick's start (v1.2.6; tla/LiveRuns.tla Tick): each card
 // working on a fleet row whose beat carries a live set that has not named it at its
@@ -224,7 +236,9 @@ type dutyOn struct {
 // silence.
 func decisions() []dutyOn {
 	return []dutyOn{
+		{DutyFriendRecover, partOn(DutyFriendRecover)},
 		{DutyLive, partOn(DutyLive)},
+		{DutyRecoveryHeads, partOn(DutyRecoveryHeads)},
 		{DutyLevel, partOn(DutyLevel)},
 		{DutyLevelReads, partOn(DutyLevelReads)},
 		{DutyResolve, partOn(DutyResolve)},
