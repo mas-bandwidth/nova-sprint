@@ -2090,9 +2090,15 @@ func Drop(s *Snapshot, r DropReq) Plan {
 	}
 	for _, c := range chosen {
 		u := Unit{Key: c.ID, Stream: c.Row}
+		endSet := map[string]string{"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)}
 		for _, fc := range s.Fleet.Of(c.ID) {
 			if fc.Col == Ready || fc.Col == Working || fc.Col == Withdrawn {
-				u.Changes = append(u.Changes, change(Fleet, removeEntry(fc, map[string]string{"dropped": stamp(s.Now)})))
+				fields := map[string]string{"dropped": stamp(s.Now)}
+				if fc.Col == Working && fc.F("kind") != "read" {
+					fields["end_class"] = string(EndClassCoordination)
+					addConsumer(c, endSet, workConsumer(s, fc, 0, "drop", "", EndClassCoordination))
+				}
+				u.Changes = append(u.Changes, change(Fleet, removeEntry(fc, fields)))
 			}
 		}
 		for _, rc := range s.Readers.Of(c.ID) {
@@ -2103,8 +2109,7 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		if m := s.Merge.Placed(c.ID); m != nil {
 			u.Changes = append(u.Changes, change(Merge, removeEntry(m, map[string]string{"dropped": stamp(s.Now)})))
 		}
-		u.Changes = append(u.Changes, change(Work, removeEntry(c, map[string]string{
-			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)})))
+		u.Changes = append(u.Changes, change(Work, removeEntry(c, endSet)))
 		u.Closes = closesFor(s.Open, nil, c.ID)
 		answerListed(&u, s.Open, r.Answers, "drop", c.Row, "dropped "+c.ID+"; "+r.Reason, r.Who, s.Now, c.ID)
 		u.Moved = fmt.Sprintf("%s %s -> off the table (%s)", c.ID, c.Col, r.Reason)

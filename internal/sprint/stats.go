@@ -40,7 +40,16 @@ type Stages struct {
 type MemberStat struct {
 	Member    string  `json:"member"`
 	Cards     int     `json:"cards"`
+	OK        int     `json:"ok"`
+	OKPercent float64 `json:"ok_percent"`
 	Failed    int     `json:"failed"`
+	NoResult  int     `json:"no_result"`
+	Provider  int     `json:"provider"`
+	Coordination int  `json:"coordination"`
+	Environment int   `json:"environment"`
+	Harness   int     `json:"harness"`
+	Clear     int     `json:"clear"`
+	Unknown   int     `json:"unknown"`
 	TakeWait  Measure `json:"take_wait"`
 	RunWall   Measure `json:"run_wall"`
 	ReportLag Measure `json:"report_lag"`
@@ -67,8 +76,15 @@ type RouteTakes struct {
 	Route    string  `json:"route"`
 	Takes    int     `json:"takes"`
 	OK       int     `json:"ok"`
+	OKPercent float64 `json:"ok_percent"`
 	Failed   int     `json:"failed"`
 	Provider int     `json:"provider_failures"`
+	NoResult int      `json:"no_result"`
+	Coordination int  `json:"coordination"`
+	Environment int   `json:"environment"`
+	Harness int       `json:"harness"`
+	Clear int         `json:"clear"`
+	Unknown int       `json:"unknown"`
 	RunWall  Measure `json:"run_wall"`
 }
 
@@ -141,7 +157,8 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 				case "yes":
 					lastFinished = finished
 				case "no":
-					x.failed++
+					// Failure is counted from the stored end event below: a
+					// failed verdict can be a coordination or harness end.
 				}
 				x.timed(dealt, taken, finished, RunWall(w))
 				if k == 1 {
@@ -176,16 +193,22 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 				name += ":" + c.Model
 			}
 			z := sampleOf(routes, name)
-			switch {
-			case c.Kind == "read" && c.End != "returned", c.Kind == "work" && c.End == "ok":
-				z.ok++
-			case strings.HasPrefix(c.End, cardhdr.EndProvider), strings.HasPrefix(c.End, cardhdr.EndNoResult):
-				z.provider++
-			case c.End == EndNeedsUnlanded:
-				// a stop on needs not landed is a coordination failure (needs_stop.go): neither
-				// ok nor failed for the route or model
-			default:
-				z.failed++
+			if c.Kind == "read" {
+				if c.End == "returned" {
+					z.failed++
+				} else {
+					z.ok++
+				}
+			} else if c.Kind == "work" {
+				class := c.EndClass
+				if class == "" { class = ClassifyEnd(c.End) }
+				member := c.Who
+				if member == "" && own != nil { member = own.Row }
+				if member == "" { member = "-" }
+				x := work[member]
+				if x == nil { x = &samples{}; work[member] = x }
+				x.addEnd(class)
+				z.addEnd(class)
 			}
 			if wall, ok := wallSeconds(c.Usage.Wall); ok {
 				z.wall = append(z.wall, wall)
@@ -196,7 +219,7 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 	ps.Work, ps.Reads, ps.Routes = []MemberStat{}, []ReaderStat{}, []RouteTakes{}
 	for _, name := range slices.Sorted(maps.Keys(work)) {
 		x := work[name]
-		ps.Work = append(ps.Work, MemberStat{Member: name, Cards: x.n, Failed: x.failed, TakeWait: measure(x.wait), RunWall: measure(x.wall), ReportLag: measure(x.lag)})
+		ps.Work = append(ps.Work, MemberStat{Member: name, Cards: x.n, OK: x.ok, OKPercent: x.okPercent(), Failed: x.failed, NoResult: x.noResult, Provider: x.provider, Coordination: x.coordination, Environment: x.environment, Harness: x.harness, Clear: x.clear, Unknown: x.unknown, TakeWait: measure(x.wait), RunWall: measure(x.wall), ReportLag: measure(x.lag)})
 	}
 	for _, name := range slices.Sorted(maps.Keys(reads)) {
 		y := reads[name]
@@ -204,7 +227,7 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 	}
 	for _, name := range slices.Sorted(maps.Keys(routes)) {
 		z := routes[name]
-		ps.Routes = append(ps.Routes, RouteTakes{Route: name, Takes: z.n, OK: z.ok, Failed: z.failed, Provider: z.provider, RunWall: measure(z.wall)})
+		ps.Routes = append(ps.Routes, RouteTakes{Route: name, Takes: z.n, OK: z.ok, OKPercent: z.okPercent(), Failed: z.failed, NoResult: z.noResult, Provider: z.provider, Coordination: z.coordination, Environment: z.environment, Harness: z.harness, Clear: z.clear, Unknown: z.unknown, RunWall: measure(z.wall)})
 	}
 	return ps
 }
@@ -238,8 +261,28 @@ func anyCardSince(s *Snapshot, p *Card, since time.Time) bool {
 
 // samples are one member's, reader's or route's cards and their samples, in seconds.
 type samples struct {
-	n, ok, failed, provider int
+	n, ok, failed, noResult, provider, coordination, environment, harness, clear, unknown int
 	wait, wall, lag         []float64
+}
+
+func (x *samples) addEnd(c EndClass) {
+	switch c {
+	case EndClassOK: x.ok++
+	case EndClassFailedWork: x.failed++
+	case EndClassNoResult: x.noResult++
+	case EndClassProvider: x.provider++
+	case EndClassCoordination: x.coordination++
+	case EndClassEnvironment: x.environment++
+	case EndClassHarness: x.harness++
+	case EndClassClear: x.clear++
+	default: x.unknown++
+	}
+}
+
+func (x *samples) okPercent() float64 {
+	denominator := x.ok + x.failed + x.noResult
+	if denominator == 0 { return 0 }
+	return 100 * float64(x.ok) / float64(denominator)
 }
 
 // sampleOf is the name's samples, counted one card more, made on first meeting.

@@ -34,6 +34,10 @@ func StatsArchiveKey(at time.Time, nonce string) string {
 // StatsRecord is the last tidy as stored.
 type StatsRecord struct {
 	Epoch  uint64    `json:"epoch"`
+	EndsEpoch uint64 `json:"ends_epoch,omitempty"`
+	EndsAt time.Time `json:"ends_at,omitzero"`
+	Ends map[string]sprint.EndCounts `json:"ends,omitempty"`
+	EndsCursor string `json:"ends_cursor,omitempty"`
 	Since  time.Time `json:"since,omitzero"` // the last tidy, of any kind, to the nanosecond
 	Reason string    `json:"reason,omitempty"`
 	By     string    `json:"by,omitempty"`

@@ -227,6 +227,9 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	if err := st.keepLogIndex(ctx); err != nil {
 		return fmt.Errorf("the card log index: %w", err)
 	}
+	if err := st.keepEndCounts(ctx, kv); err != nil {
+		return fmt.Errorf("the fleet end counts: %w", err)
+	}
 	shapes, err := st.B.Shapes(ctx, []string{st.Names.Table(sprint.Work), st.Names.Table(sprint.Fleet)})
 	if err != nil {
 		return err
@@ -436,6 +439,8 @@ type WhereFacts struct {
 	// The where record's spend is counted from it already (keepWhere); where counts the
 	// fleet's done cells and the landed per card from it.
 	Reset *sprint.ResetMark
+	// Ends is the typed-end projection used by both the fleet text and JSON view.
+	Ends map[string]sprint.EndCounts
 	// HasStoreRTT is set when the server's store round trip record has a sample
 	// within StoreRTTWindow; StoreRTTP50MS and StoreRTTP99MS are its p50 and p99.
 	HasStoreRTT   bool
@@ -493,6 +498,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			stats = StatsRecord{}
 		}
 		f.Reset = stats.resetIn(st.epoch)
+		if f.Ends, err = st.CurrentEndCounts(ctx, stats); err != nil { return f, err }
 		for i, v := range []any{&f.Machine, &f.Heartbeat} {
 			if oks[i] {
 				if err := json.Unmarshal([]byte(vals[i]), v); err != nil {

@@ -453,3 +453,10 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce` (`internal/sprint/store/seat_silent_bound_test.go`): a card at its bound (a mind's judgment) unanswered past its deadline raises the alarm once, never waited or acknowledged, raised again with the bound at the next deadline, cleared by the answer.
 - `TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline`, `TestAHeavyCardNoRouteServesIsNeverReTieredToFlash`, `TestAPinnedCardNoRouteServesStaysOnItsPinnedTier` (`internal/sprint/seat_answers_rule_test.go`): the no-route default, never down a tier, never over a pin.
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
+
+## End classification
+
+Classify every end by cause at the moment it is recorded: work (the child ran to its own end) vs not-its-fault (coordination, provider, environment, harness). Ok% per machine and per route counts only work ends: ok over (ok + failed + no result). Every other end is counted in its own named column beside ok% on the dashboard row's tooltip and in stats.
+
+- `TestEndClassify` (internal/sprint/end_classify_test.go): table test covering each end class: work (ok, finished, review, no_result) vs not-its-fault (coordination, provider, environment, harness). Asserts ok% counts only work ends.
+- `TestNotItsFaultEnds` (internal/sprint/end_classify_test.go): asserts the set of not-its-fault end kinds.

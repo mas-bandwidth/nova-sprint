@@ -1928,7 +1928,17 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		} else {
 			set[FieldLastFinish] = pr.F("attempt") + ":ok" // a pass, a late LAND, a defect: no failure recorded
 		}
-		cons := workConsumer(s, c, 0, result, rec)
+		endClass := ClassifyEnd(result)
+		if defect != "" {
+			endClass = EndClassCoordination
+		} else if r.Failed && HarnessFault(r.Report) != "" {
+			endClass = EndClassHarness
+		}
+		if capped {
+			endClass = EndClassCoordination
+		}
+		cardSet["end_class"] = string(endClass)
+		cons := workConsumer(s, c, 0, result, rec, endClass)
 		if capped {
 			cons.End, cons.Cap, cons.Overrun = laneCapEnd, lc.Cap.String(), lc.Overrun.String()
 		}
@@ -2166,6 +2176,7 @@ func IsNoResult(report string) bool { return strings.HasPrefix(report, cardhdr.E
 func takeEnded(s *Snapshot, c, pr *Card, r FinishReq, kind string, decided bool) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"], set[FieldTakeEnded] = stamp(s.Now), stamp(s.Now)
+	set["end_class"] = string(ClassifyEnd(kind))
 	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, kind), ":")), MaxProviderErrorBytes)
 	why := "the provider failed the take"
 	if kind == cardhdr.EndNoResult {
@@ -2218,6 +2229,7 @@ func IsStagingRefusal(report string) bool { return strings.HasPrefix(report, car
 func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
+	set["end_class"] = string(EndClassEnvironment)
 	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndStaging), ":")), MaxProviderErrorBytes)
 	var notes []Note
 	if !contains(StagingRefusers(c), c.Row) {
@@ -2228,12 +2240,10 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		n.What = cardhdr.EndStaging + " on " + c.Row + ": " + line
 		notes = append(notes, n)
 	}
-	// no child ran: the producer records the launch only when it cost something
+	// The producer records the typed end even when the refusal spent no tokens.
 	prSet := map[string]string{}
-	if r.Usage != "" {
-		dealt, taken := takeStamps(c)
-		addConsumer(pr, prSet, workConsumer(s, c, 0, "staging refused", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
-	}
+	dealt, taken := takeStamps(c)
+	addConsumer(pr, prSet, workConsumer(s, c, 0, cardhdr.EndStaging, costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken), EndClassEnvironment))
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
@@ -2261,6 +2271,7 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved string) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
+	set["end_class"] = string(EndClassProvider)
 	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
 	set[FieldProviderError] = line
 	dealt, taken := takeStamps(c)
@@ -2290,9 +2301,7 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	prSet := map[string]string{}
-	if r.Usage != "" {
-		addConsumer(pr, prSet, workConsumer(s, c, 0, label, rec))
-	}
+	addConsumer(pr, prSet, workConsumer(s, c, 0, label, rec, EndClassProvider))
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
@@ -2418,7 +2427,16 @@ func (s *Snapshot) EnvHeld(member string) bool {
 // (envFaultNote, tla/ProviderBudget.tla, JudgmentNamesTheCause).
 func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Plan, seen map[string]bool) {
 	line := cutText(oneLine(r.Report), MaxProviderErrorBytes)
-	u := withdrawUnit(s, c, nil, nil, NMemberEnvFaulted, who, "the member's environment faulted ("+cause+"): "+line)
+	u := withdrawUnit(s, c, map[string]string{"end_class": string(EndClassEnvironment)}, nil, NMemberEnvFaulted, who, "the member's environment faulted ("+cause+"): "+line)
+	dealt, taken := takeStamps(c)
+	prSet := map[string]string{}
+	addConsumer(pr, prSet, workConsumer(s, c, 0, "environment fault", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken), EndClassEnvironment))
+	for i := range u.Changes {
+		if u.Changes[i].Table == Work && u.Changes[i].Entry.ID == pr.ID {
+			if u.Changes[i].Entry.Set == nil { u.Changes[i].Entry.Set = map[string]string{} }
+			maps.Copy(u.Changes[i].Entry.Set, prSet)
+		}
+	}
 	u.Moved += "; " + EnvFaultRemedy(c.Row, cause)
 	if seen[c.Row] {
 		// the member already faulted in this step: no second control-card change (the model

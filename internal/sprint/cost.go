@@ -187,6 +187,7 @@ type Consumer struct {
 	Model   string         `json:"model,omitempty"` // provider/model
 	Tier    string         `json:"tier,omitempty"`  // the tier its route was drawn from (flash first, pro on escalation)
 	End     string         `json:"end"`
+	EndClass EndClass       `json:"end_class,omitempty"` // recorded at the ending event
 	At      string         `json:"at"`  // when it ended
 	Key     string         `json:"key"` // the card and its run: one record per key, set once
 	Usage   cardcost.Usage `json:"usage"`
@@ -200,6 +201,9 @@ type Consumer struct {
 func (c Consumer) line() string {
 	w := []string{"kind=" + c.Kind, "card=" + c.Card, "attempt=" + itoa(c.Attempt), "take=" + itoa(c.Take), "gen=" + itoa(c.Gen),
 		"who=" + orDash(c.Who), "on_route=" + orDash(c.Route), "on_model=" + orDash(c.Model), "on_tier=" + orDash(c.Tier), "end=" + orDash(strings.ReplaceAll(c.End, " ", "-")), "at=" + orDash(c.At)}
+	if c.EndClass != "" {
+		w = append(w, "end_class="+string(c.EndClass))
+	}
 	if c.Cap != "" {
 		w = append(w, "lane_cap="+c.Cap, "lane_overrun="+orDash(c.Overrun))
 	}
@@ -239,6 +243,8 @@ func parseConsumer(key, line string) Consumer {
 			c.Tier = undash(v)
 		case "end":
 			c.End = strings.ReplaceAll(undash(v), "-", " ")
+		case "end_class":
+			c.EndClass = EndClass(v)
 		case "at":
 			c.At = undash(v)
 		case "lane_cap":
@@ -289,11 +295,15 @@ func atoiOr(v string) int {
 
 // workConsumer is a work card's take as it ends: its route, model, member and
 // generation, the end, and the cost record (rec, costRecord's line).
-func workConsumer(s *Snapshot, c *Card, take int, end, rec string) Consumer {
+func workConsumer(s *Snapshot, c *Card, take int, end, rec string, cause ...EndClass) Consumer {
 	u := cardcost.ParseUsage(rec)
 	key := c.ID + "#g" + itoa(c.Int("gen"))
+	class := ClassifyEnd(end)
+	if len(cause) != 0 {
+		class = cause[0]
+	}
 	return Consumer{Kind: "work", Card: c.ID, Attempt: c.Int("attempt"), Take: take, Gen: c.Int("gen"), Who: c.Row,
-		Route: c.F(FieldRoute), Model: cmp.Or(u.Model, c.F(FieldModel)), Tier: c.F(FieldTier), End: end, At: stamp(s.Now), Key: key, Usage: u}
+		Route: c.F(FieldRoute), Model: cmp.Or(u.Model, c.F(FieldModel)), Tier: c.F(FieldTier), End: end, EndClass: class, At: stamp(s.Now), Key: key, Usage: u}
 }
 
 // readConsumer is a read card's run as it ends: run is the returned run's number, 0

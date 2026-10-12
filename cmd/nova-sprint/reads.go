@@ -1401,6 +1401,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			// cards each row completed since it
 			t, friendCards = splitFriendRows(facts.Reset.FleetSince(t))
 			t = doneColumn(t, done, func(key string) string { return key })
+			t = fleetEndProjection(t, facts.Ends)
 		}
 		if logical == sprint.Readers {
 			// each reader's width beside reading, derived from its fleet row

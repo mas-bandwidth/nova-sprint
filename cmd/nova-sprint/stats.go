@@ -91,6 +91,7 @@ func statsText(ps sprint.PassStats) string {
 	secs := func(name string) ntable.Column {
 		return ntable.Column{Name: name, Label: name + " (median max n)", Projection: ntable.Text, Fold: ntable.None}
 	}
+	plain := func(name string) ntable.Column { return ntable.Column{Name: name, Projection: ntable.Text, Fold: ntable.None} }
 	row := func(key string, texts ...string) ntable.Row {
 		r := ntable.Row{Key: key, Texts: map[string]string{}}
 		for i := 0; i+1 < len(texts); i += 2 {
@@ -105,9 +106,9 @@ func statsText(ps sprint.PassStats) string {
 		row("accept to land", "seconds", measureText(ps.Stages.AcceptToLand)),
 		row("total", "seconds", measureText(ps.Stages.Total)),
 	}}
-	work := ntable.Table{Columns: []ntable.Column{count("cards"), count("failed"), secs("take wait"), secs("run wall"), secs("report lag")}}
+	work := ntable.Table{Columns: []ntable.Column{count("cards"), count("ok"), count("failed"), count("no result"), count("provider"), count("coordination"), count("environment"), count("harness"), count("clear"), count("unknown"), plain("ok%"), secs("take wait"), secs("run wall"), secs("report lag")}}
 	for _, m := range ps.Work {
-		work.Rows = append(work.Rows, row(m.Member, "cards", n(m.Cards), "failed", n(m.Failed),
+		work.Rows = append(work.Rows, row(m.Member, "cards", n(m.Cards), "ok", n(m.OK), "failed", n(m.Failed), "no result", n(m.NoResult), "provider", n(m.Provider), "coordination", n(m.Coordination), "environment", n(m.Environment), "harness", n(m.Harness), "clear", n(m.Clear), "unknown", n(m.Unknown), "ok%", fmt.Sprintf("%.1f", m.OKPercent),
 			"take wait", measureText(m.TakeWait), "run wall", measureText(m.RunWall), "report lag", measureText(m.ReportLag)))
 	}
 	reads := ntable.Table{Columns: []ntable.Column{count("cards"), secs("begin wait"), secs("run wall"), secs("report lag")}}
@@ -115,9 +116,9 @@ func statsText(ps sprint.PassStats) string {
 		reads.Rows = append(reads.Rows, row(r.Reader, "cards", n(r.Cards),
 			"begin wait", measureText(r.BeginWait), "run wall", measureText(r.RunWall), "report lag", measureText(r.ReportLag)))
 	}
-	routes := ntable.Table{Columns: []ntable.Column{count("takes"), count("ok"), count("failed"), count("provider"), secs("run wall")}}
+	routes := ntable.Table{Columns: []ntable.Column{count("takes"), count("ok"), count("failed"), count("no result"), count("provider"), count("coordination"), count("environment"), count("harness"), count("clear"), count("unknown"), plain("ok%"), secs("run wall")}}
 	for _, r := range ps.Routes {
-		routes.Rows = append(routes.Rows, row(r.Route, "takes", n(r.Takes), "ok", n(r.OK), "failed", n(r.Failed), "provider", n(r.Provider),
+		routes.Rows = append(routes.Rows, row(r.Route, "takes", n(r.Takes), "ok", n(r.OK), "failed", n(r.Failed), "no result", n(r.NoResult), "provider", n(r.Provider), "coordination", n(r.Coordination), "environment", n(r.Environment), "harness", n(r.Harness), "clear", n(r.Clear), "unknown", n(r.Unknown), "ok%", fmt.Sprintf("%.1f", r.OKPercent),
 			"run wall", measureText(r.RunWall)))
 	}
 	return ntable.Render(stages, ntable.RenderOpts{Title: "stages"}) + statsLegend["stages"] + "\n" +
