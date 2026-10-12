@@ -665,6 +665,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			if err := st.memberNoRoomInto(ctx, snap, snap.NoRoom); err != nil {
 				return res, err
 			}
+			if err := st.memberTLCInto(ctx, snap); err != nil {
+				return res, err
+			}
 		}
 		if step.Readers && step.ReaderStates != nil {
 			snap.ReaderStates = step.ReaderStates

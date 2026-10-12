@@ -1094,6 +1094,16 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, benchRefusal(bench))
 			continue
 		}
+		// a card that needs TLC (its PATHS name tla/ model work, or its brief says
+		// NEEDS: tlc) is dealt only to a member whose beat reports TLC; with none up it
+		// waits in ready (tlc_deal.go, NeedsTLC)
+		if NeedsTLC(c) {
+			members = onlyTLC(s, members)
+			if len(members) == 0 {
+				p.refuse(c.ID, needsTLCRefusal())
+				continue
+			}
+		}
 		roomWhy := noRoomWhy
 		if len(bench) > 0 {
 			roomWhy = benchRoom(bench)

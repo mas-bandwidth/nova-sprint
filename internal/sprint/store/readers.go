@@ -250,6 +250,30 @@ func (st *Store) readerStatesInto(ctx context.Context, s *sprint.Snapshot) error
 		return err
 	}
 	s.NoRoom = noRoom
+	return st.memberTLCInto(ctx, s)
+}
+
+// memberTLCInto gives a snapshot its TLC set: every fleet member of s whose fresh beat
+// names a tla2tools.jar and says it can run TLC (sprint.Beat.TLC, sprint.Beat.TLCJar).
+// A store that keeps no beats reports none (tlc_deal.go, NeedsTLC).
+func (st *Store) memberTLCInto(ctx context.Context, s *sprint.Snapshot) error {
+	if s.Fleet == nil {
+		return nil
+	}
+	if _, err := st.rootKV(); err != nil {
+		return nil
+	}
+	beats, err := st.Beats(ctx, s.Members())
+	if err != nil {
+		return err
+	}
+	set := map[string]bool{}
+	for m, b := range beats {
+		if b.Fresh(s.Now) && b.TLC && b.TLCJar != "" {
+			set[m] = true
+		}
+	}
+	s.TLC = set
 	return nil
 }
 

@@ -99,6 +99,12 @@ type Beat struct {
 	// stop (fleet beat --stop-returns; docs/SPEC-SPRINT.md section 14, stop cancels jobs):
 	// start waits for zero. A friend's count is her report's (FriendReport.StopReturns).
 	StopReturns int `json:"stop_returns,omitempty"`
+	// TLC and TLCJar are a member's word that it can run TLC (fleet beat --tlc --tlc-jar):
+	// java is on its PATH and TLCJar is the tla2tools.jar it runs, checked once at start
+	// and on each restart. A card that needs TLC is dealt only to a member whose fresh
+	// beat says so (tlc_deal.go, NeedsTLC); a beat without it clears it.
+	TLC    bool   `json:"tlc,omitempty"`
+	TLCJar string `json:"tlc_jar,omitempty"`
 	// NoRoom is a member's or reader's word that it starts no card, and why (fleet beat or
 	// queue --no-room: its free disk under its floor, its usage source's rest); "" while it
 	// starts cards. While its beat is fresh the deal gives it no card and the ask asks it no

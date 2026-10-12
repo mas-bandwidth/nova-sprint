@@ -621,6 +621,11 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			// deals it to another member, so what holds it is its bench's beat and hold
 			return benchWaits(b), "", true
 		}
+		if NeedsTLC(pr) && len(onlyTLC(s, up)) == 0 {
+			// a card that needs TLC waits for a member whose beat reports TLC
+			// (tlc_deal.go): no placement deals it to one without it
+			return needsTLCWaits(), "", true
+		}
 		ec := escalating(s, pr)
 		_, tier, rwhy, byFriend := s.routeOf(ec, nil, nil, "")
 		if byFriend {

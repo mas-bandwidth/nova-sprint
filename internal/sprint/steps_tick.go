@@ -799,6 +799,9 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // coordinator is told once (N3), and the judgment closes when a member is up.
 // tla/DirtyTick.tla Pump (reads before work, ReadsBeforeWork) and Dealable (HeldStreamNotDealt).
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
+	// which members report TLC, from their beats, so the deal's requirement predicate
+	// reads them (tlc_deal.go, NeedsTLC)
+	withMemberTLC(s, r.Beats)
 	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
 	// route_rest.go): no card of this tick is drawn on one, and the new rests are written
 	// in its plan
@@ -927,6 +930,11 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if b := Bench(c); len(b) > 0 && len(onlyBench(up, b)) == 0 {
 			// its bench is down or held: it waits ready for a member of it, and is dealt to
 			// no other (bench_deal.go); the no-stall rule says why (held.go)
+			continue
+		}
+		if NeedsTLC(c) && len(onlyTLC(s, up)) == 0 {
+			// no member that reports TLC is up: the card waits in ready for one and is
+			// dealt to no other (tlc_deal.go); the no-stall rule says why (held.go)
 			continue
 		}
 		ready = append(ready, c)

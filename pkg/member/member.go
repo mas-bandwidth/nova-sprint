@@ -26,6 +26,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"slices"
 	"sort"
 	"strconv"
@@ -383,6 +384,11 @@ type Config struct {
 	// m's width, sprint.ReaderMachine).
 	Width  int
 	Reader bool // run the readers-table loop instead of the fleet's
+	// TLAJar is the tla2tools.jar this member runs TLC with. When it names a regular
+	// file and java is on the member's PATH, the member reports TLC on every beat
+	// (fleet beat --tlc --tlc-jar), checked once at start and on each restart, so the
+	// deal gives it the cards that record a TLC run (tlc_deal.go). "" reports none.
+	TLAJar string
 	// Room is asked once a tick before any child is started (a recovered card or a taken
 	// one): ok false starts none that tick, with why said once when it begins and once when
 	// it ends. nil asks nothing (docs/SPEC-SWARM.md, `member`, the disk floor).
@@ -510,6 +516,10 @@ type Member struct {
 	// live is the live set of the cards the last pass ended holding (liveWords), for the
 	// work member's beat (--live): the sprint's evidence for working
 	live atomic.Pointer[string]
+	// tlcJar is the tla2tools.jar this machine runs TLC with, set at start when java is
+	// on its PATH and the jar is a regular file (tlcAvailable); "" reports no TLC and the
+	// beat carries none
+	tlcJar string
 
 	// the beat's own clock (BeatLoop): beatMu guards beaten; progress is when the work pass
 	// last advanced, in unix nanoseconds
@@ -567,8 +577,30 @@ type decided struct {
 func New(cfg Config, s Sprint, r Runner, pu Pusher, out io.Writer) *Member {
 	m := &Member{cfg: cfg, sprint: s, runner: r, pusher: pu, out: out, running: map[string]launch{}, stageRetried: map[string]bool{}, returnedAt: map[string]time.Time{}, width: cfg.Width,
 		posted: map[string]post{}, pushGate: make(chan struct{}, pushWidth), wake: make(chan struct{}, 1), stopRetry: map[string]time.Time{}, stopRefused: map[string]string{}, handedBack: map[string]int{}}
+	if !cfg.Reader && tlcAvailable(cfg.TLAJar) {
+		m.tlcJar = cfg.TLAJar
+	}
 	m.advanced() // a member begins with its pass going on
 	return m
+}
+
+// lookPath and statFile are the start checks tlcAvailable makes; tests stub them.
+var (
+	lookPath = exec.LookPath
+	statFile = os.Stat
+)
+
+// tlcAvailable says this machine can run TLC: java is on its PATH and jar names a regular
+// file. It is checked once at start and on each restart (New), never on a beat.
+func tlcAvailable(jar string) bool {
+	if jar == "" {
+		return false
+	}
+	if _, err := lookPath("java"); err != nil {
+		return false
+	}
+	fi, err := statFile(jar)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // Drain stops the member taking new cards: from the next tick it beats, reads
@@ -766,6 +798,11 @@ func (m *Member) Beat() error {
 			args = append(args, "--live", *live)
 		}
 		args = append(args, m.noRoomArgs()...)
+		if m.tlcJar != "" {
+			// this machine checked java and the tla2tools.jar at start: report TLC so the
+			// deal gives it the cards that record a TLC run (tlc_deal.go)
+			args = append(args, "--tlc", "--tlc-jar", m.tlcJar)
+		}
 		if m.cfg.Meter != nil {
 			var pct float64
 			var ok bool

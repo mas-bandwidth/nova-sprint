@@ -546,6 +546,11 @@ type Snapshot struct {
 	// its word why (Beat.NoRoom: its disk under its floor): the deal gives it no card
 	// (notQuiet) and the ask asks it no read (readerRooms). nil is none read.
 	NoRoom map[string]string
+	// TLC is each fleet member whose fresh beat reports it can run TLC (Beat.TLC and
+	// Beat.TLCJar): a card that needs TLC is dealt only to a member of it (tlc_deal.go,
+	// NeedsTLC), and while none is up the card waits in ready. nil is none read, and no
+	// member reports TLC.
+	TLC map[string]bool
 	// Friends is each friend the deal may give a friend's card to, or whose delivery
 	// mode is consulted by friendNext (FriendSeat); nil is none.
 	Friends []FriendSeat

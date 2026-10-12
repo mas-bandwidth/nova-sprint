@@ -222,6 +222,34 @@ func (st *Store) BeatDraining(ctx context.Context, member string, given *float64
 	return b, st.noteStranger(ctx, member)
 }
 
+// BeatTLC is BeatDraining with the member's word that it can run TLC (fleet beat --tlc
+// --tlc-jar): java is on its PATH and tlcJar is the tla2tools.jar it runs, checked once
+// at start and on each restart. The fields are written with the beat, so the tick's deal
+// reads them (sprint.Beat.TLC, sprint.Beat.TLCJar; tlc_deal.go). A beat that reports no
+// TLC leaves both unset, clearing what the record before said.
+func (st *Store) BeatTLC(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining, tlc bool, tlcJar string) (sprint.Beat, error) {
+	b, err := st.BeatDraining(ctx, member, given, src, stopReturns, noRoom, live, draining)
+	if err != nil {
+		return b, err
+	}
+	if !tlc {
+		return b, nil // BeatDraining wrote no TLC
+	}
+	b.TLC, b.TLCJar = true, tlcJar
+	kv, err := st.rootKV()
+	if err != nil {
+		return b, err
+	}
+	out, err := json.Marshal(b)
+	if err != nil {
+		return b, err
+	}
+	if err := kv.SetKey(ctx, beatKey(member), string(out)); err != nil {
+		return b, err
+	}
+	return b, nil
+}
+
 // TouchBeat is the beat that releasing a hold gives a member that has beaten
 // (docs/SPEC-SPRINT.md section 5; the coordinator's fleet up counts as a
 // beat): its last beat becomes the store's clock now, its load and samples as
