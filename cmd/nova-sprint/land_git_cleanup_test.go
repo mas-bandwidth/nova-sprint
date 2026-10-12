@@ -23,7 +23,7 @@ func TestLandRigPushStartsNoRemoteAutoMaintenance(t *testing.T) {
 		return strings.HasPrefix(e, "GIT_CONFIG_PARAMETERS=") || strings.HasPrefix(e, "GIT_TRACE=")
 	}), "GIT_CONFIG_PARAMETERS='maintenance.auto'='false'", "GIT_TRACE="+trace)
 	r.a.gitEnv = r.env
-	r.ok("add --stream s1 --one")
+	r.ok("add --stream s1 --count 1 --one")
 	head := r.head("s1-1", "main", "work.txt", "work\n")
 	r.queued(map[string]string{"s1-1": head}, "s1-1")
 	assert.Contains(t, r.ok("land --repo-dir "+r.clone+" --base main"), "LAND OK stream=s1 cards=1 base=main")
