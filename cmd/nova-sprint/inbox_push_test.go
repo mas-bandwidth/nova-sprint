@@ -26,8 +26,7 @@ func heldAndWaiting(t *testing.T) (*testApp, sprint.Group) {
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("add --stream s2 --count 1 --one")
 	ta.deal(2)
-	// ci red: a judgment a wait may hold (failed work holds its card and takes no wait,
-	// internal/sprint/wait_refused.go)
+	// A timer holds no card, so it is eligible for wait (wait_refused.go).
 	ta.timerOnce("look-again")
 	held := ta.group(sprint.NTimer, "")
 	ta.ok("wait " + held.ID + " --for 30m")
