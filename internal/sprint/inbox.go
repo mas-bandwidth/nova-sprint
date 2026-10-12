@@ -407,11 +407,23 @@ func NoteCommands(n Note, members []string) []Command {
 func commands(g Group, first Note, prefix string, onWork func(id string) bool) []Command {
 	// never offer a verb the judgment refuses: the one rule the wait verb applies
 	// (WaitRefusalOn), a judgment naming a work-table card included (a stop, a drift, a stall)
-	if WaitRefusalOn(first, onWork) != "" {
+	refusesWait := WaitRefusalOn(first, onWork) != ""
+	if refusesWait {
 		// never offer a verb the judgment refuses (wait_refused.go): a stall that names a card
 		g.Decisions = slices.DeleteFunc(slices.Clone(g.Decisions), func(d string) bool { return d == "wait" || strings.HasPrefix(d, "wait ") })
 	}
 	const cmd = "nova-sprint "
+	// act is an overdue judgment's prompt: a judgment that holds a card names the action
+	// WaitRefused gives instead of the wait that would park it; a wait stays the act of an alarm.
+	actLine := func() string {
+		if a := WaitRefusedAction(first); a != "" {
+			return a
+		}
+		if refusesWait {
+			return cmd + "inbox --open " + g.ID
+		}
+		return cmd + "wait " + waitIDs(g, first) + " --for 30m"
+	}
 	grp := " --group " + g.ID + " --expect " + itoa(g.Size)
 	ans := " --answers " + strings.Join(g.Notes, ",")
 	// A judgment about exactly one card is answered by naming the card, so the
@@ -452,11 +464,11 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 		case d == RepeatDecision:
 			add(d, look()...)
 		case d == "act" && first.StreamLevel:
-			add(d, cmd+"wait "+waitIDs(g, first)+" --for 30m")
+			add(d, actLine())
 		case d == "act" && contains(g.Decisions, "ack"):
-			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText, cmd+"wait "+waitIDs(g, first)+" --for 30m")
+			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText, actLine())
 		case d == "act":
-			add(d, cmd+"wait "+waitIDs(g, first)+" --for 30m")
+			add(d, actLine())
 		case g.Type == NSprintDone:
 			switch d {
 			case "clear":
