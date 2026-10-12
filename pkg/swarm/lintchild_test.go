@@ -53,6 +53,51 @@ func TestLintCardChildNamesARewordedRule(t *testing.T) {
 	assert.Contains(t, checksOf(got), "rule-no-server")
 }
 
+// The scratch rule is required: a card quoting the default RULES paragraph without the
+// scratch sentence draws exactly one finding, rule-scratch-under-tmpdir, whose remedy
+// quotes the sentence; with the sentence the card lints clean, and a wrapped copy still
+// counts (foldBlanks).
+func TestChildRuleScratchUnderTmpdirIsRequired(t *testing.T) {
+	t.Parallel()
+	const sentence = "Write scratch files only under $TMPDIR, inside the job directory; never under /tmp."
+	head := "RESULT: c1 sha=000000000000 tier: pro\nPATHS: pkg/x.go\n\n"
+
+	dropped := strings.Replace(ChildRulesParagraph(), sentence+"\n", "", 1)
+	got := LintCardChildWith([]byte(head+dropped+"\nTHE TASK.\n"), DefaultChildRules)
+	require.Len(t, got, 1, "only the dropped scratch rule is missing: %+v", got)
+	assert.Equal(t, "rule-scratch-under-tmpdir", got[0].Check)
+	assert.Contains(t, ChildRemedy(DefaultChildRules, "rule-scratch-under-tmpdir"), sentence)
+
+	clean := LintCardChildWith([]byte(head+ChildRulesParagraph()+"\nTHE TASK.\n"), DefaultChildRules)
+	assert.Empty(t, clean, "a card quoting the whole paragraph draws nothing: %+v", clean)
+
+	wrapped := strings.Replace(ChildRulesParagraph(), "inside the job directory;", "inside the job\ndirectory;", 1)
+	got = LintCardChildWith([]byte(head+wrapped+"\nTHE TASK.\n"), DefaultChildRules)
+	assert.NotContains(t, checksOf(got), "rule-scratch-under-tmpdir", "a wrapped copy still counts: %+v", got)
+}
+
+// The embedded fleet rules carry the scratch rule, with the same sentence as the default
+// row: the member injects the fleet paragraph, so the two copies of the rule agree.
+func TestTheFleetRulesCarryTheScratchRule(t *testing.T) {
+	t.Parallel()
+	rules, err := HeldRules(DefaultRulesName)
+	require.NoError(t, err)
+	var fleet, def string
+	for _, r := range rules {
+		if r.Name == "scratch-under-tmpdir" {
+			fleet = r.Sentence
+		}
+	}
+	for _, r := range DefaultChildRules {
+		if r.Name == "scratch-under-tmpdir" {
+			def = r.Sentence
+		}
+	}
+	assert.NotEmpty(t, def, "the default rules carry scratch-under-tmpdir")
+	assert.NotEmpty(t, fleet, "the fleet rules carry scratch-under-tmpdir")
+	assert.Equal(t, def, fleet)
+}
+
 // A command the card forbids in prose is not a step- finding: the negation in the
 // command's own clause is read as prose about the rule. The same command without the
 // negation is a violation.

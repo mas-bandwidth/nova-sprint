@@ -3099,4 +3099,8 @@
       table's row failed gains wall denial in its class list, ordered before deadline. Tests:
       TestAWallDenialIsItsOwnHarnessFaultClass and TestAWallDenialReworkNamesThePathAndTheRemedy
       (internal/sprint/harness_wall_denial_test.go); TestHarnessFaultBudgetClass keeps passing unchanged."
-     :origin "the coordinator, 2026-10-12: a worker's /tmp write was denied by the wall and the sprint classed the attempt as a deadline")))
+     :origin "the coordinator, 2026-10-12: a worker's /tmp write was denied by the wall and the sprint classed the attempt as a deadline")
+   (fix "the-sprint-card-rules-say-scratch-goes-under-tmpdir" :release "v1.2.15" :status "planned"
+    :title "The sprint's card lint requires the scratch rule: scratch files go under $TMPDIR, never /tmp"
+    :text "The sprint's own card lint requires the scratch rule, exactly as nova-tools' lint v1.2.15 does, so a card cannot enter a store without it. pkg/swarm DefaultChildRules gains one row after no-rm-rf: name scratch-under-tmpdir, sentence \"Write scratch files only under $TMPDIR, inside the job directory; never under /tmp.\", source the built-in default rules; a card without it draws rule-scratch-under-tmpdir, whose remedy quotes the sentence. internal/fleetrules/child-rules.txt gains the same line after [no-rm-rf], byte for byte with nova-tools' fleet/child-rules.txt. Tests: TestChildRuleScratchUnderTmpdirIsRequired and TestTheFleetRulesCarryTheScratchRule (pkg/swarm/lintchild_test.go), which pin the required sentence, its remedy, a clean card, a wrapped copy and the embedded fleet row. Every card already in a store without the sentence draws rule-scratch-under-tmpdir at its next lint; the coordinator decides how stored cards are re-linted, and this card changes no store."
+    :origin "the coordinator, 2026-10-12: a worker's /tmp write was denied by the wall and the attempt burned its deadline")))

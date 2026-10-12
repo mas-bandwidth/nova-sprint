@@ -13,6 +13,7 @@
 [no-kill] Never kill a process you did not start.
 [go-test-timeout] Every `go test` gets `-timeout 600s`.
 [no-rm-rf] No `rm -rf` outside the job directory.
+[scratch-under-tmpdir] Write scratch files only under $TMPDIR, inside the job directory; never under /tmp.
 [no-force-push] Never force-push.
 [no-rebase] Never rebase.
 [no-rewrite-history] Never amend, rebase or reset onto origin: the commit your checkout starts at stays in your history, and your work goes on top of it as new commits.
