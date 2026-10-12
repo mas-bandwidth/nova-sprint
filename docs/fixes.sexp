@@ -3220,4 +3220,8 @@
      internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
      TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
     :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
-     epoch 19, v1.2.13")))
+     epoch 19, v1.2.13")
+   (fix "the-card-in-review-store-test-beats-its-member-before-the-deal" :release "v1.2.14" :status "planned"
+    :title "The store test for a review card beats its member before the deal"
+    :text "TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore ran start, tick, tick, take, finish without ever beating m1, so m1 never came up, nothing was dealt, and finish refused s1-1.w1 as not on the table; it now beats m1 before start, queues its readers up so the tick asks the read, and asserts the card is working before the take."
+    :origin "the coordinator, 2026-10-12")))
