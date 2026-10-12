@@ -97,25 +97,3 @@ func CheckResult(resultPath string, c Contract) (Outcome, error) {
 	out.Line = fmt.Sprintf("RESULT OK %s line2=%s", oneline.Quote(c.Label), oneline.Quote(out.Line2))
 	return out, nil
 }
-
-// WriteReceipt writes the receipt beside the report: label, card sha-256, the disposition,
-// the line count, and the run and usage records when they exist.
-func WriteReceipt(path string, o Outcome, c Contract) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "label=%s\n", c.Label)
-	fmt.Fprintf(&b, "card_sha256=%s\n", HashBytes(c.Card))
-	fmt.Fprintf(&b, "line2=%s\n", o.Line2)
-	fmt.Fprintf(&b, "lines=%d\n", o.LineCount)
-	if c.HaveRun {
-		if c.WallSeconds >= 0 {
-			fmt.Fprintf(&b, "wall_seconds=%d\n", c.WallSeconds)
-		}
-		fmt.Fprintf(&b, "exit_code=%d\n", c.ExitCode)
-	}
-	if c.HaveUsage {
-		fmt.Fprintf(&b, "tokens_in=%d\n", c.TokensIn)
-		fmt.Fprintf(&b, "tokens_out=%d\n", c.TokensOut)
-		fmt.Fprintf(&b, "usd=%s\n", c.USD)
-	}
-	return writeAtomic(path, []byte(b.String()), 0o644)
-}

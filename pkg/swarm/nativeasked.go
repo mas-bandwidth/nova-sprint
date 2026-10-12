@@ -75,16 +75,6 @@ func Asked(run AskedRun) (string, bool) {
 	return line, true
 }
 
-// AskedEnd asks Asked's question of a finished job on disk: the capture's own tail, the
-// gather's own result lookup, and ./repo's own commit count. The rc is the caller's,
-// because the run holds it and the job directory does not.
-func AskedEnd(jobDir string, rc int) (string, bool) {
-	capture, _ := tailBytes(filepath.Join(jobDir, "harness-output.log"), AskedTailBytes)
-	_, published := FindCardResult(jobDir)
-	_, _, committed := repoCommits(jobDir)
-	return Asked(AskedRun{Capture: capture, RC: rc, Published: published, Committed: committed})
-}
-
 // WriteAskedResult writes the card's report when it ended by asking and published none. Like
 // the blocked report it REFUSES to overwrite a result that exists -- a card that published
 // owns its report -- and it says who wrote it on its own line, because a reader must never
