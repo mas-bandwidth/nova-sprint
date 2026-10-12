@@ -115,14 +115,23 @@ func WaitRefusal(n Note) string {
 // kind (a kind added later included, a stop that names a card), unless its kind is one of
 // WaitAllowedOnACard. A judgment naming a friend, a timer, a tier or a stream holds no card.
 func WaitRefusalIn(s *Snapshot, n Note) string {
+	if s == nil || s.Work == nil {
+		return WaitRefusalOn(n, nil)
+	}
+	return WaitRefusalOn(n, func(id string) bool { return s.Work.Placed(id) != nil })
+}
+
+// WaitRefusalOn is WaitRefusalIn with the work table's membership given as onWork (nil: the
+// table alone): the one rule the wait verb and the inbox's printed decisions both apply.
+func WaitRefusalOn(n Note, onWork func(id string) bool) string {
 	if why := WaitRefusal(n); why != "" {
 		return why
 	}
-	if _, ok := WaitAllowedOnACard[n.Type]; ok || n.Kind != Judgment || s == nil || s.Work == nil || n.StreamLevel || n.SprintLevel {
+	if _, ok := WaitAllowedOnACard[n.Type]; ok || n.Kind != Judgment || onWork == nil || n.StreamLevel || n.SprintLevel {
 		return ""
 	}
 	for _, sub := range n.Primaries {
-		if s.Work.Placed(sub) != nil {
+		if onWork(sub) {
 			return fmt.Sprintf("%s (%s) names %s, a card it holds from progressing, and a wait would park it: answer it by its decisions; run: nova-sprint inbox --open %s", n.ID, n.Type, sub, n.ID)
 		}
 	}

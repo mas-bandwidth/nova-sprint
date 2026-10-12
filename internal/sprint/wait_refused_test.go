@@ -101,7 +101,7 @@ func TestAStallRefusesWaitOnlyWhenItNamesACard(t *testing.T) {
 	stream := Note{ID: "j2", Kind: Judgment, Type: NStalled, Stream: "s1", StreamLevel: true, Decisions: Decisions[NStalled]}
 	assert.Empty(t, WaitRefusal(stream), "a stall about a stream holds nothing")
 	g := Group{ID: "j1", Kind: Judgment, Type: NStalled, Stream: "s1", Size: 1, Notes: []string{"j1"}, Members: []string{"s1-1"}, Decisions: card.Decisions}
-	for _, c := range commands(g, card, "") {
+	for _, c := range commands(g, card, "", nil) {
 		assert.NotEqual(t, "wait", c.Decision, "the inbox offers no refused wait")
 	}
 }
@@ -135,4 +135,29 @@ func TestAJudgmentNamingACardRefusesWaitWhateverItsKind(t *testing.T) {
 	assert.Empty(t, WaitRefusalIn(w.s, friend), "a friend is not a card")
 	unknown := Note{ID: "j3", Kind: Judgment, Type: "a kind added next year", Primaries: []string{"timer:x"}}
 	assert.Empty(t, WaitRefusalIn(w.s, unknown), "a judgment naming no card takes a wait")
+}
+
+// The decisions a note carries for itself (a stop that names a card, a drift on a card's base)
+// are printed by the same rule the wait verb applies: a judgment naming a work-table card is
+// never offered a wait, whatever its kind, unless WaitAllowedOnACard names it.
+func TestNoPerNoteDecisionOffersAWaitItsVerbRefuses(t *testing.T) {
+	t.Parallel()
+	kinds := map[string][]string{}
+	for _, m := range []map[string][]string{Decisions, TickDecisions} {
+		for k, ds := range m {
+			kinds[k] = ds
+		}
+	}
+	for _, k := range []string{NStopPinWaits, NDriftCardBase} {
+		require.Contains(t, kinds, k, "%s has decisions of its own", k)
+	}
+	for k, ds := range kinds {
+		if _, allowed := WaitAllowedOnACard[k]; allowed {
+			continue
+		}
+		n := Note{ID: "j1", Kind: Judgment, Type: k, Stream: "s1", Primaries: []string{"s1-1"}, Decisions: append(append([]string(nil), ds...), "wait")}
+		for _, c := range NoteCommands(n, []string{"s1-1"}) {
+			assert.False(t, c.Decision == "wait" || strings.HasPrefix(c.Decision, "wait "), "%s names a card and offers %q", k, c.Decision)
+		}
+	}
 }

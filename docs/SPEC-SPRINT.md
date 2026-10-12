@@ -5839,8 +5839,10 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   (`sprint.WaitAllowedOnACard`): a stall that names no card, sentinel reached and the fleet is
   starving (stops the coordinator placed), and the two lateness alarms (a work or read card past
   its deadline: the card keeps working under its holder and the late rules answer it; a wait
-  quiets the alarm, not the card). The inbox never offers a wait the judgment refuses
-  (`TestAStallRefusesWaitOnlyWhenItNamesACard`). `wait` stays the answer to
+  quiets the alarm, not the card). The inbox prints decisions by the same rule the wait
+  verb applies (`sprint.WaitRefusalOn`), so no decision list, a note's own included, offers a
+  wait the judgment refuses (`TestAStallRefusesWaitOnlyWhenItNamesACard`,
+  `TestNoPerNoteDecisionOffersAWaitItsVerbRefuses`). `wait` stays the answer to
   the informational kinds: the alarms, the status and presence conditions the tick keeps, a
   lateness (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestEveryKindThatHoldsACardRefusesWait`,
   `TestNoJudgmentOffersADecisionItsVerbRefuses`, `TestWaitByGroupIsRefusedOnFailedWork`,
@@ -5848,7 +5850,10 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
 - **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
   recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
   but landed, each card counted only while its last finish is that failure (`last_finish`,
-  `<attempt>:<failed|ok|capped>`, written by every finish; never its column), in one tick or one a
+  `<attempt>:<failed|ok|capped>`, written by every finish; never its column).
+  Rollout: the alarm counts finishes recorded after the upgrade that writes `last_finish`; a card
+  persisted before it is not counted until its next finish writes the field, and every card
+  finishes again within its attempt bound, so the gap closes by itself, in one tick or one a
   tick and with the rules on or off, the deadlines part of every tick raises one
   sprint-level judgment, `the same
   failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
