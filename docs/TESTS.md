@@ -207,9 +207,13 @@ ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outc
 ### No ghost reads (v1.2.14)
 
 A read working on a member is named by its member's beat, or within the grace
-it goes back to the read deal (docs/SPEC-SPRINT.md, working means a live run;
-tla/ReadCards.tla NoGhostRead). These tests lock it in; the functional ones are
-release acceptance (`make release-accept`).
+it goes back to the read deal (docs/SPEC-SPRINT.md, working means a live run).
+The model, tla/ReadCards.tla NoGhostRead (liveness under LiveSpec), proves only
+that such a read eventually leaves working; the 60 s bound is pinned by these
+tests: `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
+`TestAMemberRestartReturnsItsReadsAtOnce` and
+`TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`. These tests lock it in;
+the functional ones are release acceptance (`make release-accept`).
 
 - Unit, `internal/sprint/read_lost_test.go`:
   `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
