@@ -1004,6 +1004,14 @@
       file. Use a unique temporary path per writer."
      :origin "issue #5160")
 
+    (fix "route-share-falls-with-cost-per-landed" :release "v1.2.9" :status "planned"
+     :title "Route share falls as cost per landed card rises"
+     :text "Route share in weighted draws now falls as cost per landed card rises or ok rate falls.
+      Routes with zero landings (high cost per landed) now get a smaller share of picks but not zero,
+      due to a floor that ensures they are still sampled. The weighted draw preserves the First rule,
+      proper index advancement, and uses RouteStats for shared accounting."
+     :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
+
     (fix "dev-is-behind-counts-cards-on-their-own-base" :release "v1.2.11" :status "planned"
      :title "Dev behind judgment excludes cards landed on protected branches"
      :text "After moving to one line, cards land straight onto their own base (main for nova-sprint, dev for nova-tools). The dev behind judgment now only counts cards whose base is not a protected branch (dev or main). Cards landed on sprint branches are counted; cards on protected branches are excluded since they landed directly onto the line. The judgment message lists counted cards by name."

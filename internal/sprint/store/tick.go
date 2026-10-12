@@ -1321,6 +1321,10 @@ type tickRun struct {
 	// passed over after a part ran: the tick's end brings them up to date.
 	unshown bool
 	routes  RouteCache // read once, by the tick's first part that deals or checks
+	// routeShares is the per-route share of new takes, computed once on the tick's
+	// first read (sprint.RouteShareMap) and shared by every part's snapshot, so the
+	// deal and the rebalance draw by the one map (route_pick.go).
+	routeShares map[string]float64
 	// readers is each reader's state as the tick's first read found it (nil: a
 	// store that keeps no beats).
 	readers map[string]string
@@ -1381,6 +1385,18 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			}
 			v := *view
 			set.into(&v)
+			view = &v
+		}
+		if view != nil && view.RouteShares == nil && routesPart(part.Name) {
+			// the per-route share of new takes, computed once on the tick's first
+			// read from the routes and the fleet as it held them, and shared by every
+			// part's snapshot, so the deal and the rebalance draw by the one map
+			// (sprint.RouteShareMap, route_pick.go)
+			if t.routeShares == nil {
+				t.routeShares = sprint.RouteShareMap(t.routes.set.Routes, t.snap.Fleet)
+			}
+			v := *view
+			v.RouteShares = t.routeShares
 			view = &v
 		}
 		if view != nil {
@@ -1447,6 +1463,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		// the deal and the ask draw from the routes (a read card's route,
 		// route.go readRouteOf), and the check asks what the next deal does
 		step.Routes, step.RouteCache = routesPart(part.Name), &t.routes
+		// the per-route shares of new takes, computed once on the tick's first read
+		// and shared by every part (route_pick.go, RouteShareMap)
+		step.RouteShares = t.routeShares
 		// the ask, and the parts that ask what the ask does, plan with the readers' states
 		step.Readers = part.Name == "ask" || part.Name == "check" || part.Name == sprint.PartLevelReads
 		step.ReaderStates = t.readers

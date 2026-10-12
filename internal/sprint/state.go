@@ -563,6 +563,11 @@ type Snapshot struct {
 	// budgets is a dealing step's view of the providers' concurrency budgets (withBudgets,
 	// rate_budget.go): nil is none set, and the deal draws as before.
 	budgets *budgetPlan
+	// RouteShares is each route's share of new takes, computed once per tick on
+	// the tick's first read (RouteShareMap, route_pick.go) and shared by every
+	// part's snapshot: the one source every routeOf/drawRoute caller reads,
+	// never a stale one.
+	RouteShares map[string]float64
 	// restScans, when set, counts withRests' scans of the fleet table: the tick's
 	// cost gate (TestTheTicksCheckSettlesTheRestsOnceAtScale) holds them to one a part.
 	restScans *int

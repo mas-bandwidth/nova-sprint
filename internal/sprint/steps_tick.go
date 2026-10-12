@@ -806,6 +806,13 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // coordinator is told once (N3), and the judgment closes when a member is up.
 // tla/DirtyTick.tla Pump (reads before work, ReadsBeforeWork) and Dealable (HeldStreamNotDealt).
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
+	// the per-route shares are computed once on the tick's first read and shared
+	// by every part's snapshot (store/tick.go, RouteShareMap); for a snapshot
+	// handed straight to the deal (the in-memory store's tests), compute them here
+	// so every routeOf/drawRoute caller — the friends' ladder and the machines'
+	// deal, rebalance, redo, review and held — reads the same shares, never a
+	// stale one.
+	s.buildRouteShares()
 	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
 	// route_rest.go): no card of this tick is drawn on one, and the new rests are written
 	// in its plan

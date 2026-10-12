@@ -78,6 +78,11 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	if s == nil || s.Work == nil || s.Fleet == nil {
 		return p
 	}
+	// the per-route shares are computed once on the tick's first read and shared by
+	// every part's snapshot (store/tick.go, RouteShareMap); for a snapshot handed
+	// straight to the rebalance (the in-memory store's tests), compute them here so
+	// its draw reads the same shares the deal did.
+	s.buildRouteShares()
 	s, _ = s.withRests()
 	var units []*rebalanceUnit
 	add := func(u *rebalanceUnit) {

@@ -78,8 +78,9 @@
 \* launch the route, while a member off its bench could, waited unjudged. tock
 \* marks the state just after a tick.
 \*
-\* Broken: "none" is the design; "random" takes any entry of the array (the
-\* weighted draw this replaces: RouteFair fails); "noadvance" is a redeal that
+\* Broken: "none" is the design; "share" gives a zero-landing route a share
+\* above a landing route of equal ok rate (ShareFallsWithCost fails: the share
+\* function below); "noadvance" is a redeal that
 \* takes the entry at the place without moving past the excluded one
 \* (ExcludedNeverDrawn fails); "readapart" is a read that takes the entry at
 \* the place and leaves the index where it is, a read kept apart from the
@@ -106,12 +107,35 @@ CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken,
           ReadTier
 
 VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
-          memb
+          memb, shares
 
 vars == <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
-          memb>>
+          memb, shares>>
 
 Routes == UNION {{Arr[t][k] : k \in 1..Len(Arr[t])} : t \in Tiers}
+
+\* THE SHARE (route_pick.go, routeShare; docs/SPEC-SPRINT.md, the deal, "route
+\* share"). Each route's share of new takes falls as its cost per landed card
+\* rises or its ok rate falls, with a floor so it is still sampled:
+\*   Share(r) = Floor + (ShareN - Floor) * OkRate[r] \div (1 + Cost[r] \div Scale)
+\* shares 1..ShareN, Floor 1 (the code's floor is 0.1 and its shares 0..1; the
+\* model keeps the same order with integers 1..N). A route with no landing
+\* (Landed[r] = 0) holds the floor. The instance's fixed outcomes: route "a"
+\* lands nothing, "b" lands at cost 10 a card, both of ok rate 1, so the
+\* correct share gives "a" the floor and "b" more. Broken "share" gives the
+\* zero-landing route a share above the landing route (ShareFallsWithCost fails).
+Floor == 1
+Scale == 10
+ShareN == Cardinality(Routes)
+OkRate == [r \in Routes |-> 1]
+Landed == [r \in Routes |-> IF r = "a" THEN 0 ELSE 1]
+Cost == [r \in Routes |-> IF r = "b" THEN 10 ELSE 0]
+
+Share(r) ==
+  IF Broken = "share"
+  THEN IF Landed[r] = 0 THEN ShareN ELSE Floor
+  ELSE IF Landed[r] = 0 THEN Floor
+       ELSE Floor + ((ShareN - Floor) * OkRate[r]) \div (1 + (Cost[r] \div Scale))
 
 \* The entry at the place of counter i in tier t's array.
 At(t, i) == Arr[t][(i % Len(Arr[t])) + 1]
@@ -197,6 +221,7 @@ TypeOK ==
   /\ judged \subseteq Cards
   /\ tock \in BOOLEAN
   /\ memb \in [Cards -> Members \cup {"none"}]
+  /\ shares \in [Routes -> 1..ShareN]
 
 Init ==
   /\ ridx = [t \in Tiers |-> 0]
@@ -211,6 +236,7 @@ Init ==
   /\ judged = {}
   /\ tock = FALSE
   /\ memb = [c \in Cards |-> "none"]
+  /\ shares = [r \in Routes |-> Share(r)]
 
 \* Take route r for card c dealt to member m, the index moved by adv; by is the
 \* steps the rule says.
@@ -224,6 +250,7 @@ Take(c, m, r, adv, by) ==
   /\ hist' = [hist EXCEPT ![t] = Append(@, [r |-> r, sk |-> by > 1])]
   /\ memb' = [memb EXCEPT ![c] = m]
   /\ last' = Pick(c, r, LeftOut(c), by, m)
+  /\ shares' = shares
 
 \* One deal of card c to member m (m = "none" for a read, the ask's): the entry
 \* at the place, or the first from it drawable for m, a first-set entry before
@@ -241,9 +268,7 @@ DealTo(c, m) ==
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ tock' = FALSE
   /\ UNCHANGED <<rdl, judged>>
-  /\ IF Broken = "random"
-     THEN \E k \in 1..Len(Arr[t]) : Take(c, m, Arr[t][k], 1, 1)
-     ELSE IF Broken = "readapart" /\ c \in Reads
+  /\ IF Broken = "readapart" /\ c \in Reads
      THEN Take(c, m, At(t, ridx[t]), 0, 1)
      ELSE IF Broken = "harnessblind"
      THEN Take(c, m, At(t, ridx[t]), 1, 1)
@@ -265,7 +290,7 @@ Pin(c) ==
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ route' = [route EXCEPT ![c] = "pin"]
   /\ tock' = FALSE
-  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last, judged, memb>>
+  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last, judged, memb, shares>>
 
 \* The card's take ends without a finish (its member lost, the provider failed):
 \* withdrawn, to be dealt again, while its redeals are under the bound.
@@ -275,7 +300,7 @@ Withdraw(c) ==
   /\ rdl[c] < MaxRedeals
   /\ st' = [st EXCEPT ![c] = "withdrawn"]
   /\ tock' = FALSE
-  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb>>
+  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb, shares>>
 
 \* One redeal of card c to member m: the next entry from the place that is not
 \* left out, the index moved past it and every entry skipped. The routes already
@@ -311,7 +336,7 @@ Redeal(c) ==
 TickJudge ==
   /\ judged' = {c \in WorkCards : st[c] \in {"ready", "withdrawn"} /\ JudgePool(c) # {} /\ ~CanLaunchIn(c, JudgePool(c))}
   /\ tock' = TRUE
-  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, memb>>
+  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, memb, shares>>
 
 \* A card that finishes is one that is not withdrawn again: no action of its own.
 Next == TickJudge \/ \E c \in Cards : Deal(c) \/ Pin(c) \/ Withdraw(c) \/ Redeal(c)
@@ -353,6 +378,16 @@ FirstPreferred ==
 
 \* Just after a tick, every stranded card is judged (the cold reads of nova-sprint#51).
 StrandedIsJudged == tock => \A c \in Cards : Stranded(c) => c \in judged
+
+\* Every route keeps at least the floor, so a poor route is still sampled.
+FloorKeepsEveryRouteSampled == \A r \in Routes : shares[r] >= Floor
+
+\* The share falls as cost per landed rises: a zero-landing route (no measured
+\* cost, the floor) is never above a landing route of equal ok rate, and between
+\* landing routes a higher cost per landed never earns a higher share.
+ShareFallsWithCost ==
+  /\ \A r1, r2 \in Routes : (OkRate[r1] = OkRate[r2] /\ Landed[r1] = 0 /\ Landed[r2] > 0) => shares[r1] <= shares[r2]
+  /\ \A r1, r2 \in Routes : (OkRate[r1] = OkRate[r2] /\ Landed[r1] > 0 /\ Landed[r2] > 0 /\ Cost[r1] > Cost[r2]) => shares[r1] <= shares[r2]
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.
