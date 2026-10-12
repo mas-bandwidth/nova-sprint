@@ -137,7 +137,7 @@ var Decisions = map[string][]string{
 	NRed:               {"take the suspect off and resume", "rework the suspect"},
 	NCross:             {"rank that card first", "look at both", "return", "drop"}, // never wait: it holds the stream (wait_refused.go)
 	NRejected:          {"resume", "return", "drop"},
-	NBaseRed:           {"resume"}, // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
+	NBaseRed:           {"resume"},         // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
 	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
 	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin

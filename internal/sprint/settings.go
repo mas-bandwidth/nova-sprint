@@ -49,6 +49,10 @@ const (
 	// separated) of the files whose backquotes are their own, which the lander does not
 	// read for a code span (land_repair.go); set by stream set --prose.
 	FieldProse = "prose"
+	// FieldSeatAccept is a stream's control card's field: on, the seat accepts its cards by
+	// hand ("ready to accept") instead of the tick accepting a card whose reads have all
+	// passed; set by stream set --seat-accept on, taken off by off (seat_answers.go, rule (a)).
+	FieldSeatAccept = "seat_accept"
 	// PropFleet and PropFriends are the work table's properties: the switches of the
 	// fleet's work and the friends' work (the owner, 2026-10-06: "We should be able to
 	// enable/disable fleet, enable/disable friends. default enabled."), SwitchOn or
@@ -333,6 +337,8 @@ type SetReq struct {
 	// Prose is the streams' prose globs (FieldProse): comma separated, default or none
 	// takes them off.
 	Prose string `json:",omitempty"`
+	// SeatAccept is the streams' seat-accept switch (FieldSeatAccept): on or off.
+	SeatAccept string `json:",omitempty"`
 	// The backlog alarms' thresholds (alarms.go): a count, a percent, on, or off.
 	AlarmReview  string `json:",omitempty"`
 	AlarmMerging string `json:",omitempty"`
@@ -405,6 +411,14 @@ func Set(s *Snapshot, r SetReq) Plan {
 				why = append(why, "--prose wants path globs (security/**, ratings/**), comma separated, or "+ReadTierDefault+" to take them off; found "+r.Prose)
 				break
 			}
+		}
+	}
+	if r.SeatAccept != "" {
+		if len(r.Streams) == 0 {
+			why = append(why, "--seat-accept is a stream's, not the sprint's: nova-sprint stream set <stream> --seat-accept "+r.SeatAccept)
+		}
+		if r.SeatAccept != SwitchOn && r.SeatAccept != SwitchOff {
+			why = append(why, "--seat-accept wants "+SwitchOn+" or "+SwitchOff+"; found "+r.SeatAccept)
 		}
 	}
 	if r.GoLanes != "" && r.GoLanes != ReadTierDefault {
@@ -509,7 +523,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
@@ -608,6 +622,12 @@ func Set(s *Snapshot, r SetReq) Plan {
 				default:
 					set[f.field], moved = f.v, append(moved, f.word+" "+f.v)
 				}
+			}
+			switch r.SeatAccept {
+			case SwitchOn:
+				set[FieldSeatAccept], moved = SwitchOn, append(moved, "seat-accept on")
+			case SwitchOff:
+				unset, moved = append(unset, FieldSeatAccept), append(moved, "seat-accept off")
 			}
 			if r.Attempts != "" {
 				if r.Attempts == ReadTierDefault {

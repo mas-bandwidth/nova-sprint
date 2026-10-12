@@ -77,6 +77,9 @@ func Abstract(o Observed) State {
 		p.Head = headAttempt(c.F("head"))
 		p.CI, p.CIHead = c.F("ci"), headAttempt(c.F("ci_head"))
 		p.ReturnedAt = c.Int(sprint.FieldReturnedAttempt)
+		if p.ReturnedAt != 0 && p.ReturnedAt == c.Int("attempt") {
+			p.ReturnedFor = sprint.ReturnedFor(c)
+		}
 		p.Finder, p.FindingAttempt = c.F(sprint.FieldFindingReader), c.Int(sprint.FieldFindingAttempt)
 		p.BriefAt = c.Int(sprint.FieldBriefAttempt)
 		p.RefusedHead = headAttempt(c.F(sprint.FieldLandRefusedHead))

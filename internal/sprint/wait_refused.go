@@ -52,11 +52,11 @@ var WaitRefused = map[string]string{
 	// merge stopped: a card sent back from merging
 	NReturned: "rework it, accept it, or drop it",
 	// stream stopped: every card of the stream behind the stop is held
-	NConflict:        "resolve and resume the stream, rework the card, or drop it",
-	NRed:             "return the suspect and resume, rework it, or drop it",
-	NCross:           "rank the card it needs first, look at both, return it, or drop it",
-	NRejected:        "rework the card the merge queue rejected, or drop it, and resume",
-	NBaseRed:         "mend the base (the base-gate rule resumes the stream once its tip is green), or resume",
+	NConflict: "resolve and resume the stream, rework the card, or drop it",
+	NRed:      "return the suspect and resume, rework it, or drop it",
+	NCross:    "rank the card it needs first, look at both, return it, or drop it",
+	NRejected: "rework the card the merge queue rejected, or drop it, and resume",
+	NBaseRed:  "mend the base (the base-gate rule resumes the stream once its tip is green), or resume",
 	// the fleet's failure: every card failing that way reworks itself to its bound meanwhile
 	NFleetFailure: "mend its cause (the toolchain, a member, a route or a provider) and ack it; the cards rework themselves to their bound meanwhile",
 }

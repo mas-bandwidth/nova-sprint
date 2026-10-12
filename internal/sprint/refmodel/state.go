@@ -214,6 +214,10 @@ type Primary struct {
 	// ReturnedAt is the attempt at which the coordinator last returned it to
 	// review, 0 when never (sprint.FieldReturnedAttempt).
 	ReturnedAt int
+	// ReturnedFor is the mechanical cause of that return, "" for a mind's
+	// (sprint.FieldReturnedFor): a return for a missing read or a needs repair does
+	// not hold the card from the machine's accept.
+	ReturnedFor string
 	// Finder is the reader whose finding its last rework sent back and
 	// FindingAttempt that attempt (sprint.FieldFindingReader, FieldFindingAttempt):
 	// the next attempt's first read is asked of the finder, out of turn (Ask).
@@ -995,7 +999,7 @@ func (s State) AcceptHeld(p string) string {
 	switch {
 	case pr.CI == "red" && pr.CIHead == pr.Head:
 		return "ci red at its head"
-	case pr.ReturnedAt != 0 && pr.ReturnedAt == pr.Attempt:
+	case pr.ReturnedAt != 0 && pr.ReturnedAt == pr.Attempt && pr.ReturnedFor == "":
 		return "returned at its attempt"
 	}
 	return ""

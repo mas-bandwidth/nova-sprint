@@ -890,7 +890,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		// back to work with the finding, whatever other reads say ok
 		return Note{}, false
 	case len(oks) >= ReadsNeededIn(s, pr) && !broken && !refused:
-		if offers || AcceptHeld(pr) == "" {
+		if offers || AcceptHeld(pr) == "" && !SeatAccepts(s, pr) {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction
 			return Note{}, false
@@ -1858,6 +1858,10 @@ type ReturnReq struct {
 	// is marked to be redone on the tip (FieldRuleRedo, at its attempt), and the stopped
 	// stream's judgment records the answer.
 	Rule string `json:",omitempty"`
+	// For, when set, is the mechanical cause of the return (FieldReturnedFor:
+	// ReturnedForReads, repair's rule 6): the card is not held for the seat, no "returned to
+	// review" judgment is written, and the tick accepts it again once its reads stand.
+	For string `json:",omitempty"`
 }
 
 // ReturnResolves is the judgments a return is a decision for: a red CI on the
@@ -1896,8 +1900,14 @@ func Return(s *Snapshot, r ReturnReq) Plan {
 			// returned at its attempt, as any return: the tick does not take it
 			// back on its standing reads (AcceptHeld)
 			set := map[string]string{FieldReturnedAttempt: itoa(c.Int("attempt"))}
+			var unsetFor []string
+			if r.For != "" {
+				set[FieldReturnedFor] = r.For
+			} else if c.F(FieldReturnedFor) != "" {
+				unsetFor = append(unsetFor, FieldReturnedFor)
+			}
 			u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Merge, moveEntry(m, c.Row, Returned, nil, "need_card", "need_stream")),
-				change(Work, setEntry(c, set))},
+				change(Work, setEntry(c, set, unsetFor...))},
 				Closes: closesFor(s.Open, ReturnResolves, c.ID), Moved: fmt.Sprintf("%s review: its orphan merge card off %s", c.ID, m.Col)}
 			if j, ok := reviewJudgment(s, inReview(c, set), reviewStep{closing: noteIDs(u.Closes), who: r.Who}); ok {
 				u.Notes = append(u.Notes, j)
@@ -1908,14 +1918,20 @@ func Return(s *Snapshot, r ReturnReq) Plan {
 		// marked returned at its attempt: the pump does not accept it again on
 		// the reads that stand (AcceptHeld); the returned judgment decides it
 		set := map[string]string{"returns": itoa(c.Int("returns") + 1), FieldReturnedAttempt: itoa(c.Int("attempt"))}
+		var unset []string
 		if r.Reason != "" {
 			set["return_reason"] = r.Reason
+		}
+		if r.For != "" {
+			set[FieldReturnedFor] = r.For
+		} else if c.F(FieldReturnedFor) != "" {
+			unset = append(unset, FieldReturnedFor) // a mind's return holds it, whatever came before
 		}
 		if r.Rule != "" {
 			set[FieldRuleRedo] = c.F("attempt")
 			set[FieldRuleAnswer] = r.Rule + ": returned to be redone on the tip at " + stamp(s.Now)
 		}
-		u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Review, set))},
+		u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Review, set, unset...))},
 			Closes: closesFor(s.Open, ReturnResolves, c.ID)}
 		if m != nil {
 			u.Changes = append([]Change{change(Merge, moveEntry(m, c.Row, Returned, nil, "need_card", "need_stream"))}, u.Changes...)
@@ -1935,13 +1951,17 @@ func Return(s *Snapshot, r ReturnReq) Plan {
 				}
 			}
 		}
-		// Back in review, the coordinator decides again.
-		j := judgment(NReturned, c.Row, s.Now, c.Int("returns"), c.ID)
-		j.Who, j.Attempt, j.What = r.Who, c.Int("attempt"), r.Reason
-		if !acceptable(s, c) {
-			j.Decisions = removeDecision(j.Decisions, "accept")
+		// Back in review, the coordinator decides again; a mechanical return is the
+		// machine's to finish (FieldReturnedFor): the read rule asks its missing read, and
+		// the tick accepts it on its reads, with nothing for the seat to answer.
+		if r.For == "" {
+			j := judgment(NReturned, c.Row, s.Now, c.Int("returns"), c.ID)
+			j.Who, j.Attempt, j.What = r.Who, c.Int("attempt"), r.Reason
+			if !acceptable(s, c) {
+				j.Decisions = removeDecision(j.Decisions, "accept")
+			}
+			u.Notes = append(u.Notes, j)
 		}
-		u.Notes = append(u.Notes, j)
 		// Back in review with the ok reads it needs at its
 		// head, the returned judgment offers accept: the one judgment it
 		// needs; the call below writes nothing more then.
