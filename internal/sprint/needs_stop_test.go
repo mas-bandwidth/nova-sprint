@@ -206,6 +206,35 @@ func TestANoUsageNeedsStopIsStillOneTake(t *testing.T) {
 	assert.Equal(t, 0, got.Failed, "a coordination failure is never the route's failure")
 }
 
+// A taken card given a need not landed whose worker finishes ok is the coordination's
+// failure, never a pass: the finish sends it working -> waiting, not to review, whatever the
+// worker reports, so no primary reaches review (or merging, or landed) with a named need not
+// landed (docs/SPEC-SPRINT.md section 9, rule 11; the gap named open in section 3).
+func TestATakenCardFinishingOkWithAnUnlandedNeedWaits(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1 and s1-2, both ready
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc, "the fixture: s1-1 is dealt")
+	w.must(Take(w.s, TakeReq{As: wc.Row, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Who: wc.Row}))
+	require.Equal(t, Working, wc.Col, "the fixture: taken")
+	// the taken card is given a need not landed (s1-2 is ready, not landed)
+	setNeeds(w.s, "s1-1", "s1-2")
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: wc.Row, Gens: gensOf(w.s, "s1-1.w1")}))
+
+	require.Equal(t, Waiting, w.s.StateOf("s1-1"), "an ok finish with an unlanded need waits, never review")
+	require.Empty(t, w.notesOf(NWorkOK), "no ok note for work that would reach review with an unlanded need")
+	require.Len(t, w.notesOf(NNeedsUnlanded), 1, "the coordination failure is noted")
+	w.clean("the end-of-tick check after an ok finish with an unlanded need: no rule-11 break")
+
+	// once the need lands, the next deal cuts the next attempt, as a needs-stop does
+	w.s.Work.Card("s1-2").Col = Landed
+	p, _ := TickResolve(w.s, TickReq{})
+	w.must(p)
+	lawfulDeal(w)
+	require.Equal(t, "2", dealtAttempt(w, "s1-1"), "an attempt number is spent, never a redeal or a failure")
+}
+
 // (5) When the needs land, the card is dealt on the next tick as any card: a card withdrawn
 // for its needs waits (working -> waiting at once), and once they land the tick's resolve
 // readies it and the deal deals it.
