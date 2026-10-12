@@ -328,6 +328,15 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				continue
 			}
 			why := fmt.Sprintf("no live run: %s's beats have not named %s for %s", row, LiveKey(c.ID, gen), s.Now.Sub(since).Truncate(time.Second))
+			if isRead(c) {
+				// a read card goes back to the read deal, not to this row's ready: retired
+				// lost (RetiredByLost), spending no reader and marking no failure, so the next
+				// read-card ask cuts it again at its next generation for whichever reader the
+				// deal picks, this one included (v1.2.14, a-member-hands-back-a-read-it-is-not-
+				// running; tla/ReadCards.tla LiveReturn, NamedOrWithinGrace)
+				p.Units = append(p.Units, readLostUnit(s, c, gen, why, stopped))
+				continue
+			}
 			set := map[string]string{
 				"gen": itoa(gen + 1), "lost_from_gen": itoa(gen), "lost_reason": cutText(why, MaxCardTextBytes),
 				"untaken_since": stamp(s.Now),
@@ -346,4 +355,22 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		}
 	}
 	return p
+}
+
+// readLostUnit is the reconcile's return of a read card its row's live set has not named for
+// LiveGrace: the card leaves the fleet table retired lost (RetiredByLost: not a spent reader,
+// not a failure), its generation and why kept on the record, and while STOPPED the return is
+// the STOP's receipt too. The read-card ask then counts the primary's reads without it and
+// deals the read again at the card's next generation (ReadCardID .g<n>).
+func readLostUnit(s *Snapshot, c *Card, gen int, why string, stopped bool) Unit {
+	set := map[string]string{
+		"retired": stamp(s.Now), "retired_by": RetiredByLost,
+		"lost_from_gen": itoa(gen), "lost_reason": cutText(why, MaxCardTextBytes),
+	}
+	if stopped {
+		set["stopped_from_gen"], set["stopped_reason"] = itoa(gen), cutText(why, MaxCardTextBytes)
+	}
+	return Unit{Key: c.ID, Stream: c.F("stream"),
+		Changes: []Change{change(Fleet, removeEntry(c, set))},
+		Moved:   fmt.Sprintf("%s working -> the read deal off %s (%s)", c.ID, c.Row, why)}
 }

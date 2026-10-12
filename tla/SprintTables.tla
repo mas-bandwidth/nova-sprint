@@ -2,14 +2,20 @@
 \* The card lifecycle of nova-sprint (docs/SPEC-SPRINT.md section 3, the
 \* lifecycle and its inventory of moves; internal/sprint/lifecycle.go Moves and
 \* Lawful), the fleet side of the work table (internal/sprint/refmodel
-\* actions.go Start, Take, Finish, FleetDown, FleetUp) and the reads and the
+\* actions.go Start, Take, Finish, FleetDown, FleetUp), the reads and the
 \* accept (refmodel actions.go Ask, AskAnother, ReadStart, Read, Accept, held
-\* to the code's ReadsNeededIn). A primary's six states and the lawful moves
+\* to the code's ReadsNeededIn) and the merge side (refmodel actions.go Rework,
+\* Drop, Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume).
+\* A primary's six states and the lawful moves
 \* between them, in one table, plus its named needs (a variable: needs set and
 \* a brief edit's DEPENDS-ON rewrite them), the fleet (each member up or down, a
 \* working primary's work card on one member's row in a place none, ready,
-\* working, finished or withdrawn) and the readers (a read card on one
-\* reader's row in a place none, asked, reading, ok or broken).
+\* working, finished or withdrawn), the readers (a read card on one
+\* reader's row in a place none, asked, reading, ok or broken) and the merge
+\* side: each primary belongs to a stream; a stream is waiting, merging,
+\* stopped (with a cause) or landed, and a primary in merge sits in a merge
+\* cell none, queued, merged, stuck (a fact on it stopped the stream) or
+\* returned (sent back from merging).
 \*
 \* A primary's state is the work-table column it is placed in. The six states
 \* are waiting, ready, working, review, merging, landed; landed is final. Off
@@ -36,7 +42,7 @@
 \*   Return         merging -> review   return, the tick's short-reads pass,
 \*                                      a refused landing
 \*   Redo           merging -> working | ready   redo, a refused landing
-\*   Merge          merging -> landed   the lander's merge
+\*   MergeGreen     merging -> landed   the lander's merge, the queued batch
 \*   Release        waiting -> landed   release of a sentinel (verb or tick)
 \*   AddMove        ready   -> waiting  add inserts a sentinel in front
 \*   NeedsSet       ready   -> waiting | waiting -> ready | in place
@@ -77,6 +83,27 @@
 \*                   needs and no broken read stands at its head; its asked
 \*                   and reading read cards retire.
 \*
+\* The merge side (refmodel actions.go) follows the code:
+\*   Rework(p)       review -> working or review -> ready (a member up or not).
+\*   Return(p)       merging -> review; the card leaves merge into returned and
+\*                   the stream's state follows (G4).
+\*   Redo(p)         merging -> working or merging -> ready (redo a conflicted
+\*                   card); the card leaves merge into returned.
+\*   MergeGreen(s)   the batch (the stream's queued cards, all of them here: a
+\*                   prefix is always a batch) merges to dev: merging ->
+\*                   landed, into merged; the stream's state follows (G4).
+\*   MergeStop(s, p) a fact on a queued card stops the stream: the card goes
+\*                   stuck, the stream stops (conflict).
+\*   MergeRefused(s, p) the landing's refusal of the card's head: back to
+\*                   review (paths or at the brief's bound) or ready (redo);
+\*                   the card leaves merge into returned; the stream follows.
+\*   MergeRed(s)     the branch red: the stream stops, no card moves.
+\*   Resume(s)       a stopped stream resumes: the stuck cards queue again,
+\*                   the cause clears, the stream's state follows.
+\*   Drop(p)         off the table; the merge place goes, the stream follows.
+\*   Rank(p)         a card ranked first (marked ranked), refused for a landed
+\*                   primary (G6).
+\*
 \* THE RULES. Invariants: TypeOK, NoNeedCycle, Rule11 (docs/SPEC-SPRINT.md
 \* section 9, rule 11, for the states nothing moves back to waiting: a primary
 \* in review, merging or landed has every named need landed or waived; a ready
@@ -90,15 +117,20 @@
 \* NeedsLandFirst (waiting -> ready only with every need landed or waived),
 \* NeedsHeldIntoWorking (no deal, rework or redo into working with a need not
 \* landed), WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits (PR #96: a
-\* working card withdrawn on its needs ends waiting, never ready) and
-\* WorkingOnAnUpMember.
+\* working card withdrawn on its needs ends waiting, never ready),
+\* WorkingOnAnUpMember, StreamAfter (G4: a stream's state is what its merge
+\* cells and cause say it is) and RankRefusesLanded (G6: a landed primary is
+\* never ranked).
 \*
 \* Refmodel invariants not stated here. The pending-operation fence (D1: Free)
 \* is left out: this module has no pending operation, a step is one atomic
-\* move, so there is nothing for the fence to fence. F3 (a stopped stream's
-\* judgment and a skipped repair) and F4 (a merge need placed, in another
-\* stream and not landed) are left out too: they belong to the merge and
-\* crash-repair cards.
+\* move, so there is nothing for the fence to fence. G3 (ExhaustNote, the
+\* reads-exhausted or stranded judgment) needs read cards and their judgments,
+\* which this module's accept stands in for and does not have. F3 (a stopped
+\* stream's judgment and a skipped repair) is left to the crash-and-repair
+\* card. F4 and D6 (a merge need placed, in another stream and not landed; a
+\* stop on a cross-stream need) are left out: a stop here is always a conflict
+\* on a card of the stream itself, and no merge card names a need.
 \*
 \* Reversed witnesses (Broken), one per rule, each a cfg that must fail:
 \*   "insert"       the add move runs ready -> waiting without inserting
@@ -121,6 +153,9 @@
 \*                  (NeverReadByItsWorker).
 \*   "skip"         the merge lands a card straight from review
 \*                  (MovesOnlyByTable).
+\*   "landunmerged" a card lands from review, no merge (MovesOnlyByTable).
+\*   "returnlost"   a card returned from merging is dropped, its record lost
+\*                  (NoCardLostOrTwice).
 \*   "unland"       the short-reads pass sends a landed card back to review,
 \*                  as ShortReadsBack planned before this card
 \*                  (LandedIsFinal).
@@ -143,10 +178,12 @@ CONSTANTS
   MemberReader, \* the reader on each member (readers == workers per machine)
   Rewrites,     \* the needs rewrites NeedsSet may write: pairs <<card, needs>>
                 \* (the instance's choice; the code takes any set of cards)
-  Broken        \* "none", or the one reversed witness to break
+  StreamOf,     \* StreamOf[c] is c's stream
+  Broken,       \* "none", or the one reversed witness to break
+  MergeSide     \* the merge side is modelled (an instance turns it off)
 
 States == {"waiting", "ready", "working", "review", "merging", "landed"}
-Cells == States \cup {"off"}
+Cells == States \cup {"off", "lost"}
 
 \* The work card's place on a member's row (refmodel state.go FleetCells).
 WPlaces == {"none", "ready", "working", "finished", "withdrawn"}
@@ -156,6 +193,16 @@ MStatus == {"up", "down"}
 
 \* A read card's cell on a reader's row (refmodel state.go ReadCard.Place).
 RPlaces == {"none", "asked", "reading", "ok", "broken"}
+
+\* A primary's merge place (refmodel state.go MergeCells).
+MCells == {"none", "queued", "merged", "stuck", "returned"}
+
+\* A stream's state (refmodel state.go Stream.State) and the cause of a stop.
+SCells == {"waiting", "merging", "stopped", "landed"}
+SCauses == {"none", "conflict", "red"}
+
+\* The streams of the cards.
+Streams == {StreamOf[c] : c \in Card}
 
 \* The lifecycle: every lawful move, and nothing else (lifecycle.go Moves).
 Moves ==
@@ -191,9 +238,9 @@ Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
 \* rules), so a flag is the plan of that step and never a state carried on.
 NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
 
-VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace
+VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked
 
-vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace>>
+vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
 
 TypeOK ==
   /\ state \in [Card -> Cells]
@@ -205,9 +252,54 @@ TypeOK ==
   /\ wplace \in [Card -> WPlaces]
   /\ wmember \in [Card -> Member]
   /\ rplace \in [Card -> [Reader -> RPlaces]]
+  /\ mg \in [Card -> MCells]
+  /\ sstream \in [Streams -> SCells]
+  /\ scause \in [Streams -> SCauses]
+  /\ ranked \in [Card -> BOOLEAN]
 
 \* Up: the members up now (refmodel State.Up).
 Up == {m \in Member : members[m] = "up"}
+
+\* ------------------------------------------------------------- the merge side
+
+\* Queued/Stuck: the stream's cards in each merge cell.
+Queued(s) == {c \in Card : StreamOf[c] = s /\ mg[c] = "queued"}
+Stuck(s)  == {c \in Card : StreamOf[c] = s /\ mg[c] = "stuck"}
+
+\* StreamState (refmodel streamAfter, G4): the stream state its cause, merge
+\* cells and primaries say it should hold. A stopped stream stays stopped (its
+\* cause persists); with cards queued it is merging; landed when every primary
+\* of it on the table has landed and at least one has; else waiting (an empty
+\* or all-dropped stream is waiting, not landed).
+StreamState(s, stv, mgv, scausev) ==
+  IF scausev[s] # "none" THEN "stopped"
+  ELSE IF \E c \in Card : StreamOf[c] = s /\ mgv[c] = "queued" THEN "merging"
+  ELSE IF /\ \E c \in Card : StreamOf[c] = s /\ stv[c] = "landed"
+          /\ \A c \in Card : StreamOf[c] = s => stv[c] \in {"landed", "off"}
+       THEN "landed"
+  ELSE "waiting"
+
+\* Follows: the stream s's state in the next state is what its merge cells and
+\* cause say it is; the other streams are untouched.
+Follows(s) ==
+  sstream' = [t \in Streams |-> IF t = s THEN StreamState(s, state', mg', scause') ELSE sstream[t]]
+
+\* Queue(c): c queues in merge and its stream follows; ranked is untouched.
+Queue(c) ==
+  /\ mg' = [mg EXCEPT ![c] = "queued"]
+  /\ scause' = scause
+  /\ Follows(StreamOf[c])
+  /\ UNCHANGED ranked
+
+\* Returned(c): c leaves merge (queued or stuck) into returned, its stream follows.
+Returned(c) ==
+  /\ mg' = [mg EXCEPT ![c] = "returned"]
+  /\ scause' = scause
+  /\ Follows(StreamOf[c])
+  /\ UNCHANGED ranked
+
+\* The merge variables, frozen when the merge side is off.
+MergeVars == <<mg, sstream, scause, ranked>>
 
 \* HeldOn: the working cards a member holds, ready and working (refmodel
 \* State.Held): a card a member holds belongs to a primary that is working.
@@ -263,13 +355,17 @@ Init ==
   /\ wplace = [c \in Card |-> "none"]
   /\ wmember = [c \in Card |-> CHOOSE m \in Member : TRUE]
   /\ rplace = [c \in Card |-> [r \in Reader |-> "none"]]
+  /\ mg = [c \in Card |-> "none"]
+  /\ sstream = [s \in Streams |-> "waiting"]
+  /\ scause = [s \in Streams |-> "none"]
+  /\ ranked = [c \in Card |-> FALSE]
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
 \* step carries no plan flag.
 Move(c, to) ==
   /\ state' = [state EXCEPT ![c] = to]
   /\ everLanded' = IF to = "landed" THEN everLanded \cup {c} ELSE everLanded
-  /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+  /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
   /\ flags' = NoFlags
 
 \* ------------------------------------------------------------ the reads
@@ -331,7 +427,7 @@ Start ==
     /\ state' = [state EXCEPT ![c] = "working"]
     /\ wplace' = [wplace EXCEPT ![c] = "ready"]
     /\ wmember' = [wmember EXCEPT ![c] = m]
-    /\ UNCHANGED <<needs, waived, everLanded, members, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* Take (refmodel Take): the worker on an up member moves a dealt (ready) work
@@ -343,7 +439,7 @@ Take ==
     /\ members[wmember[c]] = "up"
     /\ NeedsMet(c)
     /\ wplace' = [wplace EXCEPT ![c] = "working"]
-    /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace>>
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* Finish (refmodel Finish): working -> review; the work card finishes in its
@@ -355,7 +451,7 @@ Finish ==
     /\ members[wmember[c]] = "up"
     /\ state' = [state EXCEPT ![c] = "review"]
     /\ wplace' = [wplace EXCEPT ![c] = "finished"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* Withdraw: working -> ready, the work card withdrawn with its attempt
@@ -368,7 +464,7 @@ Withdraw ==
     /\ wplace[c] \in {"ready", "working", "finished"}
     /\ state' = [state EXCEPT ![c] = "ready"]
     /\ wplace' = [wplace EXCEPT ![c] = "withdrawn"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* FleetDown (refmodel FleetDown): the member goes down; its ready and working
@@ -390,7 +486,7 @@ FleetDown ==
           /\ state' = [c \in Card |-> IF c \in HeldOn(m) THEN "ready" ELSE state[c]]
           /\ wplace' = [c \in Card |-> IF c \in HeldOn(m) THEN "withdrawn" ELSE wplace[c]]
           /\ wmember' = wmember
-    /\ UNCHANGED <<needs, waived, everLanded, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* FleetUp (refmodel FleetUp): the member comes up.
@@ -398,7 +494,7 @@ FleetUp ==
   \E m \in Member :
     /\ members[m] = "down"
     /\ members' = [members EXCEPT ![m] = "up"]
-    /\ UNCHANGED <<state, needs, waived, everLanded, wplace, wmember, rplace>>
+    /\ UNCHANGED <<state, needs, waived, everLanded, wplace, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* Ask (refmodel Ask): the primary in review asks one more read of a reader
@@ -412,7 +508,7 @@ Ask ==
     /\ Cardinality(LiveReads(c)) < ReadsNeeded(c)
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* AskAnother (refmodel AskAnother): one more reader for a primary already
@@ -425,7 +521,7 @@ AskAnother ==
     /\ (BrokenRead(c) \/ Cardinality(LiveReads(c)) >= ReadsNeeded(c))
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* ReadStart (refmodel ReadStart): the reader moves its own asked read to
@@ -435,7 +531,7 @@ ReadStart ==
     /\ \E c \in Card :
          /\ rplace[c][r] = "asked"
          /\ rplace' = [rplace EXCEPT ![c][r] = "reading"]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* Read (refmodel Read): the reader records ok or broken.
@@ -444,7 +540,7 @@ Read ==
     /\ \E c \in Card, v \in {"ok", "broken"} :
          /\ rplace[c][r] \in {"asked", "reading"}
          /\ rplace' = [rplace EXCEPT ![c][r] = v]
-         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* accept: review -> merging when the primary has the reads its tier needs and
@@ -459,13 +555,16 @@ Accept ==
     /\ Broken = "acceptbroken" \/ ~BrokenRead(c)
     /\ state' = [state EXCEPT ![c] = "merging"]
     /\ RetireOutstanding(c)
+    /\ IF MergeSide THEN Queue(c) ELSE UNCHANGED MergeVars
     /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember>>
     /\ flags' = NoFlags
 
 \* NextAttempt(c, from): rework and redo (and a brief edited in place on a card
 \* in review): the next attempt is dealt at once to an up member (to working,
 \* the needs rule held as at any deal), or the card goes to ready and the deal
-\* cuts it later; the old work card is retired and the read cards retire.
+\* cuts it later; the old work card is retired and the read cards retire. Redo
+\* (from = merging) leaves the merge cell returned and the stream follows (G4);
+\* rework (from = review) does not touch the merge side.
 NextAttempt(c, from) ==
   /\ state[c] = from
   /\ \/ \E m \in Up :
@@ -477,6 +576,9 @@ NextAttempt(c, from) ==
         /\ wplace' = [wplace EXCEPT ![c] = "none"]
         /\ wmember' = wmember
   /\ ClearReads(c)
+  /\ IF MergeSide /\ from = "merging"
+     THEN Returned(c)
+     ELSE UNCHANGED <<mg, sstream, scause, ranked>>
   /\ UNCHANGED <<needs, waived, everLanded, members>>
   /\ flags' = NoFlags
 
@@ -484,25 +586,129 @@ NextAttempt(c, from) ==
 Rework == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "review")
 
 \* return: merging -> review (return, the tick's short-reads pass, a refused
-\* landing). The read cards at the attempt stand. The reversed witness
-\* "unland" takes a landed card back too, as ShortReadsBack planned before
-\* this card (the store refused it).
+\* landing). The read cards at the attempt stand. The card leaves merge into
+\* returned and the stream's state follows (G4). The reversed witness "unland"
+\* takes a landed card back too, as ShortReadsBack planned before this card
+\* (the store refused it).
 Return ==
   \E c \in Card :
-    /\ \/ state[c] = "merging"
+    /\ \/ /\ state[c] = "merging"
+          /\ state' = [state EXCEPT ![c] = "review"]
+          /\ IF MergeSide THEN Returned(c) ELSE UNCHANGED MergeVars
+          /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
        \/ Broken = "unland" /\ state[c] = "landed" /\ ~IsSentinel(c)
-    /\ Move(c, "review")
+          /\ Move(c, "review")
+    /\ flags' = NoFlags
 
 \* redo: merging -> working (a member is up) or merging -> ready.
 Redo == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "merging")
 
-\* merge: merging -> landed. The reversed witness "skip" lands a card straight
-\* from review.
+\* merge: the one-card move, merging -> landed, always a lawful move. With the
+\* merge side on the card lands into merged and its stream follows (G4); with
+\* it off the merge variables stay frozen (the merge side's instance merges by
+\* the batch MergeGreen instead).
 Merge ==
   \E c \in Card :
-    /\ \/ state[c] = "merging"
-       \/ Broken = "skip" /\ state[c] = "review"
-    /\ Move(c, "landed")
+    /\ ~IsSentinel(c)
+    /\ state[c] = "merging"
+    /\ state' = [state EXCEPT ![c] = "landed"]
+    /\ everLanded' = everLanded \cup {c}
+    /\ IF MergeSide
+       THEN /\ mg' = [mg EXCEPT ![c] = "merged"]
+            /\ scause' = scause
+            /\ Follows(StreamOf[c])
+            /\ ranked' = [ranked EXCEPT ![c] = FALSE]
+       ELSE UNCHANGED <<mg, sstream, scause, ranked>>
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ flags' = NoFlags
+
+\* merge green: the batch (the stream's queued cards, all of them here: a prefix
+\* is always a batch) merges to dev: merging -> landed, into merged, the
+\* stream's state follows (G4).
+MergeGreen ==
+  \E s \in Streams :
+    /\ sstream[s] = "merging"
+    /\ Queued(s) # {}
+    /\ state' = [c \in Card |-> IF c \in Queued(s) THEN "landed" ELSE state[c]]
+    /\ everLanded' = everLanded \cup Queued(s)
+    /\ mg' = [c \in Card |-> IF c \in Queued(s) THEN "merged" ELSE mg[c]]
+    /\ scause' = scause
+    /\ Follows(s)
+    /\ ranked' = [c \in Card |-> IF c \in Queued(s) THEN FALSE ELSE ranked[c]]
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ flags' = NoFlags
+
+\* SkipMerge (Broken "skip"): the reads card's witness, a card lands straight
+\* from review (MovesOnlyByTable fails).
+SkipMerge ==
+  /\ Broken = "skip"
+  /\ \E c \in Card :
+      /\ state[c] = "review"
+      /\ ~IsSentinel(c)
+      /\ Move(c, "landed")
+
+\* MergeStop (refmodel MergeStop): a fact on a queued card stops the stream; the
+\* card goes stuck, the stream stops (conflict). The cross-stream need (D6) and
+\* F4 are not modelled: a stop here is always a conflict on a card of the
+\* stream itself.
+MergeStop ==
+  \E s \in Streams, c \in Card :
+    /\ sstream[s] = "merging"
+    /\ c \in Queued(s)
+    /\ state' = state
+    /\ mg' = [mg EXCEPT ![c] = "stuck"]
+    /\ scause' = [scause EXCEPT ![s] = "conflict"]
+    /\ sstream' = [sstream EXCEPT ![s] = "stopped"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ flags' = NoFlags
+
+\* MergeRefused (refmodel MergeRefused): the landing's refusal of the card's
+\* head, the way the card's own (a way "" is the lander's failure and stops the
+\* stream, MergeStop). Back to review (paths or at the brief's bound) or ready
+\* (redo); the card leaves merge into returned, the stream follows (G4).
+MergeRefused ==
+  \E s \in Streams, c \in Card :
+    /\ sstream[s] = "merging"
+    /\ c \in Queued(s)
+    /\ \/ state' = [state EXCEPT ![c] = "review"]
+       \/ state' = [state EXCEPT ![c] = "ready"]
+    /\ Returned(c)
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
+    /\ flags' = NoFlags
+
+\* MergeRed (refmodel MergeRed): the branch red (or the queue rejected the
+\* batch); the stream stops, no card moves.
+MergeRed ==
+  \E s \in Streams :
+    /\ sstream[s] = "merging"
+    /\ state' = state
+    /\ mg' = mg
+    /\ scause' = [scause EXCEPT ![s] = "red"]
+    /\ sstream' = [sstream EXCEPT ![s] = "stopped"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ flags' = NoFlags
+
+\* Resume (refmodel Resume): a stopped stream resumes; the stuck cards queue
+\* again, the cause clears, the stream's state follows (G4).
+Resume ==
+  \E s \in Streams :
+    /\ sstream[s] = "stopped"
+    /\ state' = state
+    /\ mg' = [c \in Card |-> IF c \in Stuck(s) THEN "queued" ELSE mg[c]]
+    /\ scause' = [scause EXCEPT ![s] = "none"]
+    /\ Follows(s)
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
+    /\ flags' = NoFlags
+
+\* Rank (refmodel Rank): a card ranked first (the mark ranked set), refused for
+\* a landed primary (G6). The score change is not modelled: Score is a constant
+\* and the merge takes the whole queue, so the merge order is a choice.
+Rank ==
+  \E c \in Card :
+    /\ IsOpen(state[c])
+    /\ ranked' = [ranked EXCEPT ![c] = TRUE]
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause>>
+    /\ flags' = NoFlags
 
 \* release: waiting -> landed, a sentinel only, and only by the plan's release.
 Release ==
@@ -511,6 +717,12 @@ Release ==
     /\ state[c] = "waiting"
     /\ state' = [state EXCEPT ![c] = "landed"]
     /\ everLanded' = everLanded \cup {c}
+    /\ IF MergeSide
+       THEN /\ ranked' = [ranked EXCEPT ![c] = FALSE]
+            /\ mg' = mg
+            /\ scause' = scause
+            /\ Follows(StreamOf[c])
+       ELSE UNCHANGED <<mg, sstream, scause, ranked>>
     /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
     /\ flags' = [NoFlags EXCEPT !.releasing = TRUE]
 
@@ -521,7 +733,7 @@ AddMove ==
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
     /\ state' = [state EXCEPT ![c] = "waiting"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = [NoFlags EXCEPT !.inserting = (Broken # "insert")]
 
 \* NeedsSet: needs set, and a brief edit's DEPENDS-ON (steps_edit.go NeedsSet,
@@ -570,7 +782,7 @@ NeedsSet ==
        \/ /\ state[c] = "waiting"
           /\ ~MetWith(c, N)
           /\ state' = state
-    /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace>>
+    /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* NeedsWait (steps_tick.go needsWaits, PR #96): a ready primary whose named
@@ -598,7 +810,7 @@ NeedsWithdraw ==
     /\ wplace[c] \in {"ready", "working"}
     /\ state' = [state EXCEPT ![c] = IF Broken = "withdrawready" THEN "ready" ELSE "waiting"]
     /\ wplace' = [wplace EXCEPT ![c] = "none"]
-    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked>>
     /\ flags' = NoFlags
 
 \* drop: off the table, from an open state, never a card another open card
@@ -612,6 +824,12 @@ Drop ==
     /\ state' = [state EXCEPT ![c] = "off"]
     /\ wplace' = [wplace EXCEPT ![c] = "none"]
     /\ ClearReads(c)
+    /\ IF MergeSide
+       THEN /\ mg' = [mg EXCEPT ![c] = "none"]
+            /\ scause' = scause
+            /\ Follows(StreamOf[c])
+            /\ UNCHANGED ranked
+       ELSE UNCHANGED <<mg, sstream, scause, ranked>>
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember>>
     /\ flags' = [NoFlags EXCEPT !.removing = (state[c] = "landed")]
 
@@ -633,7 +851,36 @@ Waive ==
             /\ PositionClear(c)
             /\ \A x \in needs[c] : x \in everLanded \/ x \in waived'[c]
             /\ state' = [state EXCEPT ![c] = "ready"]
-      /\ UNCHANGED <<needs, everLanded, members, wplace, wmember, rplace>>
+      /\ UNCHANGED <<needs, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked>>
+      /\ flags' = NoFlags
+
+\* LandUnmerged (Broken "landunmerged"): a card lands from review, no merge;
+\* review -> landed is not a Moves row (MovesOnlyByTable fails).
+LandUnmerged ==
+  /\ Broken = "landunmerged"
+  /\ \E c \in Card :
+      /\ state[c] = "review"
+      /\ ~IsSentinel(c)
+      /\ state' = [state EXCEPT ![c] = "landed"]
+      /\ everLanded' = everLanded \cup {c}
+      /\ mg' = [mg EXCEPT ![c] = "merged"]
+      /\ scause' = scause
+      /\ Follows(StreamOf[c])
+      /\ ranked' = [ranked EXCEPT ![c] = FALSE]
+      /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+      /\ flags' = NoFlags
+
+\* ReturnLost (Broken "returnlost"): a card returned from merging is dropped,
+\* its record lost (state "lost"); NoCardLostOrTwice fails.
+ReturnLost ==
+  /\ Broken = "returnlost"
+  /\ \E c \in Card :
+      /\ state[c] = "merging"
+      /\ state' = [state EXCEPT ![c] = "lost"]
+      /\ mg' = [mg EXCEPT ![c] = "returned"]
+      /\ scause' = scause
+      /\ Follows(StreamOf[c])
+      /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, ranked>>
       /\ flags' = NoFlags
 
 Next ==
@@ -642,6 +889,8 @@ Next ==
   \/ Accept \/ Rework \/ Return \/ Redo \/ Merge \/ Release \/ AddMove
   \/ NeedsSet \/ NeedsWait \/ NeedsWithdraw
   \/ Drop \/ Comeback \/ Waive
+  \/ MergeSide /\ (MergeGreen \/ MergeStop \/ MergeRefused \/ MergeRed \/ Resume \/ Rank)
+  \/ SkipMerge \/ LandUnmerged \/ ReturnLost
 
 Spec == Init /\ [][Next]_vars
 
@@ -659,9 +908,12 @@ Rule11 ==
     state[c] \in {"review", "merging", "landed"} => NeedsMet(c)
 
 \* NoCardLostOrTwice: a card that leaves the table (a drop or a remove) never
-\* comes back; its record is kept, unplaced, and no card is admitted twice.
+\* comes back; its record is kept, unplaced, no card is admitted twice, and no
+\* card's record is lost (a card returned from merging is never dropped).
 NoCardLostOrTwice ==
-  [][\A c \in Card : state[c] = "off" => state'[c] = "off"]_vars
+  [][\A c \in Card :
+    /\ state[c] = "off" => state'[c] = "off"
+    /\ state'[c] # "lost"]_vars
 
 \* MovesOnlyByTable: every change of cell is a lawful move, a drop from an
 \* open state, or a remove of a landed card.
@@ -731,5 +983,14 @@ NeverAcceptBroken == \A c \in Card : state[c] = "merging" => ~BrokenRead(c)
 \* NeverReadByItsWorker: a primary's read is never asked of its own worker.
 NeverReadByItsWorker ==
   \A c \in Card, r \in Reader : rplace[c][r] # "none" => r # Worker(c)
+
+\* StreamAfter (G4): a stream's state is what its merge cells and cause say it
+\* is.
+StreamAfter == \A s \in Streams : sstream[s] = StreamState(s, state, mg, scause)
+
+\* RankRefusesLanded (G6): a landed primary is never ranked. Rank refuses a
+\* landed primary (its guard is IsOpen); the mark ranked clears when the card
+\* lands (merge or release), so the invariant holds.
+RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 
 =============================================================================
