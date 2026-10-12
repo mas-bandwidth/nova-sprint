@@ -65,6 +65,25 @@
 \* tried), Requeue alone (PR #5127 as it stands). Rule "old" without Requeue is
 \* the second guard alone ending the rule of the wedge (MCLevelOldRuleNoRequeue).
 \*
+\* THE FREE RULE (Rule = "free", the owner, 2026-10-11 ~19:05-19:20Z: "cards
+\* only may accrue per-fleet or friend, if there are not other machines/friends
+\* ready to do that work right now"; observed: 485 start-of-tick level moves in
+\* 2h, 28 off batman, width 4 and idle, each a card moved off a member with a
+\* free lane a second after it was dealt). The source is a member whose held
+\* cards exceed its width (its excess) and that has a card some member may
+\* take, the first of the up order with the most backlog; its newest such card
+\* first; the target is the first member round the fleet from the index whose
+\* held cards are below its width (a free lane) and that did not refuse the
+\* card. No mean, no gap of two. NeverOffAFreeLane (a move's source held more
+\* than its width) and NeverOntoAFullMember (its target held fewer) hold of
+\* every move, and NoExcessWhileALaneIsFree when the call ends. The sum of
+\* squared backlogs still falls by at least two a move: a move from a backlog L
+\* to a backlog T changes it by 2(T - L + 1), and the free rule moves only from
+\* L >= 1 (held above width) to T <= -1 (held below width), so T - L + 1 <= -1.
+\* The gap and mean rule above ("gap") is checked against NeverOffAFreeLane by
+\* MCLevelBrokenMeanRule: it gives a card away from a member below its width
+\* whenever that member's backlog is above the mean and two above the target's.
+\*
 \* WHAT IS NOT MODELLED. The readers' level (readers.go levelReads: a read moves
 \* at most once there already, it is never queued on its receiver), the plan's
 \* units and generations (a move is one unit), members not up (level is handed
@@ -83,10 +102,10 @@ CONSTANTS Order,       \* the members, a sequence in name order (round.order)
           Works,       \* [member -> the counts of cards outside its queue it may start with]
           MaxRefusers, \* the most refusers a card starts with
           UpOrders,    \* the orders s.UpMembers() may give: a set of sequences
-          Rule,        \* "gap" (the design) or a reversed witness
+          Rule,        \* "free" (the design), "gap" (round.go levelTo today) or a witness
           Requeue      \* TRUE: a moved card joins its receiver's queue (PR #5127)
 
-ASSUME Rule \in {"gap", "old", "nogap", "noskip", "naive"}
+ASSUME Rule \in {"free", "gap", "old", "nogap", "noskip", "naive"}
 ASSUME Requeue \in BOOLEAN
 \* the mean is rounded down below zero too, as level computes it
 ASSUME (-3) \div 2 = -2 /\ (-4) \div 2 = -2 /\ 3 \div 2 = 1
@@ -135,7 +154,22 @@ Stop == [stop |-> TRUE, from |-> None, i |-> 0, to |-> None]
 
 \* the loop's next move on a state, under a rule: stop, or the card at i of
 \* from's queue going to to (level's loop body, one turn)
-ChoiceBy(r, qq, ww, ii, uu, rf) ==
+\* the free rule's target for c: the first member round the fleet from ii with
+\* a free lane (held below its width) that did not refuse c
+FreeTarget(qq, ww, ii, rf, c) == Scan(ii, {x \in Members : Held(qq, ww, x) < Width[x] /\ x \notin rf[c]})
+\* the free rule's next move: from the first of the up order with the most
+\* backlog among the members above their width with a card some member may
+\* take, its newest such card, to that card's FreeTarget
+ChoiceFree(qq, ww, ii, uu, rf) ==
+  LET n == Backlogs(qq, ww)
+      Movable(m) == {i \in 1..Len(qq[m]) : FreeTarget(qq, ww, ii, rf, qq[m][i]) # None}
+      l == First(uu, LAMBDA m : Held(qq, ww, m) > Width[m] /\ Movable(m) # {}, LAMBDA x, y : n[x] > n[y])
+      i == IF l = None THEN 0 ELSE CHOOSE i \in Movable(l) : \A j \in Movable(l) : j <= i
+  IN IF l = None THEN Stop
+     ELSE [stop |-> FALSE, from |-> l, i |-> i, to |-> FreeTarget(qq, ww, ii, rf, qq[l][i])]
+
+\* the gap and mean rule and its witnesses
+ChoiceMean(r, qq, ww, ii, uu, rf) ==
   LET n == Backlogs(qq, ww)
       mean == SumOver(n, N) \div N
       l == First(uu, LAMBDA m : Len(qq[m]) > 0, LAMBDA x, y : n[x] > n[y])
@@ -146,6 +180,9 @@ ChoiceBy(r, qq, ww, ii, uu, rf) ==
            ELSE IF movable = {} THEN 0 ELSE CHOOSE i \in movable : \A j \in movable : j <= i
   IN IF l = None \/ s = None \/ n[l] - n[s] <= 1 \/ i = 0 THEN Stop
      ELSE [stop |-> FALSE, from |-> l, i |-> i, to |-> TargetBy(r, qq, ww, ii, rf, n, mean, qq[l][i], l)]
+
+\* the loop's next move under the rule
+ChoiceBy(r, qq, ww, ii, uu, rf) == IF r = "free" THEN ChoiceFree(qq, ww, ii, uu, rf) ELSE ChoiceMean(r, qq, ww, ii, uu, rf)
 
 Drop(s, i) == SubSeq(s, 1, i - 1) \o SubSeq(s, i + 1, Len(s))
 Placed(at, m) == SelectSeq(Cards, LAMBDA c : at[c] = m)
@@ -231,8 +268,24 @@ NeverOnARefuser == \A c \in CardSet : loc[c] \notin ref[c]
 MovesBounded == moves <= Ready
 
 \* the loop returns only when no card in the longest queue has a target under
-\* the design's rule: an older card is tried when the newest has none
-SelectionComplete == pc = "done" => ChoiceBy("gap", q, work, idx, up, ref).stop
+\* the design's rule (the free rule's, under Rule \"free\"): an older card is
+\* tried when the newest has none
+SelectionComplete == pc = "done" => ChoiceBy(IF Rule = "free" THEN "free" ELSE "gap", q, work, idx, up, ref).stop
+
+\* a move's source held more than its width before the move: the level never
+\* takes a card off a member with a free lane
+NeverOffAFreeLane == [][Move => Held(q, work, nx.from) > Width[nx.from]]_vars
+
+\* a move's target held fewer than its width before the move
+NeverOntoAFullMember == [][Move => Held(q, work, nx.to) < Width[nx.to]]_vars
+
+\* when the call ends, no member above its width holds a queued card that a
+\* member below its width may take
+NoExcessWhileALaneIsFree ==
+  pc = "done" =>
+    ~\E m, x \in Members :
+       /\ Held(q, work, m) > Width[m] /\ Held(q, work, x) < Width[x]
+       /\ \E i \in 1..Len(q[m]) : x \notin ref[q[m][i]]
 
 \* every move lowers the sum of squared backlogs by at least two
 PotentialFalls == [][Move => Phi' <= Phi - 2]_vars
