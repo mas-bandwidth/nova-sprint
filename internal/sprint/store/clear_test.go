@@ -110,14 +110,24 @@ func TestClearKeepsTheReadersTiers(t *testing.T) {
 	for _, rd := range []string{"reader-a", "reader-b"} {
 		require.NoError(t, h.m.RowSet(h.ctx, h.st.Names.Table(sprint.Readers), rd, map[string]string{sprint.ReaderTiers: "pro"}))
 	}
+	stored := func(t *sprint.Table, rd string) string {
+		if t == nil || t.Texts == nil {
+			return ""
+		}
+		row := t.Texts[rd]
+		if row == nil {
+			return ""
+		}
+		return row[sprint.ReaderTiers]
+	}
 	s := h.snap()
-	require.Equal(t, "pro", sprint.ReaderTiersStored(s.Readers, "reader-a"), "the fixture sets tiers")
+	require.Equal(t, "pro", stored(s.Readers, "reader-a"), "the fixture sets tiers")
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
 	after := h.snap()
-	require.Equal(t, "pro", sprint.ReaderTiersStored(after.Readers, "reader-a"), "a reader's tiers survive a clear")
-	require.Equal(t, "pro", sprint.ReaderTiersStored(after.Readers, "reader-b"), "every reader's tiers survive a clear")
-	require.Equal(t, "", sprint.ReaderTiersStored(after.Readers, "reader-c"), "a reader that never set tiers stays the default")
+	require.Equal(t, "pro", stored(after.Readers, "reader-a"), "a reader's tiers survive a clear")
+	require.Equal(t, "pro", stored(after.Readers, "reader-b"), "every reader's tiers survive a clear")
+	require.Equal(t, "", stored(after.Readers, "reader-c"), "a reader that never set tiers stays the default")
 	h.clean("cleared")
 }
 
