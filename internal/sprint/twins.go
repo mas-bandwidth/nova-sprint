@@ -36,13 +36,17 @@ type RelinkReq struct {
 	Who    string
 }
 
-// twinDependents is the waiting cards whose needs name one of olds they did not waive, in
-// work order.
+// twinDependents is the open cards whose needs name one of olds they did not
+// waive, whatever their column (waiting, ready, working, review, merging), in
+// work order: relink re-points every card that names the old id, not only the
+// waiting ones (need_alias.go).
 func twinDependents(s *Snapshot, olds []string) []*Card {
 	var out []*Card
-	for _, c := range s.Work.Column(Waiting) {
-		if len(dependentOlds(c, olds)) > 0 {
-			out = append(out, c)
+	for _, col := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, c := range s.Work.Column(col) {
+			if len(dependentOlds(c, olds)) > 0 {
+				out = append(out, c)
+			}
 		}
 	}
 	return out
