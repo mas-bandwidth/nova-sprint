@@ -327,6 +327,55 @@ const FieldDecideJudgment = "decide_judgment_bar"
 // which the sprint's routes read takes.
 const FieldAnswerRulesOff = "answer_rules_off"
 
+// FieldGitIdentity is the sprint row's author and committer for every commit the sprint
+// machine makes (land, merge, rework-at-tip, ledger and roadmap writes), as "Name <email>".
+// Apply writes it to SprintKey(FieldGitIdentity), which the lander reads; the landing
+// refuses to commit when it is empty. The default is the machine's own identity, never the
+// host's global git config.
+const FieldGitIdentity = "git_identity"
+
+// DefaultGitIdentity is the identity the sprint machine commits as when the sprint row
+// names none: nova-sprint <nova-sprint@mas-bandwidth.com>.
+const DefaultGitIdentity = "nova-sprint <nova-sprint@mas-bandwidth.com>"
+
+// GitIdentity is one parsed identity: the name and email of "Name <email>".
+type GitIdentity struct {
+	Name, Email string
+}
+
+// ParseGitIdentity parses a git identity as "Name <email>": the name is everything before
+// the last " <", the email the text between the last "<" and ">". ok is false when the
+// value is empty or does not spell a name and an email.
+func ParseGitIdentity(v string) (GitIdentity, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return GitIdentity{}, false
+	}
+	lt := strings.LastIndex(v, "<")
+	gt := strings.LastIndex(v, ">")
+	if lt < 0 || gt < lt {
+		return GitIdentity{}, false
+	}
+	name := strings.TrimSpace(v[:lt])
+	email := strings.TrimSpace(v[lt+1 : gt])
+	if name == "" || email == "" {
+		return GitIdentity{}, false
+	}
+	return GitIdentity{Name: name, Email: email}, true
+}
+
+// Env is the GIT_AUTHOR_*/GIT_COMMITTER_* environment this identity sets, so a commit
+// takes the configured name and email whatever the host's global git config or the
+// caller's environment held.
+func (id GitIdentity) Env() []string {
+	return []string{
+		"GIT_AUTHOR_NAME=" + id.Name,
+		"GIT_AUTHOR_EMAIL=" + id.Email,
+		"GIT_COMMITTER_NAME=" + id.Name,
+		"GIT_COMMITTER_EMAIL=" + id.Email,
+	}
+}
+
 // AnswerRules is every rule the sprint answers a mechanical judgment by (internal/sprint,
 // RuleNames, which a test holds equal): work came back failed, a card at its bound, a work
 // card past its deadline, a stream stopped on a conflict in a file no ledger owns, the same
@@ -479,6 +528,7 @@ var Kinds = []*Kind{
 			{Name: FieldDecideJudgment, Type: TypeDecimal, Help: "the judgment bar: nova-sprint answer applies the verb the judgment decision chose when its probability is at or above it, and lists it for the coordinator below it; a probability; empty (the default) applies nothing: every decision is recorded and what a bar would apply is listed; 0.8 is a starting point measured on 100 of the coordinator's own judgments (docs/SPEC-NOVA-DECIDE.md section 13), not an independent calibration"},
 			{Name: FieldDecideBriefBar, Type: TypeDecimal, Help: "the brief bar: nova-sprint add asks the brief decision of each card and refuses a card whose p(converges) is under it, naming the questions it failed; a probability; empty (the default) asks and reports only. The decision is uncalibrated (AUC 0.600 on 234 review labels, docs/SPEC-NOVA-DECIDE.md section 14): leave it empty until calibrate on the brief record's own outcomes supports a bar"},
 			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, the base tree gate retried before a stream stops, a friend's card she has not started past its bound taken back and dealt again, failed work whose report HOLDs for a card not landed waiting for it, a reader's first finding reworked as the fix, and a late read asked of another reader once an attempt (docs/SPEC-SPRINT.md section 8, answered by rule)"},
+			{Name: FieldGitIdentity, Type: TypeText, Default: DefaultGitIdentity, Help: "the author and committer every commit the sprint machine makes carries, as 'Name <email>'; the landing refuses to commit when it is empty, and doctor fails when its email equals the host's global user.email; " + DefaultGitIdentity + " (the default)"},
 		},
 		Check: checkSprint,
 	},

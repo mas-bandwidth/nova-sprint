@@ -219,53 +219,13 @@ func (a *app) recordPushTarget(srv string, c common, push sprint.PushRecord, std
 	return 0
 }
 
+// cmdSeatUninstall is seat uninstall (docs/SPEC-SPRINT.md, "Handing over the
+// seat"): the shared uninstall body, the push loop's unit (friendsync_install.go
+// cmdFriendSyncUninstall is the other caller).
 func (a *app) cmdSeatUninstall(args []string, stdout, stderr io.Writer) int {
-	const name = "seat uninstall"
-	fs, c := a.verbSetup(name)
-	dir := fs.String("dir", "", "the directory the unit was written into (default: as seat install's)")
-	dry := fs.Bool("dry-run", false, "say which unit would be unloaded and removed, and unload and remove nothing")
-	pos, err := parse(fs, args)
-	if err != nil || len(pos) > 0 {
-		return refuse(stderr, name, argErr("takes no words ", err, pos...))
-	}
-	goos := a.seatOS()
-	if *dir == "" {
-		if *dir, err = a.seatDir(goos); err != nil {
-			return refuse(stderr, name, "--dir names no directory and the home cannot be read: "+err.Error())
-		}
-	}
-	if *dry {
-		file := sprint.SeatUnitFile(goos)
-		if file == "" {
-			return refuse(stderr, name, "seat uninstall removes a launchd agent (macOS) or a systemd user unit (Linux), and "+goos+" has neither")
-		}
-		path := filepath.Join(*dir, file)
-		_, serr := os.Stat(path)
-		there := serr == nil
-		if c.json {
-			b, _ := json.Marshal(map[string]any{"path": path, "present": there, "dry_run": true}) // ignored: a string and bools always encode
-			fmt.Fprintln(stdout, string(b))
-			return 0
-		}
-		fmt.Fprintf(stdout, "SEAT UNINSTALL DRY-RUN unit=%s present=%t; nothing was unloaded or removed\n", oneline.Field(path), there)
-		return 0
-	}
-	r, err := a.seatInstaller(goos, *dir).Uninstall(goos)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s FAILED: %s\n", prog, name, oneline.Escape(err.Error()))
-		return 1
-	}
-	if c.json {
-		b, _ := json.Marshal(map[string]any{"path": r.Path, "removed": r.Changed}) // ignored: a string and a bool always encode
-		fmt.Fprintln(stdout, string(b))
-		return 0
-	}
-	if !r.Changed {
-		fmt.Fprintf(stdout, "SEAT UNINSTALL OK unit=%s removed=false: no unit there; nothing was changed\n", oneline.Field(r.Path))
-		return 0
-	}
-	fmt.Fprintf(stdout, "SEAT UNINSTALL OK unit=%s removed=true\n", oneline.Field(r.Path))
-	return 0
+	return a.uninstallUnit(args, stdout, stderr, "seat uninstall", "SEAT UNINSTALL",
+		sprint.SeatUnitFile,
+		func(in sprint.SeatInstaller, goos string) (sprint.SeatResult, error) { return in.Uninstall(goos) })
 }
 
 // loadSeatUnit loads (op load: unloaded first, so a changed unit is read again) or

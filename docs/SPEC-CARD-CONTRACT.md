@@ -31,3 +31,22 @@ that name it, ledger or not, the needs edge if any) and refuses the whole set on
 non-ledger overlap without an edge, writing nothing. `nova-sprint add --plan <dir>` prints
 the table and exits 0 without admitting, for a seat that wants to read the overlaps first
 (see [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md), the plan review).
+
+## The SIBLINGS header
+
+A brief that names a sibling path (`../<name>`, a sibling repository by name) in its
+text is refused at admission unless it carries a SIBLINGS header naming the repositories
+the path reads. The header is a line of the shape
+
+    SIBLINGS: owner/name@ref, owner/name@ref
+
+with the entries comma separated, each `owner/name@ref`. The sibling's name (the part
+of `owner/name@ref` after the slash) must cover every sibling path the text names: a
+brief that reads `../serialize`, `../serialize.c` and `../serialize.cs` names three
+siblings, and its SIBLINGS header must name all three. A brief that names a sibling path
+without the header, or with a header that does not cover the path, is refused at admission
+with the path quoted.
+
+The header is how the card is staged (docs/SPEC-STAGING.md, the siblings): the member
+clones each SIBLINGS repository at its ref into `$JOB/siblings/<name>` and points the
+harness there from `JOB.md`.

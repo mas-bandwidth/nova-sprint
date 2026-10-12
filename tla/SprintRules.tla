@@ -52,6 +52,11 @@
 \*   has not started taken back and dealt again, a late read asked of another reader once
 \*   an attempt, and a HOLD that waits for its card and reworks the primary once it lands.
 \*
+\* Part "stall": the landing stall (judgments.go TickLandingStall, run from the deadlines
+\*   part): when cards wait in review or merging and the last landing is StallBound of
+\*   running time ago, the tick end raises one NLandingStall judgment, re-raised each bound,
+\*   cleared on a landing; stopped time does not count (lsclk is running time).
+\*
 \* Part "late" also has a reachability witness, MCSprintRulesLateReachReturn: the design
 \* still returns a card (gen > 0), so NeverReturned fails there.
 \*
@@ -100,6 +105,8 @@
 \*                ReworkHasAFix
 \*   "identicalrework" the second identical failure is reworked as failed work on its tier
 \*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
+\*   "nostall"    the tick never raises the landing-stall judgment: StallLive
+\*   "noclear"    a landing does not clear the episode: StallNotYoung
 
 EXTENDS Integers, FiniteSets
 
@@ -130,7 +137,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, \* answers
           pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
-          jf, jfstarted, jr, jrasked, jh, jhlanded \* judgments
+          jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
+          lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged \* stall
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
@@ -141,7 +149,8 @@ idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
+stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -204,6 +213,13 @@ TypeOK ==
   /\ jf \in {"open", "taken"} /\ jfstarted \in BOOLEAN
   /\ jr \in {"open", "asked", "mind"} /\ jrasked \in Nat
   /\ jh \in {"waiting", "off", "reworked", "mind"} /\ jhlanded \in BOOLEAN
+  /\ lsclk \in 0..MaxClock
+  /\ lsstopped \in BOOLEAN
+  /\ lswait \in 0..2
+  /\ lslast \in (0..MaxClock) \cup {-1}
+  /\ lssince \in (0..MaxClock) \cup {-1}
+  /\ lssaid \in (0..MaxClock) \cup {-1}
+  /\ lsjudged \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -228,6 +244,8 @@ Init ==
   /\ jf = "open" /\ jfstarted = FALSE
   /\ jr = "open" /\ jrasked = 0
   /\ jh = "waiting" /\ jhlanded = FALSE
+  /\ lsclk = 0 /\ lsstopped = FALSE /\ lswait = 1
+  /\ lslast = -1 /\ lssince = -1 /\ lssaid = -1 /\ lsjudged = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -1045,24 +1063,109 @@ AskedOnceAnAttempt == jrasked <= 1
 HoldNeedReworksOnlyLanded == jh = "reworked" => jhlanded
 
 -----------------------------------------------------------------------------
+\* Part "stall": the landing stall (internal/sprint judgments.go, TickLandingStall; run from
+\* the deadlines part). When cards wait in review or merging and the work table's last
+\* landing is StallBound (the code's LandingStallBound, Window here) or more of running time
+\* ago, the tick end raises one NLandingStall judgment to the coordinator; it is re-raised
+\* each bound it still holds, and a landing breaks the episode and clears it (the code's
+\* NLandingAgain). The code's clear is the tick after the landing; here the landing clears in
+\* one step, so StallNotYoung holds at every state. Stopped time does not count: lsclk is
+\* running time, one step a tick, advanced only while the machine runs.
+\*   lsclk    running time, one step a tick.
+\*   lsstopped the machine is STOPPED (an outside event); a stopped tick adds no running time.
+\*   lswait   the cards waiting in review or merging (0, 1 or 2); the model's only way a card
+\*            leaves waiting is to land, so "nothing waits" is the landing's own clear.
+\*   lslast   the running-time stamp of the last landing; -1 none.
+\*   lssince  the episode's start stamp; -1 no episode.
+\*   lssaid   the episode's last push stamp; -1 none.
+\*   lsjudged the NLandingStall judgment is open.
+
+StallBound == Window
+
+\* the outside: a card enters review or merging
+LsWait ==
+  /\ lswait < 2
+  /\ lswait' = lswait + 1
+  /\ UNCHANGED <<lsclk, lsstopped, lslast, lssince, lssaid, lsjudged>>
+
+\* the outside: a card lands (the merge step writes last_landing); a landing breaks the
+\* episode and clears it (the "noclear" defect leaves the judgment open)
+LsLand ==
+  /\ lswait > 0
+  /\ lslast' = lsclk /\ lswait' = lswait - 1
+  /\ IF Broken = "noclear"
+       THEN UNCHANGED <<lssince, lssaid, lsjudged>>
+       ELSE /\ lssince' = -1 /\ lssaid' = -1 /\ lsjudged' = FALSE
+  /\ UNCHANGED <<lsclk, lsstopped>>
+
+\* the outside: the machine is STOPPED or starts again
+LsStop ==
+  /\ ~lsstopped /\ lsstopped' = TRUE
+  /\ UNCHANGED <<lsclk, lswait, lslast, lssince, lssaid, lsjudged>>
+LsStart ==
+  /\ lsstopped /\ lsstopped' = FALSE
+  /\ UNCHANGED <<lsclk, lswait, lslast, lssince, lssaid, lsjudged>>
+
+\* the tick end's alarm: the first tick that sees waiting cards with no landing starts the
+\* episode; later ticks raise once the running-time age reaches the bound, re-raising each
+\* bound the condition still holds (the "nostall" defect raises none)
+LsTick ==
+  /\ lsclk < MaxClock
+  /\ LET now == IF lsstopped THEN lsclk ELSE lsclk + 1
+         waiting == lswait > 0
+         hasLand == lslast # -1
+         starts == waiting /\ ~hasLand /\ lssince = -1
+         age == now - (IF hasLand THEN lslast ELSE lssince)
+         stalled == waiting /\ (hasLand \/ lssince # -1) /\ age >= StallBound /\ Broken # "nostall"
+         due == (lssaid = -1) \/ (now - lssaid >= StallBound)
+     IN /\ lsclk' = now
+        /\ IF starts
+             THEN /\ lssince' = now
+                  /\ UNCHANGED <<lsstopped, lswait, lslast, lssaid, lsjudged>>
+           ELSE IF stalled
+             THEN /\ lssince' = IF lssince = -1 THEN now ELSE lssince
+                  /\ IF due
+                       THEN /\ lsjudged' = TRUE /\ lssaid' = now
+                       ELSE UNCHANGED <<lsjudged, lssaid>>
+                  /\ UNCHANGED <<lsstopped, lswait, lslast>>
+           ELSE UNCHANGED <<lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
+
+LsNext == LsWait \/ LsLand \/ LsStop \/ LsStart \/ LsTick
+
+\* The landing-stall judgment is never open while the last landing is younger than the
+\* bound: it opens only once the last landing is StallBound or more of running time ago (or
+\* there has been none).
+StallNotYoung == lsjudged => (lslast = -1 \/ lsclk - lslast >= StallBound)
+
+\* A card in review with its reads done and ok (it can land) is landed or the stall is
+\* raised: with no landing yet, waiting cards are judged once the bound of running time
+\* passes, under fairness of the running tick and the machine starting again.
+StallLive == (lswait > 0 /\ lslast = -1) ~> (lsjudged \/ lslast # -1)
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
 
-\* The rules and a mind act when they may; the outside is unfair.
+\* The rules and a mind act when they may; the outside is unfair. The stall's running tick
+\* and the machine's start are fair (a stopped machine adds no running time, so a stall can
+\* only be owed once the machine has run the bound).
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

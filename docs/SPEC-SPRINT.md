@@ -1652,7 +1652,11 @@ default) and `low` (it fills only an idle lane).
   priority on stream just means one verb call sets priority for all cards in the stream"),
   and the stream's default, which seeds the cards added to the stream later (a later card's
   own PRIORITY line wins); a held stream is set all the same and the output says it is held
-  and that none of its cards is dealt until `unhold`; `priority <id>...` prints each card's
+  and that none of its cards is dealt until `unhold`; `priority` also takes the shared
+  selector (`--who`, `--state`, `--ids-file`, or `--stream` with any of them, and
+  `--dry-run`), `priority --ids-file raise.txt --critical --reason '<why>'` setting every
+  selected card in one call and no stream default (docs/SPEC-SPRINT.md, "One selector, one
+  step"); `priority <id>...` prints each card's
   level and its source (`set`, `computed`, `default`, `read`). Every change is a `priority
   set` note on the card's timeline (`log --card`) with the actor and the reason, and the
   default's change a `stream priority set` note on the stream's (`log --stream`). A
@@ -1664,7 +1668,7 @@ default) and `low` (it fills only an idle lane).
   low s2-1, s2-2 (+3); stream defaults s2 low`; in `--json` `priorities` by level,
   `stream_priorities`, and each work row's `priority`, the stream's default)
   (`TestPrioritySetsACardAndItsStream`, `TestAStreamsDefaultSeedsNewCards`,
-  `TestPriorityRefusesAReadCard`).
+  `TestPriorityRefusesAReadCard`, `TestPriorityRaisesASelectedSetInOneCall`).
 - **A read inherits its primary's level.** A read's level is the higher of `reader` and its
   primary's own level (`sprint.ReadPriority`): the reads of a blocker, critical, fix or high
   primary go to the front of the read queue (the owner, 2026-10-06: "that work stream jumps to
@@ -2075,8 +2079,8 @@ names, as before.
 
 **One selector, one step** (the owner, 2026-10-04, after the coordinator changed hundreds
 of cards one process at a time and a recut of 195 pinned cards did not finish: "BATCH
-EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank` and `drop` take one
-selector grammar, combinable, every flag given holding of a card it selects:
+EVERYTHING"). `brief`, `recut`, `rework`, `return`, `release`, `rank`, `drop` and `priority`
+take one selector grammar, combinable, every flag given holding of a card it selects:
 
 - `--stream <s>`: the cards of the stream;
 - `--who <friend.<name>|friend|none>`: the cards whose WHO line names that friend (a hard
@@ -2097,6 +2101,11 @@ written. `--dry-run` plans the same step on one read and prints `<VERB> OK DRY-R
 the model tiers' routes, which a `rework` reads when it runs). A selector call gives no
 id. `rework`, `return` and `drop` keep their `--stream` (a stream's cards, one step before
 this) unless `--who`, `--state` or `--ids-file` comes with it (cmd/nova-sprint/select.go).
+`priority` keeps its `--stream` too: alone it is the one-stream call (every card of the
+stream and the stream's default), and with `--who`, `--state` or `--ids-file` it selects
+only, one `PriorityStep` over `sprint.Selected`, setting every selected card or none and
+leaving the stream's default as it is (`cmdPriority`/`cmdPrioritySel`,
+`TestPriorityRaisesASelectedSetInOneCall`).
 
 `brief` and `recut` by selector take a transform of each card's own brief instead of a
 whole file, made on its header block (`sprint.BriefEdit`): `--set-base <branch>` (every
@@ -2253,7 +2262,11 @@ that ends it, whatever the end (done, failed, no result, the provider's failure,
 at staging, a read of any verdict or none): the consumer record carries its route, model,
 tier, card, kind (work or read) and end, and its charged figure is the harness's own cost
 where it reported one, else its tokens at the route's prices (`costRecord`); a run that
-reported no token is counted unpriced, never as a zero. A launch's child appends one row
+reported no token is counted unpriced, never as a zero. A run whose route has no price sheet
+and whose harness actual is exactly zero is unpriced the same way, `unpriced=no-price-sheet`:
+the zero is no cost, so its tokens and its route are kept with no figure at all and the stream
+counts it among its unpriced runs (`unpriced_runs`), never as $0; a priced route, and a
+non-zero harness actual, are unchanged (`cardcost.Usage.Priced`). A launch's child appends one row
 per attempt to its job's `usage.tsv` before the summary line that carries the launch's
 spend; a launch stopped between the two still reports what the rows say
 (`member.ReceiptUsage`): every attempt's tokens summed, the model, and the harness's cost
@@ -3683,8 +3696,12 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   cards wait): the tick raises one judgment, `fewer than two readers up:
   <readers and their states>`, for the sprint (not one for each primary),
   closed when enough are up or no such primary waits; `reader up` and
-  `reader add` answer it.
-  The system's tick asks for every such primary; `ask` is the coordinator's
+  `reader add` answer it. With no reader row at all there is no one to ask:
+  the tick raises one judgment, `review has no reader for <ids>: the readers table is empty`, for the sprint, naming the primaries in review that want a
+  read, closed when a reader row exists (a clear keeps the readers, section
+  13). A primary in review is never a silent idle for want of a reader;
+  `reader add` answers it.
+  The machine's tick asks for every such primary; `ask` is the coordinator's
   own. Each read card the ask creates carries a route as a work card does
   (`route`, `model`, `tokens`, `usd`, `deadline`), and `tier`, the tier it is drawn
   from: the tier of the card it reads, the tier the deal draws that card's
@@ -4197,6 +4214,19 @@ cards had none outstanding.
    coordinator is told. The coordinator may act on the card, the stream, or
    several streams together.
 
+**The machine's commit identity.** Every commit the sprint machine makes (land,
+merge, rework-at-tip, the promotion's cut, ledger and roadmap writes) carries an
+explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@mas-bandwidth.com>`), never the host's global git config. The landing
+and the promotion (`mergeTarget`'s `git commit-tree`) refuse to commit, naming the
+setting, when none is configured; `doctor` reports the identity in use and fails
+when its email equals the host's global `user.email`. Workers' clones get the
+identity in their local config at clone time (`pkg/swarm`, `StageJob`/
+`StageCloneIdentity` and their `As` variants): the live staging entry points
+carry the machine's identity (the sprint row's `git_identity`, default
+`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, and
+the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
+so a machine commit in a clone carries the configured identity too.
+
 **The sprint branch.** Every stream lands on the sprint branch, and promotion
 alone reaches dev: a card cut on dev is merged by the lander straight onto it and
 ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
@@ -4437,7 +4467,12 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. An empty commit is
+renamed it from the name its PATHS gives), which the review passed. The reading
+of what one `PATHS` entry covers is one function, `diffcheck.Covers`, and the
+same one the add and brief checks read (section 11): a directory entry (a
+trailing `/`) covers every file under it, a glob covers its matches at the head,
+and a literal names one file that may be new; a head refused by E12 names, for
+each file, the entry it was expected to match. An empty commit is
 read against the result the lander holds (`claimText`): an empty diff whose result claims
 changes (a verdict of ok, a step line with a commit sha, a non-empty diff stat) is refused
 as a claim the diff does not show, while an empty diff for which the lander holds no result
@@ -6994,7 +7029,11 @@ common failure modes can be more efficiently picked up with lint?" On the sprint
 PATHS, 24 docs or a SPEC left out of PATHS, 13 a dead or wrong base, 11 a named TEST that did
 not fit, 9 a class-test ledger outside PATHS. So `add` (the one-brief and the many-brief form)
 holds every card brief, one with a `PATHS:` line, to the brief checks before it writes, after
-the card checks (`card.Checks`) and `holdBase`.
+the card checks (`card.Checks`) and `holdBase`. The reading of what one `PATHS` entry covers
+is one function, `diffcheck.Covers`, shared with the lander's E12 check (section 7): a
+directory entry (a trailing `/`) covers every file under it, a glob covers its matches at the
+head, and a literal names one file that may be new, so the checks and the lander never
+disagree about a directory the card named.
 
 The evidence is the card's base. For a brief that names `REPO:` and `BASE:`, add takes the
 lander's clone of the repository (the clone land keeps under its root, section 7; made as land
@@ -7209,6 +7248,104 @@ stream costs, and `stats_since=` on the sum, are owed in cmd/nova-sprint/reads.g
 `total_cost`, `cost_by_tier`, `work_cost` and `read_cost` in `where --json` stay the
 epoch's.
 
+### An environment exit
+
+A child that ends 134 or 137, or that leaves no result at all (`why=no-result`: a report that
+begins `no result:`) at ANY exit, 0 included, did not judge the card: it is an environment
+event of the member (on 2026-10-11 the opencode harness aborted under the landlock sandbox with
+`Error: Unknown: ChildProcess.spawn (...)` and exit 134 or 137 on one child in four to fourteen,
+and every card it touched came back `no verdict` or `not-done`). The member passes the child's
+exit and its harness output on the finish (`finish --failed --exit <n> --harness <text>`,
+`FinishReq.Exit`, `FinishReq.Harness`) and on a read's return (`read --return <card> --reason <text> --exit <n> --harness <text>`, `ReadReq.Exit`, `ReadReq.Harness`); `sprint.EnvExit`
+(internal/sprint/steps_work.go) is the one classifier.
+
+- A work card's environment exit at 134 or 137 (`HardEnvExit`: the harness died; `envExited`,
+  steps_work.go) is recorded on the attempt as `ended=environment exit=<n>` (`FieldEnvExit`),
+  never failed and never broken, and spends nothing: the work card is withdrawn WITHOUT
+  `take_ended`, so the next deal deals the same work card again (redeal) at the SAME attempt
+  number and spends none of the redeal bound; the primary goes back to ready with its attempt,
+  failed count and result untouched; the member is not held. The take's consumer record on the
+  primary (cost.go) ends `environment exit=<n>`.
+- A no-result child at another exit (0 included: a model that wrote nothing exits 0 too) is an
+  environment exit as well, recorded and counted as one, but its take is still the ended take
+  the owner's rules for a take that left no result make it (`takeEnded`: back to ready at the
+  same attempt, never failed work, redealt counting the take, 2026-10-01; rule 2, the second
+  identical end is the bound, 2026-10-02; flash first escalates, 2026-10-03). It carries
+  `ended=environment exit=<n>` and the tail, and its consumer record ends `no result environment exit=<n>`. A decided no-result (nova-decide's class, not the report's words) is
+  no environment exit.
+- A read's environment exit at 134 or 137 is no verdict and spends no reader: on a member's row
+  the read card is retired by `environment` (`RetiredByEnvironment`, not in `spentBy`), so the
+  member may be dealt the read again at a fresh generation; on the readers table the read goes
+  back to asked without counting a re-ask. The run's consumer record ends `environment exit=<n>`. A read returned at another exit spends its reader as before. A read identity (one
+  reader's read of one attempt, every generation) is bounded the same way as a work card: the
+  primary records each such exit (`env_exit_reads`, `FieldEnvExitReads`, `<attempt>:<reader>=<exit>`),
+  and the one that reaches `EnvReadCap` (3) retires the read as a return of the reader's own
+  (`returned`, which spends it, so the read is dealt to that reader no more) and raises one
+  bound judgment on the primary: `<read card>: <reader>'s read of attempt <n> ended on the environment 3 times (the cap is 3) and is not dealt to <reader> again: exits ...`.
+- Only a 134 or 137 spends nothing (`HardEnvExit`). A no-result whose finish carries an
+  attempt decision over its bar is routed by the decision (`finishKind`), never as an
+  environment exit.
+- Either keeps the last `HarnessTailLines` (40) lines of the harness output, at most
+  `HarnessTailBytes` (16 KiB, its end kept), on the run's card and on its primary
+  (`FieldHarnessTail`, `harness_tail`), so the cause is on the card a reader reads
+  (`sprint.EnvironmentExitRecord`, `sprint.HarnessTail`). A friend's row is no member's
+  environment: her finishes and returns are judged as before.
+
+The doctor counts each member's children over the last hour from the attempt records keyed by
+the epoch: every take's and read run's consumer record on the epoch's primaries, by who ran
+it, how it ended and when (`sprint.EnvExitChildren`; a launch refused at staging ran no child
+and is not counted). `<k>` is the children that ended 134 or 137, exactly as the line says; a
+no-result at another exit is recorded as an environment exit and shows in the histogram's
+bucket of its code, not in `<k>`. For a member with at least `EnvExitMinN` (10) children it prints one
+`member-env` line (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`):
+
+    DOCTOR FAIL member-env <m> child exits: <k> of <n> children in the last hour ended 134/137 with no result (<rate>%), last: <first line of the harness tail> remedy=nova-sprint card <id>
+
+FAIL when the rate is over `EnvExitFailPct` (10%), WARN from `EnvExitWarnPct` (3%) to 10%, OK
+below (an OK names no card); a member under the floor gets no line. `<id>` is the primary of
+the member's latest environment exit and `last:` the first line of its tail. `nova-sprint stats --children` prints the same counts as a per-member histogram of child exit codes for the
+window, read from the store, with no ssh:
+
+    CHILD <m> children=<n> env=<k> rate=<pct>% exit_<code>=<count>... other=<n-k> status=<FAIL|WARN|OK> last: <line>
+
+(`CHILDREN none in the last hour` when no child ended; `env=` is `<k>`, the `exit_<code>`
+buckets every environment exit).
+
+A 134 or 137 spends nothing, so it is bounded on its own: the work card records each one by
+member and code (`env_exit_history`, `FieldEnvExitHistory`, `<member>=<exit>,...`), and the
+work card is the attempt's, so the count is per card per attempt. At `EnvExitCardCap` (3) the
+card is dealt no more, to no machine and offered to no friend (`AtEnvExitBound`), the deal
+verb refuses it, and the tick holds it with one bound judgment (`a card reached its bound`, a
+kind wait refuses: wait_refused.go), raised once while it holds:
+
+    <card>.w<n>: attempt <n>'s child ended on the member's environment 3 times (the cap is 3) and is not dealt again: members <m>, ...; exits <code>, ...; last: <first tail line>; rework it with a fix or drop it; its history: nova-sprint card <id>
+
+`rework <card> --fix <text>` takes such a card from ready, as it takes one at its redeal
+bound: it retires the held work card (no failure is recorded: the environment ended it) and
+closes the judgment, and the rework's new attempt starts with none. The attempt cap's default answer (`AttemptCapDeal`,
+brief_bound.go) leaves such a card alone too: a friend newly up with room deals it no next
+attempt. The doctor's member-env FAIL stays the fleet-wide view. Not in this rule: the cause of the spawn failure under the
+wall (a-harness-spawn-failure-under-the-wall-is-diagnosed), and the member passing `--exit`
+and `--harness` from its child (until it does, a member's no-result finish is recorded at
+exit 0 with no tail, an ended take as before), and the TLA+ models (tla/DirtyTick.tla
+`BoundClasses`, tla/AttemptsEpochs.tla `TakeEnds`) gaining the 134/137 exit and its cap: owed
+(v1.2.16). Tests: `TestEnvExitClassifiesTheMemberEnvironmentExit`,
+`TestEnvironmentExitNamesTheCode`, `TestHarnessTailKeepsTheLastFortyLines`,
+`TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
+`TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+`TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+`TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+`TestAReadsEnvironmentExitSpendsNoReader`, `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+`TestTheDealRefusesACardAtTheEnvironmentExitCap`, `TestADecidedNothingToDoIsNeverAnEnvironmentExit`,
+`TestAReadsEnvironmentExitsAreCappedAndJudgedOnce`, `TestAReadersTableReadsEnvironmentExitsAreCapped`,
+`TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap` (brief_bound_test.go)
+(internal/sprint/attempts_test.go); `TestDoctorNamesTheMemberEnvExitRate`,
+`TestDoctorNamesTheMemberEnvExitWarn`, `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+`TestStatsChildrenPrintsThePerMemberExitHistogram`,
+`TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal`,
+`TestAReworkResetsTheEnvironmentExitCount` (cmd/nova-sprint/doctor_test.go); functional
+`TestAnEnvironmentExitOnARealStore` (cmd/nova-sprint/envexit_functional_test.go).
+
 ### release-check-frame
 
 `release check [--json] [--streams <glob>] [--check <name>]...` is a read-class verb (the owner, 2026-10-04: a release ships when the tool says so, not when someone feels it is done): it runs the registry of release checks (`sprint.ReleaseChecks`, internal/sprint/releasecheck.go) over the store's log and the sprint's settings and writes nothing. Each check is a pure function over `sprint.ReleaseFacts` (the clock, the log, the dealt bound; later checks add git facts), prints `RELEASE CHECK <name> ok|fail <evidence>`, and on a fail the evidence names what to look at; then one summary line, `RELEASE OK checks=<n>` or `RELEASE NOT READY failed=<n>`; exit 0 every check passed, 1 a check failed, 2 usage or a store that did not answer. `--json` prints the one report object (`results`, `checks`, `failed`, `ready`, `summary`); `--streams` keeps the log of the streams the glob names; `--check` runs only the named checks. `release check` is its own verb beside `release <id> --reason`, which still releases a held card or sentinel; `add` refuses a card whose id is `check`, naming the reason. The first check, `no-stuck-friend`, fails when a friend was stuck at any moment of the last 4 hours, stuck being the deadline rule's own lateness (`WorkDeadline`): a working card held past its deadline (its own `friend_deadline`, else `DeadlineUnfinished`, from its first take), or a card dealt to it and not taken past the dealt bound. No other definition of a stuck friend exists on this tree (the where table carries none), so this is the one, and any later count of stuck friends reuses `sprint.NoStuckFriend`'s spans. Tests: `TestReleaseCheckFailsWhileAFriendWasStuckInTheLastFourHours`, `TestTheReleaseReportSaysOKOrNotReadyByTheChecksRun`, `TestEveryReleaseCheckStatesItsBar`, `TestReleaseStreamsFilterKeepsTheStreamsTheGlobNames`.
@@ -7319,11 +7456,13 @@ Fleet Working or Readers Reading after STOP; it lists each `card@gen` and its
 owner row. A stop-returned lease, or a captured lease whose card is no longer
 working, does not block. Otherwise clear finishes a pending operation, or
 abandons it at the epoch it started at, then advances the epoch once. It does
-not restore or delete the old shape. Every table and sprint record is keyed by
-epoch, so the new epoch starts with no stream, reader, work, merge,
-lease, stop receipt, alarm, inbox or session state by construction; the
-fleet's members carry over (their rows, widths, status and holds), but their
-work cards do not. The
+not restore the old work or delete anything. Every table and sprint record is
+keyed by epoch, so the new epoch starts with no stream, work, merge, read
+card, lease, stop receipt, alarm, inbox or session state by construction. A
+clear is tabula rasa for the sprint's work, never for its configuration: the
+fleet's members (their rows, widths, status and holds) and the readers (their
+reader rows and the tiers they read, `reader add` and `reader set --tiers`
+wrote) carry over, but their work cards and read cards do not. The
 old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer still holding it is refused as stale: nothing of that
 epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
@@ -7343,13 +7482,18 @@ epoch, where the system is STOPPED until `start`. Clear prints the epoch
 before and after, what the epoch before the advance held as counts, the
 system's state before, and the sprint line.
 
-Clear does not carry stream rows or their archived/hidden status,
-reader rows, goals, leases, stop debt, alarms or notification cursors
-into the next epoch; the fleet's members carry over with their rows, widths,
-status and holds, but without their work cards. Adding a stream after clear creates it fresh, whether its
-name was previously active, removed or archived. This blank-slate rule
-supersedes earlier table-entry descriptions that said a clear kept streams or
-kept an archived stream archived.
+Clear does not carry stream rows or their archived/hidden status, goals,
+leases, stop debt, alarms or notification cursors into the next epoch. The
+sprint's configuration carries over: the fleet's members with their rows,
+widths, status and holds, and the readers with their rows and the tiers they
+read (restoreMembers, internal/sprint/store/clear.go), but neither carries its
+work cards or read cards. Adding a stream after clear creates it fresh, whether its
+name was previously active, removed or archived. This blank-slate-for-work
+rule supersedes earlier table-entry descriptions that said a clear kept
+streams or kept an archived stream archived; the readers are not a stream and
+are kept. A primary left in review with no read out and no reader row raises
+the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
+sprint with its readers gone still tells the coordinator rather than idling.
 
 <a id="14-the-machine"></a>
 

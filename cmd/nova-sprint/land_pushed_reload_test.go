@@ -36,6 +36,15 @@ func (b *failPushedReload) Shapes(ctx context.Context, tables []string) ([]ntabl
 	return b.Backend.Shapes(ctx, tables)
 }
 
+// Routes delegates the routes read (and the sprint row's git identity) to the wrapped
+// backend, so the landing's identity check reads the default, not none.
+func (b *failPushedReload) Routes(ctx context.Context) (store.RouteSet, int64, error) {
+	if rr, ok := b.Backend.(store.RouteReader); ok {
+		return rr.Routes(ctx)
+	}
+	return store.RouteSet{}, 0, nil
+}
+
 func TestLandStopsWhenClearedReceiptCannotBeReloaded(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)

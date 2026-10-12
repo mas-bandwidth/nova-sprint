@@ -269,6 +269,21 @@ brief verb and the bound).
   with `--reason` accepted; reason visible on the card).
 
 
+### One definition of what a PATHS entry covers (v1.2.13)
+
+A directory `PATHS` entry (trailing `/`) covers every file under it, a glob
+covers its matches at the head, and a literal names one file that may be new;
+the lander's E12 check, the add and brief checks and the card lint read that one
+`diffcheck.Covers` (docs/SPEC-SPRINT.md section 7, the lander's checks; section
+11, the brief checks). A head refused by E12 names, for each file, the entry it
+was expected to match.
+
+- Functional, `cmd/nova-sprint/pathcover_test.go`:
+  `TestLanderAcceptsNewFileUnderDirectoryPaths`: a card whose brief names
+  `pkg/thing/` and whose head adds `pkg/thing/new.go` is admitted and lands,
+  where before the directory entry covered nothing and the head was refused E12.
+
+
 ### Every streaming verb flushes every line
 
 A seat's monitor sees a streaming verb's lines the moment they are written:
@@ -392,6 +407,63 @@ card dealt to it.
   next tick moves the card onto the free lane. Every verb names the private
   store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
   forward fails the test, so no verb can reach a live sprint server.
+### An environment exit
+
+A child that ends 134 or 137, or leaves no result at any exit, is the member's
+environment, never the card's (docs/SPEC-SPRINT.md, "An environment exit";
+a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
+
+- Unit, `internal/sprint/attempts_test.go`:
+  `TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
+  `TestHarnessTailKeepsTheLastFortyLines`,
+  `TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
+  `TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+  `TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+  `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+  `TestAReadsEnvironmentExitSpendsNoReader`,
+  `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+  `TestTheDealRefusesACardAtTheEnvironmentExitCap`,
+  `TestADecidedNothingToDoIsNeverAnEnvironmentExit`,
+  `TestAReadsEnvironmentExitsAreCappedAndJudgedOnce`,
+  `TestAReadersTableReadsEnvironmentExitsAreCapped`.
+- Unit, `internal/sprint/brief_bound_test.go`:
+  `TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap` (a frontier friend
+  newly up with room deals a card at the environment-exit cap no attempt 5).
+- Unit, `cmd/nova-sprint/doctor_test.go`: `TestDoctorNamesTheMemberEnvExitRate`,
+  `TestDoctorNamesTheMemberEnvExitWarn`,
+  `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+  `TestStatsChildrenPrintsThePerMemberExitHistogram`,
+  `TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal` (three 134/137
+  exits on one card at one attempt raise one bound judgment naming the card,
+  the members and the codes, and the card is dealt no more),
+  `TestAReworkResetsTheEnvironmentExitCount`.
+- Functional (`-tags functional`), `cmd/nova-sprint/envexit_functional_test.go`:
+  `TestAnEnvironmentExitOnARealStore`, on a private redis-server with a
+  nova-sprint binary it builds: ten cards finish on m1, two of them as
+  environment exits (134, and a no-result at exit 0); each goes back to ready
+  at the same attempt with its ended word and harness tail (the 134 spending
+  no redeal, the no-result an ended take as the owner's rules say),
+  the doctor prints the `member-env` FAIL line and `stats --children` the
+  histogram, and the next tick deals the same work cards again. Every
+  invocation passes `--redis` and `--actor`, with HOME and XDG_CONFIG_HOME
+  its own, no `NOVA_*` variable and PATH the binary's directory and the
+  system's, so no verb can reach a seat config or a live sprint server.
+
+### Priority raises a selected set in one call
+
+`cmd/nova-sprint/priority_set_test.go`,
+`TestPriorityRaisesASelectedSetInOneCall`: `priority` takes the shared
+selector of `cmd/nova-sprint/select.go` (`--who`, `--state`, `--ids-file`, or
+`--stream` with any of them, and `--dry-run`). The test admits five cards in
+two streams on a private store (named explicitly with `--redis`; HOME and
+XDG_CONFIG_HOME are temporary directories and no `NOVA_*` variable is read,
+so no host record or server can take a verb), writes an ids file of three and
+runs `priority --ids-file raise.txt --critical --reason 'next point release'`:
+exactly those three are critical, one `priority set` timeline entry each, and
+the stream default is unchanged, so a card added later is still normal; the
+output is one line per card and `selected=3`. `--dry-run` plans the same step
+and writes nothing. An ids file naming a read card refuses the whole call with
+nothing written.
 
 ## nova-card
 
@@ -509,6 +581,39 @@ from it; `cmd/nova-sprint/reads.go groupText`).
   with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
   wait and names the action.
 
+### The machine's commit identity
+
+Every commit the sprint machine makes carries the sprint row's `git_identity`
+(`nova-config sprint set --git_identity 'Name <email>'`), never the host's global
+git config; the landing refuses to commit when none is configured, and `doctor`
+fails when its email equals the host's global `user.email`
+(docs/SPEC-SPRINT.md section 7, the machine's commit identity).
+
+- Unit, `cmd/nova-sprint/land_identity_test.go`:
+  `TestLandCommitCarriesTheConfiguredIdentity` (a landing commit's author and
+  committer are the configured identity even when HOME carries a different global
+  user.email), `TestLandRefusesWhenNoIdentityIsConfigured` (the landing refuses,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `cmd/nova-sprint/promote_end_to_end_test.go`:
+  `TestPromoteCarriesACutToARecordedPromotion/clean` reads the promotion cut's
+  `%an <%ae>|%cn <%ce>` and holds it to the configured identity;
+  `TestPromoteRefusesWithoutAMachineIdentity` (the promotion refuses to cut,
+  naming the setting, when the sprint row names no git_identity).
+- Unit, `pkg/swarm/stage_identity_test.go`:
+  `TestReworkAtTipCarriesTheConfiguredIdentity`: the rework-at-tip commit
+  (`restageAtTip`) carries the configured identity even when the host's global
+  git config and environment name the owner; `TestStageJobCloneCarriesTheConfiguredIdentity`:
+  the live launcher entry points `StageJob`/`StageCloneIdentity` (and their
+  `As` variants) write the machine's identity into the worker's clone's local
+  git config at clone time, never the pool's owner; `TestStageCardReworkCarriesTheConfiguredIdentity`:
+  the live `StageCard` entry point writes the machine's default identity into the
+  clone's local config and the rework-at-tip carry commit carries it, even when
+  the host's global config names the owner.
+- Functional (`-tags functional`), `cmd/nova-sprint/land_identity_functional_test.go`:
+  `TestLandCommitIdentityOnARealStore` (a real landing on a private store, explicit
+  `--redis`, scrubbed env with a planted global git config, reads
+  `git log --format='%an <%ae>|%cn <%ce>'`).
+
 ### The server's version heartbeat (v1.2.16)
 
 While `nova-sprint run` runs it writes one heartbeat a second to the store (one `SET` with an
@@ -583,4 +688,66 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   a judgment naming no attempt, and one whose card is still at the attempt it was raised for,
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
+
+## Tests that fail under load are made deterministic
+
+The owner's standing rule: tests are bounded and never flaky; a test that fails
+under load is the test's defect. These tests failed on a shared bench (hetzner2,
+load average 30-36) and are now deterministic, each by its exact name:
+
+- `TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued`
+  (`cmd/nova-sprint/landpass_test.go`): the caller's cancel is delivered at a
+  synchronization point the test controls — the combined gate suspends in its
+  `gateRan` seam until the test has canceled — so the cancel always arrives
+  inside the gate and never races wall time, however loaded the bench.
+- `TestTickDrainAndDealUnderTheGateAtLoad`
+  (`internal/sprint/deal_load_bench_test.go`): the deal's sub-second gate is
+  held on the CI path by counts (the deal parses each ready brief exactly once;
+  the drain's moves are bounded by the deal's queued output), never by a
+  wall-clock bound on a shared bench. The wall itself is measured only by
+  `BenchmarkTickDealAtLoad` and `BenchmarkTickDrainAtLoad`, outside the gate.
+- `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`
+  (`internal/sprint/store/idle_test.go`): it was seen red on a hetzner2 base
+  run; its dependency was the stale end-note rule it pinned (every end of an
+  idle episode was a working-again note), already fixed by b70990f6 (`idleEnd`:
+  only the fleet working at half its width again clears; otherwise the
+  episode-ended note). No production change was owed; the inert sort tie-break
+  added for it was dropped, and the test passes 50/50 under load.
+- `TestCRTwoRunLoopsAtOnce`
+  (`internal/sprint/store/machine_twoloops_test.go`): it failed 2 of 8 on clean
+  main with "the sprint is busy: other operations kept the fence moving". The
+  real cause was the outside store's no-op `Sleep`: it made the store's
+  documented fence backoff (the wait between its `FenceTries`) never yield, so
+  an outside verb's fenced read spent all its tries inside one tick loop's fence
+  hold and gave up. The test now keeps the store's real `Sleep`, so the designed
+  backoff spaces the tries as a run loop's verb has in production. The test's
+  outer retry of `FenceBusyError` (`busyTries`) is the last-resort bound the
+  test exists to assert; it is correct because, with the real backoff, a verb
+  reaches it only if a fence stayed busy past the store's own documented
+  `RetryBudget` — the starvation the test pins — and its failure names the
+  losing verb and the store's own read count.
+- The shared helper `setPrimary` (`internal/sprint/store/flash_first_test.go`)
+  read `h.snap()`, whose `WithQueue` overlay reads the work table a revision
+  ahead while the queue holds a change, so a write guarded on it was refused
+  ("mem: table revision mismatch"); it now guards on the unoverlaid table
+  (`setPrimaryOnTable`, `internal/sprint/store/no_parked_test.go`), so a test
+  may set a primary after a finish and a tick.
+
+The card's owed step — "run the package 10x under load and name the
+`cmd/nova-sprint` test that failed once in #110's gate" — was run as
+`go test -count=10 ./cmd/nova-sprint` under load. The tests that failed are the
+ones that shell out to `git`: `TestTheLanderLandsTheBaseFixFirst`,
+`TestLandMergesSameReleaseBlockEntries`,
+`TestLandReviewReusedOperationCannotClaimAnotherBatchLanded`,
+`TestServerReviewLandingAllowsATickAndCoordinatorWriteBeforePush` and
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`. Their failures
+are the bench's process table, not the tests' logic: every one is
+`fork/exec .../shim/git: resource temporarily unavailable` / `Cannot fork` from
+a `git` call, except `TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`,
+which fails its own assertion — `LAND REFUSED ... git ls-tree: fork/exec ...: resource temporarily unavailable` — because the same exhaustion hit its
+`git ls-tree`. `TestTheTwinSocketFitsAUnixSocketPath` also failed, and it is
+environmental: this sandbox's `TMPDIR` exceeds the 100-byte Unix-socket limit
+and its `/tmp` fallback is denied. The test named for #110's gate is therefore
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`, the one whose own
+assertion a loaded bench turns red by starving its `git` call of a process.
 

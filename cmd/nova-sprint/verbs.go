@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -31,6 +30,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
@@ -79,7 +79,7 @@ func init() {
 		{"redo", "<card>... [--stream <s>] [--answers <note>]", "redo s1-2", (*app).cmdRedo},
 		{"drop", "(<id>... | --stream <s> --col <state> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--one]", "drop s1-9 --reason obsolete", (*app).cmdDropSel},
 		{"defer", "(<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]", "defer s1-9 --repo-dir ../nova-sprint --reason 'outside the ladder' --expect 1", (*app).cmdDefer},
-		{"priority", "<id>... | (<id>... | --stream <s>) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>", "priority s1-4 --high --reason 'the release waits on it'", (*app).cmdPriority},
+		{"priority", "<id>... | (<id>... | --stream <s> | (<selector> [--dry-run])) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>", "priority --state ready --critical --reason 'next point release'", (*app).cmdPriority},
 		{"unpin", "(<id>... | --stream <s>) --reason <text> [--dry-run]", "unpin s1-1 --reason available", (*app).cmdUnpin},
 		{"rebase", "--from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]", "rebase --from dev --to sprint/s1 --repo-dir ../name --dry-run", (*app).cmdRebase},
 		{"rank", "(<id>... | <selector> [--dry-run]) (--score <n> | --first | --before <id>) [--answers <note>]", "rank s2-3 --first", (*app).cmdRankSel},
@@ -409,6 +409,7 @@ one answer to each judgment (every one prints its own, filled in):
   sentinel reached            release <sentinel> --reason '<what you found>' --answers <note>
   returned to review          rework, accept (its reads standing) or drop --group <id> --expect <n> --answers <notes>
   stranded in review          rework or drop (or ask, if never asked) --group <id> --expect <n> --answers <notes>
+  review has no reader         reader add <reader>, or wait <note> --for 30m
   no frontier reader has room reader add <reader> --tiers frontier, or wait <note> --for 30m
   stalled                     card <primary> (HELD says what holds it), then the decision it prints, or ack <note> --reason '<why>'
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
@@ -438,6 +439,9 @@ var verbExamples = map[string][]string{
 	"add": {
 		"add --stream s1 --brief-dir briefs",
 		"add --stream s1 --brief-file a.md --brief-file b.md",
+	},
+	"priority": {
+		"priority --ids-file raise.txt --critical --reason 'next point release'",
 	},
 	"fsck seat": {},
 }
@@ -1804,20 +1808,12 @@ func namesModel(entry string) bool {
 	return strings.HasPrefix(e, "tla/") && strings.HasSuffix(e, ".tla") || pathCovers(entry, "tla/Model.tla")
 }
 
-// pathCovers says a PATHS entry covers the file: the file itself, a directory over it
-// (tla, tla/), a tree glob over it (tla/**, tla/...) or a glob that matches it (tla/*).
+// pathCovers says a PATHS entry covers the file (diffcheck.Covers, the one reading of an
+// entry the lander's E12 check, the admission check and the card lint share): the file
+// itself, a directory over it (tla, tla/), a tree glob over it (tla/**, tla/...) or a
+// glob that matches it (tla/*).
 func pathCovers(entry, file string) bool {
-	e := strings.TrimSuffix(strings.TrimPrefix(entry, "./"), "/")
-	if e == file || strings.HasPrefix(file, e+"/") {
-		return true
-	}
-	for _, tree := range []string{"/**", "/..."} {
-		if dir, ok := strings.CutSuffix(e, tree); ok && strings.HasPrefix(file, dir+"/") {
-			return true
-		}
-	}
-	ok, _ := path.Match(e, file)
-	return ok
+	return diffcheck.Covers(entry, file)
 }
 
 // tlaMergeKeepRE is a command that merges runs onto the kept records: tlacheck merge
@@ -2577,6 +2573,8 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	failed := fs.Bool("failed", false, "the work failed (default: ok); a card named by id whose attempt a deadline failed already, with no later attempt started, is finished by this report, LAND or HOLD, rather than refused")
 	head := fs.String("head", "", "the commit the work finished at, the head land merges (default: the card's id, for a run with no git: land refuses a head that is not a commit id)")
 	report := fs.String("report", "", "the worker's report")
+	exit := fs.Int("exit", 0, "the child's exit code, as the member read it (0: a clean end or unknown); a failed finish whose exit is 134 or 137, or whose report is a no-result at any exit, is an environment exit: recorded ended=environment exit=<n>, the card back in ready at the same attempt; at 134 or 137 no attempt or redeal is spent, and a no-result at another exit is still an ended take (redeal counted) (docs/SPEC-SPRINT.md, \"An environment exit\")")
+	harness := fs.String("harness", "", "the child's harness output, so an environment exit keeps the last 40 lines of it on the card and its primary (the cause a reader reads)")
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
@@ -2621,7 +2619,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return a.runStep("finish", *c, st, store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Failed: *failed,
-		Head: *head, Report: *report, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
+		Head: *head, Report: *report, Exit: *exit, Harness: *harness, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 // cmdProgress stamps progress on the work cards a worker holds: the late rule's sign that a
@@ -2681,6 +2679,8 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "with --return: why the read has no verdict (it reaches the inbox)")
 	usage := fs.String("usage", "", "with --ok, --broken or --return: what the read spent, one line (the reader passes its child's tokens, wall and cost): kept on the read card, timed and priced")
 	lane := fs.Int("lane", 0, "with --ok, --broken or --return: the reader's lane reporting (take --as <reader> --lane <n> began the read): a read another lane of the reader holds is refused")
+	exit := fs.Int("exit", 0, "with --return: the reader's child's exit code (0: a clean end or unknown); a return whose exit is 134 or 137 is an environment exit: no verdict, and the reader is not spent at the attempt (docs/SPEC-SPRINT.md, \"An environment exit\")")
+	harness := fs.String("harness", "", "with --return: the child's harness output, so an environment exit keeps the last 40 lines of it on the card")
 	ids, err := parse(fs, args)
 	applyCapAlias(fs, stderr, &limit, c.max)
 	if err != nil {
@@ -2748,7 +2748,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 		missing = a.readMissingOf(context.Background(), st, ids)
 	}
 	return a.runStep("read", *c, st, store.ReadStep(sprint.ReadReq{Sel: sprint.Sel{IDs: ids, Limit: limit}, As: *as, Gens: gens, Begin: *begin,
-		Verdict: verdict, Finding: *finding, Missing: missing, Return: *ret != "", Reason: *reason, Usage: *usage, Lane: *lane, Who: *as}), stdout, stderr)
+		Verdict: verdict, Finding: *finding, Missing: missing, Return: *ret != "", Reason: *reason, Exit: *exit, Harness: *harness, Usage: *usage, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 // readShort is why a read by queue moved nothing, one line per reader named: the

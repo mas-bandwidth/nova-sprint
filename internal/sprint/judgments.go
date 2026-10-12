@@ -15,8 +15,11 @@ import (
 // time, the tick end raises one judgment, NLandingStall, to the coordinator
 // with a breakdown of why the cards wait; the episode lives on the work
 // table's properties, is re-raised each bound it still holds, and clears on
-// the next landing with a HAPPENED NLandingAgain. The model is its own card,
-// tla-sprintrules-landing-stall-liveness.
+// the next landing with a HAPPENED NLandingAgain. The model is tla/SprintRules.tla
+// Part "stall" (LsTick raises and re-raises at the tick end, LsLand clears on a
+// landing, LsStop/LsStart the stopped time that does not count; the invariant
+// StallNotYoung and the liveness StallLive), landed by this card,
+// tla-sprintrules-landing-stall-judgment.
 const (
 	// NLandingStall is the judgment that no card has landed while cards wait.
 	NLandingStall = "landing stalled"
@@ -453,6 +456,8 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 // landing breaks it, pushing NLandingAgain "landing again after <d>". The
 // episode lives on the work table's properties so it survives ticks and run
 // loops.
+//
+// tla/SprintRules.tla LsTick
 func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if s.Work == nil {

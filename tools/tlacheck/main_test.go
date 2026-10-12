@@ -223,6 +223,128 @@ func writeFile(t *testing.T, path, text string) {
 	}
 }
 
+// fakeJava writes an executable `java` that answers `-version` on standard error
+// and otherwise reports a clean TLC finish on standard output.
+func fakeJava(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "java")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"-version\" ]; then\n" +
+		"  echo 'openjdk version \"21.0.1\" 2025-04-15' >&2\n" +
+		"  exit 0\nfi\n" +
+		"echo 'Model checking completed. No error has been found.'\n" +
+		"echo '1 states generated, 1 distinct states found'\n" +
+		"exit 0\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestRunVerbOverAFixtureDirectory: `run` writes RUNS.tsv for the selected
+// group when a fake java is provided, and exits 0.
+func TestRunVerbOverAFixtureDirectory(t *testing.T) {
+	t.Parallel()
+	root, _, _ := plan(t)
+	dir := t.TempDir()
+	jar := filepath.Join(t.TempDir(), "tlc.jar")
+	if err := os.WriteFile(jar, []byte("jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := cli("run", "--root", root, "--dir", dir, "--group", "tiny",
+		"--jar", jar, "--java", fakeJava(t))
+	if code != exitOK {
+		t.Fatalf("run exited %d: %s", code, errs)
+	}
+	recs, err := tlc.ReadRecordsFile(filepath.Join(dir, tlc.RunsFile))
+	if err != nil {
+		t.Fatalf("read RUNS.tsv: %v", err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("run wrote %d records, want 2: %s", len(recs), out)
+	}
+}
+
+// TestInputsRefusesAConfigNotInThePlan: `inputs` with a config the plan does
+// not declare exits 2.
+func TestInputsRefusesAConfigNotInThePlan(t *testing.T) {
+	t.Parallel()
+	root, _, _ := plan(t)
+	code, _, errs := cli("inputs", "--root", root, "MCGhost.cfg")
+	if code != exitRefused {
+		t.Fatalf("inputs exited %d, want %d: %s", code, exitRefused, errs)
+	}
+}
+
+// TestMergeFailsWhenARecordIsMissing: `merge` exits 1 when the merged file has
+// no record for a declared case.
+func TestMergeFailsWhenARecordIsMissing(t *testing.T) {
+	t.Parallel()
+	root, cases, src := plan(t)
+	freshA := record(t, src, cases[0])
+	runs := filepath.Join(root, "runs.tsv")
+	writeRecords(t, runs, freshA)
+	out := filepath.Join(root, "out.tsv")
+	code, _, errs := cli("merge", "--root", root, "--out", out, runs)
+	if code != exitFailed {
+		t.Fatalf("merge exited %d, want %d: %s", code, exitFailed, errs)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("merge wrote a file on failure")
+	}
+}
+
+// TestReadRunsOnAMissingFile: readRuns returns no records and no error when the
+// tree has no RUNS.tsv.
+func TestReadRunsOnAMissingFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	recs, err := readRuns(root)
+	if err != nil {
+		t.Fatalf("readRuns: %v", err)
+	}
+	if recs != nil {
+		t.Fatalf("readRuns on a missing file returned %+v, want nil", recs)
+	}
+}
+
+// TestHelpPrintsUsageAndExitsOK: `help` prints the usage and exits 0.
+func TestHelpPrintsUsageAndExitsOK(t *testing.T) {
+	t.Parallel()
+	code, out, _ := cli("help")
+	if code != exitOK {
+		t.Fatalf("help exited %d, want %d", code, exitOK)
+	}
+	if !strings.Contains(out, "usage: tlacheck <verb>") {
+		t.Fatalf("help did not print usage: %q", out)
+	}
+}
+
+// TestRunRefusesAnUnknownVerb: an unknown verb exits 2.
+func TestRunRefusesAnUnknownVerb(t *testing.T) {
+	t.Parallel()
+	code, _, errs := cli("bogus")
+	if code != exitRefused {
+		t.Fatalf("unknown verb exited %d, want %d: %s", code, exitRefused, errs)
+	}
+}
+
+// TestGroupsStalePrintsEmptyWhenNothingIsStale: `groups --stale` over a plan
+// whose records are all current prints an empty JSON list and exits 0.
+func TestGroupsStalePrintsEmptyWhenNothingIsStale(t *testing.T) {
+	t.Parallel()
+	root, cases, src := plan(t)
+	runs := filepath.Join(root, "tla", tlc.RunsFile)
+	writeRecords(t, runs, record(t, src, cases[0]), record(t, src, cases[1]))
+	code, out, errs := cli("groups", "--stale", "--root", root)
+	if code != exitOK {
+		t.Fatalf("groups --stale exited %d: %s", code, errs)
+	}
+	if strings.TrimSpace(out) != "[]" {
+		t.Fatalf("groups --stale = %q, want []", out)
+	}
+}
+
 func TestRunRefusesInvalidParallelWidths(t *testing.T) {
 	root := checkout(t)
 	max := runtime.NumCPU() / 2

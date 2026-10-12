@@ -1195,7 +1195,7 @@ func (l *lander) cureBase(ctx context.Context, dir, stream string, cards []landC
 	}
 	notes, repairs := map[string]string{}, map[string]string{}
 	benchUnavailable := false
-	cure, err := sprint.FindBaseCure(ctx, sprint.BaseCureReq{RepoDir: dir, Base: baseSha, Heads: heads, Env: l.a.gitEnv,
+	cure, err := sprint.FindBaseCure(ctx, sprint.BaseCureReq{RepoDir: dir, Base: baseSha, Heads: heads, Env: l.gitEnv(),
 		Merge: func(ctx context.Context, h sprint.CureHead) (string, string) {
 			c := cards[at[h.ID]]
 			card, env, note := l.mergeHead(ctx, dir, stream, c)

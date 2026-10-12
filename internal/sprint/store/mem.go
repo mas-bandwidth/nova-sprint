@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
@@ -146,7 +147,8 @@ type memOp struct {
 // NewMem is an empty store.
 func NewMem() *Mem {
 	return &Mem{memState: &memState{tables: map[string]*memTable{}, dropped: map[string]*memResidue{}, views: map[string]ntable.View{},
-		logs: map[uint64]*memLog{}, kv: map[string]string{}, Calls: map[string]int{}, touched: map[uint64]int{}}}
+		logs: map[uint64]*memLog{}, kv: map[string]string{}, Calls: map[string]int{}, touched: map[uint64]int{},
+		bars: Bars{GitIdentity: config.DefaultGitIdentity}}}
 }
 
 // AtEpoch is the store pinned to an epoch.
