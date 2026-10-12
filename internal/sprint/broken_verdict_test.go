@@ -16,7 +16,7 @@ import (
 func TestABrokenVerdictAtTheBriefBoundRecordsAndReturnsToWork(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.s.Work.SetProp(PropAttempts, "2") // the cap: two attempts on one brief
+	w.s.MaxAttempts = "2" // the cap: two attempts on one brief
 	finished(w, "s1-1", false)
 	const finding = "internal/x.go:12 drops the error; return it"
 	pr := w.s.Work.Card("s1-1")

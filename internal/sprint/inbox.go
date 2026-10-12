@@ -556,7 +556,9 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			}
 		case d == "rework with the finding" || d == "rework with a fix" && g.Type == NWorkFailed:
 			add(d, cmd+"rework"+subj+subjAns) // each takes its own finding or report
-		case d == ReworkOnAHigherTier:
+		case d == ReworkOnAHigherTier, d == DecisionReTier:
+			// the re-tier (DecisionReTier): the attempt cap's judgment offers it as the
+			// coordinator's way to a higher tier, a friend's included (brief_bound.go)
 			add(d, cmd+"rework"+subj+" --fix "+fixText+" --tier '<a higher tier>'"+subjAns)
 		case d == "rework with a fix" || d == "rework":
 			add(d, cmd+"rework"+subj+" --fix "+fixText+subjAns)

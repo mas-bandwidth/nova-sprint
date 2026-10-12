@@ -96,23 +96,28 @@ func gateFirstLine(s string) string {
 // (localHandler), and the caller's verbs, its hook and its answers run through run, on
 // the same bus store and clock.
 type hookCLI struct {
-	t      *testing.T
-	client *app
+	t         *testing.T
+	newClient func() *app
 }
 
 func (ta *testApp) hookCLI(env map[string]string) *hookCLI {
 	srv := httptest.NewServer(localHandler{ta.a})
 	ta.t.Cleanup(srv.Close)
 	env["NOVA_SPRINT_SERVER"] = srv.Listener.Addr().String()
-	client := newApp(ta.a.getenv)
-	client.hookSock = ta.a.hookSock
-	client.busOpen, client.now = ta.a.busOpen, ta.a.now
-	return &hookCLI{t: ta.t, client: client}
+	getenv, hookSock, busOpen, now := ta.a.getenv, ta.a.hookSock, ta.a.busOpen, ta.a.now
+	return &hookCLI{t: ta.t, newClient: func() *app {
+		// A held hook and its control verbs overlap. Each call owns the app
+		// fields runInto scrubs, while the bus, clock and socket stay shared.
+		client := newApp(getenv)
+		client.hookSock = hookSock
+		client.busOpen, client.now = busOpen, now
+		return client
+	}}
 }
 
 func (h *hookCLI) run(argv ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := runInto(h.client, argv, &out, &errb)
+	code := runInto(h.newClient(), argv, &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -127,9 +132,10 @@ type heldHook struct {
 func (h *hookCLI) hold(argv []string) *heldHook {
 	pr, pw := io.Pipe()
 	hh := &heldHook{t: h.t, lines: make(chan string, 1024), done: make(chan int, 1)}
+	client := h.newClient()
 	go func() {
 		var errb bytes.Buffer
-		code := runInto(h.client, argv, pw, &errb)
+		code := runInto(client, argv, pw, &errb)
 		_ = pw.CloseWithError(io.EOF)
 		hh.done <- code
 	}()

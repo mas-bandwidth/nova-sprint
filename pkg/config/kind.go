@@ -340,6 +340,23 @@ const FieldDecideJudgment = "decide_judgment_bar"
 // which the sprint's routes read takes.
 const FieldAnswerRulesOff = "answer_rules_off"
 
+// FieldMaxAttempts is the sprint row's attempt bound (docs/SPEC-SPRINT.md, the bounds; the
+// owner, 2026-10-12: "max attempts should be configurable in nova-config, and default to 4"):
+// the attempts one card runs before the sprint raises one judgment to the coordinator. Every
+// attempt counts, whatever ended it (a failed finish, a reader's finding, a deadline, a
+// landing refused). Only a coordinator decision on the card (brief, rework, continue, drop)
+// opens a fresh window of as many attempts. Apply writes it to SprintKey(FieldMaxAttempts),
+// which the sprint's routes read takes (nova-sprint internal/sprint/store/routes.go, Bars);
+// a stream's own `nova-sprint stream set <s> --attempts <n>` still overrides it for that
+// stream. Absent, empty or unparseable, the sprint reads DefaultMaxAttempts.
+const FieldMaxAttempts = "max_attempts"
+
+// DefaultMaxAttempts is the attempt bound when the sprint row names none: 4.
+const DefaultMaxAttempts = 4
+
+// MaxAttemptsCeiling is the most max_attempts may be (nova-sprint's AttemptsMax).
+const MaxAttemptsCeiling = 100
+
 // FieldGitIdentity is the sprint row's author and committer for every commit the sprint
 // machine makes (land, merge, rework-at-tip, ledger and roadmap writes), as "Name <email>".
 // Apply writes it to SprintKey(FieldGitIdentity), which the lander reads; the landing
@@ -425,6 +442,17 @@ func checkSprint(r Row) error {
 			return fmt.Errorf("sprint: %v; want --%s <p>, a probability", err, FieldDecideJudgment)
 		}
 	}
+	if v, ok := r.Fields[FieldMaxAttempts]; ok && v != "" {
+		// the attempt bound: a whole number of at least 1, and never above nova-sprint's
+		// AttemptsMax (the sprint refuses a cap above it)
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		switch {
+		case err != nil || n < 1:
+			return fmt.Errorf("sprint: %s %q is not a whole number of at least 1; want --%s <n>, a whole number of at least 1 (%d by default)", FieldMaxAttempts, v, FieldMaxAttempts, DefaultMaxAttempts)
+		case n > MaxAttemptsCeiling:
+			return fmt.Errorf("sprint: %s %d is above %d, the most the sprint takes (the sprint refuses a cap above %d); want --%s <n>, a whole number from 1 to %d (%d by default)", FieldMaxAttempts, n, MaxAttemptsCeiling, MaxAttemptsCeiling, FieldMaxAttempts, MaxAttemptsCeiling, DefaultMaxAttempts)
+		}
+	}
 	var p []string
 	if hasB && hasR && (bounce != "" || review != "") {
 		if _, err := decide.ParseBars(bounce, review); err != nil {
@@ -496,21 +524,21 @@ var Kinds = []*Kind{
 		Check: checkFleet,
 	},
 	{
-		// A friend's row is what someone decides for her: how wide, which tiers
-		// and which roles. Where she runs, her harness and her logins are
-		// runtime data a friend would just know, reported by her own presence
+		// A friend's row is what someone decides for the friend: how wide, which tiers
+		// and which roles. Where the friend runs, the harness and logins are
+		// runtime data a friend would just know, reported by the friend's own presence
 		// rather than stored in configuration.
 		Name:  KindFriend,
 		Table: "friends",
-		Doc:   "an AI friend: her slots, which tiers she can do, her roles, and her width, the jobs she works at once, her delivery mode, the config directory her claude lanes run with, the per-card token cap her one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work she may be dealt",
+		Doc:   "an AI friend: the friend's slots, tiers, roles and width, the jobs the friend works at once, delivery mode, the config directory claude lanes run with, the per-card token cap one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work the friend may be dealt",
 		Fields: []Field{
-			{Name: "slots", Type: TypeInt, Required: true, Help: "her desired slots, under the ceiling of the machine her beat reports; no machine's width"},
-			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers she can do: comma list of " + strings.Join(Tiers, ", ")},
+			{Name: "slots", Type: TypeInt, Required: true, Help: "the friend's desired slots, under the ceiling of the machine the beat reports; no machine's width"},
+			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers the friend can do: comma list of " + strings.Join(Tiers, ", ")},
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
-			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs she works at once, the width nova-sprint friend sync sets on her friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
-			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how her daemon hands her work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
+			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs the friend works at once, the width nova-sprint friend sync sets on the friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
+			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how the friend's daemon hands the friend work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
 			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
-			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, her account's login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
+			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, the friend's account login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
 			{Name: "token_cap", Type: TypeInt, Default: strconv.FormatInt(DefaultFriendTokenCap, 10), Help: "tokens one card may spend (input, cached input, output and reasoning summed) before a one-shot lane stops its own run and holds the card; " + strconv.FormatInt(DefaultFriendTokenCap, 10) + " by default, and 0 is no cap"},
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},
 			{Name: "kinds", Type: TypeNames, Help: "optional comma-separated card KIND values this friend may be dealt; empty means any kind"},
@@ -543,6 +571,7 @@ var Kinds = []*Kind{
 			{Name: FieldDecideBriefBar, Type: TypeDecimal, Help: "the brief bar: nova-sprint add asks the brief decision of each card and refuses a card whose p(converges) is under it, naming the questions it failed; a probability; empty (the default) asks and reports only. The decision is uncalibrated (AUC 0.600 on 234 review labels, docs/SPEC-NOVA-DECIDE.md section 14): leave it empty until calibrate on the brief record's own outcomes supports a bar"},
 			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, the base tree gate retried before a stream stops, a friend's card she has not started past its bound taken back and dealt again, failed work whose report HOLDs for a card not landed waiting for it, a reader's first finding reworked as the fix, and a late read asked of another reader once an attempt (docs/SPEC-SPRINT.md section 8, answered by rule)"},
 			{Name: FieldGitIdentity, Type: TypeText, Default: DefaultGitIdentity, Help: "the author and committer every commit the sprint machine makes carries, as 'Name <email>'; the landing refuses to commit when it is empty, and doctor fails when its email equals the host's global user.email; " + DefaultGitIdentity + " (the default)"},
+			{Name: FieldMaxAttempts, Type: TypeInt, Default: strconv.Itoa(DefaultMaxAttempts), Help: fmt.Sprintf("the attempt bound: how many attempts one card runs, every attempt counted whatever ended it, before the sprint stops dealing it and raises one judgment to the coordinator, who decides (brief, rework --tier, rework --carry, drop) and so opens a fresh window of as many attempts; a whole number from 1 to %d; %d (the default); a stream's own nova-sprint stream set <s> --attempts <n> still overrides it for that stream", MaxAttemptsCeiling, DefaultMaxAttempts)},
 		},
 		Check: checkSprint,
 	},

@@ -336,8 +336,10 @@ func stronger(a, b string) string {
 
 // SetReq is the coordinator's settings: with Streams, each stream's read tier,
 // attempt cap, release, or protected-branch mark; without, the sprint's dealt
-// bound, read tier and attempt cap (brief_bound.go, AttemptsCap). An empty value
-// leaves that setting as it is; ReadTierDefault takes one off.
+// bound and read tier. An empty value leaves that setting as it is; ReadTierDefault
+// takes one off. Attempts without Streams (the sprint's attempt cap) is refused since
+// 2026-10-12: the cap is nova-config's sprint row max_attempts (brief_bound.go,
+// AttemptsCap).
 type SetReq struct {
 	ReworkPriority    string   `json:",omitempty"`
 	Streams           []string `json:",omitempty"`
@@ -511,7 +513,14 @@ func Set(s *Snapshot, r SetReq) Plan {
 		}
 		sideTiers[st[2]] = word
 	}
-	if r.Attempts != "" {
+	if r.Attempts != "" && len(r.Streams) == 0 {
+		// the sprint-wide attempt cap is nova-config's sprint row max_attempts since
+		// 2026-10-12 (the owner: configurable in nova-config, default 4; one source, no
+		// twin): set --attempts and init --attempts refuse and name it, saying what the
+		// sprint reads now (brief_bound.go, AttemptsCap); a stream's own cap (stream set
+		// --attempts) is kept
+		why = append(why, fmt.Sprintf("--attempts is retired: the sprint's attempt cap is nova-config's sprint row max_attempts; run: %s (now %s); a stream's own: nova-sprint stream set <s> --attempts <n>", MaxAttemptsSetting, s.AttemptsCapSource()))
+	} else if r.Attempts != "" {
 		if _, err := ParseAttempts(r.Attempts); err != nil {
 			why = append(why, err.Error())
 		}
@@ -731,7 +740,6 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropReadTier, r.ReadTier},
 		{PropDealtMax, r.DealtMax},
 		{PropGoLanes, r.GoLanes},
-		{PropAttempts, r.Attempts},
 		{PropFriendIdle, r.FriendIdle},
 		{PropLandingStallBound, r.LandingStallBound},
 		{PropFriendStallAfter, r.FriendStallAfter},
@@ -771,8 +779,6 @@ func orDefault(v, name string) string {
 		return fmt.Sprintf("default (%s, 3 times the take deadline)", DealtMaxDefault)
 	case name == PropGoLanes:
 		return fmt.Sprintf("default (%d a machine)", LaneWidthDefault)
-	case name == PropAttempts:
-		return fmt.Sprintf("default (%d attempts on one brief)", AttemptsDefault)
 	case name == PropFriendIdle:
 		return fmt.Sprintf("default (%s)", FriendIdleDefault)
 	case name == PropLandingStallBound:

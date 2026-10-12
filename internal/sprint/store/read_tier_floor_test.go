@@ -46,7 +46,7 @@ func tiersHarness(t *testing.T) *harness {
 func TestTheReadTierFloorIsPerAttemptAndAStreamSettingOnlyRaises(t *testing.T) {
 	t.Parallel()
 	h := tiersHarness(t)
-	h.must(SetStep(sprint.SetReq{Attempts: "8", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("8")
 	h.addReady("s1", 1, briefOf("flash", ""))
 	h.must(DealStep(sprint.DealReq{}))
 	// attempt 1 on flash: read at flash

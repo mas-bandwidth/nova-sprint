@@ -1361,9 +1361,15 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 	t.Cleanup(srv.Close)
 	env["NOVA_SPRINT_SERVER"] = srv.Listener.Addr().String()
 
-	client := newApp(ta.a.getenv)
-	client.hookSock = ta.a.hookSock
-	client.busOpen, client.now = ta.a.busOpen, ta.a.now
+	// runInto temporarily scrubs each client's home and environment. Hook and
+	// unhook overlap, so each invocation owns its client while sharing the fixture.
+	newClient := func() *app {
+		client := newApp(ta.a.getenv)
+		client.hookSock = ta.a.hookSock
+		client.busOpen, client.now = ta.a.busOpen, ta.a.now
+		return client
+	}
+	client, control := newClient(), newClient()
 
 	pr, pw, err := os.Pipe()
 	require.NoError(t, err)
@@ -1403,7 +1409,7 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 
 	// end the hook cleanly
 	var out, errs bytes.Buffer
-	code := runInto(client, strings.Fields("unhook"), &out, &errs)
+	code := runInto(control, strings.Fields("unhook"), &out, &errs)
 	require.Equal(t, 0, code, out.String()+errs.String())
 	select {
 	case code := <-done:

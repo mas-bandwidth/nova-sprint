@@ -168,7 +168,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		// the sprint's cap lowered to 2 once attempt 2 is dealt: the read of attempt 2 is at the
 		// brief's bound (the cap's attempts on one brief), so a finding outside PATHS reaches
 		// the bound check in Read. The sprint's cap, not the stream's.
-		r.must(store.SetStep(sprint.SetReq{Attempts: "2", Who: "coordinator"}))
+		r.m.SetMaxAttempts("2")
 		_, atCap := sprint.AtBriefBound(r.snap().Work.Card("r-1"), "", 2)
 		require.True(t, atCap, "attempt 2 of a brief whose cap is 2 is at the brief's bound")
 		finding := "internal/y/b.go:40 still calls the old name, outside PATHS; rename the call too"
@@ -182,6 +182,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.readCard()
+		r.m.SetMaxAttempts("8") // the widen cap, not the attempt cap (4 attempts run here), is the bound under test
 		for i := 1; i <= sprint.MaxWidens; i++ {
 			r.brokenRead("r-1", "internal/y/b"+strconv.Itoa(i)+".go:40 still calls the old name, outside PATHS; rename the call too")
 			r.tick()
