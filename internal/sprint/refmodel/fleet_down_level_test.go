@@ -14,9 +14,9 @@ import (
 //  1. When a member goes down, its cards go round the fleet from the rolling
 //     index (DealLast) via PlaceOn, and DealLast moves past each member dealt to.
 //     A destination mapping that picks shortest queue by name is rejected with badChoice.
-//  2. Levelling (Level / levelRound) moves excess cards from the longest queue
-//     to members below the mean starting past DealLast, advancing DealLast past
-//     the recipient. Moves not matching the rolling index are rejected.
+//  2. Levelling (Level / levelRound) moves a card only off a member over its
+//     width (64) and only onto a member with a free lane (held below it), round
+//     the fleet past DealLast. Moves not matching the round are rejected.
 func TestFleetDownAndLevelGoRoundTheFleet(t *testing.T) {
 	t.Parallel()
 	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"}
@@ -82,13 +82,9 @@ func TestFleetDownAndLevelGoRoundTheFleet(t *testing.T) {
 	sLevel := sDown.Clone()
 	sLevel.Members["m1"] = refmodel.Up
 
-	// Set up uneven ready queues:
-	// m1: 0 cards
-	// m2..m6: 1 card each (d02..d06)
-	// m7..m8: 2 cards each (d07a, d07b, d08a, d08b)
-	// Total = 9 cards across 8 members. Mean = 9/8 = 1.
-	// Longest queue has 2 cards, shortest (m1) has 0 cards (diff = 2 > 1).
-	// Set DealLast = "m8".
+	// Set up ready queues all well under the width (64): no member is over its
+	// width, so the level moves nothing (tla/Level.tla, NeverOffAFreeLane).
+	// m1: 0 cards; m2..m6: 1 card each (d02..d06); m7..m8: 2 cards each.
 	sLevel.Work = map[string]refmodel.WorkCard{}
 	sLevel.Primaries = map[string]refmodel.Primary{}
 	makeCard := func(id, m string, score float64) {
@@ -103,22 +99,20 @@ func TestFleetDownAndLevelGoRoundTheFleet(t *testing.T) {
 	makeCard("d07a", "m7", 7)
 	makeCard("d07b", "m7", 8)
 	makeCard("d08a", "m8", 9)
-	makeCard("d08b", "m8", 10) // newest on longest queue
+	makeCard("d08b", "m8", 10)
 
 	sLevel.DealLast = "8"
 
-	// From past m8 (counter 8), the next member below the mean (1) is m1 (count 0 < 1).
-	// The newest card from the first longest queue (d07b.w1 on m7) moves to m1.
-	// DealLast moves to 9 (past m1).
+	// No member holds more cards than its width, so the level moves nothing and
+	// the index does not move (round.levelTo; tla/Level.tla, NeverOffAFreeLane).
 	sAfterLevel, err := refmodel.Level(sLevel, nil)
-	require.NoError(t, err, "Level on uneven 8-member fleet failed: %v", err)
-	require.Equal(t, "9", sAfterLevel.DealLast, "DealLast after Level: %q, want 9", sAfterLevel.DealLast)
+	require.NoError(t, err, "Level on the fleet failed: %v", err)
+	require.Equal(t, "8", sAfterLevel.DealLast, "DealLast after Level: %q, want 8 (unchanged)", sAfterLevel.DealLast)
 	w = sAfterLevel.Work["d07b.w1"]
-	require.Equal(t, "m1", w.Member, "d07b.w1 after Level: %+v, want on m1 ready", w)
-	require.Equal(t, refmodel.FReady, w.Place, "d07b.w1 after Level: %+v, want on m1 ready", w)
+	require.Equal(t, "m7", w.Member, "d07b.w1 after Level: %+v, want to stay on m7", w)
 
-	// Verify that if invalid moves are passed (e.g. moving card to m2 instead of m1),
-	// Level rejects it with badChoice.
+	// Verify that if moves are passed the round did not make, Level rejects it
+	// with badChoice.
 	badMoves := map[string]string{"d07b.w1": "m2"}
 	_, err = refmodel.Level(sLevel, badMoves)
 	require.Error(t, err, "Level with bad moves succeeded, want rejection")
