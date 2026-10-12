@@ -17,6 +17,7 @@ func widthFleet(t *testing.T, width int) *world {
 	w := fleetWorld(t, 50, width, widthMembers...)
 	w.must(Add(w.s, AddReq{Stream: "s2", Count: 50}))
 	w.must(Add(w.s, AddReq{Stream: "s3", Count: 50}))
+	w.preparePlanned()
 	return w
 }
 
@@ -92,6 +93,7 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 	for _, st := range []string{"s1", "s2", "s3"} {
 		w.must(Add(w.s, AddReq{Stream: st, Count: 400}))
 	}
+	w.preparePlanned()
 	p, due := TickDeal(w.s, TickReq{})
 	require.Len(t, p.Units, 8*DealAhead*64, "dealt %d (due %d), want the room of %d", len(p.Units), due, 8*DealAhead*64)
 	require.Zero(t, due, "dealt %d (due %d), want the room of %d", len(p.Units), due, 8*DealAhead*64)

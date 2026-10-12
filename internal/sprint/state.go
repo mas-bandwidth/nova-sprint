@@ -470,6 +470,8 @@ func SortCards(cs []*Card) {
 // runs at (given, never read), the tables it loaded, and the open judgment
 // notifications. A table the step did not load is nil.
 type Snapshot struct {
+	// PlanHistory reads prior epochs for explicit coordinator triage; never persisted.
+	PlanHistory []PlanningRecord
 	Now   time.Time
 	Epoch uint64 // the sprint's epoch the tables were read at
 	// Prefix is the deployment's prefix the tables were read under (Names.Prefix): a branch

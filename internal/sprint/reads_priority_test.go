@@ -58,6 +58,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 	}
 	if ready > 0 {
 		w.must(Add(w.s, AddReq{Stream: "s2", Cards: cards}))
+		w.preparePlanned()
 	}
 	return w, amy
 }

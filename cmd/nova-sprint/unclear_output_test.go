@@ -16,6 +16,7 @@ func TestTheDealAndTheTakeSayTheirTable(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 1 --one")
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	assert.Contains(t, ta.ok("tick"), "MOVED deal: s1-1 work ready -> working card=s1-1.w1 member=m1 (fleet ready)\n")
 	assert.Contains(t, ta.ok("take --as m1"), "MOVED s1-1.w1 fleet ready -> working member=m1 gen=1\n")

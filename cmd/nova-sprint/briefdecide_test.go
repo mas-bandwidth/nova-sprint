@@ -123,7 +123,7 @@ func TestAddAsksTheBriefDecisionOfEveryCard(t *testing.T) {
 	assert.Contains(t, out, "BRIEF card=a1 op=a1@brief-")
 	assert.Contains(t, out, " p_converges=0.80 minutes=20-45 failed=- uncalibrated=true recorded=new\n")
 	assert.Contains(t, out, " p_converges=0.30 minutes=20-45 failed=commit_stated(0.20),ambiguous_step:step-2(0.70) uncalibrated=true recorded=new\n")
-	assert.Contains(t, out, "MOVED a2 -> ready", "with no bar a low brief is reported, never refused")
+	assert.Contains(t, out, "MOVED a2 -> plan", "with no bar a low brief is reported, never refused")
 	assert.Equal(t, 2, b.asks)
 	ds, err := decide.Load(record)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestAddSaysWhenTheRecordCannotBeNamed(t *testing.T) {
 	ta.a.briefRecord = func() (string, error) { return "", errors.New("$HOME is not defined") }
 	out := ta.ok("add --stream s1 a1 --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "a", "Fix a. converges=0.8", ""))
 	assert.Contains(t, out, "NOTE brief: no brief decision: the record: $HOME is not defined\n")
-	assert.Contains(t, out, "MOVED a1 -> ready")
+	assert.Contains(t, out, "MOVED a1 -> plan")
 	assert.Zero(t, b.asks)
 }
 
@@ -216,7 +216,7 @@ func TestAddRefusesABriefUnderTheBar(t *testing.T) {
 	out := ta.ok("add --stream s1 --brief-dir " + dir)
 	assert.Contains(t, out, "BRIEF card=a1 ")
 	assert.Contains(t, out, "recorded=existing")
-	assert.Contains(t, out, "MOVED a2 -> ready")
+	assert.Contains(t, out, "MOVED a2 -> plan")
 	assert.Equal(t, 3, b.asks, "a1 answered from the record; a2's rewritten brief asked anew")
 }
 
@@ -244,7 +244,7 @@ func TestAddGoesOnWhenTheBriefDecisionCannotBeMade(t *testing.T) {
 	assert.Contains(t, out, "NOTE brief: the sprint row's decide_brief_bar could not be read (no route to nova-config); every brief is reported and none refused\n")
 	assert.Contains(t, out, "NOTE brief: no brief decision of a2: the backend answered HTTP 503\n")
 	assert.Contains(t, out, "BRIEF card=a1 ")
-	assert.Contains(t, out, "MOVED a2 -> ready")
+	assert.Contains(t, out, "MOVED a2 -> plan")
 	op, _ := briefOpOf(t, ta, "a2")
 	assert.Empty(t, op, "a card with no decision stores no op")
 }
@@ -307,7 +307,7 @@ func TestAServedAddAsksWhereItIsTyped(t *testing.T) {
 	var out, errb bytes.Buffer
 	require.Equal(t, 0, runInto(c, []string{"add", "--stream", "s1", "--brief-dir", dir, "--decide-record", record}, &out, &errb), errb.String())
 	assert.Contains(t, out.String(), "BRIEF card=a1 op=a1@brief-")
-	assert.Contains(t, out.String(), "MOVED a1 -> ready")
+	assert.Contains(t, out.String(), "MOVED a1 -> plan")
 	assert.Equal(t, 1, b.asks)
 	assert.False(t, serverAsked, "the server asks nothing")
 	op := decide.BriefOp("a1", needsBrief("Fix a1. converges=0.8", ""))
@@ -326,7 +326,7 @@ func TestAServedAddAsksWhereItIsTyped(t *testing.T) {
 	var res output
 	require.NoError(t, json.Unmarshal(out.Bytes(), &res), out.String())
 	require.Len(t, res.Moved, 1)
-	assert.Contains(t, res.Moved[0], "x2 -> ready")
+	assert.Contains(t, res.Moved[0], "x2 -> plan")
 	require.Len(t, res.Brief, 1)
 	assert.Contains(t, res.Brief[0], "BRIEF card=x2 op=x2@brief-")
 	assert.NotContains(t, errb.String(), "BRIEF")

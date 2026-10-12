@@ -70,6 +70,9 @@ func fairStreams(t *testing.T, count, width int) {
 	for _, s := range streams {
 		ta.ok(fmt.Sprintf("add --stream %s --count %d --one", s, count))
 	}
+	for _, s := range streams {
+		ta.preparePlanned(s)
+	}
 	ta.ok("start")
 	ta.live = nil
 	const few = 3

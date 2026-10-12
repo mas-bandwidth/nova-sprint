@@ -24,6 +24,7 @@ func streamsOf30(t *testing.T) *world {
 	w := fleetWorld(t, 30, 2, members...) // at width 2 the room is streamsRoom, 32
 	w.must(Add(w.s, AddReq{Stream: "s2", Count: 30}))
 	w.must(Add(w.s, AddReq{Stream: "s3", Count: 30}))
+	w.preparePlanned()
 	return w
 }
 
@@ -102,6 +103,7 @@ func TestTickDealWorksEveryStreamInParallel(t *testing.T) {
 	for _, st := range []string{"s1", "s2", "s3"} {
 		w.must(Add(w.s, AddReq{Stream: st, Count: 30}))
 	}
+	w.preparePlanned()
 	p, _ := TickDeal(w.s, TickReq{})
 	w.must(p)
 	got := workingBy(w.s, "s1", "s2", "s3")
@@ -146,6 +148,7 @@ func TestHeldNeedsPreview(t *testing.T) {
 		needs[i] = fmt.Sprintf("s1-%d", i+1)
 	}
 	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"big"}, Needs: needs}))
+	w.preparePlanned()
 	hd := mustHold(t, running(w), "big", HeldByWaiting)
 	require.Less(t, len(hd.Why), 300, "%d bytes: %s", len(hd.Why), hd.Why)
 	require.Contains(t, hd.Why, "needs 1000 of 1000 still open: s1-1 (", "%d bytes: %s", len(hd.Why), hd.Why)

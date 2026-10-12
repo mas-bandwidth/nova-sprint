@@ -18,6 +18,7 @@ func TestDoctorRoutesPerTierWarnsWhileATierBacksOff(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.preparePlanned()
 	rateTaken(w, "flash-oc")
 	cs := DoctorRoutesPerTier(healthyInput(w))
 	require.Len(t, cs, 1, lines(cs))
@@ -38,6 +39,7 @@ func TestDoctorRoutesPerTierFailsWhileATierRestsForIts5xxs(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.preparePlanned()
 	rest := RouteRest{At: w.s.Now, Until: w.s.Now.Add(RouteRestFor), Cards: []string{"x1", "x2", "x3"}, Cause: RestProvider}
 	w.s.Fleet.SetProps(map[string]string{PropRule3Rest("p"): "flash-oc " + rest.value()})
 	cs := DoctorRoutesPerTier(healthyInput(w))
@@ -57,6 +59,7 @@ func TestDoctorRoutesPerTierWithOneBackoffAndOneUsableWarns(t *testing.T) {
 	w := doctorWorld(t)
 	w.s.Routes = append(w.s.Routes, Route{Name: "flash-oc2", Tier: cardhdr.RouteFlash, Provider: "p", Model: "b", Enabled: true, Deadline: 600})
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.preparePlanned()
 	rateTaken(w, "flash-oc")
 	cs := DoctorRoutesPerTier(healthyInput(w))
 	require.Len(t, cs, 1, lines(cs))

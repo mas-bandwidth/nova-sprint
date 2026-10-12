@@ -116,6 +116,8 @@ type coordCounts struct {
 	Landed  int `json:"landed"`
 	L30     int `json:"l30"`
 	All     int `json:"all"`
+	Planned int `json:"plan"`
+	Checked int `json:"check"`
 	Waiting int `json:"wait"`
 	Ready   int `json:"ready"`
 	Working int `json:"work"`
@@ -357,6 +359,10 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 				}
 				n.All++
 				switch col {
+				case sprint.Planned:
+					n.Planned++
+				case sprint.Checked:
+					n.Checked++
 				case sprint.Waiting:
 					n.Waiting++
 				case sprint.Ready:
@@ -719,9 +725,9 @@ func coordinatorSum(v coordinatorView, known bool, m store.Machine) string {
 	default:
 		state = "STOPPED"
 	}
-	sum := fmt.Sprintf("seat=%s machine=%s j=%d(max %d behind) alarms=%d asks=%d sentinels=%d friends=%d machines=%d | landed %d/%d +%d/30m | ready %d wait %d work %d review %d merge %d | busy %d/%d | rules %d/h | suppressed %d (lane %d readers %d tier %d)",
+	sum := fmt.Sprintf("seat=%s machine=%s j=%d(max %d behind) alarms=%d asks=%d sentinels=%d friends=%d machines=%d | landed %d/%d +%d/30m | plan %d check %d ready %d wait %d work %d review %d merge %d | busy %d/%d | rules %d/h | suppressed %d (lane %d readers %d tier %d)",
 		cmp.Or(v.Seat, "-"), state, n.J, behind, types[itemAlarm], types[itemRequest], types[itemSentinel], types[itemFriend], types[itemMachine],
-		n.Landed, n.All, n.L30, n.Ready, n.Waiting, n.Working, n.Review, n.Merging, n.Busy, n.Width, n.Rules, n.Suppressed, n.By.Lane, n.By.Readers, n.By.Tier)
+		n.Landed, n.All, n.L30, n.Planned, n.Checked, n.Ready, n.Waiting, n.Working, n.Review, n.Merging, n.Busy, n.Width, n.Rules, n.Suppressed, n.By.Lane, n.By.Readers, n.By.Tier)
 	if v.Hook != "" {
 		sum += " | hook " + v.Hook
 	}

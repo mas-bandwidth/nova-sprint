@@ -1003,3 +1003,18 @@ Each is a place this runbook describes a workaround; the change that removes it 
     5124, whose migration number collides with PR 5097's: the second to land renumbers);
   - no verb changes the sprint store's coordinator after `init`, so a seat handover moves who uses the
     actor, not the actor.
+
+### Admit a planned set
+
+The first three admission verbs are plan, check, promote. Add the proposed cards
+into `plan`, then run `nova-sprint check --stream <s>` (or named IDs, or
+`--all-plan`) and read the set's triage table. Repair failing rows while cards
+remain in plan. `nova-sprint promote --stream <s>` admits checked cards into
+waiting; dependency resolution and dealing follow normally. The deal never
+consumes plan or check. Editing a checked brief requires another check.
+
+`nova-sprint inbox --triage` retrieves the current table. A single judgment
+counts cards left in plan/check past 30 minutes of running time; configure that
+bound with `nova-sprint set --plan-max 45m`. Bare `check` retains its invariant
+audit, and `promote --once` retains Git release promotion. Do not use the release
+form to admit a producer set.

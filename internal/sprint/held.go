@@ -296,7 +296,7 @@ func (c *held) notes(ns []Note) {
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
 			}
-		case n.Type == NNoFrontierRoom:
+		case n.Type == NNoFrontierRoom || n.Type == NPlanLate:
 			// a stream-level judgment the friend ask writes for every frontier
 			// read no one may take: its primaries each get the "writes ..." line
 			for _, p := range n.Primaries {
@@ -376,7 +376,10 @@ func (c *held) judge(id string) Hold {
 func (c *held) actor(pr *Card) string {
 	s := c.s
 	switch pr.Col {
-	case Working:
+    case Planned,Checked:
+        // The coordinator holds planning work until its one overdue judgment.
+        if d,ok:=c.running(pr.F("admitted")); ok && d<=s.PlanMax() { return "coordinator plan/check review before its deadline" }
+    case Working:
 		wc := s.Fleet.Placed(pr.F("work"))
 		// a friend holds her card whatever her status (no take-back), and a member held to
 		// finish (hold.go) its working cards: the deadline rule judges them
@@ -480,6 +483,8 @@ func (c *held) tickOn(pr *Card) string {
 // merges there; "" when none.
 // tla/Holds.tla NoSilentStall
 func (c *held) judgment(pr *Card) string {
+    if pr.Col==Planned || pr.Col==Checked { for _,o:=range slices.Concat(c.s.Open,c.s.Acked) { if o.Note.Type==NPlanLate && slices.Contains(o.Note.Primaries,pr.ID) { return "open: "+o.Note.What } } }
+
 	if IsHeld(pr) {
 		return "held by the coordinator (add --held) until release"
 	}

@@ -57,10 +57,10 @@ func TestAddRefusesATlaEditWithoutARecordsRefresh(t *testing.T) {
 	refused("a glob over the models", writeTlaBrief(t, dir, "m4", "tla/*.tla internal/ci/x.go", step), "tla/*.tla")
 	refused("the merge named outside a STEP", writeTlaBrief(t, dir, "m5", "tla/**", "STEP 1. Change the model.\n\nThe records are refreshed with tlacheck merge --keep."), "names no STEP")
 
-	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "m6", "tla/**", step)), "MOVED m6 -> ready", "tla/** covers the records and the step merges them")
-	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "m7", "tla/Land.tla tla/RUNS.tsv", step)), "MOVED m7 -> ready")
-	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "r1", "internal/ci/x.go", "STEP 1. Read tla/Land.tla and change internal/ci/x.go to match it.")), "MOVED r1 -> ready", "a card that only reads tla/ is untouched")
-	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "r2", "tla/README.md", "STEP 1. Fix the README.")), "MOVED r2 -> ready", "a card that edits no model is untouched")
+	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "m6", "tla/**", step)), "MOVED m6 -> plan", "tla/** covers the records and the step merges them")
+	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "m7", "tla/Land.tla tla/RUNS.tsv", step)), "MOVED m7 -> plan")
+	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "r1", "internal/ci/x.go", "STEP 1. Read tla/Land.tla and change internal/ci/x.go to match it.")), "MOVED r1 -> plan", "a card that only reads tla/ is untouched")
+	assert.Contains(t, ta.ok("add --stream s --one --brief-file "+writeTlaBrief(t, dir, "r2", "tla/README.md", "STEP 1. Fix the README.")), "MOVED r2 -> plan", "a card that edits no model is untouched")
 
 	many := t.TempDir()
 	writeTlaBrief(t, many, "w1", "internal/w1.go", "STEP 1. Fix w1.")

@@ -610,3 +610,5 @@ MCSeatHookDurableBrokenEpochAcks.cfg	MCSeatHook.tla	invariant	DurableAckHistory	
 MCSeatHookDurableBrokenEpochPending.cfg	MCSeatHook.tla	invariant	EpochClearsPending	ignore-terminal	seathook-durable	required	-
 MCSeatHookDurableBrokenNoReplay.cfg	MCSeatHook.tla	temporal	EligibleUnackedDelivered	ignore-terminal	seathook-durable	required	-
 MCSeatHookDurableBrokenSequence.cfg	MCSeatHook.tla	invariant	SequenceHighWater	ignore-terminal	seathook-durable	required	-
+MCCardMachinePlanDealBroken.cfg	MCCardMachineSmall.tla	action	PlanningNotDealt	ignore-terminal	cardmachine	required	-
+MCCardMachinePlanCheckReach.cfg	MCCardMachineSmall.tla	invariant	NotChecked	ignore-terminal	cardmachine	required	-
