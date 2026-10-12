@@ -1,8 +1,8 @@
-# nova-work v1, layer 1: the tree (SPEC-WORK-V1)
+# nova-sprint issues, layer 1: the tree (SPEC-WORK-V1)
 
-nova-work is pre-alpha: not ready for production use.
+nova-sprint issues is pre-alpha: not ready for production use.
 
-`nova-work` holds every issue of every repository of an organization in **one tree file**: a
+`nova-sprint issues` holds every issue of every repository of an organization in **one tree file**: a
 restricted s-expression that `internal/worklang` reads and never evaluates
 ([SPEC-WORKLANG.md](SPEC-WORKLANG.md) section 1). The tree is the working store the verbs above
 query and change; GitHub is the source it is imported from and, while it exists, a mirror. This
@@ -10,16 +10,13 @@ page is section 1, the lowest layer: the tree's shape, the import that fills it,
 that proves it holds exactly what the source holds. The verbs that query and change the tree, and
 its index, are specified on their own page and stand on this one.
 
-The old nova-work and its modules live in the repository `nova-work-old`, beside this one in the
-same organization, for reference only.
-
 ## 1.1 The layer
 
 | part | what it is | where |
 | --- | --- | --- |
 | structure | the tree file: root, repositories, issues with their full contents | section 1.2, `internal/workfile` |
 | guarantee | every issue of every repository of the organization, every field of section 1.3, and nothing else | sections 1.3 and 1.6 |
-| check | `nova-work verify`: a fresh read of the source compared with the tree field for field; zero differences | section 1.6 |
+| check | `nova-sprint issues verify`: a fresh read of the source compared with the tree field for field; zero differences | section 1.6 |
 | model | the states of an issue under import and of a repository's sync | `tla/WorkImport.tla`, section 1.8 |
 
 The layer is secured when the import of the whole organization verifies with zero differences,
@@ -137,9 +134,9 @@ its parts in verify's lines. Walking up is the path's prefix: an issue's reposit
 ## 1.6 The verbs of layer 1
 
 ```text
-nova-work import --org <org> (--out <tree.lisp> | --dry-run) [--repo <owner/name>]... [--max-calls <n>] [--page-size <n>] [--gh <path>] [--timeout <d>]
-nova-work verify --tree <tree.lisp> [--repo <owner/name>]... [--max <n>] [--max-calls <n>] [--page-size <n>] [--gh <path>] [--timeout <d>] [--max-bytes <n>]
-nova-work verify --tree <tree.lisp> --against <tree.lisp> [--repo <owner/name>]... [--max <n>] [--max-bytes <n>]
+nova-sprint issues import --org <org> (--out <tree.lisp> | --dry-run) [--repo <owner/name>]... [--max-calls <n>] [--page-size <n>] [--gh <path>] [--timeout <d>]
+nova-sprint issues verify --tree <tree.lisp> [--repo <owner/name>]... [--max <n>] [--max-calls <n>] [--page-size <n>] [--gh <path>] [--timeout <d>] [--max-bytes <n>]
+nova-sprint issues verify --tree <tree.lisp> --against <tree.lisp> [--repo <owner/name>]... [--max <n>] [--max-bytes <n>]
 ```
 
 **import** is non-destructive: it only reads. It lists the organization's repositories (or reads
@@ -262,7 +259,7 @@ The whole of an organization of 96 repositories, one run each way from a working
 10. `TestANullSourceIsKeptAsNoSource`: a cross-reference with a source this login cannot see is
     kept as a reference with no source and survives the file.
 11. `TestRefuseMutation`: a mutation or subscription document is refused before anything runs.
-12. `TestImportThenVerifyIsZeroDifferences` (`cmd/nova-work`): import writes the tree from the
+12. `TestImportThenVerifyIsZeroDifferences` (`internal/issues`): import writes the tree from the
     fixture and verify against the same fixture prints `VERIFY OK ... differences=0`; after one
     changed field verify prints its DRIFT line and exits 1.
 13. `TestTheBudgetIsCheckedBeforeTheIssuesAreRead`: a plan past `--max-calls` exits 2 after the

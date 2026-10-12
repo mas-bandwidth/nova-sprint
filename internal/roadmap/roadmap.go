@@ -1,5 +1,5 @@
 /*
-Package roadmap is nova-work's roadmap editor: it edits a repository's own work
+Package roadmap is the issues group's roadmap editor: it edits a repository's own work
 record, docs/roadmap.sexp and docs/fixes.sexp, and renders ROADMAP.md and
 FIXES.md from them in the same step, so neither the data nor the pages are
 edited by hand and no GitHub call is made per entry.
@@ -99,7 +99,7 @@ func Load(dir, today string) (*Set, error) {
 		f.data, f.present = raw, true
 	}
 	if !s.road.present && !s.fix.present {
-		return nil, fmt.Errorf("%s holds neither %s nor %s; run nova-work roadmap from a repository's root, or name it with --repo", dir, RoadmapFile, FixesFile)
+		return nil, fmt.Errorf("%s holds neither %s nor %s; run nova-sprint issues roadmap from a repository's root, or name it with --repo", dir, RoadmapFile, FixesFile)
 	}
 	if err := s.decode(); err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (s *Set) entry(id string) (Entry, error) {
 			return e, nil
 		}
 	}
-	return Entry{}, fmt.Errorf("unknown id %q: no entry of %s has it; nova-work roadmap list --text <word> finds one", id, s.files())
+	return Entry{}, fmt.Errorf("unknown id %q: no entry of %s has it; nova-sprint issues roadmap list --text <word> finds one", id, s.files())
 }
 
 func (s *Set) files() string {
@@ -606,7 +606,7 @@ func (s *Set) Pages() map[string]string {
 // writes leaves the entry in both files (Load refuses it, Check names it),
 // never in neither. Within one file the data is written before its page; a
 // stop between those two leaves the page stale, which Check names and
-// `nova-work roadmap render` mends.
+// `nova-sprint issues roadmap render` mends.
 //
 // tla/RoadmapEntry.tla Save
 func (s *Set) Save() error {
@@ -648,7 +648,7 @@ func Check(dir string) ([]string, error) {
 			return nil, err
 		}
 		if string(got) != want {
-			probs = append(probs, fmt.Sprintf("%s differs from what its data renders; run: nova-work roadmap render", page))
+			probs = append(probs, fmt.Sprintf("%s differs from what its data renders; run: nova-sprint issues roadmap render", page))
 		}
 	}
 	slices.Sort(probs)
@@ -711,7 +711,7 @@ func RenderFile(in, out, source string) (kind string, items int, err error) {
 		}
 		page, items = roadmapdoc.RenderFixes(fx, source), len(fx.Items)
 	default:
-		return kind, 0, fmt.Errorf("%s: the head form is (%s ...); nova-work renders (roadmap \"v1\" ...) and (fixes \"v1\" ...)", in, kind)
+		return kind, 0, fmt.Errorf("%s: the head form is (%s ...); nova-sprint issues roadmap renders (roadmap \"v1\" ...) and (fixes \"v1\" ...)", in, kind)
 	}
 	return kind, items, atomicfile.Write(out, []byte(page), 0o644)
 }

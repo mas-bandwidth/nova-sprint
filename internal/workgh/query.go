@@ -1,6 +1,6 @@
-// Package workgh reads GitHub issues, read-only, into nova-work's tree model
-// (internal/workfile). It is the recut of the GitHub capture that nova-work
-// carried before (its GraphQL page query, its mutation refusal, its page
+// Package workgh reads GitHub issues, read-only, into the issues group's tree
+// model (internal/workfile). It is the recut of the GitHub capture the work
+// tool carried before (its GraphQL page query, its mutation refusal, its page
 // chain), widened to every field SPEC-WORK-V1 section 1.3 names and to every
 // repository of an organization, with no field cut at a bound: a connection
 // longer than one page is fetched to its end, never truncated.

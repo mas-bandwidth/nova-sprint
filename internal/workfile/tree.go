@@ -1,4 +1,4 @@
-// Package workfile is nova-work's tree file: every issue of every repository
+// Package workfile is the issues group's tree file: every issue of every repository
 // of a source, with its full contents, as one restricted s-expression read by
 // internal/worklang (docs/SPEC-WORK-V1.md section 1).
 //

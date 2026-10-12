@@ -1,9 +1,9 @@
 /*
 Package worklang is the bounded reader for a restricted-Lisp file (docs/SPEC-WORKLANG.md).
-Its one caller is internal/workfile, which reads nova-work's tree file through it.
+Its one caller is internal/workfile, which reads the issues group's tree file through it.
 
 A file is data the reader returns, never a program it evaluates. The grammar is the
-restricted Lisp of nova-work's tree file (docs/SPEC-WORK-V1.md section 1): a
+restricted Lisp of the issues group's tree file (docs/SPEC-WORK-V1.md section 1): a
 sequence of s-expressions made only of lists, keywords, strings, integers and
 bare symbols, with every evaluation form refused at the boundary and three bounds enforced as
 the reader runs -- bytes, nesting depth and node count. Nothing read here is ever

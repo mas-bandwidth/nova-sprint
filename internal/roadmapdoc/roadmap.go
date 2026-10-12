@@ -7,8 +7,8 @@ problem named, when a record is not exactly the shape below. tools/roadmap write
 the rendered page; TestRoadmapIsGeneratedFromTheSexp holds the committed ROADMAP.md
 to what Render makes of the committed sexp, so the page is never written by hand.
 It is nova-tools' internal/roadmap (nova-tools#5533), carried here at v1.2.3 under
-its own name because this repository's internal/roadmap is nova-work's roadmap
-editor.
+its own name because this repository's internal/roadmap is the issues group's
+roadmap editor.
 
 The shape:
 
@@ -27,7 +27,7 @@ The shape:
 carried that have no meaning where the record now is (an item's :why on a fix,
 a fix's :status on an item), each under a key naming where it came from
 (item-why, fix-status), so a move never drops one and a move back restores it.
-It is data for nova-work roadmap (internal/roadmap) and is not rendered.
+It is data for nova-sprint issues roadmap (internal/roadmap) and is not rendered.
 
 Text values may be wrapped across lines in the file; Render joins every run of
 whitespace into one blank, so the page reads the same however the file is wrapped.

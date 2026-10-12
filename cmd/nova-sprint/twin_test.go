@@ -136,7 +136,7 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 	t.Parallel()
 	for _, v := range verbs {
 		if strings.HasPrefix(v.name, "issues ") {
-			// The issues group is the folded-in nova-work tool (internal/issues):
+			// The issues group is the folded-in work tool (internal/issues):
 			// its -h is that tool's own, whose per-verb help is not the app's
 			// example-block shape. Its own tests hold it.
 			continue

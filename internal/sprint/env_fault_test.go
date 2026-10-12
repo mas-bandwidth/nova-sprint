@@ -24,7 +24,7 @@ func TestEnvFaultClassifiesAFinishReason(t *testing.T) {
 		{"branch refusal with child text should not envFault", "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write", ""},
 		{"wall words in child part alone are not envFault", "verdict not-done; the child said it was blocked by the wall", ""},
 		{"a missing harness", "harness not found on this machine: opencode", EnvHarness},
-		{"a missing tool", "exec: \"nova-work\": executable file not found in $PATH", EnvTool},
+		{"a missing tool", "exec: \"nova-check\": executable file not found in $PATH", EnvTool},
 		{"a sandbox refusal", "the sandbox blocked the child: operation not permitted", EnvSandbox},
 		{"a wall refusal", "blocked by the wall: the job may not read outside it", EnvSandbox},
 		{"a full disk", "write /tmp/x: no space left on device", EnvDisk},
