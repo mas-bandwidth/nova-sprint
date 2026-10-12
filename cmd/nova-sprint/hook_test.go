@@ -1139,3 +1139,67 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	require.Equal(t, "ok", r.T, r.Why)
 	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
 }
+
+// TestHookFlushesAfterChallenge verifies that the hook's HOOK CHALLENGE line is
+// readable on a real OS pipe within 1s while the hook is still running: the seat's
+// monitor must see the challenge at once, not only when the hook exits. It is the
+// guard for the hook's per-line flush (every line is one write(2) to stdout; there
+// is no user-space buffer to flush). A regression that wrapped stdout in a
+// buffer without flushing it would make this test time out.
+func TestHookFlushesAfterChallenge(t *testing.T) {
+	const name = "hook-flush"
+	ta, env := hookSprint(t, name)
+	srv := httptest.NewServer(localHandler{ta.a})
+	t.Cleanup(srv.Close)
+	env["NOVA_SPRINT_SERVER"] = srv.Listener.Addr().String()
+
+	client := newApp(ta.a.getenv)
+	client.hookSock = ta.a.hookSock
+
+	pr, pw, err := os.Pipe()
+	require.NoError(t, err)
+	defer pr.Close()
+	done := make(chan int, 1)
+	go func() {
+		var errb bytes.Buffer
+		code := client.run([]string{"hook"}, pw, &errb)
+		_ = pw.Close()
+		done <- code
+	}()
+
+	challenge := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			if strings.HasPrefix(sc.Text(), "HOOK CHALLENGE ") {
+				challenge <- sc.Text()
+				return
+			}
+		}
+	}()
+
+	select {
+	case line := <-challenge:
+		assert.Contains(t, line, "nova-sprint hook --prove ")
+	case <-time.After(time.Second):
+		t.Fatal("HOOK CHALLENGE was not readable on the OS pipe within 1s while the hook ran")
+	}
+
+	// the hook is still running when the challenge was read: it did not exit
+	select {
+	case code := <-done:
+		t.Fatalf("the hook exited (code %d) before the challenge was read", code)
+	default:
+	}
+
+	// end the hook cleanly
+	var out, errs bytes.Buffer
+	code := client.run(strings.Fields("unhook"), &out, &errs)
+	require.Equal(t, 0, code, out.String()+errs.String())
+	select {
+	case code := <-done:
+		require.Equal(t, 0, code)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the hook did not end after unhook")
+	}
+}

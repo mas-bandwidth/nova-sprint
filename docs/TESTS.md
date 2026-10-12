@@ -269,6 +269,24 @@ brief verb and the bound).
   with `--reason` accepted; reason visible on the card).
 
 
+### The hook flushes every line
+
+The seat's monitor sees the hook's lines the moment they are written: `hook`
+writes each line as one `write(2)` to stdout (there is no user-space buffer to
+flush), so the HOOK CHALLENGE line is readable on a real OS pipe within one
+second while the hook still runs. A regression that buffered stdout without
+flushing it would hide the challenge until the hook exited and fail the guard
+(docs/SPEC-SPRINT.md, "The hook").
+
+- Unit, `cmd/nova-sprint/hook_test.go`:
+  `TestHookFlushesAfterChallenge` runs `hook` against a private server with its
+  stdout a real OS pipe (`os.Pipe`) and asserts the HOOK CHALLENGE line is
+  readable within 1s while the hook still runs; then ends it with `unhook`.
+- Functional (`-tags functional`), `cmd/nova-sprint/hook_flush_functional_test.go`:
+  `TestHookFlushesAfterChallengeOnTheStore` does the same on a private
+  redis-server, the store named explicitly with `--redis` on every verb, in a
+  scrubbed environment.
+
 ### The landing stall (v1.2.14)
 
 Cards that wait in review or merging with no landing for the bound (one
