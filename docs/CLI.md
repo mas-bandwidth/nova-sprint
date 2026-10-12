@@ -827,6 +827,8 @@ use it. It reads GitHub only (no GitLab, no Gitea), never writes to GitHub (the
 seam refuses any GraphQL document that is not a query), and captures the fields
 SPEC-WORK-V1 section 1.3 lists, not reactions or other timeline events.
 
+### First run
+
 **Try it with no login.** `nova-sprint issues verify -h` prints the tree's grammar and a
 minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
 `:archived true`, and run `nova-sprint issues verify --tree a.lisp --against b.lisp`: one
