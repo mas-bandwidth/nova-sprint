@@ -303,6 +303,36 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
   a live sprint server.
 
+### The start level never moves a card off a free lane (v1.2.14)
+
+The level at the start of every tick moves a ready card only off a member
+holding more work cards than its width, and only onto the next member from the
+deal's index with a free lane (docs/SPEC-SPRINT.md, the rebalance;
+tla/Level.tla, NeverOffAFreeLane). A member at or below its width keeps every
+card dealt to it.
+
+- Unit, `internal/sprint/level_free_lanes_test.go`:
+  `TestTheLevelLeavesADealtCardOnAnIdleMember`,
+  `TestTheLevelMovesTheExcessOntoFreeLanesOnly`,
+  `TestTheLevelTargetsRollTheIndex`.
+- Unit, re-pinned from the mean rule: `internal/sprint/level_progress_test.go`
+  `TestLevelTargetPicksAFreeLane`, `TestLevelStopsWhenNoFreeLaneRemains`;
+  `internal/sprint/level_terminates_test.go`
+  `TestLevelLeavesTheWedgeWhenNoLaneIsFree`,
+  `TestLevelEndsWithNoFreeLaneWithinTheReadyCount`, `TestLevelMovesNoCardTwice`;
+  `internal/sprint/refmodel/level_refuser_test.go`
+  `TestLevelRefuserTheEngineAndTheModelAgree`;
+  `internal/sprint/refmodel/fleet_down_level_test.go`
+  `TestFleetDownAndLevelGoRoundTheFleet`.
+- Functional (`-tags functional`), `cmd/nova-sprint/start_level_functional_test.go`:
+  `TestTheStartLevelLeavesADealtCardOnAMemberThatCanStartItOnTheStore`, on a
+  private redis-server: a member of width 4 holding one ready card and a
+  member of width 16 with free lanes; the ticks leave the card where it was
+  dealt, and once the first member's width falls below what it holds, the
+  next tick moves the card onto the free lane. Every verb names the private
+  store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
+  forward fails the test, so no verb can reach a live sprint server.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
