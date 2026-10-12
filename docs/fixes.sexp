@@ -2404,6 +2404,26 @@
    :title "The friend take, redeal clock and STOP fence models live with nova-sprint"
    :text "Models and comments only; no product change. Three nova-tools modules that model nova-sprint code move here from nova-tools dev 2314d437fedb33d148e75346ab5582ec552e7962, byte for byte apart from names and header comments: FriendReadyTake (five cases: the pass and the reversed witnesses NoFill, PastWidth, Stranger and NoJudge), FriendRedealLate (two: the pass and StaleStands), and nova-tools' StopReturn, a different machine from this repository's StopReturn, which arrives as StopFence (eight cases with its StaleTick and StalePart instances; the reversed witnesses Premature, LateRead, Unfenced, Orphan, StaleTick and StalePart). nova-sprint's own tla/StopReturn.tla is untouched. Each header names the nova-sprint code it models with current line numbers (friendDealPass, not the friendDeal that does not exist). CASES rows in groups friendreadytake, friendredeallate and stopfence with fresh TLC records; COVERAGE rows friend-ready-take, friend-redeal-late and stop-fence, partial with what stays outside each preserved machine; README rows. The citations of StopReturn's ExplicitStart, NoOrphanDebt and Report in store/machine_transition.go, store/fleet_rows.go and store/tick.go now name tla/StopFence.tla, and friend_take.go's cite of tla/FriendReadyTake.tla is now true. Removing them from nova-tools is tla-moved-sprint-models-leave-nova-tools."
    :origin "card tla-sprint-models-come-home-to-nova-sprint, hand-landed 2026-10-11 outside the sprint from its pushed head 527f407b (w2.g10.e17, refused at landing for ledger conflicts); v1.2.12 inventory item T33 and the nova-tools drift read at dev 2314d437f")
+  (fix "tla-provider-funds" :release "v1.2.14" :status "planned"
+   :title "ProviderFunds models a provider's refusal rest, its judgments and the all-out stop"
+   :text "Models only, no product change. New tla/ProviderFunds.tla instantiates tla/RouteRest.tla once per
+    provider (p1, p2, one enabled route each; no rest rule is copied) and adds what lies above one provider:
+    two outstanding takes a provider, each launched after the last rest ended, stale (launched at or before
+    it) or with no launch time, so a refusal rests the provider only from a take launched after the last rest
+    ended (providerRestsDue, internal/sprint/provider_funds.go: e.taken.After(last.Mark())); a payment the poll
+    sees, funded and the coordinator's wake each end the rest and set that mark (balance.go, Funded,
+    route_coordinator.go: Until = now). The balance poll writes no rest. Judgments defines providerConds' one
+    judgment a provider (a definition, not a checked property): out of funds or refused key before low, low only while no rest of its own holds.
+    AllOutOfCredit stops the machine only when every provider rests for credit (RouteRest.Out), and
+    friendsKeepRunning drops the stop while a friend is up; START is the coordinator's and is refused while all
+    are out unless a friend is up. Invariants and properties: LowNeverStops, NoFundsStopWhileFriendUp,
+    StartIsTheCoordinators, StopOnlyWhenAllOut, RefusalsAfterLastEnd. Reversed witnesses:
+    lowisout (Out counts a low balance; fails LowNeverStops), nofriendexception (drops friendsKeepRunning; fails
+    NoFundsStopWhileFriendUp) and stalerefusal (drops the launch-after-the-mark guard; fails
+    RefusalsAfterLastEnd). provider_funds.go gains comment lines citing the module, and AllOutOfCredit's comment
+    no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
+    spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
+   :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
   (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
    :title "The landing gate runs its classes side by side"
    :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,
