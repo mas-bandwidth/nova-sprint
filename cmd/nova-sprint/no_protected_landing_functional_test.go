@@ -16,6 +16,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
@@ -33,6 +34,12 @@ func TestNoVerbPutsACardOnDevOrMain(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
+	// A route and the sprint row's git_identity, as nova-config's apply writes them: the
+	// lander reads the identity with the routes (the sprint row is read only when a route
+	// exists) and refuses to commit without one.
+	require.NoError(t, c.SAdd(context.Background(), config.RoutesKey, "flash-a").Err())
+	require.NoError(t, c.HSet(context.Background(), config.RouteKey("flash-a"), "name", "flash-a", "tier", "flash", "provider", "p", "model", "m", "enabled", "true").Err())
+	require.NoError(t, c.Set(context.Background(), config.SprintKey(config.FieldGitIdentity), config.DefaultGitIdentity, 0).Err())
 
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
@@ -63,7 +70,7 @@ func TestNoVerbPutsACardOnDevOrMain(t *testing.T) {
 	run := func(line string) (string, int, string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runInto(a, append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runInto(a, append(split(line), "--redis", addr), &out, &errb)
 		return out.String(), code, errb.String()
 	}
 	runOK := func(line string) string {
@@ -100,14 +107,19 @@ func TestNoVerbPutsACardOnDevOrMain(t *testing.T) {
 	git(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 	git(worker, "fetch", "-q", "origin")
 
+	runOK("fleet beat m1")
 	runOK("start")
 	runOK("tick")
 	runOK("tick")
 	runOK("take --as m1 --limit 5 --epoch 0")
 	runOK("finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0")
-	runOK("ask")
-	runOK("read --as reader-a --ok --limit 10 --epoch 0")
-	runOK("read --as reader-b --ok --limit 10 --epoch 0")
+	runOK("queue --as reader-a")
+	runOK("queue --as reader-b")
+	runOK("tick")
+	runOK("read --as reader-a --begin --limit 10 --epoch 0")
+	runOK("read --as reader-a --ok --limit 10 --epoch 0 --usage 'input=1 output=1'")
+	runOK("read --as reader-b --begin --limit 10 --epoch 0")
+	runOK("read --as reader-b --ok --limit 10 --epoch 0 --usage 'input=1 output=1'")
 	runOK("accept --read-ok")
 
 	// a store row written by hand: land_protected=any, as an old store carries it (the verb
