@@ -607,6 +607,20 @@ command again finishes it), or when `--source` holds no
 | 2 | usage, or a store that did not answer (`fleet sync --check`: there is drift) |
 | 3 | unreadable config (`fleet sync`, `friend sync`, `friend clean`), missing friend rows (`friend sync`, `friend clean`), or a replaced binary (`run`, `dashboard`) |
 
+The exit codes do not separate a definite refusal from an unknown outcome: exit
+2 is both `refuse()` (usage, `card@gen`, epoch, a server refusal) and
+`changed=unknown` or no answer, and exit 1 is both a refused card and a
+`CutError` that repair can still complete. The server's answer to a worker's
+verb therefore also carries the typed `outcome` (`accepted | refused | unknown`)
+and `changed` (`yes | no | unknown`) fields, set where the verb knows them
+(`refuse()` and every pre-write refusal give `refused`; a `CutError`,
+`ErrUnknown`, or a `ClearedError` with `Finished` gives `unknown`; a store error
+that answered nothing gives `unknown` too; success gives `accepted`), and each
+verb's `--json` output carries them too. A worker reads
+these fields, not the printed words. The contract is
+[SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md)
+section 14, "The server".
+
 ### What it does not prove
 
 A landed card records a completed flow: the worker reports done, two different

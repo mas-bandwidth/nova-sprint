@@ -90,8 +90,13 @@ func (a *app) cmdFriendCards(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed(name, err, stderr)
 	}
+	a.outcome, a.changed = "accepted", "no"
 	if c.json {
-		b, _ := json.Marshal(friend.HeldAnswer{Friend: who, Cards: held})
+		b, _ := json.Marshal(struct {
+			friend.HeldAnswer
+			Outcome string `json:"outcome"`
+			Changed string `json:"changed"`
+		}{HeldAnswer: friend.HeldAnswer{Friend: who, Cards: held}, Outcome: a.outcome, Changed: a.changed})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}

@@ -112,6 +112,8 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 		}
 		facts := map[string]any{"kind": kind, "machine": *machine, "as": *as, "would_grant": granted, "held": len(held), "width": width, "dry_run": true}
 		line := fmt.Sprintf("LANE-TAKE DRY-RUN %s machine=%s as=%s would_grant=%s held=%d/%d; nothing was written", kind, *machine, *as, yesNo(granted), len(held), width)
+		a.outcome, a.changed = "accepted", "no"
+		facts["outcome"], facts["changed"] = a.outcome, a.changed
 		if !granted {
 			facts["place"] = place
 			line = fmt.Sprintf("LANE-TAKE DRY-RUN %s machine=%s as=%s would_grant=%s place=%d held=%d/%d; nothing was written", kind, *machine, *as, yesNo(granted), place, len(held), width)
@@ -121,6 +123,7 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	}
 	ans, err := st.LaneStep(context.Background(), kind, *machine, *as, false)
 	if err != nil {
+		a.outcome, a.changed = "unknown", "unknown"
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint help lane\n", prog, name, oneline.Escape(err.Error()))
 		return 1
 	}
@@ -128,8 +131,12 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	if !ans.Granted {
 		facts["place"] = ans.Place
 		why := fmt.Sprintf("the %s lanes of %s are held (%d/%d); %s is %s in the queue, which keeps the place while it asks again within %s", kind, *machine, ans.Held, ans.Width, *as, ordinal(ans.Place), sprint.LaneWaitFor)
+		a.outcome, a.changed = "refused", "no"
+		facts["outcome"], facts["changed"] = a.outcome, a.changed
 		return sayLaneRefused(stdout, stderr, c.json, name, why, "nova-sprint lane take "+kind+" --machine "+*machine+" --as "+*as+" --wait 30m", facts)
 	}
+	a.outcome, a.changed = "accepted", "yes"
+	facts["outcome"], facts["changed"] = a.outcome, a.changed
 	sayOK(stdout, c.json, name, fmt.Sprintf("LANE-TAKE OK %s machine=%s as=%s held=%d/%d: run, then nova-sprint lane give %s --machine %s --as %s", kind, *machine, *as, ans.Held, ans.Width, kind, *machine, *as), facts)
 	return 0
 }
@@ -211,19 +218,27 @@ func (a *app) cmdLaneGive(args []string, stdout, stderr io.Writer) int {
 			line += ": it holds no lane and waits in no queue there"
 		}
 		facts := map[string]any{"kind": kind, "machine": *machine, "as": *as, "would_give": wouldGive, "held": len(held), "width": width, "dry_run": true}
+		a.outcome, a.changed = "accepted", "no"
+		facts["outcome"], facts["changed"] = a.outcome, a.changed
 		sayOK(stdout, c.json, name, line, facts)
 		return 0
 	}
 	ans, err := st.LaneStep(context.Background(), kind, *machine, *as, true)
 	if err != nil {
+		a.outcome, a.changed = "unknown", "unknown"
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint help lane\n", prog, name, oneline.Escape(err.Error()))
 		return 1
+	}
+	a.outcome = "accepted"
+	a.changed = "no"
+	if ans.Gave {
+		a.changed = "yes"
 	}
 	line := fmt.Sprintf("LANE-GIVE OK %s machine=%s as=%s gave=%s held=%d/%d", kind, *machine, *as, yesNo(ans.Gave), ans.Held, ans.Width)
 	if !ans.Gave {
 		line += ": it held no lane and waited in no queue there (a timeout may have released it)"
 	}
-	sayOK(stdout, c.json, name, line, map[string]any{"kind": kind, "machine": *machine, "as": *as, "gave": ans.Gave, "held": ans.Held, "width": ans.Width, "released": nonNil(ans.Released)})
+	sayOK(stdout, c.json, name, line, map[string]any{"kind": kind, "machine": *machine, "as": *as, "gave": ans.Gave, "held": ans.Held, "width": ans.Width, "released": nonNil(ans.Released), "outcome": a.outcome, "changed": a.changed})
 	return 0
 }
 

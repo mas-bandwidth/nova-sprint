@@ -99,7 +99,15 @@ func (a *app) cmdBudgetTake(args []string, stdout, stderr io.Writer) int {
 		if why != "" {
 			line += " why=" + oneline.Field(why)
 		}
-		sayOK(stdout, c.json, name, line, map[string]any{"model": model, "granted": granted, "wait_ms": wait.Milliseconds(), "rpm": rpm, "concurrent": concurrent, "open": open, "why": why})
+		// the take always exits 0 with an answer, so it was accepted; it wrote
+		// the grant only when it granted one: when the store could not be read
+		// and it was granted open, or the caller was told to wait, it wrote nothing
+		a.outcome = "accepted"
+		a.changed = "no"
+		if !open && granted {
+			a.changed = "yes"
+		}
+		sayOK(stdout, c.json, name, line, map[string]any{"model": model, "granted": granted, "wait_ms": wait.Milliseconds(), "rpm": rpm, "concurrent": concurrent, "open": open, "why": why, "outcome": a.outcome, "changed": a.changed})
 		return 0
 	}
 	st, err := a.store(*c)
@@ -143,7 +151,15 @@ func (a *app) cmdBudgetRenew(args []string, stdout, stderr io.Writer) int {
 	if why != "" {
 		line += " why=" + oneline.Field(why)
 	}
-	sayOK(stdout, c.json, name, line, map[string]any{"model": model, "held": held, "why": why})
+	// it always exits 0: the renewal either wrote the slot's lease (held) or left
+	// it to run out (not held, or the store did not answer)
+	a.outcome = "accepted"
+	if held {
+		a.changed = "yes"
+	} else {
+		a.changed = "no"
+	}
+	sayOK(stdout, c.json, name, line, map[string]any{"model": model, "held": held, "why": why, "outcome": a.outcome, "changed": a.changed})
 	return 0
 }
 
@@ -169,7 +185,14 @@ func (a *app) cmdBudgetRelease(args []string, stdout, stderr io.Writer) int {
 	if why != "" {
 		line += " why=" + oneline.Field(why)
 	}
-	sayOK(stdout, c.json, name, line, map[string]any{"model": model, "why": why})
+	// it always exits 0: the slot was freed (nothing said) or left to expire
+	a.outcome = "accepted"
+	if why == "" {
+		a.changed = "yes"
+	} else {
+		a.changed = "no"
+	}
+	sayOK(stdout, c.json, name, line, map[string]any{"model": model, "why": why, "outcome": a.outcome, "changed": a.changed})
 	return 0
 }
 
