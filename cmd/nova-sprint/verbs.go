@@ -88,6 +88,7 @@ func init() {
 		{"twin", "<card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]", "twin cards3 --paths internal/b/** --instruction 'widen the fix'", (*app).cmdTwin},
 		{"brief check", "<file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]", "brief check --stream s1 add.go", (*app).cmdBriefCheck},
 		{"brief", "<id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]", "brief s1-4 --brief-file s1-4.md", (*app).cmdBriefSel},
+		{"continue", "<card> [--note <text>] [--tier <flash|pro|heavy|frontier>] [--carry <branch|sha>] [--answers <judgment>] [--dry-run]", "continue s1-4 --note 'continue from the carried head'", (*app).cmdContinue},
 		{"move", "<id>... --stream <s> [--before <id> | --after <id> | --score <n>]", "move s1-4 s1-5 --stream s2", (*app).cmdMove},
 		{"tier", "<card> --set <flash|pro|heavy|frontier> --reason <text>", "tier s1-4 --set heavy --reason 'a heavy card'", (*app).cmdTier},
 		{"merge", "--stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]", "merge --stream s1 --batch 100", (*app).cmdMerge},

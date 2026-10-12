@@ -97,6 +97,7 @@ nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
+nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] [--carry <branch|sha>] [--answers <judgment>] [--dry-run]
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
 nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 # a merge with no fact flag and no --landed is the twin's; on a real store use land, or record a pushed landing with --landed <id>@<head> --repo <dir> --base-ref <ref>
@@ -233,6 +234,19 @@ task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
 edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
 `TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts
 stand)`) and a new task resets it (`bound: new task (count reset)`).
+
+`continue <card> --note <text>` continues a card whose attempts pushed partial work
+and reached its brief's bound, without judging it wrong and without starting over: it
+edits the card's brief in place, a `CARRY: <card> attempt <n> head=<sha>` line at the
+newest full head any attempt pushed (or the `--carry <branch|sha>` head, a branch
+resolved to its head through the card's repo clone) written in its header, the
+continue note appended with the UTC time, its bound reset, every open bound and brief-defect
+judgment answered, and with `--tier` its tier re-pinned in the same step. A card
+in review goes back to ready, its open reads retired, its next attempt staged from
+the carried head. It refuses, exit 1, nothing written, when the card is landed, when
+no attempt pushed a head and no `--carry` is given, and when `--carry` is not a
+40-hex commit sha. `--dry-run` prints the new brief's header and the judgments it
+would answer.
 
 `card <id> --json` reads that card: its lines of the log from the card log index the
 tick keeps (and the tail it has not indexed yet), never the whole log, and its own
