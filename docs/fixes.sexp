@@ -2689,7 +2689,7 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")
+     both refused, only wait quieting it")
   (fix "tla-pass-nova-sprint-coverage-rows-1-to-26" :release "v1.2.16" :status "planned"
    :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 1 to 26"
    :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 1 to 26 (card-lifecycle to fault-hold-clear).
@@ -2701,4 +2701,21 @@
     The TLC check is green on a Linux bench: every CASES.tsv config of these modules has a current
     tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
     frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
-   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")))
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+  (fix "tla-sprintrules-landing-stall-judgment" :release "v1.2.16" :status "planned"
+   :title "SprintRules models the landing stall, Part stall, with the reversed witnesses nostall and noclear"
+   :text "Models only, no product change. tla/SprintRules.tla gains Part stall, the model of the
+    landing-stall alarm (internal/sprint/judgments.go TickLandingStall, run from the deadlines part): a
+    running-time clock lsclk that advances only while the machine is not stopped (lsstopped, the code's
+    r.Stopped), the cards waiting in review or merging (lswait), the last landing's stamp (lslast), and the
+    episode's start and last push (lssince, lssaid). The tick end raises one NLandingStall judgment when
+    cards wait and the last landing is the bound (StallBound, the code's LandingStallBound) of running time
+    ago, re-raises it each bound it still holds, and a landing (LsLand) clears the episode with the code's
+    NLandingAgain. The invariant StallNotYoung (the judgment is never open while the last landing is younger
+    than the bound) and the liveness StallLive (a card in review with its reads done and ok is landed or the
+    stall is raised, under fairness of the running tick and the machine starting again) are checked, with
+    the reversed witnesses MCSprintRulesStallBrokenNoStall (the tick never raises: StallLive) and
+    MCSprintRulesStallBrokenNoClear (a landing does not clear: StallNotYoung), and the control
+    MCSprintRulesStall. The comment in judgments.go names the card and the module's actions, and
+    TickLandingStall gains one comment line citing tla/SprintRules.tla LsTick; no other Go file changes."
+   :origin "this card, tla-sprintrules-landing-stall-judgment, from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")))
