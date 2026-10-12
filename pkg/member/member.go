@@ -147,6 +147,16 @@ type Result struct {
 	// reported with the finish onto the attempt's record.
 	End   string
 	Usage string
+	// Exit is the child's exit code, as the member read it (0: a clean end or unknown). A
+	// work finish and a read's return carry it (--exit), so an environment exit (134 or 137,
+	// or a no-result at any exit) is the member's, never the card's (docs/SPEC-SPRINT.md,
+	// "An environment exit").
+	Exit int
+	// Harness is the child's harness output, as the member read it (its whole output, never
+	// its name); a work finish and a read's return carry it (--harness), so an environment
+	// exit keeps the last 40 lines of it on the card and its primary, the cause a reader
+	// reads (sprint.EnvironmentExitRecord, sprint.HarnessTailLines).
+	Harness string
 	// Provider is why End is EndProvider, as native read it from the harness's own log
 	// or transcript: the cause, `provider: class=<c> status=<n|-> msg=<words>`
 	// (docs/SPEC-CARD-CONTRACT.md section 4; tla/CardContract.tla, ProviderFailure).
@@ -1124,7 +1134,7 @@ func (m *Member) reportOne(id string, l launch, now time.Time, qPacket *Packet, 
 			if noFinding {
 				reason = cut(NoFinding + ": the broken read names no file, line or rule: " + finding)
 			}
-			args = append(append([]string{"read", "--as", m.cfg.As, "--return", id, "--reason", reason}, usageArgs(r)...), launched...)
+			args = append(append([]string{"read", "--as", m.cfg.As, "--return", id, "--reason", reason}, append(usageArgs(r), exitArgs(r)...)...), launched...)
 			code, out := m.run(args...)
 			fmt.Fprintf(m.out, "read %s: returned exit=%d: %s\n", id, code, reason)
 			if code == 2 {
@@ -1174,6 +1184,7 @@ func (m *Member) reportOne(id string, l launch, now time.Time, qPacket *Packet, 
 			args = append(args, "--failed")
 		}
 		args = append(args, usageArgs(r)...)
+		args = append(args, exitArgs(r)...)
 		// the take's attempt decision, when one was asked (attempt): the finish carries it
 		if d := l.decided; d != nil && d.err != nil {
 			fmt.Fprintf(m.out, "NOTE attempt %s not decided: %s; the reason line routes the finish\n", id, oneLine(d.err.Error()))
@@ -2381,6 +2392,23 @@ func usageArgs(r Result) []string {
 		return nil
 	}
 	return []string{"--usage", r.Usage}
+}
+
+// exitArgs is the finish's (and a read return's) child exit and harness output, so an
+// environment exit is recorded on the card with its cause: --exit when the child's code is
+// not zero (0 is the verb's default, a clean end or unknown), and --harness with the child's
+// whole output (the sprint keeps its last 40 lines; never the harness's name). A member that
+// read no harness output sends neither, and the card keeps its earlier tail as the sprint
+// clears it.
+func exitArgs(r Result) []string {
+	var args []string
+	if r.Exit != 0 {
+		args = append(args, "--exit", strconv.Itoa(r.Exit))
+	}
+	if r.Harness != "" {
+		args = append(args, "--harness", r.Harness)
+	}
+	return args
 }
 
 // StartGap is the least time between two harness starts on one member, so the cards a

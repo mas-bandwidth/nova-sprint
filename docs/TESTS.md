@@ -508,6 +508,14 @@ a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
   invocation passes `--redis` and `--actor`, with HOME and XDG_CONFIG_HOME
   its own, no `NOVA_*` variable and PATH the binary's directory and the
   system's, so no verb can reach a seat config or a live sprint server.
+- Functional (`-tags functional`), `cmd/nova-sprint/member_exit_harness_functional_test.go`:
+  `TestMemberExitHarnessSendsTheChildsOutputNotItsName`, on a private
+  redis-server: a real `pkg/member` member takes the one card, its child ends
+  134 with a known harness output, and the member's finish carries `--harness`
+  with that output (never the harness's name), so the card's record holds it.
+  The member runs over the private store (named by `NOVA_SPRINT_REDIS`), with
+  HOME and XDG_CONFIG_HOME the test's own and its forward failing the test, so
+  no verb can reach a live sprint server (a-member-sends-the-harness-output-not-its-name).
 
 ### Priority raises a selected set in one call
 

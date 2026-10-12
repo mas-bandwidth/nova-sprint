@@ -161,6 +161,18 @@
       mini-m5 none; every 134 the opencode harness aborting after Error: Unknown: ChildProcess.spawn
       inside the landlock sandbox, logged why=no-result, the card's read or attempt coming back
       no verdict or not-done; hand-landed by the seat's child after the card reached its bound")
+    (fix "a-member-sends-the-harness-output-not-its-name" :release "v1.2.14" :status "planned"
+     :title "The member's finish sends the child's harness output, not its name"
+     :text "The finish verb's --harness is the child's harness output, whose last 40 lines an
+      environment exit keeps on the card and its primary (sprint.EnvironmentExitRecord,
+      sprint.HarnessTailLines); the member sent the harness's name (the route's, Packet.Harness)
+      where main means the child's output, so the card carried no cause for a reader. The member's
+      Result now carries the child's exit code and its whole harness output (Exit, Harness), and a
+      work finish and a read's return pass them as --exit and --harness, never the harness's name.
+      The functional TestMemberExitHarnessSendsTheChildsOutputNotItsName runs a real pkg/member
+      member over a real server and store and holds that the card's record keeps the output;
+      docs/TESTS.md lists it."
+     :origin "this card, a-member-sends-the-harness-output-not-its-name.w1, from the coordinator, 2026-10-12 ~11:40Z: a cold read of a-member-reports-a-childs-exit-and-harness at bd0331d7 found the member sent the harness's name where main's --harness means the child's output, and its functional test ran against a fake sprint (ghostSprint) instead of the real server and store, so nothing caught it")
     (fix "a-friend-with-no-free-lane-is-not-dealt-work" :release "v1.2.14" :status "planned"
      :title "A friend with no free lane is not dealt work while a machine that serves its tier has one"
      :text "A friend with no free lane gives way to a machine. The friends' deal (friendDealPass, internal/sprint/friend_deal.go) filled a friend's room even when every one of her lanes was held by a card, ready or working, while a machine that serves the card's tier had a free lane: on 2026-10-12 five heavy cards were dealt to a friend whose lanes were all taken and sat dealt-but-untaken for 6-9 minutes while the fleet ran at 15 of 140 slots, and the seat had to find them by hand and hold the friend with return. The deal now leaves such a card to the machines: when the chosen friend has no idle lane (lanes, her width less her load, friendLoad) and a machine up can draw a deal of the card at once (machineTakesAtOnce: an idle lane and a route of its tier it can launch, routeServed), and the card is not a hard pin (OnlyFriend), the pass continues and the machines' deal starts it. A friend whose tiers alone serve the tier, or a hard pin, still takes it ahead of her lanes (the deal-ahead 2X width rule of 2026-10-04 stands where the friends are the only workers). The tick's level counts the friend's real free lanes (friend_level.go: lanes is width less friendLoad, reads at half a slot), and a card dealt and not taken within the dealt bound returns at once to the next free lane (friendDealtReturn, the tick's deal part in steps_tick.go). Tests: TestFriendWithNoFreeLaneIsNotDealt (internal/sprint/friend_free_lane_test.go, red first: the card was dealt to friend.amy)."
