@@ -629,7 +629,6 @@ var TickRules = []TickPartDef{
 	{PartRuleAsk, TickRuleAsk},
 	{PartRuleNeed, TickRuleNeed},
 	{PartRuleBrief, TickRuleBrief},
-	{PartFleetFailure, TickFleetFailure},
 }
 
 // ruleAnswerConsumed is the fields a finish clears on the primary pr: the rule's answer
@@ -774,7 +773,7 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 const RuleFleetWindow = time.Hour
 
 // PartFleetFailure is the tick part that raises the fleet's failure.
-const PartFleetFailure = "rule fleet failure"
+const PartFleetFailure = "fleet failure" // not a rule part: it runs with the rules off (TickEndWith)
 
 // TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
 // cards recorded within RuleFleetWindow of running time, in any column but landed (each card's
@@ -819,8 +818,15 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 // next attempt is on its way) is the attempt its failure was recorded at (FieldFailureAt).
 func lastFinishFailed(c *Card) bool {
 	last := c.Int("attempt")
-	if c.Col == Waiting || c.Col == Ready || c.Col == Working {
+	switch c.Col {
+	case Waiting, Ready, Working:
 		last--
+	case Review:
+		if c.F("result") != "failed" {
+			return false // its last finish (a late report, a repair) was not the failure
+		}
+	default:
+		return false // merging: its last finish succeeded
 	}
 	return last > 0 && c.F(FieldFailureAt) == itoa(last)
 }
