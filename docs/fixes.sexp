@@ -65,9 +65,11 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
-   (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
-  :items
+    (release "v1.2.15" :status "planned"
+     :text "The next small product fixes, one concern each.")
+    (release "v1.2.16" :status "planned"
+     :text "Every TLA+ model checked against the code."))
+   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
      :text "A member the inventory names and the fleet lacks was added down until it beats, so
@@ -2577,4 +2579,8 @@
     is refused through the lander's own table, the same line where the verb is registered passes, a
     line naming a verb of another tool or a shell built-in is not checked, and a Markdown prose line
     whose first token is a tool name is not refused."
-   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")))
+   :origin "this card, card-lint-a-called-verb-exists.w3.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w3.g2.e19")
+  (fix "tla-sprinttables-crash-and-repair-in-its-own-instance" :release "v1.2.16" :status "planned"
+   :title "SprintTables models the CI observations, ack, crash and repair in an instance of their own"
+   :text "Models only, no product change. tla/SprintTables.tla gains the outside events and the repair from internal/sprint/refmodel/actions.go: CiRed (a red CI observation on a placed primary opens the ci judgment and moves nothing), CiGreen (a green observation closes it), Ack (the coordinator answers the open ci judgment), Crash (a step over more than one table is cut before its last write, the work table: the fleet writes are committed, the work table is left at its pre-state, the deferred work-table write is held and the operation is pending) and Repair (the deferred write is applied and the operation releases). They live in CrashSpec, Spec plus the outside events, so the MCSprintTables and MCSprintTablesMerge cases, which run Spec, keep their state space and their 110 s budget. The new instance MCSprintTablesCrash (one flash primary, two members up, two readers) checks NoCardLostOrTwice and every earlier invariant across a crash at each cut step (Start, Finish, FleetDown and Drop), and the reversed witness MCSprintTablesCrashBrokenHalfstep (Broken \"halfstep\" drops the fence) fails NoCardLostOrTwice. refmodel/actions.go's CiRed, CiGreen, Ack, Crash and Repair comments cite the module. The sprinttables TLC group is re-run on this bench."
+   :origin "this card (tla-sprinttables-crash-and-repair-in-its-own-instance); the earlier tla-sprint-tables-crash-and-repair was deferred when SprintTables.tla grew about 600 lines and its instance no longer fit the 110 s budget")))
