@@ -61,7 +61,7 @@ The seat's session runs `nova-sprint hook --actor "$SEAT"` under a Monitor, with
 `NOVA_SPRINT_REDIS` exported: it holds one subscription on the server and prints one event a line. A seat read
 by a person or a model rather than a Monitor runs `nova-sprint hook --compact` (docs/CLI.md): the same
 subscription, printing only the HOOK lines it acts on and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one
-line plus its first detail line, dropping HAPPENED pushes and the acknowledge/verb menus, each line one write
+line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix), dropping HAPPENED pushes and the acknowledge/verb menus, each line one write
 so it is read at once on a pipe with no pty. With `--overdue <duration>` (default `5m`) a card-holding judgment
 the server's own list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>`
 line, again every interval until it is answered -- the seat's `hookfilter.pl` and `overduewatch.py` are gone.

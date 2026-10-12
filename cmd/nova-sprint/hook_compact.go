@@ -19,9 +19,11 @@ const hookOverdueDefault = 5 * time.Minute
 
 // compactSay is one line of the compact subscription: only the HOOK lines the seat
 // acts on (connected, challenge, bye, refused) and each JUDGMENT push cut to its
-// group line plus its first detail line. HAPPENED pushes and the verb menus are not
-// printed; every line is one write, so a pipe sees it at once. (docs/CLI.md,
-// `nova-sprint hook --compact`; docs/SPEC-SPRINT.md, "The hook".)
+// group line plus its first detail line. A judgment's group line may be prefixed
+// CRITICAL <n> behind: when its cards wait on it (reads.go, groupLine), so a push
+// is a judgment unless its first line is a HAPPENED one; HAPPENED pushes and the
+// verb menus are not printed. Every line is one write, so a pipe sees it at once.
+// (docs/CLI.md, `nova-sprint hook --compact`; docs/SPEC-SPRINT.md, "The hook".)
 func compactSay(w io.Writer, name, addr, from string, m hookMsg) {
 	switch m.T {
 	case "hello":
@@ -30,8 +32,8 @@ func compactSay(w io.Writer, name, addr, from string, m hookMsg) {
 		fmt.Fprintf(w, "HOOK CHALLENGE %s: answer now: nova-sprint hook --prove %s --actor %s\n", m.Challenge, m.Challenge, oneline.Field(name))
 	case "push":
 		lines := strings.Split(strings.TrimRight(m.Text, "\n"), "\n")
-		if len(lines) == 0 || !strings.HasPrefix(lines[0], "JUDGMENT") {
-			return // a HAPPENED push, or anything that is not a judgment: not printed
+		if len(lines) == 0 || strings.HasPrefix(lines[0], "HAPPENED") {
+			return // a HAPPENED push: not printed
 		}
 		fmt.Fprintf(w, "PUSH %d %s\n", m.ID, lines[0])
 		if len(lines) > 1 {

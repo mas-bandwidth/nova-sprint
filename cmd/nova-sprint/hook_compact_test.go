@@ -12,6 +12,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // TestHookCompactPrintsOnlyWhatTheSeatActsOn is the red test of the card: on a
@@ -30,13 +33,6 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 	srv := httptest.NewServer(localHandler{ta.a})
 	t.Cleanup(srv.Close)
 	env["NOVA_SPRINT_SERVER"] = srv.Listener.Addr().String()
-
-	// the HAPPENED push is never printed, whatever the stream says: the same say
-	// the compact subscription uses drops it.
-	var happened bytes.Buffer
-	compactSay(&happened, name, "addr", "env", hookMsg{T: "push", ID: 9, Session: "s", What: "machine:silent",
-		Text: "HAPPENED machine:silent x1  for=" + name + "  the machine is not ticking\n"})
-	require.Empty(t, happened.String(), "a HAPPENED push is not printed")
 
 	client := newApp(ta.a.getenv)
 	client.hookSock = ta.a.hookSock
@@ -95,7 +91,10 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 	require.Equal(t, 0, code, out+errs)
 	assert.Contains(t, out, "HOOK PROVEN name="+name)
 
-	// raise one card-holding judgment (NWorkFailed): the server's own list holds it.
+	// raise one card-holding judgment (NWorkFailed), which the server's own list
+	// holds, and one HAPPENED note addressed to the seat: the running hook's look
+	// pushes both, and the compact subscription must print the judgment and drop
+	// the HAPPENED on the pipe.
 	ta.ok("start")
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.deal(1)
@@ -103,11 +102,20 @@ func TestHookCompactPrintsOnlyWhatTheSeatActsOn(t *testing.T) {
 	require.NotNil(t, card)
 	ta.failOnce(card.Row, "s1-1.w1@1", "the compact test holds the card")
 	ta.ok("tick")
+	st, err := ta.a.store(common{redis: "mem:0"})
+	require.NoError(t, err)
+	_, err = st.Run(context.Background(), store.Step{Verb: "persist happened", Plan: func(*sprint.Snapshot) sprint.Plan {
+		return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: sprint.NReadyToMerge, Stream: "s1", To: name,
+			Count: 1, Who: sprint.MachineActor, At: ta.a.now(),
+			What: "1 accepted and queued to merge: s1-1; run: nova-sprint land --stream s1"}}}
+	}})
+	require.NoError(t, err)
 	s := ta.hookSession()
 	require.NotNil(t, s)
 	s.look(context.Background())
 
-	// the JUDGMENT is printed as PUSH <n> JUDGMENT ... with its first detail line.
+	// the JUDGMENT is printed as PUSH <n> JUDGMENT ... with its first detail line;
+	// the HAPPENED push raised on the same look is dropped, never printed.
 	var pushed, detail string
 	deadline := time.After(5 * time.Second)
 waitPush:
@@ -116,6 +124,9 @@ waitPush:
 		case l, ok := <-lines:
 			if !ok {
 				break waitPush
+			}
+			if strings.Contains(l, "ready to merge") {
+				t.Fatalf("a HAPPENED push was printed on the compact stream: %q", l)
 			}
 			if strings.HasPrefix(l, "PUSH ") && strings.Contains(l, "JUDGMENT") {
 				pushed = l
@@ -177,4 +188,24 @@ waitPush:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the compact hook did not end after unhook")
 	}
+}
+
+// TestCompactSayPrintsACriticalJudgment pins that a judgment whose cards wait on
+// it is printed, not dropped: its group line is prefixed `CRITICAL <n> behind:`
+// (reads.go, groupLine, when g.Behind reaches sprint.CriticalBehind), so the
+// compact filter decides "is this a judgment" by its HAPPENED prefix alone, never
+// by a literal leading JUDGMENT. A dropped critical judgment is the one the seat
+// most needs. (docs/CLI.md, `nova-sprint hook --compact`; docs/SPEC-SPRINT.md,
+// "The hook".)
+func TestCompactSayPrintsACriticalJudgment(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := sprint.Group{Kind: sprint.Judgment, ID: "j1", Type: sprint.NWorkFailed, Alias: "j1",
+		Stream: "s1", Size: 1, Primaries: []string{"s1-1"}, Behind: sprint.CriticalBehind + 130,
+		Oldest: now.Add(-10 * time.Second), What: "the first detail line"}
+	var b bytes.Buffer
+	compactSay(&b, "seat", "addr", "env", hookMsg{T: "push", ID: 7, Text: groupText(g, now, false)})
+	out := b.String()
+	require.Contains(t, out, "PUSH 7 CRITICAL 140 behind: JUDGMENT j1", "the critical judgment is printed, its group line intact")
+	require.Contains(t, out, "  the first detail line\n", "the critical judgment's first detail line is printed")
 }
