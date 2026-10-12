@@ -11,9 +11,7 @@
 package harness
 
 import (
-	"path/filepath"
 	"slices"
-	"strings"
 )
 
 // The harness words.
@@ -32,18 +30,6 @@ var Headless = []string{Claude, Codex, Grok}
 
 // IsHeadless reports whether kind is one of the headless harnesses.
 func IsHeadless(kind string) bool { return slices.Contains(Headless, kind) }
-
-// KindOf is the harness a binary is: the headless harness its program name spells
-// (`claude`, `/Users/g/.local/bin/codex`, `grok.exe`), and opencode for any other program,
-// which the providers table launches as it always has.
-func KindOf(bin string) string {
-	base := filepath.Base(bin)
-	name := strings.TrimSuffix(base, filepath.Ext(base))
-	if IsHeadless(name) {
-		return name
-	}
-	return OpenCode
-}
 
 // ProviderPrefix begins the provider word of a headless harness's route.
 const ProviderPrefix = "subscription-"

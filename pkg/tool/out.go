@@ -59,7 +59,6 @@ type Out struct {
 	Payload string
 
 	token    string   // the first word of every line: the verb, upper-case
-	printed  bool     // the verb printed its own output (Flags.Prints)
 	findings []string // item kinds whose lines go to stderr (Findings)
 }
 
@@ -107,18 +106,6 @@ func Refuse(why ...string) *Out      { return &Out{Status: Refused, Exit: 2, Why
 func Fail(why ...string) *Out        { return &Out{Status: Failed, Exit: 1, Why: why} }
 func Payload(text string) *Out       { return &Out{Status: OK, Payload: text} }
 func (o *Out) Note(text string) *Out { o.Notes = append(o.Notes, text); return o }
-
-// Exit is the result of a verb that printed its own output (Flags.Prints).
-func Exit(code int) *Out {
-	o := &Out{Status: OK, Exit: code, printed: true}
-	switch {
-	case code == 1:
-		o.Status = Failed
-	case code != 0:
-		o.Status = Refused
-	}
-	return o
-}
 
 // Fact adds one key=value to the first line.
 func (o *Out) Fact(k string, v any) *Out { o.Facts = append(o.Facts, Field{k, v}); return o }

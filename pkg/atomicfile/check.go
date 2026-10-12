@@ -38,30 +38,6 @@ func CheckAfterMkdirAll(path string, perm os.FileMode, opts ...Option) error {
 	return Check(path, perm, opts...)
 }
 
-// CheckAppend makes the checks an append that creates path when it is absent
-// (os.OpenFile with O_CREATE|O_APPEND, after os.MkdirAll of its parent) needs:
-// the parent as MkdirAll would make it, and a target that is absent or a regular
-// file this process can write.
-func CheckAppend(path string) error {
-	dir := filepath.Dir(path)
-	if err := checkMkdirAll(dir); err != nil {
-		return wrapErr(fmt.Sprintf("atomicfile: parent directory for %q", path), err)
-	}
-	fi, err := os.Stat(path)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		if _, derr := os.Stat(dir); derr == nil {
-			return wrapErr(fmt.Sprintf("atomicfile: parent directory for %q", path), canWrite(dir))
-		}
-		return nil
-	case err != nil:
-		return wrapErr(fmt.Sprintf("atomicfile: stat %q", path), err)
-	case !fi.Mode().IsRegular():
-		return fmt.Errorf("atomicfile: %q is not a regular file", path)
-	}
-	return wrapErr(fmt.Sprintf("atomicfile: open %q", path), canWriteFile(path, fi))
-}
-
 // checkMkdirAll answers whether os.MkdirAll(dir) would succeed without making
 // anything: dir is a directory (a link to one is followed, as MkdirAll follows
 // it), or the nearest ancestor that exists is a directory this process can

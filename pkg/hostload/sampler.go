@@ -1,9 +1,7 @@
 package hostload
 
 import (
-	"context"
 	"sync"
-	"time"
 )
 
 // RingSize is how many one-second samples the ring holds: the ten seconds the
@@ -15,12 +13,6 @@ const RingSize = 10
 type Ring struct {
 	v [RingSize]float64
 	n uint64 // samples ever added
-}
-
-// Add puts one sample in, in place of the oldest once the ring is full.
-func (r *Ring) Add(pct float64) {
-	r.v[r.n%RingSize] = capped(pct)
-	r.n++
 }
 
 // Count is how many samples were ever added.
@@ -45,53 +37,8 @@ func (r *Ring) MaxSince(count uint64) (float64, bool) {
 // CPUSecond (a meter that takes its own second). Safe for use from the goroutine that
 // runs it and the one that reads it.
 type Sampler struct {
-	src  Source
 	mu   sync.Mutex
-	prev *Ticks
 	ring Ring
-}
-
-// NewSampler is a Sampler over src with nothing sampled yet.
-func NewSampler(src Source) *Sampler { return &Sampler{src: src} }
-
-// Step takes one reading and, when it gives a percent, adds it to the ring and returns
-// it. With CPUSecond it takes about a second; with ProcStat it returns at once and the
-// percent is the busy share of the ticks since the last Step (false on the first).
-func (s *Sampler) Step() (float64, bool) {
-	var pct float64
-	switch {
-	case s.src.CPUSecond != nil:
-		p, err := s.src.CPUSecond()
-		if err != nil {
-			return 0, false
-		}
-		pct = p
-	case s.src.ProcStat != nil:
-		text, err := s.src.ProcStat()
-		if err != nil {
-			return 0, false
-		}
-		cur, good := ParseProcStat(text)
-		if !good {
-			return 0, false
-		}
-		s.mu.Lock()
-		prev := s.prev
-		s.prev = &cur
-		s.mu.Unlock()
-		if prev == nil {
-			return 0, false
-		}
-		if pct, good = BusyPercent(*prev, cur); !good {
-			return 0, false
-		}
-	default:
-		return 0, false
-	}
-	s.mu.Lock()
-	s.ring.Add(pct)
-	s.mu.Unlock()
-	return capped(pct), true
 }
 
 // Peak is the highest sample added after the first since of them (at most the last
@@ -102,20 +49,4 @@ func (s *Sampler) Peak(since uint64) (pct float64, total uint64, ok bool) {
 	defer s.mu.Unlock()
 	pct, ok = s.ring.MaxSince(since)
 	return pct, s.ring.Count(), ok
-}
-
-// Run steps once a second until ctx ends. A source that takes its own second sets the
-// pace; one that does not is waited on for the rest of the second.
-func (s *Sampler) Run(ctx context.Context) {
-	if s.src.CPUSecond == nil && s.src.ProcStat == nil {
-		return
-	}
-	for ctx.Err() == nil {
-		began := time.Now()
-		s.Step()
-		select {
-		case <-ctx.Done():
-		case <-time.After(time.Second - time.Since(began)):
-		}
-	}
 }
