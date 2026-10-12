@@ -407,7 +407,7 @@ func FriendTakeStep(r sprint.FriendTakeReq) Step {
 
 // FriendGiveStep clears the take-back mark of a friend on the cards named (friend give).
 func FriendGiveStep(r sprint.FriendGiveReq) Step {
-	return Step{Args: ArgsOf(r), Verb: "friend give", Load: tables(sprint.Fleet, sprint.Work), Mirrors: true, FriendText: true,
+	return Step{Args: ArgsOf(r), Verb: "friend give", Load: tables(sprint.Fleet, sprint.Work), Mirrors: true, FriendText: true, Friends: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendGive(s, r) }}
 }
 
