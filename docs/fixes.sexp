@@ -3076,4 +3076,20 @@
       dev is behind counts and never by fabricating a landing in non-test code; the bare merge's exit-2
       refusal and the pushed landing checks are kept. TestTheDirtyTickDriveOnAStore is green: 1,200
       cards land, dev is behind is raised, and the coordinator promotes."
-     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")))
+     :origin "this card, the-dirty-drive-raises-dev-behind-and-promotes.w2, from the coordinator, 2026-10-12 ~07:35Z")
+    (fix "four-functional-tests-tick-before-they-check" :release "v1.2.17" :status "planned"
+     :title "The functional tests tick before they check the machine's work"
+     :text "Four functional tests checked before the machine had applied their verbs: on a running
+      machine most commands (finish, ask, read, accept, an in-place brief edit) are held until the next
+      tick, and the tests checked before any tick. Each test is fixed, never the product, and nothing
+      they assert is loosened. TestANeedAddedToAWorkingCardIsNotABrokenInvariant ticks right after the
+      brief edit and passes --epoch 0 to the finish; TestReadOkDoneAndTheWakeOnTheStore's merge step
+      gets the store address (recordMergeOn), since the app from newFunctionalTestApp carries no Redis;
+      TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches wraps its briefs in passingBrief (they lacked
+      the RULES paragraph), adds stream s2 only after s1 lands, adds one held card so the sprint never
+      finishes and the judgment still runs, and beats m1 at the top of land so its cards are not redealt
+      as stale; TestAMergeBeforeThePumpOnTheStore asserts what the merge prints about the stream
+      (archiving is manual, so no archived-stream line appears). go test -tags functional
+      -run 'NeedAddedToAWorkingCard|ReadOkDoneAndTheWake|DevIsBehindCountsOnly|MergeBeforeThePump'
+      ./cmd/nova-sprint/ and go test ./internal/ci/ are green."
+     :origin "this card, four-functional-tests-tick-before-they-check.w1, from the coordinator, 2026-10-12 ~08:35Z, from a diagnosis of the functional tier on sprint/v1214-blocker @ a70a3ffe")))
