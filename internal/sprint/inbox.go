@@ -61,6 +61,10 @@ type InboxReq struct {
 	Prefix   string         // the deployment's prefix (empty for none), for the commands that name it
 	Epoch    uint64         // the sprint's epoch: the stale groups' ids carry it
 	Weights  map[string]int // each open primary's weight (sprint.Weights): the heaviest judgments first
+	// OnWork says an id is a card on the work table (the store reads it with the inbox): the
+	// printed decisions never offer a wait the judgment refuses (WaitRefusalOn). nil is the
+	// table of kinds alone.
+	OnWork func(id string) bool
 	// Stopped is the time the machine was STOPPED between two clock
 	// readings: the deadlines count running time only, as the tick's do. nil
 	// is none.
@@ -275,7 +279,7 @@ func Inbox(r InboxReq) []Group {
 		judg[i].Size = len(judg[i].Members)
 		sort.Strings(judg[i].Primaries)
 		sort.Strings(judg[i].Notes)
-		judg[i].Commands = commands(judg[i], first[i], r.Prefix)
+		judg[i].Commands = commands(judg[i], first[i], r.Prefix, r.OnWork)
 		judg[i].Quiet = !loud[i]
 		for _, m := range judg[i].Members {
 			judg[i].Behind = max(judg[i].Behind, r.Weights[m])
@@ -300,7 +304,7 @@ func Inbox(r InboxReq) []Group {
 			Oldest: st.Progress, Due: st.Progress.Add(r.Stale + r.Now.Sub(st.Progress) - r.running(st.Progress)), Waited: r.running(st.Progress), Decisions: Decisions[NStreamStale],
 			What:    "state " + st.State + " since " + st.Since.UTC().Format(time.RFC3339),
 			HookKey: fmt.Sprintf("%s\x00progress=%s\x00state=%s\x00since=%s\x00quiet=%s", StaleGroupID(st.Stream, r.Epoch), st.Progress.UTC().Format(time.RFC3339Nano), st.State, st.Since.UTC().Format(time.RFC3339Nano), st.Quiet.UTC().Format(time.RFC3339Nano))}
-		g.Commands = commands(g, Note{}, r.Prefix)
+		g.Commands = commands(g, Note{}, r.Prefix, r.OnWork)
 		out = append(out, g)
 	}
 	// a judgment quieted by wait is listed after every one that is not, for its
@@ -388,10 +392,11 @@ const (
 )
 
 // NoteCommands is one open judgment's decisions as commands, the members it
-// names its subjects: as the inbox prints them for a group of one.
+// names its subjects: as the inbox prints them for a group of one. The members are cards on
+// the work table (its callers name a primary), so a wait the judgment refuses is not offered.
 func NoteCommands(n Note, members []string) []Command {
 	g := Group{ID: n.ID, Alias: n.Alias, Kind: Judgment, Type: n.Type, Stream: n.Stream, Size: len(members), Notes: []string{n.ID}, Members: members, Decisions: n.Decisions}
-	return commands(g, n, "")
+	return commands(g, n, "", func(id string) bool { return slices.Contains(members, id) })
 }
 
 // commands is the group's decisions as commands, from its oldest note (a
@@ -399,7 +404,13 @@ func NoteCommands(n Note, members []string) []Command {
 // decision about cards takes the group with its size and the notifications it
 // answers; a decision about a stopped stream names the cards and resumes the
 // stream.
-func commands(g Group, first Note, prefix string) []Command {
+func commands(g Group, first Note, prefix string, onWork func(id string) bool) []Command {
+	// never offer a verb the judgment refuses: the one rule the wait verb applies
+	// (WaitRefusalOn), a judgment naming a work-table card included (a stop, a drift, a stall)
+	if WaitRefusalOn(first, onWork) != "" {
+		// never offer a verb the judgment refuses (wait_refused.go): a stall that names a card
+		g.Decisions = slices.DeleteFunc(slices.Clone(g.Decisions), func(d string) bool { return d == "wait" || strings.HasPrefix(d, "wait ") })
+	}
 	const cmd = "nova-sprint "
 	grp := " --group " + g.ID + " --expect " + itoa(g.Size)
 	ans := " --answers " + strings.Join(g.Notes, ",")

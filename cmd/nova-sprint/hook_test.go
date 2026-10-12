@@ -612,8 +612,8 @@ func (ta *testApp) hookTick() {
 	require.NoError(ta.t, err)
 }
 
-// A running-time wait on a tick-kept judgment survives a server restart: the
-// hook does not raise it again before its review time.
+// A running-time wait on a timer judgment survives a server restart. A separate
+// card-holding invariant remains open exactly once; it is never used as a wait.
 func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {
 	t.Parallel()
 	const name = "hook-wait-restart"
@@ -625,8 +625,12 @@ func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.deal(1)
 	ta.ok("start")
+	ta.timerOnce("restart-look")
+	// timerOnce restores a stopped fixture after the reminder tick; start it
+	// again before measuring the wait over running time.
+	ta.ok("start")
 	// A second live work card for the same primary is a stable rule-2 invariant
-	// violation, the concrete TickCheck judgment whose wait must survive restart.
+	// violation; keep that card-holding judgment open to check it is not duplicated.
 	st, err := ta.a.store(common{redis: "mem:0", actor: name})
 	require.NoError(t, err)
 	snap, err := st.Load(context.Background(), []string{sprint.Fleet}, nil)
@@ -637,27 +641,25 @@ func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {
 			Create: &ntable.MemberCreateOp{Row: "m2", Col: sprint.Working, Score: 1}, Set: map[string]string{"kind": "work", "primary": "s1-1", "gen": "1"}}}})
 	require.NoError(t, err)
 	ta.ok("tick")
-	var held sprint.Group
+	var invariant sprint.Group
 	for _, g := range ta.inboxGroups() {
 		if g.Kind == sprint.Judgment && g.Type == sprint.NInvariant {
-			held = g
+			invariant = g
 			break
 		}
 	}
-	require.NotEmpty(t, held.ID, "the tick-check invariant judgment: %+v", ta.inboxGroups())
+	require.NotEmpty(t, invariant.ID, "the tick-check invariant judgment: %+v", ta.inboxGroups())
+	held := ta.group(sprint.NTimer, "")
 	ta.ok("wait " + held.ID + " --for 60m")
-	notes, _, err := ta.m.NotesSince(context.Background(), "", 10000)
-	require.NoError(t, err)
-	var heldWait sprint.Note
-	for _, n := range notes {
-		if n.Kind == sprint.Acknowledged && n.Type == sprint.NInvariant && !n.Review.IsZero() {
-			heldWait = n
-			break
-		}
-	}
-	require.Equal(t, ta.a.now().Add(60*time.Minute), heldWait.Review, "wait persisted the tick-kept review time: %+v", heldWait)
+	held = ta.group(sprint.NTimer, "")
+	require.True(t, held.Quiet, "wait persisted the timer review: %+v", held)
+	reviewUntil := ta.a.now().Add(60 * time.Minute)
+	require.Equal(t, reviewUntil, held.Due, "wait persisted the timer review time: %+v", held)
 	// The server and hook come back 15m later, inside the stated running-time hold.
+	beforeRestart := ta.a.now()
 	ta.step(15 * time.Minute)
+	require.Equal(t, beforeRestart.Add(15*time.Minute), ta.a.now(), "the running clock advanced through the hold")
+	require.True(t, ta.a.now().Before(reviewUntil), "the timer review remains in the future after the clock advance")
 	require.NoError(t, first.conn.Close())
 	ta.waitHook(sprint.HookGone)
 	ta.restartTestServer()
@@ -669,15 +671,18 @@ func TestAWaitHoldsAcrossAServerRestart(t *testing.T) {
 	s := ta.hookSession()
 	require.NotNil(t, s)
 	s.look(context.Background())
+	restartedHeld := ta.group(sprint.NTimer, "")
+	assert.True(t, restartedHeld.Quiet, "the timer remains quiet after server restart: %+v", restartedHeld)
+	assert.Equal(t, reviewUntil, restartedHeld.Due, "the timer review survived restart: %+v", restartedHeld)
 	replayed := collectHookPushes(second)
 	for _, p := range replayed {
-		assert.NotEqual(t, held.ID, p.What, "a held tick-check judgment is not raised again after restart")
+		assert.NotEqual(t, held.ID, p.What, "a held timer judgment is not raised again after restart")
 	}
-	notes, _, err = ta.m.NotesSince(context.Background(), "", 10000)
+	notes, _, err := ta.m.NotesSince(context.Background(), "", 10000)
 	require.NoError(t, err)
 	var raised int
 	for _, n := range notes {
-		if n.Kind == sprint.Judgment && n.Type == sprint.NInvariant && n.What == held.What {
+		if n.Kind == sprint.Judgment && n.Type == sprint.NInvariant && n.What == invariant.What {
 			raised++
 		}
 	}

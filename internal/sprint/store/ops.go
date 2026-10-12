@@ -357,7 +357,11 @@ func (st *Store) OpenGroups(ctx context.Context) ([]sprint.Group, error) {
 		return nil, err
 	}
 	open, _ = sprint.SplitOpen(open)
-	return sprint.Inbox(sprint.InboxReq{Now: st.now(), Open: open, Prefix: st.Names.Prefix, Epoch: st.epoch}), nil
+	req := sprint.InboxReq{Now: st.now(), Open: open, Prefix: st.Names.Prefix, Epoch: st.epoch}
+	if snap, err := st.Load(ctx, []string{sprint.Work}, nil); err == nil {
+		req.OnWork = func(id string) bool { return snap.Work != nil && snap.Work.Placed(id) != nil }
+	}
+	return sprint.Inbox(req), nil
 }
 
 // follow is the store pinned to the sprint's current epoch, re-reading the
@@ -413,6 +417,7 @@ func (st *Store) Inbox(ctx context.Context, deadline, stale time.Duration, max i
 	req := sprint.InboxReq{Now: st.now(), Open: v.Open, Recent: notes, Streams: clocks, Deadline: deadline, Stale: stale, Prefix: st.Names.Prefix, Epoch: st.epoch}
 	if snap, err := st.Load(ctx, []string{sprint.Work}, nil); err == nil {
 		req.Weights = sprint.Weights(snap) // the heaviest judgments first (weight.go)
+		req.OnWork = func(id string) bool { return snap.Work != nil && snap.Work.Placed(id) != nil }
 	}
 	var machine []sprint.Group
 	if _, ok := st.B.(KV); ok {

@@ -93,6 +93,13 @@
 \*                FriendKeepsStarted
 \*   "answersmind" the read-broken answer leaves a non-empty finding at the brief's bound to a
 \*                mind instead of reworking it: PartsAgree
+\*   "parkfailed" failed work below its bound that no harness class names is left to the seat,
+\*                who may park it (the wait loop of 2026-10-11, about 22 of 42 review cards
+\*                frozen): FailedWithAFindingNeverParked
+\*   "noreportrework" the failed rule reworks failed work that carries no report, with no fix:
+\*                ReworkHasAFix
+\*   "identicalrework" the second identical failure is reworked as failed work on its tier
+\*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
 
 EXTENDS Integers, FiniteSets
 
@@ -139,7 +146,10 @@ vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVa
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
 AnFindings == {"f1", "f2", "empty"}
-AnFails == {"harness", "hold", "other"}
+\* the ways work fails: a harness fault, a HOLD with findings, any other failure with a report,
+\* a failure with no report to take as a fix, and the same failure as the attempt before
+\* (sprint.AtIdenticalFailure: the bound's, never a rework on its tier)
+AnFails == {"harness", "hold", "other", "noreport", "same"}
 
 TypeOK ==
   /\ col \in [TwinIds -> Cols]
@@ -615,8 +625,9 @@ AnReadBroken(f) ==
 \* the brief's judgment instead)
 AnWorkFails(k) ==
   /\ anst = "working"
+  /\ k = "same" => anreworks > 0
   /\ anhead' = anatt /\ anfail' = k
-  /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
+  /\ anst' = IF anatt >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
@@ -692,12 +703,27 @@ RuleAnHarness ==
   /\ AnRework(anfail)
   /\ UNCHANGED anlast
 
-\* a mind: a broken read with no finding, a failure no class names, a card at its bound; and
+\* the failed rule on any other failure below the bound (rules.go ruleFailed; the owner,
+\* 2026-10-11: "i would very much like it if this was not possible to happen again"): the
+\* report is the fix, the next attempt redealt, a tier up, or on its tier where the ladder has
+\* no rung or the failure is the fleet's; never left to the seat, who could park it with a wait
+\* (wait_refused.go: wait is refused on failed work and broken reads)
+RuleAnFailed ==
+  /\ anst = "failed" /\ Broken # "parkfailed"
+  /\ \/ anfail = "other"
+     \/ anfail = "noreport" /\ Broken = "noreportrework"
+     \/ anfail = "same" /\ Broken = "identicalrework"
+  /\ AnRework(IF anfail = "noreport" THEN "empty" ELSE anfail)
+  /\ UNCHANGED anlast
+
+\* a mind: a broken read with no finding, a card at its bound (and, broken, a failure no class
+\* names, left to the seat below its bound); and
 \* at the bound a non-empty finding is still reworked with it (as Part reads does), the
 \* finding marked fixed so it is not read again
 AnMind ==
   /\ \/ anst = "broken" /\ anfind = "empty"
-     \/ anst = "failed" /\ anfail = "other"
+     \/ anst = "failed" /\ anfail = "other" /\ Broken = "parkfailed"
+     \/ anst = "failed" /\ anfail = "noreport" /\ Broken # "noreportrework"
      \/ anst = "bound" /\ (anfind = None \/ Broken = "answersmind")
   /\ anst' = "judged"
   /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed>>
@@ -711,7 +737,7 @@ AnMindRework ==
 
 AnNext ==
   \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold
-  \/ RuleAnBroken \/ RuleAnHarness \/ AnMind \/ AnMindRework
+  \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework
   \/ \E f \in AnFindings : AnReadBroken(f)
   \/ \E k \in AnFails : AnWorkFails(k)
 
@@ -739,6 +765,24 @@ PartsAgree == (anst = "bound" /\ anfind \notin {None, "empty"}) ~> (anst = "work
 \* Every broken read, failure and bound is answered: by rule where a rule answers, by a mind
 \* where none does.
 AnAnswered == (anst \in {"broken", "failed", "bound"}) ~> (anst \notin {"broken", "failed", "bound"})
+
+\* Failed work, and a broken read with a finding, below the bound is never held waiting on the
+\* seat: the machine reworks it with its report or its finding (or a late report finishes it).
+\* Only past the bound, or with no finding, is it a mind's (rules.go ruleFailed and
+\* ruleReadBroken; wait_refused.go).
+\* Failed work with no report, and the second identical failure (the bound's), are outside it.
+FailedWithAFindingNeverParked ==
+  ((anst = "failed" /\ anfail \in {"harness", "hold", "other"}) \/ (anst = "broken" /\ anfind # "empty"))
+    ~> (anst \in {"working", "done"})
+
+\* The second identical failure is never failed work the rule reworks on its tier: it is the
+\* bound's (rules.go ruleFailed leaves it to ruleBound).
+IdenticalIsBound == anfail = "same" => anst # "failed"
+
+\* The reversed witness: a mind still answers a card past the bound or with nothing to take as
+\* a fix (MCSprintRulesAnswersReachMindJudges: TLC reaches "judged" and so breaks it). "judged"
+\* is the seat's to answer at once: no wait parks it (wait_refused.go).
+ReachMindJudges == anst # "judged"
 
 -----------------------------------------------------------------------------
 \* Part "episodes": three judgments' episodes the fault inventory of 2026-10-10 found broken
@@ -1017,7 +1061,7 @@ Next ==
 Fairness ==
   /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
   /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>)
   /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness

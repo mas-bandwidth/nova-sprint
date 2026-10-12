@@ -344,13 +344,10 @@ func TestAGroupedJudgmentsCardHasItsOwnLines(t *testing.T) {
 	n := sprint.Note{ID: "tick-bound-1.1", Kind: sprint.Judgment, Type: sprint.NBound, Stream: "s1", Primaries: []string{"s1-1", "s1-2"},
 		Decisions: sprint.TickDecisions[sprint.NBound]}
 	cmds := cardCommands(n, "s1-2")
-	assert.Equal(t, []string{decide.VerbRework, decide.VerbDrop, decide.VerbWait}, allowedVerbs(cmds))
+	assert.Equal(t, []string{decide.VerbRework, decide.VerbDrop}, allowedVerbs(cmds), "no wait: the bound's judgment holds its card (wait_refused.go)")
 	lines, why := fill(commandOf(cmds, decide.VerbRework), decide.Chosen{Verb: decide.VerbRework, Fix: "pro-tier"})
 	require.Empty(t, why)
 	assert.Equal(t, [][]string{{"rework", "s1-2", "--fix", decide.Fixes["pro-tier"], "--one"}}, lines, "one card of a group, deliberately: --one")
-	lines, why = fill(commandOf(cmds, decide.VerbWait), decide.Chosen{Verb: decide.VerbWait})
-	require.Empty(t, why)
-	assert.Equal(t, [][]string{{"wait", "tick-bound-1.1", "--for", "30m"}}, lines)
 	_, why = fill(commandOf(cmds, decide.VerbRework), decide.Chosen{Verb: decide.VerbRework, Fix: "own"})
 	assert.Equal(t, "rework wants <fix>, which the decision did not give (fix=own)", why)
 	ready := sprint.Note{ID: "accept-1.1", Kind: sprint.Judgment, Type: sprint.NReadyToAccept, Stream: "s1", Primaries: []string{"s1-1", "s1-3"}, Decisions: sprint.Decisions[sprint.NReadyToAccept]}
