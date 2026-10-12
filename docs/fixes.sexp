@@ -3118,4 +3118,27 @@
      missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
      reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
      is not on main, naming the card or pull request that owes its tests."
-    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")))
+     :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")
+   (fix "a-card-in-review-always-has-a-read-the-ask-can-reach" :release "v1.2.14" :status "planned"
+    :title "A card in review always has a read the ask can reach"
+    :text "A finish card sat in review at attempt 2 with no read out: its attempt-1 read had
+     been withdrawn by a friend's hold and its attempt-2 read ended with no verdict (a
+     return, ran=false). The ask verb was refused \"asked already: its reads are out\" while
+     `ask --another` was refused \"not asked yet at attempt 2\", the two refusals contradicting
+     each other, check showed no violation, and the seat had to rework a finished card to get
+     reads asked again. The two refusals held two definitions of \"asked at this attempt\": the
+     ask verb's --another counted only the readers table (readsAt) while the no-stall rule's
+     decisions and the plain ask read ReadsWanted, so a read on the fleet table (a read card)
+     or a withdrawn one made them disagree. One function, askedAtAttempt (readers.go), now
+     decides both: a read of the attempt anywhere on either table, whatever its state
+     (placed, retired with a verdict, returned, withdrawn or taken back), was asked. Ask's
+     eligible (steps_review.go) and the no-stall rule's decisions (held.go) both call it, so
+     the ask verb and the tick never contradict. A read that ended with no verdict, or was
+     withdrawn by a hold or a return, is re-asked of another reader at the next tick for the
+     card's current attempt (TickAsk). A card in review with no read out and no open judgment
+     is a ConsumersOut violation at TickCheck (a card in review is a producer whose consumer
+     is a read), so the seat is told rather than the card sitting silent. Tests:
+     internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
+     TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
+    :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
+     epoch 19, v1.2.13")))
