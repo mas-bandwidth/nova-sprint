@@ -2550,6 +2550,34 @@
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
      attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+   (fix "a-card-stages-its-sibling-runtimes" :release "v1.2.15" :status "planned"
+    :title "A card that reads a sibling repository stages it from the mirror or the forge"
+    :text "The schema conformance cards compare a leg against sibling repositories (mas-bandwidth/serialize,
+    serialize.c, serialize.cs); their harness expected ../serialize next to the checkout, and on the fleet
+    the job directory had no sibling, so the cards came back \"the C++ reference corpus (../serialize) ...
+    absent\" after a full attempt each. A brief that names a sibling path (../<name>) is now refused at
+    admission unless it carries a SIBLINGS header naming the repositories (owner/name@ref, comma separated),
+    with the path quoted (cardgen.LintSiblingPath, internal/cardgen/cardgen.go), and the add command holds the
+    rule at admission (cmd/nova-sprint/add_lint.go holdCardChecks). At staging the member clones each
+    SIBLINGS repository at its ref into $JOB/siblings/<name> from the bench mirror (~/nova-bench/mirror/<name>.git)
+    where one exists, else from the forge from outside the wall (the member's staging runs outside the wall;
+    the card's lane never fetches), and JOB.md names each as SIBLING_<NAME>=$JOB/siblings/<name> so the harness
+    is pointed there; a sibling that cannot be staged refuses the stage with the name and the card returns to
+    ready (a bench fault, not the worker's). docs/SPEC-CARD-CONTRACT.md gains the SIBLINGS header and
+     docs/SPEC-STAGING.md the siblings directory, the mirror and the refusal. Delivered:
+     cmd/nova-sprint/add_lint.go (holdCardChecks governs the admission), internal/cardgen/cardgen.go
+     (LintSiblingPath), internal/sprint/stage_siblings.go (StageSiblings, ParseSiblings) and
+     pkg/friend/stage.go (Stage parses the brief's SIBLINGS header and stages each sibling, then JOB.md is
+     written with the SIBLING_ lines; a sibling that cannot be staged refuses the stage) with their
+     tests; rework w6 widens the card's PATHS to name those three files, and rework w9 wires the staging
+     path a reader found had no caller, so the delivered scope lands."
+    :origin "this card, a-card-stages-its-sibling-runtimes.w1 (rework w2: the add command's admission now holds
+    the sibling-path rule), a-card-stages-its-sibling-runtimes.w2; the owner, 2026-10-11 ~12:20-12:45 PM ET: \"I
+    shouldn't need to tell you this, you should just get a push notification about it\", \"Fix the fucking gaps in
+    push notifications\", \"Make sure these watches become part of the tool\", \"We need a history and count of
+    consumer cards launched, per-producer card, included in the producer card\", \"we need to discover this earlier
+    with card lint ... or some sort of plan review\"; the seat's own record of the day; the schema cards' failed
+     attempts of 2026-10-11 for c, cs and rust")
    (fix "the-lander-merges-evidence-ledgers" :release "v1.2.15" :status "planned"
     :title "The lander merges the evidence ledgers entry by entry"
     :text "The generated ledgers docs/roadmap-evidence/fixed-<leg>.sexp are one entry per card,
