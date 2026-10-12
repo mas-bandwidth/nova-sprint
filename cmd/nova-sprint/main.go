@@ -208,6 +208,12 @@ type app struct {
 	// lines, in place of the user's cache directory.
 	hooks    *hookHub
 	hookSock func(name string) (string, error)
+	// hookDial, when set (a test), opens a hook holder's stream to the server in place of
+	// the dial and upgrade (hookholder.go, hookStream): a pipe to the test's own server.
+	hookDial func(ctx context.Context, addr, name string, quiet bool) (io.ReadWriteCloser, error)
+	// hookListen, when set (a test), opens the holder's listener for the session's lines
+	// in place of the machine's unix socket (hookholder.go, hookHolder.listen).
+	hookListen func(name string) (net.Listener, string, error)
 	// hk is this process's shared hook records (hook.go, hooker): the bus store
 	// NOVA_BUS_REDIS names, opened at the first gate that reads it and kept; the server's
 	// lane apps share their server's (servelanes.go), so a lane opens no store of its own.

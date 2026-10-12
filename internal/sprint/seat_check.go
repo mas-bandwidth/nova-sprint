@@ -616,6 +616,12 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 		}
 		facts := []string{"holder=" + orDash(h.Holder), "state=" + state, fmt.Sprintf("unacked=%d", h.Record.Unacked)}
 		if why := HookGate(h.Record, h.Recorded, h.Holder, now); why != "" {
+			// since: when the record's state began (an end's time), so the line says how long
+			// the seat has been without its hook (the seat's push loop holds it unattended:
+			// cmd/nova-sprint/pushhook.go; a DOWN here past a beat is a loop to look at)
+			if h.Recorded && !h.Record.Since.IsZero() {
+				facts = append(facts, "since="+h.Record.Since.UTC().Format(time.RFC3339))
+			}
 			add(SeatCheckLine{Thing: SeatCheckHook, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: "nova-sprint hook"})
 		} else {
 			add(SeatCheckLine{Thing: SeatCheckHook, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(h.Record.Proven))+" ago")})

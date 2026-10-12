@@ -65,6 +65,11 @@ type inboxSource interface {
 	// the group open names is read whole (its members and needs), as inbox
 	// --open reads it.
 	inbox(ctx context.Context, open string) (inboxLook, error)
+	// hookState is the seat's hook as the server's record says it for name
+	// (sprint.HookRecord: its state, "none" for no record, and why it ended),
+	// read by the push loop's hold of the hook before it opens a connection
+	// (pushhook.go).
+	hookState(ctx context.Context, name string) (state, why string, err error)
 }
 
 // inboxLook is one look at the inbox: its groups, the machine's line and who
@@ -95,6 +100,14 @@ func (s *storeSource) tickEnd(ctx context.Context, d time.Duration) error {
 	}
 	_, s.after, err = s.st.B.Tails(ctx)
 	return err
+}
+
+func (s *storeSource) hookState(ctx context.Context, name string) (string, string, error) {
+	rec, ok, err := readHook(ctx, s.st)
+	if err != nil || !ok || rec.Name != name {
+		return "none", "", err
+	}
+	return rec.State, rec.Why, nil
 }
 
 func (s *storeSource) inbox(ctx context.Context, _ string) (inboxLook, error) {
@@ -171,6 +184,32 @@ func (s *serverSource) tickEnd(ctx context.Context, d time.Duration) error {
 		}
 	}
 	return nil
+}
+
+// hookState through the server is the coordinator view's hook line (view.go,
+// sprint.HookSaid: state=<s> proven=<t> unacked=<n>); the view says no reason, so a
+// hook gone on a missed challenge reads as gone, and the loop opens one connection
+// more than it would on the store.
+func (s *serverSource) hookState(ctx context.Context, name string) (string, string, error) {
+	res, err := s.a.ask(ctx, s.addr, []string{"view", "coordinator"}, []string{"--json"})
+	if err != nil {
+		return "", "", err
+	}
+	if res.Code != 0 {
+		return "", "", fmt.Errorf("the server's view coordinator exited %d: %s", res.Code, strings.TrimSpace(res.Stderr))
+	}
+	var out struct {
+		Hook string `json:"hook"`
+	}
+	if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
+		return "", "", fmt.Errorf("the server's view coordinator is not JSON: %w", err)
+	}
+	for _, f := range strings.Fields(out.Hook) {
+		if v, ok := strings.CutPrefix(f, "state="); ok {
+			return v, "", nil
+		}
+	}
+	return "none", "", nil
 }
 
 func (s *serverSource) inbox(ctx context.Context, open string) (inboxLook, error) {
@@ -412,6 +451,14 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 	if err != nil {
 		return refuse(stderr, "inbox", "--push: "+err.Error())
 	}
+	// the seat's hook, held by this loop for the holder of the moment (pushhook.go): a
+	// loop following the seat holds it; one writing a fixed directory is not the seat's
+	var hh *pushHook
+	if p.fixed == "" {
+		if hh = a.pushHookStart(ctx, src, p, look.holder, asJSON, stdout); hh != nil {
+			defer hh.end()
+		}
+	}
 	// the tick's lateness, at every look (pushlate.go): a tick that runs late cannot tell of itself
 	late := &lateWatch{}
 	a.pushLate(ctx, src, p, late, look, asJSON, stdout, stderr)
@@ -429,12 +476,18 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 		if p.fixed == "" {
 			a.pushJudgments(ctx, src, look.holder, texts, asJSON, stdout)
 		}
+		if hh != nil {
+			hh.delivered(ctx, look) // the pushes whose judgments are in the inbox now
+		}
 		if ctx.Err() != nil {
 			return 0
 		}
 		running := lineRunning(look.machine)
 		fresh, look, err = a.waitNew(ctx, src, func(l inboxLook) ([]sprint.Group, error) {
 			p.follow(l.holder, false, stdout, stderr)
+			if hh != nil {
+				hh.follow(ctx, l.holder)
+			}
 			a.pushLate(ctx, src, p, late, l, asJSON, stdout, stderr)
 			return p.unseen(l)
 		}, running, timeout)

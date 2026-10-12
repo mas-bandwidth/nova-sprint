@@ -2155,6 +2155,11 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 	if addr := a.server(fs); addr != "" && *wait {
 		return a.inboxWaitAt(addr, fs, args, *atEpoch, *timeout, *push, c.json, stdout, stderr)
 	}
+	if *push != "" {
+		// the push loop is the hook's holder: the store's gate exempts it by this word, as
+		// the command line's does by its flags (hookExemptCall)
+		c.verb = "inbox --push"
+	}
 	st, err := a.storeAt(*c, *atEpoch)
 	if err != nil {
 		return refuse(stderr, "inbox", err.Error())

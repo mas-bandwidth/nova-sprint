@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -13,7 +12,6 @@ import (
 	"maps"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -108,17 +106,31 @@ func hookArmed(name string) bool {
 // verb that starts or replaces the server cannot wait on it. help, -h and version run
 // before the gate (main.go, run), and a verb's own -h is its help. Every other verb, the
 // machine's adopt, seat uninstall and friend clean among them, is gated for the holder.
-var hookExempt = map[string]bool{"hook": true, "unhook": true, "run": true, "tick": true, "server switch": true, "seat install": true, "selftest land": true}
+// inbox --push is the seat's push loop, the hook's holder (pushhook.go): a holder cannot
+// wait on the hook it holds, so it is exempt as hook is (by its flags on the command
+// line, hookExemptCall; by the word inbox --push where it opens the store, reads.go).
+var hookExempt = map[string]bool{"hook": true, "unhook": true, "run": true, "tick": true, "server switch": true, "seat install": true, "selftest land": true, "inbox --push": true}
 
 // hookExemptCall says the call of verb with these words is exempt: tick is, but not
 // tick --answer-rules, which answers judgments as the coordinator (the word read as the
 // command line has it, so no flag parse can lose it).
 func hookExemptCall(verb string, args []string) bool {
-	if verb == "tick" {
+	switch verb {
+	case "tick":
 		for _, w := range args {
 			name, val, _ := strings.Cut(strings.TrimLeft(w, "-"), "=")
 			if strings.HasPrefix(w, "-") && name == "answer-rules" && val != "false" {
 				return false
+			}
+		}
+	case "inbox":
+		// the seat's push loop (inbox --wait --push, the unit seat install writes) is the
+		// hook's holder (hookholder.go, pushhook.go): a holder cannot wait on the hook it
+		// holds, so it is exempt as hook is, by its words (inbox alone is not)
+		for _, w := range args {
+			name, _, _ := strings.Cut(strings.TrimLeft(w, "-"), "=")
+			if strings.HasPrefix(w, "-") && name == "push" {
+				return true
 			}
 		}
 	}
@@ -1387,6 +1399,18 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 		}
 		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack, Session: *session}, stdout, stderr)
 	}
+	// a holder already running on this machine (the seat's push loop: pushhook.go) is
+	// given the seat's word to hook in again, and holds the hook itself; a Monitor's
+	// hook refuses a second one
+	if sock, err := a.hookSocket(c.actor); err == nil {
+		if r, ok := a.hookAskRaw(sock, hookMsg{T: "hook"}); ok {
+			if r.T != "ok" {
+				return refuse(stderr, name, r.Why)
+			}
+			fmt.Fprintf(stdout, "HOOK ASKED name=%s holder=push-loop was=%s: the seat's push loop holds the hook and hooks in again now; its HOOK CHALLENGE is delivered into your inbox; answer it: nova-sprint hook --prove <challenge> --actor %s\n", oneline.Field(c.actor), oneline.Field(r.Why), oneline.Field(c.actor))
+			return 0
+		}
+	}
 	// the sprint's server the environment names, else the seat's record: the same order
 	// the coordinator's verbs use (forward.go, namedServer). (docs/SPEC-SPRINT.md, "The server".)
 	addr, from := a.namedServer()
@@ -1427,21 +1451,10 @@ func (a *app) hookAsk(name string, m hookMsg, stdout, stderr io.Writer) int {
 	}
 	conn, err := net.DialTimeout("unix", sock, 5*time.Second)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s REFUSED: no hook is running on this machine for %s (%s); run: nova-sprint hook, under a Monitor\n", prog, verb, oneline.Field(name), oneline.Escape(err.Error()))
+		fmt.Fprintf(stderr, "%s %s REFUSED: no hook is running on this machine for %s (%s); run: nova-sprint hook, under a Monitor, or the seat's push loop (nova-sprint seat install)\n", prog, verb, oneline.Field(name), oneline.Escape(err.Error()))
 		return 1
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(hookAskBound + 5*time.Second)) // ignored: a socket without deadlines waits
-	b, _ := json.Marshal(m)                                            // ignored: a message of strings and numbers always encodes
-	if _, err := conn.Write(append(b, '\n')); err != nil {
-		fmt.Fprintf(stderr, "%s %s FAILED: %s\n", prog, verb, oneline.Escape(err.Error()))
-		return 1
-	}
-	line, err := bufio.NewReader(conn).ReadBytes('\n')
-	var r hookMsg
-	if err == nil {
-		err = json.Unmarshal(line, &r)
-	}
+	r, err := hookExchange(conn, m)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s FAILED: the hook did not answer: %s\n", prog, verb, oneline.Escape(err.Error()))
 		return 1
@@ -1459,6 +1472,37 @@ func (a *app) hookAsk(name string, m hookMsg, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "UNHOOK OK name=%s state=away: the owner is told; every coordinator command is refused until nova-sprint hook\n", oneline.Field(name))
 	}
 	return 0
+}
+
+// hookExchange writes one of the session's lines on the socket's connection and reads
+// the holder's answer; the connection is closed after.
+func hookExchange(conn net.Conn, m hookMsg) (hookMsg, error) {
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(hookAskBound + 5*time.Second)) // ignored: a socket without deadlines waits
+	b, _ := json.Marshal(m)                                            // ignored: a message of strings and numbers always encodes
+	if _, err := conn.Write(append(b, '\n')); err != nil {
+		return hookMsg{}, err
+	}
+	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	var r hookMsg
+	if err == nil {
+		err = json.Unmarshal(line, &r)
+	}
+	return r, err
+}
+
+// hookAskRaw asks the holder on this machine's socket at sock one line: ok false when no
+// holder answers there (nothing is running, or what is there answers nothing).
+func (a *app) hookAskRaw(sock string, m hookMsg) (hookMsg, bool) {
+	conn, err := net.DialTimeout("unix", sock, time.Second)
+	if err != nil {
+		return hookMsg{}, false
+	}
+	r, err := hookExchange(conn, m)
+	if err != nil {
+		return hookMsg{}, false
+	}
+	return r, true
 }
 
 // hookRelay is the hook process's carriage of its session's lines: each one is written
@@ -1523,171 +1567,34 @@ const hookBusSubject = "nova-sprint hook bus challenge "
 // hookBusBlock is how long one read of the bus subscription waits for a message.
 const hookBusBlock = 5 * time.Second
 
-// hookHold is the caller's subscription, held until it ends: both its pushes. The bus
-// push first (the shared record's store, NOVA_BUS_REDIS, and a subscription to the
+// hookHold is the Monitor's hold of the seat's hook, until it ends: both its pushes.
+// The bus push first (the shared record's store, NOVA_BUS_REDIS, and a subscription to the
 // caller's own stream from its tail: refused, with nothing armed, when there is none),
-// then the server's stream (the sprint push for the coordinator, the work push for a
-// worker friend), the shared record armed for the role the server names, the socket for
-// the session's lines opened, and every line from either push said on stdout, one
-// event per line for the Monitor. Each challenge is answered once over both: the
-// server's half and the bus half, read back off the bus (HOOK CHALLENGE <s>.<b>); the
-// server takes its half, and the hook process records both proven in the shared record.
-// Exit 0 after unhook; 1 for any other end, which the server records as gone.
+// then the server's stream (the sprint push), the shared record armed for the role the
+// server names, the socket for the session's lines opened, and every line from either
+// push said on stdout, one event per line for the Monitor (hookholder.go: the holder; the
+// seat's push loop holds the same hook across sessions, pushhook.go). Each challenge is
+// answered once over both: the server's half and the bus half, read back off the bus
+// (HOOK CHALLENGE <s>.<b>); the server takes its half, and the hook process records both
+// proven in the shared record. Exit 0 after unhook; 1 for any other end, which the server
+// records as gone.
 func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, compact bool, overdue time.Duration, redis string, stdout, stderr io.Writer) int {
 	const verb = "hook"
-	hk, err := a.hooker(ctx)
+	h, err := a.newHookHolder(ctx, name, addr, from, quiet, false)
 	if err != nil {
-		return refuse(stderr, verb, "the bus push cannot be armed: "+oneline.Escape(err.Error())+"; set "+busRedisEnv+" (and "+busUserEnv+" for its login) to the bus store, then run: "+hookMonitor(name)+"; nothing was armed")
+		return refuse(stderr, verb, err.Error())
 	}
-	w, err := a.hk.bus.Waiter()
+	ln, sock, err := h.listen()
 	if err != nil {
-		return refuse(stderr, verb, "the bus push cannot be armed: "+oneline.Escape(err.Error())+"; nothing was armed")
-	}
-	stream := bus.StreamOf(name)
-	cursor, exists, err := w.Tail(ctx, stream)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s FAILED: the bus subscription could not start: %s; nothing was armed\n", prog, verb, oneline.Escape(err.Error()))
-		return 1
-	}
-	if !exists || cursor == "" {
-		cursor = "0-0"
-	}
-	sock, err := a.hookSocket(name)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s FAILED: %s\n", prog, verb, oneline.Escape(err.Error()))
-		return 1
-	}
-	if c, err := net.DialTimeout("unix", sock, time.Second); err == nil {
-		_ = c.Close()
-		return refuse(stderr, verb, "a hook is already running on this machine for "+name+" ("+sock+"): one Monitor holds the seat; stop it, or answer through it")
-	}
-	_ = os.Remove(sock) // ignored: a socket left by a hook that died answers nothing
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
+		if strings.HasPrefix(err.Error(), "a hook is already running") {
+			return refuse(stderr, verb, err.Error())
+		}
 		fmt.Fprintf(stderr, "%s %s FAILED: %s\n", prog, verb, oneline.Escape(err.Error()))
 		return 1
 	}
 	defer func() { _ = ln.Close(); _ = os.Remove(sock) }() // ignored: the socket is this process's
-
-	d := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return a.unanswered(verb, addr, err, stderr)
-	}
-	defer conn.Close()
-	quietParam := ""
-	if quiet {
-		quietParam = "&quiet_happened=1"
-	}
-	fmt.Fprintf(conn, "GET %s?as=%s%s HTTP/1.1\r\nHost: %s\r\nUpgrade: %s\r\nConnection: Upgrade\r\n\r\n", hookPath, url.QueryEscape(name), quietParam, addr, hookUpgrade)
-	br := bufio.NewReader(conn)
-	resp, err := http.ReadResponse(br, nil)
-	if err != nil {
-		return a.unanswered(verb, addr, err, stderr)
-	}
-	if resp.StatusCode != http.StatusSwitchingProtocols {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096)) // ignored: the status says enough
-		_ = resp.Body.Close()
-		fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, verb, oneline.Escape(strings.TrimSpace(string(body))))
-		return 1
-	}
+	go h.serve(ctx, ln)
 	out := &hookOut{w: stdout}
-	hs := &hookHoldState{}
-	subCtx, stopSub := context.WithCancel(ctx)
-	defer stopSub()
-
-	relay := &hookRelay{w: conn, pending: map[string]chan hookMsg{}}
-	// the keepalive, every sprint.HookKeepalive while this process holds the stream: it
-	// proves the transport alive, no more, so a connected hook is not lapsed for a quiet
-	// seat; whether the seat attends is the pushes' and the judgments' to find out
-	go func() {
-		t := time.NewTicker(sprint.HookKeepalive)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				if relay.say(hookMsg{T: "alive"}) != nil {
-					return
-				}
-			}
-		}
-	}()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				defer c.Close()
-				_ = c.SetDeadline(time.Now().Add(hookAskBound + 5*time.Second)) // ignored: a socket without deadlines waits
-				line, err := bufio.NewReader(c).ReadBytes('\n')
-				var m hookMsg
-				if err == nil {
-					err = json.Unmarshal(line, &m)
-				}
-				var r hookMsg
-				if err == nil {
-					r, err = a.hookRelayed(ctx, hk, hs, relay, name, m)
-				}
-				if err != nil {
-					r = hookMsg{T: "refused", Why: err.Error()}
-				}
-				b, _ := json.Marshal(r) // ignored: a message of strings and numbers always encodes
-				_, _ = c.Write(append(b, '\n'))
-			}(c)
-		}
-	}()
-	go func() {
-		<-ctx.Done()
-		_ = conn.Close() // an interrupt ends the hook: the server records it gone
-	}()
-	// the bus push: every message to name, said as it arrives; the hook's own bus
-	// challenge completes the HOOK CHALLENGE line
-	go func() {
-		fails := 0
-		for subCtx.Err() == nil {
-			es, err := w.BlockRead(subCtx, stream, cursor, hookBusBlock, 64)
-			if err != nil {
-				if subCtx.Err() != nil {
-					return
-				}
-				if fails++; fails >= 3 {
-					out.printf("HOOK BUS DOWN name=%s: the bus subscription failed (%s); the hook ends and every gated verb is refused; run: %s\n", oneline.Field(name), oneline.Escape(err.Error()), hookMonitor(name))
-					_ = conn.Close()
-					return
-				}
-				time.Sleep(time.Second)
-				continue
-			}
-			fails = 0
-			for _, e := range es {
-				cursor = e.Entry
-				m := e.Message()
-				if c, ok := strings.CutPrefix(m.Subject, hookBusSubject); ok && m.From == name {
-					if sc, ok := hs.busRead(c); ok {
-						out.printf("HOOK CHALLENGE %s.%s: answer now, before anything else (one answer proves both pushes): nova-sprint hook --prove %s.%s --actor %s\n", sc, c, sc, c, oneline.Field(name))
-					}
-					continue
-				}
-				out.printf("BUS %s from=%s kind=%s subject=%s\n", oneline.Field(e.Entry), oneline.Field(m.From), m.KindName(), oneline.Quote(m.Subject))
-				body := m.Body
-				if len(body) > 2000 {
-					body = body[:2000] + " ..."
-				}
-				for _, l := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
-					if l != "" {
-						out.printf("  %s\n", l)
-					}
-				}
-			}
-		}
-	}()
-
-	unhooked := false
-	role := ""
 	say := hookSay
 	if compact {
 		say = compactSay
@@ -1710,54 +1617,22 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, comp
 			}()
 		}
 	}
-	sc := bufio.NewScanner(br)
-	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	for sc.Scan() {
-		var m hookMsg
-		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
-			continue
+	end, err := h.hold(ctx, &monitorSink{out: out, name: name, addr: addr, from: from, say: say})
+	if err != nil {
+		var r *hookRefused
+		if errors.As(err, &r) {
+			fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, verb, oneline.Escape(r.why))
+			return 1
 		}
-		if m.Req != "" && relay.answered(m) {
-			if m.T == "ok" && m.Of == "prove" {
-				out.printf("HOOK PROVEN name=%s live-until=%s: both pushes are live; every verb runs while the hook stays answered\n", oneline.Field(name), m.Live.UTC().Format(time.RFC3339))
-			}
-			if m.T == "ok" && m.Of == "unhook" {
-				unhooked = true
-			}
-			continue
-		}
-		switch m.T {
-		case "hello":
-			role = cmp.Or(m.Role, sprint.HookRoleCoordinator)
-			if err := hk.Arm(ctx, name, a.now()); err != nil {
-				out.printf("HOOK BUS DOWN name=%s: the shared record could not be armed (%s); the hook ends; run: %s\n", oneline.Field(name), oneline.Escape(err.Error()), hookMonitor(name))
-				_ = conn.Close()
-				continue
-			}
-			out.printf("HOOK CONNECTED name=%s role=%s session=%s server=%s from=%s bus=%s: armed (the %s push and the %s push); not hooked until the challenge below is answered\n",
-				oneline.Field(m.Name), role, oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from), oneline.Field(stream), sprint.HookCoordinatorPushes[0], sprint.HookCoordinatorPushes[1])
-			continue
-		case "challenge":
-			// the server's half; the bus half goes out on the bus and the line is said once
-			// it comes back off the subscription
-			busC := hookNonce()
-			hs.challenge(m.Challenge, busC)
-			msg := bus.Message{ID: "hook-" + busC, From: name, To: []string{name}, Kind: bus.KindStatus, Subject: hookBusSubject + busC, At: a.now(),
-				Body: "nova-sprint hook's bus challenge for " + name + ": the hook reads it back off the bus, and the answer to HOOK CHALLENGE proves the bus push; nothing else to do"}
-			if err := a.hk.bus.Store.AddAll(ctx, []string{stream}, msg.Fields()); err != nil {
-				out.printf("HOOK BUS DOWN name=%s: the bus challenge could not be sent (%s); the hook ends; run: %s\n", oneline.Field(name), oneline.Escape(err.Error()), hookMonitor(name))
-				_ = conn.Close()
-			}
-			continue
-		}
-		say(out, name, addr, from, m)
+		return a.unanswered(verb, addr, err, stderr)
 	}
-	stopSub()
-	if unhooked {
-		hs.unhookWg.Wait()
+	if end.unhooked {
 		out.printf("HOOK ENDED name=%s: unhooked; both pushes are closed and recorded unhooked\n", oneline.Field(name))
 		return 0
 	}
+	h.mu.Lock()
+	role := h.role
+	h.mu.Unlock()
 	out.printf("HOOK DROPPED name=%s role=%s: the connection to the server ended; every gated verb is refused; run: %s\n", oneline.Field(name), orDashStr(role, "-"), hookMonitor(name))
 	return 1
 }

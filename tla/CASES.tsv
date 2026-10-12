@@ -642,3 +642,10 @@ MCMemberPeggedBrokenOnce.cfg	MCMemberPegged.tla	temporal	SecondEpisodeRaised	ign
 MCMemberPeggedBrokenHeld.cfg	MCMemberPegged.tla	invariant	RaisedOnlyPastBound	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenRebound.cfg	MCMemberPegged.tla	invariant	ClosesOnlyOnARealEnd	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenReboundTwice.cfg	MCMemberPegged.tla	invariant	OneJudgmentPerPeggedEpisode	ignore-terminal	memberpegged	required	-
+MCSeatHookHolder.cfg	MCSeatHookHolder.tla	pass	-	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderLive.cfg	MCSeatHookHolder.tla	pass	-	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderBrokenRearmAway.cfg	MCSeatHookHolder.tla	invariant	UnhookStands	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderBrokenRearmMissed.cfg	MCSeatHookHolder.tla	invariant	MissStands	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderBrokenNoRearm.cfg	MCSeatHookHolder.tla	invariant	ReArmWithinBeat	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderBrokenAckUnwritten.cfg	MCSeatHookHolder.tla	invariant	AckMeansWritten	ignore-terminal	seathook-holder	required	-
+MCSeatHookHolderBrokenNoFile.cfg	MCSeatHookHolder.tla	temporal	HeldIsProven	ignore-terminal	seathook-holder	required	-

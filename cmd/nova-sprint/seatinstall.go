@@ -60,7 +60,8 @@ func (a *app) cmdSeatInstall(args []string, stdout, stderr io.Writer) int {
 	harness := fs.String("harness", "", "the harness the seat's AI runs in (required): the push loop delivers each judgment, and the push proof, into the session through its adapter; a harness with no deliver command (claude) gets the folder adapter, each one a file written into --target")
 	target := fs.String("target", "", "the session's directory, where the harness's adapter delivers (required); for the folder adapter, the directory the session watches with a Monitor, which must be there")
 	session := fs.String("session", "", "the session's id, for a harness that names one (default: the adapter's newest in --target)")
-	server := fs.String("server", "", "the sprint's server, `host:port` (default NOVA_SPRINT_SERVER): the unit's, and recorded in the seat beside the store login, where seat check reads it when NOVA_SPRINT_SERVER is not set")
+	server := fs.String("server", "", "the sprint's server, `host:port` (default NOVA_SPRINT_SERVER): the unit's, and recorded in the seat beside the store login, where seat check reads it when NOVA_SPRINT_SERVER is not set; the push loop holds the seat's hook on its loopback listener, so a --redis unit names it too")
+	busAddr := fs.String("bus", "", "the bus store, `host:port` (default NOVA_BUS_REDIS): the unit's, where the push loop holds the seat's hook (the bus push's record and subscription); without one the loop pushes judgments and holds no hook, and the seat hooks in by hand under a Monitor")
 	cs := addConfigSeatFlags(fs)
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
@@ -81,8 +82,30 @@ func (a *app) cmdSeatInstall(args []string, stdout, stderr io.Writer) int {
 		u.Server = srv
 	} else if srv := a.server(fs); srv != "" {
 		u.Server = srv
-	} else {
+	}
+	if u.Server == "" || (verbArgs{fs: fs}).given("redis") {
 		u.Redis = strings.TrimSpace(c.redis)
+	}
+	if u.Redis != "" && u.Server == "" {
+		// a store unit reads the store itself; the hook is the server's loopback listener,
+		// which the seat's record names when the environment does not (namedServer)
+		if srv, _ := a.namedServer(); srv != "" {
+			u.Server = srv
+		}
+	}
+	// the bus store, where the loop holds the seat's hook: --bus, else the environment's,
+	// with the names of its login's variables as typed (never a password)
+	bus := strings.TrimSpace(*busAddr)
+	if bus == "" {
+		bus = a.getenv(busRedisEnv)
+	}
+	if bus != "" {
+		u.Env = append(u.Env, [2]string{busRedisEnv, bus})
+		for _, k := range sprint.SeatEnv[1:] {
+			if v := a.getenv(k); v != "" {
+				u.Env = append(u.Env, [2]string{k, v})
+			}
+		}
 	}
 	exe := a.executable
 	if exe == nil {
@@ -157,8 +180,12 @@ func (a *app) cmdSeatInstall(args []string, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintf(stdout, "  push: %s into %s\n", oneline.Field(push.Harness), oneline.Field(push.Target))
 	}
-	fmt.Fprintf(stdout, "  monitor: %s\n", hookMonitor(push.Name))
-	fmt.Fprintf(stdout, "  hook: every coordinator command is refused until the Monitor's HOOK CHALLENGE <c> is answered: nova-sprint hook --prove <c> --actor %s\n", oneline.Field(push.Name))
+	if bus != "" {
+		fmt.Fprintf(stdout, "  hook: the push loop holds the seat's hook (bus=%s): its HOOK CHALLENGE <c> is delivered into %s, and every coordinator command is refused until it is answered: nova-sprint hook --prove <c> --actor %s; to hook in again after unhook or a missed challenge: %s\n", oneline.Field(bus), oneline.Field(push.Target), oneline.Field(push.Name), hookMonitor(push.Name))
+	} else {
+		fmt.Fprintf(stdout, "  monitor: %s\n", hookMonitor(push.Name))
+		fmt.Fprintf(stdout, "  hook: every coordinator command is refused until the Monitor's HOOK CHALLENGE <c> is answered: nova-sprint hook --prove <c> --actor %s (no bus store named: the push loop holds no hook; install with --bus <host:port> or %s set)\n", oneline.Field(push.Name), busRedisEnv)
+	}
 	if push.Adapter != sprint.AdapterFolder {
 		fmt.Fprint(stdout, seat.String())
 	}

@@ -28,11 +28,21 @@ const SeatLabel = units.SeatLabel
 const SeatService = units.SeatService
 
 // SeatUnit is the push loop as a service: the binary, the store it reads (Redis, an
-// address; else Server, the sprint's server), and the file its lines go to (launchd;
-// systemd keeps them in its journal).
+// address; else Server, the sprint's server), the file its lines go to (launchd;
+// systemd keeps them in its journal), and Env, SeatEnv's variables as they were set
+// where it was typed, in that order: the bus store the loop holds the seat's hook on
+// (the bus push's record and subscription: cmd/nova-sprint/pushhook.go), and the names
+// of the variables of its login, never a password.
 type SeatUnit struct {
 	OS, Exe, Redis, Server, Log string
+	Env                         [][2]string
 }
+
+// SeatEnv is the environment a seat unit carries as it was typed: the bus store's
+// address and the names of its login's variables, never a password (the unit is a file
+// anyone on the machine may read). Without NOVA_BUS_REDIS the loop pushes judgments and
+// holds no hook.
+var SeatEnv = []string{"NOVA_BUS_REDIS", "NOVA_BUS_REDIS_USER", "NOVA_BUS_REDIS_PASSWORD_ENV"}
 
 // SeatResult is what install or uninstall did: the unit's path, and whether the file
 // there was written or removed.
@@ -73,10 +83,11 @@ func (u SeatUnit) Args() []string {
 // env is the unit's environment: the sprint's server when the store is reached
 // through it. Never a secret: the unit is a file anyone on the machine may read.
 func (u SeatUnit) env() [][2]string {
-	if u.Redis == "" && u.Server != "" {
-		return [][2]string{{"NOVA_SPRINT_SERVER", u.Server}}
+	var env [][2]string
+	if u.Server != "" {
+		env = append(env, [2]string{"NOVA_SPRINT_SERVER", u.Server})
 	}
-	return nil
+	return append(env, u.Env...)
 }
 
 // refusal is why the unit is not installed, "" is it may be.
@@ -90,6 +101,14 @@ func (u SeatUnit) refusal() string {
 		return "the push loop reads the sprint's store: --redis <addr> (or NOVA_SPRINT_REDIS), or the sprint's server, NOVA_SPRINT_SERVER"
 	case strings.HasPrefix(u.Redis, "mem:"):
 		return "the push loop waits on the sprint's machine, and the in-memory twin " + u.Redis + " has none: install it for a Redis store or the sprint's server"
+	}
+	for _, kv := range u.Env {
+		if !envName.MatchString(kv[0]) || strings.ContainsAny(kv[1], "\n") {
+			return "the unit's environment carries names and addresses only, and " + orDash(kv[0]) + " is not one"
+		}
+		if strings.HasSuffix(kv[0], "_PASSWORD_ENV") && !envName.MatchString(kv[1]) {
+			return kv[0] + " names the variable the password is in, and " + orDash(kv[1]) + " is not a variable's name; the unit carries no password"
+		}
 	}
 	return ""
 }
