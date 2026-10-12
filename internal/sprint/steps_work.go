@@ -1948,6 +1948,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// rule 2: the attempt before failed the same way, so this is the bound's (failure.go);
 			// a decided class is the class when the decision routed the finish
 			identical = failureSet(pr, pr.Int("attempt"), r.Report, class, cardTierOf(pr), set)
+			set[FieldLastFinish] = pr.F("attempt") + ":failed"
+		} else {
+			set[FieldLastFinish] = pr.F("attempt") + ":ok" // a pass, a late LAND, a defect: no failure recorded
 		}
 		cons := workConsumer(s, c, 0, result, rec)
 		if capped {

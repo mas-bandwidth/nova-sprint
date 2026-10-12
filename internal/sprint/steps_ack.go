@@ -62,8 +62,9 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		closing[id] = true
 		u := Unit{Key: id, Stream: n.Stream, Closes: entries, Moved: fmt.Sprintf("%s (%s) acknowledged: %s", id, n.Type, r.Reason)}
 		u.Notes = append(u.Notes, decided(entries[0], "ack: "+r.Reason, r.Who, s.Now))
-		if TickKept(n.Type) {
-			// The tick's condition may still hold: the acknowledgement is
+		if TickKept(n.Type) || n.Type == NFleetFailure {
+			// The tick's condition may still hold (the fleet's failure: held until a new failure
+			// of its class finishes after the ack, rules.go TickFleetFailure): the acknowledgement is
 			// kept on it, so the tick does not write it again until it has
 			// cleared and come back.
 			u.Notes = append(u.Notes, acknowledged(n, entries, r.Who, s.Now))
@@ -289,7 +290,7 @@ func silenceRefusal(s *Snapshot, u Unit, pr string) string {
 	g := Group{ID: n.ID, Kind: Judgment, Type: n.Type, Stream: n.Stream, Size: len(members), Notes: []string{n.ID},
 		Members: members, Decisions: removeDecision(n.Decisions, "ack")}
 	var lines []string
-	for _, c := range commands(g, n, "") {
+	for _, c := range commands(g, n, "", nil) {
 		lines = append(lines, c.Decision+": "+strings.Join(c.Lines, " && "))
 	}
 	why := fmt.Sprintf("%s is the last judgment on %s, which would then be held by nobody (no read outstanding, nothing the tick would do, no other judgment open on it); decide instead", n.ID, pr)
@@ -315,11 +316,11 @@ func notAckable(n Note, entries []Open) string {
 	}
 	g := Group{ID: n.ID, Kind: Judgment, Type: n.Type, Stream: n.Stream, Size: len(members), Notes: []string{n.ID}, Members: members, Decisions: n.Decisions}
 	var lines []string
-	for _, c := range commands(g, n, "") {
+	for _, c := range commands(g, n, "", nil) {
 		lines = append(lines, c.Decision+": "+strings.Join(c.Lines, " && "))
 	}
 	why := fmt.Sprintf("ack does not answer %s (%s): its decisions are", n.ID, n.Type)
-	if TickKept(n.Type) {
+	if TickKept(n.Type) && WaitRefusal(n) == "" {
 		why = fmt.Sprintf("ack does not answer %s (%s), a condition the tick keeps; wait sets when it is shown again: its decisions are", n.ID, n.Type)
 	}
 	return why + " " + strings.Join(lines, "; ")
@@ -357,6 +358,10 @@ func Wait(s *Snapshot, r WaitReq) Plan {
 		return p
 	}
 	n := entries[0].Note
+	if why := WaitRefusalIn(s, n); why != "" {
+		p.refuse(r.Note, why) // a wait never parks a card (wait_refused.go)
+		return p
+	}
 	if !TickKept(n.Type) {
 		p.refuse(r.Note, n.Type+" is not a condition the tick keeps: its review time is set instead")
 		return p

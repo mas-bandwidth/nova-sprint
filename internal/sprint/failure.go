@@ -113,6 +113,12 @@ const (
 	FieldFailureTier  = "failure_tier"
 	FieldFailureBound = "failure_bound"
 	FieldFailureBack  = "failure_back"
+	// FieldLastFinish is the primary's last finish, written by every finish that lands on it
+	// (failed, ok, a late report, a lane cap): "<attempt>:<failed|ok|capped>", failed when the
+	// finish recorded a failure class (failureSet). The fleet's failure reads it alone
+	// (rules.go lastFinishFailed), never the column or attempt arithmetic: a rework that falls
+	// back to ready moves the card without a finish (Stella's read R4, 2026-10-11).
+	FieldLastFinish = "last_finish"
 	FieldIdenticalAt  = "identical_at"
 )
 
