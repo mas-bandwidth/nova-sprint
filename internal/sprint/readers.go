@@ -545,6 +545,57 @@ func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 	return out
 }
 
+// ReadOut is one read of a primary's attempt, wherever it stands: on the readers
+// table or as a fleet read card, marked live, ghost or closed, with its verdict
+// and the reader that holds it (docs/SPEC-SPRINT.md section 6, the reads).
+type ReadOut struct {
+	Card    *Card
+	Reader  string
+	Table   string // Readers or Fleet
+	State   string // ReadLive, ReadGhost or ReadClosed
+	Verdict string
+}
+
+// The states ReadsOut marks a read with.
+const (
+	ReadLive   = "live"
+	ReadGhost  = "ghost"
+	ReadClosed = "closed"
+)
+
+// ReadsOut is every read the primary has out at its current attempt: the
+// readers table's live read cards and the fleet's read cards (a friend's or a
+// member's, dealt by the read-card deal), each marked live, ghost or closed
+// with its verdict (docs/SPEC-SPRINT.md section 6, the reads). One predicate:
+// ask, ask --another, --instead, ReadsWanted, readCardsWanted/Standing,
+// heavyRead, doctor and the tick's check all rest on it, so a read one calls
+// out the others see too.
+func ReadsOut(s *Snapshot, pr *Card) []ReadOut {
+	if s == nil || pr == nil {
+		return nil
+	}
+	attempt := max(pr.Int("attempt"), 1)
+	var out []ReadOut
+	if s.Readers != nil {
+		for _, rc := range liveReadsAt(s, pr, attempt) {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Readers, State: ReadLive, Verdict: rc.F("verdict")})
+		}
+	}
+	if s.Fleet != nil {
+		placed, oks, brk := fleetReadLiveAt(s, pr, attempt, s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+"."))
+		for _, rc := range placed {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadLive, Verdict: rc.F("verdict")})
+		}
+		for _, rc := range oks {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadClosed, Verdict: "ok"})
+		}
+		for _, rc := range brk {
+			out = append(out, ReadOut{Card: rc, Reader: rc.F("reader"), Table: Fleet, State: ReadClosed, Verdict: "broken"})
+		}
+	}
+	return out
+}
+
 // ReadsWanted is how many reads the ask places on the primary now, at its
 // attempt. Under the interim rule of 2026-10-06 (docs/SPEC-SPRINT.md section 6;
 // the owner, 6:02 PM ET: "send out multiple consumer cards in ||") a card's reads
