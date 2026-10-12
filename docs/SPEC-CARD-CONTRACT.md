@@ -5,6 +5,16 @@ and lands it: what a brief must carry to be admitted, and what staging does with
 
 ## The shared-path rule
 
+## The gate-host rule
+
+A card brief may name a `GATE-NEEDS:` line that lists the gate's needs
+(e.g., `GATE-NEEDS: linux, tla, landlock`). The deal matches a card to a
+member only when the member's facts satisfy every need. A card no member
+can satisfy is raised as one judgment naming the need; it is never
+silently waited for. The brief lint refuses a brief that tells the worker
+to ssh to a named host or run its gate "on hetzner2"; such a brief must
+name the gate's needs on `GATE-NEEDS:` instead.
+
 Two cards that name the same file in their `PATHS:` lines are refused at admission
 unless one of two forms admits them. The lander merges a ledger entry by entry, so two
 cards writing the same ledger do not collide; and a card that needs another lands after

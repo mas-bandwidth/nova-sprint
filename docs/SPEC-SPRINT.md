@@ -11,6 +11,15 @@ system moves cards without mistakes and tells the coordinator what needs it.
 The coordinator's day, as a runbook for whoever holds the seat, is
 [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md).
 
+## The gate-host rule
+
+A brief may name a `GATE-NEEDS:` line listing the gate's needs
+(e.g., `GATE-NEEDS: linux, tla`). The deal matches a card to a
+member only when the member's facts satisfy every need. A card no member
+can satisfy is a judgment at once; it is never silently waited for.
+The coordinator machine (the Studio) is never dealt a card whose
+`GATE-NEEDS:` it cannot meet and is never named as a gate host.
+
 ## 1. The tables
 
 ```

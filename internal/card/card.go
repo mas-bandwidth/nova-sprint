@@ -181,8 +181,32 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 			}
 		}
 	}
+	// The gate-host rule (docs/SPEC-SPRINT.md, the gate-host rule): the gate runs on the
+	// member the card is dealt to, inside the wall, never over ssh, so a STEP that tells the
+	// worker to ssh to a named host or run the gate "on <host>" is refused with the remedy
+	// naming GATE-NEEDS.
+	for i, line := range strings.Split(brief, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "STEP:") {
+			continue
+		}
+		if gateNeedsHostRE.MatchString(line) {
+			add(GateHostCheck, i+1, "this STEP tells the worker to ssh to a named host or run the gate on a named host, which the sprint forbids; "+GateHostRemedy)
+		}
+	}
 	return out
 }
+
+// GateHostCheck is the check name of the gate-host lint finding, and GateHostRemedy its
+// remedy (docs/SPEC-SPRINT.md, the gate-host rule): a brief's gate runs on the member it is
+// dealt to, inside the wall, never over ssh to a named host, so the brief names the gate's
+// needs on a GATE-NEEDS line instead of naming a host.
+const (
+	GateHostCheck  = "gate-needs-host"
+	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
+)
+
+// gateNeedsHostRE is a host-based gate instruction in a STEP line: `ssh <host>` or `on <host>`.
+var gateNeedsHostRE = regexp.MustCompile(`(?i)(\bssh\s+[a-z][a-z0-9-]*\b|\bon\s+[a-z][a-z0-9-]*\b)`)
 
 // byRE is a By: trailer named in a line and the word after it, past any <, backquote,
 // quote or asterisk; a By: inside a longer key (Co-Authored-By:) is no By:.
