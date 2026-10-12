@@ -103,9 +103,9 @@ const (
 // unfinished, never a failure and never judged. ok and failed (hidden) hold the
 // members' work cards whose readers' verdicts were ok and broken, and defect (hidden)
 // those that ended on a brief defect, counted in neither. done and ok%
-// are the table's own formulas over the ok and failed cells, computed at render and
-// never written: done is sum(ok+failed), ok% (the column okpct) is
-// pct(ok/ok+failed), and the footer pools ok% over the members. ctl (hidden)
+// are the table's own formulas over the ok, failed and no_result cells, computed at
+// render and never written: done is sum(ok+failed), ok% (the column okpct) is
+// pct(ok/ok+failed+no_result), and the footer pools ok% over the members. ctl (hidden)
 // holds the member's control card: its status and its width (width.go), which
 // the width column shows beside working.
 const (

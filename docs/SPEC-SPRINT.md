@@ -188,8 +188,8 @@ Start at 8 for each?"), which friend sync writes to her row each pass (a row
 whose width is below 1 is refused, exit 1, nothing written), summed in the
 footer; `ok` and `failed` count her work cards the readers' verdicts moved
 there; `done` is every card she completed, of every kind (done and ok%, below),
-and `ok%` is `pct(ok/ok+failed+no_result)`, pooled over the friends in the footer, the
-fleet table's own formula: her work's measure, which her reads never move.
+and `ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer:
+her work's measure, which her reads never move.
 
 Done and ok% (the owner, 2026-10-11: "Done is every card completed."; "The
 dashboard has to reflect the truth."). A row's `done`, a friend's or a member's,
