@@ -18,14 +18,14 @@ across the same fleet, each taking a bounded assignment.
 
 The **fleet** is the set of machines providing capacity. **Workers** carry
 out the assignments. A machine's **width** sets how many work assignments
-it can run at once. Think of those slots as lanes: when one opens, the
-machine can send the next ready card down it.
+it can run at once. Think of those slots as lanes: when one opens up,
+the system runs the next card on it.
 
 More lanes help when the work is independent. Dependencies have to land first.
 
 ## Follow a card all the way home
 
-Ordinary task cards move through the dashboard automatically:
+Cards move through the dashboard automatically:
 
 **Waiting → Ready → Working → Review → Merging → Landed**
 
@@ -47,12 +47,11 @@ leave it with a plan to continue while you are away.
 
 Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
 
-**Free and open source.** Your chosen model providers and machines have
-their own costs.
+**Free and open source forever.**
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
-[Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
+[Cards and system rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
 If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
