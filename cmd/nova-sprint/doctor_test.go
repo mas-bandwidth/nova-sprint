@@ -575,7 +575,7 @@ func TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt(t *testing.T) {
 	ta.ok("take --as m1 s1-1.w1@1")
 	ta.ok("finish --as m1 s1-1.w1@1 --failed --exit 134 --report 'no result: aborted' --harness 'Error: Unknown: ChildProcess.spawn (opencode)\nAborted'")
 	out := ta.ok("tick")
-	assert.Contains(t, out, "s1-1.w1 working -> withdrawn gen=2, environment exit=134 ended on m1's environment (no attempt spent); s1-1 working -> ready", out)
+	assert.Contains(t, out, "s1-1.w1 working -> environment gen=2, environment exit=134 ended on m1's environment (no attempt spent); s1-1 working -> ready", out)
 
 	pr := ta.primary("s1-1")
 	assert.Equal(t, "1", pr.F("attempt"), "the same attempt")
@@ -661,7 +661,7 @@ func TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal(t *testing.T) {
 	}
 	wc := ta.fleetCard("s1-1.w1")
 	require.NotNil(t, wc)
-	assert.Equal(t, sprint.Withdrawn, wc.Col, "not dealt a fourth time")
+	assert.Equal(t, sprint.Environment, wc.Col, "not dealt a fourth time")
 	assert.Equal(t, "1", wc.F("attempt"), "the same attempt throughout")
 	got := bounds()
 	require.Len(t, got, 1, "one bound judgment: %+v", got)
@@ -669,7 +669,7 @@ func TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal(t *testing.T) {
 	assert.NotEmpty(t, sprint.WaitRefusal(got[0]), "a judgment that holds its card: wait is refused")
 
 	ta.ok("tick")
-	assert.Equal(t, sprint.Withdrawn, ta.fleetCard("s1-1.w1").Col, "still not dealt")
+	assert.Equal(t, sprint.Environment, ta.fleetCard("s1-1.w1").Col, "still not dealt")
 	assert.Len(t, bounds(), 1, "raised once")
 }
 
@@ -697,7 +697,7 @@ func TestAReworkResetsTheEnvironmentExitCount(t *testing.T) {
 	for range sprint.EnvExitCardCap {
 		die("s1-1.w1")
 	}
-	require.Equal(t, sprint.Withdrawn, ta.fleetCard("s1-1.w1").Col, "at the cap")
+	require.Equal(t, sprint.Environment, ta.fleetCard("s1-1.w1").Col, "at the cap")
 	ta.ok("rework s1-1 --fix 'the wall: run outside it'")
 	ta.ok("tick")
 	require.Equal(t, "2", ta.primary("s1-1").F("attempt"), "a new attempt")

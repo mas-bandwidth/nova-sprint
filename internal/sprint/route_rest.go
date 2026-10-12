@@ -91,7 +91,7 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 		card string
 	}
 	byRoute := map[string][]ev{}
-	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn, ProviderFailures, Coordination, Environment, Harness, NoResult) {
 		takes, _ := RateTakes(c)
 		for _, t := range takes {
 			if at, err := time.Parse(time.RFC3339, t.Finished); err == nil && t.Route != "" && t.Route != RoutePin {
@@ -509,7 +509,7 @@ type routeEnd struct {
 // A take that ended with its member down keeps no record and is not counted.
 func routeEnds(fleet *Table) map[string][]routeEnd {
 	out := map[string][]routeEnd{}
-	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn, ProviderFailures, Coordination, Environment, Harness, NoResult) {
 		takes, numbers := ProviderTakes(c)
 		for i, t := range takes {
 			at, err := time.Parse(time.RFC3339, t.Finished)
