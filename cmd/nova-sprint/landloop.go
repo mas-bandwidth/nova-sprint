@@ -95,11 +95,13 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 		}
 	}
 	if gate != nil {
-		// The hook gate refused the landing before it acted on anything: the seat has
-		// not hooked in, as after a restart. That is a wait, not a fault of the pass,
-		// so the rollback window is not asked; the loop's next pass (LandEvery, the
-		// interval it already keeps) tries again, and each pass says it waits
-		// (docs/SPEC-SPRINT.md section 14; tla/ServerSwitch.tla LandHookRefused).
+		// The loop's own landing is machine work and is exempt from the hook gate, so
+		// its pass runs whatever the hook (land.go reopens the store as run; the
+		// automatic pass: tla/ServerSwitch.tla LandOk). This is the hand land's gate
+		// alone: the seat has not hooked in, as after a restart. A refusal is a wait,
+		// not a fault of the pass, so the rollback window is not asked; the next pass
+		// tries again (docs/SPEC-SPRINT.md section 14; tla/ServerSwitch.tla
+		// LandHookRefused).
 		a.landFailed = ""
 		a.writeCycle(stdout, "LAND WAITS for the seat's hook: "+gate.why+"; nothing was landed, and the next pass tries again")
 		return code, idle
