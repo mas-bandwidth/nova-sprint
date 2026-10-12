@@ -80,8 +80,8 @@ func TestWaitAfterClear(t *testing.T) {
 	ta.ok("start")
 	ta.deal(2)
 	ta.ok("take --as m1 --limit 2")
-	ta.ok("finish --as m1 s1-1.w1@1 --failed --report 'red again'")
-	g := ta.group(sprint.NWorkFailed, "s1")
+	ta.timerOnce("look-again") // a judgment a wait may hold: it holds no card (wait_refused.go)
+	g := ta.group(sprint.NTimer, "")
 	code, out, errs = ta.do("wait " + g.Notes[0] + " --for 1h")
 	assert.Equal(t, 0, code, "wait on the new epoch's judgment: exit %d %s%s", code, out, errs)
 	// ack of the OLD judgment id after clear

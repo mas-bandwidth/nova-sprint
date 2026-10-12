@@ -113,6 +113,7 @@ func capRedeal(s *Snapshot, c, pr *Card, r FinishReq, lc LaneCap, next string, p
 	why := fmt.Sprintf("capped at %s on %s (overrun %s): %s, %s", lc.Cap, from, lc.Overrun, laneCapRedealWord, next)
 	set := map[string]string{FieldTierNow: next, "why": why, FieldCapRedealt: from + " -> " + next}
 	maps.Copy(set, finishStamps(pr, c, s.Now))
+	set[FieldLastFinish] = pr.F("attempt") + ":capped" // a capped take: no failure recorded
 	cons := workConsumer(s, c, 0, laneCapEnd, rec)
 	cons.Cap, cons.Overrun = lc.Cap.String(), lc.Overrun.String()
 	addConsumer(pr, set, cons)

@@ -305,10 +305,13 @@ func (h *harness) judgmentsOf(typ string) []sprint.Open {
 	return out
 }
 
-// A failure many cards share is the fleet's, not the card's: the failed rule leaves it to a
-// mind rather than climb the ladder with every card (a toolchain the machine cannot run,
-// "Permission denied", came back on six cards at once on 2026-10-04).
-func TestTheSameFailureOnManyCardsIsLeftToAMind(t *testing.T) {
+// A failure many cards share is the fleet's, not the card's: the failed rule does not climb the
+// ladder with every card (a toolchain the machine cannot run, "Permission denied", came back on
+// six cards at once on 2026-10-04). Nor is it left to the seat below the bound, where a wait
+// could park it (2026-10-11, wait_refused.go): each card is reworked on its tier with its
+// report as the fix, dealt round the fleet away from the member that failed it, each attempt
+// counted toward the bound.
+func TestTheSameFailureOnManyCardsIsReworkedOnItsTier(t *testing.T) {
 	t.Parallel()
 	h := ruled(t)
 	h.addReady("s1", sprint.RuleSameFailureCards, briefOf("flash", ""))
@@ -317,13 +320,17 @@ func TestTheSameFailureOnManyCardsIsLeftToAMind(t *testing.T) {
 	for i := 1; i <= sprint.RuleSameFailureCards; i++ {
 		h.failTake(fmt.Sprintf("s1-%d.w1", i), "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied")
 	}
-	h.machine()
-	assert.Len(t, h.judgmentsOf(sprint.NWorkFailed), sprint.RuleSameFailureCards, "left: the fleet's failure")
 	for _, a := range sprint.RuleAnswers(h.snap(), sprint.TickReq{AnswerRules: true}) {
 		if a.Type == sprint.NWorkFailed {
-			assert.Equal(t, sprint.ActLeft, a.Act)
-			assert.Contains(t, a.Why, "the same failure on")
+			assert.Equal(t, sprint.ActRework, a.Act, a.Why)
+			assert.Contains(t, a.Why, "the same failure on", "the fleet's failure is named")
 		}
 	}
-	assert.Equal(t, 1, h.snap().Work.Card("s1-1").Int("attempt"))
+	h.machine()
+	assert.Empty(t, h.judgmentsOf(sprint.NWorkFailed), "never left to the seat below the bound")
+	for i := 1; i <= sprint.RuleSameFailureCards; i++ {
+		pr := h.snap().Work.Card(fmt.Sprintf("s1-%d", i))
+		assert.Equal(t, 2, pr.Int("attempt"), pr.ID)
+		assert.Empty(t, pr.F(sprint.FieldTier), "%s: on its tier, no climb", pr.ID)
+	}
 }

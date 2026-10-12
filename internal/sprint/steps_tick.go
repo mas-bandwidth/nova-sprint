@@ -131,8 +131,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop", "wait"},
-	NCannotAsk:         {"reader add", "rework", "drop", "wait"},
+	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"reader add", "rework", "drop"}, // never wait: it holds its card (wait_refused.go)
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
 	NAdoptFailed:       {"fleet up <m>", "wait"},                     // named per member (fleet_back.go)
@@ -144,7 +144,7 @@ var TickDecisions = map[string][]string{
 	NBrokenReadsOutrun: {"look at the readers", "raise the read tier", "act"},
 	NReaderBreaks:      {"look at the reader", "act"},
 	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
-	NNoRoute:           {"route add", "look at the card", "drop", "wait"},
+	NNoRoute:           {"route add", "look at the card", "drop"},
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
 	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
 	NProviderLow:    {"ack", "wait"}, // the same
@@ -369,6 +369,9 @@ var TickEnd = []TickPartDef{
 // runs before the rule rework, which reworks nothing the widen rule leaves to a mind.
 func TickEndWith(rules, idle bool) []TickPartDef {
 	out := append([]TickPartDef(nil), TickEnd[:2]...)
+	// the fleet's failure is a judgment, not a rule answer: raised in the deadlines part, with the
+	// rules on or off, and in no step of its own (rules.go TickFleetFailure)
+	out[1].Fn = tickDeadlinesAndFleetFailure
 	if rules {
 		for _, p := range TickRules {
 			if p.Name == PartRuleRework {
@@ -383,6 +386,14 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 		out = append(out, TickPartDef{PartIdle, TickIdle})
 	}
 	return append(out, TickEnd[3:]...)
+}
+
+// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure judged in it.
+func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
+	p, n := TickDeadlines(s, r)
+	q, _ := TickFleetFailure(s, r)
+	p.Notes = append(p.Notes, q.Notes...)
+	return p, n
 }
 
 // TickParts is every part with a planner in the order a tick first runs them:
@@ -2036,29 +2047,46 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 // with the ok reads they need that nothing holds (the pump accepts them,
 // TickAccept): a STOPPED machine with any of these says so to the seat.
 func MovesDue(s *Snapshot) int {
-	n := len(s.Fleet.Column(Withdrawn))
+	return len(MoveDueKeys(s))
+}
+
+// MoveDueKeys is the stable identity of every move counted by MovesDue. The
+// stopped-machine judgment uses these keys so a later due set with the same
+// count is still a new notification episode.
+func MoveDueKeys(s *Snapshot) []string {
+	var keys []string
+	key := func(c *Card) string {
+		// Work primaries can return to the same column with gen still zero;
+		// attempt and column distinguish that later due work from its earlier
+		// episode without adding notification state to the sprint schema.
+		return fmt.Sprintf("%s@%s@%d@%d", c.ID, c.Col, c.Int("gen"), c.Int("attempt"))
+	}
+	for _, c := range s.Fleet.Column(Withdrawn) {
+		keys = append(keys, key(c))
+	}
 	for _, c := range s.Work.Column(Review) {
 		switch {
 		case s.Readers == nil || c.F("result") == "failed":
 		case acceptable(s, c):
 			if AcceptHeld(c) == "" {
-				n++
+				keys = append(keys, key(c))
 			}
 		case ReadsWanted(s, c) > 0 && enoughReadersUp(s, c):
-			n++
+			keys = append(keys, key(c))
 		}
 	}
 	for _, c := range s.Work.Column(Ready) {
 		if !IsSentinel(c) && AtRedealBound(s, c) == nil {
-			n++
+			keys = append(keys, key(c))
 		}
 	}
 	for _, c := range s.Work.Column(Waiting) {
 		if !IsSentinel(c) && !IsHeld(c) && len(WaitsFor(s, c, nil)) == 0 {
-			n++
+			keys = append(keys, key(c))
 		}
 	}
-	return n
+	slices.Sort(keys)
+	return keys
 }
 
 // WorkDeadline is the deadline a work card is held to, by its state: a card

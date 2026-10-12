@@ -126,6 +126,7 @@ const (
 // Decisions open to each judgment type.
 var Decisions = map[string][]string{
 	NReportJudgment:    {"read the report", "ack"},
+	NFleetFailure:      {"ack"}, // mend the cause first (rules.go, fleetFailureNotes)
 	NReadyToAccept:     {"accept", "rework", "drop"},
 	NReturned:          {"rework", "accept", "drop"}, // accept only while its reads stand at its head
 	NWorkFailed:        {"rework with a fix", "drop"},
@@ -134,10 +135,10 @@ var Decisions = map[string][]string{
 	NBriefWrong:        {"brief", "drop"}, // never rework: a --fix changes the brief not at all (brief_bound.go)
 	NConflict:          {"resolve and resume", "rework", "drop"},
 	NRed:               {"take the suspect off and resume", "rework the suspect"},
-	NCross:             {"rank that card first", "wait", "look at both", "return", "drop"},
+	NCross:             {"rank that card first", "look at both", "return", "drop"}, // never wait: it holds the stream (wait_refused.go)
 	NRejected:          {"resume", "return", "drop"},
-	NBaseRed:           {"resume", "wait"},
-	NMissingBase:       {"rebase", "wait", "drop"},
+	NBaseRed:           {"resume"}, // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
+	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
 	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin
 	NMissingNeed:       {"drop", "ack"},
