@@ -20,8 +20,8 @@ MCMOrder == <<"m1", "m2">>
 MCROrder == <<"r1", "r2">>
 MCSOrder == <<"s1", "s2">>
 MCWidth == [m \in {"m1", "m2"} |-> 1]
+MCWidthTwo == [m \in {"m1", "m2"} |-> 2]
 MCDealAhead == 2
-MCReadCost == "apart"
 MCHost == [r \in {"r1", "r2"} |-> IF r = "r1" THEN "m1" ELSE "m2"]
 
 InOrder == SelectSeq(MCCardOrder, LAMBDA c : c \in Cards)
@@ -46,6 +46,10 @@ ScnBlind == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.up = {}, !.live =
 \* so the second read must wait for the next tick's room.
 ScnWidth == [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
                          !.q = Queues(<<>>, <<E("ask", "c2", "-"), E("ask", "c3", "-")>>, <<>>, <<>>)]
+\* The same under read cards (ReadCost "half"): the card and both reads fit
+\* m1's two slots, two reads rounding up to one (the positive half-read
+\* control, MCDirtyTickWidthHalf).
+ScnWidthHalf == [readCost |-> "half"] @@ ScnWidth
 \* c1 merging, its merge recorded.
 ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
                         !.q = Queues(<<>>, <<>>, <<E("merged", "c1", "-")>>, <<>>)]
@@ -81,6 +85,19 @@ ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Card
 \* Every card added, every machine up; no route serves c2's tier and it pins
 \* no model (THE ROUTE): c1 lives its life, c2 stays ready.
 ScnRoute == [Base EXCEPT !.served = Cards \ {"c2"}]
+
+\* THE DEAL'S ORDER AND SKIPS. The held stream: every card added, every
+\* machine up, s1 held: c1 (s1) is dealt to no machine and no friend until
+\* unhold, c2 (s2) lives its life. The witness "dealheldstream" deals c1.
+ScnHeldStream == [heldStreams |-> {"s1"}] @@ Base
+\* Reads before work, read cards on (ReadCost "half"): c1 ready, c2 in review
+\* with its read pending (askw), one machine of width 2 hosting the only
+\* reader: the pump places c2's read first, at half a slot, and deals c1 in
+\* the room it leaves. The witness "workfirst" deals c1 first. No machine
+\* lapses.
+ScnReadsFirst == [readCost |-> "half", askw |-> [c \in Cards |-> c = "c2"], lapse |-> FALSE] @@
+  [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
+               !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
 
 \* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
 \* (r1's machine): the ask asks r1 nothing and places the read on r2. No
@@ -126,13 +143,14 @@ ScnHandBackLapse == [ScnHandBack EXCEPT !.lapse = TRUE]
 \* to be added and dealt: under the code's rounding up the three reads and the
 \* card over-fill the machine, but the witness "floorreads" rounds the reads
 \* down and deals the card, and HoldRespected catches it.
-ScnFloorreads == [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "none" ELSE "review"],
-                             !.q = Queues(<<>>, <<E("ask", "c2", "-"), E("ask", "c3", "-"), E("ask", "c4", "-")>>, <<>>, <<>>)]
+ScnFloorreads == [readCost |-> "half"] @@
+                 [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "none" ELSE "review"],
+                              !.q = Queues(<<>>, <<E("ask", "c2", "-"), E("ask", "c3", "-"), E("ask", "c4", "-")>>, <<>>, <<>>)]
 
 \* THE LANES. c1 and c2 dealt to m1 (width 1 holds two: DealAhead times its
-\* width), its worker may take them: a member runs at most its width, and the
-\* witness "nolanes" drops the guard, so it takes both and LanesRespected
-\* catches it.
+\* width), its worker asks to take both: the fleet applies one take and
+\* refuses the other at m1's width (takeOne); the witness "nolanes" drops the
+\* guard, so it takes both and LanesRespected catches it.
 ScnLanes == [Base EXCEPT !.col = [c \in Cards |-> "working"],
                         !.mc = [m \in Machines |-> IF m = "m1" THEN {"c1", "c2"} ELSE {}],
                         !.q = Queues(<<>>, <<>>, <<>>, <<>>)]

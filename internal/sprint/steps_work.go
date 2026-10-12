@@ -1028,6 +1028,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	p.on(s)
 	moves := roundMoves{}
 	ready := func(c *Card) string {
+		// tla/DirtyTick.tla Dealable (HeldStreams, HeldStreamNotDealt): a held stream's cards are dealt nowhere
 		if StreamHeld(s, c.Row) {
 			return "its stream " + c.Row + " is held by the coordinator (hold.go): nova-sprint unhold " + c.Row + " deals it again"
 		}

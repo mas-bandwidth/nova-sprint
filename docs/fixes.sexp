@@ -114,6 +114,10 @@
       machines/friends ready to do that work right now!\"; \"Deal logic should be using ((index++) % n)
       to roll around, not hitting the same fleet machine or friend each deal\"; tla/WhoPreference.tla,
       DealFreeLanesFirst; code read at nova-sprint main 230d7b27")
+    (fix "the-rebalance-moves-the-excess-of-every-unit" :release "v1.2.12" :status "planned"
+     :title "The rebalance moves the excess of every unit, not only of a full one, rolling its targets"
+     :text "The rebalance's source rule was that a unit whose lanes all work keeps its whole queue (rebalance.go:103, `g.working < g.width` skipped the unit), so a unit at 15 of 16 lanes with 30 queued cards, or one running reads at half a slot, sat on its whole queue while the rest of the fleet had free lanes (the owner, 2026-10-11 ~19:05-19:20Z: \"cards only may accrue per-fleet or friend, if there are not other machines/friends ready to do that work right now!\"; \"Not one card at a time per-tick.\"; \"Deal logic should be using ((index++) % n) to roll around\"). A free lane is now a half-lane no card on the row holds, ready or working (a work card two halves, a read one: halfLoad); a unit's excess is its ready cards beyond the halves its working cards leave free, taken from the end of its start order, and every unit with excess is a source, friend or member, whether or not all its lanes work. The three kinds move alike: a fix card is kind work (a rework attempt carrying the fix field, or a primary of priority fix) and moves as a work card, its attempt and fix kept. The target is chosen round the units that may take it from the deal's rolling cursor (deal_index for work, read_deal_index_<tier> for reads), moved past each target ((index++) % n), the card's own tier before one up, never the most-idle or name order. The rebalance stays the work pump's part after the deal, every tick, with no setting that turns it off. Tests TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit, TestTheRebalanceMovesTheExcessWorkOfAPartlyIdleUnit, TestTheRebalanceMovesWorkReadsAndFixAlike, TestTheRebalanceRollsItsTargets, TestTheRebalanceNeverMovesAStartedRead, TestNTicksKeepNoQueuedCardWhileALaneIsFree and TestTheRebalanceRunsEveryTickWithNoSetting."
+     :origin "this card, the-rebalance-moves-the-excess-of-every-unit.w5, from the owner, 2026-10-11 ~19:05-19:20Z: \"Please log cards to fix this deal and rebalance. It's shit.\"; \"OK rebalancing should happen automatically every tick\"; \"and it should support work, reads, and fix cards.\"; \"cards only may accrue per-fleet or friend, if there are not other machines/friends ready to do that work right now!\"; \"Not one card at a time per-tick.\"; \"Deal logic should be using ((index++) % n) to roll around, not hitting the same fleet machine or friend each deal.\"")
     (fix "a-cards-reads-go-out-together-in-parallel" :release "v1.2.12" :status "planned"
      :title "The reads go out together, all of them, every tick, until they are out"
      :text "The owner, 2026-10-11 ~19:25Z: \"Multiple reads now go out in ||. Critical card if not being done already. It will double or triple the speed of reads.\"; \"Moving review -> reads should keep going, every second, even if there is no capacity. It repeats over and over until there is.\"; 2026-10-06: \"Make sure that we deal the multiple reads out in ||\": \"I don't want any serial reads again. That was silly.\" The read-card deal is already parallel and runs every tick (readCardsWanted cuts every read an attempt still needs at once, readCardsAskFull places as many as units have room), but the generation cap defeated it: MaxReadGen 2 gave a reader three identities per attempt, and a read the machine took back three times left readCardIDFor with none, so readRefusal answered \"no id\" and that reader was out of the attempt for good; as readers ran out the ask waited on NoReaderMayRead and raised a cannot-ask judgment instead of asking again. MaxReadGen is removed: readCardIDFor and ReadCardGenIDs deal the generation after the highest the read index holds (fleetReadIndex), and ReadCardExtras names that identity from the same rule, so no reader is ever refused \"no id\" (a read the reader itself ended with no verdict stays spent; a broken read stops the rest, as before). set --reads 3 is a count --reads takes (readsWords), so an attempt gets exactly the reads the sprint's count says (ReadsNeededIn, each read cut once for the same need). Waiting for room is the primary's waiting mark and nothing more (FieldWaitingReader); the cannot-ask judgment stays only for a read no unit up may ever read by capability (NoReaderMayRead). cannotAskWhy drops \"asked an attempt once\" for reads the machine took back. Tests, red first on the twin: TestAnAttemptsReadsGoOutTogether (set --reads 3, three readers take in one tick), TestReadsAreAskedEveryTickUntilThereIsRoom (every reader at its room for five ticks, then a lane frees a tick), TestATakenBackReadIsAskedOfTheSameReaderAgain (four unstarted take-backs, a fifth deal at a fresh generation, ReadCardExtras names it); reads_setting_test.go pins 3 taken and 4 refused. docs/SPEC-SPRINT.md section 6 and docs/CLI.md state the rule in the owner's words. tla/ReadCards.tla's Deal (read) needs the no-cap rule for (b); its model change is owed as its own card."
@@ -131,6 +135,10 @@
      :text "Blocker. On the live v1.2.13 server about 20 of 42 cards in review each held one read card working for up to an hour with no member process running it (schema-c-t04-versions.r8.b2 since 21:53Z; b2's row showed 4 working reads and no child). The cause, read in b2's member log: a read whose stage failed (\"the wall refused a write outside the job; no verdict recorded; run again in 15s\") waited in pkg/member's reportOne for the queue's packet before running again, but a member's queue sends no packet for a card it names in --have, so the retry never ran; the launch kept its result, the member's live set named it held, the server's reconcile left it working, and only the 60-minute ReadCardDeadline took it back (\"reaped ... no longer in the queue\" at 22:50Z). The member restarts of the v1.2.12 and v1.2.13 rollouts were not the cause: a restarted member's empty live set lets the reconcile return within the grace. Fixed at both ends. pkg/member runs the retry from the launch's own packet when the queue listed the card working at the launch's claim with none, so its live set names a running child, never a held result with no child. The server's reconcile (sprint.LiveReturns) takes a working read card its row's fresh live set has not named for LiveGrace back to the read deal: it leaves the fleet table retired lost (RetiredByLost, never spent: spentBy is unchanged), with lost_from_gen and lost_reason, no fail mark, the STOP's receipt while STOPPED, and the next read-card ask deals it again at its next generation; before, it went to the lost member's ready. docs/SPEC-SPRINT.md (working means a live run) states the rule. tla/ReadCards.tla gains the live reads (Lose, Beat, LiveReturn) with NamedOrWithinGrace and NoGhostRead and two reversed witnesses, BugNamesHeld (breaks NoGhostRead) and BugNoLiveReturn (breaks NamedOrWithinGrace). Tests, red first: TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat, TestAMemberRestartReturnsItsReadsAtOnce and TestAWorkingReadTheBeatNamesIsNeverReturned (internal/sprint/read_lost_test.go), TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost (pkg/member/read_retry_test.go)."
      :origin "the read-deal diagnosis, 2026-10-11 ~23:00Z, on the live v1.2.13 server; hand-landed outside the sprint (hand/a-member-hands-back-a-read-it-is-not-running) for the owner: \"this must not happen. and we must stop it from ever happening again with tests that lock in correct behavior.\""
      :kept (:priority "blocker"))
+    (fix "tla-dirtytick-deal-order-and-skips" :release "v1.2.14" :status "planned"
+     :title "DirtyTick models the deal's held-stream skip and its reads-before-work order"
+     :text "Models only, no product change. tla/DirtyTick.tla's deal now does two things the code's TickDeal (internal/sprint/steps_tick.go) does and no other module holds. A held stream's ready cards are dealt to no machine and offered to no friend until unhold (hold.go StreamHeld; steps_tick.go TickDeal, steps_work.go dealPlan): a scenario's heldStreams (none in every existing configuration) leaves them out of Dealable, and the new invariant HeldStreamNotDealt, shaped like RouteGuard, says such a card never leaves none, waiting or ready. Under ReadCost \"half\" (read cards on, read_cards.go ReadCardsOn; the scenario's readCost, \"whole\" and the 2026-09-30 shape in every existing configuration), the pump places the reads pending at it before its deal (withReadCards), a read holding half a slot (halfLoad; Load, Room, ReadFits), and the new action property ReadsBeforeWork says every read a pump places precedes every card it deals. Two reversed witnesses: MCDirtyTickBrokenDealHeldStream (Broken \"dealheldstream\") fails HeldStreamNotDealt, MCDirtyTickBrokenWorkFirst (Broken \"workfirst\", the deal before the reads) fails ReadsBeforeWork; their controls MCDirtyTickHeldStream and MCDirtyTickReadsFirst pass. Every existing case keeps its declared result and its state space, since both are off unless the scenario turns them on. Friends first (tla/WhoPreference.tla), the bench skip and the staging refusers (tla/RouteIndex.tla Pool), the friend-dealt return (tla/FriendDealtReturn.tla) and the fault-hold clear (tla/DealFill.tla FaultHoldClears) are cited to their modules. steps_tick.go TickDeal, steps_work.go dealPlan and read_cards.go halfLoad and withReadCards each gain one comment line citing the module; no other Go change."
+     :origin "this card (tla-dirtytick-deal-order-and-skips), v1.2.12 inventory item T7, second half; drift read at nova-sprint main 00c54ba2e; hand-landed 2026-10-11 outside the sprint (hand/tla-dirtytick-deal-order-and-skips) after nine sprint attempts")
     (fix "a-stop-on-unlanded-needs-is-a-coordination-failure" :release "v1.2.13" :status "planned"
      :title "A worker's stop on needs that have not landed is a coordination failure, never the worker's; the needs withdrawal goes working -> waiting"
      :text "Blocker. A worker that stops because its card's named needs have not landed was blamed: the finish read its HOLD (\"the base lacks ...\") as a brief defect, or as failed work. A failed finish whose primary has a named need (not waived) that has not landed at the finish (stoppedOnNeeds, needs_stop.go; the table's facts, never the report's words) is now a coordination failure, judged before the brief defect: the work card goes back to the pool at a new generation (no fail mark and no ok% hit on the worker's row, no redeal spent, counted neither ok nor failed in the route and model stats), the primary goes working -> waiting at once, and one happened note, \"a card returned: dealt before its needs landed\", names the needs and the report (needsStopReturned); no brief-defect, failed-work or invariant judgment is written. The next deal after the needs land cuts the next attempt: an attempt number is spent, never a redeal or a failure. A primary is returned this way at most MaxNeedsReturns (3) times (needs_returns); past that, and whenever every need has landed by the finish, the HOLD is judged as any other, so a stale base never loops unseen (the cold read's probe: twelve free rounds). No coordination-failure counter exists, so the stop is classed as not the worker's. The needs withdrawal of a dealt card (needsWithdrawals) moved its working primary working -> waiting with no lifecycle row, so the store refused it; the lifecycle now has that row (withdraw, its needs have not landed, carried by the move's needs field), and needsWaits moves a ready primary whose needs have not landed and whose work card is dealt nowhere ready -> waiting. tla/SprintTables.tla models both (NeedsWithdraw, NeedsWait; WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits, ReadyToWaitingOnlyByInsert widened to needs) with the reversed witness withdrawready (the withdrawal run working -> ready breaks NeedsWithdrawalWaits, rule 11). docs/SPEC-SPRINT.md (the lifecycle table; needs and the deal; a brief defect) states the rule. Tests: TestAStopOnUnlandedNeedsIsNotTheWorkers, TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand, TestProbe96LandedNeedHoldLoopsUnbounded, TestProbe96UnrelatedNotLandedWordsSkipTheFailure, and the needs tests held to the lifecycle (lawfulDeal) and the end-of-tick check."
@@ -795,6 +803,40 @@
      TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause."
     :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
      checked against nova-sprint main 00c54ba; this card")
+
+  (fix "a-landing-stall-is-a-judgment" :release "v1.2.14" :status "planned"
+   :title "The tick judges and pushes a landing stall, and pushes every landing"
+   :text "When cards wait in review or merging and no card has landed for one minute of running
+    time (the landing_stall_bound setting, default LandingStallBound; the owner's number: \"10
+    minute stall watch is too long. 1 minute.\"), the tick end raises one judgment NLandingStall,
+    \"landing stalled\", to the coordinator with its cause breakdown: the reads out (count, by
+    reader, oldest age), the cards waiting on the coordinator's judgment (count, oldest alias; a
+    review where every card waits on the coordinator is named the seat's stall), the accepted and
+    not merged (count, the stream's merge state), the lander's last refusal (card and reason) and
+    the base's red CI. The alarm runs in the deadlines part (TickDeadlines), independent of the
+    idle alarm, and the merge step writes the facts it measures from, on the work table:
+    last_landing (the stamp of the last card that landed) and land_refusal (the lander's last
+    refusal). The episode lives on the work table's properties (landing_stall_since,
+    landing_stall_said), is re-raised each bound it holds (the open judgment rewritten in place
+    with fresh facts) and clears on the next landing with the happened NLandingAgain, \"landing
+    again after <d>\"; a sprint with nothing in review or merging raises none. An episode that
+    begins before the first landing survives ticks shorter than the bound: the tick clears it only
+    when nothing waits or a landing lands, never because the bound has not yet elapsed.
+    docs/SPEC-SPRINT.md,
+    the judgments section, names the stall, its bound, its breakdown and its clear. Every landing
+    is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
+    <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
+    entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
+    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
+    Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
+    TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
+    TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
+    TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
+    TestTickDeadlinesRaisesTheLandingStall, TestLandingStallSurvivesTicksShorterThanTheBound."
+   :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
+    hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
+    need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
+    gaps in push notifications\"; this card")
 
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
@@ -1613,11 +1655,12 @@
     :text "tla/DirtyTick.tla capped a machine at its width (Room = Width - |mc| - |mr| - pending), where the
      code deals ahead (internal/sprint/width.go DealAhead = 2, room = DealAhead times the width) and a read
      card costs half a slot rounded up (internal/sprint/read_cards.go halfLoad). The model adds the
-     constants DealAhead and ReadCost (ReadCost in {\"apart\", \"half\"}: apart is the readers table every
-     existing cfg keeps, half is read cards); Room follows the code for each. WidthRespected becomes
-     HoldRespected (|mc| + ((|mr| + 1) \\div 2) <= DealAhead * Width under half, and the apart form under
-     apart), and a new LanesRespected holds that the cards taken at a machine are at most its width, with
-     the guard on Take. Two reversed witnesses: floorreads rounds the reads down and fails HoldRespected
+     constant DealAhead, and with tla-dirtytick-deal-order-and-skips's ReadCost (\"whole\", the readers
+     table every existing cfg keeps, or \"half\", read cards; the scenario's) Room follows the code for
+     each. WidthRespected becomes HoldRespected (|mc| + ((|mr| + 1) \\div 2) <= DealAhead * Width under
+     half, the whole form under whole), and a new LanesRespected holds that the cards taken at a machine
+     are at most its width, the lane acquired when the fleet applies the take (as takeOne holds the width at
+     the one writer). Two reversed witnesses: floorreads rounds the reads down and fails HoldRespected
      with one card and three reads; nolanes drops Take's lane guard and fails LanesRespected. MCDirtyTickWidth.cfg
      (ScnWidth takes a third card to contend), MCDirtyTickG2.cfg and MCDirtyTickW15.cfg (nowidth, three cards on
      one machine) are retuned for the wider room; the six Go comments that stated the width-w rule now say
@@ -2453,4 +2496,26 @@
     the merged data. One id both sides change differently is refused naming it, and a code conflict is
     refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
     witnesses."
-   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")
+  (fix "a-brief-edit-keeps-the-cards-needs-tier-and-bound" :release "v1.2.14" :status "planned"
+   :title "A brief edit keeps the needs, tier and bound a verb set"
+   :text "A brief edit replaces the card's whole text, but the text dumped from the card is the
+    admission-time text: its DEPENDS-ON and line 1 tier are the ones the card was admitted with, not
+    the ones a verb set since, so an edit silently rewrote them. Three rules keep them, and a brief
+    NOTE names every property it kept against the text. The needs are the card's, not the text's: the
+    edit starts from the card's needs, maps a name its relink record re-pointed to its twin (the
+    relink record wins over the text's stale DEPENDS-ON, NOTEd `needs kept: <twin> (relinked from
+    <old> <time>)`), and adds only names the text holds that the card does not, never a dropped card
+    the card's needs no longer name (the relink record keeps only the last relink); a need the text
+    drops stays, unless `--needs-from-brief` takes the text whole; the needs held to the batch's cycle
+    check are the ones the edit writes, never the text's list. The tier is a card field (`tier`): a text
+    whose line 1 names another tier than the card's recorded one keeps the recorded one, NOTEd, unless
+    `--tier <t>` names one, and `nova-sprint tier <card> --set <t> --reason` sets it without a text
+    edit; both refuse a TLA path at a tier below frontier as the lint does. The bound hashes the task,
+    not the text (the body and PATHS, NEW, SHARED, TEST and DONE-WHEN): an edit that changes only
+    DEPENDS-ON, ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS or the tier keeps the count (`bound: same
+    task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`). Tests:
+    internal/sprint/brief_edit_test.go (red first) and the functional
+    TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
+    DEPENDS-ON, on a real store)."
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
