@@ -2966,10 +2966,12 @@ func (a *app) cmdRedo(args []string, stdout, stderr io.Writer) int {
 func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 	var reason, ans *string
 	var cascade *bool
+	var replacedBy *string
 	return a.setVerb("drop", args, stdout, stderr, true, func(fs flagSet) {
 		reason = fs.String("reason", "", "why it leaves the table; kept with its record")
 		ans = fs.String("answers", "", answersWords)
-		cascade = fs.Bool("cascade", false, "drop too every waiting primary that needs a card named, and their dependants, with the same reason; without it a card another waiting primary still needs is refused, naming the dependants")
+		cascade = fs.Bool("cascade", false, "drop too every waiting primary that needs a card named, and their dependants, with the same reason; without it a card another open primary still needs is refused, naming the dependants")
+		replacedBy = fs.String("replaced-by", "", "the successor the dropped card becomes an alias of, recorded as relink records it: a need on the dropped id resolves to it and is not refused")
 	}, func(ids []string, s *sel) string {
 		if *reason == "" || len(ids) == 0 && s.stream == "" && s.col == "" {
 			return "wants ids (or --stream/--col, --group) and --reason <text>"
@@ -2979,7 +2981,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}
-		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Who: c.actor})
+		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, ReplacedBy: *replacedBy, Who: c.actor})
 	})
 }
 
@@ -3223,6 +3225,15 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+	}
+	// a brief edit is held to the same dropped-card lint add holds a brief to
+	// (one lint for both, holdCardChecks): a brief that names a card dropped off
+	// the table is refused, exit 2, nothing written.
+	for i := range checks {
+		checks[i].stream = streams[i]
+	}
+	if code := a.holdCardChecks("brief", st, stderr, checks...); code != 0 {
+		return code
 	}
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
 		return code

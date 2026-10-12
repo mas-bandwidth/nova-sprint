@@ -500,16 +500,41 @@ func relinkMap(relinked string) (olds []string, nw, stamp string) {
 // name left out, and a need the text drops.
 func briefNeedsKept(s *Snapshot, cur, want []string, relinked string) (needs, notes []string) {
 	olds, nw, stamp := relinkMap(relinked)
-	needs = append([]string(nil), cur...)
+	// the card's stored needs start resolved through the alias map (need_alias.go):
+	// an old id on the record is already its successor, so the edit never carries
+	// the old id forward.
+	needs = nil
+	for _, n := range cur {
+		t := AliasOf(s, n)
+		if !contains(needs, t) {
+			needs = append(needs, t)
+		}
+	}
 	named := map[string]bool{} // the card's needs the text accounts for
 	for _, n := range want {
-		switch {
-		case nw != "" && contains(olds, n):
+		// the card's own relink record is told first, as before: it is the last
+		// relink that touched this card and its words are the older NOTE.
+		if nw != "" && contains(olds, n) {
 			named[nw] = true
 			if !contains(needs, nw) {
 				needs = append(needs, nw)
 			}
 			notes = append(notes, fmt.Sprintf("needs kept: %s (relinked from %s %s)", nw, n, orDash(stamp)))
+			continue
+		}
+		// a name the text holds that is a dropped card's alias is stored as the
+		// successor, never the old id: the alias outlives the drop (need_alias.go),
+		// and the NOTE names the successor, the stamp and the actor.
+		if t := AliasOf(s, n); t != n {
+			r, _ := replacedByOf(s.Work.Card(n))
+			notes = append(notes, fmt.Sprintf("need %s is now %s (relinked %s by %s)", n, t, orDash(r.Stamp), orDash(r.Who)))
+			named[t] = true
+			if !contains(needs, t) {
+				needs = append(needs, t)
+			}
+			continue
+		}
+		switch {
 		case contains(needs, n):
 			named[n] = true
 		case keptOffTable(s, n):
@@ -520,8 +545,9 @@ func briefNeedsKept(s *Snapshot, cur, want []string, relinked string) (needs, no
 		}
 	}
 	for _, n := range cur {
-		if !named[n] {
-			notes = append(notes, fmt.Sprintf("needs kept: %s (the text's DEPENDS-ON drops it; --needs-from-brief takes the text whole)", n))
+		t := AliasOf(s, n)
+		if !named[t] {
+			notes = append(notes, fmt.Sprintf("needs kept: %s (the text's DEPENDS-ON drops it; --needs-from-brief takes the text whole)", t))
 		}
 	}
 	return needs, notes

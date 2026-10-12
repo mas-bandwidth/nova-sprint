@@ -228,10 +228,10 @@ func TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck(t *testing.T) {
 	assert.Contains(t, strings.Join(whys, "\n"), "cycle")
 }
 
-// The relink record keeps only the last relink, so a card relinked twice has
-// lost the record of the first: a text still naming that first old id, a card
-// since dropped, must not add it back (it would block the card on something
-// dropped, the incident of 2026-10-11), and the brief says it left it out.
+// A card relinked and dropped is an alias of its successor (need_alias.go): a
+// text still naming that old id, a card since dropped, stores the successor and
+// NOTEs it, never adding the dropped id back (the incident of 2026-10-11), while
+// the relink record keeps the last relink's words for the other edge.
 func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
@@ -250,7 +250,7 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	assert.Equal(t, "a-2,x-2", w.s.Work.Placed("b").F("needs"), "the dropped a-1 an earlier relink replaced is not added back")
 	says := strings.Join(p.Said, "\n")
 	assert.Contains(t, says, "needs kept: x-2 (relinked from x-1 ")
-	assert.Contains(t, says, "needs kept: a-1 not added (kept, ")
+	assert.Contains(t, says, "need a-1 is now a-2 (relinked ")
 }
 
 // --tier with a brief is held to the lint's tla-is-frontier rule as tier --set
