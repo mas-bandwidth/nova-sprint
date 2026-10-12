@@ -180,7 +180,7 @@ func SyncInbox(dir string, row Row, keep map[string]bool, asked, now time.Time, 
 			continue
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			c.Missing++
-			firstErr = cmpErr(firstErr, err)
+			firstErr = cmp.Or(firstErr, err)
 			continue
 		}
 		if strings.TrimSpace(h.Brief) == "" {
@@ -190,7 +190,7 @@ func SyncInbox(dir string, row Row, keep map[string]bool, asked, now time.Time, 
 		}
 		if err := os.MkdirAll(job, 0o755); err != nil {
 			c.Missing++
-			firstErr = cmpErr(firstErr, err)
+			firstErr = cmp.Or(firstErr, err)
 			continue
 		}
 		// a rework's brief is written with its fix first (rework.go, ReworkedBrief)
@@ -200,12 +200,12 @@ func SyncInbox(dir string, row Row, keep map[string]bool, asked, now time.Time, 
 		case errors.Is(err, fs.ErrExist): // friend sync wrote it between the look and the write
 		default:
 			c.Missing++
-			firstErr = cmpErr(firstErr, err)
+			firstErr = cmp.Or(firstErr, err)
 		}
 	}
 	entries, err := os.ReadDir(in)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return c, cmpErr(firstErr, err)
+		return c, cmp.Or(firstErr, err)
 	}
 	for _, e := range entries {
 		name := e.Name()
@@ -223,7 +223,7 @@ func SyncInbox(dir string, row Row, keep map[string]bool, asked, now time.Time, 
 		to, err := retire(dir, name, now)
 		if err != nil {
 			c.Inbox++
-			firstErr = cmpErr(firstErr, err)
+			firstErr = cmp.Or(firstErr, err)
 			continue
 		}
 		record(fmt.Sprintf("%s inbox: retired inbox/%s to %s: its card is no longer on the friend's row", at, name, to))
@@ -271,13 +271,6 @@ func retire(dir, job string, now time.Time) (string, error) {
 		return "", err
 	}
 	return RetiredDir + "/" + name, nil
-}
-
-func cmpErr(first, err error) error {
-	if first != nil {
-		return first
-	}
-	return err
 }
 
 // inboxStep is the daemon's reconcile, once an InboxEvery: Held asked, the inbox synced, the
