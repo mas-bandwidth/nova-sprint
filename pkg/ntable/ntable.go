@@ -661,4 +661,3 @@ func decodeRow(t Table, key string, h map[string]string) Row {
 func NewRow(t Table, key string) Row {
 	return decodeRow(t, key, nil)
 }
-

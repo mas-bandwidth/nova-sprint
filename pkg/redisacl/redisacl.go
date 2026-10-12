@@ -205,5 +205,3 @@ func Render(lib redisfn.Library) ([]User, error) {
 	}
 	return out, nil
 }
-
-

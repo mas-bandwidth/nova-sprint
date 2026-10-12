@@ -215,4 +215,3 @@ func decodeSnapshot(name string, reply []any) (Table, error) {
 	}
 	return t, nil
 }
-

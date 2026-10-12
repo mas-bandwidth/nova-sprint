@@ -361,5 +361,3 @@ func ended(text string) string {
 	}
 	return text + "\n"
 }
-
-
