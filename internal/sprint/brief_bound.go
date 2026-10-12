@@ -250,6 +250,12 @@ func AttemptCapDeal(s *Snapshot, r TickReq) Plan {
 		if _, ok := AtBriefBound(c, "", s.AttemptsCap(c.Row)); !ok {
 			continue
 		}
+		if AtEnvExitBound(s, c) != nil {
+			// its children died on the environment EnvExitCardCap times at this attempt: held
+			// by the bound's judgment until the seat acts, never dealt a next attempt here
+			// (docs/SPEC-SPRINT.md, "An environment exit")
+			continue
+		}
 		name := friendWithFree(r.Friends, free, c, classes...)
 		if name == "" {
 			continue // no frontier or heavy friend up with room: the deal's, and its judgment

@@ -1104,6 +1104,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
+			if AtEnvExitBound(s, c) != nil {
+				// its children died on the environment EnvExitCardCap times at this attempt: not
+				// dealt again until the seat reworks or drops it (docs/SPEC-SPRINT.md, "An
+				// environment exit")
+				p.refuse(c.ID, envExitBoundWhat(wc, c.ID))
+				continue
+			}
 			if redealBound(wc) {
 				tier := s.NextTier(c)
 				if _, atCap := AtBriefBound(c, "", s.AttemptsCap(c.Row)); atCap {
@@ -1643,6 +1650,14 @@ type FinishReq struct {
 	Failed bool
 	Head   string
 	Report string
+	// Exit is the child's exit code, as the member read it (0: a clean end or
+	// unknown). A failed finish whose exit is 134 or 137, or whose report says
+	// no result at any exit, is an environment exit, never the card's
+	// (sprint.EnvExit; docs/SPEC-SPRINT.md, "An environment exit").
+	Exit int
+	// Harness is the child's harness output, so an environment exit keeps the last
+	// HarnessTailLines of it on the card (sprint.EnvironmentExitRecord).
+	Harness string
 	// SeatJudgment is a coordinator's concern about a worker report that does not
 	// change the worker's stated verdict or finish result.
 	SeatJudgment string
@@ -1771,6 +1786,23 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		kind, class, used := "", "", false
 		if r.Failed {
 			kind, class, used = finishKind(c, r)
+		}
+		// An environment exit (sprint.EnvExit: a child exit of 134 or 137, or a
+		// no-result report at any exit) did not judge the card: it is the member's
+		// environment event, recorded on the attempt as `ended=environment exit=<n>`
+		// with the harness tail, and the card returns to ready at the same attempt,
+		// spending no attempt and no redeal, and the member is not held
+		// (docs/SPEC-SPRINT.md, "An environment exit"). A friend's row is no member's
+		// environment: its finish is judged as before.
+		// Only a 134 or 137 (HardEnvExit) spends nothing here. A no-result child at another
+		// exit is recorded as an environment exit by the ended take below (takeEnded), whose
+		// accounting the owner's rules for such a take keep; one whose finish carries a
+		// decision over its bar is routed by that decision (finishKind), never here.
+		if r.Failed && !late && !IsFriendRow(c.Row) {
+			if ended, env := EnvExit(r.Report, r.Exit); env && HardEnvExit(r.Exit) {
+				p.Units = append(p.Units, envExited(s, c, pr, r, ended, who))
+				continue
+			}
 		}
 		// An environment fault is the member's: the card returns to ready untouched, the
 		// member is held and one judgment is pushed to the seat (EnvFault, envFaulted;
@@ -2177,6 +2209,22 @@ func takeEnded(s *Snapshot, c, pr *Card, r FinishReq, kind string, decided bool)
 		}
 	}
 	set[FieldProviderError] = line
+	// a child that left no result is an environment exit (EnvExit; docs/SPEC-SPRINT.md, "An
+	// environment exit"): the take is still an ended take, counted as the owner's rules say
+	// (HardEnvExit), and it carries the ended word and the harness tail on the card and its
+	// primary, and its record's end names the exit, so the doctor counts it (EnvExitChildren)
+	end, envSet := kind, map[string]string{}
+	var envUnset []string
+	if ended, env := EnvExit(r.Report, r.Exit); env && kind == cardhdr.EndNoResult && !decided && !IsFriendRow(c.Row) {
+		rec := EnvironmentExitRecord(r.Exit, r.Harness)
+		var fields map[string]string
+		fields, envUnset = rec.envExitFields()
+		maps.Copy(set, fields)
+		end = kind + " " + ended
+		if rec.Harness != "" {
+			envSet[FieldHarnessTail] = rec.Harness
+		}
+	}
 	// what the take cost, timed and priced before its stamps go (cost.go): it still cost
 	// tokens and time. The take's record is its one place: the card's usage field is
 	// left alone, so it only ever holds the card's own ended take (finishPlan), and a
@@ -2192,11 +2240,11 @@ func takeEnded(s *Snapshot, c, pr *Card, r FinishReq, kind string, decided bool)
 	set[FieldProviderTake+itoa(take)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 		Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	// and the producer's record of it (cost.go): it still cost tokens and time
-	prSet := map[string]string{}
-	addConsumer(pr, prSet, workConsumer(s, c, take, kind, rec))
+	prSet := envSet
+	addConsumer(pr, prSet, workConsumer(s, c, take, end, rec))
 	decidedSets(r, decided, pr, set, prSet)
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, append([]string{"taken", "dealt"}, envUnset...)...)),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s; %s working -> ready", c.ID, c.Int("gen")+1, why, pr.ID)}
 }
@@ -2334,6 +2382,17 @@ const (
 	// NMemberEnvFaulted is the happened note of a card returned to ready by an
 	// environment fault (never failed work).
 	NMemberEnvFaulted = "a card returned to ready: its member's environment faulted"
+	// NMemberEnvExit is the happened note of a card returned to ready by an
+	// environment exit (a child that ended 134/137 or with no result): never failed
+	// work, no attempt and no redeal spent, the member not held (sprint.EnvExit).
+	NMemberEnvExit = "a card returned to ready: its child ended on the member's environment"
+	// FieldEnvExit is the work card's record of an environment exit on the attempt:
+	// `ended=environment exit=<n>`, written by the finish (envExited), with the last
+	// HarnessTailLines of the child's harness output beside it (FieldHarnessTail), so
+	// the cause rides the card a reader reads (docs/SPEC-SPRINT.md, "An environment
+	// exit"; a-card-carries-its-consumer-history).
+	FieldEnvExit     = "ended"
+	FieldHarnessTail = "harness_tail"
 	// EnvProbePassed is the member's own probe's result when it passed.
 	EnvProbePassed = "passed"
 )
@@ -2462,6 +2521,42 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 	if upd != nil {
 		p.Updates = append(p.Updates, *upd)
 	}
+}
+
+// envExited is the unit of a finish whose child ended on the member's environment
+// (EnvExit; docs/SPEC-SPRINT.md, "An environment exit"): the work card withdraws WITHOUT
+// FieldTakeEnded, so the deal deals the same work card again (redeal) at the same attempt
+// and spends none of the redeal bound, and its primary goes back to ready; the member is NOT
+// held (an environment exit is an event, not a fault: the same member may take the card
+// again). The work card keeps the ended word (`ended=environment exit=<n>`, FieldEnvExit)
+// and the last HarnessTailLines of the child's harness output (FieldHarnessTail), and the
+// primary gets the take's consumer record with that end (cost.go: the attempt record the
+// doctor counts, EnvExitChildren) and the same tail, so the cause is on the card a reader
+// reads (a-card-carries-its-consumer-history).
+func envExited(s *Snapshot, c, pr *Card, r FinishReq, ended, who string) Unit {
+	rec := EnvironmentExitRecord(r.Exit, r.Harness)
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	fields, unset := rec.envExitFields()
+	maps.Copy(set, fields)
+	// the attempt's count of such exits, by member and code: at EnvExitCardCap the card is
+	// dealt no more and the tick holds it with the bound judgment (AtEnvExitBound)
+	set[FieldEnvExitHistory] = strings.Join(append(envExitHistory(c), c.Row+"="+itoa(r.Exit)), ",")
+	// what the take cost, timed and priced (cost.go): it still cost tokens and time
+	dealt, taken := takeStamps(c)
+	cost := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
+	prSet := map[string]string{}
+	addConsumer(pr, prSet, workConsumer(s, c, 0, ended, cost))
+	if rec.Harness != "" {
+		prSet[FieldHarnessTail] = rec.Harness
+	}
+	what := "the child's environment exit (" + ended + ") did not judge the card: no attempt and no redeal spent; " + oneLine(r.Report)
+	n := happened(NMemberEnvExit, pr.Row, s.Now, pr.ID)
+	n.Who, n.What = who, what
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, append([]string{"taken", "dealt"}, unset...)...)),
+		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
+	}, Notes: []Note{n}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s ended on %s's environment (no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, ended, c.Row, pr.ID)}
 }
 
 // envFaultNote is the judgment an environment fault raises for the member: its first cause

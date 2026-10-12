@@ -237,6 +237,26 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
+// envExitChecks is the doctor's member-env line for each member with at least
+// sprint.EnvExitMinN children in the last hour (docs/SPEC-SPRINT.md, "An environment exit"):
+// the counts come from the attempt records on the epoch's cards (sprint.EnvExitChildren:
+// each take's and read run's consumer record, its end and when), and each is
+// sprint.EnvExitCheck's DOCTOR FAIL|WARN|OK member-env line, a FAIL or WARN with the first
+// line of the last harness tail and the card to read. A member under the floor is no line.
+// now is the app's clock: the store's read snapshot carries none.
+func envExitChecks(snap *sprint.Snapshot, now time.Time) []sprint.DoctorCheck {
+	if snap == nil {
+		return nil
+	}
+	var out []sprint.DoctorCheck
+	for _, c := range sprint.EnvExitChildren(snap, now, time.Hour) {
+		if ch, ok := sprint.EnvExitCheck(c.Member, c.Env, c.N, c.Last, c.Card); ok {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
 // doctorChecks reads what the checks of the desired state need (store.DoctorRead, nova-config,
 // the server's start, the seat's build, each member's host) and runs them, the area's alone when
 // area names one. A reach the outside does not configure is left unmeasured, and its check says so.
@@ -307,6 +327,11 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		in.Probes = o.probeMembers(ctx, members, tools, self)
 	}
 	checks := sprint.Doctor(in)
+	// The member's environment exits, counted from the attempt records on the epoch's cards
+	// (docs/SPEC-SPRINT.md, "An environment exit"): a member whose children end 134/137 or
+	// with no result over the rate is named under member-env, with the first line of the last
+	// harness tail and the card to read (sprint.EnvExitChildren, EnvExitCheck).
+	checks = append(checks, envExitChecks(in.Snap, a.now())...)
 	// The beat-form probe runs only where the doctor's own reaches do: a test gives its own
 	// outside, and only the real one reaches a member's host (docs/SPEC-SPRINT.md, "The
 	// doctor's refused-verb and beat-form checks").
