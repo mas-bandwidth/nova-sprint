@@ -1076,12 +1076,17 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	ack := fs.Uint64("ack", 0, "acknowledge every push the hook's stream showed up to this id (PUSH <id>), over the running hook's connection")
 	session := fs.String("session", "", "the session token printed on the PUSH line being acknowledged")
 	quiet := fs.Bool("quiet-happened", false, "receive judgments and challenges only: the informational HAPPENED pushes are not delivered")
+	compact := fs.Bool("compact", false, "print only what the seat acts on: the HOOK lines and each JUDGMENT cut to one line plus its first detail line (no HAPPENED pushes, no verb menus), each line written and flushed at once; with --overdue, a card-holding judgment unanswered that long is named by one OVERDUE line, again every interval until it is answered")
+	overdue := fs.Duration("overdue", hookOverdueDefault, "with --compact: how long a card-holding judgment may go unanswered before one OVERDUE line names it, and how often the line repeats until it is answered")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, name, argErr("takes no words ", err, pos...))
 	}
 	if !sprint.ValidID(c.actor) {
 		return refuse(stderr, name, "hook wants --actor <name> (or NOVA_SPRINT_ACTOR): the seat's holder; nothing was changed")
+	}
+	if *overdue != hookOverdueDefault && !*compact {
+		return refuse(stderr, name, "--overdue is only used with --compact")
 	}
 	switch {
 	case *prove != "" && *ack != 0:
@@ -1104,7 +1109,7 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	return a.hookHold(ctx, addr, from, c.actor, *quiet, stdout, stderr)
+	return a.hookHold(ctx, addr, from, c.actor, *quiet, *compact, *overdue, c.redis, stdout, stderr)
 }
 
 // cmdUnhook is nova-sprint unhook: the seat stops, over the running hook's connection;
@@ -1225,9 +1230,12 @@ func (r *hookRelay) answered(m hookMsg) bool {
 
 // hookHold is the seat's subscription, held until it ends: the connection upgraded, the
 // socket for the session's lines opened, and every line from the server said on stdout,
-// one event per line for the Monitor. Exit 0 after unhook; 1 for any other end, which
-// the server records as gone.
-func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet bool, stdout, stderr io.Writer) int {
+// one event per line for the Monitor. With compact, only the HOOK lines the seat acts on
+// and each JUDGMENT push cut short are printed (compactSay), and a card-holding judgment
+// unanswered past overdue is named by one OVERDUE line, again every interval until it is
+// answered (compactOverdue). Exit 0 after unhook; 1 for any other end, which the server
+// records as gone.
+func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, compact bool, overdue time.Duration, redis string, stdout, stderr io.Writer) int {
 	const verb = "hook"
 	sock, err := a.hookSocket(name)
 	if err != nil {
@@ -1320,6 +1328,28 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet bool,
 		_ = conn.Close() // an interrupt ends the hook: the server records it gone
 	}()
 	unhooked := false
+	say := hookSay
+	if compact {
+		say = compactSay
+		if overdue > 0 {
+			stopOverdue := make(chan struct{})
+			defer close(stopOverdue)
+			go func() {
+				t := time.NewTicker(overdue)
+				defer t.Stop()
+				for {
+					select {
+					case <-stopOverdue:
+						return
+					case <-ctx.Done():
+						return
+					case <-t.C:
+						a.compactOverdue(ctx, redis, name, overdue, stdout)
+					}
+				}
+			}()
+		}
+	}
 	sc := bufio.NewScanner(br)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -1336,7 +1366,7 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet bool,
 			}
 			continue
 		}
-		hookSay(stdout, name, addr, from, m)
+		say(stdout, name, addr, from, m)
 	}
 	if unhooked {
 		fmt.Fprintf(stdout, "HOOK ENDED name=%s: unhooked; the seat is recorded away\n", oneline.Field(name))
