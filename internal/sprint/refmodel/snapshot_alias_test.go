@@ -1,7 +1,6 @@
 package refmodel_test
 
 import (
-	"encoding/json"
 	"reflect"
 	"sync"
 	"testing"
@@ -117,17 +116,11 @@ func TestCloneIsolatesNestedSnapshotMetadata(t *testing.T) {
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			source := metadataSnapshot()
-			before, err := json.Marshal(source)
-			require.NoError(t, err)
+			source, expected := metadataSnapshot(), metadataSnapshot()
 			clone := source.Clone()
-			copied, err := json.Marshal(clone)
-			require.NoError(t, err)
-			require.Equal(t, string(before), string(copied), "cloning preserves the input metadata")
+			require.Equal(t, expected, clone, "cloning preserves the input metadata")
 			change(&clone)
-			after, err := json.Marshal(source)
-			require.NoError(t, err)
-			assert.Equal(t, string(before), string(after), "changing a clone leaves its source unchanged")
+			assert.Equal(t, expected, source, "changing a clone leaves its source unchanged")
 		})
 	}
 }
@@ -176,6 +169,8 @@ func TestClonePreservesEveryPublicSnapshotField(t *testing.T) {
 	zero := refmodel.Snapshot{Tables: &sprint.Snapshot{}}
 	assert.Equal(t, zero, zero.Clone(), "absent maps, slices and pointers stay absent")
 	assert.Nil(t, (refmodel.Snapshot{}).Clone().Tables)
+	blank := refmodel.Snapshot{Beats: map[string]sprint.Beat{"member": {}}, Friends: []sprint.FriendSeat{{}}, Tables: &sprint.Snapshot{Queue: []sprint.QueuedChange{{}}}}
+	assert.Equal(t, blank, blank.Clone(), "absent nested readings and queue pointers stay absent")
 }
 
 func metadataSnapshot() refmodel.Snapshot {
@@ -190,7 +185,7 @@ func metadataSnapshot() refmodel.Snapshot {
 	return refmodel.Snapshot{Friends: []sprint.FriendSeat{seat}, Beats: map[string]sprint.Beat{"member": beat}, Tables: &sprint.Snapshot{
 		Now: t0, Cleared: t0,
 		Providers: map[string]sprint.Provider{"provider": {Name: "provider", Funded: true}},
-		Routes:    []sprint.Route{{Name: "route", Enabled: true}}, Tiers: map[string][]string{"flash": {"route"}},
+		Routes:    []sprint.Route{{Name: "route", Enabled: true, Share: 0.25}}, Tiers: map[string][]string{"flash": {"route"}},
 		Answered: map[string]string{"note": "answer"}, Held: map[string]bool{"card": true}, RulesOff: []string{"rule"},
 		ReaderStates: map[string]string{"reader": "up"}, NoRoom: map[string]string{"member": "held"}, FriendTextPronouns: map[string]string{"seat": "they/them"},
 		Friends: []sprint.FriendSeat{seat}, Queue: []sprint.QueuedChange{{Prop: &sprint.PropWrite{Value: "value"}, Entry: &ntable.BatchMemberEntry{
