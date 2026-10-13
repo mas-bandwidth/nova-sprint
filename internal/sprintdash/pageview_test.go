@@ -26,8 +26,8 @@ import (
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
 // critical."): the page is that page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "4aee69bbf53c916ea43fce57de132cfb5b4f9679d8a4546988cf0778860fa140"
-	liveAppSHA256   = "f7723ec15c5f72dd01bc29825fd7bddcbd056c84fd249ead613adbe1c9e4d912"
+	liveIndexSHA256 = "ad147572a5f12eae86b431114cdca73754f8cd3a4b10eaa6d0cc84b158f84eef"
+	liveAppSHA256   = "f47ac28196ceac26d0da0802943327a6b52dfb1f46a7b8f34157671807c8f845"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -46,9 +46,10 @@ func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:
 // buildQuery is the cache-busting query a served page carries.
 var buildQuery = regexp.MustCompile(`\?v=[0-9a-f]+`)
 
-// The served index.html and app.js are the live page's files byte for byte: app.js as it is,
+// The served index.html and app.js are the page's files byte for byte: app.js as it is,
 // index.html with the live server's three fills (server.py index_page: the script versioned, the
-// robot tile in the logo slot, its favicon links), the build in place of its version.
+// nova-sprint logo inline as a data PNG in the logo slot, the robot tile as the favicon), the
+// build in place of its version.
 func TestThePageIsTheLivePageByteForByte(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -63,8 +64,9 @@ func TestThePageIsTheLivePageByteForByte(t *testing.T) {
 
 	assert.Equal(t, app, get(t, r.s, "/app.js").Body.Bytes(), "/app.js is the live app.js, byte for byte")
 	const v = "?v=X"
-	// server.py index_page, the tile branch, its version written v
-	slot := `<img id="logo" class="logo-tile" src="/logo-tile-192.png` + v + `" srcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x" alt="">`
+	// server.py index_page, the logo branch, its version written v: the nova-sprint image inline
+	// as a data PNG (the owner 2026-10-12 ~00:28Z), the build in place of its version
+	slot := `<img id="logo" class="logo-tile" src="` + novaLogoData + `" alt="">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
 	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()
@@ -77,7 +79,7 @@ func TestThePageIsTheLivePageByteForByte(t *testing.T) {
 }
 
 // liveEnvelope is the keys the live server's /api/sprint carries (server.py: _state and build).
-var liveEnvelope = []string{"ok", "data", "fetchedAt", "dataAgeSeconds", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build"}
+var liveEnvelope = []string{"ok", "data", "fetchedAt", "dataAgeSeconds", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build", "server_version"}
 
 // /api/sprint on the page's listeners carries the live server's keys and no other: every key
 // app.js reads of the envelope (accept: data, build, throughput, throughputMinutes), and none of
