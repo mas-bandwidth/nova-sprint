@@ -45,7 +45,7 @@ func TestStartAndStopSayTheStateBeforeAndAfter(t *testing.T) {
 	ta.ok("stop --reason r --until 9999h")
 	out = ta.ok("stop --reason r --until 9999h")
 	require.Contains(t, out, "STOP OK before=STOPPED after=STOPPED unchanged: the machine is STOPPED already", "stop when stopped")
-	require.Contains(t, out, "\nSTOPPED by coordinator: r, back by ", "stop when stopped")
+	require.Contains(t, out, "\nSTOPPED, expected back by ", "stop when stopped")
 	require.Contains(t, out, "  0/3 0.0%", "stop when stopped")
 	require.NotContains(t, out, "-> ETA", "stop when stopped")
 	require.Contains(t, ta.ok("tick"), "TICK OK state=STOPPED nothing done", "a tick while stopped")
