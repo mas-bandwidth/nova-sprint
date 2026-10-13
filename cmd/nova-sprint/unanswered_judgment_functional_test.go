@@ -73,6 +73,7 @@ func newUJRig(t *testing.T) *ujRig {
 	}
 	r.a.hookSock = shortSock(t)
 	r.a.serveAddr = r.addr
+	r.a.hostNameFn = func() string { return "m1" } // the server host's fleet row (members m1), never the test machine's name
 	// the routes nova-config's apply writes: flash and heavy, no pro
 	for _, x := range [][2]string{{"flash-a", "flash"}, {"heavy-a", "heavy"}} {
 		require.NoError(t, admin.SAdd(r.ctx, config.RoutesKey, x[0]).Err())
@@ -250,7 +251,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.beat()
 	r.do("fleet up m1 --width 8")
 	r.beat()
-	_, _, _, err := r.store().SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "flash,pro"}})
+	_, _, _, err := r.store().SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "flash,pro"}, {Name: "glenn", Width: 2, Class: "flash,pro"}})
 	require.NoError(t, err)
 	r.do("hold amy --reason out-of-credits")
 
