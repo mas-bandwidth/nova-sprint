@@ -300,6 +300,7 @@ func readSpender(cards []*Card) *Card {
 // 0 for the plain id, n for its .g<n> generation, -1 for another card. The plain identity
 // is generation 0; each take-back the read index holds is a further generation.
 func readGenOf(id, base string) int {
+	id = CardID(id)
 	if id == base {
 		return 0
 	}
