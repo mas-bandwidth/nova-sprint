@@ -436,7 +436,8 @@ func MergePriorityOrder(s *Snapshot, cards []*Card) []*Card {
 	return out
 }
 
-// FixStateCounts is the dashboard's repair state, partitioned by original column.
+// FixStateCounts is the dashboard's repair state, partitioned by original column: a ready or
+// working primary at priority fix at a later attempt (a rework), never a first attempt.
 // Completed work waiting for a read remains review, even when its priority is fix.
 // Counts are captured by the tick, so the dashboard never scans cards per refresh.
 func FixStateCounts(s *Snapshot) map[string]map[string]int {
@@ -450,7 +451,13 @@ func FixStateCounts(s *Snapshot) map[string]map[string]int {
 			if level == PriorityBlocker || level == PriorityCritical {
 				continue
 			}
-			repair := level == PriorityFix
+			// a repair is a later attempt (a ready card's next is attempt+1), never a first
+			// attempt whose level is fix by its brief: that card is ready or working
+			next := c.Int("attempt")
+			if col == Ready {
+				next++
+			}
+			repair := level == PriorityFix && next >= 2
 			if col == Review {
 				var work *Card
 				if s.Fleet != nil {
