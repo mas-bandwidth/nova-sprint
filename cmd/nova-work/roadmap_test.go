@@ -234,3 +234,19 @@ func TestTheRoadmapExamplesRunInOrder(t *testing.T) {
 	res := workMain(unreachable(t)).Run("roadmap", "check", "--repo", dir)
 	require.Equal(t, 0, res.Code, res.Stdout+res.Stderr)
 }
+
+// TestRoadmapAddMissingOriginExample verifies that roadmap add invoked without
+// --origin prints valid origin format examples (PR #123, 40-char SHA, or commit reference)
+// and exits 2 with a runnable remedy in the usage block.
+func TestRoadmapAddMissingOriginExample(t *testing.T) {
+	t.Parallel()
+	dir := workRecord(t)
+	res := workMain(unreachable(t)).Run("roadmap", "add", "--repo", dir, "--id", "my-fix", "--release", "v1.0.1", "--title", "My fix")
+	require.Equal(t, 2, res.Code, "%s%s", res.Stdout, res.Stderr)
+	assert.Contains(t, res.Stderr, "ROADMAP-ADD REFUSED")
+	assert.Contains(t, res.Stderr, "--origin")
+	assert.Contains(t, res.Stderr, "PR #123")
+	assert.Contains(t, res.Stderr, "40-char SHA")
+	assert.Contains(t, res.Stderr, "commit reference")
+	assert.Contains(t, res.Stderr, "; run: ")
+}
