@@ -204,42 +204,48 @@ func TestSubscriptionMalformedEnvelopeCannotMutateConsumer(t *testing.T) {
 }
 
 func TestSubscriptionTypedReceiptCannotClaimFriendExecutionAsFleet(t *testing.T) {
- t.Parallel()
- w:=setup(t,1)
- w.s.Routes=[]Route{{Name:"declared",Prices:cardcost.Prices{Billing:"subscription"}}}
- card:=&Card{ID:"friend-read",Row:FriendRow("fake-reader"),Fields:map[string]string{FieldRoute:"declared",FieldBilling:"subscription"}}
- require.Contains(t,w.s.receiptBillingRefusal(card,subscriptionRawFixture(t).String()),"fleet execution only")
- card.Row="m1"
- require.Empty(t,w.s.receiptBillingRefusal(card,subscriptionRawFixture(t).String()))
- // No new wire/value is admitted into the historical friend lane.
- card.Row=FriendRow("fake-reader");card.Fields[FieldBilling]="plan";w.s.Routes[0].Prices.Billing="plan"
- require.Empty(t,w.s.receiptBillingRefusal(card,"input=12"))
+	t.Parallel()
+	w := setup(t, 1)
+	w.s.Routes = []Route{{Name: "declared", Prices: cardcost.Prices{Billing: "subscription"}}}
+	card := &Card{ID: "friend-read", Row: FriendRow("fake-reader"), Fields: map[string]string{FieldRoute: "declared", FieldBilling: "subscription"}}
+	require.Contains(t, w.s.receiptBillingRefusal(card, subscriptionRawFixture(t).String()), "fleet execution only")
+	card.Row = "m1"
+	require.Empty(t, w.s.receiptBillingRefusal(card, subscriptionRawFixture(t).String()))
+	// No new wire/value is admitted into the historical friend lane.
+	card.Row = FriendRow("fake-reader")
+	card.Fields[FieldBilling] = "plan"
+	w.s.Routes[0].Prices.Billing = "plan"
+	require.Empty(t, w.s.receiptBillingRefusal(card, "input=12"))
 }
 
 func TestSubscriptionLegacyMarkerCannotOverrideStampedBilling(t *testing.T) {
- t.Parallel()
- w:=setup(t,1)
- for _,billing:=range []string{"plan","metered"} {
-  w.s.Routes=[]Route{{Name:"declared",Prices:cardcost.Prices{Billing:billing}}}
-  card:=&Card{Fields:map[string]string{FieldRoute:"declared",FieldBilling:billing}}
-  require.Contains(t,w.s.receiptBillingRefusal(card,"billing=subscription input=12"),"original launch declaration")
-  require.Empty(t,w.s.receiptBillingRefusal(card,"input=12"),"old plan bridge makes no conflicting billing claim")
-  delete(card.Fields,FieldBilling)
-  require.Empty(t,w.s.receiptBillingRefusal(card,"billing=subscription input=12"),"unstamped historical read marker remains compatible")
- }
+	t.Parallel()
+	w := setup(t, 1)
+	for _, billing := range []string{"plan", "metered"} {
+		w.s.Routes = []Route{{Name: "declared", Prices: cardcost.Prices{Billing: billing}}}
+		card := &Card{Fields: map[string]string{FieldRoute: "declared", FieldBilling: billing}}
+		require.Contains(t, w.s.receiptBillingRefusal(card, "billing=subscription input=12"), "original launch declaration")
+		require.Empty(t, w.s.receiptBillingRefusal(card, "input=12"), "old plan bridge makes no conflicting billing claim")
+		delete(card.Fields, FieldBilling)
+		require.Empty(t, w.s.receiptBillingRefusal(card, "billing=subscription input=12"), "unstamped historical read marker remains compatible")
+	}
 }
 
 func TestSubscriptionAbsentTokensRetainDeclaredZeroAfterRouteChanges(t *testing.T) {
- t.Parallel()
- w:=setup(t,1)
- u:=cardcost.NoUsage();u.Billing="subscription";u.ReceiptVersion=2
- for _,billing:=range []string{"plan","metered",""} {
-  w.s.Routes=[]Route{{Name:"original",Prices:cardcost.Prices{Billing:billing,Input:"999"}}}
-  if billing=="" { w.s.Routes=nil }
-  got:=cardcost.ParseUsage(costRecord(w.s,u.String(),"original","",false,"",""))
-  require.Equal(t,"0",got.Predicted)
-  require.Empty(t,got.Unpriced,"absence is not a missing-price demotion of declared subscription")
-  require.Empty(t,got.ActualBy)
-  require.Equal(t,cardcost.Unreported,got.Tokens.Input)
- }
+	t.Parallel()
+	w := setup(t, 1)
+	u := cardcost.NoUsage()
+	u.Billing = "subscription"
+	u.ReceiptVersion = 2
+	for _, billing := range []string{"plan", "metered", ""} {
+		w.s.Routes = []Route{{Name: "original", Prices: cardcost.Prices{Billing: billing, Input: "999"}}}
+		if billing == "" {
+			w.s.Routes = nil
+		}
+		got := cardcost.ParseUsage(costRecord(w.s, u.String(), "original", "", false, "", ""))
+		require.Equal(t, "0", got.Predicted)
+		require.Empty(t, got.Unpriced, "absence is not a missing-price demotion of declared subscription")
+		require.Empty(t, got.ActualBy)
+		require.Equal(t, cardcost.Unreported, got.Tokens.Input)
+	}
 }
