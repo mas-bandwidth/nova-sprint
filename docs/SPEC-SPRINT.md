@@ -6204,8 +6204,11 @@ before use: `start`'s settings gate and `seat check` print `WARN owner escalatio
 <name> is not a nova-config friend or machine row: the owner will not be told; set
 init --owner <row>` when the owner or the sender is not a friend row or a fleet row — a
 warning, never a refusal: the seat's hook still gets every judgment. The server sends
-nothing to a name that fails the check; it says so once a raise on the server line and
-raises one judgment, "the owner escalation has no target" (decisions ack and wait).
+nothing to a name that fails the check — either endpoint, the owner or the sender,
+unverified or unknown, and rows it could not read verify nothing — and says so once a
+raise on the server line. The tick keeps one judgment, "the owner escalation has no
+target" (decisions ack and wait), open while the owner names no row that exists and
+closed when it does; delivery resumes on its own once the row appears.
 
 ### A blocked need is one owner judgment that quiets its dependents
 

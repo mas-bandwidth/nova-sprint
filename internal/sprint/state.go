@@ -554,6 +554,10 @@ type Snapshot struct {
 	// RepeatPushes is the sprint row's repeat bound as nova-config applied it
 	// (sprint:repeat_pushes), read with the routes; "" or unparseable is 3.
 	RepeatPushes string
+	// Owner is the sprint's owner (init --owner, else the environment's
+	// NOVA_SPRINT_OWNER): the escalation's target the tick checks
+	// (seat_answers.go NOwnerNoTarget). "" is no owner named.
+	Owner string
 	// ReaderStates is each reader's state as the store derives it (ReaderState:
 	// up, away or down), read by a step that asks (docs/SPEC-SPRINT.md section
 	// 6); nil is none read, and every reader is held up.

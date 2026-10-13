@@ -388,21 +388,25 @@ Unquiet ==
                  marks, newLate, lastPush, tickPushes, watchAt, streak, dealt,
                  stoppedAt, lvl, unknown, sawUnknown, review, sawQuiet, changed, same, esc>>
 
-Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet \/ Change
-
 \* An outside change to the held cards or their stream: the next tick resets same.
 Change ==
   /\ changed' = TRUE
   /\ UNCHANGED <<holds, seen, open, acked, first, again, clk, written, pushes, marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review, same, esc, quiet, sawQuiet>>
 
-Spec == Init /\ [][Next]_vars
+Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet \/ Change
+
+
+\* Progress assumption: the tick runs again (weak fairness on Tick), and an
+\* episode that opens does so with at least N raise windows left in MaxClock;
+\* the repeat config chooses MaxClock so this holds for its episodes.
+Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
 
 \* One judgment an episode: raising again rewrites it, never writes a second.
 OneJudgmentAnEpisode == written <= 1
 
 \* An open judgment the coordinator has not acknowledged is never left unraised for a
 \* whole window: each tick that finds its next raise due raises it.
-PushedEveryWindow == (open /\ ~acked) => clk - first < (again + 1) * Every
+PushedEveryWindow == (open /\ ~acked /\ same < N) => clk - first < (again + 1) * Every
 
 \* A judgment is open only while the last tick saw its condition hold, or it is carried
 \* on "unknown" (a drift type the facts say nothing of is never closed).
@@ -459,6 +463,12 @@ PushesBoundedWhileUnchanged == same <= N
 EscalatedOnce == esc => same = N
 
 \* Liveness: an open judgment with no change eventually escalates or closes.
-UnchangedEscalates == (open /\ ~changed) ~> (esc \/ ~open)
+\* Progress assumptions, stated: ticks keep running (Spec's WF on Tick), the
+\* episode holds (no Flip clears it first, which is the ~open outcome), no
+\* Change lands (one resets same, which is the ~changed outcome), and the
+\* episode opened with at least N raise windows of clock left before
+\* MaxClock: a later opening is outside this property, as MaxClock bounds
+\* the checked instance, not the machine.
+UnchangedEscalates == (open /\ ~changed /\ first # -1 /\ clk + N * Every <= MaxClock) ~> (esc \/ ~open)
 
 =============================================================================

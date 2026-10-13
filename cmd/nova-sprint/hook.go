@@ -1290,11 +1290,20 @@ func (a *app) tellOwner(ctx context.Context, owner, name, state, why string) {
 	}
 	subject := "seat " + name + " is " + state
 	body := "The coordinator " + name + "'s hook ended: " + state + " (" + why + "). Every coordinator command is refused until it runs nova-sprint hook again and proves it."
-	// the sender is the server host's fleet machine row, not the literal nova-sprint
-	// (seat_silent.go, escalationSender; tla/CoordinatorPass.tla EscalatedOnce)
-	sender := serverHostName()
+	// the sender is the server host's verified fleet machine row, never the
+	// literal nova-sprint and never a guessed host name: an unverified sender
+	// sends nothing (seat_silent.go, escalationTarget;
+	// tla/CoordinatorPass.tla EscalatedOnce)
+	sender := ""
+	_ = a.hookRead(ctx, func(st *store.Store) error {
+		if read, err := st.DoctorRead(ctx); err == nil {
+			sender, _ = escalationTarget(owner, read.Snap, a.hostName())
+		}
+		return nil
+	})
 	if sender == "" {
-		sender = "nova-sprint"
+		a.serveSay("SEAT HOOK name=%s: the push to %s was not sent: the owner escalation has no verified target (see the owner escalation warning at start)", name, owner)
+		return
 	}
 	if err := a.bus(ctx, bus.Message{From: sender, To: []string{owner}, Kind: bus.KindStatus, Subject: subject, Body: body}, func(l string) { a.serveSay("%s", l) }); err != nil {
 		a.serveSay("SEAT HOOK name=%s: the push to %s failed: %s", name, owner, oneline.Escape(err.Error()))

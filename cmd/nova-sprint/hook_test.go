@@ -62,6 +62,9 @@ func hookSprint(t *testing.T, name string) (*testApp, map[string]string) {
 	}
 	ta.ok("init --readers reader-a,reader-b --members m1,m2 --owner glenn")
 	ta.a.serveAddr = "mem:0"
+	// the owner is a friend row, so the hook's tellOwner has a verified target
+	hst := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, _, _, _ = hst.SyncFriends(context.Background(), []store.FriendSpec{{Name: "glenn", Width: 2, Class: "pro"}})
 	return ta, env
 }
 

@@ -236,7 +236,7 @@ func TestEveryBarHasADeclaredDefault(t *testing.T) {
 			filled = append(filled, name)
 		}
 	}
-	assert.ElementsMatch(t, []string{config.FieldGitIdentity, config.FieldDecideBounce, config.FieldDecideReview}, filled)
+	assert.ElementsMatch(t, []string{config.FieldGitIdentity, config.FieldDecideBounce, config.FieldDecideReview, config.FieldRepeatPushes}, filled)
 
 	// the read-side default fills only the rows that say so
 	full := Bars{}.WithDefaults()

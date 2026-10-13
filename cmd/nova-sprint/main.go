@@ -95,7 +95,10 @@ type app struct {
 	// friend's daemon with it when it delivers her a card): tests give a recorder
 	// and open no socket.
 	bus busSendFn
-	loc *time.Location // the zone times print in: nil is the machine's local zone
+	// hostNameFn is this machine's short host name; tests give their own so no
+	// parallel test overwrites another's (seat_silent.go hostName).
+	hostNameFn func() string
+	loc        *time.Location // the zone times print in: nil is the machine's local zone
 	// notify is how an interrupt reaches a command that runs until it is
 	// interrupted (where --watch): the context it returns is done at one.
 	notify func(ctx context.Context) (context.Context, context.CancelFunc)

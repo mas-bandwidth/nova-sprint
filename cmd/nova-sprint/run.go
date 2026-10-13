@@ -272,7 +272,7 @@ func (a *app) startSettingsGate(ctx context.Context, st *store.Store, stderr io.
 	// hook still gets every judgment (seat_silent.go, ownerEscalationWarn;
 	// tla/CoordinatorPass.tla EscalatedOnce)
 	if owner, err := a.owner(ctx, st); err == nil {
-		if w := ownerEscalationWarn(owner, read.Snap); w != "" {
+		if w := ownerEscalationWarn(owner, read.Snap, a.hostName()); w != "" {
 			warns = append(warns, w)
 		}
 	}

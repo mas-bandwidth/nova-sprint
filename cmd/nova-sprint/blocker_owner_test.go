@@ -25,6 +25,8 @@ func TestTheBlockerJudgmentGoesToTheOwnerAtOnce(t *testing.T) {
 	ta.a.friends = func(ctx context.Context, _ string) ([]config.Row, error) { return cfg.List(ctx, config.KindFriend) }
 
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "coordinator"}
+	_, _, _, err = st.SyncFriends(context.Background(), []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}})
+	require.NoError(t, err)
 	_, err = st.Run(context.Background(), store.NoteStep("test", sprint.Note{
 		Kind:      sprint.Judgment,
 		Type:      sprint.NNeedBlocked,

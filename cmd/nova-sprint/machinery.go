@@ -535,6 +535,14 @@ func (a *app) runSeatCheckVerb(verb string, args []string, stdout, stderr io.Wri
 		return refuse(stderr, verb, err.Error())
 	}
 	r := a.withConfigSeat(a.seatCheck(context.Background(), st, c.redis))
+	// the owner escalation's target, warned of here as at start (seat_silent.go)
+	if owner, err := a.owner(context.Background(), st); err == nil && owner != "" {
+		if read, err := st.DoctorRead(context.Background()); err == nil {
+			if w := ownerEscalationWarn(owner, read.Snap, a.hostName()); w != "" {
+				r.Lines = append(r.Lines, sprint.SeatCheckLine{Thing: "owner-escalation", Up: false, Facts: []string{w}})
+			}
+		}
+	}
 	if c.json {
 		fmt.Fprintln(stdout, r.JSON())
 	} else {

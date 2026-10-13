@@ -64,7 +64,7 @@ const (
 // PassTypes are the pass's judgment types: its own and the automatic stops it keeps
 // (StopTypes, stops.go). NFriendRowEmpty is the empty-row clock, not a judgment, and stays
 // off this list.
-var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NSeatSilent}, StopTypes...)
+var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NSeatSilent, NOwnerNoTarget}, StopTypes...)
 
 // The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
 // acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
@@ -73,6 +73,10 @@ var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NF
 func init() {
 	TickDecisions[NFriendEmpty] = []string{"ack", "wait"}
 	TickDecisions[NPinIgnored] = []string{"ack", "wait"}
+	// the owner escalation's no-target judgment is kept by the tick: ack and wait
+	// answer it, and the server closes it when a target exists again
+	// (seat_answers.go NOwnerNoTarget)
+	TickDecisions[NOwnerNoTarget] = []string{"ack", "wait"}
 }
 
 const (
@@ -164,6 +168,7 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	// the judgments that hold a card, past their deadline: the seat is not answering
 	// (seat_answers.go)
 	conds = append(conds, seatSilentConds(s, r)...)
+	conds = append(conds, ownerNoTargetConds(s)...)
 	// every automatic stop the machine made, while it holds (stops.go)
 	conds = append(conds, stopConds(s, r)...)
 	due := notify(&p, s, conds, PassTypes, r)
@@ -381,8 +386,12 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 		// at most RepeatBound unchanged pushes, then one escalation to the owner
 		// and no further pushes until the state changes
 		// (tla/CoordinatorPass.tla PushesBoundedWhileUnchanged, EscalatedOnce)
-		if n.Type != NSeatSilent && n.Type != NSeatNotMoving {
-			fp := heldFingerprint(s, n.Stream, n.Primaries)
+		if n.Type != NSeatSilent && n.Type != NSeatNotMoving && n.Type != NOwnerNoTarget {
+			// the canonical episode cards, as the closure reads them
+			// (seat_answers.go cardsHeldBy): a pass judgment with no primaries
+			// fingerprints its subject, never zero cards
+			episodeCards := cardsHeldBy(n)
+			fp := heldFingerprint(s, n.Stream, episodeCards)
 			prevFP, prevCount, hasPrev := raiseRecordState(records, n.ID)
 			count := prevCount
 			if !hasPrev || prevFP != fp {
@@ -390,7 +399,7 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 			}
 			if count >= s.RepeatBound() {
 				if !escalated[n.ID] {
-					p.Notes = append(p.Notes, seatNotMovingNote(s, r, n, n.ID, n.Type, n.Primaries, s.RepeatBound(), fp))
+					p.Notes = append(p.Notes, seatNotMovingNote(s, r, n, n.ID, n.Type, episodeCards, s.RepeatBound(), fp))
 					escalated[n.ID] = true
 				}
 				continue

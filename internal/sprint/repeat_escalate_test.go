@@ -131,3 +131,28 @@ func TestRepeatPushesReadsItsDefault(t *testing.T) {
 	assert.Equal(t, 3, (&sprint.Snapshot{RepeatPushes: "0"}).RepeatBound(), "a value under 1 gives the default")
 	assert.Equal(t, 3, (&sprint.Snapshot{RepeatPushes: "x"}).RepeatBound(), "an unparseable value gives the default")
 }
+
+// The no-target judgment is kept by the tick: raised while the owner names no
+// row, closed when the owner names one (Stella's #211 finding 3).
+func TestTheNoTargetJudgmentIsKeptByTheTick(t *testing.T) {
+	t.Parallel()
+	assert.True(t, sprint.TickKept(sprint.NOwnerNoTarget), "the tick keeps the no-target judgment")
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	s := &sprint.Snapshot{Now: now, Work: sprint.NewTable(sprint.Work), Readers: sprint.NewTable(sprint.Readers),
+		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Owner: "glenn"}
+	r := &repeatRig{s: s}
+	r.tick(now.Add(10 * time.Minute))
+	found := false
+	for _, o := range s.Open {
+		if o.Note.Type == sprint.NOwnerNoTarget {
+			found = true
+			assert.Equal(t, []string{"ack", "wait"}, o.Note.Decisions)
+		}
+	}
+	require.True(t, found, "an owner that is no row raises the no-target judgment")
+	s.Friends = []sprint.FriendSeat{{Name: "glenn"}}
+	r.tick(now.Add(20 * time.Minute))
+	for _, o := range s.Open {
+		assert.NotEqual(t, sprint.NOwnerNoTarget, o.Note.Type, "a known owner closes the no-target judgment")
+	}
+}

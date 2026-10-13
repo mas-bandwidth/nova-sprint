@@ -2063,7 +2063,7 @@ func condKey(typ, subject, card, what string) string {
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
-		NStopMemberDown, NStopPinWaits, NFriendStalled,
+		NStopMemberDown, NStopPinWaits, NFriendStalled, NOwnerNoTarget,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged:
 		what = ""

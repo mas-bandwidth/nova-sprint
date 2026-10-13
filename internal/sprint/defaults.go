@@ -119,6 +119,7 @@ var Defaults = []Default{
 	// max_attempts is not filled: its consumer reads empty as AttemptsDefault, the same 4, and
 	// says so (AttemptsCapSource: "the default"), where a fill would claim nova-config set it
 	barRowReadAsDefault(config.FieldMaxAttempts, "attempts before the card is a judgment; empty reads AttemptsDefault"),
+	barRow(config.FieldRepeatPushes, "unchanged pushes before the seat is escalated to the owner; empty reads RepeatPushesDefault"),
 	barRow(config.FieldDecideBounce, "the decide read's bounce bar"),
 	barRow(config.FieldDecideReview, "the decide read's review bar"),
 	barRow(config.FieldDecideAttemptNoResult, "empty routes nothing on the attempt decision"),

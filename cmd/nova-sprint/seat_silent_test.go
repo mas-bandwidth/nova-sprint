@@ -45,6 +45,7 @@ func (b *tokenBus) send(_ context.Context, m bus.Message, _ func(string)) error 
 func seatSilentRig(t *testing.T, b *tokenBus) (*testApp, *store.Store, string) {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.a.hostNameFn = func() string { return "m1" } // the server host's fleet row (members m1)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
 	ta.a.bus = b.send
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "coordinator"}

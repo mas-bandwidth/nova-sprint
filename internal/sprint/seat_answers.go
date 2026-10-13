@@ -76,6 +76,43 @@ func (s *Snapshot) RepeatBound() int {
 	return n
 }
 
+// ownerIsKnown says the snapshot's owner is a friend or fleet row the bus
+// accepts (cmd/nova-sprint knownTarget, on the snapshot's own rows).
+func ownerIsKnown(s *Snapshot) bool {
+	if s == nil || s.Owner == "" {
+		return false
+	}
+	for _, f := range s.Friends {
+		if f.Name == s.Owner {
+			return true
+		}
+	}
+	if s.Fleet != nil {
+		for _, row := range s.Fleet.Rows() {
+			if row == s.Owner || row == FriendRow(s.Owner) {
+				return true
+			}
+			if f, ok := FriendOfRow(row); ok && f == s.Owner {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ownerNoTargetConds is the one condition NOwnerNoTarget: the owner is named
+// but is no friend or fleet row, so the escalation has no target. The tick
+// keeps it (TickDecisions): it closes when the owner names a row that exists.
+// tla/CoordinatorPass.tla EscalatedOnce
+func ownerNoTargetConds(s *Snapshot) []cond {
+	if s.Owner == "" || ownerIsKnown(s) {
+		return nil
+	}
+	return []cond{{typ: NOwnerNoTarget, streamLevel: true,
+		what:      fmt.Sprintf("the owner escalation has no target: %s is not a nova-config friend or machine row: the owner will not be told; set init --owner <row>", s.Owner),
+		decisions: []string{"ack", "wait"}}}
+}
+
 // SeatSilentDecision is the one decision of NSeatSilent: answer the judgments it names.
 // It offers neither ack nor wait: the alarm is quieted only by the answers.
 const SeatSilentDecision = "answer each judgment it names: nova-sprint inbox"
