@@ -2106,6 +2106,25 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
 		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)
 		set[FieldRanAttempts] = ranAttempts
+  // tla/SprintTables.tla Finish: an old generation returns for a fresh
+  // attempt without a review head or a historical staging base.
+  if AttemptPredatesBrief(pr, attempt) {
+   why := fmt.Sprintf("brief replaced: the head of attempt %d was made under the earlier brief", attempt)
+   cardSet["report"] = cutText(why+"\n"+r.Report, MaxCardTextBytes)
+   cardSet["head_superseded"] = "true"
+   u.Changes[0] = change(Fleet, moveEntry(c, c.Row, into, cardSet))
+   delete(set, "head")
+   delete(set, "result")
+   for _, key := range []string{FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect} { delete(set, key) }
+   set["why"] = why
+   to := Ready
+   if len(after) > 0 { to = Waiting }
+   u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, "head", "result", "readers", FieldPassedHead, FieldWaitsAfter, FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect)))
+   u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> %s; %s", c.ID, result, pr.ID, to, why)
+   if !late { friendNext(s, c, &u, p.Units) }
+   p.Units = append(p.Units, u)
+   continue
+  }
 		// the brief's bound as this finish leaves the card (brief_bound.go): the same failure
 		// escalates below the ceiling only under the attempt cap, counting only attempts whose
 		// worker ran and reported

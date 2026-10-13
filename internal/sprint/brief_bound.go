@@ -49,6 +49,27 @@ const FieldFindingAttempt = "finding_attempt"
 // friend deal and stream set --base all replace the brief without a mind deciding anything.
 const FieldBriefAttempt = "brief_attempt"
 
+// FieldBriefKeepHead explicitly retains heads across this brief replacement.
+const FieldBriefKeepHead = "brief_keep_head"
+
+// FieldHeadBriefAttempt tracks head provenance separately from the task bound:
+// even a routing-only replacement supersedes an in-flight brief.
+const FieldHeadBriefAttempt = "head_brief_attempt"
+
+// AttemptPredatesBrief is the shared eligibility rule for finish and card checks.
+// tla/SprintTables.tla Brief and Finish: a replaced generation never enters review
+// unless the coordinator explicitly kept its head. Attempt zero is admission.
+func AttemptPredatesBrief(c *Card, attempt int) bool {
+	if c == nil || attempt <= 0 || c.F(FieldBriefKeepHead) == "true" {
+		return false
+	}
+	replaced := c.Int(FieldBriefAttempt)
+	if c.F(FieldHeadBriefAttempt) != "" {
+		replaced = c.Int(FieldHeadBriefAttempt)
+	}
+	return attempt <= replaced
+}
+
 // FieldDecidedAttempt is the primary's attempt at the coordinator's last decision on it: a
 // brief or brief --tier run by a person or the seat, a rework the seat answers (--tier and
 // --carry included), a continue. Absent, no decision was made: 0. The attempt cap counts
