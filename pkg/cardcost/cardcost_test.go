@@ -123,7 +123,7 @@ func TestPricesOfAndPriced(t *testing.T) {
 	for _, p := range []Prices{{Input: "1"}, {CacheRead: "1"}, {CacheWrite: "1"}, {Output: "1"}, {InputLong: "1"}, {OutputLong: "1"}, {Request: "1"}} {
 		assert.True(t, p.Priced(), "%+v", p)
 	}
-	assert.Equal(t, []string{"metered", "plan"}, Billings)
+	assert.Equal(t, []string{"metered", "plan", "subscription"}, Billings)
 }
 
 // Copy is the sheet as a card keeps it: one word, the keys in order, a part left out when

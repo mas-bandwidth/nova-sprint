@@ -44,7 +44,7 @@ func TestTESTSFirstRunIsWhatTheToolPrints(t *testing.T) {
 	// TestTheRoadmapExamplesRunInOrder runs them.
 	var examples []string
 	for _, e := range all {
-		if !strings.HasPrefix(e, "nova-work roadmap ") {
+		if !strings.HasPrefix(e, "nova-work roadmap ") && !strings.HasPrefix(e, "nova-work example ") {
 			examples = append(examples, e)
 		}
 	}
