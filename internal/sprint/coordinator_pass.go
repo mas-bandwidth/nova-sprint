@@ -287,6 +287,10 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 		if !JudgmentOverdue(s, r, j) {
 			continue
 		}
+		// tla/CoordinatorPass.tla NotBehindOnQuiet: an unfunded tier quiets its judgments
+		if quietedByTier(s, j) {
+			continue
+		}
 		// the overdue line is the first reminder; the pass is the next, PassEvery after it
 		at, ok := marked[j.ID]
 		if !ok {
