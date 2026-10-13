@@ -262,3 +262,54 @@ func TestTheFundsPredicateUsesTheEscalatedExecutionTier(t *testing.T) {
 	require.Contains(t, why, "heavy:")
 	assert.NotContains(t, why, "pro:", "the live original pro tier cannot hide the resting execution tier")
 }
+
+func TestExecutableQueuedWorkKeepsBlockedReadsRunning(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		change func(*Snapshot, *Card, *Card)
+		live   bool
+	}{
+		{name: "valid pin behind full width", live: true},
+		{name: "fleet off", change: func(s *Snapshot, _, _ *Card) { s.Fleet.SetProp(PropFleetTiers, SwitchOff) }},
+		{name: "held stream", change: func(s *Snapshot, pr, _ *Card) {
+			s.Merge.Put(&Card{ID: CtlID(pr.Row), Row: pr.Row, Col: Ctl, Fields: map[string]string{"kind": "stream", FieldHeld: "by coordinator"}})
+		}},
+		{name: "old attempt", change: func(_ *Snapshot, pr, _ *Card) { pr.Fields["attempt"] = "2" }},
+		{name: "missing primary", change: func(_ *Snapshot, _, wc *Card) { wc.Fields["primary"] = "missing" }},
+		{name: "down member", change: func(s *Snapshot, _, _ *Card) { s.MemberCtl("m1").Fields["status"] = Down }},
+		{name: "zero width", change: func(s *Snapshot, _, _ *Card) { s.MemberCtl("m1").Fields["width"] = "0" }},
+		{name: "invalid pin budget", change: func(_ *Snapshot, pr, _ *Card) {
+			pr.Fields["brief"] = "tier: flash\nmodel: simulation/twin\ntokens: nope\ndeadline: 600"
+		}},
+		{name: "foreign pin model", change: func(_ *Snapshot, _, wc *Card) { wc.Fields[FieldModel] = "other/model" }},
+		{name: "routed rest", change: func(_ *Snapshot, pr, wc *Card) {
+			pr.Fields["brief"] = "tier: pro\n"
+			pr.Fields[FieldTierNow] = "pro"
+			wc.Fields[FieldRoute] = "pro-credit"
+			wc.Fields[FieldModel] = "credit/model"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := nothingCanWorkWorld(t, true)
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
+			w.s.Work.SetRows(append(w.s.Work.Rows(), "queued"))
+			pr := &Card{ID: "queued-1", Row: "queued", Col: Working, Fields: map[string]string{"brief": "tier: flash\nmodel: simulation/twin\ntokens: 1000\ndeadline: 600", "attempt": "1", "member": "m1"}}
+			wc := &Card{ID: WorkCardID(pr.ID, 1), Row: "m1", Col: Ready, Fields: map[string]string{"kind": "work", "primary": pr.ID, "attempt": "1", FieldRoute: RoutePin, FieldModel: "simulation/twin", FieldTokens: "1000", FieldDeadline: "600"}}
+			w.s.Work.Put(pr)
+			w.s.Fleet.Put(wc)
+			w.s.Fleet.Put(&Card{ID: "already-running.w1", Row: "m1", Col: Working, Fields: map[string]string{"kind": "work"}})
+			if tc.change != nil {
+				tc.change(w.s, pr, wc)
+			}
+			why := w.s.NothingFundedCanWork()
+			if tc.live {
+				assert.Empty(t, why, "already-dealt executable work counts while its slot is occupied")
+				assert.True(t, w.s.HasLiveWorkedTier())
+			} else {
+				assert.Contains(t, why, NothingFundedCause, "ineligible queued work cannot conceal the resting worked tiers")
+			}
+		})
+	}
+}
