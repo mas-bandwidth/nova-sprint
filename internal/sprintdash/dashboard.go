@@ -107,6 +107,8 @@ type Server struct {
 	keepaliveTick func(time.Duration) (<-chan time.Time, func())
 	// readTimer is a test's read timeout in place of the clock's; nil is the clock.
 	readTimer func(time.Duration) (<-chan time.Time, func())
+	// OnRecord, when set, is called after record() completes under mu.
+	OnRecord func()
 
 	mu        sync.Mutex
 	polling   bool // Run is the one reader: a request answers from the copy only
@@ -227,7 +229,11 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 		s.mu.Lock()
 		s.reading = false
 		s.record(start, end, res.body, res.up, res.err)
+		onRecord := s.OnRecord
 		s.mu.Unlock()
+		if onRecord != nil {
+			onRecord()
+		}
 	}
 
 	waitForRead := func(firstDeadline <-chan time.Time) {

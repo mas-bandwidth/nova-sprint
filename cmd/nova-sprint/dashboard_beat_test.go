@@ -35,6 +35,7 @@ func TestTheDashboardBeatsEverySecondWhileAReadIsSlow(t *testing.T) {
 	var log bytes.Buffer
 	readCount := 0
 	slowDone := make(chan struct{})
+	readRecorded := make(chan struct{}, 1)
 
 	srv := &sprintdash.Server{
 		Now:     clock,
@@ -70,6 +71,12 @@ func TestTheDashboardBeatsEverySecondWhileAReadIsSlow(t *testing.T) {
 
 	// Next ticks: read takes 7 fake seconds. Across 10 fake seconds, srv.Tick() ticks
 	// 10 times without stalling, and the clock shows the read's age.
+	srv.OnRecord = func() {
+		select {
+		case readRecorded <- struct{}{}:
+		default:
+		}
+	}
 	for i := 1; i <= 9; i++ {
 		mu.Lock()
 		now = now.Add(time.Second)
@@ -77,7 +84,7 @@ func TestTheDashboardBeatsEverySecondWhileAReadIsSlow(t *testing.T) {
 
 		if i == 8 {
 			close(slowDone) // read finishes at 7s
-			time.Sleep(10 * time.Millisecond)
+			<-readRecorded
 		}
 		srv.Tick()
 
