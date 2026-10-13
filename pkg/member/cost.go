@@ -112,8 +112,12 @@ func ReceiptUsage(job string) (usage cardcost.Usage, found bool, err error) {
 	if len(runs) == 0 {
 		return cardcost.NoUsage(), false, nil
 	}
- version:=runs[0].ReceiptVersion
- for _,run:=range runs { if run.ReceiptVersion!=version { return cardcost.NoUsage(),false,fmt.Errorf("mixed legacy and typed receipts; start a fresh paired-binary attempt, do not synthesize raw usage") } }
+	version := runs[0].ReceiptVersion
+	for _, run := range runs {
+		if run.ReceiptVersion != version {
+			return cardcost.NoUsage(), false, fmt.Errorf("mixed legacy and typed receipts; start a fresh paired-binary attempt, do not synthesize raw usage")
+		}
+	}
 	total := cardcost.SumUsage(runs)
 	if !priced {
 		total.Actual = ""

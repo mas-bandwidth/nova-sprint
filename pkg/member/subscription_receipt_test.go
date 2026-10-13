@@ -37,10 +37,14 @@ func TestSubscriptionDurableReceiptPreservesOriginalRawRuns(t *testing.T) {
 	require.Equal(t, u.Raw, replayed.Raw)
 	require.Equal(t, "0", replayed.MarginalUSD())
 	require.Contains(t, usageArgs(Result{Usage: "receipt_version=999 raw_usage=bad"}), "--receipt-contract", "malformed typed receipts cannot silently fall back")
- mixedRow:=append([]string(nil),row...);mixedRow[8],mixedRow[9],mixedRow[10]="-","-","-"
- mixed:=strings.Join(header,"\t")+"\n"+strings.Join(row,"\t")+"\n"+strings.Join(mixedRow,"\t")+"\n"
- require.NoError(t,os.WriteFile(filepath.Join(job,ReceiptName),[]byte(mixed),0600))
- _,found,err=ReceiptUsage(job);require.Error(t,err);require.False(t,found);require.Contains(t,err.Error(),"mixed legacy and typed")
+	mixedRow := append([]string(nil), row...)
+	mixedRow[8], mixedRow[9], mixedRow[10] = "-", "-", "-"
+	mixed := strings.Join(header, "\t") + "\n" + strings.Join(row, "\t") + "\n" + strings.Join(mixedRow, "\t") + "\n"
+	require.NoError(t, os.WriteFile(filepath.Join(job, ReceiptName), []byte(mixed), 0600))
+	_, found, err = ReceiptUsage(job)
+	require.Error(t, err)
+	require.False(t, found)
+	require.Contains(t, err.Error(), "mixed legacy and typed")
 
 	// Old rows stay legacy: a projection cannot invent original raw counters.
 	legacy := strings.Join(header[:8], "\t") + "\n" + strings.Join(row[:8], "\t") + "\n"

@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
- "context"
- "fmt"
- "github.com/mas-bandwidth/nova-sprint/internal/sprint"
- "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"context"
+	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
@@ -25,8 +25,11 @@ func TestSubscriptionReceiptCompatibilityFenceBeforeStore(t *testing.T) {
 			}
 			args = append(args, "p1.w1@1")
 			a := newApp(func(string) string { return "" })
-   backendCalls:=0
-   a.backend=func(context.Context,string,sprint.Names)(store.Backend,error){backendCalls++;return nil,fmt.Errorf("unexpected store access") }
+			backendCalls := 0
+			a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
+				backendCalls++
+				return nil, fmt.Errorf("unexpected store access")
+			}
 			a.now = func() time.Time { return time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC) }
 			var out, err bytes.Buffer
 			require.Equal(t, 2, a.run(args, &out, &err))
@@ -36,8 +39,8 @@ func TestSubscriptionReceiptCompatibilityFenceBeforeStore(t *testing.T) {
 			require.Equal(t, 2, forwarded.Code)
 			require.Contains(t, forwarded.Stderr, "receipt")
 			require.NotContains(t, forwarded.Stderr, "dial")
-   require.Zero(t,backendCalls,"both parser paths refuse before opening the fake store")
-   t.Logf("local refusal: %s; forwarded refusal: %s",err.String(),forwarded.Stderr)
+			require.Zero(t, backendCalls, "both parser paths refuse before opening the fake store")
+			t.Logf("local refusal: %s; forwarded refusal: %s", err.String(), forwarded.Stderr)
 		})
 	}
 }

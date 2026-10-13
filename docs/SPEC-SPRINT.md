@@ -9376,4 +9376,3 @@ still closes the wait earlier. The wait does not block an eligible read.
 ### Typed subscription receipt contract (v1.2.19)
 
 [Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.
-
