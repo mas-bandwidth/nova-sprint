@@ -1027,8 +1027,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	for _, tier := range slices.Sorted(maps.Keys(unserved)) {
+		what := fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])
+		if _, ok := s.TierNotLive(tier); ok {
+			what = whyOf[tier]
+		}
 		conds = append(conds, cond{typ: NNoRoute, stream: TierSubject(tier), streamLevel: true, primaries: unserved[tier],
-			what: fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])})
+			what: what})
 	}
 	// one judgment per provider while its routes rest for its funds or its key, never one
 	// per card (provider_funds.go)
@@ -1736,6 +1740,11 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		if IsFriendRow(c.Row) {
 			// a friend's card past its deadline is redealt (TickFriendRedeal), never a late
 			// judgment: her card's deadline is no failure (docs/SPEC-SPRINT.md section 1)
+			continue
+		}
+		if c.Col != Working && s.CardTierBlocked(c) {
+			// an unfunded tier quiets the deadlines of its cards that are not working
+			// tla/SprintRules.tla QuietWhileUnfunded
 			continue
 		}
 		field, limit, word, own := WorkDeadline(s, c)

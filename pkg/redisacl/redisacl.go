@@ -51,7 +51,7 @@ var Families = []Family{
 	{"friends", []string{"friend:*", "friends", "friends:*"}, "pkg/config FriendBeatKey, FriendsKey: a friend's beat, desired slots, width, mode and roles"},
 	{"fleet", []string{"fleet:*"}, "pkg/config FleetKey"},
 	{"loops", []string{"loops", "loop:*"}, "pkg/config LoopsKey, LoopKey"},
-	{"routes", []string{"routes", "route:*"}, "pkg/config RoutesKey, RouteKey"},
+	{"routes", []string{"routes", "route:*", "providers", "provider:*"}, "pkg/config RoutesKey, RouteKey, ProvidersKey, ProviderKey"},
 	{"config", []string{"config:decl"}, "pkg/config DeclKey"},
 	{"tokens", []string{"tokens:ledger:*"}, "internal/record LedgerPrefix: nova-tokens ledger and report, logged in as the seat's user"},
 	{"events", []string{"ev:github"}, "internal/ghevent/wire Stream: the CI run receipt (nova-ci github receipt, tools/ci/reportrun.go) XADDs it as the bench user"},

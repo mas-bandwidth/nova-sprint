@@ -54,6 +54,10 @@ type Backend interface {
 	// since the caller read it keeps its row. It is the rows it removed
 	// (sprint.FleetDrift, the removal).
 	RowsDelIf(ctx context.Context, table string, guards []RowGuard) ([]string, error)
+	// (RowsDelIf reads, in the same exchange, the epoch, its flag and the restore's marker on
+	// the table, and deletes nothing, failing with a *GuardError, while the epoch's restore
+	// is pending or when the sprint has left the pinned epoch: it deletes member rows of the
+	// fleet table, which a pending restore would bring back.)
 	// KeysDelIf deletes each guard's Keys only while its record is still on
 	// no cell at the guard's revision and its row is not in the table, every
 	// guard checked and every passing guard's keys deleted as one atomic
@@ -74,12 +78,24 @@ type Backend interface {
 	// and whether the restore of the shape of the epoch before it is owed.
 	Epoch(ctx context.Context) (EpochState, error)
 	// AdvanceEpoch moves the sprint from epoch from to from+1 atomically,
-	// recording the time and that the restore of epoch from's shape is owed;
-	// false when the sprint is no longer at from.
+	// recording the time, that the restore of epoch from's shape is owed, and
+	// that from+1 is owed its set-defaults step (EpochState.DefaultsOwed), all in
+	// one write; false when the sprint is no longer at from.
 	AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error)
 	// SettleEpoch records that the restore owed at epoch n is done; it does
 	// nothing when the sprint is no longer at n.
 	SettleEpoch(ctx context.Context, n uint64) error
+	// SettleDefaults records that the set-defaults step owed at epoch n is done
+	// (restoreMembers and the defaults both ran); it does nothing when the
+	// sprint is no longer at n or the flag names another epoch.
+	SettleDefaults(ctx context.Context, n uint64) error
+	// GuardedRows applies the row writes at the pinned epoch in one atomic exchange with
+	// a read of the epoch's restore state (the sprint's epoch, its set-defaults owed flag
+	// and its restore's marker), and only when that state is the one the guard wants: the
+	// restore's own writes while it is pending, a verb's writes while it is not. Otherwise
+	// it writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
+	// EditRow, DeleteRow).
+	GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error)
 	// AtEpoch is the backend pinned to an epoch: the sprint's keys of that
 	// epoch, and its writes at that epoch. With old, reads of the tables read
 	// that epoch as it was, not the active one.
@@ -145,6 +161,67 @@ type Backend interface {
 	DeleteKeys(ctx context.Context, keys []string) (int, error)
 }
 
+// RestoreGuard is the restore state a guarded write wants at the backend's pinned epoch.
+// Pending true: the sprint is at the epoch, its flag names it and the marker is absent (the
+// restore's own writes). Pending false: the sprint is at the epoch and its restore is not
+// pending (a verb's writes). MarkerTable is the stored table holding the marker property.
+type RestoreGuard struct {
+	Pending             bool
+	MarkerTable, Marker string
+}
+
+// RowWrite is one row write of a guarded exchange: Op "add" adds Rows, "set" writes Texts
+// on Rows[0], "del" deletes Rows, each through the table layer's own row verb.
+type RowWrite struct {
+	Op, Table string
+	Rows      []string
+	Texts     map[string]string
+}
+
+// GuardOutcome is what a guarded exchange found: the writes applied, or nothing written
+// because the restore is pending (a verb's writes), already done (the restore's writes),
+// or the sprint has left the pinned epoch.
+type GuardOutcome int
+
+const (
+	GuardApplied GuardOutcome = iota
+	GuardPending
+	GuardSettled
+	GuardMoved
+)
+
+// verbGuard is a verb's guard on the table that holds the restore's marker (the fleet table).
+func verbGuard(table string) RestoreGuard {
+	return RestoreGuard{MarkerTable: table, Marker: sprint.PropMembersRestored}
+}
+
+// guardOutcome is the outcome of a read restore state against the guard: moved when the
+// sprint is not at the pinned epoch, else applied when pending is the state the guard
+// wants, else pending or settled as the state is.
+func guardOutcome(atEpoch, pending bool, g RestoreGuard) GuardOutcome {
+	switch {
+	case !atEpoch:
+		return GuardMoved
+	case pending == g.Pending:
+		return GuardApplied
+	case pending:
+		return GuardPending
+	default:
+		return GuardSettled
+	}
+}
+
+// GuardError is a conditional delete (RowsDelIf) that deleted nothing because the restore
+// state read in its own exchange is not the one a verb wants: Outcome says why.
+type GuardError struct{ Outcome GuardOutcome }
+
+func (e *GuardError) Error() string {
+	if e.Outcome == GuardMoved {
+		return "the sprint left the epoch the delete pinned"
+	}
+	return "the epoch's restore is pending"
+}
+
 // RowGuard is one row a conditional delete names (RowsDelIf, KeysDelIf) and the
 // record it is conditional on: its stored id, its store key (Names.RecordKey,
 // the key the table layer writes it under) and the revision it was read at, on
@@ -162,6 +239,13 @@ type EpochState struct {
 	// Owed says the clear into N has not restored the shape of epoch N-1 at
 	// it yet: the next verb, tick or clear performs the restore first.
 	Owed bool
+	// DefaultsOwed says the clear that advanced into N has not finished the step it owes
+	// there: restoreMembers, then the working defaults (clear.go). The advance writes the
+	// flag, naming N, in the same write as the epoch (AdvanceEpoch); SettleDefaults clears
+	// it once both have run. A flag naming another epoch is not this epoch's: an older
+	// binary's advance writes none, so an epoch it made, a fresh init and epoch 0 are never
+	// owed (tla/ClearDefaults.tla flag, Owed, FinishOnlyWhatIsOwed).
+	DefaultsOwed bool
 }
 
 // Fence is the sprint-wide fence as read: its generation, advanced by every

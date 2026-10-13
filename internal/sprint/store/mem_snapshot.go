@@ -31,9 +31,11 @@ type memSnapshot struct {
 	EpochN   uint64                    `json:"epoch"`
 	Cleared  time.Time                 `json:"cleared"`
 	Owed     bool                      `json:"owed"`
-	Logs     map[uint64]*logSnapshot   `json:"logs,omitempty"`
-	KV       map[string]string         `json:"kv,omitempty"`
-	Seq      int                       `json:"seq"`
+	// DefaultsOwed is the epoch the set-defaults owed flag names, 0 for none
+	DefaultsOwed uint64                  `json:"defaults_owed,omitempty"`
+	Logs         map[uint64]*logSnapshot `json:"logs,omitempty"`
+	KV           map[string]string       `json:"kv,omitempty"`
+	Seq          int                     `json:"seq"`
 }
 
 type tableSnapshot struct {
@@ -157,7 +159,7 @@ func (m *Mem) Snapshot() ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := memSnapshot{Version: SnapshotVersion, Tables: map[string]*tableSnapshot{}, Dropped: map[string]*residueSnap{}, Views: m.views,
-		EpochSet: m.epochSet, EpochN: m.epochN, Cleared: m.cleared, Owed: m.owed, Logs: map[uint64]*logSnapshot{}, KV: m.kv, Seq: m.seq}
+		EpochSet: m.epochSet, EpochN: m.epochN, Cleared: m.cleared, Owed: m.owed, DefaultsOwed: m.defaultsOwed, Logs: map[uint64]*logSnapshot{}, KV: m.kv, Seq: m.seq}
 	for n, t := range m.tables {
 		s.Tables[n] = snapTable(t)
 	}
@@ -232,6 +234,6 @@ func (m *Mem) Restore(doc []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.tables, m.dropped, m.views, m.logs, m.kv = tables, dropped, views, logs, kv
-	m.epochSet, m.epochN, m.cleared, m.owed, m.seq = s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.Seq
+	m.epochSet, m.epochN, m.cleared, m.owed, m.defaultsOwed, m.seq = s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.DefaultsOwed, s.Seq
 	return nil
 }

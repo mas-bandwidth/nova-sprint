@@ -10,7 +10,7 @@ package main
 var foreignVerbs = map[string]map[string]bool{
 	"nova-swarm":   {"lint": true, "template": true, "disk-guard": true, "member": true, "mirror": true, "install": true},
 	"nova-friend":  {"check": true, "ping": true, "ping-install": true, "wait-pong": true, "status": true, "install": true, "run": true},
-	"nova-config":  {"machine": true, "friend": true, "loop": true, "apply": true, "route": true, "migrate": true, "sprint": true, "tier": true},
+	"nova-config":  {"machine": true, "friend": true, "loop": true, "apply": true, "route": true, "provider": true, "migrate": true, "sprint": true, "tier": true},
 	"nova-bus":     {"log": true, "peek": true, "send": true, "recv": true},
 	"nova-secrets": {"exec": true},
 }
