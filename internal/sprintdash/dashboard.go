@@ -105,8 +105,8 @@ type Server struct {
 	ReadTimeout time.Duration
 	// keepaliveTick is a test's keepalive ticker in place of the clock's; nil is the clock.
 	keepaliveTick func(time.Duration) (<-chan time.Time, func())
-	// readTimer is a test's read timeout in place of the clock's; nil is the clock.
-	readTimer func(time.Duration) (<-chan time.Time, func())
+	// ReadTimer is a test's read timeout in place of the clock's; nil is the clock.
+	ReadTimer func(time.Duration) (<-chan time.Time, func())
 	// OnRecord, when set, is called after record() completes under mu.
 	OnRecord func()
 
@@ -274,10 +274,10 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 	}
 }
 
-// timer is the read timeout's: the clock's, or a test's (readTimer).
+// timer is the read timeout's: the clock's, or a test's (ReadTimer).
 func (s *Server) timer(d time.Duration) (<-chan time.Time, func()) {
-	if s.readTimer != nil {
-		return s.readTimer(d)
+	if s.ReadTimer != nil {
+		return s.ReadTimer(d)
 	}
 	t := time.NewTimer(d)
 	return t.C, func() { t.Stop() }

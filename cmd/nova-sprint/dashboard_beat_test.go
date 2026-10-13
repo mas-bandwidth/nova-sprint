@@ -43,6 +43,13 @@ func TestTheDashboardBeatsEverySecondWhileAReadIsSlow(t *testing.T) {
 		Version: "v1.2.18",
 		Log:     &log,
 		Command: "nova-sprint where --json --dashboard",
+		ReadTimer: func(d time.Duration) (<-chan time.Time, func()) {
+			ch := make(chan time.Time, 1)
+			if d <= time.Second {
+				ch <- time.Time{} // the 300ms wait returns immediately with no real time spent
+			}
+			return ch, func() {}
+		},
 		Read: func() ([]byte, error) {
 			mu.Lock()
 			readCount++
