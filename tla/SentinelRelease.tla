@@ -196,7 +196,7 @@ CommitRelease(kind, authorized) ==
   /\ releaseFresh' = ProofsFresh
   /\ releaseAuthorized' = authorized
   /\ releaseDropped' = Producers \ RequiredProducers
-  /\ notice' = Broken # "silent"
+  /\ notice' = (Broken # "silent")
   /\ noticeKind' = NoticeKind(kind)
   /\ noticeDev' = IF NoticeKind(kind) = "dev" \/ Broken = "emptynotice"
                     THEN observedDev ELSE {}
@@ -250,9 +250,9 @@ Deal ==
   /\ mergeRound = deals + 1 \/ Broken = "reusedmerge"
   /\ deals' = deals + 1
   /\ mergeOK' = (Broken = "reusedmerge")
-  /\ everyDealObserved' = everyDealObserved /\ consumerBase = observedDev
-  /\ everyDealMerged' = everyDealMerged /\ mergeSucceeded
-  /\ everyDealNewMerge' = everyDealNewMerge /\ mergeRound = deals + 1
+  /\ everyDealObserved' = (everyDealObserved /\ consumerBase = observedDev)
+  /\ everyDealMerged' = (everyDealMerged /\ mergeSucceeded)
+  /\ everyDealNewMerge' = (everyDealNewMerge /\ mergeRound = deals + 1)
   /\ UNCHANGED <<state, head, scope, remoteDev, observedDev, proof, releaseVars,
                   consumerBase, mergeSucceeded, mergeRound>>
 
