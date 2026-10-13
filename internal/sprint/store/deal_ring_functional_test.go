@@ -13,6 +13,7 @@ import "testing"
 func TestRedisTheDealGoesRoundTheFleetThroughTheTick(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	dealRingOwnersRun(t, h)
 }
 
@@ -25,6 +26,7 @@ func TestRedisTheIndexesGoOnFromTickToTick(t *testing.T) {
 func TestRedisTheRedealsGoRoundTheFleetInARunWithFailures(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	dealRingWithFailures(t, h)
 }
 
@@ -39,5 +41,6 @@ func TestRedisMemberDownRedealsAndLevelGoRoundTheFleet(t *testing.T) {
 func TestRedisDealtReadsTheCardsInFlightAlone(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	dealtLife(t, h)
 }

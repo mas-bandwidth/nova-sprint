@@ -31,7 +31,7 @@ func dealtLife(t *testing.T, h *harness) {
 		return w[0]
 	}
 	done := take()
-	h.must(FinishStep(sprint.FinishReq{As: "m1", Sel: sprint.Sel{IDs: []string{done.ID}}, Gens: map[string]int{done.ID: done.Int("gen")}, Head: "h1", Who: "m1"}))
+	h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", As: "m1", Sel: sprint.Sel{IDs: []string{done.ID}}, Gens: map[string]int{done.ID: done.Int("gen")}, Head: "h1", Who: "m1"}))
 	h.machine()
 	working := take()
 	ready := h.snap().Fleet.Cell("m1", sprint.Ready)

@@ -130,6 +130,7 @@ func liveKeys(t *testing.T, c *redis.Client) []string {
 func TestRedisASprintToLandedByTicks(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	require.NoError(t, h.st.B.SetCoordinator(h.ctx, "tester"))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
@@ -757,6 +758,7 @@ func TestRedisWritersRaceForTheSamePrimaries(t *testing.T) {
 func TestRedisTicksRaceEachOther(t *testing.T) {
 	t.Parallel()
 	h, c := liveHarness(t)
+	positiveLiveRoutes(h)
 	h.setup(9)
 	h.startMachine()
 	const loops = 3

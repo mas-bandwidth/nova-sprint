@@ -198,7 +198,7 @@ func (h *harness) through(ids ...string) {
 	for _, id := range ids {
 		c := s.Fleet.Card(s.Work.Card(id).F("work"))
 		h.must(TakeStep(sprint.TakeReq{As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}}))
-		h.must(FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}}))
+		h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}}))
 	}
 	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: ids}}))
 	for _, id := range ids {

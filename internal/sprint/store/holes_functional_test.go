@@ -26,6 +26,7 @@ import (
 func TestG2OnAStoreNoMachineIsOverItsWidthAtAnyStep(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	holesUp(h, 4)
 	x := newHoleTick(h)
 	steps := 0
@@ -59,6 +60,7 @@ func TestG2OnAStoreNoMachineIsOverItsWidthAtAnyStep(t *testing.T) {
 func TestG2AndG3OnAStoreOverASprintWithALapse(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	holesUp(h, 4)
 	x := newHoleTick(h)
 	held := map[string]int{}
@@ -108,6 +110,7 @@ func TestG2AndG3OnAStoreOverASprintWithALapse(t *testing.T) {
 func TestW12AndW13OnAStore(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	h.setup(2)
 	h.startMachine()
 	x := newHoleTick(h)

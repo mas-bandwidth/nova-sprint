@@ -99,7 +99,7 @@ func takeOne(h *harness, next int) int {
 		c := ready[0]
 		gens := map[string]int{c.ID: c.Int("gen")}
 		h.must(TakeStep(sprint.TakeReq{As: m, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: gens, Who: m}))
-		h.must(FinishStep(sprint.FinishReq{As: m, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: gens, Who: m}))
+		h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", As: m, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: gens, Who: m}))
 		return (next + i + 1) % len(ringMembers)
 	}
 	return next
@@ -197,10 +197,10 @@ func workFailing(h *harness, member string, fail func(id string) bool) {
 		}
 	}
 	if len(ok) > 0 {
-		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: ok}, Gens: gens, Who: member}))
+		h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", As: member, Sel: sprint.Sel{IDs: ok}, Gens: gens, Who: member}))
 	}
 	if len(failed) > 0 {
-		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: failed}, Gens: gens, Failed: true, Report: "tests red", Who: member}))
+		h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", As: member, Sel: sprint.Sel{IDs: failed}, Gens: gens, Failed: true, Report: "tests red", Who: member}))
 	}
 }
 

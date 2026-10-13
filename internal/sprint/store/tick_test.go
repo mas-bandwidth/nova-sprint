@@ -57,7 +57,7 @@ func (h *harness) work(member string) {
 		if len(ids) == 0 {
 			return
 		}
-		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
+		h.must(FinishStep(sprint.FinishReq{Usage: "input=1000 output=100", As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 	}
 }
 

@@ -97,20 +97,24 @@ func TestRedisTheTickDealsAFreshCardOnARouteOfItsTier(t *testing.T) {
 		require.NoError(t, c.SAdd(ctx, config.RoutesKey, name).Err())
 		require.NoError(t, c.HSet(ctx, config.RouteKey(name), "name", name, "tier", tier, "provider", "p-"+name, "model", "m",
 			"tokens", "100000", "deadline", "900", "enabled", enabled).Err())
+		require.NoError(t, c.SAdd(ctx, config.ProvidersKey, "p-"+name).Err())
+		require.NoError(t, c.HSet(ctx, config.ProviderKey("p-"+name), "billing", "metered", "funded", "true").Err())
 	}
 	for _, n := range []string{"flash-a", "flash-b", "flash-c"} {
 		put(n, "flash", "true")
 	}
 	put("pro-a", "pro", "false")
 	put("pro-b", "pro", "false")
+	require.NoError(t, c.HSet(ctx, config.TierKey("flash"), "routes", "flash-a,flash-b,flash-c").Err())
+	require.NoError(t, c.HSet(ctx, config.TierKey("pro"), "routes", "pro-a,pro-b").Err())
 	// a pro card on pro (escalated: flash first), written before the machine runs, while
 	// the work table takes a step's write at once
 	h.must(AddStep(sprint.AddReq{Stream: "tools", IDs: []string{"pro-card"}, Brief: "pro-card: the work (tools) tier: pro\n\nThe task.\n"}))
 	h.setPrimary("pro-card", map[string]string{sprint.FieldTierNow: "pro"})
-	h.startMachine()
-	h.machine()
 	h.must(AddStep(sprint.AddReq{Stream: "testify", IDs: []string{"testify-docs"},
 		Brief: "testify-docs: internal/docs tests to testify by the PR 4926 recipe (testify) tier: flash\nBASE: sprint/foundation\n\nThe task.\n"}))
+	h.startMachine()
+	h.machine()
 	for i := 0; i < 3; i++ {
 		h.tick(time.Second)
 		h.machine()

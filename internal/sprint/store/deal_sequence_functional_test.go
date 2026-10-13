@@ -23,17 +23,20 @@ func TestRedisTheDealContinuesAcrossTheManifestsOfAPlan(t *testing.T) {
 func TestRedisTheDealsStreamIndexContinuesAcrossTicks(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	dealStreamsAcrossTicks(t, h)
 }
 
 func TestRedisTheAsksIndexesContinueAcrossTicks(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	askAcrossTicks(t, h)
 }
 
 func TestRedisTheAcceptsStreamIndexContinuesAcrossSteps(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	acceptAcrossTicks(t, h)
 }

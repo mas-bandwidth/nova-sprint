@@ -141,6 +141,7 @@ func TestRedisClear(t *testing.T) {
 	t.Parallel()
 	st, c := liveStore(t)
 	h := &harness{t: t, st: st, ctx: context.Background(), now: time.Now(), live: []string{"m1", "m2"}}
+	positiveLiveRoutes(h)
 	h.setup(3)
 	h.through("s1-1", "s1-2")
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1}))

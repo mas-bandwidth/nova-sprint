@@ -19,6 +19,7 @@ import (
 func TestRedisLoadCacheAgreesWithAWholeRead(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
+	positiveLiveRoutes(h)
 	h.setup(20)
 	h.startMachine()
 	lc := NewLoadCache()
