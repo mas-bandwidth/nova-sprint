@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"strings"
 )
 
 // DeferReq is the coordinator deferring waiting cards to the roadmap: the verb
@@ -38,6 +39,8 @@ func pickedForDrop(p *Plan, sel Sel, cols []*Card, refuse func(*Card) string, by
 // step runs (it moved ready) is refused and nothing of it changes. Its record,
 // outcome and reason are kept, and the roadmap write is the verb's own (the
 // store step only drops).
+//
+// tla/NeedsBlocked.tla NoStrandingDrop
 func Defer(s *Snapshot, r DeferReq) Plan {
 	var p Plan
 	chosen, dropping := pickedForDrop(&p, r.Sel, s.Work.Column(Waiting), func(c *Card) string {
@@ -49,6 +52,14 @@ func Defer(s *Snapshot, r DeferReq) Plan {
 		}
 		return ""
 	}, s.primaryCard)
+	for _, c := range chosen {
+		if deps := unlandedNeeding(s, c.ID, dropping); len(deps) > 0 {
+			p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; defer them too, or drop %s with --cascade, --relink <card> or --waive", c.ID, strings.Join(deps, ", "), c.ID))
+		}
+	}
+	if len(p.Refused) > 0 {
+		return Lawful(p)
+	}
 	for _, c := range chosen {
 		u := Unit{Key: c.ID, Stream: c.Row}
 		for _, fc := range s.Fleet.Of(c.ID) {
