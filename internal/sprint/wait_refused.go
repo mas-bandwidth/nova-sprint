@@ -61,6 +61,9 @@ var WaitRefused = map[string]string{
 	// a harness fault repeated: the second identical one on a card, or on many cards, holds
 	// the card until the cause is mended and it is rebriefed or dropped (harness_fault.go)
 	NHarnessFault: "mend the cause (the toolchain, a route or a provider), then rebrief it, or drop it",
+	// recovery head debt: the card cannot be dealt until its revoked
+	// generation's head resolves; waiting would park the debt, not mend it
+	NRecoveryUnresolvable: "restore the repository or branch it names (or correct the brief that named it), then ack it, or drop the primary",
 }
 
 // WaitAllowedOnACard is the kinds a rework discharges on its primary (ReworkResolves) that
