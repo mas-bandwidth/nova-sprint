@@ -96,7 +96,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 		DecideBounce: s.DecideBounce, DecideReview: s.DecideReview, DecideScoreBar: s.DecideScoreBar,
 		DecideAttemptNoResult: s.DecideAttemptNoResult, DecideAttemptNothingToDo: s.DecideAttemptNothingToDo, DecideGrade: s.DecideGrade,
 		DecideGateFlaky: s.DecideGateFlaky, DecideGatePreexisting: s.DecideGatePreexisting,
-		RulesOff: slices.Clone(s.RulesOff), GitIdentity: s.GitIdentity, MaxAttempts: s.MaxAttempts,
+		RulesOff: slices.Clone(s.RulesOff), GitIdentity: s.GitIdentity, GitIdentityUnapplied: s.GitIdentityUnapplied, MaxAttempts: s.MaxAttempts,
 		ReaderStates: maps.Clone(s.ReaderStates), NoRoom: maps.Clone(s.NoRoom),
 		Friends: cloneFriends(s.Friends), FriendTextPronouns: maps.Clone(s.FriendTextPronouns), Running: s.Running,
 	}
