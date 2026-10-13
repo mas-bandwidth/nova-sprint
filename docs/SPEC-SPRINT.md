@@ -1563,7 +1563,7 @@ burst spreads over equal readers in cursor order and never exceeds a
 unit's room (`DealAhead` times its width, reads at half a slot); a unit that is down, does
 not serve the tier, has no room, refused the read at staging, or already read that primary
 at the attempt is skipped (`TestReadCardDealUsesAPersistedRoundRobinCursor`,
-`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`).
+`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`). A read card is created only at an id the deal has seen absent; a refused create drops that read, never the deal.
 
 ### one-lane-per-card.w1: one lane per card
 

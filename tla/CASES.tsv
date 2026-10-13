@@ -182,6 +182,8 @@ MCDirtyTickHeldStream.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small
 MCDirtyTickBrokenDealHeldStream.cfg	MCDirtyTick.tla	invariant	HeldStreamNotDealt	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReadsFirst.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenWorkFirst.cfg	MCDirtyTick.tla	action	ReadsBeforeWork	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickReadRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickBrokenReadBlocks.cfg	MCDirtyTick.tla	invariant	OneRefusedReadNeverBlocksWork	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReader.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickReaderAway.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickW21.cfg	MCDirtyTick.tla	invariant	ReadsStandOnReadersUp	ignore-terminal	dirtytick-witnesses	required	-
