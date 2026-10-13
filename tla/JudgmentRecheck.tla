@@ -136,7 +136,7 @@ AcquirePlan ==
 CommitPlan ==
   /\ checkedRouteTruth' = [j \in RouteJudgments |-> truth[j]]
   /\ routeFrozen' = FALSE
-  /\ idempotentDone' = idempotentDone \/ (readHadClosures /\ planned = {})
+  /\ idempotentDone' = (idempotentDone \/ (readHadClosures /\ planned = {}))
   /\ lastClosed' = planned
   /\ IF Broken = "duplicate" THEN (phase = "locked" \/ (phase = "idle" /\ checkedEpoch # 0)) ELSE phase = "locked"
   /\ IF Broken \in {"owner", "duplicate"} THEN TRUE ELSE owner = "recheck"
