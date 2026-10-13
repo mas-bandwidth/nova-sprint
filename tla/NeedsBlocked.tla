@@ -99,6 +99,8 @@ Admit(c) ==
 
 Hold(c) ==
     /\ state[c] = "placed"
+    /\ ~decided[c]
+    /\ c \notin bj
     /\ state' = [state EXCEPT ![c] = "held"]
     /\ last' = "hold"
     /\ lastCard' = c
@@ -147,6 +149,8 @@ DropRelink(x, target) ==
     /\ target # x
     /\ state[target] \in {"placed", "landed"}
     /\ ~Unresolved(target)
+    /\ target \notin OpenDeps(x)
+    /\ ~Reaches(target, x)
     /\ state' = [state EXCEPT ![x] = "dropped"]
     /\ needs' = [c \in Cards |-> IF x \in needs[c] THEN (needs[c] \ {x}) \cup {target} ELSE needs[c]]
     /\ last' = "drop"
@@ -233,7 +237,7 @@ OneBlockerJudgment ==
 
 NoStrandingDrop ==
     \A x \in Cards : state[x] = "dropped" =>
-        \A y \in Cards : state[y] \notin {"landed", "dropped"} => x \notin needs[y]
+        \A y \in Cards : (admitted[y] /\ state[y] \notin {"landed", "dropped"}) => x \notin needs[y]
 
 LiveDecided ==
     \A x \in Cards : decided[x] ~> (x \notin bj)
