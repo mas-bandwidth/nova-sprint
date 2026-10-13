@@ -51,6 +51,11 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			continue
 		}
 		n := entries[0].Note
+		// Legacy open episodes predate these closing menus; their kind still
+		// admits the same acknowledgement after an upgrade (LsAck/NoRouteTick).
+		if n.Type == NLandingStall || n.Type == NNoRoute {
+			n.Decisions = append([]string(nil), TickDecisions[n.Type]...)
+		}
 		if why := seatSilentRefusal(n.Type, "acknowledged"); why != "" {
 			p.refuse(id, why)
 			continue
@@ -71,6 +76,12 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		if n.StreamLevel && s.StreamCtl(n.Stream).F("state") == StreamStopped {
 			p.refuse(id, "stream "+n.Stream+" is stopped: its judgment stays open until it resumes; run: nova-sprint resume --stream "+n.Stream+" --did <what was done>")
 			continue
+		}
+		// tla/SprintRules.tla LsAck: an acknowledgement holds the stall
+		// for one running-time bound, starting at this decision.
+		if n.Type == NLandingStall {
+			was, ok := s.Work.Prop(PropLandingStallSaid)
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandingStallSaid, Value: landingStamp(s.Now), Was: was, WasAbsent: !ok})
 		}
 		closing[id] = true
 		u := Unit{Key: id, Stream: n.Stream, Closes: entries, Moved: fmt.Sprintf("%s (%s) acknowledged: %s", id, n.Type, r.Reason)}

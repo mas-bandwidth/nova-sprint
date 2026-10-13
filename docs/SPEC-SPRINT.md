@@ -8360,6 +8360,20 @@ journal deliver the notes; files remain available to the native consumer across
 restarts. PAUSED work remains RUNNING for settlement and does not trigger STOP
 alerts (tla/SprintRules.tla, `AlarmOncePerEpisode`, `ClearFollowsAlarm`).
 
+### Every judgment can be answered
+
+Every judgment kind declares at least one command that closes its obligation,
+or refuses with a reason naming the action still required. The complete menu
+is in [CLI.md, Closing judgments](CLI.md#closing-judgments). Each tick-kept
+condition retires its judgment and its held acknowledgement on the first tick
+that no longer observes the cause, with `the condition cleared: <why>`.
+The NoRoute action is `NoRouteTick` in `SprintRules.tla`; the reversed
+`MCSprintRulesNoRouteBrokenStaysAfterRoute.cfg` leaves it standing after a route
+serves the tier. `ack --reason` also closes NoRoute while retaining a hold for
+its episode. LandingStall offers `ack --reason` and `wait`; ack holds it for one
+running-time bound after the acknowledgement (`LsAck`), wait sets a review time,
+and the next landing or nothing waiting ends either hold (`LsLand`).
+
 ### The landing stall
 
 The owner, 2026-10-11: landed 68/294 `+0/30m` for half an hour while 76 cards sat in review

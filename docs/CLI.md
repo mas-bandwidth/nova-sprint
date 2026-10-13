@@ -590,6 +590,107 @@ waiting card traced to the root of its chain and the roots named by the cards be
 them; once an episode, and `the fleet is working again` when it recovers. `run
 --idle-alarm=false` turns it off. The contract is [SPEC-SPRINT.md section 14](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-fleet-is-idle).
 
+
+### Closing judgments
+
+Every judgment gives a concrete command. A command that cannot yet discharge its
+obligation refuses with the reason and the next action. A tick-kept condition
+closes on the first tick that its cause no longer holds, including a held ack,
+and records `the condition cleared: <why>`.
+
+`no route serves the tier` closes on the tick after `route add` serves that tier.
+`ack <judgment> --reason <why>` holds it while its cause stands. For
+`landing stalled`, ack closes the visible judgment until the next landing or one
+`landing_stall_bound` of running time after the ack; `wait` sets an explicit
+review time. A landing, or nothing left waiting, closes either hold immediately.
+
+| Judgment kind | Closing verbs or decisions |
+| --- | --- |
+| STOP debt: an owner has not beaten since the stop | `ack`, `wait` |
+| a brief defect | `drop` |
+| a card has reached its bound: the brief is wrong, not the worker | `brief`, `drop` |
+| a card needs a card that is gone | `drop` |
+| a card pinned to one friend waits while she is not up | `ack` |
+| a card reached its bound | `rework with a fix`, `drop` |
+| a fleet member is down and the coordinator did not hold it | `ack`, `wait` |
+| a friend holds working cards and finishes none | `ack`, `wait` |
+| a friend stalled: two wakes unanswered | `ack`, `wait` |
+| a friend's report needs a read | `ack` |
+| a friend's session is deaf | `ack`, `wait` |
+| a judgment notification has waited past its deadline | `act` |
+| a member is overloaded | `fleet up <m> --width <half>`, `wait 15m` |
+| a member's adoption failed | `fleet up <m>`, `wait` |
+| a merging card names a base not on origin | `return`, `drop`, `ack` |
+| a pinned card was dealt away from its friend | `ack`, `wait` |
+| a primary is blocked on something dropped | `drop`, `ack` |
+| a primary is blocked on something missing | `drop`, `ack` |
+| a provider is low on funds | `ack`, `wait` |
+| a provider is out of funds | `ack`, `wait` |
+| a provider refuses its key | `ack`, `wait` |
+| a read card is past its deadline | `ask --another`, `wait`, `drop` |
+| a read's branch is not on origin | `ack`, `rework with a fix`, `drop` |
+| a reader breaks nearly everything | `act` |
+| a reader found it broken | `rework with the finding`, `ask another reader`, `drop` |
+| a ready card is not dealt | `drop` |
+| a reminder could not be delivered | `ack` |
+| a repository lacks a bench mirror | `fleet up <m>`, `wait` |
+| a stream has had no merge step past its deadline | `merge --stream <s>`, `wait` |
+| a stream has not changed state or count past its deadline | `wait` |
+| a work card is past its deadline | `fleet level`, `fleet down <member>`, `wait`, `drop` |
+| an invariant is broken | `repair`, `wait` |
+| an open card is cut on another base | `act`, `wait` |
+| an operation was stuck | `check`, `ack` |
+| an up friend has an empty row while cards wait | `ack`, `wait` |
+| broken reads outrun ok reads | `raise the read tier`, `act` |
+| cannot ask | `reader add`, `wait` |
+| ci red | `rework with a fix`, `return`, `drop`, `ack` |
+| dev is behind | `promoted`, `wait 30m` |
+| every provider is out of credit | `ack`, `wait` |
+| fewer than two readers up | `reader up`, `reader add`, `wait` |
+| friend sync keeps refusing | `ack`, `wait` |
+| judgments wait on the coordinator past their deadline | `act`, `wait` |
+| landed work scored low | `add a repair card`, `ack` |
+| landing stalled | `ack`, `wait` |
+| member-pegged | `fleet down <m>`, `ack`, `wait 15m` |
+| merging above its alarm | `ack`, `wait` |
+| no fleet member is up | `fleet beat`, `fleet up`, `wait` |
+| no frontier reader has room | `reader add`, `wait` |
+| no member up satisfies a card's GATE-NEEDS | `brief`, `drop` |
+| no route serves the tier | `route add`, `ack`, `drop` |
+| nothing ready while cards wait | `ack`, `wait` |
+| open files above the alarm | `fleet up <m> --width <half>`, `fleet down <m>`, `ack`, `wait 15m` |
+| raise the read tier of the stream? | `raise`, `keep` |
+| reads exhausted | `ask another reader`, `rework`, `drop` |
+| ready to accept | `accept`, `rework`, `drop` |
+| repair skipped changes the store refused as recorded | `return`, `drop`, `rework`, `ack` |
+| returned to review | `rework`, `accept`, `drop` |
+| review above its alarm | `ack`, `wait` |
+| review has no reader | `reader add`, `wait` |
+| sentinel reached | `release`, `do more before going on`, `drop` |
+| stalled | `wait` |
+| status | `ack`, `wait` |
+| stranded in review | `ask`, `rework`, `drop` |
+| stream stopped: conflict on a card | `resolve and resume`, `rework`, `drop` |
+| stream stopped: needs a card of another stream first | `rank that card first`, `return`, `drop` |
+| stream stopped: stream branch red | `take the suspect off and resume`, `rework the suspect` |
+| stream stopped: the base fails its tree gate | `resume` |
+| stream stopped: the merge queue rejected | `resume`, `return`, `drop` |
+| the base branch is gone | `rebase`, `drop` |
+| the base is ahead of dev past its drift | `act`, `wait` |
+| the base is red at its tip | `act`, `wait` |
+| the base's CI is red after a landing | `act`, `wait` |
+| the fleet is starving | `release`, `wait` |
+| the fleet works below its alarm | `ack`, `wait` |
+| the lander fails every landing | `ack` |
+| the lander refuses every landing | `ack` |
+| the live server runs off the base | `act`, `wait` |
+| the readers are behind | `reader up <r>`, `restart <r>`, `wait 10m` |
+| the same failure on many cards: the fleet's, not the card's | `ack` |
+| the same harness fault | `rebrief`, `drop` |
+| the sprint is done | `clear`, `add` |
+| timer | `ack` |
+| work came back failed | `rework with a fix`, `drop` |
+
 ### Answering the routine judgments
 
 `nova-sprint answer` answers the routine judgments (a reader found it

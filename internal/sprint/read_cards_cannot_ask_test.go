@@ -31,7 +31,7 @@ func askTick(t *testing.T, w *world, seats []FriendSeat) (raised []Note, closed 
 	w.s.Now = w.s.Now.Add(time.Minute)
 	p := w.part(func(s *Snapshot, r TickReq) (Plan, int) { return readCardsAskPart(s, r, seats) }, TickReq{Friends: seats})
 	for _, n := range p.Notes {
-		if n.Type == NCannotAsk {
+		if n.Type == NCannotAsk && n.Kind == Judgment {
 			raised = append(raised, n)
 		}
 	}

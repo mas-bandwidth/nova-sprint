@@ -150,7 +150,8 @@ var TickDecisions = map[string][]string{
 	NBrokenReadsOutrun: {"look at the readers", "raise the read tier", "act"},
 	NReaderBreaks:      {"look at the reader", "act"},
 	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
-	NNoRoute:           {"route add", "look at the card", "drop"},
+	NNoRoute:           {"route add", "ack", "drop"},
+	NLandingStall:      {"ack", "wait"},
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
 	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
 	NProviderLow:    {"ack", "wait"}, // the same
@@ -2221,6 +2222,19 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		p.Notes = append(p.Notes, n)
 	}
 	closing := map[string]bool{}
+	cleared := map[string]bool{}
+	for _, n := range p.Notes {
+		if n.Kind == Decided {
+			cleared[n.Answers] = true
+		}
+	}
+	for _, u := range p.Units {
+		for _, n := range u.Notes {
+			if n.Kind == Decided {
+				cleared[n.Answers] = true
+			}
+		}
+	}
 	for _, o := range held {
 		if !contains(types, o.Note.Type) || holds[condKey(o.Note.Type, o.Subject(), o.Note.Card, o.Note.What)] {
 			continue
@@ -2238,8 +2252,14 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			}
 			continue
 		}
+		// tla/SprintRules.tla NoRouteTick: the first tick with no condition
+		// closes both its judgment and its held acknowledgement.
 		p.Closes = append(p.Closes, o)
 		closing[o.Note.ID] = true
+		if !cleared[o.Note.ID] {
+			cleared[o.Note.ID] = true
+			p.Notes = append(p.Notes, decided(o, "the condition cleared: "+o.Note.Type+" no longer holds", who, s.Now))
+		}
 	}
 	// A primary in review whose last judgment the tick closes (its late read
 	// reported, say) gets the judgment it needs after it, as every step that

@@ -203,7 +203,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
-          ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
+          ntier, nready, npinned, nfriend, nbrief, njudged, nroute, nticked, \* noroute
           alopen, almsg, altold,                      \* alert
           rest, card, tierJ, cardJ, staleJ            \* tier
 
@@ -218,7 +218,7 @@ epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areaso
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
-norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
+norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged, nroute, nticked>>
 alertVars == <<alopen, almsg, altold>>
 tierVars == <<rest, card, tierJ, cardJ, staleJ>>
 vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
@@ -302,7 +302,7 @@ TypeOK ==
   /\ crefused \in ConflictWays \cup {None} /\ cway \in ConflictWays \cup {None}
   /\ catt \in 1..Cap
   /\ ntier \in 1..4 /\ nready \in BOOLEAN /\ npinned \in BOOLEAN /\ nfriend \in BOOLEAN
-  /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN
+  /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN /\ nroute \in BOOLEAN /\ nticked \in BOOLEAN
   /\ alopen \in BOOLEAN /\ almsg \in 0..2 /\ altold \in BOOLEAN
   /\ rest \in BOOLEAN
   /\ card \in {"ready", "bound", "working"}
@@ -337,7 +337,7 @@ Init ==
   /\ lsclk = 0 /\ lsstopped = FALSE /\ lswait = 1
   /\ lslast = -1 /\ lssince = -1 /\ lssaid = -1 /\ lsjudged = FALSE
   /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
-  /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
+  /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE /\ nroute = FALSE /\ nticked = FALSE
   /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
   /\ rest = FALSE /\ card = "ready" /\ tierJ = FALSE /\ cardJ = FALSE /\ staleJ = FALSE
 
@@ -1328,7 +1328,13 @@ LsTick ==
                   /\ UNCHANGED <<lsstopped, lswait, lslast>>
            ELSE UNCHANGED <<lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 
-LsNext == LsWait \/ LsLand \/ LsStop \/ LsStart \/ LsTick
+\* ack closes the visible judgment and holds it for one running-time bound.
+LsAck ==
+  /\ lsjudged /\ lsjudged' = FALSE /\ lssaid' = lsclk
+  /\ UNCHANGED <<lsclk, lsstopped, lswait, lslast, lssince>>
+\* The condition is cleared by a landing within one step (a tick in the code).
+StallClearsWithinOneTick == [][LsLand /\ Broken # "noclear" => ~lsjudged']_stallVars
+LsNext == LsAck \/ LsWait \/ LsLand \/ LsStop \/ LsStart \/ LsTick
 
 \* The landing-stall judgment is never open while the last landing is younger than the
 \* bound: it opens only once the last landing is StallBound or more of running time ago (or
@@ -1338,7 +1344,7 @@ StallNotYoung == lsjudged => (lslast = -1 \/ lsclk - lslast >= StallBound)
 \* A card in review with its reads done and ok (it can land) is landed or the stall is
 \* raised: with no landing yet, waiting cards are judged once the bound of running time
 \* passes, under fairness of the running tick and the machine starting again.
-StallLive == (lswait > 0 /\ lslast = -1) ~> (lsjudged \/ lslast # -1)
+StallLive == (lswait > 0 /\ lslast = -1) ~> (lsjudged \/ lssaid # -1 \/ lslast # -1)
 \* Part "conflict": one card whose head the lander refused (internal/sprint rules.go
 \* ruleConflict, ruleRedo, ruleBrief; redo.go Return). The card is on a tier (flash, pro,
 \* heavy; the failed and bound rules raised it, Part "rules"): the lander refuses its head
@@ -1428,20 +1434,20 @@ NearestServed(t) ==
 \* the outside: the card's status changes, and the overdue judgment appears
 NoRouteReady ==
   /\ nready' = ~nready
-  /\ UNCHANGED <<ntier, npinned, nfriend, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, npinned, nfriend, nbrief, njudged, nroute, nticked>>
 NoRoutePin ==
   /\ npinned' = ~npinned
-  /\ UNCHANGED <<ntier, nready, nfriend, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, nready, nfriend, nbrief, njudged, nroute, nticked>>
 NoRouteFriend ==
   /\ nfriend' = ~nfriend
-  /\ UNCHANGED <<ntier, nready, npinned, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, nready, npinned, nbrief, njudged, nroute, nticked>>
 NoRouteBrief ==
   /\ nbrief' = ~nbrief
-  /\ UNCHANGED <<ntier, nready, npinned, nfriend, njudged>>
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, njudged, nroute, nticked>>
 NoRouteJudge ==
-  /\ ~njudged
+  /\ ~njudged /\ ~nroute
   /\ njudged' = TRUE
-  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief>>
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, nroute, nticked>>
 
 \* the tier the rule raises the card to: the nearest served tier above, or a weaker
 \* tier for the lowers defect (the guard keeps it above the ladder's floor)
@@ -1459,9 +1465,20 @@ NoRouteRaise ==
   /\ ntier' = NoRouteTarget
   /\ npinned' = TRUE
   /\ njudged' = FALSE
-  /\ UNCHANGED <<nready, nfriend, nbrief>>
+  /\ UNCHANGED <<nready, nfriend, nbrief, nroute, nticked>>
 
-NoRouteNext == NoRouteReady \/ NoRoutePin \/ NoRouteFriend \/ NoRouteBrief \/ NoRouteJudge \/ NoRouteRaise
+\* route add serves the current tier; the following tick retires its judgment.
+NoRouteAdd ==
+  /\ ~nroute /\ nroute' = TRUE
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, njudged, nticked>>
+NoRouteTick ==
+  /\ njudged /\ (nroute \/ ntier \in Served)
+  /\ njudged' = IF Broken = "staysafterroute" THEN njudged ELSE FALSE
+  /\ nticked' = ~nticked
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, nroute>>
+NoRouteClearsWithinOneTick == [][(njudged /\ (nroute \/ ntier \in Served) /\ NoRouteTick) => ~njudged']_norouteVars
+
+NoRouteNext == NoRouteAdd \/ NoRouteTick \/ NoRouteReady \/ NoRoutePin \/ NoRouteFriend \/ NoRouteBrief \/ NoRouteJudge \/ NoRouteRaise
 
 \* The rule never lowers a tier: a card no route serves is raised to a stronger tier,
 \* never a weaker one (a heavy card never goes to flash).

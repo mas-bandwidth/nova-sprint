@@ -693,3 +693,4 @@ MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestor
 MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCSprintRulesNoRouteBrokenStaysAfterRoute.cfg	MCSprintRules.tla	action	NoRouteClearsWithinOneTick	ignore-terminal	sprintrules	required	-

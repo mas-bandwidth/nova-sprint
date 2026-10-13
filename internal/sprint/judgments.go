@@ -641,6 +641,12 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	landing := last // the real last landing, before the no-landing case borrows since
 	since, _ := s.Work.Prop(PropLandingStallSince)
 	said, _ := s.Work.Prop(PropLandingStallSaid)
+	heldStall := false
+	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
+		if o.Note.Type == NLandingStall {
+			heldStall = true
+		}
+	}
 	write := func(name, value string) {
 		was, ok := s.Work.Prop(name)
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: name, Value: value, Was: was, WasAbsent: !ok})
@@ -676,9 +682,17 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	// tick whose cadence is shorter than the bound. A landing is taken before a
 	// stall that still holds after it, so the old episode says "landing again"
 	// and a new one begins at the next tick.
-	case since != "" && (waiting == 0 || landedAgain):
-		if o, ok := openJudgmentOf(s, NLandingStall); ok {
-			p.Closes = append(p.Closes, o)
+	case (since != "" || said != "" || heldStall) && (waiting == 0 || landedAgain || (since == "" && hasLast && !stalled)):
+		// tla/SprintRules.tla LsLand: a landing clears the held acknowledgement too.
+		for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
+			if o.Note.Type == NLandingStall {
+				p.Closes = append(p.Closes, o)
+				why := "nothing waits in review or merging"
+				if landedAgain || waiting > 0 {
+					why = "a card landed"
+				}
+				p.Notes = append(p.Notes, decided(o, "the condition cleared: "+why, r.who(), s.Now))
+			}
 		}
 		if said != "" && landedAgain {
 			took := ""
@@ -704,14 +718,31 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 				due = true
 			}
 		}
+		// LsAck's hold ends at its bound; wait instead sets an explicit review.
+		for _, o := range s.Acked {
+			if o.Note.Type != NLandingStall {
+				continue
+			}
+			if !o.Note.Review.IsZero() {
+				base := o.Note.ReviewSet
+				if base.IsZero() {
+					base = o.Note.At
+				}
+				due = DueNow(s.Now, o.Note.Review, base, r.Stopped)
+			}
+			if due {
+				p.Closes = append(p.Closes, o)
+			}
+		}
 		if due {
 			what := landingStallWhat(s, r, age)
 			if o, ok := openJudgmentOf(s, NLandingStall); ok {
 				n := o.Note
 				n.What, n.At = what, s.Now
+				n.Decisions = append([]string(nil), TickDecisions[NLandingStall]...)
 				p.Updates = append(p.Updates, n)
 			} else {
-				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true}
+				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true, Decisions: append([]string(nil), TickDecisions[NLandingStall]...)}
 				p.Notes = append(p.Notes, n)
 			}
 			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second)) + landingStallCause(s)})

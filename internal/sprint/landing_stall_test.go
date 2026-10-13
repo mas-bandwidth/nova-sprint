@@ -368,7 +368,18 @@ func TestALandingSeenLateEndsTheOldStallBeforeANewOne(t *testing.T) {
 	assert.False(t, open, "the old episode's judgment is closed")
 	p, _ = TickLandingStall(w.s, TickReq{})
 	w.must(p)
-	require.Len(t, w.notesOf(NLandingStall), 2, "the stall that still holds is a new episode, raised at the next tick")
+	var judgments, clears int
+	for _, n := range w.notesOf(NLandingStall) {
+		if n.Kind == Judgment {
+			judgments++
+		}
+		if n.Kind == Decided {
+			clears++
+			assert.Contains(t, n.What, "the condition cleared: a card landed")
+		}
+	}
+	require.Equal(t, 2, judgments, "the stall that still holds is a new episode, raised at the next tick")
+	require.Equal(t, 1, clears, "the old episode records why it closed")
 }
 
 // A batch landing push stays inside the field bound however long the ledger

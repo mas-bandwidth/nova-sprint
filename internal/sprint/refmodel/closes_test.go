@@ -2,6 +2,7 @@ package refmodel_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,8 +69,10 @@ func TestDealClosesTheJudgmentForNoMemberWhenAMemberIsUp(t *testing.T) {
 		"prop fleet deal_index=2",
 		"create fleet s1-1.w1 >m1:ready",
 		"create fleet s1-2.w1 >m1:ready",
+		"decided no fleet member is up []",
 		"close no fleet member is up [stream:]")
 	theClose(t, got, sprint.NNoMember, ids[0], "stream:")
+	theClear(t, got, sprint.NNoMember, ids[0])
 }
 
 func TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded(t *testing.T) {
@@ -94,8 +97,10 @@ func TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded(t *testing.T) {
 		"create readers s1-1.r1.reader-a >reader-a:asked",
 		"create readers s1-1.r1.reader-b >reader-b:asked",
 		"prop readers stream_index_ask=1",
+		"decided cannot ask []",
 		"close cannot ask [s1-1]")
 	theClose(t, got, sprint.NCannotAsk, ids[0], "s1-1")
+	theClear(t, got, sprint.NCannotAsk, ids[0])
 }
 
 func TestDeadlinesCloseALatenessWhenTheCardIsTaken(t *testing.T) {
@@ -110,8 +115,10 @@ func TestDeadlinesCloseALatenessWhenTheCardIsTaken(t *testing.T) {
 	expect(t, refmodel.DeadlineMoves(w.snapshot(nil), later(sprint.DealtMaxDefault+time.Minute)))
 	w.take(t, "s1-1")
 	got := refmodel.DeadlineMoves(w.snapshot(nil), later(sprint.DealtMaxDefault+time.Minute))
-	expect(t, got, "close a work card is past its deadline [s1-1]")
+	expect(t, got, "decided a work card is past its deadline []",
+		"close a work card is past its deadline [s1-1]")
 	theClose(t, got, sprint.NWorkLate, ids[0], "s1-1")
+	theClear(t, got, sprint.NWorkLate, ids[0])
 }
 
 func TestCheckClosesAnInvariantWhenTheRuleHoldsAgain(t *testing.T) {
@@ -134,8 +141,10 @@ func TestCheckClosesAnInvariantWhenTheRuleHoldsAgain(t *testing.T) {
 	wc.Row, wc.Col = row, col // it holds again
 	w.s.Fleet.Put(wc)
 	got := refmodel.CheckMoves(w.snapshot(w.fresh()), later(0))
-	expect(t, got, "close an invariant is broken [s1-1]")
+	expect(t, got, "decided an invariant is broken []",
+		"close an invariant is broken [s1-1]")
 	theClose(t, got, sprint.NInvariant, ids[0], "s1-1")
+	theClear(t, got, sprint.NInvariant, ids[0])
 }
 
 func TestOverdueClosesTheHoldWhenItsJudgmentCloses(t *testing.T) {
@@ -184,6 +193,21 @@ func TestRemindClosesTheJudgmentForAFailingRouteWhenItIsReached(t *testing.T) {
 	reached.Fail = "" // a delivery arrived
 	snap.Goals = sprint.Goals{People: []sprint.Goal{reached}, Noted: goals.Failing()}
 	got := refmodel.RemindMoves(snap, later(0))
-	expect(t, got, "close a reminder could not be delivered [stream:]")
+	expect(t, got, "decided a reminder could not be delivered []",
+		"close a reminder could not be delivered [stream:]")
 	theClose(t, got, sprint.NRemindFailed, ids[0], "stream:")
+	theClear(t, got, sprint.NRemindFailed, ids[0])
+}
+
+// A clear is an answer of the precise episode, with its reason preserved.
+func theClear(t *testing.T, got []refmodel.Move, typ, id string) {
+	t.Helper()
+	var found []refmodel.Move
+	for _, m := range got {
+		if m.Kind == refmodel.KindDecided && m.Type == typ && slices.Contains(m.Attrs, "answers="+id) {
+			found = append(found, m)
+		}
+	}
+	require.Len(t, found, 1)
+	assert.True(t, strings.HasPrefix(found[0].Words, "the condition cleared:") || (typ == sprint.NCannotAsk && strings.HasPrefix(found[0].Words, "a reader may read ")), "%s", found[0].Words)
 }
