@@ -64,8 +64,9 @@ const (
 const hookWarnWhat = "WARNING-judgments-waiting"
 
 // hookMsg is one line on the hook's connection, either way. The server sends hello,
-// challenge, push, ok, refused and bye; the session sends prove, ack and unhook, each
-// with its req, which the server's answer carries back.
+// challenge, push, ok, refused and bye; the session sends prove, ack, ack-all and
+// unhook, each with its req, which the server's answer carries back. Acked is the
+// ack-all answer's count (how many open pushes it acknowledged).
 type hookMsg struct {
 	T         string    `json:"t"`
 	Req       string    `json:"req,omitempty"`
@@ -80,6 +81,7 @@ type hookMsg struct {
 	Why       string    `json:"why,omitempty"`
 	Live      time.Time `json:"live,omitzero"`
 	Unacked   int       `json:"unacked,omitempty"`
+	Acked     int       `json:"acked,omitempty"`
 }
 
 // The hook's test seam. hookArmedDefault is false only in this package's test binary
@@ -839,6 +841,8 @@ func (s *hookSession) read(ctx context.Context) string {
 			s.answer(m, s.prove(ctx, m.Challenge))
 		case "ack":
 			s.answer(m, s.ack(ctx, m.ID, m.Session))
+		case "ack-all":
+			s.answer(m, s.ackAll(ctx))
 		case "alive":
 			// the hook client's keepalive, every sprint.HookKeepalive while its process holds
 			// the stream: the transport is alive (no more: it is no proof the seat attends),
@@ -851,7 +855,7 @@ func (s *hookSession) read(ctx context.Context) string {
 			_ = s.conn.Close()
 			return "nova-sprint unhook"
 		default:
-			_ = s.send(hookMsg{T: "refused", Req: m.Req, Of: m.T, Why: "the hook takes prove, ack and unhook"})
+			_ = s.send(hookMsg{T: "refused", Req: m.Req, Of: m.T, Why: "the hook takes prove, ack, ack-all and unhook"})
 		}
 		if s.isEnded() {
 			return "ended"
@@ -910,9 +914,45 @@ func (s *hookSession) ack(ctx context.Context, id uint64, session string) hookMs
 	if session == "" || session != s.id {
 		return hookMsg{T: "refused", Why: "this acknowledgement belongs to another hook session; copy the session token from the PUSH line"}
 	}
-	var rec sprint.HookRecord
-	var why string
-	err := s.a.onLine(ctx, func(st *store.Store) error {
+	rec, _, why, err := s.ackUpTo(ctx, id)
+	if why != "" {
+		return hookMsg{T: "refused", Why: why}
+	}
+	if err != nil {
+		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
+	}
+	s.touch(s.a.now()) // an acknowledgement is an act of the seat
+	return hookMsg{T: "ok", ID: id, Unacked: rec.Unacked, Live: rec.Live}
+}
+
+// ackAll acknowledges every push this hook has sent up to now, in the session it
+// holds: the client sends no id or token, and the hook acks up to its own last id
+// with its own session (SeatHook.tla, Ack — the same action as
+// --ack <its last id> --session <its session>, so no model change is needed).
+// With nothing sent yet it acks none and still answers ok.
+func (s *hookSession) ackAll(ctx context.Context) hookMsg {
+	s.mu.Lock()
+	upTo := s.seq
+	s.mu.Unlock()
+	if upTo == 0 {
+		s.touch(s.a.now())
+		return hookMsg{T: "ok", ID: 0, Session: s.id, Acked: 0, Unacked: 0}
+	}
+	rec, acked, why, err := s.ackUpTo(ctx, upTo)
+	if why != "" {
+		return hookMsg{T: "refused", Why: why}
+	}
+	if err != nil {
+		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
+	}
+	s.touch(s.a.now())
+	return hookMsg{T: "ok", ID: upTo, Session: s.id, Acked: acked, Unacked: rec.Unacked, Live: rec.Live}
+}
+
+// ackUpTo is the shared cumulative acknowledgement: every open push up to id is
+// acked, counted, and recorded; a failed record write rolls the ack back.
+func (s *hookSession) ackUpTo(ctx context.Context, id uint64) (rec sprint.HookRecord, acked int, why string, err error) {
+	err = s.a.onLine(ctx, func(st *store.Store) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if id == 0 || id > s.seq {
@@ -923,6 +963,7 @@ func (s *hookSession) ack(ctx context.Context, id uint64, session string) hookMs
 		kept := s.open[:0]
 		for _, item := range s.open {
 			if item.ID <= id {
+				acked++
 				for _, key := range item.Keys {
 					s.acked[key] = true
 				}
@@ -931,21 +972,15 @@ func (s *hookSession) ack(ctx context.Context, id uint64, session string) hookMs
 			kept = append(kept, item)
 		}
 		s.open = kept
-		var err error
-		rec, err = s.recordLocked(ctx, st)
-		if err != nil {
+		var rerr error
+		rec, rerr = s.recordLocked(ctx, st)
+		if rerr != nil {
 			s.open, s.acked = openBefore, ackedBefore
+			acked = 0
 		}
-		return err
+		return rerr
 	})
-	if why != "" {
-		return hookMsg{T: "refused", Why: why}
-	}
-	if err != nil {
-		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
-	}
-	s.touch(s.a.now()) // an acknowledgement is an act of the seat
-	return hookMsg{T: "ok", ID: id, Unacked: rec.Unacked, Live: rec.Live}
+	return rec, acked, why, err
 }
 
 // recordLocked writes the session's transport state into the hook record. The caller
@@ -1469,12 +1504,14 @@ func (a *app) hookSocket(name string) (string, error) {
 }
 
 // cmdHook is nova-sprint hook: with no flag, the seat's subscription, held until it ends;
-// with --prove or --ack and --session, the session's word on it, carried by the running hook.
+// with --prove, --ack and --session, or --ack-all (no id or token), the session's word
+// on it, carried by the running hook.
 func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	const name = "hook"
 	fs, c := a.verbSetup(name)
 	prove := fs.String("prove", "", "the challenge the hook's stream showed (HOOK CHALLENGE <c>): the session's answer, carried over the running hook's connection; the hook counts once the server takes it")
 	ack := fs.Uint64("ack", 0, "acknowledge every push the hook's stream showed up to this id (PUSH <id>), over the running hook's connection")
+	ackAll := fs.Bool("ack-all", false, "acknowledge every push the running hook has sent up to now, in the session it holds: no id or session token to copy, over the running hook's connection")
 	session := fs.String("session", "", "the session token printed on the PUSH line being acknowledged")
 	quiet := fs.Bool("quiet-happened", false, "receive judgments and challenges only: the informational HAPPENED pushes are not delivered")
 	compact := fs.Bool("compact", false, "print only what the seat acts on: the HOOK lines and each JUDGMENT cut to one line plus its first detail line (no HAPPENED pushes, no verb menus), each line written and flushed at once; with --overdue, a card-holding judgment unanswered that long is named by one OVERDUE line, again every interval until it is answered")
@@ -1492,10 +1529,18 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case *prove != "" && *ack != 0:
 		return refuse(stderr, name, "--prove and --ack are one at a time")
+	case *prove != "" && *ackAll:
+		return refuse(stderr, name, "--prove and --ack-all are one at a time; run: nova-sprint hook --ack-all")
+	case *ack != 0 && *ackAll:
+		return refuse(stderr, name, "--ack and --ack-all are one at a time; run: nova-sprint hook --ack-all")
+	case *session != "" && *ackAll:
+		return refuse(stderr, name, "--session is not used with --ack-all: it sends no token, the hook uses the session it holds; nothing was changed; run: nova-sprint hook --ack-all")
 	case *session != "" && *ack == 0:
 		return refuse(stderr, name, "--session is only used with --ack")
 	case *prove != "":
 		return a.hookAsk(c.actor, hookMsg{T: "prove", Challenge: strings.TrimSpace(*prove)}, stdout, stderr)
+	case *ackAll:
+		return a.hookAsk(c.actor, hookMsg{T: "ack-all"}, stdout, stderr)
 	case *ack != 0:
 		if *session == "" {
 			return refuse(stderr, name, "hook --ack requires --session <token> from the PUSH line; nothing was changed")
@@ -1570,6 +1615,8 @@ func (a *app) hookAsk(name string, m hookMsg, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "HOOK PROVEN name=%s live-until=%s unacked=%d\n", oneline.Field(name), r.Live.UTC().Format(time.RFC3339), r.Unacked)
 	case "ack":
 		fmt.Fprintf(stdout, "HOOK ACK OK name=%s through=%d unacked=%d\n", oneline.Field(name), r.ID, r.Unacked)
+	case "ack-all":
+		fmt.Fprintf(stdout, "HOOK ACK-ALL OK acked=%d up-to=%d session=%s\n", r.Acked, r.ID, oneline.Field(r.Session))
 	default:
 		fmt.Fprintf(stdout, "UNHOOK OK name=%s state=away: the owner is told; every coordinator command is refused until nova-sprint hook\n", oneline.Field(name))
 	}
