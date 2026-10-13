@@ -693,3 +693,6 @@ MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestor
 MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCNeedsBlockedRun.cfg	MCNeedsBlocked.tla	pass	-	ignore-terminal	needsblocked	required	-
+MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependentsCovered	ignore-terminal	needsblocked	required	-
+MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
