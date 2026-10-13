@@ -221,16 +221,18 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 		p.Tier = primary.F(FieldTier)
 	}
 	if p.Kind == "work" {
-  // tla/SprintTables.tla Brief/Finish: superseded attempts are history,
-  // never the branch or head staged for fresh work. Explicit CARRY below
-  // remains the coordinator's choice, independent of that history.
-  if primary != nil && primary.F(FieldBriefKeepHead) != "true" && (primary.Int(FieldHeadBriefAttempt) > 0 || primary.Int(FieldBriefAttempt) > 0) {
-   eligible := make([]*Card, 0, len(earlier))
-   for _, previous := range earlier {
-    if !AttemptPredatesBrief(primary, previous.Int("attempt")) { eligible = append(eligible, previous) }
-   }
-   earlier = eligible
-  }
+		// tla/SprintTables.tla Brief/Finish: superseded attempts are history,
+		// never the branch or head staged for fresh work. Explicit CARRY below
+		// remains the coordinator's choice, independent of that history.
+		if primary != nil && primary.F(FieldBriefKeepHead) != "true" && (primary.Int(FieldHeadBriefAttempt) > 0 || primary.Int(FieldBriefAttempt) > 0) {
+			eligible := make([]*Card, 0, len(earlier))
+			for _, previous := range earlier {
+				if !AttemptPredatesBrief(primary, previous.Int("attempt")) {
+					eligible = append(eligible, previous)
+				}
+			}
+			earlier = eligible
+		}
 		p.Branch = BranchOf(prefix, epoch, c.ID, c.Int("gen"))
 		p.DecideGateFlaky, p.DecideGatePreexisting = c.F(FieldDecideGateFlaky), c.F(FieldDecideGatePreexisting)
 		p.Finding, p.Why = c.F("finding"), c.F("why")

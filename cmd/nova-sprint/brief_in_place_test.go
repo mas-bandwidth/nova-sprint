@@ -214,27 +214,31 @@ func TestAFriendsOpenReadIsRetiredByBriefAndByRework(t *testing.T) {
 }
 
 func TestBriefKeepHeadDirectAndDirectory(t *testing.T) {
- t.Parallel()
- for _, directory := range []bool{false, true} {
-  name := "direct"
-  if directory { name = "directory" }
-  t.Run(name, func(t *testing.T) {
-   t.Parallel()
-   ta := newTestApp(t)
-   ta.ok("init --readers reader-a,reader-b --members m1")
-   ta.ok("add --stream s1 s1-1 --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "s1-1", "the old work", ""))
-   ta.deal(1)
-   ta.ok("take --as m1 s1-1.w1@1")
-   dir := t.TempDir()
-   file := writeNeedsBrief(t, dir, "s1-1", "the new work", "")
-   cmd := "brief s1-1 --brief-file " + file
-   if directory { cmd = "brief --dir " + dir }
-   out := ta.ok(cmd + " --keep-head")
-   assert.Contains(t, out, "head kept: eligible for review (--keep-head)")
-   ta.ok("finish --as m1 s1-1.w1@1 --head " + landHead + " --report done")
-   assert.Equal(t, sprint.Review, ta.primary("s1-1").Col)
-   assert.Equal(t, landHead, ta.primary("s1-1").F("head"))
-   ta.clean()
-  })
- }
+	t.Parallel()
+	for _, directory := range []bool{false, true} {
+		name := "direct"
+		if directory {
+			name = "directory"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ta := newTestApp(t)
+			ta.ok("init --readers reader-a,reader-b --members m1")
+			ta.ok("add --stream s1 s1-1 --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "s1-1", "the old work", ""))
+			ta.deal(1)
+			ta.ok("take --as m1 s1-1.w1@1")
+			dir := t.TempDir()
+			file := writeNeedsBrief(t, dir, "s1-1", "the new work", "")
+			cmd := "brief s1-1 --brief-file " + file
+			if directory {
+				cmd = "brief --dir " + dir
+			}
+			out := ta.ok(cmd + " --keep-head")
+			assert.Contains(t, out, "head kept: eligible for review (--keep-head)")
+			ta.ok("finish --as m1 s1-1.w1@1 --head " + landHead + " --report done")
+			assert.Equal(t, sprint.Review, ta.primary("s1-1").Col)
+			assert.Equal(t, landHead, ta.primary("s1-1").F("head"))
+			ta.clean()
+		})
+	}
 }

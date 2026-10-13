@@ -95,8 +95,8 @@ type BriefReq struct {
 	// (--needs-from-brief), over the rule that the card's needs are the truth and a text
 	// only adds new ones: the escape hatch when the coordinator means to re-derive them.
 	NeedsFromBrief bool
- // KeepHead lets the current attempt or held review head survive this edit.
- KeepHead bool
+	// KeepHead lets the current attempt or held review head survive this edit.
+	KeepHead bool
 	// Reason is why a re-tier names (nova-sprint tier --set <t> --reason): recorded
 	// with the tier, for the log.
 	Reason string
@@ -214,13 +214,13 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// replaced brief is no longer the one its brief decision was asked over, so the card
 		// names that decision no more
 		set, unset := map[string]string{"brief": b.Brief, FieldHeadBriefAttempt: itoa(c.Int("attempt"))}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
-  // tla/SprintTables.tla Brief: keep is an explicit exception for this edit.
-  if r.KeepHead {
-   set[FieldBriefKeepHead] = "true"
-   p.Said = append(p.Said, b.ID+" head kept: eligible for review (--keep-head)")
-  } else {
-   unset = append(unset, FieldBriefKeepHead, "head", FieldPassedHead)
-  }
+		// tla/SprintTables.tla Brief: keep is an explicit exception for this edit.
+		if r.KeepHead {
+			set[FieldBriefKeepHead] = "true"
+			p.Said = append(p.Said, b.ID+" head kept: eligible for review (--keep-head)")
+		} else {
+			unset = append(unset, FieldBriefKeepHead, "head", FieldPassedHead)
+		}
 		// the brief's bound counts attempts under one task, not one text (brief_bound.go):
 		// an edit that changes only a routing line or the tier is the same task and keeps
 		// the count; a new task resets it (FieldBriefAttempt). The same text again is
@@ -292,16 +292,19 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		want := kept[b.ID]
 		p.Said = append(p.Said, keptSaid[b.ID]...)
 		toWaiting := false
-  if r.KeepHead && c.Col == Review {
-   unmet := ""
-   for _, need := range want {
-    if !contains(cur, need) && s.StateOf(need) != Landed { unmet = need; break }
-   }
-   if unmet != "" {
-    p.refuse(c.ID, "--keep-head keeps a review head only with landed needs; "+unmet+" has not landed; nothing was changed")
-    continue
-   }
-  }
+		if r.KeepHead && c.Col == Review {
+			unmet := ""
+			for _, need := range want {
+				if !contains(cur, need) && s.StateOf(need) != Landed {
+					unmet = need
+					break
+				}
+			}
+			if unmet != "" {
+				p.refuse(c.ID, "--keep-head keeps a review head only with landed needs; "+unmet+" has not landed; nothing was changed")
+				continue
+			}
+		}
 		if !sameNeeds(cur, want) {
 			if why := needsCycleWith(s, c.ID, proposed); why != "" {
 				p.refuse(c.ID, why)
@@ -401,7 +404,9 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	}
 	n := c.Int("attempt")
 	said := fmt.Sprintf("brief edited in place by %s at attempt %d: %s", orDash(who), n, briefChange(c.F("brief"), brief))
- if set[FieldBriefKeepHead] == "true" { said += "; head kept: eligible for review (--keep-head)" }
+	if set[FieldBriefKeepHead] == "true" {
+		said += "; head kept: eligible for review (--keep-head)"
+	}
 	if after := set[FieldWaitsAfter]; after != "" {
 		// the card is working and legal: it waits for the need after this attempt
 		// (docs/SPEC-SPRINT.md section 9, rule 11), and says so on the card
@@ -412,25 +417,27 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	var changes []Change
 	retire := func(table string, x *Card) {
 		entry := removeEntry(x, map[string]string{"retired": stamp(s.Now), "retired_by": "brief"})
-  if table == Fleet && x.F("kind") != "read" && x.F("head") != "" && set[FieldBriefKeepHead] != "true" {
-   entry.Set["head_superseded"] = "true"
-  }
-  changes = append(changes, change(table, entry))
+		if table == Fleet && x.F("kind") != "read" && x.F("head") != "" && set[FieldBriefKeepHead] != "true" {
+			entry.Set["head_superseded"] = "true"
+		}
+		changes = append(changes, change(table, entry))
 	}
 	if s.Fleet != nil {
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, n)); wc != nil && wc.Col == Withdrawn {
 			retire(Fleet, wc)
 		}
 	}
- // tla/SprintTables.tla Brief: superseded work heads are history, never a
- // staging base for the next attempt (BaseOf only reads eligible heads).
- if set[FieldBriefKeepHead] != "true" && set[FieldHeadBriefAttempt] != "" && s.Fleet != nil {
-  for attempt := 1; attempt <= n; attempt++ {
-   wc := s.Fleet.Card(WorkCardID(c.ID, attempt))
-   if wc == nil || (attempt == n && wc.Placed() && wc.Col == Withdrawn) || wc.F("head") == "" { continue }
-   changes = append(changes, change(Fleet, setEntry(wc, map[string]string{"head_superseded": "true"})))
-  }
- }
+	// tla/SprintTables.tla Brief: superseded work heads are history, never a
+	// staging base for the next attempt (BaseOf only reads eligible heads).
+	if set[FieldBriefKeepHead] != "true" && set[FieldHeadBriefAttempt] != "" && s.Fleet != nil {
+		for attempt := 1; attempt <= n; attempt++ {
+			wc := s.Fleet.Card(WorkCardID(c.ID, attempt))
+			if wc == nil || (attempt == n && wc.Placed() && wc.Col == Withdrawn) || wc.F("head") == "" {
+				continue
+			}
+			changes = append(changes, change(Fleet, setEntry(wc, map[string]string{"head_superseded": "true"})))
+		}
+	}
 	to := c.Col
 	if c.Col == Review && set[FieldBriefKeepHead] != "true" {
 		to = Ready
