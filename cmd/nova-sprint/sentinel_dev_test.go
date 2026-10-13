@@ -118,4 +118,24 @@ func TestConsumerCallbackUsesOneObservedTrunkAcrossStreams(t *testing.T) {
 		require.True(t, proof.Success)
 		require.Equal(t, next, proof.Observed)
 	}
+	// A failed merge on one branch cannot borrow the other branch's success.
+	require.NoError(t, os.Remove(filepath.Join(r.remote, "hooks", "post-receive")))
+	r.git(r.worker, "fetch", "-q", "origin")
+	r.git(r.worker, "checkout", "-q", "-B", "one", "refs/remotes/origin/sprint/one")
+	oneHead := r.commit("README", "one conflict\n", "one conflict")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/one")
+	r.git(r.worker, "checkout", "-q", "main")
+	r.commit("README", "trunk conflict\n", "trunk conflict")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	proofs = st.ConsumerTrunk(context.Background(), s)
+	require.Len(t, proofs, 2)
+	for _, proof := range proofs {
+		if proof.Card.ID == "one" {
+			require.False(t, proof.Success)
+		} else {
+			require.Equal(t, "two", proof.Card.ID)
+			require.True(t, proof.Success)
+		}
+	}
+	require.Equal(t, oneHead, r.git(r.remote, "rev-parse", "refs/heads/sprint/one"))
 }
