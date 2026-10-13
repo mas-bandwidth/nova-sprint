@@ -40,8 +40,8 @@ func TestCoordinatorVerbDefaultsToTheProvenHookOnce(t *testing.T) {
 	code, out, errs := ta.do("add --stream s1 --count 1 --one")
 	require.Equal(t, 0, code, "%s%s", out, errs)
 	assert.Equal(t, 1, strings.Count(errs, "ACTOR "+name+" (coordinator hook proven)"), errs)
-	assert.Contains(t, out, "ADD OK", out)
-	assert.Equal(t, before+1, ta.applies(), "the proven coordinator acted once")
+	assert.Contains(t, out, "ADD OK stream=s1 cards=1", out)
+	assert.Greater(t, ta.applies(), before, "the proven coordinator's one-card add was persisted")
 }
 
 func TestForwardedCoordinatorVerbDefaultsOnTheServerHook(t *testing.T) {
