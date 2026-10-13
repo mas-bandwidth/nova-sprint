@@ -148,3 +148,24 @@ func workWithSentinelFixtureHead(h *harness, member string, allowed []string) {
 		}
 	}
 }
+
+func TestStoredConsumerReceiptRejectsANewReleasedPositionalBarrier(t *testing.T) {
+	h := newHarness(t)
+	h.setup(1)
+	h.poke(sprint.Work, ntable.BatchMemberEntry{ID: "stop", Expect: &ntable.MemberExpect{Absent: true}, Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Landed, Score: 0}, Set: map[string]string{"kind": "sentinel", "release_kind": "automatic"}})
+	installSentinelFixtureForge(h, "stop", nil, []string{"s1-1"})
+	before := h.snapRoutes()
+	c := before.Work.Card("s1-1")
+	identity := sprint.SentinelCardOf(c)
+	proofs := h.st.ConsumerTrunk(h.ctx, before)
+	plan, _ := sprint.TickDeal(before, sprint.TickReq{ConsumerMerges: proofs})
+	require.NotEmpty(t, plan.Units, "the acquired receipt initially authorizes the eligible consumer")
+	// A valid stored released shape appears before the consumer after the
+	// outside acquisition. The consumer itself is not edited.
+	h.poke(sprint.Work, ntable.BatchMemberEntry{ID: "new-stop", Expect: &ntable.MemberExpect{Absent: true}, Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Landed, Score: 0.5}, Set: map[string]string{"kind": "sentinel", "release_kind": "automatic"}})
+	require.Equal(t, identity, sprint.SentinelCardOf(h.snap().Work.Card("s1-1")))
+	h.run(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{ConsumerMerges: proofs}, nil, nil, nil))
+	after := h.snap()
+	require.Equal(t, sprint.Ready, after.StateOf("s1-1"))
+	require.Nil(t, after.Fleet.Card("s1-1.w1"))
+}

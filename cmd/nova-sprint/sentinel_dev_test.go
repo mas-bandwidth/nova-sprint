@@ -84,10 +84,12 @@ func sentinelProgressNotes(t *testing.T, ta *testApp, stream string) []sprint.No
 func TestConsumerCallbackUsesOneObservedTrunkAcrossStreams(t *testing.T) {
 	r := newLandRig(t)
 	r.m.SetGitIdentity("nova-sprint <nova-sprint@example.invalid>")
-	initial := r.git(r.worker, "rev-parse", "HEAD")
+	base := r.git(r.worker, "rev-parse", "HEAD")
 	for _, stream := range []string{"one", "two"} {
-		r.git(r.worker, "push", "-q", "origin", initial+":refs/heads/sprint/"+stream)
+		r.git(r.worker, "push", "-q", "origin", base+":refs/heads/sprint/"+stream)
 	}
+	initial := r.commit("producer.txt", "producer\n", "producer trunk")
+	r.git(r.worker, "push", "-q", "origin", initial+":refs/heads/main")
 	next := r.commit("next.txt", "next\n", "next trunk")
 	r.git(r.worker, "push", "-q", "origin", next+":refs/heads/fixture-next")
 	// The fake forge advances after the first consumer push. The callback
