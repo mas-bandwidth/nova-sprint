@@ -8111,20 +8111,22 @@ inbox judges it (the line carries no suffix). A tick that did nothing writes the
 looked. `where` shows the same
 state as the one line under its title (section 1).
 
-A stop by hand carries why and until when: `stop --reason <text> --until <time
-or duration>`, both wanted, a stop missing either refused (exit 2) naming each
-missing one; `--until` is a duration from now (`90m`), a clock time (`2:04 PM`,
-`14:04`: today's, or tomorrow's once today's has passed) or an RFC 3339 time,
-after now (`sprint.StopArgs`). The record keeps the stop's actor, reason and
-time, and the system line says them: `machine: STOPPED by <actor>: <reason>,
-back by 2:04 PM` (a time on another day with its date), in `inbox`, the header
-of `where`, its JSON (the dashboard's system line) and every verb's sprint
-line (`sprint.StoppedText`). `--until` is display metadata for the intended
-pause; it never restarts a stopped system. Only an explicit `start` resumes
-it after the owned jobs have been returned. A stop of the STOPPED system
-before then replaces the reason and time, and the span goes on; a clear takes
-them off. A start is also refused when every provider is out of credit. The
-system's own stops carry their cause instead (below).
+A stop by hand carries why and optionally until when: `stop --reason <text>
+[--until <time or duration>]`; `--reason` is required and a stop missing it is
+refused (exit 2) naming `--reason`. Omitting `--until` means "until the next
+start": the machine record keeps Until zero and the system line says
+`machine: STOPPED until the next start (<reason>)`. When given, `--until` is a
+duration from now (`90m`), a clock time (`2:04 PM`, `14:04`: today's, or
+tomorrow's once today's has passed) or an RFC 3339 time, after now
+(`sprint.StopArgs`), and the system line says `machine: STOPPED, expected back
+by 2:04 PM (<reason>); start ends it` (a time on another day with its date),
+in `inbox`, the header of `where`, its JSON (the dashboard's system line) and
+every verb's sprint line (`sprint.StoppedText`). `--until` is display metadata
+for the intended pause, shown to readers; it never restarts a stopped system.
+Only an explicit `start` resumes it after the owned jobs have been returned.
+A stop of the STOPPED system before then replaces the reason and time, and the
+span goes on; a clear takes them off. A start is also refused when every
+provider is out of credit. The system's own stops carry their cause instead (below).
 
 Stop cancels jobs (the owner, 2026-10-08: "official machine stop must cancel
 every active fleet or friend sprint job, preserve progress, return work AND reads
