@@ -81,7 +81,11 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			what = MovedOnPrefix + moved
 		}
 		u.Notes = append(u.Notes, decided(entries[0], what, r.Who, s.Now))
-		if TickKept(n.Type) || n.Type == NFleetFailure {
+		if TickKept(n.Type) || n.Type == NFleetFailure || IsLanderStanding(n.Type) {
+			// (the lander's standing refusal or failure, too: the land loop raises it
+			// while its cause stands, so the acknowledgement is what keeps an ack from
+			// being raised again; LandRefusalClose closes it when the cause clears,
+			// judgments.go)
 			// The tick's condition may still hold (the fleet's failure: held until a new failure
 			// of its class finishes after the ack, rules.go TickFleetFailure): the acknowledgement is
 			// kept on it, so the tick does not write it again until it has

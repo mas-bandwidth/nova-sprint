@@ -33,6 +33,9 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 	if err != nil {
 		return before, after, false, err
 	}
+	if running && pinned.beforeGuardedWrite != nil {
+		pinned.beforeGuardedWrite() // a test's pause between the pin and the lock
+	}
 	r := pinned.retry(ctx)
 	for r.next(pinned.attempts()) {
 		// STOP records the same live owner leases that START later checks.
@@ -52,7 +55,15 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 		if !ok {
 			continue
 		}
-		before, _, err = pinned.Machine(ctx)
+		// no start while the epoch's restore is pending, checked under the lock with the
+		// epoch it locked: the restore's marker is written by a fenced step, so it cannot
+		// land between this read and the record (tla/ClearDefaults.tla Start)
+		if running {
+			err = pinned.startRestoreGuard(ctx, s)
+		}
+		if err == nil {
+			before, _, err = pinned.Machine(ctx)
+		}
 		if err == nil {
 			after, changed, err = pinned.machineRecord(ctx, before, s, running, who, reason, until)
 		}
@@ -63,6 +74,19 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 		return before, after, changed, nil
 	}
 	return before, after, false, fmt.Errorf("machine transition: the sprint kept changing under it (%d tries); nothing was changed; run it again", r.tries)
+}
+
+// startRestoreGuard refuses a start at the pinned epoch while its restore is pending (the
+// flag names the epoch and the marker is absent in the fenced snapshot s), and a start whose
+// epoch the sprint has left.
+func (st *Store) startRestoreGuard(ctx context.Context, s *sprint.Snapshot) error {
+	es, err := st.EpochNow(ctx)
+	if err != nil {
+		return err
+	}
+	_, marked := s.Fleet.Prop(sprint.PropMembersRestored)
+	o := guardOutcome(es.N == st.epoch, es.N == st.epoch && es.DefaultsOwed && !marked, st.restoreGuard(false))
+	return st.guardRefusal(o, "start")
 }
 
 func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time) (after Machine, changed bool, err error) {

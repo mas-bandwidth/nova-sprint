@@ -35,8 +35,9 @@ import (
 //   - a pinned card runs on its pin (route "pin");
 //   - a store with no route at all deals as before, with no route: the member runs
 //     its own --model (a twin, a one-machine test);
-//   - a frontier card with no pin is not dealt: it is the coordinator's, one
-//     judgment for the tier;
+//   - a frontier card with no pin is dealt like every tier: from its array's routes or
+//     an up friend who lists frontier; with neither it waits for the coordinator, one
+//     judgment for the tier (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes);
 //   - a card whose tier (flash when line 1 names none) has no enabled route in its
 //     array is not dealt, one judgment for the tier;
 //   - a route with first set is drawn before the others of its tier (preferFirst);
@@ -342,7 +343,7 @@ func (s *Snapshot) tierServed(tier string, rested []string) (up []string, why st
 	}
 	why = "no enabled route and no up friend serves tier " + tier + ": enable a route (nova-config route add <name> --tier " + tier + " ..., name it in nova-config tier set " + tier + " --routes <name,...>, then nova-config apply) or bring up a friend whose row lists " + tier + "; or pin the card with a model: <provider>/<model> line"
 	if len(rested) > 0 {
-		why = "every enabled route of tier " + tier + " in its array rests (" + strings.Join(rested, "; ") + ") and no up friend serves it: the deal draws one when its rest ends; or run nova-config route add <name> --tier " + tier + " ..., bring up a friend whose row lists " + tier + ", or pin the card with a model: <provider>/<model> line"
+		why = "tier " + tier + " cannot be dealt: every route rests (" + strings.Join(rested, "; ") + ") and no up friend serves it: the deal draws one when its rest ends; or run nova-config route add <name> --tier " + tier + " ..., bring up a friend whose row lists " + tier + ", or pin the card with a model: <provider>/<model> line"
 	}
 	for _, side := range [][3]string{{PropFleetTiers, "the fleet's", "--fleet-tiers"}, {PropFriendsTiers, "the friends'", "--friends-tiers"}} {
 		if !s.sideTakes(side[0], tier) {
@@ -358,7 +359,18 @@ func (s *Snapshot) tierServed(tier string, rested []string) (up []string, why st
 	case n > 1:
 		why += " (" + strings.Join(off[:n-1], ", ") + " and " + off[n-1] + " serve " + tier + " but are held/down)"
 	}
-	return nil, why
+	return nil, frontierWaits(tier, why)
+}
+
+// frontierWaits words tierServed's refusal for a frontier card, which then waits for the
+// coordinator (2026-10-11: rework of 36 frontier cards was refused for want of a route
+// while the coordinator's own frontier row was up): the sentence that once ended every
+// unpinned frontier card before the draw, kept word for word around the tier's refusal.
+func frontierWaits(tier, why string) string {
+	if tier != cardhdr.RouteFrontier {
+		return why
+	}
+	return "no route and no friend serves tier frontier; a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line (" + why + ")"
 }
 
 // tierArray is the tier's route array as the deal reads it: the tier kind's list
@@ -377,6 +389,120 @@ func (s *Snapshot) tierArray(tier string) []string {
 	return out
 }
 
+// TierNotLive reports whether a tier has no live route: its route array is not empty,
+// every route in it rests at s.Now, and no up friend serves it.
+// tla/SprintRules.tla OneTierJudgment, QuietWhileUnfunded.
+func (s *Snapshot) TierNotLive(tier string) (reasons []string, ok bool) {
+	arr := s.tierArray(tier)
+	if len(arr) == 0 {
+		return nil, false
+	}
+	s, _ = s.withRests()
+	for _, f := range s.Friends {
+		if friendTakes(s, f, tier) && friendDealable(s, f) {
+			return nil, false
+		}
+	}
+	var out []string
+	for _, name := range arr {
+		rest, ok := s.resting(name)
+		if !ok || !rest.Resting(s.Now) {
+			return nil, false
+		}
+		out = append(out, name+" until "+rest.UntilSaid()+": "+rest.Said())
+	}
+	return out, true
+}
+
+// CardTierBlocked reports whether card c (a primary or work card) is blocked
+// because its escalating tier has no live route.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func (s *Snapshot) CardTierBlocked(c *Card) bool {
+	if c == nil {
+		return false
+	}
+	pr := c
+	if p := c.F("primary"); p != "" {
+		if placed := s.Work.Placed(p); placed != nil {
+			pr = placed
+		} else if card := s.Work.Card(p); card != nil {
+			pr = card
+		}
+	}
+	ec := escalating(s, pr)
+	tier := cardTierOf(ec)
+	if tier == "" {
+		return false
+	}
+	_, notLive := s.TierNotLive(tier)
+	return notLive
+}
+
+// everyHeldCardTierBlocked reports whether every card in cards is tier-blocked.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func (s *Snapshot) everyHeldCardTierBlocked(cards []string) bool {
+	if len(cards) == 0 {
+		return false
+	}
+	for _, id := range cards {
+		c := s.Work.Card(id)
+		if c == nil {
+			c = s.Fleet.Card(id)
+		}
+		if c == nil || !s.CardTierBlocked(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// TierBlockedStreams returns a map of streams whose every ready or waiting primary
+// is tier-blocked and which have no cards working, in review, or merging.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func TierBlockedStreams(s *Snapshot) map[string]string {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, st := range s.Streams() {
+		// Nothing working, in review, or merging
+		if len(s.Work.Cell(st, Working)) > 0 || len(s.Work.Cell(st, Review)) > 0 || len(s.Work.Cell(st, Merging)) > 0 {
+			continue
+		}
+		ready := s.Work.Cell(st, Ready)
+		waiting := s.Work.Cell(st, Waiting)
+		var blockedTier string
+		allBlocked := true
+		count := 0
+		for _, c := range append(ready, waiting...) {
+			if IsSentinel(c) {
+				continue
+			}
+			count++
+			ec := escalating(s, c)
+			tier := cardTierOf(ec)
+			if tier == "" {
+				allBlocked = false
+				break
+			}
+			if _, notLive := s.TierNotLive(tier); !notLive {
+				allBlocked = false
+				break
+			}
+			if blockedTier == "" {
+				blockedTier = tier
+			}
+		}
+		if allBlocked && count > 0 {
+			out[st] = blockedTier
+		}
+	}
+	return out
+}
+
+// TierBlockedStreams is the snapshot's tier-blocked streams.
+func (s *Snapshot) TierBlockedStreams() map[string]string { return TierBlockedStreams(s) }
+
 // routeIndex is one tier's rolling index over its route array (tla/RouteIndex.tla,
 // ridx): a counter round (round.go) in steps, and the steps each unit moved it.
 type routeIndex struct {
@@ -387,10 +513,14 @@ type routeIndex struct {
 // routeIndexes are the tiers' route indexes a dealing step moves, by tier.
 type routeIndexes map[string]*routeIndex
 
+// routeIndexTiers are the tiers with a route index: the ladder's and frontier, which is
+// drawn from its routes like every tier (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes).
+var routeIndexTiers = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy, cardhdr.RouteFrontier}
+
 // routeIndexesOf is the route indexes at the counters the fleet table's properties hold.
 func routeIndexesOf(s *Snapshot) routeIndexes {
 	out := routeIndexes{}
-	for _, t := range tierLadder {
+	for _, t := range routeIndexTiers {
 		r := tableRound(s.Fleet, PropRouteIndex(t), nil)
 		r.steps = true
 		out[t] = &routeIndex{r: r, moves: roundMoves{}}
@@ -401,7 +531,7 @@ func routeIndexesOf(s *Snapshot) routeIndexes {
 // write writes where the plan's kept units left each tier's index, in its batch
 // (roundWrites; tla/RouteIndex.tla, Deal and Redeal).
 func (ri routeIndexes) write(p *Plan) {
-	for _, t := range tierLadder {
+	for _, t := range routeIndexTiers {
 		roundWrites(p, ri[t].r, ri[t].moves)
 	}
 }
@@ -550,7 +680,8 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 
 // routeTier is routeOf's and routeServed's shared opening: the tier a deal of c draws
 // from, and the cases that end before the draw — a brief whose model lines do not read, a
-// frontier card, and a tier the fleet's set leaves out (tierServed). done says one of
+// fallback tier, and a tier the fleet's set leaves out (tierServed); a frontier card is
+// none of them and goes on to the draw like every tier. done says one of
 // those settled the answer (the returned tier, why and byFriend are it, with no set); else
 // the caller goes on to the pin, a store with no route, or the draw. m is the card's
 // model, for the pin's fields and the tier a deal writes on the primary.
@@ -577,22 +708,9 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		}
 		return tier, "", false, false, m
 	}
-	if tier == cardhdr.RouteFrontier && m.Pin == "" {
-		// By design a frontier card is the friends' (docs/SPEC-SPRINT.md, tiers and
-		// routes): a friend up whose row lists frontier serves it as a route would
-		// (tierServed), and the friends' deal deals it. With no friend up and a store that
-		// holds routes, it waits for the coordinator; the refusal names the routes it
-		// looked at and the friends whose row lists frontier but who are held or down
-		// (2026-10-11: the coordinator's own friend row was up at width 8 with
-		// tiers=frontier while rework of 36 frontier cards was refused for want of a route).
-		up, why := s.tierServed(tier, nil)
-		if len(up) > 0 {
-			return tier, why, true, true, m
-		}
-		if len(s.Routes) > 0 {
-			return tier, "no route and no friend serves tier frontier; a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line (" + why + ")", false, true, m
-		}
-	}
+	// no tier ends here by its name: a frontier card is drawn from its routes as a heavy
+	// card is (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes); with none drawable and no
+	// friend up it waits for the coordinator under the tier's judgment (tierServed)
 	if !s.FleetTakes(tier) {
 		// the fleet's tiers leave it out (set --fleet-tiers): no machine draws it, whatever
 		// its routes or a model pin (the set is the owner's switch); the friends' deal deals
@@ -785,9 +903,9 @@ func (s *Snapshot) unservedWhy(tier, member string, drawing bool) (rested, unlau
 // ceiling, what it likely needs, never its first deal: every card is dealt on flash, and
 // one that reaches its bound below its ceiling is escalated by the machine to the next
 // tier of the ladder and dealt a new attempt there, no judgment raised; at its ceiling
-// the bound is the coordinator's judgment as before. A frontier card is the
-// coordinator's and is never dealt (it climbs no ladder); a pinned model runs on its pin;
-// a tier the coordinator pinned (rework --tier, FieldTier) is the card's tier and its
+// the bound is the coordinator's judgment as before. A frontier card climbs no
+// ladder: it is drawn on frontier from its first deal, from its routes like every
+// tier; a pinned model runs on its pin; a tier the coordinator pinned (rework --tier, FieldTier) is the card's tier and its
 // ceiling both.
 var tierLadder = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy}
 
@@ -1157,8 +1275,9 @@ func DecidedWords(line string, used bool) string {
 }
 
 // ProviderTake is the record of one take of a work card the provider failed, kept on the
-// card beside the takes after it (FieldProviderTake plus the take's number, the card's
-// redeals when it ended plus one): the route and model it ran on, the member, when it
+// card beside the takes after it (FieldProviderTake plus the take's number: the card's
+// redeals when it ended plus one for a take that ended, returnTakeNumber for a take
+// returned untouched): the route and model it ran on, the member, when it
 // ended, what it spent and the error line. `card <id>` prints one ATTEMPT line for each,
 // and the route stats count it against its route. Taken is when the member took the card for
 // the take, its child launched ("" in a record written before it was kept): a provider's
@@ -1175,17 +1294,50 @@ func (t ProviderTake) String() string {
 	return v
 }
 
-// ProviderTakes is the takes of the work card the provider failed, in the order they ended,
-// each with its number.
+// returnTakeNumber is the number of the record a take returned untouched leaves (an
+// out-of-credit refusal on a limited route, a provider 5xx: rateLimitedReturned), its n-th
+// such return (FieldRateReturns after it, 1..MaxRateReturns). It is past every number an
+// ended take can hold (redeals + 1, at most MaxRedeals + 1), so a return spends no redeal
+// and still never overwrites an ended take's record or another return's: each counts once
+// toward the route's rest (routeEnds; tla/RouteRest.tla, Counts).
+func returnTakeNumber(n int) int { return MaxRedeals + 1 + n }
+
+// providerTakeFields is each record's field name by its number (FieldProviderTake plus the
+// number), built once: the tick reads every work card's records (routeEnds), and the range
+// is now MaxRedeals + 1 + MaxRateReturns names long, so naming them allocates nothing per card.
+var providerTakeFields = func() []string {
+	out := make([]string, returnTakeNumber(MaxRateReturns)+1)
+	for n := 1; n < len(out); n++ {
+		out[n] = FieldProviderTake + itoa(n)
+	}
+	return out
+}()
+
+// ProviderTakes is the takes of the work card the provider failed, in the order they ended
+// (a take returned untouched sits among them by when it ended), each with its number.
 func ProviderTakes(wc *Card) (takes []ProviderTake, numbers []int) {
-	for n := 1; n <= MaxRedeals+1; n++ {
-		v := wc.F(FieldProviderTake + itoa(n))
+	for n := 1; n < len(providerTakeFields); n++ {
+		v := wc.F(providerTakeFields[n])
 		if v == "" {
 			continue
 		}
 		takes, numbers = append(takes, parseTake(v)), append(numbers, n)
 	}
-	return takes, numbers
+	if len(takes) < 2 {
+		return takes, numbers
+	}
+	// each Finished is stamp's RFC3339 in UTC, so its text orders as its time; a stable
+	// order keeps the numbers' order between takes that ended at one stamp
+	order := make([]int, len(takes))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return strings.Compare(takes[a].Finished, takes[b].Finished) })
+	sorted, nums := make([]ProviderTake, len(takes)), make([]int, len(takes))
+	for i, j := range order {
+		sorted[i], nums[i] = takes[j], numbers[j]
+	}
+	return sorted, nums
 }
 
 // AttemptLines is the work card's lines as `card <id>` prints them: one for each take of it

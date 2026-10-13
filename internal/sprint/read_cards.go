@@ -6,10 +6,28 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
+
+var (
+	readRefusalMu sync.Mutex
+	readRefusals  = map[*Table][]Refusal{}
+)
+
+// ReadCardRefusals returns and clears the read card refusals recorded for s by withReadCards.
+func ReadCardRefusals(s *Snapshot) []Refusal {
+	if s == nil || s.Fleet == nil {
+		return nil
+	}
+	readRefusalMu.Lock()
+	defer readRefusalMu.Unlock()
+	ref := readRefusals[s.Fleet]
+	delete(readRefusals, s.Fleet)
+	return ref
+}
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
@@ -52,6 +70,11 @@ const FieldReadCard = "read_card"
 // and deals the read to another. A read never started is never late: one left untouched in
 // ready past the deal bound (DealtMax) is taken back spending no one (RetiredByUnstarted).
 const ReadCardDeadline = 60 * time.Minute
+
+// readCardLoadWindow is how many generations past the highest placed card ReadCardExtras
+// loads and the deal may advance through (K=4). Past it, a reader is skipped.
+const readCardLoadWindow = 4
+
 
 // The retired_by of a read card the read-card ask takes back: past its deadline, or its
 // primary no longer in review at the card's attempt (reworked, its brief replaced, dropped,
@@ -277,6 +300,7 @@ func readSpender(cards []*Card) *Card {
 // 0 for the plain id, n for its .g<n> generation, -1 for another card. The plain identity
 // is generation 0; each take-back the read index holds is a further generation.
 func readGenOf(id, base string) int {
+	id = CardID(id)
 	if id == base {
 		return 0
 	}
@@ -327,12 +351,39 @@ func readNextGen(cards []*Card, primary string, attempt int, reader string) int 
 // none. It never runs out, so a reader whose read the machine took back is dealt it again
 // at a fresh generation (the owner, 2026-10-06: "I don't want any serial reads again"; a
 // read machine-taken-back spends no reader, spentBy). tla/ReadCards.tla Deal.
+// It deals the next generation only when it lies inside the loaded window (readCardLoadWindow)
+// and the snapshot holds no record of it; past the window it returns "" (readRefusal answers
+// "read generations past the load window").
 func readCardIDFor(cards []*Card, primary string, attempt int, reader string) string {
 	base := ReadCardID(primary, attempt, reader)
-	if next := readNextGen(cards, primary, attempt, reader); next > 0 {
-		return base + ".g" + itoa(next)
+	next := 0
+	placedNext := 0
+	for _, c := range cards {
+		if c == nil {
+			continue
+		}
+		if g := readGenOf(c.ID, base); g >= 0 {
+			if g >= next {
+				next = g + 1
+			}
+			if c.Placed() && g >= placedNext {
+				placedNext = g + 1
+			}
+		}
 	}
-	return base
+	if next > placedNext+readCardLoadWindow {
+		return ""
+	}
+	id := base
+	if next > 0 {
+		id = base + ".g" + itoa(next)
+	}
+	for _, c := range cards {
+		if c != nil && c.ID == id {
+			return ""
+		}
+	}
+	return id
 }
 
 // ReadCardExtras is the fleet table's read card ids a step that judges reads must read as
@@ -359,7 +410,7 @@ func ReadCardExtras(s *Snapshot) []string {
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
 			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
-			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next) {
+			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next+readCardLoadWindow) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
 				}
@@ -394,7 +445,7 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 		c := readSpender(mine)
 		return "spent(" + c.ID[strings.LastIndex(c.ID, ".")+1:] + " col=" + c.Col + " verdict=" + c.F("verdict") + " retired_by=" + c.F("retired_by") + " head=" + c.F("head") + ")"
 	case readCardIDFor(mine, pr.ID, attempt, u.name) == "":
-		return "no id"
+		return "read generations past the load window"
 	}
 	if !u.friend {
 		for _, c := range mine {
@@ -674,8 +725,15 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 		cards := idx[pr.ID]
 		var may []int
 		for i, u := range units {
-			if mayReadCard(view, u, pr, attempt, worker, cards) {
+			r := readRefusal(view, u, pr, attempt, worker, cards)
+			if r == "" {
 				may = append(may, i)
+			} else if r == "read generations past the load window" {
+				if !slices.ContainsFunc(p.Refused, func(ref Refusal) bool {
+					return ref.Key == u.name && ref.Why == r
+				}) {
+					p.refuse(u.name, r)
+				}
 			}
 		}
 		tier := friendReadTier(view, pr)
@@ -769,6 +827,9 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 			un.half--
 			un.idle--
 			id := readCardIDFor(cards, pr.ID, attempt, un.name)
+			if id == "" || (view != nil && view.Fleet != nil && view.Fleet.Card(id) != nil) {
+				continue
+			}
 			fields := map[string]string{
 				"kind": "read", "primary": pr.ID, "stream": pr.Row, "reader": un.name,
 				"attempt": itoa(attempt), "head": head, "asked": stamp(s.Now), "gen": "1",
@@ -959,6 +1020,10 @@ func readCardsWaitingCount(s *Snapshot) int {
 // the same deal is dealt on. With read cards off, nothing and the snapshot as it is.
 // tla/ReadCards.tla Deal
 // tla/DirtyTick.tla Pump (reads before work under ReadCost "half"; ReadsBeforeWork)
+func (s *Snapshot) WithReadCards(seats []FriendSeat) (*Snapshot, Plan) {
+	return s.withReadCards(seats)
+}
+
 func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 	if !s.ReadCardsOn() || s.Fleet == nil {
 		return s, Plan{}
@@ -971,6 +1036,11 @@ func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 		ri = routeIndexesOf(s)
 	}
 	p, _ := readCardsAsk(s, seats, ri)
+	if len(p.Refused) > 0 && s.Fleet != nil {
+		readRefusalMu.Lock()
+		readRefusals[s.Fleet] = append([]Refusal(nil), p.Refused...)
+		readRefusalMu.Unlock()
+	}
 	if len(p.Units) == 0 {
 		return s, p
 	}

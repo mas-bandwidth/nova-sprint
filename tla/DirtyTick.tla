@@ -275,6 +275,9 @@ Served == Scn.served
 \* The streams the coordinator holds (THE DEAL'S ORDER AND SKIPS): the
 \* scenario's; none when it names none.
 HeldStreams == IF "heldStreams" \in DOMAIN Scn THEN Scn.heldStreams ELSE {}
+\* What a read create the table refuses (A REFUSED READ CREATE NEVER BLOCKS
+\* THE DEAL): the scenario's; none when it names none.
+Refused == IF "refused" \in DOMAIN Scn THEN Scn.refused ELSE {}
 \* What a read costs on its host (THE DEAL'S ORDER AND SKIPS): "whole" (the
 \* 2026-09-30 shape) or "half" (read cards: placed before work, half a slot);
 \* the scenario's, "whole" when it names none.
@@ -643,7 +646,7 @@ Cands(S, c) == AbleReaders(S) \ S.seen[c]
 Others(S, c) == Cands(S, c) \ {S.hb[c]}
 RECURSIVE PlaceReads(_)
 PlaceReads(S) ==
-  LET W == {c \in Cards : S.askw[c] /\ ~S.nrt[c] /\ Cands(S, c) # {}} IN
+  LET W == {c \in Cards \ Refused : S.askw[c] /\ ~S.nrt[c] /\ Cands(S, c) # {}} IN
   IF W = {} THEN S
   ELSE LET c == Lowest(W)
            h == S.hb[c]
@@ -777,7 +780,12 @@ Fold(t, S, seq) == IF seq = <<>> THEN S ELSE Fold(t, Apply(t, S, Head(seq)), Tai
 \* work in the room they leave (THE DEAL'S ORDER AND SKIPS; steps_tick.go:767
 \* withReadCards); the witness "workfirst" deals first and places the reads
 \* after. Under "whole" the pump places no read (the 2026-09-30 shape).
+\* A refused read is not placed and its card stays askw; the witness
+\* "readblocks" leaves the whole pump unapplied (the work deal is skipped).
 Pump(S0) ==
+  LET hasRefused == \E c \in Refused : S0.askw[c]
+  IN IF Broken = "readblocks" /\ hasRefused THEN S0
+     ELSE
   LET S1 == Fold("work", [S0 EXCEPT !.q["work"] = <<>>], Q["work"])
       C == IF Broken = "onread" THEN S0.col ELSE S1.col
       S2 == LandSents(S1, C)
@@ -1189,7 +1197,7 @@ PumpDone ==
        /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0)
   /\ ~\E c \in Cards : col[c] = "review" /\ okd[c] /\ ci[c] # "red" /\ ~ret[c]
 ReadersDone ==
-  ~\E c \in Cards :
+  ~\E c \in Cards \ Refused :
      /\ askw[c] /\ ~nrt[c]
      /\ \E r \in Readers \ seen[c] : stat[Host[r]] = "up" /\ ~Off(Cur, Host[r]) /\ ReadFitsNow(Host[r])
                                      /\ ("readerup" \in Fixes => stat[r] = "up")
@@ -1296,6 +1304,12 @@ LanesRespected == \A m \in Machines :
 ReadsBeforeWork ==
   [][act' \in {"PumpWork", "DrainWork"} /\ ReadCost = "half" =>
        \A p, q \in 1..Len(plc') : plc'[p].k = "r" /\ plc'[q].k \in {"s", "m"} => p < q]_vars
+
+\* ONE REFUSED READ NEVER BLOCKS WORK: after a pump with a refused read, every
+\* Dealable card with UpRoom is dealt, exactly as without the refusal. The
+\* witness "readblocks" leaves the whole pump unapplied (the work deal is skipped).
+OneRefusedReadNeverBlocksWork ==
+  (pumps > 0 /\ Refused # {}) => (Dealable(Cur, Cards) = {} \/ UpRoom(Cur) = {})
 
 \* NEVER DEALT TO DRAINING: no deal goes to a member that drains (the beat's
 \* drain word, notQuiet; tla/NoRoom.tla NeverDealtToDraining). The witness
