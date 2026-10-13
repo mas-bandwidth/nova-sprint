@@ -35,21 +35,17 @@ func StoppedBetween(spans []Span, from, to time.Time) time.Duration {
 // clockForms are the clock times --until takes, in now's zone.
 var clockForms = []string{"3:04 PM", "3:04PM", "15:04"}
 
-// StopArgs is a stop by hand's --reason and --until (docs/SPEC-SPRINT.md
-// section 14): both are wanted, and one refusal names every one missing.
-// --until is a duration from now (90m), a clock time (2:04 PM, 14:04: today's,
-// or tomorrow's once today's has passed) or an RFC 3339 time; it returns the
-// time, which must be after now.
+// StopArgs is a stop by hand's --reason and optional --until (docs/SPEC-SPRINT.md
+// section 14): --reason is required, and omitting --until means "until the next start"
+// (returning zero time). When given, --until is a duration from now (90m), a clock
+// time (2:04 PM, 14:04: today's, or tomorrow's once today's has passed) or an RFC 3339
+// time; it returns the time, which must be after now.
 func StopArgs(reason, until string, now time.Time) (time.Time, error) {
-	var missing []string
 	if strings.TrimSpace(reason) == "" {
-		missing = append(missing, "--reason <text>: why the machine stops, shown with it")
+		return time.Time{}, errors.New("wants --reason <text>: why the machine stops, shown with it")
 	}
 	if strings.TrimSpace(until) == "" {
-		missing = append(missing, "--until <time or duration>: when the machine starts itself again (90m, 2:04 PM, or RFC 3339)")
-	}
-	if len(missing) > 0 {
-		return time.Time{}, errors.New("wants " + strings.Join(missing, ", and "))
+		return time.Time{}, nil
 	}
 	at, ok := untilOf(strings.TrimSpace(until), now)
 	if !ok {
@@ -84,16 +80,21 @@ func untilOf(s string, now time.Time) (time.Time, bool) {
 }
 
 // StoppedText is the machine line's state for a stop by hand
-// (docs/SPEC-SPRINT.md section 14): "STOPPED by <who>: <reason>, back by
-// <time>", the time on the clock's day as 2:04 PM, on another day with its
-// date.
+// (docs/SPEC-SPRINT.md section 14): "STOPPED until the next start (<reason>)"
+// when until is zero, and "STOPPED, expected back by <time> (<reason>); start
+// ends it" when until is given, the time on the clock's day as 2:04 PM, on
+// another day with its date.
 func StoppedText(who, reason string, until, now time.Time) string {
+	cleanReason := strings.Join(strings.Fields(reason), " ")
+	if until.IsZero() {
+		return "STOPPED until the next start (" + cleanReason + ")"
+	}
 	at := until.In(now.Location())
 	when := at.Format("3:04 PM")
 	if y, m, d := at.Date(); y != now.Year() || m != now.Month() || d != now.Day() {
 		when = at.Format("Mon Jan 2 3:04 PM")
 	}
-	return "STOPPED by " + who + ": " + strings.Join(strings.Fields(reason), " ") + ", back by " + when
+	return "STOPPED, expected back by " + when + " (" + cleanReason + "); start ends it"
 }
 
 // DueNow is the tree's one "is this due at now" test: the clock time due is

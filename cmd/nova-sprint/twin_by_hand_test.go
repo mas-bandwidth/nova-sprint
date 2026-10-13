@@ -63,5 +63,5 @@ func TestATwinNotTickingIsRunningAndItsRemedyIsTheTick(t *testing.T) {
 
 	// a stop by hand is still STOPPED on a twin
 	twinOK(t, file, later, "stop --reason r --until 9999h")
-	assert.Contains(t, twinOK(t, file, later, "inbox"), "machine: STOPPED by ")
+	assert.Contains(t, twinOK(t, file, later, "inbox"), "machine: STOPPED, expected back by ")
 }

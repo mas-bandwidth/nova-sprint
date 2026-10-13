@@ -256,7 +256,7 @@ func TestAnswerDecideLoopEndsWhenTheMachineStops(t *testing.T) {
 	assert.Equal(t, 3, strings.Count(out, "ANSWER OK "), out)
 	assert.Contains(t, out, "s1-1  failed  rework  0.90  applied")
 	assert.Contains(t, out, "s1-2  failed  rework  0.90  applied")
-	assert.Contains(t, out, "ANSWER STOPPED STOPPED by coordinator: r, back by ", out)
+	assert.Contains(t, out, "ANSWER STOPPED STOPPED, expected back by ", out)
 	assert.True(t, strings.HasSuffix(out, ": the loop ends\n"), out)
 	assert.Equal(t, 2, j.asks())
 	assert.GreaterOrEqual(t, ta.a.now().Sub(start), 2*time.Minute, "two sleeps of the injected clock")

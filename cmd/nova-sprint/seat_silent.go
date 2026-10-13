@@ -149,9 +149,10 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 	return t
 }
 
-// tellSeatSilent sends each raise of NSeatSilent not yet told to the sprint's owner on the
+// tellSeatSilent sends each raise of NSeatSilent and NNeedBlocked not yet told to the sprint's owner on the
 // bus, and says it on the server's log; a sprint with no owner is said on the log alone.
 // tla/SprintRules.tla SendOK
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	now := a.now()
 	a.seatSilent.mu.Lock()
@@ -185,7 +186,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type != sprint.NSeatSilent && g.Type != sprint.NSeatNotMoving {
+		if g.Type != sprint.NSeatSilent && g.Type != sprint.NSeatNotMoving && g.Type != sprint.NNeedBlocked {
 			continue
 		}
 		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
