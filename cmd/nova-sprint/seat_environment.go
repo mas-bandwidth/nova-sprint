@@ -207,15 +207,11 @@ func (a *app) forgeIdentityDefault() string {
 }
 
 func seatEnvironmentNeeded(args []string) bool {
-	if len(args) == 0 || args[0] == "help" || args[0] == "version" || args[0] == "--version" {
+	if len(args) == 0 || args[0] == "help" || args[0] == "version" || args[0] == "--version" || verbflag.IsHelp(args[0]) {
 		return false
 	}
-	for _, arg := range args {
-		if verbflag.IsHelp(arg) {
-			return false
-		}
-	}
-	return true
+	v := readVerb(args)
+	return v.words != 0 && v.err == nil && !v.help
 }
 
 func seatFileOwned(fi os.FileInfo, uid int) bool {
