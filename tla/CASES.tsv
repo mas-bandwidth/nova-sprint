@@ -678,3 +678,4 @@ MCHoldCause.cfg	MCHoldCause.tla	pass	-	ignore-terminal	holdcause	required	-
 MCHoldCauseBrokenHoldleaks.cfg	MCHoldCause.tla	invariant	NoHoldOutlivesItsCause	ignore-terminal	holdcause	required	-
 MCHoldCauseBrokenSilent.cfg	MCHoldCause.tla	invariant	NoSilentHold	ignore-terminal	holdcause	required	-
 MCHoldCauseBrokenBlamemember.cfg	MCHoldCause.tla	action	HeldOnlyWhenAlone	ignore-terminal	holdcause	required	-
+MCHoldCauseBrokenRestkeeps.cfg	MCHoldCause.tla	invariant	NoHoldForARestedRoute	ignore-terminal	holdcause	required	-

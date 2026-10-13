@@ -3271,15 +3271,17 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		switch {
 		case r.Cause != "":
 			set[FieldHeldCause] = r.Cause
-			if r.CauseNote != "" {
-				set[FieldHeldCauseNote] = r.CauseNote
+			// a judgment cause keeps its id, and its type and subject: a wait closes it into
+			// an acknowledgement of that type and subject, which still stands (judgmentLive)
+			if o, ok := openEntry(s, r.CauseNote); ok && r.CauseNote != "" {
+				set[FieldHeldCauseNote], set[FieldHeldCauseType], set[FieldHeldCauseSubject] = r.CauseNote, o.Note.Type, o.Subject()
 			} else {
-				unset = append(unset, FieldHeldCauseNote)
+				unset = append(unset, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject)
 			}
-			unset = append(unset, FieldDoctorPassed)
+			unset = append(unset, FieldDoctorPassed, FieldIdleReapRoutes)
 			line += "; cause " + r.Cause
 		case ctl.F(FieldHeldBy) != HeldByProbe:
-			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldDoctorPassed)
+			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldDoctorPassed, FieldIdleReapRoutes)
 		}
 		if r.HeldBy == "" && r.Who != "" {
 			set[FieldHeldWho] = r.Who

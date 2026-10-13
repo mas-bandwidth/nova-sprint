@@ -24,17 +24,37 @@ import (
 //     doctor's pass of that check on that member recorded after the hold
 //     (DoctorPassPlan). The release is a line of the log, "released: cause <x> resolved",
 //     addressed to the seat (NHoldReleased); a member that beats is up in that step.
-//   - A hold with no cause still holds, and is never silent: every HoldNoCauseEvery it
+//     A waited judgment is parked, not resolved: while its wait stands (an acknowledgement
+//     with a review time), and once it is raised again when the wait runs out, the hold
+//     stays (judgmentLive).
+//   - A hold with no live cause still holds, and is never silent: every HoldNoCauseEvery it
 //     stands the tick raises one judgment to the seat, "<m> held 2h by <who> with no
 //     cause: release or name a cause" (holdNoCauseConds), the period's own, the last one
-//     closed as it opens.
-//   - An idle reap (a take that ended with no result and no model call) is attributed by
-//     where it happened (idleReaps): on two or more members on one route in the window it
-//     is the route's, which rests by the route-rest path (noModelCallRests, cause
-//     RestNoModelCall) with its note to the seat, and no member is held; a member is held
-//     for its reaps only when every one is on a route that served another member in the
-//     window and no other member reaped there (idleReapHolds), the machine's hold, its
-//     cause the judgment it raises (CauseIdleReap).
+//     closed as it opens. That is every hold with no cause, whoever made it (the
+//     coordinator, the sync, the probe, the environment, the adopt): a mark is no cause.
+//   - A clear carries a member's hold with its cause, its reason and who made it
+//     (RestoreShape, Shape.HeldFields): a judgment of the epoch before is retired by the
+//     clear, so the first tick of the new epoch ends that hold and says so; a doctor cause
+//     stands until the doctor passes the member again.
+//   - An idle reap is a take that ended with no result and no model call (NoModelCall: no
+//     token reported, none at all or zero of every class). The member's word is all the
+//     sprint has: a child killed after it did call the model, whose harness reported no
+//     token, counts as no model call. Idle reaps are attributed by where they happened
+//     (idleReaps):
+//       - on two or more members of one route in the window: the route's, which rests
+//         (noModelCallRests, cause RestNoModelCall) and no member is held;
+//       - IdleReapHoldAfter or more on one route by one member, and no other member
+//         ended a take ok on it after that member's first reap: a dead provider is the
+//         likelier cause, so the route rests and the member is not held, the seat told
+//         "route <r>: 3 no-model-call ends, all on <m>; route rested, <m> not held";
+//       - a member is held for its reaps only when IdleReapHoldAfter or more of them are
+//         each on a route that another member ended a take ok on after the member's first
+//         reap, and no other member reaped there (idleReapHolds), the machine's hold, its
+//         cause the judgment it raises (CauseIdleReap), its routes recorded
+//         (FieldIdleReapRoutes): when one of them rests for no model call, the tick ends
+//         the hold in the same step (the route's fault after all).
+//     Every such rest is the route-rest path's: it ends by itself after RouteRestFor, and
+//     its start is a note to the seat (restWrites, NRouteRested); nothing of it is silent.
 
 // The control card's fields of a hold's cause.
 const (
@@ -52,6 +72,15 @@ const (
 	// FieldIdleReapMark is when the machine last held the member for its idle reaps: a reap
 	// at or before it never holds the member again.
 	FieldIdleReapMark = "idle_reap_mark"
+	// FieldHeldCauseType and FieldHeldCauseSubject are the type and subject of the
+	// judgment a judgment cause named: a wait closes the judgment into an acknowledgement
+	// of that type and subject, and the tick raises it again, a new note, when the wait
+	// runs out (judgmentLive).
+	FieldHeldCauseType    = "held_cause_type"
+	FieldHeldCauseSubject = "held_cause_subject"
+	// FieldIdleReapRoutes is the routes the machine's idle-reap hold was placed for: a
+	// rest of one of them for no model call ends the hold.
+	FieldIdleReapRoutes = "idle_reap_routes"
 )
 
 // CausePrefixDoctor begins a cause that is a doctor check on the held member.
@@ -137,21 +166,60 @@ func judgmentOpen(s *Snapshot, id string) bool {
 	return false
 }
 
-// causeEnded is how the held member's cause ended, "" while it stands: the judgment is
-// no longer open (answered or retired), the doctor's pass of the check was recorded after
-// the hold, or the machine's idle-reap judgment on the member is no longer open.
+// openEntry is the open judgment of that id, on its first subject.
+func openEntry(s *Snapshot, id string) (Open, bool) {
+	for _, o := range s.Open {
+		if o.Note.ID == id && o.Note.Kind == Judgment {
+			return o, true
+		}
+	}
+	return Open{}, false
+}
+
+// judgmentLive says the judgment a cause names stands: it is open (id, or a judgment of
+// its type on its subject: the one the tick raises again when a wait runs out), or it is
+// waited (an acknowledgement of its type on its subject with a review time). A wait parks
+// a judgment and never resolves it (the coordinator's ruling on #206); an ack, an answer
+// or the judgment's retirement (a clear retires every judgment of the epoch) ends it.
+func judgmentLive(s *Snapshot, id, typ, subject string) bool {
+	if id != "" && judgmentOpen(s, id) {
+		return true
+	}
+	if typ == "" || subject == "" {
+		return false
+	}
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == typ && o.Subject() == subject {
+			return true
+		}
+	}
+	for _, o := range s.Acked {
+		if !o.Note.Review.IsZero() && o.Note.Type == typ && o.Subject() == subject {
+			return true
+		}
+	}
+	return false
+}
+
+// causeEnded is how the held member's cause ended, "" while it stands: the judgment no
+// longer stands (answered or retired; a wait is no answer), the doctor's pass of the check
+// was recorded after the hold, or, for the machine's idle-reap hold, its judgment no
+// longer stands or one of its routes rests for no model call (the route's fault after all).
 func causeEnded(s *Snapshot, member string, ctl *Card) string {
 	cause := ctl.F(FieldHeldCause)
 	switch check, doctor := DoctorCause(cause); {
 	case cause == "":
 		return ""
 	case cause == CauseIdleReap:
-		for _, o := range s.Open {
-			if o.Note.Type == NMemberIdleReaps && o.Subject() == StreamSubject(MemberSubject(member)) {
-				return ""
+		for _, route := range Split(ctl.F(FieldIdleReapRoutes)) {
+			if rest, ok := s.resting(route); ok && rest.Cause == RestNoModelCall {
+				return "route " + route + " rests for no model call: the route's fault, not " + member + "'s"
 			}
 		}
-		return "its judgment was answered"
+		if judgmentLive(s, "", NMemberIdleReaps, StreamSubject(MemberSubject(member))) {
+			return ""
+		}
+		return "its judgment was answered or retired"
 	case doctor:
 		at, ok := doctorPassedAt(ctl, check)
 		if held := stampAt(ctl, "held"); !ok || held.IsZero() || at.Before(held) {
@@ -159,10 +227,10 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 		}
 		return "the doctor's " + check + " check passed on " + member + " at " + stamp(at)
 	default:
-		if note := ctl.F(FieldHeldCauseNote); note != "" && !judgmentOpen(s, note) {
-			return "the judgment was answered or retired"
+		if judgmentLive(s, ctl.F(FieldHeldCauseNote), ctl.F(FieldHeldCauseType), ctl.F(FieldHeldCauseSubject)) {
+			return ""
 		}
-		return ""
+		return "the judgment was answered or retired"
 	}
 }
 
@@ -180,10 +248,17 @@ func doctorPassedAt(ctl *Card, check string) (time.Time, bool) {
 }
 
 // holdFields is every field of a member's hold: a release unsets them all.
-var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote, FieldHeldWho, FieldDoctorPassed}
+var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote,
+	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldDoctorPassed, FieldIdleReapRoutes}
+
+// HeldCarried is every field of a member's hold a clear carries into the new epoch beside
+// held and held_by (RestoreShape): its cause, its reason and who made it.
+var HeldCarried = []string{FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType,
+	FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
 
 // ctlWritten says a unit of the plan writes the member's control card already: the step
-// writes a control card once, so a second write waits for the next tick.
+// writes a control card once, so a second write waits for the next tick (tla/HoldCause.tla,
+// Busy and the deferral).
 func ctlWritten(p *Plan, member string) bool {
 	id := CtlID(member)
 	for _, u := range p.Units {
@@ -197,10 +272,11 @@ func ctlWritten(p *Plan, member string) bool {
 }
 
 // holdCauseClear is the tick's end of every hold whose cause ended (tla/HoldCause.tla
-// Tick, NoHoldOutlivesItsCause): the hold's fields go, a member whose beat is alive is up
-// in this step (as unhold brings it up), and the release is a line of the log to the seat.
-// A hold with no cause, and the machine's other holds (fault, environment, probe, sync,
-// adopt), are not this rule's.
+// Tick, NoHoldOutlivesItsCause and NoHoldForARestedRoute): the hold's fields go, a member
+// whose beat is alive is up in this step (as unhold brings it up), the idle-reap judgment
+// a route's rest answered closes, and the release is a line of the log to the seat. A hold
+// with no cause is holdNoCauseConds', and the machine's other holds (fault, environment,
+// probe, sync, adopt) are their own releases'.
 func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
@@ -220,19 +296,28 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 		n := happened(NHoldReleased, "", s.Now)
 		n.Who, n.To = r.who(), s.Coordinator
 		n.What = fmt.Sprintf("%s released: cause %s resolved (%s); it is %s", m, cause, how, state)
-		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, holdFields...))},
-			Notes: []Note{n}, Moved: fmt.Sprintf("%s released: cause %s resolved", m, cause)})
+		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, holdFields...))},
+			Notes: []Note{n}, Moved: fmt.Sprintf("%s released: cause %s resolved", m, cause)}
+		if cause == CauseIdleReap {
+			for _, o := range s.Open {
+				if o.Note.Type == NMemberIdleReaps && o.Subject() == StreamSubject(MemberSubject(m)) {
+					u.Closes = append(u.Closes, o)
+				}
+			}
+		}
+		p.Units = append(p.Units, u)
 	}
 }
 
-// holdNoCauseConds is one judgment for each coordinator's hold that names no cause and
-// has stood HoldNoCauseEvery or longer, its period in its words, so a new period is a new
-// judgment and the last one closes (tla/HoldCause.tla NoSilentHold).
+// holdNoCauseConds is one judgment for each hold that names no cause, whoever made it (a
+// mark is no cause), once it has stood HoldNoCauseEvery or longer, its period in its
+// words, so a new period is a new judgment and the last one closes (tla/HoldCause.tla
+// NoSilentHold).
 func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
-		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldBy) != "" || ctl.F(FieldHeldCause) != "" {
+		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldCause) != "" {
 			continue
 		}
 		age, ok := r.running(s.Now, ctl.F("held"))
@@ -241,7 +326,11 @@ func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 		}
 		period := age.Truncate(HoldNoCauseEvery)
 		who := ctl.F(FieldHeldWho)
-		if who == "" {
+		switch {
+		case who != "":
+		case ctl.F(FieldHeldBy) != "":
+			who = "the machine (" + ctl.F(FieldHeldBy) + ")"
+		default:
 			who = "the coordinator"
 		}
 		out = append(out, cond{typ: NHoldNoCause, stream: MemberSubject(m), streamLevel: true,
@@ -265,8 +354,10 @@ func durationWords(d time.Duration) string {
 	return fmt.Sprintf("%dm", m)
 }
 
-// NoModelCall says a take ended with no result and no model call: its child wrote no
-// result and its usage reported no token (none at all, or zero of every class).
+// NoModelCall says a take ended with no result and no model call, by its member's word:
+// its child wrote no result and its usage reported no token (none at all, or zero of every
+// class). The sprint sees only what the member reported, so a child killed after it did
+// call the model, whose harness reported no token, counts here too.
 func NoModelCall(t ProviderTake) bool {
 	if !IsNoResult(strings.TrimSpace(t.Error)) {
 		return false
@@ -304,9 +395,12 @@ func idleReaps(s *Snapshot) []idleReap {
 	return out
 }
 
-// servedBy is each route's members with a take that ended ok on it within IdleReapWindow.
-func servedBy(s *Snapshot) map[string]map[string]bool {
-	out := map[string]map[string]bool{}
+// okEnds is each route's takes that ended ok within IdleReapWindow: when, by member.
+func okEnds(s *Snapshot) map[string]map[string][]time.Time {
+	out := map[string]map[string][]time.Time{}
+	if s.Fleet == nil {
+		return out
+	}
 	for _, c := range s.Fleet.Column(Finished, DoneOK, DoneFailed) {
 		if !okEnd(c) || IsFriendRow(c.Row) {
 			continue
@@ -317,11 +411,28 @@ func servedBy(s *Snapshot) map[string]map[string]bool {
 			continue
 		}
 		if out[route] == nil {
-			out[route] = map[string]bool{}
+			out[route] = map[string][]time.Time{}
 		}
-		out[route][c.Row] = true
+		out[route][c.Row] = append(out[route][c.Row], at)
 	}
 	return out
+}
+
+// servedAfter says a member other than m ended a take ok on the route after t: an ok end
+// before m's first reap says nothing of the route since (the cold read of #206: m2 ok at
+// -14m, m1's reaps at -9, -6 and -3m, and m1 was held for a dead route).
+func servedAfter(ends map[string][]time.Time, m string, t time.Time) bool {
+	for x, ats := range ends {
+		if x == m {
+			continue
+		}
+		for _, at := range ats {
+			if at.After(t) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // reapersBy is each route's members with an idle reap on it.
@@ -336,10 +447,25 @@ func reapersBy(reaps []idleReap) map[string]map[string]bool {
 	return out
 }
 
-// noModelCallRests is the rest of each route not resting whose idle reaps since its last
-// rest ended came from IdleReapRouteMembers or more members within the window: the
-// route's fault, rested by the route-rest path for RouteRestFor, naming the members and
-// the cards (tla/HoldCause.tla RouteFaultRests). It holds no member.
+// firstReap is the earliest of the reaps.
+func firstReap(xs []idleReap) time.Time {
+	var first time.Time
+	for _, x := range xs {
+		if first.IsZero() || x.at.Before(first) {
+			first = x.at
+		}
+	}
+	return first
+}
+
+// noModelCallRests is the rest of each route whose idle reaps since its last rest ended
+// are the route's (tla/HoldCause.tla RouteFaultRests), rested by the route-rest path for
+// RouteRestFor, naming the members and the cards; it holds no member:
+//   - IdleReapRouteMembers or more members reaped on it within the window; or
+//   - one member reaped on it IdleReapHoldAfter or more times, and no other member ended
+//     a take ok on it after that member's first reap: a dead provider is the likelier cause
+//     than the member (the coordinator's ruling on #206), so the route rests, the member is
+//     not held, and the note names both.
 func noModelCallRests(s *Snapshot, rests map[string]RouteRest) map[string]RouteRest {
 	out := map[string]RouteRest{}
 	byRoute := map[string][]idleReap{}
@@ -349,11 +475,9 @@ func noModelCallRests(s *Snapshot, rests map[string]RouteRest) map[string]RouteR
 		}
 		byRoute[x.route] = append(byRoute[x.route], x)
 	}
+	ends := okEnds(s)
 	for route, xs := range byRoute {
 		members := slices.Sorted(maps.Keys(reapersBy(xs)[route]))
-		if len(members) < IdleReapRouteMembers {
-			continue
-		}
 		var cards []string
 		for _, x := range xs {
 			if !slices.Contains(cards, x.card) {
@@ -361,24 +485,34 @@ func noModelCallRests(s *Snapshot, rests map[string]RouteRest) map[string]RouteR
 			}
 		}
 		slices.Sort(cards)
-		out[route] = RouteRest{Route: route, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestNoModelCall,
-			Why: fmt.Sprintf("takes ended with no model call on %d members (%s) within %s: the route's fault, not a member's; no member is held for it", len(members), strings.Join(members, ", "), IdleReapWindow)}
+		rest := RouteRest{Route: route, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestNoModelCall}
+		switch {
+		case len(members) >= IdleReapRouteMembers:
+			rest.Why = fmt.Sprintf("%d no-model-call ends on %d members (%s) within %s; route rested, the route's fault, no member held", len(xs), len(members), strings.Join(members, ", "), IdleReapWindow)
+		case len(xs) >= IdleReapHoldAfter && !servedAfter(ends[route], members[0], firstReap(xs)):
+			rest.Why = fmt.Sprintf("%d no-model-call ends, all on %s; route rested, %s not held", len(xs), members[0], members[0])
+		default:
+			continue
+		}
+		out[route] = rest
 	}
 	return out
 }
 
 // idleReapHolds is the machine's hold of each member up whose idle reaps since its last
 // such hold number IdleReapHoldAfter or more within the window, every one on a route that
-// served another member in the window and on which no other member reaped, and that rests
-// not: the member's fault (tla/HoldCause.tla HeldOnlyWhenAlone). The hold lets its working
-// cards finish, carries its cause (CauseIdleReap) and its mark, and raises the judgment
-// that is its cause; answering it ends the hold (holdCauseClear).
+// another member ended a take ok on after the member's first reap, on which no other
+// member reaped, and that rests not: the member's fault (tla/HoldCause.tla
+// HeldOnlyWhenAlone). The hold lets its working cards finish, carries its cause
+// (CauseIdleReap), its mark and its routes, and raises the judgment that is its cause;
+// answering it, or a rest of one of its routes for no model call, ends the hold
+// (holdCauseClear).
 func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 	reaps := idleReaps(s)
 	if len(reaps) == 0 {
 		return
 	}
-	reapers, served := reapersBy(reaps), servedBy(s)
+	reapers, ends := reapersBy(reaps), okEnds(s)
 	byMember := map[string][]idleReap{}
 	for _, x := range reaps {
 		byMember[x.member] = append(byMember[x.member], x)
@@ -389,23 +523,28 @@ func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 			continue
 		}
 		mark := stampAt(ctl, FieldIdleReapMark)
-		var mine []idleReap
-		alone := true
+		var fresh []idleReap
 		for _, x := range byMember[m] {
-			if !mark.IsZero() && !x.at.After(mark) {
-				continue
+			if mark.IsZero() || x.at.After(mark) {
+				fresh = append(fresh, x)
 			}
-			if _, resting := s.resting(x.route); resting || len(reapers[x.route]) > 1 || !servesAnother(served[x.route], m) {
+		}
+		if len(fresh) < IdleReapHoldAfter {
+			continue
+		}
+		first := firstReap(fresh)
+		alone := true
+		for _, x := range fresh {
+			if _, resting := s.resting(x.route); resting || len(reapers[x.route]) > 1 || !servedAfter(ends[x.route], m, first) {
 				alone = false
 				break
 			}
-			mine = append(mine, x)
 		}
-		if !alone || len(mine) < IdleReapHoldAfter {
+		if !alone {
 			continue
 		}
 		routes, cards := []string{}, []string{}
-		for _, x := range mine {
+		for _, x := range fresh {
 			if !slices.Contains(routes, x.route) {
 				routes = append(routes, x.route)
 			}
@@ -413,27 +552,17 @@ func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 		}
 		slices.Sort(routes)
 		slices.Sort(cards)
-		why := fmt.Sprintf("%d takes ended with no model call within %s on routes that served other members (%s): the member's fault, not the route's", len(mine), IdleReapWindow, strings.Join(routes, ", "))
+		why := fmt.Sprintf("%d takes ended with no model call within %s on routes that other members served after its first (%s): the member's fault, not the route's", len(fresh), IdleReapWindow, strings.Join(routes, ", "))
 		now := stamp(s.Now)
 		set := map[string]string{"held": now, FieldHeldBy: HeldByIdleReap, FieldHeldReason: why, FieldHeldCause: CauseIdleReap,
-			FieldHeldFinish: now, FieldIdleReapMark: now, "status": Held, "since": now}
+			FieldHeldFinish: now, FieldIdleReapMark: now, FieldIdleReapRoutes: strings.Join(routes, ","), "status": Held, "since": now}
 		n := judgment(NMemberIdleReaps, MemberSubject(m), s.Now, 0)
 		n.StreamLevel, n.Who, n.To = true, r.who(), s.Coordinator
 		n.Decisions = []string{"ack", "wait"}
-		n.What = fmt.Sprintf("%s held: %s; cards %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to): the tick releases it", m, why, strings.Join(cards, ","))
-		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldWho, FieldDoctorPassed))},
+		n.What = fmt.Sprintf("%s held: %s; cards %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to), and so does a rest of %s for no model call: the tick releases it", m, why, strings.Join(cards, ","), strings.Join(routes, " or "))
+		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldDoctorPassed))},
 			Notes: []Note{n}, Moved: fmt.Sprintf("%s held: %s", m, why)})
 	}
-}
-
-// servesAnother says a member other than m ended a take ok on the route.
-func servesAnother(members map[string]bool, m string) bool {
-	for x := range members {
-		if x != m {
-			return true
-		}
-	}
-	return false
 }
 
 // DoctorPass is one doctor check that passed on a member held on it.

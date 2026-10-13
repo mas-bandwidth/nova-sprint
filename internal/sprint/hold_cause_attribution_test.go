@@ -122,7 +122,10 @@ func TestAnIdleReapOnOneMemberOfAServingRouteHoldsItWithItsCause(t *testing.T) {
 }
 
 // A member that reaps on a route nothing else serves in the window is not held: no
-// evidence the route serves says the fault is the member's.
+// evidence the route serves says the fault is the member's. A dead provider is the likelier
+// cause, so the route rests, and never silently: the seat is told the route, the count and
+// the member, and that the member is not held (the coordinator's ruling on #206; a route
+// only one member used would otherwise never rest and say nothing).
 func TestAnIdleReapOnARouteThatServesNoOneHoldsNoMember(t *testing.T) {
 	t.Parallel()
 	w := reapWorld(t, 1)
@@ -132,6 +135,14 @@ func TestAnIdleReapOnARouteThatServesNoOneHoldsNoMember(t *testing.T) {
 	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
 	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
 	assert.Empty(t, w.s.MemberCtl("m1").F("held"), "m1 was held with no route serving elsewhere")
+	rest, ok := RouteRests(w.s.Routes, w.s.Fleet)["ds"]
+	require.True(t, ok, "the dead route did not rest")
+	assert.Equal(t, "no-model-call", rest.Cause)
+	said := false
+	for _, n := range w.notesOf(NRouteRested) {
+		said = said || (n.To == w.s.Coordinator && strings.Contains(n.What, "route ds: 3 no-model-call ends, all on m1; route rested, m1 not held"))
+	}
+	assert.True(t, said, "the seat was not told the route, the count and the member: %+v", w.notesOf(NRouteRested))
 }
 
 // A hold the coordinator made with no cause is reported to the seat every two hours,

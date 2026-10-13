@@ -784,8 +784,8 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 				n.What = fmt.Sprintf("rate-limit backoff of %s on %s, until %s", r.Until.Sub(r.At), r.Route, stamp(r.Until))
 			case RestNoModelCall:
 				// the provider is judged here, never a member (hold_cause.go)
-				n.What = fmt.Sprintf("route %s rested until %s: %s; cards %s; look at its provider %s (its balance and key: nova-sprint routes); nova-sprint routes wake %s ends it",
-					r.Route, stamp(r.Until), r.Why, strings.Join(r.Cards, ", "), orDash(prov), r.Route)
+				n.What = fmt.Sprintf("route %s: %s; it rests until %s and then serves again by itself; cards %s; look at its provider %s (its balance and key: nova-sprint routes); nova-sprint routes wake %s ends it sooner",
+					r.Route, r.Why, stamp(r.Until), strings.Join(r.Cards, ", "), orDash(prov), r.Route)
 			default:
 				n.What = fmt.Sprintf("route %s rested until %s: its provider failed %d of its last %d ended takes or fewer (a 5xx or a timeout: %s); the deal draws no work card on it until then; nova-sprint routes shows it, nova-sprint routes wake %s ends it",
 					r.Route, stamp(r.Until), len(r.Cards), RouteRestWindow, strings.Join(r.Cards, ", "), r.Route)
