@@ -3136,7 +3136,9 @@ order the cards were dealt in, so a card brought to the front of its stream by
   disabled one; when every route of a tier rests, the tier's judgment `no route
   serves the tier` says so and names when each rest ends. The rest ends by itself at
   its time, or on `routes wake`, and the window begins again after it, so the ends that
-  rested it never rest it twice. Reads are drawn as before. The rests are settled once per tick part
+  rested it never rest it twice. A 5xx take (`class=provider-5xx`) returns its card
+  untouched (no attempt and no redeal spent) up to MaxRateReturns times and still counts
+  toward the route's rest (`tla/RouteRest.tla`, `Provider5xxSpendsNoRedeal`). Reads are drawn as before. The rests are settled once per tick part
   or verb that draws work routes or asks why a card is not dealt (the tick's deal,
   `deal`, `rework`, and the held rule of the tick's check), from one scan of the fleet
   table, and each draw reads a map: at 984 ready primaries and 3,000 work cards each
