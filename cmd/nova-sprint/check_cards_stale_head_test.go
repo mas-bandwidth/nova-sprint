@@ -68,11 +68,11 @@ func TestStartRefusesOnAStaleHeadUntilItIsReworked(t *testing.T) {
 	// a card re-briefed with --keep-head is not a finding
 	seedDrained(ta, []ntable.BatchMemberEntry{
 		seedCard("kept", "s1", sprint.Review, map[string]string{
-			"brief":                  lintedBrief("kept", "sprint/s1", "internal/x/one.go"),
-			"attempt":                "1",
-			sprint.FieldBriefAttempt: "1",
-			"brief_keep_head":        "true",
-			"head":                   head,
+			"brief":                   lintedBrief("kept", "sprint/s1", "internal/x/one.go"),
+			"attempt":                 "1",
+			sprint.FieldBriefAttempt:  "1",
+			sprint.FieldBriefKeepHead: "true",
+			"head":                    head,
 		}),
 	})
 	code, out, errs = ta.do("check cards")

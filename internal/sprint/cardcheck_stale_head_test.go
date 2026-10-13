@@ -14,7 +14,7 @@ func TestCardCheckFindsAHeadFromAnOldBrief(t *testing.T) {
 	primary := s.Work.Card("a1")
 	primary.Fields["attempt"] = "2"
 	primary.Fields[FieldBriefAttempt] = "2"
-	primary.Fields[fieldHeadBriefAttempt] = "1"
+	primary.Fields[FieldHeadBriefAttempt] = "1"
 	primary.Fields["head"] = head
 	s.Work.Put(primary)
 	s.Work.Put(&Card{ID: "a1.w1", Row: "s1", Col: Landed, Fields: map[string]string{
@@ -32,16 +32,16 @@ func TestCardCheckFindsAHeadFromAnOldBrief(t *testing.T) {
 	assert.Equal(t, "CHECK stale-head a1 head "+head+" of attempt 1 was made under an earlier brief remedy=nova-sprint rework a1 --fix 'brief replaced'", stale[0].Line())
 
 	primary = s.Work.Card("a1")
-	primary.Fields[fieldBriefKeepHead] = "true"
+	primary.Fields[FieldBriefKeepHead] = "true"
 	s.Work.Put(primary)
 	for _, f := range CheckCards(s, cardCheckIn()) {
 		assert.NotEqual(t, "stale-head", f.Kind)
 	}
 
-	primary.Fields[fieldBriefKeepHead] = ""
+	primary.Fields[FieldBriefKeepHead] = ""
 	primary.Fields["attempt"] = "0"
 	primary.Fields[FieldBriefAttempt] = ""
-	primary.Fields[fieldHeadBriefAttempt] = ""
+	primary.Fields[FieldHeadBriefAttempt] = ""
 	primary.Fields["head"] = ""
 	s.Work.Put(primary)
 	s.Work.Put(&Card{ID: "a1.w1", Row: "s1", Col: Landed, Fields: map[string]string{"kind": "work", PrimaryField: "a1", "attempt": "1"}})
@@ -51,7 +51,7 @@ func TestCardCheckFindsAHeadFromAnOldBrief(t *testing.T) {
 
 	primary.Fields["attempt"] = "2"
 	primary.Fields[FieldBriefAttempt] = "2"
-	primary.Fields[fieldHeadBriefAttempt] = "1"
+	primary.Fields[FieldHeadBriefAttempt] = "1"
 	s.Work.Put(primary)
 	s.Work.Put(&Card{ID: "a1.w1", Row: "s1", Col: Landed, Fields: map[string]string{
 		"kind": "work", PrimaryField: "a1", "attempt": "1", "head": head, "head_superseded": "true",
@@ -62,7 +62,7 @@ func TestCardCheckFindsAHeadFromAnOldBrief(t *testing.T) {
 
 	primary.Fields["attempt"] = "3"
 	primary.Fields[FieldBriefAttempt] = "2"
-	primary.Fields[fieldHeadBriefAttempt] = "2"
+	primary.Fields[FieldHeadBriefAttempt] = "2"
 	primary.Fields["head"] = head
 	s.Work.Put(primary)
 	s.Work.Put(&Card{ID: "a1.w3", Row: "s1", Col: Landed, Fields: map[string]string{"kind": "work", PrimaryField: "a1", "attempt": "3", "head": head}})

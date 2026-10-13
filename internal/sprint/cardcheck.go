@@ -113,22 +113,6 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 	return out
 }
 
-const (
-	fieldBriefKeepHead    = "brief_keep_head"
-	fieldHeadBriefAttempt = "head_brief_attempt"
-)
-
-func cardAttemptPredatesBrief(c *Card, attempt int) bool {
-	if c == nil || attempt <= 0 || c.F(fieldBriefKeepHead) == "true" {
-		return false
-	}
-	replaced := c.Int(FieldBriefAttempt)
-	if c.F(fieldHeadBriefAttempt) != "" {
-		replaced = c.Int(fieldHeadBriefAttempt)
-	}
-	return attempt <= replaced
-}
-
 // staleHead is a pushed head made under an earlier brief: the primary's head or its latest
 // pushed attempt is stale unless the card was explicitly kept with brief --keep-head.
 func (c *cardCheck) staleHead() []CardFinding {
@@ -162,7 +146,7 @@ func (c *cardCheck) staleHead() []CardFinding {
 		} else if attempt == 0 {
 			attempt = card.Int("attempt")
 		}
-		if head == "" || !cardAttemptPredatesBrief(card, attempt) {
+		if head == "" || !AttemptPredatesBrief(card, attempt) {
 			continue
 		}
 		out = append(out, CardFinding{CheckStaleHead, card.ID,
