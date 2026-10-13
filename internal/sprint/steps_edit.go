@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -1080,6 +1081,14 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 			why = append(why, n+" is named twice")
 		case s.Work.Placed(n) == nil:
 			why = append(why, n+" is no primary on the table")
+		default:
+			nc := s.Work.Placed(n)
+			if IsSentinel(nc) && nc.F("brief") != "" {
+				consumers, _ := ConsumersOfBrief(nc.F("brief"))
+				if !slices.Contains(consumers, c.ID) {
+					why = append(why, fmt.Sprintf("sentinel %s brief CONSUMERS line omits %s; update its brief first: nova-sprint brief %s --brief-file <a brief naming %s in CONSUMERS>", n, c.ID, n, c.ID))
+				}
+			}
 		}
 		seen[n] = true
 	}
