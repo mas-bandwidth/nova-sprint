@@ -31,12 +31,13 @@ const (
 	CheckBases     = "bases"      // 6: each stream on its own branch, never the trunk; no need across two bases
 	CheckNames     = "names"      // 7: each stream's display name set and readable
 	CheckStaleFix  = "stale-fix"  // 8: no card at priority fix with no failed attempt this epoch
+	CheckStaleHead = "stale-head" // a pushed head from an attempt before the current brief
 	CheckLint      = "lint"       // 9: every brief passes the card lint
 	CheckBriefSize = "brief-size" // 16: every brief within the store's bound and the drain's
 )
 
 // CheckKinds is the core kinds in print order.
-var CheckKinds = []string{CheckNeeds, CheckFiles, CheckSameFile, CheckBases, CheckNames, CheckStaleFix, CheckLint, CheckBriefSize, CheckRoutes}
+var CheckKinds = []string{CheckNeeds, CheckFiles, CheckSameFile, CheckBases, CheckNames, CheckStaleFix, CheckStaleHead, CheckLint, CheckBriefSize, CheckRoutes}
 
 // DrainBriefBytes is the drain's bound on one brief (a brief over 16 KB poisoned the drain queue
 // on 2026-10-11): a card whose brief is over it is a finding of kind brief-size.
@@ -105,9 +106,69 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 	out = append(out, c.bases()...)
 	out = append(out, c.names()...)
 	out = append(out, c.staleFix()...)
+	out = append(out, c.staleHead()...)
 	out = append(out, c.lint()...)
 	out = append(out, c.briefSize()...)
 	out = append(out, ProviderFindings(s)...)
+	return out
+}
+
+const (
+	fieldBriefKeepHead    = "brief_keep_head"
+	fieldHeadBriefAttempt = "head_brief_attempt"
+)
+
+func cardAttemptPredatesBrief(c *Card, attempt int) bool {
+	if c == nil || attempt <= 0 || c.F(fieldBriefKeepHead) == "true" {
+		return false
+	}
+	replaced := c.Int(FieldBriefAttempt)
+	if c.F(fieldHeadBriefAttempt) != "" {
+		replaced = c.Int(fieldHeadBriefAttempt)
+	}
+	return attempt <= replaced
+}
+
+// staleHead is a pushed head made under an earlier brief: the primary's head or its latest
+// pushed attempt is stale unless the card was explicitly kept with brief --keep-head.
+func (c *cardCheck) staleHead() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		if IsSentinel(card) || card.F("fix") != "" || card.F(FieldFindingAttempt) != "" {
+			continue
+		}
+		head, attempt := PushedHead(card), 0
+		var latestHead string
+		latestAttempt := 0
+		for _, work := range c.s.Work.Of(card.ID) {
+			// A brief replacement that bounced this attempt keeps its raw head for audit
+			// but marks it superseded; it no longer holds a usable head.
+			if work.F("head_superseded") == "true" {
+				continue
+			}
+			n, h := work.Int("attempt"), PushedHead(work)
+			if h == "" {
+				continue
+			}
+			if n >= latestAttempt {
+				latestHead, latestAttempt = h, n
+			}
+			if h == head && n > attempt {
+				attempt = n
+			}
+		}
+		if head == "" {
+			head, attempt = latestHead, latestAttempt
+		} else if attempt == 0 {
+			attempt = card.Int("attempt")
+		}
+		if head == "" || !cardAttemptPredatesBrief(card, attempt) {
+			continue
+		}
+		out = append(out, CardFinding{CheckStaleHead, card.ID,
+			fmt.Sprintf("head %s of attempt %d was made under an earlier brief", head, attempt),
+			"nova-sprint rework " + card.ID + " --fix 'brief replaced'"})
+	}
 	return out
 }
 
