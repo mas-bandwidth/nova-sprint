@@ -444,7 +444,7 @@ func TestAStuckOperationIsReportedOnceByTheFirstWriterAfterRepair(t *testing.T) 
 // The tick never moves a sentinel: when everything before it has landed the
 // tick marks it reached and opens its judgment; what waits behind it stays
 // waiting, and is dealt only after the coordinator releases it.
-func TestTheTickStopsAtASentinelUntilItIsReleased(t *testing.T) {
+func TestTheTickAutoReleasesAfterFreshTrunkProofAndMergesConsumer(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	require.NoError(t, h.m.SetCoordinator(h.ctx, "tester"))
@@ -463,11 +463,13 @@ func TestTheTickStopsAtASentinelUntilItIsReleased(t *testing.T) {
 	h.machine()
 	require.Equal(t, sprint.Landed, h.state("s1-1"), "before the sentinel: %s %s", h.state("s1-1"), h.state("s1-2"))
 	require.Equal(t, sprint.Landed, h.state("s1-2"), "before the sentinel: %s %s", h.state("s1-1"), h.state("s1-2"))
-	if h.state("stop") != sprint.Waiting || h.state("after") != sprint.Waiting || len(h.openOf(sprint.NSentinelReached)) != 1 {
+	if h.state("stop") != sprint.Waiting || h.state("after") != sprint.Waiting || len(h.openOf(sprint.NSentinelReached)) != 0 {
 		require.Fail(t, fmt.Sprintf("at the sentinel: stop %s after %s reached %d", h.state("stop"), h.state("after"), len(h.openOf(sprint.NSentinelReached))))
 	}
 	h.quiet("at the sentinel")
-	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"stop"}, Reason: "the first two are green", Coordinator: "tester", Who: "tester"}))
+	installSentinelFixtureForge(h, "stop", []string{"s1-1", "s1-2"}, []string{"after"})
+	h.machine()
+	h.machine()
 	h.machine()
 	require.Equal(t, sprint.Landed, h.state("stop"), "after the release: stop %s after %s", h.state("stop"), h.state("after"))
 	require.Equal(t, sprint.Working, h.state("after"), "after the release: stop %s after %s", h.state("stop"), h.state("after"))

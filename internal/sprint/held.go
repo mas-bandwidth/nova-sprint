@@ -485,10 +485,10 @@ func (c *held) tickOn(pr *Card) string {
 // merges there; "" when none.
 // tla/Holds.tla NoSilentStall
 func (c *held) judgment(pr *Card) string {
-	if IsHeld(pr) {
+	if IsHeld(pr) && !IsSentinel(pr) {
 		return "held by the coordinator (add --held) until release"
 	}
-	if (pr.Col == Ready || pr.Col == Waiting) && StreamHeld(c.s, pr.Row) {
+	if !IsSentinel(pr) && (pr.Col == Ready || pr.Col == Waiting) && StreamHeld(c.s, pr.Row) {
 		return "its stream " + pr.Row + " is held by the coordinator until nova-sprint unhold " + pr.Row
 	}
 	if j := c.judged[pr.ID]; len(j) > 0 {
@@ -561,21 +561,15 @@ func (c *held) judgment(pr *Card) string {
 // (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go; tla/RateBudget.tla).
 func (c *held) waits(pr *Card) (why, root string, ok bool) {
 	s := c.s
+	if (pr.Col == Waiting || pr.Col == Ready) && ConsumerNeedsTrunk(s, pr) && !ConsumerTrunkReady(s, pr) {
+		return "its stream awaits the machine's actual merge of the freshly observed recorded trunk before the next deal", "", true
+	}
 	switch pr.Col {
 	case Waiting:
 		w := WaitOf(s, pr).On
 		if len(w) == 0 {
-			if IsSentinel(pr) && pr.F("reached") != "" {
-				return "reached, and no judgment is open on it", "", false
-			}
-			if IsSentinel(pr) && !HasBefore(s, pr) {
-				// a stop with nothing placed before it is next, for the coordinator's
-				// release (docs/SPEC-SPRINT.md section 16): held while other work of the
-				// sprint moves; when none does, the step that ends it, or the tick, marks
-				// it reached (Reachable)
-				if id := workInFlight(s, nil); id != "" {
-					return "a stop with nothing placed before it, next for the coordinator's release while " + id + " moves", "", true
-				}
+			if IsSentinel(pr) {
+				return "producer completion awaits freshly observed recorded trunk ancestry; the machine retries at the next tick", "", true
 			}
 			return "every need has landed or was waived, and nothing moves it", "", false
 		}
@@ -787,7 +781,7 @@ func (c *held) overdueUnmarked() []Finding {
 func (c *held) decisions(pr *Card) []string {
 	var out []string
 	switch {
-	case IsHeld(pr) || IsSentinel(pr) && (pr.F("reached") != "" || !HasBefore(c.s, pr)):
+	case IsHeld(pr) && !IsSentinel(pr):
 		out = []string{"release", "drop"}
 	case pr.Col == Ready:
 		out = []string{"fleet up", "drop"}

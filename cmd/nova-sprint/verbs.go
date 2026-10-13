@@ -414,7 +414,7 @@ one answer to each judgment (every one prints its own, filled in):
   a repeat: stop and look     card <primary>
   overdue: act                a decision above, or (never on a judgment that holds a card) wait <note>[,<note>]... --for 30m, or wait --group <id> --expect <n> --for 30m
   a stream not moving: look   where, then queue --stream <s>
-  sentinel reached            release <sentinel> --reason '<what you found>' --answers <note>
+  sentinel reached            HAPPENED progress; the machine releases after fresh trunk proof
   returned to review          rework, accept (its reads standing) or drop --group <id> --expect <n> --answers <notes>
   stranded in review          rework or drop (or ask, if never asked) --group <id> --expect <n> --answers <notes>
   review has no reader         reader add <reader>, or wait <note> --for 30m
@@ -1174,7 +1174,7 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("init")
 	readers := fs.String("readers", "", "the readers' rows, comma separated")
 	members := fs.String("members", "", fmt.Sprintf("fleet members to bring up, comma separated, each <name> or <name>:<width>, its width the most work cards it runs at once; it holds %d times that, ready and working (default %d)", sprint.DealAhead, sprint.DefaultWidth))
-	coordinator := fs.String("coordinator", "", "the sprint's coordinator, the one actor who releases sentinels (default: the actor); the seat then moves by coordinator <name>")
+	coordinator := fs.String("coordinator", "", "the sprint's coordinator, who may explicitly release early (default: the actor); the seat then moves by coordinator <name>")
 	owner := fs.String("owner", "", "the sprint's owner, who may give the seat and whose name a take of it carries (coordinator --take --approved-by); set once, never changed (else "+OwnerEnv+")")
 	rules := fs.String("rules", "", "the child rules file every brief is held to: one required sentence per line, its path recorded for the sprint (default: the built-in general rules; add --rules <file> overrides it for one add)")
 	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
@@ -1326,7 +1326,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	briefDir := fs.String("brief-dir", "", "one card per *.md file in this directory, in byte order of file name, each card's id its file's name without .md (a1.md is a1); not with --brief-file")
 	rules := fs.String("rules", "", "the child rules `file`, read at add time: one required sentence per line, [name] sentence names its token (default: the file init --rules recorded, else the built-in general rules); e.g. --rules rules/card.txt. A file the members hold (fleet/child-rules*.txt of this build) is by reference: a card on a repository with a held file (fleet/child-rules.txt for nova-tools, fleet/child-rules.<repo>.txt) need not carry it, the card names the file, and the member injects it at stage time")
 	score := fs.String("score", "", "the first primary's score; the rest follow it (default: after every primary)")
-	sentinel := fs.String("sentinel", "", "admit a sentinel with this id: a stop the coordinator releases; what sorts after it waits for it")
+	sentinel := fs.String("sentinel", "", "admit a sentinel with this id: releases automatically after producer completion and fresh recorded-trunk ancestry; consumers merge the trunk before their next deal")
 	before := fs.String("before", "", "place the cards in line in front of this primary of the stream")
 	after := fs.String("after", "", "place the cards in line after this primary of the stream")
 	every := fs.Int("sentinel-every", 0, "with --count: a sentinel <stream>-gate-<n> after every k cards (a stop by its place in line)")
@@ -1342,7 +1342,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief the checks find a fault in, and every card that needs a held card, and admit the rest in one store write; one HELD line per held card, then the add's closing line; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted; refused with ids, --count, --sentinel or --land-protected (a marked first add is one step)")
 	plan := fs.String("plan", "", "print the overlap table of the cards' brief files in this directory (a plan review: path, cards, ledger or not, edge if any) and exit 0 without admitting, for a seat that wants to read the overlaps first (docs/SPRINT-COORDINATOR.md; docs/SPEC-CARD-CONTRACT.md, the shared-path rule)")
 	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
-	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
+	held := fs.Bool("held", false, "admit ordinary cards held until explicit release; --held with --sentinel is refused, and generated sentinels release automatically")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
 	var briefOps stringList
 	fs.Var(&briefOps, "brief-op", "`id=op`: a card's brief decision op id (<id>@brief-<hex>), which add sends its server itself when it asked the decision where it was typed; refused when typed on an add no server runs; repeated, one per card")

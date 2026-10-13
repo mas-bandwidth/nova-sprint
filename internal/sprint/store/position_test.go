@@ -74,8 +74,14 @@ func TestSentinelsByPositionStoreNothing(t *testing.T) {
 	}
 	h.must(DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: first}, Reason: "done elsewhere"}))
 	require.Empty(t, h.snap().Work.Card("a-gate-1").F("reached"), "a-gate-1 reached with nothing before it while b and c are in flight")
+	var consumers []string
+	for i := 101; i <= 200; i++ {
+		consumers = append(consumers, fmt.Sprintf("a-%d", i))
+	}
+	installSentinelFixtureForge(h, "a-gate-1", nil, consumers)
 	mark := len(h.lines())
 	res := h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"a-gate-1"}, Reason: "go", Coordinator: "tester", Who: "tester"}))
+	resolveFixtureConsumers(h, consumers)
 	s = h.snap()
 	if st := s.StateOf("a-101"); st != sprint.Ready || s.StateOf("a-200") != sprint.Ready || s.StateOf("a-201") != sprint.Waiting {
 		require.Failf(t, "", "released a-gate-1: a-101 %s a-200 %s a-201 %s (%v)", st, s.StateOf("a-200"), s.StateOf("a-201"), res.Moved[:1])

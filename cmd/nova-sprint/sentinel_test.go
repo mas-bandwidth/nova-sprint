@@ -119,6 +119,7 @@ func TestSentinelSetNeedsRepointsInPlace(t *testing.T) {
 	require.NotEmpty(t, ta.primary("v1").F("reached"), "v1 is reached when s1-3 lands")
 	out = ta.ok("release v1 --reason 'the release is read and green'")
 	require.Contains(t, out, "sentinel v1 waiting -> landed", "release")
-	require.Contains(t, out, "r1 waiting -> ready", "release")
+	require.NotContains(t, out, "r1 waiting -> ready", "release cannot fabricate a consumer merge")
+	require.Equal(t, sprint.Waiting, ta.primary("r1").Col)
 	ta.clean()
 }

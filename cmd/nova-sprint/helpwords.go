@@ -43,7 +43,7 @@ words:
   work card    <primary>.w<attempt>, one attempt handed to a member: s1-1.w1 is s1-1's first
   read card    <primary>.r<attempt>.<reader>, one reader's read of one attempt: s1-1.r1.reader-a
   kind         a card's: work or read (a primary is a sentinel or not); a note's: judgment, happened, decided
-  sentinel     a primary that is a stop in its stream: what sorts after it waits until release
+  sentinel     a stop that releases automatically after producer completion and fresh trunk proof; consumers merge the trunk before their next deal
   judgment     an inbox note that needs the coordinator; it prints its decisions as commands
   HAPPENED     an inbox note that needs no decision: work came back ok, a member up or down, a batch landed
   DECIDED      an inbox note recording a judgment's answer: what was decided, by whom

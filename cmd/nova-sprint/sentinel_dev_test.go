@@ -63,3 +63,18 @@ func TestSentinelProtocolFetchesActualMainAndMergesConsumer(t *testing.T) {
 	require.Equal(t, conflictedConsumer, r.git(r.remote, "rev-parse", "refs/heads/sprint/consumer"))
 
 }
+
+func sentinelProgressNotes(t *testing.T, ta *testApp, stream string) []sprint.Note {
+	t.Helper()
+	notes, _, err := ta.m.NotesSince(context.Background(), "", 100000)
+	require.NoError(t, err)
+	var found []sprint.Note
+	for _, n := range notes {
+		if n.Type == sprint.NSentinelReached && n.Stream == stream {
+			require.Equal(t, sprint.Happened, n.Kind)
+			require.Empty(t, n.Decisions)
+			found = append(found, n)
+		}
+	}
+	return found
+}

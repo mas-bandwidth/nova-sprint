@@ -6,13 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The cut sentinel releases itself (docs/roadmap.sexp, auto-sentinels-released-by-tick;
-// the owner, 2026-10-10: "what else is manual that should be automatic from the machine"):
-// a sentinel that names its needs, marked reached by the step that landed its last need,
-// is released by the next tick's resolve and the seat is pushed that the release is ready
-// to cut; the publish itself stays a gated step with a cold read. A plain position gate (a
-// wave's stop, no needs named) and a held sentinel keep the coordinator's release, and a
-// need still in flight is not landed: the machine's release waives nothing.
+// Automatic release uses fresh ancestry, while consumers merge their trunk later.
 func TestACutSentinelReleasesItselfOnTheTick(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
@@ -28,9 +22,19 @@ func TestACutSentinelReleasesItselfOnTheTick(t *testing.T) {
 	p = mergeOne(w, "s1")
 	require.Len(t, notesIn(p, NSentinelReached), 1, "the last landing reached it: %+v", p.Units)
 	require.Equal(t, Waiting, cut.Col, "the landing step never lands it")
-	// The next tick's resolve releases it.
-	sp, _ := TickResolve(w.s, TickReq{})
-	require.Len(t, sp.Units, 2, "the release and the wave behind it: %+v", sp.Units)
+	// Fake forge facts use explicit heads/repositories and exact scope; a mere
+	// landed state above was not enough to release.
+	for _, id := range []string{"s1-1", "s1-2"} {
+		p := w.s.Work.Card(id)
+		p.Fields["head"] = id + "-head"
+		p.Fields["brief"] = "fixture\nREPO: /fixture/repo\n"
+	}
+	observation := SentinelObservation{Input: SentinelInputOf(w.s, cut)}
+	for _, id := range []string{"s1-1", "s1-2"} {
+		observation.Inclusions = append(observation.Inclusions, DevInclusion{Producer: id, Repo: "/fixture/repo", Stream: "s1", Trunk: Trunk(w.s, "s1"), Head: id + "-head", Containing: "observed-trunk", Included: true})
+	}
+	sp, _ := TickResolve(w.s, TickReq{SentinelObservations: []SentinelObservation{observation}})
+	require.Len(t, sp.Units, 1, "release happens before the consumer merge: %+v", sp.Units)
 	require.True(t, landsSentinel(w.s, sp), "the tick releases it: %+v", sp)
 	landed := notesIn(sp, NSentinelLanded)
 	require.Len(t, landed, 1, "the landing notification: %+v", sp)
@@ -40,12 +44,12 @@ func TestACutSentinelReleasesItselfOnTheTick(t *testing.T) {
 	require.Equal(t, NCutReady, push[0].Type, "the seat push: %+v", push[0])
 	require.Equal(t, w.s.Coordinator, push[0].To, "the push is addressed to the seat: %+v", push[0])
 	require.Equal(t, MachineActor, push[0].Who, "the push: %+v", push[0])
-	require.Contains(t, push[0].What, "ready to cut", "the push says what the seat may cut: %+v", push[0])
+	require.Contains(t, push[0].What, "automatic release happened", "the push names what happened: %+v", push[0])
 	w.do(sp)
 	require.Equal(t, Landed, cut.Col, "released: cut %s, b %s", cut.Col, w.state("b"))
 	require.Equal(t, MachineActor, cut.F("released_by"), "released: cut %v", cut.Fields)
-	require.Equal(t, "every card it needs has landed", cut.F("release_reason"), "released: cut %v", cut.Fields)
-	require.Equal(t, Ready, w.state("b"), "what waited behind it is ready: cut %s, b %s", cut.Col, w.state("b"))
+	require.Equal(t, "every producer is complete and its head is in the observed trunk", cut.F("release_reason"), "released: cut %v", cut.Fields)
+	require.Equal(t, Waiting, w.state("b"), "what waited behind it is ready: cut %s, b %s", cut.Col, w.state("b"))
 	require.Empty(t, w.openOn("cut"), "its reached judgment is closed: %v", w.openOn("cut"))
 	require.Empty(t, w.openOn(StreamSubject("rel")), "the stream holds no judgment: %v", w.openOn(StreamSubject("rel")))
 	// The tick that follows moves nothing again.
@@ -54,20 +58,20 @@ func TestACutSentinelReleasesItselfOnTheTick(t *testing.T) {
 	w.clean("released itself")
 }
 
-// A plain gate (no needs named) is a wave the coordinator passes on their own look, and a
-// held sentinel keeps its hold: the tick releases neither.
-func TestAPlainGateAndAHeldSentinelAreNotReleasedByTheTick(t *testing.T) {
+// A position gate still needs ancestry; an empty legacy held sentinel does not.
+func TestPlainGateNeedsProofWhileEmptyLegacyHoldAutoReleases(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Lawful(Add(w.s, AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true})))
-	w.must(Lawful(Add(w.s, AddReq{Stream: "s2", IDs: []string{"hold"}, Sentinel: true, Held: true})))
+	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true}))
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"hold"}, Sentinel: true}))
+	w.s.Work.Card("hold").Fields[FieldHeld] = stamp(w.s.Now)
 	accepted(w, "s1-1")
 	mergeOne(w, "s1")
-	require.NotEmpty(t, w.s.Work.Card("gate").F("reached"), "the gate is reached")
 	p, _ := TickResolve(w.s, TickReq{})
-	require.Empty(t, p.Units, "the tick released a gate or a hold: %+v", p.Units)
-	require.Equal(t, Waiting, w.state("gate"), "the gate is %s", w.state("gate"))
-	require.Equal(t, Waiting, w.state("hold"), "the hold is %s", w.state("hold"))
+	require.True(t, landsSentinel(w.s, p))
+	w.do(p)
+	require.Equal(t, Waiting, w.state("gate"), "landed without fetched ancestry is insufficient")
+	require.Equal(t, Landed, w.state("hold"), "empty legacy hold cannot gate automatic release")
 }
 
 // A need still in flight is not landed: the strict gate. The coordinator's release waives

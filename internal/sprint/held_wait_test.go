@@ -11,7 +11,7 @@ func TestHoldSentinelAndWaveAreOneWait(t *testing.T) {
 	w := setup(t, 2)
 	w.must(Lawful(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true})))
 	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"h"}, Held: true}))
-	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"gate"}, Sentinel: true}))
 	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"m1", "m2"}}))
 
 	held := WaitOf(w.s, w.s.Work.Card("h"))
@@ -25,9 +25,9 @@ func TestHoldSentinelAndWaveAreOneWait(t *testing.T) {
 
 	require.Equal(t, WaitOnLine, stop.Operand, "a sentinel waits for its line: %+v", stop)
 	require.Equal(t, []string{"s1-1", "s1-2"}, stop.On, "a sentinel waits for the line before it: %+v", stop)
-	require.Equal(t, WaitOnRelease, gate.Operand, "a held sentinel waits for release: %+v", gate)
-	require.Empty(t, gate.On, "the held sentinel waits only for release: %+v", gate)
-	require.Equal(t, held.Operand, gate.Operand, "a held card and held sentinel share one release wait")
+	require.Equal(t, WaitOnLine, gate.Operand, "a sentinel waits for producer completion: %+v", gate)
+	require.Empty(t, gate.On, "the empty sentinel has no pending producer: %+v", gate)
+	require.NotEqual(t, held.Operand, gate.Operand, "ordinary held cards retain release wait; sentinels wait on producers")
 
 	require.Equal(t, WaitOnCards, wave1.Operand, "a wave card waits for the cards it names: %+v", wave1)
 	require.Equal(t, []string{"gate"}, wave1.On, "the wave waits for the held sentinel: %+v", wave1)

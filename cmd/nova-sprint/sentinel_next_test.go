@@ -16,7 +16,7 @@ import (
 // (docs/SPEC-SPRINT.md section 16). No "sentinel reached" judgment is written for it, by
 // the add or by any tick, and release lands it all the same. One with cards placed
 // before it is reached when they have landed, as before.
-func TestASentinelWithNothingBeforeItIsNextNotReached(t *testing.T) {
+func TestEmptySentinelAutoReleasesWhileOtherWorkMoves(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead")
@@ -31,18 +31,21 @@ func TestASentinelWithNothingBeforeItIsNextNotReached(t *testing.T) {
 		assert.NotEqual(t, sprint.NSentinelReached, g.Type, "reached with nothing before it: %+v", g)
 	}
 	assert.Empty(t, ta.primary("docs-round2").F("reached"))
-	out = ta.ok("release docs-round2 --reason 'round 1 is read' --actor lead")
-	assert.Contains(t, out, "sentinel docs-round2 waiting -> landed (released by lead); 1 cards are now ready")
-	assert.Contains(t, out, "d1 waiting -> ready")
+	require.Equal(t, sprint.Landed, ta.primary("docs-round2").Col)
+	require.Equal(t, "no producers", ta.primary("docs-round2").F("release_reason"))
+	code, _, errs := ta.do("release docs-round2 --reason 'already automatic' --actor lead")
+	require.Equal(t, 1, code)
+	require.Contains(t, errs, "is landed")
 	ta.ok("tick")
-	assert.NotEqual(t, sprint.Waiting, ta.primary("d1").Col, "the machine's pump applies the release")
+	assert.Equal(t, sprint.Waiting, ta.primary("d1").Col, "no actual consumer repo/merge receipt: next deal remains blocked")
+
 }
 
 // The other half of the condition (sprint.Reachable's no-work-in-flight branch): the same
 // sentinel, next while s1's work moves, is reached by the step that lands the last of that
 // work, with nothing placed before it, and d1 behind it stays waiting for the release
 // (docs/SPEC-SPRINT.md section 16). With the branch gone it would never be reached.
-func TestASentinelWithNothingBeforeItIsReachedWhenNothingElseMoves(t *testing.T) {
+func TestEmptySentinelDoesNotWaitForOtherStreamLanding(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead")
@@ -59,15 +62,15 @@ func TestASentinelWithNothingBeforeItIsReachedWhenNothingElseMoves(t *testing.T)
 	ta.ok("accept s1-1 --actor lead")
 	assert.False(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached), "reached while s1-1 was merging")
 	ta.ok("merge --stream s1")
-	require.True(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached), "not reached by the step that landed the last work in flight")
-	assert.Contains(t, ta.group(sprint.NSentinelReached, "docs").What, "sentinel docs-round2 reached: 0 cards of docs have landed; 1 cards wait behind it")
-	assert.NotEmpty(t, ta.primary("docs-round2").F("reached"))
+	require.Equal(t, sprint.Landed, ta.primary("docs-round2").Col)
+	require.Equal(t, "no producers", ta.primary("docs-round2").F("release_reason"))
+	assert.Empty(t, ta.primary("docs-round2").F("reached"))
 	assert.Equal(t, sprint.Waiting, ta.primary("d1").Col, "reached is not released")
 }
 
 // The tick as the backstop: the work in flight leaves the table by a drop, which reaches
 // nothing itself; the next tick finds nothing else moving and marks the sentinel reached.
-func TestTheTickReachesASentinelWithNothingBeforeItOnceNothingElseMoves(t *testing.T) {
+func TestEmptySentinelReleaseRemainsAutomaticAfterOtherWorkDrops(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead")
@@ -79,8 +82,9 @@ func TestTheTickReachesASentinelWithNothingBeforeItOnceNothingElseMoves(t *testi
 	ta.ok("drop s1-1 --reason 'done elsewhere' --actor lead")
 	assert.False(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached), "the drop itself reached it")
 	ta.ok("tick")
-	require.True(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached), "not reached by the tick once nothing else moves")
-	assert.Contains(t, ta.group(sprint.NSentinelReached, "docs").What, "sentinel docs-round2 reached: 0 cards of docs have landed; 0 cards wait behind it")
+	require.Equal(t, sprint.Landed, ta.primary("docs-round2").Col)
+	require.Equal(t, "no producers", ta.primary("docs-round2").F("release_reason"))
+	require.False(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached))
 }
 
 // The sequence of the first real sprint: a round-2 sentinel added at the head of an empty
@@ -102,8 +106,11 @@ func TestASentinelIsReachedWhenTheCardsPlacedBeforeItLand(t *testing.T) {
 	ta.ok("read --as reader-b --ok s1-1.r1.reader-b")
 	ta.ok("accept s1-1 --actor lead")
 	ta.ok("merge --stream s1")
-	require.True(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached), "reached once the card before it landed")
-	assert.Contains(t, ta.group(sprint.NSentinelReached, "s1").What, "sentinel stop reached: 1 cards of s1 have landed")
+	progress := sentinelProgressNotes(t, ta, "s1")
+	require.Len(t, progress, 1)
+	assert.Contains(t, progress[0].What, "sentinel stop reached: 1 cards of s1 have landed")
+	require.False(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached))
+	require.Equal(t, sprint.Waiting, ta.primary("stop").Col, "actual producer ancestry is still absent")
 }
 
 // wait <judgment> --for quiets it for the whole period: it is not overdue, and it is

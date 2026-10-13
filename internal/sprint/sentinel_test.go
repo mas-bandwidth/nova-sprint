@@ -72,7 +72,7 @@ func TestASentinelIsAStopTheCoordinatorReleases(t *testing.T) {
 	p = mergeOne(w, "s1")
 	reached := notesIn(p, NSentinelReached)
 	require.Len(t, reached, 1, "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
-	require.Equal(t, Judgment, reached[0].Kind, "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
+	require.Equal(t, Happened, reached[0].Kind, "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
 	require.NotEmpty(t, stop.F("reached"), "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
 	require.Equal(t, Waiting, stop.Col, "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
 	require.False(t, landsSentinel(w.s, p), "the fifth landing: %+v, stop %s %v", reached, stop.Col, stop.Fields)
@@ -89,7 +89,7 @@ func TestASentinelIsAStopTheCoordinatorReleases(t *testing.T) {
 	require.Equal(t, Landed, stop.Col, "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
 	require.Equal(t, "coord", stop.F("released_by"), "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
 	require.Equal(t, "the layer is green and read", stop.F("release_reason"), "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
-	require.Equal(t, Ready, w.state("b"), "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
+	require.Equal(t, Waiting, w.state("b"), "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
 	require.Len(t, landed, 1, "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
 	require.Equal(t, Happened, landed[0].Kind, "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
 	require.Equal(t, "sentinel stop landed, released by coord: 1 cards are now ready; the layer is green and read", landed[0].What, "release: stop %s, b %s, %+v", stop.Col, w.state("b"), landed)
@@ -262,9 +262,9 @@ func TestASentinelStopsTheStreamByPosition(t *testing.T) {
 		}
 	}
 	require.Len(t, notesIn(p, NSentinelReached), 1, "A reached again: %+v", w.notesOf(NSentinelReached))
-	require.Equal(t, 2, judgments, "A reached again: %+v", w.notesOf(NSentinelReached))
+	require.Equal(t, 0, judgments, "A reached again: %+v", w.notesOf(NSentinelReached))
 	w.must(release(w, "layer a is good", "A"))
-	require.Equal(t, Ready, w.state("b1"), "b1 is %s", w.state("b1"))
+	require.Equal(t, Waiting, w.state("b1"), "b1 is %s", w.state("b1"))
 	w.clean("released")
 }
 
@@ -301,8 +301,8 @@ func TestASentinelInsertedInLine(t *testing.T) {
 	p = mergeOne(w, "s1")
 	require.Len(t, notesIn(p, NSentinelReached), 1, "not reached when s1-4 landed")
 	w.must(release(w, "checked", "stop"))
-	require.Equal(t, Ready, w.state("s1-5"), "after release: %s %s", w.state("s1-5"), w.state("s1-6"))
-	require.Equal(t, Ready, w.state("s1-6"), "after release: %s %s", w.state("s1-5"), w.state("s1-6"))
+	require.Equal(t, Waiting, w.state("s1-5"), "after release: %s %s", w.state("s1-5"), w.state("s1-6"))
+	require.Equal(t, Waiting, w.state("s1-6"), "after release: %s %s", w.state("s1-5"), w.state("s1-6"))
 	w.clean("released")
 	// No score between two neighbours: refused, not renumbered.
 	w.s.Work.Card("s1-6").Score = w.s.Work.Card("s1-5").Score
@@ -335,8 +335,7 @@ func TestSentinelSetReachesAndUnreaches(t *testing.T) {
 
 	p = w.must(SentinelSet(w.s, SentinelSetReq{ID: "stop", Needs: []string{"s1-1", "b"}, Who: w.s.Coordinator}))
 	require.Empty(t, stop.F("reached"), "set to a need not landed: reached no more")
-	require.Len(t, p.Units[0].Closes, 1, "the reached judgment is answered: %+v", p)
-	require.Equal(t, NSentinelReached, p.Units[0].Closes[0].Note.Type)
+	require.Empty(t, p.Units[0].Closes, "reached progress is not an open coordinator judgment")
 	require.Equal(t, row, stop.Row)
 	require.Equal(t, score, stop.Score)
 	require.Equal(t, Waiting, stop.Col)

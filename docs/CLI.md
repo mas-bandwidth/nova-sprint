@@ -60,6 +60,20 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
 
+### Automatic sentinel release
+
+A sentinel releases automatically after its producers are landed or dropped and
+fresh fetched Git ancestry proves each nondropped head is in that stream's
+recorded `main` or `dev` trunk. HAPPENED names the actual containing commit;
+zero/all-dropped cases say `no producers`/`all producers dropped` without an
+invented SHA. It waits for no coordinator, manual gate, hold or cancellation
+window. `release <sentinel> --reason <text>` remains an explicit early override.
+`add --held --sentinel` is refused; ordinary held cards retain explicit release.
+Consumer streams actually merge and normally push their freshly observed trunk
+before the next deal. Failed/conflicted merges cannot authorize ready or working.
+The freshness boundary is the fetched observation, not an atomic promise about
+unobserved concurrent remote advances. See SPEC-SPRINT.md section 16.
+
 ### Verbs
 
 ```

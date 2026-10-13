@@ -94,7 +94,7 @@ func TestModelAckOfBlockedMovesTheCard(t *testing.T) {
 // The second audit's gap, inverted (TestAudit2GapAckedSentinelStopsItsStreamForEver):
 // an ack of "sentinel reached" is refused, naming release; the sentinel's
 // judgment stays open, and release moves what waits behind it.
-func TestAckOfAReachedSentinelIsRefused(t *testing.T) {
+func TestSentinelProgressIsNotAnAckableCoordinatorGate(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	require.NoError(t, h.m.SetCoordinator(h.ctx, "tester"))
@@ -108,25 +108,31 @@ func TestAckOfAReachedSentinelIsRefused(t *testing.T) {
 	h.machine()
 	h.readAll()
 	h.landAll("s1")
-	reached := h.openOf(sprint.NSentinelReached)
-	require.Equal(t, sprint.Landed, h.state("s1-1"), "s1-1 %s, reached %d", h.state("s1-1"), len(reached))
-	require.Len(t, reached, 1, "s1-1 %s, reached %d", h.state("s1-1"), len(reached))
-	res := h.run(AckStep(sprint.AckReq{Notes: []string{reached[0].Note.ID}, Reason: "looked"}))
-	require.Empty(t, res.Moved, "ack of sentinel reached: %+v", res)
-	require.Len(t, res.Refused, 1, "ack of sentinel reached: %+v", res)
-	require.Contains(t, res.Refused[0].Why, "nova-sprint release stop", "ack of sentinel reached: %+v", res)
+	require.Equal(t, sprint.Landed, h.state("s1-1"))
+	require.Empty(t, h.openOf(sprint.NSentinelReached))
+	notes, _, err := h.m.NotesSince(h.ctx, "", 100000)
+	require.NoError(t, err)
+	var progress sprint.Note
+	for _, n := range notes {
+		if n.Type == sprint.NSentinelReached && n.Card == "stop" {
+			progress = n
+		}
+	}
+	require.NotEmpty(t, progress.ID)
+	require.Equal(t, sprint.Happened, progress.Kind)
+	res := h.run(AckStep(sprint.AckReq{Notes: []string{progress.ID}, Reason: "looked"}))
+	require.Empty(t, res.Moved)
+	require.Len(t, res.Refused, 1)
+	installSentinelFixtureForge(h, "stop", []string{"s1-1"}, []string{"after"})
 	for i := 0; i < 5; i++ {
 		h.tick(time.Hour)
 		h.machine()
 	}
-	if len(h.openOf(sprint.NSentinelReached)) != 1 || h.state("stop") != sprint.Waiting || h.state("after") != sprint.Waiting {
-		require.Failf(t, "", "after the refused ack: reached %d, stop %s, after %s", len(h.openOf(sprint.NSentinelReached)), h.state("stop"), h.state("after"))
-	}
-	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"stop"}, Reason: "green", Coordinator: "tester", Who: "tester", Answers: []string{reached[0].Note.ID}}))
-	h.machine()
-	require.Equal(t, sprint.Landed, h.state("stop"), "after the release: stop %s after %s", h.state("stop"), h.state("after"))
-	require.Equal(t, sprint.Working, h.state("after"), "after the release: stop %s after %s", h.state("stop"), h.state("after"))
-	h.clean("released")
+	require.Empty(t, h.openOf(sprint.NSentinelReached))
+	require.Equal(t, sprint.Landed, h.state("stop"))
+	require.Equal(t, sprint.Working, h.state("after"))
+	h.clean("released without a coordinator gate")
+
 }
 
 // M2: the no-member judgment is kept true by the tick in every epoch: both

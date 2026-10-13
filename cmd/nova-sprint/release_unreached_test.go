@@ -53,7 +53,7 @@ func TestReleaseOfAnUnreachedSentinelWhoseWaitsAreInFlight(t *testing.T) {
 
 	ta.ok("drop s1-4 --reason 'done elsewhere' --actor lead") // a dropped card of the stream is off its line
 	out := ta.ok("release stop --reason 'the fleet starves; what is before it is in flight' --actor lead")
-	require.Contains(t, out, "sentinel stop waiting -> landed (released by lead before it was reached, past s1-1 (merging), s1-2 (review), s1-3 (working, taken)); 2 cards are now ready", "release")
+	require.Contains(t, out, "sentinel stop waiting -> landed (released by lead before it was reached, past s1-1 (merging), s1-2 (review), s1-3 (working, taken)); 0 cards are now ready", "release")
 	stop := ta.primary("stop")
 	require.Equal(t, sprint.Landed, stop.Col, "stop: %v", stop.Fields)
 	require.Empty(t, stop.F("reached"), "stop: %v", stop.Fields)
@@ -61,8 +61,8 @@ func TestReleaseOfAnUnreachedSentinelWhoseWaitsAreInFlight(t *testing.T) {
 	require.Equal(t, "lead", stop.F("released_by"), "stop: %v", stop.Fields)
 	require.Equal(t, "s1-1,s1-2,s1-3", stop.F("waived"), "stop: %v", stop.Fields)
 	require.Equal(t, "lead", stop.F("waived_by"), "stop: %v", stop.Fields)
-	require.Equal(t, sprint.Ready, ta.primary("b").Col, "behind the sentinel")
-	require.Equal(t, sprint.Ready, ta.primary("c").Col, "names the sentinel from another stream")
+	require.Equal(t, sprint.Waiting, ta.primary("b").Col, "behind the sentinel")
+	require.Equal(t, sprint.Waiting, ta.primary("c").Col, "names the sentinel from another stream")
 	require.Equal(t, sprint.Waiting, ta.primary("gate").Col, "gate still waits for b, which has not started")
 	ta.clean()
 

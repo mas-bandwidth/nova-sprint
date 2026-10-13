@@ -142,7 +142,7 @@ func (h *harness) a2ToReview(id string, failed bool) {
 // sentinel waits reached for ever, every card behind it waits for ever, the
 // sprint is never done, and no group or judgment names either card. The only
 // trace is the stream-stale line (no card, no decision that closes it).
-func TestAudit2ClosedAckedSentinelStopsItsStreamForEver(t *testing.T) {
+func TestAutoSentinelDoesNotDependOnAcknowledgment(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	require.NoError(t, h.m.SetCoordinator(h.ctx, "tester"))
@@ -157,11 +157,18 @@ func TestAudit2ClosedAckedSentinelStopsItsStreamForEver(t *testing.T) {
 	h.readAll()
 	h.landAll("s1")
 	require.Equal(t, sprint.Landed, h.state("s1-1"), "s1-1 %s, reached %d", h.state("s1-1"), len(h.a2Open(sprint.NSentinelReached)))
-	require.Len(t, h.a2Open(sprint.NSentinelReached), 1, "s1-1 %s, reached %d", h.state("s1-1"), len(h.a2Open(sprint.NSentinelReached)))
-	h.a2AckRefused(sprint.NSentinelReached)
+	require.Empty(t, h.a2Open(sprint.NSentinelReached), "progress does not open a coordinator gate")
+	installSentinelFixtureForge(h, "stop", []string{"s1-1"}, []string{"after"})
+	h.machine()
+	h.machine()
+	h.machine()
+	require.Equal(t, sprint.Landed, h.state("stop"))
+	require.Equal(t, sprint.Working, h.state("after"), "consumer progresses after the declared actual merge observation")
 	h.readInbox()
 	h.a2Run(10*time.Hour, 5*time.Minute)
-	h.a2Names("stop", "a reached sentinel, its ack refused, ten hours")
+	require.Equal(t, sprint.Landed, h.state("stop"), "no acknowledgment can be needed to preserve release")
+	require.Empty(t, h.a2Open(sprint.NSentinelReached))
+
 }
 
 // GAP A2 (the ack family, stranded). Failed work, acked; the stranded
