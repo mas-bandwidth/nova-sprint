@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,6 +90,7 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 	queued, coordinator, err := a.queuedToMerge(ctx, addr)
 	a.serial.Unlock()
 	idle := err == nil && !queued
+	ran := false // land ran: the queue was read, held cards and named a coordinator
 	var lines []string
 	code := 0
 	var gate *hookGateError
@@ -97,6 +99,7 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 		lines, code = []string{"LAND FAILED the merge queue could not be read: " + oneline.Err(err) + "; nothing was landed, and the next round tries again; run: nova-sprint where"}, 2
 	case queued && coordinator != "":
 		var out, errb bytes.Buffer
+		ran = true
 		a.landLazy, a.landCtx = true, ctx
 		code = a.landRun()(append([]string{"--redis", addr, "--actor", coordinator}, more...), &out, &errb, &gate)
 		a.landLazy, a.landCtx = false, nil
@@ -143,15 +146,26 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 			}
 		}
 		said = strings.Join(lines, "\n")
-		// the refusal stands until a landing goes through or it changes: the dedupe
-		// below keeps land's own lines (and the judgment) single, never the beat's
-		// line (tla/ServerSwitch.tla LandRefused)
-		a.standRefusal(said, coordinator)
-		if said == a.landFailed {
-			return code, idle // said when it began; the beat names it (writeRefused)
+	}
+	switch {
+	case code != 0 && !landBatched(lines):
+		// nothing could land: a refusal before any batch (a setting such as the
+		// git_identity, the epoch, the fence), a pass that failed, or a queue that could
+		// not be read. It stands until a pass gets past it or it changes: its lines are
+		// said when it begins, the beat names it every cycle (writeRefused), and its
+		// judgment is single (tla/ServerSwitch.tla LandRefused)
+		if !a.standRefusal(said, coordinator) {
+			a.landFailed = said
+			return code, idle
 		}
-	} else if err == nil {
-		a.clearRefusal() // tla/ServerSwitch.tla LandOk
+	case ran:
+		// the pass got past every check before its batches: whatever each batch did
+		// (landed, or refused and recorded on its own), no refusal stands
+		// (tla/ServerSwitch.tla LandOk, LandPartial)
+		a.clearRefusal()
+		if code != 0 && said == a.landFailed {
+			return code, idle // said when it began
+		}
 	}
 	a.landFailed = said
 	at := oneline.Field(a.now().Format("15:04:05"))
@@ -197,47 +211,75 @@ func (a *app) mergeQueued(ctx context.Context, addr string) (n int, coordinator,
 }
 
 // landRefusal is the lander's standing refusal (tla/ServerSwitch.tla refusal and
-// judged): what land said, the reason and the remedy read off it, since when it has
-// stood, the coordinator its judgment is addressed by, and whether that judgment is
-// written.
+// judged): the reason and the remedy read off land's refusal line, its key (the
+// reason normalised, sprint.LandRefusalKey: what a refusal is the same as), since when
+// it has stood, the text of the refusal it replaced (whose judgment it closes), the
+// coordinator its judgment is addressed by, and whether that judgment is written.
 type landRefusal struct {
-	said, reason, remedy string
-	since                time.Time
-	coord                string
-	judged               bool
+	reason, remedy, key string
+	prev                string
+	since               time.Time
+	coord               string
+	judged              bool
 }
+
+// what is the refusal's judgment text: its reason and its remedy.
+func (r landRefusal) what() string { return r.reason + "; run: " + r.remedy }
 
 // landRefusalRemedy is the remedy a refusal that names none is given: the dry run
 // prints the batches land would make, and any refusal before them.
 const landRefusalRemedy = "nova-sprint land --dry-run"
 
-// landRefusalOf reads a refusal's reason and remedy off what land said: the reason is
-// its first line, the text after REFUSED when the line has one, cut at its last
-// "; run: "; the remedy is the first line's command after "; run: " (refuse, main.go,
-// always names one), else landRefusalRemedy.
+// landBatchLine is a batch's line (land.go landBatch.line): LAND <STATUS> stream=...
+var landBatchLine = regexp.MustCompile(`^LAND [A-Z]+ stream=`)
+
+// landBatched says land reached its batches: a batch landed or was refused. Such a
+// pass is never a standing refusal, whatever land's exit (land exits 1 when any batch
+// was refused, though others landed); each refused batch has its own record and
+// judgment (sprint.PropLandRefusal; tla/ServerSwitch.tla LandPartial).
+func landBatched(lines []string) bool {
+	for _, line := range lines {
+		if landBatchLine.MatchString(strings.TrimSpace(line)) {
+			return true
+		}
+	}
+	return false
+}
+
+// landRefusalOf reads a refusal's reason and remedy off what land said, never off its
+// first line (a pass's first line may be a LAND OK). The reason is the text after
+// REFUSED: on land's refusal line (refuse, main.go), else the loop's own LAND FAILED
+// line, else land's own "nova-sprint land: <why>" line (an epoch or a read that
+// failed), else the first line; it is cut at its last "; run: ", and the command after
+// that is the remedy, else landRefusalRemedy.
 func landRefusalOf(said string) (reason, remedy string) {
 	const run = "; run: "
+	var refused, failed, landSaid, first string
 	for _, line := range strings.Split(said, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		switch {
+		case line == "":
 			continue
+		case refused == "" && strings.Contains(line, " REFUSED: "):
+			refused = line[strings.Index(line, " REFUSED: ")+len(" REFUSED: "):]
+		case failed == "" && strings.HasPrefix(line, "LAND FAILED "):
+			failed = line
+		case landSaid == "" && strings.HasPrefix(line, prog+" land: "):
+			landSaid = strings.TrimPrefix(line, prog+" land: ")
 		}
-		if reason == "" {
-			reason = line
-			continue
+		if first == "" {
+			first = line
 		}
-		if remedy == "" {
-			if i := strings.LastIndex(line, run); i >= 0 {
-				remedy = strings.TrimSpace(line[i+len(run):])
-			}
+	}
+	reason = first
+	for _, r := range []string{landSaid, failed, refused} {
+		if r != "" {
+			reason = r
 		}
 	}
 	if i := strings.LastIndex(reason, run); i >= 0 {
 		remedy = strings.TrimSpace(reason[i+len(run):])
 		reason = reason[:i]
-	}
-	if i := strings.Index(reason, " REFUSED: "); i >= 0 {
-		reason = reason[i+len(" REFUSED: "):]
 	}
 	if remedy == "" {
 		remedy = landRefusalRemedy
@@ -245,26 +287,35 @@ func landRefusalOf(said string) (reason, remedy string) {
 	return strings.TrimSpace(reason), remedy
 }
 
-// standRefusal records the refusal land just said. The same refusal again keeps the
-// one that stands (its since, its judgment); another one replaces it, to be judged
-// anew (tla/ServerSwitch.tla LandRefused: refusal changes, judged is raised again).
-func (a *app) standRefusal(said, coord string) {
+// standRefusal records a refusal before any batch, what land said. A refusal with the
+// same key as the one that stands is the same refusal (its since and its judgment
+// kept), whatever counts, timings or ids its text carries; another replaces it, to be
+// judged anew (tla/ServerSwitch.tla LandRefused). changed says it replaced one.
+func (a *app) standRefusal(said, coord string) (changed bool) {
+	reason, remedy := landRefusalOf(said)
+	key := sprint.LandRefusalKey(reason)
 	b := a.landState()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if r := b.refusal; r != nil && r.said == said {
+	if r := b.refusal; r != nil && r.key == key {
 		if r.coord == "" {
 			r.coord = coord
 		}
-		return
+		return false
 	}
-	reason, remedy := landRefusalOf(said)
-	b.refusal = &landRefusal{said: said, reason: reason, remedy: remedy, since: a.now(), coord: coord}
+	prev := ""
+	if b.refusal != nil && b.refusal.judged {
+		prev = b.refusal.what()
+	}
+	b.refusal = &landRefusal{reason: reason, remedy: remedy, key: key, prev: prev, since: a.now(), coord: coord}
+	return true
 }
 
-// clearRefusal ends the standing refusal when a landing goes through; its judgment is
-// closed by the next judgeRefusal, as is any a previous server left open
-// (tla/ServerSwitch.tla LandOk: refusal and judged cleared).
+// clearRefusal ends the standing refusal once a pass has got past every check before
+// its batches (land ran, and landed, refused a batch, or found nothing to land); its
+// judgment is closed by the next judgeRefusal, as is any a previous server left open
+// (tla/ServerSwitch.tla LandOk, LandPartial). A round that did not run land (no
+// coordinator, nothing queued) clears nothing.
 func (a *app) clearRefusal() {
 	b := a.landState()
 	b.mu.Lock()
@@ -290,12 +341,37 @@ func (a *app) standingRefusal() *landRefusal {
 	return &r
 }
 
-// judgeRefusal writes the standing refusal's one judgment on the first beat it can, and
-// closes a cleared one's. The write is tried, not waited on (the server's line of
-// control is taken only when free), and one that does not land is tried again next
-// beat. The store is opened as the machine (verb run), so a seat that has not hooked
-// in, as after a restart, is still told (tla/ServerSwitch.tla RefusalJudgedAtOnce).
-func (a *app) judgeRefusal(ctx context.Context, addr string) {
+// judgeNotWritten says once, until it changes or a write lands, why the standing
+// refusal's judgment (or its close) was not written: LAND JUDGMENT NOT WRITTEN.
+func (a *app) judgeNotWritten(w io.Writer, why string) {
+	b := a.landState()
+	b.mu.Lock()
+	said := b.notWritten == why
+	b.notWritten = why
+	b.mu.Unlock()
+	if !said {
+		a.writeCycle(w, "LAND JUDGMENT NOT WRITTEN: "+why+"; it is tried again next beat")
+	}
+}
+
+// judgeWritten forgets the last LAND JUDGMENT NOT WRITTEN line.
+func (a *app) judgeWritten() {
+	b := a.landState()
+	b.mu.Lock()
+	b.notWritten = ""
+	b.mu.Unlock()
+}
+
+// judgeRefusal writes the standing refusal's one judgment on the first beat it can,
+// and closes a cleared one's. Once written it is checked against the store each beat,
+// never only the flag: a judgment another server's step closed (its own, other,
+// refusal replacing it) is raised again, while one the seat acknowledged stays
+// acknowledged (sprint.LandRefusalSaid). The write is tried, not waited on (the
+// server's line of control is taken only when free); one that does not land is said,
+// once, as LAND JUDGMENT NOT WRITTEN and tried again next beat. The store is opened as
+// the machine (verb run), so a seat that has not hooked in, as after a restart, is
+// still told (tla/ServerSwitch.tla RefusalJudgedAtOnce).
+func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 	b := a.landState()
 	b.mu.Lock()
 	closing, closeAs := b.closing, b.closeAs
@@ -305,21 +381,25 @@ func (a *app) judgeRefusal(ctx context.Context, addr string) {
 		standing = *r
 	}
 	b.mu.Unlock()
-	if !closing && (r == nil || standing.judged) {
+	if !closing && r == nil {
 		return
 	}
 	if !a.serial.TryLock() {
 		return
 	}
 	defer a.serial.Unlock()
-	if closing && r == nil {
+	if r == nil {
 		st, err := a.storeCtx(ctx, common{verb: "run", redis: addr, actor: closeAs})
-		if err != nil { // ignored: the close is tried again next beat
+		if err != nil {
+			a.judgeNotWritten(w, "the close of the lander's refusal: the store could not be opened: "+oneline.Err(err))
 			return
 		}
-		if _, err := st.Run(ctx, store.Step{Verb: "land", Plan: sprint.LandRefusalClose}); err != nil {
+		res, err := st.Run(ctx, store.Step{Verb: "land", Plan: sprint.LandRefusalClose})
+		if why := stepNotWritten(res, err); why != "" {
+			a.judgeNotWritten(w, "the close of the lander's refusal: "+why)
 			return
 		}
+		a.judgeWritten()
 		b.mu.Lock()
 		if b.refusal == nil {
 			b.closing, b.swept, b.closeAs = false, true, ""
@@ -327,27 +407,44 @@ func (a *app) judgeRefusal(ctx context.Context, addr string) {
 		b.mu.Unlock()
 		return
 	}
-	if r == nil || standing.judged {
-		return
-	}
 	st, err := a.storeCtx(ctx, common{verb: "run", redis: addr, actor: standing.coord})
-	if err != nil { // ignored: the judgment is tried again next beat
+	if err != nil {
+		a.judgeNotWritten(w, "the store could not be opened: "+oneline.Err(err))
 		return
 	}
-	what := standing.reason + "; run: " + standing.remedy
+	what := standing.what()
+	if standing.judged {
+		open, err := st.B.OpenNotes(ctx)
+		if err != nil || sprint.LandRefusalSaid(open, what) {
+			return // a read that failed is tried again next beat; the judgment stands
+		}
+	}
 	res, err := st.Run(ctx, store.Step{Verb: "land", Plan: func(s *sprint.Snapshot) sprint.Plan {
-		return sprint.LandRefusalRaise(s, what, standing.coord)
+		return sprint.LandRefusalRaise(s, what, standing.coord, standing.prev)
 	}})
-	if err != nil || len(res.Refused) > 0 {
+	if why := stepNotWritten(res, err); why != "" {
+		a.judgeNotWritten(w, why)
 		return
 	}
+	a.judgeWritten()
 	b.mu.Lock()
 	if b.refusal == r {
 		r.judged = true
-		// a raise closes any other refusal's judgment left open, so nothing is left to close
+		// a raise closes the replaced refusal's judgment, so nothing is left to close
 		b.closing, b.swept = false, true
 	}
 	b.mu.Unlock()
+}
+
+// stepNotWritten is why a step's write did not land: its error, or its refusal.
+func stepNotWritten(res store.Result, err error) string {
+	if err != nil {
+		return oneline.Err(err)
+	}
+	if len(res.Refused) > 0 {
+		return "refused: " + res.Refused[0].Why
+	}
+	return ""
 }
 
 // landRun is land, or the test's stand-in for it (landBeat.landSeam).
@@ -411,6 +508,8 @@ type landBeat struct {
 	refusal        *landRefusal
 	closing, swept bool
 	closeAs        string
+	// notWritten is the last LAND JUDGMENT NOT WRITTEN reason said (judgeNotWritten).
+	notWritten string
 	// landSeam, queueSeam and startSeam are the test's stand-ins for land itself, the
 	// merge queue's count and the goroutine a flight runs on: a unit test drives the
 	// loop's beats with no store queue, no git and no real time (nil is the real one).
@@ -506,7 +605,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		if !done {
 			a.writeBeat(stdout, flight)
 			a.raiseIfStuck(ctx, addr, flight)
-			a.judgeRefusal(ctx, addr)
+			a.judgeRefusal(ctx, addr, stdout)
 			return flight
 		}
 		a.reportFlight(ctx, addr, stdout, flight, idle)
@@ -522,12 +621,17 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		if r := a.standingRefusal(); r != nil {
 			a.writeRefused(stdout, "?", r)
 		}
-		a.judgeRefusal(ctx, addr)
+		a.judgeRefusal(ctx, addr, stdout)
 		a.landAfter(ctx, false, stdout)
 		return nil
 	}
 	if n == 0 || coord == "" {
-		a.writeIdle(stdout, n, "-", 0, "no-coordinator")
+		// nothing ran, so nothing is cleared: a standing refusal is still named
+		if r := a.standingRefusal(); r != nil && n > 0 {
+			a.writeRefused(stdout, strconv.Itoa(n), r)
+		} else {
+			a.writeIdle(stdout, n, "-", 0, "no-coordinator")
+		}
 		a.landAfter(ctx, n == 0, stdout)
 		return nil
 	}
@@ -546,7 +650,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		return nil
 	}
 	a.writeBeat(stdout, f)
-	a.judgeRefusal(ctx, addr)
+	a.judgeRefusal(ctx, addr, stdout)
 	return f
 }
 
@@ -555,7 +659,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 func (a *app) reportFlight(ctx context.Context, addr string, stdout io.Writer, f *landFlight, idle bool) {
 	a.writeFlight(stdout, f)
 	a.clearFlight(f)
-	a.judgeRefusal(ctx, addr)
+	a.judgeRefusal(ctx, addr, stdout)
 	a.landAfter(ctx, idle, stdout)
 }
 
@@ -678,7 +782,9 @@ func (a *app) raiseIfStuck(ctx context.Context, addr string, f *landFlight) {
 		return
 	}
 	f.mu.Unlock()
-	st, err := a.storeCtx(ctx, common{verb: "land", redis: addr, actor: coord})
+	// opened as the machine (verb run): a seat that has not hooked in, as after a
+	// restart, is still told (the hook gate refuses the coordinator's verb land)
+	st, err := a.storeCtx(ctx, common{verb: "run", redis: addr, actor: coord})
 	if err != nil { // ignored: the judgment is tried again next cycle when the store cannot be opened
 		return
 	}

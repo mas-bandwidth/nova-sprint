@@ -52,7 +52,15 @@
 (*   "latejudge"   the refusal's judgment is raised only after the stall    *)
 (*                 bound (raiseIfStuck's LandDeadline, the tick's landing-  *)
 (*                 stall alarm), never on its first beat:                   *)
-(*                 RefusalJudgedAtOnce fails.                               *)
+(*                 RefusalJudgedAtOnce fails;                               *)
+(*   "partialrefusal" a pass whose batches landed or were refused one by   *)
+(*                 one counts as a standing refusal (land exits 1 when any  *)
+(*                 batch was refused; PR 189's first cut read its first     *)
+(*                 line, a LAND OK, as the reason):                         *)
+(*                 RefusalOnlyWhenNothingCouldLand fails;                   *)
+(*   "rawkey"      the refusal is keyed on its raw text, whose timings      *)
+(*                 change every pass, so the same refusal is closed and     *)
+(*                 raised again: AtMostOneJudgmentPerRefusal fails.         *)
 (*                                                                          *)
 (* The lander's standing refusal (cmd/nova-sprint/landloop.go standRefusal, *)
 (* clearRefusal, judgeRefusal, writeBeat, writeFlight; internal/sprint/     *)
@@ -72,7 +80,8 @@ CONSTANTS Binaries,     \* the binary names: the original and the two candidates
           MaxSwitch,    \* the switch bound (at most two switches)
           Broken        \* the reversed witnesses: a subset of Faults
 
-Faults == {"nodeadline", "keepstate", "hookfault", "hookgate", "silentdedupe", "latejudge"}
+Faults == {"nodeadline", "keepstate", "hookfault", "hookgate", "silentdedupe", "latejudge",
+           "partialrefusal", "rawkey"}
 
 \* the reasons a pass is refused for (the empty git_identity, and any other)
 Reasons == {"identity", "other"}
@@ -98,13 +107,14 @@ VARIABLES target,       \* the binary now at the target: Binaries, or "none" (no
           judged,          \* its one judgment is written
           raised,          \* ghost: judgments written for the standing refusal
           refusedAt,       \* the clock when the standing refusal began
-          line             \* the beat's line: "idle", "refused" or "ok"
+          line,            \* the beat's line: "idle", "refused", "ok" or "partial"
+          passed           \* ghost: the last pass got past every check before its batches
 
-rvars == <<refusal, judged, raised, refusedAt, line>>
+rvars == <<refusal, judged, raised, refusedAt, line, passed>>
 
 vars == <<target, prev, hasState, statePrev, stateAt, clock, switches,
           midSwitch, autoRollbacks, rolledLate, hooked, rolledOnRefusal, landTried,
-          refusal, judged, raised, refusedAt, line>>
+          refusal, judged, raised, refusedAt, line, passed>>
 
 TypeOK ==
   /\ target \in Binaries \cup {"none"}
@@ -124,7 +134,8 @@ TypeOK ==
   /\ judged \in BOOLEAN
   /\ raised \in 0..2
   /\ refusedAt \in 0..MaxClock
-  /\ line \in {"idle", "refused", "ok"}
+  /\ line \in {"idle", "refused", "ok", "partial"}
+  /\ passed \in BOOLEAN
 
 Init ==
   /\ target \in Binaries \cup {"none"}
@@ -145,6 +156,7 @@ Init ==
   /\ raised = 0
   /\ refusedAt = 0
   /\ line = "idle"
+  /\ passed = FALSE
 
 \* the wall clock advances
 Tick == /\ midSwitch = FALSE
@@ -208,7 +220,7 @@ AutoLandEnabled == "hookgate" \notin Broken \/ hooked
 \* (landloop.go clearRefusal, judgeRefusal; judgments.go LandRefusalClose).
 LandOk == /\ midSwitch = FALSE /\ AutoLandEnabled /\ landTried' = TRUE
           /\ refusal' = "none" /\ judged' = FALSE /\ raised' = 0 /\ refusedAt' = 0
-          /\ line' = "ok"
+          /\ line' = "ok" /\ passed' = TRUE
           /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                          switches, midSwitch, autoRollbacks, rolledLate, hooked,
                          rolledOnRefusal>>
@@ -220,16 +232,32 @@ LandOk == /\ midSwitch = FALSE /\ AutoLandEnabled /\ landTried' = TRUE
 \* nothing and the line falls back to IDLE; with "latejudge" no judgment is written
 \* here, only by LateJudge past the bound.
 LandRefused == /\ midSwitch = FALSE /\ AutoLandEnabled /\ landTried' = TRUE
+               /\ passed' = FALSE
                /\ \E r \in Reasons :
                     /\ refusal' = r
-                    /\ IF refusal = r
+                    /\ IF refusal = r /\ "rawkey" \notin Broken
                          THEN /\ UNCHANGED <<judged, raised, refusedAt>>
                          ELSE /\ refusedAt' = clock
                               /\ IF "latejudge" \in Broken
                                    THEN judged' = FALSE /\ raised' = 0
-                                   ELSE judged' = TRUE /\ raised' = 1
+                                   ELSE /\ judged' = TRUE
+                                        /\ raised' = IF refusal = r THEN raised + 1 ELSE 1
                     /\ line' = IF "silentdedupe" \in Broken /\ refusal = r
                                THEN "idle" ELSE "refused"
+               /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
+                              switches, midSwitch, autoRollbacks, rolledLate, hooked,
+                              rolledOnRefusal>>
+
+\* A pass that reached its batches, some landed and some refused one by one (land
+\* exits 1; landloop.go landBatched, clearRefusal): no refusal stands, and one that
+\* stood is cleared; each refused batch has its own record and judgment, outside this
+\* model. With "partialrefusal" the pass is read as a standing refusal.
+LandPartial == /\ midSwitch = FALSE /\ AutoLandEnabled /\ landTried' = TRUE
+               /\ passed' = TRUE /\ line' = "partial"
+               /\ IF "partialrefusal" \in Broken
+                    THEN \E r \in Reasons :
+                           /\ refusal' = r /\ judged' = TRUE /\ raised' = 1 /\ refusedAt' = clock
+                    ELSE /\ refusal' = "none" /\ judged' = FALSE /\ raised' = 0 /\ refusedAt' = 0
                /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                               switches, midSwitch, autoRollbacks, rolledLate, hooked,
                               rolledOnRefusal>>
@@ -242,7 +270,7 @@ LandBeat == /\ midSwitch = FALSE
                        THEN "refused" ELSE "idle"
             /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                            switches, midSwitch, autoRollbacks, rolledLate, hooked,
-                           rolledOnRefusal, landTried, refusal, judged, raised, refusedAt>>
+                           rolledOnRefusal, landTried, refusal, judged, raised, refusedAt, passed>>
 
 \* The reversed witness "latejudge": the judgment is written only once the refusal
 \* has stood past the bound (raiseIfStuck's LandDeadline, the tick's stall alarm).
@@ -252,7 +280,7 @@ LateJudge == /\ "latejudge" \in Broken
              /\ judged' = TRUE /\ raised' = raised + 1
              /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                             switches, midSwitch, autoRollbacks, rolledLate, hooked,
-                            rolledOnRefusal, landTried, refusal, refusedAt, line>>
+                            rolledOnRefusal, landTried, refusal, refusedAt, line, passed>>
 
 \* The server restarts (a switch, a rollback, a crash): the seat's hook is gone with it
 \* (the hook record says state=gone, why=the server restarted). SwitchRestart.
@@ -362,14 +390,14 @@ Next ==
   \/ Tick
   \/ Switch \/ SwitchWriteState \/ CrashSwitch
   \/ ManualRollback
-  \/ LandOk \/ LandRefused \/ LandBeat \/ LateJudge
+  \/ LandOk \/ LandRefused \/ LandPartial \/ LandBeat \/ LateJudge
   \/ SwitchRestart \/ SeatHooksIn \/ LandHookRefused \/ LandHookFault
   \/ LandFailedNoState \/ LandFailedPastDeadline \/ LandFailedError
      \/ LandFailedRollback
 
 \* The automatic land pass, whatever its outcome: a land, a refusal, or a failure
 \* (which may roll back). The hand land's gate is LandHookRefused, not this.
-AutoLand == LandOk \/ LandRefused \/ LandFailedNoState \/ LandFailedPastDeadline
+AutoLand == LandOk \/ LandRefused \/ LandPartial \/ LandFailedNoState \/ LandFailedPastDeadline
             \/ LandFailedError \/ LandFailedRollback
 
 Spec == Init /\ [][Next]_vars
@@ -413,6 +441,10 @@ AtMostOneJudgmentPerRefusal == raised <= 1
 \* While a refusal stands, the beat's line names it: never a bare LAND IDLE (the
 \* reversed witness "silentdedupe", epoch 20's twenty minutes of IDLE).
 BeatNamesTheRefusal == refusal # "none" => line = "refused"
+
+\* A refusal stands only when nothing could land: never after a pass that got past
+\* every check before its batches (a pass of landed and refused batches is none).
+RefusalOnlyWhenNothingCouldLand == refusal # "none" => ~passed
 
 \* Every refused landing is eventually reported to the seat: a standing refusal is
 \* judged, or cleared by a landing.

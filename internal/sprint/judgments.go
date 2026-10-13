@@ -3,6 +3,7 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -66,8 +67,10 @@ func stampAfter(a, b string) bool {
 // priority."). When the server's land loop (cmd/nova-sprint/landloop.go) is refused,
 // the refusal stands until a landing goes through or the refusal changes: its first
 // beat raises one NLanderRefuses judgment to the coordinator naming the reason and
-// the remedy, the same refusal again raises none, a landing closes it, and another
-// reason closes it and raises its own. The tick's landing-stall alarm names it as
+// the remedy, the same refusal again (by LandRefusalKey) raises none, a pass that
+// gets past it closes it, and another reason closes it and raises its own. Only a
+// refusal before any batch stands: a pass whose batches landed or were refused one by
+// one is none (each refused batch has PropLandRefusal and its own judgment). The tick's landing-stall alarm names it as
 // the cause. The model is tla/ServerSwitch.tla (LandRefused, LandOk; the invariants
 // RefusalJudgedAtOnce, AtMostOneJudgmentPerRefusal, BeatNamesTheRefusal).
 const NLanderRefuses = "the lander refuses every landing"
@@ -87,31 +90,60 @@ func landRefusalJudgments(s *Snapshot) []Open {
 	return open
 }
 
-// LandRefusalRaise is the plan that raises the standing refusal's judgment, what
-// its reason and remedy, by who: none when one with the same text is open already
-// (a server restarted under the same refusal says it once); any open for another
-// refusal is closed in the same plan.
+// landRefusalNumber is a number in a refusal's text, with any unit it carries: a count,
+// an id, a timing, an epoch.
+var landRefusalNumber = regexp.MustCompile(`[0-9]+(\.[0-9]+)?[a-zµ]*`)
+
+// LandRefusalKey is what makes two refusals the same refusal: the text with every
+// number (and its unit) one placeholder, spaces folded, lower case. A refusal whose
+// text carries a pass's timings, counts or ids is the same refusal pass after pass, so
+// its since stands and its one judgment is never closed and raised again
+// (tla/ServerSwitch.tla LandRefused, the reversed witness "rawkey").
+func LandRefusalKey(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(landRefusalNumber.ReplaceAllString(text, "#")), " "))
+}
+
+// LandRefusalSaid says a judgment of the refusal what (by LandRefusalKey) is in the
+// store's open notes, open or acknowledged: the seat has it, or has acknowledged it.
+func LandRefusalSaid(open []Open, what string) bool {
+	key := LandRefusalKey(what)
+	for _, o := range open {
+		if o.Note.Type == NLanderRefuses && (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && LandRefusalKey(o.Note.What) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// LandRefusalRaise is the plan that raises the standing refusal's judgment, what its
+// reason and remedy, by who: none when one of the same refusal (LandRefusalKey) is
+// open or acknowledged already (a server restarted under the same refusal says it
+// once). prev is the refusal this one replaced on this server: its judgment is closed
+// in the same plan, and no other, so a second server's refusal never closes the
+// first's.
 //
 // tla/ServerSwitch.tla LandRefused
-func LandRefusalRaise(s *Snapshot, what, who string) Plan {
+func LandRefusalRaise(s *Snapshot, what, who, prev string) Plan {
 	var p Plan
-	said := false
-	for _, o := range landRefusalJudgments(s) {
-		if o.Note.What == what {
-			said = true
-			continue
+	key, prevKey := LandRefusalKey(what), LandRefusalKey(prev)
+	all := append(append([]Open(nil), s.Open...), s.Acked...)
+	if LandRefusalSaid(all, what) {
+		return p
+	}
+	if prev != "" && prevKey != key {
+		for _, o := range landRefusalJudgments(s) {
+			if LandRefusalKey(o.Note.What) == prevKey {
+				p.Closes = append(p.Closes, o)
+			}
 		}
-		p.Closes = append(p.Closes, o)
 	}
-	if !said {
-		p.Notes = append(p.Notes, Note{Kind: Judgment, Type: NLanderRefuses, What: what, Who: who, To: s.Coordinator, At: s.Now,
-			SprintLevel: true, Decisions: append([]string(nil), LandRefusalDecisions...)})
-	}
+	p.Notes = append(p.Notes, Note{Kind: Judgment, Type: NLanderRefuses, What: what, Who: who, To: s.Coordinator, At: s.Now,
+		SprintLevel: true, Decisions: append([]string(nil), LandRefusalDecisions...)})
 	return p
 }
 
 // LandRefusalClose is the plan that closes the standing refusal's judgment once a
-// landing has gone through.
+// pass has got past it (a landing, or a batch refused on its own).
 //
 // tla/ServerSwitch.tla LandOk
 func LandRefusalClose(s *Snapshot) Plan {

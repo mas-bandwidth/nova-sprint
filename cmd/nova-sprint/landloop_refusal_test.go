@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // refusalRig is the land loop with every outside thing faked: the merge queue's count
@@ -29,27 +31,47 @@ type refusalRig struct {
 	coord string // the coordinator the queue names
 	hold  chan struct{}
 	calls int
+	// pass, when set, is land itself: what it prints and its exit
+	pass func(call int, stdout, stderr io.Writer) int
+	// queue, when set, is the queue's coordinator on each read (the cycle's, then land's)
+	queue func(read int) string
+	reads int
 }
 
 func newRefusalRig(t *testing.T) *refusalRig {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1")
+	return newRefusalRigOn(t, ta)
+}
+
+// newRefusalRigOn is the rig on a test app whose store is already made: a second
+// server on the first's store is a restart.
+func newRefusalRigOn(t *testing.T, ta *testApp) *refusalRig {
+	t.Helper()
 	r := &refusalRig{t: t, ta: ta, coord: "coordinator"}
 	b := ta.a.landState()
 	b.mu.Lock()
 	b.queueSeam = func(context.Context, string) (int, string, string, error) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
+		r.reads++
+		if r.queue != nil {
+			return 6, r.queue(r.reads), "s1", nil
+		}
 		return 6, r.coord, "s1", nil
 	}
 	b.landSeam = func(_ []string, stdout, stderr io.Writer, _ **hookGateError) int {
 		r.mu.Lock()
-		why, hold := r.why, r.hold
+		why, hold, pass := r.why, r.hold, r.pass
 		r.calls++
+		call := r.calls
 		r.mu.Unlock()
 		if hold != nil {
 			<-hold
+		}
+		if pass != nil {
+			return pass(call, stdout, stderr)
 		}
 		if why == "" {
 			_, _ = fmt.Fprintln(stdout, "LAND OK stream=s1 cards=1 bench=here wall=0.1s")
@@ -225,12 +247,181 @@ func TestALandRefusalSplitsIntoReasonAndRemedy(t *testing.T) {
 			"the sprint row names no git_identity", "nova-config sprint set --git_identity x then nova-config apply"},
 		{"LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again; run: nova-sprint where",
 			"LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again", "nova-sprint where"},
-		{"LAND REFUSED stream=s1 conflict on s1-2\nnova-sprint land REFUSED: one batch refused; run: nova-sprint land --dry-run",
-			"LAND REFUSED stream=s1 conflict on s1-2", "nova-sprint land --dry-run"},
+		{"LAND OK stream=s1 cards=1 base=main tip=abc ids=s1-1 fetch=0.2s\nnova-sprint land REFUSED: the sprint row names no git_identity; run: nova-config apply",
+			"the sprint row names no git_identity", "nova-config apply"},
+		{"nova-sprint land: the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where",
+			"the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported", "nova-sprint where"},
 		{"something with no remedy", "something with no remedy", landRefusalRemedy},
 	} {
 		reason, remedy := landRefusalOf(tc.said)
 		assert.Equal(t, tc.reason, reason, tc.said)
 		assert.Equal(t, tc.remedy, remedy, tc.said)
 	}
+}
+
+// Land exits 1 when any batch is refused, though others landed (land.go report): such a
+// pass reached its batches, so no refusal stands and none is judged, and a refusal that
+// stood is cleared by it; each refused batch has its own record (PropLandRefusal) and
+// judgment (tla/ServerSwitch.tla LandPartial).
+func TestAPassOfLandedAndRefusedBatchesIsNoStandingRefusal(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	r.set("the sprint row names no git_identity; run: nova-config apply")
+	out, _ := r.beat(nil)
+	require.Contains(t, out, "LAND REFUSED queued=6")
+	require.Len(t, r.judgments(), 1)
+	r.mu.Lock()
+	r.pass = func(call int, stdout, stderr io.Writer) int {
+		_, _ = fmt.Fprintf(stdout, "LAND OK stream=s1 cards=1 base=main tip=abc ids=s1-1 fetch=0.%ds merge=0.1s\n", call)
+		_, _ = fmt.Fprintf(stderr, "LAND REFUSED stream=s2 cards=2 base=main tip=- ids=s2-1..s2-2 fetch=0.%ds merge=0.2s\n", call)
+		_, _ = fmt.Fprintln(stderr, "NOTE nothing was pushed or reported for stream s2; its cards stay queued")
+		return 1
+	}
+	r.mu.Unlock()
+	for i := range 5 {
+		out, _ = r.beat(nil)
+		assert.NotContains(t, out, "LAND REFUSED queued=", "beat %d: a pass that reached its batches is no standing refusal:\n%s", i+1, out)
+		assert.NotContains(t, out, "reason=LAND OK", "beat %d", i+1)
+		assert.Contains(t, out, "LAND OK stream=s1", "beat %d: the pass's own lines", i+1)
+		assert.Empty(t, r.judgments(), "beat %d: no standing-refusal judgment, and the one that stood is closed", i+1)
+	}
+}
+
+// A refusal whose text carries a pass's timings or counts is the same refusal pass
+// after pass (sprint.LandRefusalKey): one judgment, never closed and raised again, and
+// its since keeps growing.
+func TestARefusalWhoseTextVariesIsOneRefusal(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	r.mu.Lock()
+	r.pass = func(call int, _, stderr io.Writer) int {
+		return refuse(stderr, "land", fmt.Sprintf("the fence names another server, seen %d.%ds ago at tick %d; run: nova-sprint where", call, call*7%10, 1000+call))
+	}
+	r.mu.Unlock()
+	var first string
+	for i := range 12 {
+		out, _ := r.beat(nil)
+		m := regexp.MustCompile(`LAND REFUSED queued=6 since=(\S+) reason=`).FindStringSubmatch(out)
+		if assert.NotNil(t, m, "beat %d:\n%s", i+1, out) {
+			assert.Equal(t, (time.Duration(i) * LandEvery).String(), m[1], "beat %d: since grows", i+1)
+		}
+		js := r.judgments()
+		if assert.Len(t, js, 1, "beat %d: one judgment", i+1) {
+			if first == "" {
+				first = js[0].Note.ID
+			}
+			assert.Equal(t, first, js[0].Note.ID, "beat %d: the same judgment, never closed and raised again", i+1)
+		}
+	}
+	all := r.allJudgments()
+	assert.Len(t, all, 1, "one judgment was ever written")
+}
+
+// A judgment the store does not take is said, once, as LAND JUDGMENT NOT WRITTEN, and
+// written on the first beat the store takes it.
+func TestAJudgmentNotWrittenIsSaidOnce(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	var down sync.Mutex
+	broken := true
+	backend := r.ta.a.backend
+	r.ta.a.backend = func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error) {
+		down.Lock()
+		b := broken
+		down.Unlock()
+		if b {
+			return nil, errors.New("the store is down")
+		}
+		return backend(ctx, addr, names)
+	}
+	r.set("the sprint row names no git_identity; run: nova-config apply")
+	var text string
+	for range 5 {
+		out, _ := r.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6", "the refusal is still named")
+		text += out
+	}
+	assert.Equal(t, 1, strings.Count(text, "LAND JUDGMENT NOT WRITTEN: "), "said once:\n%s", text)
+	assert.Contains(t, text, "the store is down")
+	down.Lock()
+	broken = false
+	down.Unlock()
+	out, _ := r.beat(nil)
+	assert.NotContains(t, out, "LAND JUDGMENT NOT WRITTEN")
+	assert.Len(t, r.judgments(), 1, "written on the first beat the store takes it")
+}
+
+// A server restarted under a refusal whose judgment is open does not raise it again;
+// a cards-but-no-coordinator re-read clears nothing; and a second server's other
+// refusal never closes the first's judgment, which is checked against the store, not
+// a flag.
+func TestARestartUnderAnOpenJudgmentRaisesNoSecond(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	why := "the sprint row names no git_identity; run: nova-config apply"
+	r.set(why)
+	_, _ = r.beat(nil)
+	require.Len(t, r.judgments(), 1)
+
+	// the restart: a new server on the same store
+	ta2 := newTestApp(t)
+	ta2.a.backend = r.ta.a.backend
+	r2 := newRefusalRigOn(t, ta2)
+	r2.set(why)
+	for range 3 {
+		out, _ := r2.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6")
+	}
+	assert.Len(t, r.judgments(), 1, "the restarted server raises no second judgment")
+	assert.Len(t, r.allJudgments(), 1)
+
+	// a second server fenced with another reason: its judgment is its own
+	r2.set("the merge queue's fence names another server; run: nova-sprint where")
+	_, _ = r2.beat(nil)
+	_, _ = r.beat(nil)
+	js := r.judgments()
+	assert.Len(t, js, 2, "each server's refusal has its judgment: %+v", js)
+
+	// the first's judgment closed by another step: the first raises it again
+	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	_, err = st.Run(t.Context(), store.Step{Verb: "land", Plan: sprint.LandRefusalClose})
+	require.NoError(t, err)
+	require.Empty(t, r.judgments())
+	_, _ = r.beat(nil)
+	if js := r.judgments(); assert.Len(t, js, 1) {
+		assert.Contains(t, js[0].Note.What, "git_identity", "checked against the store, not the flag")
+	}
+
+	// the cycle reads cards and a coordinator, land's own re-read none: nothing ran,
+	// nothing is cleared
+	r.mu.Lock()
+	r.queue = func(read int) string {
+		if read%2 == 0 {
+			return ""
+		}
+		return "coordinator"
+	}
+	r.mu.Unlock()
+	for range 3 {
+		out, _ := r.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6", "a round that ran nothing clears nothing:\n%s", out)
+	}
+	assert.Len(t, r.judgments(), 1)
+}
+
+// allJudgments is every lander-refusal judgment ever written, open or closed.
+func (r *refusalRig) allJudgments() []sprint.Note {
+	r.t.Helper()
+	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(r.t, err)
+	notes, _, err := st.B.NotesSince(r.t.Context(), "", 100000)
+	require.NoError(r.t, err)
+	var got []sprint.Note
+	for _, n := range notes {
+		if n.Kind == sprint.Judgment && n.Type == sprint.NLanderRefuses {
+			got = append(got, n)
+		}
+	}
+	return got
 }

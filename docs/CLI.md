@@ -418,10 +418,14 @@ contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/m
 
 `run --listen --land` prints one line every two seconds. While a landing is refused, every
 line is `LAND REFUSED queued=<n> since=<age> reason=<reason> run: <remedy>`, never `LAND
-IDLE`, until a landing goes through or the refusal changes; the first refused cycle raises
+IDLE`, until a pass gets past it or the refusal changes. Only a refusal before any batch
+stands (a pass of landed and refused batches is none; each refused batch has its own
+judgment), keyed on its reason with numbers folded, so timings never make it new. The first
+refused cycle raises
 one judgment, `the lander refuses every landing`, naming the reason and the remedy
-(decisions `check`, `ack`), and the tick's `landing stalled` judgment names it too. A landing
-closes it; another reason closes it and raises its own. `LAND IDLE` with cards queued says
+(decisions `check`, `ack`), and the tick's `landing stalled` judgment names it too. A pass
+that gets past it closes it; another reason closes it and raises its own. A judgment the
+store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. `LAND IDLE` with cards queued says
 why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
 The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
 
