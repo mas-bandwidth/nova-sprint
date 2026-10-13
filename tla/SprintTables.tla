@@ -286,11 +286,17 @@ CIVals == {"", "red"}
 \* their last write, the work table.
 Verbs == {"start", "finish", "fleetdown", "drop"}
 
-VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
+VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
 
-vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
+GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead>>
+
+vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
 
 TypeOK ==
+  /\ briefGeneration \in [Card -> 0..1]
+  /\ attemptGeneration \in [Card -> 0..1]
+  /\ headGeneration \in [Card -> 0..1]
+  /\ keptHead \in [Card -> BOOLEAN]
   /\ state \in [Card -> Cells]
   /\ needs \in [Card -> SUBSET Card]
   /\ waived \in [Card -> SUBSET Card]
@@ -405,6 +411,10 @@ Needed(c) ==
   \E d \in Card \ {c} : IsOpen(state[d]) /\ c \in needs[d] /\ c \notin waived[d]
 
 Init ==
+  /\ briefGeneration = [c \in Card |-> 0]
+  /\ attemptGeneration = [c \in Card |-> 0]
+  /\ headGeneration = [c \in Card |-> 0]
+  /\ keptHead = [c \in Card |-> FALSE]
   /\ state = InitOf
   /\ \A c \in Sentinels : state[c] = "waiting"
   /\ needs = NeedsOf
@@ -527,8 +537,8 @@ Finish ==
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
     /\ Broken = "finishunmet" \/ NeedsMet(c)
-    /\ state' = [state EXCEPT ![c] = "review"]
-    /\ wplace' = [wplace EXCEPT ![c] = "finished"]
+    /\ state' = [state EXCEPT ![c] = IF Broken = "oldheadreviewed" \/ attemptGeneration[c] = briefGeneration[c] \/ keptHead[c] THEN "review" ELSE "ready"]
+    /\ wplace' = [wplace EXCEPT ![c] = IF state'[c] = "review" THEN "finished" ELSE "withdrawn"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pendstate' = IF Free THEN state' ELSE pendstate
     /\ pending' = pending
@@ -1122,8 +1132,8 @@ CrashFinish ==
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
     /\ state' = state
-    /\ pendstate' = [state EXCEPT ![c] = "review"]
-    /\ wplace' = [wplace EXCEPT ![c] = "finished"]
+    /\ pendstate' = [state EXCEPT ![c] = IF attemptGeneration[c] = briefGeneration[c] \/ keptHead[c] THEN "review" ELSE "ready"]
+    /\ wplace' = [wplace EXCEPT ![c] = IF pendstate'[c] = "review" THEN "finished" ELSE "withdrawn"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pending' = "finish"
     /\ flags' = flags
@@ -1187,7 +1197,7 @@ Repair ==
 \* outside events off run Spec; its state space is the module's own, the ci,
 \* pending and pendstate variables frozen (so it does not grow). The crash
 \* instance runs CrashSpec, which adds the outside events and the repair.
-Next ==
+LegacyNext ==
   \/ Resolve \/ Start \/ Take \/ Finish \/ Withdraw \/ FleetDown \/ FleetUp
   \/ Ask \/ AskAnother \/ ReadStart \/ Read
   \/ Accept \/ Rework \/ Return \/ Redo \/ Merge \/ Release \/ AddMove
@@ -1198,10 +1208,35 @@ Next ==
 
 \* The outside events and the repair are only in the crash instance's spec, so
 \* every MCSprintTables case (which runs Spec) keeps its budget.
+\* Brief: one bounded generation change, with the explicit keep-head escape.
+Brief ==
+  \E c \in Flash :
+    /\ Free
+    /\ state[c] = "working"
+    /\ briefGeneration[c] = 0
+    /\ briefGeneration' = [briefGeneration EXCEPT ![c] = 1]
+    /\ keptHead' = keptHead
+    /\ state' = state
+    /\ wplace' = wplace
+    /\ rplace' = rplace
+    /\ pendstate' = state'
+    /\ UNCHANGED <<attemptGeneration, headGeneration, needs, waived, everLanded, flags, members, wmember, mg, sstream, scause, ranked, pending, ci>>
+
+\* Attempt/head provenance follows the same lifecycle step; metadata never
+\* changes a legacy action's enabledness.
+GenerationStep ==
+  /\ attemptGeneration' = [c \in Card |-> IF state'[c] = "working" /\ state[c] # "working" THEN briefGeneration[c] ELSE attemptGeneration[c]]
+  /\ headGeneration' = [c \in Card |-> IF state'[c] = "review" /\ state[c] = "working" THEN attemptGeneration[c] ELSE headGeneration[c]]
+  /\ UNCHANGED <<briefGeneration, keptHead>>
+
+Next == (LegacyNext /\ GenerationStep) \/ Brief
+
+NoOldBriefHeadInReview ==
+  \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
+
 CrashNext ==
   \/ Next
-  \/ CiRed \/ CiGreen \/ Ack
-  \/ Crash \/ Repair
+  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep
 
 Spec == Init /\ [][Next]_vars
 CrashSpec == Init /\ [][CrashNext]_vars
