@@ -625,10 +625,11 @@ AtMostOneJudgmentPerRefusal == \A c \in Causes : raisedFor[c] <= 1
 \* (the reversed witness "ackcloses").
 AckSticks == ~reraisedAfterAck
 
-\* No stale acknowledgement: a standing cause held as acknowledged was acknowledged by
-\* the seat while it stood, never left over from before it last cleared (the
-\* reversed witness "staleack": the cause comes back before the clear's close lands).
-NoStaleAck == (refusal # "none" /\ stored[refusal] = "acked") => ackedOnce
+\* No stale acknowledgement silences a cause: a standing cause held as acknowledged
+\* that the seat did not acknowledge while it stood (one left over from before it last
+\* cleared, its close still owed) has its raise owed, written once the close lands
+\* (the reversed witness "staleack": the raise reads the stale record as said).
+NoStaleAck == (refusal # "none" /\ stored[refusal] = "acked" /\ ~ackedOnce) => pending
 
 \* While a refusal stands, every beat's line names it: never a bare LAND IDLE, a
 \* landing in flight, a round with no coordinator or nothing queued included (the
