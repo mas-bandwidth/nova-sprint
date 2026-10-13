@@ -599,8 +599,9 @@ remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line
 exit 2, nothing written. A `TEST:` line is accepted in its Go form
 (`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
 C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
-rather than in `*.go`; preflight's TEST check does the same
-([SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), the TEST line). A base that cannot be
+rather than in `*.go`; preflight's TEST check does the same, and the brief check accepts a
+ctest `TEST:` with no package, its test file held by the `PATHS:` checks instead of a
+directory ([SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), the TEST line). A base that cannot be
 read refuses with `MISSING: <what>`; a brief
 naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 11, the brief checks).

@@ -134,7 +134,8 @@ func Lint(id, brief string, o Options) []cardgen.LintFinding {
 //
 //   - tier-line: line 1 names a tier (`tier: flash|pro|heavy|frontier`);
 //   - test-outside-paths: the TEST line's package is a directory PATHS names, so the
-//     test the card lands with is one it may edit;
+//     test the card lands with is one it may edit (a `ctest <Name>` TEST has no
+//     package and is not held to a directory, its test file held by the PATHS checks);
 //   - personal-name: no name of o.Names outside a double-quoted span (the owner's
 //     words, quoted, keep theirs), the card's own id, the WHO: line that pins a
 //     friend, or a path token (a whitespace- or comma-separated token containing a slash
@@ -258,14 +259,18 @@ func authorName(line string, names []string) string {
 // TestPackage is the package a brief's TEST line names, repository-relative with no
 // ./ and no trailing slash: the first field that is a path (`pkg/bus TestY`,
 // `./pkg/bus TestY`, `./tools TestY`, `go test ./pkg/bus -run TestY`); "" for
-// TEST: none or a line that names none.
+// TEST: none, a `ctest <Name>` line (a ctest test has no package and is not held
+// to a directory), or a line that names none.
 func TestPackage(brief string) string {
 	value := ""
 	for _, line := range strings.Split(brief, "\n") {
 		if v, ok := strings.CutPrefix(line, "TEST:"); ok {
-			value = v
+			value = strings.TrimSpace(v)
 			break
 		}
+	}
+	if tl, _ := cardhdr.ParseTest(value); tl.Runner == "ctest" {
+		return ""
 	}
 	for _, f := range strings.Fields(value) {
 		dotted := strings.HasPrefix(f, "./")

@@ -91,6 +91,7 @@ func TestChecksRefuseWithTheFinding(t *testing.T) {
 	}
 	assert.Equal(t, []string{"tier-line"}, checks("rate-ada-x.w2", strings.Replace(clean, " tier: pro", "", 1)))
 	assert.Equal(t, []string{"test-outside-paths"}, checks("rate-ada-x.w2", strings.Replace(clean, "TEST: ./internal/x TestY", "TEST: internal/other TestY", 1)))
+	assert.Empty(t, checks("rate-ada-x.w2", strings.Replace(clean, "TEST: ./internal/x TestY", "TEST: ctest suite/one-two_3.4", 1)), "a ctest TEST has no package and is not held to a directory")
 	assert.Equal(t, []string{"personal-name"}, checks("rate-ada-x.w2", clean+"Run it on bench7.\n"))
 	assert.Equal(t, []string{"personal-name"}, checks("c", clean), "outside its own id the name is a name")
 	assert.Equal(t, []string{"dropped-card"}, checks("rate-ada-x.w2", clean+"Carry the work of old-card.w1.\n"))
@@ -117,6 +118,7 @@ func TestTestPackage(t *testing.T) {
 		"TEST: ./internal/x/ TestY\n":                       "internal/x",
 		"TEST: go test ./internal/x/... -run TestY\n":       "internal/x",
 		"TEST: none (a read card)\n":                        "",
+		"TEST: ctest suite/one-two_3.4\n":                   "",
 		"PATHS: a/*.go\n":                                   "",
 		"TEST: cmd/nova-x TestHelpExampleLinesRunAsPrinted": "cmd/nova-x",
 	} {
