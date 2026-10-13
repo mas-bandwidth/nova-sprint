@@ -6152,6 +6152,7 @@ for, the same table `wait` refuses by) is never left unanswered. Two rules.
   friend's card, and a card whose tier is pinned (the coordinator's `brief --tier`, `tier
   --set` or `rework --tier`, a brief that pins its model, a frontier card) stay held: a pin
   is the coordinator's word, and the rule never overrides it.
+  A tier has no live route when its route array is not empty, every route in it rests at current time (for any cause: credit, auth, or the seat's rest), and no up friend serves it; a route configured, enabled and funded but missing from its tier's array does not count as live, as the array is what the deal draws from (live case: the pro array lacked six enabled opencode pro routes until the owner set it by hand, nova-config tier set pro, rev 742, 2026-10-13). While that holds, the tier's one `no route serves the tier` judgment stands, opening with the cause, no deadline is raised for a tier-blocked card that is not working, no stale judgment is shown for a stream whose every ready or waiting primary is tier-blocked and which has nothing working, in review or merging, and card-holding judgments whose every held card is tier-blocked are skipped by the raised-again and silent-seat checks. When a route of the tier is live again, the tier judgment closes and the quieted checks resume by themselves, each measuring from its own stamps.
 
 (b) Everything else that holds a card escalates. Past its deadline each such judgment is
 raised again at every DeadlineJudgment of running time it stays unanswered (a push to the
