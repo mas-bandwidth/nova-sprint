@@ -188,6 +188,16 @@ func (st *Store) HeldBack(ctx context.Context) (int, error) {
 	return sprint.HeldBack(&sprint.Snapshot{Work: t}), nil
 }
 
+// HeldBackByStream is sprint.HeldBackByStream over the work table's waiting
+// column, read alone (workColumn), as HeldBack is.
+func (st *Store) HeldBackByStream(ctx context.Context) (map[string]int, error) {
+	t, err := st.workColumn(ctx, sprint.Waiting)
+	if err != nil || t == nil {
+		return nil, err
+	}
+	return sprint.HeldBackByStream(&sprint.Snapshot{Work: t}), nil
+}
+
 // LandedAt is the landed stamps of the work table's landed column, read alone
 // (workColumn), for the landing rate of the ETA (sprint.LandingRate); a card
 // with no stamp is left out.

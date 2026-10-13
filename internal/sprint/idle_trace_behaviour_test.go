@@ -239,3 +239,37 @@ func TestTickIdleEndsAnEpisodeThatNeverSaidItsNote(t *testing.T) {
 	said, _ := w.s.Fleet.Prop(PropIdleSaid)
 	assert.Empty(t, said, "the episode's idle_said stayed unset")
 }
+
+func TestIdleBlockersAndIdleLine(t *testing.T) {
+	t.Parallel()
+	assert.Empty(t, IdleBlockers(nil, 3))
+	assert.Empty(t, IdleBlockers(&Snapshot{}, 3))
+	assert.Equal(t, "", IdleLine(nil))
+	assert.Equal(t, "", IdleLine([]string{}))
+
+	w := idleWorld(t,
+		waitCard("x", "ghost"),
+		waitCard("y", "ghost"),
+	)
+	blockers := IdleBlockers(w.s, 3)
+	require.Len(t, blockers, 1)
+	assert.Equal(t, "2 behind 2 cards with missing needs", blockers[0])
+	assert.Equal(t, "idle: 2 behind 2 cards with missing needs", IdleLine(blockers))
+
+	// at most n blockers
+	wMany := setup(t, 0)
+	wMany.s.Work.SetRows(append(wMany.s.Work.Rows(), "s2"))
+	for i := 1; i <= 5; i++ {
+		sid := fmt.Sprintf("sent-%d", i)
+		wid := fmt.Sprintf("wait-%d", i)
+		wMany.s.Work.Put(&Card{ID: sid, Row: "s2", Col: Waiting, Score: 1, Rev: 1,
+			Fields: map[string]string{"kind": "sentinel", FieldHeld: "1"}})
+		wMany.s.Work.Put(waitCard(wid, sid))
+	}
+	top3 := IdleBlockers(wMany.s, 3)
+	require.Len(t, top3, 3, "at most 3 blockers")
+	line := IdleLine(top3)
+	assert.True(t, strings.HasPrefix(line, "idle: "))
+	assert.Equal(t, 2, strings.Count(line, "; "), "3 blockers separated by 2 semicolons")
+}
+

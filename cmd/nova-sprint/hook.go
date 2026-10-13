@@ -187,7 +187,7 @@ func cloneKeys(keys map[string]bool) map[string]bool { return maps.Clone(keys) }
 // worker's --as. exempt is the caller's word on the call (hookExemptCall reads its
 // words; the store's open has the verb alone).
 func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bool) (string, error) {
-	if c.actor == "" || exempt || !hookArmed(c.actor) {
+	if c.actor == "" || exempt || !hookArmed(c.actor) || (st != nil && st.ByHand) {
 		return "", nil
 	}
 	holder, err := st.B.Coordinator(ctx)
@@ -206,6 +206,69 @@ func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bo
 		}
 	}
 	return sprint.HookGateCall(call, st.Now()), nil
+}
+
+// defaultHookActor fills in an omitted actor only when the store's coordinator has
+// both live, proven pushes. The identity comes from the sprint store, never from a
+// local seat/configuration file. Explicit --actor and NOVA_SPRINT_ACTOR retain their
+// ordinary precedence. When a candidate cannot be proven, notice names the withheld
+// default without exposing backend details; resolved says whether this call inserted
+// the proven identity. The discovery reads the backend directly so it does not tick
+// or otherwise mutate a twin before the command's normal store path.
+func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProcessActor bool) ([]string, string, bool) {
+	v := readVerb(args)
+	if v.words == 0 || v.help || v.err != nil || v.given("actor") || hookExemptCall(v.name, args[v.words:]) {
+		return args, "", false
+	}
+	if verbClasses[v.name] != classCoordinator && verbClasses[v.name] != classSeat {
+		return args, "", false
+	}
+	if !ignoreProcessActor && a.getenv("NOVA_SPRINT_ACTOR") != "" {
+		return args, "", false
+	}
+	redis := redisOverride
+	if redis == "" {
+		redis = firstEnv(a.getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr)
+	}
+	if f := v.fs.Lookup("redis"); f != nil && v.given("redis") {
+		redis = f.Value.String()
+	}
+	if strings.TrimSpace(redis) == "" {
+		return args, "ACTOR default withheld: no sprint store address is configured", false
+	}
+	ctx := context.Background()
+	b, err := a.backend(ctx, redis, sprint.Names{})
+	if err != nil {
+		return args, "ACTOR default withheld: the sprint backend could not be opened", false
+	}
+	st := &store.Store{B: b, Now: a.now}
+	holder, err := b.Coordinator(ctx)
+	if err != nil {
+		return args, "ACTOR default withheld: the sprint backend could not read the coordinator", false
+	}
+	if holder == "" {
+		return args, "ACTOR default withheld: no coordinator is recorded in the sprint store", false
+	}
+	if !hookArmed(holder) {
+		return args, "ACTOR default withheld: the coordinator hook gate is not armed", false
+	}
+	seat, seatOK, err := readHook(ctx, st)
+	if err != nil {
+		return args, "ACTOR default withheld: the sprint backend could not read the coordinator's hook record", false
+	}
+	if !sprint.HookLive(seat, seatOK, holder, st.Now()) {
+		return args, "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven", false
+	}
+	shared, err := a.hookerShared(ctx, holder)
+	if err != nil {
+		return args, "ACTOR default withheld: the bus backend could not read the coordinator's push proof", false
+	}
+	if !shared.PushLive(sprint.HookPushBus, st.Now()) {
+		return args, "ACTOR default withheld: the coordinator's bus push proof is missing, stale, or invalid", false
+	}
+	out := slices.Clone(args)
+	out = slices.Insert(out, v.words, "--actor", holder)
+	return out, "ACTOR " + oneline.Field(holder) + " (coordinator hook proven)", true
 }
 
 // hookFirst runs the gate before the verb, on the verb's own words, so its refusal is
@@ -348,11 +411,12 @@ const (
 // copies of the records the gate has read (by name, with when each was read, on this
 // process's own clock): one per process, shared by the server's lane apps.
 type hookerBox struct {
-	mu        sync.Mutex
-	cur       sprint.Hooker
-	bus       *bus.Bus
-	cache     map[string]hookCopy
-	refilling bool
+	mu         sync.Mutex
+	cur        sprint.Hooker
+	bus        *bus.Bus
+	cache      map[string]hookCopy
+	generation map[string]uint64 // incremented by hookerForget before an off-lock read may commit; see tla/HookCache.tla
+	refilling  bool
 }
 
 type hookCopy struct {
@@ -364,34 +428,45 @@ type hookCopy struct {
 // hookCacheFresh old, else read now (and kept). In a server the copies are refilled every
 // hookCacheRefill off the line (hookerRefresh), so the read here is the first one only.
 func (a *app) hookerShared(ctx context.Context, identity string) (sprint.HookShared, error) {
-	a.hk.mu.Lock()
-	if c, ok := a.hk.cache[identity]; ok && time.Since(c.at) <= hookCacheFresh {
+	for {
+		a.hk.mu.Lock()
+		if c, ok := a.hk.cache[identity]; ok && time.Since(c.at) <= hookCacheFresh {
+			a.hk.mu.Unlock()
+			return c.rec, nil
+		}
+		generation := a.hk.generation[identity]
+		h, err := a.hookerLocked(ctx)
 		a.hk.mu.Unlock()
-		return c.rec, nil
+		if err != nil {
+			return sprint.HookShared{}, err
+		}
+		rec, _, err := h.Shared(ctx, identity)
+		a.hk.mu.Lock()
+		if a.hk.generation[identity] != generation {
+			a.hk.mu.Unlock()
+			if err := ctx.Err(); err != nil {
+				return sprint.HookShared{}, err
+			}
+			continue // the proof changed during the read; use its new copy or read again
+		}
+		if err != nil {
+			a.hk.mu.Unlock()
+			return sprint.HookShared{}, err
+		}
+		if a.hk.cache == nil {
+			a.hk.cache = map[string]hookCopy{}
+		}
+		a.hk.cache[identity] = hookCopy{rec: rec, at: time.Now()}
+		start := a.serveAddr != "" && !a.hk.refilling
+		if start {
+			a.hk.refilling = true
+		}
+		a.hk.mu.Unlock()
+		if start {
+			go a.hookerRefresh(context.Background())
+		}
+		return rec, nil
 	}
-	h, err := a.hookerLocked(ctx)
-	a.hk.mu.Unlock()
-	if err != nil {
-		return sprint.HookShared{}, err
-	}
-	rec, _, err := h.Shared(ctx, identity)
-	if err != nil {
-		return sprint.HookShared{}, err
-	}
-	a.hk.mu.Lock()
-	if a.hk.cache == nil {
-		a.hk.cache = map[string]hookCopy{}
-	}
-	a.hk.cache[identity] = hookCopy{rec: rec, at: time.Now()}
-	start := a.serveAddr != "" && !a.hk.refilling
-	if start {
-		a.hk.refilling = true
-	}
-	a.hk.mu.Unlock()
-	if start {
-		go a.hookerRefresh(context.Background())
-	}
-	return rec, nil
 }
 
 // hookerRefresh keeps a server's copies fresh: every hookCacheRefill it reads each record
@@ -402,22 +477,38 @@ func (a *app) hookerRefresh(ctx context.Context) {
 	t := time.NewTicker(hookCacheRefill)
 	defer t.Stop()
 	for range t.C {
-		a.hk.mu.Lock()
-		h := a.hk.cur
-		names := slices.Collect(maps.Keys(a.hk.cache))
-		a.hk.mu.Unlock()
-		if h == nil {
+		a.hookerRefill(ctx)
+	}
+}
+
+// hookerRefill takes each identity's generation with its cache entry. A proof
+// written while the bus read is in flight invalidates that reply (SPEC-SPRINT,
+// "The two pushes").
+func (a *app) hookerRefill(ctx context.Context) {
+	type entry struct {
+		name       string
+		generation uint64
+	}
+	a.hk.mu.Lock()
+	h := a.hk.cur
+	names := make([]entry, 0, len(a.hk.cache))
+	for n := range a.hk.cache {
+		names = append(names, entry{n, a.hk.generation[n]})
+	}
+	a.hk.mu.Unlock()
+	if h == nil {
+		return
+	}
+	for _, n := range names {
+		rec, _, err := h.Shared(ctx, n.name)
+		if err != nil {
 			continue
 		}
-		for _, n := range names {
-			rec, _, err := h.Shared(ctx, n)
-			if err != nil {
-				continue
-			}
-			a.hk.mu.Lock()
-			a.hk.cache[n] = hookCopy{rec: rec, at: time.Now()}
-			a.hk.mu.Unlock()
+		a.hk.mu.Lock()
+		if _, ok := a.hk.cache[n.name]; ok && a.hk.generation[n.name] == n.generation {
+			a.hk.cache[n.name] = hookCopy{rec: rec, at: time.Now()}
 		}
+		a.hk.mu.Unlock()
 	}
 }
 
@@ -425,6 +516,10 @@ func (a *app) hookerRefresh(ctx context.Context) {
 // read again at the next gate.
 func (a *app) hookerForget(identity string) {
 	a.hk.mu.Lock()
+	if a.hk.generation == nil {
+		a.hk.generation = map[string]uint64{}
+	}
+	a.hk.generation[identity]++
 	delete(a.hk.cache, identity)
 	a.hk.mu.Unlock()
 }

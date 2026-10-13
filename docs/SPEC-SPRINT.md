@@ -5574,6 +5574,9 @@ inbox (and by `where --json`). A stream with nothing on the table (every primary
 or restored empty by a clear) is waiting with no `since` and is never stale. A
 stream whose every card on the table and not landed waits (behind a sentinel, or on
 a need) is held by what it waits on, which the table shows, and is never stale.
+Its clock carries that count beside its stored state as `held_cards` (the tick's
+per-stream count of the held cards, `sprint.HeldBackByStream`): a card hold is
+not a stream hold, and no view may show the count as the stream's state.
 `wait stale:<stream>~<epoch> --for <duration>` writes the time on the stream's
 control card (`stale_review`), and the stream is not shown stale before it.
 This is pull visibility; nothing claims to detect a dead process.
@@ -7990,9 +7993,11 @@ all the card checks we do now, should be a new verb 'nova-sprint check'", "if yo
 sprint before checking, then it will fail and tell you to check."; tla/MachineReady.tla Check,
 CardChange, StartRefusedCheck, StartOnlyChecked, CleanRecordHasNoDefect). The night of
 2026-10-13 the seat ran the pre-start card checks by hand before the schema sprint could start.
-`nova-sprint check cards [--stream <s>...] [--json]`, a coordinator verb beside `check` (the
+`nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]`, a coordinator verb beside `check` (the
 store's invariants, unchanged), reads the epoch's work table (every card not dropped, and the
-records its needs name) and the streams' control cards, and runs the core kinds
+records its needs name) and the streams' control cards (or with `--from <export>`, an export
+file or directory of `card <id> --json`, `card --all --json` with optional `briefs/<id>.md` and
+`trees/<repo>__<base>.txt`, or a `backup --file` / RESTORE dump, opening no store), and runs the core kinds
 (`sprint.CheckCards`, internal/sprint/cardcheck.go, pure over the snapshot and the base trees
 the verb reads from the lander's clone as add's PATHS admission does): **needs** (every need of
 an open card names a card of this epoch, not dropped; no self-need; no cycle, `needsCycle`; a
@@ -8006,11 +8011,24 @@ the needed card is the producer stream's sentinel), **names** (each stream's dis
 not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
 epoch), **stale-head** (a pushed head on an open card whose attempt is at or below its
 `brief_attempt`; `brief --keep-head` exempts it), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
-with no brief is a finding) and **brief-size** (a brief over `store.MaxBriefBytes`, or a card's
-record, its brief with its other fields, over the drain's 16384 bytes). It prints `CHECK <kind>
-<card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK cards=<n>` (exit 0)
-or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store that did not answer.
-Every run writes the epoch's one **check record** (internal/sprint/store/check_record.go, beside
+with no brief is a finding) and **brief-size** (a brief over the 16384 bytes the store and the
+drain hold a brief field to, `store.MaxBriefBytes`; the drain bounds each text field an entry
+sets, never a card's whole record, so a card's attempt, consumer and cost history is not
+measured: v1.2.17 summed every field and refused cards whose briefs were under the bound). It
+prints `CHECK <kind> <card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK
+cards=<n>` (exit 0) or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store
+that did not answer. **Warnings** (v1.2.18; the owner, 2026-10-13: "the gate keeps refusing on
+needs, bases, routes and brief size, but only warns on file overlap that a sentinel or stream
+order already serializes"; tla/MachineReady.tla WarnsNeverFail, WarnOnlyStarts): a same-file
+finding (both cards of one stream, whose lander lands them in line order), and a files finding
+whose every pair of writing cards, one of each stream, is ordered by the work table's live waits
+(`WaitsFor`: a named need not landed and not waived, a waiting card's stop, a stop's line before
+it; at any depth, so through a sentinel), is a warning: printed as `CHECK <kind> <card|stream>
+<finding> WARN serialized=<why> remedy=<what to do>`, kept with the record's findings, counted
+as `warned=<kind:n,...>` on the last line and in `--json` (`warned`; each finding's `severity`,
+`refuse` or `warn`, and `serialized`), and failing neither the check nor start. A files finding
+with one pair unordered, or a writer it cannot name, refuses; every other kind refuses.
+Every live run without `--dry-run` writes the epoch's one **check record** (`--dry-run` and `--from` write no check record; internal/sprint/store/check_record.go, beside
 the machine's record and keyed by epoch as it is: one of another epoch reads as none, so a clear
 leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
 stream, tier, priority, needs and the sha256 of its brief) with one digest over them. A failed
@@ -9116,7 +9134,14 @@ and its reached judgment is answered. A blocked or missing judgment on it that
 named only needs it no longer names is answered. `--needs ""` is refused: a
 sentinel with nothing to wait on is released, not emptied. The coordinator's alone
 (`sprint.SentinelSet`; `TestSentinelSetNeedsRepointsInPlace`,
-`TestSentinelSetReachesAndUnreaches`).
+`TestSentinelSetReachesAndUnreaches`). `brief <id> (--brief <text> | --brief-file
+<path>)` and `brief --dir <dir>` also replace a waiting sentinel's brief in place,
+exempting it from child `RULES` paragraph checks while checking its machine-read
+header lines (`KIND`, `STREAM`, `TIER`, `PRIORITY`, `BENCH`, `NEEDS`/`DEPENDS-ON`,
+and `CONSUMERS`) and updating its `needs`, `needs_set`, and `reached` state when
+its `NEEDS` line changes (`sprint.Brief`, `briefSentinel`;
+`TestBriefEditsWaitingSentinelAndChecksMachineReadLines`,
+`TestBriefEditsSentinelFromCLI`).
 
 ### The tick postconditions
 
