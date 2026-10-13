@@ -402,7 +402,7 @@ func newApp(getenv func(string) string) *app {
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
 	a.briefBar = a.readBriefBar
-	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
+	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost, env: func() []string { return a.forgeCommandEnv(a.gitEnv) }}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
 	a.busWatches = map[string]*bus.Watch{}
 	// start refuses until a clean card check matches the cards; no waiver
 	// (start-refuses-until-a-clean-check, tla/MachineReady.tla StartOnlyChecked)
