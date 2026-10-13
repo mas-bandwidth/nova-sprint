@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
@@ -163,7 +164,7 @@ func TestACannotAskAnswerSurvivesAcknowledgement(t *testing.T) {
 			w.s.Friends = none
 			refused := Ask(w.s, req)
 			require.NotEmpty(t, refused.Refused)
-			require.Contains(t, refused.Refused[0].Why, NoReaderMayRead)
+			assert.Contains(t, refused.Refused[0].Why, NoReaderMayRead)
 			require.NotContains(t, refused.Refused[0].Why, "resolves no obligation")
 			require.Empty(t, refused.Units)
 			w.s.Friends = free[:2]
