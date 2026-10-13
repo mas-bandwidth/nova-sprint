@@ -357,6 +357,7 @@ func (s State) Clone() State {
 		v.Needs = append([]string(nil), v.Needs...)
 		v.Waived = append([]string(nil), v.Waived...)
 		v.Pair = append([]string(nil), v.Pair...)
+		v.RefusedWays = append([]string(nil), v.RefusedWays...)
 		c.Primaries[k] = v
 	}
 	c.Work = make(map[string]WorkCard, len(s.Work))

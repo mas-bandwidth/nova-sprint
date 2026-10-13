@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
@@ -228,5 +229,22 @@ func TestAcceptedCardHaltsOnOscillatingRefusals(t *testing.T) {
 	open := r.openOnCard(sprint.NBriefWrong, "s1-1")
 	require.Len(t, open, 1, "brief defect judgment opened")
 	assert.Contains(t, open[0].Note.What, "failed the same way twice")
+}
+
+// A clone of refmodel.State deep-copies Primary.RefusedWays so that mutating
+// a clone's refusal history cannot alter the original state's refusal history.
+func TestRefmodelStateCloneDeepCopiesRefusedWays(t *testing.T) {
+	t.Parallel()
+	s := refmodel.New(nil, nil, "")
+	s.Primaries["s1-1"] = refmodel.Primary{
+		Stream:      "s1",
+		RefusedWays: []string{"other"},
+	}
+	clone := s.Clone()
+	require.Equal(t, []string{"other"}, clone.Primaries["s1-1"].RefusedWays)
+
+	// Modifying slice element in clone must not affect original
+	clone.Primaries["s1-1"].RefusedWays[0] = "mutated"
+	assert.Equal(t, "other", s.Primaries["s1-1"].RefusedWays[0], "modifying slice element in clone does not affect original")
 }
 
