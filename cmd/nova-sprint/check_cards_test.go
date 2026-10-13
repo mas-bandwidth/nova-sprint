@@ -147,16 +147,21 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 		seedCard("c1", "s3", sprint.Ready, map[string]string{"brief": lintedBrief("c1", "sprint/s3", "internal/c1.go")}),
 		seedCard("a7", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a7", "sprint/s1", "internal/a7.go"), sprint.FieldPriority: sprint.PriorityFix}),
 		seedCard("a8", "s1", sprint.Ready, map[string]string{"brief": "RESULT: a8 sha=0123456789ab tier: pro\nPATHS: internal/a8.go\nTHE TASK. Fix the empty case."}),
-		// a brief under the store's field bound whose record, with the findings it carries, is
-		// over the drain's
+		// a brief under the drain's bound whose record, with the findings it carries, is over
+		// it: no finding (v1.2.18: brief-size measures the brief the drain bounds, never the
+		// record; a brief over the bound is one the store refuses, so its refusal is the unit
+		// test's, TestBriefSizeMeasuresTheBriefTheDrainBounds)
 		seedCard("a9", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a9", "sprint/s1", "internal/a9.go") + "\n" + strings.Repeat("x", 10000),
 			sprint.FieldFindings: strings.Repeat("attempt 1: the gate was red. ", 250)}),
 	})
 	code, out, errs = ta.do("check cards")
 	require.Equal(t, 1, code, "findings: %s%s", out, errs)
-	assert.Equal(t, []string{"needs a3", "files s1", "same-file a5", "bases b3", "names s3", "stale-fix a7", "lint a8", "brief-size a9"}, checkLines(out), out)
-	kinds := "needs:1,files:1,same-file:1,bases:1,names:1,stale-fix:1,lint:1,brief-size:1"
-	assert.Contains(t, out, "CHECK CARDS FAILED kinds="+kinds)
+	assert.Equal(t, []string{"needs a3", "files s1", "same-file a5", "bases b3", "names s3", "stale-fix a7", "lint a8"}, checkLines(out), out)
+	// the same-file finding is a warning (two cards of one stream): printed, failing nothing
+	kinds := "needs:1,files:1,bases:1,names:1,stale-fix:1,lint:1"
+	assert.Contains(t, out, "CHECK CARDS FAILED kinds="+kinds+" warned=same-file:1")
+	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6, and neither needs the other WARN serialized=same stream s1: ")
+	assert.NotContains(t, out, "brief-size", "a record over the bound with a brief under it is no finding")
 	code, out, errs = ta.do("start")
 	require.Equal(t, 1, code, "refused: %s%s", out, errs)
 	// the live needs gate comes first (a-missing-or-blocked-need-is-found-at-check-and-while-
@@ -181,10 +186,6 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 		{"stale-fix", func() { ta.ok("priority a7 --high --reason 'the fix level was carried by the clear'") }},
 		{"lint", func() {
 			ta.seed(nil, nil, []ntable.BatchMemberEntry{edit("a8", map[string]string{"brief": lintedBrief("a8", "sprint/s1", "internal/a8.go")})})
-		}},
-		{"brief-size", func() {
-			ta.seed(nil, nil, []ntable.BatchMemberEntry{edit("a9", map[string]string{"brief": lintedBrief("a9", "sprint/s1", "internal/a9.go"),
-				sprint.FieldFindings: "attempt 1: the gate was red."})})
 		}},
 	}
 	for i, f := range fixes {
@@ -280,4 +281,66 @@ func TestNewAppGatesStartOnTheCardCheck(t *testing.T) {
 	assert.Equal(t, classCoordinator, verbClasses["check cards"])
 	assert.NotEmpty(t, verbExit["check cards"])
 	assert.NotEmpty(t, verbEffect["check cards"])
+}
+
+// v1.2.18 (the owner, 2026-10-13: "the gate keeps refusing on needs, bases, routes and brief
+// size, but only warns on file overlap that a sentinel or stream order already serializes"): a
+// check whose only findings are warnings is clean, prints each warning and why it is
+// serialized, and start proceeds; one unordered overlap more and the check fails and start
+// refuses (tla/MachineReady.tla Check, WarnsNeverFail, CleanRecordHasNoDefect).
+func TestStartProceedsOverWarningsAndRefusesOverAnUnorderedOverlap(t *testing.T) {
+	t.Parallel()
+	ta := gateOn(t)
+	ta.seedClean()
+	ta.seed(nil, nil, []ntable.BatchMemberEntry{
+		// same stream: a5 and a6 name internal/c.go with no need between them
+		seedCard("a5", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a5", "sprint/s1", "internal/c.go")}),
+		seedCard("a6", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a6", "sprint/s1", "internal/c.go")}),
+		// across streams: b2 writes internal/x/** and waits for s1's stop, which needs a4
+		seedCard("a4", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a4", "sprint/s1", "internal/x/one.go")}),
+		edit("s1-stop", map[string]string{"needs": "a4"}),
+		seedCard("b2", "s2", sprint.Waiting, map[string]string{"brief": lintedBrief("b2", "sprint/s2", "internal/x/**"), "needs": "s1-stop"}),
+	})
+	code, out, errs := ta.do("check cards")
+	require.Equal(t, 0, code, "warnings alone are clean: %s%s", out, errs)
+	assert.Equal(t, []string{"files s1", "same-file a5"}, checkLines(out), out)
+	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=1 writer pair(s), each ordered by waits; first: b2 -> s1-stop (sentinel) -> a4 remedy=")
+	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6, and neither needs the other WARN serialized=same stream s1: ")
+	assert.Contains(t, out, "CHECK CARDS OK cards=8 warned=files:1,same-file:1")
+
+	var got struct {
+		Clean    bool                 `json:"clean"`
+		Kinds    string               `json:"kinds"`
+		Warned   string               `json:"warned"`
+		Findings []sprint.CardFinding `json:"findings"`
+	}
+	ta.json("check cards", &got)
+	assert.True(t, got.Clean)
+	assert.Empty(t, got.Kinds)
+	assert.Equal(t, "files:1,same-file:1", got.Warned)
+	require.Len(t, got.Findings, 2)
+	for _, f := range got.Findings {
+		assert.Equal(t, sprint.SeverityWarn, f.Severity, "%+v", f)
+		assert.NotEmpty(t, f.Serialized, "%+v", f)
+	}
+
+	ta.ok("start")
+	assert.True(t, ta.machineRunning(), "a check with warnings only starts the machine")
+	ta.ok("stop --reason 'the overlap below' --until 30m")
+
+	// a12 in s1 and b3 in s2 write internal/x/two.go (b2 too, by its glob), each ready or
+	// waiting on no card of s1 that writes it: an overlap no wait orders, which refuses
+	ta.seed(nil, nil, []ntable.BatchMemberEntry{
+		seedCard("b3", "s2", sprint.Ready, map[string]string{"brief": lintedBrief("b3", "sprint/s2", "internal/x/two.go")}),
+		seedCard("a12", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a12", "sprint/s1", "internal/x/two.go")}),
+	})
+	code, out, errs = ta.do("check cards")
+	require.Equal(t, 1, code, "an unordered overlap refuses: %s%s", out, errs)
+	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
+	assert.NotContains(t, out, "internal/x/two.go is written by streams s1 and s2 WARN")
+	assert.Contains(t, out, "CHECK CARDS FAILED kinds=files:1 warned=files:1,same-file:1")
+	code, out, errs = ta.do("start")
+	require.Equal(t, 1, code, "refused: %s%s", out, errs)
+	assert.Contains(t, errs, "run nova-sprint check cards: the last check found files:1")
+	assert.False(t, ta.machineRunning())
 }
