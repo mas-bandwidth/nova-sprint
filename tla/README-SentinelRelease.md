@@ -91,3 +91,20 @@ producing merge.
 Cases and exact expected properties are in `CASES.tsv`, group
 `sentinelrelease`. Measured Linux records belong in `RUNS.tsv`; prior records
 remain in `RUNS-HISTORY.tsv`. No run is claimed until those records exist.
+
+## Measured validation
+
+The 2026-10-13 Linux run checks all 21 declared cases with one TLC worker
+and a 110-second limit per case: three controls, four reachability witnesses,
+and fourteen guard/outcome mutations. The automatic-only control explores
+27,935 distinct states; the early-enabled control explores 21,501; the empty
+control explores 68. All three pass their safety and temporal properties.
+Seventeen invariant witnesses exit 12; the manual-gate liveness witness exits
+13. These are expected failures of deliberately broken or unreachable-claim
+variants, recorded as matching results by the runner.
+
+Two earlier control attempts failed before completing validation: a Boolean
+assignment precedence error and a mixed string/tuple token representation.
+Both authentic failed receipts remain in `RUNS-HISTORY.tsv`; the corrected
+model's measured receipts are in `RUNS.tsv`. Source review alone did not catch
+those errors. The final runner freshness check reports no stale groups.
