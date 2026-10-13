@@ -193,7 +193,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	}
 	t.Cleanup(app.close)
 	var out, errs strings.Builder
-	require.Equal(t, 0, runInto(app, []string{"init", "--members", "m1", "--readers", "reader-a", "--owner", name, "--redis", addr}, &out, &errs), "%s%s", out.String(), errs.String())
+	require.Equal(t, 0, runInto(app, []string{"init", "--members", "m1,m2,m3", "--readers", "reader-a", "--owner", name, "--redis", addr}, &out, &errs), "%s%s", out.String(), errs.String())
 	app.bus = func(context.Context, bus.Message, func(string)) error { return nil }
 	app.serveAddr = addr
 	srv := httptest.NewServer(localHandler{app})
@@ -205,7 +205,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	future := now.Add(time.Hour)
 	_, err = st.Run(ctx, store.Step{Verb: "persist reconnect fixtures", Plan: func(*sprint.Snapshot) sprint.Plan {
 		return sprint.Plan{Notes: []sprint.Note{
-			{Kind: sprint.Judgment, Type: sprint.NTimer, To: name, Primaries: []string{"timer-subject"}, Count: 1, What: "acknowledged timer", Who: name, At: now.Add(-3 * time.Minute), Decisions: append([]string(nil), sprint.Decisions[sprint.NTimer]...)},
+			{Kind: sprint.Judgment, Type: sprint.NTimer, To: name, Primaries: []string{sprint.TimerSubject("timer-subject")}, Count: 1, What: "acknowledged timer", Who: name, At: now.Add(-3 * time.Minute), Decisions: append([]string(nil), sprint.Decisions[sprint.NTimer]...)},
 			{Kind: sprint.Judgment, Type: sprint.NStopDebtBeat, Primaries: []string{"m1"}, Count: 1, What: "unheld STOP debt beat", Who: name, At: now.Add(-2 * time.Minute), Decisions: append([]string(nil), sprint.Decisions[sprint.NStopDebtBeat]...)},
 			{Kind: sprint.Judgment, Type: sprint.NStopDebtBeat, Primaries: []string{"m2"}, Count: 1, What: "held sibling STOP debt beat", Who: name, At: now.Add(-90 * time.Second), Review: future, ReviewSet: now, Decisions: append([]string(nil), sprint.Decisions[sprint.NStopDebtBeat]...)},
 			{Kind: sprint.Judgment, Type: sprint.NStopDebtBeat, Primaries: []string{"m3"}, Count: 1, What: "held STOP debt beat", Who: name, At: now.Add(-time.Minute), Marked: true, Review: future, ReviewSet: now, Decisions: append([]string(nil), sprint.Decisions[sprint.NStopDebtBeat]...)},
