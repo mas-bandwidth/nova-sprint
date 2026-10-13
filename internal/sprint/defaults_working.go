@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
@@ -180,12 +179,12 @@ func liveCards(s *Snapshot) []*Card {
 	return out
 }
 
-// workTiersNeeded is the work tiers the epoch's cards not landed are dealt on, the frontier
-// tier left out (a frontier card waits for the coordinator whatever the sides' tiers).
+// workTiersNeeded is the work tiers the epoch's cards not landed are dealt on, frontier
+// counted like every tier (a frontier card is drawn from its routes like every tier).
 func workTiersNeeded(s *Snapshot) []string {
 	var out []string
 	for _, c := range liveCards(s) {
-		if t := CardTier(c); t != cardhdr.RouteFrontier && !slices.Contains(out, t) {
+		if t := CardTier(c); !slices.Contains(out, t) {
 			out = append(out, t)
 		}
 	}

@@ -89,7 +89,18 @@
 \* launch (NeverUnlaunchable fails); "judgefleet" judges over every member up,
 \* not the card's pool (StrandedIsJudged fails); "nofirst" is the walk that
 \* ignores a route's first flag and takes the first entry that is not left out
-\* (FirstPreferred fails).
+\* (FirstPreferred fails); "frontierfriends" is the deal before
+\* a-frontier-card-is-dealt-from-its-routes-like-every-tier, which ended an
+\* unpinned frontier card before the draw as the friends' by design, so a
+\* frontier route enabled in its array was never dealt
+\* (EveryTierIsDealtFromItsRoutes fails).
+\*
+\* EVERY TIER IS DEALT FROM ITS ROUTES (2026-10-13: a frontier card sat ready and
+\* undealt with fourteen cards behind it). An unpinned card of any tier, frontier
+\* too, is drawn from its tier's array as a heavy card is: no tier ends before
+\* the draw by its name (internal/sprint route.go routeTier). Under LiveSpec, a
+\* work card ready while a member of its pool can launch an entry of its tier is
+\* dealt (EveryTierIsDealtFromItsRoutes).
 \*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
@@ -274,10 +285,15 @@ DealTo(c, m) ==
      THEN Take(c, m, At(t, ridx[t]), 1, 1)
      ELSE Take(c, m, At(t, ridx[t] + s - 1), s, s)
 
+\* Broken "frontierfriends": the deal before the fix, which never drew an unpinned
+\* frontier card from its array (the friends' by design).
+FrontierShort(c) == Broken = "frontierfriends" /\ TierOf[c] = "frontier"
+
 \* The deal of a ready card that pins no model: a read to no member, a work card
 \* to a member of its pool that can launch it.
 Deal(c) ==
   /\ c \notin Pinned
+  /\ ~FrontierShort(c)
   /\ \/ /\ c \in Reads
         /\ DealTo(c, "none")
      \/ /\ c \in WorkCards
@@ -343,6 +359,9 @@ Next == TickJudge \/ \E c \in Cards : Deal(c) \/ Pin(c) \/ Withdraw(c) \/ Redeal
 
 Spec == Init /\ [][Next]_vars
 
+\* The deal is fair: a card the deal (or its pin) can take is taken in the end.
+LiveSpec == Spec /\ \A c \in Cards : WF_vars(Deal(c)) /\ WF_vars(Pin(c))
+
 \* After N cards of a tier dealt, the index is N, and one more for every entry
 \* the rule passed over (none when no redeal left a route out): the place is
 \* N mod Len(Arr[t]).
@@ -388,6 +407,15 @@ FloorKeepsEveryRouteSampled == \A r \in Routes : shares[r] >= Floor
 ShareFallsWithCost ==
   /\ \A r1, r2 \in Routes : (OkRate[r1] = OkRate[r2] /\ Landed[r1] = 0 /\ Landed[r2] > 0) => shares[r1] <= shares[r2]
   /\ \A r1, r2 \in Routes : (OkRate[r1] = OkRate[r2] /\ Landed[r1] > 0 /\ Landed[r2] > 0 /\ Cost[r1] > Cost[r2]) => shares[r1] <= shares[r2]
+
+\* Every tier is dealt from its routes: a work card ready while a member of its
+\* pool can launch an entry of its tier (one not resting) leaves ready, whatever
+\* its tier, frontier too (internal/sprint route.go routeTier; frontierfriends
+\* breaks it).
+EveryTierIsDealtFromItsRoutes ==
+  \A c \in WorkCards :
+    (st[c] = "ready" /\ \E m \in Pool(c) : Open(TierOf[c], MemberUnlaunch[m] \cup Rested))
+      ~> st[c] # "ready"
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.
