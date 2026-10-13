@@ -429,6 +429,7 @@ func (a *app) clearRefusal() {
 			b.closeAs = r.coord
 		}
 		b.closing = true
+		b.closeGen++
 	}
 	b.refusal = nil
 }
@@ -490,7 +491,7 @@ func (a *app) judgeWritten() {
 func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 	b := a.landState()
 	b.mu.Lock()
-	closing, closeAs := b.closing, b.closeAs
+	closing, closeAs, gen := b.closing, b.closeAs, b.closeGen
 	r := b.refusal
 	var standing landRefusal
 	if r != nil {
@@ -504,7 +505,12 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 		return
 	}
 	defer a.serial.Unlock()
-	if r == nil {
+	if closing {
+		// an owed close is written before any raise: a cause that cleared and came back
+		// before its close was written would otherwise meet its own stale
+		// acknowledgement and stay silent (LandRefusalRaise writes nothing for a cause
+		// acknowledged). Until the close lands, nothing is raised (tla/ServerSwitch.tla
+		// closeOwed, CloseWrite; the witness "staleack").
 		if closeAs == "" {
 			closeAs = sprint.MachineActor
 		}
@@ -520,11 +526,13 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 		}
 		a.judgeWritten()
 		b.mu.Lock()
-		if b.refusal == nil {
+		if b.closeGen == gen {
 			b.closing, b.swept, b.closeAs = false, true, ""
 		}
 		b.mu.Unlock()
-		return
+		if r == nil {
+			return
+		}
 	}
 	st, err := a.storeCtx(ctx, common{verb: "run", redis: addr, actor: standing.author()})
 	if err != nil {
@@ -632,6 +640,9 @@ type landBeat struct {
 	refusal        *landRefusal
 	closing, swept bool
 	closeAs        string
+	// closeGen counts the clears (clearRefusal): a close written for one generation
+	// leaves a later clear's close owed.
+	closeGen int
 	// notWritten is the last LAND JUDGMENT NOT WRITTEN reason said (judgeNotWritten).
 	notWritten string
 	// landSeam, queueSeam and startSeam are the test's stand-ins for land itself, the

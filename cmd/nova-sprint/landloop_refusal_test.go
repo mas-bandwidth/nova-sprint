@@ -578,3 +578,57 @@ func TestACodedRefusalIsKeyedOnItsClassAndStream(t *testing.T) {
 		assert.Contains(t, js[0].Note.What, "code=fenced stream=s2:")
 	}
 }
+
+// A cause the seat acked, cleared by a landing whose close the store did not take, and
+// back before a later beat wrote that close, is raised anew: the owed close is written
+// before any raise, so the stale acknowledgement never silences the cause (read 3's
+// probe, TestProbe189ClearReturnWhileCloseUnwritten; tla/ServerSwitch.tla closeOwed, CloseWrite).
+func TestAClearedAckedCauseThatReturnsBeforeItsCloseIsRaisedAnew(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	var down sync.Mutex
+	broken := false
+	backend := r.ta.a.backend
+	r.ta.a.backend = func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error) {
+		down.Lock()
+		b := broken
+		down.Unlock()
+		if b {
+			return nil, errors.New("the store blinked")
+		}
+		return backend(ctx, addr, names)
+	}
+	blink := func(on bool) {
+		down.Lock()
+		broken = on
+		down.Unlock()
+	}
+	id := landClass("git-identity", "no identity; run: nova-config apply")
+	r.set(id)
+	_, _ = r.beat(nil)
+	js := r.judgments()
+	require.Len(t, js, 1)
+	r.ta.ok("ack " + js[0].Note.ID + " --reason seen")
+	blink(true)
+	r.set("")
+	cleared, _ := r.beat(nil) // landed; the close is not written
+	r.set(id)
+	out, _ := r.beat(nil) // the cause is back; nothing is raised behind the owed close
+	assert.Contains(t, out, "LAND REFUSED queued=6", "the cause is named while its close is owed")
+	assert.Equal(t, 1, strings.Count(cleared+out, "LAND JUDGMENT NOT WRITTEN: the close of the lander's refusal"), "the owed close is said, once:\n%s%s", cleared, out)
+	blink(false)
+	for range 3 {
+		_, _ = r.beat(nil)
+	}
+	if js := r.judgments(); assert.Len(t, js, 1, "the returned cause is raised anew") {
+		assert.Contains(t, js[0].Note.What, "code=git-identity")
+	}
+	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	s, err := st.Load(t.Context(), []string{sprint.Work}, nil)
+	require.NoError(t, err)
+	for _, o := range s.Acked {
+		assert.False(t, sprint.IsLanderStanding(o.Note.Type), "the stale acknowledgement was closed: %+v", o.Note)
+	}
+	assert.Contains(t, sprint.LandRefusalStanding(s), "code=git-identity", "the stall alarm names the returned cause")
+}

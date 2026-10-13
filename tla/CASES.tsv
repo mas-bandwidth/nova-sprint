@@ -602,6 +602,7 @@ MCServerSwitchBrokenRawkey.cfg	MCServerSwitch.tla	invariant	AtMostOneJudgmentPer
 MCServerSwitchBrokenRejudge.cfg	MCServerSwitch.tla	invariant	AtMostOneJudgmentPerRefusal	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenIdleclears.cfg	MCServerSwitch.tla	invariant	RefusalClearsOnlyWhenItsCauseIsGone	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenAckcloses.cfg	MCServerSwitch.tla	invariant	AckSticks	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenStaleack.cfg	MCServerSwitch.tla	invariant	NoStaleAck	ignore-terminal	serverswitch	required	-
 MCServerSwitchLive.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
 MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-

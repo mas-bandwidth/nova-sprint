@@ -66,7 +66,11 @@
 (*   "ackcloses"   the seat's ack closes the judgment and keeps no          *)
 (*                 acknowledgement (steps_ack.go before PR 189's read 3),   *)
 (*                 so the next beat's re-check raises the same cause again: *)
-(*                 AckSticks fails.                                         *)
+(*                 AckSticks fails;                                         *)
+(*   "staleack"    a cause that cleared and came back before its close was  *)
+(*                 written is raised behind the stale acknowledgement,      *)
+(*                 which the raise reads as said (PR 189 read 4):           *)
+(*                 NoStaleAck fails.                                        *)
 (*                                                                          *)
 (* The judgment is modelled as the store holds it, never as the loop's      *)
 (* in-memory flag: stored[c] is "none", "open" or "acked" for each cause.   *)
@@ -106,7 +110,8 @@ CONSTANTS Binaries,     \* the binary names: the original and the two candidates
           Broken        \* the reversed witnesses: a subset of Faults
 
 Faults == {"nodeadline", "keepstate", "hookfault", "hookgate", "silentdedupe", "latejudge",
-           "partialrefusal", "rawkey", "rejudge", "idleclears", "ackcloses"}
+           "partialrefusal", "rawkey", "rejudge", "idleclears", "ackcloses",
+           "staleack"}
 
 \* the causes land refuses before any batch for (the empty git_identity, any other)
 Reasons == {"identity", "other"}
@@ -136,6 +141,7 @@ VARIABLES target,       \* the binary now at the target: Binaries, or "none" (no
           rtext,           \* the text its last line carried (0 when none stands)
           stored,          \* the store's record of each cause's judgment: "none", "open", "acked"
           pending,         \* a judgment write failed and is owed (retried next beat)
+          closeOwed,       \* a clear's close of the judgment and its acknowledgement is owed
           reopen,          \* the seat closed the judgment (check): the next beat raises it anew
           raisedFor,       \* ghost: judgments written for each cause in this episode
           ackedOnce,       \* ghost: the seat acked the standing cause
@@ -145,13 +151,13 @@ VARIABLES target,       \* the binary now at the target: Binaries, or "none" (no
           passed,          \* ghost: the last pass got past every check before its batches
           clearedBy        \* ghost: what last cleared a refusal: "none", "pass", "read", "norun"
 
-rvars == <<refusal, rtext, stored, pending, reopen, raisedFor, ackedOnce, reraisedAfterAck,
+rvars == <<refusal, rtext, stored, pending, closeOwed, reopen, raisedFor, ackedOnce, reraisedAfterAck,
           refusedAt, line, passed, clearedBy>>
 
 vars == <<target, prev, hasState, statePrev, stateAt, clock, switches,
           midSwitch, autoRollbacks, rolledLate, hooked, rolledOnRefusal, landTried,
-          refusal, rtext, stored, pending, reopen, raisedFor, ackedOnce, reraisedAfterAck,
-          refusedAt, line, passed, clearedBy>>
+          refusal, rtext, stored, pending, closeOwed, reopen, raisedFor, ackedOnce,
+          reraisedAfterAck, refusedAt, line, passed, clearedBy>>
 
 TypeOK ==
   /\ target \in Binaries \cup {"none"}
@@ -171,6 +177,7 @@ TypeOK ==
   /\ rtext \in Texts \cup {0}
   /\ stored \in [Causes -> {"none", "open", "acked"}]
   /\ pending \in BOOLEAN
+  /\ closeOwed \in BOOLEAN
   /\ reopen \in BOOLEAN
   /\ raisedFor \in [Causes -> 0..3]
   /\ ackedOnce \in BOOLEAN
@@ -198,6 +205,7 @@ Init ==
   /\ rtext = 0
   /\ stored = [c \in Causes |-> "none"]
   /\ pending = FALSE
+  /\ closeOwed = FALSE
   /\ reopen = FALSE
   /\ raisedFor = [c \in Causes |-> 0]
   /\ ackedOnce = FALSE
@@ -265,10 +273,13 @@ AutoLandEnabled == "hookgate" \notin Broken \/ hooked
 \* (exit 2) rolls back. The v1.2.11 card made a refusal (exit 1) stop rolling back.
 \* The automatic pass runs whatever the hook (the reversed witness "hookgate"
 \* restores the old gate, which waited while the seat was unhooked).
-\* Cleared: no refusal stands (by: what cleared it); its judgment and any
-\* acknowledgement are closed (LandRefusalClose).
+\* Cleared: no refusal stands (by: what cleared it); the close of its judgment and
+\* any acknowledgement is owed (CloseWrite, which may not land at once: a store
+\* blink, the line of control busy).
 Cleared(by) == /\ refusal' = "none" /\ rtext' = 0
-               /\ stored' = [c \in Causes |-> "none"] /\ pending' = FALSE /\ reopen' = FALSE
+               /\ stored' = stored
+               /\ closeOwed' = (closeOwed \/ \E x \in Causes : stored[x] # "none")
+               /\ pending' = FALSE /\ reopen' = FALSE
                /\ raisedFor' = [c \in Causes |-> 0] /\ ackedOnce' = FALSE /\ refusedAt' = 0
                /\ UNCHANGED reraisedAfterAck
                /\ clearedBy' = IF refusal = "none" THEN clearedBy ELSE by
@@ -304,20 +315,39 @@ Stand(c, t) ==
           ELSE IF "latejudge" \in Broken /\ refusal # c
             THEN /\ stored' = st0 /\ raisedFor' = rf0
                  /\ UNCHANGED <<pending, reopen, reraisedAfterAck>>
-            ELSE Write(c, st0, rf0, refusal = c /\ ackedOnce)
+          ELSE IF closeOwed /\ "staleack" \notin Broken
+            \* the owed close first: nothing is raised until it lands (judgeRefusal)
+            THEN /\ stored' = st0 /\ raisedFor' = rf0 /\ pending' = TRUE
+                 /\ UNCHANGED <<reopen, reraisedAfterAck>>
+          ELSE IF closeOwed /\ st0[c] # "none"
+            \* "staleack": the raise finds the stale record of its key and writes nothing
+            THEN /\ stored' = st0 /\ raisedFor' = rf0 /\ pending' = FALSE
+                 /\ UNCHANGED <<reopen, reraisedAfterAck>>
+          ELSE Write(c, st0, rf0, refusal = c /\ ackedOnce)
+     /\ UNCHANGED closeOwed
      /\ line' = IF "silentdedupe" \in Broken /\ refusal = c THEN "idle" ELSE "refused"
      /\ UNCHANGED clearedBy
+
+\* The owed close lands (judgeRefusal, before any raise; LandRefusalClose): every
+\* lander judgment and acknowledgement is closed.
+CloseWrite == /\ midSwitch = FALSE /\ closeOwed
+              /\ stored' = [x \in Causes |-> "none"] /\ closeOwed' = FALSE
+              /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
+                             switches, midSwitch, autoRollbacks, rolledLate, hooked,
+                             rolledOnRefusal, landTried, refusal, rtext, pending, reopen,
+                             raisedFor, ackedOnce, reraisedAfterAck, refusedAt, line,
+                             passed, clearedBy>>
 
 \* The beat's re-check against the store (judgeRefusal): a standing cause whose
 \* judgment the store does not hold (a write owed, or the seat closed it with check)
 \* is written; one held open or acknowledged is left. Not under "latejudge".
-Recheck == /\ midSwitch = FALSE /\ "latejudge" \notin Broken
+Recheck == /\ midSwitch = FALSE /\ "latejudge" \notin Broken /\ ~closeOwed
            /\ refusal # "none" /\ stored[refusal] = "none"
            /\ Write(refusal, stored, raisedFor, ackedOnce)
            /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                           switches, midSwitch, autoRollbacks, rolledLate, hooked,
                           rolledOnRefusal, landTried, refusal, rtext, ackedOnce,
-                          refusedAt, line, passed, clearedBy>>
+                          refusedAt, line, passed, clearedBy, closeOwed>>
 
 \* The re-check's write that lands: what fairness asks of the store coming back.
 RecheckOk == /\ Recheck /\ stored'[refusal] = "open"
@@ -337,7 +367,7 @@ SeatCloses == /\ refusal # "none" /\ stored[refusal] = "open"
               /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                              switches, midSwitch, autoRollbacks, rolledLate, hooked,
                              rolledOnRefusal, landTried, refusal, rtext, pending,
-                             reraisedAfterAck, refusedAt, line, passed, clearedBy>>
+                             reraisedAfterAck, refusedAt, line, passed, clearedBy, closeOwed>>
 
 \* A land that is ok (exit 0) rolls nothing back. A refusal (exit 1) reaches
 \* CheckRollbackOnLandFailure (landloop.go calls it on every nonzero exit) but
@@ -371,7 +401,7 @@ LandPartial == /\ midSwitch = FALSE /\ AutoLandEnabled /\ landTried' = TRUE
                            /\ raisedFor' = [x \in Causes |-> IF x = r THEN 1 ELSE 0]
                            /\ pending' = FALSE /\ reopen' = FALSE /\ ackedOnce' = FALSE
                            /\ line' = "refused" /\ passed' = TRUE
-                           /\ UNCHANGED <<clearedBy, reraisedAfterAck>>
+                           /\ UNCHANGED <<clearedBy, reraisedAfterAck, closeOwed>>
                     ELSE /\ Cleared("pass") /\ line' = "partial" /\ passed' = TRUE
                /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                               switches, midSwitch, autoRollbacks, rolledLate, hooked,
@@ -396,7 +426,7 @@ NoRun == /\ midSwitch = FALSE
                 THEN Cleared("norun") /\ line' = "idle"
                 ELSE /\ line' = IF refusal # "none" THEN "refused" ELSE "idle"
                      /\ UNCHANGED <<refusal, rtext, stored, pending, reopen, raisedFor, ackedOnce,
-                                    reraisedAfterAck, refusedAt, clearedBy>>
+                                    reraisedAfterAck, refusedAt, clearedBy, closeOwed>>
          /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                         switches, midSwitch, autoRollbacks, rolledLate, hooked,
                         rolledOnRefusal, landTried, passed>>
@@ -410,7 +440,8 @@ LandBeat == /\ midSwitch = FALSE
             /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                            switches, midSwitch, autoRollbacks, rolledLate, hooked,
                            rolledOnRefusal, landTried, refusal, rtext, stored, pending, reopen,
-                           raisedFor, ackedOnce, reraisedAfterAck, refusedAt, passed, clearedBy>>
+                           raisedFor, ackedOnce, reraisedAfterAck, refusedAt, passed, clearedBy,
+                           closeOwed>>
 
 \* The reversed witness "latejudge": the judgment is written only once the refusal
 \* has stood past the bound (raiseIfStuck's LandDeadline, the tick's stall alarm).
@@ -422,7 +453,8 @@ LateJudge == /\ "latejudge" \in Broken
              /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                             switches, midSwitch, autoRollbacks, rolledLate, hooked,
                             rolledOnRefusal, landTried, refusal, rtext, pending, reopen,
-                            ackedOnce, reraisedAfterAck, refusedAt, line, passed, clearedBy>>
+                            ackedOnce, reraisedAfterAck, refusedAt, line, passed, clearedBy,
+                            closeOwed>>
 
 \* The server restarts (a switch, a rollback, a crash): the seat's hook is gone with it
 \* (the hook record says state=gone, why=the server restarted). SwitchRestart.
@@ -536,7 +568,7 @@ Next ==
   \/ Switch \/ SwitchWriteState \/ CrashSwitch
   \/ ManualRollback
   \/ LandOk \/ LandRefused \/ LandPartial \/ LandBeat \/ LateJudge
-  \/ QueueUnreadable \/ NoRun \/ Recheck \/ SeatCloses
+  \/ QueueUnreadable \/ NoRun \/ Recheck \/ SeatCloses \/ CloseWrite
   \/ SwitchRestart \/ SeatHooksIn \/ LandHookRefused \/ LandHookFault
   \/ LandFailedNoState \/ LandFailedPastDeadline \/ LandFailedError
      \/ LandFailedRollback
@@ -552,7 +584,7 @@ Spec == Init /\ [][Next]_vars
 \* runs; a switch left mid-write (midSwitch) still resolves, to the state write or
 \* the crash. This is the fairness LandingNeverWaitsOnTheHook is read under.
 FairSpec == Spec /\ WF_vars(AutoLand) /\ WF_vars(SwitchWriteState) /\ WF_vars(CrashSwitch)
-            /\ WF_vars(LateJudge) /\ WF_vars(RecheckOk)
+            /\ WF_vars(LateJudge) /\ WF_vars(RecheckOk) /\ WF_vars(CloseWrite)
 
 ---------------------------------------------------------------------------
 \* The target is always a known binary (the original or a candidate) or absent
@@ -592,6 +624,11 @@ AtMostOneJudgmentPerRefusal == \A c \in Causes : raisedFor[c] <= 1
 \* An ack sticks: a cause the seat acknowledged is never raised again while it stands
 \* (the reversed witness "ackcloses").
 AckSticks == ~reraisedAfterAck
+
+\* No stale acknowledgement: a standing cause held as acknowledged was acknowledged by
+\* the seat while it stood, never left over from before it last cleared (the
+\* reversed witness "staleack": the cause comes back before the clear's close lands).
+NoStaleAck == (refusal # "none" /\ stored[refusal] = "acked") => ackedOnce
 
 \* While a refusal stands, every beat's line names it: never a bare LAND IDLE, a
 \* landing in flight, a round with no coordinator or nothing queued included (the

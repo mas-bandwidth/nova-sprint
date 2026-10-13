@@ -5,7 +5,8 @@
 \* MCServerSwitchBrokenHookGate.cfg, MCServerSwitchBrokenSilentdedupe.cfg,
 \* MCServerSwitchBrokenLatejudge.cfg, MCServerSwitchBrokenPartialrefusal.cfg,
 \* MCServerSwitchBrokenRawkey.cfg, MCServerSwitchBrokenRejudge.cfg,
-\* MCServerSwitchBrokenIdleclears.cfg, MCServerSwitchBrokenAckcloses.cfg).
+\* MCServerSwitchBrokenIdleclears.cfg, MCServerSwitchBrokenAckcloses.cfg,
+\* MCServerSwitchBrokenStaleack.cfg).
 \* The module holds no rule of its own;
 \* ServerSwitch is the model (internal/sprint/server_switch.go).
 \*-----------------------------------------------------------------------------
