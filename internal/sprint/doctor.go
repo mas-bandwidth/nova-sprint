@@ -85,6 +85,16 @@ type DoctorCheck struct {
 	Remedy   string `json:"remedy"`
 	// FixSafe says the remedy is one a later doctor --fix may run (DoctorFixSafe).
 	FixSafe bool `json:"fix_safe,omitempty"`
+	// Member is the fleet member the line is about (member-env, fleet-rows, finish-failures,
+	// draining, a member's loop in loops-redial), "" for a line about no one member: the
+	// check's global subject (all, a tier, a provider, a reader, the identity, the hook,
+	// the judgments), which fails for every member at once. It is the scope a held member's
+	// pass reads (DoctorPasses), set by the generator, never read off the subject's spelling.
+	Member string `json:"member,omitempty"`
+	// Unmeasured says the line reports no measurement (the probe not run or cut, the
+	// server's start not measured, nova-config or the sprint not read, the hook not armed):
+	// it passes no one held on the check (DoctorPasses).
+	Unmeasured bool `json:"unmeasured,omitempty"`
 }
 
 // Line is the check's one line: DOCTOR <status> <check> <subject> <evidence> remedy=<verb>.
@@ -324,7 +334,7 @@ func DoctorReadyNotDealt(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaCards, CheckReadyNotDealt
 	s := in.Snap
 	if s == nil || s.Work == nil || s.Fleet == nil {
-		return []DoctorCheck{{Area: area, Check: check, Subject: "-", Status: DoctorWarn, Evidence: "the sprint was not read", Remedy: "nova-sprint where"}}
+		return []DoctorCheck{{Area: area, Check: check, Subject: "-", Status: DoctorWarn, Unmeasured: true, Evidence: "the sprint was not read", Remedy: "nova-sprint where"}}
 	}
 	var old []*Card
 	for _, c := range s.Work.Column(Ready) {
@@ -713,14 +723,14 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 		return nil
 	}
 	if in.ServerStarted.IsZero() {
-		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Evidence: "the server's start was not measured: " + cmp.Or(in.ServerHow, "no server address"), Remedy: "export NOVA_SPRINT_SERVER=<the server's --listen address>"}}
+		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Unmeasured: true, Evidence: "the server's start was not measured: " + cmp.Or(in.ServerHow, "no server address"), Remedy: "export NOVA_SPRINT_SERVER=<the server's --listen address>"}}
 	}
 	due := in.ServerStarted.Add(DoctorRedialGrace)
 	if s.Now.Before(due) {
 		return []DoctorCheck{okCheck(area, check, "all", "the server started "+s.Now.Sub(in.ServerStarted).Round(time.Second).String()+" ago: the loops have until "+DoctorRedialGrace.String()+" to dial it")}
 	}
 	n := 0
-	judge := func(loop, host string, b Beat, beaten bool) {
+	judge := func(loop, host, member string, b Beat, beaten bool) {
 		n++
 		if beaten && !b.At.Before(due) {
 			return
@@ -730,7 +740,7 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 			age = s.Now.Sub(b.At).Round(time.Second).String() + " ago"
 		}
 		ev := fmt.Sprintf("last-beat=%s server-started=%s ago (%s)", age, s.Now.Sub(in.ServerStarted).Round(time.Second), in.ServerHow)
-		c := DoctorCheck{Area: area, Check: check, Subject: loop, Status: DoctorFail, Evidence: ev + ": its loop did not dial the server again", Remedy: loopRemedy(in, loop)}
+		c := DoctorCheck{Area: area, Check: check, Subject: loop, Member: member, Status: DoctorFail, Evidence: ev + ": its loop did not dial the server again", Remedy: loopRemedy(in, loop)}
 		if p, probed := in.Probes[host]; probed && !p.Reached {
 			c.Status, c.Evidence = DoctorWarn, ev+": its host "+host+" does not answer ("+p.Err+"): down"
 		}
@@ -748,7 +758,7 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 			continue // downed or held by the coordinator (fleet down, sync, adopt): down is not an error when actually down
 		}
 		b, beaten := in.Req.Beats[m]
-		judge("member-"+m, m, b, beaten)
+		judge("member-"+m, m, m, b, beaten)
 	}
 	if s.Readers != nil {
 		for _, r := range s.Readers.Rows() {
@@ -760,7 +770,7 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 				continue // a friend's reader is her daemon's (friends), a stray row the readers' DRIFT
 			}
 			b, beaten := in.ReaderBeats[r]
-			judge(r, host, b, beaten)
+			judge(r, host, "", b, beaten) // a reader loop is no member's line
 		}
 	}
 	if len(out) == 0 {
@@ -784,7 +794,7 @@ func DoctorDraining(in DoctorInput) (out []DoctorCheck) {
 		return nil
 	}
 	n := 0
-	judge := func(loop, name string, b Beat, beaten bool, running []*Card) {
+	judge := func(loop, name, member string, b Beat, beaten bool, running []*Card) {
 		if !beaten || !b.Draining || !b.Fresh(s.Now) {
 			return
 		}
@@ -802,17 +812,17 @@ func DoctorDraining(in DoctorInput) (out []DoctorCheck) {
 			ids = append(ids, c.ID)
 		}
 		ev := fmt.Sprintf("draining since %s (%s): it takes no new card and stops when its running cards end; running=%d %s", stamp(since), d.Round(time.Second), len(ids), cmp.Or(someIDs(ids, 8), "-"))
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: name, Status: DoctorWarn, Evidence: ev,
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: name, Member: member, Status: DoctorWarn, Evidence: ev,
 			Remedy: loopRemedy(in, loop) + " (a restart bounds the drain: its running cards are dealt again)"})
 	}
 	for _, m := range s.Members() {
 		b, beaten := in.Req.Beats[m]
-		judge("member-"+m, m, b, beaten, s.Fleet.Cell(m, Working))
+		judge("member-"+m, m, m, b, beaten, s.Fleet.Cell(m, Working))
 	}
 	if s.Readers != nil {
 		for _, r := range s.Readers.Rows() {
 			b, beaten := in.ReaderBeats[r]
-			judge(r, r, b, beaten, s.Readers.Cell(r, Reading))
+			judge(r, r, "", b, beaten, s.Readers.Cell(r, Reading))
 		}
 	}
 	if len(out) == 0 {
@@ -877,7 +887,7 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 		return nil
 	}
 	if in.Probes == nil {
-		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Evidence: "not measured: " + cmp.Or(in.ProbeErr, "probe not configured"), Remedy: "bin/nsc.sh doctor (the seat's wrapper reads nova-config, which names each member's login)"}}
+		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Unmeasured: true, Evidence: "not measured: " + cmp.Or(in.ProbeErr, "probe not configured"), Remedy: "bin/nsc.sh doctor (the seat's wrapper reads nova-config, which names each member's login)"}}
 	}
 	fine := 0
 	for _, m := range s.Members() {
@@ -894,11 +904,11 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 			if slices.Contains(s.UpMembers(), m) {
 				st = DoctorFail // the deal gives it cards it cannot be asked about
 			}
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: st, Evidence: "host " + p.Host + " does not answer: " + p.Err, Remedy: "ssh " + p.Host + " true (or nova-sprint fleet down " + m + " while it is away)"})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: st, Evidence: "host " + p.Host + " does not answer: " + p.Err, Remedy: "ssh " + p.Host + " true (or nova-sprint fleet down " + m + " while it is away)"})
 			continue
 		}
 		if !p.Complete {
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn, Evidence: "host " + p.Host + " was not answered in full within the probe's budget: nothing is judged from a cut probe", Remedy: "nova-sprint doctor --area fleet (again, once the host answers in time)"})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorWarn, Unmeasured: true, Evidence: "host " + p.Host + " was not answered in full within the probe's budget: nothing is judged from a cut probe", Remedy: "nova-sprint doctor --area fleet (again, once the host answers in time)"})
 			continue
 		}
 		bad := 0
@@ -912,34 +922,34 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 			if w := p.Near[t]; w != "" {
 				near = " (the host holds " + w + ", off that PATH)"
 			}
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail,
 				Evidence: fmt.Sprintf("tool=%s is on no PATH entry of its cards (the loop's PATH from %s, with the bench's toolchain as native adds it)%s: every card that needs it ends at once", t, p.PathFrom, near), Remedy: joinRemedy(m)})
 		}
 		if !p.PushOK {
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail,
 				Evidence: "push credential: " + cmp.Or(p.Push, "not probed") + ": every finished card is refused at push", Remedy: "ansible-playbook fleet/push-credential.yml -l " + m + " (rowan-tools), then " + joinRemedy(m)})
 		}
 		if !p.SecretOK {
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail,
 				Evidence: "secrets seat: " + cmp.Or(p.Secrets, "not probed") + ": its loop cannot open its keys", Remedy: joinRemedy(m)})
 		}
 		switch {
 		case p.FreeKB >= 0 && p.FreeKB < DoctorDiskFailKB:
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail, Evidence: fmt.Sprintf("free=%dGB under %dGB", p.FreeKB>>20, DoctorDiskFailKB>>20), Remedy: "nova-sprint gc (on " + m + ")"})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail, Evidence: fmt.Sprintf("free=%dGB under %dGB", p.FreeKB>>20, DoctorDiskFailKB>>20), Remedy: "nova-sprint gc (on " + m + ")"})
 		case p.FreeKB >= 0 && p.FreeKB < DoctorDiskWarnKB:
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn, Evidence: fmt.Sprintf("free=%dGB under %dGB", p.FreeKB>>20, DoctorDiskWarnKB>>20), Remedy: "nova-sprint gc (on " + m + ")"})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorWarn, Evidence: fmt.Sprintf("free=%dGB under %dGB", p.FreeKB>>20, DoctorDiskWarnKB>>20), Remedy: "nova-sprint gc (on " + m + ")"})
 		}
 		if in.Declared != "" && p.Version != "" && p.Version != in.Declared {
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorDrift, Evidence: "installed=" + p.Version + " declared=" + in.Declared, Remedy: joinRemedy(m)})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorDrift, Evidence: "installed=" + p.Version + " declared=" + in.Declared, Remedy: joinRemedy(m)})
 		}
 		if p.LinkChanges >= DoctorLinkWarnChanges {
 			bad++
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorWarn,
 				Evidence: fmt.Sprintf("%d link changes in the last 1h, the last: %s", p.LinkChanges, p.LinkLast),
 				Remedy:   "check " + m + "'s cable and switch port; on the host: journalctl -k --since -1h | grep -iE 'link (is )?(up|down)|carrier'"})
 		}
@@ -1058,7 +1068,7 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 		return nil
 	}
 	if in.Machines == nil {
-		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Evidence: "nova-config not read: " + cmp.Or(in.ConfigErr, "no config store named"), Remedy: "bin/nsc.sh doctor (NOVA_PG_DSN names the config store)"}}
+		return []DoctorCheck{{Area: area, Check: check, Subject: "all", Status: DoctorWarn, Unmeasured: true, Evidence: "nova-config not read: " + cmp.Or(in.ConfigErr, "no config store named"), Remedy: "bin/nsc.sh doctor (NOVA_PG_DSN names the config store)"}}
 	}
 	var machines []string
 	var want []SyncMember
@@ -1082,7 +1092,7 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 		if ctl != nil {
 			st = "status=" + orDash(ctl.F(Status))
 		}
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail,
 			Evidence: fmt.Sprintf("fleet row %s (%s, ready=%d working=%d) has no machine record in nova-config", m, st, s.Fleet.Count(m, Ready), s.Fleet.Count(m, Working)), Remedy: "nova-sprint fleet sync"})
 	}
 	for _, d := range FleetDrift(s, want, machines) {
@@ -1091,7 +1101,7 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 				continue // said above as a stale row
 			}
 		}
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Status: DoctorDrift, Evidence: d.Kind + ": " + d.Line(), Remedy: "nova-sprint fleet sync"})
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Member: d.Member, Status: DoctorDrift, Evidence: d.Kind + ": " + d.Line(), Remedy: "nova-sprint fleet sync"})
 	}
 	if len(out) == 0 {
 		out = append(out, okCheck(area, check, "all", fmt.Sprintf("members=%d machines=%d the fleet table matches nova-config", len(s.Members()), len(machines))))
@@ -1157,7 +1167,7 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	}
 	switch p := in.Hook; {
 	case !p.Measured:
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the hook is not armed: no holder's hook record", Remedy: "nova-sprint hook"})
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Unmeasured: true, Evidence: "the hook is not armed: no holder's hook record", Remedy: "nova-sprint hook"})
 	case !HookLive(p.Record, p.Recorded, p.Holder, now):
 		age := "never"
 		if !p.Record.Proven.IsZero() {
@@ -1373,7 +1383,7 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 		ev := fmt.Sprintf("failures=%d in %s, %d of them its environment (%s), mostly %q: the member's, not the cards' (%s); e.g. %s", len(fs), DoctorFinishWindow, env, strings.Join(classes, " "), top, someIDs(slices.Compact(cards), 4), cutText(oneLine(sample), 200))
 		if p, probed := in.Probes[m]; fixedNow(s, p, probed, top) {
 			// the probe of this run finds the cause in place: the hour's failures are history
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorWarn,
 				Evidence: "fixed since " + sinceWord(s.Now, last) + " ago (its last " + strconv.Quote(top) + " failure at " + stamp(last) + "; this run's probe finds the cause in place): " + ev, Remedy: "-"})
 			continue
 		}
@@ -1382,7 +1392,7 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 		if top == "no credential" {
 			remedy = "ansible-playbook fleet/push-credential.yml -l " + m + " (rowan-tools), then " + joinRemedy(m)
 		}
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Member: m, Status: DoctorFail,
 			Evidence: ev,
 			Remedy:   remedy + " (and nova-sprint fleet down " + m + " until it is fixed)"})
 	}

@@ -22,10 +22,13 @@ import (
 //     a doctor check on that member (doctor:<check>). The tick ends the hold in the step
 //     that sees the cause end (holdCauseClear): the judgment answered or retired, or the
 //     doctor's pass of that check on that member recorded after the hold
-//     (DoctorPassPlan). A check passes on a member only when no failing line of it keeps
-//     the hold (doctorFailKeeps): a line naming the member, or a global one (all, identity,
-//     hook, judgments, a provider, a tier, a route) that fails for every member at once;
-//     only a line naming another member is that member's alone. The release is a line of
+//     (DoctorPassPlan). A check passes on a member only when no line of it keeps the hold
+//     (doctorFailKeeps): a FAIL, or a line that measured nothing (DoctorCheck.Unmeasured),
+//     that is the member's own (DoctorCheck.Member) or global (all, identity, hook,
+//     judgments, a provider, a tier, a route: no member's, failing for every member at
+//     once); only a line the generator marked as another member's is that member's alone.
+//     Scope and measurement are the generator's fields, never the subject's spelling or the
+//     evidence text. The release is a line of
 //     the log, "released: cause <x> resolved", addressed to the seat (NHoldReleased); a
 //     member that beats is up in that step.
 //     A waited judgment is parked, not resolved: while its wait stands (an acknowledgement
@@ -612,9 +615,8 @@ func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 	if s == nil || s.Fleet == nil {
 		return nil
 	}
-	members := s.Members()
 	var out []DoctorPass
-	for _, m := range members {
+	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
 		if ctl == nil || ctl.F("held") == "" {
 			continue
@@ -629,7 +631,7 @@ func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 				continue
 			}
 			ran = true
-			if doctorFailKeeps(members, m, c) {
+			if doctorFailKeeps(m, c) {
 				failed = true
 			}
 		}
@@ -644,17 +646,20 @@ func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 	return out
 }
 
-// doctorFailKeeps says a line of the check keeps m's hold on it: it is a FAIL or a "not
-// measured" line, and it names m or it names no fleet member at all (all, identity, hook,
-// judgments, a provider, a tier, a route, a reader: the check's global subjects, which
-// fail for every member at once). Only a failing line that names another member is that
-// member's alone (the cold read of #206: a hold on doctor:git-identity was released while
-// its identity line failed, because the line named "identity", not the member).
-func doctorFailKeeps(members []string, m string, c DoctorCheck) bool {
-	if c.Status != DoctorFail && !strings.HasPrefix(c.Evidence, "not measured") {
+// doctorFailKeeps says a line of the check keeps m's hold on it: it reports no measurement
+// (Unmeasured: nothing is judged from it) or it is a FAIL, and it is about m (Member) or
+// about no one member (the check's global subject: all, identity, hook, judgments, a
+// provider, a tier, a route, a reader, which fails for every member at once). Only a line
+// the generator marked as another member's is that member's alone. The scope and the
+// measurement are the generator's fields, never the subject's spelling (a provider named
+// like a member is still a provider) and never the evidence text (the second cold read of
+// #206: a FAIL on a provider named m2 released m1, and loops-redial's "the server's start
+// was not measured" WARN was read as a pass).
+func doctorFailKeeps(m string, c DoctorCheck) bool {
+	if !c.Unmeasured && c.Status != DoctorFail {
 		return false
 	}
-	return c.Subject == m || !slices.Contains(members, c.Subject)
+	return c.Member == "" || c.Member == m
 }
 
 // DoctorPassPlan records each pass on its member's control card (FieldDoctorPassed, the
