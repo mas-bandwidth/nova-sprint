@@ -169,27 +169,22 @@ func TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace(t *testing.T) {
 		require.Len(t, r.widenNotes(), 1)
 		r.clean("an E12 refusal widened in place")
 	})
-	// The ejection-bound audit of 2026-10-10: the E12 branch of landRefused skipped the brief's
-	// bound, and the widen rule's brief edit resets the attempts it counts, so nothing capped
-	// the widen loop (tla/Land.tla Refuse, WidenCapped).
-	t.Run("an E12 refusal at the brief's bound: the brief is wrong, never widened", func(t *testing.T) {
+	// An accepted card is never judged by the attempt cap alone (tla/Land.tla
+	// AcceptedNeverCapJudged): an E12 refusal on an accepted card is widened in place,
+	// not halted at cap 1.
+	t.Run("an E12 refusal on an accepted card is widened in place: not halted at cap 1", func(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.widenCard()
 		r.m.SetMaxAttempts("1")
 		r.refusedE12("w-1", "w", "docs/NOTE.md")
-		bound := r.openOnCard(sprint.NBriefWrong, "w-1")
-		require.Len(t, bound, 1, "attempt 1 of a brief whose cap is 1: the bound's judgment")
-		assert.Contains(t, bound[0].Note.What, "outside its PATHS (E12)")
-		assert.Empty(t, r.openOnCard(sprint.NReturned, "w-1"), "not returned for the widen rule")
+		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "w-1"), "not halted at cap 1: attempt cap never judges an accepted card")
 		r.tick()
 		r.tick()
 
 		pr := r.snap().Work.Card("w-1")
-		assert.Equal(t, sprint.Review, pr.Col, "a mind's")
-		assert.Equal(t, 1, pr.Int("attempt"))
-		assert.NotContains(t, pr.F("brief"), "docs/NOTE.md", "never widened at the bound")
-		assert.Empty(t, r.widenNotes())
+		assert.Contains(t, pr.F("brief"), "docs/NOTE.md", "widened in place")
+		require.Len(t, r.widenNotes(), 1)
 	})
 	t.Run("E12 widenings stop at MaxWidens: the next is the brief's bound", func(t *testing.T) {
 		t.Parallel()
