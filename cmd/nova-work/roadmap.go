@@ -68,7 +68,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 				placeFlags(f, "add the entry to")
 				f.Required("title", "the entry's title, one line")
 				f.String("text", "", "what the entry is (required for a roadmap item)")
-				f.String("origin", "", "where the entry came from: an issue, a pull request, a card (required for a fix)")
+				f.String("origin", "", "where the entry came from: PR #123, 40-char SHA, or commit reference (required for a fix)")
 				f.String("status", "planned", "a new fix's status: planned or in-progress")
 				f.String("why", "", "a roadmap item's reason to wait")
 				f.Check(func(c *tool.Call) {
@@ -76,7 +76,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 						c.Problem("--text is required for a roadmap item; it wants what the item is")
 					}
 					if c.Str("release") != "" && strings.TrimSpace(c.Str("origin")) == "" {
-						c.Problem("--origin is required for a fix; it wants where the fix came from (a pull request, an issue, a card)")
+						c.Problem("--origin is required for a fix; it wants where the fix came from (valid origin format examples: PR #123, 40-char SHA, or commit reference)")
 					}
 				})
 			},
