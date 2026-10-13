@@ -8432,7 +8432,13 @@ last refusal (card and reason) and the base's red CI (the check). A sprint with 
 review or merging raises none. The episode clears on the next landing, with the happened
 `landing again after <d>` (from the episode's start to the landing) and both properties
 empty; a landing the tick sees only once the stall holds again still ends the old episode
-first, and the stall after it is a new one. A plan that only writes the episode's stamps
+first, and the stall after it is a new one. Every judgment kind has a verb that closes it
+(`TestEveryJudgmentKindHasAVerbThatClosesIt`): `landing stalled` is closed by
+`ack --reason` (held until the next landing or the bound) or `wait` (a review time), and by
+the next landing; `no route serves the tier` is closed by `route add` serving its tier on
+the next tick, by `ack --reason`, or by `drop`. Every tick-kept condition closes on the
+first tick it no longer holds, with a happened note `the condition cleared: <kind> no
+longer holds`; a held ack ends then too. A plan that only writes the episode's stamps
 carries a unit of its own, since the store's tick passes over an empty plan. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
 

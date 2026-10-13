@@ -90,6 +90,10 @@ const MaxProviderErrorBytes = 200
 // it, and the judgment "returned to review" decides it.
 const FieldReturnedAttempt = "returned_attempt"
 
+// NConditionCleared is the happened note a tick-kept condition closes with
+// on the first tick it no longer holds (notify, tickLandingStall).
+const NConditionCleared = "the condition cleared"
+
 // The tick's own notification types.
 const (
 	NResumed    = "stream resumed: the card it needed landed"
@@ -149,8 +153,9 @@ var TickDecisions = map[string][]string{
 	// the verdicts' ledger (reads_window.go): the per-reader one names its reader
 	NBrokenReadsOutrun: {"look at the readers", "raise the read tier", "act"},
 	NReaderBreaks:      {"look at the reader", "act"},
-	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
-	NNoRoute:           {"route add", "look at the card", "drop"},
+	NDevBehind:         {"promoted", "wait 30m"},     // promotion.go
+	NNoRoute:           {"route add", "ack", "drop"}, // route add serves the tier, ack --reason closes it, drop drops its cards; "look at the card" is advice, not a decision
+	NLandingStall:      {"ack", "wait"},              // ack --reason holds it until the next landing or the bound; wait sets a review time (judgments.go)
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
 	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
 	NProviderLow:    {"ack", "wait"}, // the same
@@ -2302,6 +2307,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		p.Notes = append(p.Notes, n)
 	}
 	closing := map[string]bool{}
+	cleared := map[string]string{} // note id -> type, for the cleared note
 	for _, o := range held {
 		if !contains(types, o.Note.Type) || holds[condKey(o.Note.Type, o.Subject(), o.Note.Card, o.Note.What)] {
 			continue
@@ -2321,6 +2327,16 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		}
 		p.Closes = append(p.Closes, o)
 		closing[o.Note.ID] = true
+		cleared[o.Note.ID] = o.Note.Type
+	}
+	// Every tick-kept condition closes on the first tick it no longer holds,
+	// with a note saying so; a held ack ends then too (its entry is in Closes).
+	// tla/SprintRules.tla NoRouteTick / NoRouteClosesWhenServed
+	for _, typ := range cleared {
+		n := happened(NConditionCleared, "", s.Now)
+		n.What = "the condition cleared: " + typ + " no longer holds"
+		n.Who, n.To = who, s.Coordinator
+		p.Notes = append(p.Notes, n)
 	}
 	// A primary in review whose last judgment the tick closes (its late read
 	// reported, say) gets the judgment it needs after it, as every step that

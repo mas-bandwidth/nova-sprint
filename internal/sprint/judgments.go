@@ -668,6 +668,29 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	// times to the nanosecond (landingStamp), never as text, so a sub-second
 	// bound cannot read a landing and the episode it came before as one second
 	landedAgain := landing != "" && since != "" && stampAfter(landing, since)
+	// An ack --reason holds the judgment until the next landing or the bound,
+	// and a wait holds it until its review time; a landing ends the hold too.
+	// tla/SprintRules.tla LsLand / StallJudgedOnlyWhileWaiting
+	for _, o := range s.Acked {
+		if o.Note.Type != NLandingStall {
+			continue
+		}
+		if waiting == 0 || landedAgain {
+			p.Closes = append(p.Closes, o)
+			continue
+		}
+		if !o.Note.Review.IsZero() {
+			if s.Now.Before(o.Note.Review) {
+				return landingStallKept(p, "landing stalled: held by wait until "+o.Note.Review.UTC().Format(time.RFC3339)), 0
+			}
+			p.Closes = append(p.Closes, o) // the review time passed: raise again below
+			continue
+		}
+		if s.Now.Sub(o.Note.At) < bound {
+			return landingStallKept(p, "landing stalled: held by ack"), 0
+		}
+		p.Closes = append(p.Closes, o) // the bound passed under an ack: raise again below
+	}
 	switch {
 	// The episode is cleared only when the condition is actually gone: nothing
 	// is waiting, or a landing happened since it began. "The bound has not
@@ -711,7 +734,7 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 				n.What, n.At = what, s.Now
 				p.Updates = append(p.Updates, n)
 			} else {
-				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true}
+				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true, Decisions: append([]string(nil), TickDecisions[NLandingStall]...)}
 				p.Notes = append(p.Notes, n)
 			}
 			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second)) + landingStallCause(s)})

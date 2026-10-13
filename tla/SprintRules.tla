@@ -161,6 +161,8 @@
 \*                holds (the same harness-fault class on RuleSameFailureCards cards):
 \*                HarnessFleetHeld
 \*   "lowers"     the no-route rule moves a card to a weaker tier: NoRouteNeverLowers
+\*   "staysafterroute" a route serves the tier again but the tick keeps its
+\*                no-route judgment open: NoRouteClosesWhenServed
 \*   "pinnedraise" the no-route rule raises a card whose tier is pinned:
 \*                NoRouteRaisesOnlyUnpinnedReady
 \*   "stoppedcounts" the pin's running clock advances while the machine is STOPPED:
@@ -203,7 +205,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
-          ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
+          ntier, nready, npinned, nfriend, nbrief, njudged, nrcond, \* noroute
           alopen, almsg, altold,                      \* alert
           rest, card, tierJ, cardJ, staleJ            \* tier
 
@@ -218,7 +220,7 @@ epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areaso
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
-norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
+norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged, nrcond>>
 alertVars == <<alopen, almsg, altold>>
 tierVars == <<rest, card, tierJ, cardJ, staleJ>>
 vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
@@ -303,7 +305,7 @@ TypeOK ==
   /\ crefused \in ConflictWays \cup {None} /\ cway \in ConflictWays \cup {None}
   /\ catt \in 1..Cap
   /\ ntier \in 1..4 /\ nready \in BOOLEAN /\ npinned \in BOOLEAN /\ nfriend \in BOOLEAN
-  /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN
+  /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN /\ nrcond \in BOOLEAN
   /\ alopen \in BOOLEAN /\ almsg \in 0..2 /\ altold \in BOOLEAN
   /\ rest \in BOOLEAN
   /\ card \in {"ready", "bound", "working"}
@@ -338,7 +340,7 @@ Init ==
   /\ lsclk = 0 /\ lsstopped = FALSE /\ lswait = 1
   /\ lslast = -1 /\ lssince = -1 /\ lssaid = -1 /\ lsjudged = FALSE
   /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
-  /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
+  /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE /\ nrcond = TRUE
   /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
   /\ rest = FALSE /\ card = "ready" /\ tierJ = FALSE /\ cardJ = FALSE /\ staleJ = FALSE
 
@@ -1443,20 +1445,36 @@ NearestServed(t) ==
 \* the outside: the card's status changes, and the overdue judgment appears
 NoRouteReady ==
   /\ nready' = ~nready
-  /\ UNCHANGED <<ntier, npinned, nfriend, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, npinned, nfriend, nbrief, njudged, nrcond>>
 NoRoutePin ==
   /\ npinned' = ~npinned
-  /\ UNCHANGED <<ntier, nready, nfriend, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, nready, nfriend, nbrief, njudged, nrcond>>
 NoRouteFriend ==
   /\ nfriend' = ~nfriend
-  /\ UNCHANGED <<ntier, nready, npinned, nbrief, njudged>>
+  /\ UNCHANGED <<ntier, nready, npinned, nbrief, njudged, nrcond>>
 NoRouteBrief ==
   /\ nbrief' = ~nbrief
-  /\ UNCHANGED <<ntier, nready, npinned, nfriend, njudged>>
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, njudged, nrcond>>
 NoRouteJudge ==
-  /\ ~njudged
+  /\ ~njudged /\ nrcond
   /\ njudged' = TRUE
-  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief>>
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, nrcond>>
+
+\* the outside: a route serves the tier again (route add), or stops serving it
+NoRouteServed ==
+  /\ nrcond' = FALSE
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, njudged>>
+NoRouteUnserved ==
+  /\ nrcond' = TRUE
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, njudged>>
+
+\* the tick: a tick judgment whose condition is false closes within one tick
+\* (steps_tick.go notify, judgments.go tickLandingStall for the stall part).
+\* The staysafterroute defect keeps it open after its route serves the tier.
+NoRouteTick ==
+  /\ njudged /\ ~nrcond
+  /\ IF Broken = "staysafterroute" THEN UNCHANGED njudged ELSE njudged' = FALSE
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief, nrcond>>
 
 \* the tier the rule raises the card to: the nearest served tier above, or a weaker
 \* tier for the lowers defect (the guard keeps it above the ladder's floor)
@@ -1474,9 +1492,9 @@ NoRouteRaise ==
   /\ ntier' = NoRouteTarget
   /\ npinned' = TRUE
   /\ njudged' = FALSE
-  /\ UNCHANGED <<nready, nfriend, nbrief>>
+  /\ UNCHANGED <<nready, nfriend, nbrief, nrcond>>
 
-NoRouteNext == NoRouteReady \/ NoRoutePin \/ NoRouteFriend \/ NoRouteBrief \/ NoRouteJudge \/ NoRouteRaise
+NoRouteNext == NoRouteReady \/ NoRoutePin \/ NoRouteFriend \/ NoRouteBrief \/ NoRouteJudge \/ NoRouteRaise \/ NoRouteServed \/ NoRouteUnserved \/ NoRouteTick
 
 \* The rule never lowers a tier: a card no route serves is raised to a stronger tier,
 \* never a weaker one (a heavy card never goes to flash).
@@ -1488,6 +1506,13 @@ NoRouteRaisesOnlyUnpinnedReady == [][ntier' = ntier \/ (~npinned /\ nready)]_nor
 
 \* The rule raises to the nearest served tier above the card's own, and nowhere else.
 NoRouteRaisesToNearestServed == [][ntier' = ntier \/ ntier' = NearestServed(ntier)]_norouteVars
+
+\* A tick judgment whose condition is false closes within one tick: once a
+\* route serves the tier, the no-route judgment does not stay open.
+NoRouteClosesWhenServed == (njudged /\ ~nrcond) ~> ~njudged
+
+\* The landing-stall judgment is open only while cards wait (LsLand clears it).
+StallJudgedOnlyWhileWaiting == lsjudged => lswait > 0
 
 -----------------------------------------------------------------------------
 \* Part "alert": the owner alert's send-once (cmd/nova-sprint seat_silent.go
@@ -1627,6 +1652,7 @@ Fairness ==
   /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
   /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>)
   /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "noroute" /\ NoRouteTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
