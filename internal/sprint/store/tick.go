@@ -317,8 +317,8 @@ func MachineLine(now time.Time, m Machine, hb Heartbeat) string {
 	if !m.Running() && m.Cause == sprint.FundsCause {
 		return "machine: STOPPED (" + sprint.FundsCause + ")"
 	}
-	if !m.Running() && m.Reason != "" && !m.Until.IsZero() {
-		// a stop by hand says who, why and when it is back (section 14)
+	if !m.Running() && m.Reason != "" {
+		// a stop by hand says why and when it is back, or until the next start (section 14)
 		return "machine: " + sprint.StoppedText(m.Who, m.Reason, m.Until, now)
 	}
 	if !m.Running() {
@@ -440,9 +440,10 @@ func (st *Store) SetMachine(ctx context.Context, running bool) (before, after Ma
 }
 
 // StopUntil is a stop by hand (docs/SPEC-SPRINT.md section 14): the machine
-// STOPPED, recorded with who, the reason and the time it is back by, when the
-// tick starts it again (backAt). A stop of a machine STOPPED already is a stop
-// again: the reason and the time are replaced, and the span goes on.
+// STOPPED, recorded with who, the reason and the time the seat expects to start
+// again, shown to readers (display metadata only; only start starts the machine).
+// A stop of a machine STOPPED already is a stop again: the reason and the time
+// are replaced, and the span goes on.
 func (st *Store) StopUntil(ctx context.Context, reason string, until time.Time) (before, after Machine, res Result, err error) {
 	return st.setMachine(ctx, false, st.Actor, reason, until)
 }
