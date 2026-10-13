@@ -12,7 +12,8 @@ server. Use the paired `reader-m2` and `m2` names: a fleet reader row is tied to
 its member. A twin beats every declared member and reader at each command; it
 does not run between commands, so you advance it by hand. The explicit
 `--redis` flag keeps every command on the twin, even if this machine has a
-saved seat or a server environment setting.
+saved seat or a server environment setting. Run this in a fresh working
+directory, or choose a new twin filename.
 
 ```sh
 export NOVA_SPRINT_ACTOR=boss
@@ -38,6 +39,12 @@ the server tick asks for a review. A twin handles those beats itself. Commands
 without `--redis` may select a configured server from `NOVA_SPRINT_SERVER` or
 the saved seat record. See the [environment reference](ENVIRONMENT.md) for
 connection precedence.
+
+This walkthrough shows the command flow, not a code change: the sample card has
+no brief, so the worker has no task to implement. For actual work, provide a
+brief with `add --brief-file <path>` before starting the sprint. The twin also
+has no git checkout: `finish` omits `--head` and `merge` records a simulated
+landing. A live landing needs a pushed commit and the `land` verb.
 
 For a live sprint, set `NOVA_SPRINT_SERVER`, `NOVA_BUS_REDIS`, and
 `NOVA_SPRINT_ACTOR` in the coordinator's interactive shell; the server process
