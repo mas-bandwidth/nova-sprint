@@ -85,12 +85,12 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	pageOf := func(where string) string { return string(sprintdash.PageData([]byte(where), clock())) }
 
 	// a read a second with no page open, each sent to the live server as where --json
-	// --cards --rows (the rows place the critical path and are not served)
+	// --dashboard (the cheap page read)
 	for range 5 {
 		second()
 	}
 	assert.Equal(t, 5, reads(), "one read a second, whoever is looking")
-	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards", "--rows", "--archived"}, sent[0])
+	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--dashboard"}, sent[0])
 	data, stale := api()
 	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json --archived --rows")), data, "the page's data is the live server's own")
 	assert.False(t, stale)

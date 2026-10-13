@@ -15,7 +15,7 @@ import (
 func init() {
 	for i := range verbs {
 		if verbs[i].name == "where" {
-			verbs[i].syntax = "[--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]"
+			verbs[i].syntax = "[--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--dashboard] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]"
 			orig := verbs[i].run
 			verbs[i].run = func(a *app, args []string, stdout, stderr io.Writer) int {
 				// where's own flags are parsed here once, every one of them, so --redis
@@ -52,6 +52,7 @@ func whereSeriesFlags(a *app, args []string) (*common, int64, flagSet, error) {
 	fs.Bool("cards", false, "with --json: also every dealt work card, judgment and lane")
 	fs.Bool("archived", false, "with --json: the archived streams' rows of the work and merge tables in tables, and their primaries in --rows, beside the live ones (stream archive); their counts are in the footers and the summary either way")
 	fs.Bool("rows", false, "with --json: also every primary's row of the work table")
+	fs.Bool("dashboard", false, "with --json: fold stream_costs and reader counts, sentinel-free summary, drop archived rows")
 	fs.Duration("stale", defaultStale, "a stream with no progress for longer is shown stalled (--json)")
 	atEpoch := fs.Int64("at-epoch", -1, "the sprint as it was at an earlier epoch (before a clear); the series is that epoch's")
 	var rel releaseFlag
