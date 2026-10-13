@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,6 +45,36 @@ const NHeldRaised = "a judgment holding a card was raised again"
 // note it releases. A new stop note (an ack or a wait writes one) has no record, so its
 // clock starts again.
 const NPinReleased = "a hard pin was released at its deadline"
+
+// NSeatNotMoving is the sprint-level judgment raised once an unchanged judgment has
+// been pushed RepeatPushes times: the seat is not moving it, escalate to the owner.
+// tla/CoordinatorPass.tla PushesBoundedWhileUnchanged, EscalatedOnce
+const NSeatNotMoving = "the seat is not moving this: escalate to the owner"
+
+// SeatNotMovingDecision is the one decision of NSeatNotMoving.
+const SeatNotMovingDecision = "answer the judgment it names"
+
+// NOwnerNoTarget is the judgment the server raises when the owner escalation has no
+// target that exists; its decisions are ack and wait.
+const NOwnerNoTarget = "the owner escalation has no target"
+
+// RepeatPushesDefault is the repeat bound when the sprint row names none.
+const RepeatPushesDefault = 3
+
+// RepeatBound is the repeat bound: the sprint row's repeat_pushes as the routes read
+// applied it (Snapshot.RepeatPushes), else RepeatPushesDefault. A whole number of at least 1.
+// tla/CoordinatorPass.tla PushesBoundedWhileUnchanged
+func (s *Snapshot) RepeatBound() int {
+	v := strings.TrimSpace(s.RepeatPushes)
+	if v == "" {
+		return RepeatPushesDefault
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || strconv.Itoa(n) != v {
+		return RepeatPushesDefault
+	}
+	return n
+}
 
 // SeatSilentDecision is the one decision of NSeatSilent: answer the judgments it names.
 // It offers neither ack nor wait: the alarm is quieted only by the answers.
@@ -131,6 +162,72 @@ func seatSilentConds(s *Snapshot, r TickReq) []cond {
 	return []cond{{typ: NSeatSilent, streamLevel: true, primaries: ids, what: what, decisions: []string{SeatSilentDecision}}}
 }
 
+// heldFingerprint is the state a raise is counted against: each held card's column,
+// attempt, tier and result, its stream's control state, and the stream's counts by
+// column. A change in any of it resets the repeat count.
+// tla/CoordinatorPass.tla PushesBoundedWhileUnchanged
+func heldFingerprint(s *Snapshot, stream string, cards []string) string {
+	var parts []string
+	sortedCards := append([]string(nil), cards...)
+	sort.Strings(sortedCards)
+	for _, id := range sortedCards {
+		c := s.Work.Placed(id)
+		if c == nil {
+			parts = append(parts, id+" not placed")
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s in %s (attempt %s, tier %s, result %s)", id, c.Col, orDash(c.F("attempt")), orDash(c.F("tier")), orDash(c.F("result"))))
+	}
+	ctl := s.StreamCtl(stream)
+	parts = append(parts, fmt.Sprintf("stream %s control %s/%s", stream, orDash(ctl.F("state")), orDash(ctl.F("cause"))))
+	if s.Work != nil {
+		counts := map[string]int{}
+		for _, c := range s.Work.Cards() {
+			if c != nil && c.Row == stream && c.Placed() {
+				counts[c.Col]++
+			}
+		}
+		var cols []string
+		for _, col := range slices.Sorted(maps.Keys(counts)) {
+			cols = append(cols, fmt.Sprintf("%s=%d", col, counts[col]))
+		}
+		parts = append(parts, "counts "+strings.Join(cols, ","))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// raiseRecordState is the fingerprint and unchanged count a judgment's latest
+// NHeldRaised record (its Hint) carries; ok false when it carries none.
+func raiseRecordState(records map[string][]Open, id string) (string, int, bool) {
+	bestK := -1
+	fp, count, ok := "", 0, false
+	for _, o := range records[id] {
+		if o.Note.Before < bestK {
+			continue
+		}
+		bestK = o.Note.Before
+		f, c, parsed := strings.Cut(o.Note.Hint, "; unchanged=")
+		if !parsed {
+			continue
+		}
+		n, err := strconv.Atoi(c)
+		if err != nil {
+			continue
+		}
+		fp, count, ok = strings.TrimPrefix(f, "fp="), n, true
+	}
+	return fp, count, ok
+}
+
+// seatNotMovingNote is the one escalation of an unchanged judgment: it names the
+// judgment, its type, its cards, the count and the unchanged state in words.
+// tla/CoordinatorPass.tla EscalatedOnce
+func seatNotMovingNote(s *Snapshot, r TickReq, n Note, id, typ string, cards []string, count int, fp string) Note {
+	return Note{Kind: Judgment, Type: NSeatNotMoving, Stream: n.Stream, Primaries: append([]string(nil), cards...), Count: len(cards),
+		SprintLevel: true, Card: id, Who: r.who(), At: s.Now, Hint: fp, Decisions: []string{SeatNotMovingDecision},
+		What: fmt.Sprintf("the seat is not moving this: %s (%s) still holds %s after %d unchanged pushes (state: %s); escalate to the owner; answer the judgment it names", id, typ, Preview(cards, ", "), count, fp)}
+}
+
 // reraiseHeld raises again every card-holding judgment past its deadline, once each
 // DeadlineJudgment of running time: the k-th deadline after it was written raises it the
 // k-th time (the first is the overdue line, tickOverdue), as a push to the seat
@@ -158,6 +255,30 @@ func reraiseHeld(s *Snapshot, r TickReq) Plan {
 			open[o.Note.ID] = true
 		}
 	}
+	// an escalation whose judgment closed, or whose state changed, closes
+	byID := map[string]Note{}
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment {
+			byID[o.Note.ID] = o.Note
+		}
+	}
+	escalated := map[string]bool{}
+	for _, o := range s.Open {
+		if o.Note.Type != NSeatNotMoving {
+			continue
+		}
+		named := o.Note.Card
+		jn, ok := byID[named]
+		if !ok {
+			p.Closes = append(p.Closes, o)
+			continue
+		}
+		if heldFingerprint(s, jn.Stream, cardsHeldBy(jn)) != o.Note.Hint {
+			p.Closes = append(p.Closes, o)
+			continue
+		}
+		escalated[named] = true
+	}
 	for _, h := range heldPastDeadline(s, r) {
 		if slices.Contains(PassTypes, h.typ) {
 			continue
@@ -167,9 +288,26 @@ func reraiseHeld(s *Snapshot, r TickReq) Plan {
 			continue
 		}
 		n := h.note
+		// the repeat bound: at most RepeatBound unchanged pushes, then one
+		// escalation and no further pushes until the state changes
+		// (tla/CoordinatorPass.tla PushesBoundedWhileUnchanged, EscalatedOnce)
+		fp := heldFingerprint(s, n.Stream, h.cards)
+		prevFP, prevCount, hasPrev := raiseRecordState(records, h.id)
+		count := prevCount
+		if !hasPrev || prevFP != fp {
+			count = 0
+		}
+		if count >= s.RepeatBound() {
+			if !escalated[h.id] {
+				p.Notes = append(p.Notes, seatNotMovingNote(s, r, n, h.id, h.typ, h.cards, s.RepeatBound(), fp))
+				escalated[h.id] = true
+			}
+			continue
+		}
 		p.Closes = append(p.Closes, records[h.id]...)
 		rec := Note{Kind: Acknowledged, Type: NHeldRaised, Stream: n.Stream, Primaries: n.Primaries, Count: n.Count,
-			StreamLevel: n.StreamLevel, SprintLevel: n.SprintLevel, What: h.id, Before: k, Who: r.who(), At: s.Now}
+			StreamLevel: n.StreamLevel, SprintLevel: n.SprintLevel, What: h.id, Before: k, Who: r.who(), At: s.Now,
+			Hint: fmt.Sprintf("fp=%s; unchanged=%d", fp, count+1)}
 		push := Note{Kind: Happened, Type: NRaisedAgain, Stream: n.Stream, Primaries: h.cards, Count: len(h.cards), Who: r.who(), To: to, At: s.Now,
 			What: fmt.Sprintf("%s (%s) still holds %s, open since %s, %s: raised again at its deadline (%d); answer it", h.id, h.typ, Preview(h.cards, ", "), stamp(n.At), h.age.Truncate(time.Second), k),
 			Hint: "run: nova-sprint inbox; a judgment that holds a card is answered, never left"}
@@ -186,6 +324,9 @@ func reraiseHeld(s *Snapshot, r TickReq) Plan {
 // seatSilentRefusal is why a wait or an acknowledgement of the note is refused: NSeatSilent
 // is quieted only by the answers to the judgments it names. "" for any other type.
 func seatSilentRefusal(typ, verb string) string {
+	if typ == NSeatNotMoving {
+		return NSeatNotMoving + " cannot be " + verb + ": it clears when the judgment it names is answered; run: nova-sprint inbox"
+	}
 	if typ != NSeatSilent {
 		return ""
 	}

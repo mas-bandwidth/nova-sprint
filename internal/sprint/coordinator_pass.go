@@ -346,6 +346,19 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 	if to == "" {
 		to = "coordinator"
 	}
+	// the repeat bound's records, as reraiseHeld keeps them (seat_answers.go)
+	records := map[string][]Open{}
+	for _, o := range s.Acked {
+		if o.Note.Type == NHeldRaised {
+			records[o.Note.What] = append(records[o.Note.What], o)
+		}
+	}
+	escalated := map[string]bool{}
+	for _, o := range s.Open {
+		if o.Note.Type == NSeatNotMoving {
+			escalated[o.Note.Card] = true
+		}
+	}
 	done := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
@@ -364,6 +377,27 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 		k := int(d / PassEvery)
 		if !ok || k <= n.Before {
 			continue
+		}
+		// at most RepeatBound unchanged pushes, then one escalation to the owner
+		// and no further pushes until the state changes
+		// (tla/CoordinatorPass.tla PushesBoundedWhileUnchanged, EscalatedOnce)
+		if n.Type != NSeatSilent && n.Type != NSeatNotMoving {
+			fp := heldFingerprint(s, n.Stream, n.Primaries)
+			prevFP, prevCount, hasPrev := raiseRecordState(records, n.ID)
+			count := prevCount
+			if !hasPrev || prevFP != fp {
+				count = 0
+			}
+			if count >= s.RepeatBound() {
+				if !escalated[n.ID] {
+					p.Notes = append(p.Notes, seatNotMovingNote(s, r, n, n.ID, n.Type, n.Primaries, s.RepeatBound(), fp))
+					escalated[n.ID] = true
+				}
+				continue
+			}
+			p.Closes = append(p.Closes, records[n.ID]...)
+			p.Notes = append(p.Notes, Note{Kind: Acknowledged, Type: NHeldRaised, Stream: n.Stream, Primaries: n.Primaries, Count: n.Count,
+				What: n.ID, Before: k, Who: r.who(), At: s.Now, Hint: fmt.Sprintf("fp=%s; unchanged=%d", fp, count+1)})
 		}
 		n.Before, n.What = k, c.what
 		if len(c.decisions) > 0 {

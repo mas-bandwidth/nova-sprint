@@ -62,6 +62,17 @@ func seatSilentRig(t *testing.T, b *tokenBus) (*testApp, *store.Store, string) {
 	return nil, nil, ""
 }
 
+// seatSilentKnownRig is seatSilentRig with the owner (glenn) a friend row, so
+// the owner escalation has a target that exists (noise card 4: an owner that
+// is no row is sent nothing).
+func seatSilentKnownRig(t *testing.T, b *tokenBus) (*testApp, *store.Store, string) {
+	t.Helper()
+	ta, st, id := seatSilentRig(t, b)
+	_, _, _, err := st.SyncFriends(context.Background(), []store.FriendSpec{{Name: "glenn", Width: 2, Class: "pro"}})
+	require.NoError(t, err)
+	return ta, st, id
+}
+
 // pastTheLook moves the app's clock past the look's throttle.
 func (ta *testApp) pastTheLook() {
 	ta.mu.Lock()
@@ -75,7 +86,7 @@ func (ta *testApp) pastTheLook() {
 func TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken(t *testing.T) {
 	t.Parallel()
 	b := &tokenBus{fails: 1}
-	ta, st, id := seatSilentRig(t, b)
+	ta, st, id := seatSilentKnownRig(t, b)
 	ctx := context.Background()
 
 	ta.a.tellSeatSilent(ctx, st)
@@ -104,7 +115,7 @@ func TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken(t *testing.T) {
 func TestARestartedServerTellsTheOwnerOfARaiseOnce(t *testing.T) {
 	t.Parallel()
 	b := &tokenBus{}
-	ta, st, _ := seatSilentRig(t, b)
+	ta, st, _ := seatSilentKnownRig(t, b)
 	ctx := context.Background()
 	ta.a.tellSeatSilent(ctx, st)
 	require.Len(t, b.delivered, 1)
@@ -124,7 +135,7 @@ func TestARestartedServerTellsTheOwnerOfARaiseOnce(t *testing.T) {
 func TestASeatSilentRaiseNoLongerOpenIsForgotten(t *testing.T) {
 	t.Parallel()
 	b := &tokenBus{}
-	ta, st, _ := seatSilentRig(t, b)
+	ta, st, _ := seatSilentKnownRig(t, b)
 	ctx := context.Background()
 	ta.a.seatSilent.told = map[string]bool{seatSilentToken("", 0, "gone", 3): true}
 	ta.a.tellSeatSilent(ctx, st)

@@ -551,6 +551,9 @@ type Snapshot struct {
 	// coordinator decisions before it is the coordinator's as one judgment (AttemptsCap,
 	// brief_bound.go; docs/SPEC-SPRINT.md, the bounds); "" or unparseable is AttemptsDefault.
 	MaxAttempts string
+	// RepeatPushes is the sprint row's repeat bound as nova-config applied it
+	// (sprint:repeat_pushes), read with the routes; "" or unparseable is 3.
+	RepeatPushes string
 	// ReaderStates is each reader's state as the store derives it (ReaderState:
 	// up, away or down), read by a step that asks (docs/SPEC-SPRINT.md section
 	// 6); nil is none read, and every reader is held up.

@@ -353,6 +353,14 @@ const FieldAnswerRulesOff = "answer_rules_off"
 // stream. Absent, empty or unparseable, the sprint reads DefaultMaxAttempts.
 const FieldMaxAttempts = "max_attempts"
 
+// FieldRepeatPushes is the sprint row's repeat bound (docs/SPEC-SPRINT.md section 8):
+// how many times an unchanged card-holding or pass judgment is pushed again before it
+// escalates to the owner (NSeatNotMoving). Absent, empty or unparseable, DefaultRepeatPushes.
+const FieldRepeatPushes = "repeat_pushes"
+
+// DefaultRepeatPushes is the repeat bound when the sprint row names none: 3.
+const DefaultRepeatPushes = 3
+
 // DefaultMaxAttempts is the attempt bound when the sprint row names none: 4.
 const DefaultMaxAttempts = 4
 
@@ -442,6 +450,12 @@ func checkSprint(r Row) error {
 	if bar := r.Fields[FieldDecideJudgment]; bar != "" {
 		if _, err := decide.ParseJudgmentBar(bar); err != nil {
 			return fmt.Errorf("sprint: %v; want --%s <p>, a probability", err, FieldDecideJudgment)
+		}
+	}
+	if v, ok := r.Fields[FieldRepeatPushes]; ok && v != "" {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil || n < 1 {
+			return fmt.Errorf("sprint: %s %q is not a whole number of at least 1; want --%s <n>, a whole number of at least 1 (%d by default)", FieldRepeatPushes, v, FieldRepeatPushes, DefaultRepeatPushes)
 		}
 	}
 	if v, ok := r.Fields[FieldMaxAttempts]; ok && v != "" {
@@ -573,6 +587,7 @@ var Kinds = []*Kind{
 			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, the base tree gate retried before a stream stops, a friend's unstarted card past its bound taken back and dealt again, failed work whose report HOLDs for a card not landed waiting for it, a reader's first finding reworked as the fix, and a late read asked of another reader once an attempt (docs/SPEC-SPRINT.md section 8, answered by rule)"},
 			{Name: FieldGitIdentity, Type: TypeText, Default: DefaultGitIdentity, Help: "the author and committer every commit the sprint machine makes carries, as 'Name <email>'; an unapplied or empty one reads as the default (doctor warns), a value that does not parse is refused by the landing, and doctor fails when its email equals the host's global user.email; " + DefaultGitIdentity + " (the default)"},
 			{Name: FieldMaxAttempts, Type: TypeInt, Default: strconv.Itoa(DefaultMaxAttempts), Help: fmt.Sprintf("the attempt bound: how many attempts one card runs, every attempt counted whatever ended it, before the sprint stops dealing it and raises one judgment to the coordinator, who decides (brief, rework --tier, rework --carry, drop) and so opens a fresh window of as many attempts; a whole number from 1 to %d; %d (the default); a stream's own nova-sprint stream set <s> --attempts <n> still overrides it for that stream", MaxAttemptsCeiling, DefaultMaxAttempts)},
+			{Name: FieldRepeatPushes, Type: TypeInt, Default: strconv.Itoa(DefaultRepeatPushes), Help: "the repeat bound: how many times a judgment whose cards and stream are unchanged is pushed again before it escalates once to the owner as the seat is not moving this; a whole number of at least 1; 3 (the default)"},
 		},
 		Check: checkSprint,
 	},

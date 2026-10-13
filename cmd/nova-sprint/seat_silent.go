@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,7 +36,97 @@ const seatSilentLook = 5 * time.Second
 type seatSilentTold struct {
 	mu     sync.Mutex
 	told   map[string]bool
+	warned map[string]bool
 	lookAt time.Time
+}
+
+// serverHostName is the server host's short name: its fleet machine row's name.
+// tla/CoordinatorPass.tla PushesBoundedWhileUnchanged (the escalation's target)
+var serverHostName = func() string {
+	h, _ := os.Hostname()
+	return strings.SplitN(h, ".", 2)[0]
+}
+
+// knownTarget says name is a nova-config friend row or a fleet (machine/friend) row:
+// the only names the bus accepts.
+func knownTarget(name string, friends []string, fleetRows []string) bool {
+	if name == "" {
+		return false
+	}
+	if slices.Contains(friends, name) {
+		return true
+	}
+	for _, row := range fleetRows {
+		if row == name || row == sprint.FriendRow(name) {
+			return true
+		}
+		if f, ok := sprint.FriendOfRow(row); ok && f == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ownerEscalationWarn is the WARN line when the owner or the sender is no known
+// row, "" when both are. tla/CoordinatorPass.tla EscalatedOnce
+func ownerEscalationWarn(owner string, snap *sprint.Snapshot) string {
+	if snap == nil || owner == "" {
+		return ""
+	}
+	var friends []string
+	for _, f := range snap.Friends {
+		friends = append(friends, f.Name)
+	}
+	var rows []string
+	if snap.Fleet != nil {
+		rows = snap.Fleet.Rows()
+	}
+	sender := serverHostName()
+	if !knownTarget(owner, friends, rows) {
+		return fmt.Sprintf("WARN owner escalation: %s is not a nova-config friend or machine row: the owner will not be told; set init --owner <row>", owner)
+	}
+	if sender == "" || !knownTarget(sender, friends, rows) {
+		return fmt.Sprintf("WARN owner escalation: %s is not a nova-config friend or machine row: the owner will not be told; set init --owner <row>", sender)
+	}
+	return ""
+}
+
+// escalationSender is the bus sender: the server host's fleet machine row.
+func escalationSender(snap *sprint.Snapshot) string {
+	if snap == nil {
+		return serverHostName()
+	}
+	var rows []string
+	if snap.Fleet != nil {
+		rows = snap.Fleet.Rows()
+	}
+	host := serverHostName()
+	if knownTarget(host, nil, rows) {
+		return host
+	}
+	return host
+}
+
+// ownerKnown says the owner name itself is a friend or fleet row the bus
+// accepts; tellSeatSilent sends nothing to an owner that fails this check
+// (the sender is warned of at start by ownerEscalationWarn, and its row is
+// the host's in production).
+func ownerKnown(owner string, snap *sprint.Snapshot) bool {
+	if snap == nil {
+		return true // no snapshot read: the check cannot be made, send as before
+	}
+	if owner == "" {
+		return false
+	}
+	var friends []string
+	for _, f := range snap.Friends {
+		friends = append(friends, f.Name)
+	}
+	var rows []string
+	if snap.Fleet != nil {
+		rows = snap.Fleet.Rows()
+	}
+	return knownTarget(owner, friends, rows)
 }
 
 // seatSilentToken is the bus token of one raise of the judgment: the sprint (its key
@@ -78,9 +171,21 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
 		return
 	}
+	// the escalation's snapshot, read once a look: its friends and fleet rows are
+	// the names the bus accepts (ownerEscalationWarn)
+	var snap *sprint.Snapshot
+	if read, err := st.DoctorRead(ctx); err == nil {
+		snap = read.Snap
+	}
+	noTargetOpen := false
+	for _, g := range groups {
+		if g.Type == sprint.NOwnerNoTarget {
+			noTargetOpen = true
+		}
+	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type != sprint.NSeatSilent {
+		if g.Type != sprint.NSeatSilent && g.Type != sprint.NSeatNotMoving {
 			continue
 		}
 		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
@@ -99,8 +204,28 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		}
 		if owner == "" {
 			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
+		} else if !ownerKnown(owner, snap) {
+			warn := ownerEscalationWarn(owner, snap)
+			// no target that exists: send nothing, say so once a raise, and raise
+			// the one judgment the tick keeps (tla/CoordinatorPass.tla EscalatedOnce)
+			a.seatSilent.mu.Lock()
+			if a.seatSilent.warned == nil {
+				a.seatSilent.warned = map[string]bool{}
+			}
+			already := a.seatSilent.warned[token]
+			a.seatSilent.warned[token] = true
+			a.seatSilent.mu.Unlock()
+			if !already {
+				a.serveSay("SEAT SILENT %s: %s", g.ID, warn)
+				if !noTargetOpen {
+					_, _ = st.Run(ctx, store.NoteStep("seat-silent", sprint.Note{Kind: sprint.Judgment, Type: sprint.NOwnerNoTarget, SprintLevel: true,
+						What: warn + ": the owner escalation has no target", Decisions: []string{"ack", "wait"}}))
+					noTargetOpen = true
+				}
+			}
+			continue
 		} else {
-			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: sprint.NSeatSilent, Body: g.What, Token: token}
+			m := bus.Message{From: escalationSender(snap), To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
 			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
 				a.serveSay("SEAT SILENT %s: the push to %s failed, tried again at the next look under the same token: %s", g.ID, owner, oneline.Escape(err.Error()))
 				continue
@@ -118,6 +243,11 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	for token := range a.seatSilent.told {
 		if !open[token] {
 			delete(a.seatSilent.told, token)
+		}
+	}
+	for token := range a.seatSilent.warned {
+		if !open[token] {
+			delete(a.seatSilent.warned, token)
 		}
 	}
 	a.seatSilent.mu.Unlock()

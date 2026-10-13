@@ -116,6 +116,9 @@ type Bars struct {
 	// runs before the sprint raises one judgment to the coordinator (sprint.AttemptsCap);
 	// "" or unparseable is the default, sprint.AttemptsDefault.
 	MaxAttempts string
+	// RepeatPushes is the sprint row's repeat bound (repeat_pushes): "" or unparseable
+	// is the default, 3 (sprint.RepeatPushes).
+	RepeatPushes string
 }
 
 // fields is each bar by its sprint row field (config.SprintKey(field) holds it).
@@ -133,6 +136,7 @@ func (b *Bars) fields() map[string]*string {
 		config.FieldAnswerRulesOff:           &b.RulesOff,
 		config.FieldGitIdentity:              &b.GitIdentity,
 		config.FieldMaxAttempts:              &b.MaxAttempts,
+		config.FieldRepeatPushes:             &b.RepeatPushes,
 	}
 }
 
@@ -167,6 +171,7 @@ func (b Bars) into(s *sprint.Snapshot) {
 	s.RulesOff = sprint.Split(b.RulesOff)
 	s.GitIdentity = b.GitIdentity
 	s.MaxAttempts = b.MaxAttempts
+	s.RepeatPushes = b.RepeatPushes
 }
 
 // BarsReader is a store that holds the sprint row's bars alone (config.SprintKey(field)):
@@ -384,6 +389,14 @@ func (m *Mem) Routes(context.Context) (RouteSet, int64, error) {
 		tiers[t] = append([]string(nil), a...)
 	}
 	return RouteSet{Routes: append([]sprint.Route(nil), m.routes...), Tiers: tiers, Providers: maps.Clone(m.providers), Bars: m.bars}, 0, nil
+}
+
+// SetRepeatPushes gives the store the sprint row's repeat bound, as nova-config's
+// apply does a live one (sprint:repeat_pushes); "" is none applied (default 3).
+func (m *Mem) SetRepeatPushes(n string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bars.RepeatPushes = n
 }
 
 // SetMaxAttempts gives the store the sprint row's attempt bound, as nova-config's apply

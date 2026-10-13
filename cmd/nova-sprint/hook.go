@@ -1290,7 +1290,13 @@ func (a *app) tellOwner(ctx context.Context, owner, name, state, why string) {
 	}
 	subject := "seat " + name + " is " + state
 	body := "The coordinator " + name + "'s hook ended: " + state + " (" + why + "). Every coordinator command is refused until it runs nova-sprint hook again and proves it."
-	if err := a.bus(ctx, bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindStatus, Subject: subject, Body: body}, func(l string) { a.serveSay("%s", l) }); err != nil {
+	// the sender is the server host's fleet machine row, not the literal nova-sprint
+	// (seat_silent.go, escalationSender; tla/CoordinatorPass.tla EscalatedOnce)
+	sender := serverHostName()
+	if sender == "" {
+		sender = "nova-sprint"
+	}
+	if err := a.bus(ctx, bus.Message{From: sender, To: []string{owner}, Kind: bus.KindStatus, Subject: subject, Body: body}, func(l string) { a.serveSay("%s", l) }); err != nil {
 		a.serveSay("SEAT HOOK name=%s: the push to %s failed: %s", name, owner, oneline.Escape(err.Error()))
 	}
 }

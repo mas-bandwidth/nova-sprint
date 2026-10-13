@@ -6178,6 +6178,32 @@ server's next look under the same bus token (the sprint, its epoch, the judgment
 raise), so a lost response or a restarted server never sends the owner a second message;
 the server forgets the raises no longer open.
 
+(c) An unchanged judgment is pushed at most N times, then escalated to the owner. A
+card-holding or pass judgment re-raised while the state of its cards and stream is
+unchanged since its last raise — a fingerprint of each held card's column, attempt, tier
+and result, plus its stream's control state and the counts by column, recorded with the
+count of unchanged raises on its raise record (`a judgment holding a card was raised
+again`, its Hint) — is pushed (`a judgment still holds: raised again`) at most N times. N
+is the nova-config sprint row's `repeat_pushes`: a whole number of at least 1, default 3
+(`nova-config sprint set --repeat-pushes` is nova-tools' verb; until it lands the default
+3 is in force). A change in the fingerprint resets the count to 0 and pushes resume.
+After N unchanged pushes the tick raises one sprint-level judgment, "the seat is not
+moving this: escalate to the owner", naming the judgment id, its type, its cards, the
+count and the unchanged state in words, with the one decision `answer the judgment it
+names`; it cannot be waited or acknowledged, it is sent to the owner by the same path as
+"the seat is not answering", the held judgment is not pushed again until its fingerprint
+changes, and it closes when the named judgment closes or its fingerprint changes
+(tla/CoordinatorPass.tla PushesBoundedWhileUnchanged, EscalatedOnce).
+
+(d) The escalation has a target that exists. The bus sender is the name of the server
+host's fleet machine row, not the literal `nova-sprint`. The owner name is checked
+before use: `start`'s settings gate and `seat check` print `WARN owner escalation:
+<name> is not a nova-config friend or machine row: the owner will not be told; set
+init --owner <row>` when the owner or the sender is not a friend row or a fleet row — a
+warning, never a refusal: the seat's hook still gets every judgment. The server sends
+nothing to a name that fails the check; it says so once a raise on the server line and
+raises one judgment, "the owner escalation has no target" (decisions ack and wait).
+
 ### Answered by rule
 
 The system answers the mechanical judgments itself, by rule, without the coordinator (the

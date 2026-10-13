@@ -268,6 +268,14 @@ func (a *app) startSettingsGate(ctx context.Context, st *store.Store, stderr io.
 		}
 		warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s set by %s why=%q run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.SetBy), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
 	}
+	// the owner escalation's target must exist, warned of never refused: the seat's
+	// hook still gets every judgment (seat_silent.go, ownerEscalationWarn;
+	// tla/CoordinatorPass.tla EscalatedOnce)
+	if owner, err := a.owner(ctx, st); err == nil {
+		if w := ownerEscalationWarn(owner, read.Snap); w != "" {
+			warns = append(warns, w)
+		}
+	}
 	if len(refused) == 0 {
 		return warns, 0
 	}
