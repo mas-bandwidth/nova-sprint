@@ -138,6 +138,7 @@ var Defaults = []Default{
 	{Name: "status", Home: HomeShape, Value: ShapeCarried, Why: "each member up or down"},
 	{Name: "held", Home: HomeShape, Value: ShapeCarried, Why: "the members' holds"},
 	{Name: "held_by", Home: HomeShape, Value: ShapeCarried, Why: "who made a hold"},
+	{Name: "held_fields", Home: HomeShape, Value: ShapeCarried, Why: "a hold's cause, reason and who made it (hold_cause.go, HeldCarried)"},
 	{Name: "width", Home: HomeShape, Value: ShapeCarried, Why: "each member's width"},
 }
 
