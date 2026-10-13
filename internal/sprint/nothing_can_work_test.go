@@ -271,6 +271,20 @@ func TestExecutableQueuedWorkKeepsBlockedReadsRunning(t *testing.T) {
 		live   bool
 	}{
 		{name: "valid pin behind full width", live: true},
+		{name: "live persisted route", live: true, change: func(_ *Snapshot, pr, wc *Card) {
+			pr.Fields["brief"] = "tier: flash\n"
+			wc.Fields[FieldRoute] = "flash-live"
+			wc.Fields[FieldModel] = "flash/model"
+		}},
+		{name: "disabled persisted route", change: func(s *Snapshot, pr, wc *Card) {
+			pr.Fields["brief"] = "tier: flash\n"
+			wc.Fields[FieldRoute] = "flash-live"
+			s.Routes[0].Enabled = false
+		}},
+		{name: "missing persisted route", change: func(_ *Snapshot, pr, wc *Card) { pr.Fields["brief"] = "tier: flash\n"; wc.Fields[FieldRoute] = "gone" }},
+		{name: "friend provenance", change: func(_ *Snapshot, _, wc *Card) { wc.Row = FriendRow("amy") }},
+		{name: "unlanded need", change: func(_ *Snapshot, pr, _ *Card) { pr.Fields["needs"] = "unlanded" }},
+		{name: "invalid persisted deadline", change: func(_ *Snapshot, _, wc *Card) { wc.Fields[FieldDeadline] = "0" }},
 		{name: "fleet off", change: func(s *Snapshot, _, _ *Card) { s.Fleet.SetProp(PropFleetTiers, SwitchOff) }},
 		{name: "held stream", change: func(s *Snapshot, pr, _ *Card) {
 			s.Merge.Put(&Card{ID: CtlID(pr.Row), Row: pr.Row, Col: Ctl, Fields: map[string]string{"kind": "stream", FieldHeld: "by coordinator"}})
@@ -309,6 +323,7 @@ func TestExecutableQueuedWorkKeepsBlockedReadsRunning(t *testing.T) {
 				assert.True(t, w.s.HasLiveWorkedTier())
 			} else {
 				assert.Contains(t, why, NothingFundedCause, "ineligible queued work cannot conceal the resting worked tiers")
+				assert.False(t, w.s.HasLiveWorkedTier())
 			}
 		})
 	}

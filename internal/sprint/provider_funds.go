@@ -570,7 +570,48 @@ func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
 		}
 	}
 	delete(worked, "")
-	return slices.Sorted(maps.Keys(worked)), ownReadLive
+	return slices.Sorted(maps.Keys(worked)), ownReadLive || s.queuedWorkLive()
+}
+
+// queuedWorkLive includes work already dealt ahead to a fleet ready queue.
+// Its primary is Working, so the primary-ready walk cannot see it. Occupied
+// slots and provider concurrency are temporary waits, not route failures.
+func (s *Snapshot) queuedWorkLive() bool {
+	s, _ = s.withRests()
+	for _, wc := range s.Fleet.Column(Ready) {
+		if wc.F("kind") != "work" || IsFriendRow(wc.Row) {
+			continue
+		}
+		pr := s.Work.Placed(wc.F("primary"))
+		if pr == nil || pr.Col != Working || wc.Int("attempt") < 1 || pr.Int("attempt") != wc.Int("attempt") || wc.ID != WorkCardID(pr.ID, wc.Int("attempt")) || OnlyFriend(pr) || StreamHeld(s, pr.Row) || len(WaitsFor(s, pr, nil)) > 0 {
+			continue
+		}
+		width, why := takeSeat(s, wc.Row)
+		if why != "" || width <= 0 || s.stagingRepoWhy(wc.Row, pr) != "" {
+			continue
+		}
+		tier, _, _, done, model := s.routeTier(pr)
+		if done || !s.FleetTakes(tier) {
+			continue
+		}
+		if wc.F(FieldRoute) == RoutePin {
+			deadline, _ := strconv.Atoi(wc.F(FieldDeadline))
+			if model.Pin != "" && model.Pin == wc.F(FieldModel) && model.Tokens == wc.F(FieldTokens) && deadline > 0 {
+				return true
+			}
+			continue
+		}
+		for _, route := range s.Routes {
+			// A persisted route is not redrawn: array changes do not revoke a
+			// dealt card. Its current launch capability and rest still apply.
+			if route.Name == wc.F(FieldRoute) && route.Enabled && s.Launches(wc.Row, route) {
+				if _, rested := cardRest(s, wc); !rested {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // workedTierBlocked is TierNotLive's rest rule with the deal's effective
