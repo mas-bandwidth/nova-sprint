@@ -77,6 +77,7 @@ func TestFleetSyncFollowsTheInventoryOnTheStore(t *testing.T) {
 	}
 
 	run(0, "init", "--readers", "reader-a,reader-b")
+	declareFunctionalRoutes(t, c, "flash")
 	out := run(0, "fleet", "sync")
 	require.Contains(t, out, "FLEET-SYNC OK moved=3", "the first sync")
 	// a member the sync adds is held until its own probe passes; bring each up so

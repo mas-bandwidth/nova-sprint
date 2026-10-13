@@ -67,6 +67,8 @@ func TestEveryProducerCard(t *testing.T) {
 	ctx := context.Background()
 
 	w.do("init", "--members", "m1:4", "--readers", "r1")
+	declareFunctionalRoutes(t, w.c, "flash")
+	w.do("set", "--read-cards", "off") // this contract empties the legacy readers table
 	dir := t.TempDir()
 	w.do("add", "--stream", "s1", "s1-1", "--one", "--brief-file", writeHeaderBrief(t, dir, "s1-1", "-", "internal/s1.go"))
 	w.do("fleet", "beat", "m1")
@@ -74,7 +76,7 @@ func TestEveryProducerCard(t *testing.T) {
 	w.do("tick") // presence: m1 up
 	w.do("tick") // dealt to m1
 	w.do("take", "--as", "m1", "--max", "1")
-	w.do("finish", "--as", "m1", "s1-1.w1@1", "--epoch", "0", "--report", "done")
+	w.do("finish", "--as", "m1", "s1-1.w1@1", "--epoch", "0", "--report", "done", "--usage", "input=1000 output=100")
 	w.do("tick") // the primary moves to review and its read is asked
 
 	// empty the readers table: the review card's read goes with it

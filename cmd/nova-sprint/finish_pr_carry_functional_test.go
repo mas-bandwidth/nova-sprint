@@ -100,6 +100,7 @@ func TestAFinishPRCardStagesFromThePRHeadOnAStore(t *testing.T) {
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief(body)), 0o600))
 
 	do("init --readers reader-a --members m1")
+	declareFunctionalRoutes(t, admin, "pro")
 	do("fleet beat m1 --load 0")
 	do("fleet up m1 --width 4")
 	// the card is cut on main, a protected branch: the first add marks its new stream

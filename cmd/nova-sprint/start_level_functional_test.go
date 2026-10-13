@@ -76,7 +76,9 @@ func TestTheStartLevelLeavesADealtCardOnAMemberThatCanStartItOnTheStore(t *testi
 		return s
 	}
 
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1:4,m2:16", "add --stream s1 --count 12",
+	run("init --readers reader-a,reader-b --members m1:4,m2:16")
+	declareFunctionalRoutes(t, c, "flash")
+	for _, l := range []string{"add --stream s1 --count 12",
 		"fleet beat m1", "fleet beat m2", "start",
 		"tick", "tick"} { // the fleet update brings the members up; the next pump deals
 		run(l)

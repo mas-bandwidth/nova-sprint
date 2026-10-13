@@ -19,8 +19,29 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+// declareFunctionalRoutes is an explicit positive fixture's applied config.
+// Call it after init, before the flow under test or deliberate config overrides. It
+// never runs from START or card-check setup, so absent-route and funding
+// refusal fixtures retain exactly the config they declared.
+func declareFunctionalRoutes(t *testing.T, c *redis.Client, tiers ...string) {
+	t.Helper()
+	ctx := context.Background()
+	const provider = "functional-fixture"
+	require.NoError(t, c.SAdd(ctx, config.ProvidersKey, provider).Err())
+	require.NoError(t, c.HSet(ctx, config.ProviderKey(provider), "billing", "metered", "funded", "true").Err())
+	for _, tier := range tiers {
+		require.Contains(t, []string{"flash", "pro", "heavy", "frontier"}, tier)
+		name := "functional-" + tier
+		require.NoError(t, c.SAdd(ctx, config.RoutesKey, name).Err())
+		require.NoError(t, c.HSet(ctx, config.RouteKey(name), "tier", tier, "provider", provider,
+			"model", "fixture", "tokens", "1000", "deadline", "600", "enabled", "true", "billing", "metered").Err())
+		require.NoError(t, c.Set(ctx, config.TierKey(tier), name, 0).Err())
+	}
+}
 
 // functionalTestApp is the one way a functional test runs a nova-sprint verb. It
 // always adds --redis <store> so the verb runs on the test's own store and never
