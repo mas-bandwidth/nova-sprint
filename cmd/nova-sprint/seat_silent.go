@@ -57,9 +57,10 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 	return t
 }
 
-// tellSeatSilent sends each raise of NSeatSilent not yet told to the sprint's owner on the
+// tellSeatSilent sends each raise of NSeatSilent and NNeedBlocked not yet told to the sprint's owner on the
 // bus, and says it on the server's log; a sprint with no owner is said on the log alone.
 // tla/SprintRules.tla SendOK
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	a.tellFundsOwner(ctx, st)
 	now := a.now()
@@ -82,7 +83,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type != sprint.NSeatSilent {
+		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
 			continue
 		}
 		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
@@ -102,7 +103,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		if owner == "" {
 			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
 		} else {
-			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: sprint.NSeatSilent, Body: g.What, Token: token}
+			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
 			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
 				a.serveSay("SEAT SILENT %s: the push to %s failed, tried again at the next look under the same token: %s", g.ID, owner, oneline.Escape(err.Error()))
 				continue

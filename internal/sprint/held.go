@@ -230,7 +230,7 @@ func (c *held) dealTurn(id string) int {
 
 // heldParts is the tick's parts the rule asks what the next tick does: every
 // part but the check, whose duty the rule is.
-var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume, TickDeal, TickAccept, TickAsk, TickDeadlines, TickOverdue}
+var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume, TickDeal, TickAccept, TickAsk, TickDeadlines, TickNeedBlocked, TickOverdue}
 
 func newHeld(h HeldState, now time.Time) *held {
 	s := *h.Snap
@@ -301,6 +301,11 @@ func (c *held) notes(ns []Note) {
 			// read no one may take: its primaries each get the "writes ..." line
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
+			}
+		case n.Type == NNeedBlocked:
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+				c.judged[p] = append(c.judged[p], n.Type+" "+n.ID)
 			}
 		case n.StreamLevel:
 			c.tickStream[n.Stream] = "writes " + n.Type
@@ -584,8 +589,20 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			case c.on[n]:
 				return "its needs make a cycle through " + n, "", false
 			case nc == nil:
+				if c.openOn(n) {
+					held = append(held, "needs "+n+" (blocked)")
+					items = append(items, n+" (blocked)")
+					nNeeds++
+					continue
+				}
 				return "waits on " + n + ", which is not on the table", "", false
 			case !nc.Placed():
+				if c.openOn(n) {
+					held = append(held, "needs "+n+" (blocked)")
+					items = append(items, n+" (blocked)")
+					nNeeds++
+					continue
+				}
 				return "waits on " + n + ", off the table (" + orDash(nc.F("outcome")) + "), and no judgment is open on it", "", false
 			}
 			hd := c.hold(n)

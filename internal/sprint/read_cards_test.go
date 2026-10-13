@@ -759,4 +759,3 @@ func TestTickDealCarriesReadCardRefusalsInPlan(t *testing.T) {
 	require.Equal(t, "m2", p.Refused[0].Key)
 	require.Equal(t, "read generations past the load window", p.Refused[0].Why)
 }
-
