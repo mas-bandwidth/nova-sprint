@@ -69,3 +69,33 @@ func TestSubscriptionDamagedTypedHeaderRetainsContract(t *testing.T) {
 	require.Equal(t, cardcost.Unreported, u.Tokens.Input)
 	require.Contains(t, usageArgs(Result{Usage: u.String()}), "--receipt-contract", "damaged capable receipt cannot downgrade into legacy")
 }
+
+func TestSubscriptionDurableReceiptExactDollars(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, version, exact, want, by string }{
+		{"precision", "2", "0.12345678", "0.12345678", "harness"},
+		{"zero", "2", "0", "0", "harness"},
+		{"absent", "2", "-", "", ""},
+		{"legacy-fallback", "-", "0.12345678", "0.1235", "harness"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			job := t.TempDir()
+			header := "provider\tmodel\ttokens_in\ttokens_out\tcache_write\tcache_read\treasoning\tusd\treceipt_version\tbilling\traw_usage\tactual_usd\n"
+			billing := "subscription"
+			if tc.version == "-" {
+				billing = "-"
+			}
+			row := strings.Join([]string{"p", "m", "12", "-", "-", "-", "-", "0.1235", tc.version, billing, "-", tc.exact}, "\t") + "\n"
+			require.NoError(t, os.WriteFile(filepath.Join(job, ReceiptName), []byte(header+row), 0600))
+			u, found, err := ReceiptUsage(job)
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, tc.want, u.Actual)
+			require.Equal(t, tc.by, u.ActualBy)
+			if tc.version == "2" {
+				require.Equal(t, "0", u.MarginalUSD())
+			}
+		})
+	}
+}

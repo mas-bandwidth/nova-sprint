@@ -101,7 +101,11 @@ func ReceiptUsage(job string) (usage cardcost.Usage, found bool, err error) {
 		if parseErr != nil {
 			return cardcost.NoUsage(), false, parseErr
 		}
-		if usd := value("usd"); usd != "" {
+		usd := value("usd")
+		if _, exactColumn := col["actual_usd"]; exactColumn && u.ReceiptVersion == cardcost.ReceiptVersion {
+			usd = value("actual_usd")
+		}
+		if usd != "" {
 			if _, ok := cardcost.Sum(usd, "0"); !ok {
 				return cardcost.NoUsage(), false, fmt.Errorf("%s row has usd %q, not an amount", ReceiptName, usd)
 			}
