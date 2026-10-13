@@ -45,6 +45,9 @@ func TestParallelCloneRouteSharesStayIsolated(t *testing.T) {
 func TestCloneIsolatesNestedSnapshotMetadata(t *testing.T) {
 	t.Parallel()
 	cases := map[string]func(*refmodel.Snapshot){
+		"providers": func(s *refmodel.Snapshot) {
+			s.Tables.Providers["provider"] = sprint.Provider{Name: "provider", Funded: false}
+		},
 		"route":                     func(s *refmodel.Snapshot) { s.Tables.Routes[0].Name = "changed" },
 		"tier map":                  func(s *refmodel.Snapshot) { s.Tables.Tiers["new"] = []string{"new"} },
 		"tier array":                func(s *refmodel.Snapshot) { s.Tables.Tiers["flash"][0] = "changed" },
@@ -186,7 +189,8 @@ func metadataSnapshot() refmodel.Snapshot {
 	seat := sprint.FriendSeat{Tiers: []string{"flash"}, Roles: []string{"reader"}, Streams: []string{"stream"}, Kinds: []string{"fix"}, Running: []string{"card"}, Beat: beat}
 	return refmodel.Snapshot{Friends: []sprint.FriendSeat{seat}, Beats: map[string]sprint.Beat{"member": beat}, Tables: &sprint.Snapshot{
 		Now: t0, Cleared: t0,
-		Routes: []sprint.Route{{Name: "route", Enabled: true}}, Tiers: map[string][]string{"flash": {"route"}},
+		Providers: map[string]sprint.Provider{"provider": {Name: "provider", Funded: true}},
+		Routes:    []sprint.Route{{Name: "route", Enabled: true}}, Tiers: map[string][]string{"flash": {"route"}},
 		Answered: map[string]string{"note": "answer"}, Held: map[string]bool{"card": true}, RulesOff: []string{"rule"},
 		ReaderStates: map[string]string{"reader": "up"}, NoRoom: map[string]string{"member": "held"}, FriendTextPronouns: map[string]string{"seat": "they/them"},
 		Friends: []sprint.FriendSeat{seat}, Queue: []sprint.QueuedChange{{Prop: &sprint.PropWrite{Value: "value"}, Entry: &ntable.BatchMemberEntry{
