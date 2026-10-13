@@ -152,6 +152,8 @@ func TraceIdle(s *Snapshot, r TickReq) string {
 					x = idleRoot{kind: rootDropped, subject: c.ID, say: "drop-blocked judgments"}
 					if o, ok := judgedOn[c.ID]; ok && o.Note.Type == NBlocked {
 						x.since = o.Note.At
+					} else if o, ok := judgedOn[w]; ok && o.Note.Type == NNeedBlocked {
+						x.since = o.Note.At
 					}
 				case !wc.Placed() || wc.Col == Landed:
 					continue

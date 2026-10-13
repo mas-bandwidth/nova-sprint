@@ -12,10 +12,10 @@ func TestABoundCardRaisesOneBlockerJudgmentListingItsDependents(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
 	w.must(Add(w.s, AddReq{Stream: "tools-v1217", IDs: []string{"a-route-may-be-frontier"}}))
-	w.note(judgment(NBound, "tools-v1217", w.s.Now, 0, "a-route-may-be-frontier"))
 	w.must(Add(w.s, AddReq{Stream: "tools-v1217", IDs: []string{"muse-is-a-fleet-harness"}, Needs: []string{"a-route-may-be-frontier"}}))
 	w.must(Add(w.s, AddReq{Stream: "tools-v1217", IDs: []string{"a-funded-provider-is-a-config-row-and-always-shown"}, Needs: []string{"a-route-may-be-frontier"}}))
 	w.must(Add(w.s, AddReq{Stream: "tools-v1217", IDs: []string{"the-server-unit-carries-the-bus-address"}, Needs: []string{"muse-is-a-fleet-harness"}}))
+	w.note(judgment(NBound, "tools-v1217", w.s.Now, 0, "a-route-may-be-frontier"))
 
 	// Run TickNeeds, Resolve, TickDeadlines and TickOverdue at s.Now + 3 h:
 	w.s.Now = w.s.Now.Add(3 * time.Hour)
@@ -91,10 +91,10 @@ func TestTheBlockerJudgmentRetiresWhenTheHoldIsDecided(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"blocker"}}))
+	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"dep"}, Needs: []string{"blocker"}}))
 	w.s.Work.Card("blocker").Col = Review
 	w.s.Work.cells = nil
 	w.note(judgment(NBound, "s1", w.s.Now, 0, "blocker"))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"dep"}, Needs: []string{"blocker"}}))
 
 	p1, _ := TickNeedBlocked(w.s, TickReq{})
 	require.NotEmpty(t, p1.Notes, "first tick raises NNeedBlocked")
