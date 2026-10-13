@@ -331,6 +331,9 @@ Stand(c, t) ==
 \* The owed close lands (judgeRefusal, before any raise; LandRefusalClose): every
 \* lander judgment and acknowledgement is closed.
 CloseWrite == /\ midSwitch = FALSE /\ closeOwed
+              \* "staleack" is the code before read 4: the close was written only while no
+              \* refusal stood, never before a raise
+              /\ ("staleack" \notin Broken \/ refusal = "none")
               /\ stored' = [x \in Causes |-> "none"] /\ closeOwed' = FALSE
               /\ UNCHANGED <<target, prev, hasState, statePrev, stateAt, clock,
                              switches, midSwitch, autoRollbacks, rolledLate, hooked,
@@ -358,7 +361,9 @@ RecheckOk == /\ Recheck /\ stored'[refusal] = "open"
 SeatCloses == /\ refusal # "none" /\ stored[refusal] = "open"
               /\ \/ /\ stored' = [stored EXCEPT ![refusal] =
                                    IF "ackcloses" \in Broken THEN "none" ELSE "acked"]
-                    /\ ackedOnce' = TRUE
+                    \* an ack of a judgment left behind an owed close acknowledges the cleared
+                    \* episode, and the close takes it with it: not this episode's ack
+                    /\ ackedOnce' = ~closeOwed
                     /\ reopen' = ("ackcloses" \in Broken) \* the old ack: a close, as check is
                     /\ UNCHANGED raisedFor
                  \/ /\ stored' = [stored EXCEPT ![refusal] = "none"]
