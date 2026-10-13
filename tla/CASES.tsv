@@ -695,6 +695,7 @@ MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWr
 MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCSprintRulesEpisodesBrokenHeldWhileEligible.cfg	MCSprintRules.tla	action	CannotAskClosedWhenEligible	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodesBrokenFlapEligible.cfg	MCSprintRules.tla	invariant	OneCannotAskAnEpisode	ignore-terminal	sprintrules	required	-
+MCSprintTablesBrokenOldHeadReviewed.cfg	MCSprintTables.tla	invariant	NoOldBriefHeadInReview	ignore-terminal	sprinttables	required	-
 MCNeedsBlockedRun.cfg	MCNeedsBlocked.tla	pass	-	ignore-terminal	needsblocked	required	-
 MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependentsCovered	ignore-terminal	needsblocked	required	-
 MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
