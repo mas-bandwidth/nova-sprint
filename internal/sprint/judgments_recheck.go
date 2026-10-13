@@ -6,7 +6,10 @@ import "fmt"
 // It never applies the deal planner's placements, new judgments or updates.
 // tla/JudgmentRecheck.tla ClosedOnlyProven and OpenMatchesHistory.
 func RecheckJudgments(s *Snapshot, who string) Plan {
-	var p Plan
+	// Preserve the existing stream-specific retirement reason before generic
+	// card retirement can consume a removed stream's judgment.
+	p, _ := TickRetireGone(s, TickReq{Who: who})
+	p.Said = nil // one consistent line per judgment below
 	RetireJudgments(s, &p, who)
 	closing := map[string]bool{}
 	for _, o := range p.Closes {

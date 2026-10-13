@@ -300,6 +300,8 @@ func TestATickReadsTheRoutesOnce(t *testing.T) {
 	}
 	h.addReady("s1", 3, briefOf("pro", ""))
 	h.startMachine()
+	assert.Equal(t, 1, reads, "START has its own route snapshot for the closure pass")
+	reads = 0 // measure the tick independently of the successful START pass
 	h.machine()
 	assert.Equal(t, 1, reads, "one read of the routes in the tick")
 }
