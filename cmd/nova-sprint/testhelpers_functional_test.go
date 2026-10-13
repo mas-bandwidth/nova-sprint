@@ -48,6 +48,9 @@ func newFunctionalTestApp(t *testing.T, redisAddr string) *functionalTestApp {
 	}
 	a := newApp(func(k string) string { return env[k] })
 	a.home = func() (string, error) { return home, nil }
+	// the functional tests' bare starts run on briefless --count cards: the card check gate
+	// is off here, and every gate test turns it on (check_cards_test.go)
+	a.cardCheckGate = false
 	a.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
 		t.Fatalf("a verb was forwarded to a sprint server at %s: %q", addr, verbs)
 		return nil, errors.New("forwarding is refused in a functional test")

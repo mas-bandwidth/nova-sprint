@@ -650,6 +650,9 @@ MCMachineReadyBrokenNoStopStamp.cfg	MCMachineReady.tla	invariant	RanIsNotReady	i
 MCMachineReadyBrokenNoGate.cfg	MCMachineReady.tla	invariant	StartOnlyWorking	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenOverRefuse.cfg	MCMachineReady.tla	invariant	DeliberateSetStarts	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenReadersGate.cfg	MCMachineReady.tla	invariant	DeliberateSetStarts	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenStaleRecord.cfg	MCMachineReady.tla	invariant	StartOnlyChecked	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenFailedRecord.cfg	MCMachineReady.tla	invariant	StartOnlyChecked	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenClearKeeps.cfg	MCMachineReady.tla	invariant	StartOnlyChecked	ignore-terminal	machineready	required	-
 MCOneLander.cfg	MCOneLander.tla	pass	-	ignore-terminal	onelander	required	-
 MCOneLanderBrokenNoFence.cfg	MCOneLander.tla	invariant	AtMostOneLander	ignore-terminal	onelander	required	-
 MCOneLanderBrokenPlainDefault.cfg	MCOneLander.tla	invariant	ServerIsTheLander	ignore-terminal	onelander	required	-
