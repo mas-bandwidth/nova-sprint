@@ -132,10 +132,10 @@ func (r *refusalRig) judgmentsOf(typ string) []sprint.Open {
 func TestALandRefusalIsNamedEveryBeatAndJudgedAtOnce(t *testing.T) {
 	t.Parallel()
 	r := newRefusalRig(t)
-	identity := "the sprint row names no git_identity, so the landing would commit as the host's global git config; " + identityRemedy
+	identity := landClass("git-identity", "the sprint row names no git_identity, so the landing would commit as the host's global git config; "+identityRemedy)
 	r.set(identity)
 
-	refusedLine := regexp.MustCompile(`LAND REFUSED queued=6 since=(\S+) reason=(.*) run: (.*)`)
+	refusedLine := regexp.MustCompile(`LAND REFUSED queued=6 since=(\S+) (?:code=\S+ (?:stream=\S+ )?)?reason=(.*) run: (.*)`)
 	var flight *landFlight
 	var out string
 	for i := range 30 {
@@ -178,7 +178,7 @@ func TestALandRefusalIsNamedEveryBeatAndJudgedAtOnce(t *testing.T) {
 	assert.Empty(t, sprint.LandRefusalStanding(s), "no refusal stands after a landing")
 
 	// a second, different reason raises a second judgment
-	other := "the merge queue's fence names another server; run: nova-sprint where"
+	other := landClass("fenced", "the merge queue's fence names another server; run: nova-sprint where")
 	r.set(other)
 	for i := range 3 {
 		out, flight = r.beat(flight)
@@ -313,7 +313,7 @@ func TestARefusalWhoseTextVariesIsOneRefusal(t *testing.T) {
 	var first string
 	for i := range 12 {
 		out, _ := r.beat(nil)
-		m := regexp.MustCompile(`LAND REFUSED queued=6 since=(\S+) reason=`).FindStringSubmatch(out)
+		m := regexp.MustCompile(`LAND REFUSED queued=6 since=(\S+) (?:code=\S+ (?:stream=\S+ )?)?reason=`).FindStringSubmatch(out)
 		if assert.NotNil(t, m, "beat %d:\n%s", i+1, out) {
 			assert.Equal(t, (time.Duration(i) * LandEvery).String(), m[1], "beat %d: since grows", i+1)
 		}
@@ -464,7 +464,7 @@ func TestAnUnreadableQueueIsOneFailureByTheMachine(t *testing.T) {
 	b.mu.Unlock()
 	for i := range 4 {
 		out, _ := r.beat(nil)
-		m := regexp.MustCompile(`LAND FAILED queued=\? since=(\S+) reason=(.*) run: (.*)`).FindStringSubmatch(out)
+		m := regexp.MustCompile(`LAND FAILED queued=\? since=(\S+) code=queue-unread reason=(.*) run: (.*)`).FindStringSubmatch(out)
 		if assert.NotNil(t, m, "beat %d:\n%s", i+1, out) {
 			assert.Equal(t, (time.Duration(i) * LandEvery).String(), m[1], "beat %d: since grows", i+1)
 			assert.Equal(t, landQueueUnread, m[2])
@@ -496,14 +496,14 @@ func TestASilentFailureAndAnEmptyQueueStillNameTheCause(t *testing.T) {
 	r.pass = func(int, io.Writer, io.Writer) int { return 2 }
 	r.mu.Unlock()
 	out, _ := r.beat(nil)
-	assert.Regexp(t, `LAND FAILED queued=6 since=0s reason=land exited 2 and said nothing run: nova-sprint land --dry-run`, out)
+	assert.Regexp(t, `LAND FAILED queued=6 since=0s code=fault reason=land exited 2 and said nothing run: nova-sprint land --dry-run`, out)
 	if js := r.judgmentsOf(sprint.NLanderFails); assert.Len(t, js, 1) {
-		assert.Equal(t, "land exited 2 and said nothing; run: nova-sprint land --dry-run", js[0].Note.What)
+		assert.Equal(t, "code=fault: land exited 2 and said nothing; run: nova-sprint land --dry-run", js[0].Note.What)
 	}
 	r.mu.Lock()
 	r.pass = nil
 	r.mu.Unlock()
-	r.set("the sprint row names no git_identity; run: nova-config apply")
+	r.set(landClass("git-identity", "the sprint row names no git_identity; run: nova-config apply"))
 	_, _ = r.beat(nil)
 	require.Len(t, r.judgments(), 1)
 	assert.Empty(t, r.judgmentsOf(sprint.NLanderFails), "the failure's judgment was closed by the refusal that replaced it")
@@ -512,7 +512,69 @@ func TestASilentFailureAndAnEmptyQueueStillNameTheCause(t *testing.T) {
 	b.queueSeam = func(context.Context, string) (int, string, string, error) { return 0, "coordinator", "", nil }
 	b.mu.Unlock()
 	out, _ = r.beat(nil)
-	assert.Regexp(t, `LAND REFUSED queued=0 since=2s reason=the sprint row names no git_identity run: nova-config apply`, out)
+	assert.Regexp(t, `LAND REFUSED queued=0 since=2s code=git-identity reason=the sprint row names no git_identity run: nova-config apply`, out)
 	assert.NotContains(t, out, "LAND IDLE")
 	assert.Len(t, r.judgments(), 1, "nothing ran, nothing is cleared")
+}
+
+// An ack sticks: the seat's ack keeps an acknowledgement (steps_ack.go), so the same
+// cause, still standing, is never raised again; a pass that gets past it closes the
+// acknowledgement too, so the same cause coming back later is raised anew
+// (tla/ServerSwitch.tla SeatCloses, AckSticks).
+func TestAnAckedRefusalIsNotRaisedAgainWhileItStands(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	identity := landClass("git-identity", "the sprint row names no git_identity; run: nova-config apply")
+	r.set(identity)
+	_, _ = r.beat(nil)
+	js := r.judgments()
+	require.Len(t, js, 1)
+	r.ta.ok("ack " + js[0].Note.ID + " --reason 'seen; mending the identity'")
+	for i := range 6 {
+		out, _ := r.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6", "beat %d: the cause is still named", i+1)
+		assert.Empty(t, r.judgments(), "beat %d: acked, not raised again", i+1)
+	}
+	assert.Len(t, r.allJudgments(), 1, "one judgment ever, while the acked cause stands")
+	r.set("")
+	_, _ = r.beat(nil) // a landing: the acknowledgement is closed with the cause
+	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	open, err := st.B.OpenNotes(t.Context())
+	require.NoError(t, err)
+	for _, o := range open {
+		assert.False(t, sprint.IsLanderStanding(o.Note.Type), "nothing of the lander's is left open: %+v", o.Note)
+	}
+	r.set(identity)
+	_, _ = r.beat(nil)
+	assert.Len(t, r.judgments(), 1, "the same cause, back later, is raised anew: a stale ack never blocks it")
+	assert.Len(t, r.allJudgments(), 2)
+}
+
+// A cause is keyed on its class at the source and its stream, never on its words:
+// hosts, durations across units, shas and paths that change keep one judgment (the
+// beat names the latest words); another stream is another cause.
+func TestACodedRefusalIsKeyedOnItsClassAndStream(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	words := []string{
+		"the fence names server b1 at 127.0.0.1, seen 450ms ago at ab7f4c67 in /tmp/x1",
+		"the fence names server b2 at [::1], seen 1m30s ago at deadbeef in /tmp/y2",
+		"the fence names server b1, seen 2 minutes ago",
+	}
+	for i, w := range words {
+		r.set(landClass("fenced", w+"; run: nova-sprint where"))
+		out, _ := r.beat(nil)
+		assert.Contains(t, out, "code=fenced reason="+w, "beat %d names the latest words:\n%s", i+1, out)
+		assert.Contains(t, out, fmt.Sprintf("since=%s", time.Duration(i)*LandEvery), "beat %d: since stands", i+1)
+	}
+	assert.Len(t, r.judgments(), 1, "one cause however its words change")
+	assert.Len(t, r.allJudgments(), 1)
+	r.set("code=fenced stream=s2 the fence names server b1; run: nova-sprint where")
+	out, _ := r.beat(nil)
+	assert.Contains(t, out, "code=fenced stream=s2 reason=the fence names server b1")
+	assert.Len(t, r.allJudgments(), 2, "another stream is another cause")
+	if js := r.judgments(); assert.Len(t, js, 1, "the replaced cause's judgment was closed") {
+		assert.Contains(t, js[0].Note.What, "code=fenced stream=s2:")
+	}
 }

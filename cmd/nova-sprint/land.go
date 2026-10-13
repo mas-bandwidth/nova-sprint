@@ -456,7 +456,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	parallel := fs.Int("land-parallel", landParallelDefault, "how many streams merge at once, each in its own worktree of the clone, before each base's landings go one at a time (landpass.go); 1 merges the streams one after another")
 	pos, err := parse(fs, args)
 	if err != nil {
-		return refuse(stderr, "land", err.Error())
+		return refuse(stderr, "land", landClass("usage", err.Error()))
 	}
 	var bad []string
 	if len(pos) > 0 {
@@ -474,7 +474,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 		}
 	}
 	if len(bad) > 0 {
-		return refuse(stderr, "land", strings.Join(bad, "; "))
+		return refuse(stderr, "land", landClass("usage", strings.Join(bad, "; ")))
 	}
 	// land's reads and its report are steps of the sprint: each takes the server's one
 	// line of control (a.serial) when this process is the server (run --land), so none
@@ -505,12 +505,12 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 		if !errors.As(err, gate) {
 			*gate = nil
 		}
-		return refuse(stderr, "land", err.Error())
+		return refuse(stderr, "land", landClass("store-open", err.Error()))
 	}
 	// the epoch the caller holds is checked before anything is read or run
 	// (tla/Land.tla, Read: a stale caller is refused before any push)
 	if c.epoch >= 0 && uint64(c.epoch) != st.PinnedEpoch() {
-		fmt.Fprintf(stderr, "%s land: the sprint is at epoch %d, not %d (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where\n", prog, st.PinnedEpoch(), c.epoch)
+		fmt.Fprintf(stderr, "%s land: %s; run: nova-sprint where\n", prog, landClass("epoch", fmt.Sprintf("the sprint is at epoch %d, not %d (cleared since): nothing was fetched, pushed or reported", st.PinnedEpoch(), c.epoch)))
 		return 1
 	}
 	// the server-record fence: a land beside the server's run --land is refused
@@ -522,10 +522,10 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 		why, err := a.serverLanding(context.Background(), st)
 		a.serial.Unlock()
 		if err != nil {
-			return a.readFailed("land", err, stderr)
+			return a.readFailed("land", landClassErr("store-read", err), stderr)
 		}
 		if why != "" {
-			fmt.Fprintf(stderr, "%s land REFUSED: %s\n", prog, oneline.Escape(why))
+			fmt.Fprintf(stderr, "%s land REFUSED: %s\n", prog, oneline.Escape(landClass("fenced", why)))
 			return 1
 		}
 	}
@@ -547,7 +547,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	// refuses to commit, naming the setting (docs/SPEC-SPRINT.md, the machine's commit
 	// identity). A dry run and a twin (no git) read it too, so the refusal is the same.
 	if why := l.readIdentity(ctx); why != "" {
-		return refuse(stderr, "land", why)
+		return refuse(stderr, "land", landClass("git-identity", why))
 	}
 	if *check != "" && !*dry {
 		a.serial.Lock()
@@ -563,7 +563,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	s, err := st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
 	a.serial.Unlock()
 	if err != nil {
-		return a.readFailed("land", err, stderr)
+		return a.readFailed("land", landClassErr("store-read", err), stderr)
 	}
 	// the streams in stream order: the named ones (a name that is no stream
 	// last, to be refused), else every one with cards queued and not stopped

@@ -8440,10 +8440,19 @@ stood. A round that did not run land (nothing queued, or no coordinator on land'
 re-read) clears nothing. The standing refusal has a reason (the text after `REFUSED:` on
 land's refusal line, else the loop's `LAND FAILED` line, else land's own `nova-sprint land:`
 line, never the pass's first line), cut at its `; run: `; a remedy (the command after
-`; run: `, else `nova-sprint land --dry-run`); and since when it has stood. Two refusals are
-the same refusal when their reasons match with every number and its unit folded to one
-placeholder (`sprint.LandRefusalKey`): a reason that carries a pass's timings, counts or ids
-keeps its since and its one judgment pass after pass.
+`; run: `, else `nova-sprint land --dry-run`); and since when it has stood. Land names the
+class of every refusal before a batch at the source, `code=<class>` at the head of its
+refusal (`usage`, `store-open`, `store-read`, `epoch`, `fenced`, `git-identity`; the loop's
+own `queue-unread`, and `fault` for a land that said nothing), with `stream=<s>` after it
+where one applies. Two refusals are the same cause when their class and stream match
+(`sprint.LandRefusalKey`), whatever their words: the human text is display, the beat line
+shows its latest wording (`LAND REFUSED queued=<n> since=<age> code=<class> reason=...`),
+and the cause keeps its since and its one judgment pass after pass. Only a refusal line with
+no class falls back to folding every number in its text, which mis-folds both ways and is
+the fallback, never the key of a classed cause. A standing cause's full refusal is said
+once, when it begins; while the same cause stands only the beat line names it (an
+unreadable queue's error is said again when its words change, being all that tells two
+outages apart).
 
 A standing cause is one of three kinds. Land refused before any batch (its `REFUSED:` line):
 the beat line is `LAND REFUSED ...` and the judgment `the lander refuses every landing`.
@@ -8466,10 +8475,19 @@ server's previous one and raises its own in one step (never a second server's). 
 judgment is written as the machine (the store opened as `run`, as is the stuck-landing
 judgment), so a seat that has not hooked in, as after a restart, is still told. A write
 that does not land is said once, `LAND JUDGMENT NOT WRITTEN: <why>; it is tried again next
-beat`, and tried again each cycle. Once written it is checked against the store each cycle:
-one closed by another step is raised again, one the seat acknowledged stays acknowledged,
-and a server restarted under a refusal whose judgment is open or acknowledged does not
-raise it twice. The tick's `landing stalled` judgment, and its alarm line, append `; the
+beat`, and tried again each cycle; a stuck-landing judgment the store does not take is said
+the same way. Once written it is checked against the store each cycle (a read that fails is
+said as `LAND JUDGMENT NOT WRITTEN: its judgment could not be checked ...`): one closed by
+another step is raised again; one the seat acknowledged stays acknowledged, since `ack` of
+`the lander refuses every landing` or `the lander fails every landing` keeps an
+acknowledgement as a tick-kept judgment's ack does, so the same cause is never raised again
+while it stands; and a server restarted under a cause whose judgment is open or
+acknowledged does not raise it twice. A `check` answer closes it, and the next cycle raises
+it again while the cause stands. When a pass gets past the cause, its judgment and its
+acknowledgement are both closed (`LandRefusalClose`), so a stale acknowledgement never
+blocks a later raise of the same cause; that close takes every lander judgment open,
+another live server's too, which that server writes again on its next cycle (one extra
+raise, accepted). The tick's `landing stalled` judgment, and its alarm line, append `; the
 lander refuses every landing: <reason>; run: <remedy>` while that judgment is open, so the
 generic alarm names the cause.
 

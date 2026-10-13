@@ -96,7 +96,7 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 	var gate *hookGateError
 	switch {
 	case err != nil:
-		lines, code = []string{"LAND FAILED the merge queue could not be read: " + oneline.Err(err) + "; nothing was landed, and the next round tries again; run: nova-sprint where"}, 2
+		lines, code = []string{"LAND FAILED code=queue-unread the merge queue could not be read: " + oneline.Err(err) + "; nothing was landed, and the next round tries again; run: nova-sprint where"}, 2
 	case queued && coordinator != "":
 		var out, errb bytes.Buffer
 		ran = true
@@ -161,9 +161,12 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 		// said when it begins, the beat names it every cycle (writeRefused), and its
 		// judgment is single (tla/ServerSwitch.tla LandRefused)
 		if !a.standRefusal(said, coordinator, code) {
-			// the same cause: its judgment and since stand; its lines are said again
-			// only when their words change (an outage's error, say)
-			if said == a.landFailed {
+			// the same cause: its judgment and since stand, and its words are not said
+			// again in full (the beat names it, in its latest words); only a queue
+			// outage's error is said again when it changes, being all that tells two
+			// outages apart
+			if said == a.landFailed || !strings.HasPrefix(said, "LAND FAILED ") {
+				a.landFailed = said
 				return code, idle
 			}
 		}
@@ -226,6 +229,7 @@ func (a *app) mergeQueued(ctx context.Context, addr string) (n int, coordinator,
 // coordinator its judgment is addressed by, and whether that judgment is written.
 type landRefusal struct {
 	kind                string // causeRefused, causeFailed or causeQueue
+	code, stream        string // the class at the source (landClass), "" for a line with none
 	reason, remedy, key string
 	prev, prevType      string
 	since               time.Time
@@ -244,12 +248,33 @@ const (
 	causeQueue   = "queue"
 )
 
+// landClass marks a refusal before any batch with its class at the source: the
+// machine-readable code=<class> the land loop keys a standing cause on (with the stream,
+// where one applies), never the human text after it, whose counts, timings, hosts and
+// paths change pass to pass (landRefusalOf, sprint.LandRefusalKey). The classes:
+// usage, store-open, store-read, epoch, fenced, git-identity; the loop's own
+// queue-unread, and fault for a land that said nothing.
+func landClass(class, why string) string { return "code=" + class + " " + why }
+
+// landClassErr is landClass on an error, keeping its chain (a refusal stays one).
+func landClassErr(class string, err error) error { return fmt.Errorf("code=%s %w", class, err) }
+
 // landQueueUnread is the queue cause's stable reason: the error's words vary read to
 // read and are said in the LAND FAILED line, never in the cause's key.
 const landQueueUnread = "the merge queue could not be read"
 
-// what is the refusal's judgment text: its reason and its remedy.
-func (r landRefusal) what() string { return r.reason + "; run: " + r.remedy }
+// what is the refusal's judgment text: its class (and stream) when it has one, its
+// reason and its remedy (sprint.LandRefusalKey reads the class back off it).
+func (r landRefusal) what() string {
+	if r.code == "" {
+		return r.reason + "; run: " + r.remedy
+	}
+	head := "code=" + r.code
+	if r.stream != "" {
+		head += " stream=" + r.stream
+	}
+	return head + ": " + r.reason + "; run: " + r.remedy
+}
 
 // typ is the refusal's judgment type: a refusal, or a failure.
 func (r landRefusal) typ() string {
@@ -343,16 +368,35 @@ func landRefusalOf(said string, code int) (kind, reason, remedy string) {
 	return kind, strings.TrimSpace(reason), remedy
 }
 
+// landCodeHead is a refusal's class at its head, and the stream after it: code=<class>
+// [stream=<s>] (landClass).
+var landCodeHead = regexp.MustCompile(`^code=(\S+)(?:\s+stream=(\S+))?\s*`)
+
+// landCodeOf splits a reason into its class, its stream and its human text.
+func landCodeOf(reason string) (code, stream, text string) {
+	m := landCodeHead.FindStringSubmatch(reason)
+	if m == nil {
+		return "", "", reason
+	}
+	return m[1], m[2], strings.TrimSpace(reason[len(m[0]):])
+}
+
 // standRefusal records a refusal before any batch, what land said. A refusal with the
 // same key as the one that stands is the same refusal (its since and its judgment
 // kept), whatever counts, timings or ids its text carries; another replaces it, to be
 // judged anew (tla/ServerSwitch.tla LandRefused). changed says it replaced one.
 func (a *app) standRefusal(said, coord string, code int) (changed bool) {
 	kind, reason, remedy := landRefusalOf(said, code)
-	key := kind + ": " + sprint.LandRefusalKey(reason)
-	if kind == causeQueue {
-		key = kind + ": " + landQueueUnread
+	class, stream, reason := landCodeOf(reason)
+	switch {
+	case kind == causeQueue:
+		class, reason = "queue-unread", landQueueUnread // the error's words are in the LAND FAILED line
+	case class == "" && strings.HasPrefix(reason, "land exited "):
+		class = "fault"
 	}
+	// keyed on the class at the source and its stream; a line with no class (none
+	// land prints today, but a new one could) falls back to its folded text
+	key := kind + ": " + sprint.LandRefusalKey(landRefusal{code: class, stream: stream, reason: reason, remedy: remedy}.what())
 	b := a.landState()
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -360,16 +404,14 @@ func (a *app) standRefusal(said, coord string, code int) (changed bool) {
 		if r.coord == "" {
 			r.coord = coord
 		}
+		r.reason, r.remedy = reason, remedy // the display follows the latest wording
 		return false
 	}
 	prev, prevType := "", ""
 	if b.refusal != nil && b.refusal.judged {
 		prev, prevType = b.refusal.what(), b.refusal.typ()
 	}
-	if kind == causeQueue {
-		reason = landQueueUnread // the error's words are in the LAND FAILED line
-	}
-	b.refusal = &landRefusal{kind: kind, reason: reason, remedy: remedy, key: key, prev: prev, prevType: prevType, since: a.now(), coord: coord}
+	b.refusal = &landRefusal{kind: kind, code: class, stream: stream, reason: reason, remedy: remedy, key: key, prev: prev, prevType: prevType, since: a.now(), coord: coord}
 	return true
 }
 
@@ -492,8 +534,13 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 	what, typ := standing.what(), standing.typ()
 	if standing.judged {
 		open, err := st.B.OpenNotes(ctx)
-		if err != nil || sprint.LandRefusalSaid(open, typ, what) {
-			return // a read that failed is tried again next beat; the judgment stands
+		if err != nil {
+			a.judgeNotWritten(w, "its judgment could not be checked against the store: "+oneline.Err(err))
+			return // tried again next beat; the judgment stands
+		}
+		if sprint.LandRefusalSaid(open, typ, what) {
+			a.judgeWritten()
+			return
 		}
 	}
 	res, err := st.Run(ctx, store.Step{Verb: "land", Plan: func(s *sprint.Snapshot) sprint.Plan {
@@ -681,7 +728,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		flight.mu.Unlock()
 		if !done {
 			a.writeBeat(stdout, flight)
-			a.raiseIfStuck(ctx, addr, flight)
+			a.raiseIfStuckTo(ctx, addr, flight, stdout)
 			a.judgeRefusal(ctx, addr, stdout)
 			return flight
 		}
@@ -828,7 +875,14 @@ func (a *app) writeRefused(w io.Writer, queued string, r *landRefusal) {
 	if age < 0 {
 		age = 0
 	}
-	a.writeCycle(w, fmt.Sprintf("LAND %s queued=%s since=%s reason=%s run: %s", r.word(), queued, age.Round(time.Second), r.reason, r.remedy))
+	class := ""
+	if r.code != "" {
+		class = "code=" + r.code + " "
+		if r.stream != "" {
+			class += "stream=" + r.stream + " "
+		}
+	}
+	a.writeCycle(w, fmt.Sprintf("LAND %s queued=%s since=%s %sreason=%s run: %s", r.word(), queued, age.Round(time.Second), class, r.reason, r.remedy))
 }
 
 // writeCycle prefixes one cycle line the way the loop prefixes land's own lines.
@@ -841,6 +895,12 @@ func (a *app) writeCycle(w io.Writer, line string) {
 // LandDeadline. The line is tried, not waited on, so the beat is never stuck
 // behind the landing. A write that does not land is tried again next cycle.
 func (a *app) raiseIfStuck(ctx context.Context, addr string, f *landFlight) {
+	a.raiseIfStuckTo(ctx, addr, f, io.Discard)
+}
+
+// raiseIfStuckTo is raiseIfStuck saying, once, as LAND JUDGMENT NOT WRITTEN, a
+// stuck judgment the store did not take.
+func (a *app) raiseIfStuckTo(ctx context.Context, addr string, f *landFlight, w io.Writer) {
 	f.mu.Lock()
 	if f.judged || f.queued == 0 || a.now().Sub(f.began) < LandDeadline {
 		f.mu.Unlock()
@@ -865,7 +925,8 @@ func (a *app) raiseIfStuck(ctx context.Context, addr string, f *landFlight) {
 	// opened as the machine (verb run): a seat that has not hooked in, as after a
 	// restart, is still told (the hook gate refuses the coordinator's verb land)
 	st, err := a.storeCtx(ctx, common{verb: "run", redis: addr, actor: coord})
-	if err != nil { // ignored: the judgment is tried again next cycle when the store cannot be opened
+	if err != nil { // tried again next cycle
+		a.judgeNotWritten(w, "the stuck landing's judgment: the store could not be opened: "+oneline.Err(err))
 		return
 	}
 	n := sprint.Note{
@@ -878,7 +939,8 @@ func (a *app) raiseIfStuck(ctx context.Context, addr string, f *landFlight) {
 		What:        fmt.Sprintf("landing stuck at step=%s waiting on %s for %s", step, proc, age),
 	}
 	res, err := st.Run(ctx, store.NoteStep("land", n))
-	if err != nil || len(res.Refused) > 0 {
+	if why := stepNotWritten(res, err); why != "" {
+		a.judgeNotWritten(w, "the stuck landing's judgment: "+why)
 		return
 	}
 	f.mu.Lock()

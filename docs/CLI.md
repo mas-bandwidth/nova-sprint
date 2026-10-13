@@ -428,7 +428,10 @@ that gets past it closes it; another reason closes it and raises its own. A judg
 store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. A failure
 before any batch, or a merge queue the loop cannot read, is worded as a failure: `LAND
 FAILED queued=<n> since=<age> reason=<reason> run: <remedy>` and the judgment `the lander
-fails every landing`; the queue's first good read clears it. `LAND IDLE` with cards queued says
+fails every landing`; the queue's first good read clears it. The cause is keyed on the class land names
+at the source, `code=<class>` (and `stream=<s>`), never on its words; `ack` of its judgment
+keeps it acknowledged while the cause stands, and a pass that gets past the cause closes
+both. `LAND IDLE` with cards queued says
 why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
 The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
 

@@ -81,23 +81,31 @@ const NLanderRefuses = "the lander refuses every landing"
 // never called a refusal.
 const NLanderFails = "the lander fails every landing"
 
-// isLanderStanding says a type is the lander's standing refusal or failure.
-func isLanderStanding(typ string) bool { return typ == NLanderRefuses || typ == NLanderFails }
+// IsLanderStanding says a type is the lander's standing refusal or failure: an ack
+// of one keeps its acknowledgement (steps_ack.go), so the same cause is not raised
+// again while it stands, and LandRefusalClose closes both once it clears.
+func IsLanderStanding(typ string) bool { return typ == NLanderRefuses || typ == NLanderFails }
 
 // LandRefusalDecisions are the decisions on the lander's standing refusal: check
 // its cause and run the remedy its text names, or ack it.
 var LandRefusalDecisions = []string{"check", "ack"}
 
-// landRefusalJudgments is the open judgments of the lander's standing refusal.
+// landRefusalJudgments is the open judgments of the lander's standing refusal or
+// failure, and their acknowledgements: what a clear, or a replaced cause, closes, so a
+// stale acknowledgement never blocks a later raise of the same cause.
 func landRefusalJudgments(s *Snapshot) []Open {
 	var open []Open
-	for _, o := range s.Open {
-		if o.Note.Kind == Judgment && isLanderStanding(o.Note.Type) {
+	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
+		if (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && IsLanderStanding(o.Note.Type) {
 			open = append(open, o)
 		}
 	}
 	return open
 }
+
+// landRefusalCode is a judgment text's class at its head (cmd/nova-sprint landClass):
+// code=<class> [stream=<s>]: ...
+var landRefusalCode = regexp.MustCompile(`^code=(\S+?)(?: stream=(\S+?))?:`)
 
 // landRefusalNumber is a number in a refusal's text, with any unit it carries: a count,
 // an id, a timing, an epoch.
@@ -108,7 +116,17 @@ var landRefusalNumber = regexp.MustCompile(`[0-9]+(\.[0-9]+)?[a-zµ]*`)
 // text carries a pass's timings, counts or ids is the same refusal pass after pass, so
 // its since stands and its one judgment is never closed and raised again
 // (tla/ServerSwitch.tla LandRefused, the reversed witness "rawkey").
+//
+// A text that carries its class at the source (code=<class> [stream=<s>]:, as the land
+// loop writes every cause land names) is keyed on that class and stream alone: the
+// human text after it is display, refreshed to the latest wording. Only a text with no
+// class falls back to the fold, which mis-folds both ways (a duration across units, a
+// sha, a path change it; a stream, a host, an exit code merge into it), so it is the
+// fallback and never the key of a cause land classes.
 func LandRefusalKey(text string) string {
+	if m := landRefusalCode.FindStringSubmatch(text); m != nil {
+		return "code=" + m[1] + " stream=" + m[2]
+	}
 	return strings.ToLower(strings.Join(strings.Fields(landRefusalNumber.ReplaceAllString(text, "#")), " "))
 }
 
@@ -140,6 +158,7 @@ func LandRefusalRaise(s *Snapshot, typ, what, who, prevType, prev string) Plan {
 		return p
 	}
 	if prev != "" && (prevType != typ || LandRefusalKey(prev) != LandRefusalKey(what)) {
+		// the replaced cause's judgment and its acknowledgement, if the seat acked it
 		for _, o := range landRefusalJudgments(s) {
 			if o.Note.Type == prevType && LandRefusalKey(o.Note.What) == LandRefusalKey(prev) {
 				p.Closes = append(p.Closes, o)
@@ -151,8 +170,11 @@ func LandRefusalRaise(s *Snapshot, typ, what, who, prevType, prev string) Plan {
 	return p
 }
 
-// LandRefusalClose is the plan that closes the standing refusal's judgment once a
-// pass has got past it (a landing, or a batch refused on its own).
+// LandRefusalClose is the plan that closes the standing refusal's judgment, and its
+// acknowledgement, once a pass has got past it (a landing, or a batch refused on its
+// own). It closes every lander judgment open, another live server's too: a second
+// server whose own cause still stands writes its judgment again on its next beat (its
+// re-check against the store), one extra raise, accepted.
 //
 // tla/ServerSwitch.tla LandOk
 func LandRefusalClose(s *Snapshot) Plan {
@@ -163,6 +185,9 @@ func LandRefusalClose(s *Snapshot) Plan {
 // and remedy, as its open judgment says; "" when none stands.
 func LandRefusalStanding(s *Snapshot) string {
 	for _, o := range landRefusalJudgments(s) {
+		if o.Note.Kind != Judgment {
+			continue
+		}
 		return o.Note.Type + ": " + o.Note.What
 	}
 	return ""
