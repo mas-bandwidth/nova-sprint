@@ -122,7 +122,7 @@ func TestAcceptHeavyRecordsTheCoordinatorsReadNotAReaders(t *testing.T) {
 
 	t.Run("the card is accepted on one reader ok and the coordinator heavy read", func(t *testing.T) {
 		assert.Equal(t, sprint.Merging, pr.Col)
-		assert.Equal(t, ok.Row, pr.F("readers"), "readers names the readers' oks alone")
+		assert.Equal(t, ok.ID, pr.F("readers"), "readers names the readers' oks alone")
 	})
 	t.Run("the card shows the coordinator verdict with its evidence", func(t *testing.T) {
 		assert.Equal(t, "coordinator:coordinator", pr.F(sprint.FieldHeavyReader))

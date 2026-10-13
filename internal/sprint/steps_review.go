@@ -1219,11 +1219,11 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 			u.Changes = append(u.Changes, change(Merge, createEntry(c.ID, c.Row, Queued, c.Score,
 				map[string]string{"kind": "merge", "primary": c.ID, "stream": c.Row, FieldQueued: stamp(s.Now)})))
 		}
-		var names []string
+		var ids []string
 		for _, o := range oks {
-			names = append(names, o.F("reader"))
+			ids = append(ids, o.ID)
 		}
-		readers := strings.Join(names, ",")
+		readers := strings.Join(ids, ",")
 		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
 		maps.Copy(set, readStamps(oks))
 		heavyText := ""

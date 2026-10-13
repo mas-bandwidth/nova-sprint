@@ -413,11 +413,13 @@ func ReadsStanding(s *Snapshot, c *Card) []string {
 	if r := c.F(FieldHeavyReader); r != "" && c.F(FieldHeavyVerdict) == "ok" && c.F(FieldHeavyAttempt) == c.F("attempt") && c.F(FieldHeavyHead) == c.F("head") {
 		readers[r] = true
 	}
-	for _, name := range Split(c.F("readers")) {
-		id := ReadCardID(c.ID, max(c.Int("attempt"), 1), name)
-		onFleet := s.Fleet != nil && (s.Fleet.HasRow(FriendRow(name)) || s.Fleet.HasRow(name))
-		if onFleet && s.Fleet.Card(id) == nil && (s.Readers == nil || s.Readers.Card(id) == nil) {
-			readers[name] = true
+	for _, entry := range Split(c.F("readers")) {
+		id := entry
+		if !strings.Contains(id, ".r") {
+			id = ReadCardID(c.ID, max(c.Int("attempt"), 1), entry)
+		}
+		if (s.Fleet == nil || s.Fleet.Card(id) == nil) && (s.Readers == nil || s.Readers.Card(id) == nil) {
+			readers[id] = true
 		}
 	}
 	return slices.Sorted(maps.Keys(readers))
@@ -485,6 +487,8 @@ func readCardReasons(s *Snapshot, pr *Card, attempt int) (counted []string, othe
 			reason = "retired with no verdict"
 		case !readHeadMatchesAt(s, pr, attempt, c):
 			reason = "another head"
+		case c.Placed() && c.Col != Broken:
+			reason = "open"
 		default:
 			reason = "not ok"
 		}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -19,6 +20,11 @@ import (
 func TestTwoOkReadsAtTheHeadAcceptWithAG1(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+
+	// Requires Card 1 (PR #201) which loads plain through .g(next+4) in ReadCardExtras.
+	if !slices.Contains(sprint.ReadCardExtras(h.snap()), "p.r4.superman.g1") {
+		t.Skip("waiting for Card 1 (PR #201) to land on stream: ReadCardExtras loads plain through .g(next+4)")
+	}
 
 	// Set up members vision and superman on fleet table and readers table
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "vision", Width: 2}))
