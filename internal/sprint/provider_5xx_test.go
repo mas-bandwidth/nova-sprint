@@ -103,6 +103,33 @@ func TestTheSixth5xxEndsTheTakeAsToday(t *testing.T) {
 	assert.Equal(t, 1, w.s.Fleet.Card(wc).Int("redeals"), "the ended take spends a redeal")
 }
 
+// TestThree5xxOnOneCardRestTheRoute: the same card failed three times by the provider's
+// server, returned untouched each time, keeps three records, each numbered by its return
+// (returnTakeNumber), never by the redeals the returns leave unspent, so the route rests on
+// them exactly as it did on three ended takes. Red before the records were numbered per
+// return: every return wrote provider_take_1 and the route never rested.
+func TestThree5xxOnOneCardRestTheRoute(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proDeepseekOpencode(w)
+	var wc string
+	for i := range 3 {
+		require.Empty(t, RestsDue(w.s), "no rest before the third 5xx")
+		wc, _, _ = takeAndFail5xx(t, w, "s1-1")
+		c := w.s.Fleet.Card(wc)
+		assert.Empty(t, c.F(FieldTakeEnded), "return %d spent no take", i+1)
+		assert.Zero(t, c.Int("redeals"), "return %d spent no redeal", i+1)
+		takes, numbers := ProviderTakes(c)
+		require.Len(t, takes, i+1, "return %d keeps its own record", i+1)
+		assert.Equal(t, returnTakeNumber(i+1), numbers[i], "return %d is numbered by its return", i+1)
+	}
+	rests := RestsDue(w.s)
+	require.Len(t, rests, 1, "the route rests on one card's three 5xx returns: %+v", rests)
+	assert.Equal(t, "pro-deepseek-opencode", rests[0].Route)
+	assert.Equal(t, RestProvider, rests[0].Cause)
+	assert.Equal(t, []string{wc, wc, wc}, rests[0].Cards, "the rest names the card once per 5xx")
+}
+
 // TestA5xxStillCountsTowardTheRouteRest: three takes on one route the provider's server
 // failed rest the route for RouteRestFor, exactly as three ended 5xx takes did at BASE: the
 // returns leave their FieldProviderTake records, which routeEnds reads (transient) and

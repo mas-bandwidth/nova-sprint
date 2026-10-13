@@ -1933,6 +1933,17 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
+			if isProvider5xx(r.Report) && c.Int(FieldRateReturns) < MaxRateReturns {
+				// the provider's own server failed the take (class provider-5xx): a transient
+				// provider fault, never the card's. The card is returned untouched on any
+				// route (no FieldTakeEnded, no redeal, no attempt) under MaxRateReturns, and
+				// its record still counts toward the route's 3-in-10 rest; past the bound the
+				// take ends as any provider failure does (tla/RouteRest.tla,
+				// Provider5xxSpendsNoRedeal)
+				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "provider 5xx",
+					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider's server failed the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
+				continue
+			}
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
 			continue
 		case cardhdr.EndNoResult:
@@ -2428,8 +2439,9 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 }
 
 // rateLimitedReturned is the no-spend path of a take the provider rate limited
-// (IsRateLimited), on ANY route and with no bound, and of a take on a LIMITED route
-// (rateLimitedRoute) the provider refused for want of credit (outOfCredit), fewer than
+// (IsRateLimited), on ANY route and with no bound; of a take on a LIMITED route
+// (rateLimitedRoute) the provider refused for want of credit (outOfCredit); and of a take
+// on ANY route the provider's own server failed (isProvider5xx); the last two fewer than
 // MaxRateReturns times (FieldRateReturns, counted here for those alone; past it that take
 // ends as any provider failure does). A rate limit never fails a card: it leaves a
 // FieldRateTake record and the route backs off briefly from it (rateBackoffs;
@@ -2442,7 +2454,9 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 // record; moved is the unit's words. A rate limit writes NO FieldProviderTake, so it never
 // counts toward the route's 3-in-10 rest; an out-of-credit refusal DOES write one, so the provider
 // rests exactly as it did when the take ended (routeEnds, providerRestsDue; tla/RouteRest.tla,
-// OutOfCreditSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
+// OutOfCreditSpendsNoRedeal), and so does a 5xx, so the route's 3-in-10 rest counts it
+// exactly as it counted the ended take (routeEnds, transient; tla/RouteRest.tla,
+// Provider5xxSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
 // line stays on the card for its reader; what the run cost is the producer's record, as a
 // staging refusal's is.
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved string) Unit {
@@ -2465,15 +2479,18 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 	} else {
 		set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	}
-	if refusal(r.Report) != "" {
-		// the refusal is recorded so the provider rests as it always has (routeEnds reads
-		// ProviderTakes), with the take's own usage; only FieldTakeEnded and the redeal are
-		// left off (no redeal spent, the card returns to ready)
+	if !IsRateLimited(r.Report) && (refusal(r.Report) != "" || isProvider5xx(r.Report)) {
+		// the refusal, or the 5xx, is recorded so the provider or the route rests as it
+		// always has (routeEnds reads ProviderTakes), with the take's own usage; only
+		// FieldTakeEnded and the redeal are left off (no redeal spent, the card returns to
+		// ready). The record is numbered by this return (returnTakeNumber), never by the
+		// redeals, which a return leaves as they were: two returns on one card are two
+		// records, so three 5xx returns on one card rest the route as three ended takes did
 		usage := ""
 		if r.Usage != "" {
 			usage = rec
 		}
-		set[FieldProviderTake+itoa(c.Int("redeals")+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+		set[FieldProviderTake+itoa(returnTakeNumber(c.Int(FieldRateReturns)+1))] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	prSet := map[string]string{}
