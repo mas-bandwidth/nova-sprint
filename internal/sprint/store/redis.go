@@ -49,7 +49,7 @@ func (r *Redis) writeOpts() ntable.WriteOptions { return ntable.WriteOptions{Epo
 
 // Epoch reads the sprint's epoch hash in one exchange.
 func (r *Redis) Epoch(ctx context.Context) (EpochState, error) {
-	vals, err := r.C.HMGet(ctx, r.Names.EpochKey(), "n", "cleared", "restore").Result()
+	vals, err := r.C.HMGet(ctx, r.Names.EpochKey(), "n", "cleared", "restore", "defaults").Result()
 	if err != nil {
 		return EpochState{}, err
 	}
@@ -65,11 +65,18 @@ func (r *Redis) Epoch(ctx context.Context) (EpochState, error) {
 	if v, ok := vals[2].(string); ok && v != "" {
 		es.Owed = true
 	}
+	// the set-defaults owed flag names the epoch that owes it: one naming another epoch
+	// (an older binary advanced past it without writing its own) is not this epoch's
+	if v, ok := vals[3].(string); ok && es.N > 0 && v == strconv.FormatUint(es.N, 10) {
+		es.DefaultsOwed = true
+	}
 	return es, nil
 }
 
 // AdvanceEpoch is WATCH on the epoch hash, then one MULTI/EXEC; the hash's
-// restore field names the epoch whose shape the new one owes.
+// restore field names the epoch whose shape the new one owes, and its defaults
+// field the new epoch, owed its set-defaults step (EpochState.DefaultsOwed), in
+// the same write.
 func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error) {
 	key := r.Names.EpochKey()
 	moved := false
@@ -87,7 +94,8 @@ func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bo
 			return nil
 		}
 		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
-			p.HSet(ctx, key, "n", strconv.FormatUint(from+1, 10), "cleared", at.UTC().Format(time.RFC3339Nano), "restore", strconv.FormatUint(from, 10))
+			p.HSet(ctx, key, "n", strconv.FormatUint(from+1, 10), "cleared", at.UTC().Format(time.RFC3339Nano), "restore", strconv.FormatUint(from, 10),
+				"defaults", strconv.FormatUint(from+1, 10))
 			return nil
 		})
 		return err
@@ -119,6 +127,35 @@ func (r *Redis) SettleEpoch(ctx context.Context, n uint64) error {
 	if errors.Is(err, redis.TxFailedErr) {
 		// the epoch hash moved: another clear advanced it, or settled it
 		return nil
+	}
+	return err
+}
+
+// SettleDefaults removes the set-defaults step owed at epoch n: WATCH on the
+// epoch hash, then one MULTI/EXEC, only while the sprint is at n and the flag
+// names n.
+func (r *Redis) SettleDefaults(ctx context.Context, n uint64) error {
+	key := r.Names.EpochKey()
+	at := strconv.FormatUint(n, 10)
+	err := r.C.Watch(ctx, func(tx *redis.Tx) error {
+		vals, err := tx.HMGet(ctx, key, "n", "defaults").Result()
+		if err != nil {
+			return err
+		}
+		if v, _ := vals[0].(string); v != at {
+			return nil
+		}
+		if v, _ := vals[1].(string); v != at {
+			return nil
+		}
+		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+			p.HDel(ctx, key, "defaults")
+			return nil
+		})
+		return err
+	}, key)
+	if errors.Is(err, redis.TxFailedErr) {
+		return fmt.Errorf("the sprint's epoch moved as the set-defaults step of epoch %d was settled; run: nova-sprint clear again", n)
 	}
 	return err
 }

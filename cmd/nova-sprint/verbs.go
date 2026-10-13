@@ -4351,9 +4351,9 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 		extra += " restored=yes"
 	}
 	if res.Owed {
-		// the newest epoch was left by a clear that stopped before its set-defaults step:
-		// this one finished it there and advanced nothing
-		extra += " owed=defaults-finished"
+		// the epoch's advance flagged it owed its step and its clear stopped before the step
+		// was done: this one finished it there (what it finished) and advanced nothing
+		extra += " owed-finished=" + strings.Join(res.OwedFinished, ",")
 	}
 	if res.Machine != "" {
 		extra += " machine=" + res.Machine + "->" + store.Stopped
@@ -4365,7 +4365,7 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 			heldN[strings.ReplaceAll(k, " ", "_")] = v
 		}
 		sayOK(stdout, true, "clear", "", map[string]any{"from": res.From, "to": res.To, "at": res.At.UTC().Format(time.RFC3339), "held": heldN,
-			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults, "owed": res.Owed})
+			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults, "owed": res.Owed, "owed_finished": res.OwedFinished})
 		return 0
 	}
 	fmt.Fprintf(stdout, "CLEAR OK epoch=%d->%d at=%s held: %s%s\n", res.From, res.To, res.At.UTC().Format(time.RFC3339), strings.Join(held, " "), extra)

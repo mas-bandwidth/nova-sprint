@@ -13,7 +13,7 @@ import (
 const (
 	// HomeProp is a work-table property, epoch keyed: a clear leaves the new epoch with
 	// none, and the clear's set-defaults step writes the row's Value into it where it is
-	// still absent (store.Clear, SetDefaults; tla/MachineReady.tla SetDefaults).
+	// still absent (store.Clear, SetDefaults; tla/ClearDefaults.tla SetDefaults).
 	HomeProp = "prop"
 	// HomeCarry is a work-table property that is the coordinator's choice, carried across
 	// a clear as shape: the set-defaults step writes the old epoch's value into the new
@@ -30,12 +30,6 @@ const (
 	// owns what it holds.
 	HomeShape = "shape"
 )
-
-// PropDefaultsSet is the work table's per-epoch marker that the epoch's set-defaults step
-// ran: written in the same step as the defaults (SetDefaults). A cleared epoch without it
-// is owed the step (store.defaultsOwed): a clear run again over it finishes the step,
-// carrying from the newest epoch with the marker, and advances nothing.
-const PropDefaultsSet = "defaults_set"
 
 // ShapeCarried is a shape row's Value: the old epoch's, carried by the clear.
 const ShapeCarried = "carried"
@@ -163,7 +157,7 @@ var NotSettingProps = []string{
 	PropFriendSync, PropIdleSaid, PropIdleSince, PropLandRefusal, PropLandingStallSaid, PropLandingStallSince,
 	PropLastLanding, PropMergeWindowReason, PropMergeWindowUntil, PropPromotedAt, PropPromotedSha,
 	PropCarriedMedians, PropCostReconcilePrefix, PropReadsWindow, PropStatusSeen,
-	PropDefaultsSet, PropSetBy,
+	PropSetBy,
 }
 
 // SetFlagProp is the property a flag of `set` writes where it is not the flag's own name
@@ -188,7 +182,7 @@ func defaultValue(name string) string {
 // clearedDefault is the value a setting absent from a cleared epoch's work table reads as
 // (epoch above 0): its row's Value, ok false when it has none or no Value. A cleared epoch
 // holds every row once its set-defaults step ran; before it (a start that landed inside the
-// clear, tla/MachineReady.tla Read, ReadersSeeWorking) the readers read the default, never
+// clear, tla/ClearDefaults.tla Read, ReadersSeeWorking) the readers read the default, never
 // an absent off. The first epoch, never cleared, keeps each accessor's own absent case.
 func (s *Snapshot) clearedDefault(name string) (string, bool) {
 	if s == nil || s.Epoch == 0 {
@@ -201,7 +195,7 @@ func (s *Snapshot) clearedDefault(name string) (string, bool) {
 	return d.Value, true
 }
 
-// SetDefaults is the clear's set-defaults step (tla/MachineReady.tla SetDefaults): every
+// SetDefaults is the clear's set-defaults step (tla/ClearDefaults.tla SetDefaults): every
 // HomeProp row's Value, and every HomeCarry row's old-epoch value (else its Value), written
 // into the new epoch's work table where the property is still ABSENT, so no setting is ever
 // absent. A property present in the new epoch was written there after the advance (a set
@@ -238,9 +232,6 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: d.Name, Value: want, WasAbsent: true})
 		wrote = append(wrote, d.Name+" "+want)
 	}
-	if s == nil || s.Work == nil || !hasProp(s.Work, PropDefaultsSet) {
-		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropDefaultsSet, Value: "1", WasAbsent: true})
-	}
 	if len(wrote) > 0 {
 		p.Units = append(p.Units, Unit{Key: "defaults", Moved: "sprint defaults " + strings.Join(wrote, ", ")})
 	}
@@ -274,9 +265,4 @@ func sprintRowDefault(field string) string {
 		return ""
 	}
 	return f.Default
-}
-
-func hasProp(t *Table, name string) bool {
-	_, ok := t.Prop(name)
-	return ok
 }

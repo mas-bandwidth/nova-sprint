@@ -7785,11 +7785,19 @@ advance and is never overwritten. So no setting of a cleared epoch is absent, no
 of the old epoch's `prop` values is carried, and no clear ever turns an alarm off
 (the owner, 2026-10-11: "never turn off alarms or warnings"). `clear` names each
 `prop` value it reset on a `CLEAR DEFAULT <name> was <v>, now <default>` line
-(`--json`: `defaults`). The step marks its epoch (the property `defaults_set`); a clear
-that stopped between its advance and its step leaves the new epoch unmarked, and
-the `clear` run again (as the step's failure says) finishes that step, carrying from
-the newest epoch that completed its own, and advances nothing (`CLEAR OK ...
-owed=defaults-finished`), so a crash never loses the coordinator's carried settings.
+(`--json`: `defaults`). The epoch advance writes, in the same store write as the
+epoch, a set-defaults owed flag naming the new epoch (the epoch hash's `defaults`
+field; store.EpochState.DefaultsOwed). The owed step is restoreMembers, then the
+defaults; the flag is cleared only after both have run (store.SettleDefaults, a write
+of its own: the table layer cannot write the epoch hash with a table, so the step is
+idempotent instead, writing only the rows, control cards and settings the epoch
+lacks). A clear that stopped anywhere after its advance leaves the flag, and the
+`clear` run again (as the failure says) finishes the whole step over that epoch,
+carrying from the epoch the advance left, and advances nothing (`CLEAR OK ...
+owed-finished=members:<n>,readers:<n>,defaults`; `--json`: `owed`, `owed_finished`),
+so a crash never loses the members, the readers or the coordinator's carried settings.
+An epoch without the flag (an older binary's clear, a fresh init, epoch 0) is never
+owed: its clear advances.
 A reader of a cleared epoch before its step (a start that
 landed inside the clear, or a clear that stopped before its step) reads each absent
 setting as its default, the alarms included. The first epoch, which init leaves
@@ -7807,9 +7815,11 @@ The class tests hold every flag of `set` (TestEverySetFlagHasADeclaredDefault),
 every `Prop*` constant (TestEveryPropIsASettingOrState), every field of SetReq and
 Shape (TestEverySettingHasADeclaredDefault), and every Bars field and sprint-row
 field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The model
-is tla/MachineReady.tla (SetDefaults, Set, Read; DefaultsAfterClear, SetSurvives, CarrySurvives,
-NeverAbsent, ReadersSeeWorking; witnesses leaveone, carryadvance, overwrite,
-nofallback and rerunadvance).
+is tla/ClearDefaults.tla (ClearAdvance's flag, RestoreMembers, SetDefaults,
+SettleDefaults, Crash, OlderClear, Set, Read; DefaultsAfterClear, SetSurvives,
+CarrySurvives, NeverAbsent, ReadersSeeWorking, FinishOnlyWhatIsOwed, MembersRestored;
+witnesses leaveone, carryadvance, overwrite, nofallback, rerunadvance, markerinfer
+and restoreskip).
 
 
 <a id="14-the-machine"></a>

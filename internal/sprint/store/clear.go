@@ -26,11 +26,15 @@ type ClearResult struct {
 	// "<name> was <v>, now <default>": the set-defaults step does not carry it
 	// (setDefaults; sprint.Defaults).
 	Defaults []string `json:"defaults,omitempty"`
-	// Owed says this clear advanced nothing: the newest epoch was left by a clear that
-	// advanced and stopped before its set-defaults step, and this one finished that step,
-	// carrying from the newest epoch that completed its own (From), into To, the same
-	// epoch the crashed clear advanced to (tla/MachineReady.tla, CarrySurvives).
+	// Owed says this clear advanced nothing: the epoch's advance flagged it owed its step
+	// (EpochState.DefaultsOwed) and the clear that made it stopped before the step was
+	// done, so this one finished the step there, carrying from the epoch that advance left
+	// (From), into To, the same epoch (tla/ClearDefaults.tla FinishOnlyWhatIsOwed,
+	// CarrySurvives, MembersRestored).
 	Owed bool `json:"owed,omitempty"`
+	// OwedFinished is what an owed clear finished: the members and readers restored from
+	// From, and the working defaults set ("members:<n>", "readers:<n>", "defaults").
+	OwedFinished []string `json:"owed_finished,omitempty"`
 }
 
 // Clear stops the sprint and clears all work in it: it sets the machine
@@ -102,19 +106,15 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 			res.Finished = f.Pending.ID
 		}
 	}
-	// A clear that advanced and stopped before its set-defaults step (the step's
-	// failure says: run clear again) left this epoch owed: this clear finishes that
-	// step, carrying from the newest epoch that completed its own, and advances
-	// nothing, so the coordinator's carried settings are never lost to an empty epoch.
-	if owed, src, from, err := st.defaultsOwed(ctx); err != nil {
+	// A clear that advanced and stopped before its owed step was done (its failure says:
+	// run clear again) left the flag its advance wrote: this clear finishes the step there
+	// and advances nothing, so the members and the coordinator's carried settings are never
+	// lost to an empty epoch. Only the flag says so: an epoch without it (an older
+	// binary's clear, a fresh init, epoch 0) is never owed.
+	if cur, err := st.EpochNow(ctx); err != nil {
 		return res, err
-	} else if owed {
-		res.Owed, res.From, res.To, res.At = true, from, st.epoch, st.now()
-		res.Held = map[string]int{}
-		if res.Defaults, err = st.setDefaults(ctx, src); err != nil {
-			return res, err
-		}
-		return res, st.clearReady(ctx, st, res)
+	} else if cur.N == st.epoch && cur.N > 0 && cur.DefaultsOwed {
+		return st.finishOwed(ctx, res)
 	}
 	old, err := st.Load(ctx, All, nil)
 	if err != nil {
@@ -142,23 +142,9 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	if err := next.root.SettleEpoch(ctx, next.epoch); err != nil {
 		return res, err
 	}
-	// The fleet's members and the readers are not sprint work: their rows,
-	// widths and status survive a clear (the machines and the readers are still
-	// there); their holds, leases, stop records, alarms, streams, cards and
-	// read cards are the old epoch's and are left behind.
-	if err := next.restoreMembers(ctx, old); err != nil {
-		return res, err
-	}
-	// Advance, then set defaults: every working default written into the new epoch where
-	// it is absent, the coordinator's carried settings (the threshold alarms, the base)
-	// carried from the old epoch, the rest at their defaults, never an old value of them
-	// (tla/MachineReady.tla SetDefaults, DefaultsAfterClear, CarrySurvives, NeverAbsent).
-	if st.beforeDefaults != nil {
-		if err := st.beforeDefaults(next); err != nil {
-			return res, err
-		}
-	}
-	if res.Defaults, err = next.setDefaults(ctx, old); err != nil {
+	// The advance flagged the new epoch owed its step, in the same write: restoreMembers,
+	// then the working defaults, then the flag cleared (owedStep).
+	if res.Defaults, err = next.owedStep(ctx, old); err != nil {
 		return res, err
 	}
 	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
@@ -167,7 +153,7 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 }
 
 // clearReady writes the new epoch's READY record: its machine is READY (docs/SPEC-SPRINT.md
-// section 14, "READY"; tla/MachineReady.tla Clear, ClearLeavesReady): it has not started
+// section 14, "READY"; tla/MachineReady.tla ClearAdvance, ClearLeavesReady): it has not started
 // since this clear, so the record as read now is READY with nothing written to it; the
 // view's state text says so, and the new epoch's own record says why.
 func (st *Store) clearReady(ctx context.Context, next *Store, res ClearResult) error {
@@ -246,7 +232,94 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 	return nil
 }
 
-// setDefaults is the clear's set-defaults step (tla/MachineReady.tla SetDefaults): one
+// owedStep is the step an epoch's advance flagged it owed (EpochState.DefaultsOwed), at the
+// pinned epoch: restoreMembers, then the working defaults, both carried from old, the epoch
+// the advance left; then the flag is cleared (SettleDefaults), only after both have run.
+// The flag lives in the epoch record and the step writes the tables, and neither store
+// writes the two in one write (the table layer's function writes only its tables), so the
+// flag's clear is a write of its own after the last of them, and the step is idempotent
+// instead: restoreMembers adds only the rows and control cards the epoch lacks (RowsAdd,
+// RestoreShape) and the defaults write only the settings it lacks (sprint.SetDefaults), so
+// a clear run again after a crash anywhere in it finishes it (tla/ClearDefaults.tla
+// RestoreMembers, SetDefaults, SettleDefaults). It returns the defaults' resets.
+func (st *Store) owedStep(ctx context.Context, old *sprint.Snapshot) ([]string, error) {
+	// The fleet's members and the readers are not sprint work: their rows,
+	// widths and status survive a clear (the machines and the readers are still
+	// there); their holds, leases, stop records, alarms, streams, cards and
+	// read cards are the old epoch's and are left behind.
+	if err := st.restoreMembers(ctx, old); err != nil {
+		return nil, fmt.Errorf("restoring the members and the readers in epoch %d: %w; run: nova-sprint clear again", st.epoch, err)
+	}
+	// Then set defaults: every working default written into the new epoch where it is
+	// absent, the coordinator's carried settings (the threshold alarms, the base) carried
+	// from the old epoch, the rest at their defaults, never an old value of them
+	// (tla/ClearDefaults.tla SetDefaults, DefaultsAfterClear, CarrySurvives, NeverAbsent).
+	if st.beforeDefaults != nil {
+		if err := st.beforeDefaults(st); err != nil {
+			return nil, err
+		}
+	}
+	resets, err := st.setDefaults(ctx, old)
+	if err != nil {
+		return nil, err
+	}
+	if err := st.root.SettleDefaults(ctx, st.epoch); err != nil {
+		return nil, fmt.Errorf("settling the step epoch %d owed: %w; run: nova-sprint clear again", st.epoch, err)
+	}
+	return resets, nil
+}
+
+// finishOwed is a clear run again over an epoch flagged owed its step: it reads the epoch
+// the advance left, frozen since, performs the step at the pinned epoch (owedStep), and
+// advances nothing. It reports what it finished (OwedFinished); any part that fails is an
+// error, never a success with nothing done.
+func (st *Store) finishOwed(ctx context.Context, res ClearResult) (ClearResult, error) {
+	res.Owed, res.From, res.To, res.At = true, st.epoch-1, st.epoch, st.now()
+	res.Held = map[string]int{}
+	old, err := st.owedSource(ctx)
+	if err != nil {
+		return res, err
+	}
+	if res.Defaults, err = st.owedStep(ctx, old); err != nil {
+		return res, err
+	}
+	sh := sprint.ShapeOf(old)
+	res.OwedFinished = []string{"members:" + strconv.Itoa(len(sh.Members)), "readers:" + strconv.Itoa(len(sh.Readers)), "defaults"}
+	return res, st.clearReady(ctx, st, res)
+}
+
+// owedSource is the epoch an owed epoch's advance left (its number less one) as read: each
+// table as it was, and an empty one where that epoch never wrote the table (NOTABLE).
+func (st *Store) owedSource(ctx context.Context) (*sprint.Snapshot, error) {
+	from := st.At(st.epoch - 1)
+	s, err := from.Load(ctx, All, nil)
+	if refusalCode(err) != "NOTABLE" {
+		if err != nil {
+			return nil, fmt.Errorf("reading epoch %d, the epoch epoch %d's advance left: %w", st.epoch-1, st.epoch, err)
+		}
+		return s, nil
+	}
+	var out *sprint.Snapshot
+	tables := map[string]*sprint.Table{}
+	for _, t := range All {
+		one, err := from.Load(ctx, []string{t}, nil)
+		if refusalCode(err) == "NOTABLE" {
+			tables[t] = sprint.NewTable(st.Names.Table(t))
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading epoch %d, the epoch epoch %d's advance left: %w", st.epoch-1, st.epoch, err)
+		}
+		tables[t], out = one.T(t), one
+	}
+	if out == nil {
+		out = &sprint.Snapshot{Now: st.now(), Epoch: st.epoch - 1, Prefix: st.Names.Prefix}
+	}
+	out.Work, out.Readers, out.Merge, out.Fleet = tables[sprint.Work], tables[sprint.Readers], tables[sprint.Merge], tables[sprint.Fleet]
+	return out, nil
+}
+
+// setDefaults is the clear's set-defaults step (tla/ClearDefaults.tla SetDefaults): one
 // step at the new epoch writing every work-table property row of sprint.Defaults at its
 // Value (sprint.SetDefaults), by "clear". The bars are nova-config's and never written
 // here (their default is read-side, Bars.WithDefaults); the shape is restoreMembers'.
@@ -332,39 +405,3 @@ func (st *Store) restore(ctx context.Context, from uint64) (*sprint.Snapshot, er
 	}
 	return snap, st.root.SettleEpoch(ctx, at)
 }
-
-// defaultsOwed says the pinned epoch is owed its set-defaults step: a clear advanced to
-// it and stopped before the step (its marker, sprint.PropDefaultsSet, is absent) while an
-// earlier epoch completed its own. It returns the newest such earlier epoch as read, the
-// source the owed step carries from, and its number. An epoch with no marked epoch before
-// it (the first, or a store from before the marker) owes nothing: the clear advances as
-// it always did, carrying from the epoch it leaves.
-func (st *Store) defaultsOwed(ctx context.Context) (bool, *sprint.Snapshot, uint64, error) {
-	if st.epoch == 0 {
-		return false, nil, 0, nil
-	}
-	cur, err := st.Load(ctx, []string{sprint.Work}, nil)
-	if err != nil {
-		return false, nil, 0, err
-	}
-	if _, done := cur.Work.Prop(sprint.PropDefaultsSet); done {
-		return false, nil, 0, nil
-	}
-	for e, n := st.epoch, 0; e > 0 && n < defaultsOwedLookback; e, n = e-1, n+1 {
-		s, err := st.At(e-1).Load(ctx, []string{sprint.Work}, nil)
-		if err != nil {
-			if refusalCode(err) == "NOTABLE" {
-				continue // an epoch with no write holds no marker
-			}
-			return false, nil, 0, fmt.Errorf("reading epoch %d for the set-defaults step epoch %d owes: %w", e-1, st.epoch, err)
-		}
-		if _, done := s.Work.Prop(sprint.PropDefaultsSet); done {
-			return true, s, e - 1, nil
-		}
-	}
-	return false, nil, 0, nil
-}
-
-// defaultsOwedLookback is how many epochs back defaultsOwed looks for one that completed
-// its set-defaults step: crashed clears do not pile up, so a few suffice.
-const defaultsOwedLookback = 16

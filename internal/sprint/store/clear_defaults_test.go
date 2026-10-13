@@ -47,7 +47,7 @@ func writeProps(h *harness, st *Store, props map[string]string, op string) {
 // value (the coordinator's alarm thresholds and base), each reads through the tick's
 // accessor (read cards on, the feed alarm on), the clear names each reset and never an
 // alarm turned off, and an unapplied git_identity reads the machine identity
-// (tla/MachineReady.tla SetDefaults, DefaultsAfterClear). The owner, 2026-10-13: "you
+// (tla/ClearDefaults.tla SetDefaults, DefaultsAfterClear). The owner, 2026-10-13: "you
 // advance epoch, and then set defaults in the new epoch that need to be set. eg. reading
 // true, git_identity etc."
 func TestAClearSetsEveryWorkingDefaultInTheNewEpoch(t *testing.T) {
@@ -149,7 +149,7 @@ func TestAClearNeverLeavesAnAlarmOff(t *testing.T) {
 }
 
 // A set that lands between the clear's epoch advance and its set-defaults step survives:
-// the step writes only what the new epoch does not hold (tla/MachineReady.tla SetSurvives;
+// the step writes only what the new epoch does not hold (tla/ClearDefaults.tla SetSurvives;
 // the cold read of #190, 2026-10-13).
 func TestASetBetweenTheAdvanceAndTheDefaultsSurvives(t *testing.T) {
 	t.Parallel()
@@ -251,48 +251,47 @@ func TestEveryBarHasADeclaredDefault(t *testing.T) {
 }
 
 // A clear whose set-defaults step fails after the advance (a crash; the step's failure
-// says run clear again) leaves the new epoch owed. The clear run again finishes that
-// step, carrying the coordinator's settings from the newest epoch that completed its own,
-// and advances nothing: the epoch is the one the crashed clear advanced to, the carried
-// thresholds and base are the coordinator's, and the reset lines are named (the cold read
-// of #190 at c4a5a3f; tla/MachineReady.tla CarrySurvives).
+// says run clear again) leaves the new epoch flagged owed. The clear run again finishes
+// that step, carrying the coordinator's settings from the epoch the advance left, and
+// advances nothing: the epoch is the one the crashed clear advanced to, the carried
+// thresholds and base are the coordinator's, and the flag is cleared (the cold read of
+// #190 at c4a5a3f; tla/ClearDefaults.tla CarrySurvives).
 func TestAClearRunAgainAfterACrashFinishesTheOwedStepAndCarries(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.must(SetStep(sprint.SetReq{Who: "tester", AlarmReview: "3", AlarmFleet: "70", ReadCards: sprint.SwitchOff}))
 	writeProps(h, h.st, map[string]string{sprint.PropSprintBase: "sprint/v9", sprint.PropTwinBriefs: "/srv/twins"}, "carry-props")
-	// a first clear completes: epoch 1 carries the coordinator's settings and holds its marker
+	// a first clear completes: epoch 1 carries the coordinator's settings and owes nothing
 	res, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), res.To)
-	_, marked := h.snap().Work.Prop(sprint.PropDefaultsSet)
-	require.True(t, marked, "a completed clear marks its epoch")
+	es, err := h.st.EpochNow(h.ctx)
+	require.NoError(t, err)
+	require.False(t, es.DefaultsOwed, "a completed clear clears its flag")
 
 	// the second clear crashes between its advance and its step
 	h.st.beforeDefaults = func(*Store) error { return errors.New("crashed before the set-defaults step") }
 	_, err = h.st.Clear(h.ctx)
 	require.Error(t, err)
 	h.st.beforeDefaults = nil
-	s := h.snap()
-	es, err := h.st.EpochNow(h.ctx)
+	es, err = h.st.EpochNow(h.ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), es.N, "the crashed clear advanced to epoch 2")
-	_, marked = s.Work.Prop(sprint.PropDefaultsSet)
-	require.False(t, marked, "epoch 2 is owed its step")
+	require.True(t, es.DefaultsOwed, "epoch 2 is flagged owed its step")
 
 	// run clear again: it finishes epoch 2's step and advances nothing
 	res, err = h.st.Clear(h.ctx)
 	require.NoError(t, err)
 	assert.True(t, res.Owed, "the clear finished the owed step")
-	assert.Equal(t, uint64(1), res.From, "carried from epoch 1, the newest that completed its step")
+	assert.Equal(t, uint64(1), res.From, "carried from epoch 1, the epoch the advance left")
 	assert.Equal(t, uint64(2), res.To, "no second advance")
 	es, err = h.st.EpochNow(h.ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), es.N, "still epoch 2")
-	s = h.snap()
+	assert.False(t, es.DefaultsOwed, "the flag is cleared")
+	s := h.snap()
 	for prop, want := range map[string]string{sprint.PropAlarmReview: "3", sprint.PropAlarmFleet: "70", sprint.PropSprintBase: "sprint/v9",
-		sprint.PropTwinBriefs: "/srv/twins", sprint.PropAlarmMerging: sprint.AlarmMergingWorking, sprint.PropReadCards: sprint.ReadCardsOnWord,
-		sprint.PropDefaultsSet: "1"} {
+		sprint.PropTwinBriefs: "/srv/twins", sprint.PropAlarmMerging: sprint.AlarmMergingWorking, sprint.PropReadCards: sprint.ReadCardsOnWord} {
 		v, _ := s.Work.Prop(prop)
 		assert.Equal(t, want, v, "%s after the owed step", prop)
 	}

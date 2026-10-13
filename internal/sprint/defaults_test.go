@@ -57,7 +57,7 @@ func jsonName(f reflect.StructField) string {
 // TestEverySettingHasADeclaredDefault is the class test of the working defaults: every
 // field of SetReq (the coordinator's settings) and of Shape (what a clear carries) maps to
 // a Defaults row or is a listed non-setting, so a new setting cannot be added without its
-// default, and the clear's set-defaults step (SetDefaults; tla/MachineReady.tla
+// default, and the clear's set-defaults step (SetDefaults; tla/ClearDefaults.tla
 // SetDefaults) writes it. Bars is held to the table in internal/sprint/store
 // (TestEveryBarHasADeclaredDefault). The reversed witness: an extra field with no row,
 // tagged or not, is named.
@@ -158,7 +158,7 @@ func TestSetDefaultsWritesOnlyWhatIsAbsent(t *testing.T) {
 	s := &Snapshot{Work: NewTable(Work)}
 	old := map[string]string{PropReadCards: SwitchOff, PropFleet: SwitchOn, PropAlarmReview: "3", PropAlarmReady: SwitchOff, PropSprintBase: "sprint/v9"}
 	p, resets := SetDefaults(s, old)
-	require.Len(t, p.Props, nRows+2, "every row written into an empty epoch, the base carried, and the epoch's marker")
+	require.Len(t, p.Props, nRows+1, "every row written into an empty epoch, and the base carried; no marker (the owed flag is the epoch record's)")
 	assert.ElementsMatch(t, []string{"read_cards was off, now on", "alarm_ready was off, now on"}, resets, "only a HomeProp value away from its default is a reset")
 	got := map[string]string{}
 	for _, pw := range p.Props {
@@ -183,7 +183,7 @@ func TestSetDefaultsWritesOnlyWhatIsAbsent(t *testing.T) {
 	// a set that landed in the new epoch before the step: never overwritten
 	s.Work.SetProps(map[string]string{PropReadCards: SwitchOff, PropAlarmReview: "7"})
 	p, _ = SetDefaults(s, old)
-	assert.Len(t, p.Props, nRows+2-2, "the two properties the new epoch holds are not written")
+	assert.Len(t, p.Props, nRows+1-2, "the two properties the new epoch holds are not written")
 	for _, pw := range p.Props {
 		assert.NotContains(t, []string{PropReadCards, PropAlarmReview}, pw.Name, "%s written over the new epoch's own set", pw.Name)
 	}

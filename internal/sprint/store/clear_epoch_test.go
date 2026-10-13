@@ -172,7 +172,7 @@ func TestClearInTheMiddleOfAStep(t *testing.T) {
 }
 
 // C5: init with nothing, then clears: every cleared epoch is written by its
-// clear's set-defaults step (sprint.Defaults; tla/MachineReady.tla SetDefaults),
+// clear's set-defaults step (sprint.Defaults; tla/ClearDefaults.tla SetDefaults),
 // so it has a definition at the table layer and reads as empty of work; a read
 // ahead of the sprint is refused (EPOCHAHEAD); and teardown leaves the store as
 // it was before init, the defaults' properties included.

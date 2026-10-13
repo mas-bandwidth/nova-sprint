@@ -74,12 +74,17 @@ type Backend interface {
 	// and whether the restore of the shape of the epoch before it is owed.
 	Epoch(ctx context.Context) (EpochState, error)
 	// AdvanceEpoch moves the sprint from epoch from to from+1 atomically,
-	// recording the time and that the restore of epoch from's shape is owed;
-	// false when the sprint is no longer at from.
+	// recording the time, that the restore of epoch from's shape is owed, and
+	// that from+1 is owed its set-defaults step (EpochState.DefaultsOwed), all in
+	// one write; false when the sprint is no longer at from.
 	AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error)
 	// SettleEpoch records that the restore owed at epoch n is done; it does
 	// nothing when the sprint is no longer at n.
 	SettleEpoch(ctx context.Context, n uint64) error
+	// SettleDefaults records that the set-defaults step owed at epoch n is done
+	// (restoreMembers and the defaults both ran); it does nothing when the
+	// sprint is no longer at n or the flag names another epoch.
+	SettleDefaults(ctx context.Context, n uint64) error
 	// AtEpoch is the backend pinned to an epoch: the sprint's keys of that
 	// epoch, and its writes at that epoch. With old, reads of the tables read
 	// that epoch as it was, not the active one.
@@ -162,6 +167,13 @@ type EpochState struct {
 	// Owed says the clear into N has not restored the shape of epoch N-1 at
 	// it yet: the next verb, tick or clear performs the restore first.
 	Owed bool
+	// DefaultsOwed says the clear that advanced into N has not finished the step it owes
+	// there: restoreMembers, then the working defaults (clear.go). The advance writes the
+	// flag, naming N, in the same write as the epoch (AdvanceEpoch); SettleDefaults clears
+	// it once both have run. A flag naming another epoch is not this epoch's: an older
+	// binary's advance writes none, so an epoch it made, a fresh init and epoch 0 are never
+	// owed (tla/ClearDefaults.tla flag, Owed, FinishOnlyWhatIsOwed).
+	DefaultsOwed bool
 }
 
 // Fence is the sprint-wide fence as read: its generation, advanced by every
