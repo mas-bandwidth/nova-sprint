@@ -178,23 +178,25 @@ func TestAMetadataOnlyBriefKeepsTheBoundCount(t *testing.T) {
 	assert.Contains(t, strings.Join(p.Said, "\n"), "bound: same task (1 attempts stand)")
 }
 
-func TestBriefTierRefusesATLAPathBelowFrontier(t *testing.T) {
+func TestBriefTierRefusesATLAPathBelowHeavy(t *testing.T) {
 	t.Parallel()
-	// a card whose PATHS name TLA+ model work is the frontier tier's: a re-tier
-	// to a tier below frontier is refused, as the lint's tla-is-frontier rule
-	// refuses it at add (nova-sprint tier <card> --set <t> --reason).
+	// a card whose PATHS name TLA+ model work is the heavy tier's or above: a
+	// re-tier to a tier below heavy is refused, as the lint's
+	// tla-is-heavy-or-above rule refuses it at add (nova-sprint tier <card> --set <t> --reason).
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
-	p := Brief(w.s, BriefReq{ID: "a-1", Tier: "heavy", Who: "coordinator"})
+	p := Brief(w.s, BriefReq{ID: "a-1", Tier: "pro", Who: "coordinator"})
 	require.Len(t, p.Refused, 1)
 	assert.Empty(t, p.Units)
-	assert.Contains(t, p.Refused[0].Why, "a tier below frontier is refused")
+	assert.Contains(t, p.Refused[0].Why, "a tier below heavy is refused")
 
-	// frontier itself is accepted
-	p = Brief(w.s, BriefReq{ID: "a-1", Tier: "frontier", Who: "coordinator"})
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "frontier", w.s.Work.Placed("a-1").F(FieldTier))
+	// heavy and frontier are accepted
+	for _, tier := range []string{"heavy", "frontier"} {
+		p = Brief(w.s, BriefReq{ID: "a-1", Tier: tier, Who: "coordinator"})
+		require.Empty(t, p.Refused, tier)
+		w.must(p)
+		assert.Equal(t, tier, w.s.Work.Placed("a-1").F(FieldTier), tier)
+	}
 }
 
 func TestANewTaskBriefResetsTheBoundCount(t *testing.T) {
@@ -253,10 +255,10 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	assert.Contains(t, says, "needs kept: a-1 not added (kept, ")
 }
 
-// --tier with a brief is held to the lint's tla-is-frontier rule as tier --set
-// is: a brief whose PATHS covers tla/ is refused a tier below frontier, on the
-// ordinary path and on the DEPENDS-ON-only path alike.
-func TestABriefTierFlagRefusesATLAPathBelowFrontier(t *testing.T) {
+// --tier with a brief is held to the lint's tla-is-heavy-or-above rule as tier
+// --set is: a brief whose PATHS covers tla/ is refused a tier below heavy, on
+// the ordinary path and on the DEPENDS-ON-only path alike, and heavy passes.
+func TestABriefTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
@@ -266,9 +268,33 @@ func TestABriefTierFlagRefusesATLAPathBelowFrontier(t *testing.T) {
 		{"ordinary", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded", "x"},
 		{"depends-only", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x,y\n\nthe model", "x,y"},
 	} {
-		p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: c.text, Needs: Split(c.needs)}}, Tier: "heavy", Who: "coordinator"})
+		p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: c.text, Needs: Split(c.needs)}}, Tier: "pro", Who: "coordinator"})
 		require.Len(t, p.Refused, 1, c.name)
-		assert.Contains(t, p.Refused[0].Why, "below frontier", c.name)
+		assert.Contains(t, p.Refused[0].Why, "below heavy", c.name)
 		assert.Empty(t, p.Units, c.name)
 	}
+
+	// heavy itself is accepted
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded again", Needs: Split("x")}}, Tier: "heavy", Who: "coordinator"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "heavy", w.s.Work.Placed("m").F(FieldTier))
+}
+
+// continue --tier is held to the lint's tla-is-heavy-or-above rule as a brief
+// edit's --tier is: a tla/ card is refused a tier below heavy, and heavy passes.
+func TestContinueTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
+	const head = "1111111111111111111111111111111111111111"
+	p := Continue(w.s, ContinueReq{ID: "a-1", Tier: "pro", Carry: head, Note: "x", Who: "coordinator"})
+	require.Len(t, p.Refused, 1)
+	assert.Empty(t, p.Units)
+	assert.Contains(t, p.Refused[0].Why, "below heavy")
+
+	p = Continue(w.s, ContinueReq{ID: "a-1", Tier: "heavy", Carry: head, Note: "x", Who: "coordinator"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "heavy", w.s.Work.Placed("a-1").F(FieldTier))
 }

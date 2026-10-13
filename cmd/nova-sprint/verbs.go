@@ -3294,8 +3294,8 @@ func init() { verbClasses["tier"] = classCoordinator }
 
 // cmdTier re-tiers one primary (nova-sprint tier <card> --set <t> --reason): the
 // tier every later deal and read draws its route from (sprint.Brief, briefTier),
-// without a text edit. A TLA path at a tier below frontier is refused, as the
-// lint's tla-is-frontier rule refuses it.
+// without a text edit. A TLA path at a tier below heavy is refused, as the
+// lint's tla-is-heavy-or-above rule refuses it.
 func (a *app) cmdTier(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("tier")
 	set := fs.String("set", "", "the tier ("+cardhdr.RouteList+") the card is pinned to, over its brief's line 1; every later deal and read draws its route from it")

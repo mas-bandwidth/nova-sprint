@@ -42,7 +42,7 @@ import (
 //	                      tool's SPEC, on SHARED too
 //	base-is-live          BASE is a sprint base origin holds, never a temporary or deleted one
 //	tier-set              line 1 names a tier, never `-`
-//	tla-is-frontier       a card whose PATHS covers tla/ is tier frontier
+//	tla-is-heavy-or-above a card whose PATHS covers tla/ is tier heavy or frontier
 //	who-serves-tier       the friend WHO names (or, for any friend, some friend) serves the tier
 //
 // NO EVIDENCE IS NOT NEGATIVE EVIDENCE, as the base checks have it: a check that needs the
@@ -56,17 +56,19 @@ import (
 // they are their own table and `nova-swarm lint --rules` does not count them as its checks.
 // paths-at-base and donewhen-test-name answer from CardBaseRemedies.
 var BriefBaseRemedies = map[string]string{
-	"paths-read-marker":    PathsReadRemedy,
-	"pr-carry":             "a card that finishes an open pull request starts from the PR's own head, never from its base: add `CARRY: head=<the PR's full head sha> branch=<the PR branch>` to the brief's header (the CARRY: line brief --widen writes, less the attempt), so the slot is staged from the PR head and the worker merges the base itself; add the brief again",
-	"paths-cover-named":    "every repository path START: and THE TASK name as a file to change is in PATHS: (or NEW:); mark a START entry the card only reads `(read)`; apply the corrected PATHS: line add printed",
-	"paths-cover-test":     "PATHS: covers the TEST package's `_test` files (`<pkg>/*_test.go`, or the new test file by name), since the card lands with the test it names; apply the corrected PATHS: line add printed",
-	"paths-cover-testdata": "a `<dir>/*.go` entry does not reach `<dir>/testdata`; when the package has testdata, PATHS: names `<dir>/testdata/**` too; apply the corrected PATHS: line add printed",
-	"paths-cover-ledgers":  "a card that changes a package's Go code can add or remove the functions and error sites its class-test ledgers under internal/ci/testdata count (errcheck, discarded, staticcheck, the dead code ledger); name each such ledger on PATHS: and on SHARED:, since other cards touch it too; apply the corrected lines add printed",
-	"paths-cover-docs":     "a card that changes a cmd/<tool> verb or flag changes its documentation: name docs/CLI.md and the tool's SPEC (docs/SPEC-<TOOL>.md) on PATHS: and on SHARED:; apply the corrected lines add printed",
-	"base-is-live":         "BASE: is a sprint base origin holds (sprint/<name>, a base the sprint's cards use, or the trunk for the promotion stream; nova-sprint bases lists them), never a temporary branch (tmp/, wip/, scratch/) or one origin no longer holds; re-cut the card on the sprint branch",
-	"tier-set":             "line 1 names the card's tier, `tier: flash|pro|heavy|frontier`; a card with no tier, or `-`, was dealt to friends who could not serve it",
-	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the frontier tier's work: write `tier: frontier` on line 1, or take tla/ out of PATHS: and give the model to its own card",
-	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
+	"paths-read-marker":     PathsReadRemedy,
+	"pr-carry":              "a card that finishes an open pull request starts from the PR's own head, never from its base: add `CARRY: head=<the PR's full head sha> branch=<the PR branch>` to the brief's header (the CARRY: line brief --widen writes, less the attempt), so the slot is staged from the PR head and the worker merges the base itself; add the brief again",
+	"paths-cover-named":     "every repository path START: and THE TASK name as a file to change is in PATHS: (or NEW:); mark a START entry the card only reads `(read)`; apply the corrected PATHS: line add printed",
+	"paths-cover-test":      "PATHS: covers the TEST package's `_test` files (`<pkg>/*_test.go`, or the new test file by name), since the card lands with the test it names; apply the corrected PATHS: line add printed",
+	"paths-cover-testdata":  "a `<dir>/*.go` entry does not reach `<dir>/testdata`; when the package has testdata, PATHS: names `<dir>/testdata/**` too; apply the corrected PATHS: line add printed",
+	"paths-cover-ledgers":   "a card that changes a package's Go code can add or remove the functions and error sites its class-test ledgers under internal/ci/testdata count (errcheck, discarded, staticcheck, the dead code ledger); name each such ledger on PATHS: and on SHARED:, since other cards touch it too; apply the corrected lines add printed",
+	"paths-cover-docs":      "a card that changes a cmd/<tool> verb or flag changes its documentation: name docs/CLI.md and the tool's SPEC (docs/SPEC-<TOOL>.md) on PATHS: and on SHARED:; apply the corrected lines add printed",
+	"base-is-live":          "BASE: is a sprint base origin holds (sprint/<name>, a base the sprint's cards use, or the trunk for the promotion stream; nova-sprint bases lists them), never a temporary branch (tmp/, wip/, scratch/) or one origin no longer holds; re-cut the card on the sprint branch",
+	"tier-set":              "line 1 names the card's tier, `tier: flash|pro|heavy|frontier`; a card with no tier, or `-`, was dealt to friends who could not serve it",
+	"tla-is-heavy-or-above": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
+	// tla-is-frontier is the rule's old token, kept as an alias for one release.
+	"tla-is-frontier": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
+	"who-serves-tier": "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
 }
 
 // PathsReadRemedy is the correction for read-only metadata written in PATHS.
@@ -389,12 +391,12 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		add("tier-set", 1, "line 1 names no tier (`tier: -` is none); a card with no tier was dealt to friends who could not serve it")
 	}
 
-	// 10. tla-is-frontier.
-	if model.Tier != cardhdr.RouteFrontier && slices.ContainsFunc(scope, func(e string) bool {
+	// 10. tla-is-heavy-or-above.
+	if !tierHeavyOrAbove(model.Tier) && slices.ContainsFunc(scope, func(e string) bool {
 		e = cleanEntry(e)
 		return e == "tla" || strings.HasPrefix(e, "tla/") || hygiene.MatchGlob(e, "tla/Model.tla")
 	}) {
-		add("tla-is-frontier", 1, fmt.Sprintf("PATHS covers tla/, a TLA+ model, and line 1 names tier %s, not frontier", orElse(model.Tier, "-")))
+		add("tla-is-heavy-or-above", 1, fmt.Sprintf("PATHS covers tla/, a TLA+ model, and line 1 names tier %s, below heavy", orElse(model.Tier, "-")))
 	}
 
 	// 11. who-serves-tier.
@@ -427,8 +429,8 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 	if addShared = notIn(uniq(addShared), shared); len(addShared) > 0 {
 		fix = append(fix, "SHARED: "+strings.Join(append(slices.Clone(shared), addShared...), ","))
 	}
-	if slices.ContainsFunc(out, func(f CardHeaderFinding) bool { return f.Check == "tla-is-frontier" }) {
-		fix = append(fix, frontierLine(firstLine(raw)))
+	if slices.ContainsFunc(out, func(f CardHeaderFinding) bool { return f.Check == "tla-is-heavy-or-above" }) {
+		fix = append(fix, tierLine(firstLine(raw), cardhdr.RouteHeavy))
 	}
 	return out, fix
 }
@@ -761,12 +763,19 @@ func temporaryBase(ref string) bool {
 // lineTierRE is the tier word of line 1, its value possibly empty.
 var lineTierRE = regexp.MustCompile(`\btier:\s*[A-Za-z0-9_-]*`)
 
-// frontierLine is line 1 with its tier frontier.
-func frontierLine(line string) string {
+// tierHeavyOrAbove says tier is a tier the tla-is-heavy-or-above rule admits:
+// heavy or frontier. Any lower tier (flash, pro) and a missing tier are refused.
+func tierHeavyOrAbove(tier string) bool {
+	return tier == cardhdr.RouteHeavy || tier == cardhdr.RouteFrontier
+}
+
+// tierLine is line 1 with its tier the one named: the tier word replaced where
+// there is one, an empty tier filled, and appended where line 1 names none.
+func tierLine(line, tier string) string {
 	if lineTierRE.MatchString(line) {
-		return lineTierRE.ReplaceAllString(line, "tier: frontier")
+		return lineTierRE.ReplaceAllString(line, "tier: "+tier)
 	}
-	return strings.TrimRight(line, " ") + " tier: frontier"
+	return strings.TrimRight(line, " ") + " tier: " + tier
 }
 
 // goPkgArg is a TEST package as a go test argument: ./-relative.

@@ -248,8 +248,8 @@ unless `--needs-from-brief` takes the text whole. **The tier**:
 the tier is a card field, so a text whose line 1 names another tier than the
 card's recorded one keeps the recorded one (`tier kept: <recorded> (the brief's
 line 1 says <t>)`), unless `--tier <t>` names one; `tier <card> --set <t>
---reason <why>` sets it without a text edit. Both refuse a tier below frontier
-for a card whose `PATHS:` covers `tla/` (the lint's tla-is-frontier rule). **The bound**: the bound hashes the
+--reason <why>` sets it without a text edit. Both refuse a tier below heavy
+for a card whose `PATHS:` covers `tla/` (the lint's tla-is-heavy-or-above rule). **The bound**: the bound hashes the
 task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
 edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
 `TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts
@@ -584,7 +584,7 @@ only, until the brief record's own outcomes support a bar
 before it writes: the repository `REPO:` names, in the lander's clone, at the tip of `BASE:`,
 fetched once a call, read with git and no go command. The tokens are `paths-at-base`,
 `donewhen-test-name`, `paths-cover-named`, `paths-cover-test`, `paths-cover-testdata`,
-`paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-frontier` and
+`paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-heavy-or-above` and
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
 `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
