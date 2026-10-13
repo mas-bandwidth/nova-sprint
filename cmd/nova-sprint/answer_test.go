@@ -91,7 +91,7 @@ func TestAnswerDecideReworksEachCardOfAGroupedJudgment(t *testing.T) {
 	assert.Contains(t, out, g.ID+"  s1-2  failed  rework  0.93  applied  nova-sprint rework s1-2")
 	assert.Contains(t, out, "ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80")
 	require.Len(t, j.states, 2)
-	assert.Contains(t, j.states[0], "kind: work came back failed\ncard: s1-1 (one of 2 cards in this judgment)\ntext: the tests went red\n")
+	assert.Contains(t, j.states[0], "kind: work came back failed\ncard: s1-1 (one of 2 cards in this judgment)\ntext: route=fixture-flash model=fixture/fixture: the tests went red\n")
 	assert.Contains(t, j.states[0], "ALLOWED VERBS (the answer is one of these):\nrework, drop\n")
 	assert.Contains(t, j.states[0], "judgment: work came back failed", "the card's own log is its history")
 	ds := recorded(t, record)

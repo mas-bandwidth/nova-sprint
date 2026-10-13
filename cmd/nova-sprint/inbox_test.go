@@ -269,7 +269,7 @@ func TestEveryJudgmentPrintsItsDecisionsAsCommands(t *testing.T) {
 	}
 	golden = regexp.MustCompile(`due=\d\d:\d\d:\d\d`).ReplaceAllString(golden, "due=HH:MM:SS") // the local zone
 	want := `JUDGMENT N1   work came back failed  alias=j1  stream=s2  size=1  waited=1m2s  due=HH:MM:SS  (s2-1)
-  the tests went red
+  route=fixture-pro model=fixture/fixture: the tests went red
   rework with a fix:
     nova-sprint rework s2-1
   drop:
