@@ -158,7 +158,9 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	assert.Contains(t, out, "CHECK CARDS FAILED kinds="+kinds)
 	code, out, errs = ta.do("start")
 	require.Equal(t, 1, code, "refused: %s%s", out, errs)
-	assert.Contains(t, errs, "run nova-sprint check cards: the last check found "+kinds)
+	// the live needs gate comes first (a-missing-or-blocked-need-is-found-at-check-and-while-
+	// running), then the record's
+	assert.Contains(t, errs, "run nova-sprint check cards: a3 needs gone (absent)")
 	assert.False(t, ta.machineRunning())
 
 	// fixing each clears its finding, and no other
@@ -186,6 +188,12 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	}
 	for i, f := range fixes {
 		f.fix()
+		if i == 0 {
+			// the needs resolved, the failed record still refuses
+			code, out, errs = ta.do("start")
+			require.Equal(t, 1, code, "refused: %s%s", out, errs)
+			assert.Contains(t, errs, "run nova-sprint check cards: the last check found "+kinds)
+		}
 		code, out, errs = ta.do("check cards")
 		left := checkLines(out)
 		require.Len(t, left, len(fixes)-i-1, "fixing %s clears its finding: %s%s", f.kind, out, errs)
