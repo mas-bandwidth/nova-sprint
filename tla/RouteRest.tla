@@ -62,10 +62,10 @@
 \*              untouched: Provider5xxReturnsBounded
 \* Not modelled: an out-of-credit return on a limited route shares the card's
 \* FieldRateReturns in the code; returns here counts the 5xx returns alone, and
-\* OutOfCreditSpendsNoRedeal still claims no spend past that bound. Nor is the
-\* record's number: Counts takes each fivexx as its own end, while the code keys
-\* a take's record on redeals + 1, so returns that spend no redeal on one card
-\* write one record and count once (the open finding of this card).
+\* OutOfCreditSpendsNoRedeal still claims no spend past that bound. Counts takes
+\* each fivexx as its own end; the code matches it by numbering a returned take's
+\* record by its return (route.go, returnTakeNumber), never by redeals + 1, which
+\* a return leaves unspent.
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Routes, W, After, Broken
