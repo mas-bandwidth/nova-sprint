@@ -111,6 +111,7 @@ func TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore(t *testing.T) {
 	}
 	dir := t.TempDir()
 	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	run("add --stream s1 c1 --one --brief-file " + writeHeaderBrief(t, dir, "c1", "-", "internal/c1.go"))
 	run("fleet beat m1")
 	run("start")

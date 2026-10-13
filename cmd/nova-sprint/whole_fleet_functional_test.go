@@ -132,6 +132,7 @@ func TestTheWholeFleetMovesInOneTickOnTheStore(t *testing.T) {
 		spec = append(spec, members[i-1]+":64")
 	}
 	do("init", "--readers", "reader-a,reader-b,reader-c", "--members", strings.Join(spec, ","))
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	const cards = 3 * 1000
 	do("add", "--stream", "a,b,c", "--count", strconv.Itoa(cards/3))
 	for _, m := range members {

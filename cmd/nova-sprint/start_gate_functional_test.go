@@ -59,6 +59,7 @@ func TestStartRefusesWithNoCardCheckOnTheStore(t *testing.T) {
 		return m.Running()
 	}
 	run("init --readers reader-a --members m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	run("add --stream s1 --count 1 --one")
 
 	// start straight through runInto, outside the funnel: no check record for the epoch

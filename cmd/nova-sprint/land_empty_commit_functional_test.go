@@ -20,6 +20,11 @@ import (
 func TestLandReturnsAnEmptyCommitLandingToReview(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
+	r.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}})
 	r.ok("add --stream s1 --count 1 --one")
 
 	// One head: an empty commit on the card's branch, pushed alone. No RESULT.md is planted in
@@ -30,10 +35,10 @@ func TestLandReturnsAnEmptyCommitLandingToReview(t *testing.T) {
 	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 	r.deal(1)
 	r.ok("take --as m1 --limit 100")
-	r.ok("finish --as m1 s1-1.w1@1 --head " + emptyHead + " --report 'done: 1 file changed, 10 insertions'")
+	r.ok("finish --as m1 s1-1.w1@1 --head " + emptyHead + " --report 'done: 1 file changed, 10 insertions' --usage 'input=100 cache_read=0 cache_write=0 output=10 model=fixture/fixture'")
 	r.ok("ask")
-	r.ok("read --as reader-a --ok --limit 100")
-	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("read --as reader-a --ok --limit 100 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=fixture/fixture'")
+	r.ok("read --as reader-b --ok --limit 100 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=fixture/fixture'")
 	r.ok("accept --read-ok")
 	// main is protected. Mark the stream so the refusal is the empty commit, not the
 	// protected-base rule (docs/SPEC-SPRINT.md section 7).

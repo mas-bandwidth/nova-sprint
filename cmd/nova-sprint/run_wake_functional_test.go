@@ -73,6 +73,7 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 		spec = append(spec, members[i]+":4")
 	}
 	do("init", "--readers", "reader-a,reader-b", "--members", strings.Join(spec, ","))
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	do("add", "--stream", "a,b,c", "--count", "40")
 	beat := func() {
 		for _, m := range members {
@@ -158,7 +159,7 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 			}
 		}
 		require.Len(t, ids, 4, "only the running width is finished")
-		do(append([]string{"finish", "--as", "m1", "--epoch", "0"}, ids...)...)
+		do(append([]string{"finish", "--as", "m1", "--epoch", "0", "--usage", "input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture"}, ids...)...)
 		finished := time.Now()
 		ceiling := time.After(60 * time.Second)
 		for dealt := false; !dealt; {

@@ -42,7 +42,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runOnStore(a, addr, strings.Fields(line), &out, &errb)
+		code := runOnStore(a, addr, split(line), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -69,20 +69,21 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 		run("tick")
 		run("tick")
 		run("take --as m1 --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("finish --as m1 " + strings.Join(workIDs, " ") + " --epoch 0")
+		run("finish --as m1 " + strings.Join(workIDs, " ") + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
 		run("queue --as reader-a")
 		run("queue --as reader-b")
 		run("tick")
 		run("read --as reader-a --begin --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("read --as reader-a --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
+		run("read --as reader-a --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
 		run("read --as reader-b --begin --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("read --as reader-b --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
+		run("read --as reader-b --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
 		run("accept " + strings.Join(ids, " "))
 		recordMerge(t, a, stream, len(ids), "0")
 		run("tick")
 	}
 
 	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	// one held card keeps the sprint open, so the dev-is-behind judgment still runs
 	run("add --stream s0 --count 1 --one --held --land-protected any")

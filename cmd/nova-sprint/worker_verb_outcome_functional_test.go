@@ -57,6 +57,7 @@ func TestWorkerVerbOutcomeOverRealServer(t *testing.T) {
 		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:2,m2:2", "--readers", "reader-a,reader-b")
+	declareFunctionalRoutes(t, admin, "flash", "pro")
 	do("add", "--stream", "s1", "--count", "4")
 	for i := 1; i <= 2; i++ {
 		m := "m" + strconv.Itoa(i)

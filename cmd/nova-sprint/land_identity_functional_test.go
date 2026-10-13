@@ -64,7 +64,7 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runOnStore(a, addr, append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(split(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -79,6 +79,7 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	git(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 
 	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	run("add --stream s1 --count 1 --one")
 	run("fleet beat m1")
@@ -86,12 +87,12 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	run("tick")
 	run("tick")
 	run("take --as m1 --limit 5 --epoch 0")
-	run("finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0")
+	run("finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
 	run("queue --as reader-a")
 	run("queue --as reader-b")
 	run("ask")
-	run("read --as reader-a --ok --limit 10 --epoch 0")
-	run("read --as reader-b --ok --limit 10 --epoch 0")
+	run("read --as reader-a --ok --limit 10 --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
+	run("read --as reader-b --ok --limit 10 --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
 	run("accept --read-ok")
 	run("stream set s1 --land-protected any")
 	run("tick")

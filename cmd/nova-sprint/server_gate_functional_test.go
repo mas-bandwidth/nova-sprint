@@ -65,6 +65,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:2,m2:2,m3:2,m4:2,m5:2,m6:2", "--readers", "reader-a,reader-b")
+	declareFunctionalRoutes(t, admin, "flash", "pro")
 	do("add", "--stream", "s1", "--count", "48")
 	for i := 1; i <= 6; i++ {
 		m := "m" + strconv.Itoa(i)
@@ -131,7 +132,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 				return
 			}
 			p := got.Packets[0]
-			code, raw = run("finish", "--as", who, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--json")
+			code, raw = run("finish", "--as", who, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--json", "--usage", "input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture")
 			if code != 0 {
 				errors <- fmt.Errorf("%s finish: %d %s", who, code, raw)
 				return
@@ -158,7 +159,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 	assert.Equal(t, int64(1), fault.calls.Load()-before)
 	first, second := take.Packets[0], take.Packets[1]
 	before = fault.calls.Load()
-	finish := call("finish", "--as", "m1", first.Card+"@"+strconv.Itoa(first.Gen), "--epoch", "0", "--json")
+	finish := call("finish", "--as", "m1", first.Card+"@"+strconv.Itoa(first.Gen), "--epoch", "0", "--json", "--usage", "input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture")
 	require.NotEmpty(t, finish.Moved)
 	assert.Equal(t, int64(1), fault.calls.Load()-before, "ordinary finish is one HTTP exchange")
 	acknowledgedAt := ticks.Load()
@@ -181,7 +182,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 
 	before = fault.calls.Load()
 	fault.drop.Store(true)
-	replay := call("finish", "--as", "m1", second.Card+"@"+strconv.Itoa(second.Gen), "--epoch", "0", "--json")
+	replay := call("finish", "--as", "m1", second.Card+"@"+strconv.Itoa(second.Gen), "--epoch", "0", "--json", "--usage", "input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture")
 	assert.Equal(t, int64(2), fault.calls.Load()-before, "one lost answer and one retry")
 	assert.True(t, replay.Replay, "retry returns the original committed finish")
 	wg.Wait()
