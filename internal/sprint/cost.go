@@ -640,10 +640,14 @@ func (s *Snapshot) receiptBillingRefusal(c *Card, usage string) string {
 	if billing == "" {
 		billing = s.billingPrices(rt).Billing
 	}
+ if u.ReceiptVersion == 0 && u.Billing != "" && c.F(FieldBilling) != "" && u.Billing != c.F(FieldBilling) {
+  return "legacy receipt billing disagrees with the original launch declaration; resend the original receipt without changing its billing provenance"
+ }
 	if billing == cardcost.BillingSubscription && u.ReceiptVersion != 2 {
 		return "typed subscription route requires receipt contract 2; adopt paired tools/sprint before activating subscription, then resend the original receipt"
 	}
 	if u.ReceiptVersion == 2 {
+  if _,friend:=FriendOfRow(c.Row); friend { return "receipt contract 2 is fleet execution only; retain the existing friend receipt contract rather than claim fleet raw provenance" }
 		if billing == "" || u.Billing != billing {
 			return "receipt billing disagrees with applied route/provider declaration; report the billing declared by the original launch packet after paired adoption"
 		}
