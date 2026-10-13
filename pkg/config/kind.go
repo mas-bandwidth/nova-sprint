@@ -482,8 +482,7 @@ func checkSprint(r Row) error {
 const CoordinatorRole = "coordinator"
 
 // Kinds is the registry, in apply order: machines first, the fleet row next
-// (it names machines, and a friend's desired slots are charged to the
-// fleet's coordinator machine when her beat names none), friends, the
+// (it names machines), friends, the
 // sprint row (it names a friend), loops (each names a machine), routes
 // (each names no row), and tiers last (each names routes).
 //
@@ -501,7 +500,7 @@ var Kinds = []*Kind{
 		Fields: []Field{
 			{Name: "user", Type: TypeText, Required: true, Help: "the login the plays and seals use on it (ssh <user>@<name>)"},
 			{Name: "seat", Type: TypeText, Required: true, Help: "its nova-secrets seat: the identity it opens secrets as, one <seat>.yaml in the store"},
-			{Name: "slots", Type: TypeInt, Required: true, Help: "the machine ceiling apply writes to machine:<m>:ceiling, which the friends' desired slots must fit under; not the sprint's width"},
+			{Name: "slots", Type: TypeInt, Required: true, Help: "the machine ceiling apply writes to machine:<m>:ceiling, which a bench's desired slots must fit under; not the sprint's width, and no friend is charged against it"},
 			{Name: "runners", Type: TypeInt, Help: "how many CI runners it hosts; 0 (the default) hosts none"},
 			{Name: "width", Type: TypeInt, Nullable: true, Clear: "default", Help: "the most work cards the sprint's member on it runs at once, what nova-sprint fleet sync sets; set apart from --slots, never derived from it; unset (the default, or --width default) is half the machine's cores as its beat reports them, which fleet sync resolves; 0 is no member, dealt no work"},
 			{Name: "tla", Type: TypeBool, Help: "a TLC record machine: the tools play installs the pinned TLC jar on it and tlacheck run --bench any picks among them; false (the default) is none"},
@@ -530,9 +529,8 @@ var Kinds = []*Kind{
 		// rather than stored in configuration.
 		Name:  KindFriend,
 		Table: "friends",
-		Doc:   "an AI friend: the friend's slots, tiers, roles and width, the jobs the friend works at once, delivery mode, the config directory claude lanes run with, the per-card token cap one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work the friend may be dealt",
+		Doc:   "an AI friend: the friend's tiers, roles and width, the jobs the friend works at once, delivery mode, the config directory claude lanes run with, the per-card token cap one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work the friend may be dealt",
 		Fields: []Field{
-			{Name: "slots", Type: TypeInt, Required: true, Help: "the friend's desired slots, under the ceiling of the machine the beat reports; no machine's width"},
 			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers the friend can do: comma list of " + strings.Join(Tiers, ", ")},
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
 			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs the friend works at once, the width nova-sprint friend sync sets on the friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
