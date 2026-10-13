@@ -47,7 +47,22 @@ func Absent(t *testing.T, cause error) {
 // Redis treats --port 0 as "do not listen" (it logs "Configured to not listen
 // anywhere" and exits). The ephemeral port is taken here and handed to
 // redis-server as --port. That is a free loopback port, not a dial to a bench.
+//
+// A store Start returns holds what nova-config apply gives a live one and start's settings
+// gate needs, the sprint row's git_identity (applySprintRow); StartRaw holds nothing.
 func Start(t *testing.T, extra ...string) string {
+	t.Helper()
+	return start(t, true, extra)
+}
+
+// StartRaw is Start with no sprint row applied: a Redis that holds no key, for a test that
+// reads every key its store holds.
+func StartRaw(t *testing.T, extra ...string) string {
+	t.Helper()
+	return start(t, false, extra)
+}
+
+func start(t *testing.T, apply bool, extra []string) string {
 	t.Helper()
 	bin := Program(t)
 	// THE PORT IS TAKEN, CLOSED AND HANDED OVER, so another process can bind it
@@ -58,7 +73,7 @@ func Start(t *testing.T, extra ...string) string {
 	// lost its port is started again on a fresh one.
 	var lastErr string
 	for attempt := 0; attempt < 5; attempt++ {
-		addr, ok, why := startOnce(t, bin, extra)
+		addr, ok, why := startOnce(t, bin, apply, extra)
 		if ok {
 			return addr
 		}
@@ -70,7 +85,7 @@ func Start(t *testing.T, extra ...string) string {
 
 // startOnce is one attempt: ok is false, with the server's log, when this
 // server did not bind its port.
-func startOnce(t *testing.T, bin string, extra []string) (string, bool, string) {
+func startOnce(t *testing.T, bin string, apply bool, extra []string) (string, bool, string) {
 	t.Helper()
 	port := FreePort(t)
 	addr := net.JoinHostPort("127.0.0.1", port)
@@ -122,7 +137,9 @@ func startOnce(t *testing.T, bin string, extra []string) (string, bool, string) 
 				return addr, true, ""
 			}
 			if pingErr == nil {
-				applySprintRow(t, client)
+				if apply {
+					applySprintRow(t, client)
+				}
 				return addr, true, ""
 			}
 		}

@@ -36,10 +36,11 @@ import (
 )
 
 // liveClient is a client of a Redis the test started, with the table layer's
-// functions loaded.
+// functions loaded. It is a raw Redis (testutil.StartRaw): the store's own tests
+// read every key it holds, so no sprint row is applied to it.
 func liveClient(t *testing.T) *redis.Client {
 	t.Helper()
-	addr := testutil.Start(t)
+	addr := testutil.StartRaw(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = c.Close() })
 	require.NoError(t, fn.Load(context.Background(), c))
