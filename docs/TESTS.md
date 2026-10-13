@@ -68,7 +68,9 @@ top-level test runs exactly once.
 
 ### First run
 
-This is a first-run twin transcript from the test binary; it does not establish that the production CLI can admit a card without a live hook.
+This is a deterministic twin transcript from the test binary. The production
+CLI's local-twin walkthrough, run on Linux from v1.2.20 source, is in the
+[first-lap note](FIRST-LAP.md).
 
 ```text
 $ nova-sprint init --readers reader-m2 --members m1,m2

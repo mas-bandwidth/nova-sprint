@@ -7,13 +7,18 @@ nova-sprint version
 nova-sprint help
 ```
 
-You can learn the command flow in a local twin without Redis or a sprint
-server. Use the paired `reader-m2` and `m2` names: a fleet reader row is tied to
-its member. A twin beats every declared member and reader at each command; it
-does not run between commands, so you advance it by hand. The explicit
-`--redis` flag keeps every command on the twin, even if this machine has a
-saved seat or a server environment setting. Run this in a fresh working
-directory, or choose a new twin filename.
+You can learn the command flow in a local twin without a separate Redis service
+or sprint server. This sequence was run with the production CLI built from
+v1.2.20 source revision `db09a68ac1a58474206999231d72aa12e7f35437` on Linux
+amd64 with Go 1.26.6; it is not the test-binary transcript in
+[TESTS.md](TESTS.md#nova-sprint). Check `nova-sprint version` if you already
+have a binary; an older build may not support this flow. Use the paired
+`reader-m2` and `m2` names: a fleet reader row is tied to its member. A twin
+beats every declared member and reader at each command; it does not run between
+commands, so you advance it by hand. The explicit `--redis` flag keeps every
+command on the twin, even if this machine has a saved seat or a server
+environment setting. Run this in a fresh working directory, or choose a new
+twin filename.
 
 ```sh
 export NOVA_SPRINT_ACTOR=boss

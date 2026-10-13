@@ -63,7 +63,9 @@ dependency wait from an explicit hold or an unresponsive machine.
   the server address:
 
   ```
-  export NOVA_SPRINT_SERVER=127.0.0.1:$PORT
+  printf 'Server listen address from loop show (host:port): '
+  read -r NOVA_SPRINT_SERVER
+  export NOVA_SPRINT_SERVER
   export NOVA_SPRINT_ACTOR=$(nova-sprint where --json | jq -r .coordinator)
   ```
 
