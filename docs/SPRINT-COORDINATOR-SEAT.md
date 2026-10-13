@@ -67,3 +67,34 @@ the server's own list still holds unanswered that long prints one `OVERDUE <alia
 line, again every interval until it is answered -- the seat's `hookfilter.pl` and `overduewatch.py` are gone.
 The seat answers the challenge with `nova-sprint hook --prove <c>` and a push with `nova-sprint hook --ack <id> --session <token>`, both over the running hook's socket; `nova-sprint unhook` ends it.
 
+
+### Seat environment defaults
+
+`nova-up --seat` writes `$XDG_CONFIG_HOME/nova-sprint/seat-environment.json`, or
+`$HOME/.config/nova-sprint/seat-environment.json` when `XDG_CONFIG_HOME` is unset.
+`nova-sprint` reads this private, owned regular file on startup. No wrapper or
+shell sourcing is required. An absent file preserves the existing setup; an
+invalid or unsafe file refuses the command without printing its contents.
+
+Version 1 is JSON data with `version: 1`, an optional `environment` object
+containing only `NOVA_SPRINT_REDIS`, `NOVA_SPRINT_SERVER`, and `NOVA_BUS_REDIS`,
+and an optional complete `login` object with `redis`, `user`, `store`, `as`,
+`key`, `sops`, and `secret`. The login names where a password is sealed; it
+contains no password. It applies only to its exact Redis address, for either
+sprint or bus. An existing `login.json` takes precedence over this login.
+Explicit command flags take precedence over process environment variables,
+which take precedence over file endpoint defaults. Explicit process login
+variables take precedence over recorded credentials. A password reference
+without an explicit ACL user uses the default user and never inherits the
+recorded user. The directory holding this profile must also be owned by the
+current user and must not be writable by other users.
+
+The optional `forge_identity` is an absolute path to an existing GitHub CLI
+configuration directory. It is a reference, not a token or an actor assertion.
+`GH_CONFIG_DIR` in the process environment takes precedence. Reading this file
+never changes the process environment and never establishes a sprint actor;
+actor selection still requires the command's usual identity proof.
+
+Unknown or duplicate fields, unsupported versions, credential-bearing endpoint
+URLs, symbolic links, and files accessible to other users are refused. Endpoint
+values and secret values are never evaluated as shell code.

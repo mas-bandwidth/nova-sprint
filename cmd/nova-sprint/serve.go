@@ -296,6 +296,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 	}()
 	for i, argv := range req.Verbs {
 		var args []string
+		actorNotice := ""
 		serving, lane := false, ""
 		as, words, why := workerVerb(argv)
 		switch {
@@ -316,7 +317,13 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				if lanes != nil && v.err == nil && !v.help && onReadLane(v) {
 					lane = "read"
 				}
-				args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr, "--actor", ""}, argv[v.words:])
+				callerArgs := argv
+				callerArgs, actorNotice = a.defaultHookActor(argv, a.serveAddr, true)
+				if actorNotice != "" {
+					args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr}, callerArgs[v.words:])
+				} else {
+					args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr, "--actor", ""}, callerArgs[v.words:])
+				}
 			}
 		}
 		if why != "" {
@@ -365,6 +372,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		onLine++
 		a.serving = serving
 		var stdout, stderr bytes.Buffer
+		if actorNotice != "" {
+			fmt.Fprintln(&stderr, actorNotice)
+		}
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())

@@ -111,6 +111,13 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.False(t, edge.Nofit["epoch-chip"], "P5 the epoch stays while the clock fits without it")
 	assert.False(t, edge.Nofit["coord-chip"], "P4 the coordinator stays while the clock fits without it")
 	assert.Equal(t, []string{"wordmark", "epoch-chip", "coord-chip"}, stp.NofitOrder, "P2 P5 P4 the wordmark goes first, then the epoch, then the coordinator")
+	// idle chip: hidden by default, shown with reason when idle
+	has(served, `<span class="idle" id="idle" hidden></span>`, "idle element in index.html")
+	assert.True(t, st.Hidden["idle"], "idle chip hidden when empty")
+	withIdle := bytes.Replace(ownerWhere(ownerRunning), []byte(`"at":"2026-10-13T01:52:20Z"`), []byte(`"at":"2026-10-13T01:52:20Z","idle":"29 behind in flight; 12 behind sentinel X"`), 1)
+	idleOut := renderOwner(t, app, []ownerCase{{Name: "idle", Env: ownerEnvelope(t, withIdle), Narrow: false}})["idle"]
+	assert.False(t, idleOut.Hidden["idle"], "idle chip shown when idle reason present")
+	assert.Equal(t, "idle: 29 behind in flight; 12 behind sentinel X", idleOut.Text["idle"])
 	// P6 release nav hidden (the envelope carries no releases)
 	has(served, `<nav class="release" id="release" aria-label="release" hidden></nav>`, "P6")
 	assert.Equal(t, 0, st.Children["release"], "P6 no release links")
@@ -550,6 +557,7 @@ function renderCase(c) {
   // the panels index.html serves hidden; the version chip starts shown here, so its hiding is app.js's
   ['readers-panel', 'providers-panel', 'landings-panel'].forEach(id => { getEl(id).hidden = true; });
   getEl('release').hidden = true;
+  getEl('idle').hidden = true;
   const context = {
     window: { addEventListener(){}, matchMedia: (q) => ({ matches: c.narrow && q === '(max-width: 1100px)' }) },
     document: { getElementById: getEl, createElement: (t) => createElement(t), createElementNS: (ns, t) => createElement(t),
@@ -569,7 +577,7 @@ function renderCase(c) {
   ['wordmark', 'coord-chip', 'epoch-chip'].forEach(id => { firstNofit[id] = getEl(id).classList.contains('nofit'); });
   if (c.then) { try { vm.runInContext('accept', context)(c.then); } catch (e) { errors.push('accept then: ' + (e.stack || e)); } }
   const ids = ['landed', 'all', 'all2', 'pct', 'pct-complete', 'of-all2', 'eta', 'eta-at', 'cost', 'cost-whole', 'cost-per', 'inflight',
-    'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'live-text', 'tier-sub',
+    'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'idle', 'live-text', 'tier-sub',
     'streams-sub', 'fleet-head', 'overall', 'providers-panel', 'readers-panel', 'release'];
   const r = { errors, text: {}, val: {}, html: {}, class: {}, title: {}, hidden: {}, display: {}, nofit: {}, nofitOrder, children: {},
     streamName: {}, streamTag: {}, streamPill: {}, streamPillTitle: {}, streamCellClass: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0, firstNofit, streamFlash: {} };

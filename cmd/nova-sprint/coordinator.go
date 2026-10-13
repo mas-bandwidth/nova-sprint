@@ -23,7 +23,8 @@ import (
 //     (sprint.NotSeat); the verb judges who may, and the step again.
 //
 // Every class but read, machine and worker wants an actor: --actor or
-// NOVA_SPRINT_ACTOR; there is no default.
+// NOVA_SPRINT_ACTOR. A coordinator or seat verb without one may use the
+// coordinator's name only after both of that name's hooks are proven live.
 const (
 	classCoordinator = "coordinator"
 	classWorker      = "worker"
