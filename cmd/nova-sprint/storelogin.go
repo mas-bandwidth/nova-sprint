@@ -106,6 +106,9 @@ func (a *app) recordedLogin() (storeLogin, bool, error) {
 	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		if a.seatEnvironment != nil && a.seatEnvironment.Login != nil {
+			return *a.seatEnvironment.Login, true, nil
+		}
 		return storeLogin{}, false, nil
 	}
 	remedy := "; run: nova-sprint seat logout, then nova-sprint seat login again"
