@@ -94,7 +94,7 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 	case queued && coordinator != "":
 		var out, errb bytes.Buffer
 		a.landLazy, a.landCtx = true, ctx
-		code = a.land(append([]string{"--redis", addr, "--actor", coordinator}, more...), &out, &errb, &gate)
+		code = a.landRun()(append([]string{"--redis", addr, "--actor", coordinator}, more...), &out, &errb, &gate)
 		a.landLazy, a.landCtx = false, nil
 		// what landed (stdout's LAND lines, but its summary), and everything land said
 		// was wrong (stderr: a refused or failed batch, a refusal before any batch, the
@@ -155,7 +155,7 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 // coordinator, whose the landing is ("" when the sprint has none); err when the sprint
 // could not be read, which says nothing of what is queued.
 func (a *app) queuedToMerge(ctx context.Context, addr string) (queued bool, coordinator string, err error) {
-	n, coordinator, _, err := a.mergeQueued(ctx, addr)
+	n, coordinator, _, err := a.landQueued(ctx, addr)
 	return n > 0, coordinator, err
 }
 
@@ -186,6 +186,42 @@ func (a *app) mergeQueued(ctx context.Context, addr string) (n int, coordinator,
 	return n, coordinator, stream, nil
 }
 
+// landRun is land, or the test's stand-in for it (landBeat.landSeam).
+func (a *app) landRun() func(args []string, stdout, stderr io.Writer, gate **hookGateError) int {
+	b := a.landState()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.landSeam != nil {
+		return b.landSeam
+	}
+	return a.land
+}
+
+// landQueued is mergeQueued, or the test's stand-in for it (landBeat.queueSeam).
+func (a *app) landQueued(ctx context.Context, addr string) (n int, coordinator, stream string, err error) {
+	b := a.landState()
+	b.mu.Lock()
+	fn := b.queueSeam
+	b.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, addr)
+	}
+	return a.mergeQueued(ctx, addr)
+}
+
+// landStart runs a flight beside the loop, or as the test's stand-in says (landBeat.startSeam).
+func (a *app) landStart(run func()) {
+	b := a.landState()
+	b.mu.Lock()
+	fn := b.startSeam
+	b.mu.Unlock()
+	if fn != nil {
+		fn(run)
+		return
+	}
+	go run()
+}
+
 // landFlight is one landing the loop started and has not yet reported.
 type landFlight struct {
 	mu                 sync.Mutex
@@ -205,6 +241,12 @@ type landBeat struct {
 	gateBench func(ctx context.Context, host, dir string, runs [][]string, withGit bool) (string, int, error)
 	landMore  []string
 	flight    *landFlight
+	// landSeam, queueSeam and startSeam are the test's stand-ins for land itself, the
+	// merge queue's count and the goroutine a flight runs on: a unit test drives the
+	// loop's beats with no store queue, no git and no real time (nil is the real one).
+	landSeam  func(args []string, stdout, stderr io.Writer, gate **hookGateError) int
+	queueSeam func(ctx context.Context, addr string) (n int, coordinator, stream string, err error)
+	startSeam func(run func())
 	// pulse is one slot filled each land-loop cycle. A landing waiting to ask
 	// for a Go lane again receives it. The loop's own clock is the wait; the
 	// ask adds none.
@@ -302,7 +344,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		return nil
 	}
 	a.serial.Lock()
-	n, coord, stream, err := a.mergeQueued(ctx, addr)
+	n, coord, stream, err := a.landQueued(ctx, addr)
 	a.serial.Unlock()
 	if err != nil {
 		// said once, by landOnce; an unreadable queue is not an idle one
@@ -321,7 +363,7 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 	b.flight = f
 	more := append([]string(nil), b.landMore...)
 	b.mu.Unlock()
-	go a.runFlight(ctx, addr, f, more)
+	a.landStart(func() { a.runFlight(ctx, addr, f, more) })
 	a.writeBeat(stdout, f)
 	return f
 }
