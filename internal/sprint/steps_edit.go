@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -144,8 +145,22 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	proposed := map[string][]string{}
 	for _, b := range cards {
 		c := s.Work.Placed(b.ID)
-		if _, twice := kept[b.ID]; twice || c == nil || IsSentinel(c) {
+		if _, twice := kept[b.ID]; twice || c == nil {
 			continue // a card named twice is refused below; its first edit is the one judged
+		}
+		if IsSentinel(c) {
+			rawNeeds, hasNeedsHdr := sentinelBriefNeeds(b.Brief, b.Needs)
+			want := Split(c.F("needs"))
+			if hasNeedsHdr {
+				want = uniquifyNeeds(rawNeeds)
+			} else if r.NeedsFromBrief {
+				want = uniquifyNeeds(b.Needs)
+			}
+			kept[b.ID] = want
+			if !sameNeeds(Split(c.F("needs")), want) {
+				proposed[b.ID] = want
+			}
+			continue
 		}
 		want := b.Needs
 		if !r.NeedsFromBrief {
@@ -200,13 +215,22 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		if why != "" && c != nil && !IsSentinel(c) {
 			why += "; " + briefStarted(c)
 		}
-		if why == "" && c.Int("attempt") > 0 && sameLines(c.F("brief"), b.Brief) {
+		if why == "" && !IsSentinel(c) && c.Int("attempt") > 0 && sameLines(c.F("brief"), b.Brief) {
 			// the bound counts attempts under one brief: the same brief again, or one only
 			// re-spaced or reordered, would reset it with nothing changed
 			why = fmt.Sprintf("the new brief is the one %s ran attempt %d under: the bound counts attempts under one brief, so an edit changes it; nothing was changed", b.ID, c.Int("attempt"))
 		}
 		if why != "" {
 			p.refuse(b.ID, why)
+			continue
+		}
+		if IsSentinel(c) {
+			seen[b.ID] = true
+			p = briefSentinel(s, p, c, b, r, kept[b.ID], proposed)
+			continue
+		}
+		if kind, ok := sentinelHeaderValue(b.Brief, "KIND"); ok && strings.EqualFold(strings.TrimSpace(kind), "sentinel") {
+			p.refuse(b.ID, b.ID+" is a primary, not a sentinel; nothing was changed")
 			continue
 		}
 		seen[b.ID] = true
@@ -372,19 +396,288 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	return Lawful(p)
 }
 
-// briefKept is why a primary keeps its brief: "" for a primary waiting, ready, in review, or working;
-// a card merging or landed keeps its brief.
+// briefKept is why a primary keeps its brief: "" for a primary waiting, ready, in review, or working,
+// and for a waiting sentinel; a card merging or landed, or a landed sentinel, keeps its brief.
 func briefKept(s *Snapshot, id string) string {
 	c := s.Work.Placed(id)
 	switch {
 	case c == nil:
 		return "no primary " + id + " on the work table; nothing was changed"
 	case IsSentinel(c):
-		return id + " is a sentinel, not a primary; nothing was changed"
+		if c.Col == Landed {
+			return id + " is landed: a sentinel landed keeps its brief; nothing was changed"
+		}
+		return ""
 	case c.Col == Merging || c.Col == Landed:
 		return fmt.Sprintf("%s is %s: a card %s keeps its brief; nothing was changed", id, c.Col, c.Col)
 	}
 	return ""
+}
+
+var sentinelParenRE = regexp.MustCompile(`\s*\([^)]*\)`)
+
+// sentinelHeaderValue reads the first KEY: value line matching wantKey (case-insensitively)
+// from a brief's header block, starting from line 1 so compact sentinel briefs (whose line 1
+// begins with KIND: sentinel or STREAM:) and full sentinel briefs (whose line 1 begins with
+// RESULT:) are both read.
+func sentinelHeaderValue(brief, wantKey string) (string, bool) {
+	for i, l := range strings.Split(brief, "\n") {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		k, v, ok := cardhdr.KeyValue(l)
+		if !ok {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		if strings.EqualFold(k, wantKey) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// sentinelBriefNeeds extracts the raw needs list from a sentinel brief's NEEDS:, Needs:, or
+// DEPENDS-ON: header line (preserving duplicates so duplicate needs are caught), or returns
+// fallback when no header line is present.
+func sentinelBriefNeeds(brief string, fallback []string) ([]string, bool) {
+	for _, key := range []string{"NEEDS", "DEPENDS-ON"} {
+		if v, ok := sentinelHeaderValue(brief, key); ok {
+			var out []string
+			for _, part := range strings.Split(v, ",") {
+				if cut, _, hasParen := strings.Cut(part, "("); hasParen {
+					part = cut
+				}
+				part = strings.TrimSpace(part)
+				if part == "" || part == "-" || strings.EqualFold(part, "none") || strings.Contains(part, "#") {
+					continue
+				}
+				out = append(out, part)
+			}
+			return out, true
+		}
+	}
+	if len(fallback) > 0 {
+		return fallback, true
+	}
+	return nil, false
+}
+
+func uniquifyNeeds(ids []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// sentinelConsumersOfBrief parses the card IDs from a sentinel brief's CONSUMERS: header line,
+// stripping parenthetical annotations like "(unblocks consumer)".
+func sentinelConsumersOfBrief(brief string) []string {
+	v, ok := sentinelHeaderValue(brief, "CONSUMERS")
+	if !ok {
+		return nil
+	}
+	cleaned := sentinelParenRE.ReplaceAllString(v, "")
+	var out []string
+	for _, part := range strings.Split(cleaned, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "-" || strings.EqualFold(part, "none") {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+// briefSentinel replaces a waiting sentinel's brief in place after checking its machine-read
+// header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
+func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want []string, proposed map[string][]string) Plan {
+	if r.Tier != "" {
+		p.refuse(c.ID, c.ID+" is a sentinel, not a primary; nothing was changed")
+		return p
+	}
+	if kind, ok := sentinelHeaderValue(b.Brief, "KIND"); ok {
+		k := strings.ToLower(strings.TrimSpace(kind))
+		if k != "" && k != "sentinel" {
+			p.refuse(c.ID, fmt.Sprintf("KIND: wants sentinel, found %s; nothing was changed", strings.TrimSpace(kind)))
+			return p
+		}
+	}
+	if stream, ok := sentinelHeaderValue(b.Brief, "STREAM"); ok {
+		st := strings.TrimSpace(stream)
+		if st != "" && st != c.Row {
+			p.refuse(c.ID, fmt.Sprintf("sentinel %s is in stream %s, brief specifies STREAM: %s; stream cannot be moved by brief; nothing was changed", c.ID, c.Row, st))
+			return p
+		}
+	}
+	if tierHdr, ok := sentinelHeaderValue(b.Brief, "TIER"); ok {
+		t := strings.ToLower(strings.TrimSpace(tierHdr))
+		if t != "" && t != "none" && t != "-" && !cardhdr.IsRoute(t) {
+			p.refuse(c.ID, fmt.Sprintf("TIER: wants %s or none, found %s; nothing was changed", cardhdr.RouteList, strings.TrimSpace(tierHdr)))
+			return p
+		}
+	}
+	if m, modelWhy := cardhdr.ReadModel(b.Brief); modelWhy != "" && !strings.EqualFold(m.Tier, "none") {
+		p.refuse(c.ID, modelWhy+"; nothing was changed")
+		return p
+	}
+	if _, prioWhy := PriorityOfBrief(b.Brief); prioWhy != "" {
+		p.refuse(c.ID, prioWhy+"; nothing was changed")
+		return p
+	}
+	bench, benchWhy := BenchOfBrief("\n" + b.Brief)
+	if benchWhy == "" && len(bench) > 0 && s.Fleet != nil {
+		if unknown := BenchKnown(s, bench); len(unknown) > 0 {
+			benchWhy = BenchRefused(s, bench, unknown)
+		}
+	}
+	if benchWhy != "" {
+		p.refuse(c.ID, benchWhy+"; nothing was changed")
+		return p
+	}
+	rawNeeds, hasNeedsHdr := sentinelBriefNeeds(b.Brief, b.Needs)
+	if hasNeedsHdr {
+		if len(rawNeeds) == 0 {
+			p.refuse(c.ID, "a sentinel with nothing to wait on is released, not emptied: nova-sprint release "+c.ID+" --reason '<why>'; nothing was changed")
+			return p
+		}
+		var why, gone []string
+		seenNeed := map[string]bool{}
+		for _, n := range rawNeeds {
+			switch {
+			case seenNeed[n]:
+				why = append(why, n+" is named twice")
+			case n == c.ID:
+				why = append(why, "a sentinel does not need itself")
+			case s.Work.Card(n) == nil:
+				gone = append(gone, n+" (no card)")
+			case s.Work.Placed(n) == nil:
+				gone = append(gone, n+" (off the table, "+orDash(s.Work.Card(n).F("outcome"))+")")
+			}
+			seenNeed[n] = true
+		}
+		if len(gone) > 0 {
+			why = append(why, "not a card on the table: "+strings.Join(gone, ", "))
+		}
+		if len(why) > 0 {
+			p.refuse(c.ID, strings.Join(why, "; ")+"; nothing was changed")
+			return p
+		}
+	}
+	cur := Split(c.F("needs"))
+	if !sameNeeds(cur, want) {
+		if cycleWhy := needsCycleWith(s, c.ID, proposed); cycleWhy != "" {
+			p.refuse(c.ID, cycleWhy)
+			return p
+		}
+	}
+	if _, hasConsumers := sentinelHeaderValue(b.Brief, "CONSUMERS"); hasConsumers {
+		consumers := sentinelConsumersOfBrief(b.Brief)
+		seenConsumer := map[string]bool{}
+		for _, cid := range consumers {
+			switch {
+			case cid == c.ID:
+				p.refuse(c.ID, "CONSUMERS names the sentinel itself; nothing was changed")
+				return p
+			case seenConsumer[cid]:
+				p.refuse(c.ID, cid+" is named twice in CONSUMERS; nothing was changed")
+				return p
+			case !ValidID(cid) || strings.HasPrefix(cid, "ctl-"):
+				p.refuse(c.ID, "CONSUMERS: "+cid+" is not a valid card id; nothing was changed")
+				return p
+			}
+			cc := s.Work.Card(cid)
+			switch {
+			case cc == nil:
+				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s (no card); nothing was changed", cid))
+				return p
+			case !cc.Placed():
+				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s (off the table, %s); nothing was changed", cid, orDash(cc.F("outcome"))))
+				return p
+			}
+			ccNeeds := Split(cc.F("needs"))
+			if prop, ok := proposed[cc.ID]; ok {
+				ccNeeds = prop
+			}
+			if IsSentinel(cc) || cc.Col == Landed || !contains(without(ccNeeds, Split(cc.F("waived"))), c.ID) {
+				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s, which does not need %s; nothing was changed", cid, c.ID))
+				return p
+			}
+			seenConsumer[cid] = true
+		}
+		var missing []string
+		for _, other := range s.Work.Cards() {
+			if other == nil || !other.Placed() || other.ID == c.ID || IsSentinel(other) || other.Col == Landed {
+				continue
+			}
+			otherNeeds := Split(other.F("needs"))
+			if prop, ok := proposed[other.ID]; ok {
+				otherNeeds = prop
+			}
+			if contains(without(otherNeeds, Split(other.F("waived"))), c.ID) && !contains(consumers, other.ID) {
+				missing = append(missing, other.ID)
+			}
+		}
+		if len(missing) > 0 {
+			slices.Sort(missing)
+			p.refuse(c.ID, fmt.Sprintf("CONSUMERS line missing %s; nothing was changed", strings.Join(missing, ", ")))
+			return p
+		}
+	}
+	set := map[string]string{"brief": b.Brief}
+	var unset []string
+	u := Unit{Key: c.ID, Stream: c.Row}
+	moved := fmt.Sprintf("sentinel %s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)
+	if !sameNeeds(cur, want) {
+		old := c.F("needs")
+		now := strings.Join(want, ",")
+		if len(want) > 0 {
+			set["needs"] = now
+		} else {
+			unset = append(unset, "needs")
+		}
+		set[FieldNeedsSet] = fmt.Sprintf("%s -> %s %s by %s", orDash(old), orDash(now), stamp(s.Now), orDash(r.Who))
+		moved += fmt.Sprintf("; needs %s -> %s", orDash(old), orDash(now))
+		after := withField(c, "needs", now)
+		waits := WaitsFor(s, after, nil)
+		switch {
+		case c.F("reached") != "" && len(waits) > 0:
+			unset = append(unset, "reached")
+			moved += "; reached no more: it waits for " + strings.Join(waits, ",")
+			for _, o := range closesFor(s.Open, []string{NSentinelReached}, c.ID) {
+				u.Closes = append(u.Closes, o)
+				u.Notes = append(u.Notes, decided(o, "not reached: "+moved, r.Who, s.Now, c.ID))
+			}
+		case c.F("reached") == "" && !IsHeld(c) && len(waits) == 0 && Reachable(s, after, nil):
+			set["reached"] = stamp(s.Now)
+			u.Notes = append(u.Notes, reachedNote(s, after, nil, 0, r.Who))
+			moved += "; reached"
+		}
+		for _, o := range s.Open {
+			if o.Subject() != c.ID || (o.Note.Type != NBlocked && o.Note.Type != NMissingNeed) {
+				continue
+			}
+			if len(o.Note.Needs) > 0 && slices.ContainsFunc(o.Note.Needs, func(n string) bool { return contains(want, n) }) {
+				continue
+			}
+			u.Closes = append(u.Closes, o)
+			u.Notes = append(u.Notes, decided(o, moved, r.Who, s.Now, c.ID))
+		}
+	}
+	if r.Reason != "" {
+		moved += "; reason: " + r.Reason
+	}
+	u.Changes = []Change{change(Work, setEntry(c, set, unset...))}
+	u.Moved = moved
+	p.Units = append(p.Units, u)
+	return p
 }
 
 // briefInPlace is a brief edited in place on a primary an attempt was dealt for: it
@@ -1080,6 +1373,14 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 			why = append(why, n+" is named twice")
 		case s.Work.Placed(n) == nil:
 			why = append(why, n+" is no primary on the table")
+		default:
+			nc := s.Work.Placed(n)
+			if IsSentinel(nc) && nc.F("brief") != "" {
+				consumers, _ := ConsumersOfBrief(nc.F("brief"))
+				if !slices.Contains(consumers, c.ID) {
+					why = append(why, fmt.Sprintf("sentinel %s brief CONSUMERS line omits %s; update its brief first: nova-sprint brief %s --brief-file <a brief naming %s in CONSUMERS>", n, c.ID, n, c.ID))
+				}
+			}
 		}
 		seen[n] = true
 	}

@@ -239,10 +239,10 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 	})
 }
 
-// A fleet reader reads only the tiers its row names, and a row naming none reads flash while
-// the store holds routes ("I'm ok with flash readers on fleet but not pro"): a pro read is never
-// asked of a flash row or of a fleet row that names no tier, and is asked of a row that names
-// pro. A friend's reader (its own model) naming no tier reads every tier.
+// A fleet reader reads only the tiers its row names, and a row naming none reads every tier
+// a route serves: a pro read is never asked of a flash row, and is asked of a row that names
+// pro and of a row that names none. A friend's reader (its own model) naming no tier reads
+// every tier.
 func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T, tiers map[string]string, readers ...string) *world {
@@ -273,14 +273,14 @@ func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 		assert.False(t, asked(w, "reader-vision"))
 	})
 
-	t.Run("a fleet row naming no tier reads flash only", func(t *testing.T) {
+	t.Run("a fleet row naming no tier reads every served tier", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, nil, "reader-batman-2", "reader-vision-2")
 		askReaders(t, w, nil)
-		assert.False(t, asked(w, "reader-batman-2"), "the fleet does not read pro unless its row says so")
-		assert.False(t, asked(w, "reader-vision-2"))
+		assert.True(t, asked(w, "reader-batman-2"), "an empty cell reads every tier a route serves")
 		assert.True(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteFlash), "it reads flash")
-		assert.False(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteHeavy))
+		assert.True(t, w.s.readerServesTier("reader-batman-2", cardhdr.RoutePro), "and pro, with no tier named")
+		assert.False(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteHeavy), "but not heavy: no route serves it")
 	})
 
 	t.Run("a friend's reader naming no tier reads every tier", func(t *testing.T) {

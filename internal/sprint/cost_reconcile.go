@@ -149,7 +149,7 @@ func internalSpendSplit(s *Snapshot, provider, day string) (all, reads float64) 
 			if err != nil || at.UTC().Format(time.DateOnly) != day || !strings.EqualFold(consumerProvider(routes, con), provider) {
 				continue
 			}
-			if usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted)); err == nil && usd != nil {
+			if usd, err := amountOf(con.Usage.MarginalUSD()); err == nil && usd != nil {
 				sum.Add(sum, usd)
 				if con.Kind == "read" {
 					readSum.Add(readSum, usd)

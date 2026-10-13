@@ -31,7 +31,7 @@ func askTick(t *testing.T, w *world, seats []FriendSeat) (raised []Note, closed 
 	w.s.Now = w.s.Now.Add(time.Minute)
 	p := w.part(func(s *Snapshot, r TickReq) (Plan, int) { return readCardsAskPart(s, r, seats) }, TickReq{Friends: seats})
 	for _, n := range p.Notes {
-		if n.Type == NCannotAsk {
+		if n.Type == NCannotAsk && n.Kind == Judgment {
 			raised = append(raised, n)
 		}
 	}
@@ -54,50 +54,35 @@ func waitOf(w *world, seats []FriendSeat, id string) string {
 	return waits[id]
 }
 
-// TestCannotAskIsOneJudgmentAnEpisode pins fault 22 of the 2026-10-10 inventory: a primary
-// in review waiting for a reader at one attempt is one cannot-ask judgment, whatever the
-// wait's reason each tick. Its reason turning from "no reader up may read it" to "every
-// reader up who may read it is at its room" and back neither closes the judgment nor
-// raises a second (live: fix-help-decide-hb-b1-b2b, six judgments at attempt 2); nor does it
-// close the coordinator's wait on it, to raise it again before the wait runs out.
+// The eligibility transition ends the episode, including an acknowledged wait;
+// repeated ticks with the same eligibility never raise another judgment.
 func TestCannotAskIsOneJudgmentAnEpisode(t *testing.T) {
 	t.Parallel()
-	t.Run("the wait's reason turns", func(t *testing.T) {
-		t.Parallel()
-		w, none, room, _ := cannotAskEpisodeWorld(t)
-		require.True(t, strings.HasPrefix(waitOf(w, none, "s1-1"), NoReaderMayRead), waitOf(w, none, "s1-1"))
-		require.Equal(t, "every reader up who may read it is at its room", waitOf(w, room, "s1-1"))
-
-		raised, _ := askTick(t, w, none)
-		require.Len(t, raised, 1, "the episode is raised")
-		first := openCannotAsk(w, "s1-1")
-		require.Len(t, first, 1)
-
-		for i, seats := range [][]FriendSeat{room, none, room, none} {
-			raised, closed := askTick(t, w, seats)
-			require.Empty(t, closed, "tick %d: the primary still waits at attempt 1: its judgment stays open", i)
-			require.Empty(t, raised, "tick %d: one judgment an episode, never a second", i)
-			require.Equal(t, first, openCannotAsk(w, "s1-1"), "tick %d: the same judgment", i)
-		}
-	})
-	t.Run("the coordinator's wait holds through the turn", func(t *testing.T) {
-		t.Parallel()
-		w, none, room, _ := cannotAskEpisodeWorld(t)
-		askTick(t, w, none)
-		j := openCannotAsk(w, "s1-1")
-		require.Len(t, j, 1)
-		// the coordinator waits it for 30m (Wait): the judgment closed, a hold on its condition
-		w.closeAll(j)
-		hold := Open{Key: OpenKey("hold-1", "s1-1"), Note: Note{ID: "hold-1", Kind: Acknowledged, Type: NCannotAsk, Stream: "s1",
-			Primaries: []string{"s1-1"}, Count: 1, At: w.s.Now, Review: w.s.Now.Add(30 * time.Minute), ReviewSet: w.s.Now}}
-		w.s.Acked = append(w.s.Acked, hold)
-
-		for i, seats := range [][]FriendSeat{room, none} {
-			raised, closed := askTick(t, w, seats)
-			require.Empty(t, closed, "tick %d: the wait stands while the primary waits at its attempt", i)
-			require.Empty(t, raised, "tick %d: not raised again before the wait runs out", i)
-		}
-	})
+	for _, acknowledged := range []bool{false, true} {
+		t.Run(map[bool]string{false: "open", true: "wait"}[acknowledged], func(t *testing.T) {
+			t.Parallel()
+			w, none, room, _ := cannotAskEpisodeWorld(t)
+			askTick(t, w, none)
+			if acknowledged {
+				j := openCannotAsk(w, "s1-1")
+				w.closeAll(j)
+				w.s.Acked = append(w.s.Acked, Open{Key: OpenKey("hold-1", "s1-1"), Note: Note{ID: "hold-1", Kind: Acknowledged, Type: NCannotAsk, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: w.s.Now, Review: w.s.Now.Add(30 * time.Minute), ReviewSet: w.s.Now}})
+			}
+			raised, closed := askTick(t, w, room)
+			require.Len(t, closed, 1)
+			require.Empty(t, raised)
+			if acknowledged {
+				w.s.Acked = nil
+			} // world.closeAll models only open judgments
+			raised, closed = askTick(t, w, room)
+			require.Empty(t, raised)
+			require.Empty(t, closed)
+			raised, _ = askTick(t, w, none)
+			require.Len(t, raised, 1)
+			raised, _ = askTick(t, w, none)
+			require.Empty(t, raised)
+		})
+	}
 }
 
 // TestCannotAskClosesWhenItsEpisodeEnds pins the other half: the judgment closes when its

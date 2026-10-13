@@ -87,6 +87,7 @@ nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
+# ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
 nova-sprint queue --as <reader|member> | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
@@ -107,7 +108,7 @@ nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
 nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
-# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result.
+# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
@@ -162,10 +163,10 @@ nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]
 nova-sprint friend level
 nova-sprint friend health <friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)
-nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]
-nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>
+nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
+nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
-nova-sprint reader up <reader>...
+nova-sprint reader up <reader>...   # a bare member name is prefixed too
 nova-sprint reader remove <reader>...
 nova-sprint stream remove <stream>...
 nova-sprint stream archive <stream>...
@@ -181,8 +182,8 @@ nova-sprint card base <id> <branch> [--repo-dir <clone>]
 nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]
 # every stream with its repositories, bases, release, open and landed counts, and with --cards each card in state order; repos and bases come from the union of its open cards' briefs' REPO and BASE (the source bases uses), the control card's fields only where no brief names one
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
-nova-sprint check cards [--stream <s>...] [--json]
-# the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams, one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; a --stream check's record never opens the start
+nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]
+# the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams (or --from an export file or directory of card --json, card --all --json with briefs/ and trees/, or backup --file / RESTORE dump, with no store), one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), stale-head (a pushed head from an attempt at or below the brief's `brief_attempt`; `brief --keep-head` exempts it), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every live run without --dry-run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; --dry-run and --from write no check record, and a --stream check's record never opens the start
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
@@ -208,13 +209,15 @@ nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--jso
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint reads --review [--stream <s>] [--json]
+nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
+# `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
 
-**`clear`** advances the epoch, then sets every working default in the new epoch (`sprint.Defaults`: read_cards on, fleet and friends on, tiers all, the bounds at their defaults, the feed alarm on; the coordinator's threshold alarms and base carried, a threshold never set at its working value), writing only what the new epoch does not hold, so no setting is absent after a clear, no alarm is turned off, and no `prop` value of the old epoch is carried; each one the old epoch held away from its default prints as `CLEAR DEFAULT <name> was <v>, now <default>` (`--json`: `defaults`). nova-config's sprint row is never written by a clear: an unapplied `git_identity` reads as the machine identity, and `doctor` warns. See [SPEC-SPRINT.md, working defaults](SPEC-SPRINT.md#working-defaults).
+**`clear`** advances the epoch, then sets every working default in the new epoch (`sprint.Defaults`: read_cards on, fleet and friends on, tiers all, the bounds at their defaults, the feed alarm on; the coordinator's threshold alarms and base carried, a threshold never set at its working value), writing only what the new epoch does not hold, so no setting is absent after a clear, no alarm is turned off, and no `prop` value of the old epoch is carried; each one the old epoch held away from its default prints as `CLEAR DEFAULT <name> was <v>, now <default>` (`--json`: `defaults`). Every up fleet member has a reader row `reader-<member>`, made by `init`, by `fleet up` and by a clear when missing, up while its member is up and not held, so a cleared sprint reads with no seat action. nova-config's sprint row is never written by a clear: an unapplied `git_identity` reads as the machine identity, and `doctor` warns. See [SPEC-SPRINT.md, working defaults](SPEC-SPRINT.md#working-defaults).
 
 **`audit`** is the one answer to "is anything blocked, stuck or looped": one
 read of the work, fleet and readers tables prints one line per unlanded primary
@@ -332,9 +335,10 @@ store's login. With no bus user it uses the default user; a failed bus send
 leaves the delivered card in her inbox and records that she was not woken.
 
 Every store verb takes `--redis <addr>` (else `NOVA_SPRINT_REDIS`, then
-`NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else `NOVA_SPRINT_ACTOR`; no default — a
-verb that writes wants one), `--op <id>` (the same id again returns the recorded
-result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
+`NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else
+`NOVA_SPRINT_ACTOR`; a coordinator or seat verb may use the coordinator's name only
+when its sprint hook and bus push are both proven live), `--op <id>` (the same id
+again returns the recorded result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
 verbs are the coordinator's alone (the first `init` names it: `--coordinator`,
 else the actor); `take`, `finish`, `read`, `fleet beat` and `friend beat` are the
 workers', whose actor is the member, reader or friend named; `merge` and `ci`
@@ -368,7 +372,7 @@ state (`backup: reads (review ... > working ...)`) while there is one
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. `nova-sprint run --keys <NAME,...>` records the decision key and each provider key in `keys.json` beside that login (names only, never a value) and the run process reads each one from the seat; a name that cannot be read refuses at start, naming the name. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-seats-store-login) and [SPEC-SECRETS.md](SPEC-SECRETS.md) ("A tool's store login").
 
-The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-two-pushes)) to two pushes, the sprint push and the bus push. Until both are live, every verb the seat's holder runs (the caller is `--actor` or `NOVA_SPRINT_ACTOR`; a worker verb's `--as` never takes the holder past it) fails with one line that starts `You must hook in first: run nova-sprint hook` and goes on to the breadcrumb: which push is not live and the exact commands (`nova-sprint hook --actor <seat>`, `nova-sprint hook --prove <challenge> --actor <seat>`, `nova-sprint unhook --actor <seat>`). Exempt: `hook`, `unhook`, `run`, `tick` (not `tick --answer-rules`), `server switch`, `seat install`, `selftest land`; help and version never reach the gate. It fails closed: no store named, a store that does not open, a record that cannot be read, or no `NOVA_BUS_REDIS` refuses with the reason. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` and `NOVA_BUS_REDIS` set: it holds one subscription on the server and one on the holder's bus stream, records the bus push armed (`sprint-hook:<seat>` in the bus store), and prints one event a line (`HOOK CONNECTED`, `HOOK CHALLENGE <s>.<b>`, `PUSH <id>`, `BUS <entry>`). Answer its `HOOK CHALLENGE <s>.<b>` with `nova-sprint hook --prove <s>.<b> --actor <seat>`: one answer proves both pushes; the challenge is asked once a connection, never again while it stays up. The hook then stays live while acts reach the server: every coordinator verb the seat runs, every `--ack` or answer, and the keepalive `nova-sprint hook` sends on its own every minute each move its live-until 15 minutes on. The keepalive proves only that the transport is alive (the hook's process holds the stream), not that the seat or a person is attending. A hook lapses only when its stream ends, or when no act at all, keepalive included, reaches the server for 15 minutes: then once, with one judgment ("the seat's hook lapsed", naming the seat), recorded gone and the owner told; the same seat's next proof answers that judgment. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`. The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. A judgment waiting 10 seconds or longer is pushed as a `PUSH <id> WARNING-judgments-waiting` every second until it is answered (an ack does not silence it). `nova-sprint hook --quiet-happened` makes the seat receive judgments and challenges only, not the informational HAPPENED pushes. `nova-sprint hook --compact` is the same subscription for a session read by a person or a model rather than a Monitor: it prints only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix), dropping HAPPENED pushes and the acknowledge/verb menus. Every line is one write to stdout, so it is readable at once on a pipe, a file or a tty with no pty. With `--overdue <duration>` (default `5m`), while the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the server's judgment list, never a poll of the inbox verb. `nova-sprint unhook` ends it (recorded away, the owner told; the bus push's record says unhooked); a hook that drops is recorded gone at once and the owner told. There is no override.
+The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-two-pushes)) to two pushes, the sprint push and the bus push. Until both are live, every verb the seat's holder runs (the caller is `--actor` or `NOVA_SPRINT_ACTOR`; a worker verb's `--as` never takes the holder past it) fails with one line that starts `You must hook in first: run nova-sprint hook` and goes on to the breadcrumb: which push is not live and the exact commands (`nova-sprint hook --actor <seat>`, `nova-sprint hook --prove <challenge> --actor <seat>`, `nova-sprint unhook --actor <seat>`). Exempt: `hook`, `unhook`, `run`, `tick` (not `tick --answer-rules`), `server switch`, `seat install`, `selftest land`; help and version never reach the gate. It fails closed: no store named, a store that does not open, a record that cannot be read, or no `NOVA_BUS_REDIS` refuses with the reason. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` and `NOVA_BUS_REDIS` set: it holds one subscription on the server and one on the holder's bus stream, records the bus push armed (`sprint-hook:<seat>` in the bus store), and prints one event a line (`HOOK CONNECTED`, `HOOK CHALLENGE <s>.<b>`, `PUSH <id>`, `BUS <entry>`). Answer its `HOOK CHALLENGE <s>.<b>` with `nova-sprint hook --prove <s>.<b> --actor <seat>`: one answer proves both pushes; the challenge is asked once a connection, never again while it stays up. The hook then stays live while acts reach the server: every coordinator verb the seat runs, every `--ack` or answer, and the keepalive `nova-sprint hook` sends on its own every minute each move its live-until 15 minutes on. The keepalive proves only that the transport is alive (the hook's process holds the stream), not that the seat or a person is attending. A hook lapses only when its stream ends, or when no act at all, keepalive included, reaches the server for 15 minutes: then once, with one judgment ("the seat's hook lapsed", naming the seat), recorded gone and the owner told; the same seat's next proof answers that judgment. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`, or acknowledge every push up to now at once with `nova-sprint hook --ack-all --actor <seat>` (no id or token to copy: the client sends neither, the running hook acks in the session it holds; it prints `HOOK ACK-ALL OK acked=<n> up-to=<id> session=<s>`, and is refused when no hook runs). The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. A judgment waiting 10 seconds or longer is pushed as a `PUSH <id> WARNING-judgments-waiting`: first at 10 seconds, then at most once a minute while its set does not change — on a running machine too — and at once when a judgment joins the set, until it is answered (an ack does not silence it). `nova-sprint hook --quiet-happened` makes the seat receive judgments and challenges only, not the informational HAPPENED pushes. `nova-sprint hook --compact` is the same subscription for a session read by a person or a model rather than a Monitor: it prints only the HOOK lines the seat acts on (`HOOK CONNECTED`, `HOOK CHALLENGE`, `HOOK PROVEN`, `HOOK DROPPED`/`HOOK ENDED`) and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix), dropping HAPPENED pushes and the acknowledge/verb menus. Every line is one write to stdout, so it is readable at once on a pipe, a file or a tty with no pty. With `--overdue <duration>` (default `5m`), while the hook is held, a card-holding judgment (`sprint.HoldsACard`: not an alarm or a status) that the server's own judgment list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>` line, again every interval until it is answered; the source is the server's judgment list, never a poll of the inbox verb. `nova-sprint unhook` ends it (recorded away, the owner told; the bus push's record says unhooked); a hook that drops is recorded gone at once and the owner told. There is no override.
 
 `nova-sprint seat install --server <host:port> --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>` (beside the push loop's unit) records the sprint's server in `seat.json` beside that login and writes the nova-config seat profile, the row `<name>\t<dsn>\t<NAME>` of `~/.config/nova-config/seats.tsv`. After it, `nova-sprint seat check` measures the recorded server when `NOVA_SPRINT_SERVER` is not set and prints `MACHINERY config OK seat=<name> …` (or DOWN with the remedy), and `nova-config <verb> --seat <name>` (or `NOVA_SEAT`) reaches the config store with no `nova-secrets exec`: the password is read in process from the store login's nova-secrets seat under `<NAME>` when that variable is not set and `NOVA_PG_PASSWORD_ENV` is not given (`NOVA_PG_PASSWORD_ENV` given still wins). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#handing-over-the-seat) and [SPEC-CONFIG.md](SPEC-CONFIG.md#connecting).
 
@@ -506,8 +510,17 @@ the cards she holds; `/api/team`, `/api/friend/<name>`,
 `/api/machine/<name>` and `/api/sprint` are JSON; `/events`, `/events/friend/<name>` and
 `/events/machine/<name>` push each new copy as server-sent events. All of it is read-only,
 no-store, carries the copy's time in `Sprint-At`, and comes from one copy of `where --json
---cards` read at most once a second however many pull. An unknown name is a 404 of one
+--cards` read at most once a second however many pull. Responses on both `--listen` and
+`--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`,
+`/app.js`, `/api/sprint`, and pull routes). The server ticks the page at 1 s from its cache
+every second independently of background reads; reads exceeding 1 s log a warning.
+`where --json --dashboard` prints the cheap dashboard view with `stream_costs` folded into
+`tables.work`, reader rows folded into `tables.fleet` (`reads_working` and `working`), and
+sentinel-free summary, dropping archived streams without loading card rows; `--dashboard`
+requires `--json`. An unknown name is a 404 of one
 line; `where --json` also carries `landedSeries` (cards landed per 10-minute bucket over 24 hours, split between friends and fleet). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the dashboard.
+
+Each stream's clock in `where --json`'s `streams` carries its stored `State` and, beside it, `held_cards` when the stream has held cards: its waiting primaries no tick moves on its own (behind a sentinel not released, admitted held with `add --held`, or waiting on one of those through a need), counted by the tick into the where record. A card hold is not a stream hold: the state still reads what the store holds (`waiting`, `working`, `held`, `landed`), and `held_cards` never replaces it.
 
 ### A provider out of funds
 
@@ -798,7 +811,7 @@ nova-card is pre-alpha: not ready for production use.
 nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
+nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
 nova-card template
 nova-card version
 nova-card help [<verb>]
@@ -896,11 +909,9 @@ use it. It reads GitHub only (no GitLab, no Gitea), never writes to GitHub (the
 seam refuses any GraphQL document that is not a query), and captures the fields
 SPEC-WORK-V1 section 1.3 lists, not reactions or other timeline events.
 
-**Try it with no login.** `nova-work verify -h` prints the tree's grammar and a
-minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
+**Try it with no login.** `nova-work example --dir ./example` writes a minimal pair of tree files and a recorded GraphQL replay fixture. Run `nova-work verify --tree ./example/tree.lisp --against ./example/against.lisp` with no network or credentials: `VERIFY OK ... differences=0`, exit 0. `nova-work verify -h` also prints the tree's grammar and a minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
 `:archived true`, and run `nova-work verify --tree a.lisp --against b.lisp`: one
-`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1. The same
-file against itself is `VERIFY OK ... differences=0`, exit 0.
+`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1.
 
 **First run against GitHub.** Needs `gh auth status` to pass and one repository
 you can read: export `ORG` and `REPO`, then run the three lines of the banner's
@@ -929,6 +940,17 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 `VERIFY OK ... differences=0`, the receipt that the tree holds what GitHub
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
+
+### example
+
+Writes a minimal pair of tree files (`tree.lisp`, `against.lisp`) and a recorded
+GraphQL import replay fixture (`call-01.json`, `call-02.json`) under `--dir`.
+These allow running `nova-work verify` and `nova-work import` offline without `gh`
+credentials or network access:
+
+```
+nova-work example --dir <dir> [--replace]
+```
 
 ### roadmap check, list, add, remove, pull, done, note, render
 
@@ -996,3 +1018,17 @@ The roadmap verbs of nova-sprint 8c87a4b (`roadmap check`, `add`, `remove`,
 `pull`, `note`) edited the private work record's `roadmaps/*.sexp` and were left
 out by the v1.2.3 re-seed. These verbs replace them, on the repository's own files.
 
+
+### A reader may read now
+
+`cannot ask` means no up unit may read the primary at its read tier. The next
+tick closes it with `a reader may read <card> now (<units>)` when an eligible
+reader exists, even while that reader waits for room. An unchanged eligible
+set raises at most one judgment per episode; losing eligibility starts a new one.
+`ask <card> --answers <j>` answers it when at least one read is dealt. With no
+eligible reader, ask names the reader reason and remedy. `rework`, `drop` and
+`wait` are also decisions; rework ends the attempt and closes the judgment.
+
+A `wait` on `cannot ask` quiets its reader condition until the requested review
+time; if no reader becomes eligible, that time raises one reminder. Eligibility
+still closes the wait earlier. The wait does not block an eligible read.

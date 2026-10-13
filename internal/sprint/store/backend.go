@@ -78,10 +78,11 @@ type Backend interface {
 	// and whether the restore of the shape of the epoch before it is owed.
 	Epoch(ctx context.Context) (EpochState, error)
 	// AdvanceEpoch moves the sprint from epoch from to from+1 atomically,
+	// only if FROM has no fence, or its fence is held by the optional owner.
 	// recording the time, that the restore of epoch from's shape is owed, and
 	// that from+1 is owed its set-defaults step (EpochState.DefaultsOwed), all in
 	// one write; false when the sprint is no longer at from.
-	AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error)
+	AdvanceEpoch(ctx context.Context, from uint64, at time.Time, owner ...string) (bool, error)
 	// SettleEpoch records that the restore owed at epoch n is done; it does
 	// nothing when the sprint is no longer at n.
 	SettleEpoch(ctx context.Context, n uint64) error
@@ -96,6 +97,9 @@ type Backend interface {
 	// it writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
 	// EditRow, DeleteRow).
 	GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error)
+	// GuardedMachine writes the record and view only at the pinned epoch, while
+	// owner still holds its fence; RUNNING also requires the restore settled.
+	GuardedMachine(ctx context.Context, g RestoreGuard, owner string, machine Machine, view string) error
 	// AtEpoch is the backend pinned to an epoch: the sprint's keys of that
 	// epoch, and its writes at that epoch. With old, reads of the tables read
 	// that epoch as it was, not the active one.

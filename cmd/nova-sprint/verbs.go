@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"io"
 	"os"
 	"os/exec"
@@ -170,7 +171,7 @@ func init() {
 		{"bases", "", "bases", (*app).cmdBases},
 		{"log", "[--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]", "log --card s1-4", (*app).cmdLog},
 		// before check, so its two words are matched first (check_cards.go)
-		{"check cards", "[--stream <s>...] [--json]", "check cards", (*app).cmdCheckCards},
+		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
 		{"check", "", "check", (*app).cmdCheck},
 		{"repair", "", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
@@ -203,7 +204,7 @@ func init() {
 		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
 		{"settings", "[--json]", "settings", (*app).cmdSettings},
 		{"reads", "--review [--stream <s>] [--json]", "reads --review", (*app).cmdReads},
-		{"doctor", "", "doctor", (*app).cmdDoctor},
+		{"doctor", "[--all] [--area <group>] [--preflight <candidate>] [--json]", "doctor --area routes", (*app).cmdDoctor},
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},
 		{"clear", "--confirm sprint", "clear --confirm sprint", (*app).cmdClear},
 		{"teardown", "--confirm sprint", "teardown --confirm sprint", (*app).cmdTeardown},
@@ -423,6 +424,7 @@ one answer to each judgment (every one prints its own, filled in):
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
   STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
+  a member's takes end with no model call    ack <note> --reason '<what you saw to on the member>'  (the machine's hold of it names this judgment as its cause: the tick releases the member in the step that sees it answered)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
 (failed, bound, late, conflict, brief-defect, base-gate, read-broken); nova-sprint rules prints what
@@ -1295,6 +1297,17 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 		}
 		memberNames = append(memberNames, m.Name)
 	}
+	// every up member is a reader: init makes the member reader rows, as a
+	// member's join and a clear do (ensureMemberReaders)
+	if len(specs) > 0 {
+		if err := ensureMemberReaders(ctx, st); err != nil {
+			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
+			return 1
+		}
+		if rows, err := st.ReaderRows(ctx); err == nil {
+			readerRows = rows
+		}
+	}
 	notes := []string{}
 	if len(specs) > 0 && a.twinOpen(c.redis) {
 		// a twin beats every member at every verb (beatTwin): a member added
@@ -1764,7 +1777,7 @@ func (a *app) briefFiles(dir string, files []string, stderr io.Writer) ([]string
 func briefNeeds(brief string) []string {
 	value, found := "", false
 	for _, line := range strings.Split(brief, "\n") {
-		if key, v, ok := cardhdr.KeyValue(line); ok && key == "Needs" {
+		if key, v, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "needs") {
 			value, found = v, true
 			break
 		}
@@ -1778,10 +1791,40 @@ func briefNeeds(brief string) []string {
 			id = cut
 		}
 		switch id = strings.TrimSpace(id); {
-		case id == "", id == "-", id == "none", strings.Contains(id, "#"):
+		case id == "", id == "-", strings.EqualFold(id, "none"), strings.Contains(id, "#"):
 			continue
 		}
 		out = append(out, id)
+	}
+	return out
+}
+
+func briefConsumers(brief string) []string {
+	var out []string
+	for i, line := range strings.Split(brief, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		key, v, ok := cardhdr.KeyValue(line)
+		if !ok {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		if !strings.EqualFold(key, "consumers") {
+			continue
+		}
+		for _, id := range strings.Split(v, ",") {
+			if cut, _, hasParen := strings.Cut(id, "("); hasParen {
+				id = cut
+			}
+			id = strings.TrimSpace(id)
+			if id == "" || id == "-" || strings.EqualFold(id, "none") {
+				continue
+			}
+			out = append(out, id)
+		}
 	}
 	return out
 }
@@ -2029,13 +2072,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
 	}
 	if friendOwnRules(brief) {
-		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the child
-		// RULES paragraph: a friend is not a child, and her card carries its own rules
-		// (docs/SPEC-SPRINT.md section 1, a friend's card; rules by reference: a card that
-		// names no held file carries its own rules, as every card did before). The rule-
-		// checks are the child paragraph's presence checks (pkg/swarm/lintchild.go); the
-		// step- scans still hold her card, a line of it outside its RULES paragraph that
-		// contradicts its carried rules being a finding under any set.
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the
+		// child RULES paragraph: a friend is not a child.
 		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
 			return strings.HasPrefix(f.Check, "rule-")
 		})
@@ -2674,12 +2712,17 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "the lane of the member finishing (take --lane gave it the card): a card another lane of its row holds is refused")
 	decision := fs.String("decision", "", "the take's attempt decision, one JSON record line as nova-decide makes it (a work member with JEV_API_KEY asks it for every take): its op naming this take's card and attempt, else the finish is refused; kept on the card, recorded by the server's decide lane, and a failed finish whose class is no-result or nothing-to-do at or above that class's bar on the card is routed by it (docs/SPEC-SPRINT.md section 2)")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "finish", err.Error())
 	}
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
+
 	var decided string
 	var d decide.Decision
 	if *decision != "" {
@@ -2774,6 +2817,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	ret := fs.String("return", "", "hand back a read the reader holds and has no verdict on: not a read; the next tick asks it of another reader free at the attempt, or of this reader again; no finding against the work")
 	reason := fs.String("reason", "", "with --return: why the read has no verdict (it reaches the inbox)")
 	usage := fs.String("usage", "", "with --ok, --broken or --return: what the read spent, one line (the reader passes its child's tokens, wall and cost): kept on the read card, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "with --ok, --broken or --return: the reader's lane reporting (take --as <reader> --lane <n> began the read): a read another lane of the reader holds is refused")
 	exit := fs.Int("exit", 0, "with --return: the reader's child's exit code (0: a clean end or unknown); a return whose exit is 134 or 137 is an environment exit: no verdict, and the reader is not spent at the attempt (docs/SPEC-SPRINT.md, \"An environment exit\")")
 	harness := fs.String("harness", "", "with --return: the child's harness output, so an environment exit keeps the last 40 lines of it on the card")
@@ -2782,6 +2826,10 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "read", err.Error())
 	}
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
+
 	n := 0
 	for _, b := range []bool{*begin, *ok, *broken, *ret != ""} {
 		if b {
@@ -3109,11 +3157,28 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	if why := briefSizeCheck("brief", len(*brief)); why != "" {
 		return refuse(stderr, "brief", why)
 	}
-	rs, code := a.holdBrief("brief", *brief, *rules, c, &st, stderr)
-	if code != 0 {
-		return code
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
+	}
+	var rs ruleSet
+	if !isSentinelCard(st, ids[0]) {
+		var code int
+		rs, code = a.holdBrief("brief", *brief, *rules, c, &st, stderr)
+		if code != 0 {
+			return code
+		}
 	}
 	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, *reason, *keepHead, stdout, stderr)
+}
+
+func isSentinelCard(st *store.Store, id string) bool {
+	if st == nil {
+		return false
+	}
+	info, err := st.CardOf(context.Background(), id)
+	return err == nil && info.Primary != nil && sprint.IsSentinel(info.Primary)
 }
 
 // briefWiden is brief <id> --widen: the card's brief with its PATHS widened by its latest
@@ -3189,7 +3254,19 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code != 0 {
 		return code
 	}
-	if code := lintBriefFiles("brief", cards, rs, c.max, stderr); code != 0 {
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
+	}
+	var lintCards []sprint.CardAdd
+	for _, cd := range cards {
+		if isSentinelCard(st, cd.ID) {
+			continue
+		}
+		lintCards = append(lintCards, cd)
+	}
+	if code := lintBriefFiles("brief", lintCards, rs, c.max, stderr); code != 0 {
 		return code
 	}
 	return a.replaceBriefs(cards, ans, rs, c, st, "", false, "", keepHead, stdout, stderr)
@@ -3217,27 +3294,39 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief, Reason: reason, KeepHead: keepHead}
-	texts := make([]string, len(cards))
-	checks := make([]briefCheck, len(cards))
-	for i, cd := range cards {
-		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief}
+	var texts, streams []string
+	var checks []briefCheck
+	for _, cd := range cards {
+		if !isSentinelCard(st, cd.ID) {
+			checks = append(checks, briefCheck{id: cd.ID, brief: cd.Brief})
+		}
 	}
-	if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
-		return code
+	if len(checks) > 0 {
+		if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
+			return code
+		}
 	}
-	streams := make([]string, len(cards))
-	for i, cd := range cards {
-		texts[i] = cd.Brief
+	for _, cd := range cards {
+		isSent := isSentinelCard(st, cd.ID)
+		stream := ""
 		// the card's own stream, for its named friend's restriction; a card the store does
 		// not know yet is left to the write step's refusal
 		if info, err := st.CardOf(context.Background(), cd.ID); err == nil && info.Primary != nil {
-			streams[i] = info.Primary.F("stream")
+			stream = info.Primary.F("stream")
 		}
-		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
-		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		heldRules := ""
+		if !isSent {
+			texts = append(texts, cd.Brief)
+			streams = append(streams, stream)
+			heldRules = cardRules(cd.Brief, rs).held
+			c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		}
+		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: heldRules, Needs: uniquify(briefNeeds(cd.Brief))})
 	}
-	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
-		return code
+	if len(texts) > 0 {
+		if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
+			return code
+		}
 	}
 	// a new BASE is held as add holds one: the sprint's base, outside the promotion
 	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
@@ -3248,6 +3337,17 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	step := store.BriefStep(req)
+	var extraWork []string
+	for _, bc := range req.Cards {
+		extraWork = append(extraWork, bc.ID)
+		extraWork = append(extraWork, bc.Needs...)
+		extraWork = append(extraWork, briefConsumers(bc.Brief)...)
+	}
+	if len(extraWork) > 0 {
+		step.Extras = func(*sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Work: extraWork}
+		}
+	}
 	replace := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
 	return a.runStep("brief", *c, st, step, stdout, stderr)
@@ -3567,12 +3667,82 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	code := a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	if code == 0 && op == "up" {
+		// a member's join makes its reader row when missing, as init and
+		// a clear do (ensureMemberReaders); the join already reported, so
+		// a failed make is left to the next join or clear, never a second
+		// result for this verb
+		_ = ensureMemberReaders(context.Background(), st)
+	}
+	return code
+}
+
+// resolveReaderNames is the reader verbs' names with the reader- prefix
+// added: a bare fleet member name (m1) names its member reader
+// (reader-m1) itself, and the verb says so in its line. memberOf says, per
+// resolved row, whether it is a member's reader (reader-<member> of a
+// fleet member). A name that is no member keeps its shape.
+// tla/ReaderTiers.tla EveryUpMemberIsAReader
+func resolveReaderNames(ctx context.Context, st *store.Store, names []string) ([]string, map[string]bool, error) {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	members := map[string]bool{}
+	for _, m := range snap.Members() {
+		members[m] = true
+	}
+	out := make([]string, 0, len(names))
+	memberOf := map[string]bool{}
+	for _, n := range names {
+		if strings.HasPrefix(n, sprint.ReaderPrefix) {
+			m, ok := strings.CutPrefix(n, sprint.ReaderPrefix)
+			out = append(out, n)
+			memberOf[n] = ok && members[m]
+			continue
+		}
+		if members[n] {
+			rn := sprint.ReaderPrefix + n
+			out = append(out, rn)
+			memberOf[rn] = true
+			continue
+		}
+		out = append(out, n)
+		memberOf[n] = false
+	}
+	return out, memberOf, nil
+}
+
+// ensureMemberReaders makes the reader row of every up fleet member the
+// readers table lacks (sprint.MemberReaderRows): init and a member's join
+// call it, a clear makes them through the shape it carries
+// (steps_clear.go ShapeOf). It writes nothing when every up member reads,
+// and nothing while the sprint has reader rows of its own: a seat that
+// declared readers (init --readers, reader add) named the set, and a
+// members-only sprint (init --members, the card's case) is the one with
+// no seat action to make.
+func ensureMemberReaders(ctx context.Context, st *store.Store) error {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return err
+	}
+	if len(snap.Readers.Rows()) > 0 {
+		return nil
+	}
+	missing := sprint.MemberReaderRows(snap)
+	if len(missing) == 0 {
+		return nil
+	}
+	if err := st.EnsureReaderTiers(ctx); err != nil {
+		return err
+	}
+	return st.AddReaders(ctx, missing, nil)
 }
 
 func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader add")
-	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is every tier a route serves")
 	names, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "reader add", err.Error())
@@ -3594,6 +3764,11 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	ctx := context.Background()
+	// a bare fleet member name names its member reader itself
+	var memberOf map[string]bool
+	if names, memberOf, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader add", err.Error())
+	}
 	if err := st.EnsureReaderTiers(ctx); err != nil {
 		return refuse(stderr, "reader add", err.Error())
 	}
@@ -3625,8 +3800,21 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
+	// reader add writes the row up: its beat is now and no hold keeps it
+	// away, so the ask may ask it with no reader up after it.
+	for _, n := range names {
+		_ = st.SetReaderAway(ctx, n, false, c.actor)
+		_, _ = st.ReaderBeat(ctx, n, "")
+	}
 	line := "READER-ADD OK readers=" + strings.Join(names, ",")
-	facts := map[string]any{"readers": names}
+	for _, n := range names {
+		word := "no"
+		if memberOf[n] {
+			word = "yes"
+		}
+		line += " member-reader=" + word
+	}
+	facts := map[string]any{"readers": names, "member_readers": memberOf}
 	if tiersSet {
 		word := sprint.ReaderTiersShown(tiers)
 		line += " tiers=" + word
@@ -3645,7 +3833,7 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 // nothing.
 func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader set")
-	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is every tier a route serves")
 	names, code := readerNames("reader set", args, stderr, fs)
 	if code != 0 {
 		return code
@@ -3659,6 +3847,9 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader set", err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader set", err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed("reader set", err, stderr)
@@ -3680,7 +3871,7 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 }
 
 // readerTiersArg parses --tiers. required refuses a call that omitted it.
-// The stored value is "" for the default (flash on a fleet reader, every tier on a friend's).
+// The stored value is "" for the default (every tier a route serves).
 // Nothing is written here.
 func readerTiersArg(verbName string, fs *flag.FlagSet, raw string, required bool, stderr io.Writer) (string, bool, int) {
 	set := false
@@ -3753,6 +3944,9 @@ func (a *app) cmdReaderHold(away bool, args []string, stdout, stderr io.Writer) 
 		return refuse(stderr, verbName, err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, verbName, err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed(verbName, err, stderr)
@@ -4507,4 +4701,20 @@ func (a *app) cmdCardBase(args []string, stdout, stderr io.Writer) int {
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			return sprint.CardBase(s, sprint.CardBaseReq{ID: id, Base: branch, OnOrigin: onOrigin, Who: c.actor})
 		}}, stdout, stderr)
+}
+
+// receiptContractCheck is a parser fence: an old local or forwarded server parser
+// rejects this flag before planning; a paired parser checks the required receipt.
+func receiptContractCheck(version, usage string) error {
+	u, err := cardcost.ParseUsageChecked(usage)
+	if err != nil {
+		return err
+	}
+	if version == "" && u.ReceiptVersion == 0 {
+		return nil
+	}
+	if version != "2" || u.ReceiptVersion != 2 {
+		return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
+	}
+	return nil
 }
