@@ -40,11 +40,18 @@ func TestSentinelTickLoadsRetainedDroppedTransitiveProducer(t *testing.T) {
 // installSentinelFixtureForge declares only this test's producer/consumer
 // observations. The command adapter is separately tested against a real local
 // bare origin; this store fixture never touches Git or a real forge.
-func installSentinelFixtureForge(h *harness, stopID string, producers, consumers []string) {
+func installSentinelFixtureForge(h *harness, stopID string, producers, consumers []string) func() {
+	producersMerged := false
+	observed := func() string {
+		if producersMerged {
+			return "fixture-observed-trunk"
+		}
+		return "fixture-trunk-before"
+	}
 	h.t.Helper()
 	for _, id := range producers {
 		c := h.snap().Work.Card(id)
-		h.setCard(sprint.Work, id, map[string]string{"head": "fixture-head-" + id, "brief": c.F("brief") + "\nREPO: /fixture/repo\n"})
+		h.setCard(sprint.Work, id, map[string]string{"brief": c.F("brief") + "\nREPO: /fixture/repo\n"})
 	}
 	for _, id := range consumers {
 		c := h.snap().Work.Card(id)
@@ -66,7 +73,7 @@ func installSentinelFixtureForge(h *harness, stopID string, producers, consumers
 			if p == nil {
 				continue
 			}
-			observation.Inclusions = append(observation.Inclusions, sprint.DevInclusion{Producer: id, Repo: swarm.ReadCardBase([]byte(p.F("brief"))).Repo, Stream: p.Row, Trunk: sprint.Trunk(s, p.Row), Head: p.F("head"), Containing: "fixture-observed-trunk", Included: true})
+			observation.Inclusions = append(observation.Inclusions, sprint.DevInclusion{Producer: id, Repo: swarm.ReadCardBase([]byte(p.F("brief"))).Repo, Stream: p.Row, Trunk: sprint.Trunk(s, p.Row), Head: p.F("head"), Containing: observed(), Included: producersMerged})
 		}
 		return []sprint.SentinelObservation{observation}
 	}
@@ -77,10 +84,11 @@ func installSentinelFixtureForge(h *harness, stopID string, producers, consumers
 			if c == nil || !sprint.ConsumerNeedsTrunk(s, c) {
 				continue
 			}
-			proofs = append(proofs, sprint.ConsumerMerge{Epoch: s.Epoch, Card: sprint.SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: sprint.StreamBranch(s, c.Row), Trunk: sprint.Trunk(s, c.Row), Observed: "fixture-observed-trunk", Merged: "fixture-merged-consumer", Success: true, ContainsObserved: true})
+			proofs = append(proofs, sprint.ConsumerMerge{Epoch: s.Epoch, Card: sprint.SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: sprint.StreamBranch(s, c.Row), Trunk: sprint.Trunk(s, c.Row), Observed: observed(), Merged: "fixture-merged-consumer", Success: true, ContainsObserved: true})
 		}
 		return proofs
 	}
+	return func() { producersMerged = true }
 }
 
 func resolveFixtureConsumers(h *harness, ids []string) Result {
@@ -116,4 +124,27 @@ func TestSentinelStoredPlacedProducerWithDroppedAuditIsNotWaived(t *testing.T) {
 	require.Empty(t, h.snap().Work.Card("consumer-after").F("work"), "consumer must remain undealt")
 	_, _, ok := sprint.SentinelDevReason(loaded, loaded.Work.Card("stop"), nil)
 	require.False(t, ok)
+}
+
+// Finish records the declared head before any review, preserving real read
+// evidence. It is scoped to these sentinel drivers, not the generic harness.
+func workWithSentinelFixtureHead(h *harness, member string, allowed []string) {
+	h.t.Helper()
+	for {
+		h.run(TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{Limit: 100}, Who: member}))
+		s := h.snap()
+		work := s.Fleet.Cell(member, sprint.Working)
+		if len(work) == 0 {
+			return
+		}
+		for _, c := range work {
+			primary := c.F("primary")
+			matched := false
+			for _, id := range allowed {
+				matched = matched || id == primary
+			}
+			require.True(h.t, matched, "unexpected fixture worker primary %s", primary)
+			h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}, Who: member, Head: "fixture-head-" + primary}))
+		}
+	}
 }

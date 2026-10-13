@@ -130,3 +130,26 @@ func TestDroppedNamedSentinelDoesNotWaiveAnIndependentProducer(t *testing.T) {
 	_, _, ok = SentinelDevReason(s, downstream, nil)
 	require.False(t, ok, "a dropped control producer does not waive independently named active work")
 }
+
+func TestGeneratedSentinelsDoNotAcquireOrAdvertiseManualHolds(t *testing.T) {
+	w := newWorld(t)
+	plan := w.must(Add(w.s, AddReq{Stream: "s", Count: 2, Every: 1, Last: true, Held: true}))
+	sentinels, ordinary := 0, 0
+	for _, unit := range plan.Units {
+		c := w.s.Work.Card(unit.Key)
+		if c == nil {
+			continue
+		}
+		if IsSentinel(c) {
+			sentinels++
+			require.Empty(t, c.F(FieldHeld))
+			require.NotContains(t, unit.Moved, "held until release")
+		} else {
+			ordinary++
+			require.NotEmpty(t, c.F(FieldHeld))
+			require.Contains(t, unit.Moved, "held until release")
+		}
+	}
+	require.Equal(t, 2, sentinels)
+	require.Equal(t, 2, ordinary)
+}

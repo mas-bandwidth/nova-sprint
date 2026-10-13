@@ -617,7 +617,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		if a.gate {
 			u.Moved = "sentinel " + u.Moved
 		}
-		if r.Held {
+		if r.Held && kind != "sentinel" {
 			u.Moved += "; held until release"
 		}
 		if gateSaid != "" {
