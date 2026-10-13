@@ -1179,8 +1179,10 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 // ---- 9b. git-identity ---------------------------------------------------------------------
 
 // DoctorGitIdentity is the machine's commit identity check: it reports the sprint row's
-// git_identity in use, and FAILs when none is configured (the landing refuses to commit) or
-// when its email equals the host's global user.email (the machine would commit as the owner).
+// git_identity in use; WARNs when the row is unapplied (the machine commits as
+// config.DefaultGitIdentity, the working default: the landing never refuses for it), and
+// FAILs when the identity does not parse or its email equals the host's global user.email
+// (the machine would commit as the owner).
 func DoctorGitIdentity(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaSeat, CheckGitIdentity
 	s := in.Snap
@@ -1192,11 +1194,15 @@ func DoctorGitIdentity(in DoctorInput) (out []DoctorCheck) {
 	switch {
 	case !ok:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
-			Evidence: "the sprint row names no git_identity: the landing refuses to commit",
+			Evidence: "the sprint row's git_identity does not parse as Name <email>: " + id,
 			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
 	case in.HostGitEmail != "" && parsed.Email == in.HostGitEmail:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
 			Evidence: fmt.Sprintf("git_identity email %s equals the host's global user.email: the machine would commit as the owner", parsed.Email),
+			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
+	case s.GitIdentityUnapplied:
+		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorWarn,
+			Evidence: fmt.Sprintf("git_identity default, sprint row unapplied: the machine commits as %s", id),
 			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
 	default:
 		return []DoctorCheck{okCheck(area, check, "identity", fmt.Sprintf("git_identity=%s", id))}

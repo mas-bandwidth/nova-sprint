@@ -8,13 +8,18 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
-// A setting's home: where its value lives (docs/SPEC-SPRINT.md section 11, "Working
-// defaults").
+// A setting's home: where its value lives (docs/SPEC-SPRINT.md section 13, Epochs and
+// clear, "Working defaults").
 const (
 	// HomeProp is a work-table property, epoch keyed: a clear leaves the new epoch with
-	// none, and the clear's set-defaults step writes the row's Value into it
-	// (store.Clear, SetDefaults; tla/MachineReady.tla SetDefaults).
+	// none, and the clear's set-defaults step writes the row's Value into it where it is
+	// still absent (store.Clear, SetDefaults; tla/MachineReady.tla SetDefaults).
 	HomeProp = "prop"
+	// HomeCarry is a work-table property that is the coordinator's choice, carried across
+	// a clear as shape: the set-defaults step writes the old epoch's value into the new
+	// one, and the row's Value only when the old epoch held none ("" is no default: the
+	// property stays absent, as sprint_base does until set --base).
+	HomeCarry = "carry"
 	// HomeBar is a field of nova-config's sprint row (config.SprintKey), not epoch
 	// keyed and never written by the sprint (nova-config apply would undo it): its
 	// default is read-side, an empty field read as the row's Value where ReadFill says
@@ -29,6 +34,19 @@ const (
 // ShapeCarried is a shape row's Value: the old epoch's, carried by the clear.
 const ShapeCarried = "carried"
 
+// The backlog alarms' working thresholds, for a threshold alarm never set (a clear never
+// turns an alarm off: the owner's standing rule, 2026-10-11, "never turn off alarms or
+// warnings"). They are the thresholds the seat's adoption of the alarms named on
+// 2026-10-07 (--alarm-review 120 --alarm-merging 60 --alarm-fleet 50 --alarm-ready on);
+// alarm_fleet 50 is also the percent TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds
+// pins.
+const (
+	AlarmReviewWorking  = "120"
+	AlarmMergingWorking = "60"
+	AlarmFleetWorking   = "50"
+	AlarmReadyWorking   = "on"
+)
+
 // Default is one setting's working default: its name (the property, the sprint row's
 // field, or the shape's JSON field), its home, its value, and why that value is the one
 // the sprint works with. ReadFill, for a bar, says an empty field is read as Value (its
@@ -42,8 +60,10 @@ type Default struct {
 // Defaults is every setting's working default, the single source (the owner, 2026-10-13:
 // "you need a post epoch increment set defaults step for clear. you advance epoch, and then
 // set defaults in the new epoch that need to be set. eg. reading true, git_identity etc.").
-// Every value is the accessor's own constant, so no second literal exists; the class test
-// TestEverySettingHasADeclaredDefault holds every field of SetReq, Bars and Shape to a row.
+// Every value is the accessor's own constant, so no second literal exists; the class tests
+// hold every flag of `set` (TestEverySetFlagHasADeclaredDefault), every field of SetReq and
+// Shape (TestEverySettingHasADeclaredDefault) and of Bars (TestEveryBarHasADeclaredDefault)
+// to a row.
 var Defaults = []Default{
 	// the work switches and their tiers
 	{Name: PropReadCards, Home: HomeProp, Value: ReadCardsOnWord, Why: "reads are dealt as read cards (the owner, 2026-10-13: \"default is TRUE\")"},
@@ -60,30 +80,45 @@ var Defaults = []Default{
 	{Name: PropReadyMax, Home: HomeProp, Value: ReadyMaxDefault.String(), Why: "a card ready over a minute pushes the seat"},
 	{Name: PropGoLanes, Home: HomeProp, Value: strconv.Itoa(LaneWidthDefault), Why: "one Go lane a machine"},
 	{Name: PropFriendIdle, Home: HomeProp, Value: FriendIdleDefault.String(), Why: "a friend idle this long is an alarm"},
+	{Name: PropFriendFinish, Home: HomeProp, Value: FriendFinishDefault.String(), Why: "a friend finishing nothing this long is judged idle by the pass"},
+	{Name: PropFriendStartMax, Home: HomeProp, Value: FriendStartMaxDefault.String(), Why: "a friend's card unstarted this long is levelled"},
+	{Name: PropPeggedBound, Home: HomeProp, Value: PeggedBoundDefault.String(), Why: "a member pegged with no card this long is a judgment"},
 	{Name: PropLandingStallBound, Home: HomeProp, Value: LandingStallBound.String(), Why: "the owner's stall watch: one minute"},
 	{Name: PropFriendStallAfter, Home: HomeProp, Value: FriendStallAfterDefault.String(), Why: "the friend stall ladder begins"},
 	{Name: PropFriendStallStep, Home: HomeProp, Value: FriendStallStepDefault.String(), Why: "each rung of the friend stall ladder"},
 	{Name: PropDriftCommits, Home: HomeProp, Value: strconv.Itoa(DriftCommitsDefault), Why: "the base may be this many commits ahead of dev"},
 	{Name: PropDriftHours, Home: HomeProp, Value: strconv.Itoa(DriftHoursDefault), Why: "the base's oldest commit not on dev may be this old"},
 	{Name: PropLowBalanceUsd, Home: HomeProp, Value: strconv.FormatFloat(LowBalanceUsdDefault, 'f', -1, 64), Why: "a provider below five dollars is low"},
-	// the backlog alarms: off until the coordinator sets a threshold
-	{Name: PropAlarmReview, Home: HomeProp, Value: AlarmOff, Why: "no review backlog alarm until set"},
-	{Name: PropAlarmMerging, Home: HomeProp, Value: AlarmOff, Why: "no merging backlog alarm until set"},
-	{Name: PropAlarmFleet, Home: HomeProp, Value: AlarmOff, Why: "no fleet-width alarm until set"},
-	{Name: PropAlarmReady, Home: HomeProp, Value: AlarmOff, Why: "no nothing-ready alarm until set"},
-	// nova-config's sprint row (store.Bars): read-side defaults, never written by clear
-	{Name: config.FieldGitIdentity, Home: HomeBar, Value: config.DefaultGitIdentity, ReadFill: true, Why: "an unapplied git_identity commits as the machine identity, never the host's"},
-	{Name: config.FieldMaxAttempts, Home: HomeBar, Value: strconv.Itoa(AttemptsDefault), Why: "attempts before the card is a judgment (empty reads AttemptsDefault)"},
-	{Name: config.FieldDecideBounce, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideReview, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideAttemptNoResult, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideAttemptNothingToDo, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideGrade, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideScoreBar, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideGateFlaky, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideGatePreexisting, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldDecideJudgment, Home: HomeBar, Value: "", Why: "no bar: nova-config declares none"},
-	{Name: config.FieldAnswerRulesOff, Home: HomeBar, Value: "", Why: "every rule answers"},
+	{Name: PropIdentical, Home: HomeProp, Value: strconv.Itoa(IdenticalDefault), Why: "two identical findings in a row stop a card"},
+	// the backlog alarms: never off after a clear (the owner, 2026-10-11: "never turn off
+	// alarms or warnings"); the feed alarm is on, the threshold alarms are the coordinator's
+	// and carried, at their working threshold when never set
+	{Name: PropAlarmReady, Home: HomeProp, Value: AlarmReadyWorking, Why: "nothing ready while cards wait is always told"},
+	{Name: PropAlarmReview, Home: HomeCarry, Value: AlarmReviewWorking, Why: "the coordinator's threshold, carried; 120 when never set"},
+	{Name: PropAlarmMerging, Home: HomeCarry, Value: AlarmMergingWorking, Why: "the coordinator's threshold, carried; 60 when never set"},
+	{Name: PropAlarmFleet, Home: HomeCarry, Value: AlarmFleetWorking, Why: "the coordinator's threshold, carried; 50 percent when never set"},
+	// the sprint's base: the coordinator's choice, carried; no default (start refuses
+	// without one, naming set --base)
+	{Name: PropSprintBase, Home: HomeCarry, Value: "", Why: "the branch every stream lands on, the coordinator's (set --base)"},
+	// the twins' brief directory: the machine's choice, carried; none falls to the environment
+	{Name: PropTwinBriefs, Home: HomeCarry, Value: "", Why: "where a twin's brief is written (else the environment, else the home)"},
+	// nova-config's sprint row (store.Bars): read-side defaults, never written by clear. Each
+	// Value is the default nova-config declares for the field (config.KindSprint), and an
+	// empty field of a row with a declared default is read as it (ReadFill), so an unapplied
+	// sprint row works as an applied default one (the cold reads of #190, 2026-10-13)
+	barRow(config.FieldGitIdentity, "an unapplied git_identity commits as the machine identity, never the host's"),
+	barRow(config.FieldMaxAttempts, "attempts before the card is a judgment"),
+	barRow(config.FieldDecideBounce, "the decide read's bounce bar"),
+	barRow(config.FieldDecideReview, "the decide read's review bar"),
+	barRow(config.FieldDecideAttemptNoResult, "empty routes nothing on the attempt decision"),
+	barRow(config.FieldDecideAttemptNothingToDo, "empty routes nothing on the attempt decision"),
+	barRow(config.FieldDecideGrade, "empty keeps the grade a hint"),
+	barRow(config.FieldDecideScoreBar, "empty records the scores and raises none"),
+	barRow(config.FieldDecideGateFlaky, "empty reruns nothing"),
+	barRow(config.FieldDecideGatePreexisting, "empty reclassifies nothing"),
+	barRow(config.FieldDecideJudgment, "empty applies nothing"),
+	barRow(config.FieldDecideBriefBar, "empty asks and reports only (read by add, not a Bars field)"),
+	barRow(config.FieldAnswerRulesOff, "empty answers by every rule"),
 	// the shape (Shape), carried by the clear; a-cleared-sprint-reads-with-no-seat-action owns it
 	{Name: "readers", Home: HomeShape, Value: ShapeCarried, Why: "the readers' rows"},
 	{Name: "reader_tiers", Home: HomeShape, Value: ShapeCarried, Why: "each reader's tiers"},
@@ -94,10 +129,10 @@ var Defaults = []Default{
 	{Name: "width", Home: HomeShape, Value: ShapeCarried, Why: "each member's width"},
 }
 
-// NotSettings is the fields of SetReq and Shape that hold no sprint-wide setting and so
-// have no Defaults row: a stream's own fields (stream set), the request's own words, and
-// the work a clear leaves behind (Shape.Streams). The class test refuses any other field
-// without a row.
+// NotSettings is the fields of SetReq and Shape, and the flags of `set`, that hold no
+// sprint-wide setting and so have no Defaults row: a stream's own fields (stream set), the
+// request's own words, a retired flag, and the work a clear leaves behind (Shape.Streams).
+// The class tests refuse any other field or flag without a row.
 var NotSettings = []string{
 	// SetReq: the streams and a stream's own fields (stream set <s> ...)
 	"SetReq.Streams", "SetReq.Attempts", "SetReq.Reason", "SetReq.Answers", "SetReq.LandProtected",
@@ -105,7 +140,26 @@ var NotSettings = []string{
 	"SetReq.Base", "SetReq.BaseChecked", "SetReq.Who",
 	// Shape: the streams are work, left behind by the clear
 	"Shape.Streams",
+	// set: retired 2026-10-12 (nova-config's sprint row max_attempts is the cap)
+	"set --attempts",
 }
+
+// NotSettingProps is the work, fleet and merge tables' properties that are the machine's
+// state, never a setting: indexes, episode stamps, records and the retired attempts cap. A
+// clear starts the new epoch with none of them (each is rebuilt as the sprint runs), and
+// TestEveryPropIsASettingOrState refuses a Prop constant in neither list.
+var NotSettingProps = []string{
+	PropAcceptStreamIndex, PropAskIndex, PropAskStreamIndex, PropDealIndex, PropStreamIndex,
+	PropAttempts,
+	PropDevSyncAt, PropDevSyncBaseLacks, PropDevSyncDevLacks, PropDevSyncSha,
+	PropFriendSync, PropIdleSaid, PropIdleSince, PropLandRefusal, PropLandingStallSaid, PropLandingStallSince,
+	PropLastLanding, PropMergeWindowReason, PropMergeWindowUntil, PropPromotedAt, PropPromotedSha,
+	PropCarriedMedians, PropCostReconcilePrefix, PropReadsWindow, PropStatusSeen,
+}
+
+// SetFlagProp is the property a flag of `set` writes where it is not the flag's own name
+// with '-' for '_'.
+var SetFlagProp = map[string]string{"base": PropSprintBase, "reads": PropReadsNeeded}
 
 // DefaultOf is the setting's row, ok false when it has none.
 func DefaultOf(name string) (Default, bool) {
@@ -122,30 +176,58 @@ func defaultValue(name string) string {
 	return d.Value
 }
 
+// clearedDefault is the value a setting absent from a cleared epoch's work table reads as
+// (epoch above 0): its row's Value, ok false when it has none or no Value. A cleared epoch
+// holds every row once its set-defaults step ran; before it (a start that landed inside the
+// clear, tla/MachineReady.tla Read, ReadersSeeWorking) the readers read the default, never
+// an absent off. The first epoch, never cleared, keeps each accessor's own absent case.
+func (s *Snapshot) clearedDefault(name string) (string, bool) {
+	if s == nil || s.Epoch == 0 {
+		return "", false
+	}
+	d, ok := DefaultOf(name)
+	if !ok || d.Value == "" || (d.Home != HomeProp && d.Home != HomeCarry) {
+		return "", false
+	}
+	return d.Value, true
+}
+
 // SetDefaults is the clear's set-defaults step (tla/MachineReady.tla SetDefaults): every
-// HomeProp row's Value written into the new epoch's work table, so no setting is ever
-// absent. A property already holding its Value is left as it is. old is the cleared
-// epoch's properties: a value there away from its default is not carried (advance, then
-// set defaults), and resets names each as "<name> was <v>, now <default>".
+// HomeProp row's Value, and every HomeCarry row's old-epoch value (else its Value), written
+// into the new epoch's work table where the property is still ABSENT, so no setting is ever
+// absent. A property present in the new epoch was written there after the advance (a set
+// that landed between the advance and this step) and is never overwritten
+// (SetSurvives). old is the cleared epoch's properties: a HomeProp value there away from its
+// default is not carried, and resets names each as "<name> was <v>, now <default>"; a
+// HomeCarry value is carried and named in no reset.
 func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 	var wrote []string
 	for _, d := range Defaults {
-		if d.Home != HomeProp {
+		var want string
+		switch d.Home {
+		case HomeProp:
+			want = d.Value
+			if was, ok := old[d.Name]; ok && was != d.Value {
+				resets = append(resets, d.Name+" was "+was+", now "+d.Value)
+			}
+		case HomeCarry:
+			want = d.Value
+			if was, ok := old[d.Name]; ok && was != "" {
+				want = was
+			}
+			if want == "" {
+				continue
+			}
+		default:
 			continue
 		}
-		if was, ok := old[d.Name]; ok && was != d.Value {
-			resets = append(resets, d.Name+" was "+was+", now "+d.Value)
-		}
-		var was string
-		var had bool
 		if s != nil && s.Work != nil {
-			was, had = s.Work.Prop(d.Name)
+			if _, had := s.Work.Prop(d.Name); had {
+				continue
+			}
 		}
-		if had && was == d.Value {
-			continue
-		}
-		p.Props = append(p.Props, PropWrite{Table: Work, Name: d.Name, Value: d.Value, Was: was, WasAbsent: !had})
-		wrote = append(wrote, d.Name+" "+d.Value)
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: d.Name, Value: want, WasAbsent: true})
+		wrote = append(wrote, d.Name+" "+want)
 	}
 	if len(wrote) > 0 {
 		p.Units = append(p.Units, Unit{Key: "defaults", Moved: "sprint defaults " + strings.Join(wrote, ", ")})
@@ -153,24 +235,21 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 	return p, resets
 }
 
-// SettingsLine is the one line `where` prints of the sprint's settings: each property
-// row's effective value, "(default)" when it holds its default, "(set)" when the
-// coordinator set it away from it, "(absent)" when the epoch holds none (an epoch cleared
-// before the set-defaults step existed).
-func SettingsLine(s *Snapshot) string {
+// SettingsLine is the SETTINGS line `where` prints (cmd/nova-sprint reads.go) of the work
+// table's properties props: each row's value, "(default)" when it holds its default, "(set)"
+// when the coordinator set it away from it, and "(absent)" when the epoch holds none, which
+// its accessor reads as its default: the first epoch after init (init writes none), a clear
+// that stopped before its set-defaults step (run clear again), or a store from before it.
+func SettingsLine(props map[string]string) string {
 	var parts []string
 	for _, d := range Defaults {
-		if d.Home != HomeProp {
+		if d.Home != HomeProp && d.Home != HomeCarry {
 			continue
 		}
-		var v string
-		var ok bool
-		if s != nil && s.Work != nil {
-			v, ok = s.Work.Prop(d.Name)
-		}
+		v, ok := props[d.Name]
 		switch {
 		case !ok:
-			parts = append(parts, d.Name+"="+d.Value+" (absent)")
+			parts = append(parts, d.Name+"="+orNone(d.Value)+" (absent)")
 		case v == d.Value:
 			parts = append(parts, d.Name+"="+v+" (default)")
 		default:
@@ -178,4 +257,32 @@ func SettingsLine(s *Snapshot) string {
 		}
 	}
 	return "SETTINGS " + strings.Join(parts, " ")
+}
+
+func orNone(v string) string {
+	if v == "" {
+		return "none"
+	}
+	return v
+}
+
+// barRow is a nova-config sprint row field's row: its declared default (config.KindSprint),
+// filled on read when the field is empty and a default is declared.
+func barRow(field, why string) Default {
+	v := sprintRowDefault(field)
+	return Default{Name: field, Home: HomeBar, Value: v, ReadFill: v != "", Why: why}
+}
+
+// sprintRowDefault is the default nova-config declares for the sprint row's field, "" when
+// it declares none.
+func sprintRowDefault(field string) string {
+	k, ok := config.Lookup(config.KindSprint)
+	if !ok {
+		return ""
+	}
+	f, ok := k.Field(field)
+	if !ok {
+		return ""
+	}
+	return f.Default
 }

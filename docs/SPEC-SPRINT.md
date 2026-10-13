@@ -5644,7 +5644,7 @@ The nova-wake unit: the tool left cmd/ (fleet/retired-tools.txt) and its binary 
 Four conditions of the whole sprint the tick keeps (its deadlines part plans them
 with the deadlines), each off until the coordinator sets its threshold with `set`,
 the work table's properties `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready`
-(a clear starts the next epoch with none):
+(a clear never turns one off: it sets alarm_ready on and carries the thresholds, at their working values when never set; section 13, working defaults):
 
 - review above its alarm: more primaries in review than `--alarm-review <n>`;
 - merging above its alarm: more primaries merging than `--alarm-merging <n>`;
@@ -7762,24 +7762,52 @@ sprint with its readers gone still tells the coordinator rather than idling.
 in the new epoch (the owner, 2026-10-13: "you advance epoch, and then set defaults
 in the new epoch that need to be set"). `sprint.Defaults`
 (internal/sprint/defaults.go) is the one table of every setting's default, each
-row a name, a home and a value: `prop` (a work-table property, epoch keyed:
-read_cards on, fleet and friends on, fleet and friends tiers all, rework_priority
-fix, unserved_tier_falls_to off, read_tier and reads default, each bound at its
-default duration or count, the four backlog alarms off), `bar` (a field of
-nova-config's sprint row) or `shape` (what restoreMembers carries). After
-restoreMembers and before the new epoch's READY record, one step by `clear`
-writes every `prop` row's value into the new epoch (store.setDefaults,
-sprint.SetDefaults), so no setting of a cleared epoch is ever absent and none of
-the old epoch's is carried: a value the old epoch held away from its default is
-reset, and `clear` names each on a `CLEAR DEFAULT <name> was <v>, now <default>`
-line (`--json`: `defaults`). The `bar` rows are nova-config's and a clear never writes them (an
-apply would undo it): their default is read-side, an empty field whose row says so
-read as the row's value (store.Bars.WithDefaults), so an unapplied `git_identity`
-commits as the machine identity, `nova-sprint <nova-sprint@example.invalid>`,
-never the host's. The class tests TestEverySettingHasADeclaredDefault and
-TestEveryBarHasADeclaredDefault hold every field of SetReq, Shape and Bars to a row
-or a listed non-setting. The model is tla/MachineReady.tla (SetDefaults,
-DefaultsAfterClear, NeverAbsent; witnesses leaveone and carryoff).
+row a name, a home and a value:
+
+- `prop`, a work-table property, epoch keyed: read_cards on, fleet and friends on,
+  fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
+  (OPEN, the owner's to state), read_tier and reads default, every bound at its
+  default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
+  friend_finish, friend_start_max, pegged_bound, landing_stall_bound, the friend
+  stall ladder, drift, low_balance_usd, identical), and alarm_ready on;
+- `carry`, a work-table property that is the coordinator's choice, carried across
+  the clear: the threshold alarms alarm_review, alarm_merging and alarm_fleet (at
+  their working thresholds 120, 60 and 50 when never set), sprint_base (no default:
+  start refuses without one, naming `set --base`) and twin_briefs;
+- `bar`, a field of nova-config's sprint row, at the default nova-config declares;
+- `shape`, what restoreMembers carries.
+
+After restoreMembers and before the new epoch's READY record, one step by `clear`
+writes each `prop` row's value and each `carry` row's old value (else its working
+value) into the new epoch where the property is still absent (store.setDefaults,
+sprint.SetDefaults). A property the new epoch already holds was set after the
+advance and is never overwritten. So no setting of a cleared epoch is absent, none
+of the old epoch's `prop` values is carried, and no clear ever turns an alarm off
+(the owner, 2026-10-11: "never turn off alarms or warnings"). `clear` names each
+`prop` value it reset on a `CLEAR DEFAULT <name> was <v>, now <default>` line
+(`--json`: `defaults`). A reader of a cleared epoch before its step (a start that
+landed inside the clear, or a clear that stopped before its step) reads each absent
+setting as its default, the alarms included. The first epoch, which init leaves
+with no property, keeps each accessor's own absent case (the alarms off until set).
+`where` prints one `SETTINGS` line: each property, its value and whether it is the
+default, set, or absent.
+
+The `bar` rows are nova-config's, and a clear never writes them (an apply would
+undo it). Their default is read-side: an empty field with a declared default
+(git_identity, max_attempts, decide_bounce 0.5, decide_review 0.3) is read as it
+on every store (store.Bars.WithDefaults, as the snapshot and the lander read it).
+An unapplied `git_identity` commits as `nova-sprint <nova-sprint@example.invalid>`,
+never the host's, and `doctor` warns `git_identity default, sprint row unapplied`.
+Only an identity that does not parse as `Name <email>` is refused.
+
+The class tests hold every flag of `set` (TestEverySetFlagHasADeclaredDefault),
+every `Prop*` constant (TestEveryPropIsASettingOrState), every field of SetReq and
+Shape (TestEverySettingHasADeclaredDefault), and every Bars field and sprint-row
+field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The model
+is tla/MachineReady.tla (SetDefaults, Set, Read; DefaultsAfterClear, SetSurvives,
+NeverAbsent, ReadersSeeWorking; witnesses leaveone, carryadvance, overwrite and
+nofallback).
+
 
 <a id="14-the-machine"></a>
 

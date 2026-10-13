@@ -648,4 +648,6 @@ MCMachineReadyBrokenReadyJudges.cfg	MCMachineReady.tla	invariant	ReadyNeverJudge
 MCMachineReadyBrokenStopReady.cfg	MCMachineReady.tla	invariant	StoppedOnlyFromRunning	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenNoStopStamp.cfg	MCMachineReady.tla	invariant	RanIsNotReady	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenLeaveOne.cfg	MCMachineReady.tla	invariant	NeverAbsent	ignore-terminal	machineready	required	-
-MCMachineReadyBrokenCarryOff.cfg	MCMachineReady.tla	invariant	DefaultsAfterClear	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenCarryAdvance.cfg	MCMachineReady.tla	invariant	DefaultsAfterClear	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenOverwrite.cfg	MCMachineReady.tla	invariant	SetSurvives	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenNoFallback.cfg	MCMachineReady.tla	invariant	ReadersSeeWorking	ignore-terminal	machineready	required	-

@@ -133,6 +133,9 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	// Advance, then set defaults: every working default written into the new epoch,
 	// so no setting is ever absent and none of the old epoch's is carried
 	// (tla/MachineReady.tla SetDefaults, DefaultsAfterClear, NeverAbsent).
+	if st.beforeDefaults != nil {
+		st.beforeDefaults(next)
+	}
 	if res.Defaults, err = next.setDefaults(ctx, old); err != nil {
 		return res, err
 	}
