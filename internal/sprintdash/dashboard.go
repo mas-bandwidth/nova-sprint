@@ -18,6 +18,7 @@ package sprintdash
 import (
 	"bytes"
 	"cmp"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,6 +87,8 @@ type Server struct {
 	Logo string
 	// Version is the binary's version, part of the build number.
 	Version string
+	// Command is what Read runs, logged on a slow read (>1s).
+	Command string
 	// Log takes a line per new read failure and a read-time summary a minute.
 	Log io.Writer
 	// Keepalive is the time between two keepalive comments on an idle /events stream;
@@ -105,19 +108,20 @@ type Server struct {
 	// readTimer is a test's read timeout in place of the clock's; nil is the clock.
 	readTimer func(time.Duration) (<-chan time.Time, func())
 
-	mu       sync.Mutex
-	polling  bool // Run is the one reader: a request answers from the copy only
-	reading  bool
-	began    time.Time // when the last read began; zero before the first
-	snap     snapshot
-	page     pageCopy       // the last good read as the page reads it (pageview.go)
-	pageRate pageThroughput // the page's throughput, counted as the live server counts it (pageview.go)
-	copy     *sprintCopy    // the last good read as the pull routes read it; nil before one
-	gen      uint64         // the good reads so far: an /events client sends each new one
-	changed  chan struct{}  // closed, and replaced, at each good read
-	samples  []sample
-	stats    readStats
-	fresh    freshness
+	mu        sync.Mutex
+	polling   bool // Run is the one reader: a request answers from the copy only
+	reading   bool
+	began     time.Time // when the last read began; zero before the first
+	pageTicks int
+	snap      snapshot
+	page      pageCopy       // the last good read as the page reads it (pageview.go)
+	pageRate  pageThroughput // the page's throughput, counted as the live server counts it (pageview.go)
+	copy      *sprintCopy    // the last good read as the pull routes read it; nil before one
+	gen       uint64         // the good reads so far: an /events client sends each new one
+	changed   chan struct{}  // closed, and replaced, at each good read
+	samples   []sample
+	stats     readStats
+	fresh     freshness
 }
 
 // snapshot is /api/sprint's body: the page reads data, throughput,
@@ -157,7 +161,16 @@ type readStats struct {
 	sum, max  time.Duration
 }
 
-func (s *Server) send(w http.ResponseWriter, ctype string, body []byte) {
+func (s *Server) send(w http.ResponseWriter, r *http.Request, ctype string, body []byte) {
+	w.Header().Set("Vary", "Accept-Encoding")
+	if r != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", ctype)
+		gw := gzip.NewWriter(w)
+		_, _ = gw.Write(body)
+		_ = gw.Close()
+		return
+	}
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 	_, _ = w.Write(body) // ignored: a page gone away asks again in a second
@@ -172,7 +185,7 @@ func (s *Server) Refresh() {
 	cacheOnly := s.polling && !s.began.IsZero()
 	s.mu.Unlock()
 	if !cacheOnly {
-		s.refresh(s.Every)
+		s.refresh(s.Every, true)
 	}
 }
 
@@ -184,8 +197,9 @@ type readResult struct {
 }
 
 // refresh reads the sprint when gap has passed since the last read began and no read is
-// running.
-func (s *Server) refresh(gap time.Duration) {
+// running. It decouples the page tick from slow background reads: at most one read runs
+// at a time, in the background, logging when it exceeds 1s.
+func (s *Server) refresh(gap time.Duration, wait bool) {
 	s.mu.Lock()
 	start := s.Now()
 	if s.reading || !s.began.IsZero() && start.Sub(s.began) < gap {
@@ -195,31 +209,61 @@ func (s *Server) refresh(gap time.Duration) {
 	s.reading, s.began = true, start
 	s.mu.Unlock()
 
-	done := make(chan readResult, 1)
+	readDone := make(chan readResult, 1)
 	go func() {
 		body, up, err := s.read()
 		if err == nil {
 			err = sprintJSON(body)
 		}
-		done <- readResult{body, up, err}
+		readDone <- readResult{body, up, err}
 	}()
-	timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
-	expired, stop := s.timer(timeout)
-	defer stop()
-	var res readResult
-	select {
-	case res = <-done:
-	case <-expired:
+
+	finish := func(res readResult) {
+		end := s.Now()
+		took := end.Sub(start)
+		if took > time.Second && s.Command != "" {
+			s.logf(end, "slow read: took %.3fs: %s", took.Seconds(), s.Command)
+		}
 		s.mu.Lock()
-		s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+		s.reading = false
+		s.record(start, end, res.body, res.up, res.err)
 		s.mu.Unlock()
-		res = <-done // reads never overlap: the next one waits for this one to end
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.reading = false
-	s.record(start, s.Now(), res.body, res.up, res.err)
+	waitForRead := func(firstDeadline <-chan time.Time) {
+		timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
+		expired, stop := s.timer(timeout)
+		defer stop()
+		select {
+		case res := <-readDone:
+			finish(res)
+		case <-firstDeadline:
+			go func() {
+				select {
+				case res := <-readDone:
+					finish(res)
+				case <-expired:
+					s.mu.Lock()
+					s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+					s.mu.Unlock()
+					res := <-readDone
+					finish(res)
+				}
+			}()
+		case <-expired:
+			s.mu.Lock()
+			s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+			s.mu.Unlock()
+			res := <-readDone
+			finish(res)
+		}
+	}
+
+	if wait {
+		waitForRead(nil)
+	} else {
+		waitForRead(time.After(300 * time.Millisecond))
+	}
 }
 
 // timer is the read timeout's: the clock's, or a test's (readTimer).
@@ -366,6 +410,13 @@ func (s *Server) logf(at time.Time, format string, args ...any) {
 	if s.Log != nil {
 		fmt.Fprintf(s.Log, "DASHBOARD %s %s\n", at.Format("2006-01-02 3:04:05 PM"), fmt.Sprintf(format, args...))
 	}
+}
+
+// PageTicks is how many times the page has ticked from cache.
+func (s *Server) PageTicks() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pageTicks
 }
 
 // Snapshot is /api/sprint's body now, with the build number, as the default release shows it.

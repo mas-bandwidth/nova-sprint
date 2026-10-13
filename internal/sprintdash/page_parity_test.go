@@ -75,7 +75,6 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	absent(strings.Join(st.Top[len(st.Top)-1], ""), "spent", "top streams with no spend: no message")
 	absent(served, ".panel.friends { display: none; }", "the Friends panel is shown (2026-10-13)")
 
-
 	// P1 logo, top left, inline data PNG: it follows the live page, the 384 px robot tile with its
 	// attributes (the card names the nova-sprint image; the owner to rule)
 	has(served, `<h1><img id="logo" class="logo-tile" src="`+liveLogoData+`" width="120" height="120" alt="nova-sprint"><span class="wordmark" id="wordmark">nova-sprint</span></h1>`, "P1")

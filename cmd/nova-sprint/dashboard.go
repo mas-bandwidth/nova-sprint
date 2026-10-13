@@ -131,15 +131,20 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 const dashboardNoStore = "the dashboard reads the sprint: --redis <addr> (or NOVA_SPRINT_REDIS, NOVA_REDIS_ADDR, or a login recorded by nova-sprint seat login), the sprint's server (NOVA_SPRINT_SERVER), or another dashboard (--pull <url>); with no Redis, --redis mem:<file> serves the in-memory twin kept in that file"
 
 // dashboardServer is the dashboard's one server: it reads the sprint as where --json
-// --cards does (whereJSON), or, given from (a puller), that dashboard's /api/sprint; each
+// --dashboard does (whereJSON), or, given from (a puller), that dashboard's /api/sprint; each
 // read and the freshness check go to log.
 func (a *app) dashboardServer(redis string, given bool, from string, every time.Duration, logo string, log io.Writer) *sprintdash.Server {
+	cmd := "nova-sprint where --json --cards --rows --archived"
+	if redis != "" && given {
+		cmd += " --redis " + redis
+	}
 	srv := &sprintdash.Server{
 		Read:    func() ([]byte, error) { return a.whereJSON(redis, given) },
 		Now:     a.now,
 		Every:   every,
 		Logo:    logo,
 		Version: version,
+		Command: cmd,
 		Log:     log,
 	}
 	if from != "" {
@@ -167,9 +172,6 @@ func dashboardUpstream(pull string) (string, error) {
 // whereJSON reads the sprint as `nova-sprint where --json --cards --rows --archived` does, in this
 // process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
 // store; --redis is handed on when the dashboard was given it, as where would have been.
-// The rows give each critical card its stream, so the critical path follows the page's
-// release (sprintdash.placed); the server drops them. The archived streams' rows come
-// too: the page hides them behind its one archived line (stream archive).
 func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
 	argv := []string{"where", "--json", "--cards", "--rows", "--archived"}
 	if given {

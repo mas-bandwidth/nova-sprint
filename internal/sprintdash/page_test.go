@@ -39,4 +39,3 @@ func TestTheFriendsTableIsNotHidden(t *testing.T) {
 	assert.NotContains(t, index, "hide-friends", "no hide-friends rule remains on the page")
 	assert.NotRegexp(t, `\.panel\.friends\s*\{\s*display:\s*none;?\s*\}`, index, "no CSS rule sets .panel.friends to display: none")
 }
-
