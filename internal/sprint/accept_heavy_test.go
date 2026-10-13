@@ -108,7 +108,7 @@ func TestAcceptHeavyRecordsTheCoordinatorsReadNotAReaders(t *testing.T) {
 		return res.Refused[0].Why
 	}
 	t.Run("one ok of two is refused without the heavy read", func(t *testing.T) {
-		assert.Contains(t, refused(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{id}}}), "needs ok from two different readers")
+		assert.Contains(t, refused(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{id}}}), "needs ok from two ok reads")
 	})
 	t.Run("the heavy read is refused without its evidence", func(t *testing.T) {
 		assert.Contains(t, refused(heavy(id, "", "")), "--evidence")

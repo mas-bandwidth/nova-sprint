@@ -359,7 +359,7 @@ func ReadCardExtras(s *Snapshot) []string {
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
 			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
-			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next) {
+			for _, id := range ReadCardGenIDs(c.ID, attempt, name, max(next, 1)) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
 				}

@@ -31,6 +31,11 @@ func TestTwoOkReadsAtTheHeadAcceptWithAG1(t *testing.T) {
 	// Ensure stream s1 row exists on work and merge tables
 	require.NoError(t, h.m.RowsAdd(h.ctx, h.st.Names.Table(sprint.Work), []string{"s1"}))
 	require.NoError(t, h.m.RowsAdd(h.ctx, h.st.Names.Table(sprint.Merge), []string{"s1"}))
+	h.poke(sprint.Merge, ntable.BatchMemberEntry{
+		ID: sprint.CtlID("s1"), Expect: &ntable.MemberExpect{Absent: true},
+		Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Ctl, Score: 0},
+		Set: map[string]string{"kind": "stream", "stream": "s1"},
+	})
 
 	head := "fa6d1991"
 

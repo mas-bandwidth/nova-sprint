@@ -355,7 +355,7 @@ func TestJudgmentsReachTheInboxAndTheCoordinatorAnswers(t *testing.T) {
 	ta.ok("ask")
 	code, _, errs = ta.do("accept s1-1")
 	require.Equal(t, 1, code, "accept with no reads: %d %s", code, errs)
-	require.Contains(t, errs, "REFUSED s1-1: needs ok from two different readers", "accept with no reads: %d %s", code, errs)
+	require.Contains(t, errs, "REFUSED s1-1: needs ok from two ok reads", "accept with no reads: %d %s", code, errs)
 	require.Contains(t, errs, "ACCEPT FAILED", "accept with no reads: %d %s", code, errs)
 	ta.clean()
 }

@@ -42,5 +42,5 @@ func TestAcceptReadOkRefusesOneOkRead(t *testing.T) {
 	require.Contains(t, ta.ok("card s1-1"), "stream s1   review", "s1-1 after accept --read-ok with one ok read")
 	code, out, errs := ta.do("accept s1-1")
 	require.NotEqual(t, 0, code, "accept s1-1 with one ok read: exit %d\n%s%s", code, out, errs)
-	require.Contains(t, out+errs, "needs ok from two different readers", "accept s1-1 with one ok read: exit %d\n%s%s", code, out, errs)
+	require.Contains(t, out+errs, "needs ok from two ok reads", "accept s1-1 with one ok read: exit %d\n%s%s", code, out, errs)
 }
