@@ -184,6 +184,8 @@ nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--jso
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint reads --review [--stream <s>] [--json]
+nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
+# `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
