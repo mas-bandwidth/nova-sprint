@@ -672,7 +672,7 @@ func TestTickKeptList(t *testing.T) {
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
 		NBaseCIRed, NMirrorNeed, NMemberPegged,
-		NStopMemberDown, NStopPinWaits, NFriendStalled, NNeedsGone, NHoldNoCause}
+		NStopMemberDown, NStopPinWaits, NFriendStalled, NNeedsGone, NHoldNoCause, NMemberIdleReaps}
 	got := []string{NRemindFailed}
 	for typ := range TickDecisions {
 		got = append(got, typ)

@@ -22,11 +22,18 @@ import (
 //     a doctor check on that member (doctor:<check>). The tick ends the hold in the step
 //     that sees the cause end (holdCauseClear): the judgment answered or retired, or the
 //     doctor's pass of that check on that member recorded after the hold
-//     (DoctorPassPlan). The release is a line of the log, "released: cause <x> resolved",
-//     addressed to the seat (NHoldReleased); a member that beats is up in that step.
+//     (DoctorPassPlan). A check passes on a member only when no failing line of it keeps
+//     the hold (doctorFailKeeps): a line naming the member, or a global one (all, identity,
+//     hook, judgments, a provider, a tier, a route) that fails for every member at once;
+//     only a line naming another member is that member's alone. The release is a line of
+//     the log, "released: cause <x> resolved", addressed to the seat (NHoldReleased); a
+//     member that beats is up in that step.
 //     A waited judgment is parked, not resolved: while its wait stands (an acknowledgement
 //     with a review time), and once it is raised again when the wait runs out, the hold
-//     stays (judgmentLive).
+//     stays (judgmentLive). The machine's idle-reap judgment is a condition the tick keeps
+//     (idleReapConds, TickDecisions), so its wait parks it the same way and the tick raises
+//     it again when the wait runs out; every answer a judgment lists works on the state it
+//     leaves.
 //   - A hold with no live cause still holds, and is never silent: every HoldNoCauseEvery it
 //     stands the tick raises one judgment to the seat, "<m> held 2h by <who> with no
 //     cause: release or name a cause" (holdNoCauseConds), the period's own, the last one
@@ -565,6 +572,31 @@ func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 	}
 }
 
+// idleReapConds is the condition the tick keeps for each of the machine's idle-reap holds
+// whose judgment stands (open, or waited): the judgment the hold raised, keyed by its type
+// and subject, so the open one is never written twice; a wait parks it (TickDecisions,
+// Wait) and when the wait runs out the tick raises it again with these words (notify),
+// the hold standing throughout (judgmentLive). An answered judgment is no condition: the
+// tick ends the hold in that step (holdCauseClear) and raises nothing in its place. The
+// cold read of #206: the judgment offered a wait that Wait refused, as its type was not
+// one the tick keeps.
+func idleReapConds(s *Snapshot) []cond {
+	var out []cond
+	for _, m := range s.Members() {
+		ctl := s.MemberCtl(m)
+		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldCause) != CauseIdleReap {
+			continue
+		}
+		if !judgmentLive(s, "", NMemberIdleReaps, StreamSubject(MemberSubject(m))) {
+			continue
+		}
+		routes := strings.ReplaceAll(ctl.F(FieldIdleReapRoutes), ",", " or ")
+		out = append(out, cond{typ: NMemberIdleReaps, stream: MemberSubject(m), streamLevel: true, decisions: TickDecisions[NMemberIdleReaps],
+			what: fmt.Sprintf("%s held: %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to), and so does a rest of %s for no model call: the tick releases it", m, ctl.F(FieldHeldReason), routes)})
+	}
+	return out
+}
+
 // DoctorPass is one doctor check that passed on a member held on it.
 type DoctorPass struct {
 	Member string `json:"member"`
@@ -572,16 +604,17 @@ type DoctorPass struct {
 }
 
 // DoctorPasses is each member held on a doctor cause whose check this run measured and
-// found passing on it: no FAIL line of the check names it (or names all), and for
-// member-env its host answered the probe in full. A check not run, or not measured, is no
-// pass (tla/HoldCause.tla Resolve).
+// found passing on it: no failing line of the check keeps the hold (doctorFailKeeps), and
+// for member-env its host answered the probe in full. A check not run, or not measured, is
+// no pass (tla/HoldCause.tla Doctor, DoctorPassIsMeasured).
 func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 	s := in.Snap
 	if s == nil || s.Fleet == nil {
 		return nil
 	}
+	members := s.Members()
 	var out []DoctorPass
-	for _, m := range s.Members() {
+	for _, m := range members {
 		ctl := s.MemberCtl(m)
 		if ctl == nil || ctl.F("held") == "" {
 			continue
@@ -596,7 +629,7 @@ func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 				continue
 			}
 			ran = true
-			if (c.Subject == m || c.Subject == "all") && (c.Status == DoctorFail || strings.HasPrefix(c.Evidence, "not measured")) {
+			if doctorFailKeeps(members, m, c) {
 				failed = true
 			}
 		}
@@ -609,6 +642,19 @@ func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
 		}
 	}
 	return out
+}
+
+// doctorFailKeeps says a line of the check keeps m's hold on it: it is a FAIL or a "not
+// measured" line, and it names m or it names no fleet member at all (all, identity, hook,
+// judgments, a provider, a tier, a route, a reader: the check's global subjects, which
+// fail for every member at once). Only a failing line that names another member is that
+// member's alone (the cold read of #206: a hold on doctor:git-identity was released while
+// its identity line failed, because the line named "identity", not the member).
+func doctorFailKeeps(members []string, m string, c DoctorCheck) bool {
+	if c.Status != DoctorFail && !strings.HasPrefix(c.Evidence, "not measured") {
+		return false
+	}
+	return c.Subject == m || !slices.Contains(members, c.Subject)
 }
 
 // DoctorPassPlan records each pass on its member's control card (FieldDoctorPassed, the

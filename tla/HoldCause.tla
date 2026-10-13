@@ -2,21 +2,34 @@
 (***************************************************************************)
 (* A coordinator's hold carries its cause, and the tick ends it when the  *)
 (* cause ends (internal/sprint/hold_cause.go: holdCauseClear,             *)
-(* holdNoCauseConds, idleReapHolds, noModelCallRests, ctlWritten;         *)
-(* steps_clear.go ShapeOf/RestoreShape; route_rest.go RestsDue; hold.go   *)
-(* HoldNames with HoldReq.Cause; docs/SPEC-SPRINT.md section 11, hold).   *)
-(* The owner, 2026-10-13: mini-m5, the fastest machine, sat held about    *)
-(* ten hours on a free-text hold whose cause had been found to be the     *)
-(* providers, fleet-wide, and was never released.                         *)
+(* holdNoCauseConds, idleReapHolds, idleReapConds, noModelCallRests,      *)
+(* ctlWritten, DoctorPasses, doctorFailKeeps; steps_clear.go              *)
+(* ShapeOf/RestoreShape; route_rest.go RestsDue; hold.go HoldNames with   *)
+(* HoldReq.Cause; steps_ack.go Wait; docs/SPEC-SPRINT.md section 11,      *)
+(* hold). The owner, 2026-10-13: mini-m5, the fastest machine, sat held   *)
+(* about ten hours on a free-text hold whose cause had been found to be   *)
+(* the providers, fleet-wide, and was never released.                     *)
 (*                                                                       *)
-(* held[m]: "none"; "cause", a hold naming a cause (a judgment, a doctor *)
-(* check on that member); "nocause", a hold with none, whoever made it    *)
-(* (a mark is no cause); "idle", the machine's hold of a member whose     *)
-(* takes ended with no model call on the route (its cause is the          *)
-(* judgment it raised, and the route it names). cause[m] is that cause:   *)
-(* "open" until the judgment is answered or retired (a wait parks it and  *)
-(* is no answer: no action here resolves on a wait), or the doctor check  *)
-(* passes on the member; then "resolved".                                 *)
+(* held[m]: "none"; "cause", a hold naming a judgment; "doctor", a hold   *)
+(* naming a doctor check on that member; "nocause", a hold with none,     *)
+(* whoever made it (a mark is no cause); "idle", the machine's hold of a  *)
+(* member whose takes ended with no model call on the route (its cause is *)
+(* the judgment it raised, and the route it names). cause[m] is that      *)
+(* cause: "open" until the judgment is answered or retired, or the doctor *)
+(* check passes on the member; then "resolved".                           *)
+(*                                                                       *)
+(* parked is the members whose judgment the seat waited (Wait): the       *)
+(* judgment is closed into an acknowledgement with a review time, the     *)
+(* cause stands (judgmentLive: a wait parks, it never answers), and the   *)
+(* tick raises the judgment again when the wait runs out (WaitEnds;       *)
+(* notify, idleReapConds). A parked judgment is not open to answer.       *)
+(*                                                                       *)
+(* line[m] is the doctor check's line on m (pass or fail) and global its  *)
+(* line on a subject that is no member (all, identity, hook, judgments, a *)
+(* provider, a tier, a route), which fails for every member at once. The  *)
+(* doctor's run (Doctor) resolves a doctor hold only when both pass       *)
+(* (DoctorPasses, doctorFailKeeps): another member's failing line is      *)
+(* that member's alone, so it is not modelled as keeping m's hold.        *)
 (*                                                                       *)
 (* age[m] counts the ticks a cause-less hold has stood, saturating at    *)
 (* MaxAge; Bound ticks stand for the two hours of the report. reported[m] *)
@@ -36,7 +49,7 @@
 (* after that member's first reap (a dead provider: the route rests, the  *)
 (* member is not held, the seat is told). A member is held for its reaps  *)
 (* only when it reaped Need times since its mark, alone, on a route       *)
-(* another member served after its first reap, and the route rests not;  *)
+(* another member served after its first reap, and the route rests not;   *)
 (* a rest of the route ends that hold in the same tick.                   *)
 (*                                                                       *)
 (* busy is the members whose control card another unit of the coming     *)
@@ -46,9 +59,10 @@
 (* only fault holds), so a deferral is never two ticks long.              *)
 (*                                                                       *)
 (* Clear: every hold crosses with its cause (Shape.HeldFields); the       *)
-(* judgments of the epoch are retired, so an idle hold's cause resolves;  *)
-(* a cause-less hold's clock begins again (its held stamp is the new      *)
-(* epoch's); the window and the rest are the old epoch's and are gone.    *)
+(* judgments of the epoch are retired, so an idle hold's cause resolves   *)
+(* (parked or open); a cause-less hold's clock begins again (its held     *)
+(* stamp is the new epoch's); the window and the rest are the old epoch's *)
+(* and are gone; a doctor cause stands until the doctor passes it again.  *)
 (*                                                                       *)
 (* phase is "env" after an outside step and "ticked" after the tick, so  *)
 (* the safety rules are read at the tick's end, where the code states    *)
@@ -64,20 +78,35 @@
 (*  "restkeeps"    - a rest of the route for no model call leaves the     *)
 (*                   idle hold placed for it (the cold read of #206):     *)
 (*                   NoHoldForARestedRoute fails.                         *)
+(*  "globalpass"   - the doctor passes a member on its own line alone,    *)
+(*                   the check's global line failing (the second cold     *)
+(*                   read of #206, P1: a hold on doctor:git-identity      *)
+(*                   released while the identity line failed):            *)
+(*                   DoctorPassIsMeasured fails.                          *)
+(*  "waitresolves" - a wait answers the judgment, so the tick ends the    *)
+(*                   hold while the judgment is only parked (the second   *)
+(*                   cold read of #206, P2: the idle-reap judgment's wait *)
+(*                   had no park and no return): AParkedJudgmentKeepsIts  *)
+(*                   Hold fails.                                          *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Members, Bound, MaxAge, Need, Broken
 
-VARIABLES held, cause, age, reported, reaps, count, fresh, servedAfter, rested, busy, deferred, phase
+VARIABLES held, cause, parked, line, global, age, reported, reaps, count, fresh, servedAfter, rested, busy, deferred, phase
 
-vars == <<held, cause, age, reported, reaps, count, fresh, servedAfter, rested, busy, deferred, phase>>
+vars == <<held, cause, parked, line, global, age, reported, reaps, count, fresh, servedAfter, rested, busy, deferred, phase>>
 
-Holds == {"none", "cause", "nocause", "idle"}
+Holds == {"none", "cause", "doctor", "nocause", "idle"}
+
+Lines == {"pass", "fail"}
 
 TypeOK ==
     /\ held \in [Members -> Holds]
     /\ cause \in [Members -> {"none", "open", "resolved"}]
+    /\ parked \subseteq Members
+    /\ line \in [Members -> Lines]
+    /\ global \in Lines
     /\ age \in [Members -> 0..MaxAge]
     /\ reported \in [Members -> 0..MaxAge]
     /\ reaps \subseteq Members
@@ -92,6 +121,9 @@ TypeOK ==
 Init ==
     /\ held = [m \in Members |-> "none"]
     /\ cause = [m \in Members |-> "none"]
+    /\ parked = {}
+    /\ line = [m \in Members |-> "pass"]
+    /\ global = "pass"
     /\ age = [m \in Members |-> 0]
     /\ reported = [m \in Members |-> 0]
     /\ reaps = {}
@@ -105,13 +137,24 @@ Init ==
 
 Win == <<reaps, count, fresh, servedAfter, rested>>
 
-\* the coordinator holds a member and names its cause: the cause is open
+Doc == <<line, global>>
+
+\* the coordinator holds a member and names a judgment as its cause: the cause is open
 HoldWithCause(m) ==
     /\ held[m] = "none"
     /\ held' = [held EXCEPT ![m] = "cause"]
     /\ cause' = [cause EXCEPT ![m] = "open"]
     /\ phase' = "env"
-    /\ UNCHANGED <<age, reported, busy, deferred>> /\ UNCHANGED Win
+    /\ UNCHANGED <<parked, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
+
+\* the coordinator holds a member on a doctor check: the cause is open until the doctor
+\* passes the member
+HoldOnDoctor(m) ==
+    /\ held[m] = "none"
+    /\ held' = [held EXCEPT ![m] = "doctor"]
+    /\ cause' = [cause EXCEPT ![m] = "open"]
+    /\ phase' = "env"
+    /\ UNCHANGED <<parked, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
 
 \* a hold with no cause, the coordinator's or a mark's: its clock starts
 HoldNoCause(m) ==
@@ -120,24 +163,69 @@ HoldNoCause(m) ==
     /\ age' = [age EXCEPT ![m] = 0]
     /\ reported' = [reported EXCEPT ![m] = 0]
     /\ phase' = "env"
-    /\ UNCHANGED <<cause, busy, deferred>> /\ UNCHANGED Win
+    /\ UNCHANGED <<cause, parked, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
 
-\* the cause ends: the judgment is answered or retired, or the doctor check passes
+\* the judgment that is the cause is answered or retired: only an open one, never a
+\* parked one (a wait closes it into an acknowledgement; nothing answers that)
 Resolve(m) ==
+    /\ held[m] \in {"cause", "idle"}
     /\ cause[m] = "open"
+    /\ m \notin parked
     /\ cause' = [cause EXCEPT ![m] = "resolved"]
     /\ phase' = "env"
-    /\ UNCHANGED <<held, age, reported, busy, deferred>> /\ UNCHANGED Win
+    /\ UNCHANGED <<held, parked, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
 
-\* the coordinator releases a hold by hand (unhold)
+\* the seat waits the judgment that is the cause: it is parked until its time, and the
+\* cause stands (the bug: the wait is taken for an answer)
+Wait(m) ==
+    /\ held[m] \in {"cause", "idle"}
+    /\ cause[m] = "open"
+    /\ m \notin parked
+    /\ parked' = parked \cup {m}
+    /\ cause' = IF Broken = "waitresolves" THEN [cause EXCEPT ![m] = "resolved"] ELSE cause
+    /\ phase' = "env"
+    /\ UNCHANGED <<held, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
+
+\* the wait runs out: the tick raises the judgment again, open to answer
+WaitEnds(m) ==
+    /\ m \in parked
+    /\ parked' = parked \ {m}
+    /\ phase' = "env"
+    /\ UNCHANGED <<held, cause, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
+
+\* the doctor check's line on m, or its global line, changes; measured only while some
+\* member is held on the check (the check is read only then)
+LineFlips(m) ==
+    /\ \E d \in Members : held[d] = "doctor"
+    /\ line' = [line EXCEPT ![m] = IF line[m] = "pass" THEN "fail" ELSE "pass"]
+    /\ phase' = "env"
+    /\ UNCHANGED <<held, cause, parked, global, age, reported, busy, deferred>> /\ UNCHANGED Win
+
+GlobalFlips ==
+    /\ \E d \in Members : held[d] = "doctor"
+    /\ global' = IF global = "pass" THEN "fail" ELSE "pass"
+    /\ phase' = "env"
+    /\ UNCHANGED <<held, cause, parked, line, age, reported, busy, deferred>> /\ UNCHANGED Win
+
+\* the doctor runs the check: a member held on it is passed, its cause resolved, when its
+\* own line and the global line both pass (the bug: its own line alone)
+Passes(m) == line[m] = "pass" /\ (global = "pass" \/ Broken = "globalpass")
+Doctor ==
+    /\ \E m \in Members : held[m] = "doctor" /\ cause[m] = "open"
+    /\ cause' = [m \in Members |-> IF held[m] = "doctor" /\ cause[m] = "open" /\ Passes(m) THEN "resolved" ELSE cause[m]]
+    /\ phase' = "env"
+    /\ UNCHANGED <<held, parked, age, reported, busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
+
+\* the coordinator releases a hold by hand (unhold): a parked judgment of it is closed
 Unhold(m) ==
     /\ held[m] # "none"
     /\ held' = [held EXCEPT ![m] = "none"]
     /\ cause' = [cause EXCEPT ![m] = "none"]
+    /\ parked' = parked \ {m}
     /\ age' = [age EXCEPT ![m] = 0]
     /\ reported' = [reported EXCEPT ![m] = 0]
     /\ phase' = "env"
-    /\ UNCHANGED <<busy, deferred>> /\ UNCHANGED Win
+    /\ UNCHANGED <<busy, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
 
 \* a take of an up member on the route ends with no result and no model call
 Reap(m) ==
@@ -148,7 +236,7 @@ Reap(m) ==
     /\ count' = [count EXCEPT ![m] = count[m] + 1]
     /\ fresh' = [fresh EXCEPT ![m] = IF fresh[m] < Need THEN fresh[m] + 1 ELSE Need]
     /\ phase' = "env"
-    /\ UNCHANGED <<held, cause, age, reported, servedAfter, rested, busy, deferred>>
+    /\ UNCHANGED <<held, cause, parked, age, reported, servedAfter, rested, busy, deferred>> /\ UNCHANGED Doc
 
 \* a take of up member o on the route ends ok: it serves every member that reaped
 \* before it, and no member that reaps after it
@@ -158,7 +246,7 @@ Ok(o) ==
     /\ \E m \in reaps \ {o} : o \notin servedAfter[m]
     /\ servedAfter' = [m \in Members |-> IF m \in reaps /\ m # o THEN servedAfter[m] \cup {o} ELSE servedAfter[m]]
     /\ phase' = "env"
-    /\ UNCHANGED <<held, cause, age, reported, reaps, count, fresh, rested, busy, deferred>>
+    /\ UNCHANGED <<held, cause, parked, age, reported, reaps, count, fresh, rested, busy, deferred>> /\ UNCHANGED Doc
 
 \* another unit of the coming tick writes m's control card, never two ticks running
 CtlWrite(m) ==
@@ -166,7 +254,7 @@ CtlWrite(m) ==
     /\ m \notin deferred
     /\ busy' = busy \cup {m}
     /\ phase' = "env"
-    /\ UNCHANGED <<held, cause, age, reported, deferred>> /\ UNCHANGED Win
+    /\ UNCHANGED <<held, cause, parked, age, reported, deferred>> /\ UNCHANGED Win /\ UNCHANGED Doc
 
 \* the window slides past every end it held, and the route's rest ends with it
 WindowEnds ==
@@ -177,14 +265,15 @@ WindowEnds ==
     /\ servedAfter' = [m \in Members |-> {}]
     /\ rested' = FALSE
     /\ phase' = "env"
-    /\ UNCHANGED <<held, cause, age, reported, busy, deferred>>
+    /\ UNCHANGED <<held, cause, parked, age, reported, busy, deferred>> /\ UNCHANGED Doc
 
 \* a clear: every hold crosses with its cause; the epoch's judgments are retired, so an
-\* idle hold's cause resolves; a cause-less hold's clock begins again; the window and
-\* the rest are gone
+\* idle hold's cause resolves, parked or open; a cause-less hold's clock begins again;
+\* the window and the rest are gone; a doctor cause stands
 Clear ==
     /\ \E m \in Members : held[m] # "none"
     /\ cause' = [m \in Members |-> IF held[m] = "idle" THEN "resolved" ELSE cause[m]]
+    /\ parked' = {m \in parked : held[m] # "idle"}
     /\ age' = [m \in Members |-> 0]
     /\ reported' = [m \in Members |-> 0]
     /\ reaps' = {}
@@ -193,7 +282,7 @@ Clear ==
     /\ servedAfter' = [m \in Members |-> {}]
     /\ rested' = FALSE
     /\ phase' = "env"
-    /\ UNCHANGED <<held, busy, deferred>>
+    /\ UNCHANGED <<held, busy, deferred>> /\ UNCHANGED Doc
 
 \* the route rests now for no model call: two or more members reaped on it, or one
 \* member reaped Need times and no one served it after that member's first reap
@@ -211,11 +300,11 @@ HoldsForReaps(m) ==
 \* the tick ends m's hold: its cause resolved, or its route rests for no model call
 Releases(m) ==
     /\ Broken # "holdleaks"
-    /\ \/ held[m] \in {"cause", "idle"} /\ cause[m] = "resolved"
+    /\ \/ held[m] \in {"cause", "doctor", "idle"} /\ cause[m] = "resolved"
        \/ held[m] = "idle" /\ RestNow /\ Broken # "restkeeps"
 
 \* the tick, every member at once; a member whose card another unit writes this tick
-\* waits for the next
+\* waits for the next; a release closes the parked judgment of the hold it ends
 Tick ==
     /\ phase' = "ticked"
     /\ rested' = RestNow
@@ -230,6 +319,7 @@ Tick ==
                    IF held'[m] = "none" THEN "none"
                    ELSE IF held[m] = "none" /\ held'[m] = "idle" THEN "open"
                    ELSE cause[m]]
+    /\ parked' = {m \in parked : held'[m] # "none"}
     /\ fresh' = [m \in Members |-> IF held[m] = "none" /\ held'[m] = "idle" THEN 0 ELSE fresh[m]]
     /\ age' = [m \in Members |->
                  IF held[m] = "nocause" THEN IF age[m] < MaxAge THEN age[m] + 1 ELSE MaxAge
@@ -239,10 +329,13 @@ Tick ==
                         THEN age'[m] \div Bound
                       ELSE IF held[m] = "nocause" THEN reported[m]
                       ELSE 0]
-    /\ UNCHANGED <<reaps, count, servedAfter>>
+    /\ UNCHANGED <<reaps, count, servedAfter>> /\ UNCHANGED Doc
 
 Next ==
-    \/ \E m \in Members : HoldWithCause(m) \/ HoldNoCause(m) \/ Resolve(m) \/ Unhold(m) \/ Reap(m) \/ Ok(m) \/ CtlWrite(m)
+    \/ \E m \in Members : HoldWithCause(m) \/ HoldOnDoctor(m) \/ HoldNoCause(m) \/ Resolve(m) \/ Wait(m) \/ WaitEnds(m)
+                          \/ LineFlips(m) \/ Unhold(m) \/ Reap(m) \/ Ok(m) \/ CtlWrite(m)
+    \/ GlobalFlips
+    \/ Doctor
     \/ WindowEnds
     \/ Clear
     \/ Tick
@@ -253,7 +346,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
 (* but one whose card another unit wrote this tick (deferred, one tick).    *)
 NoHoldOutlivesItsCause ==
     phase = "ticked" => \A m \in Members :
-        (held[m] \in {"cause", "idle"} /\ cause[m] = "resolved") => m \in deferred
+        (held[m] \in {"cause", "doctor", "idle"} /\ cause[m] = "resolved") => m \in deferred
 
 (* Safety: at the tick's end no idle hold stands on a route that rests for  *)
 (* no model call (the route's fault after all), but a deferred one.        *)
@@ -273,13 +366,24 @@ RouteFaultRests ==
         /\ (Cardinality(reaps) >= 2 => rested)
         /\ \A m \in Members : DeadAlone(m) => rested
 
+(* Safety: a parked judgment is the live cause of a standing hold: a wait   *)
+(* parks, it never answers, and the hold stands until the judgment is       *)
+(* raised again and answered.                                               *)
+AParkedJudgmentKeepsItsHold ==
+    \A m \in parked : held[m] \in {"cause", "idle"} /\ cause[m] = "open"
+
 (* Action: the machine holds a member for its reaps only when it reaps      *)
 (* alone on a route another member served after its first reap, and the    *)
 (* route does not rest: a route's fault never holds a member.              *)
 HeldOnlyWhenAlone ==
     [][\A m \in Members : (held[m] = "none" /\ held'[m] = "idle") => (reaps = {m} /\ servedAfter[m] # {} /\ ~rested')]_vars
 
+(* Action: the doctor passes a member held on a check only when the check   *)
+(* passes on it in full: its own line and the check's global line.          *)
+DoctorPassIsMeasured ==
+    [][\A m \in Members : (held[m] = "doctor" /\ cause[m] = "open" /\ cause'[m] = "resolved") => (line[m] = "pass" /\ global = "pass")]_vars
+
 (* Liveness: a hold whose cause resolved ends.                             *)
 CauseEndsHold ==
-    \A m \in Members : (held[m] \in {"cause", "idle"} /\ cause[m] = "resolved") ~> (held[m] = "none" \/ cause[m] # "resolved")
+    \A m \in Members : (held[m] \in {"cause", "doctor", "idle"} /\ cause[m] = "resolved") ~> (held[m] = "none" \/ cause[m] # "resolved")
 =============================================================================
