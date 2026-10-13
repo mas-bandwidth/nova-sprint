@@ -303,7 +303,10 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	for _, n := range names {
 		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
 	}
-	arrays := make(map[string]interface{ Val() string }, len(config.RouteTiers))
+	arrays := make(map[string]interface {
+		Val() string
+		Err() error
+	}, len(config.RouteTiers))
 	for _, t := range config.RouteTiers {
 		arrays[t] = pipe2.HGet(ctx, config.TierKey(t), "routes")
 	}
@@ -316,8 +319,10 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	}
 	tiers := map[string][]string{}
 	for _, t := range config.RouteTiers {
-		if a := sprint.Split(arrays[t].Val()); len(a) > 0 {
-			tiers[t] = a
+		// A present empty field is still a configured tier, with the deal
+		// falling back to its enabled native routes. Missing fields stay absent.
+		if arrays[t].Err() == nil {
+			tiers[t] = sprint.Split(arrays[t].Val())
 		}
 	}
 	set.Providers = map[string]sprint.Provider{}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/redisacl"
 	"github.com/redis/go-redis/v9"
@@ -39,10 +40,17 @@ func TestRedisProvidersWithoutRoutesAreStillShown(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, c.SAdd(ctx, config.ProvidersKey, "p").Err())
 	require.NoError(t, c.HSet(ctx, config.ProviderKey("p"), "billing", "plan", "funded", "false").Err())
+	require.NoError(t, c.HSet(ctx, config.TierKey("heavy"), "routes", "").Err())
 	set, trips, err := st.B.(RouteReader).Routes(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), trips)
 	assert.Empty(t, set.Routes)
+	assert.Contains(t, set.Tiers, "heavy", "an applied empty routes field preserves the tier row")
+	assert.NotContains(t, set.Tiers, "pro", "an absent routes field does not fabricate a configured tier")
+	snapshot := &sprint.Snapshot{}
+	set.into(snapshot)
+	_, tiers := snapshot.ProviderGaps("")
+	assert.Equal(t, []string{"heavy"}, tiers)
 	assert.Equal(t, "plan", set.Providers["p"].Billing)
 	require.NoError(t, c.HDel(ctx, config.ProviderKey("p"), "funded").Err())
 	_, _, err = st.B.(RouteReader).Routes(ctx)

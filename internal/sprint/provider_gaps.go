@@ -22,7 +22,8 @@ type RouteGap struct {
 }
 
 // ProviderTier counts enabled native-tier routes and enabled routes included in
-// this tier's effective array, each once (an array may contain cross-tier routes).
+// this tier's effective array, each once. Foreign-tier entries are ignored as
+// servedRoute ignores them when the deal draws this tier.
 type ProviderTier struct {
 	Tier    string `json:"tier"`
 	In      int    `json:"in"`
@@ -81,7 +82,8 @@ func (s *Snapshot) providerTiers() []string {
 
 // ProviderGaps checks the applied provider rows against the arrays as the deal
 // reads them. tier limits findings to that native route tier and that array;
-// membership still considers every array, including empty arrays' fallback.
+// membership considers every array, including empty arrays' fallback, but an
+// entry covers only its native tier, as the deal's servedRoute requires.
 func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string) {
 	routes, tiers = []RouteGap{}, []string{}
 	included := map[string]bool{}
@@ -92,13 +94,16 @@ func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string)
 	for _, t := range s.providerTiers() {
 		funded := false
 		for _, name := range s.tierArray(t) {
-			included[name] = true
 			r, ok := byName[name]
-			if ok && r.Enabled && s.Providers[r.Provider].Funded {
+			if !ok || !r.Enabled || r.Tier != t {
+				continue
+			}
+			included[name] = true
+			if s.Providers[r.Provider].Funded {
 				funded = true
 			}
 		}
-		if len(s.Tiers[t]) > 0 && !funded && (tier == "" || tier == t) {
+		if _, configured := s.Tiers[t]; configured && !funded && (tier == "" || tier == t) {
 			tiers = append(tiers, t)
 		}
 	}
@@ -131,7 +136,7 @@ func (s *Snapshot) ProviderCoverages() []ProviderCoverage {
 			seen := map[string]bool{}
 			for _, n := range s.tierArray(tier) {
 				r, ok := byName[n]
-				if ok && !seen[n] && r.Enabled && r.Provider == name {
+				if ok && !seen[n] && r.Enabled && r.Tier == tier && r.Provider == name {
 					count.In++
 					seen[n] = true
 				}

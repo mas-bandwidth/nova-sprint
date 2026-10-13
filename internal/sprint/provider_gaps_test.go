@@ -59,14 +59,26 @@ func TestATierWithNoFundedRouteIsAFinding(t *testing.T) {
 	assert.Equal(t, []string{"heavy"}, tiers)
 }
 
-func TestARouteInAnotherTiersArrayHasNoGap(t *testing.T) {
+func TestARouteInAnotherTiersArrayStillHasItsNativeTierGap(t *testing.T) {
 	t.Parallel()
 	s := providerGapSnapshot()
 	s.Tiers["heavy"] = []string{"oc-2", "oc-3", "oc-4", "oc-5", "oc-6", "oc-7"}
 	routes, tiers := s.ProviderGaps("")
-	assert.Empty(t, routes)
+	require.Len(t, routes, 6)
+	for i, r := range routes {
+		assert.Equal(t, RouteGap{Route: fmt.Sprintf("oc-%d", i+2), Provider: "opencode", Tier: "pro"}, r)
+	}
+	assert.Equal(t, []string{"heavy"}, tiers)
+	rows := s.ProviderCoverages()
+	require.Len(t, rows, 2)
+	assert.Equal(t, []ProviderTier{{Tier: "pro", In: 1, Enabled: 7}}, rows[0].Tiers)
+	assert.Equal(t, "providers: opencode funded (pro 1/7); openrouter unfunded WARN 6 funded routes in no tier array (check cards names them) WARN tiers heavy hold no route of a funded provider (check cards names them)", s.ProvidersLine())
+	routes, tiers = s.ProviderGaps("pro")
+	assert.Len(t, routes, 6)
 	assert.Empty(t, tiers)
-	assert.Contains(t, s.ProvidersLine(), "heavy 6/0")
+	routes, tiers = s.ProviderGaps("heavy")
+	assert.Empty(t, routes)
+	assert.Equal(t, []string{"heavy"}, tiers)
 }
 
 func TestProviderCoverageCountsEnabledRoutesOnce(t *testing.T) {
@@ -75,4 +87,29 @@ func TestProviderCoverageCountsEnabledRoutesOnce(t *testing.T) {
 	s.Tiers["pro"] = []string{"oc-1", "oc-1", "disabled"}
 	s.Routes = append(s.Routes, Route{Name: "disabled", Tier: "pro", Provider: "opencode"})
 	assert.Equal(t, "providers: opencode funded (pro 1/7); openrouter unfunded WARN 6 funded routes in no tier array (check cards names them)", s.ProvidersLine())
+}
+
+func TestAConfiguredEmptyTierWithoutFundedFallbackIsAFinding(t *testing.T) {
+	t.Parallel()
+	s := &Snapshot{Routes: []Route{{Name: "or-heavy", Tier: "heavy", Provider: "openrouter", Enabled: true}}, Providers: map[string]Provider{"openrouter": {Name: "openrouter", Funded: false}}, Tiers: map[string][]string{"heavy": nil}}
+	routes, tiers := s.ProviderGaps("")
+	assert.Empty(t, routes)
+	assert.Equal(t, []string{"heavy"}, tiers)
+}
+
+func TestAnUnconfiguredFrontierAddsNoFundingFinding(t *testing.T) {
+	t.Parallel()
+	s := &Snapshot{Routes: []Route{{Name: "or-frontier", Tier: "frontier", Provider: "openrouter", Enabled: true}}, Providers: map[string]Provider{"openrouter": {Name: "openrouter", Funded: false}}}
+	routes, tiers := s.ProviderGaps("")
+	assert.Empty(t, routes)
+	assert.Empty(t, tiers)
+}
+
+func TestAConfiguredEmptyTierWithFundedFallbackIsClean(t *testing.T) {
+	t.Parallel()
+	s := &Snapshot{Routes: []Route{{Name: "oc-heavy", Tier: "heavy", Provider: "opencode", Enabled: true}}, Providers: map[string]Provider{"opencode": {Name: "opencode", Funded: true}}, Tiers: map[string][]string{"heavy": nil}}
+	routes, tiers := s.ProviderGaps("")
+	assert.Empty(t, routes)
+	assert.Empty(t, tiers)
+	assert.Equal(t, "providers: opencode funded (heavy 1/1)", s.ProvidersLine())
 }
