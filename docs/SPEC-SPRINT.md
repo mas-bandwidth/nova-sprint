@@ -6638,6 +6638,31 @@ exactly, member by member, never by their counts.
     a cycle already in a store is reported by `check` as "a cycle through
     <loop>: <n> cards can never be reached", and the tick raises it as "an
     invariant is broken".
+    A need is RESOLVED when it names, for this epoch, a card that is landed, or
+    placed (waiting, ready, working, review, merging) or a sentinel and not held,
+    in a stream whose control card exists; every other need is UNRESOLVED, with
+    exactly one reason: absent (no record in this epoch; a card landed in an
+    earlier epoch is absent here, and the remedy says to remove the need if so),
+    dropped (a kept record off the table, with its outcome), unknown stream (the
+    card's stream has no control card in this epoch), held (an open judgment of a
+    holding kind names it: a card reached its bound, the brief is wrong, the same
+    harness fault; the words name the judgment, its type, its age and the verbs
+    that decide it, a rework with a fix or a drop) or cycle (a self-need, or a
+    need that closes a cycle) (internal/sprint/needs_resolve.go UnresolvedNeeds,
+    TableUnresolved; v1.2.17, a-missing-or-blocked-need-is-found-at-check-and-
+    while-running; tla/NeedsBlocked.tla AdmittedNeedsResolved,
+    StartOnlyResolved, witness admitheld). add refuses an unresolved need in the
+    same words as before for absent and dropped; an add of more than one card
+    (--brief-dir, a roadmap import, many briefs, --count) with one is refused
+    whole, naming every card and need, nothing written: a partial import strands
+    the cards inside it that need it. brief check names it for a brief not yet
+    added, through add's own plan. `check cards` names each one (kind needs:
+    `CHECK needs <card> <need> <reason>: <words> remedy=<verbs>`), and `start`
+    from READY or STOPPED computes them live, before the check record's gate, and
+    refuses, exit 1, nothing written, one line a card and need: `run nova-sprint
+    check cards: <card> needs <need> (<reason>)`; so a hold raised after a clean
+    check is caught. The run-time half (one owner judgment for a blocked need, a
+    drop that never strands) is its own card.
 12. Nothing stalls. Every primary on the table that has not landed is held by
     one of: (a) an outside actor before its deadline (its live work card in an
     up member's ready or working cell, a read card asked or reading, its merge

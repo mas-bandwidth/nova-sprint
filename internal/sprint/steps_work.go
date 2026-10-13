@@ -267,26 +267,17 @@ func Add(s *Snapshot, r AddReq) Plan {
 	var in []admit
 	lastGate := ""
 	seen := map[string]bool{}
+	var needsWhy []string // each card and need the add refuses (UnresolvedNeeds)
 	for i, id := range ids {
 		needs := append([]string(nil), needsOf(i)...)
-		// A need names a primary that can still land: one on the table
-		// (waiting, ready, working, review, merging or landed), a sentinel, or
-		// one of this add. missing is the needs that name no record at all;
-		// off is the needs that name a kept record off the table (a dropped
-		// card), whose outcome the refusal names.
-		var missing, off []string
-		for _, n := range needs {
-			if adding[n] {
-				continue
-			}
-			c := s.Work.Card(n)
-			switch {
-			case c == nil:
-				missing = append(missing, n)
-			case !c.Placed() && !IsSentinel(c):
-				off = append(off, n)
-			}
-		}
+		// A need is resolved, or one of this add, or refused with its one reason:
+		// absent, dropped, an unknown stream, held at its bound with no decision
+		// (needs_resolve.go UnresolvedNeeds; tla/NeedsBlocked.tla AdmittedNeedsResolved).
+		unresolved := UnresolvedNeeds(s, id, needs, adding)
+		// a need of this add's own stream is in a known stream: the add writes its control card
+		unresolved = slices.DeleteFunc(unresolved, func(u UnresolvedNeed) bool {
+			return u.Reason == UnresolvedUnknownStream && s.Work.Card(u.Need).Row == r.Stream
+		})
 		// bench is the members its brief's BENCH line names: every placement of its work
 		// cards deals it only to them, and a name that is no fleet member is refused with
 		// the members there are (bench_deal.go)
@@ -311,19 +302,15 @@ func Add(s *Snapshot, r AddReq) Plan {
 		case devWhy != "": // a card cut on dev, outside the promotion stream (docs/SPEC-SPRINT.md section 7)
 			p.refuse(id, devWhy)
 			continue
-		case len(missing) > 0 || len(off) > 0:
-			var why []string
-			if len(missing) > 0 {
-				why = append(why, "needs "+strings.Join(missing, ",")+", which is no primary on the table or in this add")
-			}
-			for _, n := range off {
-				why = append(why, "needs "+n+", which was "+orDash(s.Work.Card(n).F("outcome")))
-			}
-			msg := strings.Join(why, "; ")
+		case len(unresolved) > 0:
+			msg := NeedsRefusal(unresolved)
 			if len(r.Cards) > 0 {
 				msg = r.Cards[i].File + ": " + msg
 			}
 			p.refuse(id, msg)
+			for _, u := range unresolved {
+				needsWhy = append(needsWhy, id+" needs "+u.Need+" ("+u.Reason+")")
+			}
 			continue
 		case benchWhy != "":
 			p.refuse(id, benchWhy)
@@ -348,6 +335,16 @@ func Add(s *Snapshot, r AddReq) Plan {
 			lastGate = id
 		}
 		in = append(in, a)
+	}
+	// an add of more than one card with an unresolved need is refused whole, naming every
+	// card and need: a partial import strands the dependents inside it (tla/NeedsBlocked.tla)
+	if len(needsWhy) > 0 && len(ids) > 1 {
+		var each []string
+		for _, ref := range p.Refused {
+			each = append(each, ref.Why)
+		}
+		return refuseAll("the add is refused whole, nothing is written (a partial import strands the cards that need it): " +
+			strings.Join(needsWhy, "; ") + " [" + strings.Join(each, "; ") + "]")
 	}
 	// Every card admitted records its repository and base on its stream's control
 	// card: the union of what the stream already records and this add's briefs, so a

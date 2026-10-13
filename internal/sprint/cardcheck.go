@@ -113,31 +113,18 @@ func (c *cardCheck) inStreams(stream string) bool {
 	return len(c.in.Streams) == 0 || slices.Contains(c.in.Streams, stream)
 }
 
-// needs is kind 1: every need of an open card names a card of this epoch that is not dropped,
-// no card needs itself, and no need closes a cycle (needsCycle, the check needs set makes). A
-// waived need is no need.
+// needs is kind 1: every unresolved need of an open card (TableUnresolved: absent, dropped,
+// unknown stream, held, cycle; needs_resolve.go), one finding a card and need,
+//
+//	CHECK needs <card> <need> <reason>: <words> remedy=<the verbs that decide it>
+//
+// A waived need is no need. tla/NeedsBlocked.tla Unresolved
 func (c *cardCheck) needs() []CardFinding {
+	all := TableUnresolved(c.s)
 	var out []CardFinding
 	for _, card := range c.open {
-		waived := Split(card.F("waived"))
-		var live []string
-		for _, n := range Split(card.F("needs")) {
-			if contains(waived, n) {
-				continue
-			}
-			live = append(live, n)
-			nc := c.s.Work.Card(n)
-			switch {
-			case n == card.ID:
-				out = append(out, CardFinding{CheckNeeds, card.ID, n + " is the card itself", "nova-sprint needs set " + card.ID + " --needs <the needs without " + n + ">"})
-			case nc == nil:
-				out = append(out, CardFinding{CheckNeeds, card.ID, n + " is no card of this epoch", "add " + n + ", or remove the need if " + n + " landed before this epoch: nova-sprint needs set " + card.ID + " --needs <the needs without " + n + ">"})
-			case !nc.Placed() && !IsSentinel(nc):
-				out = append(out, CardFinding{CheckNeeds, card.ID, n + " was " + orDash(nc.F("outcome")), "nova-sprint needs set " + card.ID + " --needs <the needs without " + n + ">, or nova-sprint relink " + n + " <its twin>"})
-			}
-		}
-		if why := needsCycle(c.s, card.ID, live); why != "" && !contains(live, card.ID) {
-			out = append(out, CardFinding{CheckNeeds, card.ID, strings.TrimSuffix(strings.TrimPrefix(why, "the needs would make a cycle: "), "; nothing was changed") + " is a cycle", "nova-sprint needs set " + card.ID + " --needs <the needs that break the cycle>"})
+		for _, u := range all[card.ID] {
+			out = append(out, CardFinding{CheckNeeds, card.ID, u.Need + " " + u.Reason + ": " + u.Words, strings.Join(u.Decide, " or ")})
 		}
 	}
 	return out

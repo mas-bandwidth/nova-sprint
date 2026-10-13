@@ -110,7 +110,7 @@ func TestCardCheckFindsEachCoreKind(t *testing.T) {
 		"needs a3", "files s1", "same-file a5", "bases b3", "names s3", "stale-fix a7", "lint a8", "brief-size a9",
 	}, lines, "exactly one finding of each core kind, in kind order: %+v", got)
 	assert.Equal(t, "needs:1,files:1,same-file:1,bases:1,names:1,stale-fix:1,lint:1,brief-size:1", CardCheckKinds(got))
-	assert.Equal(t, "CHECK needs a3 gone is no card of this epoch remedy=add gone, or remove the need if gone landed before this epoch: nova-sprint needs set a3 --needs <the needs without gone>", got[0].Line())
+	assert.Equal(t, "CHECK needs a3 gone absent: gone is no primary on the table or in this add remedy=add gone, or remove the need if gone landed before this epoch: nova-sprint needs set a3 --needs <the needs without gone>", got[0].Line())
 	assert.Contains(t, got[1].Finding, "internal/x/one.go is written by streams s1 and s2", "the glob is expanded at the base tree")
 	assert.Contains(t, got[2].Finding, "internal/c.go is named in PATHS by a5 and a6")
 	assert.Contains(t, got[3].Finding, "needs a1 of stream s1, which lands on sprint/s1, not on sprint/s2")
@@ -159,10 +159,9 @@ func TestCardCheckFindsEachCoreKind(t *testing.T) {
 			}
 		}
 		require.Len(t, needs, 3, "%v", needs)
-		assert.Contains(t, needs[0], "a1: ")
-		assert.Contains(t, needs[0], "is a cycle")
-		assert.Contains(t, needs[1], "a2: ")
-		assert.Equal(t, "a3: a3 is the card itself", needs[2])
+		assert.Contains(t, needs[0], "a1: a2 cycle: the need closes a cycle: ")
+		assert.Contains(t, needs[1], "a2: a1 cycle: the need closes a cycle: ")
+		assert.Equal(t, "a3: a3 cycle: a3 is the card itself", needs[2])
 	})
 
 	t.Run("a stream on the trunk is a bases finding; the promotion stream is not", func(t *testing.T) {
@@ -223,6 +222,59 @@ func TestCardsChangeNamesTheFirstChange(t *testing.T) {
 		assert.NotEqual(t, CardsDigest(was), CardsDigest(cards), c.name)
 		assert.Equal(t, c.want, CardsChange(was, cards), c.name)
 	}
+}
+
+// check cards' kind needs is every unresolved need (a-missing-or-blocked-need-is-found-at-check-
+// and-while-running; tla/NeedsBlocked.tla Unresolved): one card per reason gives exactly five
+// findings, each with its remedy; a landed need and a waived need give none.
+func TestCheckCardsNamesEachUnresolvedNeed(t *testing.T) {
+	t.Parallel()
+	s := cardCheckFixture()
+	put := func(id, stream, col string, fields map[string]string) {
+		f := map[string]string{"kind": "primary", "stream": stream, "attempt": "0", "brief": checkBrief(id, "sprint/"+stream, "internal/"+id+".go")}
+		maps.Copy(f, fields)
+		s.Work.Put(&Card{ID: id, Row: stream, Col: col, Fields: f})
+	}
+	// the needs: one landed, one dropped, one in a stream with no control card, one held
+	put("landed1", "s1", Landed, nil)
+	put("dropped1", "s1", "", map[string]string{"outcome": "dropped: obsolete"})
+	s.Work.SetRows([]string{"s1", "s2", "ghost"})
+	put("ghost1", "ghost", Ready, nil)
+	put("held1", "s1", Ready, nil)
+	s.Open = []Open{{Key: OpenKey("n7", "held1"), Note: Note{ID: "n7", Alias: "j7", Kind: Judgment, Type: NBound, Stream: "s1",
+		Primaries: []string{"held1"}, At: s.Now.Add(-3 * time.Hour), Decisions: []string{"rework with a fix", "drop"}}}}
+	// one card per reason, and two that need nothing unresolved
+	put("w-absent", "s1", Waiting, map[string]string{"needs": "gone"})
+	put("w-dropped", "s1", Waiting, map[string]string{"needs": "dropped1"})
+	put("w-unknown", "s1", Waiting, map[string]string{"needs": "ghost1"})
+	put("w-held", "s1", Waiting, map[string]string{"needs": "held1"})
+	put("w-cycle", "s1", Waiting, map[string]string{"needs": "w-cycle"})
+	put("w-landed", "s1", Ready, map[string]string{"needs": "landed1"})
+	put("w-waived", "s1", Ready, map[string]string{"needs": "dropped1", "waived": "dropped1"})
+
+	var got []string
+	for _, f := range CheckCards(s, CardCheckIn{Streams: []string{"s1"}}) {
+		if f.Kind == CheckNeeds {
+			got = append(got, f.Line())
+		}
+	}
+	require.Len(t, got, 5, "absent, cycle, dropped, held, unknown stream: %v", got)
+	assert.Equal(t, "CHECK needs w-absent gone absent: gone is no primary on the table or in this add remedy=add gone, or remove the need if gone landed before this epoch: nova-sprint needs set w-absent --needs <the needs without gone>", got[0])
+	assert.Equal(t, "CHECK needs w-cycle w-cycle cycle: w-cycle is the card itself remedy=nova-sprint needs set w-cycle --needs <the needs without w-cycle>", got[1])
+	assert.Equal(t, "CHECK needs w-dropped dropped1 dropped: dropped1, which was dropped: obsolete remedy=nova-sprint needs set w-dropped --needs <the needs without dropped1> or nova-sprint relink dropped1 <its twin>", got[2])
+	assert.Equal(t, "CHECK needs w-held held1 held: held1 is held by judgment j7 ("+NBound+", open 3h0m0s) until it is decided remedy=nova-sprint rework held1 --fix <text> or nova-sprint drop held1 --reason <text> (then relink or drop what needs it)", got[3])
+	assert.Equal(t, "CHECK needs w-unknown ghost1 unknown stream: ghost1's stream ghost has no control card in this epoch remedy=nova-sprint move ghost1 --stream <a stream of this epoch> or nova-sprint needs set w-unknown --needs <the needs without ghost1>", got[4])
+
+	u := TableUnresolved(s)
+	assert.NotContains(t, u, "w-landed", "a landed need is resolved")
+	assert.NotContains(t, u, "w-waived", "a waived need is no need")
+	reasons := map[string]bool{}
+	for _, us := range u {
+		for _, x := range us {
+			reasons[x.Reason] = true
+		}
+	}
+	assert.Equal(t, map[string]bool{UnresolvedAbsent: true, UnresolvedDropped: true, UnresolvedUnknownStream: true, UnresolvedHeld: true, UnresolvedCycle: true}, reasons, "exactly one reason each, the five")
 }
 
 func setField(s *Snapshot, id, name, value string) {
