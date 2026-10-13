@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
@@ -158,6 +159,45 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		return ""
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
+	cannotAskJudgments := append(slices.Clone(s.Open), s.Acked...)
+	answeringCannotAsk := slices.ContainsFunc(cannotAskJudgments, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID) &&
+			slices.ContainsFunc(chosen, func(c *Card) bool { return c.ID == o.Subject() })
+	})
+	if s.ReadCardsOn() && !another && answeringCannotAsk {
+		only := map[string]bool{}
+		for _, c := range chosen {
+			only[c.ID] = true
+		}
+		// SprintRules.AskDealt: ask uses the fleet read-card deal, not legacy reads.
+		var ri routeIndexes
+		if s.Fleet != nil && len(s.Routes) > 0 {
+			ri = routeIndexesOf(s)
+		}
+		dealt, waits := readCardsAskSelected(s, s.Friends, ri, nil, nil, only)
+		p.Rows = append(p.Rows, dealt.Rows...)
+		p.Units = append(p.Units, dealt.Units...)
+		p.Props = append(p.Props, dealt.Props...)
+		p.Refused = append(p.Refused, dealt.Refused...)
+		for _, c := range chosen {
+			if why, ok := waits[c.ID]; ok && !slices.ContainsFunc(dealt.Units, func(u Unit) bool {
+				return u.Key == c.ID && slices.ContainsFunc(u.Changes, func(ch Change) bool {
+					return ch.Table == Fleet && ch.Entry.Create != nil && ch.Entry.Set["kind"] == "read"
+				})
+			}) {
+				p.refuse(c.ID, why+"; add or bring up a reader at its tier, then ask "+c.ID+", or rework or drop it")
+			}
+		}
+		if len(p.Refused) > 0 && len(r.Answers) > 0 {
+			return Plan{Refused: p.Refused}
+		}
+		if ri != nil {
+			ri.write(&p)
+		}
+		streamIndexWrite(&p, srr, s.Work.Placed)
+		answered(&p, s, r.Answers, r.Who)
+		return p
+	}
 	rr := askRound(s)
 	// a read goes to the reader with the greatest share of room, its free room
 	// as a part of its width (readerRooms), the reads this ask places taken
@@ -330,9 +370,9 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			// judgment (a reader found it broken, or the brief's bound it raised) stays
 			// open and the card goes back to work with the finding (docs/SPEC-SPRINT.md
 			// section 8, the read-broken rule; tla/SprintRules.tla, Part "reads").
-			u.Closes = closesFor(s.Open, []string{NReadsExhausted, NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, []string{NCannotAsk, NReadsExhausted, NStranded, NStalled}, c.ID)
 		} else {
-			u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, []string{NCannotAsk, NStranded, NStalled}, c.ID)
 		}
 		asked := map[string]string{}
 		for _, rd := range chosenReaders {
@@ -357,6 +397,20 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		// (the reference model's AskAnother moves no
 		// stream index)
 		streamIndexWrite(&p, srr, s.Work.Placed)
+	}
+	// A refused cannot-ask answer retains the concrete reader reason and remedy.
+	// No read was dealt, so no obligation is claimed resolved (SprintRules.AskDealt).
+	if len(p.Refused) > 0 && len(r.Answers) > 0 {
+		for _, id := range r.Answers {
+			for _, o := range cannotAskJudgments {
+				if o.Note.ID == id && o.Note.Type == NCannotAsk && slices.ContainsFunc(p.Refused, func(f Refusal) bool { return f.Key == o.Subject() }) {
+					for i := range p.Refused {
+						p.Refused[i].Why += "; add or bring up a reader at its tier, then ask " + o.Subject() + " --answers " + id + ", or rework or drop the primary"
+					}
+					return Plan{Refused: p.Refused}
+				}
+			}
+		}
 	}
 	answered(&p, s, r.Answers, r.Who)
 	return p
@@ -451,6 +505,9 @@ type ReadReq struct {
 // card named is one of theirs, each read as its own reader's, in the one plan;
 // a read by selection names one reader.
 func Read(s *Snapshot, r ReadReq) Plan {
+	if err := cardcost.ValidateUsage(r.Usage); err != nil {
+		return Plan{Refused: []Refusal{{Key: "read", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
+	}
 	var p Plan
 	sel := r.Sel
 	if len(sel.IDs) == 0 && sel.Only == nil && sel.Limit == 0 {
@@ -489,7 +546,17 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		if member {
 			name = rd
 		}
-		return readCardVerb(s, r, rd, name)
+		plan := readCardVerb(s, r, rd, name)
+		if !r.Begin {
+			for _, u := range plan.Units {
+				if c := s.Fleet.Card(u.Key); c != nil {
+					if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+						return Plan{Refused: []Refusal{{Key: c.ID, Why: why}}}
+					}
+				}
+			}
+		}
+		return plan
 	}
 	from := []string{Asked, Reading}
 	if r.Begin {
@@ -548,9 +615,14 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			// a return is counted once: the card is back in asked since it, not begun
 			return "returned already at " + c.F(FieldReturned) + " and not begun since: a return is counted once"
 		}
-		if !r.Begin && !r.Return {
-			// a routed read's verdict is priced as work is, or it is no verdict (cost.go)
-			return ReadUsageMissing(c, r.Usage, r.Verdict)
+		if !r.Begin {
+			// A return also writes cost/history: bind every receipt before durable writes.
+			if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+				return why
+			}
+			if !r.Return {
+				return ReadUsageMissing(c, r.Usage, r.Verdict)
+			}
 		}
 		return ""
 	}, s.Readers.Card)
@@ -968,6 +1040,12 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
 	case reads == 0 && len(before) == 0:
 		return Note{}, false
+	case reads == 0 && s.Readers != nil && slices.ContainsFunc(before, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && st.closing[o.Note.ID]
+	}) && len(s.freeReaders(pr, attempt)) > 0:
+		// SprintRules.CannotAskClosedWhenEligible: a remaining room/count wait
+		// after eligibility closes cannot ask is not stranded work.
+		return Note{}, false
 	case reads == 0 && s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0:
 		// its read cards are the read-card ask's: dealt, marked waiting for a reader, or
 		// cannot ask (readCardsAskPart), never stranded as never asked
@@ -1226,6 +1304,13 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 		readers := strings.Join(ids, ",")
 		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
 		maps.Copy(set, readStamps(oks))
+		// An accept opens a fresh attempt window whoever accepts (both machine/pump
+		// and coordinator; brief_bound.go, FieldDecidedAttempt; tla/Land.tla
+		// AcceptedNeverCapJudged): the attempt cap starts again from this attempt.
+		// Skip writing FieldDecidedAttempt if attempt is empty (never invent "1").
+		if at := c.F("attempt"); at != "" {
+			set[FieldDecidedAttempt] = at
+		}
 		heavyText := ""
 		if r.Heavy {
 			fields, overruled := heavyRead(s, c, r)
@@ -1360,7 +1445,8 @@ type ReworkCard struct {
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
-var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
+// SprintRules.EpNext: rework ends the cannot-ask attempt.
+var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:
@@ -1532,7 +1618,13 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
+		finding := given["finding"]
+		findingAttempt := c.F("attempt")
+		if finding == "" && c.F(FieldRuleRefused) == RefusedPaths && c.F("finding") != "" {
+			finding = c.F("finding")
+			findingAttempt = c.F(FieldFindingAttempt)
+		}
+		set := map[string]string{"fix": fix, "finding": finding, "why": given["why"], FieldFindingAttempt: findingAttempt,
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
 		// Budget exhaustion at second attempt escalates to next tier.
 		if c.F(FieldFailure) == "budget" && c.Int("attempt") == 2 {

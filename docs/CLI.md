@@ -87,6 +87,7 @@ nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
+# ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
 nova-sprint queue --as <reader|member> | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
@@ -181,7 +182,7 @@ nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]
 # every stream with its repositories, bases, release, open and landed counts, and with --cards each card in state order; repos and bases come from the union of its open cards' briefs' REPO and BASE (the source bases uses), the control card's fields only where no brief names one
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
 nova-sprint check cards [--stream <s>...] [--json]
-# the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams, one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; a --stream check's record never opens the start
+# the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams, one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), stale-head (a pushed head from an attempt at or below the brief's `brief_attempt`; `brief --keep-head` exempts it), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; a --stream check's record never opens the start
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
@@ -505,7 +506,14 @@ the cards she holds; `/api/team`, `/api/friend/<name>`,
 `/api/machine/<name>` and `/api/sprint` are JSON; `/events`, `/events/friend/<name>` and
 `/events/machine/<name>` push each new copy as server-sent events. All of it is read-only,
 no-store, carries the copy's time in `Sprint-At`, and comes from one copy of `where --json
---cards` read at most once a second however many pull. An unknown name is a 404 of one
+--cards` read at most once a second however many pull. Responses on both `--listen` and
+`--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`,
+`/app.js`, `/api/sprint`, and pull routes). The server ticks the page at 1 s from its cache
+every second independently of background reads; reads exceeding 1 s log a warning.
+`where --json --dashboard` prints the cheap dashboard view with `stream_costs` folded into
+`tables.work`, reader rows folded into `tables.fleet` (`reads_working` and `working`), and
+sentinel-free summary, dropping archived streams without loading card rows; `--dashboard`
+requires `--json`. An unknown name is a 404 of one
 line; `where --json` also carries `landedSeries` (cards landed per 10-minute bucket over 24 hours, split between friends and fleet). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the dashboard.
 
 ### A provider out of funds
@@ -995,3 +1003,17 @@ The roadmap verbs of nova-sprint 8c87a4b (`roadmap check`, `add`, `remove`,
 `pull`, `note`) edited the private work record's `roadmaps/*.sexp` and were left
 out by the v1.2.3 re-seed. These verbs replace them, on the repository's own files.
 
+
+### A reader may read now
+
+`cannot ask` means no up unit may read the primary at its read tier. The next
+tick closes it with `a reader may read <card> now (<units>)` when an eligible
+reader exists, even while that reader waits for room. An unchanged eligible
+set raises at most one judgment per episode; losing eligibility starts a new one.
+`ask <card> --answers <j>` answers it when at least one read is dealt. With no
+eligible reader, ask names the reader reason and remedy. `rework`, `drop` and
+`wait` are also decisions; rework ends the attempt and closes the judgment.
+
+A `wait` on `cannot ask` quiets its reader condition until the requested review
+time; if no reader becomes eligible, that time raises one reminder. Eligibility
+still closes the wait earlier. The wait does not block an eligible read.

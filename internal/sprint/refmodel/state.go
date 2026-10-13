@@ -179,15 +179,13 @@ func (s State) AttemptsCap(stream string) int {
 }
 
 // AtBriefBound says the landing's refusal of the primary's head the way way is at its brief's
-// bound (sprint.AtBriefBound): the same refusal as the one its last rework answered, at an
-// attempt since its brief was replaced, or its stream's attempt cap counted from the
-// coordinator's last decision on the card (sprint.AttemptsSince: every attempt counts).
+// bound (sprint.AtBriefBound): an accepted card is never judged by the attempt cap (tla/Land.tla
+// AcceptedNeverCapJudged); only the same refusal twice on the current brief (the cumulative
+// refusal set since its brief was replaced; tla/Land.tla RefuseWays) stops it at the brief bound.
 func (s State) AtBriefBound(p, way string) bool {
 	pr := s.Primaries[p]
-	if pr.Refused != "" && pr.Refused == way && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt {
-		return true
-	}
-	return pr.Attempt-pr.DecidedAt >= s.AttemptsCap(pr.Stream)
+	repeated := slices.Contains(pr.RefusedWays, way) || (pr.Refused != "" && pr.Refused == way)
+	return repeated && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt
 }
 
 // Subjects that are not a primary.
@@ -226,9 +224,11 @@ type Primary struct {
 	FindingAttempt int
 	// BriefAt is its attempt when its brief was last replaced, 0 for the brief add gave it
 	// (sprint.FieldBriefAttempt); Refused is the way the landing last refused its head when its
-	// finding is that refusal (sprint.LandRefusedFinding), "" otherwise.
-	BriefAt int
-	Refused string
+	// finding is that refusal (sprint.LandRefusedFinding), "" otherwise; RefusedWays is the
+	// cumulative set of refusal ways on the current brief (tla/Land.tla prevw).
+	BriefAt     int
+	Refused     string
+	RefusedWays []string
 	// DecidedAt is its attempt at the coordinator's last decision on it, 0 for none
 	// (sprint.FieldDecidedAttempt): the attempt cap counts every attempt after it.
 	DecidedAt int
@@ -357,6 +357,7 @@ func (s State) Clone() State {
 		v.Needs = append([]string(nil), v.Needs...)
 		v.Waived = append([]string(nil), v.Waived...)
 		v.Pair = append([]string(nil), v.Pair...)
+		v.RefusedWays = append([]string(nil), v.RefusedWays...)
 		c.Primaries[k] = v
 	}
 	c.Work = make(map[string]WorkCard, len(s.Work))
