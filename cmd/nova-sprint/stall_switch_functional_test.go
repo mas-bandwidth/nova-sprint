@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -31,20 +32,32 @@ func TestStallASwitchedServerNeverRollsBackOnTheHookGate(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:1")
+	c := redis.NewClient(&redis.Options{Addr: r.addr})
+	t.Cleanup(func() { _ = c.Close() })
+	declareFunctionalRoutes(t, c, "flash")
 	r.do("set", "--read-cards", "off") // this stall fixture consumes standalone legacy readers
 	r.do("add", "--stream", "s1", "--count", "1", "--one")
 	r.beat("m1")
 	r.do("start")
 	r.tick() // presence: the members up
 	r.tick() // the deal
-	require.Equal(t, []string{"s1-1"}, r.work("m1"))
-	r.toMerging([]string{"reader-a", "reader-b"}, "s1-1")
+	packets := r.take("m1")
+	require.Len(t, packets, 1)
+	require.Equal(t, "work", packets[0].Kind)
+	require.Equal(t, "s1-1", packets[0].Primary)
+	r.cliOK("m1", "finish", "--as", "m1", packets[0].Card+"@"+strconv.Itoa(packets[0].Gen), "--epoch", "0", "--head", stallHead(packets[0].Primary), "--report", "done", "--usage", "input=1000 output=100")
+	for i := 0; i < 6 && r.col("s1-1") != "merging"; i++ {
+		r.tick()
+		for _, reader := range []string{"reader-a", "reader-b"} {
+			r.cliOK(reader, "queue", "--as", reader)
+			r.cliOK(reader, "read", "--as", reader, "--ok", "--max", "100", "--epoch", "0", "--usage", "input=1000 output=100")
+		}
+	}
+	require.Equal(t, "merging", r.col("s1-1"), "the readers' successful verdicts let the card reach merging")
 	// Seed a route and the sprint git_identity directly, as nova-config apply writes them
 	// on every live store (the stall_ledger functional test does the same): the lander reads
 	// the identity with the routes and refuses to commit without one, so the pass ends in a
 	// card refusal (exit 1), not a rollback.
-	c := redis.NewClient(&redis.Options{Addr: r.addr})
-	t.Cleanup(func() { _ = c.Close() })
 	require.NoError(t, c.SAdd(context.Background(), config.RoutesKey, "flash-a").Err())
 	require.NoError(t, c.HSet(context.Background(), config.RouteKey("flash-a"), "name", "flash-a", "tier", "flash", "provider", "p", "model", "m", "enabled", "true").Err())
 	require.NoError(t, c.Set(context.Background(), config.SprintKey(config.FieldGitIdentity), config.DefaultGitIdentity, 0).Err())

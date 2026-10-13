@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +27,7 @@ func TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:4")
+	declareStallFlashRoute(t, r)
 	r.do("set", "--read-cards", "off") // this stall fixture consumes standalone legacy readers
 	r.do("add", "--stream", "s1", "--count", "3")
 	r.beat("m1")
@@ -38,12 +40,12 @@ func TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain(t *testing.T) {
 	for _, p := range packets {
 		byID[p.Primary] = p
 	}
-	r.finish("m1", byID["s1-1"], stallHead("s1-1"))
+	finishStallFunded(r, "m1", byID["s1-1"], stallHead("s1-1"))
 	r.tick()
-	r.readAll("reader-a", "reader-b")
+	readStallAll(r, "reader-a", "reader-b")
 	for i := 0; i < 3 && r.col("s1-1") != "merging"; i++ {
 		r.tick()
-		r.readAll("reader-a", "reader-b")
+		readStallAll(r, "reader-a", "reader-b")
 	}
 	require.Equal(t, "merging", r.col("s1-1"), "s1-1 is queued to merge")
 
@@ -59,11 +61,11 @@ func TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain(t *testing.T) {
 	r.do("merge", "--stream", "s1", "--conflict", "s1-1", "--note", froze)
 
 	// another finish: every tick after drains it
-	r.finish("m1", byID["s1-2"], stallHead("s1-2"))
+	finishStallFunded(r, "m1", byID["s1-2"], stallHead("s1-2"))
 	r.tick()
 	r.tick()
 	assert.Equal(t, "review", r.col("s1-2"), "the finish drained: the sprint is not frozen")
-	r.finish("m1", byID["s1-3"], stallHead("s1-3"))
+	finishStallFunded(r, "m1", byID["s1-3"], stallHead("s1-3"))
 	r.tick()
 	assert.Equal(t, "review", r.col("s1-3"), "and the next one")
 }
@@ -77,6 +79,7 @@ func TestStallAnOverBoundBriefNeverPoisonsTheDrain(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:4")
+	declareStallFlashRoute(t, r)
 	r.do("set", "--read-cards", "off") // this stall fixture consumes standalone legacy readers
 	r.do("add", "--stream", "s1", "--count", "3")
 	r.beat("m1")
@@ -89,7 +92,7 @@ func TestStallAnOverBoundBriefNeverPoisonsTheDrain(t *testing.T) {
 	for _, p := range packets {
 		byID[p.Primary] = p
 	}
-	r.finish("m1", byID["s1-1"], stallHead("s1-1"))
+	finishStallFunded(r, "m1", byID["s1-1"], stallHead("s1-1"))
 	r.tick()
 	require.Equal(t, "review", r.col("s1-1"))
 
@@ -105,11 +108,29 @@ func TestStallAnOverBoundBriefNeverPoisonsTheDrain(t *testing.T) {
 	assert.Contains(t, out+errs, "over the", "the refusal names the bound")
 
 	// the machine goes on: a finish drains at the next tick
-	r.finish("m1", byID["s1-2"], stallHead("s1-2"))
+	finishStallFunded(r, "m1", byID["s1-2"], stallHead("s1-2"))
 	r.tick()
 	r.tick()
 	assert.Equal(t, "review", r.col("s1-2"), "the finish drained: the sprint is not frozen")
-	r.finish("m1", byID["s1-3"], stallHead("s1-3"))
+	finishStallFunded(r, "m1", byID["s1-3"], stallHead("s1-3"))
 	r.tick()
 	assert.Equal(t, "review", r.col("s1-3"))
+}
+
+// These successful finishes incur the fixture's declared flash route. Keep
+// their usage explicit so the fund check remains real.
+func finishStallFunded(r *stallRig, who string, p sprint.Packet, head string) {
+	r.t.Helper()
+	r.cliOK(who, "finish", "--as", who, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0",
+		"--head", head, "--report", "done", "--usage",
+		"input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture")
+}
+
+func readStallAll(r *stallRig, readers ...string) {
+	r.t.Helper()
+	for _, rd := range readers {
+		r.cli(rd, "queue", "--as", rd)
+		r.cli(rd, "read", "--as", rd, "--ok", "--max", "100", "--epoch", "0", "--usage",
+			"input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture")
+	}
 }

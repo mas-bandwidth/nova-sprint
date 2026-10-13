@@ -20,6 +20,7 @@ func TestStallANeedCycleThroughAWorkingCardIsRefusedOnTheStore(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:1")
+	declareStallFlashRoute(t, r)
 	r.do("add", "--stream", "s1", "--count", "2")
 	r.beat("m1")
 	r.do("start")

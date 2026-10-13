@@ -73,10 +73,16 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 		run("queue --as reader-a")
 		run("queue --as reader-b")
 		run("tick")
-		run("read --as reader-a --begin --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("read --as reader-a --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
-		run("read --as reader-b --begin --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("read --as reader-b --ok --limit " + strconv.Itoa(len(ids)) + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
+		// Name the real asked records: a selection that moves zero reads is not
+		// evidence that either reader passed these primaries at their heads.
+		for _, reader := range []string{"reader-a", "reader-b"} {
+			var readIDs []string
+			for _, id := range ids {
+				readIDs = append(readIDs, sprint.ReadCardID(id, 1, reader))
+			}
+			run("read --as " + reader + " --begin " + strings.Join(readIDs, " ") + " --epoch 0")
+			run("read --as " + reader + " --ok " + strings.Join(readIDs, " ") + " --epoch 0 --usage 'input=100 cache_read=0 cache_write=0 output=10 model=functional-fixture/fixture'")
+		}
 		run("accept " + strings.Join(ids, " "))
 		recordMerge(t, a, stream, len(ids), "0")
 		run("tick")
@@ -84,6 +90,8 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 
 	run("init --readers reader-a,reader-b --members m1")
 	declareFunctionalRoutes(t, c, "flash", "pro")
+	// Routed pro reads require declared pro readers; blank fleet tiers mean flash.
+	run("reader set reader-a reader-b --tiers pro")
 	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	// one held card keeps the sprint open, so the dev-is-behind judgment still runs
 	run("add --stream s0 --count 1 --one --held --land-protected any")

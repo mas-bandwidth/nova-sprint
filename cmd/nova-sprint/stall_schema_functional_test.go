@@ -28,6 +28,7 @@ func TestStallTheBinaryRefusesAStoreMissingItsLockedColumns(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:1")
+	declareStallFlashRoute(t, r)
 	r.do("add", "--stream", "s1", "--count", "1", "--one")
 	r.do("start")
 
@@ -61,4 +62,14 @@ func TestStallTheBinaryRefusesAStoreMissingItsLockedColumns(t *testing.T) {
 	assert.NotContains(t, srv.text(), "TICK OK", "no tick ran on the store")
 	assert.Contains(t, srv.text(), "nova-table col add fleet finished", "run names the schema step")
 	assert.NotEqual(t, 0, srv.cmd.ProcessState.ExitCode(), "run exits non-zero:\n%s", srv.text())
+}
+
+// The store-backed stall fixtures need a funded route to pass START's real
+// eligibility gate. This is explicit per positive fixture; it does not alter
+// the shared test rig or any no-route refusal fixture.
+func declareStallFlashRoute(t *testing.T, r *stallRig) {
+	t.Helper()
+	c := redis.NewClient(&redis.Options{Addr: r.addr})
+	t.Cleanup(func() { _ = c.Close() })
+	declareFunctionalRoutes(t, c, "flash")
 }

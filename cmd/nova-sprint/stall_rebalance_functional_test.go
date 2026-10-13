@@ -3,8 +3,10 @@
 package main
 
 import (
+	"strconv"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +23,9 @@ func TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-m1,reader-m2,reader-m3", "--members", "m1:1,m2:1,m3:1")
+	c := redis.NewClient(&redis.Options{Addr: r.addr})
+	t.Cleanup(func() { _ = c.Close() })
+	declareFunctionalRoutes(t, c, "flash")
 	r.do("set", "--reads", "1") // keep read_cards absent: native reads exercise the actual default
 	r.do("reader", "set", "reader-m1", "reader-m2", "reader-m3", "--tiers", "all")
 	r.do("add", "--stream", "s1", "--count", "4")
@@ -31,7 +36,7 @@ func TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore(t *testing.T) {
 	for _, m := range []string{"m1", "m2"} {
 		ps := r.take(m)
 		require.Len(t, ps, 1, "%s takes one: %+v", m, ps)
-		r.finish(m, ps[0], stallHead(ps[0].Primary))
+		r.cliOK(m, "finish", "--as", m, ps[0].Card+"@"+strconv.Itoa(ps[0].Gen), "--epoch", "0", "--head", stallHead(ps[0].Primary), "--report", "done", "--usage", "input=1000 output=100")
 	}
 	// the finishes drain to review, s1-3 and s1-4 are dealt to the free lanes and the reads
 	// of s1-1 and s1-2 are asked crosswise; each member takes its work card alone (by id),

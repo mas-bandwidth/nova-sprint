@@ -28,13 +28,14 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, fn.Load(ctx, c))
 	world := newFunctionalTestApp(t, addr)
-	declareFunctionalRoutes(t, c, "flash")
 	waiter := newFunctionalTestApp(t, addr)
 	do := func(line string) string {
 		t.Helper()
 		return world.runVerb(strings.Fields(line)...)
 	}
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+	do("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash")
+	for _, l := range []string{"set --read-cards off", // this script consumes standalone legacy readers
 		"reader set reader-a --tiers flash", "reader set reader-b --tiers flash",
 		"add --stream s1 --count 2", "fleet beat m1", "start",
 		// the first tick's fleet update (last in the tick) brings m1 up; the

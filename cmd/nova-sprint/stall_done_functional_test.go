@@ -4,8 +4,10 @@ package main
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +23,9 @@ func TestStallDoneCountsEveryCompletionOnTheStore(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-m1,reader-m2", "--members", "m1:2,m2:2") // each member reads on its reader row (reader-<m>)
+	c := redis.NewClient(&redis.Options{Addr: r.addr})
+	t.Cleanup(func() { _ = c.Close() })
+	declareFunctionalRoutes(t, c, "flash")
 	r.do("set", "--read-cards", "on", "--reads", "1")
 	r.do("add", "--stream", "s1", "--count", "2")
 	r.beat("m1", "m2")
@@ -28,8 +33,20 @@ func TestStallDoneCountsEveryCompletionOnTheStore(t *testing.T) {
 	r.tick() // presence: the members up
 	r.tick() // the deal
 	worked := map[string]string{}
+	work := func(who string) []string {
+		var done []string
+		for _, p := range r.take(who) {
+			if p.Kind == "read" {
+				r.cliOK(who, "read", "--as", who, "--ok", p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--usage", "input=1000 output=100")
+				continue
+			}
+			r.cliOK(who, "finish", "--as", who, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--head", stallHead(p.Primary), "--report", "done", "--usage", "input=1000 output=100")
+			done = append(done, p.Primary)
+		}
+		return done
+	}
 	for _, m := range []string{"m1", "m2"} {
-		for _, id := range r.work(m) {
+		for _, id := range work(m) {
 			worked[id] = m
 		}
 	}
@@ -37,8 +54,8 @@ func TestStallDoneCountsEveryCompletionOnTheStore(t *testing.T) {
 	for i := 0; i < 6 && !(r.col("s1-1") == "merging" && r.col("s1-2") == "merging"); i++ {
 		r.tick()
 		r.beat("m1", "m2")
-		r.work("m1")
-		r.work("m2")
+		work("m1")
+		work("m2")
 	}
 	for _, id := range []string{"s1-1", "s1-2"} {
 		v := r.card(id)

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,6 +36,9 @@ func TestStallTheIdleAlarmCountsWorkNotReadsOnTheStore(t *testing.T) {
 	step := func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
 	members := []string{"m1", "m2"}
 	do("init", "--readers", "reader-m1,reader-m2", "--members", "m1:1,m2:1")
+	c := redis.NewClient(&redis.Options{Addr: addr})
+	t.Cleanup(func() { _ = c.Close() })
+	declareFunctionalRoutes(t, c, "flash")
 	do("set", "--read-cards", "on", "--reads", "1")
 	do("reader", "set", "reader-m1", "reader-m2", "--tiers", "all")
 	do("add", "--stream", "s1", "--count", "2")
@@ -57,7 +61,7 @@ func TestStallTheIdleAlarmCountsWorkNotReadsOnTheStore(t *testing.T) {
 	for _, m := range members {
 		for _, p := range take(m) {
 			require.Equal(t, "work", p.Kind)
-			do("finish", "--as", m, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--head", stallHead(p.Primary), "--report", "done")
+			do("finish", "--as", m, p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--head", stallHead(p.Primary), "--report", "done", "--usage", "input=1000 output=100")
 		}
 	}
 	reads := 0
