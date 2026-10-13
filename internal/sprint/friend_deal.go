@@ -89,7 +89,11 @@ func FriendCard(c *Card) (name string, ok bool) {
 	if w == WhoFriend {
 		return "", true
 	}
-	return FriendOfRow(w)
+	name, ok = FriendOfRow(w)
+	if !ok {
+		return "", false
+	}
+	return name, true
 }
 
 // pinnedTo says the hard pin pr (OnlyFriend) names this friend: the card is hers to keep. A pin

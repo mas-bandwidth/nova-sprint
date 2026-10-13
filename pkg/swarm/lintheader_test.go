@@ -280,6 +280,14 @@ func TestLintCardHeaderRefusesMoreTypedHeaderDefects(t *testing.T) {
 	got = LintCardHeader(brief, nil, false)
 	assert.Contains(t, checksOfFindings(got), "start-named", "%+v", got)
 	assert.Contains(t, checksOfFindings(got), "stop-named", "%+v", got)
+
+	sentinelMissing := []byte("RESULT: s1 sha=0\nKIND: sentinel\nPATHS: docs/roadmap.sexp\nTEST: none reason\n\nT.\n")
+	got = LintCardHeader(sentinelMissing, nil, false)
+	assert.Contains(t, checksOfFindings(got), "consumers-named", "%+v", got)
+
+	sentinelOK := []byte("RESULT: s1 sha=0\nKIND: sentinel\nCONSUMERS: c1\nPATHS: docs/roadmap.sexp\nTEST: none reason\n\nT.\n")
+	got = LintCardHeader(sentinelOK, nil, false)
+	assert.NotContains(t, checksOfFindings(got), "consumers-named", "%+v", got)
 }
 
 // A declared KIND whose row of the one kinds list names no instruction kind is refused as
