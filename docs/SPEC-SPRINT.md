@@ -42,6 +42,16 @@ fleet | ready | working | width | done | ok% | status | load
 | fleet | fleet members | work cards | the swarm across machines |
 | friends | friends | sprint cards | who of the friends is here to help, and her cards |
 
+The readers table's `asked` and `reading` cells count, per reader row (and in the
+one summed row the text frame draws), the read cards that reader has in flight. With
+read cards on (the default, section 6) the reads are cards on the fleet table, so
+`asked` counts the read cards dealt (ready) to the reader and `reading` those it has
+taken (working), beside any reads of the legacy readers table, which close as they
+always did; a member reader `reader-<m>` counts the read cards on its member's fleet
+row `m`, and a friend reader `reader-<friend>` those on the friend's row
+`friend.<friend>` (`cmd/nova-sprint/reads.go`, `readersReadCards`; `where --json`'s
+`tables.readers`). The dashboard reads the same `tables` shape and needs no change.
+
 The work table's last column, `cost` (the owner, 2026-10-01: "can you please
 add a final column to the work stream table, which is "cost". This is the sum of
 each landed card's total cost for that work stream, and then a total at the
