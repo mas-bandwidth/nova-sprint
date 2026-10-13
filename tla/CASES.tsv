@@ -713,3 +713,6 @@ MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunning
 MCClearDefaultsRetiredStop.cfg	MCClearDefaultsRetiredStop.tla	pass	-	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenRetiredStop.cfg	MCClearDefaultsRetiredStop.tla	invariant	NoRetiredStopWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenRetiredStopOwner.cfg	MCClearDefaultsRetiredStop.tla	invariant	NoRetiredStopWrites	ignore-terminal	cleardefaults	required	-
+MCProviderFundsQueuedWork.cfg	MCProviderFundsQueuedWork.tla	pass	-	ignore-terminal	providerfunds	required	-
+MCProviderFundsBrokenIgnoredQueuedWork.cfg	MCProviderFundsQueuedWork.tla	invariant	NoNothingStopWithExecutableQueue	ignore-terminal	providerfunds	required	-
+MCProviderFundsBrokenInvalidQueuedWork.cfg	MCProviderFundsQueuedWork.tla	temporal	InvalidQueueDoesNotHideBlockedWork	ignore-terminal	providerfunds	required	-
