@@ -34,12 +34,15 @@ func TestIsRateLimitedByClass(t *testing.T) {
 	}
 }
 
-// A provider's 5xx whose message mentions a rate limit spends its take, exactly as any
-// other provider failure does: FieldTakeEnded is set, the take leaves a FieldProviderTake
-// record and no rate_take_ record, so three such 5xxs in the window rest the route from now
-// for RouteRestFor with cause RestProvider (tla/RouteRest.tla; tla/RateBackoff.tla: the
-// take was the provider's, never the limiter's to absorb).
-func TestAFiveHundredMentioningARateLimitStillSpendsTheTake(t *testing.T) {
+// A provider's 5xx whose message mentions a rate limit is the provider's own failure, never
+// a rate limit: it leaves a FieldProviderTake record and no rate_take_ record, so three such
+// 5xxs on one card in the window rest the route from now for RouteRestFor with cause
+// RestProvider (tla/RouteRest.tla; tla/RateBackoff.tla: the take was the provider's, never
+// the limiter's to absorb). Since v1.2.17 a 5xx under MaxRateReturns returns its card
+// untouched (no FieldTakeEnded, a FieldRateReturns counted; tla/RouteRest.tla,
+// Provider5xxSpendsNoRedeal), and each return keeps its own record (returnTakeNumber), so
+// the rest still sees all three.
+func TestAFiveHundredMentioningARateLimitIsTheProvidersFailure(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
@@ -53,12 +56,12 @@ func TestAFiveHundredMentioningARateLimitStillSpendsTheTake(t *testing.T) {
 		p := w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: line}))
 		require.Len(t, p.Units, 1, "take %d: %+v", i+1, p)
 		c := w.s.Fleet.Card(wc)
-		assert.NotEmpty(t, c.F(FieldTakeEnded), "take %d ended", i+1)
+		assert.Empty(t, c.F(FieldTakeEnded), "take %d returned untouched", i+1)
 		takes, _ := ProviderTakes(c)
-		assert.NotEmpty(t, takes, "take %d records its provider take", i+1)
+		assert.Len(t, takes, i+1, "take %d records its own provider take", i+1)
 		rates, _ := RateTakes(c)
 		assert.Empty(t, rates, "take %d is no rate take", i+1)
-		assert.Empty(t, c.F(FieldRateReturns), "take %d is no out-of-credit return", i+1)
+		assert.Equal(t, i+1, c.Int(FieldRateReturns), "take %d is a counted return", i+1)
 	}
 	due := RestsDue(w.s)
 	require.Len(t, due, 1, "three transient takes rest the route: %+v", due)

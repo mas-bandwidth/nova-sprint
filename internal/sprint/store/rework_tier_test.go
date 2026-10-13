@@ -237,6 +237,13 @@ func sharedFlash(t *testing.T) *harness {
 // reworked attempt is dealt on the provider again and can reach its second bound.
 const outageLine = cardhdr.EndProvider + ": provider: class=provider-5xx status=503 msg=Service Unavailable"
 
+// timeoutLine is a take the provider failed by not answering in time: it ends the take and
+// spends a redeal, as a 5xx did before v1.2.17, and rests nothing but the route's 3-in-10
+// window. Since v1.2.17 a 5xx under MaxRateReturns returns its card untouched and spends no
+// redeal (internal/sprint/provider_5xx_test.go), so an attempt bounded by provider failures
+// is bounded here by timeouts.
+const timeoutLine = cardhdr.EndProvider + ": provider: class=timeout status=- msg=no answer in time"
+
 // A withdrawn take's end counts as the attempt's failure, not only a failed finish (the
 // coordinator's finding of 2026-10-03: 240 bounds in a row were never the second identical
 // failure, because only a failed finish wrote the primary's record). An attempt bounded by
@@ -246,7 +253,7 @@ const outageLine = cardhdr.EndProvider + ": provider: class=provider-5xx status=
 // last take ended lets one rework on the same tier, once per tier per card (failure_back), and
 // every later bound on it is refused, however often the provider comes back. A take of another
 // provider is not the provider back. A bound that ended another way is still a second bound on
-// the tier. The provider fails these takes with an outage (outageLine), which rests nothing,
+// the tier. The provider fails these takes with a timeout (timeoutLine), which rests nothing,
 // so each reworked attempt is dealt and reaches its bound; a refusal for credit rests the
 // provider first (TestAnOutOfCreditBoundRestsThenLiftsOnce).
 func TestAWithdrawnTakeCountsTowardTheIdenticalFailure(t *testing.T) {
@@ -256,11 +263,11 @@ func TestAWithdrawnTakeCountsTowardTheIdenticalFailure(t *testing.T) {
 		h.addReady("s1", 1, briefOf("flash", ""))
 		h.startMachine()
 		h.machine()
-		h.boundBy("s1-1", outageLine)
+		h.boundBy("s1-1", timeoutLine)
 		assert.Equal(t, []string{"rework with a fix", "drop", "wait"}, h.openOf(sprint.NBound)[0].Note.Decisions, "a provider failure's first bound offers wait")
 		require.Empty(t, h.reworkOf("again", ""))
 		pr := h.snap().Work.Card("s1-1")
-		assert.Equal(t, []string{"provider failure: class=provider-5xx", "1", "flash"},
+		assert.Equal(t, []string{"provider failure: class=timeout", "1", "flash"},
 			[]string{pr.F(sprint.FieldFailure), pr.F(sprint.FieldFailureAt), pr.F(sprint.FieldFailureTier)}, "the provider's class is the attempt's end")
 		return h
 	}
@@ -275,10 +282,10 @@ func TestAWithdrawnTakeCountsTowardTheIdenticalFailure(t *testing.T) {
 	t.Run("the same provider failure offers wait", func(t *testing.T) {
 		t.Parallel()
 		h := start(t)
-		h.boundBy("s1-1", outageLine)
+		h.boundBy("s1-1", timeoutLine)
 		refused := h.reworkOf("again", "")
 		require.Len(t, refused, 1)
-		assert.Contains(t, refused[0].Why, "attempt 2 reached its bound on tier flash as attempt 1 did (provider failure: class=provider-5xx)")
+		assert.Contains(t, refused[0].Why, "attempt 2 reached its bound on tier flash as attempt 1 did (provider failure: class=timeout)")
 		assert.Contains(t, refused[0].Why, "or wait: a take on a provider its takes failed on that finishes ok (the provider back) lets one rework on flash, once")
 		assert.Equal(t, []string{sprint.ReworkOnAHigherTier, "drop", "wait"}, h.openOf(sprint.NBound)[0].Note.Decisions)
 	})
@@ -293,7 +300,7 @@ func TestAWithdrawnTakeCountsTowardTheIdenticalFailure(t *testing.T) {
 		h.machine()
 		var accepted []int
 		for turn := 1; turn <= 6; turn++ {
-			h.boundBy("s1-1", outageLine)
+			h.boundBy("s1-1", timeoutLine)
 			okOn(h, turn, briefOf("flash", ""))
 			at := h.snap().Work.Card("s1-1").Int("attempt")
 			if refused := h.reworkOf("again", ""); len(refused) == 0 {
@@ -316,7 +323,7 @@ func TestAWithdrawnTakeCountsTowardTheIdenticalFailure(t *testing.T) {
 	t.Run("a take of another provider is not the provider back", func(t *testing.T) {
 		t.Parallel()
 		h := start(t)
-		h.boundBy("s1-1", outageLine)
+		h.boundBy("s1-1", timeoutLine)
 		okOn(h, 1, briefOf("flash", "model: x/y\ntokens: 100\ndeadline: 60"))
 		require.Equal(t, "x/y", h.snap().Fleet.Card("s2-1.w1").F(sprint.FieldModel), "a take on provider x finished ok")
 		require.Len(t, h.reworkOf("again", ""), 1, "provider x is not the provider s1-1's takes failed on")
