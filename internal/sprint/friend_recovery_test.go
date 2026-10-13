@@ -213,6 +213,61 @@ func TestLegacyUnknownGenerationDoesNotInferAnEmptyNewerBranch(t *testing.T) {
 	assert.NotEmpty(t, w.s.Fleet.Card(id).F(FieldRecoveryPending), "incomplete original identity remains visible debt")
 }
 
+// S2 (Aurora's #176 patch): debt that no retry can resolve — no repository in
+// the brief, or the revoked generation was never known — must reach the seat
+// as a judgment it can answer, not only as a happened note. Transient reader
+// failures stay happened notes, and the same stall is said once.
+func TestUnresolvableRecoveryDebtRaisesJudgmentToSeat(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	id := "s1-1.w1"
+	w.s.Fleet.Card(id).Fields["gen"] = "0" // legacy unknown generation: Gen 0 is unresolvable
+	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
+	recoveryStart(w, seats)
+	c := w.s.Fleet.Card(id)
+	r := RecoveryHeadRequest{Card: id, Gen: 0, CurrentGen: c.Int("gen"), Epoch: w.s.Epoch, Repo: c.F(FieldRecoveryRepo), Branch: c.F(FieldRecoveryBranch)}
+	var judgments, happened int
+	for range 2 { // said once: the second identical tick raises nothing new
+		p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r}}})
+		w.must(Applied(w.s, p))
+		for _, u := range p.Units {
+			for _, n := range u.Notes {
+				if n.Kind == Judgment && n.Type == NRecoveryUnresolvable {
+					judgments++
+					assert.Equal(t, w.s.Coordinator, n.To, "the judgment is addressed to the seat")
+					assert.Contains(t, n.Decisions, "friend give amy", "give answers it")
+					assert.Contains(t, n.Decisions, "friend take amy", "take answers it")
+				}
+				if n.Kind == Happened {
+					happened++
+				}
+			}
+		}
+	}
+	assert.Equal(t, 1, judgments, "unresolvable debt raises exactly one standing judgment")
+	assert.Zero(t, happened, "unresolvable debt is not left as a happened note")
+	require.NotEmpty(t, w.s.Fleet.Card(id).F(FieldRecoveryPending), "debt itself remains until resolved")
+}
+
+// S2 companion: a transient remote failure is retriable, so it stays a
+// happened note and never becomes a seat judgment.
+func TestTransientRecoveryFailureStaysHappenedNote(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	id := "s1-1.w1"
+	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
+	recoveryStart(w, seats)
+	c := w.s.Fleet.Card(id)
+	r := RecoveryHeadRequest{Card: id, Gen: c.Int(FieldRecoveryGen), CurrentGen: c.Int("gen"), Epoch: w.s.Epoch, Repo: c.F(FieldRecoveryRepo), Branch: c.F(FieldRecoveryBranch)}
+	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Error: "remote unavailable"}}})
+	for _, u := range p.Units {
+		for _, n := range u.Notes {
+			assert.NotEqual(t, NRecoveryUnresolvable, n.Type, "a retryable failure must not summon the seat as unresolvable")
+		}
+	}
+	require.NotEmpty(t, w.s.Fleet.Card(id).F(FieldRecoveryPending))
+}
+
 func TestUnreadableRecoveryBatchDoesNotStarveLaterDebt(t *testing.T) {
 	t.Parallel()
 	briefs := make([]string, RecoveryHeadBatch+1)

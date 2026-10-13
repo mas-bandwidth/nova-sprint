@@ -86,6 +86,12 @@ const (
 	// which is addressed to the holder it was taken from.
 	NSeat           = "seat"
 	NFriendNotWoken = "a friend was not told of her card" // friend sync delivered it, and the bus message failed
+	// NRecoveryUnresolvable is the seat's judgment for recovery head debt no
+	// retry can resolve (no repository named, or the revoked generation was
+	// never known): it stands until the coordinator answers it by giving the
+	// work to a friend who can re-derive it, taking it back by hand, or
+	// acknowledging the loss (friend_recovery.go, TickRecoveryHeads).
+	NRecoveryUnresolvable = "a recovered friend's branch head cannot be resolved"
 	NSeatTaken      = "seat TAKEN"
 
 	NReadyToAccept   = "ready to accept"    // the readers it needs said ok at its head (ReadsNeeded)
@@ -160,6 +166,9 @@ var Decisions = map[string][]string{
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},
+	// answered per card by friend give / friend take, or acknowledged where
+	// the work is gone (TickRecoveryHeads names the concrete commands).
+	NRecoveryUnresolvable: {"friend give", "friend take", "ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

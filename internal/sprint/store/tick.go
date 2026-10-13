@@ -1435,7 +1435,7 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		step := TickPartStep(part.Name, fn, t.req, &t.at, nil, &due)
 		step.RecoveryFriends = part.Name == sprint.PartFriendRecover
 		if part.Name == sprint.PartRecoveryHeads {
-			step.RecoveryReadUntil = time.Now().Add(10 * time.Second)
+			step.RecoveryReadUntil = time.Now().Add(sprint.RecoveryHeadBudget)
 		}
 		// the part records the run sequence it began under (tla/DirtyTickRead.tla Begin)
 		step.TickRunSeq = &t.runSeq

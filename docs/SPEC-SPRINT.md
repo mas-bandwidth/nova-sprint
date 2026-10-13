@@ -337,6 +337,15 @@ as redealt. A recovered Up friend may receive eligible work again: recovery
 does not set a persistent hold or permanent former-owner exclusion. Repeated
 ticks do not revoke the same lease again. Head reads rotate batches of at most
 64 cards, one query per repository, under one absolute budget across retries.
+Debt no retry can resolve (no repository named, the revoked generation never
+known, the exact branch not recomputable, or the remote gone) raises one
+standing judgment to the coordinator (`a recovered friend's branch head
+cannot be resolved`), answered by friend give, friend take, ack or wait;
+transient failures stay retriable notes, and the same stall is said once.
+The heads part is bounded so a remote outage cannot hold the tick: at most
+RecoveryHeadRemoteBudget per repository and RecoveryHeadBudget for the part
+across retries, after which the unresolved cards stay pending and the rest
+of the tick proceeds.
 
 **Last session activity** (the finding of 2026-10-04: the table said up with 8
 working for a friend whose session sat idle from 2:40 to 4:34 PM, and another read

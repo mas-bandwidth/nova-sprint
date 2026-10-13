@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,36 @@ func TestRecoveryHeadBindingBatchesExactRefsAndDistinguishesFailure(t *testing.T
 	for _, f := range a.recoveryHeads(context.Background(), requests) {
 		assert.Empty(t, f.Head)
 		assert.Equal(t, "unreachable", f.Error)
+	}
+}
+
+// S3 (Aurora's #176 patch): one slow or dead remote must not hold the whole
+// heads part. Each repository gets its own short deadline, later repositories
+// are still read after an earlier one fails, and the total stays bounded.
+func TestRecoveryHeadsBoundEachRemoteAndProceed(t *testing.T) {
+	t.Parallel()
+	var deadlines []time.Duration
+	a := &app{recoveryTips: func(ctx context.Context, repo string, _ []string) (map[string]string, error) {
+		dl, ok := ctx.Deadline()
+		require.True(t, ok, "every remote read carries its own deadline")
+		deadlines = append(deadlines, time.Until(dl))
+		if repo == "slow-repo" {
+			return nil, errors.New("unreachable")
+		}
+		return map[string]string{"b.g1": strings.Repeat("a", 40)}, nil
+	}}
+	requests := []sprint.RecoveryHeadRequest{
+		{Card: "a", Gen: 1, CurrentGen: 2, Repo: "slow-repo", Branch: "a.g1"},
+		{Card: "b", Gen: 1, CurrentGen: 2, Repo: "fast-repo", Branch: "b.g1"},
+	}
+	out := a.recoveryHeads(context.Background(), requests)
+	require.Len(t, out, 2)
+	assert.NotEmpty(t, out[0].Error, "the dead remote is evidence of failure")
+	assert.Equal(t, strings.Repeat("a", 40), out[1].Head, "the tick proceeds to later repositories")
+	require.Len(t, deadlines, 2)
+	for _, d := range deadlines {
+		assert.LessOrEqual(t, d, sprint.RecoveryHeadRemoteBudget+time.Second, "per-remote deadline is the bounded one, not the landing tip budget")
+		assert.Greater(t, d, time.Duration(0))
 	}
 }
 

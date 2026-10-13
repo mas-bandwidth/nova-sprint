@@ -23,7 +23,7 @@ func (a *app) recoveryBranchTips(ctx context.Context, repo string, branches []st
 		args = append(args, ref)
 		wanted[ref] = true
 	}
-	out, err := gitrun.Output(ctx, gitrun.Options{Env: a.gitEnv, Timeout: friendTipBudget}, args...)
+	out, err := gitrun.Output(ctx, gitrun.Options{Env: a.gitEnv, Timeout: sprint.RecoveryHeadRemoteBudget}, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +63,10 @@ func (a *app) recoveryHeads(ctx context.Context, requests []sprint.RecoveryHeadR
 	slices.Sort(repos)
 	var out []sprint.RecoveryHead
 	for _, repo := range repos {
+		// Each repository is bounded on its own, from the caller's context:
+		// one dead remote spends at most RecoveryHeadRemoteBudget and the
+		// later repositories are still read.
+		repoCtx, repoCancel := context.WithTimeout(ctx, sprint.RecoveryHeadRemoteBudget)
 		group := byRepo[repo]
 		var branches []string
 		for _, request := range group {
@@ -73,13 +77,14 @@ func (a *app) recoveryHeads(ctx context.Context, requests []sprint.RecoveryHeadR
 		switch {
 		case repo == "":
 			err = fmt.Errorf("the revoked generation names no repository")
-		case ctx.Err() != nil:
-			err = ctx.Err()
+		case repoCtx.Err() != nil:
+			err = repoCtx.Err()
 		case a.recoveryTips == nil:
 			err = fmt.Errorf("the branch-head reader is unavailable")
 		default:
-			heads, err = a.recoveryTips(ctx, repo, branches)
+			heads, err = a.recoveryTips(repoCtx, repo, branches)
 		}
+		repoCancel()
 		for _, request := range group {
 			result := sprint.RecoveryHead{RecoveryHeadRequest: request}
 			if err != nil {

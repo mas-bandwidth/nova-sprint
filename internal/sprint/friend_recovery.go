@@ -6,6 +6,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 	"slices"
 	"strings"
+	"time"
 )
 
 // RecoveryHeadRequest names the old generation's exact source branch. Recovery
@@ -47,6 +48,13 @@ const (
 	NFriendRecoveryPending = "a recovered friend's branch head is pending"
 	PropRecoveryCursor     = "friend_recovery_cursor"
 	RecoveryHeadBatch      = 64
+	// RecoveryHeadRemoteBudget bounds one repository's head read, and
+	// RecoveryHeadBudget bounds the whole heads part of one tick across
+	// retries: a remote outage during recovery debt must never hold the
+	// tick hostage; the unresolved cards stay pending and the rest of the
+	// tick proceeds (the stall is said once, in TickRecoveryHeads).
+	RecoveryHeadRemoteBudget = 2 * time.Second
+	RecoveryHeadBudget       = 3 * time.Second
 )
 
 // TickFriendRecover reserves the concrete transition modelled by DownRecovery
@@ -54,6 +62,9 @@ const (
 // withdrawal reserves exact card revision/place and increments its generation.
 // A fresh proof after reservation cannot revive that generation. Table writes
 // settle under the pending sprint operation before another mutator can begin.
+// Revocation increments the generation only: the primary's attempt and the
+// card's redeal bound are not spent (asserted by the recovery tests), so a
+// friend who recovers is not charged an attempt for having gone down.
 func TickFriendRecover(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	p.on(s)
@@ -152,6 +163,12 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 		c := s.Fleet.Placed(request.Card)
 		fact, known := byCard[request.Card]
 		why := "branch head reader supplied no evidence"
+		// unresolvable says no retry of the same read can ever succeed: the
+		// debt names no repository, its generation was never known, its exact
+		// branch cannot be recomputed, or the remote itself is gone (renamed).
+		// Such debt goes to the seat as a judgment; everything else stays a
+		// retriable happened note.
+		unresolvable := false
 		switch {
 		case duplicate[request.Card]:
 			why = "ambiguous branch head evidence"
@@ -160,8 +177,10 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 			why = "branch head evidence names a different card, generation, epoch or source"
 		case fact.Error != "":
 			why = cutText(fact.Error, MaxCardTextBytes)
+			unresolvable = strings.Contains(strings.ToLower(fact.Error), "not found")
 		case request.Repo == "" || request.Gen < 1 || request.Branch != BranchOf(s.Prefix, s.Epoch, c.ID, request.Gen):
 			why = "the revoked generation has no readable repository or exact source branch"
+			unresolvable = true
 		case fact.Head != "" && !typedrec.IsFullSha(fact.Head):
 			why = "branch head is not a full commit SHA"
 		default:
@@ -175,8 +194,19 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		if c.F(FieldRecoveryPending) != why {
-			n := happened(NFriendRecoveryPending, c.F("stream"), s.Now, c.F("primary"))
-			n.Card, n.Who, n.What = c.ID, r.who(), "No new take until "+request.Branch+" is read: "+why+"; tick retries without discarding the carried baseline"
+			// said once: a later tick with the same why writes the same
+			// pending text, so neither note is raised again.
+			var n Note
+			if unresolvable {
+				friend := strings.TrimPrefix(c.F(FieldRecoveredFrom), friendRowPrefix)
+				n = judgment(NRecoveryUnresolvable, c.F("stream"), s.Now, 0, c.F("primary"))
+				n.Card, n.Who, n.To = c.ID, r.who(), s.Coordinator
+				n.What = "No new take until " + request.Branch + " can be resolved: " + why + "; no retry of this read can succeed, so the seat answers for " + c.ID
+				n.Decisions = []string{"friend give " + friend, "friend take " + friend, "ack", "wait"}
+			} else {
+				n = happened(NFriendRecoveryPending, c.F("stream"), s.Now, c.F("primary"))
+				n.Card, n.Who, n.What = c.ID, r.who(), "No new take until "+request.Branch+" is read: "+why+"; tick retries without discarding the carried baseline"
+			}
 			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, setEntry(c, map[string]string{FieldRecoveryPending: why}))}, Notes: []Note{n}, Moved: c.ID + ": recovery pending: " + why})
 		}
 	}
