@@ -21,12 +21,15 @@
 \* spend; judged, the low-on-funds judgment is open; event, what the last step
 \* was (the record the rules read); redeal, the redeals spent so far: a take
 \* that ends spends one, an out-of-credit refusal on a limited route spends
-\* none (OutOfCreditSpendsNoRedeal).
+\* none (OutOfCreditSpendsNoRedeal), and neither does a provider 5xx under
+\* MaxRateReturns (fivexx: its card is returned untouched, and it still counts
+\* toward the route's rest as a transient end does; Provider5xxSpendsNoRedeal).
 \*
 \* The design, Broken = {}:
 \*   Launch     a take is launched on a serving route (in flight).
 \*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
-\*              a 5xx, a timeout at the provider, credit: a 402, auth: a 401);
+\*              a timeout at the provider, or a 5xx past MaxRateReturns,
+\*              fivexx: a 5xx returned untouched, credit: a 402, auth: a 401);
 \*              the tick that sees it rests the provider on a refusal, and the
 \*              route when its window holds After transient failures. A
 \*              no-result counts in the window and never toward a rest.
@@ -53,6 +56,8 @@
 \*   "authclock" the retired timed key rest (RouteRestFor, until 2026-10-10): the
 \*              clock ends an auth rest: AuthEndsOnlyWoken
 \*   "coordclock" the clock ends an open coordinator rest: CoordOpenEndsOnlyWoken
+\*   "fivexxspend" the take ending of BASE 65973f2b: a provider 5xx ends the take
+\*              and spends a redeal: Provider5xxSpendsNoRedeal
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Routes, W, After, Broken
@@ -60,7 +65,7 @@ CONSTANTS Routes, W, After, Broken
 VARIABLES provRest, own, win, low, judged, event, redeal
 vars == <<provRest, own, win, low, judged, event, redeal>>
 
-Kinds == {"ok", "noresult", "transient", "credit", "auth"}
+Kinds == {"ok", "noresult", "transient", "fivexx", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock", "launch", "ignored"}
 
 \* the bounded windows of ended takes
@@ -95,8 +100,13 @@ Resting(r) == provRest # "none" \/ own[r] # "none"
 \* the newest W of a window with one more end
 Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 
-\* the ends that count toward a route's own rest (RestsDue: transient only)
-Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
+\* the ends that count toward a route's own rest (RestsDue: transient only; a
+\* 5xx returned untouched still leaves its FieldProviderTake, so it counts)
+Counts(k) == k \in {"transient", "fivexx"} \/ ("noresult" \in Broken /\ k = "noresult")
+
+\* the ends that spend no redeal: an out-of-credit refusal on a limited route,
+\* and a 5xx returned untouched (rateLimitedReturned), unless reversed
+NoSpend(k) == k = "credit" \/ (k = "fivexx" /\ "fivexxspend" \notin Broken)
 
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
 
@@ -132,7 +142,7 @@ TakeEnds(r, k) ==
                    ELSE /\ own' = own
                         /\ win' = [win EXCEPT ![r] = [ends |-> w, flight |-> win[r].flight]]
     /\ event' = k
-    /\ redeal' = IF k = "credit" THEN redeal ELSE IF redeal < W THEN redeal + 1 ELSE redeal
+    /\ redeal' = IF NoSpend(k) THEN redeal ELSE IF redeal < W THEN redeal + 1 ELSE redeal
     /\ UNCHANGED <<low, judged>>
 
 \* a take in flight ends refused: one launched after the last rest's mark rests
@@ -257,7 +267,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Raise)
 \* a serving route begins to rest only on a provider-typed failure or the
 \* coordinator's word: never a no-result, never a balance read
 RestOnlyByProviderOrCoordinator ==
-    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "credit", "auth", "coord"}]_vars
+    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "fivexx", "credit", "auth", "coord"}]_vars
 
 \* a provider's credit rest ends only on a payment seen, funded, or the
 \* coordinator's wake: never by the clock
@@ -288,5 +298,12 @@ LowIsRaised == [](low => <>(judged \/ ~low))
 \* ended take spends one (TakeEnds), so the property is not vacuous.
 OutOfCreditSpendsNoRedeal ==
     [][event' = "credit" => redeal' = redeal]_vars
+
+\* a provider 5xx under MaxRateReturns (a fivexx event) spends no redeal: its card is
+\* returned untouched (steps_work.go, rateLimitedReturned with label "provider 5xx"),
+\* while Counts still counts it toward the route's rest. The reversed witness
+\* "fivexxspend" is the take ending of BASE, which spends one.
+Provider5xxSpendsNoRedeal ==
+    [][event' = "fivexx" => redeal' = redeal]_vars
 
 =============================================================================
