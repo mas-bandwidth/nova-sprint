@@ -164,9 +164,10 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 		fact, known := byCard[request.Card]
 		why := "branch head reader supplied no evidence"
 		// unresolvable says no retry of the same read can ever succeed: the
-		// debt names no repository, its generation was never known, its exact
-		// branch cannot be recomputed, or the remote itself is gone (renamed).
-		// Such debt goes to the seat as a judgment; everything else stays a
+		// debt names no repository, its generation was never known, or its
+		// exact branch cannot be recomputed. Such debt goes to the seat as
+		// a judgment; everything the reader merely failed at — including a
+		// remote that may be renamed or may be refusing auth — stays a
 		// retriable happened note.
 		unresolvable := false
 		switch {
@@ -182,8 +183,10 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 			why = "the revoked generation has no readable repository or exact source branch"
 			unresolvable = true
 		case fact.Error != "":
+			// an error text never proves impossibility: a renamed remote
+			// and an auth or private-repo denial can read identically, so
+			// reader errors stay retriable whatever they say.
 			why = cutText(fact.Error, MaxCardTextBytes)
-			unresolvable = strings.Contains(strings.ToLower(fact.Error), "not found")
 		case fact.Head != "" && !typedrec.IsFullSha(fact.Head):
 			why = "branch head is not a full commit SHA"
 		default:
@@ -194,6 +197,9 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 				what = "carried recovered branch " + request.Branch + " at " + fact.Head
 			}
 			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, setEntry(c, set, FieldRecoveryPending))}, Moved: c.ID + ": " + what})
+			// a resolved debt closes its standing judgment in the same
+			// plan, so a recovered remote never leaves obsolete debt open.
+			p.Closes = append(p.Closes, closesFor(s.Open, []string{NRecoveryUnresolvable}, c.F("primary"))...)
 			continue
 		}
 		if c.F(FieldRecoveryPending) != why {

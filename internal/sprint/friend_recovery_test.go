@@ -258,8 +258,11 @@ func TestUnresolvableEmptyRepoWithBindingErrorRaisesJudgment(t *testing.T) {
 	id := "s1-1.w1"
 	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
 	recoveryStart(w, seats)
-	c := w.s.Fleet.Card(id)
-	r := RecoveryHeadRequest{Card: id, Gen: c.Int(FieldRecoveryGen), CurrentGen: c.Int("gen"), Epoch: w.s.Epoch, Repo: "", Branch: c.F(FieldRecoveryBranch)}
+	w.s.Fleet.Card(id).Fields[FieldRecoveryRepo] = ""
+	reqs := RecoveryHeadRequests(w.s)
+	require.Len(t, reqs, 1)
+	r := reqs[0]
+	require.Empty(t, r.Repo)
 	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Error: "the revoked generation names no repository"}}})
 	found := false
 	for _, u := range p.Units {
@@ -270,6 +273,44 @@ func TestUnresolvableEmptyRepoWithBindingErrorRaisesJudgment(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "empty repo with a binding error is structural, not retriable")
+}
+
+// S2 lifecycle: when the remote recovers and the head finally resolves, the
+// standing unresolvable judgment closes in the same plan — no obsolete debt
+// judgment is left open over resolved work.
+func TestRecoveryResolutionClosesUnresolvableJudgment(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	id := "s1-1.w1"
+	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
+	recoveryStart(w, seats)
+	w.s.Fleet.Card(id).Fields[FieldRecoveryRepo] = ""
+	reqs := RecoveryHeadRequests(w.s)
+	require.Len(t, reqs, 1)
+	r := reqs[0]
+	require.Empty(t, r.Repo)
+	require.GreaterOrEqual(t, r.Gen, 1, "only the repository is missing; the generation is known")
+	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r}}})
+	w.must(Applied(w.s, p))
+	open := 0
+	for _, o := range w.s.Open {
+		if o.Note.Type == NRecoveryUnresolvable {
+			open++
+		}
+	}
+	require.Equal(t, 1, open, "the judgment stands while the debt does")
+	// The repository identity is restored in the card's debt fields, and
+	// the next read succeeds: resolution closes the judgment.
+	c := w.s.Fleet.Card(id)
+	c.Fields[FieldRecoveryRepo] = "https://github.com/mas-bandwidth/nova-tools.git"
+	r = RecoveryHeadRequests(w.s)[0]
+	p, _ = TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Head: strings.Repeat("e", 40)}}})
+	w.must(Applied(w.s, p))
+	for _, o := range w.s.Open {
+		assert.NotEqual(t, NRecoveryUnresolvable, o.Note.Type, "resolved debt leaves no standing judgment")
+	}
+	assert.Empty(t, w.s.Fleet.Card(id).F(FieldRecoveryPending))
+	assert.Equal(t, strings.Repeat("e", 40), w.s.Fleet.Card(id).F(FieldCarryHead))
 }
 
 // S2 companion: a transient remote failure is retriable, so it stays a

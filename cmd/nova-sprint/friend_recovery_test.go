@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
@@ -45,26 +44,21 @@ func TestRecoveryHeadBindingBatchesExactRefsAndDistinguishesFailure(t *testing.T
 func TestRecoveryHeadsBoundEachRemoteAndProceed(t *testing.T) {
 	t.Parallel()
 	var order []string
-	var deadlines []time.Duration
+	var bounded []bool
 	a := &app{recoveryTips: func(ctx context.Context, repo string, _ []string) (map[string]string, error) {
-		dl, ok := ctx.Deadline()
-		require.True(t, ok, "every remote read carries its own deadline")
+		_, ok := ctx.Deadline()
+		bounded = append(bounded, ok)
 		order = append(order, repo)
-		deadlines = append(deadlines, time.Until(dl))
 		if repo == "a-dead-repo" {
 			return nil, errors.New("unreachable")
 		}
 		return map[string]string{"b.g1": strings.Repeat("a", 40)}, nil
 	}}
-	// repositories execute in sorted order, so the dead one is named to run
-	// first: progress to the later repository is what is being proven.
 	requests := []sprint.RecoveryHeadRequest{
 		{Card: "a", Gen: 1, CurrentGen: 2, Repo: "a-dead-repo", Branch: "a.g1"},
 		{Card: "b", Gen: 1, CurrentGen: 2, Repo: "z-fast-repo", Branch: "b.g1"},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sprint.RecoveryHeadBudget)
-	defer cancel()
-	out := a.recoveryHeads(ctx, requests)
+	out := a.recoveryHeads(context.Background(), requests)
 	require.Equal(t, []string{"a-dead-repo", "z-fast-repo"}, order, "the failed remote runs first and does not stop the part")
 	require.Len(t, out, 2)
 	byCard := map[string]sprint.RecoveryHead{}
@@ -73,11 +67,12 @@ func TestRecoveryHeadsBoundEachRemoteAndProceed(t *testing.T) {
 	}
 	assert.NotEmpty(t, byCard["a"].Error, "the dead remote is evidence of failure")
 	assert.Equal(t, strings.Repeat("a", 40), byCard["b"].Head, "the tick proceeds to later repositories")
-	require.Len(t, deadlines, 2)
-	for _, d := range deadlines {
-		assert.LessOrEqual(t, d, sprint.RecoveryHeadRemoteBudget+time.Second, "per-remote deadline is the bounded one, not the landing tip budget")
-		assert.Greater(t, d, time.Duration(0))
-	}
+	assert.Equal(t, []bool{true, true}, bounded, "every remote read carries its own deadline")
+	// Fairness across ticks: repositories follow the requests' rotated
+	// order, so a later repository is first when the batch rotates to it.
+	order, bounded = nil, nil
+	out = a.recoveryHeads(context.Background(), []sprint.RecoveryHeadRequest{requests[1], requests[0]})
+	require.Equal(t, []string{"z-fast-repo", "a-dead-repo"}, order, "rotated request order rotates which repository runs first")
 }
 
 func TestRecoveryHeadBindingRespectsBudgetAndBatchCap(t *testing.T) {

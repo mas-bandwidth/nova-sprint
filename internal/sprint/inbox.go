@@ -606,6 +606,11 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, cmd+"check")
 		case d == "wait":
 			add(d, cmd+"wait "+waitIDs(g, first)+" --for 30m") // a stalled stream's group has no note: its id
+		case g.Type == NRecoveryUnresolvable && d == "restore the repository":
+			// the restore itself is outside the sprint (the remote, or the
+			// brief that named it); the printed answer records it once done,
+			// and the next tick resolves the debt keeping the baseline.
+			add(d, append(look(), cmd+"ack "+strings.Join(g.Notes, ",")+" --reason '<what was restored>'")...)
 		case d == "look at the card":
 			add(d, look()...)
 		case d == "repair":

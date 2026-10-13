@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -53,14 +52,17 @@ func (a *app) recoveryHeads(ctx context.Context, requests []sprint.RecoveryHeadR
 		requests = requests[:sprint.RecoveryHeadBatch]
 	}
 	byRepo := map[string][]sprint.RecoveryHeadRequest{}
+	// Repositories run in the requests' own (rotated) order, never sorted:
+	// under one shared budget a fixed order would spend the budget on the
+	// same first repositories every tick and starve the later ones, while
+	// RecoveryHeadRequests rotates the batch between ticks.
+	var repos []string
 	for _, request := range requests {
+		if _, seen := byRepo[request.Repo]; !seen {
+			repos = append(repos, request.Repo)
+		}
 		byRepo[request.Repo] = append(byRepo[request.Repo], request)
 	}
-	var repos []string
-	for repo := range byRepo {
-		repos = append(repos, repo)
-	}
-	slices.Sort(repos)
 	var out []sprint.RecoveryHead
 	for _, repo := range repos {
 		// Each repository is bounded on its own, from the caller's context:
