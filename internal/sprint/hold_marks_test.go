@@ -88,6 +88,48 @@ var holdMarks = []holdMarkRow{
 		release: envFaultRelease,
 		written: []string{"HeldByEnv"},
 	},
+	{
+		name:    "idle-reap",
+		mark:    HeldByIdleReap,
+		auto:    true,
+		write:   idleReapHoldMark,
+		release: idleReapRelease,
+		written: []string{"HeldByIdleReap"},
+	},
+}
+
+// idleReapHoldMark is the idle-reap mark: the member's takes ended with no model call
+// IdleReapHoldAfter times on a route another member served, and idleReapHolds, the
+// deal's, holds it with its cause (hold_cause.go).
+func idleReapHoldMark(t *testing.T, w *world, member string) {
+	t.Helper()
+	other := "m2"
+	if member == "m2" {
+		other = "m1"
+	}
+	for i := 1; i <= IdleReapHoldAfter; i++ {
+		putReap(w, member+"-reap-"+itoa(i)+".w1", "ds", member, w.s.Now.Add(-time.Duration(i)*time.Minute))
+	}
+	putOK(w, other+"-served.w1", "ds", other, w.s.Now.Add(-time.Minute))
+	var p Plan
+	idleReapHolds(w.s, TickReq{}, &p)
+	w.must(p)
+}
+
+// idleReapRelease is the idle-reap mark's own release: its judgment answered, the tick's
+// holdCauseClear ends the hold it is the cause of, and no hold with another cause or none.
+func idleReapRelease(t *testing.T, w *world, member string) {
+	t.Helper()
+	for _, o := range w.openOn(StreamSubject(MemberSubject(member))) {
+		if o.Note.Type == NMemberIdleReaps {
+			w.closeAll([]Open{o})
+		}
+	}
+	var p Plan
+	holdCauseClear(w.s, TickReq{Beats: freshBeats(w, member, "m2")}, &p)
+	if len(p.Units) > 0 {
+		w.must(p)
+	}
 }
 
 // held says the control card is held with this row's mark: held_by is the
