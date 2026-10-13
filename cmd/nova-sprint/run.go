@@ -59,16 +59,16 @@ func (a *app) cmdMachineStop(args []string, stdout, stderr io.Writer) int {
 
 // setMachine is start and stop: the state before and after, whether it
 // changed, and the sprint line. Setting the state the machine has changes
-// nothing and says so. A stop wants --reason and --until (docs/SPEC-SPRINT.md
-// section 14): the machine line says who stopped it, why and when it is back,
+// nothing and says so. A stop wants --reason and optional --until (docs/SPEC-SPRINT.md
+// section 14): the machine line says why and when it is back (or until the next start),
 // and only an explicit start resumes it; a stop of a STOPPED machine replaces the
 // two.
 func (a *app) setMachine(name string, running bool, args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	var reason, untilArg string
 	if !running {
-		fs.StringVar(&reason, "reason", "", "why the machine stops, shown with it: the machine line of where, inbox and the dashboard says \"STOPPED by <actor>: <reason>, back by <time>\" (required)")
-		fs.StringVar(&untilArg, "until", "", "when the machine starts itself again: a `time or duration`, a duration from now (90m), a clock time (2:04 PM or 14:04, today's or tomorrow's) or an RFC 3339 time; the tick starts it then unless it is stopped again (required)")
+		fs.StringVar(&reason, "reason", "", "why the machine stops, shown with it: the machine line of where, inbox and the dashboard says \"STOPPED until the next start (<reason>)\" or \"STOPPED, expected back by <until> (<reason>); start ends it\" (required)")
+		fs.StringVar(&untilArg, "until", "", "when the seat expects to start the machine again (display only; only start starts the machine): a `time or duration`, a duration from now (90m), a clock time (2:04 PM or 14:04, today's or tomorrow's) or an RFC 3339 time (optional)")
 	}
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -1119,11 +1119,12 @@ func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor st
 func machineWords() string {
 	return strings.TrimSpace(`
 The machine: nova-sprint start sets it RUNNING, nova-sprint stop --reason
-<text> --until <time or duration> sets it STOPPED: where, inbox and the
-dashboard say "STOPPED by <actor>: <reason>, back by 2:04 PM". That time is
-display metadata; only an explicit start resumes after every owned working
-job has been cancelled and returned with stop-return. nova-sprint run ticks
-as soon as a line comes on the log (a verb's
+<text> [--until <time or duration>] sets it STOPPED: where, inbox and the
+dashboard say "STOPPED until the next start (<reason>)" or "STOPPED, expected
+back by 2:04 PM (<reason>); start ends it". That time is display metadata; only
+an explicit start resumes after every owned working job has been cancelled and
+returned with stop-return. nova-sprint run ticks as soon as a line comes on the
+log (a verb's
 step: a finish, a merge, a start), at most every 100ms, and once a second
 while the log is quiet; nova-sprint tick is one tick by hand. Each tick deals
 ready primaries, asks readers, resolves waiting primaries whose needs landed,
