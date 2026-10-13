@@ -463,7 +463,7 @@ func TestFriendDealWaitsForConsumerTrunkMerge(t *testing.T) {
 	seats := []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash,pro,heavy,frontier", Roles: []string{RoleBuilder}}}
 	p, _, _ := friendDeal(w.s, []*Card{c}, seats)
 	require.Empty(t, p.Units)
-	proof := ConsumerMerge{Epoch: w.s.Epoch, Card: SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: StreamBranch(w.s, c.Row), Trunk: Trunk(w.s, c.Row), Observed: "trunk", Merged: "merged", Success: false, ContainsObserved: true}
+	proof := ConsumerMerge{Barriers: ConsumerBarriersOf(w.s, c), Epoch: w.s.Epoch, Card: SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: StreamBranch(w.s, c.Row), Trunk: Trunk(w.s, c.Row), Observed: "trunk", Merged: "merged", Success: false, ContainsObserved: true}
 	w.s.ConsumerMerges = []ConsumerMerge{proof}
 	p, _, _ = friendDeal(w.s, []*Card{c}, seats)
 	require.Empty(t, p.Units)

@@ -73,6 +73,8 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 		}
 		type target struct{ repo, stream, branch, trunk string }
 		merged := map[target]sprint.ConsumerMerge{}
+		type trunkTarget struct{ repo, trunk string }
+		observed := map[trunkTarget]string{}
 		var out []sprint.ConsumerMerge
 		for _, c := range s.Work.Cards() {
 			if (c.Col != sprint.Waiting && c.Col != sprint.Ready) || !sprint.ConsumerNeedsTrunk(s, c) {
@@ -82,6 +84,7 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 			if repo == "" {
 				continue
 			}
+			cardInput, barriers := sprint.SentinelCardOf(c), sprint.ConsumerBarriersOf(s, c)
 			key := target{repo, c.Row, sprint.StreamBranch(s, c.Row), sprint.Trunk(s, c.Row)}
 			proof, known := merged[key]
 			if !known {
@@ -94,7 +97,13 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 					why = l.ensureStreamBranch(ctx, s, dir, repo, c.Row, key.branch)
 				}
 				if why == "" {
-					proof.Observed = l.observedTrunk(ctx, dir, key.trunk)
+					trunkKey := trunkTarget{repo, key.trunk}
+					var observedKnown bool
+					proof.Observed, observedKnown = observed[trunkKey]
+					if !observedKnown {
+						proof.Observed = l.observedTrunk(ctx, dir, key.trunk)
+						observed[trunkKey] = proof.Observed
+					}
 					if proof.Observed != "" {
 						tree, w := l.worktree(ctx, dir, c.Row, key.branch)
 						if w == "" {
@@ -122,7 +131,8 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 				merged[key] = proof
 			}
 			proof.Epoch = s.Epoch
-			proof.Card = sprint.SentinelCardOf(c)
+			proof.Card = cardInput
+			proof.Barriers = barriers
 			out = append(out, proof)
 		}
 		return out

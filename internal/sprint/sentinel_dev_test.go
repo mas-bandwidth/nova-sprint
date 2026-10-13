@@ -62,7 +62,7 @@ func TestConsumerFailedOrStaleMergeCannotAuthorizeNextDeal(t *testing.T) {
 	c := &Card{ID: "consumer", Row: "consumer", Col: Ready, Rev: 1, Fields: map[string]string{"needs": "stop", "brief": "consumer\nREPO: /fixture/repo\n"}}
 	s.Work.Put(c)
 	require.False(t, ConsumerTrunkReady(s, c))
-	proof := ConsumerMerge{Epoch: s.Epoch, Card: SentinelCardOf(c), Repo: "/fixture/repo", Branch: StreamBranch(s, c.Row), Trunk: Trunk(s, c.Row), Observed: "def", Merged: "merged", Success: true, ContainsObserved: true}
+	proof := ConsumerMerge{Barriers: ConsumerBarriersOf(s, c), Epoch: s.Epoch, Card: SentinelCardOf(c), Repo: "/fixture/repo", Branch: StreamBranch(s, c.Row), Trunk: Trunk(s, c.Row), Observed: "def", Merged: "merged", Success: true, ContainsObserved: true}
 	s.ConsumerMerges = []ConsumerMerge{proof}
 	require.True(t, ConsumerTrunkReady(s, c))
 	s.ConsumerMerges[0].Success = false
@@ -152,4 +152,26 @@ func TestGeneratedSentinelsDoNotAcquireOrAdvertiseManualHolds(t *testing.T) {
 	}
 	require.Equal(t, 2, sentinels)
 	require.Equal(t, 2, ordinary)
+}
+
+func TestConsumerReceiptPinsReleasedBarrierVector(t *testing.T) {
+	for _, mutate := range []func(*Snapshot, *Card){
+		func(s *Snapshot, stop *Card) { stop.Rev++ },
+		func(s *Snapshot, stop *Card) { stop.Fields["release_kind"] = "early override" },
+		func(s *Snapshot, stop *Card) {
+			s.Work.Put(&Card{ID: "new-stop", Row: stop.Row, Col: Landed, Score: 2.5, Rev: 1, Fields: map[string]string{"kind": "sentinel", "release_kind": "automatic"}})
+		},
+	} {
+		s, stop, _ := sentinelProofFixture(t)
+		stop.Col = Landed
+		c := &Card{ID: "after", Row: stop.Row, Col: Ready, Score: 3, Rev: 4, Fields: map[string]string{"brief": "after\nREPO: /fixture/repo\n"}}
+		s.Work.Put(c)
+		proof := ConsumerMerge{Barriers: ConsumerBarriersOf(s, c), Epoch: s.Epoch, Card: SentinelCardOf(c), Repo: "/fixture/repo", Branch: StreamBranch(s, c.Row), Trunk: Trunk(s, c.Row), Observed: "def", Merged: "merged", Success: true, ContainsObserved: true}
+		s.ConsumerMerges = []ConsumerMerge{proof}
+		require.True(t, ConsumerTrunkReady(s, c))
+		oldCard := SentinelCardOf(c)
+		mutate(s, stop)
+		require.Equal(t, oldCard, SentinelCardOf(c), "barrier can change without changing the consumer")
+		require.False(t, ConsumerTrunkReady(s, c))
+	}
 }

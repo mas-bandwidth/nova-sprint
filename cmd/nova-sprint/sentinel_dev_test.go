@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -77,4 +79,41 @@ func sentinelProgressNotes(t *testing.T, ta *testApp, stream string) []sprint.No
 		}
 	}
 	return found
+}
+
+func TestConsumerCallbackUsesOneObservedTrunkAcrossStreams(t *testing.T) {
+	r := newLandRig(t)
+	r.m.SetGitIdentity("nova-sprint <nova-sprint@example.invalid>")
+	initial := r.git(r.worker, "rev-parse", "HEAD")
+	for _, stream := range []string{"one", "two"} {
+		r.git(r.worker, "push", "-q", "origin", initial+":refs/heads/sprint/"+stream)
+	}
+	next := r.commit("next.txt", "next\n", "next trunk")
+	r.git(r.worker, "push", "-q", "origin", next+":refs/heads/fixture-next")
+	// The fake forge advances after the first consumer push. The callback
+	// observes once; a later callback must observe and merge this advance.
+	require.NoError(t, os.WriteFile(filepath.Join(r.remote, "hooks", "post-receive"), []byte("#!/bin/sh\ngit update-ref refs/heads/main "+next+"\n"), 0700))
+	st, err := r.a.store(common{redis: "mem:0", actor: sprint.MachineActor})
+	require.NoError(t, err)
+	r.a.bindSentinelProtocol(st)
+	s := &sprint.Snapshot{Work: sprint.NewTable(sprint.Work), Merge: sprint.NewTable(sprint.Merge)}
+	s.Work.SetRows([]string{"producer", "one", "two"})
+	s.Work.Put(&sprint.Card{ID: "stop", Row: "producer", Col: sprint.Landed, Fields: map[string]string{"kind": "sentinel", "release_kind": "automatic"}})
+	for _, stream := range []string{"one", "two"} {
+		s.Merge.Put(&sprint.Card{ID: sprint.CtlID(stream), Row: stream, Col: sprint.Ctl, Fields: map[string]string{sprint.FieldTrunk: "main", sprint.FieldStreamBranch: "sprint/" + stream}})
+		s.Work.Put(&sprint.Card{ID: stream, Row: stream, Col: sprint.Ready, Fields: map[string]string{"needs": "stop", "brief": fmt.Sprintf("fixture\nREPO: %s\n", r.remote)}})
+	}
+	proofs := st.ConsumerTrunk(context.Background(), s)
+	require.Len(t, proofs, 2)
+	for _, proof := range proofs {
+		require.True(t, proof.Success)
+		require.Equal(t, initial, proof.Observed)
+	}
+	require.Equal(t, next, r.git(r.remote, "rev-parse", "refs/heads/main"))
+	proofs = st.ConsumerTrunk(context.Background(), s)
+	require.Len(t, proofs, 2)
+	for _, proof := range proofs {
+		require.True(t, proof.Success)
+		require.Equal(t, next, proof.Observed)
+	}
 }

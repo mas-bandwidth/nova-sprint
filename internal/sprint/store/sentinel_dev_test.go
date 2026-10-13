@@ -84,7 +84,7 @@ func installSentinelFixtureForge(h *harness, stopID string, producers, consumers
 			if c == nil || !sprint.ConsumerNeedsTrunk(s, c) {
 				continue
 			}
-			proofs = append(proofs, sprint.ConsumerMerge{Epoch: s.Epoch, Card: sprint.SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: sprint.StreamBranch(s, c.Row), Trunk: sprint.Trunk(s, c.Row), Observed: observed(), Merged: "fixture-merged-consumer", Success: true, ContainsObserved: true})
+			proofs = append(proofs, sprint.ConsumerMerge{Barriers: sprint.ConsumerBarriersOf(s, c), Epoch: s.Epoch, Card: sprint.SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: sprint.StreamBranch(s, c.Row), Trunk: sprint.Trunk(s, c.Row), Observed: observed(), Merged: "fixture-merged-consumer", Success: true, ContainsObserved: true})
 		}
 		return proofs
 	}

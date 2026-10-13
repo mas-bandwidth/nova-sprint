@@ -152,7 +152,46 @@ func SentinelDevReason(s *Snapshot, c *Card, observations []SentinelObservation)
 
 // ConsumerMerge binds a successful actual stream merge to one observed trunk.
 // A failed merge produces no receipt and cannot authorize ready or working.
+type ConsumerBarrierInput struct {
+	Sentinels []SentinelCard
+	Targets   map[string]string
+}
+
+// ConsumerBarriersOf pins every released named or positional barrier and its
+// recorded target. A new or reworked barrier invalidates an outside receipt.
+func ConsumerBarriersOf(s *Snapshot, c *Card) ConsumerBarrierInput {
+	in := ConsumerBarrierInput{Targets: map[string]string{}}
+	seen := map[string]bool{}
+	add := func(stop *Card) {
+		if stop == nil || seen[stop.ID] || !IsSentinel(stop) || inState(stop, Landed) != "" {
+			return
+		}
+		seen[stop.ID] = true
+		in.Sentinels = append(in.Sentinels, SentinelCardOf(stop))
+		in.Targets[stop.Row] = StreamBranch(s, stop.Row) + "@" + Trunk(s, stop.Row)
+	}
+	for _, id := range Split(c.F("needs")) {
+		add(s.Work.Card(id))
+	}
+	for _, stop := range streamLine(s, c.Row) {
+		if stop.Score < c.Score {
+			add(stop)
+		}
+	}
+	slices.SortFunc(in.Sentinels, func(a, b SentinelCard) int {
+		if a.ID < b.ID {
+			return -1
+		}
+		if a.ID > b.ID {
+			return 1
+		}
+		return 0
+	})
+	return in
+}
+
 type ConsumerMerge struct {
+	Barriers                              ConsumerBarrierInput
 	Epoch                                 uint64
 	Card                                  SentinelCard
 	Repo, Branch, Trunk, Observed, Merged string
@@ -184,7 +223,7 @@ func ConsumerTrunkReady(s *Snapshot, c *Card) bool {
 	}
 	repo := swarm.ReadCardBase([]byte(c.F("brief"))).Repo
 	for _, proof := range s.ConsumerMerges {
-		if proof.Success && proof.ContainsObserved && proof.Epoch == s.Epoch && reflect.DeepEqual(proof.Card, SentinelCardOf(c)) && repo != "" && proof.Repo == repo && proof.Branch == StreamBranch(s, c.Row) && proof.Trunk == Trunk(s, c.Row) && proof.Observed != "" && proof.Merged != "" {
+		if proof.Success && proof.ContainsObserved && proof.Epoch == s.Epoch && reflect.DeepEqual(proof.Card, SentinelCardOf(c)) && reflect.DeepEqual(proof.Barriers, ConsumerBarriersOf(s, c)) && repo != "" && proof.Repo == repo && proof.Branch == StreamBranch(s, c.Row) && proof.Trunk == Trunk(s, c.Row) && proof.Observed != "" && proof.Merged != "" {
 			return true
 		}
 	}
