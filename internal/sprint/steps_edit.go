@@ -48,6 +48,27 @@ func unstarted(s *Snapshot, id, keeps string) string {
 // moves the card working -> waiting for them (steps_work.go finishPlan).
 const FieldWaitsAfter = "waits_after"
 
+// FieldBriefKeepHead explicitly retains heads across this brief replacement.
+const FieldBriefKeepHead = "brief_keep_head"
+
+// FieldHeadBriefAttempt tracks head provenance separately from the task bound:
+// even a routing-only replacement supersedes an in-flight brief.
+const FieldHeadBriefAttempt = "head_brief_attempt"
+
+// AttemptPredatesBrief is the shared eligibility rule for finish and card checks.
+// tla/SprintTables.tla Brief and Finish: a replaced generation never enters review
+// unless the coordinator explicitly kept its head. Attempt zero is admission.
+func AttemptPredatesBrief(c *Card, attempt int) bool {
+	if c == nil || attempt <= 0 || c.F(FieldBriefKeepHead) == "true" {
+		return false
+	}
+	replaced := c.Int(FieldBriefAttempt)
+	if c.F(FieldHeadBriefAttempt) != "" {
+		replaced = c.Int(FieldHeadBriefAttempt)
+	}
+	return attempt <= replaced
+}
+
 // BriefCard is one primary's new brief (brief <id>, or one file of brief --dir).
 type BriefCard struct {
 	ID, Brief string
@@ -74,6 +95,8 @@ type BriefReq struct {
 	// (--needs-from-brief), over the rule that the card's needs are the truth and a text
 	// only adds new ones: the escape hatch when the coordinator means to re-derive them.
 	NeedsFromBrief bool
+	// KeepHead lets the current attempt or held review head survive this edit.
+	KeepHead bool
 	// Reason is why a re-tier names (nova-sprint tier --set <t> --reason): recorded
 	// with the tier, for the log.
 	Reason string
@@ -190,7 +213,14 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a brief that carries its own rules names none; a grade was of the brief replaced; a
 		// replaced brief is no longer the one its brief decision was asked over, so the card
 		// names that decision no more
-		set, unset := map[string]string{"brief": b.Brief}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
+		set, unset := map[string]string{"brief": b.Brief, FieldHeadBriefAttempt: itoa(c.Int("attempt"))}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
+		// tla/SprintTables.tla Brief: keep is an explicit exception for this edit.
+		if r.KeepHead {
+			set[FieldBriefKeepHead] = "true"
+			p.Said = append(p.Said, b.ID+" head kept: eligible for review (--keep-head)")
+		} else {
+			unset = append(unset, FieldBriefKeepHead, "head", FieldPassedHead)
+		}
 		// the brief's bound counts attempts under one task, not one text (brief_bound.go):
 		// an edit that changes only a routing line or the tier is the same task and keeps
 		// the count; a new task resets it (FieldBriefAttempt). The same text again is
@@ -262,6 +292,19 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		want := kept[b.ID]
 		p.Said = append(p.Said, keptSaid[b.ID]...)
 		toWaiting := false
+		if r.KeepHead && c.Col == Review {
+			unmet := ""
+			for _, need := range want {
+				if !contains(cur, need) && s.StateOf(need) != Landed {
+					unmet = need
+					break
+				}
+			}
+			if unmet != "" {
+				p.refuse(c.ID, "--keep-head keeps a review head only with landed needs; "+unmet+" has not landed; nothing was changed")
+				continue
+			}
+		}
 		if !sameNeeds(cur, want) {
 			if why := needsCycleWith(s, c.ID, proposed); why != "" {
 				p.refuse(c.ID, why)
@@ -350,7 +393,7 @@ func briefKept(s *Snapshot, id string) string {
 // on it closed, as a rework's (an orphan merge card taken off as a rework takes it,
 // orphan true); a ready or waiting card's withdrawn work card is retired, so the deal
 // cuts the next attempt instead of dealing the last again. The next attempt is staged
-// from the last pushed head, as a rework's (BaseOf over the card's attempts); the bound
+// from its admitted base unless --keep-head retains the previous work; the bound
 // is reset, since it counts attempts under one brief (FieldBriefAttempt, in set); the
 // rework's fix is the old brief's and is dropped; and the record, the next attempt's
 // why, says who edited it, at which attempt, and what changed (briefChange).
@@ -361,6 +404,9 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	}
 	n := c.Int("attempt")
 	said := fmt.Sprintf("brief edited in place by %s at attempt %d: %s", orDash(who), n, briefChange(c.F("brief"), brief))
+	if set[FieldBriefKeepHead] == "true" {
+		said += "; head kept: eligible for review (--keep-head)"
+	}
 	if after := set[FieldWaitsAfter]; after != "" {
 		// the card is working and legal: it waits for the need after this attempt
 		// (docs/SPEC-SPRINT.md section 9, rule 11), and says so on the card
@@ -370,15 +416,30 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	unset = append(unset, "fix", "finding", FieldFindingAttempt)
 	var changes []Change
 	retire := func(table string, x *Card) {
-		changes = append(changes, change(table, removeEntry(x, map[string]string{"retired": stamp(s.Now), "retired_by": "brief"})))
+		entry := removeEntry(x, map[string]string{"retired": stamp(s.Now), "retired_by": "brief"})
+		if table == Fleet && x.F("kind") != "read" && x.F("head") != "" && set[FieldBriefKeepHead] != "true" {
+			entry.Set["head_superseded"] = "true"
+		}
+		changes = append(changes, change(table, entry))
 	}
 	if s.Fleet != nil {
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, n)); wc != nil && wc.Col == Withdrawn {
 			retire(Fleet, wc)
 		}
 	}
+	// tla/SprintTables.tla Brief: superseded work heads are history, never a
+	// staging base for the next attempt (BaseOf only reads eligible heads).
+	if set[FieldBriefKeepHead] != "true" && set[FieldHeadBriefAttempt] != "" && s.Fleet != nil {
+		for attempt := 1; attempt <= n; attempt++ {
+			wc := s.Fleet.Card(WorkCardID(c.ID, attempt))
+			if wc == nil || (attempt == n && wc.Placed() && wc.Col == Withdrawn) || wc.F("head") == "" {
+				continue
+			}
+			changes = append(changes, change(Fleet, setEntry(wc, map[string]string{"head_superseded": "true"})))
+		}
+	}
 	to := c.Col
-	if c.Col == Review {
+	if c.Col == Review && set[FieldBriefKeepHead] != "true" {
 		to = Ready
 		if s.Readers != nil {
 			for _, rc := range s.Readers.Of(c.ID) {
@@ -397,7 +458,7 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 		if lines := findingsOf(c, n, found); len(lines) > 0 {
 			set[FieldFindings] = findingsLine(lines)
 		}
-		changes = append(changes, change(Work, moveEntry(c, c.Row, Ready, set, append(unset, "result", "readers", FieldPassedHead)...)))
+		changes = append(changes, change(Work, moveEntry(c, c.Row, Ready, set, append(unset, "head", "result", "readers", FieldPassedHead)...)))
 		if m := orphanMerge(s, c); m != nil {
 			changes = append(changes, change(Merge, moveEntry(m, c.Row, Returned, nil, "need_card", "need_stream")))
 			orphan = true
@@ -413,7 +474,7 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 		}
 	}
 	u = Unit{Key: c.ID, Stream: c.Row, Changes: changes, Closes: closesFor(s.Open, ReworkResolves, c.ID),
-		Moved: fmt.Sprintf("%s %s; %s -> %s, attempt %d next, from its last pushed head; %d cards retired", c.ID, said, c.Col, to, n+1, len(changes)-1)}
+		Moved: fmt.Sprintf("%s %s; %s -> %s, attempt %d next; %d cards changed", c.ID, said, c.Col, to, n+1, len(changes)-1)}
 	if reason != "" {
 		u.Moved += "; reason: " + reason
 	}
