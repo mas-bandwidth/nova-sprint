@@ -155,8 +155,10 @@ func TestTwinRunsWithoutBusHookOrServer(t *testing.T) {
 	assert.Contains(t, out, "s1")
 
 	// 2. Full documented walkthrough from cmd/nova-sprint/verbs.go:255 (twinSteps)
-	// executed in an environment with hostile server and bus settings
+	// succeeds from a clean environment without external network/daemon prerequisites.
 	walkthroughFile := filepath.Join(dir, "walkthrough.twin")
+	delete(env, "NOVA_SPRINT_SERVER")
+	delete(env, "NOVA_BUS_REDIS")
 	env["NOVA_SPRINT_REDIS"] = "mem:" + walkthroughFile
 	for _, line := range twinSteps {
 		args, err := onboarding.SplitShell(strings.TrimPrefix(line, prog+" "))

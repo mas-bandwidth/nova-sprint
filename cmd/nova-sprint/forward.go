@@ -140,13 +140,7 @@ func (v verbArgs) unserved() string {
 // is the server, or the verb was given its own --redis (fs, as parsed). (docs/SPEC-SPRINT.md,
 // "The server".)
 func (a *app) server(fs *flag.FlagSet) string {
-	redisAddr := firstEnv(a.getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr)
-	if fs != nil {
-		if f := fs.Lookup("redis"); f != nil && (verbArgs{fs: fs}).given("redis") {
-			redisAddr = f.Value.String()
-		}
-	}
-	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") || isTwin(strings.TrimSpace(redisAddr)) {
+	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") {
 		return ""
 	}
 	addr, _ := a.namedServer()
