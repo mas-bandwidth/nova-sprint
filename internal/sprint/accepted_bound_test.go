@@ -2,6 +2,7 @@ package sprint_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -179,3 +180,53 @@ func TestAnAcceptedCardThatLandsCleanLands(t *testing.T) {
 	require.Equal(t, sprint.Landed, pr.Col, "lands cleanly")
 	assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "s1-1"), "no brief defect judgment")
 }
+
+// Oscillating refusals on the same brief halt at the brief bound (tla/Land.tla:
+// other -> paths (no widen) -> other; sprint.AtBriefBound): an accepted card tracks
+// the cumulative set of refusal findings on the current brief, halting on any repeat.
+// Red at BASE: attempt 3 was reworked to ready instead of halting at the brief bound.
+func TestAcceptedCardHaltsOnOscillatingRefusals(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	fileWhy := func(head string) string {
+		return "the head " + head + " of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go"
+	}
+	pathsWhy := func(head string) string {
+		return "the head " + head + " of s1-1 fails the lander's checks: it changes files outside its PATHS (E12): outside/y.go"
+	}
+	heads := []string{
+		strings.Repeat("a1", 20),
+		strings.Repeat("b2", 20),
+		strings.Repeat("c3", 20),
+	}
+
+	// Attempt 1: Merging card refused by file conflict (RefusedConflict, way "other") -> reworked to Ready.
+	r.toMergingAt("s1-1", heads[0])
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: fileWhy(heads[0]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	require.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col, "attempt 1 refusal reworks it to ready")
+
+	// Attempt 2: Merging card refused by files outside PATHS (RefusedPaths, not adjacent so no widen).
+	// Returned to Review with NReturned.
+	r.toMergingAt("s1-1", heads[1])
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: pathsWhy(heads[1])}))
+	require.Equal(t, sprint.Review, r.snap().Work.Card("s1-1").Col, "attempt 2 refusal returns to review")
+
+	require.NotEmpty(t, r.openOnCard(sprint.NReturned, "s1-1"), "returned judgment opened")
+
+	// Redo inside PATHS without widen -> reworked to Ready/Working at attempt 3.
+	r.must(store.ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "redo inside paths"}))
+	require.Contains(t, []string{sprint.Ready, sprint.Working}, r.snap().Work.Card("s1-1").Col, "redo inside paths reworks it")
+	require.Equal(t, 3, r.snap().Work.Card("s1-1").Int("attempt"), "attempt 3")
+
+	// Attempt 3: Merging card refused by file conflict again (repeats refusal from attempt 1).
+
+	// Under cumulative refusal set semantics, this repeats an earlier refusal on the current brief -> halts at brief bound!
+	r.toMergingAt("s1-1", heads[2])
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: fileWhy(heads[2]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	pr := r.snap().Work.Card("s1-1")
+	require.Equal(t, sprint.Review, pr.Col, "attempt 3 repeating refusal halts at brief bound: review")
+	open := r.openOnCard(sprint.NBriefWrong, "s1-1")
+	require.Len(t, open, 1, "brief defect judgment opened")
+	assert.Contains(t, open[0].Note.What, "failed the same way twice")
+}
+

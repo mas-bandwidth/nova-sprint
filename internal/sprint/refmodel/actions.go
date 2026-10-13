@@ -987,15 +987,7 @@ func MergeRefused(s State, stream string, batch int, p, way string) (State, erro
 	n.closeOn(p)
 	pr := n.Primaries[p]
 	pr.ReturnedAt, pr.ReturnedFor = pr.Attempt, ""
-	switch {
-	case way == RefusedPaths:
-		pr.State = Review
-		n.Primaries[p] = pr
-		n.open(JReturned, p)
-		return n, nil
-	}
-	// any other way refused the head as it stands (sprint.FieldLandRefusedHead)
-	if pr.Head != 0 {
+	if pr.Head != 0 && way != RefusedPaths {
 		pr.RefusedHead = pr.Head
 	}
 	switch {
@@ -1005,11 +997,23 @@ func MergeRefused(s State, stream string, batch int, p, way string) (State, erro
 		n.open(JBriefWrong, p)
 		n.acceptNote(p)
 		return n, nil
+	case way == RefusedPaths:
+		if !slices.Contains(pr.RefusedWays, way) {
+			pr.RefusedWays = append(pr.RefusedWays, way)
+		}
+		pr.FindingAttempt = pr.Attempt
+		pr.State = Review
+		n.Primaries[p] = pr
+		n.open(JReturned, p)
+		return n, nil
 	}
 	for _, id := range n.LiveReadsOf(p) {
 		rc := n.Reads[id]
 		rc.Place = Retired
 		n.Reads[id] = rc
+	}
+	if !slices.Contains(pr.RefusedWays, way) {
+		pr.RefusedWays = append(pr.RefusedWays, way)
 	}
 	pr.Finder, pr.FindingAttempt, pr.Refused = "", pr.Attempt, way
 	pr.Attempt++

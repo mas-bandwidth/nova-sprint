@@ -135,6 +135,9 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	}
 	if way == RefusedPaths {
 		set[FieldRuleRedo], set[FieldRuleRefused], set[FieldRuleRefusal] = attempt, way, cutText(orDash(r.Note), MaxCardTextBytes)
+		if lines := findingsOf(pr, pr.Int("attempt"), finding+": "+orDash(r.Note)); len(lines) > 0 {
+			set[FieldFindings] = findingsLine(lines)
+		}
 		j := judgment(NReturned, r.Stream, s.Now, pr.Int("returns"), id)
 		j.Who, j.Attempt, j.What = r.Who, pr.Int("attempt"), cutText(refusal, MaxCardTextBytes)
 		if !acceptable(s, pr) {

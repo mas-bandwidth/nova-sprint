@@ -1539,7 +1539,13 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
+		finding := given["finding"]
+		findingAttempt := c.F("attempt")
+		if finding == "" && c.F(FieldRuleRefused) == RefusedPaths && c.F("finding") != "" {
+			finding = c.F("finding")
+			findingAttempt = c.F(FieldFindingAttempt)
+		}
+		set := map[string]string{"fix": fix, "finding": finding, "why": given["why"], FieldFindingAttempt: findingAttempt,
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
 		// Budget exhaustion at second attempt escalates to next tier.
 		if c.F(FieldFailure) == "budget" && c.Int("attempt") == 2 {
