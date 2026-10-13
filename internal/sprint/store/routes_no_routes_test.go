@@ -25,7 +25,7 @@ func TestRedisRoutesWithNoRoutes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, set.Routes, "no routes when none are configured")
 	assert.Empty(t, set.Tiers, "no tiers when no routes")
-	assert.Equal(t, Bars{}, set.Bars, "no bars when none are applied")
+	assert.Equal(t, Bars{}.WithDefaults(), set.Bars, "no bars when none are applied: each reads its working default (sprint.Defaults; git_identity the machine identity)")
 	assert.Equal(t, int64(1), trips, "the set and the bars read in one round trip")
 }
 

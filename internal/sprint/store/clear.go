@@ -130,6 +130,12 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	if err := next.restoreMembers(ctx, old); err != nil {
 		return res, err
 	}
+	// Advance, then set defaults: every working default written into the new epoch,
+	// so no setting is ever absent and none of the old epoch's is carried
+	// (tla/MachineReady.tla SetDefaults, DefaultsAfterClear, NeverAbsent).
+	if res.Defaults, err = next.setDefaults(ctx, old); err != nil {
+		return res, err
+	}
 	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
 		"read cards": placed(old.Readers, ""), "merge cards": placed(old.Merge, sprint.Ctl), "open judgments": len(old.Open)}
 	// The new epoch's machine is READY (docs/SPEC-SPRINT.md section 14, "READY";
@@ -209,6 +215,33 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 		return fmt.Errorf("the member control cards: %s: %s", res.Refused[0].Key, res.Refused[0].Why)
 	}
 	return nil
+}
+
+// setDefaults is the clear's set-defaults step (tla/MachineReady.tla SetDefaults): one
+// step at the new epoch writing every work-table property row of sprint.Defaults at its
+// Value (sprint.SetDefaults), by "clear". The bars are nova-config's and never written
+// here (their default is read-side, Bars.WithDefaults); the shape is restoreMembers'.
+// It returns each setting old held away from its default, "<name> was <v>, now <default>".
+func (st *Store) setDefaults(ctx context.Context, old *sprint.Snapshot) ([]string, error) {
+	var oldProps map[string]string
+	if old != nil && old.Work != nil {
+		oldProps = old.Work.Props()
+	}
+	var resets []string
+	at := st.epoch
+	res, err := st.Run(ctx, Step{Verb: "clear", Load: tables(sprint.Work), Epoch: &at,
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			p, r := sprint.SetDefaults(s, oldProps)
+			resets = r
+			return p
+		}})
+	if err != nil {
+		return nil, fmt.Errorf("setting the working defaults in epoch %d: %w; run: nova-sprint clear again", at, err)
+	}
+	if len(res.Refused) > 0 {
+		return nil, fmt.Errorf("setting the working defaults in epoch %d: %s: %s; run: nova-sprint clear again", at, res.Refused[0].Key, res.Refused[0].Why)
+	}
+	return resets, nil
 }
 
 // restore performs the restore the pinned epoch owes: it reads epoch from,

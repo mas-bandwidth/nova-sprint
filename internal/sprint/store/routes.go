@@ -203,7 +203,8 @@ func (r *Redis) Bars(ctx context.Context) (Bars, int64, error) {
 	for f, v := range fields {
 		*v = gets[f].Val()
 	}
-	return b, 1, nil
+	// an empty field its row says to fill reads its working default (sprint.Defaults)
+	return b.WithDefaults(), 1, nil
 }
 
 // Bars is the bars the setters gave the store (SetDecideBars, SetMaxAttempts, ...).
@@ -301,6 +302,8 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	for f, v := range fields {
 		*v = bars[f].Val()
 	}
+	// an empty field its row says to fill reads its working default (sprint.Defaults)
+	set.Bars = set.Bars.WithDefaults()
 	names := namesCmd.Val()
 	if len(names) == 0 {
 		return RouteSet{Routes: []sprint.Route{}, Bars: set.Bars}, 1, nil
