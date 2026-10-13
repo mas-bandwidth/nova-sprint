@@ -20,17 +20,18 @@ func TestABoundCardRaisesOneBlockerJudgmentListingItsDependents(t *testing.T) {
 	// Run TickNeeds, Resolve, TickDeadlines and TickOverdue at s.Now + 3 h:
 	w.s.Now = w.s.Now.Add(3 * time.Hour)
 	req := TickReq{}
+	pBlocked, _ := TickNeedBlocked(w.s, req)
+	w.note(pBlocked.Notes...)
 	pNeeds, _ := TickNeeds(w.s, req)
 	pResolve := Resolve(w.s, ResolveReq{})
 	pDeadlines, _ := TickDeadlines(w.s, req)
 	pOverdue, _ := TickOverdue(w.s, req)
-	pBlocked, _ := TickNeedBlocked(w.s, req)
 
-	allNotes := append([]Note(nil), pNeeds.Notes...)
+	allNotes := append([]Note(nil), pBlocked.Notes...)
+	allNotes = append(allNotes, pNeeds.Notes...)
 	allNotes = append(allNotes, pResolve.Notes...)
 	allNotes = append(allNotes, pDeadlines.Notes...)
 	allNotes = append(allNotes, pOverdue.Notes...)
-	allNotes = append(allNotes, pBlocked.Notes...)
 
 	var blockerNotes []Note
 	for _, n := range allNotes {
@@ -68,9 +69,10 @@ func TestADroppedNeedIsOneBlockerNotOnePerDependent(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"dep-2"}, Needs: []string{"dropped-card"}}))
 	w.seedDroppedNeed("dropped-card")
 
-	pResolve := Resolve(w.s, ResolveReq{})
 	pBlocked, _ := TickNeedBlocked(w.s, TickReq{})
-	notes := append(pResolve.Notes, pBlocked.Notes...)
+	w.note(pBlocked.Notes...)
+	pResolve := Resolve(w.s, ResolveReq{})
+	notes := append(pBlocked.Notes, pResolve.Notes...)
 
 	var blockedNotes, blockerNotes []Note
 	for _, n := range notes {
@@ -89,6 +91,8 @@ func TestTheBlockerJudgmentRetiresWhenTheHoldIsDecided(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"blocker"}}))
+	w.s.Work.Card("blocker").Col = Review
+	w.s.Work.cells = nil
 	w.note(judgment(NBound, "s1", w.s.Now, 0, "blocker"))
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"dep"}, Needs: []string{"blocker"}}))
 
@@ -97,7 +101,7 @@ func TestTheBlockerJudgmentRetiresWhenTheHoldIsDecided(t *testing.T) {
 	w.note(p1.Notes...)
 
 	// A rework closes the NBound:
-	w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"blocker"}}, Tier: "pro"}))
+	w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"blocker"}}, Tier: "pro", Fix: "a fix"}))
 
 	// The next tick closes NNeedBlocked:
 	p2, _ := TickNeedBlocked(w.s, TickReq{})
