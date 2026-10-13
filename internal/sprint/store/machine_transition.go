@@ -441,7 +441,12 @@ func (st *Store) stopWithCauseReason(ctx context.Context, cause, why string, run
 	}
 	r := pinned.retry(ctx)
 	for r.next(pinned.attempts()) {
-		s, gen, ferr := pinned.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, nil, nil)
+		load := []string{sprint.Fleet, sprint.Readers}
+		var extras func(*sprint.Snapshot) map[string][]string
+		if cause == sprint.NothingFundedCause {
+			load, extras = All, nothingWorkExtras
+		}
+		s, gen, ferr := pinned.Fenced(ctx, load, extras, nil)
 		if ferr != nil {
 			return before, after, false, ferr
 		}
@@ -458,8 +463,23 @@ func (st *Store) stopWithCauseReason(ctx context.Context, cause, why string, run
 			continue
 		}
 		before, _, err = pinned.Machine(ctx)
+		canStop := err == nil && before.Running() && before.RunSeq == runSeq
+		if canStop && cause == sprint.NothingFundedCause {
+			// The blocked plan is an observation, not authority to stop after a
+			// same-run wake/work change. Re-read live config under this lock;
+			// the fenced work snapshot includes kept named needs at its generation.
+			s.Now = pinned.now()
+			err = pinned.RoutesInto(ctx, s)
+			if err == nil {
+				s.Friends, err = pinned.friendSeats(ctx, nil, s.Now)
+			}
+			if err == nil {
+				why = s.NothingFundedCanWork()
+				canStop = why != ""
+			}
+		}
 		if err == nil {
-			if !before.Running() || before.RunSeq != runSeq {
+			if !canStop {
 				after = before
 			} else {
 				now := pinned.now()

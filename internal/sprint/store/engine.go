@@ -184,7 +184,7 @@ type Step struct {
 	// complementary fence on an acknowledged stop-return.
 	StartsWork, ReportsWork, RequiresStopped bool
 	// StopEpisode makes a recovery notification belong to the captured stop.
-	// Its Cause and START generation are checked after Acquire, before apply.
+	// Its Cause and START generation are checked under an empty lock before Relock.
 	StopEpisode *Machine
 	// DropRefusedReadCreates says the step is the tick deal: a read card create
 	// refused with MEMBEREXISTS drops that read unit and re-applies the remaining
@@ -855,6 +855,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && op.Health == nil && len(op.HealthClear) == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
+			if step.StopEpisode != nil {
+				// A prior lost try may have planned a recovery; this empty
+				// retry committed none of those effects. Preserve other history.
+				res.Op, res.Notes, res.Tables = "", 0, nil
+			}
 			return st.after(ctx, step, res)
 		}
 		res.Tables = opCounts(op)

@@ -98,14 +98,17 @@ func TestRecoveryCannotNotifyForAnOlderStopEpisode(t *testing.T) {
 			h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
 			h.startMachine()
 			old := h.machineRecord()
+			h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked episode", Until: h.now.Add(time.Hour)}))
 			_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", old.RunSeq)
 			require.NoError(t, err)
 			old = h.machineRecord()
+			h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "live again"}))
 			b := &recoveryInterleave{Mem: h.m}
 			b.before = func() {
 				if restart {
 					h.startMachine()
 					m := h.machineRecord()
+					h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "new blocked episode", Until: h.now.Add(time.Hour)}))
 					_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", m.RunSeq)
 					require.NoError(t, err)
 				} else {
@@ -128,9 +131,11 @@ func TestARecoveryGuardReleaseFailureWritesNoNote(t *testing.T) {
 	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
 	h.startMachine()
 	m := h.machineRecord()
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked episode", Until: h.now.Add(time.Hour)}))
 	_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", m.RunSeq)
 	require.NoError(t, err)
 	m = h.machineRecord()
+	h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "live again"}))
 	b := &recoveryInterleave{Mem: h.m, failRelease: true}
 	b.before = func() {
 		_, _, _, err := h.st.StopUntil(h.ctx, "new owner's stop", time.Time{})
@@ -199,8 +204,10 @@ func TestRecoveryMarkerBelongsToEachExplicitRunStop(t *testing.T) {
 	for episode := 1; episode <= 2; episode++ {
 		h.startMachine()
 		m := h.machineRecord()
+		h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked episode", Until: h.now.Add(time.Hour)}))
 		_, _, _, err := h.st.stopWithCause(h.ctx, sprint.NothingFundedCause, m.RunSeq)
 		require.NoError(t, err)
+		h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "live again"}))
 		var res TickResult
 		require.NoError(t, h.st.fundedLiveAgain(h.ctx, h.machineRecord(), &res))
 		require.NoError(t, h.st.fundedLiveAgain(h.ctx, h.machineRecord(), &res))
@@ -219,4 +226,98 @@ func TestAWorkRestWrittenBetweenStartPinAndLockIsSeen(t *testing.T) {
 	_, _, _, err := h.st.SetMachine(h.ctx, true)
 	require.ErrorContains(t, err, "nothing funded can work")
 	assert.False(t, h.machineRecord().Running())
+}
+
+// The route wake is a normal fenced write in the same explicit machine run.
+// It occurs after the blocked plan was observed and before the cause lock.
+type causeWakeInterleave struct {
+	*Mem
+	before func()
+	ran    bool
+}
+
+func (b *causeWakeInterleave) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
+	if op.Verb == "machine cause lock" && !b.ran {
+		b.ran = true
+		b.before()
+	}
+	return b.Mem.Acquire(ctx, gen, op)
+}
+
+func TestARecoveredSameRunIsNotStoppedByItsOlderBlockedPlan(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"), route("flash-live", "flash"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.startMachine()
+	seq := h.machineRecord().RunSeq
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "rested", Until: h.now.Add(time.Hour)}))
+	why, err := h.st.NothingFundedCanWork(h.ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, why)
+	// The tick's blocked judgment already committed before its machine stop.
+	h.must(NoteStep("old blocked plan", sprint.Note{Kind: sprint.Judgment, Type: sprint.NNothingFunded, SprintLevel: true, Who: sprint.MachineActor, What: why, Decisions: []string{"ack", "wait"}}))
+	b := &causeWakeInterleave{Mem: h.m}
+	b.before = func() {
+		h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "paid and woke", Who: "coordinator"}))
+	}
+	h.st.B = b
+	var res TickResult
+	require.NoError(t, h.st.stopFor(h.ctx, sprint.NothingFundedCause, why, seq, &res))
+	assert.True(t, h.machineRecord().Running(), "the cause was cleared in this same run before the stop's lock")
+	assert.Empty(t, res.Halted)
+	h.machine()
+	assert.Empty(t, h.openOf(sprint.NNothingFunded), "the next running tick closes the now-stale judgment")
+}
+
+func TestARecoveryRetryWithNoPlanReportsNoUncommittedEffects(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.startMachine()
+	m := h.machineRecord()
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked", Until: h.now.Add(time.Hour)}))
+	_, _, _, err := h.st.stopWithCause(h.ctx, sprint.NothingFundedCause, m.RunSeq)
+	require.NoError(t, err)
+	m = h.machineRecord()
+	h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "live"}))
+	b := &recoveryInterleave{Mem: h.m}
+	b.before = func() {
+		h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked again", Until: h.now.Add(time.Hour)}))
+	}
+	h.st.B = b
+	r, err := h.st.Run(h.ctx, Step{Verb: "tick funded live again", Load: All, Routes: true, RequiresStopped: true, StopEpisode: &m,
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			if !s.HasLiveWorkedTier() {
+				return sprint.Plan{}
+			}
+			return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "live again"}}}
+		}})
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, r.Attempts, 2)
+	assert.Zero(t, r.Notes)
+	assert.Empty(t, r.Op)
+	assert.Nil(t, r.Tables)
+	assert.Empty(t, h.tickNotes(sprint.NFundedLiveAgain))
+}
+
+func TestAStillBlockedStopReportsTheFreshRestReason(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"), route("flash-live", "flash"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.startMachine()
+	seq := h.machineRecord().RunSeq
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "old rest", Until: h.now.Add(time.Hour)}))
+	why, err := h.st.NothingFundedCanWork(h.ctx)
+	require.NoError(t, err)
+	b := &causeWakeInterleave{Mem: h.m}
+	b.before = func() {
+		h.must(RouteWakeStep(sprint.RouteWakeReq{Target: "pro-live", Reason: "old rest ended"}))
+		h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "new rest reason", Until: h.now.Add(2 * time.Hour)}))
+	}
+	h.st.B = b
+	var res TickResult
+	require.NoError(t, h.st.stopFor(h.ctx, sprint.NothingFundedCause, why, seq, &res))
+	assert.False(t, h.machineRecord().Running())
+	assert.Contains(t, h.machineRecord().Reason, "new rest reason")
+	assert.Contains(t, res.Halted, "new rest reason", "the tick reports the same current evidence as the committed stop")
 }

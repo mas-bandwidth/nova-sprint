@@ -1906,12 +1906,18 @@ func (st *Store) stopFor(ctx context.Context, cause, why string, runSeq uint64, 
 		res.State = after.StateWord()
 		if after.Running() {
 			res.Stale = "the machine restarted during the tick: the old " + cause + " judgment did not stop the new run"
+			if cause == sprint.NothingFundedCause && after.RunSeq == runSeq {
+				res.Stale = "the worked tiers recovered during the tick: the old " + cause + " judgment did not stop this run"
+			}
 		} else {
 			res.Halted = "the machine was stopped during the tick: the old " + cause + " judgment did not replace its stop"
 		}
 		return nil
 	}
 	res.State, res.Halted = Stopped, why
+	if cause == sprint.NothingFundedCause {
+		res.Halted = after.Reason
+	}
 	return nil
 }
 
