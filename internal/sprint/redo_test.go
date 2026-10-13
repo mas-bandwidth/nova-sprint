@@ -17,13 +17,13 @@ func TestRedoReturnsReworksAndResumesInOneVerb(t *testing.T) {
 	p := Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-1"}}})
 	require.Len(t, p.Refused, 1, "s1-1 is already merged, not in a conflict")
 	require.Equal(t, "s1-1", p.Refused[0].Key)
-	require.Equal(t, "not in a conflict", p.Refused[0].Why)
+	require.Equal(t, "not in a conflict; run: nova-sprint rework <card> --fix <why>", p.Refused[0].Why)
 	require.Empty(t, p.Units)
 
 	p = Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-3"}}})
 	require.Len(t, p.Refused, 1, "s1-3 is queued in merge, not in a conflict")
 	require.Equal(t, "s1-3", p.Refused[0].Key)
-	require.Equal(t, "not in a conflict", p.Refused[0].Why)
+	require.Equal(t, "not in a conflict; run: nova-sprint rework <card> --fix <why>", p.Refused[0].Why)
 	require.Empty(t, p.Units)
 
 	// Preconditions for the conflicted card s1-2.

@@ -6,28 +6,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
-
-var (
-	readRefusalMu sync.Mutex
-	readRefusals  = map[*Table][]Refusal{}
-)
-
-// ReadCardRefusals returns and clears the read card refusals recorded for s by withReadCards.
-func ReadCardRefusals(s *Snapshot) []Refusal {
-	if s == nil || s.Fleet == nil {
-		return nil
-	}
-	readRefusalMu.Lock()
-	defer readRefusalMu.Unlock()
-	ref := readRefusals[s.Fleet]
-	delete(readRefusals, s.Fleet)
-	return ref
-}
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
@@ -1035,11 +1017,6 @@ func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 		ri = routeIndexesOf(s)
 	}
 	p, _ := readCardsAsk(s, seats, ri)
-	if len(p.Refused) > 0 && s.Fleet != nil {
-		readRefusalMu.Lock()
-		readRefusals[s.Fleet] = append([]Refusal(nil), p.Refused...)
-		readRefusalMu.Unlock()
-	}
 	if len(p.Units) == 0 {
 		return s, p
 	}
