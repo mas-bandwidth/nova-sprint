@@ -29,7 +29,8 @@ func init() {
 type checkCardsOut struct {
 	Clean    bool                 `json:"clean"`
 	Cards    int                  `json:"cards"`
-	Kinds    string               `json:"kinds,omitempty"`
+	Kinds    string               `json:"kinds,omitempty"`  // the refusing findings by kind
+	Warned   string               `json:"warned,omitempty"` // the warnings by kind (v1.2.18): printed, failing nothing
 	Streams  []string             `json:"streams,omitempty"`
 	Findings []sprint.CardFinding `json:"findings"`
 	Digest   string               `json:"digest"`
@@ -72,9 +73,13 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 		in.Trees[sprint.CardTreeKey{Repo: cb.Named, Base: cb.Ref}] = a.cardTree(ctx, cb)
 	}
 	findings := sprint.CheckCards(snap, in)
+	// only a refusing finding fails the check, and so start; a warning (v1.2.18: a file overlap
+	// a stream's order or the waits already serialize) is printed and kept with the record's
+	// findings, and fails neither
+	refusing, warned := sprint.RefusingFindings(findings), sprint.CardCheckKinds(sprint.WarningFindings(findings))
 	cards := sprint.CheckedCardsOf(snap)
-	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(findings) == 0, Streams: streams,
-		Kinds: sprint.CardCheckKinds(findings), Cards: cards, Digest: sprint.CardsDigest(cards)}
+	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(refusing) == 0, Streams: streams,
+		Kinds: sprint.CardCheckKinds(refusing), Cards: cards, Digest: sprint.CardsDigest(cards)}
 	for _, f := range findings {
 		rec.Findings = append(rec.Findings, f.Line())
 	}
@@ -84,7 +89,7 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 	}
 	a.outcome, a.changed = "done", "yes"
 	if c.json {
-		o := checkCardsOut{Clean: rec.Clean, Cards: len(cards), Kinds: rec.Kinds, Streams: rec.Streams, Findings: findings, Digest: rec.Digest, Epoch: rec.Epoch}
+		o := checkCardsOut{Clean: rec.Clean, Cards: len(cards), Kinds: rec.Kinds, Warned: warned, Streams: rec.Streams, Findings: findings, Digest: rec.Digest, Epoch: rec.Epoch}
 		if o.Findings == nil {
 			o.Findings = []sprint.CardFinding{}
 		}
@@ -94,10 +99,14 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 		for _, f := range findings {
 			fmt.Fprintln(stdout, oneline.Escape(f.Line()))
 		}
+		also := ""
+		if warned != "" {
+			also = " warned=" + warned
+		}
 		if rec.Clean {
-			fmt.Fprintf(stdout, "CHECK CARDS OK cards=%d\n", len(cards))
+			fmt.Fprintf(stdout, "CHECK CARDS OK cards=%d%s\n", len(cards), also)
 		} else {
-			fmt.Fprintf(stdout, "CHECK CARDS FAILED kinds=%s\n", rec.Kinds)
+			fmt.Fprintf(stdout, "CHECK CARDS FAILED kinds=%s%s\n", rec.Kinds, also)
 		}
 	}
 	if !rec.Clean {
