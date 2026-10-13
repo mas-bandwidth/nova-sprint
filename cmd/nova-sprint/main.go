@@ -786,9 +786,87 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	return st, nil
 }
 
+// isGlobalBoolFlag reports whether the flag name is a known boolean flag that does not take an argument.
+func isGlobalBoolFlag(name string) bool {
+	switch name {
+	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
+		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
+		return true
+	default:
+		return false
+	}
+}
+
+// matchVerbAt reports how many words match a verb at args[i:], or 0 if none match.
+func matchVerbAt(args []string) int {
+	for _, v := range verbs {
+		w := strings.Fields(v.name)
+		if len(args) >= len(w) && slices.Equal(args[:len(w)], w) {
+			return len(w)
+		}
+	}
+	if len(args) > 0 {
+		if args[0] == "help" || verbflag.IsHelp(args[0]) || args[0] == "--version" || args[0] == "version" {
+			return 1
+		}
+		if len(groupVerbs(args[0])) > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
+// normalizeArgs rearranges global flags placed before the verb to follow the verb,
+// so `nova-sprint [flags...] <verb> [args...]` behaves identically to
+// `nova-sprint <verb> [flags...] [args...]`.
+func normalizeArgs(args []string) []string {
+	if len(args) == 0 || !strings.HasPrefix(args[0], "-") {
+		return args
+	}
+	// Flags appear before the verb. Scan to find the verb position.
+	i := 0
+	verbStart, verbLen := -1, 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			name := strings.TrimLeft(arg, "-")
+			if strings.Contains(name, "=") || isGlobalBoolFlag(name) {
+				i++
+				continue
+			}
+			// Non-bool flag without '=': consumes next argument as its value if present
+			if i+1 < len(args) {
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		// Found the first positional non-flag token
+		verbStart = i
+		if w := matchVerbAt(args[i:]); w > 0 {
+			verbLen = w
+		} else {
+			verbLen = 1 // unknown verb: keep 1 word
+		}
+		break
+	}
+	if verbStart == -1 {
+		return args // only flags present, leave for help/version/refuse
+	}
+	verb := args[verbStart : verbStart+verbLen]
+	preFlags := args[:verbStart]
+	postArgs := args[verbStart+verbLen:]
+	if verb[0] == "help" {
+		return append([]string{"help"}, postArgs...)
+	}
+	return append(append(append([]string(nil), verb...), preFlags...), postArgs...)
+}
+
 // run is the one entry point: the command line, and the driver, which runs
 // every verb it plays through it with an argument list.
 func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
+	args = normalizeArgs(args)
 	// every verb's answer is a refusal unless its report (report) says otherwise:
 	// refuse() and every pre-write refusal are the default, and the report sets
 	// the outcome where it is known (serve.go reads it after the run).
