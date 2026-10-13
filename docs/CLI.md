@@ -425,7 +425,10 @@ refused cycle raises
 one judgment, `the lander refuses every landing`, naming the reason and the remedy
 (decisions `check`, `ack`), and the tick's `landing stalled` judgment names it too. A pass
 that gets past it closes it; another reason closes it and raises its own. A judgment the
-store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. `LAND IDLE` with cards queued says
+store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. A failure
+before any batch, or a merge queue the loop cannot read, is worded as a failure: `LAND
+FAILED queued=<n> since=<age> reason=<reason> run: <remedy>` and the judgment `the lander
+fails every landing`; the queue's first good read clears it. `LAND IDLE` with cards queued says
 why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
 The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
 

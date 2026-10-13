@@ -105,13 +105,19 @@ func (r *refusalRig) set(why string) {
 // judgments is the open judgments of the lander's standing refusal, read from the store.
 func (r *refusalRig) judgments() []sprint.Open {
 	r.t.Helper()
+	return r.judgmentsOf(sprint.NLanderRefuses)
+}
+
+// judgmentsOf is the open judgments of one type, read from the store.
+func (r *refusalRig) judgmentsOf(typ string) []sprint.Open {
+	r.t.Helper()
 	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
 	require.NoError(r.t, err)
 	open, err := st.B.OpenNotes(r.t.Context())
 	require.NoError(r.t, err)
 	var got []sprint.Open
 	for _, o := range open {
-		if o.Note.Kind == sprint.Judgment && o.Note.Type == sprint.NLanderRefuses {
+		if o.Note.Kind == sprint.Judgment && o.Note.Type == typ {
 			got = append(got, o)
 		}
 	}
@@ -242,18 +248,24 @@ func TestALandRefusalIsNamedEveryBeatAndJudgedAtOnce(t *testing.T) {
 // text after REFUSED, split at its last "; run: " (refuse in main.go always names one).
 func TestALandRefusalSplitsIntoReasonAndRemedy(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ said, reason, remedy string }{
-		{"nova-sprint land REFUSED: the sprint row names no git_identity; run: nova-config sprint set --git_identity x then nova-config apply",
-			"the sprint row names no git_identity", "nova-config sprint set --git_identity x then nova-config apply"},
-		{"LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again; run: nova-sprint where",
-			"LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again", "nova-sprint where"},
-		{"LAND OK stream=s1 cards=1 base=main tip=abc ids=s1-1 fetch=0.2s\nnova-sprint land REFUSED: the sprint row names no git_identity; run: nova-config apply",
-			"the sprint row names no git_identity", "nova-config apply"},
-		{"nova-sprint land: the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where",
-			"the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported", "nova-sprint where"},
-		{"something with no remedy", "something with no remedy", landRefusalRemedy},
+	for _, tc := range []struct {
+		said                 string
+		code                 int
+		kind, reason, remedy string
+	}{
+		{"nova-sprint land REFUSED: the sprint row names no git_identity; run: nova-config sprint set --git_identity x then nova-config apply", 2,
+			causeRefused, "the sprint row names no git_identity", "nova-config sprint set --git_identity x then nova-config apply"},
+		{"LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again; run: nova-sprint where", 2,
+			causeQueue, "LAND FAILED the merge queue could not be read: boom; nothing was landed, and the next round tries again", "nova-sprint where"},
+		{"LAND OK stream=s1 cards=1 base=main tip=abc ids=s1-1 fetch=0.2s\nnova-sprint land REFUSED: the sprint row names no git_identity; run: nova-config apply", 1,
+			causeRefused, "the sprint row names no git_identity", "nova-config apply"},
+		{"nova-sprint land: the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where", 1,
+			causeFailed, "the sprint is at epoch 3, not 2 (cleared since): nothing was fetched, pushed or reported", "nova-sprint where"},
+		{"something with no remedy", 2, causeFailed, "something with no remedy", landRefusalRemedy},
+		{"", 2, causeFailed, "land exited 2 and said nothing", landRefusalRemedy},
 	} {
-		reason, remedy := landRefusalOf(tc.said)
+		kind, reason, remedy := landRefusalOf(tc.said, tc.code)
+		assert.Equal(t, tc.kind, kind, tc.said)
 		assert.Equal(t, tc.reason, reason, tc.said)
 		assert.Equal(t, tc.remedy, remedy, tc.said)
 	}
@@ -413,15 +425,94 @@ func TestARestartUnderAnOpenJudgmentRaisesNoSecond(t *testing.T) {
 // allJudgments is every lander-refusal judgment ever written, open or closed.
 func (r *refusalRig) allJudgments() []sprint.Note {
 	r.t.Helper()
+	return r.allJudgmentsOf(sprint.NLanderRefuses)
+}
+
+// allJudgmentsOf is every judgment of one type ever written, open or closed.
+func (r *refusalRig) allJudgmentsOf(typ string) []sprint.Note {
+	r.t.Helper()
 	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
 	require.NoError(r.t, err)
 	notes, _, err := st.B.NotesSince(r.t.Context(), "", 100000)
 	require.NoError(r.t, err)
 	var got []sprint.Note
 	for _, n := range notes {
-		if n.Kind == sprint.Judgment && n.Type == sprint.NLanderRefuses {
+		if n.Kind == sprint.Judgment && n.Type == typ {
 			got = append(got, n)
 		}
 	}
 	return got
+}
+
+// A queue that cannot be read is a failure, never worded as a refusal: LAND FAILED
+// every beat, one "the lander fails every landing" judgment by the machine (the queue
+// names no coordinator) whose text carries no error words, however the error's words
+// change read to read; the first read of the queue clears it.
+func TestAnUnreadableQueueIsOneFailureByTheMachine(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	reads := 0
+	b := r.ta.a.landState()
+	b.mu.Lock()
+	b.queueSeam = func(context.Context, string) (int, string, string, error) {
+		reads++
+		if reads <= 8 {
+			return 0, "", "", fmt.Errorf("dial tcp 10.0.0.%d:6390: i/o timeout after %dms", reads, 100*reads)
+		}
+		return 0, "coordinator", "", nil
+	}
+	b.mu.Unlock()
+	for i := range 4 {
+		out, _ := r.beat(nil)
+		m := regexp.MustCompile(`LAND FAILED queued=\? since=(\S+) reason=(.*) run: (.*)`).FindStringSubmatch(out)
+		if assert.NotNil(t, m, "beat %d:\n%s", i+1, out) {
+			assert.Equal(t, (time.Duration(i) * LandEvery).String(), m[1], "beat %d: since grows", i+1)
+			assert.Equal(t, landQueueUnread, m[2])
+		}
+		assert.NotContains(t, out, "LAND REFUSED", "beat %d: a failure is not a refusal", i+1)
+		js := r.judgmentsOf(sprint.NLanderFails)
+		if assert.Len(t, js, 1, "beat %d: one failure judgment", i+1) {
+			assert.Equal(t, sprint.MachineActor, js[0].Note.Who, "by the machine")
+			assert.NotContains(t, js[0].Note.What, "i/o timeout", "no error words in the judgment")
+		}
+		assert.Empty(t, r.judgments(), "no refusal judgment")
+	}
+	assert.Len(t, r.allJudgmentsOf(sprint.NLanderFails), 1)
+	for range 4 {
+		_, _ = r.beat(nil)
+	}
+	out, _ := r.beat(nil)
+	assert.Contains(t, out, "LAND IDLE queued=0", "the queue is read: the failure is gone:\n%s", out)
+	assert.Empty(t, r.judgmentsOf(sprint.NLanderFails), "its judgment is closed")
+}
+
+// A land that fails saying nothing still names a cause: "land exited <code> and said
+// nothing", a failure; and a refusal that stands while the queue empties is still
+// named, queued=0.
+func TestASilentFailureAndAnEmptyQueueStillNameTheCause(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	r.mu.Lock()
+	r.pass = func(int, io.Writer, io.Writer) int { return 2 }
+	r.mu.Unlock()
+	out, _ := r.beat(nil)
+	assert.Regexp(t, `LAND FAILED queued=6 since=0s reason=land exited 2 and said nothing run: nova-sprint land --dry-run`, out)
+	if js := r.judgmentsOf(sprint.NLanderFails); assert.Len(t, js, 1) {
+		assert.Equal(t, "land exited 2 and said nothing; run: nova-sprint land --dry-run", js[0].Note.What)
+	}
+	r.mu.Lock()
+	r.pass = nil
+	r.mu.Unlock()
+	r.set("the sprint row names no git_identity; run: nova-config apply")
+	_, _ = r.beat(nil)
+	require.Len(t, r.judgments(), 1)
+	assert.Empty(t, r.judgmentsOf(sprint.NLanderFails), "the failure's judgment was closed by the refusal that replaced it")
+	b := r.ta.a.landState()
+	b.mu.Lock()
+	b.queueSeam = func(context.Context, string) (int, string, string, error) { return 0, "coordinator", "", nil }
+	b.mu.Unlock()
+	out, _ = r.beat(nil)
+	assert.Regexp(t, `LAND REFUSED queued=0 since=2s reason=the sprint row names no git_identity run: nova-config apply`, out)
+	assert.NotContains(t, out, "LAND IDLE")
+	assert.Len(t, r.judgments(), 1, "nothing ran, nothing is cleared")
 }

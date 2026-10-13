@@ -8443,7 +8443,18 @@ line, never the pass's first line), cut at its `; run: `; a remedy (the command 
 `; run: `, else `nova-sprint land --dry-run`); and since when it has stood. Two refusals are
 the same refusal when their reasons match with every number and its unit folded to one
 placeholder (`sprint.LandRefusalKey`): a reason that carries a pass's timings, counts or ids
-keeps its since and its one judgment pass after pass. While it stands, every cycle prints
+keeps its since and its one judgment pass after pass.
+
+A standing cause is one of three kinds. Land refused before any batch (its `REFUSED:` line):
+the beat line is `LAND REFUSED ...` and the judgment `the lander refuses every landing`.
+Land failed before any batch (it said no refusal, or nothing at all, whose reason is then
+`land exited <code> and said nothing`), or the loop could not read the merge queue: the beat
+line is `LAND FAILED queued=<n> since=<age> reason=<reason> run: <remedy>` and the judgment
+`the lander fails every landing`, so a store that blinked is never called a refusal. An
+unreadable queue's reason is `the merge queue could not be read`, its error's words said in
+the loop's own `LAND FAILED` line (again whenever they change) and never in the cause or
+the judgment, which is by the machine, since such a round names no coordinator; the first
+read of the queue clears it. The model (tla/ServerSwitch.tla) holds all three as one state. While it stands, every cycle prints
 `LAND REFUSED queued=<n> since=<age> reason=<reason> run: <remedy>` in place of `LAND IDLE`,
 whether a landing under it is still running or has just been refused again; never a bare
 `LAND IDLE` with cards queued and a refusal standing (`BeatNamesTheRefusal`). The first
@@ -8463,10 +8474,13 @@ lander refuses every landing: <reason>; run: <remedy>` while that judgment is op
 generic alarm names the cause.
 
 Every cycle prints one line: `LAND OK` when a landing finished on that cycle, the standing
-`LAND REFUSED` line while a refusal stands, or `LAND IDLE queued=<n> step=<stage>
+`LAND REFUSED` or `LAND FAILED` line while a cause stands (whatever the cycle did besides: a
+landing in flight, no coordinator, nothing queued, `queued=0`, or a `LAND WAITS` for the
+seat's hook, which the standing line follows), or `LAND IDLE queued=<n> step=<stage>
 since=<age> why=<why>` when none does and nothing finished: `why=running` while a landing is
 in flight (the step names what it waits on), `why=no-coordinator` when cards are queued and
-the sprint has no coordinator, and `why=nothing-landable` when a landing finished saying
+the sprint has no coordinator (nothing ran, so a standing cause is not cleared by it), and
+`why=nothing-landable` when a landing finished saying
 nothing (every queued stream stopped, say). `LAND IDLE queued=0 step=- since=0s` (no `why`)
 is a queue with nothing in it. A landing that finishes before its first cycle is reported
 on that cycle. A cycle with

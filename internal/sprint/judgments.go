@@ -75,6 +75,15 @@ func stampAfter(a, b string) bool {
 // RefusalJudgedAtOnce, AtMostOneJudgmentPerRefusal, BeatNamesTheRefusal).
 const NLanderRefuses = "the lander refuses every landing"
 
+// NLanderFails is the lander's standing failure: land failed before any batch (it
+// said no refusal, or nothing), or the server's loop could not read the merge queue.
+// It is judged as NLanderRefuses is, in its own words, so a store that blinked is
+// never called a refusal.
+const NLanderFails = "the lander fails every landing"
+
+// isLanderStanding says a type is the lander's standing refusal or failure.
+func isLanderStanding(typ string) bool { return typ == NLanderRefuses || typ == NLanderFails }
+
 // LandRefusalDecisions are the decisions on the lander's standing refusal: check
 // its cause and run the remedy its text names, or ack it.
 var LandRefusalDecisions = []string{"check", "ack"}
@@ -83,7 +92,7 @@ var LandRefusalDecisions = []string{"check", "ack"}
 func landRefusalJudgments(s *Snapshot) []Open {
 	var open []Open
 	for _, o := range s.Open {
-		if o.Note.Kind == Judgment && o.Note.Type == NLanderRefuses {
+		if o.Note.Kind == Judgment && isLanderStanding(o.Note.Type) {
 			open = append(open, o)
 		}
 	}
@@ -103,12 +112,13 @@ func LandRefusalKey(text string) string {
 	return strings.ToLower(strings.Join(strings.Fields(landRefusalNumber.ReplaceAllString(text, "#")), " "))
 }
 
-// LandRefusalSaid says a judgment of the refusal what (by LandRefusalKey) is in the
-// store's open notes, open or acknowledged: the seat has it, or has acknowledged it.
-func LandRefusalSaid(open []Open, what string) bool {
+// LandRefusalSaid says a judgment of type typ and the refusal what (by LandRefusalKey)
+// is in the store's open notes, open or acknowledged: the seat has it, or has
+// acknowledged it.
+func LandRefusalSaid(open []Open, typ, what string) bool {
 	key := LandRefusalKey(what)
 	for _, o := range open {
-		if o.Note.Type == NLanderRefuses && (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && LandRefusalKey(o.Note.What) == key {
+		if o.Note.Type == typ && (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && LandRefusalKey(o.Note.What) == key {
 			return true
 		}
 	}
@@ -123,21 +133,20 @@ func LandRefusalSaid(open []Open, what string) bool {
 // first's.
 //
 // tla/ServerSwitch.tla LandRefused
-func LandRefusalRaise(s *Snapshot, what, who, prev string) Plan {
+func LandRefusalRaise(s *Snapshot, typ, what, who, prevType, prev string) Plan {
 	var p Plan
-	key, prevKey := LandRefusalKey(what), LandRefusalKey(prev)
 	all := append(append([]Open(nil), s.Open...), s.Acked...)
-	if LandRefusalSaid(all, what) {
+	if LandRefusalSaid(all, typ, what) {
 		return p
 	}
-	if prev != "" && prevKey != key {
+	if prev != "" && (prevType != typ || LandRefusalKey(prev) != LandRefusalKey(what)) {
 		for _, o := range landRefusalJudgments(s) {
-			if LandRefusalKey(o.Note.What) == prevKey {
+			if o.Note.Type == prevType && LandRefusalKey(o.Note.What) == LandRefusalKey(prev) {
 				p.Closes = append(p.Closes, o)
 			}
 		}
 	}
-	p.Notes = append(p.Notes, Note{Kind: Judgment, Type: NLanderRefuses, What: what, Who: who, To: s.Coordinator, At: s.Now,
+	p.Notes = append(p.Notes, Note{Kind: Judgment, Type: typ, What: what, Who: who, To: s.Coordinator, At: s.Now,
 		SprintLevel: true, Decisions: append([]string(nil), LandRefusalDecisions...)})
 	return p
 }
@@ -150,11 +159,11 @@ func LandRefusalClose(s *Snapshot) Plan {
 	return Plan{Closes: landRefusalJudgments(s)}
 }
 
-// LandRefusalStanding is the lander's standing refusal, its reason and remedy, as
-// its open judgment says; "" when none stands.
+// LandRefusalStanding is the lander's standing refusal or failure, its type, reason
+// and remedy, as its open judgment says; "" when none stands.
 func LandRefusalStanding(s *Snapshot) string {
 	for _, o := range landRefusalJudgments(s) {
-		return o.Note.What
+		return o.Note.Type + ": " + o.Note.What
 	}
 	return ""
 }
@@ -549,7 +558,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 // refusal stands: the generic alarm names the cause, never only the count.
 func landingStallCause(s *Snapshot) string {
 	if standing := LandRefusalStanding(s); standing != "" {
-		return "; the lander refuses every landing: " + standing
+		return "; " + standing
 	}
 	return ""
 }
