@@ -480,7 +480,7 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
 }
 
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d));
+  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", tableScale(d.tables.fleet));
   setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
@@ -515,21 +515,20 @@ function sideWord(work, tiers) {
 }
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 
-// the machine pill: red when the machine line says every provider is out of credit (SPEC.md)
+// the machine line (the owner 2026-10-04 2:55 PM): the human page shows RUNNING, STOPPED or STALE;
+// tick lateness is the coordinator's view only. The STOP word lives in the ETA tile (renderHero),
+// not a chip; the machine chip is gone (the owner 2026-10-12 ~00:58Z).
 function setMachine(line) {
   var text = String(line || "-").replace(/^machine:\s*/, "");
-  // the human page shows RUNNING, STOPPED or STALE; tick lateness is the coordinator's view only (the owner 2026-10-04 2:55 PM)
   var late = /^running\b.*tick late (\d+)s/i.exec(text);
   if (late) text = Number(late[1]) >= 60 ? "STALE" : "running";
   else if (/^running\b/i.test(text)) text = "running";
   var stopped = /STOPPED/.test(text);
-  // the human page says STOPPED and nothing more; the reason is the coordinator's view (the owner 2026-10-04 10:15 PM: "STOPPED is plenty")
   if (stopped) text = "STOPPED";
-  setText($("machine"), text);
-  setClass($("machine-chip"), "chip" + (stopped ? " alert" : ""));
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
+  stoppedLast = stopped;
 }
 
 // Providers (SPEC.md, the owner 8:03 and 8:18 AM): shown only when the store carries tables.providers
@@ -610,16 +609,25 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "-");
+  if (all) { setText($("pct"), (landed / all * 100).toFixed(1) + "%"); if ($("pct-complete")) $("pct-complete").style.display = ""; }
+  else { setText($("pct"), "not started"); if ($("pct-complete")) $("pct-complete").style.display = "none"; }
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
-  if (m) {
+  var stopped = /STOPPED/.test(String(d.machine || ""));
+  if (stopped) {
+    // the owner 2026-10-12 ~00:58Z: the STOP word lives here, dark red, not a chip
+    setText($("eta"), "STOP"); setClass($("eta"), "big eta-stop"); etaAtLast = null; setText($("eta-at"), "\u00a0");
+  } else if (all && landed >= all) {
+    // the owner 2026-10-12 ~00:32Z: ETA DONE in green, with the time the sprint took below it
+    setText($("eta"), "DONE"); setClass($("eta"), "big eta-done");
+    setText($("eta-at"), d.took || "\u00a0");
+  } else if (m) {
+    setClass($("eta"), "big");
     setHTML($("eta"), etaText(m[1]));
     var ms = etaMs(m[1]);
-    // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
+    // the viewer's zone after the time, the same source as the clock (SPEC.md, the owner 10:00 PM)
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
-  } else if (all && landed >= all) { setText($("eta"), "done"); setText($("eta-at"), " "); }
-  else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
+  } else { setClass($("eta"), "big"); setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
@@ -634,11 +642,17 @@ function renderHero(d, s, ft) {
   setText($("tput"), throughput == null ? "\u2014" : String(Math.round(throughput)));
   setTitle($("tput"), throughput == null ? "needs ten minutes of samples" : "over the last " + Math.round(throughputMinutes) + " min");
   setText($("coord"), d.coordinator || "-"); setText($("epoch"), d.epoch != null ? d.epoch : "-");
+  // the version chip (the owner 2026-10-12 ~01:20Z): the server's version, hidden when unknown
+  var vc = $("version-chip");
+  if (vc) {
+    if (d.server_version) { setText($("version"), d.server_version); vc.hidden = false; }
+    else { vc.hidden = true; }
+  }
   setMachine(d.machine);
 }
 
 // ---------- poll loop ----------
-var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0;
+var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0, stoppedLast = false;
 // Readers and merge are hidden by default; ?all=1 shows them.
 var SHOW_ALL = /(?:^|[?&])all=1(?:&|$)/.test(location.search);
 if (SHOW_ALL) $("readers-panel").hidden = false;
@@ -670,7 +684,7 @@ function setLive(since) {
   // may put a narrow no-break space before PM, which the monospace face draws wide; so the
   // parts are joined here with plain spaces.
   var p = timeParts(since);
-  setLiveHTML($("live-text"), "Updated <span class=\"mono clk\"><span class=\"hms\">" + p.hms + "</span>" + SP + p.ampm +
+  setLiveHTML($("live-text"), "<span class=\"mono clk\"><span class=\"hms\">" + p.hms + "</span>" + SP + p.ampm +
     SP + "<span class=\"tz\">" + zoneAbbr(since) + "</span></span>");
 }
 function setLiveHTML(e, s) { if (e.innerHTML !== s) e.innerHTML = s; }
@@ -842,7 +856,7 @@ function renderInflight(sum) {
   var draw = function (w) {
     var parts = [[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
     box.textContent = "";
-    if (!parts.length) box.textContent = "nothing in flight";
+    if (!parts.length) box.textContent = " ";
     parts.forEach(function (p, i) {
       if (i) box.appendChild(el("span", "pw", " \u00b7 "));
       box.appendChild(el("span", "pn", String(p[0]))); box.appendChild(el("span", "pw", " " + p[1]));
@@ -892,7 +906,7 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  if (!box._none) box._none = el("div", "row faint", "no stream has spent anything yet");
+  if (!box._none) box._none = el("div", "row faint");
   if (!rows.length && box._none.parentNode !== box) box.appendChild(box._none);
   if (rows.length && box._none.parentNode === box) box._none.remove();
   // the pie's legend in the header: each tier as the state legend draws an item, its square in

@@ -83,6 +83,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 - 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
 - 2026-10-11 the owner, of the sprint dashboard: "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
+- 2026-10-13 the owner: "What happens next is you update it with all the stuff you changed and i haven't seen for a day"
 
 **The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
 The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
@@ -194,8 +195,8 @@ from the owner edits one line here and nothing else moves.
   tile's own rounded corners; also the favicon. `--logo` names another image file in its place.
 - The word "nova-sprint" in Nunito 800 (lowercase), the page's primary white (never cream), cap height about two
   thirds of the tile, optically centered with the pills.
-- Pills: coordinator <name>, epoch <n>, machine <state>; then the Updated clock with its live dot; no theme toggle (dark
-  only, the owner, 2:21 PM 2026-10-04: "just remove the toggle light/dark. always dark.").
+- Pills: version <v>, coordinator <name>, epoch <n>; then the clock alone at the far right (no "Updated", no dot);
+  no theme toggle (dark only, the owner, 2:21 PM 2026-10-04: "just remove the toggle light/dark. always dark.").
   The clock never flashes. The owner, 2026-10-11, of this line on the live page: "this is what it is." (The page
   lock above.)
 
@@ -208,7 +209,7 @@ from the owner edits one line here and nothing else moves.
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
 
-## Progress bar: "ALL CARDS BY STATE" with the legend (landed, merging, fix, review, working, ready, waiting) and counts;
+## Progress bar: "CARDS BY STATE" with the legend (landed, merging, fix, review, working, ready, waiting) and counts;
   one cell per card (per N cards when they would be under 4 px; no "1 cell = N" label); working cells pulse steadily
   (2 s); other cells still.
 
