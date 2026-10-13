@@ -86,6 +86,12 @@ type HoldReq struct {
 	Kind   string `json:",omitempty"`
 	Reason string
 	Who    string
+	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
+	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
+	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
+	// step that sees the cause end; a hold with none is reported every HoldNoCauseEvery.
+	Cause     string `json:",omitempty"`
+	CauseNote string `json:",omitempty"`
 	// HeldBy, when the hold is the machine's own (HeldByFault), marks it so the tick
 	// clears it by itself once the member is healthy; a coordinator's hold leaves it
 	// empty and stays until a person lifts it.
@@ -119,6 +125,11 @@ type HoldView struct {
 	// Return says the hold handed back the work begun (--return); else that work
 	// finishes.
 	Return bool `json:"return,omitempty"`
+	// Cause is what ends a member's hold (hold_cause.go), "" for none; Who is who made a
+	// coordinator's hold; Release is the verb that ends it by hand.
+	Cause   string `json:"cause,omitempty"`
+	Who     string `json:"who,omitempty"`
+	Release string `json:"release,omitempty"`
 }
 
 // HoldTargets is what each name names: a fleet member, a reader, a friend or a stream;
@@ -195,6 +206,9 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	if len(r.Names) == 0 {
 		refused = append(refused, Refusal{"hold", "names nothing: name a fleet member, a reader, a friend or a stream"})
 	}
+	if why := holdCauseWhy(s, r, targets); len(refused) == 0 && why != "" {
+		refused = append(refused, Refusal{"hold", why})
+	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}
 	}
@@ -245,7 +259,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 					line = fmt.Sprintf("--return: %d taken cards stay with their worker and finish: %s", len(ids), strings.Join(ids, ","))
 				}
 			}
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, keep: keep}, up, rr, moves, q, widths))
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, Cause: r.Cause, CauseNote: r.CauseNote, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)
