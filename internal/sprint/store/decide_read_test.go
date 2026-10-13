@@ -21,9 +21,12 @@ func TestTheFirstReadOfAFlashCardIsADecideRead(t *testing.T) {
 		name           string
 		bounce, review string
 		decide         int
+		wantB, wantR   string
 	}{
-		{"bars set", "0.5", "0.3", 1},
-		{"no bars", "", "", 0},
+		{"bars set", "0.6", "0.2", 1, "0.6", "0.2"},
+		// an unapplied sprint row reads nova-config's declared bars (sprint.Defaults, the
+		// cold read of #190): the decide read is on at 0.5 and 0.3
+		{"no bars applied", "", "", 1, "0.5", "0.3"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -49,8 +52,8 @@ func TestTheFirstReadOfAFlashCardIsADecideRead(t *testing.T) {
 						continue
 					}
 					decided++
-					assert.Equal(t, []string{tc.bounce, tc.review}, []string{rc.F(sprint.FieldDecideBounce), rc.F(sprint.FieldDecideReview)}, rc.ID)
-					assert.Equal(t, []string{tc.bounce, tc.review}, []string{p.DecideBounce, p.DecideReview}, "the packet hands the reader the bars")
+					assert.Equal(t, []string{tc.wantB, tc.wantR}, []string{rc.F(sprint.FieldDecideBounce), rc.F(sprint.FieldDecideReview)}, rc.ID)
+					assert.Equal(t, []string{tc.wantB, tc.wantR}, []string{p.DecideBounce, p.DecideReview}, "the packet hands the reader the bars")
 					assert.Equal(t, "flash", rc.F(sprint.FieldTier))
 				}
 				for _, rc := range reads {

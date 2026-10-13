@@ -108,8 +108,9 @@ type Bars struct {
 	// comma list of config.AnswerRules); "" turns none off.
 	RulesOff string
 	// GitIdentity is the sprint row's author and committer for every commit the sprint
-	// machine makes (git_identity: "Name <email>"); "" is none configured, which the landing
-	// refuses.
+	// machine makes (git_identity: "Name <email>"), as stored: "" is the row unapplied, which
+	// its readers take as config.DefaultGitIdentity (WithDefaults; the snapshot's GitIdentity
+	// and Store.GitIdentity), so the landing commits as the machine identity, never refuses.
 	GitIdentity string
 	// MaxAttempts is the sprint row's attempt bound (max_attempts): the attempts one card
 	// runs before the sprint raises one judgment to the coordinator (sprint.AttemptsCap);
@@ -135,6 +136,20 @@ func (b *Bars) fields() map[string]*string {
 	}
 }
 
+// WithDefaults is the bars with each empty field whose sprint.Defaults row says ReadFill
+// given that row's Value: the read-side default of nova-config's sprint row, which the
+// sprint never writes (nova-config apply would undo it). An unapplied git_identity reads
+// config.DefaultGitIdentity, as NewMem's does, so the landing commits as the machine
+// identity, never the host's (docs/SPEC-SPRINT.md section 13, Epochs and clear, "Working defaults").
+func (b Bars) WithDefaults() Bars {
+	for name, p := range b.fields() {
+		if d, ok := sprint.DefaultOf(name); ok && d.ReadFill && *p == "" {
+			*p = d.Value
+		}
+	}
+	return b
+}
+
 // into is the set as the snapshot carries it.
 func (rs RouteSet) into(s *sprint.Snapshot) {
 	s.Routes, s.Tiers, s.Providers = rs.Routes, rs.Tiers, rs.Providers
@@ -143,6 +158,8 @@ func (rs RouteSet) into(s *sprint.Snapshot) {
 
 // into is the bars as the snapshot carries them.
 func (b Bars) into(s *sprint.Snapshot) {
+	s.GitIdentityUnapplied = b.GitIdentity == ""
+	b = b.WithDefaults()
 	s.DecideBounce, s.DecideReview, s.DecideGrade = b.Bounce, b.Review, b.Grade
 	s.DecideAttemptNoResult, s.DecideAttemptNothingToDo = b.AttemptNoResult, b.AttemptNothingToDo
 	s.DecideScoreBar = b.Score
@@ -501,10 +518,11 @@ func (st *Store) RulesOff(ctx context.Context) ([]string, error) {
 
 // GitIdentity is the sprint row's author and committer for every commit the sprint machine
 // makes, as nova-config applied it (sprint:git_identity), read with the routes: the lander
-// reads it there (cmd/nova-sprint, land.go). "" is none configured.
+// reads it there (cmd/nova-sprint, land.go). An unapplied row reads config.DefaultGitIdentity
+// (Bars.WithDefaults; sprint.Defaults).
 func (st *Store) GitIdentity(ctx context.Context) (string, error) {
 	set, err := st.routes(ctx)
-	return set.Bars.GitIdentity, err
+	return set.Bars.WithDefaults().GitIdentity, err
 }
 
 // ProviderOf reads an applied provider hash. Malformed funding is non-fatal
