@@ -281,20 +281,22 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	if prev != "" && prevAt > briefAt && prevAt < attempt && SameFinding(prev, finding) {
 		return BriefBound{ID: c.ID, Attempts: [2]int{prevAt, attempt}, Finding: firstSentence(prev)}, true
 	}
-	for _, l := range strings.Split(c.F(FieldFindings), "\n") {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		var at int
-		var f string
-		if head, rest, ok := strings.Cut(l, ": "); ok {
-			if _, err := fmt.Sscanf(head, "attempt %d", &at); err == nil && at > briefAt && at < attempt {
-				f = rest
+	if strings.HasPrefix(finding, LandRefusedFinding) {
+		for _, l := range strings.Split(c.F(FieldFindings), "\n") {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
 			}
-		}
-		if f != "" && (SameFinding(f, finding) || (strings.HasPrefix(finding, LandRefusedFinding) && strings.HasPrefix(f, finding))) {
-			return BriefBound{ID: c.ID, Attempts: [2]int{at, attempt}, Finding: firstSentence(finding)}, true
+			var at int
+			var f string
+			if head, rest, ok := strings.Cut(l, ": "); ok {
+				if _, err := fmt.Sscanf(head, "attempt %d", &at); err == nil && at > briefAt && at < attempt {
+					f = rest
+				}
+			}
+			if f != "" && strings.HasPrefix(f, LandRefusedFinding) && (SameFinding(f, finding) || strings.HasPrefix(f, finding)) {
+				return BriefBound{ID: c.ID, Attempts: [2]int{at, attempt}, Finding: firstSentence(finding)}, true
+			}
 		}
 	}
 	if cap <= 0 {
