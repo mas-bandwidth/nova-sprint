@@ -199,7 +199,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, \* answers
-          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
@@ -214,7 +214,7 @@ rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rd
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
-epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
@@ -286,6 +286,7 @@ TypeOK ==
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
   /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
+  /\ aflapped \in BOOLEAN
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
   /\ jf \in {"open", "taken"} /\ jfstarted \in BOOLEAN
@@ -329,7 +330,7 @@ Init ==
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE /\ andec = 0
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
   /\ eclk = 0
-  /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
+  /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aflapped = FALSE /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
   /\ jf = "open" /\ jfstarted = FALSE
   /\ jr = "open" /\ jrasked = 0
@@ -1002,8 +1003,9 @@ ReachMindJudges == anst # "judged"
 \*           its room (an outside event: readers rest, come up, fill and empty).
 \*   aopen   the cannot-ask judgment is open; aseen: the last tick saw the card waiting.
 \*   anotes  the cannot-ask judgments written this episode.
+\*   aflapped eligibility has changed; the reversed witness re-raises on every tick after it.
 \* The episode is the card waiting at one attempt: the judgment is raised when no reader may
-\* read it, held while it still waits for whatever reason, closed when a read is dealt, the
+\* read it, closed on the next tick with an eligible reader even at room, or when a read is dealt, the
 \* card leaves review or its attempt changes.
 \*
 \* The rule's answer (rules.go TickRuleRework, rules_read.go TickRuleTwin; steps_work.go
@@ -1019,8 +1021,10 @@ ReachMindJudges == anst # "judged"
 \*   "pinsilent"   released without the pin-ignored judgment: AwayIsJudged
 \*   "pinearly"    released at once, the bound not waited: PinHonouredWithinBound
 \*   "stoppedcounts" the running clock advances while STOPPED: PinClockSkipsStopped
-\*   "askflap"     the judgment's condition is the reason, not the wait (the code before):
-\*                 closed when the reason turns to room and raised again: OneCannotAskAnEpisode
+\*   "askflap"     after eligibility changes, repeats the judgment on unchanged ticks:
+\*                 OneCannotAskAnEpisode (legacy witness name retained)
+\*   "askheldeligible" an eligible reader leaves the episode open: CannotAskClosedWhenEligible
+\*   "askflapeligible" after a flap, raises again on unchanged no-reader ticks: OneCannotAskAnEpisode
 \*   "asknoclose"  the judgment stays open after the card is asked: CannotAskClosedWhenAsked
 \*   "keepanswer"  the finish keeps the answer (the code before): AnswerApplies
 \*   "answernomove" a rule writes its answer and leaves the card in review: AnswerApplies
@@ -1044,45 +1048,47 @@ PinReleased ==
 \* the outside: she is held or down, or back up
 PinFlip ==
   /\ pup' = ~pup
-  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the machine is STOPPED or starts again (stopped time does not count)
 PinStop ==
   /\ ~pstopped /\ pstopped' = TRUE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 PinStart ==
   /\ pstopped /\ pstopped' = FALSE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the card's attempt ends wherever it ran; its next attempt is pinned to her
 \* again (ReworkPinned), ready, a new episode
 PinNextAttempt ==
   /\ pcol \in {"mine", "away"}
   /\ pcol' = "ready" /\ pdw' = -1 /\ prec' = FALSE
-  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the reason the card waits changes while it waits
 AskReason ==
   /\ ast = "waits"
   /\ areason' = IF areason = "noreader" THEN "room" ELSE "noreader"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ aflapped' = TRUE
+  /\ anotes' = 0
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, rcol, rans, ratt>>
 
 \* the outside: a read is dealt it; the read comes back with no verdict and it waits again
 \* (a new episode: a read was dealt); its attempt is answered and the next one waits; it
 \* leaves review
 AskDealt ==
   /\ ast = "waits" /\ ast' = "asked"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskBack ==
   /\ ast = "asked" /\ ast' = "waits"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskNextAttempt ==
   /\ ast # "gone" /\ aatt < Cap
-  /\ aatt' = aatt + 1 /\ ast' = "waits"
+  /\ aatt' = aatt + 1 /\ ast' = "waits" /\ aflapped' = FALSE
   /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, areason, aseen, rcol, rans, ratt>>
 AskGone ==
   /\ ast # "gone" /\ ast' = "gone"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* a rule answers the card in review: its next attempt, ready, and the answer, in one step
 RuleAnswers ==
@@ -1090,20 +1096,20 @@ RuleAnswers ==
   /\ rans' = TRUE
   /\ IF Broken = "answernomove" THEN UNCHANGED <<rcol, ratt>>
      ELSE rcol' = "ready" /\ ratt' = ratt + 1
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes>>
 
 \* the outside: the attempt is dealt and taken; it finishes, back in review, the answer
 \* consumed
 RDealt ==
   /\ rcol = "ready" /\ rcol' = "working"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rans, ratt>>
 RFinish ==
   /\ rcol = "working" /\ rcol' = "review"
   /\ rans' = (Broken = "keepanswer" /\ rans)
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, ratt>>
 
 \* the cannot-ask condition the tick reads, and whether it raises one
-AskHolds == IF Broken = "askflap" THEN ast = "waits" /\ areason = "noreader" ELSE ast = "waits"
+AskHolds == ast = "waits" /\ (areason = "noreader" \/ Broken = "askheldeligible")
 AskRaise == ast = "waits" /\ areason = "noreader"
 
 \* one tick: the deal and the pass for the pin, the ask's judgment, nothing for the answer
@@ -1125,14 +1131,17 @@ EpTick ==
   \* cannot ask: raised once an episode, held while it holds, closed when it clears
   /\ aseen' = (ast = "waits")
   /\ IF AskHolds
-       THEN IF aopen THEN UNCHANGED <<aopen, anotes>>
+       THEN IF aopen
+            THEN IF Broken \in {"askflap", "askflapeligible"} /\ aflapped
+                 THEN aopen' = TRUE /\ anotes' = anotes + 1
+                 ELSE UNCHANGED <<aopen, anotes>>
             ELSE IF AskRaise THEN aopen' = TRUE /\ anotes' = anotes + 1
             ELSE UNCHANGED <<aopen, anotes>>
        ELSE IF Broken = "asknoclose" THEN UNCHANGED <<aopen, anotes>>
             ELSE /\ aopen' = FALSE
                  \* the episode ends when the card no longer waits (a flap keeps counting)
                  /\ anotes' = IF ast = "waits" THEN anotes ELSE 0
-  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, aflapped, rcol, rans, ratt>>
 
 \* the attempt the card waits at changes: a new episode (the pass ends the judgment of the
 \* attempt before on the next tick, cannotAskEpisodes; modelled by ending the episode on the
@@ -1159,11 +1168,17 @@ PinHonouredWithinBound == pdw # -1 => pdw >= PinBound
 \* nothing on resume.
 PinClockSkipsStopped == [][pstopped => eclk' = eclk]_epVars
 
-\* One cannot-ask judgment an episode: a card that still waits is never judged twice.
+\* One cannot-ask judgment per unchanged eligible set at one attempt.
+\* AskReason starts another episode when that set changes.
 OneCannotAskAnEpisode == anotes <= 1
 
 \* A cannot-ask judgment is open only while the last tick saw the card waiting.
 CannotAskClosedWhenAsked == aopen => aseen
+
+\* Outside eligibility changes may precede the tick: closure is required by that tick,
+\* including a reader at room (the eligible reason is "room").
+CannotAskClosedWhenEligible ==
+  [][(EpTick /\ ast = "waits" /\ areason = "room") => ~aopen']_epVars
 
 \* A rule's answer on a card is the answer of the attempt on its way: the rule moved the
 \* card in the step it answered, and the attempt's finish consumed it.

@@ -453,6 +453,12 @@ func answered(p *Plan, s *Snapshot, ids []string, who string) {
 		for _, o := range s.Open {
 			known = known || o.Note.ID == id
 		}
+		// A cannot-ask acknowledgement retains its reader condition and can be
+		// explicitly answered when Ask deals a read. Other acked kinds keep their
+		// prior validation behavior.
+		for _, o := range s.Acked {
+			known = known || o.Note.Type == NCannotAsk && o.Note.ID == id
+		}
 		for _, u := range p.Units {
 			for _, c := range u.Closes {
 				resolved = resolved || c.Note.ID == id
