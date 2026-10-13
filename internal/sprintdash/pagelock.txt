@@ -13,3 +13,5 @@
 2026-10-13 91d59220c2c511fdc9c824eccdbf0392fe37ffa859b2bdc7c88568da85a75024 "When you are in it print 'READY' to ETA"
 2026-10-13 3dd02bd22adc8edebf06dc26bd2a5e0673fe756dd8660fa115e41843519ee796 "Please fix the sprint dashboard so it shows the friends table by default."
 2026-10-13 24fd7b9dccaf5c2a19c5926e10c5b5870b379ec1f52ca3bf80a586f816e5cfb4 "maybe gzip it on upload?"
+2026-10-13 a8a31945de436dc3113b6b4c872c4d7b4e19cb23183963f432c35ab24f33346d "OK add these for v1.2.20."
+
