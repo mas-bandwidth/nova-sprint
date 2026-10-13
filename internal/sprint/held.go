@@ -55,10 +55,10 @@ func WaitOf(s *Snapshot, c *Card) CardWait {
 	switch {
 	case c == nil:
 		return CardWait{}
-	case IsHeld(c):
+	case IsHeld(c) && !IsSentinel(c):
 		return CardWait{Card: c.ID, Operand: WaitOnRelease, On: WaitsFor(s, c, nil), Why: "the coordinator's release, and the cards it names"}
 	case IsSentinel(c):
-		return CardWait{Card: c.ID, Operand: WaitOnLine, On: WaitsFor(s, c, nil), Why: "the line before it, and the coordinator's release"}
+		return CardWait{Card: c.ID, Operand: WaitOnLine, On: WaitsFor(s, c, nil), Why: "producer completion and freshly observed trunk ancestry"}
 	default:
 		return CardWait{Card: c.ID, Operand: WaitOnCards, On: WaitsFor(s, c, nil), Why: "the cards it names and its place in line"}
 	}

@@ -1160,7 +1160,15 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
+	var sentinelProof []sprint.SentinelObservation
+	if st.SentinelProof != nil {
+		sentinelProof = st.SentinelProof(ctx, snap)
+	}
+	var consumerMerges []sprint.ConsumerMerge
+	if st.ConsumerTrunk != nil {
+		consumerMerges = st.ConsumerTrunk(ctx, snap)
+	}
+	req := sprint.TickReq{ConsumerMerges: consumerMerges, SentinelObservations: sentinelProof, Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -2220,7 +2228,15 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
 	// a shadow tick wakes no friend: it writes nothing and sends nothing
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
+	var sentinelProof []sprint.SentinelObservation
+	if st.SentinelProof != nil {
+		sentinelProof = st.SentinelProof(ctx, snap)
+	}
+	var consumerMerges []sprint.ConsumerMerge
+	if st.ConsumerTrunk != nil {
+		consumerMerges = st.ConsumerTrunk(ctx, snap)
+	}
+	req := sprint.TickReq{ConsumerMerges: consumerMerges, SentinelObservations: sentinelProof, Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err
 	}

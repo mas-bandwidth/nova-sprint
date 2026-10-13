@@ -197,7 +197,9 @@ var TickDecisions = map[string][]string{
 
 // TickReq is what a tick is given beside the snapshot.
 type TickReq struct {
-	Who string // recorded with every move; "" is MachineActor
+	SentinelObservations []SentinelObservation
+	ConsumerMerges       []ConsumerMerge
+	Who                  string // recorded with every move; "" is MachineActor
 	// Stopped is the time the machine was STOPPED between two clock readings:
 	// a deadline compares running time only. nil is none.
 	Stopped func(from, to time.Time) time.Duration
@@ -709,7 +711,8 @@ func TickResolve(s *Snapshot, r TickReq) (Plan, int) {
 	// the cut sentinels' self-release is read first (sentinel.go), and the
 	// resolve names none of them: a reached sentinel is no longer refused the
 	// coordinator's release for the release this part makes its own
-	units, after, notes, landing := SentinelReleases(s, r.who())
+	s = withConsumerMerges(s, r.ConsumerMerges)
+	units, after, notes, landing := SentinelReleases(s, r.who(), r.SentinelObservations...)
 	var ids []string
 	for _, c := range dealTurns(s.Work.Column(Waiting), nil) {
 		if !landing[c.ID] {
@@ -837,6 +840,7 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // coordinator is told once (N3), and the judgment closes when a member is up.
 // tla/DirtyTick.tla Pump (reads before work, ReadsBeforeWork) and Dealable (HeldStreamNotDealt).
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
+	s = withConsumerMerges(s, r.ConsumerMerges)
 	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
 	// route_rest.go): no card of this tick is drawn on one, and the new rests are written
 	// in its plan

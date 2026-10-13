@@ -4,64 +4,30 @@ import (
 	"fmt"
 )
 
-// The cut sentinel releases itself (docs/roadmap.sexp, auto-sentinels-released-by-tick;
-// the owner, 2026-10-10: "what else is manual that should be automatic from the machine").
-// A sentinel that names its needs marks a cut: the cards it names are the cut's, and when
-// every one of them has landed the gate is readable from the state, so the tick releases
-// the sentinel itself -- the resolve that finds it reached releases it at its next pass --
-// and pushes the seat that the release is ready to cut. The publish itself stays a gated
-// step with a cold read: the push is a notice, not a judgment, and the cut is still the
-// seat's. A plain gate (a stop by position alone, no needs named) is a wave the
-// coordinator passes on their own look, and its release stays theirs (docs/SPEC-SPRINT.md
-// section 16); a held sentinel keeps its hold, and the machine releases through no
-// stream's hold. The release lives in the resolve part, the duty the reference model
-// already names (refmodel decide.go, DutyResolve), so the tick's shape stays the shape
-// the model holds: no part of its own, and nothing the model's walks would have to know
-// -- no walk admits a sentinel that names needs.
-
-// NCutReady is the seat push of a resolve's self-release: a happened note addressed to
-// the seat (Note.To, which the push loop delivers, as the accept's "ready to merge"
-// notice is), that the release is ready to cut.
+// Automatic releases are notification-only. The recorded trunk's freshly
+// fetched ancestry authorizes live producers; dropped producers are complete.
+// Explicit Release remains a separate early override.
 const NCutReady = "the release is ready to cut"
-
-// cutReleaseReason is what the machine records on a sentinel it released itself
-// (release_reason, where the coordinator's release records its --reason).
 const cutReleaseReason = "every card it needs has landed"
 
-// isCut says the sentinel names its needs: the stored needs are only what a card names
-// itself (docs/SPEC-SPRINT.md section 16), and a sentinel that names them marks a cut the
-// machine can read.
 func isCut(c *Card) bool { return len(Split(c.F("needs"))) > 0 }
 
-// SentinelReleases is the waiting cut sentinels' self-release, as the pieces of the
-// tick's resolve part (steps_tick.go, TickResolve) that land them: every cut sentinel
-// marked reached -- the step that landed its last need, or the resolve before this one,
-// marked it, so the reached judgment is open on it and this step's landing closes it --
-// and waiting on nothing now (WaitsFor empty; a held sentinel waits on release, not on
-// its line, and keeps its hold, docs/SPEC-SPRINT.md section 16), is released as the
-// coordinator's release lands it (steps_sentinel.go, Release): waiting -> landed, the
-// judgments open on it closed, released_by the machine's, never the coordinator's, and
-// what waited behind it moved to ready in the same step (resolveAfter), each sentinel's
-// Moved naming how many of its wave it let through. It plans the release only: a need
-// still in flight (working, in review, merging) is not landed, and the machine waives
-// nothing -- the coordinator's release, which waives, stays the way past work under way.
-// A sentinel of a held stream is left to the coordinator, whose hand is on the stream
-// (hold.go). The release units go first and the waves after them, so the caller's bound
-// never cuts a landing from the wave it lets through.
-// tla/Holds.tla CutRelease
-func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Note, landing map[string]bool) {
+// SentinelReleases implements SentinelRelease.tla AutoRelease. No reached
+// judgment, coordinator decision, sentinel hold or stream hold gates release.
+func SentinelReleases(s *Snapshot, who string, observations ...SentinelObservation) (units, after []Unit, notes []Note, landing map[string]bool) {
 	var ids []string
+	reasons := map[string]string{}
+	merges := map[string][]DevInclusion{}
 	for _, c := range s.Work.Column(Waiting) {
-		if !IsSentinel(c) || !isCut(c) || c.F("reached") == "" {
+		if !IsSentinel(c) {
 			continue
 		}
-		if w := WaitOf(s, c); w.Operand != WaitOnLine || len(w.On) > 0 {
-			continue // a held sentinel waits on release; a wait unmet stands
-		}
-		if StreamHeld(s, c.Row) {
-			continue // the coordinator's hand is on the stream: the release stays theirs
+		reason, proof, ok := SentinelDevReason(s, c, observations)
+		if !ok {
+			continue
 		}
 		ids = append(ids, c.ID)
+		reasons[c.ID], merges[c.ID] = reason, proof
 		if landing == nil {
 			landing = map[string]bool{}
 		}
@@ -70,32 +36,25 @@ func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Not
 	if landing == nil {
 		return nil, nil, nil, nil
 	}
-	after = resolveAfter(s, landing, who)
-	moving := map[string]bool{}
-	for _, u := range after {
-		moving[u.Key] = true
-	}
+	// Consumers merge the trunk on the next observation before becoming ready.
+	after = nil
 	for _, id := range ids {
 		c := s.Work.Card(id)
-		ready := 0
-		for _, b := range Behind(s, c) {
-			if moving[b.ID] {
-				ready++
-			}
+		set := map[string]string{"landed": stamp(s.Now), "released": stamp(s.Now), "released_by": who, "release_reason": reasons[id], "release_kind": "automatic"}
+		for i, proof := range merges[id] {
+			set[fmt.Sprintf("release_merge_%d", i)] = fmt.Sprintf("%s %s %s %s contained in %s", proof.Producer, proof.Repo, proof.Stream, proof.Trunk, proof.Containing)
 		}
-		for _, u := range after {
-			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != c.Row && contains(Split(pc.F("needs")), c.ID) {
-				ready++ // named it from another stream
-			}
-		}
-		set := map[string]string{"landed": stamp(s.Now), "released": stamp(s.Now), "released_by": who, "release_reason": cutReleaseReason}
 		n := happened(NSentinelLanded, c.Row, s.Now, c.ID)
 		n.Who = who
-		n.What = fmt.Sprintf("sentinel %s landed, released by %s: %d cards are now ready; %s", c.ID, who, ready, cutReleaseReason)
+		n.What = fmt.Sprintf("sentinel %s landed automatically: %s; consumers merge their recorded trunk before the next deal", c.ID, reasons[id])
+		for _, proof := range merges[id] {
+			n.What += fmt.Sprintf("; %s head %s contained in %s %s at %s", proof.Producer, proof.Head, proof.Repo, proof.Trunk, proof.Containing)
+		}
+		n.To = s.Coordinator
 		units = append(units, Unit{Key: c.ID, Stream: c.Row,
 			Changes: []Change{change(Work, moveEntry(c, c.Row, Landed, set, FieldHeld))},
 			Notes:   []Note{n}, Closes: closesFor(s.Open, nil, c.ID),
-			Moved: fmt.Sprintf("sentinel %s waiting -> landed (released by %s: %s); %d cards are now ready", c.ID, who, cutReleaseReason, ready)})
+			Moved: fmt.Sprintf("sentinel %s waiting -> landed (automatic: %s)", c.ID, reasons[id])})
 	}
 	if n, ok := cutNotice(s, ids, who); ok {
 		notes = append(notes, n)
@@ -103,11 +62,7 @@ func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Not
 	return units, after, notes, landing
 }
 
-// cutNotice is the one seat push of a resolve's self-releases (SentinelReleases), as
-// acceptedNotice (steps_tick.go) is the accept's: a happened note addressed to the seat,
-// naming every sentinel the resolve released, that the release is ready to cut. It is a
-// notice, not a judgment: the publish itself stays a gated step with a cold read, and the
-// note commands nothing. ok is false when the resolve released none.
+// cutNotice groups notification-only automatic releases addressed to the seat.
 func cutNotice(s *Snapshot, ids []string, who string) (Note, bool) {
 	if len(ids) == 0 {
 		return Note{}, false
@@ -125,6 +80,6 @@ func cutNotice(s *Snapshot, ids []string, who string) (Note, bool) {
 	}
 	n := happened(NCutReady, stream, s.Now, ids...)
 	n.Who, n.To = who, s.Coordinator
-	n.What = fmt.Sprintf("%s released itself: every card it needs has landed; the release is ready to cut -- the publish itself stays a gated step with a cold read", Preview(ids, ", "))
+	n.What = fmt.Sprintf("%s released itself: automatic release happened; see each sentinel release notice for its observed trunk commit or producer completion reason", Preview(ids, ", "))
 	return n, true
 }

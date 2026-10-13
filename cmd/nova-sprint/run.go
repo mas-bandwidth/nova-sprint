@@ -325,6 +325,7 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "tick", err.Error())
 	}
+	a.bindSentinelProtocol(st)
 	st.AnswerRules, st.IdleAlarm = rules, idle
 	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
@@ -725,6 +726,7 @@ func (a *app) tickOf(ctx context.Context, st *store.Store) (store.TickResult, er
 	if a.tickFn != nil {
 		return a.tickFn(ctx, st)
 	}
+	a.bindSentinelProtocol(st)
 	return st.Tick(ctx)
 }
 

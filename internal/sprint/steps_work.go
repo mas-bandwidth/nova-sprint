@@ -166,6 +166,9 @@ func Add(s *Snapshot, r AddReq) Plan {
 	if !ValidID(r.Stream) {
 		return refuseAll(fmt.Sprintf("stream %q wants letters, digits, _ and -", r.Stream))
 	}
+	if r.Sentinel && r.Held {
+		return refuseAll("sentinels release automatically; --held is not a sentinel option")
+	}
 	if r.Sentinel && len(ids) != 1 {
 		return refuseAll("a sentinel is admitted one at a time: add --stream <s> --sentinel <id>")
 	}
@@ -552,14 +555,14 @@ func Add(s *Snapshot, r AddReq) Plan {
 		if a.sent || a.gate {
 			kind, col = "sentinel", Waiting
 		}
-		if r.Held {
+		if r.Held && kind != "sentinel" {
 			col = Waiting
 		}
 		fields := map[string]string{"kind": kind, "stream": r.Stream, "attempt": "0", "admitted": stamp(s.Now)}
 		if kind == "primary" && col == Ready {
 			fields[FieldReadyAt] = stamp(s.Now)
 		}
-		if r.Held {
+		if r.Held && kind != "sentinel" {
 			fields[FieldHeld] = stamp(s.Now)
 		}
 		gateSaid := ""
@@ -1049,6 +1052,9 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 			}
 			continue
 		}
+		if !ConsumerTrunkReady(s, c) {
+			continue
+		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, readyStamp(c, s.Now)))},
 			Moved: c.ID + " waiting -> ready"})
 	}
@@ -1062,7 +1068,7 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 func resolveAfter(s *Snapshot, landing map[string]bool, who string) []Unit {
 	var out []Unit
 	for _, c := range s.Work.Column(Waiting) {
-		if landing[c.ID] || IsHeld(c) || len(WaitsFor(s, c, landing)) > 0 {
+		if landing[c.ID] || IsHeld(c) || len(WaitsFor(s, c, landing)) > 0 || !ConsumerTrunkReady(s, c) || consumerCrossesRelease(s, c, landing) {
 			continue
 		}
 		if IsSentinel(c) {
@@ -1122,6 +1128,9 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	capOf := s.AttemptsCapOf()
 	ready := func(c *Card) string {
 		// tla/DirtyTick.tla Dealable (HeldStreams, HeldStreamNotDealt): a held stream's cards are dealt nowhere
+		if !ConsumerTrunkReady(s, c) {
+			return "its stream must merge the freshly observed recorded trunk before the next deal"
+		}
 		if StreamHeld(s, c.Row) {
 			return "its stream " + c.Row + " is held by the coordinator (hold.go): nova-sprint unhold " + c.Row + " deals it again"
 		}

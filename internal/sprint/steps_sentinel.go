@@ -367,7 +367,7 @@ func Release(s *Snapshot, r ReleaseReq) Plan {
 				ready++ // named it from another stream
 			}
 		}
-		set := map[string]string{"landed": stamp(s.Now), "released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason}
+		set := map[string]string{"landed": stamp(s.Now), "released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason, "release_kind": "early override"}
 		by := "released by " + r.Who
 		if w := past[c.ID]; len(w) > 0 {
 			// released before it was reached: what it still waited for is in flight
@@ -441,7 +441,7 @@ func notUnderWay(s *Snapshot, waits []string) (string, string) {
 // releaseHeld clears a held primary's hold, with who and why, and moves it to
 // ready when it waits for nothing else.
 func releaseHeld(s *Snapshot, c *Card, r ReleaseReq) Unit {
-	set := map[string]string{"released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason}
+	set := map[string]string{"released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason, "release_kind": "early override"}
 	if w := WaitsFor(s, c, nil); len(w) > 0 {
 		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld))},
 			Moved: fmt.Sprintf("%s released by %s; it waits for %s", c.ID, r.Who, strings.Join(w, ","))}

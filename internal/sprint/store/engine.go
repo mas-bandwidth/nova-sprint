@@ -91,6 +91,9 @@ type Store struct {
 	// the binding read, passed into the tick's TickReq. nil passes none, and no
 	// red-base judgment is raised or closed.
 	BaseCI func() []sprint.BaseCIFacts
+	// SentinelProof observes fresh Git ancestry outside the fenced store step.
+	SentinelProof func(context.Context, *sprint.Snapshot) []sprint.SentinelObservation
+	ConsumerTrunk func(context.Context, *sprint.Snapshot) []sprint.ConsumerMerge
 	// Inventory, when set (run and tick), is the tick's read of the machine records
 	// nova-config names (the same config read as fleet sync; sprint.TickRetireAbsent,
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
