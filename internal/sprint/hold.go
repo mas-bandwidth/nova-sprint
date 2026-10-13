@@ -95,6 +95,11 @@ type HoldReq struct {
 	Friends []string `json:",omitempty"`
 	// Alive, with Release, is the members whose beat is alive now: one comes up at once.
 	Alive []string `json:",omitempty"`
+	// FriendHeld is the friends whose roster record is held now, read by the
+	// store with the roster (HoldReqOf): a hold of a friend already held, or a
+	// release of one not held, changes nothing. Read state, no part of the
+	// step's arguments.
+	FriendHeld map[string]bool `json:"-"`
 	// Started is the work cards the friends held have started, as friend down reads them
 	// (a push on the branch at its tip, her beat naming it running), each with its why: the
 	// hold takes them too, and a push's head is carried (FriendTake). It is read state, so
@@ -224,6 +229,15 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	q, widths := memberLoads(s, up), memberWidths(s, up)
 	for _, t := range targets {
 		var line string
+		// a member already held is not held again: downPlan would only
+		// re-stamp its control card (tla/Holds.tla: Hold is guarded on the
+		// held state, so the repeat is no transition and writes no note)
+		if t.Kind == HoldMember && !r.Release {
+			if ctl := s.MemberCtl(t.Name); ctl != nil && ctl.F(FieldHeld) != "" {
+				p.Said = append(p.Said, t.Name+" is held already")
+				continue
+			}
+		}
 		before := [6]int{len(p.Units), len(p.Rows), len(p.Places), len(p.Props), len(p.Closes), len(p.Updates)}
 		switch {
 		case t.Kind == HoldMember && r.Release:
@@ -283,9 +297,12 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				changed = true
 			}
 		}
-		if t.Kind == HoldFriend {
+		if t.Kind == HoldFriend && r.FriendHeld != nil {
 			// a friend's hold lives in her roster record, outside this plan:
-			// holding or releasing her writes it, cards or none
+			// holding a friend not held, or releasing one held, writes it,
+			// cards or none; the repeat changes nothing
+			changed = changed || r.FriendHeld[t.Name] == r.Release
+		} else if t.Kind == HoldFriend {
 			changed = true
 		}
 		if !changed {
@@ -403,6 +420,14 @@ func holdStream(s *Snapshot, stream string, r HoldReq) (Plan, string) {
 		return p, ""
 	}
 	if ctl.F(FieldHeld) != "" {
+		// a repeat hold with a new reason updates the reason (it is a
+		// change, and the new reason is never silently dropped); the same
+		// reason, or none, changes nothing
+		if r.Reason != "" && r.Reason != ctl.F(FieldHeldReason) {
+			p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: stream, Changes: []Change{change(Merge, setEntry(ctl, map[string]string{FieldHeldReason: r.Reason}))},
+				Moved: "stream " + stream + " held reason " + r.Reason})
+			return p, ""
+		}
 		return p, "it is held already"
 	}
 	set := map[string]string{FieldHeld: stamp(s.Now)}

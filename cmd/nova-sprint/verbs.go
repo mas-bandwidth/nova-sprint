@@ -138,7 +138,7 @@ func init() {
 		{"lane take", "<kind> --machine <m> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine m1 --as m1", (*app).cmdLaneTake},
 		{"lane give", "<kind> --machine <m> --as <worker> [--dry-run]", "lane give go --machine m1 --as m1", (*app).cmdLaneGive},
 		{"lane list", "", "lane list", (*app).cmdLaneList},
-		{"reader add", "<reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]", "reader add reader-d", (*app).cmdReaderAdd},
+		{"reader add", "<reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]", "reader add reader-m1", (*app).cmdReaderAdd},
 		{"reader set", "<reader>... --tiers <flash[,pro,heavy,frontier]|all|default>", "reader set reader-a --tiers flash", (*app).cmdReaderSet},
 		{"reader away", "<reader>...", "reader away reader-d", func(a *app, args []string, o, e io.Writer) int { return a.cmdReaderHold(true, args, o, e) }},
 		{"reader up", "<reader>...", "reader up reader-d", func(a *app, args []string, o, e io.Writer) int { return a.cmdReaderHold(false, args, o, e) }},
@@ -3634,11 +3634,25 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	// a row no fleet member, friend or member reader matches would never
-	// read (friction 18): a reader row is reader-<member> or reader-<friend>,
-	// or a friend's own name; any other name is refused, nothing written.
+	// read (friction 18): a reader row is reader-<member> or reader-<friend>
+	// (the suffix must name a fleet member or a friend, never the prefix
+	// alone), or a friend's own name; any other name is refused, nothing
+	// written.
 	friends, _ := st.FriendNames(ctx)
+	var members []string
+	if snap, lerr := st.Load(ctx, []string{sprint.Fleet}, nil); lerr == nil && snap != nil && snap.Fleet != nil {
+		for _, row := range snap.Fleet.Rows() {
+			if !sprint.IsFriendRow(row) {
+				members = append(members, row)
+			}
+		}
+	}
 	for _, n := range names {
-		if strings.HasPrefix(n, sprint.ReaderPrefix) || slices.Contains(friends, n) {
+		if slices.Contains(friends, n) {
+			continue
+		}
+		if suffix, ok := strings.CutPrefix(n, sprint.ReaderPrefix); ok &&
+			(slices.Contains(members, suffix) || slices.Contains(friends, suffix)) {
 			continue
 		}
 		return refuse(stderr, "reader add", n+" is no member, friend or member reader: it would never read; run: nova-sprint reader add reader-<member> (a fleet member's or a friend's reader row), or nova-sprint reader add <friend>")

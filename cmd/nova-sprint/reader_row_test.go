@@ -13,7 +13,7 @@ import (
 func TestAReadersQueueSaysWhetherItIsARowOfTheReadersTable(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("init --readers reader-a,reader-b --members m1,m2")
 	var q struct {
 		Reader *bool `json:"reader"`
 	}
@@ -22,14 +22,14 @@ func TestAReadersQueueSaysWhetherItIsARowOfTheReadersTable(t *testing.T) {
 		assert.True(t, *q.Reader)
 	}
 	q.Reader = nil
-	ta.json("queue --as reader-x-2", &q)
+	ta.json("queue --as reader-m2", &q)
 	if assert.NotNil(t, q.Reader) {
 		assert.False(t, *q.Reader, "a name with no row: its queue is no beat")
 	}
-	assert.NotContains(t, ta.readerRows(), "reader-x-2", "a queue never makes the row")
-	ta.ok("reader add reader-x-2")
+	assert.NotContains(t, ta.readerRows(), "reader-m2", "a queue never makes the row")
+	ta.ok("reader add reader-m2")
 	q.Reader = nil
-	ta.json("queue --as reader-x-2", &q)
+	ta.json("queue --as reader-m2", &q)
 	if assert.NotNil(t, q.Reader) {
 		assert.True(t, *q.Reader)
 	}

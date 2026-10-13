@@ -110,10 +110,10 @@ func TestTheVerbsThatTookJSONPrintJSON(t *testing.T) {
 	ta := newTestApp(t)
 	for _, tc := range []struct{ line, verb string }{
 		{"init --readers reader-a,reader-b --members m1", "init"},
-		{"reader add reader-c", "reader add"},
-		{"reader away reader-c", "reader away"},
-		{"reader up reader-c", "reader up"},
-		{"reader remove reader-c", "reader remove"},
+		{"reader add reader-m1", "reader add"},
+		{"reader away reader-m1", "reader away"},
+		{"reader up reader-m1", "reader up"},
+		{"reader remove reader-m1", "reader remove"},
 		{"clear --confirm sprint", "clear"},
 		{"teardown --confirm sprint", "teardown"},
 	} {

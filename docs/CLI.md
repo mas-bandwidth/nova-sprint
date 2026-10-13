@@ -44,13 +44,17 @@ tick`. `run`, `inbox --wait` and `where --watch` are refused. A card's move is
 queued until the next tick prints `MOVED drain`; the tick after `merge`
 completes its move to landed. The flow's output shows results, moves (`MOVED`),
 refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
-(`landed/all percent -> ETA ...`). A write that changes nothing — it moved
-nothing, wrote nothing and refused nothing — never prints `OK`: it prints
+(`landed/all percent -> ETA ...`). On the hold/set family alone (`hold`,
+`unhold`, `fleet hold`, `fleet unhold`, `fleet down`, `friend hold`,
+`friend unhold`, `friend down`, `friend up`, `reader away`, `reader up`,
+`set`, `stream set`), a write that changes nothing — it moved nothing,
+wrote nothing and refused nothing — never prints `OK`: it prints
 `<VERB> UNCHANGED moved=0 refused=0 notes=0` and `NOTE nothing changed:
 <why>` (the step's own reason, else `the state already holds`), exit 0, and
 its `--json` carries `"changed":"no"`, `"unchanged":true` and the why in
 `says`. `OK` is printed only when something was written; a `reader add` of a
-name no fleet member, friend or member reader matches is refused with that
+name no fleet member, friend or member reader matches (a `reader-*` row's
+suffix must name a fleet member or a friend) is refused with that
 reason and the remedy, and writes nothing.
 [TESTS.md](TESTS.md#nova-sprint) carries the exact transcript through `merge`;
 `cmd/nova-sprint/firstrun_test.go` runs it line by line.

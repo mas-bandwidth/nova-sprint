@@ -210,7 +210,7 @@ func TestWhereFrameHoldsOnlyTheHeaderAndTheTables(t *testing.T) {
 func TestWhereShowsEveryTableAndEveryStream(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --members m1")
+	ta.ok("init --members m1,m2")
 	// a table with no row is its header, one rule and the summary row (the owner,
 	// 2026-10-02: "when the work stream table is empty, please just show the summary row")
 	for _, name := range []string{"work", "readers", "merge"} {
@@ -233,11 +233,11 @@ func TestWhereShowsEveryTableAndEveryStream(t *testing.T) {
 	assert.ElementsMatch(t, []string{"s1", "s2"}, ta.mergeRows(), "where --json keeps each stream's merge row, s2 at zero")
 
 	// the readers come, and a card comes to s2
-	ta.ok("reader add reader-a reader-b")
+	ta.ok("reader add reader-m1 reader-m2")
 	ta.ok("add --stream s2 s2-2 --one")
 	frame = ta.ok("where --all")
 	assert.Equal(t, allRow, strings.Join(rowsOf(tableOf(frame, "readers")), ","), "readers rows, %s alone:\n%s", allRow, frame)
-	assert.ElementsMatch(t, []string{"reader-a", "reader-b"}, ta.readerRows(), "where --json keeps each reader's row")
+	assert.ElementsMatch(t, []string{"reader-m1", "reader-m2"}, ta.readerRows(), "where --json keeps each reader's row")
 	assert.Equal(t, "s1,s2", strings.Join(rowsOf(tableOf(frame, "work")), ","), "work rows:\n%s", frame)
 
 	// a card comes to merge

@@ -1069,18 +1069,23 @@ to 3 s, `where` said `machine: STOPPED` for about 7 s, then running, over and
 over, while the server was RUNNING the whole time, ticking 7 to 16 s apart.
 Every count cell is an ordered set.
 A verb's result line says what it did: `OK` only when something was
-written. A step that exits 0 having moved nothing, written no unit and
+written. On the hold/set family alone (`hold`, `unhold`, `fleet hold`,
+`fleet unhold`, `fleet down`, `friend hold`, `friend unhold`,
+`friend down`, `friend up`, `reader away`, `reader up`, `set`,
+`stream set`), a step that exits 0 having moved nothing, written no unit and
 refused nothing prints `<VERB> UNCHANGED moved=0 refused=0 notes=0` and
 `NOTE nothing changed: <why>` — the plan's own Said line, else `the state
 already holds` — at exit 0, and its `--json` carries `changed` (`"no"`),
 `unchanged` and the why in `says`. A hold note is written only when its hold
 changes something: an unhold of a stream that is not held prints UNCHANGED
-with `it was not held`, as a second hold of a held stream, a `set` to the
-value the sprint already holds, and `reader up` of an up reader each print
-UNCHANGED with their why. A `reader add` of a row that no fleet member,
-friend or reader-<member> matches is refused with the reason (`<name> is no
-member, friend or member reader: it would never read`) and the remedy, and
-writes nothing.
+with `it was not held`, as a second hold of a held stream or member, a
+repeat friend hold, a `set` or `stream set` to the value already held, and
+`reader up` of an up reader each print UNCHANGED with their why; a repeat
+stream hold carrying a new reason updates the held reason and says `OK`.
+A `reader add` of a row that no fleet member, friend or reader-<member>
+matches — the `reader-` suffix must name a fleet member or a friend — is
+refused with the reason (`<name> is no member, friend or member reader: it
+would never read`) and the remedy, and writes nothing.
 The summary line is the headline, and it counts only the streams on the
 table: landed / all, the percent, the ETA's cards left and the footers of the
 frame's work and merge tables are over the streams drawn, and so are the

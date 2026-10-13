@@ -60,11 +60,20 @@ func TestAStreamsDisplayNameIsAFieldOnItsControlCard(t *testing.T) {
 	assert.Equal(t, "", s.StreamCtl("s1").F(FieldDisplay))
 	assert.Equal(t, "s1", StreamDisplay("s1", s.StreamCtl("s1").F(FieldDisplay), s.StreamCtl("s1").F(FieldRelease)))
 
-	// none clears it too
+	// none clears it too — but clearing a display that is already off
+	// changes nothing, so it writes no unit and says so (PR #218 rework)
+	p = Set(s, SetReq{Streams: []string{"s1"}, Display: "x", Who: "coordinator"})
+	require.Len(t, p.Units, 1)
+	apply(p)
 	p = Set(s, SetReq{Streams: []string{"s1"}, Display: "none", Who: "coordinator"})
 	require.Empty(t, p.Refused)
 	require.Len(t, p.Units, 1)
 	assert.Equal(t, "stream s1 display none", p.Units[0].Moved)
+	apply(p)
+	p = Set(s, SetReq{Streams: []string{"s1"}, Display: "none", Who: "coordinator"})
+	require.Empty(t, p.Refused)
+	assert.Empty(t, p.Units, "clearing an absent display changes nothing")
+	assert.NotEmpty(t, p.Said)
 
 	// a name with a newline, or over 60 bytes, is refused naming the bound, and nothing
 	// is written

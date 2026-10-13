@@ -668,9 +668,11 @@ func Set(s *Snapshot, r SetReq) Plan {
 			var closes []Open
 			if r.ReadTier != "" {
 				if r.ReadTier == ReadTierDefault || r.ReadTier == "none" {
-					unset = append(unset, FieldReadTier, FieldReadTierReason)
-					moved = append(moved, "read-tier the sprint's")
-				} else {
+					if ctl.F(FieldReadTier) != "" {
+						unset = append(unset, FieldReadTier, FieldReadTierReason)
+						moved = append(moved, "read-tier the sprint's")
+					}
+				} else if ctl.F(FieldReadTier) != r.ReadTier {
 					set[FieldReadTier] = r.ReadTier
 					moved = append(moved, "read-tier "+r.ReadTier)
 					if r.Reason != "" {
@@ -694,22 +696,32 @@ func Set(s *Snapshot, r SetReq) Plan {
 				switch f.v {
 				case "":
 				case ReadTierDefault, "none":
-					unset, moved = append(unset, f.field), append(moved, f.word+" "+f.off)
+					if ctl.F(f.field) != "" {
+						unset, moved = append(unset, f.field), append(moved, f.word+" "+f.off)
+					}
 				default:
-					set[f.field], moved = f.v, append(moved, f.word+" "+f.v)
+					if ctl.F(f.field) != f.v {
+						set[f.field], moved = f.v, append(moved, f.word+" "+f.v)
+					}
 				}
 			}
 			switch r.SeatAccept {
 			case SwitchOn:
-				set[FieldSeatAccept], moved = SwitchOn, append(moved, "seat-accept on")
+				if ctl.F(FieldSeatAccept) != SwitchOn {
+					set[FieldSeatAccept], moved = SwitchOn, append(moved, "seat-accept on")
+				}
 			case SwitchOff:
-				unset, moved = append(unset, FieldSeatAccept), append(moved, "seat-accept off")
+				if ctl.F(FieldSeatAccept) != "" {
+					unset, moved = append(unset, FieldSeatAccept), append(moved, "seat-accept off")
+				}
 			}
 			if r.Attempts != "" {
 				if r.Attempts == ReadTierDefault {
-					unset = append(unset, FieldAttempts)
-					moved = append(moved, "attempts the sprint's")
-				} else {
+					if ctl.F(FieldAttempts) != "" {
+						unset = append(unset, FieldAttempts)
+						moved = append(moved, "attempts the sprint's")
+					}
+				} else if ctl.F(FieldAttempts) != r.Attempts {
 					set[FieldAttempts] = r.Attempts
 					moved = append(moved, "attempts "+r.Attempts)
 				}
@@ -723,10 +735,19 @@ func Set(s *Snapshot, r SetReq) Plan {
 				moved = append(moved, "base "+r.Base)
 				for _, c := range streamSetBaseCards(s, st) {
 					next := briefOnBase(c.F("brief"), r.Base)
+					if next == c.F("brief") {
+						continue
+					}
 					p.Units = append(p.Units, Unit{Key: c.ID, Stream: st,
 						Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": next, FieldBriefAttempt: c.F("attempt")}))},
 						Moved:   fmt.Sprintf("%s base %s -> %s (%s)", c.ID, orDash(baseOfBrief(c.F("brief"))), r.Base, c.Col)})
 				}
+			}
+			if len(set) == 0 && len(unset) == 0 && len(moved) == 0 {
+				// a stream set to what the stream already holds changes
+				// nothing: no unit is written and the step says so
+				p.Said = append(p.Said, "stream "+st+" already holds the value set")
+				continue
 			}
 			p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: st, Changes: []Change{change(Merge, setEntry(ctl, set, unset...))}, Moved: "stream " + st + " " + strings.Join(moved, ", "), Closes: closes})
 		}
@@ -763,8 +784,15 @@ func Set(s *Snapshot, r SetReq) Plan {
 			continue
 		}
 		was, had := s.Work.Prop(kv[0])
+		if had && was == kv[1] {
+			continue // already holds this value: writing it changes nothing
+		}
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: kv[0], Value: kv[1], Was: was, WasAbsent: !had})
 		moved = append(moved, strings.ReplaceAll(kv[0], "_", "-")+" "+orDefault(kv[1], kv[0]))
+	}
+	if len(moved) == 0 {
+		p.Said = append(p.Said, "the sprint already holds the value set")
+		return p
 	}
 	// the epoch's set record: start's settings gate warns on a value a set chose and
 	// refuses one no set chose (defaults_working.go, SetByWrite)

@@ -14,7 +14,7 @@ func TestReaderSetPrintsTiersAndRefusesABadTier(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("reader add reader-flash --tiers flash")
+	ta.ok("reader add reader-m1 --tiers flash")
 	ta.ok("reader set reader-a --tiers pro,flash")
 
 	var v struct {
@@ -22,7 +22,7 @@ func TestReaderSetPrintsTiersAndRefusesABadTier(t *testing.T) {
 	}
 	ta.json("where", &v)
 	readers := v.Tables[sprint.Readers]
-	require.Equal(t, "flash", readers["reader-flash"][sprint.ReaderTiers])
+	require.Equal(t, "flash", readers["reader-m1"][sprint.ReaderTiers])
 	require.Equal(t, "flash,pro", readers["reader-a"][sprint.ReaderTiers], "stored in ladder order")
 	require.Equal(t, "default", readers["reader-b"][sprint.ReaderTiers], "an empty cell prints default: flash on a fleet reader while the store holds routes")
 
@@ -48,7 +48,7 @@ func TestReaderSetPrintsTiersAndRefusesABadTier(t *testing.T) {
 func TestReaderAddInheritsCommonFleetTier(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("reader add reader-m3")
@@ -63,7 +63,7 @@ func TestReaderAddInheritsCommonFleetTier(t *testing.T) {
 func TestReaderAddWhenFleetReadersDiffer(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro")
 	code, out, _ := ta.do("reader add reader-m3")
@@ -80,7 +80,7 @@ func TestReaderAddWhenFleetReadersDiffer(t *testing.T) {
 func TestReaderAddWithExplicitTiers(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("reader add reader-m3 --tiers flash")

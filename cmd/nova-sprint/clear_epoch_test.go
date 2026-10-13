@@ -55,7 +55,7 @@ func TestReaderAddAfterClear(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("clear --confirm sprint")
-	code, out, errs := ta.do("reader add reader-c")
+	code, out, errs := ta.do("reader add reader-m1")
 	assert.Equal(t, 0, code, "reader add after clear: exit %d %s%s", code, out, errs)
 }
 

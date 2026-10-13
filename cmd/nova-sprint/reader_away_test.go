@@ -209,8 +209,8 @@ func TestReaderRemove(t *testing.T) {
 	out = ta.ok("reader remove reader-a reader-b")
 	assert.Contains(t, out, "READER-REMOVE OK readers=reader-a,reader-b")
 	assert.Empty(t, ta.readerRows())
-	ta.ok("reader add reader-c")
-	assert.Equal(t, "up", ta.readerState("reader-c"), "a reader added again starts clean: its hold went with its row")
+	ta.ok("reader add reader-m1")
+	assert.Equal(t, "up", ta.readerState("reader-m1"), "a reader added again starts clean: its hold went with its row")
 }
 
 // A reader that holds a read, asked or reading, is refused, naming the reader

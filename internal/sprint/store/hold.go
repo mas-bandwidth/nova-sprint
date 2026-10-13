@@ -50,6 +50,10 @@ func (st *Store) HoldReqOf(ctx context.Context, r sprint.HoldReq) (sprint.HoldRe
 		return r, err
 	}
 	r.Friends = slices.Sorted(maps.Keys(roster))
+	r.FriendHeld = map[string]bool{}
+	for n, e := range roster {
+		r.FriendHeld[n] = e.Held
+	}
 	r.Alive = nil
 	if r.Release {
 		beats, err := st.Beats(ctx, r.Names)
@@ -88,10 +92,21 @@ func (st *Store) WriteHoldRecords(ctx context.Context, r sprint.HoldReq) error {
 }
 
 // holdReader writes a reader's hold record: held with the reason, or empty on unhold.
+// A record already in the state the hold asks for is not rewritten: a step
+// that changed nothing writes nothing (PR #218 cold-read).
 func (st *Store) holdReader(ctx context.Context, reader string, r sprint.HoldReq) error {
 	hold := readerHold{}
 	if !r.Release {
 		hold = readerHold{Away: true, Held: true, Reason: r.Reason, Return: r.Return}
+	}
+	if kv, kerr := st.rootKV(); kerr == nil {
+		if vals, oks, gerr := getKeys(ctx, kv, []string{readerAwayKey(reader)}); gerr == nil && len(oks) > 0 && oks[0] {
+			var cur readerHold
+			if json.Unmarshal([]byte(vals[0]), &cur) == nil &&
+				cur.Away == hold.Away && cur.Held == hold.Held && cur.Reason == hold.Reason && cur.Return == hold.Return && cur.Retired == hold.Retired {
+				return nil
+			}
+		}
 	}
 	return st.setReaderHold(ctx, reader, hold, r.Who)
 }
@@ -105,6 +120,14 @@ func (st *Store) setFriendHold(ctx context.Context, friend string, r sprint.Hold
 	e, ok := ros[friend]
 	if !ok {
 		return noFriend(ros, friend)
+	}
+	// a record already in the state the hold asks for is not rewritten: a
+	// repeat hold keeps its first stamp and reason (PR #218 cold-read)
+	if !r.Release && e.Held && e.Reason == r.Reason && e.Return == r.Return {
+		return nil
+	}
+	if r.Release && !e.Held {
+		return nil
 	}
 	e.Held, e.At, e.By, e.Reason, e.Return = false, time.Time{}, "", "", false
 	if !r.Release {

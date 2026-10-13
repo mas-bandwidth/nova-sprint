@@ -31,8 +31,8 @@ func TestTheLastCardLandsAfterReplacingItsReaskedReader(t *testing.T) {
 		"read --as reader-b --return s1-1.r1.reader-b --reason no-verdict --epoch 0",
 		"ask s1-1 --actor coordinator",
 		"read --as reader-b --begin s1-1.r1.reader-b --epoch 0",
-		"reader add reader-c --actor coordinator",
-		"queue --as reader-c --json",
+		"reader add reader-m1 --actor coordinator",
+		"queue --as reader-m1 --json",
 		"ask s1-1 --instead reader-b --actor coordinator",
 	} {
 		res := send(line)
@@ -45,7 +45,7 @@ func TestTheLastCardLandsAfterReplacingItsReaskedReader(t *testing.T) {
 	r.json("card s1-1", &pending)
 	assert.Equal(t, "review", pending.Primary.Col, "the obsolete verdict did not accept the last primary")
 	for _, line := range []string{
-		"read --as reader-c --ok s1-1.r1.reader-c --epoch 0",
+		"read --as reader-m1 --ok s1-1.r1.reader-m1 --epoch 0",
 		"accept s1-1 --read-ok --actor coordinator",
 	} {
 		res := send(line)

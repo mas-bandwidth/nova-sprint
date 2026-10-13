@@ -12,7 +12,7 @@ import (
 func TestReaderAddInheritsFleetTiers(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	// Set both existing fleet readers to flash,pro,heavy
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
@@ -31,7 +31,7 @@ func TestReaderAddInheritsFleetTiers(t *testing.T) {
 func TestReaderAddFleetTiersDiffer(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash")
 	ta.ok("reader add reader-m3")
@@ -47,7 +47,7 @@ func TestReaderAddFleetTiersDiffer(t *testing.T) {
 func TestReaderAddFleetNoOther(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1 --members m1")
+	ta.ok("init --readers reader-m1 --members m1,m2")
 	ta.ok("reader add reader-m2")
 	var v struct {
 		Tables map[string]map[string]map[string]string
@@ -61,7 +61,7 @@ func TestReaderAddFleetNoOther(t *testing.T) {
 func TestReaderAddExplicitTiersWins(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("reader add reader-m3 --tiers pro")
@@ -77,7 +77,7 @@ func TestReaderAddExplicitTiersWins(t *testing.T) {
 func TestInitReadersInheritsFleetTiers(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("init --readers reader-m1,reader-m2 --members m1,m3")
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("init --readers reader-m3")
