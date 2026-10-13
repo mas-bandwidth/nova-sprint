@@ -185,7 +185,7 @@ func cloneKeys(keys map[string]bool) map[string]bool { return maps.Clone(keys) }
 // worker's --as. exempt is the caller's word on the call (hookExemptCall reads its
 // words; the store's open has the verb alone).
 func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bool) (string, error) {
-	if c.actor == "" || exempt || !hookArmed(c.actor) {
+	if c.actor == "" || exempt || !hookArmed(c.actor) || (st != nil && st.ByHand) {
 		return "", nil
 	}
 	holder, err := st.B.Coordinator(ctx)
