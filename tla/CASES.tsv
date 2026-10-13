@@ -708,3 +708,5 @@ MCSprintTablesBrokenOldHeadReviewed.cfg	MCSprintTables.tla	invariant	NoOldBriefH
 MCNeedsBlockedRun.cfg	MCNeedsBlocked.tla	pass	-	ignore-terminal	needsblocked	required	-
 MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependentsCovered	ignore-terminal	needsblocked	required	-
 MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
+MCClearDefaultsStartAdvance.cfg	MCClearDefaults.tla	pass	-	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunningWhileRestorePending	ignore-terminal	cleardefaults	required	-

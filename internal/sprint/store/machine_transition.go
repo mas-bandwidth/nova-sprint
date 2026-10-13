@@ -69,12 +69,15 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 			if err == nil {
 				err = pinned.nothingFundedStartGuard(ctx, s)
 			}
+			if err == nil && pinned.afterStartGuard != nil {
+				pinned.afterStartGuard()
+			}
 		}
 		if err == nil {
 			before, _, err = pinned.Machine(ctx)
 		}
 		if err == nil {
-			after, changed, err = pinned.machineRecord(ctx, before, s, running, who, reason, until)
+			after, changed, err = pinned.machineRecord(ctx, before, s, running, who, reason, until, lock.ID)
 		}
 		err = errors.Join(err, pinned.B.Release(context.WithoutCancel(ctx), lock, false))
 		if err != nil {
@@ -98,7 +101,7 @@ func (st *Store) startRestoreGuard(ctx context.Context, s *sprint.Snapshot) erro
 	return st.guardRefusal(o, "start")
 }
 
-func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time) (after Machine, changed bool, err error) {
+func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time, owner string) (after Machine, changed bool, err error) {
 	if !running && reason != "" && before.Ready() && len(before.StopDebt) == 0 && len(activeStopLeases(s)) == 0 {
 		// a stop (by hand: it carries its reason) of a READY machine is refused: it has not
 		// started since the clear, so there is nothing to stop; a clear's own stop has no
@@ -120,7 +123,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		if reason != "" {
 			after.Who = who
 		}
-		return after, false, st.putMachine(ctx, after)
+		return after, false, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 	}
 	if before.Running() == running {
 		if !running {
@@ -129,11 +132,9 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 			if len(before.StopDebt) == 0 {
 				after.StopDebt = activeStopLeases(s)
 			}
-			return after, !before.StopIssued || len(after.StopDebt) > 0 && len(before.StopDebt) == 0, st.putMachine(ctx, after)
+			return after, !before.StopIssued || len(after.StopDebt) > 0 && len(before.StopDebt) == 0, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 		}
-		if kv, ok := st.B.(KV); ok {
-			err = kv.ShowState(ctx, st.Names.View(), ViewState(before))
-		}
+		err = st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, before, st.Names.View())
 		return before, false, err
 	}
 	if running {
@@ -161,15 +162,8 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 			after.StoppedFor += now.Sub(after.Spans[n-1].From)
 		}
 		after.State = Running
-		// the epoch of this start, as Machine reads it (the sprint's epoch now, not
-		// the one this store pinned: a clear between the pin and the lock leaves the
-		// start in the new epoch): the machine is not READY again until a clear
-		// (Machine.Ready; tla/MachineReady.tla Start)
-		es, err := st.EpochNow(ctx)
-		if err != nil {
-			return before, false, err
-		}
-		after.StartedIn = strconv.FormatUint(es.N, 10)
+		// The checked pinned epoch, never a newer epoch observed mid-start.
+		after.StartedIn = strconv.FormatUint(st.epoch, 10)
 		after.StopIssued = false
 		after.StopDebt = nil
 	} else {
@@ -190,7 +184,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		after.State = Stopped
 	}
 	after.Since, after.Who, after.Cause, after.Reason, after.Until = now, who, "", reason, until
-	return after, true, st.putMachine(ctx, after)
+	return after, true, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 }
 
 // activeStopLeases captures StopReturn.tla's cancellation debt at the STOP
