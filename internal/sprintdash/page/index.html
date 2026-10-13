@@ -182,6 +182,9 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .label { font-size: 1.5rem; line-height: 2rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
 .big { font-size: 4.5rem; line-height: 1.3; font-weight: 600; margin-top: 0.5rem; white-space: nowrap; }
 .big small { margin-left: 0.5rem; font-size: .5em; font-weight: 500; color: var(--text-2); }
+/* the ETA tile's STOP and DONE words (the owner 2026-10-12 ~00:58Z "darker", ~00:32Z "bright green") */
+#eta.eta-stop { color: var(--p-critical); }
+#eta.eta-done { color: var(--good); }
 /* The coin's speaker glyph (docs/SPEC-SPRINT-DASHBOARD.md, "The coin"; the owner 2026-10-11): one
    small glyph beside the landed count, off until clicked once; the only addition the sound needs. */
 .coin { margin-left: 0.6rem; padding: 0; border: 0; background: none; color: var(--text-2); cursor: pointer; vertical-align: super; opacity: .45; }
@@ -371,6 +374,8 @@ footer a:hover { color: var(--text); }
 .fleet .row > :nth-child(5), .friends .row > :nth-child(5) { padding-left: .5rem; }
 .fleet .cells, .friends .cells { gap: .25rem; grid-auto-rows: .6875rem; }
 .panel.off { opacity: .45; } /* a side switched off (set --fleet off, --friends off) is dimmed, open or collapsed (the owner 2026-10-06 8:02 PM) */
+/* the owner 2026-10-11 ~21:55Z: the friends table is out for the v1.2.x series, back in v1.3.x */
+.panel.friends { display: none; }
 
 /* compact forms: Work is stream | status (dot) | landed; Fleet and Friends are
    Machine | Status (dot only) | Working "n / width" | OK% */
@@ -421,14 +426,14 @@ footer a:hover { color: var(--text); }
   <div class="brand">
     <h1><!--LOGO--><span class="wordmark">nova-sprint</span></h1>
     <div class="meta">
+      <span class="chip" id="version-chip">version <b id="version">-</b></span>
       <span class="chip">coordinator <b id="coord">-</b></span>
       <span class="chip">epoch <b id="epoch">-</b></span>
       <nav class="release" id="release" aria-label="release" hidden></nav>
-      <span class="chip" id="machine-chip">machine <b id="machine">-</b></span>
     </div>
   </div>
   <div class="right">
-    <span class="live" id="live"><span class="dot"></span><span id="live-text">Connecting</span></span>
+    <span class="live" id="live"><span id="live-text">Connecting</span></span>
 
   </div>
 </header>
@@ -437,7 +442,7 @@ footer a:hover { color: var(--text); }
   <div class="tile">
     <div class="label">Landed</div>
     <div class="big"><span id="landed">-</span><button id="coin" class="coin" type="button" title="Land sounds: off" aria-label="Land sounds: off" aria-pressed="false"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2 4 5H1v6h3l4 3V2z"/><path class="wave" d="M11 5.4a3.6 3.6 0 0 1 0 5.2M13.2 3.2a6.5 6.5 0 0 1 0 9.6"/></svg></button><small class="only-wide">of <span id="all">-</span></small></div>
-    <div class="sub"><span class="only-narrow">of <span id="all2">-</span> · </span><span id="pct">-</span><span class="only-wide"> complete</span></div>
+    <div class="sub"><span class="only-narrow">of <span id="all2">-</span> · </span><span id="pct">-</span><span class="only-wide" id="pct-complete"> complete</span></div>
   </div>
   <div class="tile">
     <div class="label">ETA</div>
@@ -475,7 +480,7 @@ footer a:hover { color: var(--text); }
 
 <section class="progress-card">
   <div class="progress-head">
-    <div class="label">All cards by state</div>
+    <div class="label">Cards by state</div>
     <div class="legend" id="legend"></div>
   </div>
   <div class="cells thick" id="overall"></div>
