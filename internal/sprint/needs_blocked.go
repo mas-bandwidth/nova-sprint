@@ -172,7 +172,7 @@ func CoveredDependents(s *Snapshot) map[string]string {
 	for _, b := range blockers {
 		jid, open := openJudgments[b.ID]
 		if !open {
-			jid = b.ID
+			continue
 		}
 		for _, dep := range b.Dependents {
 			covered[dep.ID] = jid
