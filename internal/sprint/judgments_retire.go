@@ -148,7 +148,7 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	subject := map[string]Open{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) {
+		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		cards := []string{o.Subject()}
@@ -280,7 +280,7 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 	seen := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) {
+		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		if seen[n.ID] {
