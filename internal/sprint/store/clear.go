@@ -22,6 +22,10 @@ type ClearResult struct {
 	Restored  bool        // a clear cut before it restored its shape, finished first
 	Machine   string      // the machine's state before clear stopped it and left it READY
 	Refused   []StopLease `json:"refused,omitempty"`
+	// Defaults is each setting the old epoch held away from its working default, as
+	// "<name> was <v>, now <default>": the set-defaults step does not carry it
+	// (setDefaults; sprint.Defaults).
+	Defaults []string `json:"defaults,omitempty"`
 }
 
 // Clear stops the sprint and clears all work in it: it sets the machine

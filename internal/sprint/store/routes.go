@@ -132,6 +132,20 @@ func (b *Bars) fields() map[string]*string {
 	}
 }
 
+// WithDefaults is the bars with each empty field whose sprint.Defaults row says ReadFill
+// given that row's Value: the read-side default of nova-config's sprint row, which the
+// sprint never writes (nova-config apply would undo it). An unapplied git_identity reads
+// config.DefaultGitIdentity, as NewMem's does, so the landing commits as the machine
+// identity, never the host's (docs/SPEC-SPRINT.md section 11, "Working defaults").
+func (b Bars) WithDefaults() Bars {
+	for name, p := range b.fields() {
+		if d, ok := sprint.DefaultOf(name); ok && d.ReadFill && *p == "" {
+			*p = d.Value
+		}
+	}
+	return b
+}
+
 // into is the set as the snapshot carries it.
 func (rs RouteSet) into(s *sprint.Snapshot) {
 	s.Routes, s.Tiers = rs.Routes, rs.Tiers

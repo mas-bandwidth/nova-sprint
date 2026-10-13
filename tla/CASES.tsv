@@ -647,3 +647,5 @@ MCMachineReadyBrokenClearStopped.cfg	MCMachineReady.tla	invariant	ClearLeavesRea
 MCMachineReadyBrokenReadyJudges.cfg	MCMachineReady.tla	invariant	ReadyNeverJudges	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenStopReady.cfg	MCMachineReady.tla	invariant	StoppedOnlyFromRunning	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenNoStopStamp.cfg	MCMachineReady.tla	invariant	RanIsNotReady	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenLeaveOne.cfg	MCMachineReady.tla	invariant	NeverAbsent	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenCarryOff.cfg	MCMachineReady.tla	invariant	DefaultsAfterClear	ignore-terminal	machineready	required	-
