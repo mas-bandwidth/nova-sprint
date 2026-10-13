@@ -137,35 +137,33 @@ func TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, mnPush(t, r, s, "s2-1", "s1-1"), "the first judgment names the card and the missing need")
 
-	openGone := func() int {
+	openBlocked := func() int {
 		v, err := r.store().Inbox(r.ctx, defaultDeadline, defaultStale, 10000)
 		require.NoError(t, err)
 		n := 0
 		for _, o := range v.Open {
-			if o.Note.Type == sprint.NNeedsGone && o.Subject() == "s2-1" {
+			if o.Note.Type == sprint.NNeedBlocked && o.Subject() == "s1-1" {
 				n++
 			}
 		}
 		return n
 	}
-	require.Equal(t, 1, openGone(), "one open gone-need judgment on s2-1")
+	require.Equal(t, 1, openBlocked(), "one open blocker judgment on s1-1")
 
-	// past its deadline, unanswered: it repeats (stays open, is never doubled,
-	// and the overdue reminder reaches the coordinator)
+	// past its deadline, unanswered: it stays open, is never doubled
 	r.mu.Lock()
 	r.now = r.now.Add(sprint.DeadlineJudgment + time.Minute)
 	r.mu.Unlock()
 	r.beat()
 	_, err = r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.Equal(t, 1, openGone(), "the judgment repeats, never doubles")
-	require.True(t, mnPush(t, r, s, "s2-1", sprint.NNeedsGone), "the repeat names the card and the judgment")
+	require.Equal(t, 1, openBlocked(), "the judgment stays open, never doubles")
 
 	// answered by needs set in place: the judgment clears
 	r.do("needs set s2-1 --clear")
 	_, err = r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.Zero(t, openGone(), "the judgment clears once the need is set away")
+	require.Zero(t, openBlocked(), "the judgment clears once the need is set away")
 }
 
 // Rule (a): drop of a card another unlanded card needs is refused, naming the
