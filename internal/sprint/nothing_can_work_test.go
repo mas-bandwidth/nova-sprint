@@ -328,3 +328,24 @@ func TestExecutableQueuedWorkKeepsBlockedReadsRunning(t *testing.T) {
 		})
 	}
 }
+
+// A blocked tier encountered first cannot conceal later live work; if that
+// last tier rests too, the predicate retains every blocked tier's reasons.
+func TestFundsPredicateFindsLaterLiveTierAndKeepsAllBlockedReasons(t *testing.T) {
+	t.Parallel()
+	w := nothingCanWorkWorld(t, false)
+	w.must(Add(w.s, AddReq{Stream: "pro-stream", Cards: []CardAdd{{ID: "a-blocked", Brief: "RESULT: a-blocked sha=000000000000 tier: pro\n\nThe task."}}}))
+	w.must(Add(w.s, AddReq{Stream: "flash-stream", Cards: []CardAdd{{ID: "z-live", Brief: "RESULT: z-live sha=000000000000 tier: flash\n\nThe task."}}}))
+	require.Equal(t, "a-blocked", w.s.Work.Column(Ready)[0].ID)
+	require.Empty(t, w.s.NothingFundedCanWork())
+	require.True(t, w.s.HasLiveWorkedTier())
+	rest := RouteRest{Provider: "flash", At: w.s.Now, Until: OpenUntil, Cause: RestCoordinator, Why: "rested by the seat"}
+	w.s.Fleet.SetProp(PropProviderRest("flash"), rest.value())
+	why := w.s.NothingFundedCanWork()
+	require.Contains(t, why, "flash:")
+	require.Contains(t, why, "pro:")
+	require.Contains(t, why, "pro-credit out of credit")
+	require.Contains(t, why, "pro-auth auth refused")
+	require.Less(t, strings.Index(why, "flash:"), strings.Index(why, "pro:"), "blocked tiers retain sorted report order")
+	require.False(t, w.s.HasLiveWorkedTier())
+}

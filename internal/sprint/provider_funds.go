@@ -487,13 +487,15 @@ const (
 
 // workedTiers names execution tiers, not a brief's ceiling. Reads use their
 // actual drawn/persisted tier, including the heavy-to-pro and pro-to-flash
-// fallbacks. An up reader with its own model can execute a waiting read even
-// while fleet routes rest; that is work the sprint can still do.
+// fallbacks. A live execution tier or an up reader with its own model can keep
+// work running. Both callers need only that existence proof, so stop the
+// ready-card walk once a live tier is found; blocked tiers still collect fully.
 func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
 	if s == nil || s.Work == nil || s.Fleet == nil {
 		return nil, false
 	}
 	worked := map[string]bool{}
+	rested, _ := s.withRests()
 	capOf := s.AttemptsCapOf()
 	for _, c := range s.Work.Column(Ready) {
 		if IsSentinel(c) || StreamHeld(s, c.Row) || len(WaitsFor(s, c, nil)) > 0 || AtEnvExitBound(s, c) != nil {
@@ -502,8 +504,15 @@ func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
 		if _, ok := AtAttemptCap(c, capOf(c.Row)); ok {
 			continue
 		}
-		worked[s.DealTier(escalating(s, c))] = true
-		_, _, _, done, m := s.routeTier(escalating(s, c))
+		ec := escalating(s, c)
+		tier := s.DealTier(ec)
+		if tier != "" && !worked[tier] {
+			if _, blocked := rested.workedTierBlocked(tier); !blocked {
+				return nil, true
+			}
+		}
+		worked[tier] = true
+		_, _, _, done, m := s.routeTier(ec)
 		ownReadLive = ownReadLive || !done && m.Pin != ""
 	}
 	idx := fleetReadIndex(s)
