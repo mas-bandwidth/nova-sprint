@@ -13,11 +13,11 @@ commands through the running sprint server.
 
 For a local twin, `--redis mem:sprint.twin` makes a command use that file-backed
 simulation even if `NOVA_SPRINT_SERVER` or a server in the seat record is
-configured. The twin has no background server, so advance it with
-`nova-sprint tick --redis mem:sprint.twin` after each handoff. A reader becomes
-available after its row is declared and it beats with `queue --as <reader>`;
-the next tick can then ask it to review. See the
-[first-lap walkthrough](FIRST-LAP.md) for a local card flow.
+configured. The twin beats its declared members and readers on every command,
+but has no background tick; advance it with
+`nova-sprint tick --redis mem:sprint.twin` after each handoff. In a live sprint,
+a reader beats with `queue --as <reader>` before a tick can ask it to review.
+See the [first-lap walkthrough](FIRST-LAP.md) for a local card flow.
 
 For a live sprint, the coordinator starts one server beside the Redis store.
 The server process uses `NOVA_SPRINT_REDIS` and `NOVA_BUS_REDIS`; the
