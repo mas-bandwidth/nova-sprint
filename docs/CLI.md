@@ -108,7 +108,7 @@ nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
 nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
-# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result.
+# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
