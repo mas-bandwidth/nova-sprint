@@ -615,30 +615,24 @@ func (a *app) sendBus(ctx context.Context, m bus.Message, say func(string)) erro
 // is said as a FRIEND-CARD NOTE, and the send after it says the rest. With no
 // bus store set it does nothing: the send names that.
 func (a *app) enrollBus(ctx context.Context, name string, say func(string)) {
-	added, err := a.busEnroll(ctx, name)
-	if len(added) > 0 {
-		say(fmt.Sprintf("FRIEND-CARD BUS-NAMES added=%s: the bus store now knows the friend row", strings.Join(added, ",")))
+	addr := a.getenv(busRedisEnv)
+	if addr == "" {
+		return
+	}
+	b, closeBus, err := a.busOpen(ctx, addr, a.getenv(busUserEnv))
+	if err == nil {
+		var added []string
+		added, err = b.Enroll(ctx, name)
+		if closeBus != nil {
+			closeBus()
+		}
+		if len(added) > 0 {
+			say(fmt.Sprintf("FRIEND-CARD BUS-NAMES added=%s: the bus store now knows the friend row", strings.Join(added, ",")))
+		}
 	}
 	if err != nil {
 		say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s: the friend's name could not be put on the bus store's roster (%s)", name, oneline.Escape(err.Error())))
 	}
-}
-
-// busEnroll puts names on the bus store's roster (bus.Enroll: only the missing
-// ones, returned): nothing when NOVA_BUS_REDIS names no store.
-func (a *app) busEnroll(ctx context.Context, names ...string) ([]string, error) {
-	addr := a.getenv(busRedisEnv)
-	if addr == "" {
-		return nil, nil
-	}
-	b, closeBus, err := a.busOpen(ctx, addr, a.getenv(busUserEnv))
-	if err != nil {
-		return nil, err
-	}
-	if closeBus != nil {
-		defer closeBus()
-	}
-	return b.Enroll(ctx, names...)
 }
 
 // wakeFriend tells a one-shot friend of the card just delivered, one bus message
