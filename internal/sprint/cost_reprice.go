@@ -113,12 +113,7 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 			to.Add(to, a)
 		}
 	}
-	charged := func(u cardcost.Usage) string {
-		if a, err := amountOf(u.Actual); err == nil && a != nil {
-			return u.Actual
-		}
-		return u.Predicted
-	}
+	charged := func(u cardcost.Usage) string { return u.MarginalUSD() }
 	for _, c := range s.Work.Column(States...) {
 		if IsSentinel(c) {
 			continue
@@ -137,10 +132,10 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 			}
 			u := con.Usage
 			switch {
-			case u.Unpriced == cardcost.WhyNoTokens || !u.Tokens.Reported():
+			case !subscriptionUsage(u) && s.billingPrices(routes[u.Route]).Billing != cardcost.BillingSubscription && (u.Unpriced == cardcost.WhyNoTokens || !u.Tokens.Reported()):
 				rep.NoTokens++
 				continue
-			case u.Unpriced == WhySubscription:
+			case u.Unpriced == WhySubscription && u.Route == "":
 				rep.Subscription++
 				continue
 			case u.Route == "":
@@ -155,7 +150,7 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 				rep.RouteGone[u.Route]++
 				continue
 			}
-			now := u.Priced(rt.Name, rt.Prices)
+			now := u.Priced(rt.Name, s.billingPrices(rt))
 			sm := by[rt.Name]
 			if sm == nil {
 				sm = &sums{RepriceRoute: RepriceRoute{Route: rt.Name, AsOf: rt.Prices.AsOf},
@@ -167,7 +162,7 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 			add(sm.newPred, now.Predicted)
 			add(sm.oldCharged, charged(u))
 			add(sm.newCharged, charged(now))
-			if a, err := amountOf(u.Actual); err == nil && a != nil {
+			if a, err := amountOf(u.Actual); err == nil && a != nil && !subscriptionUsage(u) {
 				sm.HeldByActual++
 			}
 			if now.String() == u.String() {
