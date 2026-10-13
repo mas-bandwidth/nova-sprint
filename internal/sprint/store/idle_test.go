@@ -99,5 +99,5 @@ func TestTheIdleTraceNamesACardAtItsBound(t *testing.T) {
 	require.Len(t, h.openOf(sprint.NBound), 1)
 	s := h.snap()
 	trace := sprint.TraceIdle(s, sprint.TickReq{})
-	assert.Contains(t, trace, "2 behind s1-1 (a card reached its bound")
+	assert.Contains(t, trace, "2 behind s1-1 (a need is blocked: its dependents cannot move")
 }

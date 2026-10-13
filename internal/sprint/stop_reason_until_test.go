@@ -55,15 +55,14 @@ func makeProviderOutOfCredit(t *testing.T, c *twinClock) {
 // start resumes it after the owned jobs are returned.
 func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 	t.Parallel()
-	t.Run("a stop without --reason or --until is refused, naming each", func(t *testing.T) {
+	t.Run("a stop without --reason is refused", func(t *testing.T) {
 		t.Parallel()
 		for _, c := range []struct {
 			name, reason, until string
 			want                []string
 		}{
-			{"neither", "", "", []string{"--reason", "--until"}},
+			{"neither", "", "", []string{"--reason"}},
 			{"no reason", "", "1h", []string{"--reason"}},
-			{"no until", "a bench", "", []string{"--until"}},
 			{"until in the past", "a bench", "2030-01-02T12:00:00Z", []string{"--until", "after now"}},
 			{"until is now", "a bench", "2030-01-02T13:04:00Z", []string{"--until", "after now"}},
 			{"until unreadable", "a bench", "soonish", []string{"--until", "soonish"}},
@@ -77,6 +76,12 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 				}
 			})
 		}
+		t.Run("no until", func(t *testing.T) {
+			t.Parallel()
+			got, err := sprint.StopArgs("a bench", "", stopAt)
+			require.NoError(t, err)
+			assert.True(t, got.IsZero(), "no until returns zero time")
+		})
 	})
 	t.Run("--until is a duration, a clock time or an RFC 3339 time", func(t *testing.T) {
 		t.Parallel()
@@ -112,7 +117,7 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 		assert.True(t, before.Running())
 		assert.False(t, after.Running())
 		assert.Equal(t, 1, res.Notes, "the stop is a happened note")
-		assert.Equal(t, "machine: STOPPED by coordinator: the bench is rebooting, back by 2:04 PM", c.st.MachineLine(ctx))
+		assert.Equal(t, "machine: STOPPED, expected back by 2:04 PM (the bench is rebooting); start ends it", c.st.MachineLine(ctx))
 	})
 	t.Run("the machine stays stopped at --until until explicit start", func(t *testing.T) {
 		t.Parallel()
@@ -153,7 +158,7 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 		res, err := c.st.Tick(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, store.Stopped, res.State, "the first --until has passed, the second has not")
-		assert.Equal(t, "machine: STOPPED by coordinator: a longer bench, back by 3:04 PM", c.st.MachineLine(ctx))
+		assert.Equal(t, "machine: STOPPED, expected back by 3:04 PM (a longer bench); start ends it", c.st.MachineLine(ctx))
 		c.step(time.Hour)
 		res, err = c.st.Tick(ctx)
 		require.NoError(t, err)
@@ -198,5 +203,35 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, m.Reason, "the clear takes the reason off")
 		assert.True(t, m.Until.IsZero(), "the clear takes the back-by time off: %v", m.Until)
+	})
+	t.Run("stop with no until stays stopped until the next start", func(t *testing.T) {
+		t.Parallel()
+		c := newTwinClock(t)
+		ctx := context.Background()
+		_, _, _, err := c.st.SetMachine(ctx, true)
+		require.NoError(t, err)
+		until, err := sprint.StopArgs("a bench", "", stopAt)
+		require.NoError(t, err)
+		assert.True(t, until.IsZero())
+		before, after, res, err := c.st.StopUntil(ctx, "a bench", until)
+		require.NoError(t, err)
+		assert.True(t, before.Running())
+		assert.False(t, after.Running())
+		assert.True(t, after.Until.IsZero())
+		assert.Equal(t, 1, res.Notes)
+		assert.Equal(t, "machine: STOPPED until the next start (a bench)", c.st.MachineLine(ctx))
+
+		c.step(24 * time.Hour)
+		resTick, err := c.st.Tick(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, store.Stopped, resTick.State)
+		m, _, err := c.st.Machine(ctx)
+		require.NoError(t, err)
+		assert.False(t, m.Running())
+		assert.Equal(t, "machine: STOPPED until the next start (a bench)", c.st.MachineLine(ctx))
+
+		_, _, _, err = c.st.SetMachine(ctx, true)
+		require.NoError(t, err)
+		assert.Equal(t, "machine: running", c.st.MachineLine(ctx))
 	})
 }

@@ -106,4 +106,3 @@ func TestADroppedCardsJudgmentRetiresAtEpochOne(t *testing.T) {
 	assert.True(t, strings.HasPrefix(decided.What, sprint.RetiredPrefix), "must have retired prefix: %s", decided.What)
 	assert.Contains(t, decided.What, "s1-1 dropped (landed by hand)")
 }
-
