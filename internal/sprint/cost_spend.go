@@ -64,7 +64,7 @@ func RecordedSpendIn(s *Snapshot, provider string, from, to time.Time) float64 {
 		if subscriptionRecord(con) || !strings.EqualFold(consumerProvider(routes, con), provider) {
 			return
 		}
-		if usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted)); err == nil && usd != nil {
+		if usd, err := amountOf(con.Usage.MarginalUSD()); err == nil && usd != nil {
 			sum.Add(sum, usd)
 		}
 	})
@@ -84,7 +84,7 @@ func RecordedProvidersIn(s *Snapshot, from, to time.Time) []string {
 	}
 	routes := providerRoutes(s)
 	eachRecordIn(s, from, to, func(con Consumer) {
-		if subscriptionRecord(con) || cmp.Or(con.Usage.Actual, con.Usage.Predicted) == "" {
+		if subscriptionRecord(con) || con.Usage.MarginalUSD() == "" {
 			return
 		}
 		if p := consumerProvider(routes, con); p != "" {
