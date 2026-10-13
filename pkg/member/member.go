@@ -319,6 +319,7 @@ type Packet struct {
 	// route): the model the child runs on, its budget and deadline (seconds);
 	// empty when the store has no route, and the member's own run.
 	Route    string `json:"route,omitempty"`
+ Billing string `json:"billing,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Tokens   string `json:"tokens,omitempty"`
 	USD      string `json:"usd,omitempty"`     // the dollar budget per card, a decimal; "" for none (#5094)

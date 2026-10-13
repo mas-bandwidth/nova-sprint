@@ -43,10 +43,11 @@ const (
 const (
 	BillingMetered = "metered"
 	BillingPlan    = "plan"
+	BillingSubscription = "subscription"
 )
 
 // Billings are the billing kinds, the route's enum.
-var Billings = []string{BillingMetered, BillingPlan}
+var Billings = []string{BillingMetered, BillingPlan, BillingSubscription}
 
 // decimalPattern is a price as add and set take it: digits, and a fraction after
 // one point; no sign, no exponent, no thousands separator.

@@ -308,12 +308,13 @@ func rtFromUsage(line string) rtUsage {
 	if u.Run != cardcost.Unreported {
 		out.run = float64(u.Run)
 	}
-	if u.Actual != "" {
+	if u.Actual != "" && !subscriptionUsage(u) {
 		if usd, err := strconv.ParseFloat(u.Actual, 64); err == nil {
 			out.usd = usd
 			out.priced = true
 		}
 	}
+ if subscriptionUsage(u) { out.usd=0; out.priced=true }
 	return out
 }
 

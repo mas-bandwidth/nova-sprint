@@ -49,6 +49,7 @@ type Packet struct {
 	// (a count or unmetered) and its deadline in seconds; empty when the store
 	// has no route, and the member runs its own.
 	Route    string `json:"route,omitempty"`
+ Billing string `json:"billing,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Tokens   string `json:"tokens,omitempty"`
 	USD      string `json:"usd,omitempty"`     // the dollar budget, a decimal; "" for none (#5094)
@@ -215,6 +216,7 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 	}
 	// a work card's route, or a read card's: the ask draws a read's as the deal
 	// draws a work card's (route.go), so a reader needs no --model
+	p.Billing = c.F(FieldBilling)
 	p.Route, p.Model, p.Tokens, p.USD, p.Harness, p.Deadline = c.F(FieldRoute), c.F(FieldModel), c.F(FieldTokens), c.F(FieldUSD), c.F(FieldHarness), c.Int(FieldDeadline)
 	p.RateRPM, p.RateConcurrent = c.Int(FieldRateRPM), c.Int(FieldRateConcurrent)
 	if p.Tier = c.F(FieldTier); p.Tier == "" && p.Kind == "work" && primary != nil {

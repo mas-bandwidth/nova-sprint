@@ -28,6 +28,9 @@ import (
 // the older shape (wall= and budget= alone) reads as a record with no token, no
 // time and no cost.
 type Usage struct {
+	Billing string `json:"billing,omitempty"`
+	ReceiptVersion int `json:"receipt_version,omitempty"`
+	Raw *RawUsage `json:"raw_usage,omitempty"`
 	Wall     string `json:"wall,omitempty"`   // the harness's wall, as native's line says it ("49.49s")
 	Budget   string `json:"budget,omitempty"` // the budget word (swarm.BudgetWord)
 	Tokens   Tokens `json:"tokens"`
@@ -82,11 +85,16 @@ func NoUsage() Usage { return Usage{Tokens: None(), Wait: Unreported, Run: Unrep
 
 // ParseUsage reads a usage line (Usage.String, or the older wall= budget= shape).
 func ParseUsage(line string) Usage {
+	u, _ := ParseUsageChecked(line)
+	return u
+}
+
+func parseUsageLegacy(line string) Usage {
 	u := NoUsage()
 	counts := map[string]*int64{"input": &u.Tokens.Input, "cache_read": &u.Tokens.CacheRead, "cache_write": &u.Tokens.CacheWrite,
 		"output": &u.Tokens.Output, "reasoning": &u.Tokens.Reasoning, "requests": &u.Tokens.Requests, "max_prompt": &u.Tokens.MaxPrompt}
 	texts := map[string]*string{"wall": &u.Wall, "budget": &u.Budget, "model": &u.Model, "actual_usd": &u.Actual, "actual_by": &u.ActualBy,
-		"price_route": &u.Route, "prices": &u.Prices, "predicted_usd": &u.Predicted, "unpriced": &u.Unpriced}
+		"billing": &u.Billing, "price_route": &u.Route, "prices": &u.Prices, "predicted_usd": &u.Predicted, "unpriced": &u.Unpriced}
 	for _, w := range strings.Fields(line) {
 		k, v, ok := strings.Cut(w, "=")
 		switch {
@@ -141,6 +149,9 @@ func (u Usage) String() string {
 	count("reasoning", u.Tokens.Reasoning)
 	count("requests", u.Tokens.Requests)
 	count("max_prompt", u.Tokens.MaxPrompt)
+	if u.ReceiptVersion != 0 { add("receipt_version", strconv.Itoa(u.ReceiptVersion)) }
+	add("billing", u.Billing)
+	if u.Raw != nil { if raw, err := EncodeRaw(u.Raw); err == nil { add("raw_usage", raw) } }
 	add("model", u.Model)
 	add("actual_usd", u.Actual)
 	add("actual_by", u.ActualBy)
@@ -179,12 +190,14 @@ func (u Usage) Priced(route string, p Prices) Usage {
 		return u
 	}
 	u.Route = route
+	if u.Billing == "" { u.Billing = p.Billing }
+	if u.Billing != "" { p.Billing = u.Billing }
 	pr := Predict(u.Tokens, p)
-	if p.Priced() {
+	if p.Priced() || p.Billing == BillingSubscription {
 		u.Prices = p.Copy()
 	}
 	u.Predicted, u.Long, u.Unpriced = pr.USD, pr.Long, pr.Why
-	if pr.Why == WhyNoSheet && u.Tokens.Reported() && zeroCost(u.Actual) {
+	if pr.Why == WhyNoSheet && u.Tokens.Reported() && zeroCost(u.Actual) && u.ReceiptVersion != ReceiptVersion && u.Billing != BillingSubscription {
 		u.Actual, u.ActualBy = "", ""
 	}
 	return u
@@ -243,6 +256,11 @@ func SpendWord(t Tokens, cost, model string) string {
 // ParseSpend is a spend= word's record: its tokens, the harness's cost and its model,
 // the cost marked as the harness's.
 func ParseSpend(w string) Usage {
+	u, _ := ParseSpendChecked(w)
+	return u
+}
+
+func parseSpendLegacy(w string) Usage {
 	u := NoUsage()
 	var line []string
 	for _, part := range strings.Split(w, ",") {
@@ -261,7 +279,8 @@ func ParseSpend(w string) Usage {
 			line = append(line, k+"="+v)
 		}
 	}
-	u.Tokens = ParseUsage(strings.Join(line, " ")).Tokens
+	parsed := parseUsageLegacy(strings.Join(line, " "))
+	u.Tokens, u.Billing = parsed.Tokens, parsed.Billing
 	return u
 }
 
@@ -333,10 +352,7 @@ func (t Total) Add(u Usage) Total {
 	}
 	// The one figure is the record's actual where it is a valid amount, otherwise
 	// its valid prediction; an amount the exact sum rejects is neither.
-	charged := u.Predicted
-	if valid(u.Actual) {
-		charged = u.Actual
-	}
+	charged := u.MarginalUSD()
 	if valid(charged) {
 		sum(&t.Charged, charged)
 		t.ChargedOf++
@@ -351,13 +367,7 @@ func (t Total) Add(u Usage) Total {
 // cut) keeps them this way, where a sum over the list would lose them. A sum that would
 // go below zero, which a total that counted was cannot, is left as it is.
 func (t Total) Repriced(was, now Usage) Total {
-	valid := func(v string) bool { _, err := amount(v); return err == nil }
-	charged := func(u Usage) string {
-		if valid(u.Actual) {
-			return u.Actual
-		}
-		return u.Predicted
-	}
+	charged := func(u Usage) string { return u.MarginalUSD() }
 	shift := func(sum *string, of *int, from, to string) {
 		r := new(big.Rat)
 		if *sum != "" {

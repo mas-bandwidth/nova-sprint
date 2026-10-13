@@ -1,6 +1,7 @@
 package main
 
 import (
+ "github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -2673,12 +2674,17 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "the lane of the member finishing (take --lane gave it the card): a card another lane of its row holds is refused")
 	decision := fs.String("decision", "", "the take's attempt decision, one JSON record line as nova-decide makes it (a work member with JEV_API_KEY asks it for every take): its op naming this take's card and attempt, else the finish is refused; kept on the card, recorded by the server's decide lane, and a failed finish whose class is no-result or nothing-to-do at or above that class's bar on the card is routed by it (docs/SPEC-SPRINT.md section 2)")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "finish", err.Error())
 	}
+ if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+  return refuse(stderr, "receipt-contract", err.Error())
+ }
+
 	var decided string
 	var d decide.Decision
 	if *decision != "" {
@@ -2773,6 +2779,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	ret := fs.String("return", "", "hand back a read the reader holds and has no verdict on: not a read; the next tick asks it of another reader free at the attempt, or of this reader again; no finding against the work")
 	reason := fs.String("reason", "", "with --return: why the read has no verdict (it reaches the inbox)")
 	usage := fs.String("usage", "", "with --ok, --broken or --return: what the read spent, one line (the reader passes its child's tokens, wall and cost): kept on the read card, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "with --ok, --broken or --return: the reader's lane reporting (take --as <reader> --lane <n> began the read): a read another lane of the reader holds is refused")
 	exit := fs.Int("exit", 0, "with --return: the reader's child's exit code (0: a clean end or unknown); a return whose exit is 134 or 137 is an environment exit: no verdict, and the reader is not spent at the attempt (docs/SPEC-SPRINT.md, \"An environment exit\")")
 	harness := fs.String("harness", "", "with --return: the child's harness output, so an environment exit keeps the last 40 lines of it on the card")
@@ -2781,6 +2788,10 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "read", err.Error())
 	}
+ if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+  return refuse(stderr, "receipt-contract", err.Error())
+ }
+
 	n := 0
 	for _, b := range []bool{*begin, *ok, *broken, *ret != ""} {
 		if b {
@@ -4498,4 +4509,16 @@ func (a *app) cmdCardBase(args []string, stdout, stderr io.Writer) int {
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			return sprint.CardBase(s, sprint.CardBaseReq{ID: id, Base: branch, OnOrigin: onOrigin, Who: c.actor})
 		}}, stdout, stderr)
+}
+
+// receiptContractCheck is a parser fence: an old local or forwarded server parser
+// rejects this flag before planning; a paired parser checks the required receipt.
+func receiptContractCheck(version, usage string) error {
+ u, err := cardcost.ParseUsageChecked(usage)
+ if err != nil { return err }
+ if version == "" && u.ReceiptVersion == 0 { return nil }
+ if version != "2" || u.ReceiptVersion != 2 {
+  return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
+ }
+ return nil
 }
