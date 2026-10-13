@@ -111,10 +111,13 @@ func TestRedisTheTickDealsAFreshCardOnARouteOfItsTier(t *testing.T) {
 	// the work table takes a step's write at once
 	h.must(AddStep(sprint.AddReq{Stream: "tools", IDs: []string{"pro-card"}, Brief: "pro-card: the work (tools) tier: pro\n\nThe task.\n"}))
 	h.setPrimary("pro-card", map[string]string{sprint.FieldTierNow: "pro"})
-	h.must(AddStep(sprint.AddReq{Stream: "testify", IDs: []string{"testify-docs"},
-		Brief: "testify-docs: internal/docs tests to testify by the PR 4926 recipe (testify) tier: flash\nBASE: sprint/foundation\n\nThe task.\n"}))
+	// START needs runnable queued work while the disabled pro card stays blocked.
+	h.must(AddStep(sprint.AddReq{Stream: "warm", IDs: []string{"warm-flash"}, Brief: "warm-flash: start prerequisite tier: flash\n\nThe task.\n"}))
 	h.startMachine()
 	h.machine()
+	// Add the fresh card after a running tick: its route is a new draw.
+	h.must(AddStep(sprint.AddReq{Stream: "testify", IDs: []string{"testify-docs"},
+		Brief: "testify-docs: internal/docs tests to testify by the PR 4926 recipe (testify) tier: flash\nBASE: sprint/foundation\n\nThe task.\n"}))
 	for i := 0; i < 3; i++ {
 		h.tick(time.Second)
 		h.machine()
