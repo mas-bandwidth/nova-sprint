@@ -87,7 +87,7 @@ func TestARefusedStartLeavesObsoleteJudgmentsForASuccessfulRecheck(t *testing.T)
 	// The captured old epoch is a real store START refusal; funding is a CLI
 	// gate on this base, so a provider rest alone cannot exercise this guard.
 	_, _, result, err := pinned.SetMachine(h.ctx, true)
-	require.ErrorContains(t, err, "epoch")
+	require.ErrorIs(t, err, errCleared)
 	assert.Empty(t, result.Said)
 	assert.Len(t, open(), 1, "a refused start must not run the closure pass")
 	_, _, result, err = h.st.SetMachine(h.ctx, true)
