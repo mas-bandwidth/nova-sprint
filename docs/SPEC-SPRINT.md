@@ -8004,7 +8004,8 @@ stored cards), **bases** (each stream on its own branch, never the trunk and nev
 stream's, the promotion stream aside; a need across two streams on different branches unless
 the needed card is the producer stream's sentinel), **names** (each stream's display name set,
 not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
-epoch), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
+epoch), **stale-head** (a pushed head on an open card whose attempt is at or below its
+`brief_attempt`; `brief --keep-head` exempts it), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
 with no brief is a finding) and **brief-size** (a brief over `store.MaxBriefBytes`, or a card's
 record, its brief with its other fields, over the drain's 16384 bytes). It prints `CHECK <kind>
 <card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK cards=<n>` (exit 0)
