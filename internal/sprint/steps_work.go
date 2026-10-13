@@ -1,9 +1,9 @@
 package sprint
 
 import (
- "github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"cmp"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
@@ -1779,9 +1779,9 @@ type FinishReq struct {
 func Finish(s *Snapshot, r FinishReq) Plan { return Lawful(finishPlan(s, r)) }
 
 func finishPlan(s *Snapshot, r FinishReq) Plan {
- if err := cardcost.ValidateUsage(r.Usage); err != nil {
-  return Plan{Refused: []Refusal{{Key: "finish", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
- }
+	if err := cardcost.ValidateUsage(r.Usage); err != nil {
+		return Plan{Refused: []Refusal{{Key: "finish", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
+	}
 	if len(r.Friends) > 0 {
 		s.Friends = r.Friends
 	}
@@ -1833,7 +1833,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 	}, s.Fleet.Card)
 	var chosen []*Card
 	for _, c := range picked {
-  if why := s.receiptBillingRefusal(c, r.Usage); why != "" { p.refuse(c.ID,why); continue }
+		if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
 		if why := liveGen("finish", c, r.Gens); why != "" {
 			p.refuse(c.ID, why)
 			continue

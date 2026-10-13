@@ -36,27 +36,29 @@ import (
 // the provider/model its harness reported (onlyEnabled). A run that reported no token
 // is not priced.
 func costRecord(s *Snapshot, usage, route, model string, onlyEnabled bool, from, began string) string {
- u := cardcost.ParseUsage(usage).Timed(from, began, s.Now)
- r, ok := s.priceRoute(route, cmp.Or(u.Model, model), onlyEnabled)
- if ok && s.billingPrices(r).Billing == cardcost.BillingSubscription {
-  return u.Priced(r.Name, s.billingPrices(r)).String()
- }
- if !u.Tokens.Reported() {
-  u.Unpriced = cardcost.WhyNoTokens
-  return u.String()
- }
- if !ok { return u.Priced("", cardcost.Prices{}).String() }
- return u.Priced(r.Name, s.billingPrices(r)).String()
+	u := cardcost.ParseUsage(usage).Timed(from, began, s.Now)
+	r, ok := s.priceRoute(route, cmp.Or(u.Model, model), onlyEnabled)
+	if ok && s.billingPrices(r).Billing == cardcost.BillingSubscription {
+		return u.Priced(r.Name, s.billingPrices(r)).String()
+	}
+	if !u.Tokens.Reported() {
+		u.Unpriced = cardcost.WhyNoTokens
+		return u.String()
+	}
+	if !ok {
+		return u.Priced("", cardcost.Prices{}).String()
+	}
+	return u.Priced(r.Name, s.billingPrices(r)).String()
 }
 
 // billingPrices carries declared billing through the same price projection as tokens.
 // An explicit route value wins; a missing route value inherits its provider declaration.
 func (s *Snapshot) billingPrices(r Route) cardcost.Prices {
- p := r.Prices
- if p.Billing == "" && s.Providers != nil && s.Providers[r.Provider].Billing == cardcost.BillingSubscription {
-  p.Billing = cardcost.BillingSubscription
- }
- return p
+	p := r.Prices
+	if p.Billing == "" && s.Providers != nil && s.Providers[r.Provider].Billing == cardcost.BillingSubscription {
+		p.Billing = cardcost.BillingSubscription
+	}
+	return p
 }
 
 // A read is priced as work is (the owner, 2026-10-05: "do we have the cost for readers
@@ -68,7 +70,7 @@ func (s *Snapshot) billingPrices(r Route) cardcost.Prices {
 // reported none) is permissive in what we read: the verdict is kept, its record says
 // unpriced=no-tokens and the stream counts it (TierCosts.ReadsNoTokens). A subscription reader (a bud's claude -p on its own plan, which bills
 // no dollar per token) says so in its usage, billing=subscription: its tokens are kept,
-// with no dollar figure, and its cost is shown as tokens (CostTokens).
+// with zero marginal USD and retained harness dollar evidence; its read cost is shown as tokens (CostTokens).
 const (
 	// UsageSubscription is the usage word a subscription reader adds to its --usage.
 	UsageSubscription = "billing=subscription"
@@ -79,7 +81,7 @@ const (
 )
 
 // subscriptionUsage says the usage is a subscription reader's (UsageSubscription).
-func subscriptionUsage(u cardcost.Usage) bool { return u.Billing == cardcost.BillingSubscription || slices.Contains(u.Extra, UsageSubscription) }
+func subscriptionUsage(u cardcost.Usage) bool { return u.Billing == cardcost.BillingSubscription }
 
 // routedRead says the read card was drawn a route at its ask: what prices it.
 func routedRead(c *Card) bool {
@@ -89,7 +91,7 @@ func routedRead(c *Card) bool {
 
 // readCostRecord is a read run's usage record at its end (costRecord): a routed read
 // priced by its card's route, a subscription reader's tokens kept with no dollar figure
-// (its harness's notional cost dropped, for its plan bills none), and a read with no
+// (its harness's reported dollars retained as evidence, with zero marginal charge), and a read with no
 // route by an enabled route of the provider/model its harness reported, as before.
 func readCostRecord(s *Snapshot, c *Card, usage, from, began string) string {
 	u := cardcost.ParseUsage(usage)
@@ -622,19 +624,32 @@ func MoneyText(usd string) string {
 // receiptBillingRefusal fences typed billing activation at the durable consumer write.
 // The declared route is authoritative; raw evidence never chooses its own billing.
 func (s *Snapshot) receiptBillingRefusal(c *Card, usage string) string {
- u, err := cardcost.ParseUsageChecked(usage)
- if err != nil { return "usage receipt refused: "+err.Error() }
- rt, ok := s.priceRoute(c.F(FieldRoute), c.F(FieldModel), false)
- if !ok && c.F(FieldBilling)=="" { if u.ReceiptVersion==2 { return "receipt contract 2 needs an applied route billing declaration; adopt the paired config and consumer before reporting" }; return "" }
- // A launch's declaration is immutable through later configuration changes.
- billing := c.F(FieldBilling)
- if billing=="" { billing=s.billingPrices(rt).Billing }
- if billing==cardcost.BillingSubscription && u.ReceiptVersion!=2 {
-  return "typed subscription route requires receipt contract 2; adopt paired tools/sprint before activating subscription, then resend the original receipt"
- }
- if u.ReceiptVersion==2 {
-  if billing=="" || u.Billing!=billing { return "receipt billing disagrees with applied route/provider declaration; report the billing declared by the original launch packet after paired adoption" }
-  if cmp.Or(c.F(FieldHarness),rt.Harness)=="muse" && u.Raw==nil { return "Muse receipt contract 2 requires raw_usage provenance; resend the original durable native receipt" }
- }
- return ""
+	u, err := cardcost.ParseUsageChecked(usage)
+	if err != nil {
+		return "usage receipt refused: " + err.Error()
+	}
+	rt, ok := s.priceRoute(c.F(FieldRoute), c.F(FieldModel), false)
+	if !ok && c.F(FieldBilling) == "" {
+		if u.ReceiptVersion == 2 {
+			return "receipt contract 2 needs an applied route billing declaration; adopt the paired config and consumer before reporting"
+		}
+		return ""
+	}
+	// A launch's declaration is immutable through later configuration changes.
+	billing := c.F(FieldBilling)
+	if billing == "" {
+		billing = s.billingPrices(rt).Billing
+	}
+	if billing == cardcost.BillingSubscription && u.ReceiptVersion != 2 {
+		return "typed subscription route requires receipt contract 2; adopt paired tools/sprint before activating subscription, then resend the original receipt"
+	}
+	if u.ReceiptVersion == 2 {
+		if billing == "" || u.Billing != billing {
+			return "receipt billing disagrees with applied route/provider declaration; report the billing declared by the original launch packet after paired adoption"
+		}
+		if cmp.Or(c.F(FieldHarness), rt.Harness) == "muse" && u.Raw == nil {
+			return "Muse receipt contract 2 requires raw_usage provenance; resend the original durable native receipt"
+		}
+	}
+	return ""
 }

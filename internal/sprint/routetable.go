@@ -314,7 +314,10 @@ func rtFromUsage(line string) rtUsage {
 			out.priced = true
 		}
 	}
- if subscriptionUsage(u) { out.usd=0; out.priced=true }
+	if subscriptionUsage(u) {
+		out.usd = 0
+		out.priced = true
+	}
 	return out
 }
 

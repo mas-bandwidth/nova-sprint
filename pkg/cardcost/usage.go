@@ -28,15 +28,15 @@ import (
 // the older shape (wall= and budget= alone) reads as a record with no token, no
 // time and no cost.
 type Usage struct {
-	Billing string `json:"billing,omitempty"`
-	ReceiptVersion int `json:"receipt_version,omitempty"`
-	Raw *RawUsage `json:"raw_usage,omitempty"`
-	Wall     string `json:"wall,omitempty"`   // the harness's wall, as native's line says it ("49.49s")
-	Budget   string `json:"budget,omitempty"` // the budget word (swarm.BudgetWord)
-	Tokens   Tokens `json:"tokens"`
-	Model    string `json:"model,omitempty"`      // provider/model, as the harness reported the run
-	Actual   string `json:"actual_usd,omitempty"` // USD the harness reported
-	ActualBy string `json:"actual_by,omitempty"`  // who reported it: ActualByHarness
+	Billing        string    `json:"billing,omitempty"`
+	ReceiptVersion int       `json:"receipt_version,omitempty"`
+	Raw            *RawUsage `json:"raw_usage,omitempty"`
+	Wall           string    `json:"wall,omitempty"`   // the harness's wall, as native's line says it ("49.49s")
+	Budget         string    `json:"budget,omitempty"` // the budget word (swarm.BudgetWord)
+	Tokens         Tokens    `json:"tokens"`
+	Model          string    `json:"model,omitempty"`      // provider/model, as the harness reported the run
+	Actual         string    `json:"actual_usd,omitempty"` // USD the harness reported
+	ActualBy       string    `json:"actual_by,omitempty"`  // who reported it: ActualByHarness
 	// Wait is the seconds from dealt (asked) to taken (begun), Run from taken (begun)
 	// to the end; Unreported when a stamp is missing.
 	Wait int64 `json:"wait_s"`
@@ -85,7 +85,12 @@ func NoUsage() Usage { return Usage{Tokens: None(), Wait: Unreported, Run: Unrep
 
 // ParseUsage reads a usage line (Usage.String, or the older wall= budget= shape).
 func ParseUsage(line string) Usage {
-	u, _ := ParseUsageChecked(line)
+	u, err := ParseUsageChecked(line)
+	if err != nil {
+		failed := NoUsage()
+		failed.Extra = strings.Fields(line)
+		return failed
+	}
 	return u
 }
 
@@ -149,9 +154,17 @@ func (u Usage) String() string {
 	count("reasoning", u.Tokens.Reasoning)
 	count("requests", u.Tokens.Requests)
 	count("max_prompt", u.Tokens.MaxPrompt)
-	if u.ReceiptVersion != 0 { add("receipt_version", strconv.Itoa(u.ReceiptVersion)) }
+	if u.ReceiptVersion != 0 {
+		add("receipt_version", strconv.Itoa(u.ReceiptVersion))
+	}
 	add("billing", u.Billing)
-	if u.Raw != nil { if raw, err := EncodeRaw(u.Raw); err == nil { add("raw_usage", raw) } }
+	if u.Raw != nil {
+		if raw, err := EncodeRaw(u.Raw); err == nil {
+			add("raw_usage", raw)
+		} else {
+			add("raw_usage", "INVALID")
+		}
+	}
 	add("model", u.Model)
 	add("actual_usd", u.Actual)
 	add("actual_by", u.ActualBy)
@@ -185,13 +198,21 @@ func word(v string) string { return strings.Join(strings.Fields(v), "_") }
 // cost"). A priced route, and a non-zero harness actual, are unchanged.
 func (u Usage) Priced(route string, p Prices) Usage {
 	u.Route, u.Prices, u.Predicted, u.Long, u.Unpriced = "", "", "", false, ""
+	if u.Billing == "" {
+		u.Billing = p.Billing
+	}
+	if u.Billing != "" {
+		p.Billing = u.Billing
+	}
+	if u.Billing == BillingSubscription {
+		u.Route, u.Prices, u.Predicted = route, p.Copy(), "0"
+		return u
+	}
 	if route == "" {
 		u.Unpriced = WhyNoRoute
 		return u
 	}
 	u.Route = route
-	if u.Billing == "" { u.Billing = p.Billing }
-	if u.Billing != "" { p.Billing = u.Billing }
 	pr := Predict(u.Tokens, p)
 	if p.Priced() || p.Billing == BillingSubscription {
 		u.Prices = p.Copy()
@@ -256,7 +277,17 @@ func SpendWord(t Tokens, cost, model string) string {
 // ParseSpend is a spend= word's record: its tokens, the harness's cost and its model,
 // the cost marked as the harness's.
 func ParseSpend(w string) Usage {
-	u, _ := ParseSpendChecked(w)
+	u, err := ParseSpendChecked(w)
+	if err != nil {
+		failed := NoUsage()
+		for _, part := range strings.Split(w, ",") {
+			k, v, ok := strings.Cut(part, ":")
+			if ok {
+				failed.Extra = append(failed.Extra, k+"="+v)
+			}
+		}
+		return failed
+	}
 	return u
 }
 

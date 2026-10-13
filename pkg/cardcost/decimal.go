@@ -41,8 +41,8 @@ const (
 // The billing kinds: metered is paid per token; plan is paid by subscription, so
 // the predicted cost is the metered price of the same tokens, not a charge.
 const (
-	BillingMetered = "metered"
-	BillingPlan    = "plan"
+	BillingMetered      = "metered"
+	BillingPlan         = "plan"
 	BillingSubscription = "subscription"
 )
 

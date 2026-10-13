@@ -262,7 +262,9 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 			}
 			if con.Kind == "read" && subscriptionUsage(con.Usage) {
 				// a subscription read's cost is its tokens: priced, never a run unpriced
-				if con.Usage.MarginalUSD() == "" { t.UnpricedRuns-- }
+				if con.Usage.MarginalUSD() == "" {
+					t.UnpricedRuns--
+				}
 				t.ReadTokens += con.Usage.Tokens.Total()
 			}
 			if con.Kind == "read" && con.Usage.Unpriced == cardcost.WhyNoTokens {

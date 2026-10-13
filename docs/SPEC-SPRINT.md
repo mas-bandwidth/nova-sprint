@@ -9359,3 +9359,8 @@ friend reaches that friend's inbox by the route her judgments already take: the
 push loop writes a group addressed to someone to that actor's own inbox
 directory (`pushTarget.dirOf`, `~/<actor>-working/inbox/sprint-judgments`), the
 group carrying the note's addressee (`sprint.Group.To`).
+
+
+### Typed subscription receipt contract (v1.2.18)
+
+[Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.

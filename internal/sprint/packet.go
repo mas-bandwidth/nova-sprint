@@ -49,7 +49,7 @@ type Packet struct {
 	// (a count or unmetered) and its deadline in seconds; empty when the store
 	// has no route, and the member runs its own.
 	Route    string `json:"route,omitempty"`
- Billing string `json:"billing,omitempty"`
+	Billing  string `json:"billing,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Tokens   string `json:"tokens,omitempty"`
 	USD      string `json:"usd,omitempty"`     // the dollar budget, a decimal; "" for none (#5094)

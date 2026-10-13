@@ -215,7 +215,7 @@ const (
 	FieldTokens   = "tokens"
 	FieldUSD      = "usd"
 	FieldHarness  = "harness"
- FieldBilling = "billing"
+	FieldBilling  = "billing"
 	FieldDeadline = "deadline"
 	FieldRoutes   = "routes"
 	FieldUsage    = "usage"

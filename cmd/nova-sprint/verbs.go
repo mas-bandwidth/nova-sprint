@@ -1,7 +1,6 @@
 package main
 
 import (
- "github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -10,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"io"
 	"os"
 	"os/exec"
@@ -2681,9 +2681,9 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "finish", err.Error())
 	}
- if err := receiptContractCheck(*receiptContract, *usage); err != nil {
-  return refuse(stderr, "receipt-contract", err.Error())
- }
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
 
 	var decided string
 	var d decide.Decision
@@ -2788,9 +2788,9 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "read", err.Error())
 	}
- if err := receiptContractCheck(*receiptContract, *usage); err != nil {
-  return refuse(stderr, "receipt-contract", err.Error())
- }
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
 
 	n := 0
 	for _, b := range []bool{*begin, *ok, *broken, *ret != ""} {
@@ -4514,11 +4514,15 @@ func (a *app) cmdCardBase(args []string, stdout, stderr io.Writer) int {
 // receiptContractCheck is a parser fence: an old local or forwarded server parser
 // rejects this flag before planning; a paired parser checks the required receipt.
 func receiptContractCheck(version, usage string) error {
- u, err := cardcost.ParseUsageChecked(usage)
- if err != nil { return err }
- if version == "" && u.ReceiptVersion == 0 { return nil }
- if version != "2" || u.ReceiptVersion != 2 {
-  return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
- }
- return nil
+	u, err := cardcost.ParseUsageChecked(usage)
+	if err != nil {
+		return err
+	}
+	if version == "" && u.ReceiptVersion == 0 {
+		return nil
+	}
+	if version != "2" || u.ReceiptVersion != 2 {
+		return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
+	}
+	return nil
 }
