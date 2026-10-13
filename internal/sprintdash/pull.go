@@ -285,7 +285,7 @@ func (s *Server) servePull(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/healthz":
-		s.healthz(w)
+		s.healthz(w, r)
 		return
 	case "/events":
 		rel := r.URL.Query().Get("release")
@@ -303,7 +303,7 @@ func (s *Server) servePull(w http.ResponseWriter, r *http.Request) {
 	h.Set("Sprint-At", c.At.Format(time.RFC3339))
 	path := r.URL.Path
 	if path == "/api/sprint" {
-		s.send(w, "application/json", s.SnapshotOf(r.URL.Query().Get("release")))
+		s.send(w, r, "application/json", s.SnapshotOf(r.URL.Query().Get("release")))
 		return
 	}
 	rest, api := strings.CutPrefix(path, "/api/")
@@ -314,9 +314,9 @@ func (s *Server) servePull(w http.ResponseWriter, r *http.Request) {
 	if rest == "team" && !stream {
 		t := teamView(c)
 		if api {
-			s.send(w, "application/json", mustJSON(t))
+			s.send(w, r, "application/json", mustJSON(t))
 		} else {
-			s.send(w, "text/plain; charset=utf-8", []byte(t.Text()))
+			s.send(w, r, "text/plain; charset=utf-8", []byte(t.Text()))
 		}
 		return
 	}
@@ -339,10 +339,10 @@ func (s *Server) servePull(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case !api:
-		s.send(w, "text/plain; charset=utf-8", []byte(v.Text()))
+		s.send(w, r, "text/plain; charset=utf-8", []byte(v.Text()))
 		return
 	}
-	s.send(w, "application/json", mustJSON(v))
+	s.send(w, r, "application/json", mustJSON(v))
 }
 
 func mustJSON(v any) []byte {
