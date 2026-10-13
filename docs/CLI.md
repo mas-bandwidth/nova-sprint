@@ -414,6 +414,17 @@ kept, the log gains one line, `<id> BASE <old> -> <new>`, and the next land pass
 card once. `ack` of the judgment has the next pass try the card once on its old base. The
 contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, a dead base.
 
+### The server's lander names a standing refusal
+
+`run --listen --land` prints one line every two seconds. While a landing is refused, every
+line is `LAND REFUSED queued=<n> since=<age> reason=<reason> run: <remedy>`, never `LAND
+IDLE`, until a landing goes through or the refusal changes; the first refused cycle raises
+one judgment, `the lander refuses every landing`, naming the reason and the remedy
+(decisions `check`, `ack`), and the tick's `landing stalled` judgment names it too. A landing
+closes it; another reason closes it and raises its own. `LAND IDLE` with cards queued says
+why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
+The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
+
 ### Role views: what a model reads instead of the dashboard
 
 The owner, 2026-10-04: "i'd rather you hit this vs. hitting my dashboard which is for human

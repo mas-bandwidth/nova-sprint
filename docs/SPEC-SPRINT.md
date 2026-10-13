@@ -8423,11 +8423,39 @@ it, so a tick or a worker's batch never waits on a push. A `land` run by itself 
 server is a second writer of the merge queue, and is what `--land` replaces. A round prints
 what landed and everything land said was wrong (a refused or failed batch, a refusal before any
 batch, its remedy); a round that could not read the merge queue prints `LAND FAILED` with why,
-since an unreadable queue is not an empty one, and the next round tries again. A failure is
-printed once, when it begins: the same failure again prints nothing until it changes or clears.
-Every cycle prints one line: `LAND OK` or `LAND REFUSED` when a landing finished
-on that cycle, or `LAND IDLE queued=<n> step=<stage> since=<age>` while one is
-still running (`step=-` and `since=0s` when nothing is in flight). A cycle with
+since an unreadable queue is not an empty one, and the next round tries again. What land
+said of a failure is printed in full once, when it begins: the same failure again does not
+repeat it until it changes or clears.
+
+A refusal is a state, not an event (the owner, 2026-10-13, after epoch 20's landing refused
+for twenty minutes on an empty `git_identity` while the log said only `LAND IDLE queued=6`:
+"OK these MUST be fixed. blocker priority."; tla/ServerSwitch.tla `LandRefused`, `LandOk`).
+A landing that exits non-zero (a refusal before any batch, a refused batch, a failed pass, an
+unreadable queue) leaves a standing refusal: its reason (land's refusal line, the text after
+`REFUSED:`, cut at its `; run: `), its remedy (the command after `; run: `, else
+`nova-sprint land --dry-run`) and since when it has stood. While it stands, every cycle prints
+`LAND REFUSED queued=<n> since=<age> reason=<reason> run: <remedy>` in place of `LAND IDLE`,
+whether a landing under it is still running or has just been refused again; never a bare
+`LAND IDLE` with cards queued and a refusal standing (`BeatNamesTheRefusal`). The first
+cycle of a refusal raises one judgment at once, `the lander refuses every landing`, to the
+coordinator, its text the reason and `; run: <remedy>`, its decisions `check` and `ack`
+(`RefusalJudgedAtOnce`): the same refusal again raises none (`AtMostOneJudgmentPerRefusal`),
+a landing that goes through closes it, and another refusal closes it and raises its own in
+one step. The judgment is written as the machine (the store opened as `run`), so a seat that
+has not hooked in, as after a restart, is still told; a write that does not land is tried
+again on the next cycle, and a server restarted under a refusal whose judgment is open does
+not raise it twice. The tick's `landing stalled` judgment, and its alarm line, append `; the
+lander refuses every landing: <reason>; run: <remedy>` while that judgment is open, so the
+generic alarm names the cause.
+
+Every cycle prints one line: `LAND OK` when a landing finished on that cycle, the standing
+`LAND REFUSED` line while a refusal stands, or `LAND IDLE queued=<n> step=<stage>
+since=<age> why=<why>` when none does and nothing finished: `why=running` while a landing is
+in flight (the step names what it waits on), `why=no-coordinator` when cards are queued and
+the sprint has no coordinator, and `why=nothing-landable` when a landing finished saying
+nothing (every queued stream stopped, say). `LAND IDLE queued=0 step=- since=0s` (no `why`)
+is a queue with nothing in it. A landing that finishes before its first cycle is reported
+on that cycle. A cycle with
 cards queued whose landing has not finished within 10 minutes (`LandDeadline`)
 raises one judgment, `an operation was stuck`, naming the stage and the process
 it waits on. The landing continues; a gate still holding an earlier batch at that bound

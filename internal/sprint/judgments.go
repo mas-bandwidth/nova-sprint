@@ -60,6 +60,73 @@ func stampAfter(a, b string) bool {
 	return errA == nil && errB == nil && ta.After(tb)
 }
 
+// The lander's standing refusal (docs/SPEC-SPRINT.md section 7, the server's
+// lander; the owner, 2026-10-13, on the epoch-20 landing that refused for twenty
+// minutes with only LAND IDLE in the log: "OK these MUST be fixed. blocker
+// priority."). When the server's land loop (cmd/nova-sprint/landloop.go) is refused,
+// the refusal stands until a landing goes through or the refusal changes: its first
+// beat raises one NLanderRefuses judgment to the coordinator naming the reason and
+// the remedy, the same refusal again raises none, a landing closes it, and another
+// reason closes it and raises its own. The tick's landing-stall alarm names it as
+// the cause. The model is tla/ServerSwitch.tla (LandRefused, LandOk; the invariants
+// RefusalJudgedAtOnce, AtMostOneJudgmentPerRefusal, BeatNamesTheRefusal).
+const NLanderRefuses = "the lander refuses every landing"
+
+// LandRefusalDecisions are the decisions on the lander's standing refusal: check
+// its cause and run the remedy its text names, or ack it.
+var LandRefusalDecisions = []string{"check", "ack"}
+
+// landRefusalJudgments is the open judgments of the lander's standing refusal.
+func landRefusalJudgments(s *Snapshot) []Open {
+	var open []Open
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NLanderRefuses {
+			open = append(open, o)
+		}
+	}
+	return open
+}
+
+// LandRefusalRaise is the plan that raises the standing refusal's judgment, what
+// its reason and remedy, by who: none when one with the same text is open already
+// (a server restarted under the same refusal says it once); any open for another
+// refusal is closed in the same plan.
+//
+// tla/ServerSwitch.tla LandRefused
+func LandRefusalRaise(s *Snapshot, what, who string) Plan {
+	var p Plan
+	said := false
+	for _, o := range landRefusalJudgments(s) {
+		if o.Note.What == what {
+			said = true
+			continue
+		}
+		p.Closes = append(p.Closes, o)
+	}
+	if !said {
+		p.Notes = append(p.Notes, Note{Kind: Judgment, Type: NLanderRefuses, What: what, Who: who, To: s.Coordinator, At: s.Now,
+			SprintLevel: true, Decisions: append([]string(nil), LandRefusalDecisions...)})
+	}
+	return p
+}
+
+// LandRefusalClose is the plan that closes the standing refusal's judgment once a
+// landing has gone through.
+//
+// tla/ServerSwitch.tla LandOk
+func LandRefusalClose(s *Snapshot) Plan {
+	return Plan{Closes: landRefusalJudgments(s)}
+}
+
+// LandRefusalStanding is the lander's standing refusal, its reason and remedy, as
+// its open judgment says; "" when none stands.
+func LandRefusalStanding(s *Snapshot) string {
+	for _, o := range landRefusalJudgments(s) {
+		return o.Note.What
+	}
+	return ""
+}
+
 // landingStallBound is the landing-stall bound: the sprint's setting
 // (PropLandingStallBound), else LandingStallBound.
 func (s *Snapshot) landingStallBound() time.Duration {
@@ -441,8 +508,18 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	if len(reds) > 0 {
 		ciWord = "CI red: " + strings.Join(reds, ", ")
 	}
-	return fmt.Sprintf("no card has landed in %s with %d in review and %d merging; reads out: %s; waiting on the coordinator's judgment: %d (oldest %s%s); accepted and not merged: %d (%s); the lander's last refusal: %s; %s",
+	what := fmt.Sprintf("no card has landed in %s with %d in review and %d merging; reads out: %s; waiting on the coordinator's judgment: %d (oldest %s%s); accepted and not merged: %d (%s); the lander's last refusal: %s; %s",
 		d.Round(time.Second), len(review), len(merging), readsOut, judged, orDash(oldestAlias), seatStall, len(merging), mergeState, refusal, ciWord)
+	return what + landingStallCause(s)
+}
+
+// landingStallCause is what the landing-stall alarm appends when the lander's
+// refusal stands: the generic alarm names the cause, never only the count.
+func landingStallCause(s *Snapshot) string {
+	if standing := LandRefusalStanding(s); standing != "" {
+		return "; the lander refuses every landing: " + standing
+	}
+	return ""
 }
 
 // TickLandingStall is the tick end's landing-stall alarm (docs/SPEC-SPRINT.md,
@@ -555,7 +632,7 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true}
 				p.Notes = append(p.Notes, n)
 			}
-			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second))})
+			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second)) + landingStallCause(s)})
 			write(PropLandingStallSaid, landingStamp(s.Now))
 		}
 	}

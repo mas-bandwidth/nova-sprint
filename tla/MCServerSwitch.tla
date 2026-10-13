@@ -2,7 +2,8 @@
 \* A bounded instance of ServerSwitch: the constants the configs pin
 \* (MCServerSwitch.cfg, MCServerSwitchLive.cfg, MCServerSwitchBrokenNodeadline.cfg,
 \* MCServerSwitchBrokenKeepstate.cfg, MCServerSwitchBrokenHookfault.cfg,
-\* MCServerSwitchBrokenHookGate.cfg). The module holds no rule of its own;
+\* MCServerSwitchBrokenHookGate.cfg, MCServerSwitchBrokenSilentdedupe.cfg,
+\* MCServerSwitchBrokenLatejudge.cfg). The module holds no rule of its own;
 \* ServerSwitch is the model (internal/sprint/server_switch.go).
 \*-----------------------------------------------------------------------------
 EXTENDS ServerSwitch
