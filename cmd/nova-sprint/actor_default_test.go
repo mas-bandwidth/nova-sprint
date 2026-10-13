@@ -112,7 +112,7 @@ func TestCoordinatorActorDefaultRejectsIncompleteOrForgedProof(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name   string
-		change func(*testApp, string)
+		change func(*testing.T, *testApp, string)
 		record func(string) sprint.HookRecord
 	}{
 		{
@@ -142,14 +142,14 @@ func TestCoordinatorActorDefaultRejectsIncompleteOrForgedProof(t *testing.T) {
 		{
 			name:   "stale-bus-proof",
 			record: func(name string) sprint.HookRecord { return liveActorHook(name, t0) },
-			change: func(ta *testApp, name string) {
+			change: func(t *testing.T, ta *testApp, name string) {
 				ta.now = t0.Add(sprint.HookSharedBound + time.Second)
 			},
 		},
 		{
 			name:   "wrong-bus-role",
 			record: func(name string) sprint.HookRecord { return liveActorHook(name, t0) },
-			change: func(ta *testApp, name string) {
+			change: func(t *testing.T, ta *testApp, name string) {
 				h, err := ta.a.hooker(context.Background())
 				require.NoError(t, err)
 				bh := h.(busHooker)
@@ -173,7 +173,7 @@ func TestCoordinatorActorDefaultRejectsIncompleteOrForgedProof(t *testing.T) {
 				ta.busProven(holder)
 			}
 			if tc.change != nil {
-				tc.change(ta, holder)
+				tc.change(t, ta, holder)
 			}
 			before := ta.applies()
 			code, out, errs := ta.do("add --stream s1 --count 1 --one")
