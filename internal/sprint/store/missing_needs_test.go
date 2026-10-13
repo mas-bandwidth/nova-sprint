@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/require"
@@ -103,13 +102,7 @@ func TestStoredMissingNeedsHaveOneActionableJudgment(t *testing.T) {
 					needs += ",s1-1"
 				}
 				seedMissingNeeds(h, "waiter", needs)
-				h.startMachine()
-				for i := 0; i < 3; i++ {
-					if i == 2 {
-						h.tick(time.Minute + time.Second)
-					}
-					h.machine()
-				}
+				h.must(ResolveStep(sprint.ResolveReq{}))
 				notes := h.nOpenOf(missing, "waiter")
 				require.Len(t, notes, 1, "missing dependency is silent or repeated: %+v", notes)
 				require.Len(t, h.nAllNotes(missing), 1, "missing dependency is silent or repeated: %+v", notes)
@@ -132,7 +125,7 @@ func TestStoredMissingNeedsHaveOneActionableJudgment(t *testing.T) {
 				default:
 					require.Equal(t, sprint.Ready, c.Col, "primary not ready: %+v", c)
 				}
-				h.machine()
+				h.must(ResolveStep(sprint.ResolveReq{}))
 				require.Empty(t, h.nOpenOf(missing, "waiter"), "acknowledged missing need repeated")
 				require.Len(t, h.nAllNotes(missing), 1, "acknowledged missing need repeated")
 				h.clean("missing need acknowledged")
