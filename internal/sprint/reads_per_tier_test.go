@@ -95,7 +95,7 @@ func TestAFlashCardIsAcceptedOnOneReadAndAProCardOnTwo(t *testing.T) {
 				if !last {
 					p := Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{tc.id}}})
 					require.Len(t, p.Refused, 1, "accepted on %d of %d oks", i+1, tc.reads)
-					assert.Contains(t, p.Refused[0].Why, "needs ok from two different readers")
+					assert.Contains(t, p.Refused[0].Why, "needs ok from two ok reads")
 					assert.NotContains(t, openTypes(w, tc.id), NReadyToAccept, "ready to accept on %d of %d oks", i+1, tc.reads)
 				}
 			}

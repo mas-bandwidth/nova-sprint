@@ -8,8 +8,8 @@
 \* its reader down or held, a resting route, its primary moved). A reader that
 \* closed, returned or let pass a read of the attempt is never dealt it again; a
 \* read the machine took back spends nothing and its reader may be dealt it again
-\* under the next generation, at most MaxGen times (MaxReadGen = 2: the plain
-\* identity and .g1 and .g2, read_cards.go). The primary leaves review only by the
+\* under the next generation (bounded to MaxGen = 2 for model checking; readNextGen
+\* in code has no cap). The primary leaves review only by the
 \* existing rules: accepted on the needed count of oks at the attempt (need,
 \* ReadsNeededIn: 0, 1 or 2, the setting or the tier's rule, readers.go), reworked
 \* on a broken read (a new attempt, its open cards retired), and a merging card
@@ -76,7 +76,10 @@ At(a) == {c \in cards : c.att = a}
 Mine(a, r) == {c \in At(a) : c.rd = r}
 Standing(a) == {c \in At(a) : c.st \in Open \cup {"ok", "broken"}}
 Broken(a) == \E c \in At(a) : c.st = "broken"
+BugPlainOnly == FALSE
 OkReaders(a) == {c.rd : c \in {x \in At(a) : x.st = "ok"}}
+OkCards(a) == {c \in At(a) : c.st = "ok"}
+CountedCards(a) == {c \in OkCards(a) : ~BugPlainOnly \/ c.gen = 0}
 Wanted == IF Broken(attempt) THEN 0 ELSE need - Cardinality(Standing(attempt))
 SpentBy(a, r) == \E c \in Mine(a, r) : c.st \in Spent \cup Open
 NextGen(a, r) == Cardinality(Mine(a, r))
@@ -136,7 +139,7 @@ TakeBack == \E c \in At(attempt) : c.st \in Open /\ Move(c, "away") /\ UNCHANGED
 
 Accept ==
   /\ pstate = "review"
-  /\ Cardinality(OkReaders(attempt)) >= need
+  /\ Cardinality(CountedCards(attempt)) >= need
   /\ pstate' = "merging"
   /\ UNCHANGED <<attempt, need, cards>>
 
@@ -159,7 +162,7 @@ SetReads ==
 \* read it lacks (sprint.ShortReadsBack, steps_tick.go)
 ShortReadsBack ==
   /\ pstate = "merging"
-  /\ Cardinality(OkReaders(attempt)) < need
+  /\ Cardinality(CountedCards(attempt)) < need
   /\ pstate' = "review"
   /\ UNCHANGED <<attempt, need, cards>>
 
@@ -188,7 +191,13 @@ NeverTwiceAfterSpent ==
 \* the primary leaves review only by the rules: it merges only with at least Need
 \* different oks (the accept asks the current need, never below Need), and a merging
 \* card short of the current need goes back to review
-MergingOnlyOnOks == pstate = "merging" => Cardinality(OkReaders(attempt)) >= Need
+MergingOnlyOnOks == pstate = "merging" => Cardinality(CountedCards(attempt)) >= Need
+
+\* OK READS ACCEPT: if a card in review has no broken reads and has at least need ok
+\* read cards, Accept is enabled. The witness "plainonly" breaks it by counting only
+\* generation 0 cards.
+OkReadsAccept ==
+  (pstate = "review" /\ ~Broken(attempt) /\ Cardinality(OkCards(attempt)) >= need) => ENABLED Accept
 
 \* the open cards of an attempt past are retired: no read of a reworked attempt stays open
 NoOpenReadOfAnOldAttempt == \A c \in cards : c.att < attempt => c.st \notin Open
