@@ -11,3 +11,5 @@
 2026-10-11 87816aaba173f883f63fbcc238aff941c1fc39080b5cc438e36f7a420768e347 "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
 2026-10-13 3891f03af74e0335f8d92ab1fdb928714850e643fd3bb3f842c23902647735ea "What happens next is you update it with all the stuff you changed and i haven't seen for a day"
 2026-10-13 91d59220c2c511fdc9c824eccdbf0392fe37ffa859b2bdc7c88568da85a75024 "When you are in it print 'READY' to ETA"
+2026-10-13 406e4c1911699ceeab56a801dba516ed8cd154a2e2317efaccc13d1c90a49d9d "OK add these for v1.2.20."
+

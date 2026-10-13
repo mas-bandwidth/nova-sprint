@@ -28,8 +28,8 @@ import (
 // owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"): the page is that
 // page, byte for byte (pageview.go).
 const (
-	pageIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
-	pageAppSHA256   = "319e649504e180cb20c56a4211728cdba4848caa00fc21e298fe272c0c27a850"
+	pageIndexSHA256 = "f02c8db576b52fb5d9ee8f3c58e824cd7a789b1af0bca98044c4f12ceac515d2"
+	pageAppSHA256   = "fdfc41212e5a78628e07b2513da40487f312313b66428e2e400b6c9835b83a90"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
