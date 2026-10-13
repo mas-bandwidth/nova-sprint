@@ -247,8 +247,8 @@ func TestNoMemberUpIsOneJudgmentUntilAMemberIsUp(t *testing.T) {
 	require.Equal(t, sprint.Working, h.state("s1-1"), "after a member came up: open %d, s1-1 %s", len(h.openOf(sprint.NNoMember)), h.state("s1-1"))
 }
 
-// A withdrawn attempt's deadline stops standing after its primary waits on
-// an unlanded need. A primary still ready keeps the same redeal clock and note.
+// A withdrawn attempt's deadline stops standing, whether its primary waits on
+// an unlanded need or is still ready: a withdrawn take has no deadline.
 func TestWithdrawnWorkDeadlineClosesWhenItsPrimaryWaitsOnANeed(t *testing.T) {
 	t.Parallel()
 	for _, taken := range []bool{false, true} {
@@ -297,12 +297,9 @@ func TestWithdrawnWorkDeadlineClosesWhenItsPrimaryWaitsOnANeed(t *testing.T) {
 					h.tick(time.Minute)
 					h.machine()
 					late = h.openOf(sprint.NWorkLate)
-					if waiting {
-						require.Empty(t, late, "the existing judgment closes after the primary leaves the live attempt path")
-					} else {
-						require.Len(t, late, 1, "ready still owes the withdrawn attempt's deadline")
-						require.Equal(t, oldID, late[0].Note.ID, "the original redeal clock keeps its judgment")
-					}
+					// a withdrawn take has no deadline, its primary waiting or ready
+					// (tla/SprintRules.tla LateOnlyWhileLive)
+					require.Empty(t, late, "the judgment %s closes on the withdrawal", oldID)
 					require.Equal(t, written, h.written(sprint.NWorkLate), "no replacement or repeated lateness judgment")
 				}
 			})

@@ -128,12 +128,12 @@ func TestAClearKeepsTheOldEpochsLog(t *testing.T) {
 	require.Equal(t, sprint.NMachineStopped, old[len(before)].Note.Type)
 }
 
-// The flapping judgment: a lateness raised on an attempt stays raised
-// until the attempt ends or the coordinator answers it. A card taken, its
-// member silent past the not-finished deadline (withdrawn), brought back and
-// taken three times more has one not-finished judgment, never closed by the
-// redeal or the return to ready, updated in place with where the card is;
-// each update is a line of the log.
+// A lateness stands only while its take is live (tla/SprintRules.tla
+// LateOnlyWhileLive). A card taken, its member silent past the not-finished
+// deadline (withdrawn), raises none while withdrawn; brought back and taken
+// three times more, each take is late at once, measured from the attempt's
+// first take (no redeal resets the clock), keeps its one judgment open while it
+// stays live, and each withdrawal closes it; each judgment says where the card is.
 func TestALatenessStaysRaisedUntilItsAttemptEnds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -161,44 +161,44 @@ func TestALatenessStaysRaisedUntilItsAttemptEnds(t *testing.T) {
 		}
 		return out
 	}
-	first := late()
-	require.Len(t, first, 1, "withdrawn two hours after its take: %d not-finished judgments", len(first))
+	require.Empty(t, late(), "withdrawn two hours after its take: a withdrawn take has no deadline")
 	for i := 0; i < 3; i++ {
 		h.live = []string{"m1"}
 		h.tick(time.Second)
 		h.machine() // back: its presence is the fleet's update, after the pump
 		h.tick(time.Second)
 		h.machine() // the next pump redeals the card: ready
-		l := late()
-		require.Len(t, l, 1, "lap %d, redealt: the lateness %+v, want %s still open", i, l, first[0].Note.ID)
-		require.Equal(t, first[0].Note.ID, l[0].Note.ID, "lap %d, redealt: the lateness %+v, want %s still open", i, l, first[0].Note.ID)
 		take()
 		h.tick(time.Second)
 		h.machine()
-		l = late()
-		require.Len(t, l, 1, "lap %d, taken again: the lateness %+v, want %s still open", i, l, first[0].Note.ID)
-		require.Equal(t, first[0].Note.ID, l[0].Note.ID, "lap %d, taken again: the lateness %+v, want %s still open", i, l, first[0].Note.ID)
+		l := late()
+		require.Len(t, l, 1, "lap %d, taken again: late not finished from the attempt's first take: %+v", i, l)
+		require.Contains(t, l[0].Note.What, "; at ", "the open lateness does not say where the card is: %q", l[0].Note.What)
+		// while the take stays live and late, its one judgment stays open: never a second
+		id := l[0].Note.ID
+		for j := 0; j < 10; j++ {
+			h.tick(time.Minute)
+			h.machine()
+			l = late()
+			require.Len(t, l, 1, "lap %d, minute %d of a live late take: %+v", i, j, l)
+			require.Equal(t, id, l[0].Note.ID, "lap %d, minute %d: the live take's lateness was replaced", i, j)
+		}
 		h.live = nil
 		for j := 0; j < 3; j++ {
 			h.tick(pastDown / 3)
 			h.machine()
 		}
+		require.Empty(t, late(), "lap %d, withdrawn again: the lateness closes", i)
 	}
 	written := 0
-	updates := 0
 	for _, l := range h.lines() {
-		if l.Note != nil && l.Note.Type == sprint.NWorkLate && strings.Contains(l.Note.What, "not finished") {
-			if l.Verb == "updated" {
-				updates++
-			} else {
-				written++
-			}
+		if l.Note != nil && l.Note.Type == sprint.NWorkLate && strings.Contains(l.Note.What, "not finished") && l.Verb != "updated" {
+			written++
 		}
 	}
-	require.Equal(t, 1, written, "the not-finished judgment written %d times, updated %d times", written, updates)
-	require.NotEqual(t, 0, updates, "the not-finished judgment written %d times, updated %d times", written, updates)
-	w := late()[0].Note.What
-	require.Contains(t, w, "; at ", "the open lateness does not say where the card is: %q", w)
+	// one judgment a live take: three takes, each withdrawn between them (the withdrawal
+	// closes it, tla/SprintRules.tla LateOnlyWhileLive), are three judgments, not one a tick
+	require.Equal(t, 3, written, "one not-finished judgment a live take past its deadline: %d", written)
 }
 
 // The take-and-abandon loop: a card taken and abandoned over and over is redealt at most
