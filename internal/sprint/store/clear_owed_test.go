@@ -124,7 +124,7 @@ func TestAClearRunAgainAfterACrashBeforeRestoreMembersRestoresThem(t *testing.T)
 	require.NoError(t, err)
 	members, readers := membersOf(h)
 	require.NotEmpty(t, members)
-	require.Len(t, readers, 3)
+	require.Len(t, readers, 5) // reader-a, reader-b, reader-c and the member readers reader-m1, reader-m2 a clear makes
 
 	advanceUntilRestore(t, h)
 	require.Equal(t, uint64(2), epochOf(t, h))
@@ -208,7 +208,8 @@ func TestAClearCrashedInsideRestoreMembersIsFinishedByTheRerun(t *testing.T) {
 	assert.Equal(t, uint64(1), epochOf(t, h), "no second advance")
 	gotMembers, gotReaders := membersOf(h)
 	assert.Equal(t, members, gotMembers, "every member has its control card and its status")
-	assert.ElementsMatch(t, readers, gotReaders)
+	// the rerun's clear makes every up member's reader row too (reader-m1, reader-m2)
+	assert.ElementsMatch(t, append(append([]string(nil), readers...), "reader-m1", "reader-m2"), gotReaders)
 	assert.Equal(t, sprint.AlarmReadyWorking, workProp(h, sprint.PropAlarmReady), "the defaults are set")
 	assert.Equal(t, sprint.ReadCardsOnWord, workProp(h, sprint.PropReadCards))
 }
@@ -279,7 +280,7 @@ func TestACrashBeforeTheFlagIsClearedIsFinishedAndReported(t *testing.T) {
 	assert.True(t, res.Owed)
 	assert.Equal(t, uint64(0), res.From)
 	assert.Equal(t, uint64(1), res.To)
-	assert.Equal(t, []string{"members:2", "readers:3", "defaults"}, res.OwedFinished, "the clear names what it finished")
+	assert.Equal(t, []string{"members:2", "readers:5", "defaults"}, res.OwedFinished, "the clear names what it finished")
 	assert.Equal(t, sprint.SwitchOff, workProp(h, sprint.PropReadCards), "the set between survives the step run again")
 	es, err = h.st.EpochNow(h.ctx)
 	require.NoError(t, err)

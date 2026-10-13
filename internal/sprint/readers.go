@@ -317,9 +317,9 @@ func ReadsNeededIn(s *Snapshot, pr *Card) int {
 //
 // tla/ReaderTiers.tla Refuse
 func enoughReadersUp(s *Snapshot, pr *Card) bool {
-	// the fast path: no states, no tiers cell, the tier routed, and no fleet reader held to
-	// flash by its empty cell for a read above flash (fleetReadsFlashOnly)
-	if t := s.readTierOf(pr); s.ReaderStates == nil && !s.readersCarryTiers() && s.tierRouted(t) && (len(s.Routes) == 0 || t == cardhdr.RouteFlash) {
+	// the fast path: no states, no tiers cell, and the tier routed (an empty
+	// cell now reads every served tier, so no tier is held back)
+	if t := s.readTierOf(pr); s.ReaderStates == nil && !s.readersCarryTiers() && s.tierRouted(t) {
 		return true
 	}
 	tier, n := s.readTierOf(pr), 0

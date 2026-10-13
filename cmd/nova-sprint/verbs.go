@@ -1296,6 +1296,17 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 		}
 		memberNames = append(memberNames, m.Name)
 	}
+	// every up member is a reader: init makes the member reader rows, as a
+	// member's join and a clear do (ensureMemberReaders)
+	if len(specs) > 0 {
+		if err := ensureMemberReaders(ctx, st); err != nil {
+			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
+			return 1
+		}
+		if rows, err := st.ReaderRows(ctx); err == nil {
+			readerRows = rows
+		}
+	}
 	notes := []string{}
 	if len(specs) > 0 && a.twinOpen(c.redis) {
 		// a twin beats every member at every verb (beatTwin): a member added
@@ -3655,12 +3666,82 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	code := a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	if code == 0 && op == "up" {
+		// a member's join makes its reader row when missing, as init and
+		// a clear do (ensureMemberReaders); the join already reported, so
+		// a failed make is left to the next join or clear, never a second
+		// result for this verb
+		_ = ensureMemberReaders(context.Background(), st)
+	}
+	return code
+}
+
+// resolveReaderNames is the reader verbs' names with the reader- prefix
+// added: a bare fleet member name (m1) names its member reader
+// (reader-m1) itself, and the verb says so in its line. memberOf says, per
+// resolved row, whether it is a member's reader (reader-<member> of a
+// fleet member). A name that is no member keeps its shape.
+// tla/ReaderTiers.tla EveryUpMemberIsAReader
+func resolveReaderNames(ctx context.Context, st *store.Store, names []string) ([]string, map[string]bool, error) {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	members := map[string]bool{}
+	for _, m := range snap.Members() {
+		members[m] = true
+	}
+	out := make([]string, 0, len(names))
+	memberOf := map[string]bool{}
+	for _, n := range names {
+		if strings.HasPrefix(n, sprint.ReaderPrefix) {
+			m, ok := strings.CutPrefix(n, sprint.ReaderPrefix)
+			out = append(out, n)
+			memberOf[n] = ok && members[m]
+			continue
+		}
+		if members[n] {
+			rn := sprint.ReaderPrefix + n
+			out = append(out, rn)
+			memberOf[rn] = true
+			continue
+		}
+		out = append(out, n)
+		memberOf[n] = false
+	}
+	return out, memberOf, nil
+}
+
+// ensureMemberReaders makes the reader row of every up fleet member the
+// readers table lacks (sprint.MemberReaderRows): init and a member's join
+// call it, a clear makes them through the shape it carries
+// (steps_clear.go ShapeOf). It writes nothing when every up member reads,
+// and nothing while the sprint has reader rows of its own: a seat that
+// declared readers (init --readers, reader add) named the set, and a
+// members-only sprint (init --members, the card's case) is the one with
+// no seat action to make.
+func ensureMemberReaders(ctx context.Context, st *store.Store) error {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return err
+	}
+	if len(snap.Readers.Rows()) > 0 {
+		return nil
+	}
+	missing := sprint.MemberReaderRows(snap)
+	if len(missing) == 0 {
+		return nil
+	}
+	if err := st.EnsureReaderTiers(ctx); err != nil {
+		return err
+	}
+	return st.AddReaders(ctx, missing, nil)
 }
 
 func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader add")
-	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is every tier a route serves")
 	names, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "reader add", err.Error())
@@ -3682,6 +3763,11 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	ctx := context.Background()
+	// a bare fleet member name names its member reader itself
+	var memberOf map[string]bool
+	if names, memberOf, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader add", err.Error())
+	}
 	if err := st.EnsureReaderTiers(ctx); err != nil {
 		return refuse(stderr, "reader add", err.Error())
 	}
@@ -3713,8 +3799,21 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
+	// reader add writes the row up: its beat is now and no hold keeps it
+	// away, so the ask may ask it with no reader up after it.
+	for _, n := range names {
+		_ = st.SetReaderAway(ctx, n, false, c.actor)
+		_, _ = st.ReaderBeat(ctx, n, "")
+	}
 	line := "READER-ADD OK readers=" + strings.Join(names, ",")
-	facts := map[string]any{"readers": names}
+	for _, n := range names {
+		word := "no"
+		if memberOf[n] {
+			word = "yes"
+		}
+		line += " member-reader=" + word
+	}
+	facts := map[string]any{"readers": names, "member_readers": memberOf}
 	if tiersSet {
 		word := sprint.ReaderTiersShown(tiers)
 		line += " tiers=" + word
@@ -3733,7 +3832,7 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 // nothing.
 func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader set")
-	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is every tier a route serves")
 	names, code := readerNames("reader set", args, stderr, fs)
 	if code != 0 {
 		return code
@@ -3747,6 +3846,9 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader set", err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader set", err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed("reader set", err, stderr)
@@ -3768,7 +3870,7 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 }
 
 // readerTiersArg parses --tiers. required refuses a call that omitted it.
-// The stored value is "" for the default (flash on a fleet reader, every tier on a friend's).
+// The stored value is "" for the default (every tier a route serves).
 // Nothing is written here.
 func readerTiersArg(verbName string, fs *flag.FlagSet, raw string, required bool, stderr io.Writer) (string, bool, int) {
 	set := false
@@ -3841,6 +3943,9 @@ func (a *app) cmdReaderHold(away bool, args []string, stdout, stderr io.Writer) 
 		return refuse(stderr, verbName, err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, verbName, err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed(verbName, err, stderr)
