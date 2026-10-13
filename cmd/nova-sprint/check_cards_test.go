@@ -408,13 +408,18 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(treesDir, "owner__repo__sprint__s1.txt"), []byte(treeText), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(treesDir, "owner__repo__sprint__s2.txt"), []byte(treeText), 0o600))
 
-	offline := newApp(func(string) string { return "" })
-	var stdout, stderr strings.Builder
-	code := offline.run([]string{"check", "cards", "--from", liveCards}, &stdout, &stderr)
-	require.Equal(t, 0, code, "offline --from file: %s%s", stdout.String(), stderr.String())
-	assert.Contains(t, stdout.String(), "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=1 writer pair(s), each ordered by waits; first: b2 -> s1-stop (sentinel) -> a4")
-	assert.Contains(t, stdout.String(), "CHECK CARDS OK cards=6 warned=files:1")
-	assert.Equal(t, "no", offline.changed)
+	offline := newTestApp(t)
+	offline.live = nil
+	offline.a.getenv = func(string) string { return "" }
+	offline.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
+		t.Fatal("check cards --from opened a store")
+		return nil, nil
+	}
+	code, out, errs := offline.do("check cards --from " + liveCards)
+	require.Equal(t, 0, code, "offline --from file: %s%s", out, errs)
+	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=1 writer pair(s), each ordered by waits; first: b2 -> s1-stop (sentinel) -> a4")
+	assert.Contains(t, out, "CHECK CARDS OK cards=6 warned=files:1")
+	assert.Equal(t, "no", offline.a.changed)
 
 	// 2. card --all --json directory export with briefs/<id>.md and trees/
 	saDir := filepath.Join(dir, "sa")
@@ -427,13 +432,11 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(saDir, "trees", "owner__repo__sprint__s1.txt"), []byte(treeText), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(saDir, "trees", "owner__repo__sprint__s2.txt"), []byte(treeText), 0o600))
 
-	stdout.Reset()
-	stderr.Reset()
-	code = offline.run([]string{"check", "cards", "--from", saDir, "--json"}, &stdout, &stderr)
-	require.Equal(t, 0, code, "offline --from dir: %s%s", stdout.String(), stderr.String())
-	assert.Contains(t, stdout.String(), `"clean":true`)
-	assert.Contains(t, stdout.String(), `"dry_run":true`)
-	assert.Contains(t, stdout.String(), `"warned":"files:1"`)
+	code, out, errs = offline.do("check cards --from " + saDir + " --json")
+	require.Equal(t, 0, code, "offline --from dir: %s%s", out, errs)
+	assert.Contains(t, out, `"clean":true`)
+	assert.Contains(t, out, `"dry_run":true`)
+	assert.Contains(t, out, `"warned":"files:1"`)
 
 	// 3. an unordered overlap in the export refuses with exit 1
 	ta.seed(nil, nil, []ntable.BatchMemberEntry{
@@ -443,11 +446,9 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	backupFile := filepath.Join(dir, "sprint.backup")
 	ta.ok("backup --file " + backupFile)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "trees", "owner__repo__sprint__s1.txt"), []byte(treeText), 0o600))
-	stdout.Reset()
-	stderr.Reset()
-	code = offline.run([]string{"check", "cards", "--from", backupFile}, &stdout, &stderr)
-	require.Equal(t, 1, code, "offline --from backup with unordered overlap: %s%s", stdout.String(), stderr.String())
-	assert.Contains(t, stdout.String(), "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
-	assert.Contains(t, stdout.String(), "CHECK CARDS FAILED kinds=files:1 warned=files:1")
+	code, out, errs = offline.do("check cards --from " + backupFile)
+	require.Equal(t, 1, code, "offline --from backup with unordered overlap: %s%s", out, errs)
+	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
+	assert.Contains(t, out, "CHECK CARDS FAILED kinds=files:1 warned=files:1")
 }
 
