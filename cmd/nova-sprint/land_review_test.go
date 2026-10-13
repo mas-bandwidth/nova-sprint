@@ -47,10 +47,10 @@ func TestLandReviewReportPinsTheHeadItPushed(t *testing.T) {
 		r.ok("rework s1-1 --fix 'replace the old head'")
 		r.deal(1)
 		r.ok("take --as m1 --limit 100")
-		r.ok("finish --as m1 s1-1.w2@1 --head " + newHead)
+		r.ok("finish --as m1 s1-1.w2@1 --head " + newHead + " --usage 'input=1000 output=100'")
 		r.ok("ask")
-		r.ok("read --as reader-a --ok --limit 100")
-		r.ok("read --as reader-b --ok --limit 100")
+		r.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+		r.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 		r.ok("accept --read-ok")
 	}
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")

@@ -23,11 +23,12 @@ func readRig(t *testing.T) *serverRig {
 	r := newServerRig(t,
 		"nova-sprint init --readers reader-m1,reader-x --members m1:2",
 		"nova-sprint set --read-cards off",
-		"nova-sprint add --stream s1 --count 3 --brief-file "+proBriefFile(t), // pro: read by both readers
-		"nova-sprint start",
-		"nova-sprint tick",
-		"nova-sprint tick",
 	)
+	configurePositiveServerTier(t, r, "pro", "reader-m1", "reader-x")
+	r.boss("nova-sprint add --stream s1 --count 3 --brief-file " + proBriefFile(t))
+	r.boss("nova-sprint start")
+	r.boss("nova-sprint tick")
+	r.boss("nova-sprint tick")
 	cards := taken(t, r.one("take", "--as", "m1", "--limit", "2", "--epoch", "0", "--json"))
 	require.Len(t, cards, 2)
 	for _, c := range cards {

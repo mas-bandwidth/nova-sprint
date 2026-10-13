@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,14 @@ import (
 func TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	// This fixture exercises an unpinned frontier card. The shared test fixture
+	// declares only flash, pro and heavy routes, so give this test its own valid
+	// funded frontier route rather than lowering or pinning the card's tier.
+	routes, _, err := ta.m.Routes(context.Background())
+	require.NoError(t, err)
+	ta.m.SetRoutes(append(routes.Routes, sprint.Route{
+		Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true,
+	}))
 	// two fleet readers that read heavy and no other tier; the store named on the line
 	ta.ok("init --redis mem:0 --readers reader-a,reader-b --members m1")
 	ta.ok("reader set --redis mem:0 reader-a --tiers heavy")

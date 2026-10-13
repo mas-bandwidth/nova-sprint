@@ -70,5 +70,7 @@ func TestCostReconcileSetsEachProvidersDayBesideTheRecords(t *testing.T) {
 	// no provider named: nothing read, nothing written
 	bare := newTestApp(t)
 	bare.ok("init --readers reader-a --members m1")
+	bare.m.SetRoutes(nil)
+	bare.m.SetProviders(nil)
 	assert.Equal(t, "COST RECONCILE OK providers=0 notes=0: the routes name no provider (nova-sprint routes)\n", bare.ok("cost reconcile"))
 }

@@ -131,6 +131,7 @@ func TestTheRunLoopPollsBalancesAndWhereShowsTheProvidersTable(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1")
+	ta.m.SetProviders(nil) // This poll fixture declares only the two routes below.
 	ta.m.SetRoutes([]sprint.Route{
 		{Name: "flash-or", Tier: "flash", Provider: "openrouter", Model: "m", Enabled: true},
 		{Name: "flash-oc", Tier: "flash", Provider: "opencode", Model: "m", Enabled: true},

@@ -20,10 +20,11 @@ func TestTheReadVerbChecksABrokenReadsBranchOnOrigin(t *testing.T) {
 	r := newServerRig(t,
 		"nova-sprint init --readers reader-m2 --members m1:1,m2:1",
 		"nova-sprint set --read-cards off",
-		"nova-sprint add --one --stream s1 --count 1 --brief-file "+writeBrief(t, "tier: flash\nREPO: mas-bandwidth/nova-tools"),
-		"nova-sprint start",
-		"nova-sprint tick",
 	)
+	configurePositiveServerTier(t, r, "flash", "reader-m2")
+	r.boss("nova-sprint add --one --stream s1 --count 1 --brief-file " + writeBrief(t, "tier: flash\nREPO: mas-bandwidth/nova-tools"))
+	r.boss("nova-sprint start")
+	r.boss("nova-sprint tick")
 	r.queue("reader-m2")
 	done := 0
 	for i := 0; i < 4 && done == 0; i++ {
@@ -50,7 +51,7 @@ func TestTheReadVerbChecksABrokenReadsBranchOnOrigin(t *testing.T) {
 		assert.Equal(t, "refs/heads/sprint/s1-1.w1.g*", pattern)
 		return map[string]string{holds: head, "sprint/s1-1.w1.g8.e0": strings.Repeat("f", 40)}, nil
 	}
-	res := r.one("read", "--as", "reader-m2", "--broken", asked[0], "--epoch", "0", "--finding", "RULE: the branch this read names is not on origin; there is no commit to judge")
+	res := r.one("read", "--as", "reader-m2", "--broken", asked[0], "--epoch", "0", "--finding", "RULE: the branch this read names is not on origin; there is no commit to judge", "--usage", "input=100 output=10")
 	require.Equal(t, 0, res.Code, res.Stderr)
 	require.Len(t, tipped, 1, "one tip read for the one read")
 	assert.True(t, strings.HasSuffix(tipped[0], "mas-bandwidth/nova-tools.git sprint/s1-1.w1.g1.e0"), "the tip of the branch the read named, in the card's repository: %s", tipped[0])

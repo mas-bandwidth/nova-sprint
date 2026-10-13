@@ -123,7 +123,7 @@ func TestTheCoordinatorsMergeNeedsNoEpoch(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1 s1-2.w1@1 s1-3.w1@1")
 	ta.ok("ask")
 	for _, r := range []string{"reader-a", "reader-b"} {
-		ta.ok("read --as " + r + " --ok --limit 10")
+		ta.ok("read --as " + r + " --ok --limit 10 --usage 'input=1000 output=100'")
 	}
 	code, out, errs := ta.raw("accept --read-ok")
 	require.Equal(t, 0, code, "accept with no --epoch: %d\n%s%s", code, out, errs)
@@ -174,8 +174,9 @@ func TestInboxJSONCarriesTheJudgmentsToActOn(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream s1 --count 3")
-	ta.ok("add --stream s2 --count 1 --one")
+	brief := writeBrief(t, simulatedTwinBrief())
+	ta.ok("add --stream s1 --count 3 --brief-file " + brief)
+	ta.ok("add --stream s2 --count 1 --one --brief-file " + brief)
 	ta.deal(4)
 	ta.failOnce("m1", "s1-1.w1@1", "the tests went red")
 	ta.failOnce("m1", "s1-2.w1@1", "the tests went red")

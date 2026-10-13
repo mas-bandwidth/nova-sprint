@@ -43,7 +43,7 @@ func TestAMemberRunsTheWidthOfItsFleetRow(t *testing.T) {
 	end := func(card string) {
 		c := rn.children[card]
 		c.mu.Lock()
-		c.done, c.res = true, member.Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "did it"}
+		c.done, c.res = true, member.Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "did it", Usage: "input=100 cache_read=0 cache_write=0 output=10 model=simulation/twin"}
 		c.mu.Unlock()
 	}
 	end(rn.packets[0].Card)

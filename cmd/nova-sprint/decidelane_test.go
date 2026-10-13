@@ -78,8 +78,8 @@ func TestTheDecideLaneGradesRecordsAndAttachesOutcomes(t *testing.T) {
 	assert.Contains(t, ta.ok("card s1-1"), "decided=done:0.90", "the ATTEMPT line shows the decision")
 	for range 2 { // reads are asked one at a time: the first, then the second once ok
 		ta.ok("ask --limit 100")
-		ta.ok("read --as reader-a --ok --limit 100")
-		ta.ok("read --as reader-b --ok --limit 100")
+		ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+		ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	}
 	ta.ok("drop s1-3 --one --reason 'out of scope'")
 	assert.Contains(t, round(), "DECIDE recorded=1 graded=0 written=0 attached=1", "the decision recorded; s1-3's grade labelled dropped, read unplaced")

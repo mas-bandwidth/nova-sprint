@@ -41,8 +41,8 @@ func (ta *testApp) returnedForARead(seatAccept bool) {
 	require.NotEmpty(ta.t, q.Cards)
 	ta.ok("finish --as m1 " + q.Cards[0].ID + "@" + strconv.Itoa(q.Cards[0].Gen))
 	ta.ok("ask --limit 100")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	ta.ok("accept s1-1")
 	ta.shortReads("s1-1", "reader-a")
 	ta.ok("repair")
@@ -51,7 +51,7 @@ func (ta *testApp) returnedForARead(seatAccept bool) {
 	if seatAccept {
 		ta.ok("stream set s1 --seat-accept on")
 	}
-	ta.ok("read --as reader-c --ok --limit 100")
+	ta.ok("read --as reader-c --ok --limit 100 --usage 'input=1000 output=100'")
 }
 
 // A card whose two reads have both passed is merging after one tick, with no seat verb,

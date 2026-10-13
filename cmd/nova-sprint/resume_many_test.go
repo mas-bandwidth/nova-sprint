@@ -20,7 +20,7 @@ func TestResumeTakesSeveralStreams(t *testing.T) {
 		ta.ok("take --as m1 --limit 1")
 		ta.ok("finish --as m1 " + s + "-1.w1@1")
 		ta.ok("ask")
-		ta.ok("read --as reader-a --ok --limit 5")
+		ta.ok("read --as reader-a --ok --limit 5 --usage 'input=1000 output=100'")
 		ta.ok("accept --stream " + s)
 		ta.ok("merge --stream " + s + " --conflict " + s + "-1")
 	}
@@ -52,7 +52,7 @@ func TestResumeTakesSeveralStreams(t *testing.T) {
 	ta3.ok("take --as m1 b-1.w1@1")
 	ta3.ok("finish --as m1 b-1.w1@1")
 	ta3.ok("ask")
-	ta3.ok("read --as reader-a --ok --limit 5")
+	ta3.ok("read --as reader-a --ok --limit 5 --usage 'input=1000 output=100'")
 	ta3.ok("accept --stream b")
 	ta3.ok("merge --stream b --conflict b-1")
 	code, out, errs = ta3.do("resume --stream a,b --did 'rebased b-1'")

@@ -50,6 +50,7 @@ func clientOf(t *testing.T, r *serverRig, actor string, sent *[][]string) (*app,
 func TestTheCoordinatorsVerbsRunOnTheServer(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t)
+	configurePositiveServerTier(t, r, "flash")
 	var sent [][]string
 	boss := coordinatorAt(t, r, "boss", &sent)
 	for _, args := range [][]string{
@@ -168,9 +169,13 @@ func TestAWatchThroughTheServerSendsOneReadAFrame(t *testing.T) {
 func TestAnInboxWaitThroughTheServerPollsForATickEnd(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
-		"nova-sprint set --read-cards off",
-		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
-		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
+		"nova-sprint set --read-cards off")
+	configurePositiveServerTier(t, r, "pro", "reader-a", "reader-b")
+	for _, line := range []string{"nova-sprint add --stream s1 --count 1 --one --brief-file " + proBriefFile(t),
+		"nova-sprint start", "nova-sprint tick", "nova-sprint tick",
+		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1"} {
+		r.boss(line)
+	}
 	clock := r.a.now()
 	r.a.now = func() time.Time { return clock } // the server's clock, still: what it prints is the same at every read
 	var sent [][]string
@@ -214,6 +219,7 @@ func TestAnInboxWaitThroughTheServerPollsForATickEnd(t *testing.T) {
 func TestACoordinatorWithNoStoreRunsTheSprintThroughTheServer(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t)
+	configurePositiveServerTier(t, r, "flash")
 	var sent [][]string
 	boss := coordinatorAt(t, r, "boss", &sent)
 	for _, line := range []string{"init --readers reader-a,reader-b --members m1:2", "add --stream s1 --count 2", "start", "where", "inbox", "card s1-1", "log --stream s1", "clear --confirm sprint", "where"} {

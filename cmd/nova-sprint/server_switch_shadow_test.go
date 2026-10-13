@@ -36,9 +36,10 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	require.NoError(t, err)
 	dir := t.TempDir()
 	twinFile := filepath.Join(dir, "sprint.twin")
+	brief := writeSimulationBrief(t, dir)
 	cliTwin(t, exe, twinFile,
 		[]string{"init", "--readers", "reader-a", "--members", "m1"},
-		[]string{"add", "--stream", "s1", "--count", "1", "--one"},
+		[]string{"add", "--stream", "s1", "--count", "1", "--one", "--brief-file", brief},
 		[]string{"start"})
 	twinBefore, err := os.ReadFile(twinFile)
 	require.NoError(t, err)
