@@ -1563,7 +1563,7 @@ burst spreads over equal readers in cursor order and never exceeds a
 unit's room (`DealAhead` times its width, reads at half a slot); a unit that is down, does
 not serve the tier, has no room, refused the read at staging, or already read that primary
 at the attempt is skipped (`TestReadCardDealUsesAPersistedRoundRobinCursor`,
-`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`).
+`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`). A read card is created only at an id the deal has seen absent; a refused create drops that read, never the deal.
 
 ### one-lane-per-card.w1: one lane per card
 
@@ -5820,7 +5820,10 @@ hours. The tick's overdue part runs the pass (internal/sprint coordinator_pass.g
   pass is the next, 10 minutes on, and every 10 minutes after while it holds, so the
   coordinator is never pushed twice in one tick for one late judgment. The pass's own
   judgments are not counted: each is raised again on its own (and, like every judgment,
-  gets its one overdue line).
+  gets its one overdue line). A judgment quieted by an unfunded tier — every card it holds
+  is tier-blocked, or it is the tier's own NNoRoute judgment whose cause is rests — is never
+  counted overdue: tickOverdue writes no overdue line, and the pass leaves it out of the
+  behind judgment until a live route of the tier returns.
 - **an up friend has an empty row while cards wait** (`an up friend has an empty row
   while cards wait`), one on each friend who is up and not held, whose row has been
   empty (no ready card and no working card) for 10 minutes of running time

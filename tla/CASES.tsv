@@ -182,6 +182,8 @@ MCDirtyTickHeldStream.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small
 MCDirtyTickBrokenDealHeldStream.cfg	MCDirtyTick.tla	invariant	HeldStreamNotDealt	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReadsFirst.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenWorkFirst.cfg	MCDirtyTick.tla	action	ReadsBeforeWork	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickReadRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickBrokenReadBlocks.cfg	MCDirtyTick.tla	invariant	OneRefusedReadNeverBlocksWork	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReader.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickReaderAway.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickW21.cfg	MCDirtyTick.tla	invariant	ReadsStandOnReadersUp	ignore-terminal	dirtytick-witnesses	required	-
@@ -400,6 +402,7 @@ MCCoordinatorPassBrokenReopen.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnE
 MCCoordinatorPassBrokenNoClose.cfg	MCCoordinatorPass.tla	invariant	ClosedWhenCleared	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBehind.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenDoublePush.cfg	MCCoordinatorPass.tla	invariant	OnePushATick	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenCountQuiet.cfg	MCCoordinatorPass.tla	invariant	NotBehindOnQuiet	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassEmpty.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenNoReset.cfg	MCCoordinatorPass.tla	invariant	EmptyAWholeWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassPin.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-

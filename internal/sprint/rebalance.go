@@ -422,7 +422,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 			}
 			cursor.moved(name)
 			id := readCardIDFor(cards, pr.ID, attempt, best.name)
-			if id == "" {
+			if id == "" || (s != nil && s.Fleet != nil && s.Fleet.Card(id) != nil) {
 				continue
 			}
 			fields := map[string]string{}
