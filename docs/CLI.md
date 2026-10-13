@@ -593,8 +593,8 @@ naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 11, the brief checks).
 
 The `brief check`'s `tla-records` rule reads the card's base tree too, and a repository
-whose base holds no `tla/CASES.tsv` holds no models and is not held to it: the same test
-of the tree the lander's run-record check reads (`sprint.HoldsCases`).
+whose base holds no `tla/CASES.tsv` holds no models and is not held to it, the same file
+the lander's run-record check reads.
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a

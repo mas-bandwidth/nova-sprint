@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,34 +116,35 @@ func boolToInt(b bool) int {
 }
 
 // The tla-records rule reads the card's base tree, as the lander does (internal/sprint/
-// land_records.go, sprint.HoldsCases): a repository with no tla/CASES.tsv holds no models,
-// so a model card with no tlacheck STEP checks clean; one whose base holds the cases table
-// is refused as today; and a base no tree was read for is never a clean pass.
+// land_records.go, which reads tlc.CasesFile): a repository with no tla/CASES.tsv holds
+// no models, so a model card with no tlacheck STEP checks clean; one whose base holds the
+// cases table is refused as today; and a base no tree was read for is never a clean pass.
 func TestBriefCheckTlaRecordsSkipsARepoWithNoCases(t *testing.T) {
 	t.Parallel()
 	const modelCard = "RESULT: c sha=0123456789ab tier: frontier\nPATHS: tla/Foo.tla\nTHE TASK. Edit the model.\n"
 	for _, tc := range []struct {
-		name string
-		tree []string
-		skip bool
+		name     string
+		tree     []string
+		haveTree bool
+		refused  bool
 	}{
-		{"a base tree with no cases table skips the rule", []string{"README.md", "tla/Foo.tla"}, true},
-		{"a base tree that holds the cases table is refused", []string{"tla/CASES.tsv", "tla/Foo.tla", "tla/MCFoo.cfg"}, false},
+		{"a base tree with no cases table skips the rule", []string{"README.md", "tla/Foo.tla"}, true, false},
+		{"a base tree that holds the cases table is refused", []string{"tla/CASES.tsv", "tla/Foo.tla", "tla/MCFoo.cfg"}, true, true},
+		{"a base no tree was read for keeps the rule", nil, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			why := tlaRecordsWhy(briefCheck{id: "c", brief: modelCard}, tc.tree, true)
-			if tc.skip {
-				require.Empty(t, why, "the base holds no cases table, so the rule does not apply")
+			var stderr bytes.Buffer
+			code := briefTlaRecordsHold(&stderr, briefCheck{id: "c", brief: modelCard}, tc.tree, tc.haveTree)
+			if !tc.refused {
+				require.Equal(t, 0, code, "the base holds no cases table, so the rule does not apply: %s", stderr.String())
+				require.Empty(t, stderr.String(), "the base holds no cases table, so the rule prints nothing")
 				return
 			}
-			require.Contains(t, why, "tla/Foo.tla")
-			require.Contains(t, why, "does not cover tla/RUNS.tsv")
-			require.Contains(t, why, "names no STEP")
+			require.Equal(t, 2, code, stderr.String())
+			require.Contains(t, stderr.String(), "tla/Foo.tla")
+			require.Contains(t, stderr.String(), "does not cover tla/RUNS.tsv")
+			require.Contains(t, stderr.String(), "names no STEP")
 		})
 	}
-	t.Run("a base no tree was read for keeps the rule", func(t *testing.T) {
-		t.Parallel()
-		require.Contains(t, tlaRecordsWhy(briefCheck{id: "c", brief: modelCard}, nil, false), "does not cover tla/RUNS.tsv")
-	})
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
 )
 
 // brief check runs every check add runs, over every brief, and collects every
@@ -197,20 +199,52 @@ func briefIDSizeFindings(file, id, briefText string) []briefFinding {
 }
 
 // briefStoreFreeChecks runs the checks that need no store: the TLA+ records
-// (holdTlaRecords) and the PATHS admission (holdPathsAdmit), each once per
-// brief with its own buffer as stderr.
+// (holdTlaRecords, through the base tree briefTlaRecordsHold reads) and the
+// PATHS admission (holdPathsAdmit), each once per brief with its own buffer as
+// stderr.
 func (a *app) briefStoreFreeChecks(items []briefItem) []briefFinding {
 	var out []briefFinding
 	for _, it := range items {
 		b := briefCheck{id: it.id, brief: it.text}
+		tree, haveTree := a.briefBaseTree(it)
 		out = append(out, collectHold(it.file, it.id, "tla-records", chkTla, func(w io.Writer) int {
-			return a.holdTlaRecords("brief check", w, b)
+			return briefTlaRecordsHold(w, b, tree, haveTree)
 		})...)
 		out = append(out, collectHold(it.file, it.id, "paths-admit", chkPathsAdmit, func(w io.Writer) int {
 			return a.holdPathsAdmit("brief check", w, b)
 		})...)
 	}
 	return out
+}
+
+// briefTlaRecordsHold is the brief check's tla-records rule once the card's base
+// tree is known: the tree was read and holds no tla/CASES.tsv (tlc.CasesFile,
+// the file the lander's run-record check reads, internal/sprint/land_records.go),
+// so the repository holds no models and the rule does not apply and prints
+// nothing; else holdTlaRecords runs unchanged. A base no tree was read for
+// (haveTree false) keeps the rule, never a skip for a tree no one read.
+func briefTlaRecordsHold(w io.Writer, b briefCheck, tree []string, haveTree bool) int {
+	if haveTree && !slices.Contains(tree, "tla/"+tlc.CasesFile) {
+		return 0
+	}
+	return holdTlaRecords("brief check", w, b)
+}
+
+// briefBaseTree is the card's base tree as repo-relative paths and whether one was
+// read: the lander's clone of its REPO at the BASE tip (admissionTree, the same
+// tree add's PATHS admission reads). A brief that names no REPO or no BASE, or
+// whose base cannot be read, is no tree, and the caller keeps the tla-records rule
+// rather than skip one it never read.
+func (a *app) briefBaseTree(it briefItem) ([]string, bool) {
+	cb := swarm.ReadCardBase([]byte(it.text))
+	if cb.Named == "" || cb.Ref == "" {
+		return nil, false
+	}
+	tree := a.admissionTree(context.Background(), &lander{a: a}, cb)
+	if tree.Missing != "" {
+		return nil, false
+	}
+	return tree.Files, true
 }
 
 // briefStoreChecks runs every store check add runs, in add's order, each once
