@@ -107,7 +107,9 @@ var Defaults = []Default{
 	// empty field of a row with a declared default is read as it (ReadFill), so an unapplied
 	// sprint row works as an applied default one (the cold reads of #190, 2026-10-13)
 	barRow(config.FieldGitIdentity, "an unapplied git_identity commits as the machine identity, never the host's"),
-	barRow(config.FieldMaxAttempts, "attempts before the card is a judgment"),
+	// max_attempts is not filled: its consumer reads empty as AttemptsDefault, the same 4, and
+	// says so (AttemptsCapSource: "the default"), where a fill would claim nova-config set it
+	barRowReadAsDefault(config.FieldMaxAttempts, "attempts before the card is a judgment; empty reads AttemptsDefault"),
 	barRow(config.FieldDecideBounce, "the decide read's bounce bar"),
 	barRow(config.FieldDecideReview, "the decide read's review bar"),
 	barRow(config.FieldDecideAttemptNoResult, "empty routes nothing on the attempt decision"),
@@ -235,42 +237,19 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 	return p, resets
 }
 
-// SettingsLine is the SETTINGS line `where` prints (cmd/nova-sprint reads.go) of the work
-// table's properties props: each row's value, "(default)" when it holds its default, "(set)"
-// when the coordinator set it away from it, and "(absent)" when the epoch holds none, which
-// its accessor reads as its default: the first epoch after init (init writes none), a clear
-// that stopped before its set-defaults step (run clear again), or a store from before it.
-func SettingsLine(props map[string]string) string {
-	var parts []string
-	for _, d := range Defaults {
-		if d.Home != HomeProp && d.Home != HomeCarry {
-			continue
-		}
-		v, ok := props[d.Name]
-		switch {
-		case !ok:
-			parts = append(parts, d.Name+"="+orNone(d.Value)+" (absent)")
-		case v == d.Value:
-			parts = append(parts, d.Name+"="+v+" (default)")
-		default:
-			parts = append(parts, d.Name+"="+v+" (set)")
-		}
-	}
-	return "SETTINGS " + strings.Join(parts, " ")
-}
-
-func orNone(v string) string {
-	if v == "" {
-		return "none"
-	}
-	return v
-}
-
 // barRow is a nova-config sprint row field's row: its declared default (config.KindSprint),
 // filled on read when the field is empty and a default is declared.
 func barRow(field, why string) Default {
 	v := sprintRowDefault(field)
 	return Default{Name: field, Home: HomeBar, Value: v, ReadFill: v != "", Why: why}
+}
+
+// barRowReadAsDefault is a sprint row field's row whose consumer reads its empty value as
+// the declared default by itself, so it is not filled on read.
+func barRowReadAsDefault(field, why string) Default {
+	d := barRow(field, why)
+	d.ReadFill = false
+	return d
 }
 
 // sprintRowDefault is the default nova-config declares for the sprint row's field, "" when

@@ -1384,8 +1384,6 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")
 	}
-	// every setting, its value and whether it is the working default (sprint.Defaults)
-	b.WriteString(sprint.SettingsLine(shapes[0].Props) + "\n")
 	v.ReadsNeeded = sprint.ReadTierDefault
 	if n, ok := sprint.ReadsSetting(shapes[0].Props); ok {
 		v.ReadsNeeded = n

@@ -208,7 +208,7 @@ func undeclaredBars(names map[string]string) []string {
 // is read from a sprint row field with a HomeBar row in sprint.Defaults, every field of
 // nova-config's sprint row but the coordinator has a row, and each row's Value is the
 // default nova-config declares, filled on read when the field is empty (git_identity,
-// max_attempts, decide_bounce, decide_review). Reversed witness: a field naming no row is
+// decide_bounce, decide_review; max_attempts reads its own default). Reversed witness: a field naming no row is
 // red.
 func TestEveryBarHasADeclaredDefault(t *testing.T) {
 	t.Parallel()
@@ -229,12 +229,12 @@ func TestEveryBarHasADeclaredDefault(t *testing.T) {
 		require.True(t, ok, "nova-config's sprint row field %s has no row", name)
 		f, _ := k.Field(name)
 		assert.Equal(t, f.Default, d.Value, "%s: the row is nova-config's declared default", name)
-		assert.Equal(t, f.Default != "", d.ReadFill, "%s: filled on read exactly when a default is declared", name)
+		assert.Equal(t, f.Default != "" && name != config.FieldMaxAttempts, d.ReadFill, "%s: filled on read exactly when a default is declared (max_attempts reads its own)", name)
 		if d.ReadFill {
 			filled = append(filled, name)
 		}
 	}
-	assert.ElementsMatch(t, []string{config.FieldGitIdentity, config.FieldMaxAttempts, config.FieldDecideBounce, config.FieldDecideReview}, filled)
+	assert.ElementsMatch(t, []string{config.FieldGitIdentity, config.FieldDecideBounce, config.FieldDecideReview}, filled)
 
 	// the read-side default fills only the rows that say so
 	full := Bars{}.WithDefaults()

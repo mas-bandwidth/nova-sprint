@@ -139,9 +139,6 @@ func TestEveryAccessorReadsItsDefaultWhenAbsent(t *testing.T) {
 		_, on := bare.alarmSetting(a.prop)
 		assert.False(t, on, "%s: the first epoch, never cleared, keeps off until set", a.prop)
 	}
-	assert.True(t, strings.HasPrefix(SettingsLine(full.Work.Props()), "SETTINGS read_cards=on (default)"), SettingsLine(full.Work.Props()))
-	assert.Contains(t, SettingsLine(bare.Work.Props()), "read_cards=on (absent)")
-	assert.Contains(t, SettingsLine(bare.Work.Props()), "sprint_base=none (absent)")
 }
 
 // SetDefaults writes every property row that is ABSENT, never one the new epoch already

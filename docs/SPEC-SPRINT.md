@@ -7789,12 +7789,10 @@ of the old epoch's `prop` values is carried, and no clear ever turns an alarm of
 landed inside the clear, or a clear that stopped before its step) reads each absent
 setting as its default, the alarms included. The first epoch, which init leaves
 with no property, keeps each accessor's own absent case (the alarms off until set).
-`where` prints one `SETTINGS` line: each property, its value and whether it is the
-default, set, or absent.
 
 The `bar` rows are nova-config's, and a clear never writes them (an apply would
 undo it). Their default is read-side: an empty field with a declared default
-(git_identity, max_attempts, decide_bounce 0.5, decide_review 0.3) is read as it
+(git_identity, decide_bounce 0.5, decide_review 0.3; max_attempts reads its own default, 4) is read as it
 on every store (store.Bars.WithDefaults, as the snapshot and the lander read it).
 An unapplied `git_identity` commits as `nova-sprint <nova-sprint@example.invalid>`,
 never the host's, and `doctor` warns `git_identity default, sprint row unapplied`.
