@@ -554,7 +554,7 @@ func busOptions(getenv func(string) string) redisconn.Options {
 	addr := getenv(busRedisEnv)
 	user := getenv(busUserEnv)
 	o := redisconn.Options{Addr: addr, Env: redisconn.Env{User: busUserEnv}}
-	if user != "" {
+	if user != "" || getenv(busPasswordEnvEnv) != "" {
 		o.Env.PasswordEnv = busPasswordEnvEnv
 	}
 	return o

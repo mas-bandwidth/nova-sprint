@@ -236,7 +236,11 @@ func TestSeatEnvironmentKeepsMetadataAndHelpUsable(t *testing.T) {
 	for _, args := range [][]string{nil, {"help"}, {"version"}, {"--version"}, {"where", "--help"}} {
 		assert.False(t, seatEnvironmentNeeded(args))
 	}
+	assert.False(t, seatEnvironmentNeeded([]string{"unknown-verb"}))
+	assert.False(t, seatEnvironmentNeeded([]string{"where", "--unknown-flag"}))
 	assert.True(t, seatEnvironmentNeeded([]string{"where"}))
+	assert.True(t, seatEnvironmentNeeded([]string{"hold", "m1", "--reason", "-h"}), "a string value is not a request for help")
+	assert.True(t, seatEnvironmentNeeded([]string{"hold", "--", "-h"}), "words after -- are not flags")
 }
 
 type seatFileInfo struct {
@@ -257,4 +261,109 @@ func TestSeatEnvironmentRejectsOtherOwnerWithoutHostPrivileges(t *testing.T) {
 	st := *fi.Sys().(*syscall.Stat_t)
 	st.Uid++
 	assert.False(t, seatFileOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
+}
+
+func TestSeatEnvironmentKeepsLegacyProcessAddressAheadOfFile(t *testing.T) {
+	t.Parallel()
+	a := seatEnvApp(t, `{"version":1,"environment":{"NOVA_SPRINT_REDIS":"file:6380"}}`)
+	base := a.getenv
+	a.getenv = func(k string) string {
+		if k == "NOVA_REDIS_ADDR" {
+			return "legacy-process:6380"
+		}
+		return base(k)
+	}
+	require.NoError(t, a.loadSeatEnvironment())
+	_, c := a.verbSetup("where")
+	assert.Equal(t, "legacy-process:6380", c.redis)
+}
+
+func TestSeatEnvironmentExplicitPasswordReferenceKeepsDefaultUser(t *testing.T) {
+	t.Parallel()
+	l := storeLogin{Redis: "seat:6380", User: "coordinator", Store: "/store", As: "seat", Key: "/key", Sops: "sops", Secret: "FILE_PASSWORD"}
+	b, err := json.Marshal(seatEnvironment{Version: 1, Login: &l})
+	require.NoError(t, err)
+	a := seatEnvApp(t, string(b))
+	base := a.getenv
+	a.getenv = func(k string) string {
+		switch k {
+		case "NOVA_SPRINT_REDIS_PASSWORD_ENV":
+			return "EXPLICIT_PASSWORD"
+		case "EXPLICIT_PASSWORD":
+			return "explicit-default-user-value"
+		}
+		return base(k)
+	}
+	require.NoError(t, a.loadSeatEnvironment())
+	a.seatLoginOn()
+	reads := 0
+	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
+		reads++
+		return secrets.NewSecret("file-coordinator-value"), nil
+	}
+	o, env, err := a.storeOptions(l.Redis)
+	require.NoError(t, err)
+	resolved, err := redisconn.Resolve(o, env)
+	require.NoError(t, err)
+	assert.Empty(t, resolved.User, "an explicit password reference without a user means default-user auth")
+	assert.Equal(t, "explicit-default-user-value", env(resolved.PasswordEnv))
+	assert.Zero(t, reads, "explicit auth must never resolve the recorded coordinator secret")
+}
+
+func TestSeatEnvironmentRejectsUntrustedConfigDirectory(t *testing.T) {
+	t.Parallel()
+	a := seatEnvApp(t, `{"version":1}`)
+	path, err := a.seatEnvironmentPath()
+	require.NoError(t, err)
+	dir := filepath.Dir(path)
+	require.NoError(t, os.Chmod(dir, 0775))
+	require.Error(t, a.loadSeatEnvironment())
+	assert.Nil(t, a.seatEnvironment)
+	require.NoError(t, os.Chmod(dir, 0700))
+	require.NoError(t, a.loadSeatEnvironment())
+	fi, err := os.Lstat(dir)
+	require.NoError(t, err)
+	st := *fi.Sys().(*syscall.Stat_t)
+	st.Uid++
+	assert.False(t, seatDirectoryOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
+}
+
+func TestSeatEnvironmentDoesNotReadRelativeHomeConfig(t *testing.T) {
+	t.Parallel()
+	a := newApp(func(string) string { return "" })
+	a.home = func() (string, error) { return ".", nil }
+	_, err := a.seatEnvironmentPath()
+	require.Error(t, err)
+}
+
+func TestSeatEnvironmentExplicitBusPasswordReferenceKeepsDefaultUser(t *testing.T) {
+	t.Parallel()
+	l := storeLogin{Redis: "seat:6380", User: "coordinator", Store: "/store", As: "seat", Key: "/key", Sops: "sops", Secret: "FILE_PASSWORD"}
+	b, err := json.Marshal(seatEnvironment{Version: 1, Login: &l})
+	require.NoError(t, err)
+	a := seatEnvApp(t, string(b))
+	base := a.getenv
+	a.getenv = func(k string) string {
+		switch k {
+		case "NOVA_BUS_REDIS":
+			return l.Redis
+		case "NOVA_BUS_REDIS_PASSWORD_ENV":
+			return "EXPLICIT_PASSWORD"
+		case "EXPLICIT_PASSWORD":
+			return "explicit-default-user-value"
+		}
+		return base(k)
+	}
+	require.NoError(t, a.loadSeatEnvironment())
+	a.seatLoginOn()
+	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
+		t.Fatal("explicit bus password reference must not read the recorded secret")
+		return secrets.Secret{}, nil
+	}
+	o, env, err := a.seatBusOptions(busOptions(a.getenv))
+	require.NoError(t, err)
+	resolved, err := redisconn.Resolve(o, env)
+	require.NoError(t, err)
+	assert.Empty(t, resolved.User)
+	assert.Equal(t, "explicit-default-user-value", env(resolved.PasswordEnv))
 }

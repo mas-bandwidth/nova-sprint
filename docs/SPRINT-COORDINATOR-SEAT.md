@@ -84,7 +84,10 @@ contains no password. It applies only to its exact Redis address, for either
 sprint or bus. An existing `login.json` takes precedence over this login.
 Explicit command flags take precedence over process environment variables,
 which take precedence over file endpoint defaults. Explicit process login
-variables take precedence over recorded credentials.
+variables take precedence over recorded credentials. A password reference
+without an explicit ACL user uses the default user and never inherits the
+recorded user. The directory holding this profile must also be owned by the
+current user and must not be writable by other users.
 
 The optional `forge_identity` is an absolute path to an existing GitHub CLI
 configuration directory. It is a reference, not a token or an actor assertion.
