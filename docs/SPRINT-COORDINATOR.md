@@ -13,8 +13,8 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
 
 ### A first live start
 
-Read the [first-lap note](FIRST-LAP.md) for installation checks and the current
-twin limitation. For a live sprint, start with one server beside the Redis
+Read the [first-lap note](FIRST-LAP.md) for installation checks and a local
+twin walkthrough. For a live sprint, start with one server beside the Redis
 store and use the coordinator actor named by the sprint. In the interactive
 coordinator shell, set `NOVA_SPRINT_SERVER` to that server's local address,
 `NOVA_BUS_REDIS` to the bus store, and `NOVA_SPRINT_ACTOR` to the coordinator.

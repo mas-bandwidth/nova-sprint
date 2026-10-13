@@ -5,10 +5,9 @@ Moved from nova-tools docs/TESTS.md on 2026-10-04.
 ## nova-sprint
 
 This is a test-binary transcript, not an installed first run. The package's
-test-only hook seam allows the coordinator card flow to run over a local twin;
-the production command requires a live, proven sprint and bus hook before
-admitting a coordinator card. See the
-[first-lap note](FIRST-LAP.md) for the current adopter path and limitation.
+test-only hook seam makes this transcript deterministic over a local twin;
+the installed-command walkthrough is in the
+[first-lap note](FIRST-LAP.md).
 In the test binary, `--redis mem:<file>` loads an in-memory twin from a file
 and saves it after each command. Commands run one at a time. This transcript
 follows the card flow in `nova-sprint help`, with

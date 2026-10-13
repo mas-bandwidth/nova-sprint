@@ -15,14 +15,12 @@ make go to the coordinator's inbox. The contract is
 
 ### First run
 
-The no-Redis twin recipe still printed by `nova-sprint help` and recorded in
-the test transcript is currently blocked at `add`: a non-test command requires
-a live, proven sprint and bus hook before admitting a coordinator card. The
-test transcript runs with a test-only hook seam, so it is not evidence that the
-recipe works in an installed command. See the
-[first-lap note](FIRST-LAP.md) for the current adopter path and the reproduced
-limitation. `--redis mem:<file>` still selects a local file-backed twin for
-commands that do not require that live hook; it does not satisfy the hook gate.
+The [first-lap note](FIRST-LAP.md) walks an installed command through a local
+file-backed twin, including a reader heartbeat before the tick asks for a
+review. The test transcript below is still produced by the test binary and is
+not proof of the installed command's behavior. `--redis mem:<file>` selects a
+local twin even when a server is configured; see the
+[environment reference](ENVIRONMENT.md) for connection precedence.
 
 ### Landed series
 

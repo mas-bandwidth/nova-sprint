@@ -44,10 +44,8 @@ Ask your AI friend:
 > Let's agree on the repository, model access, capacity, and what you can decide
 > before adding more work.
 
-The **[first lap](FIRST-LAP.md)** starts with version and help checks. The
-no-Redis card-flow recipe still shown by `nova-sprint help` is currently blocked
-by the required coordinator hook, so use a configured sprint for a first card.
-A live team also needs a sprint server, a Redis store for shared sprint state,
+The **[first lap](FIRST-LAP.md)** starts with version and help checks and then
+walks one card through a local twin. A live team also needs a sprint server, a Redis store for shared sprint state,
 a separate bus Redis store for hook communication, PostgreSQL for durable fleet
 configuration through `nova-config`, configured workers and reviewers, and
 model credentials.
