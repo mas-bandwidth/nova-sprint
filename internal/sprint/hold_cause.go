@@ -18,19 +18,19 @@ import (
 // tla/HoldCause.tla.
 //
 //   - A member's hold carries a cause (hold --cause): a judgment (its alias j<n> or its id,
-//     kept as the id the alias named, so an alias of a later epoch never stands for it), or
-//     a doctor check on that member (doctor:<check>). The tick ends the hold in the step
-//     that sees the cause end (holdCauseClear): the judgment answered or retired, or the
-//     doctor's pass of that check on that member recorded after the hold
-//     (DoctorPassPlan). A check passes on a member only when no line of it keeps the hold
-//     (doctorFailKeeps): a FAIL, or a line that measured nothing (DoctorCheck.Unmeasured),
-//     that is the member's own (DoctorCheck.Member) or global (all, identity, hook,
-//     judgments, a provider, a tier, a route: no member's, failing for every member at
-//     once); only a line the generator marked as another member's is that member's alone.
-//     Scope and measurement are the generator's fields, never the subject's spelling or the
-//     evidence text. The release is a line of
-//     the log, "released: cause <x> resolved", addressed to the seat (NHoldReleased); a
-//     member that beats is up in that step.
+//     kept as the id the alias named, so an alias of a later epoch never stands for it).
+//     The tick ends the hold in the step that sees the cause end (holdCauseClear): the
+//     judgment answered or retired. The release is a line of the log, "released: cause <x>
+//     resolved", addressed to the seat (NHoldReleased); a member that beats is up in that
+//     step.
+//     A doctor check is no cause in v1.2.x (DoctorCauseDeferred): hold --cause doctor:<check>
+//     is refused, because which doctor lines speak for one member is not yet declared (three
+//     cold reads of #206 found the classifier wrong each time: a global line read as
+//     another member's, an unmeasured line read as a pass, a held loop skipped by its own
+//     check). A doctor cause carried on a control card from an earlier build is no live
+//     cause: the tick never ends that hold, unhold does, and it is reported as a hold with
+//     no cause. The release from a declared check-scope table is the v1.3 card
+//     a-doctor-hold-releases-from-a-declared-check-scope-table.
 //     A waited judgment is parked, not resolved: while its wait stands (an acknowledgement
 //     with a review time), and once it is raised again when the wait runs out, the hold
 //     stays (judgmentLive). The machine's idle-reap judgment is a condition the tick keeps
@@ -44,8 +44,7 @@ import (
 //     coordinator, the sync, the probe, the environment, the adopt): a mark is no cause.
 //   - A clear carries a member's hold with its cause, its reason and who made it
 //     (RestoreShape, Shape.HeldFields): a judgment of the epoch before is retired by the
-//     clear, so the first tick of the new epoch ends that hold and says so; a doctor cause
-//     stands until the doctor passes the member again.
+//     clear, so the first tick of the new epoch ends that hold and says so.
 //   - An idle reap is a take that ended with no result and no model call (NoModelCall: no
 //     token reported, none at all or zero of every class). The member's word is all the
 //     sprint has: a child killed after it did call the model, whose harness reported no
@@ -68,17 +67,15 @@ import (
 
 // The control card's fields of a hold's cause.
 const (
-	// FieldHeldCause is the cause as the hold named it: j<n> (or a judgment id),
-	// doctor:<check>, or CauseIdleReap for the machine's hold of an idle-reaping member.
+	// FieldHeldCause is the cause as the hold named it: j<n> (or a judgment id), or
+	// CauseIdleReap for the machine's hold of an idle-reaping member (a doctor:<check> one
+	// carried from an earlier build is no live cause: causeLive).
 	FieldHeldCause = "held_cause"
 	// FieldHeldCauseNote is the id of the judgment a j<n> cause named when the hold was
 	// made: the judgment the tick reads, whatever an alias names later.
 	FieldHeldCauseNote = "held_cause_note"
 	// FieldHeldWho is who made the coordinator's hold, said in its report.
 	FieldHeldWho = "held_who"
-	// FieldDoctorPassed is the doctor's record of the checks that passed on a member held
-	// on one: <check>=<stamp>, comma separated (DoctorPassPlan).
-	FieldDoctorPassed = "doctor_passed"
 	// FieldIdleReapMark is when the machine last held the member for its idle reaps: a reap
 	// at or before it never holds the member again.
 	FieldIdleReapMark = "idle_reap_mark"
@@ -93,8 +90,14 @@ const (
 	FieldIdleReapRoutes = "idle_reap_routes"
 )
 
-// CausePrefixDoctor begins a cause that is a doctor check on the held member.
+// CausePrefixDoctor begins a cause that names a doctor check: refused as a new cause
+// (DoctorCauseDeferred), and no live cause when a control card carries one.
 const CausePrefixDoctor = "doctor:"
+
+// DoctorCauseDeferred is why hold --cause doctor:<check> is refused in v1.2.x: the release
+// of a doctor-caused hold needs every doctor line's scope and measurement declared once,
+// in a table the release rule reads (the v1.3 card).
+const DoctorCauseDeferred = "a doctor check is no hold cause in v1.2.x: which doctor lines speak for one member is not declared yet (v1.3 card a-doctor-hold-releases-from-a-declared-check-scope-table); name the open judgment instead (--cause j<n>), or hold with no cause and release it by unhold"
 
 // CauseIdleReap is the cause of the machine's hold of a member for its idle reaps: the
 // judgment the hold raised (NMemberIdleReaps) on the member.
@@ -135,16 +138,20 @@ const (
 // members'.
 const RestNoModelCall = "no-model-call"
 
-// doctorCheckNames is every doctor check a hold's cause may name.
-var doctorCheckNames = []string{CheckReadyNotDealt, CheckRoutesPerTier, CheckReaders, CheckLoopsRedial, CheckMemberEnv, CheckLanderLoop,
-	CheckFleetRows, CheckProviders, CheckSeat, CheckFinishFailures, CheckFriends, CheckDraining, CheckGitIdentity}
-
 // DoctorCause is the check a doctor cause names, and whether the cause is one.
 func DoctorCause(cause string) (string, bool) { return strings.CutPrefix(cause, CausePrefixDoctor) }
 
+// causeLive says the hold's cause is one the tick can see end: a judgment or the machine's
+// idle-reap judgment. No cause, and a doctor cause carried from an earlier build, is none:
+// such a hold ends by unhold alone and is reported every HoldNoCauseEvery.
+func causeLive(cause string) bool {
+	_, doctor := DoctorCause(cause)
+	return cause != "" && !doctor
+}
+
 // holdCauseWhy is why a hold's cause is refused, "" when it may be held: a cause names a
-// fleet member's hold alone; a doctor cause names a doctor check; a judgment cause names a
-// judgment open now (one answered already would end the hold at once).
+// fleet member's hold alone; a doctor cause is refused (DoctorCauseDeferred); a judgment
+// cause names a judgment open now (one answered already would end the hold at once).
 func holdCauseWhy(s *Snapshot, r HoldReq, targets []HoldTarget) string {
 	if r.Cause == "" || r.Release {
 		return ""
@@ -154,11 +161,8 @@ func holdCauseWhy(s *Snapshot, r HoldReq, targets []HoldTarget) string {
 			return "a cause names a fleet member's hold: " + t.Name + " is a " + holdKindWords[t.Kind]
 		}
 	}
-	if check, ok := DoctorCause(r.Cause); ok {
-		if !slices.Contains(doctorCheckNames, check) {
-			return "--cause " + r.Cause + " names no doctor check: one of " + strings.Join(doctorCheckNames, ", ")
-		}
-		return ""
+	if _, ok := DoctorCause(r.Cause); ok {
+		return "--cause " + r.Cause + ": " + DoctorCauseDeferred
 	}
 	if r.CauseNote == "" || !judgmentOpen(s, r.CauseNote) {
 		return "--cause " + r.Cause + " names no open judgment: a cause that has ended would end the hold at once; run: nova-sprint inbox"
@@ -212,13 +216,14 @@ func judgmentLive(s *Snapshot, id, typ, subject string) bool {
 }
 
 // causeEnded is how the held member's cause ended, "" while it stands: the judgment no
-// longer stands (answered or retired; a wait is no answer), the doctor's pass of the check
-// was recorded after the hold, or, for the machine's idle-reap hold, its judgment no
-// longer stands or one of its routes rests for no model call (the route's fault after all).
+// longer stands (answered or retired; a wait is no answer), or, for the machine's
+// idle-reap hold, its judgment no longer stands or one of its routes rests for no model
+// call (the route's fault after all). No cause, and a doctor cause carried from an earlier
+// build, never ends by itself (causeLive): unhold ends that hold.
 func causeEnded(s *Snapshot, member string, ctl *Card) string {
 	cause := ctl.F(FieldHeldCause)
-	switch check, doctor := DoctorCause(cause); {
-	case cause == "":
+	switch {
+	case !causeLive(cause):
 		return ""
 	case cause == CauseIdleReap:
 		for _, route := range Split(ctl.F(FieldIdleReapRoutes)) {
@@ -230,12 +235,6 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 			return ""
 		}
 		return "its judgment was answered or retired"
-	case doctor:
-		at, ok := doctorPassedAt(ctl, check)
-		if held := stampAt(ctl, "held"); !ok || held.IsZero() || at.Before(held) {
-			return ""
-		}
-		return "the doctor's " + check + " check passed on " + member + " at " + stamp(at)
 	default:
 		if judgmentLive(s, ctl.F(FieldHeldCauseNote), ctl.F(FieldHeldCauseType), ctl.F(FieldHeldCauseSubject)) {
 			return ""
@@ -244,22 +243,9 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 	}
 }
 
-// doctorPassedAt is when the doctor last recorded the check passing on the member.
-func doctorPassedAt(ctl *Card, check string) (time.Time, bool) {
-	for _, kv := range Split(ctl.F(FieldDoctorPassed)) {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k != check {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339, v)
-		return at, err == nil
-	}
-	return time.Time{}, false
-}
-
 // holdFields is every field of a member's hold: a release unsets them all.
 var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote,
-	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldDoctorPassed, FieldIdleReapRoutes}
+	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
 
 // HeldCarried is every field of a member's hold a clear carries into the new epoch beside
 // held and held_by (RestoreShape): its cause, its reason and who made it.
@@ -319,16 +305,20 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 	}
 }
 
-// holdNoCauseConds is one judgment for each hold that names no cause, whoever made it (a
-// mark is no cause), once it has stood HoldNoCauseEvery or longer, its period in its
-// words, so a new period is a new judgment and the last one closes (tla/HoldCause.tla
-// NoSilentHold).
+// holdNoCauseConds is one judgment for each hold that names no live cause (causeLive),
+// whoever made it (a mark is no cause, and a doctor cause carried from an earlier build is
+// none), once it has stood HoldNoCauseEvery or longer, its period in its words, so a new
+// period is a new judgment and the last one closes (tla/HoldCause.tla NoSilentHold).
 func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
-		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldCause) != "" {
+		if ctl == nil || ctl.F("held") == "" || causeLive(ctl.F(FieldHeldCause)) {
 			continue
+		}
+		cause := "no cause"
+		if c := ctl.F(FieldHeldCause); c != "" {
+			cause = "no live cause (" + c + " is none in v1.2.x: unhold ends it)"
 		}
 		age, ok := r.running(s.Now, ctl.F("held"))
 		if !ok || age < HoldNoCauseEvery {
@@ -344,8 +334,8 @@ func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 			who = "the coordinator"
 		}
 		out = append(out, cond{typ: NHoldNoCause, stream: MemberSubject(m), streamLevel: true,
-			what: fmt.Sprintf("%s held %s by %s with no cause: release or name a cause: nova-sprint unhold %s, or nova-sprint fleet hold %s --cause <j<n>|doctor:<check>> --reason '<why>'; its reason: %s",
-				m, durationWords(period), who, m, m, orDash(ctl.F(FieldHeldReason))),
+			what: fmt.Sprintf("%s held %s by %s with %s: release or name a cause: nova-sprint unhold %s, or nova-sprint fleet hold %s --cause j<n> --reason '<why>'; its reason: %s",
+				m, durationWords(period), who, cause, m, m, orDash(ctl.F(FieldHeldReason))),
 			decisions: []string{"ack", "wait"}})
 	}
 	return out
@@ -570,7 +560,7 @@ func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 		n.StreamLevel, n.Who, n.To = true, r.who(), s.Coordinator
 		n.Decisions = []string{"ack", "wait"}
 		n.What = fmt.Sprintf("%s held: %s; cards %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to), and so does a rest of %s for no model call: the tick releases it", m, why, strings.Join(cards, ","), strings.Join(routes, " or "))
-		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldDoctorPassed))},
+		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho))},
 			Notes: []Note{n}, Moved: fmt.Sprintf("%s held: %s", m, why)})
 	}
 }
@@ -598,91 +588,6 @@ func idleReapConds(s *Snapshot) []cond {
 			what: fmt.Sprintf("%s held: %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to), and so does a rest of %s for no model call: the tick releases it", m, ctl.F(FieldHeldReason), routes)})
 	}
 	return out
-}
-
-// DoctorPass is one doctor check that passed on a member held on it.
-type DoctorPass struct {
-	Member string `json:"member"`
-	Check  string `json:"check"`
-}
-
-// DoctorPasses is each member held on a doctor cause whose check this run measured and
-// found passing on it: no failing line of the check keeps the hold (doctorFailKeeps), and
-// for member-env its host answered the probe in full. A check not run, or not measured, is
-// no pass (tla/HoldCause.tla Doctor, DoctorPassIsMeasured).
-func DoctorPasses(in DoctorInput, checks []DoctorCheck) []DoctorPass {
-	s := in.Snap
-	if s == nil || s.Fleet == nil {
-		return nil
-	}
-	var out []DoctorPass
-	for _, m := range s.Members() {
-		ctl := s.MemberCtl(m)
-		if ctl == nil || ctl.F("held") == "" {
-			continue
-		}
-		check, ok := DoctorCause(ctl.F(FieldHeldCause))
-		if !ok {
-			continue
-		}
-		ran, failed := false, false
-		for _, c := range checks {
-			if c.Check != check {
-				continue
-			}
-			ran = true
-			if doctorFailKeeps(m, c) {
-				failed = true
-			}
-		}
-		if check == CheckMemberEnv {
-			p, probed := in.Probes[m]
-			ran = ran && probed && p.Reached && p.Complete
-		}
-		if ran && !failed {
-			out = append(out, DoctorPass{Member: m, Check: check})
-		}
-	}
-	return out
-}
-
-// doctorFailKeeps says a line of the check keeps m's hold on it: it reports no measurement
-// (Unmeasured: nothing is judged from it) or it is a FAIL, and it is about m (Member) or
-// about no one member (the check's global subject: all, identity, hook, judgments, a
-// provider, a tier, a route, a reader, which fails for every member at once). Only a line
-// the generator marked as another member's is that member's alone. The scope and the
-// measurement are the generator's fields, never the subject's spelling (a provider named
-// like a member is still a provider) and never the evidence text (the second cold read of
-// #206: a FAIL on a provider named m2 released m1, and loops-redial's "the server's start
-// was not measured" WARN was read as a pass).
-func doctorFailKeeps(m string, c DoctorCheck) bool {
-	if !c.Unmeasured && c.Status != DoctorFail {
-		return false
-	}
-	return c.Member == "" || c.Member == m
-}
-
-// DoctorPassPlan records each pass on its member's control card (FieldDoctorPassed, the
-// check at now), for the tick to end the hold it is the cause of; a pass of a member no
-// longer held on that check records nothing.
-func DoctorPassPlan(s *Snapshot, passes []DoctorPass, who string) Plan {
-	var p Plan
-	for _, x := range passes {
-		ctl := s.MemberCtl(x.Member)
-		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldCause) != CausePrefixDoctor+x.Check {
-			continue
-		}
-		var keep []string
-		for _, kv := range Split(ctl.F(FieldDoctorPassed)) {
-			if k, _, _ := strings.Cut(kv, "="); k != x.Check {
-				keep = append(keep, kv)
-			}
-		}
-		keep = append(keep, x.Check+"="+stamp(s.Now))
-		p.Units = append(p.Units, Unit{Key: CtlID(x.Member), Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldDoctorPassed: strings.Join(keep, ",")}))},
-			Moved: fmt.Sprintf("%s: doctor %s passed (by %s); the tick ends its hold", x.Member, x.Check, who)})
-	}
-	return p
 }
 
 // HoldLine is one hold in force as where says it: the name, how long it has stood and by

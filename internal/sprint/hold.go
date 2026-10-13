@@ -87,8 +87,8 @@ type HoldReq struct {
 	Reason string
 	Who    string
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
-	// coordinator named it (j<n>, or its id), with CauseNote the id it named, or
-	// doctor:<check>, that check passing on the member. The tick ends the hold in the
+	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
+	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
 	// step that sees the cause end; a hold with none is reported every HoldNoCauseEvery.
 	Cause     string `json:",omitempty"`
 	CauseNote string `json:",omitempty"`

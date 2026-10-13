@@ -54,58 +54,46 @@ func TestAHoldOnAJudgmentEndsInTheTickThatSeesItAnswered(t *testing.T) {
 	})
 }
 
-func TestAHoldOnADoctorCheckEndsWhenTheCheckPassesOnThatMember(t *testing.T) {
+// A doctor check is no hold cause in v1.2.x (the split of #206 after three cold reads
+// found the doctor-line classifier wrong each time; the v1.3 card
+// a-doctor-hold-releases-from-a-declared-check-scope-table): hold --cause doctor:<check>
+// is refused, and a doctor cause carried on a control card from an earlier build is no
+// live cause: no doctor run and no tick ends that hold, it is reported every two hours as
+// a hold with no live cause, and unhold ends it.
+func TestADoctorCauseIsRefusedAndACarriedOneEndsOnlyByUnhold(t *testing.T) {
 	t.Parallel()
 	forEpochs(t, func(t *testing.T, epoch uint64) {
 		w := setup(t, 1)
 		w.s.Epoch = epoch
-		w.must(HoldNames(w.s, HoldReq{Names: []string{"m1"}, Reason: "doctor FAIL member-env: no nova-push-credential", Cause: "doctor:member-env", Who: "rowan"}))
-		require.Equal(t, "doctor:member-env", w.s.MemberCtl("m1").F(FieldHeldCause))
 
-		probe := func(push bool) map[string]MemberProbe {
-			tools := map[string]string{}
-			for _, tool := range append(append([]string{}, MemberTools...), MemberHarnesses(w.s, "m1")...) {
-				tools[tool] = "/usr/bin/" + tool
-			}
-			return map[string]MemberProbe{"m1": {Member: "m1", Host: "m1", Reached: true, Complete: true, Tools: tools, FreeKB: -1, PushOK: push, Push: "no nova-push-credential", SecretOK: true}}
+		// refused, whatever the check
+		for _, check := range []string{CheckMemberEnv, CheckLoopsRedial, CheckProviders, CheckGitIdentity, "no-such-check"} {
+			p := HoldNames(w.s, HoldReq{Names: []string{"m1"}, Reason: "doctor FAIL " + check, Cause: CausePrefixDoctor + check, Who: "rowan"})
+			require.Len(t, p.Refused, 1, "doctor:%s was taken as a cause", check)
+			assert.Contains(t, p.Refused[0].Why, DoctorCauseDeferred)
 		}
-		run := func(push bool) []DoctorPass {
-			in := DoctorInput{Snap: w.s, Probes: probe(push)}
-			return DoctorPasses(in, DoctorMemberEnv(in))
+		require.Empty(t, w.s.MemberCtl("m1").F("held"), "a refused hold held m1")
+
+		// a control card carrying one, as an earlier build of this card wrote it
+		w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "rowan", Reason: "doctor FAIL member-env: no nova-push-credential", Finish: true}))
+		w.s.MemberCtl("m1").Fields[FieldHeldCause] = CausePrefixDoctor + CheckMemberEnv
+		beats := TickReq{Beats: freshBeats(w, "m1", "m2")}
+		for _, d := range []time.Duration{time.Minute, time.Hour, time.Hour} {
+			w.tick(d)
+			w.part(TickDeal, beats)
+			require.NotEmpty(t, w.s.MemberCtl("m1").F("held"), "the tick ended a hold on a doctor cause")
 		}
+		require.Empty(t, w.notesOf(NHoldReleased), "a doctor cause was released by the tick")
+		reports := w.notesOf(NHoldNoCause)
+		require.Len(t, reports, 1, "a hold on a doctor cause was silent past two hours")
+		assert.Contains(t, reports[0].What, "with no live cause (doctor:member-env is none in v1.2.x: unhold ends it)")
 
-		// the doctor still fails it: nothing passes, and the tick keeps the hold
-		require.Empty(t, run(false), "a failing check passed")
-		w.tick(time.Minute)
-		w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
-		require.NotEmpty(t, w.s.MemberCtl("m1").F("held"), "released while the check fails")
-
-		// the credential is in place: the doctor's pass is recorded, and the tick releases
-		passes := run(true)
-		require.Equal(t, []DoctorPass{{Member: "m1", Check: CheckMemberEnv}}, passes)
-		w.tick(time.Second)
-		w.must(DoctorPassPlan(w.s, passes, "doctor"))
-		w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
+		// unhold ends it, and leaves no cause behind
+		w.must(HoldNames(w.s, HoldReq{Names: []string{"m1"}, Release: true, Reason: "credential in place", Who: "rowan"}))
 		ctl := w.s.MemberCtl("m1")
-		assert.Empty(t, ctl.F("held"), "the hold outlived its check: %v", ctl.Fields)
-		assert.Equal(t, Up, ctl.F("status"), "m1 beats and is not up: %v", ctl.Fields)
-		released := w.notesOf(NHoldReleased)
-		require.Len(t, released, 1)
-		assert.Contains(t, released[0].What, "released: cause doctor:member-env resolved")
+		assert.Empty(t, ctl.F("held"), "unhold did not end it: %v", ctl.Fields)
+		assert.Empty(t, ctl.F(FieldHeldCause), "the doctor cause stayed behind: %v", ctl.Fields)
 	})
-}
-
-// A pass recorded before the hold is no pass of it: only the doctor's run after the hold
-// releases it.
-func TestADoctorPassBeforeTheHoldReleasesNothing(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 1)
-	w.s.Epoch = 2
-	w.s.MemberCtl("m1").Fields[FieldDoctorPassed] = CheckMemberEnv + "=" + stamp(w.s.Now.Add(-time.Hour))
-	w.must(HoldNames(w.s, HoldReq{Names: []string{"m1"}, Reason: "doctor FAIL", Cause: "doctor:member-env", Who: "rowan"}))
-	w.tick(time.Minute)
-	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
-	assert.NotEmpty(t, w.s.MemberCtl("m1").F("held"), "an old pass released a new hold")
 }
 
 func TestAHoldCauseIsRefusedWhenItCannotEnd(t *testing.T) {
@@ -116,8 +104,8 @@ func TestAHoldCauseIsRefusedWhenItCannotEnd(t *testing.T) {
 		want string
 	}{
 		{HoldReq{Names: []string{"m1"}, Reason: "x", Cause: "j7", CauseNote: "n-gone", Who: "rowan"}, "no open judgment"},
-		{HoldReq{Names: []string{"m1"}, Reason: "x", Cause: "doctor:no-such-check", Who: "rowan"}, "no doctor check"},
-		{HoldReq{Names: []string{"s1"}, Reason: "x", Cause: "doctor:member-env", Who: "rowan"}, "a cause names a fleet member's hold"},
+		{HoldReq{Names: []string{"m1"}, Reason: "x", Cause: "doctor:member-env", Who: "rowan"}, "no hold cause in v1.2.x"},
+		{HoldReq{Names: []string{"s1"}, Reason: "x", Cause: "j7", CauseNote: "n-gone", Who: "rowan"}, "a cause names a fleet member's hold"},
 	} {
 		p := HoldNames(w.s, c.req)
 		require.Len(t, p.Refused, 1, "%+v was not refused", c.req)

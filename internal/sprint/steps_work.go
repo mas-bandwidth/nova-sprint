@@ -3294,10 +3294,10 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			} else {
 				unset = append(unset, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject)
 			}
-			unset = append(unset, FieldDoctorPassed, FieldIdleReapRoutes)
+			unset = append(unset, FieldIdleReapRoutes)
 			line += "; cause " + r.Cause
 		case ctl.F(FieldHeldBy) != HeldByProbe:
-			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldDoctorPassed, FieldIdleReapRoutes)
+			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldIdleReapRoutes)
 		}
 		if r.HeldBy == "" && r.Who != "" {
 			set[FieldHeldWho] = r.Who

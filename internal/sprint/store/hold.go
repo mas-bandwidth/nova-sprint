@@ -27,14 +27,6 @@ func HoldStep(r sprint.HoldReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.HoldNames(s, r) }}
 }
 
-// DoctorPassStep records the doctor's passes of the checks members are held on
-// (sprint.DoctorPassPlan): the tick reads them and ends each hold whose cause they are
-// (sprint hold_cause.go, holdCauseClear). It writes the members' control cards alone.
-func DoctorPassStep(passes []sprint.DoctorPass, who string) Step {
-	return Step{Named: true, Args: ArgsOf(passes), Verb: "doctor pass", Load: tables(sprint.Fleet),
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.DoctorPassPlan(s, passes, who) }}
-}
-
 // Hold runs hold or unhold (docs/SPEC-SPRINT.md section 11): HoldReqOf, HoldStep, and when
 // the step commits whole, WriteHoldRecords.
 func (st *Store) Hold(ctx context.Context, r sprint.HoldReq) (Result, error) {

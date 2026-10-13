@@ -24,7 +24,7 @@ import (
 // said under the layer it stops.
 
 func init() {
-	verbEffect["doctor"] = "inspection, with one record: it writes only a member's pass of the doctor check the member is held on (hold --cause doctor:<check>), on its control card, which the tick reads to end that hold; every definition-of-done fault, one line each with its evidence (the seat check's machinery verdicts, every automatic stop that holds with its age, effect and undo verb, every always-true rule a step broke, the deal dry with cards waiting, and the judgments waiting on the seat), then every check of the desired state against the live sprint and each member's host (DOCTOR OK|WARN|DRIFT|FAIL <check> <subject> <evidence> remedy=<verb>): the ready cards the deal does not take and the deal's reason, the routes each tier can draw, the readers, the loops that did not dial the server again, each member's tools, push credential, seat, disk and build, the lander's loop, the fleet rows against nova-config, the providers resting, the seat's push loop and the members failing on their environment"
+	verbEffect["doctor"] = "inspection: reads only, writes nothing: every definition-of-done fault, one line each with its evidence (the seat check's machinery verdicts, every automatic stop that holds with its age, effect and undo verb, every always-true rule a step broke, the deal dry with cards waiting, and the judgments waiting on the seat), then every check of the desired state against the live sprint and each member's host (DOCTOR OK|WARN|DRIFT|FAIL <check> <subject> <evidence> remedy=<verb>): the ready cards the deal does not take and the deal's reason, the routes each tier can draw, the readers, the loops that did not dial the server again, each member's tools, push credential, seat, disk and build, the lander's loop, the fleet rows against nova-config, the providers resting, the seat's push loop and the members failing on their environment"
 }
 
 // stopLayer is the doctor's layer a kind of stop is said under.
@@ -86,9 +86,7 @@ func doctorFaults(r sprint.SeatCheckReport, rec store.StopsRecord, violations []
 // friends, the readers, the routes and providers, the ready cards the deal does not take, the
 // lander, the seat), one line each, DOCTOR OK|WARN|DRIFT|FAIL <check> <subject> <evidence>
 // remedy=<verb>. It counts them now from a fresh read, whether or not the machine ticks, and
-// writes nothing but the pass of a check a member is held on (DOCTOR PASS, hold_cause.go):
-// the gate that held the member records that it passes, and the tick ends the hold. --area
-// runs one group. Exit 0 when nothing is RED or FAIL, 1 when a fault
+// writes nothing. --area runs one group. Exit 0 when nothing is RED or FAIL, 1 when a fault
 // holds or a check fails, 2 when the store does not read.
 func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	const name = "doctor"
@@ -126,16 +124,9 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	now := a.now()
 	machinery := a.withConfigSeat(a.seatCheck(ctx, st, c.redis))
 	faults := doctorFaults(machinery, rec, check.Violations, snap, now)
-	checks, refused, passes, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
+	checks, refused, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint where\n", prog, name, oneline.Escape(noSprintYet(err).Error()))
-		return 2
-	}
-	// the gate that held a member releases it (hold_cause.go): each check a member is held
-	// on that passed on it in this run is recorded, and the tick ends the hold
-	passLines, err := a.recordDoctorPasses(ctx, *c, st, passes)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint doctor again\n", prog, name, oneline.Escape(err.Error()))
 		return 2
 	}
 	sprintArea := *area == "" || *area == sprint.AreaSprint
@@ -192,12 +183,8 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		if refusedFaults == nil {
 			refusedFaults = []string{}
 		}
-		out := map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": *area, "faults": faults, "refused": refusedFaults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
-			"checks": checks, "counts": counts, "fix_safe": sprint.DoctorFixSafe}
-		if len(passes) > 0 {
-			out["passes"] = passes
-		}
-		b, err := json.Marshal(out)
+		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": *area, "faults": faults, "refused": refusedFaults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
+			"checks": checks, "counts": counts, "fix_safe": sprint.DoctorFixSafe})
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint doctor\n", prog, name, oneline.Escape(err.Error()))
 			return 2
@@ -242,9 +229,6 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	for _, ch := range checks {
 		fmt.Fprintln(stdout, oneline.Escape(ch.Line()))
 	}
-	for _, line := range passLines {
-		fmt.Fprintln(stdout, oneline.Escape(line))
-	}
 	word := "OK"
 	if red {
 		word = "RED"
@@ -277,13 +261,13 @@ func envExitChecks(snap *sprint.Snapshot, now time.Time) []sprint.DoctorCheck {
 // doctorChecks reads what the checks of the desired state need (store.DoctorRead, nova-config,
 // the server's start, the seat's build, each member's host) and runs them, the area's alone when
 // area names one. A reach the outside does not configure is left unmeasured, and its check says so.
-func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCheckMeasures, rec store.StopsRecord, area string) ([]sprint.DoctorCheck, []sprint.RefusedVerb, []sprint.DoctorPass, error) {
+func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCheckMeasures, rec store.StopsRecord, area string) ([]sprint.DoctorCheck, []sprint.RefusedVerb, error) {
 	read, err := st.DoctorRead(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if area == sprint.AreaSprint {
-		return nil, read.Refused, nil, nil
+		return nil, read.Refused, nil
 	}
 	// every reach past the store under the run's deadline (doctorRunBudget)
 	ctx, cancel := context.WithTimeout(ctx, doctorRunBudget)
@@ -358,10 +342,8 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		forms := a.probeBeatForms(ctx, in.Machines, self)
 		checks = append(checks, beatFormChecks(in.Machines, in.Probes, forms, in.Declared)...)
 	}
-	// the checks members are held on that passed on them in this run (hold_cause.go)
-	passes := sprint.DoctorPasses(in, checks)
 	if area == "" {
-		return checks, read.Refused, passes, nil
+		return checks, read.Refused, nil
 	}
 	var out []sprint.DoctorCheck
 	for _, ch := range checks {
@@ -369,27 +351,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 			out = append(out, ch)
 		}
 	}
-	return out, read.Refused, passes, nil
-}
-
-// recordDoctorPasses records the run's passes of the checks members are held on
-// (store.DoctorPassStep), one line each: the tick ends each hold whose cause passed.
-func (a *app) recordDoctorPasses(ctx context.Context, c common, st *store.Store, passes []sprint.DoctorPass) ([]string, error) {
-	if len(passes) == 0 {
-		return nil, nil
-	}
-	res, err := st.Run(ctx, store.DoctorPassStep(passes, c.actor))
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, r := range res.Refused {
-		lines = append(lines, "DOCTOR PASS not recorded "+r.Key+": "+r.Why)
-	}
-	for _, x := range passes {
-		lines = append(lines, "DOCTOR PASS "+x.Check+" "+x.Member+": held on doctor:"+x.Check+", which passed; the tick releases it")
-	}
-	return lines, nil
+	return out, read.Refused, nil
 }
 
 // hostGitEmail is the host's global git user.email, read by the doctor for the git-identity
