@@ -710,3 +710,6 @@ MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependents
 MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
 MCClearDefaultsStartAdvance.cfg	MCClearDefaults.tla	pass	-	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunningWhileRestorePending	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsRetiredStop.cfg	MCClearDefaultsRetiredStop.tla	pass	-	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenRetiredStop.cfg	MCClearDefaultsRetiredStop.tla	invariant	NoRetiredStopWrites	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenRetiredStopOwner.cfg	MCClearDefaultsRetiredStop.tla	invariant	NoRetiredStopWrites	ignore-terminal	cleardefaults	required	-
