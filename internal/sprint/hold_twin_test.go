@@ -201,7 +201,7 @@ func TestHoldTakesNoNewCardsAndUnholdResumesForMembersFriendsAndStreams(t *testi
 		assert.Equal(t, []string{working}, onRow(s, "m1", "s1", sprint.Ready, sprint.Working), "its ready cards went round the fleet; the card it works stays to finish")
 		hv, ok := r.heldView("m1")
 		require.True(t, ok)
-		assert.Equal(t, sprint.HoldView{Kind: sprint.HoldMember, Name: "m1", Reason: "the build cache cleaner deletes live entries", At: hv.At}, hv)
+		assert.Equal(t, sprint.HoldView{Kind: sprint.HoldMember, Name: "m1", Reason: "the build cache cleaner deletes live entries", At: hv.At, Who: "coordinator", Release: "nova-sprint unhold m1"}, hv, "the view says who held it and the verb that releases it (hold_cause.go)")
 		res, err := r.st.Run(r.ctx, store.TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{Limit: 1}, Who: "m1"}))
 		require.NoError(t, err)
 		assert.Empty(t, res.Moved, "a held member takes no new card")
