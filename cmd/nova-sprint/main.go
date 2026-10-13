@@ -685,7 +685,7 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
 	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
-	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; no default: a verb that writes wants one; a worker's verb is its --as name's)")
+	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)")
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
 
@@ -883,6 +883,11 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
+	}
+	var actorNotice string
+	args, actorNotice = a.defaultHookActor(args, "", false)
+	if actorNotice != "" {
+		fmt.Fprintln(stderr, actorNotice)
 	}
 	// the shadow tick (server switch --dry-run runs the candidate's `tick
 	// --shadow`) opens its store read-only before the window's fn load: its

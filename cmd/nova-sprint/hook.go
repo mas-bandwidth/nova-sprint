@@ -206,6 +206,55 @@ func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bo
 	return sprint.HookGateCall(call, st.Now()), nil
 }
 
+// defaultHookActor fills in an omitted actor only when the store's coordinator has
+// both live, proven pushes. The identity comes from the sprint store, never from a
+// local seat/configuration file. Explicit --actor and NOVA_SPRINT_ACTOR retain their
+// ordinary precedence. The discovery reads the backend directly so it does not tick
+// or otherwise mutate a twin before the command's normal store path.
+func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProcessActor bool) ([]string, string) {
+	v := readVerb(args)
+	if v.words == 0 || v.help || v.err != nil || v.given("actor") || hookExemptCall(v.name, args[v.words:]) {
+		return args, ""
+	}
+	if verbClasses[v.name] != classCoordinator && verbClasses[v.name] != classSeat {
+		return args, ""
+	}
+	if !ignoreProcessActor && a.getenv("NOVA_SPRINT_ACTOR") != "" {
+		return args, ""
+	}
+	redis := redisOverride
+	if redis == "" {
+		redis = firstEnv(a.getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr)
+	}
+	if f := v.fs.Lookup("redis"); f != nil && v.given("redis") {
+		redis = f.Value.String()
+	}
+	if strings.TrimSpace(redis) == "" {
+		return args, ""
+	}
+	ctx := context.Background()
+	b, err := a.backend(ctx, redis, sprint.Names{})
+	if err != nil {
+		return args, ""
+	}
+	st := &store.Store{B: b, Now: a.now}
+	holder, err := b.Coordinator(ctx)
+	if err != nil || holder == "" || !hookArmed(holder) {
+		return args, ""
+	}
+	seat, seatOK, err := readHook(ctx, st)
+	if err != nil || !sprint.HookLive(seat, seatOK, holder, st.Now()) {
+		return args, ""
+	}
+	shared, err := a.hookerShared(ctx, holder)
+	if err != nil || !shared.PushLive(sprint.HookPushBus, st.Now()) {
+		return args, ""
+	}
+	out := slices.Clone(args)
+	out = slices.Insert(out, v.words, "--actor", holder)
+	return out, "ACTOR " + oneline.Field(holder) + " (coordinator hook proven)"
+}
+
 // hookFirst runs the gate before the verb, on the verb's own words, so its refusal is
 // the one line and nothing else, exit 1: "You must hook in first: run nova-sprint hook
 // --actor <name> (...)", the breadcrumb, or the push to acknowledge. The caller is the
