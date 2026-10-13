@@ -50,7 +50,7 @@ func (h *heldShared) releaseRead() { h.once.Do(func() { close(h.release) }) }
 func TestHookCacheForgetCannotRestoreAnExpiredRead(t *testing.T) {
 	t.Parallel()
 	const name = "hook-cache-epoch"
-	now := time.Now()
+	now := time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC)
 	old := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now.Add(-2 * sprint.HookSharedBound), ProvedAt: now.Add(-2 * sprint.HookSharedBound)}
 	fresh := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now, ProvedAt: now}
 	h := &heldShared{rec: old, entered: make(chan struct{}), release: make(chan struct{}), first: true}
@@ -74,7 +74,7 @@ func TestHookCacheForgetCannotRestoreAnExpiredRead(t *testing.T) {
 func TestHookCacheRefillCannotRestoreAnExpiredRead(t *testing.T) {
 	t.Parallel()
 	const name = "hook-refill-epoch"
-	now := time.Now()
+	now := time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC)
 	old := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now.Add(-2 * sprint.HookSharedBound), ProvedAt: now.Add(-2 * sprint.HookSharedBound)}
 	fresh := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now, ProvedAt: now}
 	h := &heldShared{rec: old, entered: make(chan struct{}), release: make(chan struct{}), first: true}
@@ -98,7 +98,7 @@ func TestHookCacheRefillCannotRestoreAnExpiredRead(t *testing.T) {
 func TestHookCacheForgetCannotReturnAnUnhookedProof(t *testing.T) {
 	t.Parallel()
 	const name = "hook-unhook-epoch"
-	now := time.Now()
+	now := time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC)
 	live := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now.Add(-time.Minute), ProvedAt: now.Add(-time.Minute)}
 	unhooked := live
 	unhooked.UnhookedAt = now
