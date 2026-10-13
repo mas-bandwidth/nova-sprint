@@ -50,6 +50,15 @@ type testApp struct {
 
 func newTestApp(t *testing.T) *testApp {
 	ta := &testApp{t: t, m: store.NewMem(), now: t0, live: []string{"m1", "m2"}}
+	// Generic work fixtures declare runnable routes; route-specific fixtures
+	// replace the set rather than inherit or repair an empty configuration.
+	ta.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
+	ta.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}})
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
 	ta.a = newApp(func(k string) string { return env[k] })
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }

@@ -503,8 +503,8 @@ func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
 			continue
 		}
 		worked[s.DealTier(escalating(s, c))] = true
-		m, _ := modelOf(c)
-		ownReadLive = ownReadLive || m.Pin != ""
+		_, _, _, done, m := s.routeTier(escalating(s, c))
+		ownReadLive = ownReadLive || !done && m.Pin != ""
 	}
 	idx := fleetReadIndex(s)
 	units := readUnitsOf(s, s.Friends)
@@ -577,9 +577,6 @@ func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
 // native-tier membership. Empty arrays fall back to enabled native routes;
 // disabled, unknown and foreign-tier entries cannot fabricate a live route.
 func (s *Snapshot) workedTierBlocked(tier string) (reasons []string, blocked bool) {
-	if len(s.Routes) == 0 {
-		return nil, false
-	} // legacy unconfigured members run their own model
 	for _, f := range s.Friends {
 		if friendTakes(s, f, tier) && friendDealable(s, f) {
 			return nil, false

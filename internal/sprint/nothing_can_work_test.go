@@ -208,10 +208,57 @@ func TestAnOwnModelReaderAlreadySpentCannotHideTheStop(t *testing.T) {
 	assert.Contains(t, p.Stop, "nothing funded can work", "one reader cannot do both pro verdicts")
 }
 
-func TestRouteLessLegacyWorkStillUsesTheMembersOwnModel(t *testing.T) {
+func TestRouteLessWorkWithoutAnEligibleReaderStops(t *testing.T) {
 	t.Parallel()
 	w := waitingReadWorld(t, "pro")
 	w.s.Routes = nil
 	p, _ := TickDeal(w.s, TickReq{})
-	assert.Empty(t, p.Stop)
+	assert.Contains(t, p.Stop, "nothing funded can work")
+}
+
+func TestAnEmptyEffectiveArrayBlocksReadyWork(t *testing.T) {
+	t.Parallel()
+	w := nothingCanWorkWorld(t, true)
+	w.s.Routes = nil
+	w.s.Tiers = nil
+	p, _ := TickDeal(w.s, TickReq{})
+	assert.Contains(t, p.Stop, "tier array pro [] has no enabled native-tier route")
+}
+
+func TestEveryActiveRestClassBlocksWorkedTiers(t *testing.T) {
+	t.Parallel()
+	for _, cause := range []string{RestRateBackoff, RestProvider} {
+		t.Run(cause, func(t *testing.T) {
+			t.Parallel()
+			w := nothingCanWorkWorld(t, true)
+			until := w.s.Now.Add(time.Hour)
+			for _, r := range w.s.Routes {
+				if r.Tier == "flash" {
+					continue
+				}
+				rest := RouteRest{Route: r.Name, At: w.s.Now, Until: until, Cause: cause, Why: "temporary provider rest"}
+				w.s.Fleet.SetProp(PropProviderRest(r.Provider), rest.value())
+			}
+			p, _ := TickDeal(w.s, TickReq{})
+			require.Contains(t, p.Stop, "nothing funded can work")
+			assert.Contains(t, p.Stop, cause)
+			assert.Contains(t, p.Stop, until.UTC().Format(time.RFC3339))
+		})
+	}
+}
+
+func TestTheFundsPredicateUsesTheEscalatedExecutionTier(t *testing.T) {
+	t.Parallel()
+	w := nothingCanWorkWorld(t, false)
+	w.s.Work.SetRows([]string{"pro-stream"})
+	pr := &Card{ID: "escalating", Row: "pro-stream", Col: Ready, Fields: map[string]string{"brief": "RESULT: escalating sha=000000000000 tier: heavy\n\nThe task."}}
+	w.s.Work.Put(pr)
+	pr.Fields["attempt"] = "1"
+	pr.Fields[FieldTierNow] = "pro"
+	w.s.Fleet.SetRows([]string{"m1"})
+	w.s.Fleet.Put(&Card{ID: WorkCardID(pr.ID, 1), Row: "m1", Col: Withdrawn, Fields: map[string]string{"primary": pr.ID, "attempt": "1", "redeals": "3", FieldTakeEnded: "failed"}})
+	w.s.Now = w.s.Now.Add(3 * time.Hour)
+	why := w.s.NothingFundedCanWork()
+	require.Contains(t, why, "heavy:")
+	assert.NotContains(t, why, "pro:", "the live original pro tier cannot hide the resting execution tier")
 }

@@ -32,6 +32,15 @@ func newWorld(readers ...string) *world {
 		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator"}
 	// The existing reference model is intentionally of the legacy readers table.
 	s.Work.SetProp(sprint.PropReadCards, sprint.SwitchOff)
+	// Ordinary fixture work has an executable route. Route tests replace this
+	// declaration explicitly, including nil/empty and resting negative cases.
+	s.Routes = []sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	}
+	s.Providers = map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}}
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{s: s}
 }

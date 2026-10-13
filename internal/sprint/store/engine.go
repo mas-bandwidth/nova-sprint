@@ -876,6 +876,18 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		var ok bool
 		commitGen := gen + 1
 		if lock != nil {
+			if step.StopEpisode != nil {
+				held, gerr := st.sameStopEpisode(ctx, *step.StopEpisode)
+				if gerr != nil || !held {
+					rerr := st.B.Release(context.WithoutCancel(ctx), *lock, false)
+					empty := Result{Verb: res.Verb, Attempts: res.Attempts}
+					if rerr != nil {
+						empty.Pending = lock.ID
+					}
+					lock = nil
+					return empty, errors.Join(gerr, rerr)
+				}
+			}
 			// the fence is the step's since its lock: the operation takes it
 			// over, and the generation is the one the lock set
 			ok, err = st.B.(Relocker).Relock(ctx, lock.ID, op)
@@ -883,6 +895,33 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				lock = nil
 			}
 			commitGen = gen
+		} else if step.StopEpisode != nil {
+			// Validate the episode under a lock containing no replayable writes.
+			// A lost release of a stale guard can only abandon that empty lock.
+			relocker, can := st.B.(Relocker)
+			if !can {
+				return Result{Verb: res.Verb, Attempts: res.Attempts}, errors.New("recovery needs a backend with a relockable fence")
+			}
+			guard := OpRecord{ID: op.ID + ".episode", Verb: op.Verb, At: op.At, Lock: true}
+			ok, err = st.B.Acquire(ctx, gen, guard)
+			if err != nil {
+				return Result{Verb: res.Verb, Attempts: res.Attempts, Pending: guard.ID}, err
+			}
+			if ok {
+				held, gerr := st.sameStopEpisode(ctx, *step.StopEpisode)
+				if gerr != nil || !held {
+					rerr := st.B.Release(context.WithoutCancel(ctx), guard, false)
+					empty := Result{Verb: res.Verb, Attempts: res.Attempts}
+					if rerr != nil {
+						empty.Pending = guard.ID
+					}
+					return empty, errors.Join(gerr, rerr)
+				}
+				ok, err = relocker.Relock(ctx, guard.ID, op)
+				if err != nil || !ok {
+					return Result{Verb: res.Verb, Attempts: res.Attempts, Pending: guard.ID}, fmt.Errorf("%w: replacing recovery guard %s: %v; run: nova-sprint repair", ErrUnknown, guard.ID, err)
+				}
+			}
 		} else {
 			ok, err = st.B.Acquire(ctx, gen, op)
 		}
@@ -914,17 +953,6 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				break
 			}
 			continue
-		}
-		if step.StopEpisode != nil {
-			held, gerr := st.sameStopEpisode(ctx, *step.StopEpisode)
-			if gerr != nil || !held {
-				rerr := st.B.Release(context.WithoutCancel(ctx), op, false)
-				empty := Result{Verb: res.Verb, Attempts: res.Attempts}
-				if rerr != nil {
-					empty.Pending = op.ID
-				}
-				return empty, errors.Join(gerr, rerr)
-			}
 		}
 		applied, receipts, err := st.apply(ctx, op, &applyContext{step, &plan, snap, &res, &op})
 		var bound *boundError

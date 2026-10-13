@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // tokenBus is the owner's bus as pkg/bus answers a token (pkg/bus/token.go): a send under a
@@ -132,4 +134,107 @@ func TestASeatSilentRaiseNoLongerOpenIsForgotten(t *testing.T) {
 	defer ta.a.seatSilent.mu.Unlock()
 	assert.Len(t, ta.a.seatSilent.told, 1, "only the open raise is kept: %v", ta.a.seatSilent.told)
 	assert.False(t, ta.a.seatSilent.told[seatSilentToken("", 0, "gone", 3)], "the closed raise is forgotten")
+}
+
+func TestTheFundsStopAndRecoveryReachOnlyCheckedOwnerAndSender(t *testing.T) {
+	t.Parallel()
+	for _, senderOK := range []bool{false, true} {
+		for _, ownerOK := range []bool{false, true} {
+			t.Run(fmt.Sprintf("sender=%t-owner=%t", senderOK, ownerOK), func(t *testing.T) {
+				t.Parallel()
+				ta := newTestApp(t)
+				ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
+				b := &tokenBus{}
+				ta.a.bus = b.send
+				ta.a.inventory = func(context.Context, string) ([]config.MachineWidth, error) {
+					if senderOK {
+						return []config.MachineWidth{{Machine: "b2"}}, nil
+					}
+					return nil, nil
+				}
+				ta.a.friends = func(context.Context, string) ([]config.Row, error) {
+					if ownerOK {
+						return []config.Row{{Name: "glenn"}}, nil
+					}
+					return nil, nil
+				}
+				st := &store.Store{B: ta.m, Now: ta.a.now, Actor: "coordinator"}
+				require.NoError(t, st.SetServer(t.Context(), store.ServerRecord{Host: "b2"}))
+				for _, n := range []sprint.Note{
+					{Kind: sprint.Judgment, Type: sprint.NNothingFunded, SprintLevel: true, What: "sprint stopped: nothing funded can work (pro: route rests)"},
+					{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "a funded route is live again: nova-sprint start"},
+				} {
+					_, err := st.Run(t.Context(), store.NoteStep("test", n))
+					require.NoError(t, err)
+				}
+				ta.a.tellSeatSilent(t.Context(), st)
+				if senderOK && ownerOK {
+					require.Len(t, b.delivered, 2)
+					for _, m := range b.delivered {
+						assert.Equal(t, "b2", m.From)
+						assert.Equal(t, []string{"glenn"}, m.To)
+						assert.NotEmpty(t, m.Token)
+					}
+					ta.a.seatSilent = seatSilentTold{}
+					ta.a.tellSeatSilent(t.Context(), st)
+					assert.Len(t, b.delivered, 2)
+				} else {
+					assert.Empty(t, b.attempts, "unknown sender or owner never becomes a bus target")
+				}
+			})
+		}
+	}
+}
+
+func TestFundsOwnerRetriesFailedSendAndRepairedTargets(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
+	b := &tokenBus{fails: 1}
+	ta.a.bus = b.send
+	ta.a.inventory = func(context.Context, string) ([]config.MachineWidth, error) {
+		return []config.MachineWidth{{Machine: "b2"}}, nil
+	}
+	known := false
+	ta.a.friends = func(context.Context, string) ([]config.Row, error) {
+		if known {
+			return []config.Row{{Name: "glenn"}}, nil
+		}
+		return nil, nil
+	}
+	st := &store.Store{B: ta.m, Now: ta.a.now, Actor: "coordinator"}
+	require.NoError(t, st.SetServer(t.Context(), store.ServerRecord{Host: "b2"}))
+	_, err := st.Run(t.Context(), store.NoteStep("test", sprint.Note{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "a funded route is live again: nova-sprint start"}))
+	require.NoError(t, err)
+	ta.a.tellSeatSilent(t.Context(), st)
+	assert.Empty(t, b.attempts)
+	known = true
+	ta.a.tellSeatSilent(t.Context(), st)
+	require.Len(t, b.attempts, 1)
+	assert.Empty(t, b.delivered)
+	ta.a.tellSeatSilent(t.Context(), st)
+	require.Len(t, b.delivered, 1)
+	assert.Equal(t, b.attempts[0].Token, b.attempts[1].Token)
+	ta.a.tellSeatSilent(t.Context(), st)
+	assert.Len(t, b.attempts, 2)
+}
+
+func TestFundsOwnerDoesNotReplayRecoveryFromAClearedEpoch(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.a.inventory = func(context.Context, string) ([]config.MachineWidth, error) {
+		return []config.MachineWidth{{Machine: "b2"}}, nil
+	}
+	ta.a.friends = func(context.Context, string) ([]config.Row, error) { return []config.Row{{Name: "glenn"}}, nil }
+	st := &store.Store{B: ta.m, Now: ta.a.now, Actor: "coordinator"}
+	require.NoError(t, st.SetServer(t.Context(), store.ServerRecord{Host: "b2"}))
+	_, err := st.Run(t.Context(), store.NoteStep("test", sprint.Note{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "old recovery"}))
+	require.NoError(t, err)
+	_, err = st.Clear(t.Context())
+	require.NoError(t, err)
+	ta.a.tellSeatSilent(t.Context(), st)
+	assert.Empty(t, b.attempts, "the new epoch's ledger never sends the old epoch's recovery")
 }

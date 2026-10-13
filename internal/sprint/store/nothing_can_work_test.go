@@ -142,6 +142,21 @@ func TestARecoveryGuardReleaseFailureWritesNoNote(t *testing.T) {
 	require.ErrorContains(t, err, "release receipt lost")
 	assert.Empty(t, h.tickNotes("a funded route is live again"))
 	assert.Empty(t, res.Parts)
+	f, err := h.m.ReadFence(h.ctx)
+	require.NoError(t, err)
+	require.NotNil(t, f.Pending)
+	assert.True(t, f.Pending.Lock, "only an empty guard may survive failed release")
+	assert.Empty(t, f.Pending.Notes)
+	assert.Empty(t, f.Pending.Manifests)
+	b.failRelease = false
+	h.mu.Lock()
+	h.now = h.now.Add(h.st.grace() + time.Second)
+	h.mu.Unlock()
+	rr, err := h.st.Repair(h.ctx)
+	require.NoError(t, err)
+	require.Len(t, rr, 1)
+	assert.Equal(t, RepairAbandoned, rr[0].Done)
+	assert.Empty(t, h.tickNotes("a funded route is live again"), "repair cannot replay a stale episode's notification")
 }
 
 func TestAFirstStartRefusesBlockedWorkUnderItsTransitionFence(t *testing.T) {
@@ -153,4 +168,55 @@ func TestAFirstStartRefusesBlockedWorkUnderItsTransitionFence(t *testing.T) {
 	_, _, _, err := h.st.SetMachine(h.ctx, true)
 	require.ErrorContains(t, err, "nothing funded can work")
 	assert.Equal(t, before, h.machineRecord())
+}
+
+func TestTheFundsStartGuardSeesKeptNamedNeedsAndPropagatesReadFailure(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-live", "flash"), route("pro-resting", "pro"))
+	h.setup(1)
+	h.landThrough("s1", "s1-1")
+	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1, Needs: []string{"s1-1"}, Brief: "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task."}))
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-resting", Reason: "rested", Until: h.now.Add(time.Hour)}))
+	why, err := h.st.NothingFundedCanWork(h.ctx)
+	require.NoError(t, err)
+	require.Contains(t, why, "pro-resting", "landed named needs remain dealable even outside the placed work set")
+	h.m.Fail = func(point string) error {
+		if point == "readset t-work" {
+			return errors.New("named needs read lost")
+		}
+		return nil
+	}
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, "named needs read lost")
+	h.m.Fail = nil
+	assert.False(t, h.machineRecord().Running())
+}
+
+func TestRecoveryMarkerBelongsToEachExplicitRunStop(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	for episode := 1; episode <= 2; episode++ {
+		h.startMachine()
+		m := h.machineRecord()
+		_, _, _, err := h.st.stopWithCause(h.ctx, sprint.NothingFundedCause, m.RunSeq)
+		require.NoError(t, err)
+		var res TickResult
+		require.NoError(t, h.st.fundedLiveAgain(h.ctx, h.machineRecord(), &res))
+		require.NoError(t, h.st.fundedLiveAgain(h.ctx, h.machineRecord(), &res))
+		assert.Len(t, h.tickNotes(sprint.NFundedLiveAgain), episode)
+		assert.False(t, h.machineRecord().Running(), "recovery never starts the machine")
+	}
+}
+
+func TestAWorkRestWrittenBetweenStartPinAndLockIsSeen(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.st.beforeGuardedWrite = func() {
+		h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "rested before start lock", Until: h.now.Add(time.Hour)}))
+	}
+	_, _, _, err := h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, "nothing funded can work")
+	assert.False(t, h.machineRecord().Running())
 }

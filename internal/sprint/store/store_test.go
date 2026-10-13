@@ -42,6 +42,15 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{t: t, m: NewMem(), ctx: context.Background(), now: t0, live: []string{"m1", "m2"}}
+	// Generic work fixtures declare runnable routes; route-specific fixtures
+	// replace the set rather than inherit or repair an empty configuration.
+	h.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
+	h.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}})
 	n := 0
 	h.st = &Store{B: h.m, Names: sprint.Names{Prefix: "t-"}, Actor: "tester",
 		Now:   func() time.Time { h.mu.Lock(); defer h.mu.Unlock(); return h.now },

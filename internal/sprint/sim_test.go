@@ -30,6 +30,15 @@ func newWorld(t testing.TB, readers ...string) *world {
 	t.Helper()
 	s := &Snapshot{Now: t0, Work: NewTable(Work), Readers: NewTable(Readers), Merge: NewTable(Merge), Fleet: NewTable(Fleet),
 		Coordinator: "coordinator", Actor: "coordinator"}
+	// Ordinary fixture work has an executable route. Route tests replace this
+	// declaration explicitly, including nil/empty and resting negative cases.
+	s.Routes = []Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	}
+	s.Providers = map[string]Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}}
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{t: t, s: s}
 }

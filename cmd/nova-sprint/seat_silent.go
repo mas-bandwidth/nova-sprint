@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,7 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 // bus, and says it on the server's log; a sprint with no owner is said on the log alone.
 // tla/SprintRules.tla SendOK
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
+	a.tellFundsOwner(ctx, st)
 	now := a.now()
 	a.seatSilent.mu.Lock()
 	if !a.seatSilent.lookAt.IsZero() && now.Sub(a.seatSilent.lookAt) < seatSilentLook && now.After(a.seatSilent.lookAt) {
@@ -121,4 +123,142 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		}
 	}
 	a.seatSilent.mu.Unlock()
+}
+
+// checkedFundsTarget uses configured fleet names for the sender and configured
+// friend or fleet names for the owner. A missing row is advisory, never a
+// fabricated bus identity; a read error is retried at the next tick.
+func (a *app) checkedFundsTarget(ctx context.Context, st *store.Store) (sender, owner, warning string, err error) {
+	owner, err = a.owner(ctx, st)
+	if err != nil {
+		return
+	}
+	srv, _, e := st.Server(ctx)
+	if e != nil {
+		err = e
+		return
+	}
+	sender = srv.Host
+	if sender == "" && a.outside.hostname != nil {
+		sender = a.outside.hostname()
+	}
+	if a.inventory == nil || a.friends == nil {
+		warning = "owner delivery has no configured target reader"
+		return
+	}
+	machines, e := a.inventory(ctx, "")
+	if e != nil {
+		err = e
+		return
+	}
+	friends, e := a.friends(ctx, "")
+	if e != nil {
+		err = e
+		return
+	}
+	senderKnown, ownerKnown := false, false
+	for _, m := range machines {
+		senderKnown = senderKnown || sender != "" && m.Machine == sender
+		ownerKnown = ownerKnown || owner != "" && m.Machine == owner
+	}
+	for _, f := range friends {
+		ownerKnown = ownerKnown || owner != "" && f.Name == owner
+	}
+	if !senderKnown || !ownerKnown {
+		warning = fmt.Sprintf("owner delivery has no checked target: sender=%q known=%t owner=%q known=%t", sender, senderKnown, owner, ownerKnown)
+	}
+	return
+}
+
+// tellFundsOwner delivers the sprint-level stop and its once-per-stop recovery.
+// Durable marks and bus tokens preserve retries across server restarts. Recovery
+// notes are scanned in bounded pages, advancing only after successful delivery.
+func (a *app) tellFundsOwner(ctx context.Context, st *store.Store) {
+	pinned, err := st.Pinned(ctx)
+	if err != nil {
+		a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+		return
+	}
+	st = pinned
+	epoch := st.PinnedEpoch()
+	kv, ok := st.B.(store.KV)
+	if !ok {
+		a.serveSay("FUNDS OWNER: the store cannot keep delivery marks")
+		return
+	}
+	send := func(subject, body, token string) bool {
+		key := "funds-owner-told:" + token
+		_, told, err := kv.GetKey(ctx, key)
+		if err != nil {
+			a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+			return false
+		}
+		if told {
+			return true
+		}
+		sender, owner, warning, err := a.checkedFundsTarget(ctx, st)
+		if err != nil {
+			a.serveSay("FUNDS OWNER: target read failed, will retry: %s", oneline.Escape(err.Error()))
+			return false
+		}
+		if warning != "" {
+			warnKey := "funds-owner-warning:" + token
+			_, warned, err := kv.GetKey(ctx, warnKey)
+			if err != nil {
+				a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+				return false
+			}
+			if !warned {
+				a.serveSay("FUNDS OWNER: %s; repair the configured names to deliver %s", oneline.Escape(warning), subject)
+				_ = kv.SetKey(ctx, warnKey, warning)
+			}
+			return false
+		}
+		current, err := st.EpochNow(ctx)
+		if err != nil || current.N != epoch {
+			return false
+		}
+		m := bus.Message{From: sender, To: []string{owner}, Kind: bus.KindBlocker, Subject: subject, Body: body, Token: token}
+		if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
+			a.serveSay("FUNDS OWNER: send failed, will retry under the same token: %s", oneline.Escape(err.Error()))
+			return false
+		}
+		if err := kv.SetKey(ctx, key, "sent"); err != nil {
+			a.serveSay("FUNDS OWNER: delivery mark failed, will retry under the same token: %s", oneline.Escape(err.Error()))
+			return false
+		}
+		return true
+	}
+	groups, err := st.OpenGroups(ctx)
+	if err != nil {
+		a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+		return
+	}
+	for _, g := range groups {
+		if g.Type == sprint.NNothingFunded {
+			send(g.Type, g.What, seatSilentToken("funds."+st.Names.Prefix, epoch, g.ID, g.Before))
+		}
+	}
+	cursorKey := "funds-owner-cursor:" + strconv.FormatUint(epoch, 10)
+	cursor, _, err := kv.GetKey(ctx, cursorKey)
+	if err != nil {
+		a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+		return
+	}
+	notes, ids, err := st.B.NotesSince(ctx, cursor, 128)
+	if err != nil {
+		a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+		return
+	}
+	for i, n := range notes {
+		if n.Type == sprint.NFundedLiveAgain && n.Kind == sprint.Happened {
+			if !send(n.Type, n.What, seatSilentToken("funds."+st.Names.Prefix, epoch, ids[i], 0)) {
+				return
+			}
+		}
+		if err := kv.SetKey(ctx, cursorKey, ids[i]); err != nil {
+			a.serveSay("FUNDS OWNER: %s", oneline.Escape(err.Error()))
+			return
+		}
+	}
 }
