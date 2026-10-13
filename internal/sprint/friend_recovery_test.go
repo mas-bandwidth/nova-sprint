@@ -259,9 +259,13 @@ func TestUnresolvableEmptyRepoWithBindingErrorRaisesJudgment(t *testing.T) {
 	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
 	recoveryStart(w, seats)
 	w.s.Fleet.Card(id).Fields[FieldRecoveryRepo] = ""
-	reqs := RecoveryHeadRequests(w.s)
-	require.Len(t, reqs, 1)
-	r := reqs[0]
+	var r RecoveryHeadRequest
+	for _, q := range RecoveryHeadRequests(w.s) {
+		if q.Card == id {
+			r = q
+		}
+	}
+	require.NotEmpty(t, r.Card)
 	require.Empty(t, r.Repo)
 	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Error: "the revoked generation names no repository"}}})
 	found := false
@@ -285,9 +289,13 @@ func TestRecoveryResolutionClosesUnresolvableJudgment(t *testing.T) {
 	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
 	recoveryStart(w, seats)
 	w.s.Fleet.Card(id).Fields[FieldRecoveryRepo] = ""
-	reqs := RecoveryHeadRequests(w.s)
-	require.Len(t, reqs, 1)
-	r := reqs[0]
+	var r RecoveryHeadRequest
+	for _, q := range RecoveryHeadRequests(w.s) {
+		if q.Card == id {
+			r = q
+		}
+	}
+	require.NotEmpty(t, r.Card)
 	require.Empty(t, r.Repo)
 	require.GreaterOrEqual(t, r.Gen, 1, "only the repository is missing; the generation is known")
 	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r}}})
@@ -303,7 +311,11 @@ func TestRecoveryResolutionClosesUnresolvableJudgment(t *testing.T) {
 	// the next read succeeds: resolution closes the judgment.
 	c := w.s.Fleet.Card(id)
 	c.Fields[FieldRecoveryRepo] = "https://github.com/mas-bandwidth/nova-tools.git"
-	r = RecoveryHeadRequests(w.s)[0]
+	for _, q := range RecoveryHeadRequests(w.s) {
+		if q.Card == id {
+			r = q
+		}
+	}
 	p, _ = TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Head: strings.Repeat("e", 40)}}})
 	w.must(Applied(w.s, p))
 	for _, o := range w.s.Open {

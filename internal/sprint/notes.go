@@ -169,7 +169,7 @@ var Decisions = map[string][]string{
 	// answered by restoring the repository or branch the debt names, then
 	// ack; friend give/take cannot answer it while recoveryAdmissions
 	// holds the lease, so they are not promised here.
-	NRecoveryUnresolvable: {"restore the repository", "drop", "ack", "wait"},
+	NRecoveryUnresolvable: {"restore the repository", "drop", "ack"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

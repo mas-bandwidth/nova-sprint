@@ -210,7 +210,7 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 				n = judgment(NRecoveryUnresolvable, c.F("stream"), s.Now, 0, c.F("primary"))
 				n.Card, n.Who, n.To = c.ID, r.who(), s.Coordinator
 				n.What = "No new take until " + request.Branch + " can be resolved: " + why + "; no retry of this read can succeed. Restore the repository or branch it names (or correct the brief that named it), then ack: the next tick resolves the debt and keeps the carried baseline; ack alone discards nothing"
-				n.Decisions = []string{"restore the repository", "ack", "wait"}
+				n.Decisions = []string{"restore the repository", "drop", "ack"}
 			} else {
 				n = happened(NFriendRecoveryPending, c.F("stream"), s.Now, c.F("primary"))
 				n.Card, n.Who, n.What = c.ID, r.who(), "No new take until "+request.Branch+" is read: "+why+"; tick retries without discarding the carried baseline"

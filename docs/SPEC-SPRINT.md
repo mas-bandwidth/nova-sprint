@@ -340,7 +340,7 @@ ticks do not revoke the same lease again. Head reads rotate batches of at most
 Debt no retry can resolve (no repository named, the revoked generation never
 known, the exact branch not recomputable, or the remote gone) raises one
 standing judgment to the coordinator (`a recovered friend's branch head
-cannot be resolved`), answered by restoring the repository or branch it names, then ack or wait (friend give and take cannot answer it while the lease is held);
+cannot be resolved`), answered by restoring the repository or branch it names, then ack, or drop the primary by hand (friend give and take cannot answer it while the lease is held, and no wait parks a card it holds);
 transient failures stay retriable notes, and the same stall is said once.
 The heads part is bounded so a remote outage cannot hold the tick: at most
 RecoveryHeadRemoteBudget per repository and RecoveryHeadBudget for the part
