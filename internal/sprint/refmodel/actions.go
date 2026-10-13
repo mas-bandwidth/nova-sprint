@@ -623,7 +623,10 @@ func Accept(s State, set []string) (State, error) {
 			n.Streams[st] = x
 		}
 		n.closeOn(p)
-		n.setPrimary(p, func(x *Primary) { x.State = Merging })
+		n.setPrimary(p, func(x *Primary) {
+			x.State = Merging
+			x.DecidedAt = x.Attempt
+		})
 	}
 	return n, nil
 }

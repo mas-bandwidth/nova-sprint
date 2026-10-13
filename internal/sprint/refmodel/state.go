@@ -179,15 +179,12 @@ func (s State) AttemptsCap(stream string) int {
 }
 
 // AtBriefBound says the landing's refusal of the primary's head the way way is at its brief's
-// bound (sprint.AtBriefBound): the same refusal as the one its last rework answered, at an
-// attempt since its brief was replaced, or its stream's attempt cap counted from the
-// coordinator's last decision on the card (sprint.AttemptsSince: every attempt counts).
+// bound (sprint.AtBriefBound): an accepted card is never judged by the attempt cap (tla/Land.tla
+// AcceptedNeverCapJudged); only the same refusal twice as the one its last rework answered, at an
+// attempt since its brief was replaced, stops it at the brief bound.
 func (s State) AtBriefBound(p, way string) bool {
 	pr := s.Primaries[p]
-	if pr.Refused != "" && pr.Refused == way && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt {
-		return true
-	}
-	return pr.Attempt-pr.DecidedAt >= s.AttemptsCap(pr.Stream)
+	return pr.Refused != "" && pr.Refused == way && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt
 }
 
 // Subjects that are not a primary.

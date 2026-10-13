@@ -256,6 +256,7 @@ MCLandBound.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	required	-
 MCLandBoundBrokenNoWidenCap.cfg	MCLandBound.tla	invariant	AttemptsBounded	ignore-terminal	land	required	-
 MCLandBoundBrokenNoSameFinding.cfg	MCLandBound.tla	invariant	SameRefusalHalts	ignore-terminal	land	required	-
 MCLandBoundReachWidenLands.cfg	MCLandBound.tla	invariant	ReachWidenLands	ignore-terminal	land	required	-
+MCLandBrokenCapAccepted.cfg	MCLandBound.tla	invariant	AcceptedNeverCapJudged	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-

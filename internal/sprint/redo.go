@@ -118,12 +118,11 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 			set[FieldLandRefusedHead] = h
 		}
 	}
-	// A conflict only in the shared ledgers seeds no same-refusal bound (it says nothing about
-	// the brief), but the attempt it ends counts toward the attempt cap as every attempt does
-	// (brief_bound.go; the owner, 2026-10-12: every attempt kind counts): bb.Finding is "" for
-	// the cap's bound and names the repeated refusal for the same-refusal one.
+	// An accepted card in merging is never judged by the attempt cap alone (tla/Land.tla
+	// AcceptedNeverCapJudged): the coordinator's accept admits it to merge, and only a repeated
+	// refusal (the same finding twice: bb.Finding != "") or exhausted widenings bound it.
 	bound := ""
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && (!ledger || bb.Finding == "") {
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger && bb.Finding != "" {
 		bound = bb.Why()
 	} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
 		bound = spent

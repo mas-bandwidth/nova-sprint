@@ -96,8 +96,10 @@ func movedOn(s *Snapshot, n Note, id string) string {
 		}
 		// the attempt cap's judgment is outlived by the coordinator's decision on the card
 		// (brief_bound.go, FieldDecidedAttempt: a rework, a re-tier, a continue)
-		if at := c.Int(FieldDecidedAttempt); at > 0 && at >= n.Attempt {
-			return fmt.Sprintf("%s was decided on at attempt %d", id, at)
+		if strings.Contains(n.What, "without a coordinator decision") {
+			if at := c.Int(FieldDecidedAttempt); at > 0 && at >= n.Attempt {
+				return fmt.Sprintf("%s was decided on at attempt %d", id, at)
+			}
 		}
 	}
 	return ""

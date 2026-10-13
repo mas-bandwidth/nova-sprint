@@ -1982,10 +1982,10 @@ failed finish, a reader's finding inside or outside PATHS, a deadline or harness
 a push or lane refused, a landing refused, in the shared ledgers too): the count is the
 card's `attempt` less `decided_attempt` (`sprint.AttemptsSince`; absent is 0), a redeal
 of one attempt being that one attempt (MaxRedeals bounds those on its own). *What
-resets it*: only a coordinator decision on the card writes `decided_attempt` (the
+resets it*: a coordinator decision on the card or an accept writes `decided_attempt` (the
 card's attempt at the decision): `brief` and `brief --tier` run by a person or the seat
 (`BriefReq.ByRule` false), `rework` answered by the seat, `--tier` and `--carry` included
-(`ReworkCard.Rule` empty), `continue`; a drop ends the card. A rule's widen or rework, a
+(`ReworkCard.Rule` empty), `continue`, and `accept` (`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
 stream's `set --base` and the machine's tier escalation never do: each replaces the
 brief or opens an attempt as before, but `brief_attempt` no longer bounds the cap. *At
 the bound*, whatever the attempt found, the card is the coordinator's as exactly one
@@ -4533,11 +4533,14 @@ docs/SPEC-CARD-CONTRACT.md, where a rework starts), its read cards retired, its
 finding `the landing refused its head: <way>`, and the coordinator gets one
 happened note addressed to the seat, `the landing refused a card's head:
 reworked at the tip`, naming the card and the lander's words, with nothing to
-answer. A card at its brief's bound (`sprint.AtBriefBound`: the same refusal as
-the one its last rework answered, or the stream's or the sprint's attempt cap
-counted from its last brief) is not reworked: it goes back to review with the
-bound's judgment, `a card has reached its bound: the brief is wrong, not the
-worker` (brief or drop), the lander's words in its text. A conflict the lander
+answer. An accepted card in merging is never judged by the attempt cap alone
+(`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to
+merge, and only a repeated refusal (the same finding twice on the brief,
+`bb.Finding != ""`) or exhausted widenings bound it. A card at its brief's bound
+(`sprint.AtBriefBound`: the same refusal as the one its last rework answered, or
+exhausted widenings) is not reworked: it goes back to review with the bound's
+judgment, `a card has reached its bound: the brief is wrong, not the worker`
+(brief or drop), the lander's words in its text. A conflict the lander
 could not place (a generated ledger it could not resolve, a head that is no
 commit or that origin does not hold, a conflict with no kind) is its own
 failure: the stream stops on the card, stuck, with the judgment `stream stopped:

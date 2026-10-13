@@ -1213,6 +1213,13 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 		readers := strings.Join(names, ",")
 		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
 		maps.Copy(set, readStamps(oks))
+		// An accept opens a fresh attempt window whoever accepts (both machine/pump
+		// and coordinator; brief_bound.go, FieldDecidedAttempt; tla/Land.tla
+		// AcceptedNeverCapJudged): the attempt cap starts again from this attempt.
+		// Skip writing FieldDecidedAttempt if attempt is empty (never invent "1").
+		if at := c.F("attempt"); at != "" {
+			set[FieldDecidedAttempt] = at
+		}
 		heavyText := ""
 		if r.Heavy {
 			fields, overruled := heavyRead(s, c, r)
