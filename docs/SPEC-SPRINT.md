@@ -7833,6 +7833,49 @@ is start's, and its read and the RUNNING write are two steps, not one: a value w
 them is not seen by that start. While RUNNING, a fresh server record that lands nothing raises
 the judgment `machine:landsnothing` ("the server lands nothing").
 
+**The card check** (v1.2.17, start-refuses-until-a-clean-check; the owner, 2026-10-13: "OK so
+all the card checks we do now, should be a new verb 'nova-sprint check'", "if you start a
+sprint before checking, then it will fail and tell you to check."; tla/MachineReady.tla Check,
+CardChange, StartRefusedCheck, StartOnlyChecked, CleanRecordHasNoDefect). The night of
+2026-10-13 the seat ran the pre-start card checks by hand before the schema sprint could start.
+`nova-sprint check cards [--stream <s>...] [--json]`, a coordinator verb beside `check` (the
+store's invariants, unchanged), reads the epoch's work table (every card not dropped, and the
+records its needs name) and the streams' control cards, and runs the core kinds
+(`sprint.CheckCards`, internal/sprint/cardcheck.go, pure over the snapshot and the base trees
+the verb reads from the lander's clone as add's PATHS admission does): **needs** (every need of
+an open card names a card of this epoch, not dropped; no self-need; no cycle, `needsCycle`; a
+waived need is none), **files** (per stream, the union of its open cards' PATHS expanded at their
+base; a file two streams write names both, a ledger or a file every card may write,
+`cardgen.AlwaysInPaths`, is none), **same-file** (two open cards of a stream naming one PATHS
+file with no need between them, either way, at any depth: add's `sharedPaths` rule over the
+stored cards), **bases** (each stream on its own branch, never the trunk and never another
+stream's, the promotion stream aside; a need across two streams on different branches unless
+the needed card is the producer stream's sentinel), **names** (each stream's display name set,
+not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
+epoch), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
+with no brief is a finding) and **brief-size** (a brief over `store.MaxBriefBytes`, or a card's
+record, its brief with its other fields, over the drain's 16384 bytes). It prints `CHECK <kind>
+<card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK cards=<n>` (exit 0)
+or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store that did not answer.
+Every run writes the epoch's one **check record** (internal/sprint/store/check_record.go, beside
+the machine's record and keyed by epoch as it is: one of another epoch reads as none, so a clear
+leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
+stream, tier, priority, needs and the sha256 of its brief) with one digest over them. A failed
+run overwrites a clean one; a `--stream` check's record names its streams and never opens the
+start. **The gate**: `start` from READY or STOPPED reads the record before the machine changes,
+beside the out-of-credit refusal, and refuses, exit 1, nothing written, one line: with no record
+for the epoch, `run nova-sprint check cards first: no check record for epoch <n>`; with a failed
+record, `run nova-sprint check cards: the last check found <kinds>`; with a clean record whose
+digest is not the cards' now, `run nova-sprint check cards: the cards changed since the check
+(<first card added, removed or changed, and which field>)`. The digest is recomputed from the
+live table, so an admit, a move, a brief, needs, priority or tier change voids the record with no
+hook in those verbs. A start on a RUNNING machine changes nothing. There is no waiver: no flag,
+variable or setting skips the gate; `newApp` sets it on, and only the test rigs whose bare
+starts run on briefless `--count` cards keep it off. A mem twin (`--redis mem:<file>`, for
+learning and tests, never a fleet's) is not gated, so the help's walkthrough and the
+first-run transcript run as written; `check cards` runs on a twin as anywhere. `selftest` adds its card with a minimal
+brief that lints clean, names its stream, and runs `check cards` before its `start`.
+
 **One lander** (v1.2.17; tla/OneLander.tla AtMostOneLander, ServerIsTheLander). The server
 (`run --listen`, `install server`) lands by default; a plain `run` lands only on an explicit
 `--land`; `--land=false` is the server's opt-out, which start refuses, naming `nova-sprint

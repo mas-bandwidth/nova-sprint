@@ -30,6 +30,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 func init() {
@@ -61,6 +62,12 @@ func main() {
 	fmt.Fprintln(os.Stdout, len(os.Args))
 }
 `
+
+// selftestBrief is the brief of the selftest's one card: a tier on line 1 and the child rules,
+// so it passes add's card checks and the card lint check cards runs.
+func selftestBrief() string {
+	return "RESULT: s1-1 sha=0123456789ab tier: flash\nPATHS: main.go\n\nTHE TASK. Land the selftest's empty commit.\n\n" + swarm.ChildRulesParagraph() + "\n"
+}
 
 // cmdSelftest is the verb: the whole landing of one card through the tree
 // gate, in a fresh directory the selftest owns, and one line that says
@@ -191,16 +198,27 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 		}
 		return "", ""
 	}
+	// the card's brief, minimal and clean under the card lint: start refuses until a clean
+	// card check (start-refuses-until-a-clean-check), and a card with no brief fails its lint
+	brief := filepath.Join(d, "s1-1.md")
+	if err := os.WriteFile(brief, []byte(selftestBrief()), 0o600); err != nil {
+		step, why = "brief", err.Error()
+		return
+	}
 	for _, s := range []struct {
 		name string
 		args []string
 	}{
 		{"init", []string{"init", "--readers", "reader-a,reader-b", "--members", "m1"}},
-		{"set", []string{"set", "--read-cards", "off"}},                     // this selftest drives the legacy reader-a table
-		{"add", []string{"add", "--stream", "s1", "--count", "1", "--one"}}, // one card on purpose: add refuses a single card without --one
+		{"set", []string{"set", "--read-cards", "off"}},                            // this selftest drives the legacy reader-a table
+		{"add", []string{"add", "--stream", "s1", "--brief-file", brief, "--one"}}, // one card on purpose: add refuses a single card without --one
 		// the throwaway origin stands for the promotion stream: its main is the protected
 		// branch the flow lands on (docs/SPEC-SPRINT.md section 7, the protected branches)
 		{"mark", []string{"stream", "set", "s1", "--land-protected", "any"}},
+		// a stream a person reads by its name (the card check's names kind)
+		{"display", []string{"stream", "set", "s1", "--display", "The selftest stream"}},
+		// the pre-start card check, whose clean record start reads
+		{"check cards", []string{"check", "cards"}},
 		{"start", []string{"start"}},
 		{"tick", []string{"tick"}},
 		{"tick", []string{"tick"}},

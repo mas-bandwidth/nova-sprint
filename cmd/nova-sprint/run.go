@@ -100,6 +100,11 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its providers), then "+prog+" funded <provider> --reason <the payment> once one is paid"))
 			return 1
 		}
+		// a clean card check of this epoch that matches the cards now, or refused, nothing
+		// written (start-refuses-until-a-clean-check; check_cards.go startCardCheckGate)
+		if code := a.startCardCheckGate(ctx, st, stderr); code != 0 {
+			return code
+		}
 		// every setting the design depends on is working, or a set of this epoch chose it:
 		// else refused, nothing written (start-refuses-a-non-working-setting)
 		warns, code := a.startSettingsGate(ctx, st, stderr)

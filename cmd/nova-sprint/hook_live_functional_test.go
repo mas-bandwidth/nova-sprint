@@ -245,6 +245,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	lines.holdLaterPushes()
 	code, out := seat("add --stream s1 --count 1 --one")
 	require.Equal(t, 0, code, out)
+	require.NoError(t, recordCleanCardCheck(srvApp, addr)) // the rig's check before a start
 	code, out = seat("start")
 	require.Equal(t, 0, code, out)
 
