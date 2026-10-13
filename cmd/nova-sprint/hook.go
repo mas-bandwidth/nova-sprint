@@ -1250,7 +1250,7 @@ func (s *hookSession) end(ctx context.Context, state, why string) {
 		}
 		s.a.hookerForget(s.name)
 		now := s.a.now()
-		var owner string
+		var owner, sender string
 		err := s.a.onLine(ctx, func(st *store.Store) error {
 			rec, _, err := readHook(ctx, st)
 			if err != nil {
@@ -1268,12 +1268,17 @@ func (s *hookSession) end(ctx context.Context, state, why string) {
 				return err
 			}
 			owner, err = s.a.owner(ctx, st)
+			if err == nil {
+				if read, derr := st.DoctorRead(ctx); derr == nil {
+					sender, _ = escalationTarget(owner, read.Snap, s.a.hostName())
+				}
+			}
 			return err
 		})
 		if err != nil {
 			s.a.serveSay("SEAT HOOK name=%s: the end (%s) could not be recorded: %s", s.name, state, oneline.Escape(err.Error()))
 		}
-		s.a.tellOwner(ctx, owner, s.name, state, why)
+		s.a.tellOwner(ctx, owner, sender, s.name, state, why)
 		if state != sprint.HookAway {
 			_ = s.conn.Close() // ignored: a drop's connection is gone already
 		}
@@ -1281,7 +1286,9 @@ func (s *hookSession) end(ctx context.Context, state, why string) {
 }
 
 // tellOwner pushes the seat's end to the owner: one bus message, and the server's line.
-func (a *app) tellOwner(ctx context.Context, owner, name, state, why string) {
+// sender is the one checked escalation sender (escalationTarget, computed where
+// the owner was read); "" sends nothing.
+func (a *app) tellOwner(ctx context.Context, owner, sender, name, state, why string) {
 	line := fmt.Sprintf("SEAT HOOK name=%s state=%s why=%s", name, state, oneline.Quote(why))
 	a.serveSay("%s", line)
 	if owner == "" {
@@ -1294,13 +1301,6 @@ func (a *app) tellOwner(ctx context.Context, owner, name, state, why string) {
 	// literal nova-sprint and never a guessed host name: an unverified sender
 	// sends nothing (seat_silent.go, escalationTarget;
 	// tla/CoordinatorPass.tla EscalatedOnce)
-	sender := ""
-	_ = a.hookRead(ctx, func(st *store.Store) error {
-		if read, err := st.DoctorRead(ctx); err == nil {
-			sender, _ = escalationTarget(owner, read.Snap, a.hostName())
-		}
-		return nil
-	})
 	if sender == "" {
 		a.serveSay("SEAT HOOK name=%s: the push to %s was not sent: the owner escalation has no verified target (see the owner escalation warning at start)", name, owner)
 		return
@@ -1327,7 +1327,7 @@ func (a *app) serveSay(format string, args ...any) {
 func (a *app) hookServerStart(ctx context.Context) {
 	var rec sprint.HookRecord
 	var ok bool
-	var owner string
+	var owner, sender string
 	err := a.onLine(ctx, func(st *store.Store) error {
 		var err error
 		rec, ok, err = readHook(ctx, st)
@@ -1340,6 +1340,11 @@ func (a *app) hookServerStart(ctx context.Context) {
 			return err
 		}
 		owner, err = a.owner(ctx, st)
+		if err == nil {
+			if read, derr := st.DoctorRead(ctx); derr == nil {
+				sender, _ = escalationTarget(owner, read.Snap, a.hostName())
+			}
+		}
 		return err
 	})
 	if err != nil {
@@ -1347,7 +1352,7 @@ func (a *app) hookServerStart(ctx context.Context) {
 		return
 	}
 	if ok && rec.State == sprint.HookGone && rec.Why == "the server restarted: the subscription it held is gone" {
-		a.tellOwner(ctx, owner, rec.Name, rec.State, rec.Why)
+		a.tellOwner(ctx, owner, sender, rec.Name, rec.State, rec.Why)
 	}
 	// the bus store is dialled, and the holder's bus push read, off the line now, so the
 	// first gate on the line reads memory (hookerShared)
