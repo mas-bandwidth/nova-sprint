@@ -224,6 +224,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	q, widths := memberLoads(s, up), memberWidths(s, up)
 	for _, t := range targets {
 		var line string
+		before := [6]int{len(p.Units), len(p.Rows), len(p.Places), len(p.Props), len(p.Closes), len(p.Updates)}
 		switch {
 		case t.Kind == HoldMember && r.Release:
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
@@ -266,11 +267,58 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				}
 			}
 		}
+		changed := len(p.Units) > before[0] || len(p.Rows) > before[1] || len(p.Places) > before[2] || len(p.Props) > before[3] || len(p.Closes) > before[4] || len(p.Updates) > before[5]
+		// a reader's hold record is written outside this plan (the store's
+		// WriteHoldRecords): holding an up reader or releasing a held one
+		// changes it even when no card moves, and the reverse changes nothing.
+		if t.Kind == HoldReader && s.ReaderStates != nil {
+			switch {
+			case r.Release && s.ReaderStates[t.Name] == ReaderUp:
+				changed = false
+			case r.Release && s.ReaderStates[t.Name] == ReaderHeld:
+				changed = true
+			case !r.Release:
+				// a hold writes the record's reason and return flag, which the
+				// snapshot does not carry: a repeat hold may change either
+				changed = true
+			}
+		}
+		if t.Kind == HoldFriend {
+			// a friend's hold lives in her roster record, outside this plan:
+			// holding or releasing her writes it, cards or none
+			changed = true
+		}
+		if !changed {
+			// a write that changes nothing writes no note and says why instead
+			// (tla/Holds.tla: Hold and Unhold are guarded on the held state, so
+			// a hold or release of a name already in that state is no transition)
+			why := line
+			if why == "" {
+				why = unchangedHoldWhy(s, t, r)
+			}
+			p.Said = append(p.Said, why)
+			continue
+		}
 		p.Notes = append(p.Notes, holdNote(s, t, r, line))
 	}
 	p = Lawful(p)
 	roundWrites(&p, rr, moves)
 	return p
+}
+
+// unchangedHoldWhy is why a hold or release of a name changed nothing: the
+// state it asked for already holds.
+func unchangedHoldWhy(s *Snapshot, t HoldTarget, r HoldReq) string {
+	switch {
+	case r.Release && t.Kind == HoldReader && s.ReaderStates != nil && s.ReaderStates[t.Name] == ReaderUp:
+		return t.Name + " is up already"
+	case r.Release:
+		return t.Name + " was not held"
+	case t.Kind == HoldReader:
+		return t.Name + " is held already"
+	default:
+		return t.Name + " is held already"
+	}
 }
 
 // holdWhy is a member hold's words on its status note: the reason, else who held it.
@@ -353,6 +401,9 @@ func holdStream(s *Snapshot, stream string, r HoldReq) (Plan, string) {
 		p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: stream, Changes: []Change{change(Merge, setEntry(ctl, nil, FieldHeld, FieldHeldReason))},
 			Moved: "stream " + stream + " released"})
 		return p, ""
+	}
+	if ctl.F(FieldHeld) != "" {
+		return p, "it is held already"
 	}
 	set := map[string]string{FieldHeld: stamp(s.Now)}
 	var unset []string

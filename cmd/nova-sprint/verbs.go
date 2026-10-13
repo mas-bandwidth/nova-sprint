@@ -896,6 +896,9 @@ type output struct {
 	// the same way.
 	Outcome string `json:"outcome,omitempty"`
 	Changed string `json:"changed,omitempty"`
+	// Unchanged says the step changed nothing (report's UNCHANGED line): it
+	// moved nothing, wrote nothing and refused nothing, and Changed is "no".
+	Unchanged bool `json:"unchanged,omitempty"`
 	// Group, with --group: the group's id, how many it acted on, and the
 	// size --expect said it had when printed.
 	Group    string `json:"group,omitempty"`
@@ -1027,14 +1030,41 @@ func resultChanged(res store.Result, err error) string {
 	}
 }
 
+// unchangedVerbs are the writes whose no-change answer is UNCHANGED: the
+// holds and the settings, the writes the seat repeats expecting them to hold
+// (a worker verb that takes or reads nothing, take or read, is no such write:
+// its OK moved=0 with its NOTE stands, as its tests hold it).
+var unchangedVerbs = map[string]bool{
+	"hold": true, "unhold": true, "fleet hold": true, "fleet unhold": true,
+	"friend hold": true, "friend unhold": true, "fleet down": true,
+	"reader away": true, "reader up": true, "friend down": true, "friend up": true,
+	"set": true, "stream set": true,
+}
+
 func (a *app) report(ctx context.Context, verbName string, c common, st *store.Store, res store.Result, err error, stdout, stderr io.Writer) int {
 	err = noSprintYet(err)
 	code := stepExit(res, err)
 	a.outcome, a.changed = resultOutcome(res, err), resultChanged(res, err)
 	var synced *store.SyncError
 	line := sprintLine(ctx, st)
+	// the step's Said lines beside the verb's own (runStep already merged
+	// them; runHold's report has not), each once, in order
+	says := append([]string{}, c.says...)
+	for _, s := range res.Said {
+		if !slices.Contains(says, s) {
+			says = append(says, s)
+		}
+	}
+	// a write that changes nothing says so and never OK (v1.2.17): it exits 0
+	// having moved nothing, written no unit (no table written) and refused
+	// nothing; its why is the plan's own Said line, else the state already holds
+	why := "the state already holds"
+	if len(says) > 0 {
+		why = says[0]
+	}
+	unchanged := code == 0 && err == nil && len(res.Moved) == 0 && len(res.Refused) == 0 && res.Notes == 0 && len(res.Tables) == 0 && unchangedVerbs[verbName]
 	if c.json {
-		o := output{Result: res, Sprint: line, Unknown: errors.Is(err, store.ErrUnknown), Outcome: a.outcome, Changed: a.changed, Group: c.group.ID, ActedOn: c.group.ActedOn, Expected: c.group.Expected, Packets: c.handed, Says: c.says, Brief: c.brief}
+		o := output{Result: res, Sprint: line, Unknown: errors.Is(err, store.ErrUnknown), Outcome: a.outcome, Changed: a.changed, Unchanged: unchanged, Group: c.group.ID, ActedOn: c.group.ActedOn, Expected: c.group.Expected, Packets: c.handed, Says: says, Brief: c.brief}
 		if o.Moved == nil {
 			o.Moved = []string{}
 		}
@@ -1065,6 +1095,8 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	status := "OK"
 	if code != 0 {
 		status = "FAILED"
+	} else if unchanged {
+		status = "UNCHANGED"
 	}
 	fields := fmt.Sprintf("moved=%d refused=%d notes=%d", len(res.Moved), len(res.Refused), res.Notes)
 	if verbName == "add" {
@@ -1091,7 +1123,15 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 		out = stderr
 	}
 	fmt.Fprintf(out, "%s %s %s\n", token(verbName), status, fields)
-	for _, s := range c.says {
+	skippedWhy := false
+	if unchanged {
+		fmt.Fprintf(out, "NOTE nothing changed: %s\n", oneline.Escape(why))
+	}
+	for _, s := range says {
+		if unchanged && !skippedWhy && s == why {
+			skippedWhy = true
+			continue
+		}
 		fmt.Fprintf(out, "NOTE %s\n", oneline.Escape(s))
 	}
 	if err != nil {
@@ -3592,6 +3632,16 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	ctx := context.Background()
+	// a row no fleet member, friend or member reader matches would never
+	// read (friction 18): a reader row is reader-<member> or reader-<friend>,
+	// or a friend's own name; any other name is refused, nothing written.
+	friends, _ := st.FriendNames(ctx)
+	for _, n := range names {
+		if strings.HasPrefix(n, sprint.ReaderPrefix) || slices.Contains(friends, n) {
+			continue
+		}
+		return refuse(stderr, "reader add", n+" is no member, friend or member reader: it would never read; run: nova-sprint reader add reader-<member> (a fleet member's or a friend's reader row), or nova-sprint reader add <friend>")
+	}
 	if err := st.EnsureReaderTiers(ctx); err != nil {
 		return refuse(stderr, "reader add", err.Error())
 	}
@@ -3759,6 +3809,32 @@ func (a *app) cmdReaderHold(away bool, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "%s %s: no reader %s on the readers table (readers: %s); nothing was changed; run: nova-sprint reader add <name>\n", prog, verbName, strings.Join(bad, ","), strings.Join(rows, ","))
 		return 1
 	}
+	// a release of a reader that is up already, or a hold of one held
+	// already, changes nothing: it says so and never OK (v1.2.17)
+	if states, serr := st.ReaderStates(ctx, names, st.Now()); serr == nil {
+		unchangedWhy := ""
+		if !away {
+			allUp := len(names) > 0
+			for _, n := range names {
+				allUp = allUp && states[n] == sprint.ReaderUp
+			}
+			if allUp {
+				unchangedWhy = strings.Join(names, ",") + " is up already"
+			}
+		} else {
+			allHeld := len(names) > 0
+			for _, n := range names {
+				allHeld = allHeld && states[n] == sprint.ReaderHeld
+			}
+			if allHeld {
+				unchangedWhy = strings.Join(names, ",") + " is held already"
+			}
+		}
+		if unchangedWhy != "" {
+			c.says = append(c.says, unchangedWhy)
+			return a.report(ctx, verbName, *c, st, store.Result{}, nil, stdout, stderr)
+		}
+	}
 	// the old words of hold <reader>... --return and unhold <reader>... (one release): the
 	// reads it holds are asked of another, as a reader away's always were
 	// (docs/SPEC-SPRINT.md section 11)
@@ -3890,6 +3966,43 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
+	}
+	// a set to the value the sprint already holds changes nothing: it says
+	// so and never OK, and writes no property (v1.2.17). Only the plain
+	// property settings are read this way; any other flag runs the step.
+	if *attempts == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *pegged == "" {
+		simple := [][2]string{
+			{sprint.PropReadTier, *tier}, {sprint.PropDealtMax, *dealt}, {sprint.PropGoLanes, *lanes},
+			{sprint.PropAlarmReview, *review}, {sprint.PropAlarmMerging, *merging}, {sprint.PropAlarmFleet, *fleet}, {sprint.PropAlarmReady, *readyAlarm},
+			{sprint.PropFriendIdle, *idle}, {sprint.PropLandingStallBound, *landingStallBound},
+			{sprint.PropFleet, *fleetWork}, {sprint.PropFriends, *friendsWork},
+			{sprint.PropReadCards, *readCards}, {sprint.PropReadsNeeded, *reads},
+			{sprint.PropUnservedTierFallsTo, *unserved}, {sprint.PropReworkPriority, *reworkPriority},
+		}
+		var asked [][2]string
+		for _, kv := range simple {
+			if kv[1] != "" {
+				asked = append(asked, kv)
+			}
+		}
+		if len(asked) > 0 {
+			if snap, lerr := st.Load(context.Background(), []string{sprint.Work}, nil); lerr == nil && snap != nil && snap.Work != nil {
+				same := true
+				for _, kv := range asked {
+					if was, had := snap.Work.Prop(kv[0]); !had || was != kv[1] {
+						same = false
+					}
+				}
+				if same {
+					var parts []string
+					for _, kv := range asked {
+						parts = append(parts, kv[0]+" "+kv[1])
+					}
+					c.says = append(c.says, "the sprint already holds "+strings.Join(parts, ", "))
+					return a.report(context.Background(), "set", *c, st, store.Result{}, nil, stdout, stderr)
+				}
+			}
+		}
 	}
 	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
