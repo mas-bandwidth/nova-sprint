@@ -10,6 +10,14 @@ import (
 // NNeedBlocked is the judgment raised when an unlanded card's need is held, dropped or absent.
 const NNeedBlocked = "a need is blocked: its dependents cannot move"
 
+// The judgment lists ack and wait on TickDecisions, same as deaf and idle, so an
+// acknowledgement is kept on the condition (steps_ack.go) and the tick does not
+// raise a second note while the blocker still holds. The tick's own remedies
+// (rework, drop, needs set) stay on the notes it raises.
+func init() {
+	TickDecisions[NNeedBlocked] = []string{"ack", "wait"}
+}
+
 // Blocker is a card that blocks unlanded dependents.
 type Blocker struct {
 	ID         string
