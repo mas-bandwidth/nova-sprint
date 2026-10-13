@@ -1,6 +1,8 @@
 package refmodel
 
 import (
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -88,6 +90,31 @@ func Abstract(o Observed) State {
 		p.RefusedHead = headAttempt(c.F(sprint.FieldLandRefusedHead))
 		if f := c.F("finding"); strings.HasPrefix(f, sprint.LandRefusedFinding) {
 			p.Refused = strings.TrimPrefix(f, sprint.LandRefusedFinding)
+			if !slices.Contains(p.RefusedWays, p.Refused) {
+				p.RefusedWays = append(p.RefusedWays, p.Refused)
+			}
+		}
+		for _, l := range strings.Split(c.F(sprint.FieldFindings), "\n") {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
+			}
+			var at int
+			var f string
+			if head, rest, ok := strings.Cut(l, ": "); ok {
+				if _, err := fmt.Sscanf(head, "attempt %d", &at); err == nil && at > p.BriefAt {
+					f = rest
+				}
+			}
+			if strings.HasPrefix(f, sprint.LandRefusedFinding) {
+				w := strings.TrimPrefix(f, sprint.LandRefusedFinding)
+				if i := strings.Index(w, ":"); i >= 0 {
+					w = strings.TrimSpace(w[:i])
+				}
+				if w != "" && !slices.Contains(p.RefusedWays, w) {
+					p.RefusedWays = append(p.RefusedWays, w)
+				}
+			}
 		}
 		a.Primaries[id] = p
 	}
