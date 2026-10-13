@@ -232,13 +232,26 @@ func (m *Mem) Epoch(context.Context) (EpochState, error) {
 	return EpochState{N: m.epochN, Cleared: m.cleared, Owed: m.owed, DefaultsOwed: m.epochN > 0 && m.defaultsOwed == m.epochN}, nil
 }
 
-func (m *Mem) AdvanceEpoch(_ context.Context, from uint64, at time.Time) (bool, error) {
+func (m *Mem) AdvanceEpoch(_ context.Context, from uint64, at time.Time, owner ...string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.fail("advance"); err != nil {
 		return false, err
 	}
 	if m.epochN != from {
+		return false, nil
+	}
+	// Inspect FROM, not the root backend's default epoch.
+	fence := m.logs[from]
+	id := ""
+	if len(owner) > 0 {
+		id = owner[0]
+	}
+	if fence != nil && fence.fence != nil {
+		if fence.fence.ID != id {
+			return false, nil
+		}
+	} else if id != "" {
 		return false, nil
 	}
 	m.epochSet, m.epochN, m.cleared, m.owed, m.defaultsOwed = true, from+1, at, true, from+1

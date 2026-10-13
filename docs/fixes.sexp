@@ -68,7 +68,9 @@
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each.")
    (release "v1.2.16" :status "planned"
-    :text "Every TLA+ model checked against the code."))
+    :text "Every TLA+ model checked against the code.")
+   (release "v1.2.19" :status "planned"
+    :text "Fleet fixes, including the shared clear and start machine fence."))
   :items
    ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
      :title "Read cards are on by default"
@@ -3460,4 +3462,8 @@
     (fix "run-serializes-its-shared-output" :release "v1.2.16" :status "in-progress"
      :title "Run serializes the balance poll and tick loop's shared stdout"
      :text "The balance poll and run startup wrote concurrently to the same stdout writer: the full cmd/nova-sprint race suite observed bytes.Buffer.Write in balanceLoop and cmdRun on the buffer runOnce supplies. A later untouched-base isolated tick-deadline run passed; that baseline reproduction remains unproven. Run now gives its startup, ticks, balance, landing, decision, server logs and profile reports one shared output writer with a separate write turn, independent of the store's control line and stderr. Each underlying Write keeps its byte count and error. The balance poll receives a canceled context and finishes before run returns, so it never writes balance output after returning stdout to the caller; a poll waiting for the control line uses LockCtx so a wedged tick cannot deadlock this join. The RTT poll receives the same cancellation. No output is discarded. TestRunSerializesBalanceAndTickOutput holds the underlying stdout writes in a synctest bubble: Wait proves both startup goroutines reached their blocking point, and serialization keeps only one inside the underlying writer. Its reversed witness retains the lifecycle fix and removes only the shared output wrapper. TestRunReturnsAfterItsBalanceOutput checks the ordinary buffer returned by runOnce, and TestBalancePollStopsWhileTickHoldsControlLine cancels a poll after it reaches a held control line, proving the join never waits for the wedged tick. Stderr's bounded stack-dump behavior and the optional landing, decision and listener shutdown lifecycle remain unchanged."
-     :origin "https://github.com/mas-bandwidth/nova-sprint/pull/154; the observed full-suite race and untouched-base isolated pass are recorded in the pull request")))
+     :origin "https://github.com/mas-bandwidth/nova-sprint/pull/154; the observed full-suite race and untouched-base isolated pass are recorded in the pull request")
+    (fix "clear-and-start-share-the-machine-fence" :release "v1.2.19" :status "planned"
+     :title "Clear and start share the machine fence"
+     :text "Clear re-stops an intervening START under the old epoch fence before advancing; the advance verifies that owner atomically. START writes its record and view only with its pinned epoch, settled restore and live fence owner. Deterministic Mem and private Redis functional interleavings cover a start paused after its guard and a completed start before advance, including interrupted restore recovery."
+     :origin "clear-and-start-share-the-machine-fence")))
