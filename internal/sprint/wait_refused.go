@@ -67,6 +67,7 @@ var WaitRefused = map[string]string{
 // still take a wait, each with why: the exceptions TestEveryKindThatHoldsACardRefusesWait
 // reads, kept as few as the code allows.
 var WaitAllowedOnACard = map[string]string{
+	NCannotAsk: "the primary awaits a reader rather than a coordinator action: wait quiets the reader condition until its review time, and eligibility still closes it",
 	// a stall that names a card holds it and is refused (WaitRefusedWhenItNamesACard)
 	NStalled: "a stall that names no card on the work table is a report about a stream or the fleet with nothing held; one that names a card refuses wait",
 	// lateness: the card keeps working (or being read) under its holder, and the late rules

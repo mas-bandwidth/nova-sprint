@@ -1019,6 +1019,12 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
 	case reads == 0 && len(before) == 0:
 		return Note{}, false
+	case reads == 0 && s.Readers != nil && slices.ContainsFunc(before, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && st.closing[o.Note.ID]
+	}) && len(s.freeReaders(pr, attempt)) > 0:
+		// SprintRules.CannotAskClosedWhenEligible: a remaining room/count wait
+		// after eligibility closes cannot ask is not stranded work.
+		return Note{}, false
 	case reads == 0 && s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0:
 		// its read cards are the read-card ask's: dealt, marked waiting for a reader, or
 		// cannot ask (readCardsAskPart), never stranded as never asked

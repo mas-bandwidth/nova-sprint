@@ -9350,3 +9350,7 @@ closes its judgment; a refused ask names the missing reader and remedy.
 `rework` closes it by ending the attempt. SprintRules checks
 `CannotAskClosedWhenEligible` and `OneCannotAskAnEpisode`; held-while-eligible
 and repeated-flap witnesses independently violate those rules.
+
+A `wait` on `cannot ask` quiets its reader condition until the requested review
+time; if no reader becomes eligible, that time raises one reminder. Eligibility
+still closes the wait earlier. The wait does not block an eligible read.

@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestACannotAskClosesWhenAReaderMayRead(t *testing.T) {
@@ -95,6 +96,31 @@ func TestACannotAskClosesWhenAReaderMayRead(t *testing.T) {
 			})
 		}
 	}
+	t.Run("wait parks and reappears at its bound", func(t *testing.T) {
+		t.Parallel()
+		w, none, _, _ := cannotAskEpisodeWorld(t)
+		askTick(t, w, none)
+		j := openCannotAsk(w, "s1-1")[0]
+		until := w.s.Now.Add(30 * time.Minute)
+		w.must(Wait(w.s, WaitReq{Note: j.Note.ID, Until: until, Who: w.s.Coordinator}))
+		hold := w.notes[len(w.notes)-1]
+		require.Equal(t, Acknowledged, hold.Kind)
+		// The core world records the hold note; the store also indexes it in Acked.
+		w.s.Acked = append(w.s.Acked, Open{Key: OpenKey(hold.ID, "s1-1"), Note: hold})
+		raised, closed := askTick(t, w, none)
+		require.Empty(t, raised)
+		require.Empty(t, closed)
+		require.Empty(t, openCannotAsk(w, "s1-1"))
+		w.s.Now = until
+		raised, closed = askTick(t, w, none)
+		require.Len(t, closed, 1)
+		require.Equal(t, hold.ID, closed[0].Note.ID)
+		require.Len(t, raised, 1, "the explicit wait expires into one reminder")
+		w.s.Acked = nil // apply the store's acknowledgement closure in the core world
+		raised, closed = askTick(t, w, none)
+		require.Empty(t, raised, "no reminder every tick")
+		require.Empty(t, closed)
+	})
 	t.Run("rework answers", func(t *testing.T) {
 		t.Parallel()
 		w, none, _, _ := cannotAskEpisodeWorld(t)

@@ -398,8 +398,10 @@ func TestAskTellsOnceWhenFewerThanTwoReadersAreFree(t *testing.T) {
 	w.deal(t, "s1-1")
 	w.take(t, "s1-1")
 	w.finish(t, "s1-1", false)
+	w.s.ReaderStates = map[string]string{"reader-a": sprint.ReaderUp, "reader-m1": sprint.ReaderHeld}
 	got := refmodel.AskMoves(w.snapshot(w.fresh()), later(0))
-	expect(t, got, "open cannot ask [s1-1]")
+	expect(t, got, "open fewer than two readers up [stream:]")
+	// One up reader is eligible: too few for the pair is not cannot ask.
 }
 
 func TestCheckRaisesAJudgmentForABrokenRule(t *testing.T) {

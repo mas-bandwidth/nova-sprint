@@ -995,3 +995,7 @@ set raises at most one judgment per episode; losing eligibility starts a new one
 `ask <card> --answers <j>` answers it when at least one read is dealt. With no
 eligible reader, ask names the reader reason and remedy. `rework`, `drop` and
 `wait` are also decisions; rework ends the attempt and closes the judgment.
+
+A `wait` on `cannot ask` quiets its reader condition until the requested review
+time; if no reader becomes eligible, that time raises one reminder. Eligibility
+still closes the wait earlier. The wait does not block an eligible read.
