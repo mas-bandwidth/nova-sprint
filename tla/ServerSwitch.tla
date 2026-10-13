@@ -329,7 +329,8 @@ SeatCloses == /\ refusal # "none" /\ stored[refusal] = "open"
               /\ \/ /\ stored' = [stored EXCEPT ![refusal] =
                                    IF "ackcloses" \in Broken THEN "none" ELSE "acked"]
                     /\ ackedOnce' = TRUE
-                    /\ UNCHANGED <<raisedFor, reopen>>
+                    /\ reopen' = ("ackcloses" \in Broken) \* the old ack: a close, as check is
+                    /\ UNCHANGED raisedFor
                  \/ /\ stored' = [stored EXCEPT ![refusal] = "none"]
                     /\ raisedFor' = [raisedFor EXCEPT ![refusal] = 0] /\ reopen' = TRUE
                     /\ UNCHANGED ackedOnce
@@ -337,40 +338,6 @@ SeatCloses == /\ refusal # "none" /\ stored[refusal] = "open"
                              switches, midSwitch, autoRollbacks, rolledLate, hooked,
                              rolledOnRefusal, landTried, refusal, rtext, pending,
                              reraisedAfterAck, refusedAt, line, passed, clearedBy>>
-
-\* A land that is ok (exit 0) rolls nothing back. A refusal (exit 1) reaches
-\* CheckRollbackOnLandFailure (landloop.go calls it on every nonzero exit) but
-\* returns without rolling back (the le.Code != 2 filter), so only a pass fault
-\* (exit 2) rolls back. The v1.2.11 card made a refusal (exit 1) stop rolling back.
-\* The automatic pass runs whatever the hook (the reversed witness "hookgate"
-\* restores the old gate, which waited while the seat was unhooked).
-\* Cleared: no refusal stands (by: what cleared it).
-Cleared(by) == /\ refusal' = "none" /\ rtext' = 0 /\ judged' = FALSE
-               /\ raisedFor' = [c \in Causes |-> 0] /\ refusedAt' = 0
-               /\ clearedBy' = IF refusal = "none" THEN clearedBy ELSE by
-
-\* Stand(c, t): a pass, or a read of the queue, stands for cause c, its line carrying
-\* text t (landloop.go standRefusal). The same cause again, whatever its text, keeps
-\* the refusal that stands, its judgment and its since (sprint.LandRefusalKey); another
-\* cause replaces it and is judged at once on this beat (judgeRefusal; judgments.go
-\* LandRefusalRaise closes the replaced cause's judgment in the same plan). The beat's
-\* line names it (writeFlight, writeRefused). Witnesses: "rawkey" keys on the text
-\* too; "rejudge" judges the same cause again; "silentdedupe" writes nothing for the
-\* same cause again; "latejudge" judges only past the bound (LateJudge).
-Stand(c, t) ==
-  LET same == refusal = c /\ (rtext = t \/ "rawkey" \notin Broken)
-  IN /\ refusal' = c /\ rtext' = t /\ passed' = FALSE
-     /\ IF same /\ "rejudge" \notin Broken
-          THEN UNCHANGED <<judged, raisedFor, refusedAt>>
-          ELSE /\ refusedAt' = IF refusal = c THEN refusedAt ELSE clock
-               /\ IF "latejudge" \in Broken /\ refusal # c
-                    THEN /\ judged' = FALSE
-                         /\ raisedFor' = [x \in Causes |-> 0]
-                    ELSE /\ judged' = TRUE
-                         /\ raisedFor' = [x \in Causes |->
-                               IF x = c THEN (IF refusal = c THEN raisedFor[c] + 1 ELSE 1) ELSE 0]
-     /\ line' = IF "silentdedupe" \in Broken /\ refusal = c THEN "idle" ELSE "refused"
-     /\ UNCHANGED clearedBy
 
 \* A land that is ok (exit 0) rolls nothing back. A refusal (exit 1) reaches
 \* CheckRollbackOnLandFailure (landloop.go calls it on every nonzero exit) but
