@@ -274,6 +274,12 @@ func mindCard(pr *Card) string {
 	if _, f := FriendCard(pr); f {
 		return "a friend's card: this work needs a mind"
 	}
+	return mindOther(pr)
+}
+
+// mindOther is mindCard's reasons other than a friend's card: a brief defect, a model the
+// brief pins; "" when none.
+func mindOther(pr *Card) string {
 	if pr.F(FieldBriefDefect) != "" {
 		return "a brief defect: its brief needs a mind"
 	}
@@ -281,6 +287,29 @@ func mindCard(pr *Card) string {
 		return "its brief pins a model or the frontier tier: no ladder to climb"
 	}
 	return ""
+}
+
+// failedOnFriend says the attempt that failed ran on a friend's row: the last work card's
+// member is a friend's (friend_deal.go, IsFriendRow). A WHO: friend preference the deal gave
+// to a fleet member, or that `up` made a friend's card, is fleet work when its attempt ran on
+// the fleet: it is answered by the failed rule and never parked on the seat
+// (tla/SprintRules.tla FailedWithAFindingNeverParked).
+func failedOnFriend(s *Snapshot, pr *Card) bool {
+	wc := s.Fleet.Card(pr.F("work"))
+	if wc == nil {
+		wc = s.Fleet.Card(WorkCardID(pr.ID, pr.Int("attempt")))
+	}
+	return wc != nil && IsFriendRow(wc.Row)
+}
+
+// mindForFailure is mindCard for a failed attempt: a card whose failed attempt ran on the
+// fleet and which is no hard pin keeps its WHO: friend preference but is read as fleet work,
+// so only the other reasons it may need a mind stand.
+func mindForFailure(pr *Card, friend bool) string {
+	if friend {
+		return mindCard(pr)
+	}
+	return mindOther(pr)
 }
 
 // ruleFailed: work came back failed, or with no result. A harness fault, or a HOLD with
@@ -296,7 +325,7 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	pr := s.Work.Placed(a.Subject)
 	friend := false
 	if pr != nil {
-		_, friend = FriendCard(pr)
+		friend = OnlyFriend(pr) || failedOnFriend(s, pr)
 	}
 	switch {
 	case pr == nil || pr.Col != Review || pr.F("result") != "failed":
@@ -305,7 +334,7 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	case holdsFor(s, pr) == "" && ruleHarness(s, a, pr):
 		return // a harness fault, or a HOLD with findings: the failure is the fix (harness_fault.go)
 	case pr.F(FieldBriefDefect) != "":
-		left(a, mindCard(pr))
+		left(a, mindForFailure(pr, friend))
 		return
 	case friend:
 		left(a, mindCard(pr)) // a friend's failure outside the harness classes: her work needs a mind
@@ -338,7 +367,7 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	if pr.F(FieldFailure) != "budget" {
 		same = sameFailure(s, pr.F(FieldFailure))
 	}
-	if stay := mindCard(pr); stay != "" || same != "" {
+	if stay := mindForFailure(pr, friend); stay != "" || same != "" {
 		if stay == "" {
 			stay = same
 		}
