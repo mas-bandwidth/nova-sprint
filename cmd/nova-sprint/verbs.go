@@ -1141,7 +1141,9 @@ func sprintLine(ctx context.Context, st *store.Store) string {
 			return store.Stopped + "  " + doneLine(shapes[0], sent)
 		}
 		return store.Stopped + "  " + progress(shapes[0], sent)
-	case strings.HasPrefix(state, "STOPPED"):
+	case strings.HasPrefix(state, "STOPPED") || state == store.Ready:
+		// READY (before the epoch's first start) has no ETA either, and says READY
+		// where STOPPED is said (docs/SPEC-SPRINT.md section 14, "READY")
 		if all == 0 && landed == 0 {
 			return state
 		}
@@ -4363,7 +4365,7 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, line)
 	}
 	if res.Machine == store.Running {
-		fmt.Fprintf(stdout, "the machine is STOPPED; when the new sprint is ready: nova-sprint start\n")
+		fmt.Fprintf(stdout, "the machine is READY; when the new sprint is ready: nova-sprint start\n") // docs/SPEC-SPRINT.md section 14, "READY"
 	}
 	return 0
 }

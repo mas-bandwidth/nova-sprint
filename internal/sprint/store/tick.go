@@ -27,11 +27,19 @@ const (
 	keyHeartbeat = "heartbeat" // STRING, the last tick's record (JSON)
 )
 
-// The machine's states.
+// The machine's states. The record holds RUNNING or STOPPED; READY is read off
+// it (Machine.Ready): a machine not RUNNING that has not started since its
+// epoch was cleared, the sprint being prepared (docs/SPEC-SPRINT.md section 14,
+// "READY"; tla/MachineReady.tla ReadyIsDerived).
 const (
 	Running = "RUNNING"
 	Stopped = "STOPPED"
+	Ready   = "READY"
 )
+
+// ErrNothingToStop is a stop of a READY machine, refused with its reason
+// (docs/SPEC-SPRINT.md section 14, "READY"; tla/MachineReady.tla StopRefused).
+var ErrNothingToStop = errors.New("the machine is READY: it has not started since the clear; nothing to stop")
 
 const (
 	// TickEvery is the time between two ticks of run.
@@ -110,6 +118,40 @@ type Machine struct {
 	// them empty.
 	Reason string    `json:"reason,omitempty"`
 	Until  time.Time `json:"until,omitzero"`
+	// StartedIn is the last epoch the machine ran in, as read when it was written:
+	// by start, and by every stop of a RUNNING machine (a start that landed inside
+	// a clear ran on into the new epoch, and its stop says so). A start or a
+	// run-stop in the epoch as read means the machine is not READY, whatever the
+	// clock (two steps at one clock reading). Empty in a record neither has
+	// written since this field came (v1.2.17), which the spans alone answer.
+	StartedIn string `json:"started_in,omitempty"`
+	// ready is the record as read (Store.Machine): it has not started since the
+	// sprint's epoch was cleared. It is never stored: READY is read off the
+	// record and the epoch, so a store cleared and never started since reads
+	// READY with no record rewritten (tla/MachineReady.tla ReadyIsDerived).
+	ready bool
+}
+
+// Ready says the machine is READY (docs/SPEC-SPRINT.md section 14, "READY"):
+// not RUNNING, and not started since the sprint's epoch was cleared (or the
+// sprint was made). A clear leaves it READY, and start moves it to RUNNING; it
+// is not STOPPED, which only a stop of a RUNNING machine makes. A worker reads
+// it as STOPPED (StateWord): nothing is taken before the first start.
+func (m Machine) Ready() bool { return !m.Running() && m.ready }
+
+// readyAt sets the machine's READY reading against the sprint's epoch as read
+// (es: its number, and its clear time, zero for a sprint never cleared): not
+// RUNNING, and no start in this epoch: the epoch of the last start (StartedIn)
+// is another, or, for a record no start has written it on (before v1.2.17), no
+// STOPPED span closed by a start after the clear (FirstStart). The epoch number
+// answers when it is there, so no two hosts' clocks are compared.
+func (m Machine) readyAt(es EpochState) Machine {
+	if m.StartedIn != "" {
+		m.ready = !m.Running() && m.StartedIn != strconv.FormatUint(es.N, 10)
+		return m
+	}
+	m.ready = !m.Running() && m.FirstStart(es.Cleared).IsZero()
+	return m
 }
 
 // StopLease is one child the owner must confirm stopped before a new run.
@@ -193,7 +235,10 @@ func (m Machine) stopRevoked() bool {
 	return !m.Running() && (m.StopIssued || m.RunSeq > 0 || m.Reason != "" || m.Cause != "" || len(m.StopDebt) > 0)
 }
 
-// StateWord is RUNNING or STOPPED.
+// StateWord is RUNNING or STOPPED: the word a worker reads (machineWord), so a
+// READY machine is STOPPED to it and nothing is taken before the first start.
+// The readers that show the machine to people say READY (MachineLine,
+// ViewState).
 func (m Machine) StateWord() string {
 	if m.Running() {
 		return Running
@@ -218,14 +263,17 @@ func (m Machine) StoppedTotal(now time.Time) time.Duration {
 // ViewState is the state text the sprint's stored view shows as its summary
 // line for the machine (docs/SPEC-SPRINT.md section 1): STOPPED alone, with
 // no counts, percent or ETA, while the machine is STOPPED (no record is
-// STOPPED); DONE alone while it is STOPPED because the sprint is done; none,
-// so the counts show, while it is RUNNING.
+// STOPPED); READY alone before the epoch's first start (section 14, "READY");
+// DONE alone while it is STOPPED because the sprint is done; none, so the
+// counts show, while it is RUNNING.
 func ViewState(m Machine) string {
 	switch {
 	case m.Running():
 		return ""
 	case m.Done():
 		return DoneState
+	case m.Ready():
+		return Ready
 	}
 	return Stopped
 }
@@ -260,6 +308,11 @@ func (st *Store) putMachine(ctx context.Context, m Machine) error {
 func MachineLine(now time.Time, m Machine, hb Heartbeat) string {
 	if m.Done() {
 		return "machine: " + DoneState
+	}
+	if m.Ready() {
+		// before the epoch's first start: a sprint being prepared, not a stop
+		// (section 14, "READY")
+		return "machine: " + Ready
 	}
 	if !m.Running() && m.Cause == sprint.FundsCause {
 		return "machine: STOPPED (" + sprint.FundsCause + ")"
@@ -335,12 +388,20 @@ func (st *Store) CountTickOverrun(ctx context.Context) (int64, error) {
 	return hb.TickOverrun, st.putJSON(ctx, keyHeartbeat, hb)
 }
 
-// Machine reads the state record and the heartbeat.
+// Machine reads the state record and the heartbeat. A record not RUNNING is read
+// with its READY reading (Machine.Ready), against the sprint's epoch as read now.
 func (st *Store) Machine(ctx context.Context) (Machine, Heartbeat, error) {
 	var m Machine
 	var hb Heartbeat
 	if err := st.getJSON(ctx, keyMachine, &m); err != nil {
 		return m, hb, err
+	}
+	if !m.Running() {
+		es, err := st.EpochNow(ctx)
+		if err != nil {
+			return m, hb, err
+		}
+		m = m.readyAt(es)
 	}
 	err := st.getJSON(ctx, keyHeartbeat, &hb)
 	return m, hb, err

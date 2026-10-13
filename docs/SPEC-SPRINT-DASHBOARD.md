@@ -100,6 +100,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-12 ~03:08Z the owner, of the wordmark: "only when it fits, hide otherwise"
 - 2026-10-13 ~02:10Z the owner: "I don't want work stream names to look like variable names or tags. I want them to be human readable."
 - 2026-10-13 the owner: "What happens next is you update it with all the stuff you changed and i haven't seen for a day"
+- 2026-10-13 the owner, of the machine's new state after a clear (READY, docs/SPEC-SPRINT.md section 14): "When you are in it print 'READY' to ETA"
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
 ~01:07Z, ~01:09Z, ~01:10Z, ~01:22Z, ~01:25Z, ~01:42Z and ~03:10Z, whose words were not recorded)
@@ -277,7 +278,10 @@ from the owner edits one line here and nothing else moves.
 
 ## Hero row: five tiles, one row at 2000 px, three and two below, two per row below 1100 px, large figure (72 px)
 1. LANDED: n of all; sub-line "<pct>% complete". Narrow: the number alone, sub-line "of <all> · <pct>%".
-2. ETA: "2h 9m"; sub-line "around 9:06 PM".
+2. ETA: "2h 9m"; sub-line "around 9:06 PM". While the machine is READY (after a clear, before its first start;
+   docs/SPEC-SPRINT.md section 14) the figure is "READY" in the page's existing green (`var(--good)`, never an alarm
+   colour) and the sub-line is blank (the owner, 2026-10-13: "When you are in it print 'READY' to ETA", "Ready can be in
+   regular text color." "or if you want, green.").
 3. COST: total to the cent; sub-line "$0.24 per card" (never "per landed card").
 4. IN FLIGHT: n; sub-line "14 working · 9 verify" on one line (verify counts review, fix and merging together, one global state; the tooltip gives the review, fix and merging counts).
 5. THROUGHPUT: cards landed per hour over the last 60 min; "—" until ten minutes of samples; sub-line "cards / hour".

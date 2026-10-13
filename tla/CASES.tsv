@@ -642,3 +642,8 @@ MCMemberPeggedBrokenOnce.cfg	MCMemberPegged.tla	temporal	SecondEpisodeRaised	ign
 MCMemberPeggedBrokenHeld.cfg	MCMemberPegged.tla	invariant	RaisedOnlyPastBound	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenRebound.cfg	MCMemberPegged.tla	invariant	ClosesOnlyOnARealEnd	ignore-terminal	memberpegged	required	-
 MCMemberPeggedBrokenReboundTwice.cfg	MCMemberPegged.tla	invariant	OneJudgmentPerPeggedEpisode	ignore-terminal	memberpegged	required	-
+MCMachineReady.cfg	MCMachineReady.tla	pass	-	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenClearStopped.cfg	MCMachineReady.tla	invariant	ClearLeavesReady	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenReadyJudges.cfg	MCMachineReady.tla	invariant	ReadyNeverJudges	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenStopReady.cfg	MCMachineReady.tla	invariant	StoppedOnlyFromRunning	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenNoStopStamp.cfg	MCMachineReady.tla	invariant	RanIsNotReady	ignore-terminal	machineready	required	-

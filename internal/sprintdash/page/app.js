@@ -631,7 +631,12 @@ function renderHero(d, s, ft) {
   if ($("of-all2")) $("of-all2").style.display = all ? "" : "none";
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   var done = !!(all && landed >= all), stopped = /STOPPED/.test(String(d.machine || "")) && !done;
-  if (stopped) {
+  // READY, before the first start since the clear, is said in the ETA cell in the page's green (SPEC-SPRINT-DASHBOARD.md, the owner 2026-10-13)
+  var ready = /^(machine:\s*)?READY\b/.test(String(d.machine || "")) && !done;
+  $("eta").style.color = ready ? "var(--good)" : "";
+  if (ready) {
+    setText($("eta"), "READY"); setClass($("eta"), "big"); etaAtLast = null; setText($("eta-at"), "\u00a0");
+  } else if (stopped) {
     // the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red"; ~01:08Z "darker";
     // ~01:32Z STOP at every width ("cleaner"); the STOP word lives here, not a chip
     setText($("eta"), "STOP"); setClass($("eta"), "big eta-stop"); etaAtLast = null; setText($("eta-at"), "\u00a0");

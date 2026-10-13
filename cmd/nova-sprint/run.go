@@ -131,12 +131,17 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 	}
 	what := "changed"
 	switch {
+	case !running && after.Ready():
+		// a stop of a READY machine that held a live owner lease (or an unsettled debt):
+		// the stop captured it as debt for its owner's stop-return; the machine stays READY
+		// (docs/SPEC-SPRINT.md section 14, "READY")
+		what = fmt.Sprintf("captured: the machine stays READY (not started since the clear); %d live lease(s) captured as the stop's debt, each settled by its owner's stop-return", len(after.StopDebt))
 	case !changed && !running:
 		what = "unchanged: the machine is STOPPED already; its reason and back-by time are this stop's"
 	case !changed:
 		what = "unchanged: the machine is " + after.StateWord() + " already"
 	}
-	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), before.StateWord(), after.StateWord(), what)
+	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), shownWord(before), shownWord(after), what)
 	if running {
 		if _, hb, err := st.Machine(ctx); err == nil && a.now().Sub(hb.Alive()) > store.MachineSilence {
 			if a.twinOpen(c.redis) {

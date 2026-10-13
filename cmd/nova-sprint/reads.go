@@ -2181,8 +2181,8 @@ func tiersJSON(tiers []string) any {
 func whereHeader(summary, machine string) string {
 	state := strings.TrimPrefix(machine, "machine: ")
 	switch {
-	case strings.HasPrefix(state, "STOPPED") || state == store.DoneState:
-		return state // DONE, as the view says, when the sprint is done
+	case strings.HasPrefix(state, "STOPPED") || state == store.DoneState || state == store.Ready:
+		return state // DONE, as the view says, when the sprint is done; READY before the first start (section 14)
 	case state == "running" || state == "":
 		return strings.TrimSpace(summary)
 	}

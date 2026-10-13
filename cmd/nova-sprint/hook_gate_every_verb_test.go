@@ -419,9 +419,10 @@ func warningAnswer(t *testing.T, text string) []string {
 // card waiting for judgement should alert you via warning every second once it has been
 // in this state for 10 seconds or longer." "These must be push notifications."): a
 // judgment open 9 s, nothing; at 10 s one warning push in that look naming it and the
-// command that answers it; at 11 s again; an ack of the push does not silence it;
-// answered with the command it names, none.
-func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
+// command that answers it; at 11 s nothing (the same set waits its minute, v1.2.17,
+// sprint.JudgmentWarnEvery); a minute after the first, again as one line; an ack of the
+// push does not silence it; answered with the command it names, none.
+func TestAWaitingJudgmentIsPushedAsAWarning(t *testing.T) {
 	t.Parallel()
 	const name = "hook-warn"
 	ta, _ := hookSprint(t, name)
@@ -456,6 +457,11 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 
 	ta.step(time.Second)
 	s.look(ctx)
+	c.quiet("the same set a second later: it waits its minute")
+
+	// the machine ticks through the minute (else it reads silent, a judgment of its own)
+	ta.lined(func() { ta.step(sprint.JudgmentWarnEvery - time.Second); ta.ok("tick") })
+	s.look(ctx)
 	w2 := c.next("push")
 	require.Equal(t, hookWarnWhat, w2.What)
 	assert.Equal(t, "WARNING 1 judgment(s) waiting on the coordinator 10s or longer: j1", w2.Text, "the set has not changed: its one line")
@@ -463,7 +469,7 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 
 	// an ack does not silence it, and a warning never blocks the gate
 	require.Equal(t, "ok", c.say(hookMsg{T: "ack", ID: w2.ID}).T)
-	ta.step(time.Second)
+	ta.lined(func() { ta.step(sprint.JudgmentWarnEvery); ta.ok("tick") })
 	s.look(ctx)
 	w3 := c.next("push")
 	require.Equal(t, hookWarnWhat, w3.What)
@@ -477,8 +483,8 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 }
 
 // The same warning as the seat sees it: `nova-sprint hook` on a twin server prints the
-// PUSH line of the warning each second (the server's look, real time), naming the
-// judgment, with no hand poll.
+// PUSH line of the warning (the server's look each second, real time), naming the
+// judgment, with no hand poll, and again a minute later on its clock.
 func TestTheWarningArrivesAsAPushLineOnTheHook(t *testing.T) {
 	t.Parallel()
 	const name = "hook-warn-cli"
@@ -503,7 +509,10 @@ func TestTheWarningArrivesAsAPushLineOnTheHook(t *testing.T) {
 	assert.Contains(t, first, "PUSH ")
 	assert.Contains(t, first, hookWarnWhat+": answer the judgments below; an ack does not silence it")
 	assert.Contains(t, hh.next("  WARNING "), "judgment(s) waiting on the coordinator 10s or longer")
-	// again, a second later, as a push of its own
+	// again, a minute later on the server's clock (the same set waits its minute,
+	// sprint.JudgmentWarnEvery), as a push of its own; the machine ticks through the
+	// minute on the server's line (else it reads silent, a judgment of its own)
+	ta.lined(func() { ta.step(sprint.JudgmentWarnEvery); ta.ok("tick") })
 	again := hh.next("PUSH ")
 	assert.Contains(t, again, hookWarnWhat+": WARNING 1 judgment(s) waiting on the coordinator 10s or longer: j1", "the set has not changed: one line")
 	assert.NotEqual(t, first, again)
@@ -522,7 +531,12 @@ func TestAReadTimeJudgmentIsWarnedFromWhenFirstSeen(t *testing.T) {
 	c.next("hello")
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
 	ta.busProven(name)
-	ta.lined(func() { ta.ok("add --stream s1 --count 2") }) // never started: the machine is stopped with moves due, a read-time judgment
+	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
+	// started and stopped (a sprint never started is READY and raises nothing): the machine
+	// is STOPPED with moves due, a read-time judgment
+	ta.lined(func() { ta.ok("start") })
+	ta.step(time.Second)
+	ta.lined(func() { ta.ok("stop --reason 'a test' --until 1h") })
 	s := ta.hookSession()
 	require.NotNil(t, s)
 	ctx := context.Background()

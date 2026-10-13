@@ -23,7 +23,8 @@ import (
 // while the server was RUNNING the whole time and ticking 7 to 16 s apart.
 // where's header keeps the progress line, the inbox, where --json and the
 // dashboard's machine line say "running (tick late <n>s)"; STOPPED is a real
-// stop alone: the machine key STOPPED (a new sprint) or a stop on the log.
+// stop alone, a stop on the log (a new sprint, never started, is READY:
+// docs/SPEC-SPRINT.md section 14).
 func TestWhereShowsRunningWithATickLateNoteNotStopped(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -40,11 +41,11 @@ func TestWhereShowsRunningWithATickLateNoteNotStopped(t *testing.T) {
 	}
 	var w whereView
 
-	// the machine key STOPPED (a new sprint, no stop on the log): STOPPED
+	// a new sprint, never started: READY (docs/SPEC-SPRINT.md section 14), never running
 	got := whereHead(t, ta.ok("where"))
-	assert.True(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED"), "a STOPPED key:\n%q", got)
+	assert.True(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nREADY"), "a new sprint:\n%q", got)
 	ta.json("where", &w)
-	assert.True(t, strings.HasPrefix(w.Machine, "machine: STOPPED"), "a STOPPED key: %q", w.Machine)
+	assert.True(t, strings.HasPrefix(w.Machine, "machine: READY"), "a new sprint: %q", w.Machine)
 
 	// RUNNING and ticked: running, no note
 	ta.ok("start")

@@ -20,12 +20,13 @@ type ClearResult struct {
 	Finished  string      // a pending operation of the old epoch clear finished first
 	Abandoned string      // one it could not finish, abandoned with the old epoch
 	Restored  bool        // a clear cut before it restored its shape, finished first
-	Machine   string      // the machine's state before clear set it STOPPED
+	Machine   string      // the machine's state before clear stopped it and left it READY
 	Refused   []StopLease `json:"refused,omitempty"`
 }
 
 // Clear stops the sprint and clears all work in it: it sets the machine
-// STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14).
+// STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14);
+// the new epoch's machine, not started since, reads READY (section 14, "READY").
 // It finishes or abandons the old epoch's pending operation, then advances
 // the epoch once. All sprint state is keyed by epoch, so the new epoch starts
 // with none of the old work; its configuration, the fleet's members and the
@@ -127,12 +128,22 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	}
 	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
 		"read cards": placed(old.Readers, ""), "merge cards": placed(old.Merge, sprint.Ctl), "open judgments": len(old.Open)}
-	// The new epoch's own record that the machine is STOPPED, and why.
-	if _, ok := st.B.(KV); ok {
+	// The new epoch's machine is READY (docs/SPEC-SPRINT.md section 14, "READY";
+	// tla/MachineReady.tla Clear, ClearLeavesReady): it has not started since this
+	// clear, so the record as read now is READY with nothing written to it; the
+	// view's state text says so, and the new epoch's own record says why.
+	if kv, ok := st.B.(KV); ok {
+		m, _, err := next.Machine(ctx)
+		if err != nil {
+			return res, err
+		}
+		if err := kv.ShowState(ctx, next.Names.View(), ViewState(m)); err != nil {
+			return res, err
+		}
 		at := res.To
 		if _, err := next.Run(ctx, Step{Verb: "clear", Epoch: &at, Plan: func(s *sprint.Snapshot) sprint.Plan {
 			return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: sprint.NMachineStopped, Who: st.Actor, At: s.Now,
-				What: "the machine is STOPPED by the clear of epoch " + strconv.FormatUint(res.From, 10) + "; when the new sprint is ready: nova-sprint start"}}}
+				What: "the machine is READY after the clear of epoch " + strconv.FormatUint(res.From, 10) + ": it has not started since; when the new sprint is ready: nova-sprint start"}}}
 		}}); err != nil {
 			return res, err
 		}

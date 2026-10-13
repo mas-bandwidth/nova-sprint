@@ -19,15 +19,14 @@ func TestStartAndStopSayTheStateBeforeAndAfter(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 3")
 	out := ta.ok("where")
-	require.Contains(t, out, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED\n\n", "where")
+	require.Contains(t, out, "SPRINT TABLE  coordinator coordinator\n\nREADY\n\n", "where")
 	require.NotContains(t, out, "machine:", "where")
-	out = ta.ok("stop --reason r --until 9999h")
-	require.Contains(t, out, "STOP OK before=STOPPED after=STOPPED unchanged: the machine is STOPPED already", "stop when stopped")
-	require.Contains(t, out, "\nSTOPPED by coordinator: r, back by ", "stop when stopped")
-	require.Contains(t, out, "  0/3 0.0%", "stop when stopped")
-	require.NotContains(t, out, "-> ETA", "stop when stopped")
+	// stop on READY is refused with its reason (docs/SPEC-SPRINT.md section 14, "READY")
+	code, _, errs := ta.do("stop --reason r --until 9999h")
+	require.NotEqual(t, 0, code, "stop when READY")
+	require.Contains(t, errs, "the machine is READY: it has not started since the clear; nothing to stop", "stop when READY")
 	out = ta.ok("start")
-	require.Contains(t, out, "START OK before=STOPPED after=RUNNING changed", "start")
+	require.Contains(t, out, "START OK before=READY after=RUNNING changed", "start")
 	require.Contains(t, out, "nothing is ticking: run: nova-sprint run", "start")
 	require.Contains(t, out, "0/3 0.0% -> ETA -  machine: running", "start")
 	require.Contains(t, ta.ok("start"), "unchanged: the machine is RUNNING already", "start when running")
@@ -43,6 +42,11 @@ func TestStartAndStopSayTheStateBeforeAndAfter(t *testing.T) {
 	require.NotContains(t, out, "(no tick", "a verb's line with no tick")
 	require.NotContains(t, out, "STOPPED", "a verb's line with a late tick")
 	ta.ok("stop --reason r --until 9999h")
+	out = ta.ok("stop --reason r --until 9999h")
+	require.Contains(t, out, "STOP OK before=STOPPED after=STOPPED unchanged: the machine is STOPPED already", "stop when stopped")
+	require.Contains(t, out, "\nSTOPPED by coordinator: r, back by ", "stop when stopped")
+	require.Contains(t, out, "  0/3 0.0%", "stop when stopped")
+	require.NotContains(t, out, "-> ETA", "stop when stopped")
 	require.Contains(t, ta.ok("tick"), "TICK OK state=STOPPED nothing done", "a tick while stopped")
 }
 
@@ -74,14 +78,14 @@ func whereHead(t *testing.T, out string) string {
 	return out[i:]
 }
 
-func TestWhereHeaderIsStoppedOrTheProgressLine(t *testing.T) {
+func TestWhereHeaderIsTheStateOrTheProgressLine(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1")
-	// stopped: the title, a blank line, the word, a blank line, byte for byte
+	// never started, READY: the title, a blank line, the word, a blank line, byte for byte
 	got := whereHead(t, ta.ok("where"))
-	require.True(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED\n\n"), "stopped:\n%q", got)
-	require.False(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED\n\n\n"), "stopped:\n%q", got)
+	require.True(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nREADY\n\n"), "ready:\n%q", got)
+	require.False(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\nREADY\n\n\n"), "ready:\n%q", got)
 	// running with no cards
 	ta.ok("start")
 	got = whereHead(t, ta.ok("where"))
@@ -100,16 +104,31 @@ func TestWhereHeaderIsStoppedOrTheProgressLine(t *testing.T) {
 	got = whereHead(t, ta.ok("where"))
 	require.True(t, strings.HasPrefix(got, "SPRINT TABLE  coordinator coordinator\n\n0/3 0.0% -> ETA -  running (tick late 16s)\n\n"), "running but silent:\n%q", got)
 	require.NotContains(t, got, "(no tick", "running but silent:\n%q", got)
+	// stopped: the title, a blank line, the stop's line alone (no progress, no ETA), a
+	// blank line, byte for byte
+	ta.ok("stop --reason r --until 9999h")
+	now := ta.a.now()
+	stopped := "SPRINT TABLE  coordinator coordinator\n\n" + sprint.StoppedText("coordinator", "r", now.Add(9999*time.Hour), now) + "\n\n"
+	got = whereHead(t, ta.ok("where"))
+	require.True(t, strings.HasPrefix(got, stopped), "stopped:\n%q\nwant the prefix\n%q", got, stopped)
+	require.False(t, strings.HasPrefix(got, stopped+"\n"), "stopped:\n%q", got)
 }
 
-func TestWhereHeaderStoppedIsExactlyTheView(t *testing.T) {
+func TestWhereHeaderReadyOrStoppedIsExactlyTheView(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1")
 	out := ta.ok("where")
 	i := strings.Index(out, "work")
+	require.GreaterOrEqual(t, i, 0, "ready view:\n%q", out)
+	require.Equal(t, "SPRINT TABLE  coordinator coordinator\n\nREADY\n\n", out[:i], "ready view (never started):\n%q", out)
+	ta.ok("start")
+	ta.ok("stop --reason r --until 9999h")
+	now := ta.a.now()
+	out = ta.ok("where")
+	i = strings.Index(out, "work")
 	require.GreaterOrEqual(t, i, 0, "stopped view:\n%q", out)
-	require.Equal(t, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED\n\n", out[:i], "stopped view:\n%q", out)
+	require.Equal(t, "SPRINT TABLE  coordinator coordinator\n\n"+sprint.StoppedText("coordinator", "r", now.Add(9999*time.Hour), now)+"\n\n", out[:i], "stopped view:\n%q", out)
 }
 
 // TestWhereDoesNotPrintTheRoutesLine pins the view going from the machine state line
@@ -126,7 +145,7 @@ func TestWhereDoesNotPrintTheRoutesLine(t *testing.T) {
 	})
 	out := ta.ok("where")
 	require.NotContains(t, out, "routes:")
-	require.Contains(t, out, "SPRINT TABLE  coordinator coordinator\n\nSTOPPED\n\nwork")
+	require.Contains(t, out, "SPRINT TABLE  coordinator coordinator\n\nREADY\n\nwork") // never started: READY (section 14)
 	require.NotContains(t, ta.ok("where --json"), `"routes"`)
 	require.Contains(t, ta.ok("routes"), "flash=1 pro=1")
 }

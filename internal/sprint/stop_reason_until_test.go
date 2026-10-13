@@ -164,7 +164,9 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 		c := newTwinClock(t)
 		ctx := context.Background()
 		makeProviderOutOfCredit(t, c)
-		_, _, _, err := c.st.StopUntil(ctx, "a bench", stopAt.Add(time.Hour))
+		_, _, _, err := c.st.SetMachine(ctx, true) // a stop is of a running machine: READY refuses it
+		require.NoError(t, err)
+		_, _, _, err = c.st.StopUntil(ctx, "a bench", stopAt.Add(time.Hour))
 		require.NoError(t, err)
 		c.step(time.Hour)
 		res, err := c.st.Tick(ctx)
@@ -190,6 +192,11 @@ func TestStopCarriesReasonAndUntilUntilExplicitStart(t *testing.T) {
 		res, err := c.st.Tick(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, store.Stopped, res.State)
-		assert.Equal(t, "machine: STOPPED", c.st.MachineLine(ctx))
+		assert.Equal(t, "machine: READY", c.st.MachineLine(ctx), "a cleared sprint is READY until its start (docs/SPEC-SPRINT.md section 14)")
+		// the clear took the stop's reason and back-by time off the record: nothing starts it
+		m, _, err := c.st.Machine(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, m.Reason, "the clear takes the reason off")
+		assert.True(t, m.Until.IsZero(), "the clear takes the back-by time off: %v", m.Until)
 	})
 }

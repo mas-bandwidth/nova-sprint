@@ -70,20 +70,20 @@ $ nova-sprint init --readers reader-m2 --members m1,m2
 INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-m2
 MOVED m1 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
-STOPPED
+READY
 MOVED m2 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t2-1
-STOPPED
+READY
 NOTE a twin beats every member at every verb: each member added is up after the next nova-sprint tick
 
 $ nova-sprint add --stream s1 --count 1 --one
 MOVED s1-1 -> ready stream=s1 score=1
 ADD OK stream=s1 cards=1 before=- moved=1 refused=0 notes=0 op=add-t3-1
 NOTE the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>
-STOPPED  0/1 0.0%
+READY  0/1 0.0%
 
 $ nova-sprint start
-START OK before=STOPPED after=RUNNING changed
+START OK before=READY after=RUNNING changed
 nothing is ticking between commands in a twin: tick by hand: nova-sprint tick
 0/1 0.0% -> ETA -  machine: running
 
@@ -187,7 +187,7 @@ $ nova-sprint init --readers reader-a,reader-b --members m1
 INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-a,reader-b
 MOVED m1 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
-STOPPED
+READY
 NOTE a twin beats every member at every verb: each member added is up after the next nova-sprint tick
 
 $ nova-sprint add --stream s1 --count 2
@@ -195,10 +195,10 @@ MOVED s1-1 -> ready stream=s1 score=1
 MOVED s1-2 -> ready stream=s1 score=2
 ADD OK stream=s1 cards=2 before=- moved=2 refused=0 notes=0 op=add-t2-1
 NOTE the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>
-STOPPED  0/2 0.0%
+READY  0/2 0.0%
 
 $ nova-sprint start
-START OK before=STOPPED after=RUNNING changed
+START OK before=READY after=RUNNING changed
 nothing is ticking between commands in a twin: tick by hand: nova-sprint tick
 0/2 0.0% -> ETA -  machine: running
 

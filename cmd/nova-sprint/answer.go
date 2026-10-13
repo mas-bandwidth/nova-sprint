@@ -113,9 +113,9 @@ func (p answerPass) count(act string) int {
 	return n
 }
 
-// stopped says the machine is not running (STOPPED, or DONE): the loop form ends.
+// stopped says the machine is not running (STOPPED, READY, or DONE): the loop form ends.
 func (p answerPass) stopped() bool {
-	return strings.Contains(p.Machine, "STOPPED") || strings.Contains(p.Machine, store.DoneState)
+	return strings.Contains(p.Machine, "STOPPED") || strings.Contains(p.Machine, store.DoneState) || strings.HasSuffix(p.Machine, store.Ready)
 }
 
 func (a *app) cmdAnswer(args []string, stdout, stderr io.Writer) int {

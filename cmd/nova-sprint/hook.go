@@ -55,7 +55,7 @@ const (
 // challenge's clock; hookWriteBound bounds each line written to the session, so a hook
 // that does not read never holds the server.
 const (
-	hookLook       = time.Second // the waiting-judgment warning repeats every second (sprint.JudgmentWarnings)
+	hookLook       = time.Second // the waiting-judgment warning is judged every look, pushed at most once a sprint.JudgmentWarnEvery for one set (sprint.JudgmentWarnDue)
 	hookWriteBound = 10 * time.Second
 	hookAskBound   = 30 * time.Second
 )
@@ -456,9 +456,13 @@ type hookSession struct {
 	sent   map[string]bool
 	// firstSeen is when this hook first saw each open judgment group (by id), and warnSet
 	// the last waiting-judgment warning's set: its full text goes out when the set changes
-	// (sprint.JudgmentWarnings).
+	// (sprint.JudgmentWarnings). warned is the set the last look saw (by judgment id), and
+	// warnedAt when the last warning was pushed: the next is pushed at once for a judgment
+	// joining the set, else a sprint.JudgmentWarnEvery after it (sprint.JudgmentWarnDue).
 	firstSeen map[string]time.Time
 	warnSet   string
+	warned    map[string]bool
+	warnedAt  time.Time
 	acked     map[string]bool // durably acknowledged note keys in the current sprint epoch
 	epoch     uint64
 	// acted is the last act seen over this subscription or from its seat: the proof, an
@@ -939,6 +943,9 @@ func (s *hookSession) look(ctx context.Context) {
 	var openBefore []sprint.HookItem
 	var seqBefore uint64
 	var epochBefore uint64
+	var warnedBefore map[string]bool
+	var warnedAtBefore time.Time
+	var warnSetBefore string
 	var warn *hookMsg
 	err := s.a.onLine(ctx, func(st *store.Store) error {
 		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
@@ -966,9 +973,12 @@ func (s *hookSession) look(ctx context.Context) {
 		epochBefore = s.epoch
 		openBefore = append([]sprint.HookItem(nil), s.open...)
 		sentBefore, ackedBefore = cloneKeys(s.sent), cloneKeys(s.acked)
+		warnedBefore, warnedAtBefore, warnSetBefore = s.warned, s.warnedAt, s.warnSet
 		if s.epoch != epoch.N {
 			s.epoch, s.acked, s.sent = epoch.N, map[string]bool{}, map[string]bool{}
 			s.open = nil
+			// a new epoch's judgments are warned about afresh (sprint.JudgmentWarnDue)
+			s.warnSet, s.warned, s.warnedAt = "", nil, time.Time{}
 		}
 		active := map[string]bool{}
 		for _, g := range v.Groups {
@@ -1017,28 +1027,38 @@ func (s *hookSession) look(ctx context.Context) {
 				delete(s.sent, k)
 			}
 		}
-		// the waiting-judgment warning: one push a look listing every judgment open
-		// sprint.JudgmentWarnAfter or longer, every look until it is answered: its full
-		// text when the set changed, else its one line. It is not an open push (an ack
-		// does not silence it and it never blocks the gate); it goes after this look's
-		// own pushes.
+		// the waiting-judgment warning: one push listing every judgment open
+		// sprint.JudgmentWarnAfter or longer, until it is answered, at a bounded rate: at
+		// once when a judgment joins the set, else at most once a sprint.JudgmentWarnEvery
+		// (sprint.JudgmentWarnDue; docs/SPEC-SPRINT.md, "The waiting-judgment warning"):
+		// its full text when the set changed since the last push, else its one line. It is
+		// not an open push (an ack does not silence it and it never blocks the gate); it
+		// goes after this look's own pushes.
 		if ws := sprint.JudgmentWarnings(v.Groups, now, s.firstSeen); len(ws) > 0 {
-			s.seq++
-			set := sprint.JudgmentWarningSet(ws)
-			text := set
-			if set != s.warnSet {
-				text = sprint.JudgmentWarningText(ws)
+			seen := make(map[string]bool, len(ws))
+			for _, w := range ws {
+				seen[w.ID] = true
 			}
-			s.warnSet = set
-			warn = &hookMsg{T: "push", ID: s.seq, What: hookWarnWhat, Text: text}
+			if sprint.JudgmentWarnDue(ws, s.warned, s.warnedAt, now) {
+				s.seq++
+				set := sprint.JudgmentWarningSet(ws)
+				text := set
+				if set != s.warnSet {
+					text = sprint.JudgmentWarningText(ws)
+				}
+				s.warnSet, s.warnedAt = set, now
+				warn = &hookMsg{T: "push", ID: s.seq, What: hookWarnWhat, Text: text}
+			}
+			s.warned = seen
 		} else {
-			s.warnSet = ""
+			s.warnSet, s.warned, s.warnedAt = "", nil, time.Time{}
 		}
 		if len(pushes) == 0 && epochBefore == s.epoch && maps.Equal(ackedBefore, s.acked) {
 			return nil
 		}
 		if _, err := s.recordLocked(ctx, st); err != nil {
 			s.seq, s.open, s.sent, s.acked, s.epoch = seqBefore, openBefore, sentBefore, ackedBefore, epochBefore
+			s.warned, s.warnedAt, s.warnSet = warnedBefore, warnedAtBefore, warnSetBefore
 			pushes = nil
 			warn = nil
 			return err
@@ -1882,7 +1902,7 @@ func hookSay(w io.Writer, name, addr, from string, m hookMsg) {
 	case "push":
 		if m.What == hookWarnWhat {
 			if !strings.Contains(strings.TrimRight(m.Text, "\n"), "\n") {
-				// the set has not changed: one line a second
+				// the set has not changed: one line, at most once a minute
 				fmt.Fprintf(w, "PUSH %d %s: %s\n", m.ID, hookWarnWhat, oneline.Escape(strings.TrimSpace(m.Text)))
 				return
 			}
