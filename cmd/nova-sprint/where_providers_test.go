@@ -80,3 +80,39 @@ func TestWhereNamesMalformedProviderOnceWithoutCallingItUnfunded(t *testing.T) {
 	assert.Equal(t, "broken", v.ProviderGaps.InvalidProviders[0].Name)
 	assert.Contains(t, text, providersLine(v.Providers, v.ProviderGaps)+"\n")
 }
+
+func TestStartRefusesChangedProviderFundingAfterCleanCheck(t *testing.T) {
+	t.Parallel()
+	ta := gateOn(t)
+	ta.m.SetRoutes([]sprint.Route{{Name: "r", Tier: "heavy", Provider: "p", Enabled: true}})
+	ta.m.SetTiers(map[string][]string{"heavy": {"r"}})
+	ta.m.SetProviders(map[string]sprint.Provider{"p": {Name: "p", Billing: "plan", Funded: true}})
+	ta.ok("check cards")
+	ta.m.SetProviders(map[string]sprint.Provider{"p": {Name: "p", Billing: "plan", Funded: false}})
+	code, out, errs := ta.do("start")
+	assert.Equal(t, 1, code, out+errs)
+	assert.Contains(t, errs, "CHECK routes tier:heavy holds no route of a funded provider")
+	assert.Contains(t, errs, "nothing was written")
+	assert.False(t, ta.machineRunning())
+	ta.m.SetProviders(map[string]sprint.Provider{"p": {Name: "p", Billing: "plan", Funded: true}})
+	ta.ok("check cards")
+	ta.ok("start")
+}
+
+func TestFullCheckNamesNoProviderAndMalformedProvider(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	code, out, errs := ta.do("check cards")
+	assert.Equal(t, 1, code, out+errs)
+	assert.Contains(t, out, "CHECK routes - no provider rows applied remedy=nova-config apply --kind provider")
+	ta.m.SetProviders(map[string]sprint.Provider{"broken": {Name: "broken", Problem: "funded field is invalid"}})
+	code, out, errs = ta.do("check cards")
+	assert.Equal(t, 1, code, out+errs)
+	assert.Equal(t, 1, strings.Count(out, "CHECK routes provider:broken funded field is invalid"))
+	assert.NotContains(t, out, "no provider rows applied")
+	var object checkCardsOut
+	require.NoError(t, json.Unmarshal([]byte(func() string { _, o, _ := ta.do("check cards --json"); return o }()), &object))
+	require.Len(t, object.Findings, 1)
+	assert.Equal(t, "routes", object.Findings[0].Kind)
+}

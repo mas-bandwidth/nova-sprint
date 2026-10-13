@@ -310,11 +310,11 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	for _, n := range names {
 		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
 	}
-arrays := make(map[string]interface {
-  Val() string
-  Err() error
- }, len(routeArrayTiers))
- for _, t := range routeArrayTiers {
+	arrays := make(map[string]interface {
+		Val() string
+		Err() error
+	}, len(routeArrayTiers))
+	for _, t := range routeArrayTiers {
 		arrays[t] = pipe2.HGet(ctx, config.TierKey(t), "routes")
 	}
 	if err := redisconn.Exec(ctx, pipe2); err != nil {
@@ -325,9 +325,10 @@ arrays := make(map[string]interface {
 		out = append(out, RouteOf(n, hs[n].Val()))
 	}
 	tiers := map[string][]string{}
-for _, t := range routeArrayTiers {
-  // Preserve a present empty field: the deal falls back to enabled native routes.
-  if arrays[t].Err() == nil { tiers[t] = sprint.Split(arrays[t].Val())
+	for _, t := range routeArrayTiers {
+		// Preserve a present empty field: the deal falls back to enabled native routes.
+		if arrays[t].Err() == nil {
+			tiers[t] = sprint.Split(arrays[t].Val())
 		}
 	}
 	set.Providers = map[string]sprint.Provider{}
