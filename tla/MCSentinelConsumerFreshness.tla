@@ -1,0 +1,3 @@
+------------------- MODULE MCSentinelConsumerFreshness -------------------
+EXTENDS SentinelConsumerFreshness
+=============================================================================
