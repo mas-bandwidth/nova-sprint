@@ -488,13 +488,10 @@ func (st *Store) stopWithCauseReason(ctx context.Context, cause, why string, run
 				if cause == sprint.NothingFundedCause {
 					after.Reason = why
 				}
-				// it ran in the epoch as read now: STOPPED there, never READY
-				// (tla/MachineReady.tla Stop, RanIsNotReady)
-				var es EpochState
-				if es, err = pinned.EpochNow(ctx); err == nil {
-					after.StartedIn = strconv.FormatUint(es.N, 10)
-					err = pinned.putMachine(ctx, after)
-				}
+				// Commit only in the observed epoch while this lock still owns
+				// its fence. An expired stop cannot overwrite a later clear.
+				after.StartedIn = strconv.FormatUint(pinned.epoch, 10)
+				err = pinned.B.GuardedMachine(ctx, pinned.restoreGuard(false), lock.ID, after, pinned.Names.View())
 				changed = err == nil
 			}
 		}
