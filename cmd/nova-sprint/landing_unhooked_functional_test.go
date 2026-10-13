@@ -69,10 +69,12 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runOnStore(a, addr, append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(split(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
+	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash")
 	// a card's work as a member makes it: one commit on a sprint branch, pushed to origin
 	g(worker, "switch", "-q", "--no-track", "-c", "sprint/s1-1", "refs/remotes/origin/main")
 	require.NoError(t, os.WriteFile(filepath.Join(worker, "a.txt"), []byte("a\n"), 0o600))
@@ -82,15 +84,15 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	g(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 
 	for _, l := range []string{
-		"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+		"set --read-cards off", // this script consumes standalone legacy readers
 
 		"add --stream s1 --count 1 --one",
 		"fleet beat m1", "start", "tick", "tick",
-		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0",
+		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0 --usage 'input=1000 output=100'",
 		"queue --as reader-a", "queue --as reader-b",
 		"ask",
-		"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0",
-		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0",
+		"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'",
+		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'",
 		"accept s1-1", "stream set s1 --land-protected " + sprint.LandProtectedAny,
 	} {
 		run(l)

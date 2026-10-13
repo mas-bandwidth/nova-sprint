@@ -69,18 +69,20 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runOnStore(a, addr, strings.Fields(line), &out, &errb)
+		code := runOnStore(a, addr, split(line), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash")
+	for _, l := range []string{"set --read-cards off", // this script consumes standalone legacy readers
 		"add --stream s1 --count 2", "fleet beat m1", "start",
 		"tick", "tick", // the fleet update brings m1 up; the next pump deals
-		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0",
+		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0 --usage 'input=1000 output=100'",
 		"queue --as reader-a", "queue --as reader-b", // the readers ask for their queues: they are up
 		"tick", // the pump moves both to review; the readers are asked
-		"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0",
-		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0"} {
+		"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'",
+		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'"} {
 		run(l)
 	}
 	// before the next pump (which would accept them itself), the coordinator

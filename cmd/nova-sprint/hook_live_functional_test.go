@@ -163,6 +163,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	}
 	// the first init on a store with no holder is never refused
 	direct("init --readers reader-a --members m1 --owner glenn")
+	declareFunctionalRoutes(t, admin, "flash")
 	srv := httptest.NewServer(localHandler{srvApp})
 	t.Cleanup(srv.Close)
 

@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -52,7 +51,7 @@ func TestALandingStallIsJudgedAndClearedByALandingOnTheStore(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runOnStore(a, addr, append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(split(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -86,11 +85,13 @@ func TestALandingStallIsJudgedAndClearedByALandingOnTheStore(t *testing.T) {
 		return false
 	}
 
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+	run("init --readers reader-a,reader-b --members m1")
+	declareFunctionalRoutes(t, c, "flash")
+	for _, l := range []string{"set --read-cards off", // this script consumes standalone legacy readers
 		"add --stream s1 --count 2", "fleet beat m1", "start",
 		"set --landing-stall-bound 1s",
 		"tick", "tick", // the fleet update brings m1 up; the next pump deals
-		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0",
+		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0 --usage 'input=1000 output=100'",
 		"queue --as reader-a", "queue --as reader-b", // the readers ask for their queues: they are up
 		"tick"} { // the pump moves both to review; the readers are asked
 		run(l)
@@ -116,8 +117,8 @@ func TestALandingStallIsJudgedAndClearedByALandingOnTheStore(t *testing.T) {
 
 	// 2. the reads come in, the coordinator accepts, and the lander records the landing: the
 	// next tick ends the episode and the landing reached the coordinator as it happened
-	for _, l := range []string{"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0",
-		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0",
+	for _, l := range []string{"read --as reader-a --begin --limit 10 --epoch 0", "read --as reader-a --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'",
+		"read --as reader-b --begin --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0 --usage 'input=1000 output=100'",
 		"accept s1-1 s1-2"} {
 		run(l)
 	}

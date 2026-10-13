@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
@@ -61,6 +62,23 @@ func releaseStore(t *testing.T, actor string) (string, *app, func(args ...string
 	return addr, a, do, run
 }
 
+// releaseFundedFlashFixture declares the one native route these release-accept
+// tests need to start their sprint. The route and provider are explicit test
+// facts; the tests do not borrow a machine's or provider's funding.
+func releaseFundedFlashFixture(t *testing.T, addr string) {
+	t.Helper()
+	ctx := context.Background()
+	c := redis.NewClient(&redis.Options{Addr: addr})
+	t.Cleanup(func() { _ = c.Close() })
+	require.NoError(t, c.SAdd(ctx, config.ProvidersKey, "release-fixture").Err())
+	require.NoError(t, c.HSet(ctx, config.ProviderKey("release-fixture"), "billing", "metered", "funded", "true").Err())
+	require.NoError(t, c.SAdd(ctx, config.RoutesKey, "release-fixture-flash").Err())
+	require.NoError(t, c.HSet(ctx, config.RouteKey("release-fixture-flash"),
+		"name", "release-fixture-flash", "tier", "flash", "provider", "release-fixture", "model", "fixture-model",
+		"tokens", "400000", "deadline", "1800", "enabled", "true").Err())
+	require.NoError(t, c.HSet(ctx, config.TierKey("flash"), "name", "flash", "routes", "release-fixture-flash").Err())
+}
+
 // releaseCard is a card's view on the store.
 func releaseCard(t *testing.T, do func(args ...string) string, id string) cardView {
 	t.Helper()
@@ -79,8 +97,9 @@ func releaseCard(t *testing.T, do func(args ...string) string, id string) cardVi
 func TestReleaseAcceptTicksOfABusySprintNeverFail(t *testing.T) {
 	t.Parallel()
 	const ticks = 40
-	_, _, do, run := releaseStore(t, "coordinator")
+	addr, _, do, run := releaseStore(t, "coordinator")
 	do("init", "--readers", "reader-a,reader-b,reader-c", "--members", "m1:4,m2:4,m3:4,m4:4")
+	releaseFundedFlashFixture(t, addr)
 	do("add", "--stream", "a,b,c", "--count", "80")
 	for _, m := range []string{"m1", "m2", "m3", "m4"} {
 		do("fleet", "beat", m, "--load", "0")
@@ -123,8 +142,9 @@ func TestReleaseAcceptTicksOfABusySprintNeverFail(t *testing.T) {
 // is never in a member's take or dealt again while the need is unlanded.
 func TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore(t *testing.T) {
 	t.Parallel()
-	_, _, do, run := releaseStore(t, "coordinator")
+	addr, _, do, run := releaseStore(t, "coordinator")
 	do("init", "--readers", "reader-a,reader-b", "--members", "m1:4")
+	releaseFundedFlashFixture(t, addr)
 	do("add", "--stream", "s1", "--count", "2")
 	do("fleet", "beat", "m1", "--load", "0")
 	do("start")
@@ -248,6 +268,7 @@ func releaseCanary(t *testing.T, base []string) {
 	addr, _, do, _ := releaseStore(t, "coordinator")
 	b := newReleaseBin(t, releaseBinary(t), addr, base)
 	b.ok("coordinator", []string{"init"}, "--readers", "reader-a,reader-b", "--members", "m1:1")
+	releaseFundedFlashFixture(t, addr)
 	do("add", "--stream", "canary", "--count", "1", "--one")
 	b.ok("m1", []string{"fleet", "beat"}, "m1", "--load", "0")
 	do("start")
@@ -260,7 +281,7 @@ func releaseCanary(t *testing.T, base []string) {
 	p := take.Packets[0]
 	assert.Equal(t, "canary-1", p.Primary)
 	head := strings.Repeat("c", 40)
-	fin := b.ok("m1", []string{"finish"}, "--as", "m1", p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--head", head, "--report", "canary")
+	fin := b.ok("m1", []string{"finish"}, "--as", "m1", p.Card+"@"+strconv.Itoa(p.Gen), "--epoch", "0", "--head", head, "--report", "canary", "--usage", "input=1000 output=100 model=release-fixture/fixture-model")
 	assert.Contains(t, fin, "done ok", fin)
 	tick := b.ok("coordinator", []string{"tick"})
 	assert.Contains(t, tick, "TICK OK", tick)

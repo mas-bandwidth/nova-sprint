@@ -72,6 +72,7 @@ func TestAnEnvironmentExitOnARealStore(t *testing.T) {
 	}
 
 	ok("init", "--readers", "reader-a", "--members", "m1")
+	declareFunctionalRoutes(t, c, "flash")
 	ok("add", "--stream", "s1", "--count", "10")
 	ok("start")
 	tick() // m1 comes up
@@ -90,7 +91,8 @@ func TestAnEnvironmentExitOnARealStore(t *testing.T) {
 	epoch := strconv.FormatUint(q.Epoch, 10)
 	ok("take", "--as", "m1", "--limit", "100", "--epoch", epoch)
 	for _, c := range q.Cards[:8] {
-		ok("finish", "--as", "m1", c.ID+"@"+strconv.Itoa(c.Gen), "--epoch", epoch, "--head", c.ID)
+		ok("finish", "--as", "m1", c.ID+"@"+strconv.Itoa(c.Gen), "--epoch", epoch, "--head", c.ID,
+			"--usage", "input=1000 output=100")
 	}
 	tick() // a finish is queued until the next tick drains it
 	env134, env0 := q.Cards[8], q.Cards[9]

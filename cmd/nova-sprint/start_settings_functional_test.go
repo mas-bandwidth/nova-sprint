@@ -30,6 +30,7 @@ func TestStartRefusesAMalformedGitIdentityOnARealStore(t *testing.T) {
 	require.NoError(t, fn.Load(context.Background(), c))
 	ta := newFunctionalTestApp(t, addr)
 	ta.runVerb("init", "--readers", "reader-a,reader-b", "--members", "m1")
+	declareFunctionalRoutes(t, c, "flash")
 	ta.runVerb("add", "--stream", "s1", "--count", "2")
 
 	require.NoError(t, c.Set(context.Background(), config.SprintKey(config.FieldGitIdentity), "nobody", 0).Err())

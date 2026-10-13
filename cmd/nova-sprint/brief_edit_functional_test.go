@@ -47,6 +47,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	}
 	dir := t.TempDir()
 	run("init", "--readers", "reader-a,reader-b", "--members", "m1")
+	declareFunctionalRoutes(t, c, "flash")
 	run("add", "--one", "--stream", "a", "d", "--brief-file", writeHeaderBrief(t, dir, "d", "-", "internal/d.go"))
 	run("add", "--one", "--stream", "a", "a-1", "--brief-file", writeHeaderBrief(t, dir, "a-1", "-", "internal/a1.go"))
 	run("add", "--one", "--stream", "a", "a-2", "--brief-file", writeHeaderBrief(t, dir, "a-2", "-", "internal/a2.go"))
