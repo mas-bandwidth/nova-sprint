@@ -249,7 +249,7 @@ func unlawful(u Unit, p *Plan) string {
 			to = e.Move.Col
 		}
 		switch {
-		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
+		case from == Waiting && to == Landed && (!p.releasing || !sentinel) && (!p.handLanding || sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
 		case from == Ready && to == Waiting && !p.inserting && !needsOpen(e, p.pre):
 			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or with a named need not landed"
@@ -266,7 +266,7 @@ func unlawful(u Unit, p *Plan) string {
 		switch {
 		case e.Remove && !IsOpen(from) && !p.removing:
 			return "the lifecycle has no move off the table from " + from
-		case e.Move != nil && e.Move.Col != from && !Legal(from, e.Move.Col):
+		case e.Move != nil && e.Move.Col != from && !Legal(from, e.Move.Col) && !(p.handLanding && IsOpen(from) && e.Move.Col == Landed && !sentinel):
 			return "the lifecycle has no move " + from + " -> " + e.Move.Col
 		}
 	}
@@ -326,7 +326,7 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 // operation's verb: release may land a sentinel, add may move a primary
 // ready -> waiting. It returns the entries refused, by card id, with why.
 func Rejudge(pre *Snapshot, verb string, changes []Change) []Refusal {
-	p := Plan{pre: pre, releasing: verb == "release", inserting: verb == "add", drained: verb == DrainVerb}
+	p := Plan{pre: pre, releasing: verb == "release" || verb == "landed", inserting: verb == "add", handLanding: verb == "landed", drained: verb == DrainVerb}
 	for _, c := range changes {
 		p.Units = append(p.Units, Unit{Key: c.Entry.ID, Changes: []Change{c}})
 	}

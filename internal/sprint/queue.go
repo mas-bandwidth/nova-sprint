@@ -109,6 +109,9 @@ func Drain(s *Snapshot, q []QueuedChange, who string) Plan {
 			p.releasing = true
 		case "add":
 			p.inserting = true
+		case "landed":
+			p.handLanding = true
+			p.releasing = true
 		}
 		if x.Prop != nil {
 			if _, ok := props[x.Prop.Name]; !ok {

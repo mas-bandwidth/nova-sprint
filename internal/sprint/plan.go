@@ -113,7 +113,9 @@ type Plan struct {
 	// releasing says release built the plan: the one step that may land a
 	// sentinel. inserting says add inserts a sentinel in front of ready
 	// primaries: the one step that may move a primary ready -> waiting.
-	releasing, inserting bool
+	// handLanding says landed built the plan: the one step that may move an
+	// open primary directly to landed.
+	releasing, inserting, handLanding bool
 	// removing says remove built the plan: the one step that takes a landed
 	// primary off the table.
 	removing bool

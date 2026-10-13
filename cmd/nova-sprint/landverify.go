@@ -189,9 +189,9 @@ func cardCheck(pr *sprint.Card, base, verb string) landedCheck {
 		ch.Base = cb.Ref
 	}
 	switch {
-	case ch.Head == "":
+	case verb != "landed" && ch.Head == "":
 		ch.Why = "no head recorded"
-	case !shaRE.MatchString(ch.Head):
+	case verb != "landed" && !shaRE.MatchString(ch.Head):
 		ch.Why = "the head " + ch.Head + " is not a commit id"
 	case ch.Base == "":
 		ch.Why = "its brief names no BASE: line; run: nova-sprint " + verb + " --base <branch>"
@@ -235,6 +235,10 @@ func (l *lander) verify(ctx context.Context, checks []landedCheck) {
 			continue
 		}
 		ch.Tip, ch.dir = f.tip, dir
+		if ch.Head == "" || !shaRE.MatchString(ch.Head) {
+			ch.Missing = true
+			continue
+		}
 		if _, err := l.git(ctx, dir, "cat-file", "-e", ch.Head+"^{commit}"); err != nil {
 			ch.Missing = true
 			continue
@@ -261,10 +265,9 @@ func (l *lander) ancestor(ctx context.Context, dir, a, b string) (bool, string) 
 // cmdLanded is the coordinator's record of work found on the branch but not recorded landed
 // (docs/SPEC-SPRINT.md section 7, land-record-unreported-push-bc.w2): a push that happened and
 // was never reported, or work landed by a pull request outside the deal. Each card is
-// recorded landed only when git, and no model, says its head is an ancestor of --sha and
-// --sha is on origin/<base> at its tip; otherwise the verb is refused, naming what git found
-// for each card, and nothing is written. The store's step lands the cards as merge --landed
-// does (sprint.RecordLanded): all or none, merging cards of one stream only.
+// recorded landed when git, and no model, says --sha is on origin/<base> at its tip (and, for
+// a merging card with a commit-id head, its head is an ancestor of --sha); otherwise the verb
+// is refused, naming what git found for each card, and nothing is written.
 func (a *app) cmdLanded(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("landed")
 	sha := fs.String("sha", "", "the commit on origin/<base> the cards' work is in, 7 to 40 hex digits (required)")
@@ -322,7 +325,11 @@ func (a *app) cmdLanded(args []string, stdout, stderr io.Writer) int {
 			refused = append(refused, ch.ID+": "+why)
 			continue
 		}
-		pins = append(pins, sprint.LandedPin{ID: ch.ID, Head: ch.Head, InBase: true})
+		head := full
+		if ch.State == sprint.Merging && shaRE.MatchString(ch.Head) {
+			head = ch.Head
+		}
+		pins = append(pins, sprint.LandedPin{ID: ch.ID, Head: head, InBase: true})
 	}
 	if len(refused) > 0 {
 		// what git found is a refusal of the cards, as a step's is (exit 1), never of the words
@@ -333,8 +340,9 @@ func (a *app) cmdLanded(args []string, stdout, stderr io.Writer) int {
 }
 
 // landedAt is what git found against recording ch landed at sha, "" when nothing: the commit
-// is on origin/<base> at its tip (fetched by verify) and the card's head is an ancestor of
-// it. full is the commit's full id, set by the first card read; every card names one commit.
+// is on origin/<base> at its tip (fetched by verify), and for a merging card whose recorded
+// head is a commit id, that head is an ancestor of it. full is the commit's full id, set by
+// the first card read; every card names one commit.
 func (l *lander) landedAt(ctx context.Context, ch landedCheck, sha string, full *string) string {
 	at, err := l.git(ctx, ch.dir, "rev-parse", "--verify", "--quiet", sha+"^{commit}")
 	if err != nil || at == "" {
@@ -350,6 +358,8 @@ func (l *lander) landedAt(ctx context.Context, ch landedCheck, sha string, full 
 		return why
 	case !in:
 		return "commit " + at + " is not an ancestor of origin/" + ch.Base + " at its tip " + ch.Tip + ": it is not on the base"
+	case ch.State != sprint.Merging || !shaRE.MatchString(ch.Head):
+		return ""
 	case ch.Missing:
 		// the commit is on the base and the head is not (verify): the head is not in the commit
 		return "its head " + ch.Head + " is not an ancestor of commit " + at + ": its work is not in it"

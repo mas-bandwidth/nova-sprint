@@ -250,6 +250,7 @@ func Batch(pre *Snapshot, steps []func(*Snapshot) Plan) Plan {
 		p.Places = append(p.Places, q.Places...)
 		p.inserting = p.inserting || q.inserting
 		p.releasing = p.releasing || q.releasing
+		p.handLanding = p.handLanding || q.handLanding
 	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}

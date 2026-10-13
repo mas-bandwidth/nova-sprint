@@ -263,7 +263,7 @@ func LandedStep(r sprint.LandedReq) Step {
 	for i, pin := range r.Pins {
 		ids[i] = pin.ID
 	}
-	return Step{Named: true, Args: ArgsOf(r), Verb: "landed", Load: tables(sprint.Merge, sprint.Work), Mirrors: true,
+	return Step{Named: true, Args: ArgsOf(r), Verb: "landed", Load: All, Mirrors: true,
 		Extras: func(*sprint.Snapshot) map[string][]string { return map[string][]string{sprint.Work: ids} },
 		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordLanded(s, r) }}
 }

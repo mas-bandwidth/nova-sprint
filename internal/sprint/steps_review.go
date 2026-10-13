@@ -2906,11 +2906,11 @@ type LandedReq struct {
 	Who    string
 }
 
-// RecordLanded lands exactly the pinned cards as merge's record by name lands them (merge
-// --landed, section 8), all or none, each merge card's note naming the commit and the
-// reason. Only a merging card is recorded: the lifecycle has no move review -> landed and no
-// move from off the table, so a card in review is refused naming accept, and a dropped one
-// naming that it stays dropped. The cards are of one stream, the record's one batch.
+// RecordLanded lands the pinned cards at the commit on their base: all or none, of one
+// stream, each merge card's note naming the commit and the reason. A card in waiting,
+// ready, working, review, fix or merging may be marked landed; a running attempt on it is
+// cancelled and its member's lane freed, with a NOTE, and a sentinel waiting on the landed
+// cards is released.
 func RecordLanded(s *Snapshot, r LandedReq) Plan {
 	var p Plan
 	p.on(s)
@@ -2919,30 +2919,41 @@ func RecordLanded(s *Snapshot, r LandedReq) Plan {
 		return p
 	}
 	stream := ""
+	seen := map[string]bool{}
+	allMergingAtHead := len(r.Pins) > 0
 	for _, pin := range r.Pins {
 		c := s.Work.Card(pin.ID)
 		why := ""
 		switch {
+		case seen[pin.ID]:
+			why = "named twice in the record"
 		case c == nil:
 			why = "no such card"
 		case !c.Placed() && c.F("outcome") == "dropped":
 			why = "dropped (" + orDash(c.F("reason")) + "); the lifecycle has no move off the table -> landed, so it stays dropped"
 		case !c.Placed():
 			why = "not on the table (" + orDash(c.F("outcome")) + ")"
+		case IsSentinel(c):
+			why = "a sentinel lands by release: nova-sprint release " + c.ID + " --reason <text>"
 		case c.Col == Landed:
 			why = "landed already; landed is final"
-		case c.Col == Review:
-			why = "in review; the lifecycle has no move review -> landed: accept it, then record it landed"
-		case c.Col != Merging:
-			why = "it is " + c.Col + "; only a merging card is recorded landed"
+		case !IsOpen(c.Col):
+			why = "it is " + c.Col
+		case !pin.InBase:
+			why = "head " + pin.Head + " is not an ancestor of the base branch's tip; it was not landed"
 		case stream != "" && c.Row != stream:
 			why = "of stream " + c.Row + ", and the record's other cards are of stream " + stream + "; record each stream on its own"
 		}
+		seen[pin.ID] = true
 		if why != "" {
 			p.refuse(pin.ID, why)
 			continue
 		}
 		stream = c.Row
+		m := s.Merge.Placed(c.ID)
+		if c.Col != Merging || m == nil || m.Row != stream || m.Col != Queued || pin.Head == "" || c.F("head") != pin.Head {
+			allMergingAtHead = false
+		}
 	}
 	if len(p.Refused) > 0 || stream == "" {
 		if stream == "" && len(p.Refused) == 0 {
@@ -2950,9 +2961,137 @@ func RecordLanded(s *Snapshot, r LandedReq) Plan {
 		}
 		return p
 	}
-	notes := map[string]string{}
+	lands := map[string]bool{}
 	for _, pin := range r.Pins {
-		notes[pin.ID] = "recorded landed at " + r.Sha + ": " + r.Reason
+		lands[pin.ID] = true
 	}
-	return MergeStep(s, MergeReq{Stream: stream, Landed: r.Pins, Resolved: notes, Note: r.Reason, Who: r.Who})
+	var releasedSentinels []*Card
+	for grew := true; grew; {
+		grew = false
+		for _, sent := range s.Work.Column(Waiting) {
+			if !IsSentinel(sent) || lands[sent.ID] || IsHeld(sent) || StreamHeld(s, sent.Row) {
+				continue
+			}
+			if len(WaitsFor(s, sent, nil)) > 0 && len(WaitsFor(s, sent, lands)) == 0 {
+				releasedSentinels = append(releasedSentinels, sent)
+				lands[sent.ID] = true
+				grew = true
+			}
+		}
+	}
+	if allMergingAtHead && len(releasedSentinels) == 0 {
+		notes := map[string]string{}
+		for _, pin := range r.Pins {
+			notes[pin.ID] = "recorded landed at " + r.Sha + ": " + r.Reason
+		}
+		return MergeStep(s, MergeReq{Stream: stream, Landed: r.Pins, Resolved: notes, Note: r.Reason, Who: r.Who})
+	}
+
+	p.handLanding = true
+	now := stamp(s.Now)
+	who := cmp.Or(r.Who, s.Coordinator, MachineActor)
+	var landed []string
+	var landingWork []*Card
+	for _, pin := range r.Pins {
+		c := s.Work.Placed(pin.ID)
+		u := Unit{Key: c.ID, Stream: stream}
+		if s.Fleet != nil {
+			for _, fc := range s.Fleet.Of(c.ID) {
+				if fc.Col == Ready || fc.Col == Working || fc.Col == Withdrawn || fc.Col == Asked || fc.Col == Reading {
+					u.Changes = append(u.Changes, change(Fleet, removeEntry(fc, map[string]string{"retired": now, "retired_by": "landed"})))
+					if !isRead(fc) && (fc.Col == Working || fc.Col == Ready) {
+						if lane := cmp.Or(fc.F(FieldLane), fc.F(FieldLaneAt)); lane != "" {
+							p.Said = append(p.Said, fmt.Sprintf("%s: cancelled running attempt %s on %s lane %s; lane freed", c.ID, fc.ID, fc.Row, lane))
+						} else {
+							p.Said = append(p.Said, fmt.Sprintf("%s: cancelled running attempt %s on %s; lane freed", c.ID, fc.ID, fc.Row))
+						}
+					}
+				}
+			}
+		}
+		if s.Readers != nil {
+			for _, rc := range s.Readers.Of(c.ID) {
+				if rc.Col == Asked || rc.Col == Reading {
+					u.Changes = append(u.Changes, change(Readers, removeEntry(rc, map[string]string{"retired": now, "retired_by": "landed"})))
+				}
+			}
+		}
+		sha := cmp.Or(r.Sha, pin.Head)
+		note := "recorded landed at " + sha + ": " + r.Reason
+		merged := map[string]string{"merged": now, "note": note}
+		if m := s.Merge.Placed(c.ID); m != nil {
+			e := moveEntry(m, stream, Merged, merged, "need_card", "need_stream")
+			sc := c.Score
+			e.Move.Score = &sc
+			u.Changes = append(u.Changes, change(Merge, e))
+		} else {
+			u.Changes = append(u.Changes, change(Merge, createEntry(c.ID, stream, Merged, c.Score,
+				map[string]string{"kind": "merge", "primary": c.ID, "stream": stream, "merged": now, "note": note})))
+		}
+		set := map[string]string{"ci": "green", "landed": now, FieldReadsNeeded: "0"}
+		if sha != "" {
+			set["head"] = sha
+		}
+		if v := cardcost.ParseTotal(c.F(FieldCostTotal)).Charged; v != "" {
+			set[FieldCost] = v
+		}
+		if w := NamedWaits(s, c, lands); len(w) > 0 {
+			set["waived"] = strings.Join(append(Split(c.F("waived")), w...), ",")
+			set["waived_by"], set["waived_at"] = who, now
+		}
+		u.Changes = append(u.Changes, change(Work, moveEntry(c, stream, Landed, set, FieldWaitsAfter, FieldHeld, FieldWaitingReader, FieldDeadBase)))
+		u.Closes = closesFor(s.Open, nil, c.ID)
+		u.Moved = fmt.Sprintf("%s %s -> landed", c.ID, c.Col)
+		p.Units = append(p.Units, u)
+		landed = append(landed, c.ID)
+		landingWork = append(landingWork, c)
+	}
+	last := &p.Units[len(p.Units)-1]
+	b := happened(NBatchLanded, stream, s.Now, landed...)
+	b.Who, b.What = r.Who, "ci green"
+	last.Notes = append(last.Notes, b)
+	last.Notes = append(last.Notes, landingPush(s, stream, r.Who, landingWork, nil, s.Now))
+	was, had := s.Work.Prop(PropLastLanding)
+	p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLastLanding, Value: landingStamp(s.Now), Was: was, WasAbsent: !had})
+
+	after := resolveAfter(s, lands, r.Who)
+	moving := map[string]bool{}
+	for _, u := range after {
+		moving[u.Key] = true
+	}
+	for _, sent := range releasedSentinels {
+		p.releasing = true
+		ready := 0
+		for _, bc := range Behind(s, sent) {
+			if moving[bc.ID] {
+				ready++
+			}
+		}
+		for _, u := range after {
+			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != sent.Row && contains(Split(pc.F("needs")), sent.ID) {
+				ready++
+			}
+		}
+		set := map[string]string{
+			"landed":         now,
+			"reached":        cmp.Or(sent.F("reached"), now),
+			"released":       now,
+			"released_by":    who,
+			"release_reason": cutReleaseReason,
+		}
+		n := happened(NSentinelLanded, sent.Row, s.Now, sent.ID)
+		n.Who = who
+		n.What = fmt.Sprintf("sentinel %s landed, released by %s: %d cards are now ready; %s", sent.ID, who, ready, cutReleaseReason)
+		p.Units = append(p.Units, Unit{
+			Key:     sent.ID,
+			Stream:  sent.Row,
+			Changes: []Change{change(Work, moveEntry(sent, sent.Row, Landed, set, FieldHeld))},
+			Notes:   []Note{n},
+			Closes:  closesFor(s.Open, nil, sent.ID),
+			Moved:   fmt.Sprintf("sentinel %s waiting -> landed (released by %s: %s); %d cards are now ready", sent.ID, who, cutReleaseReason, ready),
+		})
+	}
+	p.Units = append(p.Units, after...)
+	settle(&p, s, r.Who, lands, nil, lands)
+	return Lawful(p)
 }
