@@ -766,6 +766,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: kv[0], Value: kv[1], Was: was, WasAbsent: !had})
 		moved = append(moved, strings.ReplaceAll(kv[0], "_", "-")+" "+orDefault(kv[1], kv[0]))
 	}
+	// the epoch's set record: start's settings gate warns on a value a set chose and
+	// refuses one no set chose (defaults_working.go, SetByWrite)
+	p.Props = append(p.Props, SetByWrite(s, r.Who, p.Props)...)
 	p.Units = append(p.Units, Unit{Key: "set", Moved: "sprint " + strings.Join(moved, ", ")})
 	return p
 }

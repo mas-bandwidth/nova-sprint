@@ -275,3 +275,19 @@ func TestTheRemainingAccessorsReadTheirDefaultWhenAbsent(t *testing.T) {
 	reworkPriority(bare, &Card{ID: "c1"}, set)
 	assert.Equal(t, defaultValue(PropReworkPriority), set[FieldPriority], "rework_priority absent is fix")
 }
+
+// The start gate's base finding: a cleared epoch with no base warns, naming set --base, and
+// never refuses (Live: a sprint landing on main or dev records none); the first epoch and
+// a recorded base say nothing.
+func TestStartWarnsOnAClearedSprintWithNoBase(t *testing.T) {
+	t.Parallel()
+	cleared := &Snapshot{Work: NewTable(Work), Epoch: 2}
+	got := sprintBaseWorking(cleared, WorkingBars{})
+	require.Len(t, got, 1)
+	assert.Equal(t, PropSprintBase, got[0].Setting)
+	assert.Contains(t, got[0].Verb, "set --base")
+	assert.True(t, got[0].Live, "a warning, never a refusal")
+	assert.Empty(t, sprintBaseWorking(&Snapshot{Work: NewTable(Work)}, WorkingBars{}), "the first epoch is not judged")
+	cleared.Work.SetProps(map[string]string{PropSprintBase: "sprint/v9"})
+	assert.Empty(t, sprintBaseWorking(cleared, WorkingBars{}), "a carried base")
+}

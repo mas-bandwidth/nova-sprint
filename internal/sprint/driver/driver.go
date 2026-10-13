@@ -280,7 +280,7 @@ func (d *Driver) Loop() (string, error) {
 		return "", fmt.Errorf("the view could not be read: run: %s", commandLine(append([]string{"where"}, d.Base...)))
 	}
 	if !strings.HasPrefix(first.Machine, "machine: running") { // a late tick is running too (docs/SPEC-SPRINT.md section 14)
-		return "", fmt.Errorf("no machine is running (%s): the driver plays only the outside actors; run: nova-sprint start, and nova-sprint run", orDash(first.Machine))
+		return "", fmt.Errorf("no machine is running (%s): the driver plays only the outside actors; run: nova-sprint start, and nova-sprint run --land", orDash(first.Machine))
 	}
 	d.held = first.Epoch
 	if d.Header != "" {

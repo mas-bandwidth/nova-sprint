@@ -330,7 +330,7 @@ by id is unchanged, and a member names no lane with it.
 ` + wordsSection() + `
 ` + exitLine + `
 
-the coordinator's day, in five lines (NOVA_SPRINT_REDIS and NOVA_SPRINT_ACTOR set; nova-sprint run ticking in a shell of its own; brief.txt is a card that passes the lint, from nova-swarm template --name card, its REPO: and BASE: filled in):
+the coordinator's day, in five lines (NOVA_SPRINT_REDIS and NOVA_SPRINT_ACTOR set; nova-sprint run --land ticking and landing in a shell of its own; brief.txt is a card that passes the lint, from nova-swarm template --name card, its REPO: and BASE: filled in):
 
 example:
 `)

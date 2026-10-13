@@ -27,7 +27,7 @@ import (
 // functions loaded.
 func liveStore(t *testing.T) (*Store, *redis.Client) {
 	t.Helper()
-	addr := testutil.Start(t)
+	addr := testutil.StartRaw(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = c.Close() })
 	ctx := context.Background()

@@ -9,7 +9,8 @@ const (
 )
 
 // FriendBeatKey is a friend's own heartbeat (nova-friend): its host field
-// is the machine she runs on now, what her desired slots are charged to.
+// is the machine she runs on now, what her desired hash is recorded with;
+// no machine caps a friend (her width is her one capacity number).
 func FriendBeatKey(f string) string { return "friend:" + f + ":beat" }
 
 // RouteKey is a route's hash: its fields, name, rev and at. The deal reads

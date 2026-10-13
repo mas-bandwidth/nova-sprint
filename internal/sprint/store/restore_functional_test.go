@@ -41,7 +41,7 @@ func isolatedRestore(t *testing.T, rdb []byte, names sprint.Names) (SprintState,
 	ctx := context.Background()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "restore.rdb"), rdb, 0o600))
-	addr := testutil.Start(t, "--dir", dir, "--dbfilename", "restore.rdb")
+	addr := testutil.StartRaw(t, "--dir", dir, "--dbfilename", "restore.rdb")
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = c.Close() }) // ignored: a test client closed at the end
 	n, err := c.DBSize(ctx).Result()

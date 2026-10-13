@@ -30,48 +30,46 @@
 (*   "nostopstamp"   a stop of a RUNNING machine leaves the stamp as it    *)
 (*                   was: a start inside a clear, stopped later, reads     *)
 (*                   READY though it ran       (RanIsNotReady)             *)
+(*   "nogate"        start reads no setting: a cleared epoch whose clear   *)
+(*                   left read_cards non-working starts (StartOnlyWorking) *)
+(*   "overrefuse"    start refuses a non-working value a set of this epoch *)
+(*                   chose: the owner's deliberate degraded run cannot     *)
+(*                   start (DeliberateSetStarts)                           *)
+(*   "readersgate"   start refuses while no reader is up: the fleet's live  *)
+(*                   state blocks a start the settings allow               *)
+(*                   (DeliberateSetStarts)                                 *)
 (*                                                                         *)
-(* The working defaults (the owner, 2026-10-13: "you advance epoch, and   *)
-(* then set defaults in the new epoch that need to be set"): settings are *)
-(* epoch keyed, so ClearAdvance leaves the new epoch with none (absent);  *)
-(* the clear's third step, SetDefaults (clear.go setDefaults,             *)
-(* sprint.SetDefaults), writes each setting still ABSENT, never one the   *)
-(* new epoch holds: a Set that landed between the advance and the step    *)
-(* survives. A Carry setting (the coordinator's threshold alarms, the     *)
-(* base) takes the value the epoch the clear left held (src), a plain one *)
-(* its default. The step marks its epoch; a clear that crashed between    *)
-(* its advance and its step leaves the epoch unmarked (defaulting), and a *)
-(* clear run again over it finishes the step and advances nothing         *)
-(* (clear.go defaultsOwed): ClearStop is not enabled while defaulting,    *)
-(* the re-run is SetDefaults itself. Read is a reader of the settings     *)
-(* while the machine runs, reading each stored value and an absent one by *)
-(* the code's rule: a cleared epoch's absent setting reads its default    *)
-(* (defaults.go clearedDefault); the first epoch's absent setting reads   *)
-(* its accessor's own, off for the alarms (OffWhenAbsent).                *)
-(* Five more witnesses:                                                   *)
-(*   "leaveone"      SetDefaults leaves OneSetting absent  (NeverAbsent)   *)
-(*   "carryadvance"  the advance carries the old epoch's settings        *)
-(*                   (DefaultsAfterClear)                                 *)
-(*   "overwrite"     SetDefaults overwrites a Set of the new epoch        *)
-(*                   (SetSurvives)                                        *)
-(*   "nofallback"    a cleared epoch's absent setting reads as the        *)
-(*                   accessor's own, off for an alarm (ReadersSeeWorking) *)
-(*   "rerunadvance"  a clear run again over a crashed one advances again, *)
-(*                   carrying from the empty epoch (CarrySurvives)        *)
+(* The settings gate (v1.2.17, start-refuses-a-non-working-setting; the    *)
+(* owner, 2026-10-13: "OK these MUST be fixed. blocker priority."): every  *)
+(* setting the design depends on is working, or the value was chosen by a  *)
+(* set of this epoch (setBy = "set"); else start refuses, writing nothing  *)
+(* (cmd/nova-sprint/run.go startSettingsGate, sprint.Working). working is   *)
+(* each setting's predicate (internal/sprint/defaults_working.go); setBy is *)
+(* who wrote its value this epoch: "clear" (the clear, or carried), "write" *)
+(* (anything but set: a migration, a hand edit, an older binary), or "set". *)
+(* The gate is start's: a value changed while RUNNING is the tick's alarms' *)
+(* to name, outside this module.                                           *)
+(* Start is one atomic step here; in the code the gate's read             *)
+(* (startSettingsGate: DoctorRead, the server record) and the RUNNING      *)
+(* write (store.SetMachine) are two steps, so a value written between     *)
+(* them is not seen by that start (cold read 1 of PR 188, F3; no fix now). *)
+(* The fleet's live state while RUNNING is the judgment                    *)
+(* machine:landsnothing's (store/ops.go machineGroups), not this module's. *)
+(* readersUp is the fleet's live state (a reader up for the tiers the cards  *)
+(* need): never a setting, so never in the gate; start warns on it         *)
+(* (SettingFinding.Live) and readers come up after the start.             *)
 (***************************************************************************)
 EXTENDS Integers
 
 CONSTANTS
-    MaxEpoch,      \* clears the model takes
-    Settings,      \* the work table's properties (sprint.Defaults, HomeProp and HomeCarry)
-    Carry,         \* the HomeCarry ones, carried across a clear
-    OffWhenAbsent, \* the ones whose own accessor reads absent as off (the alarms)
-    OneSetting,    \* the setting the "leaveone" witness leaves absent
-    Broken         \* "none", or the reversed witness above
+    MaxEpoch,   \* clears the model takes
+    Settings,   \* the settings the gate reads (two stand for every row)
+    Broken      \* "none", or the reversed witness above
 
 States == {"READY", "RUNNING", "STOPPED"}
-Acts == {"init", "clearstop", "clearadvance", "setdefaults", "set", "read", "start", "stop", "refused", "add", "tick"}
-Values == {"absent", "default", "away"}
+Acts == {"init", "clearstop", "clearadvance", "start", "stop", "refused", "add", "tick",
+         "write", "set", "startrefused", "readers"}
+Writers == {"clear", "write", "set"}
 
 VARIABLES
     run,        \* the record says RUNNING
@@ -83,23 +81,27 @@ VARIABLES
     judged,     \* the read-time machine:stopped judgment, as the last tick read it
     prev,       \* the derived state before the last action
     last,       \* the last action
-    settings,   \* the current epoch's settings: absent, default, or away (set)
-    defaulting, \* the current epoch is owed its set-defaults step (unmarked)
-    setIn,      \* the settings a Set wrote in the current epoch
-    lastRead,   \* what the last Read saw: "none", "working", "offfirst" or "off"
-    src,        \* the carry values the step carries: the epoch the last advance left
-    marked      \* ghost: the carry values the newest epoch that completed its step held at
-                \* the advance that left it (never moved by a clear run again)
+    working,    \* each setting's value leaves the machine working (sprint.Working finds none)
+    setBy,      \* who wrote each setting's value in this epoch: clear, write or set
+    readersUp   \* the fleet's live state: a reader is up for the tiers the cards need
 
-vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, settings, defaulting, setIn, lastRead, src, marked>>
+vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy, readersUp>>
+settings == <<working, setBy, readersUp>>
+
+\* the gate start reads (startSettingsGate): every setting working, or its non-working
+\* value chosen by a set of this epoch (then a START WARN line, never silence)
+Gate == \A s \in Settings : working[s] \/ setBy[s] = "set"
+
+\* the gate a witness runs: none (nogate), or set-chosen values refused too (overrefuse)
+StartGate ==
+    CASE Broken = "nogate"     -> TRUE
+      [] Broken = "overrefuse" -> \A s \in Settings : working[s]
+      [] Broken = "readersgate" -> Gate /\ readersUp
+      [] OTHER                 -> Gate
 
 \* the derived state (Machine.Ready, MachineLine)
 ShownOf(r, s, e) == IF r THEN "RUNNING" ELSE IF s # e THEN "READY" ELSE "STOPPED"
 Shown == ShownOf(run, stamp, epoch)
-
-\* a carried value: the old epoch's, else its working value
-Work(v) == IF v = "absent" THEN "default" ELSE v
-CarryOf(m) == [c \in Carry |-> m[c]]
 
 TypeOK ==
     /\ run \in BOOLEAN
@@ -111,13 +113,11 @@ TypeOK ==
     /\ judged \in BOOLEAN
     /\ prev \in States
     /\ last \in Acts
-    /\ settings \in [Settings -> Values]
-    /\ defaulting \in BOOLEAN
-    /\ setIn \subseteq Settings
-    /\ lastRead \in {"none", "working", "offfirst", "off"}
-    /\ src \in [Carry -> Values]
-    /\ marked \in [Carry -> Values]
+    /\ working \in [Settings -> BOOLEAN]
+    /\ setBy \in [Settings -> Writers]
+    /\ readersUp \in BOOLEAN
 
+\* the first epoch's settings are whatever init left: any value, by no set
 Init ==
     /\ run = FALSE
     /\ stamp = -1
@@ -128,34 +128,30 @@ Init ==
     /\ judged = FALSE
     /\ prev = "READY"
     /\ last = "init"
-    /\ settings = [s \in Settings |-> "absent"]
-    /\ defaulting = FALSE
-    /\ setIn = {}
-    /\ lastRead = "none"
-    /\ src = [c \in Carry |-> "absent"]
-    /\ marked = [c \in Carry |-> "absent"]
+    /\ working \in [Settings -> BOOLEAN]
+    /\ setBy = [s \in Settings |-> "clear"]
+    /\ readersUp \in BOOLEAN
 
 \* the stop's stamp (machine_transition.go): a stop of a RUNNING machine records the
 \* epoch it ran in; the reversed witness leaves the stamp as it was
 StopStamp == IF Broken = "nostopstamp" THEN stamp ELSE epoch
 
-\* clear's first step (clear.go SetMachine false): stops a RUNNING machine. Over an epoch
-\* owed its step (a crashed clear) the clear finishes the step instead (SetDefaults) and
-\* advances nothing; "rerunadvance" advances again
+\* clear's first step (clear.go SetMachine false): stops a RUNNING machine
 ClearStop ==
     /\ ~clearing
-    /\ ~defaulting \/ Broken = "rerunadvance"
     /\ epoch < MaxEpoch
     /\ clearing' = TRUE
     /\ run' = FALSE
     /\ stamp' = IF run THEN StopStamp ELSE stamp
     /\ prev' = Shown
     /\ last' = "clearstop"
-    /\ UNCHANGED <<epoch, ran, due, judged, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<epoch, ran, due, judged, settings>>
 
-\* clear's second step (clear.go AdvanceEpoch): the new epoch has no work and, settings
-\* being epoch keyed, no setting; the step will carry from the epoch left (src);
-\* "carryadvance" carries every old setting; a start that landed after ClearStop runs on
+\* clear's second step (clear.go AdvanceEpoch): the new epoch has no work; a start
+\* that landed after ClearStop runs on into it. The new epoch's settings are any value
+\* by no set: the clear writes the working defaults (clear-sets-every-working-default),
+\* but a store an older binary cleared, or a column added later, may leave one
+\* non-working; the gate is the second wall and must hold whatever the clear left.
 ClearAdvance ==
     /\ clearing
     /\ clearing' = FALSE
@@ -166,68 +162,54 @@ ClearAdvance ==
     /\ judged' = FALSE
     /\ prev' = Shown
     /\ last' = "clearadvance"
-    /\ settings' = IF Broken = "carryadvance" THEN settings ELSE [s \in Settings |-> "absent"]
-    /\ src' = CarryOf(settings)
-    /\ marked' = IF defaulting THEN marked ELSE CarryOf(settings)
-    /\ setIn' = {}
-    /\ defaulting' = TRUE
-    /\ UNCHANGED <<run, lastRead>>
-
-\* clear's third step (clear.go setDefaults, sprint.SetDefaults), and a clear run again over
-\* an epoch owed it: each setting still absent gets a carry value from src or its default;
-\* one the epoch holds is kept; the epoch is marked. "overwrite" writes every one;
-\* "leaveone" leaves OneSetting as it is
-SetDefaults ==
-    /\ defaulting
-    /\ defaulting' = FALSE
-    /\ settings' = [s \in Settings |->
-                     IF Broken = "leaveone" /\ s = OneSetting THEN settings[s]
-                     ELSE IF settings[s] # "absent" /\ Broken # "overwrite" THEN settings[s]
-                     ELSE IF s \in Carry THEN Work(src[s])
-                     ELSE "default"]
-    /\ prev' = Shown
-    /\ last' = "setdefaults"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, setIn, lastRead, src, marked>>
-
-\* the coordinator's set (sprint.Set): one setting away from its default, at any time,
-\* between a clear's advance and its step included
-Set ==
-    /\ \E s \in Settings :
-        /\ settings' = [settings EXCEPT ![s] = "away"]
-        /\ setIn' = setIn \cup {s}
-    /\ prev' = Shown
-    /\ last' = "set"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, defaulting, lastRead, src, marked>>
-
-\* the value a reader reads: the stored one, else by the code's rule (clearedDefault): a
-\* cleared epoch's default; the first epoch's accessor's own (off for an alarm).
-\* "nofallback" reads every absent setting by its accessor's own
-Eff(s) == IF settings[s] # "absent" THEN settings[s]
-          ELSE IF epoch > 0 /\ Broken # "nofallback" THEN "default"
-          ELSE IF s \in OffWhenAbsent THEN "off"
-          ELSE "default"
-
-\* the tick's readers of the settings while the machine runs
-Read ==
-    /\ run
-    /\ lastRead' = IF \E s \in Settings : Eff(s) = "off"
-                   THEN IF epoch = 0 THEN "offfirst" ELSE "off"
-                   ELSE "working"
-    /\ prev' = Shown
-    /\ last' = "read"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, defaulting, setIn, src, marked>>
+    /\ working' \in [Settings -> BOOLEAN]
+    /\ setBy' = [s \in Settings |-> "clear"]
+    /\ UNCHANGED <<run, readersUp>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
-\* it reads; it may land between ClearStop and ClearAdvance, or after a crashed clear
+\* it reads; it may land between ClearStop and ClearAdvance. Enabled only through
+\* the settings gate (run.go startSettingsGate, before setMachine writes anything).
 Start ==
     /\ ~run
+    /\ StartGate
     /\ run' = TRUE
     /\ stamp' = epoch
     /\ ran' = TRUE
     /\ judged' = FALSE
     /\ prev' = Shown
     /\ last' = "start"
-    /\ UNCHANGED <<epoch, clearing, due, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<epoch, clearing, due, settings>>
+
+\* start refused by the gate: one START REFUSED line per finding, exit 1, nothing written
+StartRefusedSettings ==
+    /\ ~run
+    /\ ~StartGate
+    /\ prev' = Shown
+    /\ last' = "startrefused"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings>>
+
+\* a setting written by anything but set: a migration, a hand edit of the table, an
+\* older binary (the direct table write of TestStartRefusesEveryNonWorkingSettingNoSetWrote)
+\* As the code reads set_by (sprint.SetByRecord): a set's choice holds while the value is
+\* still the one the set wrote, so a write of the same value keeps it "set" and a write of
+\* another value makes it "write". The model's value is its working bit, an abstraction:
+\* in the code two different non-working values (fleet_tiers heavy, then frontier) differ
+\* and the second is no set's choice; here both are FALSE and the choice holds. The gate
+\* is only stricter in the code than in the model.
+Write(s, v) ==
+    /\ working' = [working EXCEPT ![s] = v]
+    /\ setBy' = [setBy EXCEPT ![s] = IF setBy[s] = "set" /\ v = working[s] THEN "set" ELSE "write"]
+    /\ prev' = Shown
+    /\ last' = "write"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
+
+\* nova-sprint set (the work table's change log names it): the owner's choice, working or not
+SetSetting(s, v) ==
+    /\ working' = [working EXCEPT ![s] = v]
+    /\ setBy' = [setBy EXCEPT ![s] = "set"]
+    /\ prev' = Shown
+    /\ last' = "set"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
 
 \* stop by hand (store.StopUntil), and the tick's done and funds stops
 \* (stopWithCause): RUNNING to STOPPED
@@ -238,7 +220,7 @@ Stop ==
     /\ stamp' = IF run THEN StopStamp ELSE epoch
     /\ prev' = Shown
     /\ last' = "stop"
-    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings>>
 
 \* a stop of a READY machine is refused and changes nothing
 \* (machine_transition.go machineRecord, store.ErrNothingToStop)
@@ -247,14 +229,14 @@ StopRefused ==
     /\ Shown = "READY"
     /\ prev' = Shown
     /\ last' = "refused"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings>>
 
 \* work added (add): moves are due
 AddWork ==
     /\ due' = TRUE
     /\ prev' = Shown
     /\ last' = "add"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings>>
 
 \* a tick: a RUNNING machine moves what is due; every tick's read computes the
 \* machine judgment (machineGroups)
@@ -263,9 +245,19 @@ Tick ==
     /\ judged' = (due' /\ (Shown = "STOPPED" \/ (Broken = "readyjudges" /\ Shown = "READY")))
     /\ prev' = Shown
     /\ last' = "tick"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings, defaulting, setIn, lastRead, src, marked>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings>>
 
-Next == ClearStop \/ ClearAdvance \/ SetDefaults \/ Set \/ Read \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
+\* the fleet's live state changes: a reader comes up or goes down (the readers' beats)
+ReadersChange ==
+    /\ readersUp' = ~readersUp
+    /\ prev' = Shown
+    /\ last' = "readers"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, working, setBy>>
+
+Next == ClearStop \/ ClearAdvance \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
+        \/ StartRefusedSettings
+        \/ ReadersChange
+        \/ \E s \in Settings, v \in BOOLEAN : Write(s, v) \/ SetSetting(s, v)
 
 Spec == Init /\ [][Next]_vars
 
@@ -287,23 +279,12 @@ StoppedWithDueJudges == (last = "tick" /\ Shown = "STOPPED" /\ due) => judged
 \* a machine that ran in this epoch and is not running is STOPPED, never READY
 RanIsNotReady == (ran /\ ~run) => Shown = "STOPPED"
 
-\* after a clear's step, every plain (not carried) setting holds its default, but one the
-\* new epoch set
-DefaultsAfterClear == last = "setdefaults" => \A s \in Settings \ Carry : settings[s] = "default" \/ s \in setIn
+\* the machine never becomes RUNNING with a non-working setting no set of this epoch
+\* chose: every start passed the gate (a value changed after the start is outside it)
+StartOnlyWorking == last = "start" => Gate
 
-\* after a clear's step, every carried setting holds the value of the newest epoch that
-\* completed its step (its working value when that held none), but one the new epoch set:
-\* a crashed clear run again never loses the coordinator's choice
-CarrySurvives == last = "setdefaults" => \A c \in Carry : settings[c] = Work(marked[c]) \/ c \in setIn
-
-\* a Set of the current epoch is never undone by the clear's step
-SetSurvives == \A s \in setIn : settings[s] = "away"
-
-\* once a clear has completed, no setting of the epoch is ever absent
-NeverAbsent == (epoch > 0 /\ ~defaulting) => \A s \in Settings : settings[s] # "absent"
-
-\* no reader of a cleared epoch reads a setting as off for being absent (before the step:
-\* a start inside the clear, a crashed clear); the first epoch's alarms read off until set
-ReadersSeeWorking == lastRead # "off"
+\* the gate never over-refuses: a machine not running whose every non-working setting a
+\* set of this epoch chose may start (with its START WARN lines), whatever readers are up
+DeliberateSetStarts == (~run /\ Gate) => ENABLED Start
 
 =============================================================================

@@ -365,7 +365,7 @@ func TestAudit2ClosedDeadRunLoopIsNoJudgment(t *testing.T) {
 	}
 	require.NotNil(t, silent, "a RUNNING machine an hour without a tick: %+v", silent)
 	require.NotEmpty(t, silent.Commands, "a RUNNING machine an hour without a tick: %+v", silent)
-	require.Equal(t, "nova-sprint run", silent.Commands[0].Lines[0], "a RUNNING machine an hour without a tick: %+v", silent)
+	require.Equal(t, "nova-sprint install server --listen <address:port>", silent.Commands[0].Lines[0], "a RUNNING machine an hour without a tick: %+v", silent)
 	// three failed ticks in a row are a group too
 	h.m.Fail = func(p string) error {
 		if p == "fence" {

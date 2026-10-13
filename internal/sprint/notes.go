@@ -73,13 +73,17 @@ const (
 
 	// Computed by inbox from the machine's record, as the stale line is: no
 	// notification holds them.
-	NMachineSilent  = "the machine is not ticking"
-	NTickFailing    = "the tick keeps failing"
-	NStoppedWithDue = "the machine is STOPPED and moves are due"
-	NWithdrawn      = "cards returned to ready because no member is up"
-	NCIGreen        = "ci green"
-	NAbandoned      = "an operation was abandoned"
-	NSentinelLanded = "sentinel landed" // released by the coordinator
+	NMachineSilent = "the machine is not ticking"
+	// NServerLandsNothing: the machine is RUNNING and its server's fresh record says it
+	// lands nothing (run --land=false): accepted cards are never merged
+	// (start-refuses-a-non-working-setting, F2 of cold read 1).
+	NServerLandsNothing = "the server lands nothing"
+	NTickFailing        = "the tick keeps failing"
+	NStoppedWithDue     = "the machine is STOPPED and moves are due"
+	NWithdrawn          = "cards returned to ready because no member is up"
+	NCIGreen            = "ci green"
+	NAbandoned          = "an operation was abandoned"
+	NSentinelLanded     = "sentinel landed" // released by the coordinator
 
 	// The coordinator's seat moved (docs/SPEC-SPRINT.md, "Handing over the
 	// seat"): given by its holder or the owner, or taken with the owner's name,

@@ -5,13 +5,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // identityRemedy is the one remedy every machine-identity refusal names.
-const identityRemedy = "run: nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' then nova-config apply"
+const identityRemedy = "run: " + sprint.GitIdentityRemedy
 
 // readMachineIdentity reads the sprint row's git_identity and returns the author and
 // committer environment it spells (docs/SPEC-SPRINT.md, the machine's commit identity); an

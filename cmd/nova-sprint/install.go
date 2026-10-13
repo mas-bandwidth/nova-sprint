@@ -167,7 +167,7 @@ func (a *app) installUnit(k sprint.UnitKind, args []string, stdout, stderr io.Wr
 	switch k.Kind {
 	case "server":
 		listen = fs.String("listen", "", "the server's `address:port` on the fleet's private network (required): the unit runs nova-sprint run --listen with it")
-		land = fs.Bool("land", false, "the server also lands what the readers passed (run --land)")
+		land = fs.Bool("land", true, "the server also lands what the readers passed (run --land; the default since v1.2.17: --land=false writes a server that lands nothing, which start refuses)")
 		decideDir = fs.String("decide", "", "the server also keeps the record of its decisions in this `dir`, an absolute path (run --decide)")
 	case "member":
 		as = fs.String("as", "", "the member's name on the fleet table (required): nova-swarm member --as")
@@ -229,8 +229,13 @@ func (a *app) installUnit(k sprint.UnitKind, args []string, stdout, stderr io.Wr
 			return refuse(stderr, name, why+"; nothing was written")
 		}
 		u.Args = []string{bin, "run", "--listen", *listen, "--redis", addr}
+		// the server lands by default (v1.2.17, start-refuses-a-non-working-setting): the
+		// unit says so either way, so a unit run by an older binary lands too, and only an
+		// explicit --land=false writes a server that lands nothing (start then refuses)
 		if *land {
 			u.Args = append(u.Args, "--land")
+		} else {
+			u.Args = append(u.Args, "--land=false")
 		}
 		if *decideDir != "" {
 			u.Args = append(u.Args, "--decide", *decideDir)

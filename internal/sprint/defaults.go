@@ -163,7 +163,7 @@ var NotSettingProps = []string{
 	PropFriendSync, PropIdleSaid, PropIdleSince, PropLandRefusal, PropLandingStallSaid, PropLandingStallSince,
 	PropLastLanding, PropMergeWindowReason, PropMergeWindowUntil, PropPromotedAt, PropPromotedSha,
 	PropCarriedMedians, PropCostReconcilePrefix, PropReadsWindow, PropStatusSeen,
-	PropDefaultsSet,
+	PropDefaultsSet, PropSetBy,
 }
 
 // SetFlagProp is the property a flag of `set` writes where it is not the flag's own name
