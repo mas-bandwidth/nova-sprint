@@ -206,3 +206,41 @@ func TestAStagedBriefSignsTheWorkersOwnName(t *testing.T) {
 	}
 	assert.NotContains(t, staged, "the friend doing this work", "a fleet machine is dealt pinned cards too")
 }
+
+// Remedy answers every check token with a non-empty remedy.
+func TestRemedyAnswersEveryCheck(t *testing.T) {
+	t.Parallel()
+	checks := []string{
+		"tier-line",
+		"test-outside-paths",
+		"personal-name",
+		"author-name",
+		"dropped-card",
+		"gate-needs-host",
+		"model-lines",
+		"placeholder",
+		"sibling-path",
+		"rule-worktree",
+		"step-redis-server",
+		"steps-nested",
+		"kind-declared",
+		"paths-declared",
+		"test-named",
+		"result-first",
+		"clone-step",
+		"steps-numbered",
+		"red-test",
+		"test-command",
+		"deadline",
+		"files-named",
+		"scratch-absolute",
+		"no-parent-path",
+		"no-sandbox",
+		"result-last",
+		"size",
+		"depends-on",
+	}
+	for _, c := range checks {
+		assert.NotEmpty(t, Remedy(c), "remedy for %s must not be empty", c)
+	}
+}
