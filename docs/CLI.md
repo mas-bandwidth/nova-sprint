@@ -334,9 +334,10 @@ store's login. With no bus user it uses the default user; a failed bus send
 leaves the delivered card in her inbox and records that she was not woken.
 
 Every store verb takes `--redis <addr>` (else `NOVA_SPRINT_REDIS`, then
-`NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else `NOVA_SPRINT_ACTOR`; no default — a
-verb that writes wants one), `--op <id>` (the same id again returns the recorded
-result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
+`NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else
+`NOVA_SPRINT_ACTOR`; a coordinator or seat verb may use the coordinator's name only
+when its sprint hook and bus push are both proven live), `--op <id>` (the same id
+again returns the recorded result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
 verbs are the coordinator's alone (the first `init` names it: `--coordinator`,
 else the actor); `take`, `finish`, `read`, `fleet beat` and `friend beat` are the
 workers', whose actor is the member, reader or friend named; `merge` and `ci`

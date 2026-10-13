@@ -297,6 +297,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 	for i, argv := range req.Verbs {
 		var args []string
 		actorNotice := ""
+		actorResolved := false
 		serving, lane := false, ""
 		as, words, why := workerVerb(argv)
 		switch {
@@ -318,8 +319,8 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 					lane = "read"
 				}
 				callerArgs := argv
-				callerArgs, actorNotice = a.defaultHookActor(argv, a.serveAddr, true)
-				if actorNotice != "" {
+				callerArgs, actorNotice, actorResolved = a.defaultHookActor(argv, a.serveAddr, true)
+				if actorResolved {
 					args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr}, callerArgs[v.words:])
 				} else {
 					args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr, "--actor", ""}, callerArgs[v.words:])
