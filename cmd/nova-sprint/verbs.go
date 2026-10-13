@@ -2044,35 +2044,12 @@ func friendOwnRules(brief string) bool {
 	return why == "" && w.Friend && friendRulesHeadRE.MatchString(brief)
 }
 
-// isSentinelBrief reports whether a brief's header block declares KIND: sentinel or TIER: none.
-func isSentinelBrief(brief string) bool {
-	for i, l := range strings.Split(brief, "\n") {
-		if strings.TrimSpace(l) == "" {
-			continue
-		}
-		k, v, ok := cardhdr.KeyValue(l)
-		if !ok {
-			if i == 0 {
-				continue
-			}
-			break
-		}
-		if strings.EqualFold(k, "KIND") && strings.EqualFold(strings.TrimSpace(v), "sentinel") {
-			return true
-		}
-		if strings.EqualFold(k, "TIER") && strings.EqualFold(strings.TrimSpace(v), "none") {
-			return true
-		}
-	}
-	return false
-}
-
 // lintBriefReads holds one brief to the card lint's child rules and to its
 // model lines: it returns the model-line why ("" when the lines read) and the
 // lint findings. The single-brief and many-brief paths both call it, so one
 // brief is held the same however it is given.
 func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm.CardHeaderFinding) {
-	if m, why := cardhdr.ReadModel(brief); why != "" && (!isSentinelBrief(brief) || !strings.EqualFold(m.Tier, "none")) {
+	if _, why := cardhdr.ReadModel(brief); why != "" {
 		return why, nil
 	}
 	if rs = cardRules(brief, rs); rs.held != "" {
@@ -2082,9 +2059,9 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	} else {
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
 	}
-	if friendOwnRules(brief) || isSentinelBrief(brief) {
-		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE, OR A SENTINEL BRIEF, IS ACCEPTED,
-		// not held for the child RULES paragraph: neither is dealt to a child.
+	if friendOwnRules(brief) {
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the
+		// child RULES paragraph: a friend is not a child.
 		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
 			return strings.HasPrefix(f.Check, "rule-")
 		})
@@ -3174,7 +3151,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	var rs ruleSet
-	if !isSentinelCard(st, ids[0]) || isSentinelBrief(*brief) {
+	if !isSentinelCard(st, ids[0]) {
 		var code int
 		rs, code = a.holdBrief("brief", *brief, *rules, c, &st, stderr)
 		if code != 0 {
@@ -3265,9 +3242,14 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code != 0 {
 		return code
 	}
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
+	}
 	var lintCards []sprint.CardAdd
 	for _, cd := range cards {
-		if isSentinelCard(st, cd.ID) && !isSentinelBrief(cd.Brief) {
+		if isSentinelCard(st, cd.ID) {
 			continue
 		}
 		lintCards = append(lintCards, cd)
@@ -3303,8 +3285,7 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 	var texts, streams []string
 	var checks []briefCheck
 	for _, cd := range cards {
-		isSent := isSentinelCard(st, cd.ID) || isSentinelBrief(cd.Brief)
-		if !isSent {
+		if !isSentinelCard(st, cd.ID) {
 			checks = append(checks, briefCheck{id: cd.ID, brief: cd.Brief})
 		}
 	}
@@ -3322,7 +3303,7 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 			stream = info.Primary.F("stream")
 		}
 		heldRules := ""
-		if !isSent && !isSentinelBrief(cd.Brief) {
+		if !isSent {
 			texts = append(texts, cd.Brief)
 			streams = append(streams, stream)
 			heldRules = cardRules(cd.Brief, rs).held

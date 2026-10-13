@@ -155,10 +155,26 @@ func TestBriefEditsSentinelFromCLI(t *testing.T) {
 	require.Equal(t, "s1-1,s1-2", ta.primary("stop").F("needs"))
 
 	// Missing consumer in CONSUMERS: is refused.
-	badConsumers := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: s1-2\n\n## Gate"
+	badConsumers := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: none\n\n## Gate"
 	code, _, errs := ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("bad-consumers.md", badConsumers))
 	require.Equal(t, 1, code, "missing consumer: %s", errs)
 	require.Contains(t, errs, "CONSUMERS line missing b")
+
+	// Stale consumer in CONSUMERS: (card that does not need the sentinel, or unknown card) is refused.
+	notConsumer := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: b, s1-2\n\n## Gate"
+	code, _, errs = ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("not-consumer.md", notConsumer))
+	require.Equal(t, 1, code, "not a consumer: %s", errs)
+	require.Contains(t, errs, "CONSUMERS names s1-2, which does not need stop")
+
+	noCardConsumer := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: b, nosuch\n\n## Gate"
+	code, _, errs = ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("nocard-consumer.md", noCardConsumer))
+	require.Equal(t, 1, code, "no card consumer: %s", errs)
+	require.Contains(t, errs, "CONSUMERS names nosuch (no card)")
+
+	// Primary card whose brief says TIER: none or KIND: sentinel does NOT skip the card lint.
+	code, _, errs = ta.do("brief s1-1 --actor lead --brief-file " + writeSentinelFile("primary-fake-sentinel.md", compact))
+	require.Equal(t, 2, code, "primary card with sentinel brief text must be held to the card lint: %s", errs)
+	require.Contains(t, errs, "fails the card lint")
 
 	// Wrong STREAM: is refused.
 	badStream := "KIND: sentinel\nSTREAM: s2\nNEEDS: s1-1\nCONSUMERS: b\n\n## Gate"

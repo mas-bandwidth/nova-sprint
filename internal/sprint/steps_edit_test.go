@@ -297,8 +297,18 @@ func TestBriefEditsWaitingSentinelAndChecksMachineReadLines(t *testing.T) {
 		},
 		{
 			name:  "missing consumer in CONSUMERS",
-			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: a-2\n",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: none\n",
 			why:   "CONSUMERS line missing b-1",
+		},
+		{
+			name:  "card that does not need sentinel in CONSUMERS",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: b-1, a-2\n",
+			why:   "CONSUMERS names a-2, which does not need a-stop",
+		},
+		{
+			name:  "unknown card in CONSUMERS",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: b-1, nosuch\n",
+			why:   "CONSUMERS names nosuch (no card)",
 		},
 		{
 			name:  "self in CONSUMERS",

@@ -593,8 +593,21 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 				p.refuse(c.ID, "CONSUMERS: "+cid+" is not a valid card id; nothing was changed")
 				return p
 			}
-			if cc := s.Work.Card(cid); cc != nil && !cc.Placed() {
+			cc := s.Work.Card(cid)
+			switch {
+			case cc == nil:
+				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s (no card); nothing was changed", cid))
+				return p
+			case !cc.Placed():
 				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s (off the table, %s); nothing was changed", cid, orDash(cc.F("outcome"))))
+				return p
+			}
+			ccNeeds := Split(cc.F("needs"))
+			if prop, ok := proposed[cc.ID]; ok {
+				ccNeeds = prop
+			}
+			if IsSentinel(cc) || cc.Col == Landed || !contains(without(ccNeeds, Split(cc.F("waived"))), c.ID) {
+				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s, which does not need %s; nothing was changed", cid, c.ID))
 				return p
 			}
 			seenConsumer[cid] = true
