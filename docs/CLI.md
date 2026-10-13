@@ -227,6 +227,8 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
 
+**`check`** verifies the sprint's invariants across all tables ([SPEC-SPRINT.md section 9](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#9-what-is-always-true), "What is always true"), printing each violation. Under Rule 8 ("No card lost or made twice"), it inspects and reports orphan judgments: every open judgment must name a card placed on the table or a live stream (`judgment <id> (<type>) names <target>, not on the table`).
+
 **`where`'s readers cells** count the read cards each reader has in flight
 (`tables.readers`, and the one summed row the text frame draws): with read cards on
 (the default) `asked` is the read cards dealt (ready) to the reader on the fleet

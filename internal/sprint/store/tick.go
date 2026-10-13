@@ -641,11 +641,36 @@ func tickExtras(s *sprint.Snapshot) map[string][]string {
 			}
 		}
 	}
-	// and the read cards of each primary in review at its attempt, on the fleet table
-	// (sprint read_cards.go): retired with its verdict a read still stands (friendReadLive),
-	// so an ok counts toward the read rule and a reader that closed or returned one is not
-	// dealt the attempt again
-	return map[string][]string{sprint.Work: sprint.ResolveExtras(s), sprint.Readers: reads, sprint.Fleet: sprint.ReadCardExtras(s)}
+	// and the work table ids open judgments name (tla/JudgmentRetire.tla NoOrphanAfterTick):
+	// its subject when that is a primary, its Primaries, its Card, that are not placed.
+	work := sprint.ResolveExtras(s)
+	seenWork := map[string]bool{}
+	for _, id := range work {
+		seenWork[id] = true
+	}
+	if s.Work != nil {
+		for _, o := range s.Open {
+			n := o.Note
+			if n.Kind != sprint.Judgment {
+				continue
+			}
+			var ids []string
+			if !n.StreamLevel && !n.SprintLevel && !strings.Contains(o.Subject(), ":") && !sprint.IsFriendRow(o.Subject()) {
+				ids = append(ids, o.Subject())
+			}
+			ids = append(ids, n.Primaries...)
+			if n.Card != "" && !strings.Contains(n.Card, ":") {
+				ids = append(ids, n.Card)
+			}
+			for _, id := range ids {
+				if id != "" && !seenWork[id] && s.Work.Placed(id) == nil {
+					seenWork[id] = true
+					work = append(work, id)
+				}
+			}
+		}
+	}
+	return map[string][]string{sprint.Work: work, sprint.Readers: reads, sprint.Fleet: sprint.ReadCardExtras(s)}
 }
 
 // TickPartStep is one part of the tick as a step of the engine: fenced,
