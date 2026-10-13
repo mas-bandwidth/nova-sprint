@@ -74,6 +74,8 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 		type target struct{ repo, stream, branch, trunk string }
 		merged := map[target]sprint.ConsumerMerge{}
 		type trunkTarget struct{ repo, trunk string }
+		// tla/SentinelConsumerFreshness.tla CallbackUsesOneObservedTip and
+		// DealsUseKnownCallbackSnapshot: one observed target per callback.
 		observed := map[trunkTarget]string{}
 		var out []sprint.ConsumerMerge
 		for _, c := range s.Work.Cards() {

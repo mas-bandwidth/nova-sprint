@@ -217,6 +217,8 @@ func ConsumerNeedsTrunk(s *Snapshot, c *Card) bool {
 	return false
 }
 
+// tla/SentinelConsumerFreshness.tla Deal and DealsUseCurrentBarrierVector:
+// recompute released barriers at the fenced ready/deal boundary.
 func ConsumerTrunkReady(s *Snapshot, c *Card) bool {
 	if !ConsumerNeedsTrunk(s, c) {
 		return true
