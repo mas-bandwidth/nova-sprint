@@ -2049,7 +2049,7 @@ func (r readOnly) CheckTable(context.Context, string) error   { return ErrReadOn
 func (r readOnly) Epoch(ctx context.Context) (EpochState, error) {
 	return r.b.Epoch(ctx)
 }
-func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time) (bool, error) {
+func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time, ...string) (bool, error) {
 	return false, ErrReadOnly
 }
 func (r readOnly) SettleEpoch(context.Context, uint64) error    { return ErrReadOnly }
@@ -2313,4 +2313,80 @@ func (st *Store) shadowRead(ctx context.Context) (*sprint.Snapshot, error) {
 		return snap, nil
 	}
 	return nil, fmt.Errorf("the sprint is busy: an operation was pending or the fence moved on each of %d reads in %s; a shadow tick repairs nothing; run it again", r.tries, r.slept().Round(time.Millisecond))
+}
+
+func (r readOnly) GuardedMachine(context.Context, RestoreGuard, string, Machine, string) error {
+	return ErrReadOnly
+}
+
+// GuardedMachine checks the epoch, phase and fence owner in the same exchange
+// as the global machine record and its view. A refused exchange writes neither.
+func (m *Mem) GuardedMachine(_ context.Context, g RestoreGuard, owner string, machine Machine, view string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.epochN != m.epoch {
+		return &GuardError{Outcome: GuardMoved}
+	}
+	if machine.Running() {
+		if o := m.restoreOutcome(g); o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+	}
+	l := m.log()
+	if l.fence == nil || l.fence.ID != owner {
+		return errFenceMoved
+	}
+	m.count("kv")
+	if err := m.fail("kv"); err != nil {
+		return err
+	}
+	b, err := json.Marshal(machine)
+	if err != nil {
+		return err
+	}
+	if m.kv == nil {
+		m.kv = map[string]string{}
+	}
+	m.kv[keyMachine] = string(b)
+	m.showState(view, ViewState(machine))
+	return nil
+}
+
+func (r *Redis) GuardedMachine(ctx context.Context, g RestoreGuard, owner string, machine Machine, view string) error {
+	b, err := json.Marshal(machine)
+	if err != nil {
+		return err
+	}
+	fence := r.key(keyFence)
+	var shown *redis.Cmd
+	err = r.C.Watch(ctx, func(tx *redis.Tx) error {
+		o, err := r.restoreOutcome(ctx, tx, g)
+		if err != nil {
+			return err
+		}
+		if o == GuardMoved || machine.Running() && o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+		body, err := tx.Get(ctx, fence).Result()
+		if err != nil {
+			return err
+		}
+		var held OpRecord
+		if err := json.Unmarshal([]byte(body), &held); err != nil {
+			return err
+		}
+		if held.ID != owner {
+			return errFenceMoved
+		}
+		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+			p.Set(ctx, r.Names.Key(keyMachine), string(b), 0)
+			shown = ntable.QueueViewState(ctx, p, view, ViewState(machine))
+			return nil
+		})
+		return err
+	}, r.Names.EpochKey(), ntable.PropsKeyAt(g.MarkerTable, r.Pinned), fence)
+	if err != nil {
+		return err
+	}
+	return viewShown(ntable.ViewStateResult(view, shown))
 }

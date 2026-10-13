@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
@@ -1778,6 +1779,9 @@ type FinishReq struct {
 func Finish(s *Snapshot, r FinishReq) Plan { return Lawful(finishPlan(s, r)) }
 
 func finishPlan(s *Snapshot, r FinishReq) Plan {
+	if err := cardcost.ValidateUsage(r.Usage); err != nil {
+		return Plan{Refused: []Refusal{{Key: "finish", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
+	}
 	if len(r.Friends) > 0 {
 		s.Friends = r.Friends
 	}
@@ -1829,6 +1833,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 	}, s.Fleet.Card)
 	var chosen []*Card
 	for _, c := range picked {
+		if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
 		if why := liveGen("finish", c, r.Gens); why != "" {
 			p.refuse(c.ID, why)
 			continue
@@ -2902,6 +2910,10 @@ type FleetReq struct {
 	// Reason, with hold, is the coordinator's reason, kept on the control card
 	// (FieldHeldReason) beside its held status (hold.go).
 	Reason string `json:",omitempty"`
+	// Cause and CauseNote, with hold, are what ends it (hold_cause.go): kept on the
+	// control card (FieldHeldCause, FieldHeldCauseNote) for the tick to read.
+	Cause     string `json:",omitempty"`
+	CauseNote string `json:",omitempty"`
 	// Finish, with hold (and on a down move), lets the member's working cards finish:
 	// only its ready cards, never begun, are dealt round the fleet, and the hold
 	// is marked so (FieldHeldFinish) for the sweep to leave them (hold.go).
@@ -3110,7 +3122,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// the fault's or the sync's hold stays for a person to lift
 			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
-				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+				unset = append(unset, holdFields...)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
@@ -3301,6 +3313,27 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			line += "; its working cards finish"
 		} else {
 			unset = append(unset, FieldHeldFinish)
+		}
+		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
+		// names them again, and one that names no cause leaves none behind, so its
+		// report runs (holdNoCauseConds); the probe's hold keeps its own words
+		switch {
+		case r.Cause != "":
+			set[FieldHeldCause] = r.Cause
+			// a judgment cause keeps its id, and its type and subject: a wait closes it into
+			// an acknowledgement of that type and subject, which still stands (judgmentLive)
+			if o, ok := openEntry(s, r.CauseNote); ok && r.CauseNote != "" {
+				set[FieldHeldCauseNote], set[FieldHeldCauseType], set[FieldHeldCauseSubject] = r.CauseNote, o.Note.Type, o.Subject()
+			} else {
+				unset = append(unset, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject)
+			}
+			unset = append(unset, FieldIdleReapRoutes)
+			line += "; cause " + r.Cause
+		case ctl.F(FieldHeldBy) != HeldByProbe:
+			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldIdleReapRoutes)
+		}
+		if r.HeldBy == "" && r.Who != "" {
+			set[FieldHeldWho] = r.Who
 		}
 	}
 	var head []Change

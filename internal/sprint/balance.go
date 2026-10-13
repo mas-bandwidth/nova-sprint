@@ -105,7 +105,7 @@ func SpendLastHour(s *Snapshot, provider string) float64 {
 			continue
 		}
 		for _, con := range CardCostOf(c).Consumers {
-			if con.Usage.Actual == "" || seen[con.Key] {
+			if subscriptionUsage(con.Usage) || con.Usage.Actual == "" || seen[con.Key] {
 				continue
 			}
 			at, err := time.Parse(time.RFC3339, con.At)
