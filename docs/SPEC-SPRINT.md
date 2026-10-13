@@ -7792,6 +7792,34 @@ docs/SPEC-SPRINT-DASHBOARD.md). A worker reads READY as STOPPED (the machine wor
 queue and beat carry is RUNNING or STOPPED), so nothing is taken before the first start,
 and the answer loop (`answer --every`) ends on READY as on STOPPED.
 
+**The settings gate** (v1.2.17, start-refuses-a-non-working-setting; the owner, 2026-10-13:
+"OK these MUST be fixed. blocker priority."; tla/MachineReady.tla Start,
+StartRefusedSettings, StartOnlyWorking, DeliberateSetStarts). Epoch 20 started with
+`sprint:git_identity` empty and the lander could not commit for 20 minutes; earlier clears
+left read cards off. The clear writes the working defaults; `start` is the second wall: it
+reads the sprint as the deal plans on it (the tables, the routes, the readers' states, the
+friends), the server's fresh record and the host's global `user.email`, and asks
+`sprint.SettingsWorking` (internal/sprint/defaults_working.go) for every setting the design
+depends on whose effective value leaves the machine degraded: `read_cards` off; `fleet` and
+`friends` both off; `fleet_tiers` / `friends_tiers` leaving out a tier a card of the epoch
+is dealt on (frontier aside); `reads_needed` above the readers up that serve a card's read
+tier; no reader up serving a read tier a card of the epoch needs (`readers`);
+`git_identity` unparseable or equal to the host's global `user.email` (the doctor's rule);
+nova-config's `max_attempts` applied but outside 1..100; and a server up whose run lands
+nothing (`land`: `run --land=false`). Every setting `set` writes is declared there, with a
+predicate or with none (no value of it stops the machine), and a test fails on one that is
+not. A finding whose value no `set` of this epoch chose (absent, carried, or written by a
+migration, a hand edit or an older binary) refuses the start, exit 1, nothing written, one
+line each on stderr: `START REFUSED setting=<name> value=<v> why=<...> run: <verb>`. A value
+an explicit `set` of this epoch chose starts, with one `START WARN setting=<name> value=<v>
+set by <who> at <when>` line on stdout each: a deliberate degraded run stays the owner's
+choice and is never silent. `set` records what it chose in the work table's `set_by`
+property (`name=who@time|value` entries, honoured only while the value is still the one set wrote; a clear starts the epoch with none); nova-config's fields,
+the readers and the server's landing are never chosen by `set`, so they always refuse. The
+gate is start's: a value changed while RUNNING is the tick's alarms' to name. `run` and
+`install server` land by default since v1.2.17 (`--land=false` is the explicit opt-out, which
+start then refuses, naming `nova-sprint run --listen <address:port>`, which lands by default).
+
 The system has three states, READY, RUNNING and STOPPED; RUNNING and STOPPED are
 held in one record in the store, and READY is read off it (above); a new sprint is READY. `start` sets RUNNING, `stop` sets STOPPED;
 setting the state it has changes nothing and says so; each change is a

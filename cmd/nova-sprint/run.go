@@ -100,6 +100,19 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its providers), then "+prog+" funded <provider> --reason <the payment> once one is paid"))
 			return 1
 		}
+		// every setting the design depends on is working, or a set of this epoch chose it:
+		// else refused, nothing written (start-refuses-a-non-working-setting)
+		warns, code := a.startSettingsGate(ctx, st, stderr)
+		if code != 0 {
+			return code
+		}
+		warnTo := stdout
+		if c.json {
+			warnTo = stderr // stdout is the one JSON object
+		}
+		for _, w := range warns {
+			fmt.Fprintln(warnTo, w)
+		}
 	}
 	var before, after store.Machine
 	var res store.Result
@@ -155,6 +168,50 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		fmt.Fprintln(stdout, line)
 	}
 	return 0
+}
+
+// startSettingsGate is start's settings gate (v1.2.17; the owner, 2026-10-13: "OK these
+// MUST be fixed. blocker priority."): it reads the sprint as the deal plans on it
+// (DoctorRead: the tables, the routes, the readers' states, the friends), the server's
+// fresh record and the host's global git user.email, and asks sprint.SettingsWorking for every
+// setting that leaves the machine non-working. A finding no set of this epoch chose
+// refuses the start, exit 1, nothing written, one line each on stderr:
+//
+//	START REFUSED setting=<name> value=<v> why=<...> run: <verb>
+//
+// A finding a set of this epoch chose starts, and is never silent: its lines, one each,
+//
+//	START WARN setting=<name> value=<v> set by <who> at <when>
+//
+// are returned for stdout. A read that fails refuses as every read of start does.
+//
+// tla/MachineReady.tla Start, StartRefusedSettings
+func (a *app) startSettingsGate(ctx context.Context, st *store.Store, stderr io.Writer) ([]string, int) {
+	read, err := st.DoctorRead(ctx)
+	if err != nil {
+		return nil, a.readFailed("start", err, stderr)
+	}
+	srv, up, err := st.Server(ctx)
+	if err != nil {
+		return nil, a.readFailed("start", err, stderr)
+	}
+	findings := sprint.SettingsWorking(read.Snap, sprint.WorkingBars{HostGitEmail: hostGitEmail(ctx), ServerUp: up, ServerLands: srv.Land})
+	var refused, warns []string
+	for _, f := range findings {
+		if f.SetBy == "" {
+			refused = append(refused, fmt.Sprintf("START REFUSED setting=%s value=%s why=%s run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
+			continue
+		}
+		warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s set by %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.SetBy)))
+	}
+	if len(refused) == 0 {
+		return warns, 0
+	}
+	for _, l := range refused {
+		fmt.Fprintln(stderr, l)
+	}
+	fmt.Fprintf(stderr, "%s start: %d setting(s) leave the machine non-working and no set of this epoch chose them: the machine is not started and nothing was written; run each verb above (or choose a work table value on purpose with nova-sprint set), then start again\n", prog, len(refused))
+	return nil, 1
 }
 
 // machineVerb is the store of tick and run, acting as the machine unless
@@ -309,7 +366,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&listen, "listen", "", "also be the sprint's server: the workers' verbs on this `address:port` (this machine's address on the fleet's private network; a name, a public address, a link-local address, and an every-network address are refused), where nova-swarm member --server <address>:<port> sends them, and the coordinator's verbs on 127.0.0.1 at the same port, where NOVA_SPRINT_SERVER=127.0.0.1:<port> sends them")
 		fs.StringVar(&keyNames, "keys", "", "the `NAME,...` of secrets this process reads from the seat login's nova-secrets seat (also recorded as keys.json beside the login): the decision key and each provider key. A name that cannot be read refuses at start. The unit's environment carries no key value")
 		fs.StringVar(&decideDir, "decide", "", "also keep the record of the sprint's attempt and grade decisions in this `dir` (nova-decide's layer 2: attempt.jsonl, grade.jsonl): the finishes' attempt decisions recorded, every card graded before its first deal with JEV_API_KEY from this environment or read in this process when --keys or keys.json names it, and each decision's outcome attached when its card lands or is dropped, every "+DecideEvery.String())
-		fs.BoolVar(&land, "land", false, "also land what the readers passed, every "+LandEvery.String()+", one landing at a time, as the coordinator (land's defaults: each card's REPO: and BASE: lines); every cycle prints one line, and a landing still running after "+LandDeadline.String()+" raises one judgment naming the stage; land is then not run by hand")
+		fs.BoolVar(&land, "land", true, "also land what the readers passed, every "+LandEvery.String()+", one landing at a time, as the coordinator (land's defaults: each card's REPO: and BASE: lines); every cycle prints one line, and a landing still running after "+LandDeadline.String()+" raises one judgment naming the stage; land is then not run by hand. On by default since v1.2.17: --land=false runs a server that lands nothing, and start refuses on it")
 		fs.IntVar(&landParallel, "land-parallel", landParallelDefault, "with --land, how many streams each landing merges at once before it lands them one at a time (land --land-parallel)")
 		fs.StringVar(&profile, "cpuprofile", "", "write a CPU profile of the loop's first ticks to this file (see --profile-ticks)")
 		fs.IntVar(&profileTicks, "profile-ticks", 10, "the ticks --cpuprofile covers; the profile is written after the last of them")
