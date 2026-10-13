@@ -158,7 +158,10 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		return ""
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
-	if s.ReadCardsOn() && !another {
+	answeringCannotAsk := slices.ContainsFunc(s.Open, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID)
+	})
+	if s.ReadCardsOn() && !another && answeringCannotAsk {
 		only := map[string]bool{}
 		for _, c := range chosen {
 			only[c.ID] = true
