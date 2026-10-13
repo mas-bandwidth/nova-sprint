@@ -29,8 +29,9 @@ import (
 // shown by default, the owner's ask of 2026-10-13: "Please fix the sprint dashboard so it shows the
 // friends table by default."): the page is that page, byte for byte (pageview.go).
 const (
-	pageIndexSHA256 = "50dcd8d63bc9db4a8cd58b3538692c9af30dba951e210b1c1a32f36dfe6f577f"
-	pageAppSHA256   = "319e649504e180cb20c56a4211728cdba4848caa00fc21e298fe272c0c27a850"
+	pageIndexSHA256 = "a36dea2bdf66cc14816810ec798bd26ee3dbb8fe23cdc24c8244d1647d1e8ef1"
+	pageAppSHA256   = "fdfc41212e5a78628e07b2513da40487f312313b66428e2e400b6c9835b83a90"
+
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )

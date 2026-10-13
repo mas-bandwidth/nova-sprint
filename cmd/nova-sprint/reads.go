@@ -671,6 +671,8 @@ type whereView struct {
 	StageTimes  *sprint.StageTimes    `json:"stage_times,omitempty"`
 	Stalled     []string              `json:"stalled,omitempty"`
 	Critical    []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Blockers    []string              `json:"blockers,omitempty"` // top blockers tracing why waiting cards are not moving (sprint.IdleBlockers)
+	Idle        string                `json:"idle,omitempty"`     // the idle line ("idle: ..."), for the dashboard header and CLI
 	Coordinator string                `json:"coordinator,omitempty"`
 	Pending     string                `json:"pending,omitempty"`
 	Epoch       uint64                `json:"epoch"`
@@ -1378,6 +1380,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	v.Buffer = fmt.Sprintf("%d/%d", v.Ready, 2*v.Width)
 	v.Low = v.Ready < int64(v.Width)
 	v.Tiers = facts.Tiers
+	v.Blockers = facts.Blockers
+	if len(v.Blockers) > 0 {
+		v.Idle = sprint.IdleLine(v.Blockers)
+	}
 	if len(facts.StageTimes.All) > 0 {
 		v.StageTimes = &facts.StageTimes
 	}
@@ -1418,6 +1424,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	}
 	var b strings.Builder
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
+	if line := sprint.IdleLine(v.Blockers); line != "" {
+		b.WriteString(line + "\n")
+	}
 	b.WriteString(providersLine(v.Providers, v.ProviderGaps) + "\n")
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")

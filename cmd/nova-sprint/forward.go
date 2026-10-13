@@ -52,6 +52,7 @@ type verbArgs struct {
 
 // readVerb is the argument list read by its verb's flags, as the verb parses them.
 func readVerb(argv []string) (v verbArgs) {
+	argv = normalizeArgs(argv)
 	for _, vb := range verbs {
 		w := strings.Fields(vb.name)
 		if len(argv) >= len(w) && slices.Equal(argv[:len(w)], w) && len(w) > v.words {

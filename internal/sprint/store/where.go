@@ -37,6 +37,7 @@ type WhereRecord struct {
 	Held     int                   `json:"held"`
 	Landings []int64               `json:"landings,omitempty"`
 	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Blockers []string              `json:"blockers,omitempty"` // the top blockers tracing why waiting cards are not moving (sprint.IdleBlockers)
 	// Sentinels is each stream's sentinel primaries, all and landed, counted here
 	// from the cards: a sentinel is a stop the coordinator releases, not work, so
 	// where's x/y, the ETA and the landing rate leave them out (docs/SPEC-SPRINT.md
@@ -139,6 +140,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
+	r.Blockers = sprint.IdleBlockers(s, 3)
 	if s.Fleet != nil {
 		r.FleetRev = s.Fleet.Revision
 	}
@@ -420,6 +422,8 @@ type WhereFacts struct {
 	RowCards  map[string]map[string]int
 	ReadCards sprint.ReadCardCounts
 	FixStates map[string]map[string]int
+	// Blockers is the record's top blockers (WhereRecord.Blockers); nil without the record.
+	Blockers []string
 	// RowWorking is the record's working cards by fleet row (sprint.RowWorkingKeys), counted
 	// at the fleet table's revision FleetRev; nil without the record, when where shows the
 	// table's counts (as it does when the fleet moved since the count).
@@ -533,6 +537,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.ReadsWindow = r.ReadsWindow
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
+			f.Blockers = r.Blockers
 			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
@@ -584,6 +589,7 @@ func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
 	check := sprint.CostCheckOf(s, streams)
 	f.Streams, f.CostCheck = st.streamsSince(s, streams, stats), &check
 	f.Sentinels = sentinelCounts(s)
+	f.Blockers = sprint.IdleBlockers(s, 3)
 	return nil
 }
 
