@@ -94,3 +94,31 @@ func TestHookCacheRefillCannotRestoreAnExpiredRead(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got.PushLive(sprint.HookPushBus, now), "the old refill restored an expired proof after the new proof")
 }
+
+func TestHookCacheForgetCannotReturnAnUnhookedProof(t *testing.T) {
+	t.Parallel()
+	const name = "hook-unhook-epoch"
+	now := time.Now()
+	live := sprint.HookShared{Identity: name, Role: sprint.HookRoleCoordinator, Pushes: []string{sprint.HookPushBus}, ArmedAt: now.Add(-time.Minute), ProvedAt: now.Add(-time.Minute)}
+	unhooked := live
+	unhooked.UnhookedAt = now
+	h := &heldShared{rec: live, entered: make(chan struct{}), release: make(chan struct{}), first: true}
+	t.Cleanup(h.releaseRead)
+	a := &app{hk: &hookerBox{cur: h}}
+	type answer struct {
+		rec sprint.HookShared
+		err error
+	}
+	first := make(chan answer, 1)
+	go func() { rec, err := a.hookerShared(context.Background(), name); first <- answer{rec, err} }()
+	<-h.entered
+	h.set(unhooked)
+	a.hookerForget(name)
+	h.releaseRead()
+	got := <-first
+	require.NoError(t, got.err)
+	require.False(t, got.rec.PushLive(sprint.HookPushBus, now), "the in-flight gate accepted a proof invalidated by unhook")
+	next, err := a.hookerShared(context.Background(), name)
+	require.NoError(t, err)
+	require.False(t, next.PushLive(sprint.HookPushBus, now), "the next gate accepted a proof invalidated by unhook")
+}
