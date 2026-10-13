@@ -596,7 +596,12 @@ fetched once a call, read with git and no go command. The tokens are `paths-at-b
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
 `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
-exit 2, nothing written. A base that cannot be read refuses with `MISSING: <what>`; a brief
+exit 2, nothing written. A `TEST:` line is accepted in its Go form
+(`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
+C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
+rather than in `*.go`; preflight's TEST check does the same
+([SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), the TEST line). A base that cannot be
+read refuses with `MISSING: <what>`; a brief
 naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 11, the brief checks).
 

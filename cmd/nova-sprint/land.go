@@ -330,6 +330,10 @@ type lander struct {
 	// cardTips is the batch branch's tip before each head mergeCards merged, then after the
 	// last: what a red batch gate bisects (landpass.go, bisect)
 	cardTips []string
+	// ctestTests is the batch's ctest TEST names (the cards' `TEST: ctest <Name>` lines), in
+	// batch order: the CMake tree gate selects them (`ctest -R`). Empty on a Go batch and on
+	// a CMake batch whose cards name no ctest test (the gate then runs every ctest test).
+	ctestTests []string
 	// ledgerLog is the land log's lines for the shrink-only ledgers the batch's merges
 	// resolved (ledgerunion.go), reported with the batch (NOTE) and then cleared.
 	ledgerLog []string
