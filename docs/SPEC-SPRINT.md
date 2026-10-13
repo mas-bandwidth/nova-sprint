@@ -5574,6 +5574,9 @@ inbox (and by `where --json`). A stream with nothing on the table (every primary
 or restored empty by a clear) is waiting with no `since` and is never stale. A
 stream whose every card on the table and not landed waits (behind a sentinel, or on
 a need) is held by what it waits on, which the table shows, and is never stale.
+Its clock carries that count beside its stored state as `held_cards` (the tick's
+per-stream count of the held cards, `sprint.HeldBackByStream`): a card hold is
+not a stream hold, and no view may show the count as the stream's state.
 `wait stale:<stream>~<epoch> --for <duration>` writes the time on the stream's
 control card (`stale_review`), and the stream is not shown stale before it.
 This is pull visibility; nothing claims to detect a dead process.

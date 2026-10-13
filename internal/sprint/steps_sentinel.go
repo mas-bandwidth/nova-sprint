@@ -40,7 +40,10 @@ func heldWave(s *Snapshot) *Card {
 // held ones included (docs/SPEC-SPRINT.md section 1, 2026-10-02). Everything
 // it counts is waiting, so a snapshot of the work table's waiting column is
 // enough.
-func HeldBack(s *Snapshot) int {
+// heldBackMemo is HeldBack's recursion, shared with HeldBackByStream: a
+// waiting primary is held back when it waits, through a need or its place in
+// line, on a sentinel not released or a card admitted held.
+func heldBackMemo(s *Snapshot) func(c *Card) bool {
 	memo := map[string]bool{}
 	var back func(c *Card) bool
 	back = func(c *Card) bool {
@@ -58,6 +61,11 @@ func HeldBack(s *Snapshot) int {
 		memo[c.ID] = v
 		return v
 	}
+	return back
+}
+
+func HeldBack(s *Snapshot) int {
+	back := heldBackMemo(s)
 	n := 0
 	for _, c := range s.Work.Column(Waiting) {
 		if back(c) {
@@ -65,6 +73,27 @@ func HeldBack(s *Snapshot) int {
 		}
 	}
 	return n
+}
+
+// HeldBackByStream is HeldBack counted per stream: each stream's waiting
+// primaries no tick moves on its own (a-waiting-stream-is-never-shown-held).
+// The dashboard shows the count beside the stream's stored state ("waiting \u00b7
+// 2 held cards"), never as the state; a stream with no held card is absent.
+func HeldBackByStream(s *Snapshot) map[string]int {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	back := heldBackMemo(s)
+	out := map[string]int{}
+	for _, c := range s.Work.Column(Waiting) {
+		if back(c) {
+			out[c.Row]++
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // streamLine is the stream's primaries on the table, in work order.
