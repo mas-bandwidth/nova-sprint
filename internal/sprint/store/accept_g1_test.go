@@ -34,7 +34,7 @@ func TestTwoOkReadsAtTheHeadAcceptWithAG1(t *testing.T) {
 	h.poke(sprint.Merge, ntable.BatchMemberEntry{
 		ID: sprint.CtlID("s1"), Expect: &ntable.MemberExpect{Absent: true},
 		Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Ctl, Score: 0},
-		Set: map[string]string{"kind": "stream", "stream": "s1"},
+		Set:    map[string]string{"kind": "stream", "stream": "s1"},
 	})
 
 	head := "fa6d1991"

@@ -404,4 +404,3 @@ func TestRestedTierNoRouteNotInSeatWaitsOverdue(t *testing.T) {
 	assert.Equal(t, 1, wResume.Judgments)
 	assert.Equal(t, 1, wResume.Overdue, "SeatWaitsOf must count judgment overdue once rest ends")
 }
-
