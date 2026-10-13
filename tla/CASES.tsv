@@ -649,3 +649,4 @@ MCMachineReadyBrokenStopReady.cfg	MCMachineReady.tla	invariant	StoppedOnlyFromRu
 MCMachineReadyBrokenNoStopStamp.cfg	MCMachineReady.tla	invariant	RanIsNotReady	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenNoGate.cfg	MCMachineReady.tla	invariant	StartOnlyWorking	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenOverRefuse.cfg	MCMachineReady.tla	invariant	DeliberateSetStarts	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenReadersGate.cfg	MCMachineReady.tla	invariant	DeliberateSetStarts	ignore-terminal	machineready	required	-

@@ -83,7 +83,13 @@ func TestWorkingNamesEachNonWorkingSetting(t *testing.T) {
 			s.Work.SetProp(PropFleetTiers, "frontier")
 		}, []string{PropFleetTiers}},
 		{"git identity empty", WorkingBars{}, func(s *Snapshot) { s.GitIdentity = "" }, []string{SettingGitIdentity}},
-		{"git identity the owner's", WorkingBars{HostGitEmail: "nova-sprint@example.invalid"}, func(*Snapshot) {}, []string{SettingGitIdentity}},
+		{"no reader up (live state)", WorkingBars{}, func(s *Snapshot) {
+			s.ReaderStates = map[string]string{"reader-a": ReaderDown, "reader-b": ReaderDown, "reader-c": ReaderDown}
+		}, []string{SettingReaders}},
+		{"reads above the readers up (live state)", WorkingBars{}, func(s *Snapshot) {
+			s.ReaderStates = map[string]string{"reader-a": ReaderUp, "reader-b": ReaderDown, "reader-c": ReaderDown}
+			s.Work.SetProp(PropReadsNeeded, "3")
+		}, []string{PropReadsNeeded}},
 		{"max attempts out of range", WorkingBars{}, func(s *Snapshot) { s.MaxAttempts = "0" }, []string{SettingMaxAttempts}},
 		{"server lands nothing", WorkingBars{ServerUp: true}, func(*Snapshot) {}, []string{SettingLand}},
 	} {
@@ -95,6 +101,7 @@ func TestWorkingNamesEachNonWorkingSetting(t *testing.T) {
 			got = append(got, f.Setting)
 			assert.NotEmpty(t, f.Verb, "%s: %s names its verb", tc.name, f.Setting)
 			assert.Empty(t, f.SetBy, "%s: no set chose it", tc.name)
+			assert.Equal(t, f.Setting == SettingReaders || f.Setting == PropReadsNeeded, f.Live, "%s: %s is live state (a WARN) only for the readers", tc.name, f.Setting)
 		}
 		slices.Sort(got)
 		want := slices.Clone(tc.want)

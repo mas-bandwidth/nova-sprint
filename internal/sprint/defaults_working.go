@@ -32,22 +32,26 @@ import (
 // work table's property, or nova-config's sprint row field), its value as read, why it does
 // not work, and the verb that makes it work. SetBy is who chose the value by set in this
 // epoch and when ("" for a value no set of this epoch wrote): the gate warns on it and
-// refuses on the rest.
+// refuses on the rest. Live says the finding is the fleet's live state, not a setting (the
+// readers up for a tier, and so whether reads_needed can be met): the gate always warns on
+// it and never refuses, since readers come up after a start (the coordinator, 2026-10-13:
+// the owner's ruling covers settings left off or empty after a clear, not who is up).
 type SettingFinding struct {
 	Setting string `json:"setting"`
 	Value   string `json:"value"`
 	Why     string `json:"why"`
 	Verb    string `json:"verb"`
 	SetBy   string `json:"set_by,omitempty"`
+	Live    bool   `json:"live,omitempty"`
 }
 
-// WorkingBars is what the gate reads beside the snapshot: the host's global git user.email
-// (the doctor's rule: a machine identity equal to it commits as the owner; "" unread), and
-// the server's fresh record, whether one is up and whether it lands (run --land).
+// WorkingBars is what the gate reads beside the snapshot: the server's fresh record, whether
+// one is up and whether it lands (run --land). The host's global git user.email is not read:
+// start runs on the seat's host, the lander commits on the server's, so the doctor's
+// equal-to-the-owner rule (DoctorGitIdentity) is the doctor's, run where the lander runs.
 type WorkingBars struct {
-	HostGitEmail string
-	ServerUp     bool
-	ServerLands  bool
+	ServerUp    bool
+	ServerLands bool
 }
 
 // The names of the settings the gate reads that are not work table properties: nova-config's
@@ -259,7 +263,7 @@ func sortedKeys(m map[string]int) []string {
 	return ks
 }
 
-// readersWorking: a read tier a card of the epoch needs that no reader up serves.
+// readersWorking (live state, a WARN): a read tier a card of the epoch needs that no reader up serves.
 func readersWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	needs := readNeeds(s)
 	var none []string
@@ -271,10 +275,10 @@ func readersWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	if len(none) == 0 {
 		return nil
 	}
-	return []SettingFinding{{Setting: SettingReaders, Value: "none", Why: "no reader up serves tier " + strings.Join(none, ",") + ", which a card of the epoch needs read: its review never ends", Verb: "nova-sprint reader set <reader> --tiers " + strings.Join(none, ",")}}
+	return []SettingFinding{{Setting: SettingReaders, Value: "none", Why: "no reader up serves tier " + strings.Join(none, ",") + ", which a card of the epoch needs read: its review never ends", Verb: "nova-sprint reader set <reader> --tiers " + strings.Join(none, ","), Live: true}}
 }
 
-// readsNeededWorking: the sprint's reads count set above the readers that serve a tier a
+// readsNeededWorking (live state, a WARN): the sprint's reads count set above the readers that serve a tier a
 // card of the epoch needs (a tier with none is the readers' finding).
 func readsNeededWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	v := workProp(s, PropReadsNeeded)
@@ -292,23 +296,19 @@ func readsNeededWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	if len(short) == 0 {
 		return nil
 	}
-	return []SettingFinding{{Setting: PropReadsNeeded, Value: v, Why: "every card in review needs " + v + " reads, above the readers up of " + strings.Join(short, ", ") + ": no card of it is accepted", Verb: "nova-sprint set --reads " + ReadTierDefault}}
+	return []SettingFinding{{Setting: PropReadsNeeded, Value: v, Why: "every card in review needs " + v + " reads, above the readers up of " + strings.Join(short, ", ") + ": no card of it is accepted", Verb: "nova-sprint set --reads " + ReadTierDefault, Live: true}}
 }
 
 // gitIdentityVerb is the nova-config verb that gives the machine its own identity
 // (internal/sprint/doctor.go DoctorGitIdentity's remedy).
 const gitIdentityVerb = "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"
 
-// gitIdentityWorking is the doctor's rule (DoctorGitIdentity): none or unparseable, the
-// landing refuses to commit; equal to the host's global user.email, the machine commits as
-// the owner.
-func gitIdentityWorking(s *Snapshot, b WorkingBars) []SettingFinding {
-	parsed, ok := config.ParseGitIdentity(s.GitIdentity)
-	switch {
-	case !ok:
+// gitIdentityWorking: none or unparseable (DoctorGitIdentity's first rule): the landing
+// refuses to commit. Its second rule, an email equal to the host's global user.email, is the
+// doctor's alone (WorkingBars).
+func gitIdentityWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
+	if _, ok := config.ParseGitIdentity(s.GitIdentity); !ok {
 		return []SettingFinding{{Setting: SettingGitIdentity, Value: orDash(s.GitIdentity), Why: "the sprint row names no git_identity it can parse: the landing refuses to commit", Verb: gitIdentityVerb}}
-	case b.HostGitEmail != "" && parsed.Email == b.HostGitEmail:
-		return []SettingFinding{{Setting: SettingGitIdentity, Value: s.GitIdentity, Why: "its email equals the host's global user.email: the machine would commit as the owner", Verb: gitIdentityVerb}}
 	}
 	return nil
 }

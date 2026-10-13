@@ -172,16 +172,21 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 
 // startSettingsGate is start's settings gate (v1.2.17; the owner, 2026-10-13: "OK these
 // MUST be fixed. blocker priority."): it reads the sprint as the deal plans on it
-// (DoctorRead: the tables, the routes, the readers' states, the friends), the server's
-// fresh record and the host's global git user.email, and asks sprint.SettingsWorking for every
-// setting that leaves the machine non-working. A finding no set of this epoch chose
-// refuses the start, exit 1, nothing written, one line each on stderr:
+// (DoctorRead: the tables, the routes, the readers' states, the friends) and the server's
+// fresh record, and asks sprint.SettingsWorking for every setting that leaves the machine
+// non-working. A finding no set of this epoch chose refuses the start, exit 1, nothing
+// written, one line each on stderr:
 //
 //	START REFUSED setting=<name> value=<v> why=<...> run: <verb>
 //
 // A finding a set of this epoch chose starts, and is never silent: its lines, one each,
 //
 //	START WARN setting=<name> value=<v> set by <who> at <when>
+//
+// and a finding of the fleet's live state (no reader up for a needed tier, reads above the
+// readers up) starts with its line, never a refusal:
+//
+//	START WARN setting=<name> value=<v> why=<...> run: <verb>
 //
 // are returned for stdout. A read that fails refuses as every read of start does.
 //
@@ -195,9 +200,14 @@ func (a *app) startSettingsGate(ctx context.Context, st *store.Store, stderr io.
 	if err != nil {
 		return nil, a.readFailed("start", err, stderr)
 	}
-	findings := sprint.SettingsWorking(read.Snap, sprint.WorkingBars{HostGitEmail: hostGitEmail(ctx), ServerUp: up, ServerLands: srv.Land})
+	findings := sprint.SettingsWorking(read.Snap, sprint.WorkingBars{ServerUp: up, ServerLands: srv.Land})
 	var refused, warns []string
 	for _, f := range findings {
+		if f.Live {
+			// the fleet's live state (the readers up), never a refusal: they come up after
+			warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s why=%s run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
+			continue
+		}
 		if f.SetBy == "" {
 			refused = append(refused, fmt.Sprintf("START REFUSED setting=%s value=%s why=%s run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
 			continue

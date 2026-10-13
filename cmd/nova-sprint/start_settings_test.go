@@ -98,14 +98,6 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 			ta.directProp(sprint.PropFriends, "off")
 			ta.directProp(sprint.PropFleetTiers, "heavy")
 		}, setting: []string{"fleet_tiers"}, verb: "nova-sprint set --fleet-tiers all"},
-		{name: "reads above the readers up", break_: func(ta *testApp) { ta.directProp(sprint.PropReadsNeeded, "3") },
-			setting: []string{"reads_needed"}, verb: "nova-sprint set --reads default", set: "set --reads 3"},
-		{name: "no reader up", break_: func(ta *testApp) {
-			ta.mu.Lock()
-			ta.quiet = map[string]bool{"reader-a": true, "reader-b": true}
-			ta.mu.Unlock()
-			ta.later(2 * sprint.ReaderBeatBound)
-		}, setting: []string{"readers"}, verb: "nova-sprint reader set <reader> --tiers flash"},
 		{name: "git identity empty", break_: func(ta *testApp) { ta.m.SetGitIdentity("") },
 			setting: []string{"git_identity"}, verb: "nova-config sprint set --git_identity"},
 		{name: "max attempts out of range", break_: func(ta *testApp) { ta.m.SetMaxAttempts("0") },
@@ -150,6 +142,38 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 			}
 			assert.Empty(t, startLines("START REFUSED", errs))
 			assert.True(t, ta2.machineRunning())
+		})
+	}
+
+	// the readers up are the fleet's live state, not a setting: no reader up for a needed
+	// tier, and reads above the readers up, start with one WARN line each, never a refusal
+	for _, tc := range []struct {
+		name, setting, verb string
+		break_              func(ta *testApp)
+	}{
+		{name: "reads above the readers up warns", setting: "reads_needed", verb: "nova-sprint set --reads default",
+			break_: func(ta *testApp) { ta.directProp(sprint.PropReadsNeeded, "3") }},
+		{name: "no reader up warns", setting: "readers", verb: "nova-sprint reader set <reader> --tiers flash",
+			break_: func(ta *testApp) {
+				ta.mu.Lock()
+				ta.quiet = map[string]bool{"reader-a": true, "reader-b": true}
+				ta.mu.Unlock()
+				ta.later(2 * sprint.ReaderBeatBound)
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ta := fresh(t)
+			ta.ok("add --stream s1 --count 2")
+			tc.break_(ta)
+			code, out, errs := ta.do("start")
+			require.Equal(t, 0, code, "live state starts: %s%s", out, errs)
+			assert.Empty(t, startLines("START REFUSED", errs))
+			warns := startLines("START WARN", out)
+			require.Len(t, warns, 1, out)
+			assert.Contains(t, warns[0], "START WARN setting="+tc.setting+" ")
+			assert.Contains(t, warns[0], "run: "+tc.verb)
+			assert.True(t, ta.machineRunning())
 		})
 	}
 

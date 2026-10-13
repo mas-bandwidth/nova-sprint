@@ -7798,13 +7798,12 @@ StartRefusedSettings, StartOnlyWorking, DeliberateSetStarts). Epoch 20 started w
 `sprint:git_identity` empty and the lander could not commit for 20 minutes; earlier clears
 left read cards off. The clear writes the working defaults; `start` is the second wall: it
 reads the sprint as the deal plans on it (the tables, the routes, the readers' states, the
-friends), the server's fresh record and the host's global `user.email`, and asks
+friends), the server's fresh record, and asks
 `sprint.SettingsWorking` (internal/sprint/defaults_working.go) for every setting the design
 depends on whose effective value leaves the machine degraded: `read_cards` off; `fleet` and
 `friends` both off; `fleet_tiers` / `friends_tiers` leaving out a tier a card of the epoch
-is dealt on (frontier aside); `reads_needed` above the readers up that serve a card's read
-tier; no reader up serving a read tier a card of the epoch needs (`readers`);
-`git_identity` unparseable or equal to the host's global `user.email` (the doctor's rule);
+is dealt on (frontier aside); `git_identity` empty or unparseable (the landing refuses to commit; its email equal to the
+owner's is the doctor's check, run on the lander's host, not start's);
 nova-config's `max_attempts` applied but outside 1..100; and a server up whose run lands
 nothing (`land`: `run --land=false`). Every setting `set` writes is declared there, with a
 predicate or with none (no value of it stops the machine), and a test fails on one that is
@@ -7813,7 +7812,11 @@ migration, a hand edit or an older binary) refuses the start, exit 1, nothing wr
 line each on stderr: `START REFUSED setting=<name> value=<v> why=<...> run: <verb>`. A value
 an explicit `set` of this epoch chose starts, with one `START WARN setting=<name> value=<v>
 set by <who> at <when>` line on stdout each: a deliberate degraded run stays the owner's
-choice and is never silent. `set` records what it chose in the work table's `set_by`
+choice and is never silent. The readers up are the fleet's live state, not a setting: no reader up
+serving a read tier a card of the epoch needs (`readers`), and `reads_needed` above the
+readers up for a tier, start with one `START WARN setting=<name> value=<v> why=<...> run:
+<verb>` line each and are never refused (readers come up after a start; tla/MachineReady.tla
+readersUp, witness readersgate). `set` records what it chose in the work table's `set_by`
 property (`name=who@time|value` entries, honoured only while the value is still the one set wrote; a clear starts the epoch with none); nova-config's fields,
 the readers and the server's landing are never chosen by `set`, so they always refuse. The
 gate is start's: a value changed while RUNNING is the tick's alarms' to name. `run` and

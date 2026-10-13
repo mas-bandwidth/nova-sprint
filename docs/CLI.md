@@ -66,7 +66,7 @@ nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--
 nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
-# start refuses, exit 1, nothing written, while a setting the design depends on is non-working and no set of this epoch chose it: one line each, START REFUSED setting=<name> value=<v> why=<...> run: <verb> (read_cards off, fleet and friends off, fleet_tiers/friends_tiers serving no needed tier, reads above the readers up, no reader up for a needed tier, git_identity unparseable or the owner's, max_attempts outside 1..100, a server run with --land=false); a value a set of this epoch chose starts with one START WARN setting=<name> value=<v> set by <who> at <when> line each
+# start refuses, exit 1, nothing written, while a setting the design depends on is non-working and no set of this epoch chose it: one line each, START REFUSED setting=<name> value=<v> why=<...> run: <verb> (read_cards off, fleet and friends off, fleet_tiers/friends_tiers serving no needed tier, git_identity empty or unparseable, max_attempts outside 1..100, a server run with --land=false); a value a set of this epoch chose starts with one START WARN setting=<name> value=<v> set by <who> at <when> line each, and the readers up (none for a needed tier, or fewer than reads_needed) are live state: a START WARN line, never a refusal
 nova-sprint stop
 nova-sprint run [--answer-rules=false] [--idle-alarm=false] [--land=false]   # run lands by default since v1.2.17; --land=false is the opt-out, and start refuses on a server that lands nothing
 nova-sprint tick [--answer-rules] [--idle-alarm]

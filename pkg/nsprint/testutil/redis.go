@@ -16,6 +16,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
@@ -115,7 +116,13 @@ func startOnce(t *testing.T, bin string, extra []string) (string, bool, string) 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			pingErr := client.Ping(ctx).Err()
 			cancel()
-			if pingErr == nil || strings.Contains(pingErr.Error(), "NOAUTH") {
+			if pingErr != nil && strings.Contains(pingErr.Error(), "NOAUTH") {
+				// a store whose default user is off (the fleet shape): its test applies
+				// the sprint row itself, as its own user
+				return addr, true, ""
+			}
+			if pingErr == nil {
+				applySprintRow(t, client)
 				return addr, true, ""
 			}
 		}
@@ -123,6 +130,18 @@ func startOnce(t *testing.T, bin string, extra []string) (string, bool, string) 
 			t.Fatalf("throwaway redis did not start: %s", body)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// applySprintRow gives a fresh store what nova-config apply gives a live one and start's
+// settings gate needs (start-refuses-a-non-working-setting): the machine's git_identity. A
+// test that wants the row absent deletes the key.
+func applySprintRow(t *testing.T, client *redis.Client) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Set(ctx, config.SprintKey(config.FieldGitIdentity), config.DefaultGitIdentity, 0).Err(); err != nil {
+		t.Fatalf("the test store's sprint row was not applied: %v", err)
 	}
 }
 

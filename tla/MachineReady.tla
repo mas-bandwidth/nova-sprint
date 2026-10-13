@@ -35,6 +35,9 @@
 (*   "overrefuse"    start refuses a non-working value a set of this epoch *)
 (*                   chose: the owner's deliberate degraded run cannot     *)
 (*                   start (DeliberateSetStarts)                           *)
+(*   "readersgate"   start refuses while no reader is up: the fleet's live  *)
+(*                   state blocks a start the settings allow               *)
+(*                   (DeliberateSetStarts)                                 *)
 (*                                                                         *)
 (* The settings gate (v1.2.17, start-refuses-a-non-working-setting; the    *)
 (* owner, 2026-10-13: "OK these MUST be fixed. blocker priority."): every  *)
@@ -46,6 +49,9 @@
 (* (anything but set: a migration, a hand edit, an older binary), or "set". *)
 (* The gate is start's: a value changed while RUNNING is the tick's alarms' *)
 (* to name, outside this module.                                           *)
+(* readersUp is the fleet's live state (a reader up for the tiers the cards  *)
+(* need): never a setting, so never in the gate; start warns on it         *)
+(* (SettingFinding.Live) and readers come up after the start.             *)
 (***************************************************************************)
 EXTENDS Integers
 
@@ -56,7 +62,7 @@ CONSTANTS
 
 States == {"READY", "RUNNING", "STOPPED"}
 Acts == {"init", "clearstop", "clearadvance", "start", "stop", "refused", "add", "tick",
-         "write", "set", "startrefused"}
+         "write", "set", "startrefused", "readers"}
 Writers == {"clear", "write", "set"}
 
 VARIABLES
@@ -70,10 +76,11 @@ VARIABLES
     prev,       \* the derived state before the last action
     last,       \* the last action
     working,    \* each setting's value leaves the machine working (sprint.Working finds none)
-    setBy       \* who wrote each setting's value in this epoch: clear, write or set
+    setBy,      \* who wrote each setting's value in this epoch: clear, write or set
+    readersUp   \* the fleet's live state: a reader is up for the tiers the cards need
 
-vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy>>
-settings == <<working, setBy>>
+vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy, readersUp>>
+settings == <<working, setBy, readersUp>>
 
 \* the gate start reads (startSettingsGate): every setting working, or its non-working
 \* value chosen by a set of this epoch (then a START WARN line, never silence)
@@ -83,6 +90,7 @@ Gate == \A s \in Settings : working[s] \/ setBy[s] = "set"
 StartGate ==
     CASE Broken = "nogate"     -> TRUE
       [] Broken = "overrefuse" -> \A s \in Settings : working[s]
+      [] Broken = "readersgate" -> Gate /\ readersUp
       [] OTHER                 -> Gate
 
 \* the derived state (Machine.Ready, MachineLine)
@@ -101,6 +109,7 @@ TypeOK ==
     /\ last \in Acts
     /\ working \in [Settings -> BOOLEAN]
     /\ setBy \in [Settings -> Writers]
+    /\ readersUp \in BOOLEAN
 
 \* the first epoch's settings are whatever init left: any value, by no set
 Init ==
@@ -115,6 +124,7 @@ Init ==
     /\ last = "init"
     /\ working \in [Settings -> BOOLEAN]
     /\ setBy = [s \in Settings |-> "clear"]
+    /\ readersUp \in BOOLEAN
 
 \* the stop's stamp (machine_transition.go): a stop of a RUNNING machine records the
 \* epoch it ran in; the reversed witness leaves the stamp as it was
@@ -148,7 +158,7 @@ ClearAdvance ==
     /\ last' = "clearadvance"
     /\ working' \in [Settings -> BOOLEAN]
     /\ setBy' = [s \in Settings |-> "clear"]
-    /\ UNCHANGED <<run>>
+    /\ UNCHANGED <<run, readersUp>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
 \* it reads; it may land between ClearStop and ClearAdvance. Enabled only through
@@ -179,7 +189,7 @@ Write(s, v) ==
     /\ setBy' = [setBy EXCEPT ![s] = "write"]
     /\ prev' = Shown
     /\ last' = "write"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
 
 \* nova-sprint set (the work table's change log names it): the owner's choice, working or not
 SetSetting(s, v) ==
@@ -187,7 +197,7 @@ SetSetting(s, v) ==
     /\ setBy' = [setBy EXCEPT ![s] = "set"]
     /\ prev' = Shown
     /\ last' = "set"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
 
 \* stop by hand (store.StopUntil), and the tick's done and funds stops
 \* (stopWithCause): RUNNING to STOPPED
@@ -225,8 +235,16 @@ Tick ==
     /\ last' = "tick"
     /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings>>
 
+\* the fleet's live state changes: a reader comes up or goes down (the readers' beats)
+ReadersChange ==
+    /\ readersUp' = ~readersUp
+    /\ prev' = Shown
+    /\ last' = "readers"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, working, setBy>>
+
 Next == ClearStop \/ ClearAdvance \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
         \/ StartRefusedSettings
+        \/ ReadersChange
         \/ \E s \in Settings, v \in BOOLEAN : Write(s, v) \/ SetSetting(s, v)
 
 Spec == Init /\ [][Next]_vars
@@ -254,7 +272,7 @@ RanIsNotReady == (ran /\ ~run) => Shown = "STOPPED"
 StartOnlyWorking == last = "start" => Gate
 
 \* the gate never over-refuses: a machine not running whose every non-working setting a
-\* set of this epoch chose may start (with its START WARN lines)
+\* set of this epoch chose may start (with its START WARN lines), whatever readers are up
 DeliberateSetStarts == (~run /\ Gate) => ENABLED Start
 
 =============================================================================
