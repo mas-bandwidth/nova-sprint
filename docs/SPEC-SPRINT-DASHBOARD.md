@@ -83,6 +83,30 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 - 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
 - 2026-10-11 the owner, of the sprint dashboard: "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
+- 2026-10-11 ~21:55Z the owner: "for v1.2.* series, please hide the friends table entirely. This will come back in v1.3.x series."
+- 2026-10-12 ~00:28Z the owner: "The nova sprint logo goes top left, and replaces the robot logo"
+- 2026-10-12 ~00:30Z the owner: "don't show the cents in the cost in iphone layout"
+- 2026-10-12 ~00:32Z the owner: "move the time to the right at the top, without 'Updated' and the green circle" (his quotes around Updated written here as single quotes)
+- 2026-10-12 ~00:32Z the owner: "ETA DONE, with done in bright green"
+- 2026-10-12 ~00:35Z the owner: "Below DONE show the time it took in days, hours, minutes"
+- 2026-10-12 ~00:45Z the owner, of the Fleet compact form's ok%: "too cluttered"
+- 2026-10-12 ~00:52Z the owner, of the compact status beside the count: "too close"
+- 2026-10-12 ~00:55Z the owner, of the top streams on a phone: "it's the cost per stream"
+- 2026-10-12 ~00:57Z the owner: "center align working and landed"
+- 2026-10-12 ~00:58Z the owner: "When stopped put STOPPED there in red"
+- 2026-10-12 ~01:08Z the owner, of the ETA's STOP: "too bright red. darker"
+- 2026-10-12 ~01:20Z the owner: "put the version of nova sprint ... in a cell"
+- 2026-10-12 ~01:32Z the owner, of STOP at every width: "cleaner"
+- 2026-10-12 ~03:08Z the owner, of the wordmark: "only when it fits, hide otherwise"
+- 2026-10-13 ~02:10Z the owner: "I don't want work stream names to look like variable names or tags. I want them to be human readable."
+- 2026-10-13 the owner: "What happens next is you update it with all the stuff you changed and i haven't seen for a day"
+
+The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
+~01:07Z, ~01:09Z, ~01:10Z, ~01:22Z, ~01:25Z, ~01:42Z and ~03:10Z, whose words were not recorded)
+were made on the Python page and come to this page together, in one change: pagelock.txt's line
+of 2026-10-13 holds the digest of the page that carries them all, under the owner's ask to bring
+them over. Each change's own ask is quoted here, dated; an intermediate page that carried only
+some of them never existed, so no digest of one is written.
 
 **The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
 The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
@@ -96,6 +120,58 @@ browser refuses audio before a gesture, so the page carries one small speaker gl
 landed count, off until clicked once per browser (the choice kept in localStorage); clicked on, it
 plays the coin once, as the test he hears before relying on it, and it is the only addition to the
 page.
+
+### The page is this list (the owner's asks, 2026-10-11 to 2026-10-13)
+
+The page shows exactly these elements and nothing else; `TestThePageShowsExactlyTheOwnersElements`
+(internal/sprintdash/page_parity_test.go) renders the page from a fixture (epoch 20, 0/84, STOPPED,
+2 machines up and 11 held, 12 friends held or down, 13 streams with display names) and holds each.
+
+1. Logo, top left, inline as a data PNG: as the live page carries it today, the 384 px robot tile (logo-robot-384.png, width 120, height 120, alt "nova-sprint"). The owner asked 10-12 ~00:28Z for the nova-sprint image in its place; the live page carries the robot, so this follows the live page until the owner rules.
+2. Wordmark "nova-sprint" in Nunito 800, hidden when it does not fit (10-12 ~03:08Z).
+3. Chip "version v1.2.16": the data's server_version (the listening process's when where gives none); hidden when unknown (10-12 ~01:20Z).
+4. Chip "coordinator rowan"; on a phone just "rowan"; hidden when there is no room (10-12 ~01:00Z, ~01:02Z, ~01:25Z).
+5. Chip "epoch 20"; it goes before the coordinator when there is no room; the wordmark goes first of all (10-12 ~01:20Z, ~01:25Z).
+6. Release nav: hidden (the envelope carries no releases).
+7. The clock alone at the far right, "9:52:20 PM EDT": no "Updated", no dot (10-12 ~00:32Z).
+8. Landed tile: the count, "of 84", "0.0% complete"; only "not started" when the sprint is empty (10-12 ~01:09Z, ~01:22Z).
+9. ETA tile: "2h 20m" and "around 11:36 PM EDT" (shorter forms when narrow), or "-" with "not in the summary".
+10. ETA "STOP" in dark red while the machine is STOPPED, at every width (10-12 ~00:58Z, ~01:08Z, ~01:32Z).
+11. ETA "DONE" in green, with the time the sprint took below it in days, hours, minutes; DONE wins over STOPPED (10-12 ~00:32Z, ~00:35Z).
+12. Cost tile: "$0.00" with cents; whole dollars rounded up on a phone (10-12 ~00:30Z); "$x per card".
+13. In flight tile: the count; "n working · n verify" (shorter forms); blank when nothing is in flight (10-12 ~01:10Z).
+14. Throughput tile: the figure or "—"; "cards / hour"; a tooltip.
+15. Cost breakdown head and its tier legend in tier colours (flash blue, pro purple, heavy amber, frontier pink), or "-".
+16. A fold chevron on every panel, its state kept in localStorage.
+17. Tier pie; a grey disc when nothing is spent; round wedge joins (10-12 ~03:10Z).
+18. Top streams: stream | each tier with spend | total; on a phone stream | "cost", the pie centred (10-12 ~00:42Z, ~00:55Z).
+19. Top streams with no spend: blank ruled rows, no message (10-12 ~01:07Z).
+20. The label "Cards by state" (10-12 ~00:43Z).
+21. State legend: seven swatches with counts.
+22. Segmented bar: landed green, merging pink, fix purple, review orange, working blue, ready grey, waiting dark grey; merging, review and working pulse; still when stopped.
+23. Work head and "N streams · n landed · n held".
+24. Work columns: stream | status | waiting | ready | working | review | fix | merging | landed (n / total) | cost.
+25. Work stream cell: the stream's display name ("schema c"), else its key, with the amber tag (archived / n stuck / ci red) (10-13 ~02:10Z).
+26. Work status pill: landed green, working blue, held amber, stopped red, else neutral; a tooltip.
+27. Work rows grouped by status with a rule between groups; Total row; zero counts grey; changed figures flash blue.
+28. Work and Fleet compact (phone) form: name | status | count, the counts centred, the status beside them (10-12 ~00:50Z, ~00:52Z, ~00:57Z).
+29. Fleet head and "n up · n held · n down" (plus "· off").
+30. Fleet columns: machine | status | ready | track | n / width (· window) | done | ok% | load.
+31. Fleet status pill: up green, held amber, down red.
+32. Fleet track cells: blocker red, critical dark red, fix purple, read orange, working blue; scaled to the fleet's own widest member while Friends is hidden (10-12 ~01:42Z).
+33. Fleet Total row; the panel dimmed when the side is off.
+34. Fleet compact form with no ok% (10-12 ~00:45Z).
+35. Friends panel: hidden by CSS for the v1.2.x series (10-11 ~21:55Z).
+36. Providers panel: hidden unless tables.providers exists.
+37. Readers and merge panel: only with ?all=1.
+38. Landings panel: hidden.
+39. Footer: the github.com/mas-bandwidth/nova-sprint link.
+40. Tab title "nova-sprint"; the favicon is the robot tile; dark theme only.
+
+Removed by the owner by name, and absent: the red "machine STOPPED" chip (10-12 ~00:58Z; STOP is
+in the ETA tile), the Friends panel (10-11 ~21:55Z, hidden), "Updated" and the green dot beside
+the clock (10-12 ~00:32Z). The texts "All cards by state", "nothing in flight" and "no stream has
+spent anything yet" are not on the page. The coin and its speaker glyph (2026-10-11) stay.
 
 ## Serving and publishing
 
@@ -194,8 +270,8 @@ from the owner edits one line here and nothing else moves.
   tile's own rounded corners; also the favicon. `--logo` names another image file in its place.
 - The word "nova-sprint" in Nunito 800 (lowercase), the page's primary white (never cream), cap height about two
   thirds of the tile, optically centered with the pills.
-- Pills: coordinator <name>, epoch <n>, machine <state>; then the Updated clock with its live dot; no theme toggle (dark
-  only, the owner, 2:21 PM 2026-10-04: "just remove the toggle light/dark. always dark.").
+- Pills: version <v>, coordinator <name>, epoch <n>; then the clock alone at the far right (no "Updated", no dot);
+  no theme toggle (dark only, the owner, 2:21 PM 2026-10-04: "just remove the toggle light/dark. always dark.").
   The clock never flashes. The owner, 2026-10-11, of this line on the live page: "this is what it is." (The page
   lock above.)
 
@@ -208,7 +284,7 @@ from the owner edits one line here and nothing else moves.
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
 
-## Progress bar: "ALL CARDS BY STATE" with the legend (landed, merging, fix, review, working, ready, waiting) and counts;
+## Progress bar: "CARDS BY STATE" with the legend (landed, merging, fix, review, working, ready, waiting) and counts;
   one cell per card (per N cards when they would be under 4 px; no "1 cell = N" label); working cells pulse steadily
   (2 s); other cells still.
 
