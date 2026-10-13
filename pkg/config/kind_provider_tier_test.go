@@ -10,7 +10,7 @@ import (
 
 // TestKindProviderAndRouteTierMatchNovaTools pins KindProvider and the route
 // tier field to nova-tools pkg/config/kind.go at
-// 41430ca9f0713318a3e1353eb8c9406455bc7a0a (origin/sprint/v1.2.18-tools,
+// c402e160d7272bc1f5475b8f7c4a072aba9fd62e (paired subscription producer,
 // 2026-10-13). The fixture is those three spans copied from that file at that
 // sha: the KindProvider constant, the provider kind literal, and the route
 // tier field. The rest of the two files is not required to match. No network,
@@ -19,7 +19,7 @@ func TestKindProviderAndRouteTierMatchNovaTools(t *testing.T) {
 	t.Parallel()
 	src, err := os.ReadFile("kind.go")
 	require.NoError(t, err)
-	raw, err := os.ReadFile("testdata/nova-tools-kind-provider-route-tier-41430ca9.txt")
+	raw, err := os.ReadFile("testdata/nova-tools-kind-provider-route-tier-c402e160.txt")
 	require.NoError(t, err)
 	sections := kindToolsFixture(t, string(raw))
 	got := string(src)
@@ -31,7 +31,7 @@ func TestKindProviderAndRouteTierMatchNovaTools(t *testing.T) {
 			misses = append(misses, name)
 		}
 	}
-	require.Empty(t, misses, "kind.go does not match nova-tools at 41430ca9 field for field")
+	require.Empty(t, misses, "kind.go does not match nova-tools at c402e160 field for field")
 
 	provider, ok := Lookup("provider")
 	require.True(t, ok, "KindProvider is a kind")
@@ -41,7 +41,7 @@ func TestKindProviderAndRouteTierMatchNovaTools(t *testing.T) {
 	billing, ok := provider.Field("billing")
 	require.True(t, ok)
 	require.Equal(t, TypeEnum, billing.Type)
-	require.Equal(t, []string{"metered", "plan", "both"}, billing.Enum)
+	require.Equal(t, []string{"metered", "plan", "both", "subscription"}, billing.Enum)
 	require.True(t, billing.Required)
 	funded, ok := provider.Field("funded")
 	require.True(t, ok)

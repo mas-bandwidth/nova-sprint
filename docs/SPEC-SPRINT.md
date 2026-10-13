@@ -9391,3 +9391,7 @@ and repeated-flap witnesses independently violate those rules.
 A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
+
+### Typed subscription receipt contract (v1.2.19)
+
+[Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.
