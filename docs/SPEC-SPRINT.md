@@ -1322,6 +1322,8 @@ and a `: keepalive` comment goes every 15 s. The page and any client prefer `/ev
 a second on a fixed timer, never after an answer. A friend pulls her view as
 docs/FRIENDS.md says.
 
+The dashboard decouples the 1 s page tick from slow background reads (the owner, 2026-10-13 ~13:50 ET: "Once again the dashboard does not seem to be keeping up. It is supposed to regularly update at 1s ... it appears to be hitching. please investigate and get a friend to fix for the next point release." and "maybe gzip it on upload?"): the server ticks the page at 1 s from its cache every second regardless of how long the current background read takes; at most one read runs at a time in the background, and a read exceeding 1 s is logged (`slow read: took %.3fs: %s`). The served page's `dataAgeSeconds` increases with elapsed time since the read was fetched (the page clock turns amber at 2 s, red at 5 s). Responses on both `--listen` and `--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`, `/app.js`, `/api/sprint`, and pull routes), setting `Content-Encoding: gzip` and `Vary: Accept-Encoding`. To eliminate multi-process jq folds, `where --json --dashboard` folds `stream_costs` into `tables.work`, reader rows into `tables.fleet` (`reads_working` and `working`), sentinel-free x/y and ETA in `summary`, and drops archived streams without loading card rows; `--dashboard` requires `--json`.
+
 Each table keeps its member records under a prefix of its own, so a primary's
 record in work and its record in merge are separate. The tables are named
 plainly: `work`, `merge`, `readers` and `fleet`, and the view is `sprint`; the
@@ -9405,3 +9407,7 @@ and repeated-flap witnesses independently violate those rules.
 A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
+
+### Typed subscription receipt contract (v1.2.19)
+
+[Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.

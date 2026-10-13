@@ -1,7 +1,6 @@
 package sprint
 
 import (
-	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -281,7 +280,7 @@ func SplitCost(l Line) (Line, []string) {
 		switch {
 		case ok:
 			c := parseConsumer(key, v)
-			cost := "cost " + MoneyText(cmp.Or(c.Usage.Actual, c.Usage.Predicted))
+			cost := "cost " + MoneyText(c.Usage.MarginalUSD())
 			words = append(words, fmt.Sprintf("%s cost: %s %s by %s, %s, ran %s, %s", l.Card, c.Kind, c.Card, orDash(c.Who), orDash(c.End), seconds(c.Usage.Run), cost))
 		case k == FieldCostTotal || k == FieldCostCut:
 		default:

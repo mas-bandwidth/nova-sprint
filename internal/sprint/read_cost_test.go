@@ -82,8 +82,8 @@ func TestAReadWithoutUsageIsRefusedAndAPricedReadSumsIntoTheCard(t *testing.T) {
 		Sel: Sel{IDs: []string{b.ID}}}))
 	sub := cardcost.ParseUsage(w.s.Readers.Card(b.ID).F(FieldUsage))
 	assert.Equal(t, WhySubscription, sub.Unpriced)
-	assert.Empty(t, sub.Predicted)
-	assert.Empty(t, sub.Actual)
+	assert.Equal(t, "0", sub.Predicted)
+	assert.Equal(t, "0.9", sub.Actual, "retain the harness dollar report as evidence")
 	assert.Equal(t, int64(200000), sub.Tokens.Input)
 
 	// the card's complete cost: the take and the priced read, each a record with its
@@ -110,7 +110,7 @@ func TestAReadWithoutUsageIsRefusedAndAPricedReadSumsIntoTheCard(t *testing.T) {
 	assert.Contains(t, priced, "predicted_usd=1 ")
 	assert.Contains(t, priced, "cost=predicted")
 	assert.Contains(t, tokens, "input=200000")
-	assert.Contains(t, tokens, "predicted_usd=- actual_usd=-")
+	assert.Contains(t, tokens, "predicted_usd=0 actual_usd=0.9")
 	assert.Contains(t, tokens, "cost=tokens")
 
 	// the where view's split: work and reads as their own numbers, the subscription
