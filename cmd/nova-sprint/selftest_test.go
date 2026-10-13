@@ -48,7 +48,7 @@ func TestSelftestLandsOneCardThroughTheTreeGate(t *testing.T) {
 		providers := map[string]sprint.Provider{"caller-paid": {Name: "caller-paid", Billing: "metered", Funded: true}, "caller-unfunded": {Name: "caller-unfunded", Billing: "plan", Funded: false}}
 		ta.m.SetProviders(providers)
 		code, out, errs := ta.do("selftest --dir " + dir)
-		after, readErr := ta.m.Routes(context.Background())
+		after, _, readErr := ta.m.Routes(context.Background())
 		require.NoError(t, readErr)
 		assert.Equal(t, providers, after.Providers, "selftest must leave the caller's provider declarations unchanged")
 		require.Equal(t, 0, code, "selftest: exit %d\n%s%s", code, out, errs)
