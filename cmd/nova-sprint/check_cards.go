@@ -59,6 +59,9 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed(name, err, stderr)
 	}
+	if err := st.RoutesInto(ctx, snap); err != nil {
+		return a.readFailed(name, err, stderr)
+	}
 	rs, code := a.briefRules(name, "", c, &st, stderr)
 	if code != 0 {
 		return code
@@ -184,6 +187,19 @@ func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io
 		now := sprint.CheckedCardsOf(snap)
 		if sprint.CardsDigest(now) != rec.Digest {
 			why = "run nova-sprint check cards: the cards changed since the check (" + sprint.CardsChange(rec.Cards, now) + ")"
+		}
+		if why == "" {
+			if err := st.RoutesInto(ctx, snap); err != nil {
+				return a.readFailed("start", err, stderr)
+			}
+			findings := sprint.ProviderFindings(snap)
+			if len(findings) > 0 {
+				for _, f := range findings {
+					fmt.Fprintf(stderr, "%s start: run nova-sprint check cards: %s\n", prog, oneline.Escape(f.Line()))
+				}
+				fmt.Fprintf(stderr, "%s start: %d provider finding(s): the machine is not started and nothing was written\n", prog, len(findings))
+				return 1
+			}
 		}
 	}
 	if why == "" {

@@ -512,6 +512,8 @@ type Snapshot struct {
 	// tier, read with the routes; a tier with none deals from its enabled routes
 	// in name order (tierArray).
 	Tiers map[string][]string
+	// Providers is the applied funding declaration, read with routes; missing is unknown.
+	Providers map[string]Provider
 	// DecideBounce and DecideReview are the sprint row's bars on a decide read's
 	// p(defect) as nova-config applied them (sprint:decide_bounce,
 	// sprint:decide_review), read with the routes; both "" is no decide read

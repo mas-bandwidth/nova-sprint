@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"sort"
 
 	"strconv"
 	"strings"
@@ -713,10 +714,10 @@ type whereView struct {
 	// every automatic stop that holds (sprint.LiveStops), from the same record.
 	SeatWaits *seatWaitsView `json:"seat_waits,omitempty"`
 	Stops     []sprint.Stop  `json:"stops,omitempty"`
-	// Providers is the providers table (nova-tools#5199): each provider the routes name,
-	// its balance as the run loop's poll last read it, the spend an hour measured, and
-	// whether its routes serve; absent with no route. The text frame does not draw it.
-	Providers []sprint.ProviderRow `json:"providers,omitempty"`
+	// Providers carries applied funding/coverage and existing balance/rest rows.
+	// The text frame draws funding and coverage from this same structured value.
+	Providers    []providerView           `json:"providers"`
+	ProviderGaps sprint.ProviderGapReport `json:"provider_gaps"`
 	// Lanes is where --json --cards's, read for the dashboard: every machine's lanes with a
 	// holder or a queue (lane list; docs/SPEC-SPRINT.md section 18); absent when none is, and
 	// without --cards. The text frame does not draw it.
@@ -1379,8 +1380,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	v.FleetWork, v.FriendsWork = sprint.SwitchWord(shapes[0].Props, sprint.PropFleet), sprint.SwitchWord(shapes[0].Props, sprint.PropFriends)
 	fleetTiers, friendsTiers := sprint.SideTiers(shapes[0].Props, sprint.PropFleetTiers), sprint.SideTiers(shapes[0].Props, sprint.PropFriendsTiers)
 	v.FleetTiers, v.FriendsTiers = tiersJSON(fleetTiers), tiersJSON(friendsTiers)
+	if v.Providers, v.ProviderGaps, err = providersView(ctx, st, shapes, now); err != nil {
+		return whereView{}, "", err
+	}
 	var b strings.Builder
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
+	b.WriteString(providersLine(v.Providers, v.ProviderGaps) + "\n")
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")
 	}
@@ -1585,9 +1590,6 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		b.WriteString("\n" + line + "\n")
 	}
 	a.goalsView(ctx, st, &v)
-	if v.Providers, err = providersView(ctx, st, shapes, now); err != nil {
-		return whereView{}, "", err
-	}
 	for _, c := range clocks {
 		if c.Stalled(now, stale) {
 			v.Stalled = append(v.Stalled, c.Stream)
@@ -1824,18 +1826,62 @@ func splitFriendRows(t ntable.Table) (ntable.Table, map[string]store.FriendRow) 
 	return machines, out
 }
 
-// providersView is the providers table from the routes and the fleet table's properties as
-// the view's shapes read them (no card is read).
-func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, now time.Time) ([]sprint.ProviderRow, error) {
-	routes, _, err := st.Routes(ctx)
-	if err != nil || len(routes) == 0 {
-		return nil, err
+// providerView preserves the existing balance/rest fields and adds applied
+// declarations. Nil funding means no applied row, never an invented false.
+type providerView struct {
+	sprint.ProviderRow
+	Billing string                `json:"billing,omitempty"`
+	Funded  *bool                 `json:"funded,omitempty"`
+	Problem string                `json:"problem,omitempty"`
+	Tiers   []sprint.ProviderTier `json:"tiers,omitempty"`
+}
+
+// providersView reads the route set once, including the provider declarations
+// on its existing pipelines, then merges coverage with the balance/rest view.
+func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, now time.Time) ([]providerView, sprint.ProviderGapReport, error) {
+	s := &sprint.Snapshot{}
+	if err := st.RoutesInto(ctx, s); err != nil {
+		return nil, sprint.ProviderGapReport{}, err
 	}
 	fleet := sprint.NewTable(sprint.Fleet)
 	if i := slices.Index(sprint.ViewOrder, sprint.Fleet); i >= 0 && i < len(shapes) {
 		fleet.SetProps(shapes[i].Props)
 	}
-	return sprint.ProviderRows(routes, fleet, now), nil
+	rows := map[string]providerView{}
+	for _, p := range sprint.ProviderRows(s.Routes, fleet, now) {
+		rows[p.Name] = providerView{ProviderRow: p}
+	}
+	for _, p := range s.ProviderCoverages() {
+		row := rows[p.Name]
+		row.Name, row.Billing, row.Problem, row.Tiers = p.Name, p.Billing, p.Problem, p.Tiers
+		if p.Problem == "" {
+			row.Funded = &p.Funded
+		}
+		rows[p.Name] = row
+	}
+	out := []providerView{}
+	for _, row := range rows {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	routes, tiers := s.ProviderGaps("")
+	return out, sprint.ProviderGapReport{Routes: routes, Tiers: tiers, InvalidProviders: s.ProviderProblems()}, nil
+}
+
+// providersLine formats only declarations from the same structured view used
+// for JSON; a route's balance alone does not establish its funding.
+func providersLine(rows []providerView, gaps sprint.ProviderGapReport) string {
+	coverage := []sprint.ProviderCoverage{}
+	for _, row := range rows {
+		if row.Funded != nil || row.Problem != "" {
+			funded := false
+			if row.Funded != nil {
+				funded = *row.Funded
+			}
+			coverage = append(coverage, sprint.ProviderCoverage{Provider: sprint.Provider{Name: row.Name, Billing: row.Billing, Funded: funded, Problem: row.Problem}, Tiers: row.Tiers})
+		}
+	}
+	return sprint.ProvidersLine(coverage, gaps)
 }
 
 // friendsTable is the friends table (sprint.FriendsDef) with a row per friend

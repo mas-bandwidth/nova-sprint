@@ -1,6 +1,7 @@
 [HSPRINT TABLE  coordinator coordinator[K
 [K
 0/3 0.0% -> ETA -[K
+providers: none applied WARN no provider rows applied (nova-config apply --kind provider)[K
 [K
 work | waiting | ready | working | review | merging | landed | cost | unpriced | per landed[K
 -----+---------+-------+---------+--------+---------+--------+------+----------+-----------[K
