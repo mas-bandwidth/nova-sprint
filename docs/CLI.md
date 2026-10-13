@@ -98,14 +98,16 @@ nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-ru
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
 nova-sprint redo <card>... [--stream <s>] [--answers <note>]   # merge conflicts only (a card merging whose merge stuck, or a stream stopped on a conflict); for any other card, rework
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
-nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id>, or --waive removes the need from each (recorded with the reason): no drop strands a need
+nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id> (refusing an unresolved target), or --waive removes the need from each (recorded with the reason): no drop strands a need
+nova-sprint defer (<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]   # defers waiting cards to the roadmap; refused if any unlanded card needs the card being deferred, naming the dependents (no defer strands a dependent)
 nova-sprint needs set <id> (--needs <a,b> | --clear) [--answers <note>]   # the coordinator's alone: re-point a card's needs in place; a card in merging or review whose need is gone is answerable here
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
 nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
-nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result.
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
@@ -408,6 +410,12 @@ on something dropped" judgment, in one step. Where the drop and the add were mad
 `relink lint-pkg-cairn-t lint-pkg-cairn-tb` re-points the edges and answers the blocked
 judgments of that pair. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 2, "A
 card replaced by its twin".
+
+### Deferring cards and relinking needs
+
+`defer` takes waiting cards off the table and appends them to the roadmap. If an unlanded card still needs the card being deferred, `defer` is refused, naming the dependents: `<id> is needed by <deps>; defer them too, or drop <id> with --cascade, --relink <card> or --waive`. No defer strands a dependent.
+
+When dropping a needed card with `--relink <new-id>`, `drop` verifies that `<new-id>` is placed and not unresolved (held, dropped, absent, or an unknown stream). A relink to a held or absent card is refused: relinking to a held card moves the strand, it does not resolve it.
 
 ### A sentinel whose cards were deferred
 

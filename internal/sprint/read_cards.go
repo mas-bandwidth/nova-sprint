@@ -57,7 +57,6 @@ const ReadCardDeadline = 60 * time.Minute
 // loads and the deal may advance through (K=4). Past it, a reader is skipped.
 const readCardLoadWindow = 4
 
-
 // The retired_by of a read card the read-card ask takes back: past its deadline, or its
 // primary no longer in review at the card's attempt (reworked, its brief replaced, dropped,
 // accepted); RetiredByReturned is a read handed back with no verdict (read --return).

@@ -20,7 +20,7 @@ package main
 // of the batch cures it (cureBase): that head lands first as the base fix. A head whose
 // merged tree is red is taken off the batch branch and ends the batch as a head that does
 // not merge does, the gate's run and output its finding. A clone with no go.mod has no
-// module and no gate.
+// module; a CMake clone runs its configure, build and named CTest gate.
 
 import (
 	"bytes"
@@ -30,6 +30,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -476,7 +477,11 @@ func (l *lander) noGateSaid() {
 func cmakeGateRuns(ctestNames []string) []gateStage {
 	ctest := []string{"ctest", "--test-dir", "build"}
 	if len(ctestNames) > 0 {
-		ctest = append(ctest, "-R", "^("+strings.Join(ctestNames, "|")+")$")
+		patterns := make([]string, len(ctestNames))
+		for i, name := range ctestNames {
+			patterns[i] = regexp.QuoteMeta(name)
+		}
+		ctest = append(ctest, "-R", "^("+strings.Join(patterns, "|")+")$")
 	}
 	ctest = append(ctest, "--output-on-failure")
 	return []gateStage{
