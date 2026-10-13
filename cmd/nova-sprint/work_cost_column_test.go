@@ -115,7 +115,7 @@ func TestTheWorkTableCostColumnIsEachStreamsLandedCostAndTheTotal(t *testing.T) 
 		[]string{"input=10 actual_usd=0.0012 actual_by=harness", "input=10 actual_usd=0.002 actual_by=harness"},
 		[]string{"input=1 actual_usd=0.0003 actual_by=harness", "input=2000 model=opencode/deepseek-v4-pro"},
 		[]string{"input=1 actual_usd=0.0001 actual_by=harness", ""})
-	// s2-1: 0.00005 + 0.000004, shown to four places; s2-2: nothing priced
+	// s2-1: 0.00005 + 0.000004; s2-2: no work price, explicitly subscription reads at marginal zero
 	ta.landStream("s2",
 		[]string{"input=10 actual_usd=0.00005 actual_by=harness", ""},
 		[]string{"input=1 actual_usd=0.000004 actual_by=harness", ""},
@@ -130,7 +130,7 @@ func TestTheWorkTableCostColumnIsEachStreamsLandedCostAndTheTotal(t *testing.T) 
 	ta.json("card s1-2", &landed)
 	assert.Equal(t, "0.003", landed.Primary.F("cost"), "the landed card carries its total")
 	ta.json("card s2-2", &unpriced)
-	assert.Equal(t, "", unpriced.Primary.F("cost"), "an unpriced card carries none")
+	assert.Equal(t, "0", unpriced.Primary.F("cost"), "explicit subscription reads retain declared zero even with absent usage")
 
 	// a landing replayed by its op id writes nothing again: s3 counts its card once
 	ta.landStream("s3", []string{"input=1 actual_usd=0.01 actual_by=harness"}, []string{""}, []string{""}, "land-s3")

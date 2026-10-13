@@ -215,6 +215,7 @@ const (
 	FieldTokens   = "tokens"
 	FieldUSD      = "usd"
 	FieldHarness  = "harness"
+	FieldBilling  = "billing"
 	FieldDeadline = "deadline"
 	FieldRoutes   = "routes"
 	FieldUsage    = "usage"
@@ -610,7 +611,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 			ri[tier].r.count += steps
 			ri[tier].moves[c.ID] = strconv.FormatUint(steps, 10)
 		}
-		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
 			FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
 		if !pinnedTier(c, m) {
 			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
@@ -1162,7 +1163,7 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
-	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
 	if note := base[FieldReadFallbackNote]; note != "" {
 		out[FieldReadFallbackNote] = note

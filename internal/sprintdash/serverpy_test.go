@@ -110,7 +110,7 @@ func TestDashboardServesWhatServerPyServedFromOnePoller(t *testing.T) {
 		r := newRig(t)
 		expired := make(chan time.Time, 1)
 		var asked time.Duration
-		r.s.readTimer = func(d time.Duration) (<-chan time.Time, func()) { asked = d; return expired, func() {} }
+		r.s.ReadTimer = func(d time.Duration) (<-chan time.Time, func()) { asked = d; return expired, func() {} }
 		entered, release := make(chan struct{}), make(chan struct{})
 		r.next = func() ([]byte, error) { close(entered); <-release; return where(4), nil }
 		ticked := make(chan struct{})
