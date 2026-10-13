@@ -48,7 +48,6 @@ func newHarness(t *testing.T) *harness {
 		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
-		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 	})
 	h.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}})
 	n := 0
@@ -80,6 +79,9 @@ func (h *harness) readersTable() {
 		ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: fmt.Sprintf("legacy-read-mode-%d", s.Work.Revision),
 		Members: []ntable.BatchMemberEntry{}, Props: map[string]string{sprint.PropReadCards: sprint.SwitchOff}})
 	require.NoError(h.t, err)
+	// Previously no routes let these legacy readers serve every tier.
+	// Configured fixture routes require the same eligibility to be explicit.
+	h.readersRead("flash,pro,heavy,frontier")
 }
 
 func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock(); h.beat() }

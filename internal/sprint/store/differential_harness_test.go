@@ -318,6 +318,13 @@ func (h *dHarness) activeStopLeases(s refmodel.State) map[string]dStopLease {
 
 func newDHarness(t testing.TB) *dHarness {
 	h := &dHarness{t: t, ctx: context.Background(), m: NewMem(), now: t0, resync: true, readGen: map[string]int{}}
+	// The abstract reference assumes executable work; the concrete fixture
+	// declares that route rather than relying on an unconfigured fleet.
+	h.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
 	n := 0
 	h.st = &Store{B: h.m, Names: sprint.Names{Prefix: "d-"}, Actor: dCoordinator,
 		Now:   func() time.Time { h.mu.Lock(); defer h.mu.Unlock(); return h.now },
@@ -330,6 +337,11 @@ func newDHarness(t testing.TB) *dHarness {
 	res, err := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: dCoordinator}))
 	require.NoError(t, err)
 	require.Empty(t, res.Refused)
+	// The route-free abstract model permits every legacy reader tier.
+	require.NoError(t, h.st.EnsureReaderTiers(h.ctx))
+	for _, rd := range dReaders {
+		require.NoError(t, h.m.RowSet(h.ctx, "d-readers", rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+	}
 	h.model = refmodel.New(dReaders, nil, dCoordinator)
 	h.Acted, h.Tried = map[string]int{}, map[string]int{}
 	h.seen = map[string]map[string]bool{}
@@ -597,7 +609,7 @@ func (h *dHarness) engine(a dAction, pre refmodel.State) (refused string, cutOK 
 		if !a.OK {
 			v = "broken"
 		}
-		return run(ReadStep(sprint.ReadReq{As: a.Reader, Sel: sprint.Sel{IDs: []string{a.Card}}, Gens: map[string]int{a.Card: a.Gen}, Verdict: v, Finding: "finding:1"})), cutOK
+		return run(ReadStep(sprint.ReadReq{As: a.Reader, Sel: sprint.Sel{IDs: []string{a.Card}}, Gens: map[string]int{a.Card: a.Gen}, Verdict: v, Finding: "finding:1", Usage: "input=1000 output=100"})), cutOK
 	case "accept":
 		return run(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: a.IDs}})), cutOK
 	case "rework":

@@ -40,6 +40,7 @@ type dealRig struct {
 func newDealRig(t *testing.T) *dealRig {
 	t.Helper()
 	m := store.NewMem()
+	m.SetRoutes([]sprint.Route{{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
 	r := &dealRig{t: t, m: m, ctx: context.Background(), now: holdT0}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",

@@ -56,7 +56,6 @@ func newTestApp(t *testing.T) *testApp {
 		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
-		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 	})
 	ta.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}})
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
@@ -176,6 +175,21 @@ func (ta *testApp) readersTableOn(initArgs []string) {
 	var out, errb bytes.Buffer
 	code := runInto(ta.a, args, &out, &errb)
 	require.Equal(ta.t, 0, code, "%s: %s%s", strings.Join(args, " "), out.String(), errb.String())
+	// The explicitly legacy no-route fixture used all-tier readers; synthetic
+	// routes make that tier eligibility an explicit fixture declaration.
+	fs, c := ta.a.verbSetup("legacy fixture")
+	_, err := parse(fs, args[3:])
+	require.NoError(ta.t, err)
+	st, err := ta.a.store(*c)
+	require.NoError(ta.t, err)
+	st, err = st.Pinned(context.Background())
+	require.NoError(ta.t, err)
+	require.NoError(ta.t, st.EnsureReaderTiers(context.Background()))
+	rows, err := st.ReaderRows(context.Background())
+	require.NoError(ta.t, err)
+	for _, rd := range rows {
+		require.NoError(ta.t, st.B.RowSet(context.Background(), st.Names.Table(sprint.Readers), rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+	}
 }
 
 // withEpoch is a report as an outside actor makes it: with the epoch its

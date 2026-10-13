@@ -36,7 +36,6 @@ func newWorld(t testing.TB, readers ...string) *world {
 		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
-		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 	}
 	s.Providers = map[string]Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}}
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
@@ -44,7 +43,20 @@ func newWorld(t testing.TB, readers ...string) *world {
 }
 
 // readersTable explicitly selects the standalone legacy-reader producer for a fixture.
-func (w *world) readersTable() { w.s.Work.SetProp(PropReadCards, SwitchOff) }
+func (w *world) readersTable() {
+	if v, ok := w.s.Work.Prop(PropReadCards); ok && v == SwitchOff {
+		return
+	}
+	w.s.Work.SetProp(PropReadCards, SwitchOff)
+	// The old no-route reader fixture served every tier. With routes declared
+	// its legacy rows must name those tiers; later explicit overrides stand.
+	if w.s.Readers.Texts == nil {
+		w.s.Readers.Texts = map[string]map[string]string{}
+	}
+	for _, rd := range w.s.Readers.Rows() {
+		w.s.Readers.Texts[rd] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
+	}
+}
 
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 

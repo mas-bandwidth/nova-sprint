@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,6 +197,8 @@ func TestFundsOwnerRetriesFailedSendAndRepairedTargets(t *testing.T) {
 	ta.a.inventory = func(context.Context, string) ([]config.MachineWidth, error) {
 		return []config.MachineWidth{{Machine: "b2"}}, nil
 	}
+	var log bytes.Buffer
+	ta.a.serveLog = &log
 	known := false
 	ta.a.friends = func(context.Context, string) ([]config.Row, error) {
 		if known {
@@ -207,7 +211,9 @@ func TestFundsOwnerRetriesFailedSendAndRepairedTargets(t *testing.T) {
 	_, err := st.Run(t.Context(), store.NoteStep("test", sprint.Note{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "a funded route is live again: nova-sprint start"}))
 	require.NoError(t, err)
 	ta.a.tellSeatSilent(t.Context(), st)
+	ta.a.tellSeatSilent(t.Context(), st)
 	assert.Empty(t, b.attempts)
+	assert.Equal(t, 1, strings.Count(log.String(), "owner delivery has no checked target"), "the same missing target warns once but remains retryable")
 	known = true
 	ta.a.tellSeatSilent(t.Context(), st)
 	require.Len(t, b.attempts, 1)
@@ -237,4 +243,29 @@ func TestFundsOwnerDoesNotReplayRecoveryFromAClearedEpoch(t *testing.T) {
 	require.NoError(t, err)
 	ta.a.tellSeatSilent(t.Context(), st)
 	assert.Empty(t, b.attempts, "the new epoch's ledger never sends the old epoch's recovery")
+}
+
+func TestFundsOwnerTargetReadFailureRemainsRetryable(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	fail := true
+	ta.a.inventory = func(context.Context, string) ([]config.MachineWidth, error) {
+		if fail {
+			return nil, errors.New("inventory read lost")
+		}
+		return []config.MachineWidth{{Machine: "b2"}}, nil
+	}
+	ta.a.friends = func(context.Context, string) ([]config.Row, error) { return []config.Row{{Name: "glenn"}}, nil }
+	st := &store.Store{B: ta.m, Now: ta.a.now, Actor: "coordinator"}
+	require.NoError(t, st.SetServer(t.Context(), store.ServerRecord{Host: "b2"}))
+	_, err := st.Run(t.Context(), store.NoteStep("test", sprint.Note{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, What: "recovery"}))
+	require.NoError(t, err)
+	ta.a.tellSeatSilent(t.Context(), st)
+	assert.Empty(t, b.attempts)
+	fail = false
+	ta.a.tellSeatSilent(t.Context(), st)
+	require.Len(t, b.delivered, 1, "the failed read wrote no delivery mark and consumed no recovery cursor")
 }

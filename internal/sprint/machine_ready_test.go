@@ -30,6 +30,7 @@ type readyRig struct {
 func newReadyRig(t *testing.T) *readyRig {
 	t.Helper()
 	r := &readyRig{t: t, ctx: context.Background(), m: store.NewMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+	r.m.SetRoutes([]sprint.Route{{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "r-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },

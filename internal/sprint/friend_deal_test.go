@@ -24,6 +24,7 @@ func friendBrief(who string) string {
 // stream, ids s1-1, s1-2, ... in order.
 func friendWorld(t *testing.T, briefs ...string) *world {
 	w := newWorld(t, "reader-a", "reader-b")
+	w.s.Routes = nil // this fixture's friends bring the executable model
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	var cards []CardAdd

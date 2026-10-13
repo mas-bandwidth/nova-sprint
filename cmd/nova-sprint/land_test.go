@@ -42,6 +42,7 @@ func newLandRigAs(t *testing.T, actor string) *landRig {
 	// the go tests run under GOFLAGS=-json (make test): a go run of the gate inherits it, and
 	// `go vet -json` exits 0 on a finding, so the gate would pass what it must refuse
 	r := &landRig{testApp: newTestApp(t), dir: t.TempDir()}
+	r.oldReaders = true // ripe explicitly services the standalone reader-a/b flow
 	if actor != "coordinator" {
 		get := r.a.getenv
 		r.a.getenv = func(k string) string {
@@ -137,8 +138,8 @@ func (r *landRig) queued(heads map[string]string, order ...string) {
 		r.ok(finish)
 	}
 	r.ok("ask")
-	r.ok("read --as reader-a --ok --limit 100")
-	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	r.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	r.ok("accept --read-ok")
 	r.markProtected()
 }
@@ -349,8 +350,8 @@ func TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush(t *testing.T) {
 			r.ok("finish --as m1 " + id + ".w1@1 --head " + heads[id])
 		}
 		r.ok("ask")
-		r.ok("read --as reader-a --ok --limit 100")
-		r.ok("read --as reader-b --ok --limit 100")
+		r.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+		r.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 		r.ok("accept --read-ok")
 	}
 	accept("s1-2", "s1-3")
@@ -624,8 +625,8 @@ func TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun(t *testing.T) {
 		}
 		r.ok("finish --as m1 " + w + " --head " + replacement)
 		r.ok("ask")
-		r.ok("read --as reader-a --ok --limit 100")
-		r.ok("read --as reader-b --ok --limit 100")
+		r.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+		r.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 		r.ok("accept --read-ok")
 	}
 	code, _, errs := r.do("land --repo-dir " + r.clone + " --base main")

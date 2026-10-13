@@ -38,10 +38,15 @@ func newWorld(readers ...string) *world {
 		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
-		{Name: "fixture-frontier", Tier: "frontier", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
 	}
 	s.Providers = map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "metered", Funded: true}}
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
+	// This legacy model's no-route readers served all tiers; declare that
+	// eligibility now the fixture declares executable work routes.
+	s.Readers.Texts = map[string]map[string]string{}
+	for _, rd := range readers {
+		s.Readers.Texts[rd] = map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}
+	}
 	return &world{s: s}
 }
 

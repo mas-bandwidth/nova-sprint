@@ -131,6 +131,7 @@ func TestAReadWithoutUsageIsRefusedAndAPricedReadSumsIntoTheCard(t *testing.T) {
 func TestAnUnroutedReadIsTakenWithoutUsage(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
+	w.s.Routes = nil // explicit no-route read, rather than the generic routed fixture
 	finished(w, "s1-1", false)
 	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	rc := readsAt(w.s, w.s.Work.Card("s1-1"), 1)[0]
