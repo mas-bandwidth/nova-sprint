@@ -446,7 +446,22 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 			b.landMore = append(b.landMore, "--land-parallel", strconv.Itoa(landParallel))
 			b.mu.Unlock()
 		}
-		go a.landLoop(context.Background(), c.redis, stdout)
+		// the land loop ends with run: since v1.2.17 every run lands unless --land=false,
+		// so a run that returns (a replaced binary, a test's one loop) stops its land loop
+		// and waits for it, bounded, before its output is given back
+		landCtx, stopLand := context.WithCancel(context.Background())
+		landDone := make(chan struct{})
+		go func() {
+			defer close(landDone)
+			a.landLoop(landCtx, c.redis, stdout)
+		}()
+		defer func() {
+			stopLand()
+			select {
+			case <-landDone:
+			case <-a.after(LandStopBound):
+			}
+		}()
 	}
 	// the providers' balances, read outside every tick (balance.go)
 	pollCtx, stopPolls := context.WithCancel(context.Background())
@@ -487,6 +502,9 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	return 0
 }
+
+// LandStopBound is how long a returning run waits for its land loop to stop.
+const LandStopBound = 5 * time.Second
 
 // exitReplaced is run's exit when its binary was replaced under it: not 0, so
 // a supervisor that restarts only a failed loop restarts it too.

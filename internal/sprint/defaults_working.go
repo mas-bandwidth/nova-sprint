@@ -271,7 +271,7 @@ func readersWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	if len(none) == 0 {
 		return nil
 	}
-	return []SettingFinding{{Setting: SettingReaders, Value: "none up for " + strings.Join(none, ","), Why: "no reader up serves tier " + strings.Join(none, ",") + ", which a card of the epoch needs read: its review never ends", Verb: "nova-sprint reader set <reader> --tiers " + strings.Join(none, ",")}}
+	return []SettingFinding{{Setting: SettingReaders, Value: "none", Why: "no reader up serves tier " + strings.Join(none, ",") + ", which a card of the epoch needs read: its review never ends", Verb: "nova-sprint reader set <reader> --tiers " + strings.Join(none, ",")}}
 }
 
 // readsNeededWorking: the sprint's reads count set above the readers that serve a tier a
