@@ -506,7 +506,14 @@ the cards she holds; `/api/team`, `/api/friend/<name>`,
 `/api/machine/<name>` and `/api/sprint` are JSON; `/events`, `/events/friend/<name>` and
 `/events/machine/<name>` push each new copy as server-sent events. All of it is read-only,
 no-store, carries the copy's time in `Sprint-At`, and comes from one copy of `where --json
---cards` read at most once a second however many pull. An unknown name is a 404 of one
+--cards` read at most once a second however many pull. Responses on both `--listen` and
+`--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`,
+`/app.js`, `/api/sprint`, and pull routes). The server ticks the page at 1 s from its cache
+every second independently of background reads; reads exceeding 1 s log a warning.
+`where --json --dashboard` prints the cheap dashboard view with `stream_costs` folded into
+`tables.work`, reader rows folded into `tables.fleet` (`reads_working` and `working`), and
+sentinel-free summary, dropping archived streams without loading card rows; `--dashboard`
+requires `--json`. An unknown name is a 404 of one
 line; `where --json` also carries `landedSeries` (cards landed per 10-minute bucket over 24 hours, split between friends and fleet). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the dashboard.
 
 ### A provider out of funds
