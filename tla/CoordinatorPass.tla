@@ -327,13 +327,13 @@ Tick ==
               THEN \* raised again: in place, every raise due counted, one push
                    /\ again' = (clk + 1 - first) \div Every /\ pushes' = pushes + 1
                    /\ written' = IF Broken = "reopen" THEN written + 1 ELSE written
-                   /\ same' = IF changed THEN 1 ELSE same + 1
-                   /\ esc' = IF changed THEN FALSE ELSE esc
+                   /\ same' = (IF changed THEN 1 ELSE same + 1)
+                   /\ esc' = (IF changed THEN FALSE ELSE esc)
                    /\ UNCHANGED <<open, acked, first, lvl, review>>
             ELSE IF open /\ dealt /\ Broken = "pinrekey"
               THEN \* the deal's note not known as the pass's: a second judgment
                    /\ written' = written + 1
-                   /\ same' = IF changed THEN 0 ELSE same /\ esc' = IF changed THEN FALSE ELSE esc
+                   /\ same' = (IF changed THEN 0 ELSE same) /\ esc' = (IF changed THEN FALSE ELSE esc)
                    /\ UNCHANGED <<open, acked, first, again, pushes, lvl, review>>
             ELSE IF WaitOver /\ Broken # "waitforever"
               THEN \* the wait ran out and the condition still holds: raised again, a new
@@ -341,7 +341,7 @@ Tick ==
                    /\ open' = TRUE /\ acked' = FALSE /\ first' = clk + 1 /\ again' = 0
                    /\ review' = -1 /\ lvl' = NextLevel /\ written' = 1 /\ pushes' = 1
                    /\ same' = 0 /\ esc' = FALSE
-            ELSE /\ same' = IF changed THEN 0 ELSE same /\ esc' = IF changed THEN FALSE ELSE esc
+            ELSE /\ same' = (IF changed THEN 0 ELSE same) /\ esc' = (IF changed THEN FALSE ELSE esc)
                  /\ UNCHANGED <<open, acked, first, again, written, pushes, lvl, review>>
        ELSE IF CondUnknown
               THEN IF Broken = "unknowncloses"
@@ -359,12 +359,12 @@ Tick ==
                          \* close, but the reminder is due
                          /\ again' = (clk + 1 - first) \div Every /\ pushes' = pushes + 1
                          /\ written' = IF Broken = "reopen" THEN written + 1 ELSE written
-                         /\ same' = IF changed THEN 1 ELSE same + 1 /\ esc' = IF changed THEN FALSE ELSE esc
+                         /\ same' = (IF changed THEN 1 ELSE same + 1) /\ esc' = (IF changed THEN FALSE ELSE esc)
                          /\ UNCHANGED <<open, acked, first, lvl, review>>
-                    ELSE /\ same' = IF changed THEN 0 ELSE same /\ esc' = IF changed THEN FALSE ELSE esc
+                    ELSE /\ same' = (IF changed THEN 0 ELSE same) /\ esc' = (IF changed THEN FALSE ELSE esc)
                          /\ UNCHANGED <<open, acked, first, again, written, pushes, lvl, review>>
               ELSE IF Broken = "noclose"
-                THEN /\ same' = IF changed THEN 0 ELSE same /\ esc' = IF changed THEN FALSE ELSE esc
+                THEN /\ same' = (IF changed THEN 0 ELSE same) /\ esc' = (IF changed THEN FALSE ELSE esc)
                      /\ UNCHANGED <<open, acked, first, again, written, pushes, lvl, review>>
                 ELSE \* closed: the episode ends
                      /\ open' = FALSE /\ acked' = FALSE /\ first' = -1 /\ again' = 0
