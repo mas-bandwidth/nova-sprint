@@ -208,7 +208,7 @@ func (m *mod) change(c *Card) Change {
 	return change(Work, setEntry(c, nil, unset...))
 }
 
-// reachedNote is the judgment a sentinel is reached: how many cards of its
+// reachedNote is a progress fact, never a coordinator gate: how many cards of its
 // stream have landed (with this step's: landing), and how many wait behind it
 // (with extra, the ones this step puts there).
 func reachedNote(s *Snapshot, c *Card, landing map[string]bool, extra int, who string) Note {
@@ -227,7 +227,7 @@ func reachedNote(s *Snapshot, c *Card, landing map[string]bool, extra int, who s
 			behind++ // it names the stop from another stream
 		}
 	}
-	n := judgment(NSentinelReached, c.Row, s.Now, 0, c.ID)
+	n := happened(NSentinelReached, c.Row, s.Now, c.ID)
 	n.Who, n.Card = who, c.ID
 	n.What = fmt.Sprintf("sentinel %s reached: %d cards of %s have landed; %d cards wait behind it", c.ID, landed, c.Row, behind)
 	return n

@@ -9047,29 +9047,36 @@ the order now says so, as one set move and one line of the log; a reached
 sentinel behind it is no longer reached; the cards in flight are printed as
 already past the stop. A card added in front of a reached sentinel un-reaches
 it. A rank that moves a card across a sentinel changes what it waits for, by
-the same reading. A sentinel is never dealt, read or merged. When what it
-waits for has landed, been dropped or been waived, the step that ended the
-last of it (or the tick, as the backstop) marks it reached and writes one
-judgment. A sentinel with nothing placed before it (no primary of its stream on the
-table before it, landed or not, and no need of its own) is not reached while other
-work of the sprint is in flight (ready, working, in review or merging): it is
-simply next, no judgment is written for it, and it is held by that work; it is
-reached when no other work is in flight, by the step that ends the last of it or
-the tick (`sprint.Reachable`). Cards placed before it later make it wait for them,
-and it is reached when they have landed. Only `release <id> --reason <text>`, by the sprint's coordinator
-(`init --coordinator`; `where --json` carries it), lands it: reached, with nothing
-before it, or not yet reached when each card it waits for is under way, that is has
-landed, was dropped, or is in flight (working with its work card taken by a member, in
-review, or merging). One not reached is refused while any card it waits for has not
-started (waiting, ready, or working with its work card dealt and not taken), with one
-line naming the first such card and its state, so a starving fleet frees the cards
-behind work in flight in one step (nova-tools#5096 item c13). Released so, what it still
-waited for is waived on it (`waived`, `waived_by`, `waived_at`) and named in its
-notification, beside the coordinator's reason (`release_reason`); that work lands as it
-would have. The same step moves what
-waited behind it, up to the next sentinel, to ready as one set, marks reached
-any sentinel now due, and always writes a notification that it landed. A need
-it names that is dropped blocks it like any waiting card; ack waives the need.
+the same reading. A sentinel is never dealt, read or merged. The tick releases it automatically
+when every producer before it and every named producer is landed or dropped,
+and every nondropped producer head is contained in a freshly fetched commit of
+that producer stream's recorded trunk (`main` or `dev`). Dropped producers are
+completed waivers with no nonexistent head to prove. Zero producers and all
+dropped producers release immediately with the literal reason `no producers`
+or `all producers dropped`; no commit is invented for those cases.
+
+There is no coordinator decision, manual gate, sentinel hold or cancellation
+window. A progress `reached` fact is not a judgment or release prerequisite.
+The automatic release records `release_kind=automatic` and a HAPPENED notice
+naming each actual observed containing trunk commit. The input pins the epoch,
+sentinel and producer identities, needs, position, head revisions and recorded
+branches/trunks; a changed input cannot reuse an old ancestry observation.
+This is a fresh observed Git boundary, not an atomic promise about an
+unobserved remote advance between Git and the store.
+
+`release <id> --reason <text>` remains the coordinator's explicit early override,
+with `release_kind=early override` and its existing waiver provenance. It does
+not fabricate a dev merge. Named automatically released sentinels expand to
+ordinary producer proofs; named early overrides retain their explicit waiver.
+
+After either release, each consumer stream actually merges its freshly fetched
+recorded trunk into its stream branch and pushes normally before its next deal.
+A failed or conflicted merge supplies no success receipt and cannot move the
+consumer to ready or working. The receipt pins the consumer identity, epoch,
+repository, recorded branch/trunk and observed tip, and verifies that tip is an
+ancestor of the pushed merge result. A newly observed trunk advance requires a
+new merge; the old receipt does not authorize the next tick's deal.
+
 It is a stop, not work: the sprint line's x/y and percent, where's `landed` and
 `all` (and `archived_cards` and `archived_landed`), the ETA, its five-landed
 floor and the landing rate count work cards only, across the epoch's streams on
@@ -9085,17 +9092,10 @@ card (`add --held`) and the wave behind a held sentinel it is one wait, read by
 `sprint.WaitOf` (`internal/sprint/held.go`); only the operand differs, a
 sentinel's being its line.
 
-`add --held` admits every card of the add held (nova-tools#5096 item 15: a
-sentinel at the head of an empty stream was reached at once and raised a
-judgment): waiting, stamped `held`, whatever its needs. A held sentinel is never
-marked reached and raises no judgment; a held card never moves to ready and is
-never dealt; ack's waiver leaves a held card waiting; the no-stall rule reads
-the hold as the coordinator's (c). So a wave loads behind a held sentinel at the
-head of an empty stream, or as held cards, and nothing fires.
-`release <id> --reason <text>` lands a held sentinel that waits for nothing as it
-lands a reached one (one that still waits for a card not started is refused, naming
-it), and clears the hold of a held card, which goes to ready in the same step
-when it waits for nothing else (`sprint.IsHeld`, `sprint.Release`).
+`add --held` continues to hold ordinary cards. It is refused with an explicit
+`--sentinel`; generated sentinels do not acquire a hold. A legacy held sentinel
+still auto-releases when its producers qualify. Ordinary held cards keep their
+coordinator release semantics.
 
 `sentinel set <id> --needs <a,b>` replaces the needs a waiting sentinel names, in
 one step (2026-10-04: the cards the nova-sprint v1.0.0 release sentinel waited on
@@ -9108,7 +9108,7 @@ the table) is named in one refusal, and nothing is written; so is an id that is 
 sentinel waiting on the table, a need named twice, the sentinel itself, the needs
 it has already, and a cycle the new needs would close (section 2's cycle rule). Its
 place-in-line waits do not change. A sentinel the new needs leave waiting for
-nothing is marked reached in the same step, with its judgment, as the step that
+nothing is marked reached in the same step, with a progress fact, as the step that
 lands its last need marks it; a reached one that waits again is reached no more,
 and its reached judgment is answered. A blocked or missing judgment on it that
 named only needs it no longer names is answered. `--needs ""` is refused: a

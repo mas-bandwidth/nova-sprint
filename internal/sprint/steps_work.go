@@ -950,13 +950,24 @@ type ResolveReq struct {
 func ResolveExtras(s *Snapshot) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, c := range s.Work.Column(Waiting) {
-		for _, n := range Split(c.F("needs")) {
-			if s.Work.Placed(n) == nil && !seen[n] {
-				seen[n] = true
-				out = append(out, n)
+	var visit func(*Card)
+	visit = func(c *Card) {
+		for _, id := range Split(c.F("needs")) {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			need := s.Work.Card(id)
+			if s.Work.Placed(id) == nil {
+				out = append(out, id)
+			}
+			if need != nil && IsSentinel(need) && need.F("release_kind") != "early override" {
+				visit(need)
 			}
 		}
+	}
+	for _, c := range s.Work.Column(Waiting) {
+		visit(c)
 	}
 	return out
 }

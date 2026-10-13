@@ -86,3 +86,23 @@ func TestNamedSentinelExpandsActualProducerProof(t *testing.T) {
 	_, _, ok = SentinelDevReason(s, downstream, []SentinelObservation{proof})
 	require.False(t, ok)
 }
+
+func TestSentinelClosureLoadsRetainedDroppedProducers(t *testing.T) {
+	s, upstream, _ := sentinelProofFixture(t)
+	upstream.Col = Landed
+	upstream.Fields["release_kind"] = "automatic"
+	upstream.Fields["needs"] = "kept-drop"
+	s.Work.Put(&Card{ID: "kept-drop", Fields: map[string]string{"outcome": "dropped"}})
+	downstream := &Card{ID: "next-stop", Row: "consumer", Col: Waiting, Fields: map[string]string{"kind": "sentinel", "needs": "stop"}}
+	s.Work.Put(downstream)
+	require.Contains(t, ResolveExtras(s), "kept-drop")
+	input := SentinelInputOf(s, downstream)
+	require.Contains(t, input.Producers, SentinelCardOf(s.Work.Card("kept-drop")))
+}
+
+func TestSentinelReachedIsProgressRatherThanCoordinatorGate(t *testing.T) {
+	s, c, _ := sentinelProofFixture(t)
+	note := reachedNote(s, c, nil, 0, MachineActor)
+	require.Equal(t, Happened, note.Kind)
+	require.Empty(t, note.Decisions)
+}
