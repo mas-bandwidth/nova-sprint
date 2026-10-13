@@ -26,11 +26,16 @@ type StreamClock struct {
 	Progress time.Time
 	// Empty says nothing of the stream is on the table: never stale.
 	Empty bool `json:",omitempty"`
-	// Held says every card of the stream on the table and not landed waits (on a
-	// sentinel, or a need): it is held by what it waits on, never stale; or the
-	// coordinator holds it (hold <stream>, hold.go), the reason in Reason.
+	// Held says the coordinator holds the stream (hold <stream>, hold.go), the
+	// reason in Reason: a hold only, never a stream whose cards merely wait.
 	Held   bool   `json:",omitempty"`
 	Reason string `json:",omitempty"`
+	// Blocked says every card of the stream on the table and not landed waits
+	// (behind a sentinel, or on a need) and none moves: it is blocked by what
+	// it waits on, named in BlockedBy, and is never stale. A coordinator hold
+	// (Held) is a separate fact; both may hold at once.
+	Blocked   bool   `json:"blocked,omitempty"`
+	BlockedBy string `json:"blocked_by,omitempty"`
 	// Quiet is the time wait set on the stream's stale judgment (FieldStaleReview):
 	// not shown stale before it.
 	Quiet time.Time `json:",omitzero"`
@@ -42,6 +47,32 @@ type StreamClock struct {
 	// TierBlocked is the tier blocking every ready or waiting primary of the stream
 	// while the tier has no live route (tla/SprintRules.tla QuietWhileUnfunded).
 	TierBlocked string `json:",omitempty"`
+}
+
+// StreamBlockedBy is what a blocked stream waits on: the sentinel or card
+// of another stream that its first waiting primary's needs or line position
+// name (WaitsFor), else "needs" — the wait is on needs no other stream's
+// card names, or the first waiting primary names nothing.
+func StreamBlockedBy(s *Snapshot, stream string) string {
+	if s == nil || s.Work == nil {
+		return "needs"
+	}
+	var waiting []*Card
+	for _, c := range s.Work.Cards() {
+		if c.Row == stream && c.Col == string(Waiting) && !IsSentinel(c) {
+			waiting = append(waiting, c)
+		}
+	}
+	slices.SortFunc(waiting, func(a, b *Card) int { return cmp.Compare(a.Score, b.Score) })
+	if len(waiting) == 0 {
+		return "needs"
+	}
+	for _, w := range WaitsFor(s, waiting[0], nil) {
+		if t := s.Work.Card(w); t != nil && t.Row != stream {
+			return w
+		}
+	}
+	return "needs"
 }
 
 // Stalled says a stream that has not landed has made no progress for longer
@@ -304,7 +335,7 @@ func Inbox(r InboxReq) []Group {
 			// tla/SprintRules.tla QuietWhileUnfunded
 			continue
 		}
-		if st.State == StreamLanded || st.Empty || st.Held || r.Now.Before(st.Quiet) || r.Stale <= 0 || st.Progress.IsZero() || r.running(st.Progress) <= r.Stale {
+		if st.State == StreamLanded || st.Empty || st.Held || st.Blocked || r.Now.Before(st.Quiet) || r.Stale <= 0 || st.Progress.IsZero() || r.running(st.Progress) <= r.Stale {
 			continue
 		}
 		g := Group{ID: StaleGroupID(st.Stream, r.Epoch), Kind: Judgment, Type: NStreamStale, Stream: st.Stream, Count: 1, Marked: true, Overdue: true,

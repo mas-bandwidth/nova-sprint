@@ -516,6 +516,8 @@ sentinel-free summary, dropping archived streams without loading card rows; `--d
 requires `--json`. An unknown name is a 404 of one
 line; `where --json` also carries `landedSeries` (cards landed per 10-minute bucket over 24 hours, split between friends and fleet). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the dashboard.
 
+Each stream's clock in `where --json`'s `streams` carries two separate facts: `Held` says the coordinator holds the stream (`hold <stream>`), and nothing else; `blocked` says every card of the stream waits and none moves, with `blocked_by` naming what it waits on — the sentinel or card of another stream its first waiting card's needs or line position name, else `needs`. Both may read at once. The text frame prints one `<stream> blocked by <x>` line per blocked stream, and `held` only for a hold.
+
 ### A provider out of funds
 
 The owner, 2026-10-03: "provider out of funds should never be a mystery failure." `run` reads

@@ -22,7 +22,10 @@ import (
 // goals) and the streams' control cards. Measured on this fixture: 22 on the code
 // before the record (5183's head, 7 of them reads of card records), 19 on this
 // code's own read of the cards when it cannot take the record, 9 with it.
-const whereTripsMax = 9
+// 10 since a-blocked-stream-is-not-a-held-stream: one load-cache read of the
+// work table, only when a stream is blocked, to name what it waits on
+// (StreamClock.BlockedBy); the readset and cells counts above still hold.
+const whereTripsMax = 10
 
 // whereLogLinesMax is the most log lines one where --json reads once the tick has counted
 // the where record: none. Its landedSeries buckets the record's landings

@@ -647,7 +647,26 @@ func (st *Store) StreamClocks(ctx context.Context) ([]sprint.StreamClock, error)
 		}
 		open := int(waiting[r.Key] + moving[r.Key])
 		out = append(out, sprint.StreamClock{Stream: r.Key, Release: ctl.Fields[sprint.FieldRelease], Display: sprint.StreamDisplay(r.Key, ctl.Fields[sprint.FieldDisplay], ctl.Fields[sprint.FieldRelease]), State: sprint.ShownStreamState(ctl.Fields, open), Since: since, Progress: p, Empty: onTable[r.Key] == 0,
-			Held: waiting[r.Key] > 0 && moving[r.Key] == 0 || ctl.Fields[sprint.FieldHeld] != "", Reason: ctl.Fields[sprint.FieldHeldReason], Quiet: parseStamp(ctl.Fields[sprint.FieldStaleReview]), Promotion: ctl.Fields[sprint.FieldLandProtected]})
+			Held: ctl.Fields[sprint.FieldHeld] != "", Reason: ctl.Fields[sprint.FieldHeldReason], Quiet: parseStamp(ctl.Fields[sprint.FieldStaleReview]), Promotion: ctl.Fields[sprint.FieldLandProtected],
+			Blocked: waiting[r.Key] > 0 && moving[r.Key] == 0})
+	}
+	// BlockedBy names what each blocked stream waits on: read the work table
+	// once, only when a stream is blocked (a-blocked-stream-is-not-a-held-stream).
+	blocked := false
+	for _, c := range out {
+		blocked = blocked || c.Blocked
+	}
+	if blocked {
+		tbls, err := st.placedRecords(ctx, []string{sprint.Work}, []ntable.Table{shapes[1]})
+		if err != nil {
+			return nil, err
+		}
+		snap := &sprint.Snapshot{Work: tbls[0]}
+		for i := range out {
+			if out[i].Blocked {
+				out[i].BlockedBy = sprint.StreamBlockedBy(snap, out[i].Stream)
+			}
+		}
 	}
 	return out, nil
 }

@@ -1622,6 +1622,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if line := promotionLine(clocks); line != "" {
 		b.WriteString("\n" + line + "\n")
 	}
+	for _, line := range blockedLines(clocks) {
+		b.WriteString("\n" + line + "\n")
+	}
 	a.goalsView(ctx, st, &v)
 	for _, c := range clocks {
 		if c.Stalled(now, stale) {
@@ -1677,6 +1680,19 @@ func promotionLine(clocks []sprint.StreamClock) string {
 		return ""
 	}
 	return "promotion: " + strings.Join(marked, ", ")
+}
+
+// blockedLines is one line per blocked stream (a-blocked-stream-is-not-a-held-stream):
+// `<stream> blocked by <x>`, from the stream clocks' BlockedBy; "held" is printed
+// only for a coordinator hold, never for a stream whose cards merely wait.
+func blockedLines(clocks []sprint.StreamClock) []string {
+	var out []string
+	for _, c := range clocks {
+		if c.Blocked {
+			out = append(out, c.Stream+" blocked by "+c.BlockedBy)
+		}
+	}
+	return out
 }
 
 // perLandedColumnName is the work table's column of dollars per landed card, drawn

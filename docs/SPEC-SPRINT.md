@@ -5573,7 +5573,10 @@ landed and whose progress is older than its deadline is shown as stalled by
 inbox (and by `where --json`). A stream with nothing on the table (every primary dropped,
 or restored empty by a clear) is waiting with no `since` and is never stale. A
 stream whose every card on the table and not landed waits (behind a sentinel, or on
-a need) is held by what it waits on, which the table shows, and is never stale.
+a need) and none moves is blocked by what it waits on, which the table shows, and is
+never stale: its clock reads `blocked` with `blocked_by` naming the sentinel or card
+of another stream its first waiting card waits on, else `needs`. A coordinator hold
+is a separate fact (the clock's `Held`, `hold <stream>`); a stream may read both.
 `wait stale:<stream>~<epoch> --for <duration>` writes the time on the stream's
 control card (`stale_review`), and the stream is not shown stale before it.
 This is pull visibility; nothing claims to detect a dead process.
