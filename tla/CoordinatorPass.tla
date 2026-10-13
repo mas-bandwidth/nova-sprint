@@ -466,10 +466,12 @@ EscalatedOnce == esc => same = N
 \* Progress assumptions, stated: ticks keep running (Spec's WF on Tick), the
 \* episode holds (no Flip clears it first, which is the ~open outcome), no
 \* Change lands (one resets same, which is the ~changed outcome), and the
-\* episode opened with at least N raise windows of clock left before
-\* MaxClock: a later opening is outside this property, as MaxClock bounds
+\* episode opened with at least N + 1 raise windows of clock left before
+\* MaxClock (the bound is reached on the Nth raise; the escalation opens
+\* at the next due tick): a later opening is outside this property, as
+\* MaxClock bounds
 \* the checked instance, not the machine. A Change landing mid-episode is
 \* the third outcome: it resets the count, and pushes resume.
-UnchangedEscalates == (open /\ ~changed /\ first # -1 /\ clk + N * Every <= MaxClock) ~> (esc \/ ~open \/ changed)
+UnchangedEscalates == (open /\ ~changed /\ first # -1 /\ clk + (N + 1) * Every <= MaxClock) ~> (esc \/ ~open \/ changed)
 
 =============================================================================
