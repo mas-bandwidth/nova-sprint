@@ -27,7 +27,7 @@ import (
 // critical."): the page is that page, byte for byte (pageview.go).
 const (
 	liveIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
-	liveAppSHA256   = "90ef262f2b49be61642162dd4ea4b2480e30f50e0d52ecceaa6c999edf560691"
+	liveAppSHA256   = "96d087e53bc2761b7e776a304459c962654e7a72ddaaf3244ff7bfafaaaa7b2f"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -48,9 +48,9 @@ var buildQuery = regexp.MustCompile(`\?v=[0-9a-f]+`)
 
 // The served index.html and app.js are the page's files byte for byte: app.js as it is,
 // index.html with the live server's three fills (server.py index_page: the script versioned, the
-// nova-sprint logo inline as a data PNG in the logo slot, the robot tile as the favicon), the
+// live page's robot tile inline as a data PNG in the logo slot, the robot tile as the favicon), the
 // build in place of its version.
-func TestThePageIsTheLivePageByteForByte(t *testing.T) {
+func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
 	app, err := os.ReadFile("page/app.js")
@@ -64,9 +64,9 @@ func TestThePageIsTheLivePageByteForByte(t *testing.T) {
 
 	assert.Equal(t, app, get(t, r.s, "/app.js").Body.Bytes(), "/app.js is the live app.js, byte for byte")
 	const v = "?v=X"
-	// server.py index_page, the logo branch, its version written v: the nova-sprint image inline
-	// as a data PNG (the owner 2026-10-12 ~00:28Z), the build in place of its version
-	slot := `<img id="logo" class="logo-tile" src="` + novaLogoData + `" alt="">`
+	// server.py index_page, the logo branch, its version written v: the live page's robot tile inline
+	// as a data PNG (the live page's logo, liveLogoData), the build in place of its version
+	slot := `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
 	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()

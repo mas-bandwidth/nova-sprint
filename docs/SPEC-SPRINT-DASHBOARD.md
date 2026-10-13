@@ -127,7 +127,7 @@ The page shows exactly these elements and nothing else; `TestThePageShowsExactly
 (internal/sprintdash/page_parity_test.go) renders the page from a fixture (epoch 20, 0/84, STOPPED,
 2 machines up and 11 held, 12 friends held or down, 13 streams with display names) and holds each.
 
-1. Logo: the nova-sprint image, inline as a data PNG, top left (10-12 ~00:28Z).
+1. Logo, top left, inline as a data PNG: as the live page carries it today, the 384 px robot tile (logo-robot-384.png, width 120, height 120, alt "nova-sprint"). The owner asked 10-12 ~00:28Z for the nova-sprint image in its place; the live page carries the robot, so this follows the live page until the owner rules.
 2. Wordmark "nova-sprint" in Nunito 800, hidden when it does not fit (10-12 ~03:08Z).
 3. Chip "version v1.2.16": the data's server_version (the listening process's when where gives none); hidden when unknown (10-12 ~01:20Z).
 4. Chip "coordinator rowan"; on a phone just "rowan"; hidden when there is no room (10-12 ~01:00Z, ~01:02Z, ~01:25Z).

@@ -545,7 +545,6 @@ function setMachine(line) {
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
-  stoppedLast = stopped;
 }
 
 // Providers (SPEC.md, the owner 8:03 and 8:18 AM): shown only when the store carries tables.providers
@@ -698,7 +697,7 @@ function fitMetaChips() {
 window.addEventListener("resize", fitMetaChips);
 
 // ---------- poll loop ----------
-var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0, stoppedLast = false;
+var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0;
 // Readers and merge are hidden by default; ?all=1 shows them.
 var SHOW_ALL = /(?:^|[?&])all=1(?:&|$)/.test(location.search);
 if (SHOW_ALL) $("readers-panel").hidden = false;

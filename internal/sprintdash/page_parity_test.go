@@ -2,6 +2,7 @@ package sprintdash
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -56,10 +57,6 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 		t.Helper()
 		assert.True(t, strings.Contains(hay, needle), "%v: %q is not on the page", msg, needle)
 	}
-	matches := func(re, hay string, msg ...any) {
-		t.Helper()
-		assert.True(t, regexp.MustCompile(re).MatchString(hay), "%v: %s does not match the page", msg, re)
-	}
 	absent(served, "machine-chip", "the red machine STOPPED chip is gone (2026-10-12 ~00:58Z)")
 	absent(served, `id="machine"`, "no machine chip element")
 	absent(st.HTML["live-text"], "Updated", "the clock has no Updated (2026-10-12 ~00:32Z)")
@@ -72,8 +69,10 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	absent(strings.Join(st.Top[len(st.Top)-1], ""), "spent", "top streams with no spend: no message")
 	has(served, ".panel.friends { display: none; }", "the Friends panel is hidden (2026-10-11 ~21:55Z)")
 
-	// P1 logo: the nova-sprint image, inline data PNG, top left
-	matches(`<h1><img id="logo" class="logo-tile" src="data:image/png;base64,[A-Za-z0-9+/=]{100,}"`, served, "P1")
+	// P1 logo, top left, inline data PNG: it follows the live page, the 384 px robot tile with its
+	// attributes (the card names the nova-sprint image; the owner to rule)
+	has(served, `<h1><img id="logo" class="logo-tile" src="`+liveLogoData+`" width="120" height="120" alt="nova-sprint"><span class="wordmark" id="wordmark">nova-sprint</span></h1>`, "P1")
+	assert.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(file("logo-robot-384.png")), liveLogoData, "P1 the live page's logo-robot-384.png, byte for byte")
 	// P2 wordmark "nova-sprint" (Nunito 800), hidden when it does not fit
 	has(served, `<span class="wordmark" id="wordmark">nova-sprint</span>`, "P2 wordmark")
 	has(served, `"Nunito", system-ui, sans-serif; font-weight: 800;`, "P2 Nunito 800")
@@ -120,7 +119,8 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	// P9 ETA "2h 20m" and "around 12:12 AM EDT", or "-" with "not in the summary"
 	assert.Equal(t, `2h<span class="sp"> </span>20m`, run.Val["eta"], "P9")
 	assert.Equal(t, "big", run.Class["eta"], "P9")
-	assert.Equal(t, "around 12:12 AM EDT", strings.ReplaceAll(run.Text["eta-at"], " ", " "), "P9")
+	assert.Equal(t, "around 12:12 AM EDT", strings.ReplaceAll(run.Text["eta-at"], "\u202f", " "), "P9")
+	assert.Equal(t, "12:12 AM", strings.ReplaceAll(runp.Text["eta-at"], "\u202f", " "), "P9 the shortest form when the tile is narrow")
 	none := renderOwner(t, app, []ownerCase{{"none", ownerEnvelope(t, ownerWhere(ownerNoETA)), false}})["none"]
 	assert.Equal(t, "-", none.Text["eta"], "P9 -")
 	assert.Equal(t, "not in the summary", none.Text["eta-at"], "P9")
@@ -146,6 +146,8 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.Equal(t, " ", st.Text["inflight-sub"], "P13 blank")
 	assert.Equal(t, "3", run.Text["inflight"], "P13")
 	assert.Equal(t, "2 working · 1 verify", run.Text["inflight-sub"], "P13")
+	assert.Equal(t, "2 wk · 1 vfy", runp.Text["inflight-sub"], "P13 the shortest form when the tile is narrow")
+	assert.Equal(t, "2 working, 1 review, 0 fix, 0 merging", run.Title["inflight-sub"], "P13 the tooltip")
 	// P14 Throughput: the figure or "—"; "cards / hour"; a tooltip
 	assert.Equal(t, "—", st.Text["tput"], "P14")
 	assert.Equal(t, "needs ten minutes of samples", st.Title["tput"], "P14 tooltip")
@@ -206,9 +208,15 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.Equal(t, "pill warning", st.StreamPill["s-1"], "P26 held amber")
 	assert.Equal(t, "pill active", run.StreamPill["schema-c"], "P26 working blue")
 	assert.Equal(t, "pill done", done.StreamPill["schema-c"], "P26 landed green")
+	assert.Equal(t, "pill neutral", run.StreamPill["s-13"], "P26 else neutral")
+	assert.Equal(t, "idle", run.StreamPillTitle["s-13"], "P26 the neutral pill's tooltip")
+	assert.Equal(t, "stopped · stream stopped", st.StreamPillTitle["schema-c"], "P26 the tooltip")
+	assert.Equal(t, "held · stream running", st.StreamPillTitle["s-1"], "P26 the tooltip")
 	// P27 grouped by status with a rule between groups; Total row
 	assert.Equal(t, "Total", st.Streams[len(st.Streams)-1][0], "P27 Total row")
 	assert.Equal(t, 1, st.GroupStarts, "P27 one rule between stopped and held")
+	assert.Equal(t, "num", st.StreamCellClass["s-1"][2], "P27 a count above zero is not grey (waiting 7)")
+	assert.Equal(t, "num zero", st.StreamCellClass["s-1"][3], "P27 a zero count is grey (ready 0)")
 	// P28 Work and Fleet compact: name | status | count, counts centred, status beside them
 	has(served, `.streams.compact .row, .fleet.compact .row { --count-w: 10.5rem; grid-template-columns: minmax(0, 1fr) var(--status-w) var(--count-w); }`, "P28")
 	has(served, `.streams.compact .row > :nth-child(9), .fleet.compact .row > :nth-child(5) { justify-self: center; margin-left: 0; }`, "P28 counts centred")
@@ -216,11 +224,13 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	// P29 Fleet head and "n up · n held · n down"
 	has(served, `<h2>Fleet</h2>`, "P29")
 	assert.Equal(t, "2 up · 11 held · 0 down", st.Text["fleet-head"], "P29")
+	assert.Equal(t, "2 up · 11 held · 0 down · off", run.Text["fleet-head"], "P29 the side off")
 	// P30 Fleet columns
 	require.NotEmpty(t, st.Fleet, "P30")
 	// the track column's head is "working", the n / width column's "working" on the compact form only (.alt)
 	assert.Equal(t, []string{"machine", "status", "ready", "working", "working", "done", "ok%", "load"}, st.Fleet[0], "P30")
 	assert.Equal(t, []string{"machine-a", "up", "1", "", "0 / 16", "0", "100.0%", "0.0%"}, st.Fleet[1], "P30 a machine's row")
+	assert.Equal(t, "0 / 16 · 08:00-18:00", run.Fleet[1][4], "P30 n / width · window")
 	// P31 Fleet pill tones
 	assert.Equal(t, "pill good", st.FleetPill["machine-a"], "P31 up green")
 	assert.Equal(t, "pill warning", st.FleetPill["held-01"], "P31 held amber")
@@ -283,6 +293,7 @@ const (
 // ci-red merge row, s-13 stopped with no cards. The variant changes only what it names.
 func ownerWhere(variant int) []byte {
 	machine, summary, landed, all := "machine: STOPPED", "0/84 0.0% held=11 -> ETA -", 0, 84
+	machineWindow := ""
 	work := map[string]map[string]any{}
 	var streams []map[string]string
 	for i := 1; i <= 11; i++ {
@@ -301,6 +312,9 @@ func ownerWhere(variant int) []byte {
 		work["schema-c"] = map[string]any{"waiting": "4", "ready": "0", "working": "2", "review": "1", "fix": "0", "merging": "0", "landed": "0",
 			"cost": "$3.75", "cost_by_tier": map[string]string{"flash": "1.25", "pro": "2.50"}}
 		streams[11]["State"] = "running"
+		streams[12]["State"] = ""
+		extra["fleet_work"] = "off"
+		machineWindow = "08:00-18:00"
 		extra["stream_costs"] = map[string]any{"schema-c": map[string]string{"total_cost": "3.75"}}
 	case ownerDone:
 		landed = 84
@@ -327,6 +341,9 @@ func ownerWhere(variant int) []byte {
 	fleet := map[string]any{
 		"machine-a": map[string]string{"status": "up", "ready": "1", "working": "0", "width": "16", "done": "0", "okpct": "100.0", "load": "0.0"},
 		"machine-b": map[string]string{"status": "up", "ready": "2", "working": "0", "width": "8", "done": "0", "okpct": "100.0", "load": "0.0"},
+	}
+	if machineWindow != "" {
+		fleet["machine-a"].(map[string]string)["window"] = machineWindow
 	}
 	for i := 1; i <= 11; i++ {
 		fleet[fmt.Sprintf("held-%02d", i)] = map[string]string{"status": "held", "ready": "0", "working": "0", "width": "4", "done": "0"}
@@ -378,31 +395,33 @@ type ownerCase struct {
 
 // ownerRender is what one stubbed-DOM render reads back.
 type ownerRender struct {
-	Errors       []string            `json:"errors"`
-	Text         map[string]string   `json:"text"`
-	Val          map[string]string   `json:"val"`
-	HTML         map[string]string   `json:"html"`
-	Class        map[string]string   `json:"class"`
-	Title        map[string]string   `json:"title"`
-	Hidden       map[string]bool     `json:"hidden"`
-	Display      map[string]string   `json:"display"`
-	Nofit        map[string]bool     `json:"nofit"`
-	NofitOrder   []string            `json:"nofitOrder"`
-	Children     map[string]int      `json:"children"`
-	Legend       []string            `json:"legend"`
-	Pie          []string            `json:"pie"`
-	TierSwatches []string            `json:"tierSwatches"`
-	Top          [][]string          `json:"top"`
-	TopClass     []string            `json:"topClass"`
-	Streams      [][]string          `json:"streams"`
-	StreamName   map[string]string   `json:"streamName"`
-	StreamTag    map[string]string   `json:"streamTag"`
-	StreamPill   map[string]string   `json:"streamPill"`
-	GroupStarts  int                 `json:"groupStarts"`
-	Fleet        [][]string          `json:"fleet"`
-	FleetPill    map[string]string   `json:"fleetPill"`
-	FleetTrack   map[string]string   `json:"fleetTrack"`
-	Extra        map[string][]string `json:"extra"`
+	Errors          []string            `json:"errors"`
+	Text            map[string]string   `json:"text"`
+	Val             map[string]string   `json:"val"`
+	HTML            map[string]string   `json:"html"`
+	Class           map[string]string   `json:"class"`
+	Title           map[string]string   `json:"title"`
+	Hidden          map[string]bool     `json:"hidden"`
+	Display         map[string]string   `json:"display"`
+	Nofit           map[string]bool     `json:"nofit"`
+	NofitOrder      []string            `json:"nofitOrder"`
+	Children        map[string]int      `json:"children"`
+	Legend          []string            `json:"legend"`
+	Pie             []string            `json:"pie"`
+	TierSwatches    []string            `json:"tierSwatches"`
+	Top             [][]string          `json:"top"`
+	TopClass        []string            `json:"topClass"`
+	Streams         [][]string          `json:"streams"`
+	StreamName      map[string]string   `json:"streamName"`
+	StreamTag       map[string]string   `json:"streamTag"`
+	StreamPill      map[string]string   `json:"streamPill"`
+	StreamPillTitle map[string]string   `json:"streamPillTitle"`
+	StreamCellClass map[string][]string `json:"streamCellClass"`
+	GroupStarts     int                 `json:"groupStarts"`
+	Fleet           [][]string          `json:"fleet"`
+	FleetPill       map[string]string   `json:"fleetPill"`
+	FleetTrack      map[string]string   `json:"fleetTrack"`
+	Extra           map[string][]string `json:"extra"`
 }
 
 // renderOwner runs the shipped app.js over each case's envelope, each on a fresh stubbed DOM,
@@ -411,7 +430,7 @@ func renderOwner(t *testing.T, appJS string, cases []ownerCase) map[string]owner
 	t.Helper()
 	nodePath, err := exec.LookPath("node")
 	if err != nil {
-		if os.Getenv("NOVA_CI") == "1" {
+		if os.Getenv("NOVA_CI") == "1" || os.Getenv("GITHUB_ACTIONS") == "true" || os.Getenv("CI") == "true" {
 			require.NoError(t, err, "node is required for the dashboard JS parity test")
 		}
 		t.Skip("node is not installed on this machine; the dashboard JS parity test needs it")
@@ -464,7 +483,7 @@ function renderCase(c) {
       closest(){ return null; },
       remove(){ if (this.parentNode) this.parentNode.removeChild(this); }, cloneNode(){ return createElement(tag); },
       getBoundingClientRect(){ return rects[el.id] || { top: 0, bottom: 10, left: 0, right: 10 }; },
-      scrollWidth: 50, clientWidth: 100, offsetWidth: 50, offsetHeight: 20, offsetParent: {}
+      get scrollWidth(){ return c.narrow && (el.id === 'eta-at' || el.id === 'inflight-sub') ? 200 : 50; }, clientWidth: 100, offsetWidth: 50, offsetHeight: 20, offsetParent: {}
     };
     return el;
   }
@@ -495,7 +514,7 @@ function renderCase(c) {
     'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'live-text', 'tier-sub',
     'streams-sub', 'fleet-head', 'overall', 'providers-panel', 'readers-panel', 'release'];
   const r = { errors, text: {}, val: {}, html: {}, class: {}, title: {}, hidden: {}, display: {}, nofit: {}, nofitOrder, children: {},
-    streamName: {}, streamTag: {}, streamPill: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0 };
+    streamName: {}, streamTag: {}, streamPill: {}, streamPillTitle: {}, streamCellClass: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0 };
   // the text a viewer reads: a node's children's, else its markup's with the tags taken out, else its own
   const textOf = (x) => x.children && x.children.length ? x.children.map(textOf).join('') : (x._html ? x._html.replace(/<[^>]*>/g, '') : (x._text || x.textContent || ''));
   const cellText = textOf;
@@ -510,7 +529,7 @@ function renderCase(c) {
   const streams = getEl('streams');
   r.streams = streams.children.map(row => row.children.map(cellText));
   if (streams._map) streams._map.forEach((row, k) => {
-    r.streamName[k] = textOf(row.nameT); r.streamTag[k] = textOf(row.tag); r.streamPill[k] = row.pill.className;
+    r.streamName[k] = textOf(row.nameT); r.streamTag[k] = textOf(row.tag); r.streamPill[k] = row.pill.className; r.streamPillTitle[k] = row.pill.title; r.streamCellClass[k] = row.node.children.map(x => x.className);
     if (row.node.classList.contains('group-start')) r.groupStarts++;
   });
   const fleet = getEl('fleet');

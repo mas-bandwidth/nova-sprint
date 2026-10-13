@@ -81,7 +81,7 @@ func TestDashboardServesThePageOnEveryListener(t *testing.T) {
 		resp, page := get(base)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "no-store, max-age=0", resp.Header.Get("Cache-Control"))
-		assert.Contains(t, string(page), `<span class="wordmark">nova-sprint</span>`)
+		assert.Contains(t, string(page), `<span class="wordmark" id="wordmark">nova-sprint</span>`)
 		resp, body := get(base + "api/sprint")
 		assert.Equal(t, "no-store, max-age=0", resp.Header.Get("Cache-Control"))
 		var v struct {
