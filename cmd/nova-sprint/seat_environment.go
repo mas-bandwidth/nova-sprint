@@ -196,16 +196,6 @@ func uniqueJSONKeys(b []byte) error {
 	return nil
 }
 
-func (a *app) forgeIdentityDefault() string {
-	if v := a.getenv("GH_CONFIG_DIR"); v != "" {
-		return v
-	}
-	if a.seatEnvironment != nil {
-		return a.seatEnvironment.ForgeIdentity
-	}
-	return ""
-}
-
 func seatEnvironmentNeeded(args []string) bool {
 	if len(args) == 0 || args[0] == "help" || args[0] == "version" || args[0] == "--version" || verbflag.IsHelp(args[0]) {
 		return false

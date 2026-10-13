@@ -116,6 +116,16 @@ type ghMergeQueue struct {
 	env  func() []string
 }
 
+func (a *app) forgeIdentityDefault() string {
+	if v := a.getenv("GH_CONFIG_DIR"); v != "" {
+		return v
+	}
+	if a.seatEnvironment != nil {
+		return a.seatEnvironment.ForgeIdentity
+	}
+	return ""
+}
+
 // forgeCommandEnv selects authentication for this seat-owned gh child only.
 // Process configuration wins, then the scoped child environment, then the seat.
 // Git and check commands retain their original environment.
