@@ -554,7 +554,7 @@ func busOptions(getenv func(string) string) redisconn.Options {
 	addr := getenv(busRedisEnv)
 	user := getenv(busUserEnv)
 	o := redisconn.Options{Addr: addr, Env: redisconn.Env{User: busUserEnv}}
-	if user != "" {
+	if user != "" || getenv(busPasswordEnvEnv) != "" {
 		o.Env.PasswordEnv = busPasswordEnvEnv
 	}
 	return o
@@ -567,7 +567,14 @@ func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(),
 	if addr != "" {
 		o.Addr = addr
 	}
-	conn, err := redisconn.Open(ctx, o, a.getenv)
+	if user != "" {
+		o.User = user
+	}
+	o, getenv, err := a.seatBusOptions(o)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn, err := redisconn.Open(ctx, o, getenv)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -978,4 +985,33 @@ func (a *app) friendCollect(ctx context.Context, st *store.Store, name string, p
 	}
 	say(fmt.Sprintf("FRIEND-CARD FINISHED friend=%s card=%s result=%s head=%s: %s", name, p.Card, result, cmp.Or(r.Head, "-"), oneline.Escape(oneline.Cap(r.Report, 200))))
 	return true, nil
+}
+
+func (a *app) seatBusOptions(o redisconn.Options) (redisconn.Options, func(string) string, error) {
+	getenv := a.getenv
+	if o.User == "" && o.PasswordEnv == "" && getenv(busUserEnv) == "" && getenv(busPasswordEnvEnv) == "" {
+		l, ok, err := a.recordedLogin()
+		if err != nil {
+			return redisconn.Options{}, nil, err
+		}
+		if ok && l.Redis == o.Addr {
+			secret, err := a.readLoginSecret("seat environment", l)
+			if err != nil {
+				return redisconn.Options{}, nil, err
+			}
+			o.User, o.PasswordEnv = l.User, seatLoginPassword
+			password := ""
+			if err := secret.Use(func(p string) error { password = p; return nil }); err != nil {
+				return redisconn.Options{}, nil, err
+			}
+			base := getenv
+			getenv = func(k string) string {
+				if k != seatLoginPassword {
+					return base(k)
+				}
+				return password
+			}
+		}
+	}
+	return o, getenv, nil
 }
