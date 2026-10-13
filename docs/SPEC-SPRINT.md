@@ -5391,6 +5391,8 @@ the tick would make, no other open judgment on it).
 | stalled: nothing holds a card (rule 12) | the decisions its place allows and that would be accepted (ask --another for a primary asked already, never ask), else look at the card; drop; wait | no, while the stall stands |
 | review above its alarm, merging above its alarm, nothing ready while cards wait, the fleet works below its alarm (the backlog alarms, below) | ack (seen: quiet until the episode ends), wait | yes |
 
+A work card's deadline is its live take's: dealt in a member's queue or working. A withdrawn take has no deadline; a late judgment closes when its take is withdrawn (internal/sprint steps_tick.go TickDeadlines and LateStands; tla/SprintRules.tla LateOnlyWhileLive).
+
 **A ready card is not dealt.** A primary that has sat in ready past the sprint's bound
 (`ready_max`, default one minute) raises one judgment per (reason, tier), `a ready card is not dealt`: `<n> primaries of tier <t> sit in ready past <max>: <why>`, keyed, and grouped,
 by the reason the deal leaves it (the deal's own checks, `readyWhy` and `readyOverConds` in
