@@ -26,10 +26,11 @@ func (st *Store) Init(ctx context.Context) error {
 	if err := st.B.ViewSet(ctx, st.Names.ViewDef()); err != nil {
 		return err
 	}
-	// The machine is STOPPED from the start: the time before the first start
-	// is a STOPPED span, and counts toward no deadline. The view shows it
-	// (section 1): STOPPED, written with the record in one step; on a sprint
-	// that has a machine already, the view's state is written from it.
+	// The machine is READY from the start (section 14, "READY"): the time
+	// before the first start is a STOPPED span in the record, and counts toward
+	// no deadline. The view shows it (section 1): READY, written with the record
+	// in one step; on a sprint that has a machine already, the view's state is
+	// written from it.
 	if kv, ok := st.B.(KV); ok {
 		m, _, err := st.Machine(ctx)
 		if err != nil {
@@ -37,7 +38,7 @@ func (st *Store) Init(ctx context.Context) error {
 		}
 		if m.State == "" {
 			now := st.now()
-			return st.putMachine(ctx, Machine{State: Stopped, Since: now, Who: st.Actor, Spans: []Span{{From: now}}})
+			return st.putMachine(ctx, Machine{State: Stopped, Since: now, Who: st.Actor, Spans: []Span{{From: now}}, ready: true})
 		}
 		return kv.ShowState(ctx, st.Names.View(), ViewState(m))
 	}
@@ -438,8 +439,13 @@ func (st *Store) Inbox(ctx context.Context, deadline, stale time.Duration, max i
 // machineGroups is what the machine's record says the coordinator must act
 // on, computed at read time as the stale line is: a RUNNING machine that is
 // not ticking (its run loop died), a tick failing three times in a row, and
-// a STOPPED machine with moves due.
+// a STOPPED machine with moves due. A READY machine raises none: its due
+// moves are a sprint being prepared, not a stall (docs/SPEC-SPRINT.md section
+// 14, "READY"; tla/MachineReady.tla ReadyNeverJudges).
 func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]sprint.Group, error) {
+	if m.Ready() {
+		return nil, nil
+	}
 	now := st.now()
 	var out []sprint.Group
 	group := func(id, typ, what string, cmds ...sprint.Command) sprint.Group {

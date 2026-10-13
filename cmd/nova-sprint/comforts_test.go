@@ -182,6 +182,8 @@ func TestInboxJSONCarriesTheJudgmentsToActOn(t *testing.T) {
 	ta.failOnce("m1", "s2-1.w1@1", "abandoned idea")
 	ta.ok("take --as m1 s1-3.w1@1")
 	ta.ok("finish --as m1 s1-3.w1@1")
+	ta.ok("start") // started and stopped: STOPPED with moves due is a judgment (a READY sprint raises none)
+	ta.ok("stop --reason r --until 9999h")
 	var in struct {
 		Judgments []inboxJudgment
 		Happened  []inboxHappened

@@ -24,8 +24,8 @@ func liveViewLine(h *harness, c *redis.Client) string {
 }
 
 // The sprint's stored view on a real store (docs/SPEC-SPRINT.md sections 1
-// and 14): its summary line is STOPPED, and nothing more, after init, stop
-// and clear, and the progress line after start; the machine's record and the
+// and 14): its summary line is READY, and nothing more, after init and clear
+// (never started since), STOPPED alone after a stop, and the progress line after start; the machine's record and the
 // view's state are written in one MULTI/EXEC, so a transaction the store
 // refuses writes neither; and a sprint whose view is gone still starts and
 // stops.
@@ -33,7 +33,7 @@ func TestTheViewSaysStoppedAloneOnARealStore(t *testing.T) {
 	t.Parallel()
 	h, c := liveHarness(t)
 	got := liveViewLine(h, c)
-	require.Equal(t, "STOPPED", got, "after init: %q", got)
+	require.Equal(t, "READY", got, "after init, never started (section 14): %q", got)
 	_, _, _, err := h.st.SetMachine(h.ctx, true)
 	require.NoError(t, err)
 	got = liveViewLine(h, c)
@@ -47,7 +47,13 @@ func TestTheViewSaysStoppedAloneOnARealStore(t *testing.T) {
 	_, err = h.st.Clear(h.ctx)
 	require.NoError(t, err)
 	got = liveViewLine(h, c)
-	require.Equal(t, "STOPPED", got, "after clear: %q", got)
+	require.Equal(t, "READY", got, "after clear: %q", got)
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err)
+	_, _, _, err = h.st.SetMachine(h.ctx, false)
+	require.NoError(t, err)
+	got = liveViewLine(h, c)
+	require.Equal(t, "STOPPED", got, "started and stopped after the clear: %q", got)
 
 	// A view stored without a state while STOPPED: stop writes it again.
 	require.NoError(t, c.HDel(h.ctx, "view:"+h.st.Names.View(), "state").Err())

@@ -198,6 +198,7 @@ func TestStreamRemoveRetiresTheStreamsJudgments(t *testing.T) {
 	g := ta.group(sprint.NRed, "s2")
 	_, ok := item(ta.coordView(""), "j:"+g.ID)
 	require.True(t, ok, "the view shows the judgment before")
+	ta.ok("start") // a stop is of a running machine: READY refuses it
 	ta.ok("stop --reason r --until 9999h")
 	ta.ok("drop s2-1 s2-2 s2-3 --reason obsolete")
 

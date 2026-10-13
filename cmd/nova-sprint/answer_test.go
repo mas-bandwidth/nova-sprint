@@ -173,6 +173,8 @@ func TestAnswerDecideAcksABlockedCard(t *testing.T) {
 	require.Equal(t, 1, code, "drop of a needed card: %s%s", out, errs)
 	require.Contains(t, errs, "s1-1 is needed by b; drop them too with --cascade", "drop of a needed card: %s", errs)
 	require.Equal(t, before, ta.applies(), "a refused drop wrote")
+	ta.ok("start") // started and stopped: STOPPED with moves due (a READY sprint judges nothing)
+	ta.ok("stop --reason r --until 1h")
 	out = ta.ok("answer --bar 0.8 --record " + record)
 	assert.Contains(t, out, "ANSWER OK rows=1 ", "the answer with no open judgment: %s", out)
 	assert.Contains(t, out, "left=1", "the stopped machine is left alone: %s", out)

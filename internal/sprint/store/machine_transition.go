@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,17 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 }
 
 func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time) (after Machine, changed bool, err error) {
+	if !running && reason != "" && before.Ready() && len(before.StopDebt) == 0 && len(activeStopLeases(s)) == 0 {
+		// a stop (by hand: it carries its reason) of a READY machine is refused: it has not
+		// started since the clear, so there is nothing to stop; a clear's own stop has no
+		// reason and leaves it READY (docs/SPEC-SPRINT.md section 14, "READY";
+		// tla/MachineReady.tla StopRefused, StoppedOnlyFromRunning). A READY machine that
+		// holds a live owner lease (a legacy take before the first start, which START
+		// refuses until it is returned) has something to stop: the stop captures it as the
+		// STOP's debt, so its owner's stop-return settles it, and the machine stays READY
+		// (the record STOPPED, no start in the epoch: Machine.Ready).
+		return before, false, ErrNothingToStop
+	}
 	if before.Running() == running && (before.Cause != "" || !running && (reason != "" || before.Reason != "")) {
 		after = before
 		after.StopIssued = !running
@@ -116,9 +128,26 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 			after.StoppedFor += now.Sub(after.Spans[n-1].From)
 		}
 		after.State = Running
+		// the epoch of this start, as Machine reads it (the sprint's epoch now, not
+		// the one this store pinned: a clear between the pin and the lock leaves the
+		// start in the new epoch): the machine is not READY again until a clear
+		// (Machine.Ready; tla/MachineReady.tla Start)
+		es, err := st.EpochNow(ctx)
+		if err != nil {
+			return before, false, err
+		}
+		after.StartedIn = strconv.FormatUint(es.N, 10)
 		after.StopIssued = false
 		after.StopDebt = nil
 	} else {
+		// a stop of a RUNNING machine: it ran in the epoch as read now, so it is
+		// STOPPED there, never READY, even when its start landed inside a clear and
+		// recorded the epoch before (tla/MachineReady.tla Stop, RanIsNotReady)
+		es, err := st.EpochNow(ctx)
+		if err != nil {
+			return before, false, err
+		}
+		after.StartedIn = strconv.FormatUint(es.N, 10)
 		after.StopIssued = true
 		after.StopDebt = activeStopLeases(s)
 		after.Spans = append(after.Spans, Span{From: now})
@@ -403,7 +432,13 @@ func (st *Store) stopWithCause(ctx context.Context, cause string, runSeq uint64)
 					after.Spans = after.Spans[len(after.Spans)-MaxStopSpans:]
 				}
 				after.State, after.Since, after.Who, after.Cause = Stopped, now, sprint.MachineActor, cause
-				err = pinned.putMachine(ctx, after)
+				// it ran in the epoch as read now: STOPPED there, never READY
+				// (tla/MachineReady.tla Stop, RanIsNotReady)
+				var es EpochState
+				if es, err = pinned.EpochNow(ctx); err == nil {
+					after.StartedIn = strconv.FormatUint(es.N, 10)
+					err = pinned.putMachine(ctx, after)
+				}
 				changed = err == nil
 			}
 		}

@@ -138,7 +138,7 @@ func TestStartAndStopAreIdempotentAndRecorded(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	line := h.st.MachineLine(h.ctx)
-	require.Equal(t, "machine: STOPPED", line, "a new sprint: %q", line)
+	require.Equal(t, "machine: READY", line, "a new sprint, never started, is READY (section 14): %q", line)
 	before, after, res, err := h.st.SetMachine(h.ctx, true)
 	if err != nil || before.Running() || !after.Running() || res.Notes != 1 {
 		require.Fail(t, fmt.Sprintf("start: %+v %+v %+v %v", before, after, res, err))

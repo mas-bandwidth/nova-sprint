@@ -7220,8 +7220,8 @@ A worker friend's gate (her bus push and her work push) is not this one: it land
 - **Unhook.** `nova-sprint unhook --actor <seat>` closes both over the running hook: the server records the sprint push away (the owner told), and the hook process records `unhooked_at`; from then every gated verb refuses until `hook` again. A hook that drops is recorded gone by the server at once; its bus push lapses with its bound.
 - **What the gate refuses that runs as the holder.** The server runs as the holder (`NOVA_SPRINT_ACTOR=<seat>`, seat.go), so while the seat is not hooked these are refused too: the seat's push loop (`inbox --wait --push seat`, installed by `seat install`), the dashboard's coordinator view (`view coordinator`, as before), the friend sync loop and the answer loop when they run as the holder, and the holder's own friend lane (`lane take --as friend.<seat>`, judged on the actor). The run loop, the tick and the server's switch are not.
 - **Adopting this gate, in order.** (1) The server's loop record (nova-config's loop row the nova-tools loops play renders) gains `NOVA_BUS_REDIS`, and `NOVA_BUS_REDIS_USER` and `NOVA_BUS_REDIS_PASSWORD_ENV` with the secret in `nova-secrets --only` when the bus store has a login, through the play; (2) bootout and bootstrap the server's unit so the environment lands; (3) `nova-sprint seat check` shows `MACHINERY bus OK` (the bus store answers: `SeatCheckBus`); (4) the seat's session sets the same variables and runs `nova-sprint hook --actor <seat>` under a Monitor and proves it; (5) then canary. A server without `NOVA_BUS_REDIS` refuses every verb of the holder with `NOVA_BUS_REDIS is not set` in the breadcrumb.
-- **The waiting-judgment warning.** (the owner, 2026-10-11: "Any card waiting for judgement should alert you via warning every second once it has been in this state for 10 seconds or longer." "These must be push notifications.") Every look of the coordinator's hook (each second) that finds a judgment open 10 seconds or longer (`sprint.JudgmentWarnAfter`; a quiet one too; a judgment computed at read time, `machine:stopped` or `stale:<stream>`, from when the hook first saw it) pushes one warning over the hook, a push of its own number. When the set of judgments changed it is the full text: `PUSH <id> WARNING-judgments-waiting: answer the judgments below; an ack does not silence it`, then `WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>; answer each ...` and, for each judgment, `<alias> <id> cards=<cards> waited=<d>` with the commands that answer it indented under it. While the set is the same it is one line a second: `PUSH <id> WARNING-judgments-waiting: WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>`. It repeats every second until each is answered: an ack of the warning push does not silence it, it is never an open push (it never blocks the gate), and nothing turns it off. The look reads the inbox off the server's line (the read lane), and takes the line only to record a new push.
-- Tests: `cmd/nova-sprint/hook_gate_every_verb_test.go` (`TestEveryVerbRefusesTheCoordinatorUntilHooked`, `TestTheBreadcrumbHooksTheCallerIn`, `TestTheCoordinatorWantsBothPushes`, `TestTheGateReadsTheBusPushOffTheLine`, `TestTheGateFailsClosed`, `TestAWaitingJudgmentIsPushedAsAWarningEverySecond`, `TestAReadTimeJudgmentIsWarnedFromWhenFirstSeen`, `TestTheWarningArrivesAsAPushLineOnTheHook`); `internal/sprint/hook_test.go` (`TestTheGateWantsBothPushesLive`, `TestTheSharedRecordSaysEachPush`, `TestAJudgmentWaitingTenSecondsIsWarnedEverySecond`).
+- **The waiting-judgment warning.** (the owner, 2026-10-11: "Any card waiting for judgement should alert you via warning every second once it has been in this state for 10 seconds or longer." "These must be push notifications.") A look of the coordinator's hook (each second) that finds a judgment open 10 seconds or longer (`sprint.JudgmentWarnAfter`; a quiet one too; a judgment computed at read time, `machine:stopped` or `stale:<stream>`, from when the hook first saw it) pushes one warning over the hook, a push of its own number. When the set of judgments changed it is the full text: `PUSH <id> WARNING-judgments-waiting: answer the judgments below; an ack does not silence it`, then `WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>; answer each ...` and, for each judgment, `<alias> <id> cards=<cards> waited=<d>` with the commands that answer it indented under it. While the set is the same it is one line: `PUSH <id> WARNING-judgments-waiting: WARNING <n> judgment(s) waiting on the coordinator 10s or longer: <aliases>`. It repeats at a bounded rate until each is answered (v1.2.17: a warning every second drowned a seat preparing a cleared sprint, its reads refused once ten minutes of them went unacknowledged): the first at 10 s as before, then no more often than once a minute (`sprint.JudgmentWarnEvery`) for the same set, and at once when a judgment joins the set (`sprint.JudgmentWarnDue`); a set that only shrank waits its minute, and an ack of a warning push changes none of this (after it, nothing repeats until a judgment joins the set or the minute passes). The hook's look stays at one second for everything else. An ack of the warning push does not silence it, it is never an open push (it never blocks the gate), and nothing turns it off. The look reads the inbox off the server's line (the read lane), and takes the line only to record a new push.
+- Tests: `cmd/nova-sprint/hook_gate_every_verb_test.go` (`TestEveryVerbRefusesTheCoordinatorUntilHooked`, `TestTheBreadcrumbHooksTheCallerIn`, `TestTheCoordinatorWantsBothPushes`, `TestTheGateReadsTheBusPushOffTheLine`, `TestTheGateFailsClosed`, `TestAWaitingJudgmentIsPushedAsAWarning`, `TestAReadTimeJudgmentIsWarnedFromWhenFirstSeen`, `TestTheWarningArrivesAsAPushLineOnTheHook`), `cmd/nova-sprint/ready_state_test.go` (`TestTheWaitingJudgmentWarningRepeatsAtABoundedRate`); `internal/sprint/machine_ready_test.go` (`TestAClearLeavesTheMachineReadyAndRaisesNoJudgment`, `TestTheWarningIsDueAtOnceForANewJudgmentElseOnceAMinute`); `internal/sprint/hook_test.go` (`TestTheGateWantsBothPushesLive`, `TestTheSharedRecordSaysEachPush`, `TestAJudgmentWaitingTenSecondsIsWarnedEverySecond`).
 
 ### The push target
 
@@ -7760,8 +7760,40 @@ sprint with its readers gone still tells the coordinator rather than idling.
 
 ## 14. The system
 
-The system has two states, RUNNING and STOPPED, held in one record in the
-store; a new sprint is STOPPED. `start` sets RUNNING, `stop` sets STOPPED;
+**READY** (the owner, 2026-10-13: "I would like a new state right after the sprint is
+cleared 'READY'", "this is the state we are in before the machine is started", "it is
+different to stop. When you are in it print 'READY' to ETA"; tla/MachineReady.tla). The
+system is READY from init, and a clear that completes, from any state, leaves it READY (a
+clear refused for live leases has stopped the system and advanced nothing: it is STOPPED); it stays READY
+until the epoch's first `start`. READY is not STOPPED: `stop` is a decision taken on a
+running system, and READY is a sprint being prepared. `start` moves READY to RUNNING,
+`stop` moves RUNNING to STOPPED, `start` moves STOPPED to RUNNING, and `stop` on a READY
+system is refused with its reason (`the machine is READY: it has not started since the clear; nothing to stop`,
+`store.ErrNothingToStop`; a clear's own stop is no `stop` and leaves it READY). A READY
+system that holds a live owner lease (a take before the first start, which `start` refuses
+until it is returned) or a stop debt not yet settled has something to stop: the `stop`
+captures the lease as the STOP's debt (or keeps the debt), records its reason, so the
+owner's `stop-return` settles it, and the system stays READY. READY raises no `machine:stopped` judgment and so no waiting-judgment
+warning: moves due on a READY system are expected, not a stall; STOPPED keeps the judgment
+as before. The record holds RUNNING or STOPPED only; READY is read off it
+(`store.Machine.Ready`): not RUNNING, and not run in the epoch: the last epoch the machine
+ran in (`started_in`, written by start and by every stop of a RUNNING machine, each with the
+epoch as read then) is another, or, for a record written before `started_in` came, no
+STOPPED span closed by a start after the epoch's clear. A clear's stop and its epoch advance
+are two steps, and a start may land between them: it records the old epoch and runs on into
+the new one, and its stop records the new one, so it is STOPPED there, never READY
+(tla/MachineReady.tla ClearStop, ClearAdvance, RanIsNotReady). So an epoch
+cleared and never started since by an earlier build (the live store at epoch 20) reads
+READY with no record rewritten. Every reader says READY where it said STOPPED: the
+system line (`machine: READY`), the view's state text, `where`'s header and sprint line
+(`READY`, then the progress with cards on the table), `view coordinator` (`machine=READY`,
+and no `machine stopped` alarm), and the dashboard's ETA cell (READY, in the page's green;
+docs/SPEC-SPRINT-DASHBOARD.md). A worker reads READY as STOPPED (the machine word its
+queue and beat carry is RUNNING or STOPPED), so nothing is taken before the first start,
+and the answer loop (`answer --every`) ends on READY as on STOPPED.
+
+The system has three states, READY, RUNNING and STOPPED; RUNNING and STOPPED are
+held in one record in the store, and READY is read off it (above); a new sprint is READY. `start` sets RUNNING, `stop` sets STOPPED;
 setting the state it has changes nothing and says so; each change is a
 happened notification (who, when), and the store keeps every STOPPED span and
 their total. `run` is the process that ticks: it blocks on the epoch's log
@@ -7783,8 +7815,9 @@ refuses old finish and read reports. STOP and START acquire the same operation
 fence as takes and read begins; a worker plan made before STOP must re-read
 the changed generation before it can commit. The store trusts the owner runner's
 cancellation acknowledgement; it does not kill or inspect that process itself.
-An explicit STOP before the first START also revokes work; the initial STOPPED
-setup state permits setup until that command is issued.
+A STOP before the epoch's first START is refused: the system is READY (above), and
+setup goes on until the start; one that finds a live owner lease captures it as debt
+and leaves the system READY (above).
 The system records each active owner/card/generation as a stop debt under the
 same fence. `start` checks the returned card's same-owner, next-generation
 receipt against that durable debt, so moving or removing a card cannot erase
@@ -7831,7 +7864,7 @@ inputs, nor can its delayed DONE or funds judgment stop the new run or replace
 the operator's STOP reason.
 `start` refuses until all Fleet Working and Readers Reading cards have been
 returned, and names the active owner and card IDs. `inbox` says `machine:
-running`, `machine: STOPPED` or `machine: DONE`,
+running`, `machine: READY`, `machine: STOPPED` or `machine: DONE`,
 and nothing after the word but a late tick or a STOPPED system's why (below): when the state is RUNNING and
 nothing has ticked for 15 s (MachineSilence), on a store a run loop ticks, it
 says `machine: running (tick late 16s)`, the whole seconds since the last
@@ -8051,10 +8084,11 @@ landed, primaries in review never asked at their attempt; the command is
 `start`). A tick that fails writes one happened note to the coordinator for each
 error text it fails with (the error, the tick's number and the time) and one when
 it works again (the count of failed ticks); the tick end wakes `inbox --wait`
-on them. `init` writes the system STOPPED from the
+on them. `init` writes the system's record STOPPED from the
 start, so the time before the first `start` is a STOPPED span and counts
-toward no deadline. `clear` writes, at the new epoch, the happened line that
-the system is STOPPED by the clear.
+toward no deadline; the system reads READY until that start (READY, above).
+`clear` writes, at the new epoch, the happened line that the system is READY
+after the clear.
 
 ### The fleet is idle
 

@@ -20,3 +20,13 @@ func machineWord(ctx context.Context, st *store.Store) string {
 	}
 	return m.StateWord()
 }
+
+// shownWord is the machine's state as start and stop say it to a person: READY before the
+// epoch's first start (docs/SPEC-SPRINT.md section 14, "READY"), else RUNNING or STOPPED.
+// The worker's word stays machineWord's.
+func shownWord(m store.Machine) string {
+	if m.Ready() {
+		return store.Ready
+	}
+	return m.StateWord()
+}

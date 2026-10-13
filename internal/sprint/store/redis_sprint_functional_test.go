@@ -140,8 +140,8 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"z"}}))
 	h.clean("setup")
 	line := h.st.MachineLine(h.ctx)
-	require.Equal(t, "machine: STOPPED", line, "a new sprint: %q", line)
-	// STOPPED: the tick moves nothing.
+	require.Equal(t, "machine: READY", line, "a new sprint, never started, is READY (docs/SPEC-SPRINT.md section 14): %q", line)
+	// READY (not RUNNING): the tick moves nothing.
 	if res := h.machine(); len(res.Moved()) != 0 || res.State != Stopped {
 		require.Fail(t, fmt.Sprintf("a stopped tick: %+v", res))
 	}

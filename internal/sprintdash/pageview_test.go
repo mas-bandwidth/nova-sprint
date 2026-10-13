@@ -24,10 +24,12 @@ import (
 // ask of 2026-10-11; the pulse now animates opacity on the compositor and the per-poll layout
 // fit runs from a data-derived key, the owner's ask of 2026-10-11: "There's also a weird
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
-// critical."): the page is that page, byte for byte (pageview.go).
+// critical."; the ETA cell says READY in green before the first start since a clear, the
+// owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"): the page is that
+// page, byte for byte (pageview.go).
 const (
 	pageIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
-	pageAppSHA256   = "704139c62bd0d2898873d71fd3c2c0ab1f0ce071381ec36e4c0e38f9786581f0"
+	pageAppSHA256   = "319e649504e180cb20c56a4211728cdba4848caa00fc21e298fe272c0c27a850"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )

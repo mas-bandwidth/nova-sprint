@@ -531,7 +531,9 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 		}
 		return fallback
 	}
-	if merr == nil && !running && !machine.Done() && n.Landed < n.All {
+	// a READY machine (before the epoch's first start) is a sprint being prepared, not
+	// a stop: no alarm (docs/SPEC-SPRINT.md section 14, "READY")
+	if merr == nil && !running && !machine.Done() && !machine.Ready() && n.Landed < n.All {
 		who := cmp.Or(machine.Who, "no one")
 		what := "the machine is STOPPED (by " + who
 		if machine.Cause != "" {
@@ -716,6 +718,8 @@ func coordinatorSum(v coordinatorView, known bool, m store.Machine) string {
 		state = "done"
 	case m.Running():
 		state = "running"
+	case m.Ready():
+		state = store.Ready // before the epoch's first start (section 14, "READY")
 	default:
 		state = "STOPPED"
 	}
