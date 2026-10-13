@@ -651,3 +651,4 @@ MCMachineReadyBrokenLeaveOne.cfg	MCMachineReady.tla	invariant	NeverAbsent	ignore
 MCMachineReadyBrokenCarryAdvance.cfg	MCMachineReady.tla	invariant	DefaultsAfterClear	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenOverwrite.cfg	MCMachineReady.tla	invariant	SetSurvives	ignore-terminal	machineready	required	-
 MCMachineReadyBrokenNoFallback.cfg	MCMachineReady.tla	invariant	ReadersSeeWorking	ignore-terminal	machineready	required	-
+MCMachineReadyBrokenRerunAdvance.cfg	MCMachineReady.tla	invariant	CarrySurvives	ignore-terminal	machineready	required	-

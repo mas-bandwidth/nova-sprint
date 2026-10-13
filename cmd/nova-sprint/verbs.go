@@ -3884,6 +3884,9 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
 	pegged := fs.String("pegged-bound", "", fmt.Sprintf("how long a member up with no card working may beat at %.0f%% load or more before it is a judgment to the coordinator (member-pegged, once an episode): a duration, or default (%s)", sprint.HeavyLoadPercent, sprint.PeggedBoundDefault))
 	unserved := fs.String("unserved-tier-falls-to", "", "the tier an unserved card falls to: heavy, pro or flash gives every card whose brief tier no route and no up friend serves the strongest served tier at or below it, and clears it when the tier is served again; off (the default) keeps today's behaviour")
+	if a.onSetFlags != nil {
+		a.onSetFlags(fs)
+	}
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
@@ -4347,6 +4350,11 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 	if res.Restored {
 		extra += " restored=yes"
 	}
+	if res.Owed {
+		// the newest epoch was left by a clear that stopped before its set-defaults step:
+		// this one finished it there and advanced nothing
+		extra += " owed=defaults-finished"
+	}
 	if res.Machine != "" {
 		extra += " machine=" + res.Machine + "->" + store.Stopped
 	}
@@ -4357,7 +4365,7 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 			heldN[strings.ReplaceAll(k, " ", "_")] = v
 		}
 		sayOK(stdout, true, "clear", "", map[string]any{"from": res.From, "to": res.To, "at": res.At.UTC().Format(time.RFC3339), "held": heldN,
-			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults})
+			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults, "owed": res.Owed})
 		return 0
 	}
 	fmt.Fprintf(stdout, "CLEAR OK epoch=%d->%d at=%s held: %s%s\n", res.From, res.To, res.At.UTC().Format(time.RFC3339), strings.Join(held, " "), extra)

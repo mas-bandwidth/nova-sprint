@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -155,11 +156,12 @@ func TestASetBetweenTheAdvanceAndTheDefaultsSurvives(t *testing.T) {
 	h := newHarness(t)
 	h.must(SetStep(sprint.SetReq{Who: "tester", AlarmReview: "9"}))
 	ran := false
-	h.st.beforeDefaults = func(next *Store) {
+	h.st.beforeDefaults = func(next *Store) error {
 		ran = true
 		res, err := next.Run(h.ctx, SetStep(sprint.SetReq{Who: "tester", ReadCards: sprint.SwitchOff, AlarmReview: "7"}))
 		require.NoError(t, err)
 		require.Empty(t, res.Refused, "the set in the new epoch: %v", res.Refused)
+		return nil
 	}
 	res, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
@@ -246,4 +248,61 @@ func TestEveryBarHasADeclaredDefault(t *testing.T) {
 			assert.Equal(t, "", *p, "%s left empty: nova-config declares no default", name)
 		}
 	}
+}
+
+// A clear whose set-defaults step fails after the advance (a crash; the step's failure
+// says run clear again) leaves the new epoch owed. The clear run again finishes that
+// step, carrying the coordinator's settings from the newest epoch that completed its own,
+// and advances nothing: the epoch is the one the crashed clear advanced to, the carried
+// thresholds and base are the coordinator's, and the reset lines are named (the cold read
+// of #190 at c4a5a3f; tla/MachineReady.tla CarrySurvives).
+func TestAClearRunAgainAfterACrashFinishesTheOwedStepAndCarries(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.must(SetStep(sprint.SetReq{Who: "tester", AlarmReview: "3", AlarmFleet: "70", ReadCards: sprint.SwitchOff}))
+	writeProps(h, h.st, map[string]string{sprint.PropSprintBase: "sprint/v9", sprint.PropTwinBriefs: "/srv/twins"}, "carry-props")
+	// a first clear completes: epoch 1 carries the coordinator's settings and holds its marker
+	res, err := h.st.Clear(h.ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), res.To)
+	_, marked := h.snap().Work.Prop(sprint.PropDefaultsSet)
+	require.True(t, marked, "a completed clear marks its epoch")
+
+	// the second clear crashes between its advance and its step
+	h.st.beforeDefaults = func(*Store) error { return errors.New("crashed before the set-defaults step") }
+	_, err = h.st.Clear(h.ctx)
+	require.Error(t, err)
+	h.st.beforeDefaults = nil
+	s := h.snap()
+	es, err := h.st.EpochNow(h.ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), es.N, "the crashed clear advanced to epoch 2")
+	_, marked = s.Work.Prop(sprint.PropDefaultsSet)
+	require.False(t, marked, "epoch 2 is owed its step")
+
+	// run clear again: it finishes epoch 2's step and advances nothing
+	res, err = h.st.Clear(h.ctx)
+	require.NoError(t, err)
+	assert.True(t, res.Owed, "the clear finished the owed step")
+	assert.Equal(t, uint64(1), res.From, "carried from epoch 1, the newest that completed its step")
+	assert.Equal(t, uint64(2), res.To, "no second advance")
+	es, err = h.st.EpochNow(h.ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), es.N, "still epoch 2")
+	s = h.snap()
+	for prop, want := range map[string]string{sprint.PropAlarmReview: "3", sprint.PropAlarmFleet: "70", sprint.PropSprintBase: "sprint/v9",
+		sprint.PropTwinBriefs: "/srv/twins", sprint.PropAlarmMerging: sprint.AlarmMergingWorking, sprint.PropReadCards: sprint.ReadCardsOnWord,
+		sprint.PropDefaultsSet: "1"} {
+		v, _ := s.Work.Prop(prop)
+		assert.Equal(t, want, v, "%s after the owed step", prop)
+	}
+	assert.True(t, s.ReadCardsOn())
+
+	// and the next clear advances again as usual
+	res, err = h.st.Clear(h.ctx)
+	require.NoError(t, err)
+	assert.False(t, res.Owed)
+	assert.Equal(t, uint64(3), res.To)
+	v, _ := h.snap().Work.Prop(sprint.PropAlarmReview)
+	assert.Equal(t, "3", v, "still carried")
 }

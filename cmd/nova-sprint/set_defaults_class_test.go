@@ -1,11 +1,8 @@
 package main
 
 import (
-	"go/ast"
-	"go/parser"
-	gotoken "go/token"
+	"flag"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -15,39 +12,31 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// setVerbFlags is every flag cmdSet declares (fs.String, fs.Bool, ... with a literal name),
-// read from the verb's own source, so a flag added to `set` by any path (a SetReq field or a
-// With* wrapper) is seen.
+// verbOwnFlags is every flag of fs that the verb itself declares: every flag fs holds but
+// the common ones (common, the set a bare verbSetup registers).
+func verbOwnFlags(fs, common *flag.FlagSet) []string {
+	var out []string
+	fs.VisitAll(func(f *flag.Flag) {
+		if common.Lookup(f.Name) == nil {
+			out = append(out, f.Name)
+		}
+	})
+	slices.Sort(out)
+	return out
+}
+
+// setVerbFlags is the set verb's own flags, read at run time from the very FlagSet cmdSet
+// builds (app.onSetFlags), so a flag added by any path (a SetReq field or a With* wrapper)
+// is seen and none is missed.
 func setVerbFlags(t *testing.T) []string {
 	t.Helper()
-	f, err := parser.ParseFile(gotoken.NewFileSet(), "verbs.go", nil, 0)
-	require.NoError(t, err)
-	var out []string
-	for _, d := range f.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "cmdSet" {
-			continue
-		}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) == 0 {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			if id, ok := sel.X.(*ast.Ident); !ok || id.Name != "fs" {
-				return true
-			}
-			if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == gotoken.STRING {
-				name, _ := strconv.Unquote(lit.Value)
-				out = append(out, name)
-			}
-			return true
-		})
-	}
-	return out
+	ta := newTestApp(t)
+	var got *flag.FlagSet
+	ta.a.onSetFlags = func(fs flagSet) { got = fs }
+	ta.do("set") // cmdSet builds its flags, hands them over, then refuses: nothing to set
+	require.NotNil(t, got, "cmdSet handed its flag set over")
+	common, _ := ta.a.verbSetup("set")
+	return verbOwnFlags(got, common)
 }
 
 // undeclaredFlags is every flag that is neither a listed non-setting nor maps to a
@@ -71,16 +60,26 @@ func undeclaredFlags(flags []string) []string {
 }
 
 // TestEverySetFlagHasADeclaredDefault is the class test over the `set` verb's full flag
-// list (its SetReq fields and its With* wrappers alike: friend-finish, pegged-bound, base):
-// each flag maps to a Defaults row the clear's set-defaults step writes or carries, or is a
-// listed non-setting. Reversed witness: a new flag with no row is red.
+// list, enumerated from its real FlagSet at run time (its SetReq fields and its With*
+// wrappers alike: friend-finish, pegged-bound, base): each flag maps to a Defaults row the
+// clear's set-defaults step writes or carries, or is a listed non-setting. Reversed
+// witnesses: the enumeration, fed a fake flag set with one flag more, names it; a new flag
+// with no row is red.
 func TestEverySetFlagHasADeclaredDefault(t *testing.T) {
 	t.Parallel()
 	flags := setVerbFlags(t)
-	require.GreaterOrEqual(t, len(flags), 20, "the set verb's flags were read: %v", flags)
-	for _, want := range []string{"friend-finish", "pegged-bound", "base", "read-cards", "alarm-ready"} {
+	for _, want := range []string{"friend-finish", "pegged-bound", "base", "read-cards", "alarm-ready", "unserved-tier-falls-to"} {
 		require.Contains(t, flags, want, "the wrapper flags are read too")
 	}
 	assert.Empty(t, undeclaredFlags(flags), "a set flag with no declared default")
-	assert.Equal(t, []string{"--new-knob (new_knob)"}, undeclaredFlags(append(flags, "new-knob")), "the witness is red")
+
+	// the enumeration's witness: a fake verb flag set, the common flags plus two of its own
+	common := flag.NewFlagSet("set", flag.ContinueOnError)
+	common.String("actor", "", "")
+	fake := flag.NewFlagSet("set", flag.ContinueOnError)
+	fake.String("actor", "", "")
+	fake.String("read-cards", "", "")
+	fake.String("new-knob", "", "")
+	assert.Equal(t, []string{"new-knob", "read-cards"}, verbOwnFlags(fake, common), "the enumeration reads every own flag and no common one")
+	assert.Equal(t, []string{"--new-knob (new_knob)"}, undeclaredFlags(verbOwnFlags(fake, common)), "the witness is red")
 }

@@ -152,6 +152,9 @@ type app struct {
 	// beforePush, when set (a test), runs before each push land makes, with
 	// the attempt (1, then 2 after the base moved).
 	beforePush func(attempt int)
+	// onSetFlags, when set (a test), is given the set verb's whole flag set before it parses
+	// (TestEverySetFlagHasADeclaredDefault reads every flag at run time).
+	onSetFlags func(fs flagSet)
 	// gateRan, when set (a test), runs before each tree gate land runs, with the directory
 	// gated and whether the tree tests run: the count of gates a pass makes (landpass.go).
 	gateRan func(dir string, tests bool)

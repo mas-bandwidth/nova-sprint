@@ -109,8 +109,9 @@ type Store struct {
 	// reading the table whole. nil: every load reads its tables whole.
 	lc *LoadCache
 	// beforeDefaults, when set (a test), runs between a clear's epoch advance and its
-	// set-defaults step, given the store pinned to the new epoch (clear.go).
-	beforeDefaults func(next *Store)
+	// set-defaults step, given the store pinned to the new epoch (clear.go); an error stops
+	// the clear there, as a crash between the two would.
+	beforeDefaults func(next *Store) error
 	// LockAfterLoss has a part of the tick that lost a try take the fence
 	// before its next read (lock.go). The program's stores set it; a test
 	// harness whose other writers write from inside a part's plan (a writer

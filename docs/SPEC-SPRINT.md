@@ -7785,7 +7785,12 @@ advance and is never overwritten. So no setting of a cleared epoch is absent, no
 of the old epoch's `prop` values is carried, and no clear ever turns an alarm off
 (the owner, 2026-10-11: "never turn off alarms or warnings"). `clear` names each
 `prop` value it reset on a `CLEAR DEFAULT <name> was <v>, now <default>` line
-(`--json`: `defaults`). A reader of a cleared epoch before its step (a start that
+(`--json`: `defaults`). The step marks its epoch (the property `defaults_set`); a clear
+that stopped between its advance and its step leaves the new epoch unmarked, and
+the `clear` run again (as the step's failure says) finishes that step, carrying from
+the newest epoch that completed its own, and advances nothing (`CLEAR OK ...
+owed=defaults-finished`), so a crash never loses the coordinator's carried settings.
+A reader of a cleared epoch before its step (a start that
 landed inside the clear, or a clear that stopped before its step) reads each absent
 setting as its default, the alarms included. The first epoch, which init leaves
 with no property, keeps each accessor's own absent case (the alarms off until set).
@@ -7802,9 +7807,9 @@ The class tests hold every flag of `set` (TestEverySetFlagHasADeclaredDefault),
 every `Prop*` constant (TestEveryPropIsASettingOrState), every field of SetReq and
 Shape (TestEverySettingHasADeclaredDefault), and every Bars field and sprint-row
 field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The model
-is tla/MachineReady.tla (SetDefaults, Set, Read; DefaultsAfterClear, SetSurvives,
-NeverAbsent, ReadersSeeWorking; witnesses leaveone, carryadvance, overwrite and
-nofallback).
+is tla/MachineReady.tla (SetDefaults, Set, Read; DefaultsAfterClear, SetSurvives, CarrySurvives,
+NeverAbsent, ReadersSeeWorking; witnesses leaveone, carryadvance, overwrite,
+nofallback and rerunadvance).
 
 
 <a id="14-the-machine"></a>

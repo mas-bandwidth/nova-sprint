@@ -31,6 +31,12 @@ const (
 	HomeShape = "shape"
 )
 
+// PropDefaultsSet is the work table's per-epoch marker that the epoch's set-defaults step
+// ran: written in the same step as the defaults (SetDefaults). A cleared epoch without it
+// is owed the step (store.defaultsOwed): a clear run again over it finishes the step,
+// carrying from the newest epoch with the marker, and advances nothing.
+const PropDefaultsSet = "defaults_set"
+
 // ShapeCarried is a shape row's Value: the old epoch's, carried by the clear.
 const ShapeCarried = "carried"
 
@@ -157,6 +163,7 @@ var NotSettingProps = []string{
 	PropFriendSync, PropIdleSaid, PropIdleSince, PropLandRefusal, PropLandingStallSaid, PropLandingStallSince,
 	PropLastLanding, PropMergeWindowReason, PropMergeWindowUntil, PropPromotedAt, PropPromotedSha,
 	PropCarriedMedians, PropCostReconcilePrefix, PropReadsWindow, PropStatusSeen,
+	PropDefaultsSet,
 }
 
 // SetFlagProp is the property a flag of `set` writes where it is not the flag's own name
@@ -231,6 +238,9 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: d.Name, Value: want, WasAbsent: true})
 		wrote = append(wrote, d.Name+" "+want)
 	}
+	if s == nil || s.Work == nil || !hasProp(s.Work, PropDefaultsSet) {
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropDefaultsSet, Value: "1", WasAbsent: true})
+	}
 	if len(wrote) > 0 {
 		p.Units = append(p.Units, Unit{Key: "defaults", Moved: "sprint defaults " + strings.Join(wrote, ", ")})
 	}
@@ -264,4 +274,9 @@ func sprintRowDefault(field string) string {
 		return ""
 	}
 	return f.Default
+}
+
+func hasProp(t *Table, name string) bool {
+	_, ok := t.Prop(name)
+	return ok
 }
