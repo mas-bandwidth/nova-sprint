@@ -827,7 +827,7 @@ R65. **Docs are written in the present tense: no parked names, dates or history.
     Why: docs read as archaeology.
     Done by: judgment.
 
-R66. **Every tool is built to the [Nova Tools standard](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/STANDARD.md), each rule naming its class test.**
+R66. **Every tool is built to the standard (docs/STANDARD.md), each rule naming its class test.**
     Why: tools were built inconsistently.
     Done by: judgment.
 
