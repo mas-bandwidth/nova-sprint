@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ usage:
   nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
+  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
   nova-card template
   nova-card version
   nova-card help [<verb>]
@@ -181,10 +182,19 @@ type multi []string
 func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
+type lintFindingJSON struct {
+	Rule    string `json:"rule"`
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Excerpt string `json:"excerpt"`
+	Remedy  string `json:"remedy"`
+}
+
 func cmdLint(args []string, stdout, stderr io.Writer) int {
 	fs := verbflag.New("lint")
 	var cards multi
 	fs.Var(&cards, "card", "a brief `file` to hold to the add's lint; repeat for more")
+	asJSON := fs.Bool("json", false, "print one JSON object with a findings array instead of the lines")
 	opts := lintFlags(fs)
 	if err := verbflag.Parse(fs, args); err != nil {
 		return refuse(stderr, "lint", verbflag.Explain(fs, err))
@@ -193,6 +203,7 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "lint", "wants --card <file>, one per brief, and nothing else")
 	}
 	red := 0
+	var all []lintFindingJSON
 	for _, file := range cards {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -201,13 +212,28 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 		id := strings.TrimSuffix(filepath.Base(file), ".md")
 		findings := card.Lint(id, string(raw), opts())
 		for _, f := range findings {
-			fmt.Fprintln(stdout, oneline.Escape(f.String()))
+			if *asJSON {
+				all = append(all, lintFindingJSON{Rule: f.Check, File: file, Line: f.Line, Excerpt: f.Excerpt, Remedy: "fix the brief so check " + f.Check + " passes"})
+			} else {
+				fmt.Fprintln(stdout, oneline.Escape(f.String()))
+			}
 		}
 		if len(findings) > 0 {
 			red++
 			continue
 		}
-		fmt.Fprintf(stdout, "LINT OK file=%s\n", oneline.Field(file))
+		if !*asJSON {
+			fmt.Fprintf(stdout, "LINT OK file=%s\n", oneline.Field(file))
+		}
+	}
+	if *asJSON {
+		if all == nil {
+			all = []lintFindingJSON{}
+		}
+		enc, _ := json.Marshal(struct {
+			Findings []lintFindingJSON `json:"findings"`
+		}{Findings: all})
+		fmt.Fprintln(stdout, string(enc))
 	}
 	if red > 0 {
 		return 1
