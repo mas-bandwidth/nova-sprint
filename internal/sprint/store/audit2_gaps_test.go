@@ -164,6 +164,12 @@ func TestAutoSentinelDoesNotDependOnAcknowledgment(t *testing.T) {
 	h.machine()
 	h.machine()
 	require.Equal(t, sprint.Landed, h.state("stop"))
+	if h.state("after") != sprint.Working {
+		s := h.snap()
+		proofs := h.st.ConsumerTrunk(h.ctx, s)
+		plan, _ := sprint.TickDeal(s, sprint.TickReq{ConsumerMerges: proofs})
+		t.Logf("consumer deal diagnostic: up=%v proof=%+v plan=%+v", s.UpMembers(), proofs, plan)
+	}
 	require.Equal(t, sprint.Working, h.state("after"), "consumer progresses after the declared actual merge observation")
 	h.readInbox()
 	h.a2Run(10*time.Hour, 5*time.Minute)
