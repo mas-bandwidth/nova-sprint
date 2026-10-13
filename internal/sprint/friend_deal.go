@@ -654,6 +654,9 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if c.Col != Ready || IsSentinel(c) {
 			continue
 		}
+		if !ConsumerTrunkReady(s, c) {
+			continue
+		}
 		// a primary whose named needs have not landed is dealt to no friend
 		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor)
 		if len(WaitsFor(s, c, nil)) > 0 {

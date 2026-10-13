@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -451,4 +452,22 @@ func TestAFriendWithNoRolesIsDealtWorkAndAskedARead(t *testing.T) {
 	putReview(w2, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
 	askReaders(t, w2, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}})
 	require.NotNil(t, w2.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend with no role list is asked the read, as before roles")
+}
+
+func TestFriendDealWaitsForConsumerTrunkMerge(t *testing.T) {
+	w := friendWorld(t, friendBrief("only friend amy"))
+	c := w.s.Primary("s1-1")
+	stop := &Card{ID: "stop", Row: "s1", Col: Landed, Fields: map[string]string{"kind": "sentinel", "release_kind": "automatic"}}
+	w.s.Work.Put(stop)
+	c.Fields["needs"] = "stop"
+	seats := []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash,pro,heavy,frontier", Roles: []string{RoleBuilder}}}
+	p, _, _ := friendDeal(w.s, []*Card{c}, seats)
+	require.Empty(t, p.Units)
+	proof := ConsumerMerge{Epoch: w.s.Epoch, Card: SentinelCardOf(c), Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Branch: StreamBranch(w.s, c.Row), Trunk: Trunk(w.s, c.Row), Observed: "trunk", Merged: "merged", Success: false, ContainsObserved: true}
+	w.s.ConsumerMerges = []ConsumerMerge{proof}
+	p, _, _ = friendDeal(w.s, []*Card{c}, seats)
+	require.Empty(t, p.Units)
+	w.s.ConsumerMerges[0].Success = true
+	p, _, _ = friendDeal(w.s, []*Card{c}, seats)
+	require.NotEmpty(t, p.Units, "identical successful merge must allow the eligible friend")
 }
