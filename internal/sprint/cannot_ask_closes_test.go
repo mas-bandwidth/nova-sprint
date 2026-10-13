@@ -82,7 +82,7 @@ func TestACannotAskClosesWhenAReaderMayRead(t *testing.T) {
 				if len(closes) > 0 {
 					w.s.Acked = nil
 				} // world.closeAll handles Open; the store removes both lists
-				ask := w.part(TickAsk, TickReq{Friends: seats})
+				ask := w.part(friendAskPart(TickAsk), TickReq{Friends: seats})
 				closes = append(closes, ask.Closes...)
 				require.Len(t, closes, 1)
 				require.Equal(t, j.Key, closes[0].Key)
