@@ -113,36 +113,40 @@ func basesInUse(s *sprint.Snapshot) []baseRow {
 			marks[base] = mark{gate, t}
 		}
 	}
-	baseOf := func(c *sprint.Card) (repo, base string) {
-		cb := swarm.ReadCardBase([]byte(c.F("brief")))
-		return cb.Repo, cb.Ref
-	}
 	byKey := map[[2]string]*baseRow{}
-	for _, c := range s.Work.Cards() {
-		if !c.Placed() || c.F("kind") == "sentinel" {
-			continue
-		}
-		repo, base := baseOf(c)
-		if base == "" {
-			continue
-		}
-		if c.Col == sprint.Landed {
-			record(base, "green", c.F("landed"))
-			continue
-		}
-		k := [2]string{repo, base}
-		if byKey[k] == nil {
-			byKey[k] = &baseRow{Base: base, Repo: repo, Cards: map[string][]string{}}
-		}
-		byKey[k].N++
-		byKey[k].Cards[c.Col] = append(byKey[k].Cards[c.Col], c.ID)
-	}
 	for _, stream := range s.Streams() {
+		_, streamBases := sprint.StreamReposAndBases(s, stream)
+		for _, col := range append(baseStates, sprint.Landed) {
+			for _, c := range s.Work.Cell(stream, col) {
+				if c.F("kind") == "sentinel" {
+					continue
+				}
+				repo, base := sprint.CardRepoAndBase(s, c)
+				if base == "" {
+					continue
+				}
+				if col == sprint.Landed {
+					record(base, "green", c.F("landed"))
+					continue
+				}
+				k := [2]string{repo, base}
+				if byKey[k] == nil {
+					byKey[k] = &baseRow{Base: base, Repo: repo, Cards: map[string][]string{}}
+				}
+				byKey[k].N++
+				byKey[k].Cards[col] = append(byKey[k].Cards[col], c.ID)
+			}
+		}
 		ctl := s.StreamCtl(stream)
-		if ctl.F("state") == sprint.StreamStopped && ctl.F("cause") == "base" {
+		if ctl != nil && ctl.F("state") == sprint.StreamStopped && ctl.F("cause") == "base" {
 			for _, c := range s.Work.Cell(stream, sprint.Merging) {
-				_, base := baseOf(c)
-				record(base, "red", ctl.F("since"))
+				_, base := sprint.CardRepoAndBase(s, c)
+				if base != "" {
+					record(base, "red", ctl.F("since"))
+				}
+			}
+			if len(s.Work.Cell(stream, sprint.Merging)) == 0 && len(streamBases) > 0 {
+				record(streamBases[0], "red", ctl.F("since"))
 			}
 		}
 	}

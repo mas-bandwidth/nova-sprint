@@ -408,6 +408,7 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 // plans folded into the deadlines part, so the needs check runs every tick
 // without an operation of its own (rule (b),
 // every-need-names-a-live-card-checked-every-second).
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p, n := TickDeadlines(s, r)
 	q, _ := TickFleetFailure(s, r)
@@ -416,6 +417,8 @@ func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p.Notes = append(p.Notes, h.Notes...)
 	needs, _ := TickNeeds(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, needs.Notes...), append(p.Closes, needs.Closes...), append(p.Updates, needs.Updates...)
+	blocked, _ := TickNeedBlocked(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, blocked.Notes...), append(p.Closes, blocked.Closes...), append(p.Updates, blocked.Updates...)
 	return p, n
 }
 
@@ -1097,6 +1100,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	p.Rows, p.Units, p.Refused = append(p.Rows, fp.Rows...), append(p.Units, fp.Units...), append(p.Refused, fp.Refused...)
+	p.Refused = append(p.Refused, reads.Refused...)
 	p.Props = append(p.Props, fp.Props...)
 	p.Props = append(p.Props, reads.Props...)
 	for _, row := range reads.Rows {
@@ -1724,6 +1728,8 @@ func openJudgmentOn(s *Snapshot, subject string) bool {
 // LateOnlyWhileLive: a withdrawn take raises none and closes one open). It
 // keeps the backlog alarms too (tickAlarms, docs/SPEC-SPRINT.md section 8,
 // "Backlog alarms").
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	var conds []cond
@@ -1809,11 +1815,29 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	// N6: a stream merging, or waiting with queued cards, with no merge step.
+	covered := CoveredDependents(s)
 	for _, st := range s.Merge.Rows() {
 		ctl := s.StreamCtl(st)
 		state := ctl.F("state")
 		if state != StreamMerging && (state != StreamWaiting || s.Merge.Count(st, Queued) <= 0) {
 			continue
+		}
+		// tla/NeedsBlocked.tla BlockedDependentsCovered
+		// a stream whose every unlanded card is a covered dependent raises no NMergeLate
+		unlanded := s.Work.openLine(st)
+		if len(unlanded) > 0 {
+			allCovered := true
+			for _, uc := range unlanded {
+				if uc.Placed() && uc.Col != Landed && !IsSentinel(uc) {
+					if _, ok := covered[uc.ID]; !ok {
+						allCovered = false
+						break
+					}
+				}
+			}
+			if allCovered {
+				continue
+			}
 		}
 		last := max(ctl.F("since"), ctl.F("moved"))
 		if d, ok := r.running(s.Now, last); ok && d > DeadlineMergeIdle {
@@ -1965,8 +1989,10 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 
 // JudgmentOverdue says the judgment is past its due time in running time: its review
 // time when the coordinator set one (wait), else DeadlineJudgment after it was written.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func JudgmentOverdue(s *Snapshot, r TickReq, n Note) bool {
-	if quietedByTier(s, n) {
+	if quietedByTier(s, n) || quietedByBlocker(s, n) {
 		return false
 	}
 	if !n.Review.IsZero() {
@@ -2008,6 +2034,28 @@ func quietedByTier(s *Snapshot, n Note) bool {
 		return false
 	}
 	return s.everyHeldCardTierBlocked(cards)
+}
+
+// quietedByBlocker says the judgment is quieted by an active blocker judgment:
+// neither NNeedBlocked nor the blocker's holding judgment is counted overdue or seat-silent.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
+func quietedByBlocker(s *Snapshot, n Note) bool {
+	if s == nil {
+		return false
+	}
+	if n.Type == NNeedBlocked {
+		return true
+	}
+	if contains(NeedHoldingKinds, n.Type) {
+		cards := cardsHeldBy(n)
+		for _, b := range Blockers(s) {
+			if contains(cards, b.ID) && len(b.Dependents) > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cond is a condition the tick tells the coordinator of: a judgment of a type

@@ -102,7 +102,12 @@ func WaitRefusedKinds() []string {
 
 // WaitRefusal is why wait is refused on the judgment n: it holds a card from progressing,
 // and what to run instead; "" when a wait may hold it (an informational kind).
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func WaitRefusal(n Note) string {
+	if n.Type == NNeedBlocked {
+		return fmt.Sprintf("%s (%s) cannot be waited: decide the blocker (rework it on a higher tier, or drop it), or remove its needs; run: nova-sprint inbox --open %s", n.ID, n.Type, n.ID)
+	}
 	instead, ok := WaitRefused[n.Type]
 	if c, cardOnly := WaitRefusedWhenItNamesACard[n.Type]; !ok && cardOnly && !n.StreamLevel && !n.SprintLevel && len(n.Primaries) > 0 {
 		instead, ok = c, true
@@ -144,9 +149,14 @@ func WaitRefusalOn(n Note, onWork func(id string) bool) string {
 // WaitRefusedAction is the action WaitRefused names in place of a wait on the judgment n: the
 // one table's text for the kind, or "" when the kind takes a wait. A kind of
 // WaitRefusedWhenItNamesACard names it only when the judgment names a card.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func WaitRefusedAction(n Note) string {
 	if n.Kind != Judgment {
 		return ""
+	}
+	if n.Type == NNeedBlocked {
+		return "decide the blocker (rework it on a higher tier, or drop it), or remove its needs"
 	}
 	if instead, ok := WaitRefused[n.Type]; ok {
 		return instead

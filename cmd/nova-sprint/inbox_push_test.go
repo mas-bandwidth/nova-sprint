@@ -125,7 +125,7 @@ func TestInboxWaitEndsWhenTheMachineStops(t *testing.T) {
 	})
 	out := ta.ok("inbox --wait --timeout 1m")
 	assert.Contains(t, out, "inbox --wait: the machine stopped\n", out)
-	assert.Contains(t, out, "machine: STOPPED by coordinator: r, back by ", out)
+	assert.Contains(t, out, "machine: STOPPED, expected back by ", out)
 }
 
 // inbox --wait --push <dir> writes every judgment the directory does not hold

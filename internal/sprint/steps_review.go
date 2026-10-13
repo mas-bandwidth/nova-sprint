@@ -2358,15 +2358,26 @@ func stillGone(gone, named []string) bool {
 // left to the resolve part, which already judges the same facts (NBlocked,
 // NMissingNeed) as it moves it; every other unlanded state is judged here. A
 // judgment whose need is landed, waived or re-pointed closes.
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func TickNeeds(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	opens := map[string][]Open{}
 	for _, o := range s.Open {
 		opens[o.Subject()] = append(opens[o.Subject()], o)
 	}
+	covered := CoveredDependents(s)
 	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
 		for _, c := range s.Work.Column(st) {
 			if IsSentinel(c) {
+				continue
+			}
+			if blockerID, isCovered := covered[c.ID]; isCovered {
+				for _, o := range opens[c.ID] {
+					if o.Note.Type == NNeedsGone {
+						p.Closes = append(p.Closes, o)
+						p.Notes = append(p.Notes, decided(o, "covered by "+blockerID, r.who(), s.Now, c.ID))
+					}
+				}
 				continue
 			}
 			gone := goneNamedNeeds(s, c)
@@ -2475,6 +2486,8 @@ type DropReq struct {
 // with it the dependants and their dependants go too. --relink re-points the
 // need of each dependent to a new card; --waive removes the need from each
 // dependent (docs/SPEC-SPRINT.md section 11).
+//
+// tla/NeedsBlocked.tla NoStrandingDrop
 func Drop(s *Snapshot, r DropReq) Plan {
 	var p Plan
 	var all []*Card
@@ -2521,10 +2534,12 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		// names one of the dropping cards no longer names a card that is gone:
 		// its need is re-pointed at the new card (--relink) or removed and
 		// recorded with the reason (--waive), so no unlanded card is left
-		// stranded (rule (a), every-need-names-a-live-card-checked-every-second).
-		if r.Relink != "" && s.Work.Placed(r.Relink) == nil {
-			p.refuse(r.Relink, r.Relink+" is no primary on the table; nothing was changed")
-			return p
+		// tla/NeedsBlocked.tla NoStrandingDrop
+		if r.Relink != "" {
+			if unres := UnresolvedNeeds(s, "", []string{r.Relink}, nil); len(unres) > 0 {
+				p.refuse(r.Relink, fmt.Sprintf("relink target %s is unresolved (%s): %s; nothing was changed", r.Relink, unres[0].Reason, unres[0].Words))
+				return p
+			}
 		}
 		// one rewrite per dependent, however many dropping cards it names
 		dependents := map[string]bool{}
