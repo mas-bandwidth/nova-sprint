@@ -91,6 +91,8 @@ func jobs(t *testing.T, root, friend string, inbox []string, working []string, d
 func TestTheFriendsTableCountsTheFriendsSprintCards(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendApp(t, "amy", "bob", "cat")
+	ta.m.SetRoutes(nil) // The fixture measures friend work, without fleet route competition.
+	ta.ok("set --read-cards off")
 	ta.a.tip = tipIs(t, landHead)
 	root := t.TempDir()
 	ta.ok("friend sync --root " + root)

@@ -115,6 +115,8 @@ func TestFriendSyncFinishesALandReportAndTheCardReachesReview(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ta, root := friendCardApp(t, "friend", "amy")
+			ta.m.SetRoutes(nil) // This flow runs and reads on independent friend/legacy models.
+			ta.ok("set --read-cards off")
 			ta.ok("tick")
 			ta.ok("friend sync --root " + root)
 			outboxReport(t, root, "amy", "s1-1.w1", tc.prefix+"Verdict: LAND\nHead: "+landHead+"\n\nThe change is pushed and the gate is green.\nTwo files.\n\nMore detail.\n")

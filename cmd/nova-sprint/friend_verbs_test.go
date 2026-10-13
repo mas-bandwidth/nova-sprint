@@ -136,6 +136,7 @@ func TestFriendLevelMovesAQueuedCardAndTheQueueFilesFollow(t *testing.T) {
 func TestFriendLevelRespectsOneShotDeliveryMode(t *testing.T) {
 	t.Parallel()
 	ta, cfg := friendApp(t)
+	ta.m.SetRoutes(nil) // A friend-only queue has no competing fleet execution route.
 	ta.a.tip = func(_ context.Context, _, _ string) (string, error) { return "", nil }
 	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"tiers": "flash", "width": "2", "mode": "batch"}}, "t")
 	require.NoError(t, err)
