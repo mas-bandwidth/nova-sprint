@@ -58,6 +58,11 @@ func alarmValid(prop, v string) bool {
 // when it is off (no property, off, or a value it does not take).
 func (s *Snapshot) alarmSetting(prop string) (int, bool) {
 	v, ok := s.Work.Prop(prop)
+	if !ok {
+		// a cleared epoch reads its working threshold before its set-defaults step ran
+		// (a start inside the clear): never an absent off (defaults.go clearedDefault)
+		v, ok = s.clearedDefault(prop)
+	}
 	if !ok || !alarmValid(prop, v) || v == AlarmOff {
 		return 0, false
 	}

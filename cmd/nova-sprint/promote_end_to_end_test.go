@@ -573,7 +573,7 @@ func TestPromoteCarriesACutToARecordedPromotion(t *testing.T) {
 }
 
 // TestPromoteRefusesWithoutAMachineIdentity proves the promotion refuses to cut, naming the
-// setting, when the sprint row names no git_identity: the cut is the machine's own commit
+// setting, when the sprint row's git_identity does not parse: the cut is the machine's own commit
 // and must never be taken under the host's global git config (docs/SPEC-SPRINT.md, the
 // machine's commit identity).
 func TestPromoteRefusesWithoutAMachineIdentity(t *testing.T) {
@@ -583,7 +583,7 @@ func TestPromoteRefusesWithoutAMachineIdentity(t *testing.T) {
 	f := &fakeForge{}
 	useForge(t, w, f)
 	ta := promoteApp(t, w)
-	ta.m.SetGitIdentity("")
+	ta.m.SetGitIdentity("nobody") // malformed: an empty row reads the machine identity (sprint.Defaults)
 
 	code, out, errs := ta.do("promote --once --branch sprint/live --poll 1m --repo-dir " + w.dir)
 	require.Equal(t, 2, code, "%s\n%s", out, errs)

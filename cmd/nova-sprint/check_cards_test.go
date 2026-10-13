@@ -35,6 +35,7 @@ func gateOn(t *testing.T) *testApp {
 	}
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("clear --confirm sprint")
+	ta.m.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "plan", Funded: false}})
 	return ta
 }
 

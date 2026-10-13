@@ -2047,7 +2047,11 @@ func (r readOnly) Epoch(ctx context.Context) (EpochState, error) {
 func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time) (bool, error) {
 	return false, ErrReadOnly
 }
-func (r readOnly) SettleEpoch(context.Context, uint64) error { return ErrReadOnly }
+func (r readOnly) SettleEpoch(context.Context, uint64) error    { return ErrReadOnly }
+func (r readOnly) SettleDefaults(context.Context, uint64) error { return ErrReadOnly }
+func (r readOnly) GuardedRows(context.Context, RestoreGuard, []RowWrite) (GuardOutcome, error) {
+	return GuardApplied, ErrReadOnly
+}
 func (r readOnly) AtEpoch(epoch uint64, old bool) Backend {
 	return readOnly{b: r.b.AtEpoch(epoch, old)}
 }

@@ -29,10 +29,17 @@ func TestEveryDefaultsRowDeclaresWhetherItCanBeNonWorking(t *testing.T) {
 		UnservedTierFallsTo: ReadTierDefault, ReworkPriority: ReworkKeep,
 		AlarmReview: AlarmOff, AlarmMerging: AlarmOff, AlarmFleet: AlarmOff, AlarmReady: AlarmOff})
 	require.Empty(t, p.Refused, "a set of every sprint setting")
+	// every work-table setting the clear writes or carries (sprint.Defaults), and the
+	// settings outside the work table the gate reads
 	rows := []string{SettingGitIdentity, SettingMaxAttempts, SettingReaders, SettingLand}
+	for _, d := range Defaults {
+		if d.Home == HomeProp || d.Home == HomeCarry {
+			rows = append(rows, d.Name)
+		}
+	}
 	for _, pw := range p.Props {
 		if pw.Name != PropSetBy {
-			rows = append(rows, pw.Name)
+			require.Contains(t, rows, pw.Name, "a property set writes has a Defaults row")
 		}
 	}
 	require.GreaterOrEqual(t, len(rows), 20, "every row read: %v", rows)

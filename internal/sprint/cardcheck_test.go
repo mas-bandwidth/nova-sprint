@@ -24,7 +24,7 @@ func checkBrief(id, base, paths string) string {
 // a readable display name, and s1-stop, s1's sentinel. a2 shares a1's file and needs it.
 func cardCheckFixture() *Snapshot {
 	s := &Snapshot{Now: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC), Work: NewTable(Work), Readers: NewTable(Readers),
-		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator"}
+		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator", Providers: map[string]Provider{"fixture": {Name: "fixture", Billing: "plan", Funded: false}}}
 	s.Work.SetRows([]string{"s1", "s2"})
 	s.Merge.SetRows([]string{"s1", "s2"})
 	for _, st := range []struct{ id, display string }{{"s1", "The first stream"}, {"s2", "The second stream"}} {
