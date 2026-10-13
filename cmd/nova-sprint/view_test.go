@@ -48,11 +48,21 @@ func item(v coordinatorView, key string) (viewItem, bool) {
 // fleet, and a read given the cursor leaves out what it already showed.
 func TestTheCoordinatorViewNamesAnIdleFleetAndItsRelease(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream s1 --count 2")
+	r := newLandRig(t)
+	r.m.SetGitIdentity("nova-sprint <nova-sprint@example.invalid>")
+	base := r.git(r.worker, "rev-parse", "HEAD")
+	r.git(r.worker, "checkout", "-q", "-b", "consumer", base)
+	consumerHead := r.commit("consumer.txt", "consumer\n", "consumer work")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/s1")
+	r.git(r.worker, "checkout", "-q", "main")
+	trunkHead := r.commit("trunk.txt", "trunk\n", "new trunk")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	ta := r.testApp
+	brief := filepath.Join(t.TempDir(), "view-card.md")
+	require.NoError(t, os.WriteFile(brief, []byte("view fixture\nREPO: "+r.remote+"\nBASE: main\n"), 0o600))
+	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
 	ta.ok("add --stream s1 --sentinel s1-stop")
-	ta.ok("add --stream s1 --count 2")
+	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
 	ta.ok("start")
 	ta.ok("tick")
 	ta.ok("tick")
@@ -86,9 +96,13 @@ func TestTheCoordinatorViewNamesAnIdleFleetAndItsRelease(t *testing.T) {
 	assert.Equal(t, len(v.Items), again.Same)
 	assert.Equal(t, 0, again.Gone)
 
-	// the release feeds the fleet: the dry alarm is gone, and the next read with the old cursor counts it
+	// The release feeds the fleet after the actual consumer branch merges the
+	// observed trunk; the dry alarm is gone and the old cursor counts it.
 	ta.ok("release s1-stop --reason 'the layer is green'")
 	ta.ok("tick")
+	merged := r.git(r.remote, "rev-parse", "refs/heads/sprint/s1")
+	r.git(r.remote, "merge-base", "--is-ancestor", trunkHead, merged)
+	r.git(r.remote, "merge-base", "--is-ancestor", consumerHead, merged)
 	after := ta.coordView("--since " + v.Cursor)
 	_, still := item(ta.coordView(""), "a:dry")
 	assert.False(t, still, "ready is no longer empty")
