@@ -7988,9 +7988,11 @@ all the card checks we do now, should be a new verb 'nova-sprint check'", "if yo
 sprint before checking, then it will fail and tell you to check."; tla/MachineReady.tla Check,
 CardChange, StartRefusedCheck, StartOnlyChecked, CleanRecordHasNoDefect). The night of
 2026-10-13 the seat ran the pre-start card checks by hand before the schema sprint could start.
-`nova-sprint check cards [--stream <s>...] [--json]`, a coordinator verb beside `check` (the
+`nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]`, a coordinator verb beside `check` (the
 store's invariants, unchanged), reads the epoch's work table (every card not dropped, and the
-records its needs name) and the streams' control cards, and runs the core kinds
+records its needs name) and the streams' control cards (or with `--from <export>`, an export
+file or directory of `card <id> --json`, `card --all --json` with optional `briefs/<id>.md` and
+`trees/<repo>__<base>.txt`, or a `backup --file` / RESTORE dump, opening no store), and runs the core kinds
 (`sprint.CheckCards`, internal/sprint/cardcheck.go, pure over the snapshot and the base trees
 the verb reads from the lander's clone as add's PATHS admission does): **needs** (every need of
 an open card names a card of this epoch, not dropped; no self-need; no cycle, `needsCycle`; a
@@ -8021,7 +8023,7 @@ it; at any depth, so through a sentinel), is a warning: printed as `CHECK <kind>
 as `warned=<kind:n,...>` on the last line and in `--json` (`warned`; each finding's `severity`,
 `refuse` or `warn`, and `serialized`), and failing neither the check nor start. A files finding
 with one pair unordered, or a writer it cannot name, refuses; every other kind refuses.
-Every run writes the epoch's one **check record** (internal/sprint/store/check_record.go, beside
+Every live run without `--dry-run` writes the epoch's one **check record** (`--dry-run` and `--from` write no check record; internal/sprint/store/check_record.go, beside
 the machine's record and keyed by epoch as it is: one of another epoch reads as none, so a clear
 leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
 stream, tier, priority, needs and the sha256 of its brief) with one digest over them. A failed
