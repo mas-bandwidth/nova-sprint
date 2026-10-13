@@ -181,7 +181,7 @@ func TestD4AcceptNamedIsAllOrNothing(t *testing.T) {
 	require.Len(t, p.Refused, 3, "named set with one ineligible: %+v", p)
 	for _, r := range p.Refused {
 		if r.Key == "s1-3" {
-			require.Contains(t, r.Why, "two different readers", "refusal: %+v", r)
+			require.Contains(t, r.Why, "two ok reads", "refusal: %+v", r)
 		} else {
 			require.Contains(t, r.Why, "eligible, not moved", "refusal: %+v", r)
 		}
@@ -583,7 +583,7 @@ func TestAReaderCountsOnceWhereItsCardIs(t *testing.T) {
 	require.Len(t, p.Refused, 2, "accept: %+v", p)
 	for _, r := range p.Refused {
 		if r.Key == "s1-2" {
-			require.Contains(t, r.Why, "two different readers", "refusal: %+v", r)
+			require.Contains(t, r.Why, "two ok reads", "refusal: %+v", r)
 		}
 		if r.Key == "s1-1" {
 			require.Contains(t, r.Why, "eligible, not moved", "refusal: %+v", r)
