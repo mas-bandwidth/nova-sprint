@@ -15,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
@@ -139,6 +140,32 @@ func recordCleanCardCheck(a *app, addr string) error {
 	snap, err := st.Load(ctx, []string{sprint.Work}, nil)
 	if err != nil {
 		return err
+	}
+	// Existing rig starts exercise briefless card lifecycles. Declare fixture
+	// funding only when none was applied; never overwrite explicit provider rows.
+	if r, ok := b.(*store.Redis); ok {
+		if err := st.RoutesInto(ctx, snap); err != nil {
+			return err
+		}
+		if len(snap.Providers) == 0 {
+			names := map[string]bool{}
+			for _, route := range snap.Routes {
+				if route.Provider != "" {
+					names[route.Provider] = true
+				}
+			}
+			if len(names) == 0 {
+				names["functional-fixture"] = true
+			}
+			for name := range names {
+				if err := r.C.SAdd(ctx, config.ProvidersKey, name).Err(); err != nil {
+					return err
+				}
+				if err := r.C.HSet(ctx, config.ProviderKey(name), "billing", "plan", "funded", "true").Err(); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	cards := sprint.CheckedCardsOf(snap)
 	_, err = st.PutCardCheck(ctx, store.CheckRecord{At: a.now().UTC(), By: "functional-rig", Clean: true, Cards: cards, Digest: sprint.CardsDigest(cards)})

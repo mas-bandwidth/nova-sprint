@@ -125,9 +125,11 @@ EXTENDS Integers
 CONSTANTS Every, MaxClock, Broken, Kind
 
 VARIABLES holds, seen, open, acked, first, again, clk, written, pushes,
-          marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review
+          marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
+          quiet, sawQuiet
 vars == <<holds, seen, open, acked, first, again, clk, written, pushes,
-          marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review>>
+          marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
+          quiet, sawQuiet>>
 
 \* The escalation step: three windows (the code: BehindEscalateEvery, three PassEvery).
 EscEvery == 3 * Every
@@ -154,6 +156,8 @@ TypeOK ==
   /\ unknown \in BOOLEAN
   /\ sawUnknown \in BOOLEAN
   /\ review \in (0..MaxClock) \cup {-1}
+  /\ quiet \in BOOLEAN
+  /\ sawQuiet \in BOOLEAN
 
 Init ==
   /\ holds = FALSE /\ seen = FALSE /\ open = FALSE /\ acked = FALSE
@@ -162,6 +166,8 @@ Init ==
   /\ watchAt = -1 /\ streak = 0 /\ dealt = FALSE /\ stoppedAt = -1 /\ lvl = 0
   /\ unknown = FALSE /\ sawUnknown = FALSE
   /\ review = -1
+  /\ quiet = FALSE
+  /\ sawQuiet = FALSE
 
 \* The world: the friend's session answers or not, her cards finish or not, the
 \* coordinator answers the late judgments or not, the friend comes up or goes down, her
@@ -183,7 +189,7 @@ Flip ==
                    /\ marks' = marks /\ newLate' = newLate /\ unknown' = FALSE
   /\ stoppedAt' = IF Kind = "stop" /\ ~holds THEN clk ELSE -1
   /\ UNCHANGED <<seen, open, acked, first, again, clk, written, pushes, lastPush, tickPushes,
-                 watchAt, streak, dealt, lvl, review, sawUnknown>>
+                 watchAt, streak, dealt, lvl, review, sawUnknown, quiet, sawQuiet>>
 
 \* Pin: the deal places the pinned card on another row and writes the judgment on that
 \* unit (friendDeal, pinIgnoredNote). The deal is a part of the tick, which leaves the
@@ -194,14 +200,14 @@ Deal ==
   /\ holds' = TRUE /\ seen' = TRUE
   /\ open' = TRUE /\ first' = clk /\ again' = 0 /\ dealt' = TRUE
   /\ written' = written + 1 /\ pushes' = pushes + 1
-  /\ UNCHANGED <<acked, clk, marks, newLate, lastPush, tickPushes, watchAt, streak, stoppedAt, lvl, unknown, sawUnknown, review>>
+  /\ UNCHANGED <<acked, clk, marks, newLate, lastPush, tickPushes, watchAt, streak, stoppedAt, lvl, unknown, sawUnknown, review, quiet, sawQuiet>>
 
 \* The coordinator acknowledges the open judgment.
 Ack ==
   /\ open /\ ~acked
   /\ open' = FALSE /\ acked' = TRUE
   /\ UNCHANGED <<holds, seen, first, again, clk, written, pushes, marks, newLate, lastPush, tickPushes,
-                 watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review>>
+                 watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review, quiet, sawQuiet>>
 
 \* The coordinator holds the open judgment of a condition the tick keeps until a
 \* review time it chooses (Wait, steps_ack.go): the judgment is closed and the
@@ -213,7 +219,7 @@ Wait ==
   /\ review' \in (clk + 1)..MaxClock
   /\ open' = FALSE /\ acked' = TRUE
   /\ UNCHANGED <<holds, seen, first, again, clk, written, pushes, marks, newLate, lastPush, tickPushes,
-                 watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown>>
+                 watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, quiet, sawQuiet>>
 
 \* The overdue mark after this tick, and the condition the tick's pass reads off it
 \* (behind only: every other kind is at level 0).
@@ -228,7 +234,7 @@ NextMarkAt == IF NextMarks = {} THEN -1 ELSE CHOOSE m \in NextMarks : \A n \in N
 \* does not read its type (silentstop).
 CondHolds ==
   CASE Kind = "behind" ->
-         Late /\ IF Broken = "doublepush" THEN TRUE ELSE MarkAt # -1 /\ clk + 1 - MarkAt >= Every
+         (~quiet \/ Broken = "countquiet") /\ Late /\ (IF Broken = "doublepush" THEN TRUE ELSE MarkAt # -1 /\ clk + 1 - MarkAt >= Every)
     [] Kind = "drift" ->
          holds /\ ~unknown
     [] Kind = "empty" ->
@@ -242,7 +248,7 @@ CondUnknown == Kind = "drift" /\ unknown
 
 \* This tick's overdue line about a late judgment: the first tick that finds one late and
 \* not yet named (the oldest of them becomes the episode's line).
-Line == Kind = "behind" /\ newLate > 0 /\ marks = {}
+Line == Kind = "behind" /\ (~quiet \/ Broken = "countquiet") /\ newLate > 0 /\ marks = {}
 
 \* The escalation level this tick's pass reads off the oldest overdue mark after this tick,
 \* and the level the judgments late on the coordinator have reached now.
@@ -276,8 +282,10 @@ Tick ==
   /\ clk' = clk + 1
   /\ seen' = CondHolds
   /\ sawUnknown' = CondUnknown
-  /\ UNCHANGED <<holds, stoppedAt, unknown>>
-  /\ marks' = IF Kind = "behind" /\ newLate > 0 THEN marks \cup {clk + 1} ELSE marks
+  /\ sawQuiet' = (Kind = "behind" /\ quiet)
+  /\ UNCHANGED <<holds, stoppedAt, unknown, quiet>>
+  /\ marks' = IF Kind = "behind" /\ quiet /\ Broken # "countquiet" THEN {}
+              ELSE IF Kind = "behind" /\ newLate > 0 THEN marks \cup {clk + 1} ELSE marks
   /\ newLate' = IF Kind = "behind" THEN 0 ELSE newLate
   /\ watchAt' = IF Kind # "empty" THEN -1
                 ELSE IF holds THEN (IF watchAt = -1 THEN clk + 1 ELSE watchAt)
@@ -286,7 +294,7 @@ Tick ==
   /\ dealt' = FALSE
   /\ tickPushes' = (IF Line THEN 1 ELSE 0) + (IF PassPush THEN 1 ELSE 0)
   /\ lastPush' = IF ~(Kind = "behind" /\ Late) THEN -1
-                 ELSE IF newLate > 0 \/ PassPush THEN clk + 1 ELSE lastPush
+                 ELSE IF ((newLate > 0 /\ (~quiet \/ Broken = "countquiet")) \/ PassPush) THEN clk + 1 ELSE lastPush
   /\ IF CondHolds
        THEN IF ~open /\ ~acked
               THEN \* raised: the judgment, once an episode
@@ -336,7 +344,24 @@ Tick ==
                      /\ open' = FALSE /\ acked' = FALSE /\ first' = -1 /\ again' = 0
                      /\ written' = 0 /\ pushes' = 0 /\ lvl' = 0 /\ review' = -1
 
-Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick
+\* The unfunded tier quiets the late judgment, or a route comes back (unquiet)
+Quiet ==
+  /\ Kind = "behind"
+  /\ ~quiet
+  /\ quiet' = TRUE
+  /\ UNCHANGED <<holds, seen, open, acked, first, again, clk, written, pushes,
+                 marks, newLate, lastPush, tickPushes, watchAt, streak, dealt,
+                 stoppedAt, lvl, unknown, sawUnknown, review, sawQuiet>>
+
+Unquiet ==
+  /\ Kind = "behind"
+  /\ quiet
+  /\ quiet' = FALSE
+  /\ UNCHANGED <<holds, seen, open, acked, first, again, clk, written, pushes,
+                 marks, newLate, lastPush, tickPushes, watchAt, streak, dealt,
+                 stoppedAt, lvl, unknown, sawUnknown, review, sawQuiet>>
+
+Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet
 
 Spec == Init /\ [][Next]_vars
 
@@ -368,7 +393,7 @@ OnePushATick == tickPushes <= 1
 \* Behind: a late judgment the coordinator has not acknowledged is never a whole window
 \* without a push once its overdue line is written: the line, then the pass every Every.
 LateRemindedEveryWindow ==
-  (Kind = "behind" /\ Late /\ MarkAt # -1 /\ ~acked) => clk - lastPush <= Every
+  (Kind = "behind" /\ Late /\ MarkAt # -1 /\ ~acked /\ ~quiet) => clk - lastPush <= Every
 
 \* Empty: a friend is judged only after a whole window of ticks has found her up and not
 \* held, her row empty and cards she could do waiting; time down, held or busy restarts it.
@@ -390,5 +415,9 @@ EscalatedPastAck ==
 \* A wait never outlasts its review time: once the clock reaches it the hold is closed, so a
 \* condition that still holds then is raised again.
 WaitedRaisedAgainOnExpiry == acked /\ review # -1 => clk < review
+
+\* Behind: a late judgment quieted by an unfunded tier writes no overdue line and
+\* is not counted by the pass into a behind judgment.
+NotBehindOnQuiet == (Kind = "behind" /\ sawQuiet) => (~open /\ ~seen /\ tickPushes = 0)
 
 =============================================================================

@@ -217,7 +217,7 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 			return p
 		}
 		if ctl.F("state") != StreamStopped || ctl.F("cause") != "conflict" {
-			p.refuse(r.Sel.Stream, "not in a conflict")
+			p.refuse(r.Sel.Stream, "not in a conflict; run: nova-sprint rework <card> --fix <why>")
 			return p
 		}
 	}
@@ -227,7 +227,7 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 			return "not in stream " + r.Sel.Stream
 		}
 		if !InConflict(s, c) {
-			return "not in a conflict"
+			return "not in a conflict; run: nova-sprint rework <card> --fix <why>"
 		}
 		return ""
 	}, s.primaryCard)

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,9 +86,10 @@ func (m *Mem) PriceRoutes(context.Context) ([]sprint.Route, int64, error) {
 // RouteSet is what a step that deals or asks plans with: the routes, the
 // tiers' arrays, and the sprint row's nova-decide bars, read with them (Bars).
 type RouteSet struct {
-	Routes []sprint.Route
-	Tiers  map[string][]string
-	Bars   Bars
+	Providers map[string]sprint.Provider
+	Routes    []sprint.Route
+	Tiers     map[string][]string
+	Bars      Bars
 }
 
 // Bars is the sprint row's nova-decide bars, each by the name of its field, so no bar is
@@ -106,8 +108,9 @@ type Bars struct {
 	// comma list of config.AnswerRules); "" turns none off.
 	RulesOff string
 	// GitIdentity is the sprint row's author and committer for every commit the sprint
-	// machine makes (git_identity: "Name <email>"); "" is none configured, which the landing
-	// refuses.
+	// machine makes (git_identity: "Name <email>"), as stored: "" is the row unapplied, which
+	// its readers take as config.DefaultGitIdentity (WithDefaults; the snapshot's GitIdentity
+	// and Store.GitIdentity), so the landing commits as the machine identity, never refuses.
 	GitIdentity string
 	// MaxAttempts is the sprint row's attempt bound (max_attempts): the attempts one card
 	// runs before the sprint raises one judgment to the coordinator (sprint.AttemptsCap);
@@ -133,14 +136,30 @@ func (b *Bars) fields() map[string]*string {
 	}
 }
 
+// WithDefaults is the bars with each empty field whose sprint.Defaults row says ReadFill
+// given that row's Value: the read-side default of nova-config's sprint row, which the
+// sprint never writes (nova-config apply would undo it). An unapplied git_identity reads
+// config.DefaultGitIdentity, as NewMem's does, so the landing commits as the machine
+// identity, never the host's (docs/SPEC-SPRINT.md section 13, Epochs and clear, "Working defaults").
+func (b Bars) WithDefaults() Bars {
+	for name, p := range b.fields() {
+		if d, ok := sprint.DefaultOf(name); ok && d.ReadFill && *p == "" {
+			*p = d.Value
+		}
+	}
+	return b
+}
+
 // into is the set as the snapshot carries it.
 func (rs RouteSet) into(s *sprint.Snapshot) {
-	s.Routes, s.Tiers = rs.Routes, rs.Tiers
+	s.Routes, s.Tiers, s.Providers = rs.Routes, rs.Tiers, rs.Providers
 	rs.Bars.into(s)
 }
 
 // into is the bars as the snapshot carries them.
 func (b Bars) into(s *sprint.Snapshot) {
+	s.GitIdentityUnapplied = b.GitIdentity == ""
+	b = b.WithDefaults()
 	s.DecideBounce, s.DecideReview, s.DecideGrade = b.Bounce, b.Review, b.Grade
 	s.DecideAttemptNoResult, s.DecideAttemptNothingToDo = b.AttemptNoResult, b.AttemptNothingToDo
 	s.DecideScoreBar = b.Score
@@ -274,16 +293,16 @@ func (st *Store) cached(ctx context.Context, c *RouteCache) (RouteSet, error) {
 var routeArrayTiers = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy, cardhdr.RouteFrontier}
 
 // Routes reads the set and the sprint row's nova-decide bars (Bars) in one
-// pipeline: one round trip when the set names no route, so a read card with no
+// pipeline: one round trip when neither set names a route or provider, so a read card with no
 // route still draws its bars and git_identity, as the twin's Routes returns
 // them. With a route, every route's hash and each tier's array ride in a second
-// pipeline: two round trips (the arrays and the hashes are read only when a
-// route exists).
+// pipeline alongside provider hashes: two round trips when either set has a row.
 func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	var set RouteSet
 	fields := set.Bars.fields()
 	pipe := r.C.Pipeline()
 	namesCmd := pipe.SMembers(ctx, config.RoutesKey)
+	providerNamesCmd := pipe.SMembers(ctx, config.ProvidersKey)
 	bars := make(map[string]interface{ Val() string }, len(fields))
 	for f := range fields {
 		bars[f] = pipe.Get(ctx, config.SprintKey(f))
@@ -295,15 +314,23 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 		*v = bars[f].Val()
 	}
 	names := namesCmd.Val()
-	if len(names) == 0 {
+	providerNames := providerNamesCmd.Val()
+	if len(names) == 0 && len(providerNames) == 0 {
 		return RouteSet{Routes: []sprint.Route{}, Bars: set.Bars}, 1, nil
 	}
 	pipe2 := r.C.Pipeline()
+	phs := make(map[string]interface{ Val() map[string]string }, len(providerNames))
+	for _, name := range providerNames {
+		phs[name] = pipe2.HGetAll(ctx, config.ProviderKey(name))
+	}
 	hs := make(map[string]interface{ Val() map[string]string }, len(names))
 	for _, n := range names {
 		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
 	}
-	arrays := make(map[string]interface{ Val() string }, len(routeArrayTiers))
+	arrays := make(map[string]interface {
+		Val() string
+		Err() error
+	}, len(routeArrayTiers))
 	for _, t := range routeArrayTiers {
 		arrays[t] = pipe2.HGet(ctx, config.TierKey(t), "routes")
 	}
@@ -316,9 +343,18 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	}
 	tiers := map[string][]string{}
 	for _, t := range routeArrayTiers {
-		if a := sprint.Split(arrays[t].Val()); len(a) > 0 {
-			tiers[t] = a
+		// Preserve a present empty field: the deal falls back to enabled native routes.
+		if arrays[t].Err() == nil {
+			tiers[t] = sprint.Split(arrays[t].Val())
 		}
+	}
+	set.Providers = map[string]sprint.Provider{}
+	for _, name := range providerNames {
+		p, err := ProviderOf(name, phs[name].Val())
+		if err != nil {
+			return RouteSet{}, 2, err
+		}
+		set.Providers[name] = p
 	}
 	set.Routes, set.Tiers = out, tiers
 	return set, 2, nil
@@ -347,7 +383,7 @@ func (m *Mem) Routes(context.Context) (RouteSet, int64, error) {
 	for t, a := range m.tiers {
 		tiers[t] = append([]string(nil), a...)
 	}
-	return RouteSet{Routes: append([]sprint.Route(nil), m.routes...), Tiers: tiers, Bars: m.bars}, 0, nil
+	return RouteSet{Routes: append([]sprint.Route(nil), m.routes...), Tiers: tiers, Providers: maps.Clone(m.providers), Bars: m.bars}, 0, nil
 }
 
 // SetMaxAttempts gives the store the sprint row's attempt bound, as nova-config's apply
@@ -482,8 +518,36 @@ func (st *Store) RulesOff(ctx context.Context) ([]string, error) {
 
 // GitIdentity is the sprint row's author and committer for every commit the sprint machine
 // makes, as nova-config applied it (sprint:git_identity), read with the routes: the lander
-// reads it there (cmd/nova-sprint, land.go). "" is none configured.
+// reads it there (cmd/nova-sprint, land.go). An unapplied row reads config.DefaultGitIdentity
+// (Bars.WithDefaults; sprint.Defaults).
 func (st *Store) GitIdentity(ctx context.Context) (string, error) {
 	set, err := st.routes(ctx)
-	return set.Bars.GitIdentity, err
+	return set.Bars.WithDefaults().GitIdentity, err
+}
+
+// ProviderOf reads an applied provider hash. Malformed funding is non-fatal
+// for tick route reads, but remains a named diagnostic and never counts funded.
+func ProviderOf(name string, h map[string]string) (sprint.Provider, error) {
+	p := sprint.Provider{Name: name, Billing: h["billing"]}
+	funded, err := strconv.ParseBool(h["funded"])
+	if err == nil {
+		p.Funded = funded
+		return p, nil
+	}
+	switch {
+	case len(h) == 0:
+		p.Problem = "provider hash is missing"
+	case h["funded"] == "":
+		p.Problem = "funded field is missing or empty"
+	default:
+		p.Problem = fmt.Sprintf("funded field is invalid: %q", h["funded"])
+	}
+	return p, nil
+}
+
+// SetProviders gives the twin the provider rows nova-config apply writes.
+func (m *Mem) SetProviders(providers map[string]sprint.Provider) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.providers = maps.Clone(providers)
 }

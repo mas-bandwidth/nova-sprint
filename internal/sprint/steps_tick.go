@@ -1024,8 +1024,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	for _, tier := range slices.Sorted(maps.Keys(unserved)) {
+		what := fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])
+		if _, ok := s.TierNotLive(tier); ok {
+			what = whyOf[tier]
+		}
 		conds = append(conds, cond{typ: NNoRoute, stream: TierSubject(tier), streamLevel: true, primaries: unserved[tier],
-			what: fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])})
+			what: what})
 	}
 	// one judgment per provider while its routes rest for its funds or its key, never one
 	// per card (provider_funds.go)
@@ -1093,6 +1097,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	p.Rows, p.Units, p.Refused = append(p.Rows, fp.Rows...), append(p.Units, fp.Units...), append(p.Refused, fp.Refused...)
+	p.Refused = append(p.Refused, reads.Refused...)
 	p.Props = append(p.Props, fp.Props...)
 	p.Props = append(p.Props, reads.Props...)
 	for _, row := range reads.Rows {
@@ -1728,6 +1733,11 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 			// judgment: her card's deadline is no failure (docs/SPEC-SPRINT.md section 1)
 			continue
 		}
+		if c.Col != Working && s.CardTierBlocked(c) {
+			// an unfunded tier quiets the deadlines of its cards that are not working
+			// tla/SprintRules.tla QuietWhileUnfunded
+			continue
+		}
 		field, limit, word, own := WorkDeadline(s, c)
 		friend, idle := friendLaneIdle(s, r.Friends, c)
 		if idle {
@@ -1874,8 +1884,8 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	var order []string
 	byID := map[string]*judg{}
 	for _, o := range s.Open {
-		if o.Note.Kind != Judgment || o.Note.Type == NSprintDone {
-			continue // the sprint is done has no due time
+		if o.Note.Kind != Judgment || o.Note.Type == NSprintDone || quietedByTier(s, o.Note) {
+			continue // the sprint is done has no due time; tla/CoordinatorPass.tla NotBehindOnQuiet
 		}
 		j := byID[o.Note.ID]
 		if j == nil {
@@ -1892,7 +1902,7 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		j := byID[o.Note.What]
-		if j == nil || !contains(j.subjects, o.Subject()) || !overdue(j.note) {
+		if j == nil || !contains(j.subjects, o.Subject()) || !overdue(j.note) || quietedByTier(s, j.note) {
 			p.Closes = append(p.Closes, o)
 			continue
 		}
@@ -1939,6 +1949,9 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 // JudgmentOverdue says the judgment is past its due time in running time: its review
 // time when the coordinator set one (wait), else DeadlineJudgment after it was written.
 func JudgmentOverdue(s *Snapshot, r TickReq, n Note) bool {
+	if quietedByTier(s, n) {
+		return false
+	}
 	if !n.Review.IsZero() {
 		// The review time wait set counts running time from when wait set
 		// it, by the tree's one clock comparison, the same one a timer is
@@ -1947,6 +1960,37 @@ func JudgmentOverdue(s *Snapshot, r TickReq, n Note) bool {
 	}
 	d, ok := r.running(s.Now, stamp(n.At))
 	return ok && d > DeadlineJudgment
+}
+
+// quietedByTier reports whether an unfunded tier quiets the judgment:
+// every card it holds is tier-blocked (its escalating tier has no live route),
+// or it is the tier's own NNoRoute judgment whose cause is rests.
+// tla/CoordinatorPass.tla NotBehindOnQuiet: an unfunded tier quiets its judgments,
+// so no overdue line is written and the coordinator's pass does not count it behind.
+func quietedByTier(s *Snapshot, n Note) bool {
+	if s == nil {
+		return false
+	}
+	if n.Type == NNoRoute {
+		tier := strings.TrimPrefix(n.Stream, "tier:")
+		if tier == "" && strings.HasPrefix(n.What, "tier ") {
+			f := strings.Fields(n.What)
+			if len(f) > 1 {
+				tier = f[1]
+			}
+		}
+		if tier != "" {
+			if _, ok := s.TierNotLive(tier); ok {
+				return true
+			}
+		}
+		return false
+	}
+	cards := cardsHeldBy(n)
+	if len(cards) == 0 || s.Work == nil {
+		return false
+	}
+	return s.everyHeldCardTierBlocked(cards)
 }
 
 // cond is a condition the tick tells the coordinator of: a judgment of a type

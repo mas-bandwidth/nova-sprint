@@ -45,11 +45,14 @@ type memState struct {
 	epochN   uint64
 	cleared  time.Time
 	owed     bool
-	logs     map[uint64]*memLog // the sprint's keys, per epoch
-	kv       map[string]string  // the machine's records (tick.go)
-	seq      int
-	touched  map[uint64]int // store calls that named each epoch, for tests
-	Fail     func(point string) error
+	// defaultsOwed is the epoch the set-defaults owed flag names (EpochState.DefaultsOwed),
+	// 0 for none: written by AdvanceEpoch with the epoch, cleared by SettleDefaults
+	defaultsOwed uint64
+	logs         map[uint64]*memLog // the sprint's keys, per epoch
+	kv           map[string]string  // the machine's records (tick.go)
+	seq          int
+	touched      map[uint64]int // store calls that named each epoch, for tests
+	Fail         func(point string) error
 	// MaxWrite, when above zero, is the largest operation record the store
 	// takes in one write, as a store's bulk length bound: a larger one is
 	// not written and the write fails as the connection closing does.
@@ -63,11 +66,12 @@ type memState struct {
 	// after its cursor: it is handed the time the wait may take and returns
 	// when it has passed (a test's clock steps by it, or appends a line). Nil
 	// waits on the wall clock for a line or the time, whichever comes first.
-	LogWait func(d time.Duration)
-	logged  chan struct{}       // closed, and replaced, by every commit that appends to a log
-	routes  []sprint.Route      // the model tiers' routes (routes.go)
-	tiers   map[string][]string // the tiers' route arrays (routes.go)
-	bars    Bars                // the sprint row's nova-decide bars (routes.go)
+	LogWait   func(d time.Duration)
+	logged    chan struct{}              // closed, and replaced, by every commit that appends to a log
+	providers map[string]sprint.Provider // applied provider declarations (routes.go)
+	routes    []sprint.Route             // the model tiers' routes (routes.go)
+	tiers     map[string][]string        // the tiers' route arrays (routes.go)
+	bars      Bars                       // the sprint row's nova-decide bars (routes.go)
 }
 
 // memLog is one epoch's sprint keys.
@@ -225,7 +229,7 @@ func (t *memTable) at(e uint64) *memEpoch {
 func (m *Mem) Epoch(context.Context) (EpochState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return EpochState{N: m.epochN, Cleared: m.cleared, Owed: m.owed}, nil
+	return EpochState{N: m.epochN, Cleared: m.cleared, Owed: m.owed, DefaultsOwed: m.epochN > 0 && m.defaultsOwed == m.epochN}, nil
 }
 
 func (m *Mem) AdvanceEpoch(_ context.Context, from uint64, at time.Time) (bool, error) {
@@ -237,7 +241,7 @@ func (m *Mem) AdvanceEpoch(_ context.Context, from uint64, at time.Time) (bool, 
 	if m.epochN != from {
 		return false, nil
 	}
-	m.epochSet, m.epochN, m.cleared, m.owed = true, from+1, at, true
+	m.epochSet, m.epochN, m.cleared, m.owed, m.defaultsOwed = true, from+1, at, true, from+1
 	return true, nil
 }
 
@@ -246,6 +250,61 @@ func (m *Mem) SettleEpoch(_ context.Context, n uint64) error {
 	defer m.mu.Unlock()
 	if m.epochN == n {
 		m.owed = false
+	}
+	return nil
+}
+
+// restoreOutcome is the guard against the pinned epoch's restore state, read with the lock
+// held: the sprint at the pinned epoch, its flag naming it, the marker on the marker table.
+func (m *Mem) restoreOutcome(g RestoreGuard) GuardOutcome {
+	at := m.epochN == m.epoch
+	owed := m.epochN > 0 && m.defaultsOwed == m.epochN
+	marked := false
+	if t := m.tables[g.MarkerTable]; t != nil {
+		if ep := t.epochs[m.active(t)]; ep != nil && ep.props != nil {
+			_, marked = ep.props[g.Marker]
+		}
+	}
+	return guardOutcome(at, owed && !marked, g)
+}
+
+// GuardedRows reads the restore state and applies the writes under the one lock.
+func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail("guarded-rows"); err != nil {
+		return GuardApplied, err
+	}
+	if o := m.restoreOutcome(g); o != GuardApplied {
+		return o, nil
+	}
+	for _, w := range writes {
+		var err error
+		switch w.Op {
+		case "add":
+			err = m.rowsAddLocked(w.Table, w.Rows)
+		case "set":
+			err = m.rowSetLocked(w.Table, w.Rows[0], w.Texts)
+		case "del":
+			err = m.rowsDelLocked(w.Table, w.Rows)
+		default:
+			err = fmt.Errorf("a guarded row write %q is no row verb", w.Op)
+		}
+		if err != nil {
+			return GuardApplied, err
+		}
+	}
+	return GuardApplied, nil
+}
+
+func (m *Mem) SettleDefaults(_ context.Context, n uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail("settle-defaults"); err != nil {
+		return err
+	}
+	if m.epochN == n && m.defaultsOwed == n {
+		m.defaultsOwed = 0
 	}
 	return nil
 }
@@ -648,6 +707,11 @@ func (m *Mem) Create(_ context.Context, t ntable.Table) error {
 func (m *Mem) RowsAdd(_ context.Context, table string, rows []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.rowsAddLocked(table, rows)
+}
+
+// rowsAddLocked is RowsAdd with the lock held.
+func (m *Mem) rowsAddLocked(table string, rows []string) error {
 	m.Calls["rows"]++
 	t, err := m.table(table)
 	if err != nil {
@@ -724,6 +788,11 @@ func (m *Mem) RowsShow(_ context.Context, table string, rows []string) error {
 func (m *Mem) RowsDel(_ context.Context, table string, rows []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.rowsDelLocked(table, rows)
+}
+
+// rowsDelLocked is RowsDel with the lock held.
+func (m *Mem) rowsDelLocked(table string, rows []string) error {
 	m.Calls["rowsdel"]++
 	t, err := m.table(table)
 	if err != nil {
@@ -741,6 +810,14 @@ func (m *Mem) RowsDel(_ context.Context, table string, rows []string) error {
 func (m *Mem) RowsDelIf(_ context.Context, table string, guards []RowGuard) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if o := m.restoreOutcome(verbGuard(table)); o != GuardApplied {
+		return nil, &GuardError{Outcome: o}
+	}
+	return m.rowsDelIfLocked(table, guards)
+}
+
+// rowsDelIfLocked is RowsDelIf with the lock held.
+func (m *Mem) rowsDelIfLocked(table string, guards []RowGuard) ([]string, error) {
 	m.Calls["rowsdelif"]++
 	t, err := m.table(table)
 	if err != nil {
@@ -864,6 +941,11 @@ func (m *Mem) writeEpoch(t *memTable) error {
 func (m *Mem) RowSet(_ context.Context, table, row string, texts map[string]string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.rowSetLocked(table, row, texts)
+}
+
+// rowSetLocked is RowSet with the lock held.
+func (m *Mem) rowSetLocked(table, row string, texts map[string]string) error {
 	m.Calls["rowset"]++
 	t, err := m.table(table)
 	if err != nil {
