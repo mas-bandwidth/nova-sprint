@@ -1,7 +1,6 @@
 package sprint
 
 import (
-	"cmp"
 	"math/big"
 	"time"
 
@@ -52,11 +51,11 @@ type ReaderSpend struct {
 func (r *ReaderSpend) addRead(con Consumer, now time.Time) {
 	u := con.Usage
 	r.Reads++
-	if u.Unpriced == WhySubscription {
+	if u.Unpriced == WhySubscription || subscriptionUsage(u) {
 		r.Tokens += max(u.Tokens.Total(), 0)
 		return
 	}
-	usd := cmp.Or(u.Actual, u.Predicted)
+	usd := u.MarginalUSD()
 	if usd == "" {
 		return
 	}

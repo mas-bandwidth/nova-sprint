@@ -1042,6 +1042,8 @@ type whereRun struct {
 	all   bool
 	cards bool
 	rows  bool
+	// dashboard folds stream_costs, reader rows, sentinel-free summary, drops archived streams
+	dashboard bool
 	// archived puts the archived streams' rows in --json's tables and rows
 	archived bool
 	release  releaseFlag
@@ -1094,6 +1096,7 @@ func (a *app) cmdWhere(args []string, stdout, stderr io.Writer) int {
 	cards := fs.Bool("cards", false, "with --json: also every work card dealt to a fleet row and not finished (its row, state, since, deadline and branch) and the open judgments on them, as the dashboard's pull routes serve them, and every machine's lanes (lane list)")
 	archived := fs.Bool("archived", false, "with --json: the archived streams' rows of the work and merge tables in tables, and their primaries in --rows, beside the live ones (stream archive); the summary and the drawn footers count only the streams on the table either way, and archived_cards and archived_landed carry theirs")
 	rows := fs.Bool("rows", false, "with --json: also every primary's row of the work table (id, stream, state, score, and its fields but the brief: card <id> --brief), in work order, so a child reads every card in one call and never loops card calls")
+	dashboard := fs.Bool("dashboard", false, "with --json: fold stream_costs and reader counts, sentinel-free summary, drop archived rows")
 	stale := fs.Duration("stale", defaultStale, "a stream with no progress for longer is shown stalled (--json)")
 	atEpoch := fs.Int64("at-epoch", -1, "the sprint as it was at an earlier epoch (before a clear)")
 	var rel releaseFlag
@@ -1131,7 +1134,10 @@ func (a *app) cmdWhere(args []string, stdout, stderr io.Writer) int {
 	if *rows && !c.json {
 		return refuse(stderr, "where", "--rows is a field of the JSON view: give --json with it")
 	}
-	r := whereRun{c: *c, watch: *watch, all: *all, cards: *cards, rows: *rows, archived: *archived, release: rel, every: *every, stale: *stale, atEpoch: *atEpoch}
+	if *dashboard && !c.json {
+		return refuse(stderr, "where", "--dashboard is a field of the JSON view: give --json with it")
+	}
+	r := whereRun{c: *c, watch: *watch, all: *all, cards: *cards, rows: *rows, dashboard: *dashboard, archived: *archived, release: rel, every: *every, stale: *stale, atEpoch: *atEpoch}
 	if addr := a.server(fs); addr != "" {
 		// the sprint's server draws each frame: one plain where a frame, so the watch
 		// never holds the server between frames
@@ -1207,6 +1213,9 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 		}
 		if r.c.json {
 			b, _ := json.Marshal(v)
+			if r.dashboard {
+				b = sprintdash.PageData(b, v.At)
+			}
 			return string(b) + "\n", 0, true
 		}
 		// each held member's cause, its age and the verb that releases it (hold_cause.go),

@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
@@ -504,6 +505,9 @@ type ReadReq struct {
 // card named is one of theirs, each read as its own reader's, in the one plan;
 // a read by selection names one reader.
 func Read(s *Snapshot, r ReadReq) Plan {
+	if err := cardcost.ValidateUsage(r.Usage); err != nil {
+		return Plan{Refused: []Refusal{{Key: "read", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
+	}
 	var p Plan
 	sel := r.Sel
 	if len(sel.IDs) == 0 && sel.Only == nil && sel.Limit == 0 {
@@ -542,7 +546,17 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		if member {
 			name = rd
 		}
-		return readCardVerb(s, r, rd, name)
+		plan := readCardVerb(s, r, rd, name)
+		if !r.Begin {
+			for _, u := range plan.Units {
+				if c := s.Fleet.Card(u.Key); c != nil {
+					if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+						return Plan{Refused: []Refusal{{Key: c.ID, Why: why}}}
+					}
+				}
+			}
+		}
+		return plan
 	}
 	from := []string{Asked, Reading}
 	if r.Begin {
@@ -601,9 +615,14 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			// a return is counted once: the card is back in asked since it, not begun
 			return "returned already at " + c.F(FieldReturned) + " and not begun since: a return is counted once"
 		}
-		if !r.Begin && !r.Return {
-			// a routed read's verdict is priced as work is, or it is no verdict (cost.go)
-			return ReadUsageMissing(c, r.Usage, r.Verdict)
+		if !r.Begin {
+			// A return also writes cost/history: bind every receipt before durable writes.
+			if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+				return why
+			}
+			if !r.Return {
+				return ReadUsageMissing(c, r.Usage, r.Verdict)
+			}
 		}
 		return ""
 	}, s.Readers.Card)
