@@ -71,6 +71,34 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	// --- the coin stays (the owner 2026-10-11) ---
 	assert.Contains(t, index, `id="coin"`, "the coin speaker glyph stays")
 
+	// --- the release nav is hidden: the envelope carries no releases (P6) ---
+	assert.Contains(t, index, `<nav class="release" id="release" aria-label="release" hidden>`, "the release nav is hidden")
+
+	// --- the wordmark is Nunito 800, hidden when it does not fit (P2) ---
+	assert.Contains(t, index, `font-family: "Nunito"`, "the wordmark face is Nunito")
+	assert.Contains(t, index, `font-weight: 800`, "the wordmark is Nunito 800")
+
+	// --- the cost breakdown tier legend in tier colours (P15) ---
+	assert.Contains(t, index, `--tier-flash: #3b82f6; --tier-pro: #a855f7; --tier-heavy: #f59e0b; --tier-frontier: #ec4899`, "the tier legend's four colours")
+
+	// --- the state legend's seven swatches (P21) and the segmented bar's colours (P22) ---
+	for _, s := range []string{"--s-waiting", "--s-ready", "--s-working", "--s-fix", "--s-review", "--s-merging", "--s-landed"} {
+		assert.Contains(t, index, s+":", "the state legend swatch "+s)
+	}
+	// merging, review and working pulse; the bar holds still when the machine stops (P22)
+	assert.Contains(t, index, `#overall .cell.merging`, "merging pulses")
+	assert.Contains(t, index, `#overall .cell.review`, "review pulses")
+	assert.Contains(t, index, `#overall .cell.working`, "working pulses")
+	assert.Contains(t, index, `#overall.stopped`, "the bar is still when the machine stops")
+
+	// --- the pie draws a grey disc when nothing is spent (P17) ---
+	assert.Contains(t, app, `"var(--tier-other)"`, "the pie's grey disc when nothing is spent")
+
+	// --- the panels the store does not serve stay hidden (P36-P38) ---
+	assert.Contains(t, index, `<section class="panel providers" id="providers-panel" hidden>`, "the Providers panel is hidden")
+	assert.Contains(t, index, `<section class="panel readers" id="readers-panel" hidden>`, "the Readers and merge panel is hidden unless ?all=1")
+	assert.Contains(t, index, `<section class="panel landings" id="landings-panel" hidden>`, "the Landings panel is hidden")
+
 	// --- app.js: the ETA STOP / DONE words (P9-P11) and the version chip (P3) ---
 	assert.Contains(t, app, `"STOP"`, "the ETA tile carries STOP")
 	assert.Contains(t, app, `eta-stop`, "STOP is dark red")
@@ -84,6 +112,8 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	r.next = func() ([]byte, error) { return ownerFixture(), nil }
 	served := get(t, r.s, "/").Body.String()
 	assert.Contains(t, served, `data:image/png;base64,`, "the nova-sprint logo is an inline data PNG")
+	// the favicon stays the robot tile (P40)
+	assert.Contains(t, served, `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=`, "the favicon is the robot tile")
 
 	// --- the page data carries the display names and the envelope carries server_version ---
 	var env map[string]json.RawMessage
