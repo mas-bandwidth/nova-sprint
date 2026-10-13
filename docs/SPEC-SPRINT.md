@@ -4802,6 +4802,14 @@ clone, the gate's and the update runs below, is under `GOFLAGS=-mod=readonly`:
 no run writes `go.mod` or `go.sum` (under a caller's `-mod=mod` the update runs
 of 2026-10-03 rewrote `go.mod` and every resolution was refused for it), and a
 module that needs them changed fails the run, which is the card's finding.
+A clone that holds no `go.mod` but holds a `CMakeLists.txt` is gated as a CMake tree:
+the batch's cards' ctest `TEST:` names (docs/SPEC-CARD-CONTRACT.md, the TEST line) are
+run `cmake -S . -B build`, `cmake --build build -j`, then
+`ctest --test-dir build -R '^(<the batch's ctest TEST names>)$' --output-on-failure`
+(with none named, every registered ctest test), each a stage in order, a red run the
+head's finding as a red Go run is, through the same runner seam and benches. A clone
+with neither `go.mod` nor `CMakeLists.txt` has no gate, and the batch's line says
+`no gate: no go.mod and no CMakeLists.txt` instead of passing silently.
 When the server's land loop (`run --land`) has a landing in flight and a fleet
 member other than this machine is up, that landing's gate does not run on the
 server: the lander asks every such member's Go lane, takes the first granted

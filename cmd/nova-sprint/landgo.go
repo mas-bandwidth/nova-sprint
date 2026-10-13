@@ -39,6 +39,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -428,7 +429,19 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 		return err.Error()
 	}
 	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
-		return ""
+		// No module: a CMake clone (a C++ card's repository) still has a gate. A tree
+		// with neither says so instead of passing silently (gateNoModuleWhy).
+		if _, cerr := os.Stat(filepath.Join(dir, "CMakeLists.txt")); cerr != nil {
+			l.noGateSaid()
+			return ""
+		}
+		if l.a != nil && l.a.gateRan != nil {
+			l.a.gateRan(dir, true)
+		}
+		if err := ctx.Err(); err != nil {
+			return err.Error()
+		}
+		return l.runTreeGate(ctx, dir, cmakeGateRuns(l.ctestTests), true)
 	}
 	if l.a != nil && l.a.gateRan != nil {
 		l.a.gateRan(dir, tests)
@@ -439,6 +452,64 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 	have := treePackages(dir)
 	unitPkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", changedFiles)
 	stages := gateRuns(tests, have, unitPkgs)
+	return l.runTreeGate(ctx, dir, stages, tests)
+}
+
+// gateNoModuleWhy is the land line for a clone with no go.mod and no CMakeLists.txt: no
+// module and no gate, said instead of passing silently (treeGate).
+const gateNoModuleWhy = "no gate: no go.mod and no CMakeLists.txt"
+
+// noGateSaid records the no-gate line for the batch, on the loop's idle line and the
+// batch's report, as the gate's other stage lines are (copySaid).
+func (l *lander) noGateSaid() {
+	if l == nil {
+		return
+	}
+	l.stage("gate", gateNoModuleWhy)
+	l.ledgerLog = append(l.ledgerLog, gateNoModuleWhy)
+}
+
+// cmakeGateRuns is the CMake tree gate (a clone with no go.mod and a CMakeLists.txt): the
+// configure, the build and the ctest run, one stage each so they run in order. The ctest
+// run selects ctestNames (the batch's `TEST: ctest <Name>` lines, in batch order) by one
+// anchored alternation; with none named it runs every test the build registered.
+func cmakeGateRuns(ctestNames []string) []gateStage {
+	ctest := []string{"ctest", "--test-dir", "build"}
+	if len(ctestNames) > 0 {
+		ctest = append(ctest, "-R", "^("+strings.Join(ctestNames, "|")+")$")
+	}
+	ctest = append(ctest, "--output-on-failure")
+	return []gateStage{
+		{Stage: 0, Runs: []gateRun{{Run: []string{"cmake", "-S", ".", "-B", "build"}}}},
+		{Stage: 1, Runs: []gateRun{{Run: []string{"cmake", "--build", "build", "-j"}}}},
+		{Stage: 2, Runs: []gateRun{{Run: ctest}}},
+	}
+}
+
+// ctestTestsOf is the cards' ctest TEST names, in card order: what a CMake gate selects
+// with `ctest -R`. A card whose TEST line is the Go form, `none`, or absent contributes
+// nothing; the first TEST line of a brief wins, as the header read does.
+func ctestTestsOf(cards []landCard) []string {
+	var names []string
+	for _, c := range cards {
+		for line := range strings.SplitSeq(c.brief, "\n") {
+			k, v, ok := cardhdr.KeyValue(line)
+			if !ok || k != "TEST" {
+				continue
+			}
+			if tl, why := cardhdr.ParseTest(v); why == "" && tl.Runner == "ctest" && tl.Name != "" {
+				names = append(names, tl.Name)
+			}
+			break
+		}
+	}
+	return names
+}
+
+// runTreeGate routes a stage's runs to the gate that runs them: a test's seam, a bench of
+// the ring, or this machine (runGateStages, goRun). The Go and CMake gates share it
+// (treeGate, benchGate).
+func (l *lander) runTreeGate(ctx context.Context, dir string, stages []gateStage, tests bool) string {
 	runs := gateCmds(stages)
 	hosts, inLoop, remote := l.gateBenches(ctx)
 	// A test's gateBench seam stands in for the bench when no fleet member is up
