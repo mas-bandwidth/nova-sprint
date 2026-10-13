@@ -510,7 +510,12 @@ hour of its spend, until the balance is over it. One judgment of the provider sa
 payment is the owner's`). `where --json` carries the `providers` table (balance, spend an hour,
 state) and `routes` each route's `balance=`. When every provider is out of credit, the tick
 stops the system (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
-until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
+until one is paid; a provider low on funds never stops it. When every tier that has work
+(ready cards, or reads waiting) has no live route in its tier array (every route resting for
+credit, auth or the seat's rest, no up friend serving it; a route missing from the array is
+not live), the tick stops the system (`machine: STOPPED (nothing funded can work)`) with each
+worked tier, its array and its resting routes with causes as the reason; `start` is refused
+with that reason while it holds, and only the owner's `start` resumes it. `funded <provider> --reason <text>`
 says one was paid. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
 
 ### Answered by rule

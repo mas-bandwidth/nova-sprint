@@ -12,7 +12,7 @@ EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS Routes, W, After, Broken
 VARIABLES rest1, own1, win1, low1, redeal1, returns1, judged1,
           rest2, own2, win2, low2, redeal2, returns2, judged2,
-          event, takes, ended, running, friendUp
+          event, takes, ended, running, friendUp, work, live, cause, toldOwner
 Providers == {"p1", "p2"}
 Slots == {1, 2}
 Route(p) == IF p = "p1" THEN "r1" ELSE "r2"
@@ -28,7 +28,10 @@ redeal == [p \in Providers |-> IF p = "p1" THEN redeal1 ELSE redeal2]
 Resting(p) == IF p = "p1" THEN R1!Resting("r1") ELSE R2!Resting("r2")
 pvars == <<rest1, own1, win1, low1, redeal1, returns1, judged1,
            rest2, own2, win2, low2, redeal2, returns2, judged2,
-           event, takes, ended, running, friendUp>>
+           event, takes, ended, running, friendUp, work, live, cause, toldOwner>>
+Tiers == {"flash", "pro", "heavy"}
+Unfunded == work # {} /\ work \cap live = {}
+UnfundedNext == work' # {} /\ work' \cap live' = {}
 
 \* Finite order abstraction of e.taken.After(last.Mark()), NOT a wrapping clock:
 \* after = a known launch strictly after the last rest end (or no prior rest);
@@ -42,16 +45,17 @@ PFInit ==
     /\ ended = [p \in Providers |-> FALSE]
     /\ running = TRUE
     /\ friendUp = FALSE
+    /\ work = {} /\ live = Tiers /\ cause = "none" /\ toldOwner = FALSE
 
 Other(p) == IF p = "p1" THEN UNCHANGED <<rest2, own2, win2, low2, redeal2, returns2, judged2>>
             ELSE UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1>>
-MachineStill == UNCHANGED <<running, friendUp>>
+MachineStill == UNCHANGED <<running, friendUp, work, live, cause, toldOwner>>
 Launch(p, s, stamp) ==
     /\ ~Resting(p)
     /\ takes[p][s] = "none"
     /\ stamp \in {"after", "unknown"}
     /\ takes' = [takes EXCEPT ![p][s] = stamp]
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, event, ended, running, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, event, ended, running, friendUp, work, live, cause, toldOwner>>
 
 Eligible(p, s) == ~ended[p] \/ takes[p][s] = "after"
 Refuse(p, s, cause) ==
@@ -110,24 +114,53 @@ AllOutBroken == \A p \in Providers : Out(p) \/ ("lowisout" \in Broken /\ low[p])
 Stop ==
     /\ running /\ AllOutBroken
     /\ ~friendUp \/ "nofriendexception" \in Broken
-    /\ running' = FALSE /\ event' = "stop"
+    /\ running' = FALSE /\ event' = "stop" /\ cause' = "funds"
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp, work, live, toldOwner>>
+\* The new stop, beside AllOut Stop: fires in the same step the cause arises
+\* (WorkArrives/TierRest below stop atomically), so NeverRunningUnfunded is a
+\* state invariant, not only a liveness formula.
+StopUnfunded ==
+    /\ running /\ Unfunded /\ "rununfunded" \notin Broken
+    /\ running' = FALSE /\ event' = "stop" /\ cause' = "nothing" /\ toldOwner' = FALSE
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp, work, live>>
+StopIfUnfunded ==
+    IF running /\ UnfundedNext /\ "rununfunded" \notin Broken
+       THEN /\ running' = FALSE /\ event' = "stop" /\ cause' = "nothing" /\ toldOwner' = FALSE
+       ELSE /\ UNCHANGED <<running, event, cause, toldOwner>>
+WorkArrives(w) ==
+    /\ w \subseteq Tiers /\ work' = w /\ UNCHANGED live
+    /\ StopIfUnfunded
     /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp>>
+TierRest(tier) ==
+    /\ tier \in Tiers /\ live' = live \ {tier} /\ UNCHANGED work
+    /\ StopIfUnfunded
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp>>
+TierWake(tier) ==
+    /\ tier \in Tiers /\ live' = live \cup {tier}
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp, work, running, event, cause, toldOwner>>
+TellOwner ==
+    /\ ~running /\ cause = "nothing" /\ work \cap live # {} /\ ~toldOwner
+    /\ toldOwner' = TRUE
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp, work, live, running, event, cause>>
 Start ==
     /\ ~running /\ (~AllOutBroken \/ friendUp)
-    /\ running' = TRUE /\ event' = "start"
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp>>
+    /\ (cause # "nothing" \/ work \cap live # {})
+    /\ running' = TRUE /\ event' = "start" /\ cause' = "none" /\ toldOwner' = FALSE
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp, work, live>>
 Friend(b) ==
     /\ friendUp' = b
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, event, takes, ended, running>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, judged2, event, takes, ended, running, work, live, cause, toldOwner>>
 PFNext ==
     \/ \E p \in Providers, s \in Slots, stamp \in {"after", "unknown"} : Launch(p,s,stamp)
     \/ \E p \in Providers, s \in Slots, c \in {"credit", "auth"} : Refuse(p,s,c)
     \/ \E p \in Providers, l \in BOOLEAN : Poll(p,l)
     \/ \E p \in Providers, e \in {"payment", "funded"} : Pay(p,e)
     \/ \E p \in Providers : Wake(p) \/ Rest(p)
-    \/ Stop \/ Start
+    \/ Stop \/ StopUnfunded \/ Start \/ TellOwner
+    \/ \E w \in SUBSET Tiers : WorkArrives(w)
+    \/ \E tier \in Tiers : TierRest(tier) \/ TierWake(tier)
     \/ \E b \in BOOLEAN : Friend(b)
-PFSpec == PFInit /\ [][PFNext]_pvars
+PFSpec == PFInit /\ [][PFNext]_pvars /\ WF_pvars(Start) /\ WF_pvars(TellOwner)
 PFTypeOK ==
     /\ judged1 = FALSE /\ judged2 = FALSE
     /\ \A p \in Providers :
@@ -139,10 +172,11 @@ PFTypeOK ==
     /\ takes \in [Providers -> [Slots -> {"none", "after", "stale", "unknown"}]]
     /\ ended \in [Providers -> BOOLEAN]
     /\ running \in BOOLEAN /\ friendUp \in BOOLEAN
+    /\ work \subseteq Tiers /\ live \subseteq Tiers /\ cause \in {"none", "funds", "nothing"} /\ toldOwner \in BOOLEAN
     /\ event \in {"init", "credit", "auth", "ignored", "balance", "payment", "funded", "wake", "coord", "stop", "start"}
-StopOnlyWhenAllOut == [][running /\ ~running' => AllOut]_pvars
-LowNeverStops == [][running /\ ~running' => \A p \in Providers : ~low[p] \/ Out(p)]_pvars
-NoFundsStopWhileFriendUp == [][friendUp /\ running => running']_pvars
+StopOnlyWhenAllOut == [][running /\ ~running' => AllOut \/ (cause' = "nothing" /\ UnfundedNext)]_pvars
+LowNeverStops == [][running /\ ~running' /\ cause' = "funds" => \A p \in Providers : ~low[p] \/ Out(p)]_pvars
+NoFundsStopWhileFriendUp == [][friendUp /\ running /\ ~UnfundedNext => running']_pvars
 StartIsTheCoordinators == [][~running /\ running' => event' = "start"]_pvars
 \* A new refusal rest requires a consumed launch after the previous rest-end
 \* mark. Checks the stale completion after payment, funded and wake, including
@@ -150,4 +184,6 @@ StartIsTheCoordinators == [][~running /\ running' => event' = "start"]_pvars
 RefusalsAfterLastEnd == [][\A p \in Providers :
     (rest[p] = "none" /\ rest'[p] \in {"credit", "auth"} /\ ended[p]) =>
        \E s \in Slots : takes[p][s] = "after" /\ takes'[p][s] = "none"]_pvars
+NeverRunningUnfunded == running => (work = {} \/ work \cap live # {})
+ResumableWhenFunded == (~running /\ cause = "nothing" /\ work \cap live # {}) ~> (running \/ toldOwner)
 =============================================================================

@@ -486,6 +486,26 @@ func (st *Store) OutOfCredit(ctx context.Context) (string, error) {
 	return why, nil
 }
 
+// NothingFunded is the words of sprint.NothingFundedCause when every tier that has work
+// has no live route (sprint.NothingFundedCanWork), "" otherwise: what a start is refused
+// with beside OutOfCredit.
+// tla/ProviderFunds.tla NeverRunningUnfunded, ResumableWhenFunded
+func (st *Store) NothingFunded(ctx context.Context) (string, error) {
+	routes, tiers, err := st.Routes(ctx)
+	if err != nil || len(routes) == 0 {
+		return "", err
+	}
+	s, err := st.Load(ctx, All, nil)
+	if err != nil {
+		return "", err
+	}
+	s.Routes, s.Tiers = routes, tiers
+	if seats, err := st.friendSeats(ctx, nil, st.now()); err == nil {
+		s.Friends = seats
+	}
+	return sprint.NothingFundedCanWork(s), nil
+}
+
 // JudgmentBar is the judgment decision's bar as nova-config applied it, read with the
 // routes: for routes --json, which answer reads. "" when none is applied.
 func (st *Store) JudgmentBar(ctx context.Context) (string, error) {

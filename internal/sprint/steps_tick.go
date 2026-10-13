@@ -1160,15 +1160,16 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NNothingFundedCanWork, NFriendSyncFailing, NMirrorNeed}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
 	fc := faultClear(s, r)
 	p.Units = append(p.Units, fc.Units...)
 	p.Notes = append(p.Notes, fc.Notes...)
-	// every provider out of credit: the binding stops the machine as the plan commits
-	// tla/DirtyTick.tla Stop
+	// every provider out of credit, or every worked tier unfunded: the binding stops the
+	// machine as the plan commits (FundsCause first when both hold, providerConds).
+	// tla/DirtyTick.tla Stop; tla/ProviderFunds.tla NeverRunningUnfunded
 	p.Stop = stop
 	return p, due
 }

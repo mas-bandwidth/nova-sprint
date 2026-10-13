@@ -234,6 +234,188 @@ func AllOutOfCredit(routes []Route, rests map[string]RouteRest, now time.Time) s
 	return FundsCause + " (" + strings.Join(slices.Sorted(maps.Keys(providers)), ", ") + "): a payment is the owner's; the sprint is STOPPED until a provider is paid: a balance over zero the poll reads higher than the one before or than the balance at the refusal, or nova-sprint funded <provider>"
 }
 
+// NothingFundedCause is the cause the machine's record carries when the tick stopped it
+// because every tier that has work has no live route, for any rest cause.
+// tla/ProviderFunds.tla NeverRunningUnfunded, StopUnfunded
+const NothingFundedCause = "nothing funded can work"
+
+// NNothingFundedCanWork is the tick's one sprint-level judgment for NothingFundedCause.
+// tla/ProviderFunds.tla NeverRunningUnfunded
+const NNothingFundedCanWork = "nothing funded can work"
+
+// NFundedRouteLiveAgain is the note raised once, at the owner's start after a
+// NothingFundedCause stop, that a worked tier has a live route again.
+// tla/ProviderFunds.tla ResumableWhenFunded
+const NFundedRouteLiveAgain = "a funded route is live again"
+
+// StopCause is the machine cause a plan's stop words carry: NothingFundedCause when they
+// name it, else FundsCause (the funds stop's words, unchanged).
+// tla/ProviderFunds.tla Stop, StopUnfunded
+func StopCause(stop string) string {
+	if strings.Contains(stop, NothingFundedCause) {
+		return NothingFundedCause
+	}
+	return FundsCause
+}
+
+func workedTiers(s *Snapshot) []string {
+	set := map[string]bool{}
+	if s != nil && s.Work != nil {
+		for _, c := range s.Work.Column(Ready) {
+			if IsSentinel(c) || StreamHeld(s, c.Row) || len(WaitsFor(s, c, nil)) > 0 {
+				continue
+			}
+			set[s.dealTierOf(c)] = true
+		}
+		for _, c := range readsWaitingCards(s) {
+			set[s.readTierOf(c)] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
+// fundedRest says a rest is one of the causes this stop counts: credit, auth, or
+// rested by the seat. A transient provider rest (or a rate backoff) ends by the
+// clock and the route serves again, so it never makes a tier unfunded.
+//
+// SPEC CONFLICT, reported not guessed: the card says a tier has no live route
+// "when TierNotLive holds: every route in its tier array rests, for any cause
+// (credit, auth, or rested by the seat)". Read literally with TierNotLive
+// (route.go, any rest incl. rate-backoff/provider), a brief rate backoff on
+// every route of a worked tier would stop the sprint, and
+// TestThreeRateLimitedTakesOnALimitedRouteRestNothing fails (verified: it
+// passes with the funded-cause reading below, fails with TierNotLive). The
+// parenthetical's three causes are the funded ones this stop is named for, so
+// the narrower reading is kept and the conflict is flagged in the PR for the
+// owner/cold readers to adjudicate.
+// tla/ProviderFunds.tla NeverRunningUnfunded, StopUnfunded
+func fundedRest(cause string) bool {
+	return cause == RestCredit || cause == RestAuth || cause == RestCoordinator
+}
+
+// tierBlocked says a tier with work cannot be worked funded: its tier array is
+// not empty, no up friend serves it, and every route in the array is missing or
+// disabled, or rests for a funded cause. A tier with no route in its array at
+// all is the "no route serves the tier" judgment's case, never this stop.
+func tierBlocked(s *Snapshot, tier string, rests map[string]RouteRest) bool {
+	arr := s.tierArray(tier)
+	if len(arr) == 0 {
+		return false
+	}
+	if up, _ := s.tierServed(tier, nil); len(up) > 0 {
+		return false
+	}
+	for _, name := range arr {
+		found := false
+		for _, r := range s.Routes {
+			if r.Name == name && r.Tier == tier && r.Enabled {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		rest, ok := rests[name]
+		if !ok || !rest.Resting(s.Now) {
+			return false
+		}
+		if !fundedRest(rest.Cause) {
+			return false
+		}
+	}
+	return true
+}
+
+func restCausePhrase(name string, rest RouteRest) string {
+	switch rest.Cause {
+	case RestCredit:
+		return name + " out of credit until " + rest.UntilSaid()
+	case RestAuth:
+		return name + " auth refused (rest until " + rest.UntilSaid() + ")"
+	case RestCoordinator:
+		return name + " rested by the seat until " + rest.UntilSaid()
+	default:
+		return name + " resting (" + rest.Cause + ") until " + rest.UntilSaid()
+	}
+}
+
+func tierRestReasons(s *Snapshot, tier string, rests map[string]RouteRest) string {
+	arr := s.tierArray(tier)
+	if len(arr) == 0 {
+		return tier + " (tier array: none): no route in its tier array"
+	}
+	var parts []string
+	for _, name := range arr {
+		found := false
+		for _, r := range s.Routes {
+			if r.Name == name && r.Tier == tier && r.Enabled {
+				found = true
+				break
+			}
+		}
+		if !found {
+			parts = append(parts, name+" is not an enabled route of tier "+tier+" in its tier array")
+			continue
+		}
+		if rest, ok := rests[name]; ok && rest.Resting(s.Now) {
+			parts = append(parts, restCausePhrase(name, rest))
+		} else {
+			parts = append(parts, name+" serves")
+		}
+	}
+	return tier + " (tier array: " + strings.Join(arr, ", ") + "): " + strings.Join(parts, "; ")
+}
+
+// NothingFundedCanWork is the words of NothingFundedCause when at least one tier has work
+// and every tier with work has no live route (every route in its tier array rests for a
+// funded cause, and no up friend serves it; see the conflict note at fundedRest); ""
+// otherwise. An idle sprint is never
+// stopped for it. The blocked tiers are found from the routes first (few), so the per-card
+// work scan runs only when some tier is actually blocked (the retained worktree's
+// uncommitted short-circuit, kept).
+// tla/ProviderFunds.tla NeverRunningUnfunded, StopUnfunded, ResumableWhenFunded
+func NothingFundedCanWork(s *Snapshot) string {
+	if s == nil {
+		return ""
+	}
+	rests := s.rests
+	if rests == nil {
+		rests = RouteRests(s.Routes, s.Fleet)
+	}
+	tiers := map[string]bool{}
+	for tier := range s.Tiers {
+		tiers[tier] = true
+	}
+	for _, r := range s.Routes {
+		tiers[r.Tier] = true
+	}
+	blockedSet := map[string]bool{}
+	for _, tier := range slices.Sorted(maps.Keys(tiers)) {
+		if tierBlocked(s, tier, rests) {
+			blockedSet[tier] = true
+		}
+	}
+	if len(blockedSet) == 0 {
+		return ""
+	}
+	work := workedTiers(s)
+	if len(work) == 0 {
+		return ""
+	}
+	var blocked []string
+	for _, tier := range work {
+		if !blockedSet[tier] {
+			return ""
+		}
+		blocked = append(blocked, tierRestReasons(s, tier, rests))
+	}
+	return "sprint stopped: " + NothingFundedCause + " (" + strings.Join(blocked, "; ") + "): a funded route of a worked tier live again is the owner's to start: nova-sprint start"
+}
+
+// NothingFunded is NothingFundedCanWork of the snapshot.
+func (s *Snapshot) NothingFunded() string { return NothingFundedCanWork(s) }
+
 // OutOfCredit is AllOutOfCredit of the snapshot's routes and the fleet table's rests.
 func (s *Snapshot) OutOfCredit() string {
 	return AllOutOfCredit(s.Routes, RouteRests(s.Routes, s.Fleet), s.Now)
@@ -315,6 +497,12 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 	}
 	if stop = AllOutOfCredit(s.Routes, s.rests, s.Now); stop != "" {
 		conds = append(conds, cond{typ: NAllOutOfCredit, streamLevel: true, what: stop})
+		return conds, stop
+	}
+	// FundsCause first when both hold (above); else the worked-tier stop.
+	// tla/ProviderFunds.tla NeverRunningUnfunded, StopUnfunded
+	if stop = NothingFundedCanWork(s); stop != "" {
+		conds = append(conds, cond{typ: NNothingFundedCanWork, streamLevel: true, what: stop})
 	}
 	return conds, stop
 }
@@ -453,6 +641,12 @@ func Funded(s *Snapshot, r FundedReq) Plan {
 //
 // tla/ProviderFunds.tla NoFundsStopWhileFriendUp
 func friendsKeepRunning(conds []cond, stop string, friends []FriendSeat) ([]cond, string) {
+	// a nothing-funded stop already accounts for an up friend serving a worked tier
+	// (tierBlocked); a friend up serving only an unworked tier never lifts it.
+	// tla/ProviderFunds.tla NeverRunningUnfunded
+	if strings.Contains(stop, NothingFundedCause) {
+		return conds, stop
+	}
 	if stop == "" || !AnyFriendUp(friends) {
 		return conds, stop
 	}

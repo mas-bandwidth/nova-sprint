@@ -3273,6 +3273,27 @@ order the cards were dealt in, so a card brought to the front of its stream by
     with the same line (exit 1) while every provider stays out; once one is paid (a read that
     ends its rest, or `funded`), the coordinator starts it and the judgment closes
     (`TestEveryProviderOutOfCreditStopsTheMachine`, `TestEveryProviderOutOfCreditStopsTheSprint`).
+  - Nothing funded can work stops the sprint (v1.2.17; tla/ProviderFunds.tla
+    NeverRunningUnfunded, StopUnfunded, ResumableWhenFunded). A tier has work when a ready
+    primary of the tier (not a sentinel, not held, its needs landed) or a read of the tier
+    waiting for a reader exists; it has no live route when every route in its tier array
+    rests, for any cause (credit, auth, or rested by the seat), and no up friend serves it.
+    A route configured, enabled and funded but missing from its tier's array is not live:
+    the deal draws only from the array (the pro array lacked six enabled opencode pro routes
+    until the owner set it by hand, nova-config tier set pro, rev 742, 2026-10-13). When at
+    least one tier has work and every tier with work has no live route, the tick stops the
+    machine beside the funds stop, keeping FundsCause first when both hold and never merging
+    the causes: cause `nothing funded can work`, line `machine: STOPPED (nothing funded can
+    work)`, one sprint-level judgment whose reason is `sprint stopped: nothing funded can
+    work (<tier> (tier array: <routes>): <route> out of credit until <end>; <route> auth
+    refused; <route> rested by the seat until <end>; ...)`. While STOPPED for this cause no
+    deadline, stale or overdue judgment is raised (running time excludes STOPPED spans).
+    Resume is the owner's `start`, never automatic: rests end by the clock at different
+    times and an automatic resume would stop-start repeatedly, each stop a push to the
+    owner, and a paid provider is a human act. `start` is refused with the reason while the
+    rule holds; once a route of a worked tier is live, `start` runs and raises one
+    `a funded route is live again: nova-sprint start` note for that stop
+    (`TestEveryWorkedTierUnfundedStopsTheSprint`, `TestTheStoreStopsAndStartRefusesUntilAWorkedTierIsLive`).
   - `where --json` carries `providers`, the providers table: a row for each provider the
     routes name, `name`, `balance` (dollars and cents rounded up, a negative one `-$0.51`, or
     `unknown`), `balance_at`, `spend_hour`, `state` (`serving`; `resting until <end> (<cause>:

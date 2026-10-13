@@ -317,6 +317,10 @@ func MachineLine(now time.Time, m Machine, hb Heartbeat) string {
 	if !m.Running() && m.Cause == sprint.FundsCause {
 		return "machine: STOPPED (" + sprint.FundsCause + ")"
 	}
+	// tla/ProviderFunds.tla NeverRunningUnfunded
+	if !m.Running() && m.Cause == sprint.NothingFundedCause {
+		return "machine: STOPPED (" + sprint.NothingFundedCause + ")"
+	}
 	if !m.Running() && m.Reason != "" && !m.Until.IsZero() {
 		// a stop by hand says who, why and when it is back (section 14)
 		return "machine: " + sprint.StoppedText(m.Who, m.Reason, m.Until, now)
@@ -469,7 +473,11 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 	}
 	res, err = st.Run(ctx, Step{Verb: verb, Plan: func(s *sprint.Snapshot) sprint.Plan {
 		n := sprint.Note{Kind: sprint.Happened, Type: typ, Who: who, At: s.Now, What: what}
-		return sprint.Plan{Notes: []sprint.Note{n}}
+		notes := []sprint.Note{n}
+		if running && before.Cause == sprint.NothingFundedCause {
+			notes = append(notes, sprint.Note{Kind: sprint.Happened, Type: sprint.NFundedRouteLiveAgain, Who: who, At: s.Now, What: "a funded route is live again: nova-sprint start"})
+		}
+		return sprint.Plan{Notes: notes}
 	}})
 	res.Moved = []string{fmt.Sprintf("machine %s -> %s", before.StateWord(), after.StateWord())}
 	return before, after, res, err
@@ -1637,9 +1645,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			}
 		}
 		if stop != "" && !r.Lost {
-			// Every provider is out of credit: the machine stops itself as the part's step
+			// The deal stopped the machine: it stops itself as the part's step
 			// commits, with the cause, and the tick ends here (nova-tools#5199).
-			if err := t.st.stopFor(t.ctx, sprint.FundsCause, stop, t.runSeq, t.res); err != nil {
+			if err := t.st.stopFor(t.ctx, sprint.StopCause(stop), stop, t.runSeq, t.res); err != nil {
 				t.err = fmt.Errorf("tick %s: stopping the machine: %w", part.Name, err)
 				return tickFailed
 			}

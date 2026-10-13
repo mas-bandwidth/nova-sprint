@@ -100,6 +100,15 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its providers), then "+prog+" funded <provider> --reason <the payment> once one is paid"))
 			return 1
 		}
+		// every tier that has work has no live route: the machine stays STOPPED until a
+		// route of a worked tier is live and the owner starts it (noise 5;
+		// tla/ProviderFunds.tla NeverRunningUnfunded, ResumableWhenFunded)
+		if why, err := st.NothingFunded(ctx); err != nil {
+			return a.readFailed(name, err, stderr)
+		} else if why != "" {
+			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its tiers and routes), then wake or fund a route of a worked tier, then "+prog+" start"))
+			return 1
+		}
 		// every need of the cards resolved, computed live before the record's gate, so a hold
 		// raised after a clean check is caught (a-missing-or-blocked-need-is-found-at-check-
 		// and-while-running; startNeedsGate)
@@ -1132,7 +1141,7 @@ credit is rested until a payment is seen (a balance read higher than the read
 before it, or than at the refusal), nova-sprint funded <provider> says it was
 paid, or nova-sprint routes wake <provider> ends it. When every provider is
 OUT the tick stops the machine (STOPPED, every provider is out of credit) and
-start is refused until one is paid. Low on funds never stops it. Every
+start is refused until one is paid. Low on funds never stops it. When every tier that has work has no live route in its tier array (every route resting, for credit, auth or the seat's own rest, and no up friend serving it), the tick stops the machine instead (STOPPED, nothing funded can work), naming each worked tier, its tier array and its resting routes with their causes; start is refused while that holds, and only the owner's start resumes it (a rest ending by the clock does not), so it never stop-starts on each rest that ends. Every
 other verbs can inspect and repair stopped state. run stops (exit 3) when its own binary is replaced
 on disk, so its supervisor starts the new build.`) + "\n"
 }
