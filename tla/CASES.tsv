@@ -727,3 +727,6 @@ MCSentinelReleaseBrokenEarlyAuto.cfg	MCSentinelRelease.tla	invariant	AutoRequire
 MCSentinelReleaseBrokenWorker.cfg	MCSentinelRelease.tla	invariant	EarlyIsAuthorized	ignore-terminal	sentinelrelease	required	-
 MCSentinelReleaseBrokenDropWaivesAll.cfg	MCSentinelRelease.tla	invariant	AutoRequiresCompletedAndDev	ignore-terminal	sentinelrelease	required	-
 MCSentinelReleaseReachAllDropped.cfg	MCSentinelRelease.tla	invariant	NeverAllDroppedAutoReleased	ignore-terminal	sentinelrelease	required	-
+MCSentinelReleaseEmpty.cfg	MCSentinelRelease.tla	pass	-	ignore-terminal	sentinelrelease	required	-
+MCSentinelReleaseReachEmpty.cfg	MCSentinelRelease.tla	invariant	NeverAutoReleased	ignore-terminal	sentinelrelease	required	-
+MCSentinelReleaseBrokenEmptyNotice.cfg	MCSentinelRelease.tla	invariant	NoInventedMergeNotice	ignore-terminal	sentinelrelease	required	-

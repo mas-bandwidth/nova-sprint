@@ -6,12 +6,12 @@
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Producers, MaxHead, AllowEarly, Broken
-ASSUME /\ Producers # {}
+ASSUME /\ IsFiniteSet(Producers)
        /\ MaxHead \in Nat \ {0}
        /\ AllowEarly \in BOOLEAN
        /\ Broken \in {"none", "unlanded", "nodev", "stalehead", "wrongstream",
                       "stalescope", "silent", "manualgate", "staleconsumer",
-                      "failedmerge", "reusedmerge", "earlyauto", "worker", "dropwaivesall"}
+                      "failedmerge", "reusedmerge", "earlyauto", "worker", "dropwaivesall", "emptynotice"}
 
 Heads == Producers \X (1..MaxHead)
 Tokens == Heads \cup {"other"}
@@ -20,13 +20,13 @@ EmptyProof == [scope |-> 0, head |-> 0, included |-> {}]
 
 VARIABLES state, head, scope, remoteDev, observedDev, proof,
           released, releaseHeads, releaseDev, releaseDone, releaseFresh,
-          releaseAuthorized, releaseDropped, notice, noticeDev,
+          releaseAuthorized, releaseDropped, notice, noticeKind, noticeDev,
           consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
           everyDealObserved, everyDealMerged, everyDealNewMerge
 
 vars == <<state, head, scope, remoteDev, observedDev, proof,
           released, releaseHeads, releaseDev, releaseDone, releaseFresh,
-          releaseAuthorized, releaseDropped, notice, noticeDev,
+          releaseAuthorized, releaseDropped, notice, noticeKind, noticeDev,
           consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
           everyDealObserved, everyDealMerged, everyDealNewMerge>>
 
@@ -46,6 +46,7 @@ TypeOK ==
   /\ releaseAuthorized \in BOOLEAN
   /\ releaseDropped \subseteq Producers
   /\ notice \in BOOLEAN
+  /\ noticeKind \in {"none", "dev", "no-producers", "all-dropped", "early"}
   /\ noticeDev \subseteq Tokens
   /\ consumerBase \subseteq Tokens
   /\ mergeOK \in BOOLEAN
@@ -71,6 +72,7 @@ Init ==
   /\ releaseAuthorized = FALSE
   /\ releaseDropped = {}
   /\ notice = FALSE
+  /\ noticeKind = "none"
   /\ noticeDev = {}
   /\ consumerBase = {}
   /\ mergeOK = FALSE
@@ -82,7 +84,7 @@ Init ==
   /\ everyDealNewMerge = TRUE
 
 releaseVars == <<released, releaseHeads, releaseDev, releaseDone,
-                 releaseFresh, releaseAuthorized, releaseDropped, notice, noticeDev>>
+                 releaseFresh, releaseAuthorized, releaseDropped, notice, noticeKind, noticeDev>>
 consumerVars == <<consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
                   everyDealObserved, everyDealMerged, everyDealNewMerge>>
 
@@ -180,6 +182,12 @@ AcceptedProofs ==
          (RequiredProducers # Producers) \/ ProofsFresh
     [] OTHER -> ProofsFresh
 
+NoticeKind(kind) ==
+  IF kind # "auto" THEN "early"
+  ELSE IF Producers = {} THEN "no-producers"
+  ELSE IF RequiredProducers = {} THEN "all-dropped"
+  ELSE "dev"
+
 CommitRelease(kind, authorized) ==
   /\ released' = kind
   /\ releaseHeads' = CurrentHeads
@@ -189,7 +197,9 @@ CommitRelease(kind, authorized) ==
   /\ releaseAuthorized' = authorized
   /\ releaseDropped' = Producers \ RequiredProducers
   /\ notice' = Broken # "silent"
-  /\ noticeDev' = observedDev
+  /\ noticeKind' = NoticeKind(kind)
+  /\ noticeDev' = IF NoticeKind(kind) = "dev" \/ Broken = "emptynotice"
+                    THEN observedDev ELSE {}
   /\ UNCHANGED <<state, head, scope, remoteDev, observedDev, proof, consumerVars>>
 
 AutoRelease ==
@@ -256,7 +266,13 @@ AutoRequiresCompletedAndDev ==
   released = "auto" => (releaseDone /\ releaseHeads \subseteq releaseDev)
 AutoUsesCurrentProof == released = "auto" => releaseFresh
 EarlyIsAuthorized == released = "early" => releaseAuthorized
-ReleaseHasNotice == released # "none" => (notice /\ noticeDev = releaseDev)
+ReleaseHasNotice ==
+  released # "none" =>
+    /\ notice
+    /\ noticeKind # "none"
+    /\ (noticeKind = "dev" => noticeDev = releaseDev)
+NoInventedMergeNotice ==
+  noticeKind \in {"no-producers", "all-dropped"} => noticeDev = {}
 DealsContainObservedDev == everyDealObserved
 DealsFollowSuccessfulMerge == everyDealMerged
 EveryDealHasNewMerge == everyDealNewMerge

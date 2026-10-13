@@ -1,7 +1,7 @@
 # Automatic sentinel release
 
 `SentinelRelease` models the P8 automatic-release contract at a bounded cut:
-two required producer streams, one sentinel, and two successive deals from a
+zero or two required producer streams, one sentinel, and two successive deals from a
 consumer stream. Each producer has at most two head revisions. It complements
 `Holds`; it is not a composition/refinement proof of that older model's manual
 and cut-sentinel transitions or of the entire sprint scheduler.
@@ -30,9 +30,10 @@ intentional exception. No fairness premise schedules the override.
 
 A dropped producer counts as complete by explicit waiver and contributes no
 head. Dropping one producer never waives another producer's proof. An all-dropped
-cut is reachable and releases with no required producer heads. The instance
-requires a nonempty producer table and makes no claim about admission of an
-empty sentinel. The abstract name `dev` denotes each stream's recorded protected
+cut is reachable and releases with no required producer heads. A separate empty
+instance releases immediately. Its notification says no producers; an all-dropped
+cut says all producers dropped. Neither invents a producing merge revision.
+The abstract name `dev` denotes each stream's recorded protected
 integration target (`main` or `dev`). A freshly fetched ancestry proof is enough;
 no forge pull-request API evidence is assumed.
 
@@ -77,14 +78,15 @@ may wait with no state change. Temporal properties still inspect infinite
 stuttering behavior: the `manualgate` mutation must fail liveness even though
 all eligible facts hold. No elapsed-time bound is claimed.
 
-The reachability cases deliberately assert that automatic or early release
-never happens; their expected counterexamples establish those paths are not
+The reachability cases deliberately assert that automatic, early, all-dropped
+or empty-cut release never happens; their expected counterexamples establish those paths are not
 vacuous. Other witnesses remove exactly one guard or corrupt one outcome:
 unlanded producer, absent development ancestry, stale head, another stream's
 proof, stale scope, missing notice, a coordinator prerequisite, stale consumer
 snapshot, false success after merge failure, reuse of a prior merge, relabeling
 an early override as automatic, a worker claiming override authority, and one dropped producer wrongly waiving
-all other ancestry checks.
+all other ancestry checks, plus an empty-cut notification falsely naming a
+producing merge.
 
 Cases and exact expected properties are in `CASES.tsv`, group
 `sentinelrelease`. Measured Linux records belong in `RUNS.tsv`; prior records
