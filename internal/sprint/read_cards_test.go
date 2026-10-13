@@ -738,3 +738,25 @@ func TestAReaskedFriendReadTwiceClosesAtItsSecondGeneration(t *testing.T) {
 	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", second[0].ID, "Verdict: LAND\n", nil))
 	require.Equal(t, "ok", w.s.Fleet.Card(second[0].ID).F("verdict"), "her report on .g2 closes it by its own key")
 }
+
+// TestTickDealCarriesReadCardRefusalsInPlan verifies that when a read card create is
+// refused (e.g. read generations past the load window), sprint.TickDeal carries the refusal
+// directly in Plan.Refused, without relying on package-global state.
+func TestTickDealCarriesReadCardRefusalsInPlan(t *testing.T) {
+	t.Parallel()
+	w := readCardsWorld(t, 4, "m1", "m2", "m3")
+	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
+
+	// Pre-create an unplaced read card past the load window (readCardLoadWindow = 4)
+	// so readCardIDFor fails with "read generations past the load window".
+	w.s.Fleet.Put(&Card{
+		ID:     ReadCardID("s1-1", 1, "m2") + ".g5",
+		Fields: map[string]string{"kind": "read", "primary": "s1-1"},
+	})
+
+	p, _ := TickDeal(w.s, TickReq{})
+	require.NotEmpty(t, p.Refused, "TickDeal must carry read card refusals in Plan.Refused")
+	require.Equal(t, "m2", p.Refused[0].Key)
+	require.Equal(t, "read generations past the load window", p.Refused[0].Why)
+}
+
