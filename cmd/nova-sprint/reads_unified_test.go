@@ -102,7 +102,7 @@ func TestAnyUnitWithRoomAtOrAboveTheReadTierServesARead(t *testing.T) {
 
 	rd := pro.Reads[0].F("reader")
 	require.NotEmpty(t, rd)
-	ta.ok("read --as " + rd + " --ok " + pro.Reads[0].ID)
+	ta.ok("read --as " + rd + " --ok " + pro.Reads[0].ID + " --usage 'input=1000 output=100'")
 	ta.json("where", &w)
 	okN := 0
 	for _, row := range w.Tables[sprint.Readers] {

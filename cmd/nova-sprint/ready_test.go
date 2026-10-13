@@ -29,12 +29,12 @@ func TestReadyToAcceptIsAJudgmentAcceptedByGroup(t *testing.T) {
 	ta.ok("ack " + strings.Join(red.Notes, ",") + " --reason 'a flaky runner'")
 	// the first reads round the readers: s1-1 reader-a, s1-2 reader-b, s1-3 reader-a; each ok,
 	// the second is asked of the other
-	ta.ok("read --as reader-a --ok s1-1.r1.reader-a")
-	ta.ok("read --as reader-b --ok s1-2.r1.reader-b")
-	ta.ok("read --as reader-a --ok s1-3.r1.reader-a")
+	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok s1-2.r1.reader-b --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-a --ok s1-3.r1.reader-a --usage 'input=1000 output=100'")
 	ta.ok("ask")
-	ta.ok("read --as reader-b --ok s1-1.r1.reader-b")
-	ta.ok("read --as reader-a --ok s1-2.r1.reader-a")
+	ta.ok("read --as reader-b --ok s1-1.r1.reader-b --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-a --ok s1-2.r1.reader-a --usage 'input=1000 output=100'")
 	// s1-3: one reader ok, its second read outstanding: not ready
 	ta.ok("inbox --read")
 	g := ta.group(sprint.NReadyToAccept, "s1")
@@ -80,8 +80,8 @@ func TestTheTickAcceptsAndReadOkSaysNothingWaits(t *testing.T) {
 	ta.ok("take --as m1 --limit 2")
 	ta.ok("finish --as m1 s1-1.w1@1 s1-2.w1@1")
 	ta.ok("ask")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	for _, g := range ta.inboxGroups() {
 		require.False(t, g.Type == sprint.NReadyToAccept, "a ready to accept judgment: %+v", g)
 	}

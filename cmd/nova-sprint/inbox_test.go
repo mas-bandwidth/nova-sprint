@@ -159,7 +159,7 @@ func TestReworkTakesTheFindingOrTheReport(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1 s1-3.w1@1 s1-4.w1@1")
 	ta.ok("finish --as m1 s1-2.w1@1 --failed --report 'the tests went red'")
 	ta.ok("ask")
-	ta.ok("read --as reader-a --broken --finding 'line 3: the empty case is not handled' s1-1.r1.reader-a")
+	ta.ok("read --as reader-a --broken --finding 'line 3: the empty case is not handled' s1-1.r1.reader-a --usage 'input=1000 output=100'")
 	broken := ta.group(sprint.NReadBroken, "s1")
 	// all or nothing: s1-3 has no finding, report or --fix, so nothing moves
 	code, out, errs := ta.do("rework s1-1 s1-2 s1-3 --answers " + broken.ID)
@@ -248,9 +248,9 @@ func TestEveryJudgmentPrintsItsDecisionsAsCommands(t *testing.T) {
 	ta.ok("finish --as m1 s2-1.w1@1 --failed --report 'the tests went red'")
 	ta.ok("ask --limit 100")
 	ta.a.sleep(time.Second)
-	ta.ok("read --as reader-a --broken --finding 'line 3: the empty case is not handled' s2-2.r1.reader-a")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("read --as reader-a --broken --finding 'line 3: the empty case is not handled' s2-2.r1.reader-a --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	// both reads of each card were asked together, so both readers' oks come back in one
 	// step each: no judgment (the tick accepts; here, STOPPED, the stuck-case verb does),
 	// and the red is j3
@@ -331,7 +331,7 @@ func TestInboxPrintsTheReaderFindingInFullUnderTheJudgment(t *testing.T) {
 	ta.ok("ask")
 	ta.a.sleep(time.Second)
 	finding := "line 3: the empty case is not handled: it panics on the last line" + strings.Repeat(" of a very long finding", 12)
-	ta.ok("read --as reader-a --broken --finding '" + finding + "' s1-1.r1.reader-a")
+	ta.ok("read --as reader-a --broken --finding '" + finding + "' s1-1.r1.reader-a --usage 'input=1000 output=100'")
 	out := ta.ok("inbox")
 	// the judgment line names the type and the card, not the finding
 	var judgment string
@@ -360,7 +360,7 @@ func TestInboxNamesASingleCardJudgmentByItsCard(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1")
 	ta.ok("ask")
 	ta.a.sleep(time.Second)
-	ta.ok("read --as reader-a --broken --finding 'line 3: off by one' s1-1.r1.reader-a")
+	ta.ok("read --as reader-a --broken --finding 'line 3: off by one' s1-1.r1.reader-a --usage 'input=1000 output=100'")
 	out := ta.ok("inbox")
 	require.Contains(t, out, "nova-sprint rework s1-1\n", "rework with the finding names the card:\n%s", out)
 	require.Contains(t, out, "nova-sprint ask s1-1 --another\n", "ask --another names the card:\n%s", out)

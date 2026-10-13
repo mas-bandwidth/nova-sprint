@@ -34,5 +34,5 @@ func TestAReadOfAPrimaryNamesTheReadCard(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "REFUSED nothing-1: no such card on the table\n")
 	// the named read card is the one the read takes
-	ta.ok("read --as reader-a --ok s1-1.r1.reader-a")
+	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --usage 'input=1000 output=100'")
 }

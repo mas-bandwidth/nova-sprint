@@ -551,6 +551,8 @@ func TestAudit2ClosedAskAnotherHitsARetiredCard(t *testing.T) {
 	require.Contains(t, res.Refused[0].Why, "reader add", "ask --another: %+v", res)
 	require.Equal(t, 1, res.Attempts, "ask --another: %+v", res)
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-d"}))
+	// This positive replacement reader explicitly serves the configured tiers.
+	h.readersRead("flash,pro,heavy,frontier")
 	h.beat()
 	res = h.run(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Another: true}))
 	require.Len(t, res.Moved, 1, "ask --another with a new reader: %+v", res)

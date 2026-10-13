@@ -21,7 +21,9 @@ func TestABrokenVerdictAtTheBriefBoundRecordsAndReturnsToWork(t *testing.T) {
 	const finding = "internal/x.go:12 drops the error; return it"
 	pr := w.s.Work.Card("s1-1")
 	pr.Fields["brief"] = "c: the work (s1) tier: flash\n" // one reader's ok is its read rule
-	pr.Fields["attempt"] = "2"                            // at the cap: its brief's bound
+	// The routed setup finished at pro; this fixture explicitly tests flash work.
+	pr.Fields[FieldTierNow] = "flash"
+	pr.Fields["attempt"] = "2" // at the cap: its brief's bound
 	pr.Fields["finding"] = finding
 	pr.Fields[FieldFindingAttempt] = "1"
 	head := pr.F("head")

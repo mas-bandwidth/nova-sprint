@@ -52,6 +52,7 @@ func TestAuthoritativeBrokenReadFindingBoundary(t *testing.T) {
 			if tc.finding != "" {
 				line += " --finding '" + tc.finding + "'"
 			}
+			line += " --usage 'input=1000 output=100'"
 			code, out, errs := ta.do(line)
 			rc := readCard(original)
 			if tc.valid {
@@ -99,7 +100,7 @@ func TestAuthoritativeBrokenReadFindingBoundary(t *testing.T) {
 			for _, g := range ta.inboxGroups() {
 				assert.NotEqual(t, sprint.NReadBroken, g.Type, "reasking is not a broken read: %+v", g)
 			}
-			ta.ok("read --as reader-c --broken " + replacement + " --finding '" + finding + "'")
+			ta.ok("read --as reader-c --broken " + replacement + " --finding '" + finding + "' --usage 'input=1000 output=100'")
 			rc = readCard(replacement)
 			assert.Equal(t, sprint.Broken, rc.Col)
 			assert.Equal(t, finding, rc.F("finding"))

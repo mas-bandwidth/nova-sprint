@@ -140,9 +140,9 @@ func TestAVerbWhoseDisplaySyncFailsAfterItsWriteReportsOK(t *testing.T) {
 			ta.ok("take --as m1 s1-1.w1@1")
 			ta.ok("finish --as m1 s1-1.w1@1")
 			ta.ok("ask")
-			ta.ok("read --as reader-a --ok s1-1.r1.reader-a")
+			ta.ok("read --as reader-a --ok s1-1.r1.reader-a --usage 'input=1000 output=100'")
 			ta.ok("ask") // the second read, the first ok
-			ta.ok("read --as reader-b --ok s1-1.r1.reader-b")
+			ta.ok("read --as reader-b --ok s1-1.r1.reader-b --usage 'input=1000 output=100'")
 			ta.ok("accept s1-1")
 			ta.ok("merge --stream s1")
 		}},

@@ -74,9 +74,9 @@ func TestNamedReadReplyLossReplaysBeginAndVerdict(t *testing.T) {
 	again := read(begin)
 	assert.True(t, again.Replay)
 	assert.Equal(t, first.Moved, again.Moved)
-	code, _, _ := ta.do("read --as reader-a --ok " + word + " --epoch 0 --op " + beginOp + " --json")
+	code, _, _ := ta.do("read --as reader-a --ok " + word + " --epoch 0 --op " + beginOp + " --json --usage 'input=1000 output=100'")
 	assert.NotEqual(t, 0, code, "a verdict cannot reuse the begin operation")
-	verdict := "read --as reader-a --ok " + word + " --epoch 0 --op " + verdictOp + " --json"
+	verdict := "read --as reader-a --ok " + word + " --epoch 0 --op " + verdictOp + " --json --usage 'input=1000 output=100'"
 	first = read(verdict) // this response is lost too
 	require.False(t, first.Replay)
 	require.Len(t, first.Moved, 1)

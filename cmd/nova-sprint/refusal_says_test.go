@@ -110,7 +110,7 @@ func TestEveryVerbThatCanRefusePrintsAReasonAndARemedy(t *testing.T) {
 			at: "a-1 merging",
 			set: func(t *testing.T, ta *testApp) {
 				ta.ok("ask")
-				ta.ok("read --as reader-a --ok a-1.r1.reader-a")
+				ta.ok("read --as reader-a --ok a-1.r1.reader-a --usage 'input=1000 output=100'")
 				ta.ok("accept a-1 --read-ok")
 			},
 			rows: []string{

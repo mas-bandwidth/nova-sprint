@@ -274,6 +274,10 @@ func TestAProbedMemberThatDrainsIsDealtNothingAndItsReaderIsAskedNothing(t *test
 	// the drain clears: m1 is dealt again and its reader is asked again
 	h.live = []string{"m1", "m2"}
 	h.beat()
+	// Recovery probes two-read pro work rather than a flash-first attempt.
+	h.m.SetRoutes([]sprint.Route{providerRoute("pro-a", "pro", "funded-pro")})
+	h.m.SetProviders(map[string]sprint.Provider{"funded-pro": {Name: "funded-pro", Billing: "metered", Funded: true}})
+	h.readersRead("flash,pro")
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 8}))
 	h.machine()
 	assert.NotEmpty(t, readyWork(h.snap(), "m1"), "a member that drains no more is dealt cards")

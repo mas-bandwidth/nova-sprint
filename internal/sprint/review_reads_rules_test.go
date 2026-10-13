@@ -24,6 +24,8 @@ func TestAReadNeverMovedIsNotTakenForLevelledByAStampItShares(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 3)
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-d"))
+	// The added reader has the same legacy tier eligibility as the original rows.
+	w.s.Readers.Texts["reader-d"] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
 	toReview(w, "s1-1", "s1-2", "s1-3")
 	// the ask placed s1-1 on reader-a and reader-b at t0; in the same second
 	// the level moved reader-a's read to reader-c

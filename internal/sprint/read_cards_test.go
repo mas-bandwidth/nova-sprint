@@ -154,6 +154,8 @@ func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 func TestMemberReaderWithoutExplicitTiersNeedsEnabledRoute(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4, "m1", "m2")
+	// Clear positive helper eligibility: this test pins the native blank-tier default.
+	w.s.Readers.Texts = nil
 	// No explicit tier configuration - readers should require enabled routes
 	// Set up a DISABLED pro route - the reader should NOT be able to serve pro
 	w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: false}}

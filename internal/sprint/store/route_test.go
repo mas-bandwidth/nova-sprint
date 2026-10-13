@@ -180,6 +180,8 @@ func TestACardWithNoRouteIsNotDealtAndJudgedOncePerTier(t *testing.T) {
 	h.clean("the cards no route serves are held by their tier's judgment")
 
 	h.m.SetRoutes([]sprint.Route{route("flash-a", "flash"), route("pro-a", "pro")})
+	// Restoring a route does not resume the stopped machine.
+	h.startMachine()
 	h.machine()
 	cards = h.workCards()
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {

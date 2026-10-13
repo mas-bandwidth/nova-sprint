@@ -120,6 +120,9 @@ func TestTheLevelMovesReadsOffAReaderOverItsWidth(t *testing.T) {
 func TestAProCardsSecondReadWaitsForAnotherReaderWithRoom(t *testing.T) {
 	t.Parallel()
 	w := widthWorld(t, 2, 1, 2)
+	// This test exercises the standalone reader width rule at pro.
+	w.readersTable()
+	readersReadEveryTier(w)
 	w.s.Work.Card("p2").Fields["brief"] = proBrief
 	w.s.Readers.Put(&Card{ID: ReadCardID("p1", 1, "reader-m2"), Row: "reader-m2", Col: Asked, Rev: 1,
 		Fields: map[string]string{"kind": "read", "primary": "p1", "stream": "s1", "attempt": "1", "reader": "reader-m2", "head": "h1"}})

@@ -23,7 +23,7 @@ func TestReaderRetireKeepsTheHistoryAndTakesTheRowOff(t *testing.T) {
 	ta.ok("ask s1-1")
 	require.Equal(t, []string{"s1-1.r1.reader-a"}, ta.askedOf("reader-a"), "a pro card's reads are asked together")
 	require.Equal(t, []string{"s1-1.r1.reader-b"}, ta.askedOf("reader-b"), "the second read, of another reader, in the same ask")
-	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --finding 'fine'")
+	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --finding 'fine' --usage 'input=1000 output=100'")
 
 	code, _, errs := ta.do("reader remove reader-a")
 	assert.Equal(t, 1, code)

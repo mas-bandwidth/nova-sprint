@@ -90,10 +90,10 @@ func whereFixture(t *testing.T) *testApp {
 		}
 	}
 	require.NotEmpty(t, taken, "m1 took nothing: %+v", q.Cards)
-	ta.ok("finish --as m1 " + taken + "@1")
+	ta.ok("finish --as m1 " + taken + "@1 --usage 'input=1000 output=100'")
 	ta.ok("ask")
-	ta.ok("read --as reader-a --ok --limit 10")
-	ta.ok("read --as reader-b --ok --limit 10")
+	ta.ok("read --as reader-a --ok --limit 10 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 10 --usage 'input=1000 output=100'")
 	ta.ok("accept --read-ok")
 	ta.ok("tick") // the pump drains the accept the machine queued
 	return ta
@@ -177,7 +177,7 @@ func TestWhereFrameHoldsOnlyTheHeaderAndTheTables(t *testing.T) {
 	frame := ta.ok("where --all")
 	lines := strings.Split(frame, "\n")
 	// the machine RUNNING, its last tick three hours late: running, never STOPPED
-	require.Equal(t, []string{"SPRINT TABLE  coordinator coordinator", "", "0/3 0.0% -> ETA -  running (tick late 10800s)", "providers: none applied WARN no provider rows applied (nova-config apply --kind provider)", ""}, lines[:5], "the head of the frame")
+	require.Equal(t, []string{"SPRINT TABLE  coordinator coordinator", "", "0/3 0.0% -> ETA -  running (tick late 10800s)", "providers: fixture funded (flash 1/1, pro 1/1, heavy 1/1)", ""}, lines[:5], "the head of the frame")
 	for _, l := range lines[5:] {
 		assert.True(t, l == "" || strings.Contains(l, " | ") || strings.Contains(l, "-+-"), "a line that is not a table's: %q\n%s", l, frame)
 	}

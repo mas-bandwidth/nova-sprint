@@ -189,7 +189,7 @@ func TestAReadAskedOfAReaderThatGoesAwayIsAskedAgain(t *testing.T) {
 	// reads are asked together: reader-a's stands, and the read taken back is asked of
 	// the next reader up in the same tick
 	assert.Equal(t, []string{"s1-1.r1.reader-c"}, ta.askedOf("reader-c"), "asked of the next reader up at the same attempt")
-	ta.ok("read --as reader-a --ok s1-1.r1.reader-a")
+	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --usage 'input=1000 output=100'")
 	out := ta.ok("card s1-1")
 	assert.NotContains(t, out, "attempt 2")
 	for _, g := range ta.inboxGroups() {
@@ -244,7 +244,7 @@ func TestReaderRemoveRefusesAReaderWhoseReadStands(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.inReview(1)
 	ta.ok("ask")
-	ta.ok("read --as reader-a --ok --limit 5")
+	ta.ok("read --as reader-a --ok --limit 5 --usage 'input=1000 output=100'")
 	code, _, errs := ta.do("reader remove reader-a")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "reader-a holds s1-1.r1.reader-a (ok)")
