@@ -38,7 +38,7 @@ func TestRedisTheDealReadsTheRoutesApplyWrites(t *testing.T) {
 	set, trips, err := st.B.(RouteReader).Routes(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), trips, "the arrays and the bars ride in the routes' second trip")
-	assert.Equal(t, Bars{Bounce: "0.5", Review: "0.3", AttemptNoResult: "0.71", AttemptNothingToDo: "0.72", Grade: "0.73", GateFlaky: "0.8", GatePreexisting: "0.75", Judgment: "0.85"}, set.Bars, "each bar read by its field's name")
+	assert.Equal(t, Bars{Bounce: "0.5", Review: "0.3", AttemptNoResult: "0.71", AttemptNothingToDo: "0.72", Grade: "0.73", GateFlaky: "0.8", GatePreexisting: "0.75", Judgment: "0.85", GitIdentity: config.DefaultGitIdentity}, set.Bars, "each bar read by its field's name; an unapplied git_identity reads the machine identity (sprint.Defaults)")
 	assert.Equal(t, map[string][]string{"flash": {"flash-a", "flash-a"}}, set.Tiers, "pro has no array: it takes its routes in name order")
 	rs, _, err := st.Routes(ctx)
 	require.NoError(t, err)
