@@ -657,7 +657,7 @@ func MemDump(m *Mem, epoch uint64) ([]DumpKey, error) {
 		return nil
 	}
 	n := sprint.Names{}
-	meta := memSnapshot{Version: s.Version, EpochSet: s.EpochSet, EpochN: s.EpochN, Cleared: s.Cleared, Owed: s.Owed, Seq: s.Seq}
+	meta := memSnapshot{Version: s.Version, EpochSet: s.EpochSet, EpochN: s.EpochN, Cleared: s.Cleared, Owed: s.Owed, DefaultsOwed: s.DefaultsOwed, Seq: s.Seq}
 	if err := add(n.Key("mem:meta"), meta); err != nil {
 		return nil, err
 	}
@@ -733,7 +733,7 @@ func MemRestore(keys []DumpKey) (*Mem, error) {
 		case key == n.Key("mem:meta"):
 			var meta memSnapshot
 			err = dec(&meta)
-			s.Version, s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.Seq = meta.Version, meta.EpochSet, meta.EpochN, meta.Cleared, meta.Owed, meta.Seq
+			s.Version, s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.DefaultsOwed, s.Seq = meta.Version, meta.EpochSet, meta.EpochN, meta.Cleared, meta.Owed, meta.DefaultsOwed, meta.Seq
 			sawMeta = true
 		case strings.HasPrefix(key, "view:"):
 			var v ntable.View

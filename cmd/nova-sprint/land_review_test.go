@@ -19,7 +19,7 @@ func TestLandReviewRefusesWrongEpochBeforePush(t *testing.T) {
 func TestLandReviewGitIdentityFailureDoesNotBlameCard(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
-	r.m.SetGitIdentity("")
+	r.m.SetGitIdentity("nobody") // malformed: an empty row reads the machine identity (sprint.Defaults)
 	r.ok("add --stream s1 --count 1 --one")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
 	before := r.streamState("s1")

@@ -69,7 +69,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := runInto(a, append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(strings.Fields(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}

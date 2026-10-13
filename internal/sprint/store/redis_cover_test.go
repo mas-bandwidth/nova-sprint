@@ -1121,6 +1121,69 @@ func TestRedisCoverSettleEpoch(t *testing.T) {
 	})
 }
 
+// TestRedisCoverDefaultsOwed pins the set-defaults owed flag on the epoch hash: the advance
+// writes it naming the new epoch in the same exchange; Epoch reads it owed only while it
+// names the current epoch (an older binary's advance writes none, so a flag it left behind
+// is not the new epoch's); SettleDefaults removes it only at that epoch.
+func TestRedisCoverDefaultsOwed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	t.Run("the advance writes the flag naming the new epoch", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		ok, err := r.AdvanceEpoch(ctx, 0, at)
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, "1", r.C.HGet(ctx, r.Names.EpochKey(), "defaults").Val())
+		got, err := r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.True(t, got.DefaultsOwed)
+		require.NoError(t, r.SettleDefaults(ctx, 1))
+		assert.False(t, r.C.HExists(ctx, r.Names.EpochKey(), "defaults").Val())
+		got, err = r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.DefaultsOwed)
+		assert.Equal(t, uint64(1), got.N)
+	})
+	t.Run("a flag naming another epoch is not owed", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		// a crashed clear left 2 flagged; an older binary advanced to 3, writing no flag
+		require.NoError(t, r.C.HSet(ctx, r.Names.EpochKey(), "n", "3", "defaults", "2").Err())
+		got, err := r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.DefaultsOwed)
+		require.NoError(t, r.SettleDefaults(ctx, 3))
+		assert.Equal(t, "2", r.C.HGet(ctx, r.Names.EpochKey(), "defaults").Val(), "another epoch's flag is left alone")
+	})
+	t.Run("epoch 0 and an empty hash are never owed", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		got, err := r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.DefaultsOwed)
+		require.NoError(t, r.C.HSet(ctx, r.Names.EpochKey(), "n", "0", "defaults", "0").Err())
+		got, err = r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.DefaultsOwed)
+	})
+	t.Run("a sprint past n keeps its own flag", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		require.NoError(t, r.C.HSet(ctx, r.Names.EpochKey(), "n", "4", "defaults", "4").Err())
+		require.NoError(t, r.SettleDefaults(ctx, 3))
+		got, err := r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.True(t, got.DefaultsOwed)
+	})
+	t.Run("a store that does not answer errors", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		require.NoError(t, r.C.Close())
+		require.Error(t, r.SettleDefaults(ctx, 1))
+	})
+}
+
 // TestRedisCoverDelIfEmptyGuards pins delIf's empty guard list: no guards is
 // no transaction, not even a client.
 func TestRedisCoverDelIfEmptyGuards(t *testing.T) {
