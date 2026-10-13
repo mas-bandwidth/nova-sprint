@@ -285,7 +285,7 @@ func TestExecutableQueuedWorkKeepsBlockedReadsRunning(t *testing.T) {
 		{name: "friend provenance", change: func(_ *Snapshot, _, wc *Card) { wc.Row = FriendRow("amy") }},
 		{name: "unlanded need", change: func(_ *Snapshot, pr, _ *Card) { pr.Fields["needs"] = "unlanded" }},
 		{name: "invalid persisted deadline", change: func(_ *Snapshot, _, wc *Card) { wc.Fields[FieldDeadline] = "0" }},
-		{name: "fleet off", change: func(s *Snapshot, _, _ *Card) { s.Fleet.SetProp(PropFleetTiers, SwitchOff) }},
+		{name: "fleet off", change: func(s *Snapshot, _, _ *Card) { s.Work.SetProp(PropFleetTiers, SwitchOff) }},
 		{name: "held stream", change: func(s *Snapshot, pr, _ *Card) {
 			s.Merge.Put(&Card{ID: CtlID(pr.Row), Row: pr.Row, Col: Ctl, Fields: map[string]string{"kind": "stream", FieldHeld: "by coordinator"}})
 		}},
