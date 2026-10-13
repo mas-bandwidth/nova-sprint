@@ -5650,7 +5650,7 @@ The nova-wake unit: the tool left cmd/ (fleet/retired-tools.txt) and its binary 
 Four conditions of the whole sprint the tick keeps (its deadlines part plans them
 with the deadlines), each off until the coordinator sets its threshold with `set`,
 the work table's properties `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready`
-(a clear starts the next epoch with none):
+(a clear never turns one off: it sets alarm_ready on and carries the thresholds, at their working values when never set; section 13, working defaults):
 
 - review above its alarm: more primaries in review than `--alarm-review <n>`;
 - merging above its alarm: more primaries merging than `--alarm-merging <n>`;
@@ -6152,6 +6152,7 @@ for, the same table `wait` refuses by) is never left unanswered. Two rules.
   friend's card, and a card whose tier is pinned (the coordinator's `brief --tier`, `tier
   --set` or `rework --tier`, a brief that pins its model, a frontier card) stay held: a pin
   is the coordinator's word, and the rule never overrides it.
+  A tier has no live route when its route array is not empty, every route in it rests at current time (for any cause: credit, auth, or the seat's rest), and no up friend serves it; a route configured, enabled and funded but missing from its tier's array does not count as live, as the array is what the deal draws from (live case: the pro array lacked six enabled opencode pro routes until the owner set it by hand, nova-config tier set pro, rev 742, 2026-10-13). While that holds, the tier's one `no route serves the tier` judgment stands, opening with the cause, no deadline is raised for a tier-blocked card that is not working, no stale judgment is shown for a stream whose every ready or waiting primary is tier-blocked and which has nothing working, in review or merging, and card-holding judgments whose every held card is tier-blocked are skipped by the raised-again and silent-seat checks. When a route of the tier is live again, the tier judgment closes and the quieted checks resume by themselves, each measuring from its own stamps.
 
 (b) Everything else that holds a card escalates. Past its deadline each such judgment is
 raised again at every DeadlineJudgment of running time it stays unanswered (a push to the
@@ -7786,6 +7787,95 @@ streams or kept an archived stream archived; the readers are not a stream and
 are kept. A primary left in review with no read out and no reader row raises
 the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
 sprint with its readers gone still tells the coordinator rather than idling.
+
+<a id="working-defaults"></a>
+
+**Working defaults.** A clear advances the epoch, then sets every working default
+in the new epoch (the owner, 2026-10-13: "you advance epoch, and then set defaults
+in the new epoch that need to be set"). `sprint.Defaults`
+(internal/sprint/defaults.go) is the one table of every setting's default, each
+row a name, a home and a value:
+
+- `prop`, a work-table property, epoch keyed: read_cards on, fleet and friends on,
+  fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
+  (OPEN, the owner's to state), read_tier and reads default, every bound at its
+  default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
+  friend_finish, friend_start_max, pegged_bound, landing_stall_bound, the friend
+  stall ladder, drift, low_balance_usd, identical), and alarm_ready on;
+- `carry`, a work-table property that is the coordinator's choice, carried across
+  the clear: the threshold alarms alarm_review, alarm_merging and alarm_fleet (at
+  their working thresholds 120, 60 and 50 when never set), sprint_base (no default:
+  start WARNs without one, naming `set --base`, and never refuses, since a sprint that
+  lands on main or dev records none) and twin_briefs;
+- `bar`, a field of nova-config's sprint row, at the default nova-config declares;
+- `shape`, what restoreMembers carries.
+
+After restoreMembers and before the new epoch's READY record, one step by `clear`
+writes each `prop` row's value and each `carry` row's old value (else its working
+value) into the new epoch where the property is still absent (store.setDefaults,
+sprint.SetDefaults). A property the new epoch already holds was set after the
+advance and is never overwritten. So no setting of a cleared epoch is absent, none
+of the old epoch's `prop` values is carried, and no clear ever turns an alarm off
+(the owner, 2026-10-11: "never turn off alarms or warnings"). `clear` names each
+`prop` value it reset on a `CLEAR DEFAULT <name> was <v>, now <default>` line
+(`--json`: `defaults`). The epoch advance writes, in the same store write as the
+epoch, a set-defaults owed flag naming the new epoch (the epoch hash's `defaults`
+field; store.EpochState.DefaultsOwed). The owed step is restoreMembers, then the
+defaults; the flag is cleared only after both have run (store.SettleDefaults, a write
+of its own: the table layer cannot write the epoch hash with a table, so the step is
+idempotent instead, writing only the rows, control cards and settings the epoch
+lacks). A clear that stopped anywhere after its advance leaves the flag, and the
+`clear` run again (as the failure says) finishes the whole step over that epoch,
+carrying from the epoch the advance left, and advances nothing (`CLEAR OK ...
+owed-finished=members:<n>,readers:<n>,defaults`; `--json`: `owed`, `owed_finished`),
+so a crash never loses the members, the readers or the coordinator's carried settings.
+An epoch without the flag (an older binary's clear, a fresh init, epoch 0) is never
+owed: its clear advances. The restore runs at most once per owed step, however many
+clears run at once: its last write, the members' control cards, carries the epoch's
+marker (the fleet table's `members_restored` property) in the same store write; its row
+writes (the readers' and the members' rows, the readers' tiers) go in one exchange with a
+read of the epoch, its flag and the marker (WATCH and MULTI/EXEC on Redis, the one lock on
+Mem), written only while the restore is still pending; and the control-card step writes
+nothing when its snapshot holds the marker. So the step's phase is read off two records:
+the flag with no marker is restore pending, the flag with the marker is defaults pending,
+no flag is settled. While the restore is pending, no verb changes a member's or a
+reader's row: reader add, reader remove and `set --tiers` check it in the same exchange
+as their write, at the epoch they pinned; the sync's and the tick's drops of a member row
+in the same transaction as the delete; a step that takes a member's control card off in
+its own snapshot; start under the machine transition's lock. They refuse naming `clear`,
+and a verb whose epoch a clear left while it ran writes nothing. So a clear, the second of
+two at once included, never changes a row, a tier (an intentional empty one included) or
+a control card the new epoch wrote. `clear` and `start` must be externally serialized:
+the operator must never run them concurrently. A single seat identity is not a lock, and
+the start guard is not safe against a concurrent clear advancing the epoch (the advance
+does not yet take the machine fence; v1.2.18 card clear-and-start-share-the-machine-fence). `clear`
+reports a reset (`CLEAR DEFAULT`) only for a setting it wrote; a setting the new epoch
+already held away from its default is kept and named on a `CLEAR KEPT <name> kept at
+<v>, set in the new epoch` line (`--json`: `kept`).
+A reader of a cleared epoch before its step (a start that
+landed inside the clear, or a clear that stopped before its step) reads each absent
+setting as its default, the alarms included. The first epoch, which init leaves
+with no property, keeps each accessor's own absent case (the alarms off until set).
+
+The `bar` rows are nova-config's, and a clear never writes them (an apply would
+undo it). Their default is read-side: an empty field with a declared default
+(git_identity, decide_bounce 0.5, decide_review 0.3; max_attempts reads its own default, 4) is read as it
+on every store (store.Bars.WithDefaults, as the snapshot and the lander read it).
+An unapplied `git_identity` commits as `nova-sprint <nova-sprint@example.invalid>`,
+never the host's, and `doctor` warns `git_identity default, sprint row unapplied`.
+Only an identity that does not parse as `Name <email>` is refused.
+
+The class tests hold every flag of `set` (TestEverySetFlagHasADeclaredDefault),
+every `Prop*` constant (TestEveryPropIsASettingOrState), every field of SetReq and
+Shape (TestEverySettingHasADeclaredDefault), and every Bars field and sprint-row
+field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The model
+is tla/ClearDefaults.tla (ClearAdvance's flag, RestoreMembers, SetDefaults,
+SettleDefaults, Crash, OlderClear, Set, Read; DefaultsAfterClear, SetSurvives,
+CarrySurvives, NeverAbsent, ReadersSeeWorking, FinishOnlyWhatIsOwed, MembersRestored,
+RerunKeepsEpochWrites; two clears at once, RestoreRow, RestoreSettled, RestoreDone,
+EditRow and DeleteRow per row; witnesses leaveone, carryadvance, overwrite, nofallback,
+rerunadvance, markerinfer, restoreskip, restorerepeat, noguard and nonatomicrestore).
+
 
 <a id="14-the-machine"></a>
 

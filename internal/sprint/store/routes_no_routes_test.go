@@ -26,6 +26,9 @@ func TestRedisRoutesWithNoRoutes(t *testing.T) {
 	assert.Empty(t, set.Routes, "no routes when none are configured")
 	assert.Empty(t, set.Tiers, "no tiers when no routes")
 	assert.Equal(t, Bars{}, set.Bars, "no bars when none are applied")
+	assert.Equal(t, "nova-sprint <nova-sprint@example.invalid>", set.Bars.WithDefaults().GitIdentity, "the unapplied git_identity reads the machine identity on read (sprint.Defaults)")
+	assert.Equal(t, "0.5", set.Bars.WithDefaults().Bounce, "nova-config's declared decide_bounce")
+	assert.Equal(t, "0.3", set.Bars.WithDefaults().Review, "nova-config's declared decide_review")
 	assert.Equal(t, int64(1), trips, "the set and the bars read in one round trip")
 }
 

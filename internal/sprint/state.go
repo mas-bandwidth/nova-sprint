@@ -541,9 +541,11 @@ type Snapshot struct {
 	// rule; rules.go).
 	RulesOff []string
 	// GitIdentity is the sprint row's author and committer for every commit the sprint
-	// machine makes (nova-config's sprint row, git_identity), read with the routes; "" is
-	// none configured, which the landing refuses.
-	GitIdentity string
+	// machine makes (nova-config's sprint row, git_identity), read with the routes; an
+	// unapplied row reads config.DefaultGitIdentity (defaults.go, the bar row), and
+	// GitIdentityUnapplied says so (the doctor warns).
+	GitIdentity          string
+	GitIdentityUnapplied bool
 	// MaxAttempts is the sprint row's attempt bound as nova-config applied it
 	// (sprint:max_attempts), read with the routes: the attempts one card runs between two
 	// coordinator decisions before it is the coordinator's as one judgment (AttemptsCap,

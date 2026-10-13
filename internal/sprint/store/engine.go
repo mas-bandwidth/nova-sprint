@@ -108,6 +108,18 @@ type Store struct {
 	// table's last whole read found, which a later load catches up instead of
 	// reading the table whole. nil: every load reads its tables whole.
 	lc *LoadCache
+	// beforeDefaults, when set (a test), runs inside a clear's owed step between
+	// restoreMembers and the working defaults, given the store pinned to the new epoch
+	// (clear.go owedStep); an error stops the clear there, as a crash between the two would.
+	beforeDefaults func(next *Store) error
+	// beforeRestore, when set (a test), runs inside restoreMembers after the clear has read the
+	// restore's marker absent and before its guarded row exchange: the pause another clear's
+	// whole restore, or a verb, can land in (clear.go restoreMembers).
+	beforeRestore func(next *Store) error
+	// beforeGuardedWrite, when set (a test), runs in a guarded verb after it pins its epoch and
+	// before its guarded exchange, and in a start between its pin and its lock: the pause a
+	// clear's advance can land in (guardedRows, machineTransition).
+	beforeGuardedWrite func()
 	// LockAfterLoss has a part of the tick that lost a try take the fence
 	// before its next read (lock.go). The program's stores set it; a test
 	// harness whose other writers write from inside a part's plan (a writer
@@ -709,6 +721,16 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		// Every plan is held to the lifecycle here, whatever step built it.
 		plan := sprint.Applied(snap, step.Plan(snap))
+		// a step that takes a member's control card off (the fleet sync, the tick's retire, a
+		// hold that removes) is refused while the epoch's restore is pending: the restore's
+		// marker is read in this step's snapshot, and the step's fleet manifest is guarded on
+		// that snapshot's revision, so the marker cannot land between the check and the write
+		// (tla/ClearDefaults.tla DeleteRow; restoreMembers)
+		if why, err := st.restoreStepRefusal(ctx, snap, plan, step.Verb); err != nil {
+			return res, err
+		} else if why != "" {
+			return refuseWhole(res, plan, why)
+		}
 		if len(held) > 0 {
 			plan = sprint.LeaveQueued(plan, held)
 		}
@@ -1302,6 +1324,41 @@ func curable(err error, man ntable.BatchManifest) bool {
 
 // refuseWhole is a step refused whole before anything of it was written: every
 // card it was to move is refused with why.
+// restoreStepRefusal is why the plan is refused while the pinned epoch's restore is pending:
+// it takes a member's control card off. The flag is read once (a flag naming the epoch is
+// only ever cleared, and only after the marker is written); the marker is the snapshot's.
+func (st *Store) restoreStepRefusal(ctx context.Context, snap *sprint.Snapshot, plan sprint.Plan, verb string) (string, error) {
+	if snap == nil || snap.Fleet == nil || snap.Epoch == 0 || !removesMemberControl(snap, plan) {
+		return "", nil
+	}
+	if _, marked := snap.Fleet.Prop(sprint.PropMembersRestored); marked {
+		return "", nil
+	}
+	es, err := st.EpochNow(ctx)
+	if err != nil {
+		return "", err
+	}
+	if es.N != snap.Epoch || !es.DefaultsOwed {
+		return "", nil // another epoch's step is refused as stale at its write; no flag, no restore
+	}
+	return st.guardRefusal(GuardPending, verb).Error(), nil
+}
+
+// removesMemberControl says the plan takes a fleet member's control card off the table.
+func removesMemberControl(snap *sprint.Snapshot, plan sprint.Plan) bool {
+	for _, u := range plan.Units {
+		for _, ch := range u.Changes {
+			if ch.Table != sprint.Fleet || !ch.Entry.Remove {
+				continue
+			}
+			if c := snap.Fleet.Card(ch.Entry.ID); c != nil && c.Col == sprint.Ctl {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func refuseWhole(res Result, plan sprint.Plan, why string) (Result, error) {
 	res.Moved = nil
 	res.Refused = append([]sprint.Refusal(nil), plan.Refused...)
