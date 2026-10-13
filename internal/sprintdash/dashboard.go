@@ -236,38 +236,42 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 		}
 	}
 
-	waitDone := func(blocking bool) {
-		if !blocking {
-			select {
-			case res := <-readDone:
-				finish(res)
-				return
-			default:
-			}
-		}
-		handle := func() {
-			timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
-			expired, stop := s.timer(timeout)
-			defer stop()
-			select {
-			case res := <-readDone:
-				finish(res)
-			case <-expired:
-				s.mu.Lock()
-				s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
-				s.mu.Unlock()
-				res := <-readDone
-				finish(res)
-			}
-		}
-		if blocking {
-			handle()
-		} else {
-			go handle()
+	waitForRead := func(firstDeadline <-chan time.Time) {
+		timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
+		expired, stop := s.timer(timeout)
+		defer stop()
+		select {
+		case res := <-readDone:
+			finish(res)
+		case <-firstDeadline:
+			go func() {
+				select {
+				case res := <-readDone:
+					finish(res)
+				case <-expired:
+					s.mu.Lock()
+					s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+					s.mu.Unlock()
+					res := <-readDone
+					finish(res)
+				}
+			}()
+		case <-expired:
+			s.mu.Lock()
+			s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+			s.mu.Unlock()
+			res := <-readDone
+			finish(res)
 		}
 	}
 
-	waitDone(wait)
+	if wait {
+		waitForRead(nil)
+	} else {
+		firstDeadline, stopFirst := s.timer(300 * time.Millisecond)
+		defer stopFirst()
+		waitForRead(firstDeadline)
+	}
 }
 
 // timer is the read timeout's: the clock's, or a test's (readTimer).
