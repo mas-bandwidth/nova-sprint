@@ -217,7 +217,10 @@ network is needed; with Jev it is `nova-secrets exec --only JEV_API_KEY --
 nova-sprint answer`. Run from a checkout root over a fresh twin, with
 the first run's environment, by `cmd/nova-sprint/answer_transcript_test.go`,
 which keeps the record in a temporary directory and prints it as
-`./judgment.jsonl`; nothing else is normalised.
+`./judgment.jsonl`; nothing else is normalised. The checked-in
+`cmd/nova-sprint/testdata/answer-simulation.md` is explicit mem-only input:
+its simulated model pin, token budget and deadline launch no model child or
+paid provider. On a real fleet, use a real brief and configured funded routes.
 
 ```text
 $ nova-sprint init --readers reader-a,reader-b --members m1
@@ -227,11 +230,10 @@ FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
 READY
 NOTE a twin beats every member at every verb: each member added is up after the next nova-sprint tick
 
-$ nova-sprint add --stream s1 --count 2
-MOVED s1-1 -> ready stream=s1 score=1
-MOVED s1-2 -> ready stream=s1 score=2
+$ nova-sprint add --stream s1 --count 2 --brief-file ./cmd/nova-sprint/testdata/answer-simulation.md
+MOVED s1-1 -> ready stream=s1 score=1 tier=flash
+MOVED s1-2 -> ready stream=s1 score=2 tier=flash
 ADD OK stream=s1 cards=2 before=- moved=2 refused=0 notes=0 op=add-t2-1
-NOTE the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>
 READY  0/2 0.0%
 
 $ nova-sprint start
@@ -260,12 +262,44 @@ PACKET s1-1.w1 attempt=1 gen=1 epoch=0
   tier: flash
   branch: sprint/s1-1.w1.g1.e0
   base: the stream's base
+  route: pin model=simulation/twin tokens=1000 deadline=600s
+  brief:
+    RESULT: s1-1 sha=0123456789ab tier: flash
+    model: simulation/twin
+    tokens: 1000
+    deadline: 600
+    
+    THE TASK. Simulate two failed cards and apply their fixed offline rework decisions by hand.
+    
+    RULES.
+    Work only in the job directory this card names.
+    Never force-push or rebase a shared branch.
+    Never kill a process you did not start.
+    Never start a server on this machine.
+    No `rm -rf` outside the job directory.
+    Report what was not done.
   notes: none
   report it: nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --branch sprint/s1-1.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
 PACKET s1-2.w1 attempt=1 gen=1 epoch=0
   tier: flash
   branch: sprint/s1-2.w1.g1.e0
   base: the stream's base
+  route: pin model=simulation/twin tokens=1000 deadline=600s
+  brief:
+    RESULT: s1-1 sha=0123456789ab tier: flash
+    model: simulation/twin
+    tokens: 1000
+    deadline: 600
+    
+    THE TASK. Simulate two failed cards and apply their fixed offline rework decisions by hand.
+    
+    RULES.
+    Work only in the job directory this card names.
+    Never force-push or rebase a shared branch.
+    Never kill a process you did not start.
+    Never start a server on this machine.
+    No `rm -rf` outside the job directory.
+    Report what was not done.
   notes: none
   report it: nova-sprint finish --as m1 s1-2.w1@1 --epoch 0 --branch sprint/s1-2.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
 TAKE OK moved=2 refused=0 notes=0 op=take-t31-1

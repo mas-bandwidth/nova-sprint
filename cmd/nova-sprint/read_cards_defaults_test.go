@@ -32,6 +32,9 @@ func TestReadCardsDefaultUsesTheActualCommandAndStoreLifecycle(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ta := newTestApp(t) // no legacy opt-in: keep the actual store default
+			if tc.off {
+				ta.oldReaders = true // explicit off verifies the legacy producer remains available
+			}
 			ta.live = []string{"m1", "m2", "m3"}
 			ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
 			if tc.existing {

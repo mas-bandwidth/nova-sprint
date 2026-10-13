@@ -58,8 +58,8 @@ func TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts(t 
 	require.Equal(t, "read at heavy: no frontier reader", noteOf["reader-b"], "the read card says why it is drawn one tier down")
 
 	// the coordinator's own read counts as one of the two
-	ta.ok("read --redis mem:0 --as coordinator --ok s1-1 --finding 'read at heavy: no frontier reader'")
-	ta.ok("read --redis mem:0 --as reader-a --ok --limit 1")
+	ta.ok("read --redis mem:0 --as coordinator --ok s1-1 --finding 'read at heavy: no frontier reader' --usage 'input=1000 output=100'")
+	ta.ok("read --redis mem:0 --as reader-a --ok --limit 1 --usage 'input=1000 output=100'")
 	ta.ok("accept --redis mem:0 --read-ok")
 	var c cardView
 	ta.json("card --redis mem:0 s1-1", &c)

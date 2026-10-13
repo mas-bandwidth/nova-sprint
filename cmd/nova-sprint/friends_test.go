@@ -124,6 +124,8 @@ func TestTheFriendsTableCountsTheFriendsSprintCards(t *testing.T) {
 	outboxReport(t, root, "amy", "s1-1.w1", "# s1-1\n\n**Verdict:** LAND\nHead: "+landHead+"\nusage: in=1000000 out=150000 cache=50000\n\nThe change is pushed.\n")
 	ta.ok("friend sync --root " + root)
 	// the readers' verdicts move her finished LAND to ok, where it counts done
+	ta.ok("reader set reader-a --tiers all")
+	ta.ok("reader set reader-b --tiers all")
 	ta.ok("ask --limit 100")
 	ta.ok("read --as reader-a --ok --limit 100")
 	ta.ok("read --as reader-b --ok --limit 100")

@@ -265,8 +265,8 @@ func TestLandDeletesTheBranchOfEveryAttemptOfACard(t *testing.T) {
 	}
 	r.ok("finish --as m1 " + w + " --head " + second + " --branch sprint/s1-1.w2.g1.e0")
 	r.ok("ask")
-	r.ok("read --as reader-a --ok --limit 100")
-	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	r.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	r.ok("accept --read-ok")
 	assert.Equal(t, []string{"main", "sprint/s1-1.w1.g1.e0", "sprint/s1-1.w2.g1.e0"}, r.originBranches())
 	out := r.ok("land --repo-dir " + r.clone + " --base main")

@@ -386,6 +386,7 @@ func TestJudgmentsReachTheInboxAndTheCoordinatorAnswers(t *testing.T) {
 func TestAStoppedStreamWaitsForResume(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // this flow exercises the legacy readers-table acceptance path
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 2")
 	ta.ok("start")
@@ -393,8 +394,8 @@ func TestAStoppedStreamWaitsForResume(t *testing.T) {
 	ta.ok("take --as m1 --limit 2")
 	ta.ok("finish --as m1 s1-1.w1@1 s1-2.w1@1")
 	ta.ok("ask")
-	ta.ok("read --as reader-a --ok --limit 5")
-	ta.ok("read --as reader-b --ok --limit 5")
+	ta.ok("read --as reader-a --ok --limit 5 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 5 --usage 'input=1000 output=100'")
 	ta.ok("accept --stream s1")
 	ta.ok("merge --stream s1 --conflict s1-2")
 	out := ta.ok("inbox")

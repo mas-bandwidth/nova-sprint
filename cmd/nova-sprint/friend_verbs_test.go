@@ -155,6 +155,8 @@ func TestFriendLevelRespectsOneShotDeliveryMode(t *testing.T) {
 	}
 	ta.ok("start")
 
+	// This fixture exercises only friend queue redistribution.
+	ta.ok("set --fleet off")
 	ta.ok("friend down bob")
 	ta.ok("tick") // amy (batch, width 2) fills her room of 4, all ready, and starts 2
 	ta.startFriend("amy", 2)

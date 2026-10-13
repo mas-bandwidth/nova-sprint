@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
@@ -98,7 +99,21 @@ func TestASnapshotRestoredIsTheStoreItWas(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.live = []string{"m1", "m2"}
+	// This in-process snapshot fixture is routed work, not the mem-file
+	// simulation used by twinProcess. Declare its config and exact input.
+	configure := func(m *store.Mem) {
+		m.SetRoutes([]sprint.Route{{Name: "snapshot-flash", Tier: "flash", Provider: "snapshot", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
+		m.SetTiers(map[string][]string{"flash": {"snapshot-flash"}})
+		m.SetProviders(map[string]sprint.Provider{"snapshot": {Name: "snapshot", Billing: "metered", Funded: true}})
+	}
+	configure(ta.m)
+	brief := writeBrief(t, strings.Replace(simulatedTwinBrief(), "model: simulation/twin\n", "", 1))
 	for _, line := range twinSteps {
+		line = strings.ReplaceAll(line, "--brief-file s1-1.md", "--brief-file "+brief)
+		args := split(strings.TrimPrefix(line, prog+" "))
+		if len(args) > 0 && (args[0] == "finish" || args[0] == "read") {
+			line += " --usage 'input=1 output=1 model=snapshot/fixture'"
+		}
 		ta.ok(strings.TrimPrefix(line, prog+" "))
 		doc, err := ta.m.Snapshot()
 		require.NoError(t, err, "%s", line)
@@ -114,6 +129,9 @@ func TestASnapshotRestoredIsTheStoreItWas(t *testing.T) {
 		doc2, err := again.Snapshot()
 		require.NoError(t, err, "%s: a restored store's snapshot is not the one it came from (%v)", line, err)
 		require.Equal(t, settled, doc2, "%s: a restored store's snapshot is not the one it came from (%v)", line, err)
+		// Config rows are external to the snapshot: reattach only after the
+		// exact restored-document comparison has completed.
+		configure(fresh)
 		ta.m = fresh
 	}
 	out := ta.ok("where")
