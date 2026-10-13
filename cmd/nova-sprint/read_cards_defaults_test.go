@@ -27,7 +27,7 @@ func TestReadCardsDefaultUsesTheActualCommandAndStoreLifecycle(t *testing.T) {
 		{name: "explicit on after init", settings: []string{"set --read-cards on", "init"}, prop: "on", hadProp: true},
 		{name: "explicit off after init", settings: []string{"set --read-cards off", "init"}, prop: "off", hadProp: true, off: true},
 		{name: "off reset to default", settings: []string{"set --read-cards off", "set --read-cards default"}, prop: "default", hadProp: true},
-		{name: "off then clear", settings: []string{"set --read-cards off", "clear --confirm sprint"}},
+		{name: "off then clear", settings: []string{"set --read-cards off", "clear --confirm sprint"}, prop: "on", hadProp: true}, // the clear writes the working default (sprint.Defaults)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

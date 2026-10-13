@@ -171,10 +171,11 @@ func TestClearInTheMiddleOfAStep(t *testing.T) {
 	}
 }
 
-// C5: init with nothing, then clears: an epoch that had no write has no
-// definition at the table layer, and the store refuses a read of it as it
-// was (NOTABLE), as the table layer does; the sprint reads it as empty, clears
-// again, and teardown leaves the store as it was before init.
+// C5: init with nothing, then clears: every cleared epoch is written by its
+// clear's set-defaults step (sprint.Defaults; tla/MachineReady.tla SetDefaults),
+// so it has a definition at the table layer and reads as empty of work; a read
+// ahead of the sprint is refused (EPOCHAHEAD); and teardown leaves the store as
+// it was before init, the defaults' properties included.
 func TestEmptyClearsThenTeardown(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -188,7 +189,7 @@ func TestEmptyClearsThenTeardown(t *testing.T) {
 		h.clean("empty clear")
 	}
 	_, err := m.AtEpoch(1, true).Shapes(h.ctx, []string{h.st.Names.Table(sprint.Work)})
-	require.Equal(t, "NOTABLE", refusalCode(err), "a read of epoch 1, which had no write: %v", err)
+	require.NoError(t, err, "a read of epoch 1, which its clear wrote its defaults into: %v", err)
 	_, err = m.AtEpoch(0, true).Shapes(h.ctx, []string{h.st.Names.Table(sprint.Work)})
 	require.NoError(t, err, "a read of epoch 0, which init wrote: %v", err)
 	_, err = m.AtEpoch(4, true).Shapes(h.ctx, []string{h.st.Names.Table(sprint.Work)})
