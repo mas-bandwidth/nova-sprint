@@ -213,7 +213,7 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 		findings := card.Lint(id, string(raw), opts())
 		for _, f := range findings {
 			if *asJSON {
-				all = append(all, lintFindingJSON{Rule: f.Check, File: file, Line: f.Line, Excerpt: f.Excerpt, Remedy: "fix the brief so check " + f.Check + " passes"})
+				all = append(all, lintFindingJSON{Rule: f.Check, File: file, Line: f.Line, Excerpt: f.Excerpt, Remedy: f.Excerpt})
 			} else {
 				fmt.Fprintln(stdout, oneline.Escape(f.String()))
 			}
