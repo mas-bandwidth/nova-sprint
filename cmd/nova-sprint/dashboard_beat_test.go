@@ -223,3 +223,21 @@ func TestWhereDashboardCarriesWhatThePageReads(t *testing.T) {
 	assert.Equal(t, exp.Tables["work"]["s1"]["cost_by_tier"], v.Tables["work"]["s1"]["cost_by_tier"])
 	assert.Equal(t, exp.Tables["fleet"]["m1"]["working"], v.Tables["fleet"]["m1"]["working"])
 }
+
+func TestTheDashboardServerUsesCheapDashboardRead(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("add --stream s1 --count 3")
+
+	srv := ta.a.dashboardServer("", false, "", time.Second, "", nil)
+	assert.Equal(t, "nova-sprint where --json --dashboard", srv.Command)
+
+	srvRedis := ta.a.dashboardServer("127.0.0.1:6381", true, "", time.Second, "", nil)
+	assert.Equal(t, "nova-sprint where --json --dashboard --redis 127.0.0.1:6381", srvRedis.Command)
+
+	body, err := srv.Read()
+	require.NoError(t, err)
+	assert.JSONEq(t, ta.ok("where --json --dashboard"), string(body))
+}
+

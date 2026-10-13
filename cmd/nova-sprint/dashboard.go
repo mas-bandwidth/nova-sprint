@@ -131,15 +131,15 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 const dashboardNoStore = "the dashboard reads the sprint: --redis <addr> (or NOVA_SPRINT_REDIS, NOVA_REDIS_ADDR, or a login recorded by nova-sprint seat login), the sprint's server (NOVA_SPRINT_SERVER), or another dashboard (--pull <url>); with no Redis, --redis mem:<file> serves the in-memory twin kept in that file"
 
 // dashboardServer is the dashboard's one server: it reads the sprint as where --json
-// --dashboard does (whereJSON), or, given from (a puller), that dashboard's /api/sprint; each
+// --dashboard does (whereJSONForDashboard), or, given from (a puller), that dashboard's /api/sprint; each
 // read and the freshness check go to log.
 func (a *app) dashboardServer(redis string, given bool, from string, every time.Duration, logo string, log io.Writer) *sprintdash.Server {
-	cmd := "nova-sprint where --json --cards --rows --archived"
+	cmd := "nova-sprint where --json --dashboard"
 	if redis != "" && given {
 		cmd += " --redis " + redis
 	}
 	srv := &sprintdash.Server{
-		Read:    func() ([]byte, error) { return a.whereJSON(redis, given) },
+		Read:    func() ([]byte, error) { return a.whereJSONForDashboard(redis, given) },
 		Now:     a.now,
 		Every:   every,
 		Logo:    logo,
@@ -173,7 +173,17 @@ func dashboardUpstream(pull string) (string, error) {
 // process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
 // store; --redis is handed on when the dashboard was given it, as where would have been.
 func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
-	argv := []string{"where", "--json", "--cards", "--rows", "--archived"}
+	return a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, addr, given)
+}
+
+// whereJSONForDashboard reads the sprint as `nova-sprint where --json --dashboard` does, in this
+// process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
+// store; --redis is handed on when the dashboard was given it, as where would have been.
+func (a *app) whereJSONForDashboard(addr string, given bool) ([]byte, error) {
+	return a.whereJSONWith([]string{"where", "--json", "--dashboard"}, addr, given)
+}
+
+func (a *app) whereJSONWith(argv []string, addr string, given bool) ([]byte, error) {
 	if given {
 		argv = append(argv, "--redis", addr)
 	}
