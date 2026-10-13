@@ -21,7 +21,7 @@ func TestStartPrintsEveryObsoleteJudgmentClosure(t *testing.T) {
 			ta.ok("init --members m1 --readers reader-a")
 			ta.m.SetRoutes([]sprint.Route{{Name: "flash", Tier: "flash", Provider: "funded", Enabled: true, Model: "fixture", Tokens: 1000, Deadline: 600}})
 			ta.m.SetProviders(map[string]sprint.Provider{"funded": {Funded: true}})
-			ta.ok("add --stream s1 --count 1")
+			ta.ok("add --stream s1 --count 1 --one")
 			st := &store.Store{B: ta.m, Actor: "coordinator", Now: ta.a.now, NewID: store.NewID}
 			_, err := st.Run(context.Background(), store.Step{Verb: "fixture judgment", Load: store.All, Plan: func(s *sprint.Snapshot) sprint.Plan {
 				return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Judgment, Type: sprint.NWorkFailed, Primaries: []string{"absent"}, At: s.Now}}}
