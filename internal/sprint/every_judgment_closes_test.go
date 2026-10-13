@@ -26,12 +26,19 @@ func judgmentKindDecisions() map[string][]string {
 	all[NLandingStall] = TickDecisions[NLandingStall]
 	all[NLanderRefuses] = LandRefusalDecisions
 	all[NLanderFails] = LandRefusalDecisions
+	// kinds raised outside the two tables, with their own decision sources:
+	all[NSeatSilent] = []string{SeatSilentDecision}   // seat_answers.go: the command is in the decision's text
+	all[NCostGap] = CostGapDecisions                  // cost_reconcile.go
+	all[NNeedBlocked] = []string{"needs set", "drop"} // needs_blocked.go: literal commands on the note
 	return all
 }
 
 var closingVerbs = []string{"ack", "wait", "keep", "drop", "rework", "accept", "return", "brief", "rebrief", "release", "resume", "ask", "reader", "route add", "fleet", "raise", "promoted", "merge", "check", "clear", "add", "rank", "resolve", "take", "goal", "act", "read", "do more"}
 
 func isClosingDecision(d string) bool {
+	if d == SeatSilentDecision || d == "needs set" {
+		return true
+	}
 	if d == "look" || d == "look at the card" || d == "look at the reader" || d == "look at the readers" || d == "look at both" {
 		return false
 	}
@@ -66,8 +73,8 @@ func TestEveryJudgmentKindHasAVerbThatClosesIt(t *testing.T) {
 			}
 		}
 		for _, d := range closing {
-			if d == "act" || d == "check" || d == "wait" || strings.HasPrefix(d, "wait ") {
-				continue // generic prompts / waits, covered by TestEveryDecisionPrintsItsCommands and the wait exercise below
+			if d == "wait" || strings.HasPrefix(d, "wait ") || d == SeatSilentDecision || d == "needs set" {
+				continue // waits are exercised below; the two specials carry their command in their text
 			}
 			assert.True(t, printed[d], "%s: closing decision %q prints no command", typ, d)
 		}
