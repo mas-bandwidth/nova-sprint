@@ -208,6 +208,8 @@ nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--jso
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
 nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint reads --review [--stream <s>] [--json]
+nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
+# `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
@@ -506,7 +508,14 @@ the cards she holds; `/api/team`, `/api/friend/<name>`,
 `/api/machine/<name>` and `/api/sprint` are JSON; `/events`, `/events/friend/<name>` and
 `/events/machine/<name>` push each new copy as server-sent events. All of it is read-only,
 no-store, carries the copy's time in `Sprint-At`, and comes from one copy of `where --json
---cards` read at most once a second however many pull. An unknown name is a 404 of one
+--cards` read at most once a second however many pull. Responses on both `--listen` and
+`--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`,
+`/app.js`, `/api/sprint`, and pull routes). The server ticks the page at 1 s from its cache
+every second independently of background reads; reads exceeding 1 s log a warning.
+`where --json --dashboard` prints the cheap dashboard view with `stream_costs` folded into
+`tables.work`, reader rows folded into `tables.fleet` (`reads_working` and `working`), and
+sentinel-free summary, dropping archived streams without loading card rows; `--dashboard`
+requires `--json`. An unknown name is a 404 of one
 line; `where --json` also carries `landedSeries` (cards landed per 10-minute bucket over 24 hours, split between friends and fleet). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the dashboard.
 
 ### A provider out of funds
@@ -798,7 +807,7 @@ nova-card is pre-alpha: not ready for production use.
 nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
+nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
 nova-card template
 nova-card version
 nova-card help [<verb>]
@@ -896,11 +905,9 @@ use it. It reads GitHub only (no GitLab, no Gitea), never writes to GitHub (the
 seam refuses any GraphQL document that is not a query), and captures the fields
 SPEC-WORK-V1 section 1.3 lists, not reactions or other timeline events.
 
-**Try it with no login.** `nova-work verify -h` prints the tree's grammar and a
-minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
+**Try it with no login.** `nova-work example --dir ./example` writes a minimal pair of tree files and a recorded GraphQL replay fixture. Run `nova-work verify --tree ./example/tree.lisp --against ./example/against.lisp` with no network or credentials: `VERIFY OK ... differences=0`, exit 0. `nova-work verify -h` also prints the tree's grammar and a minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
 `:archived true`, and run `nova-work verify --tree a.lisp --against b.lisp`: one
-`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1. The same
-file against itself is `VERIFY OK ... differences=0`, exit 0.
+`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1.
 
 **First run against GitHub.** Needs `gh auth status` to pass and one repository
 you can read: export `ORG` and `REPO`, then run the three lines of the banner's
@@ -929,6 +936,17 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 `VERIFY OK ... differences=0`, the receipt that the tree holds what GitHub
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
+
+### example
+
+Writes a minimal pair of tree files (`tree.lisp`, `against.lisp`) and a recorded
+GraphQL import replay fixture (`call-01.json`, `call-02.json`) under `--dir`.
+These allow running `nova-work verify` and `nova-work import` offline without `gh`
+credentials or network access:
+
+```
+nova-work example --dir <dir> [--replace]
+```
 
 ### roadmap check, list, add, remove, pull, done, note, render
 

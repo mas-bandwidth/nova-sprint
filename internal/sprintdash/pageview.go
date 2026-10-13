@@ -62,38 +62,38 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Expires", "0")
 	switch r.URL.Path {
 	case "/", "/index.html":
-		s.send(w, "text/html; charset=utf-8", s.index())
+		s.send(w, r, "text/html; charset=utf-8", s.index())
 	case "/app.js":
-		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
+		s.send(w, r, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
-		s.send(w, "font/woff2", file("nunito-800.woff2"))
+		s.send(w, r, "font/woff2", file("nunito-800.woff2"))
 	case "/OFL.txt":
-		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
+		s.send(w, r, "text/plain; charset=utf-8", file("OFL.txt"))
 	case "/logo":
 		if body, err := s.logo(); err == nil {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no logo", http.StatusNotFound)
 		}
 	case "/favicon.svg":
 		if vb, inner, ok := s.svgLogo(); ok {
-			s.send(w, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
+			s.send(w, r, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
 		} else {
 			http.Error(w, "no svg logo", http.StatusNotFound)
 		}
 	case "/logo-tile-192.png", "/logo-tile-384.png":
 		// the live page's tile logo, embedded, when no --logo is given; else the --logo file
 		if s.Logo == "" {
-			s.send(w, "image/png", file(tileFile[r.URL.Path]))
+			s.send(w, r, "image/png", file(tileFile[r.URL.Path]))
 		} else if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no raster logo", http.StatusNotFound)
 		}
 	case "/favicon.png", "/logo-icon.png", "/logo.webp", "/logo.png":
 		// the raster logo's routes a page or a bookmark may still name: each is the --logo file
 		if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no raster logo", http.StatusNotFound)
 		}
@@ -101,11 +101,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// the page's envelope over the page's copy (pageview.go): every stream, no release
 		// switch, the keys the live page's server serves; a query is read by nothing
 		s.Refresh()
-		s.send(w, "application/json", s.PageSnapshot())
+		s.send(w, r, "application/json", s.PageSnapshot())
 	case "/events":
 		s.events(w, r, func(*sprintCopy) ([]byte, bool) { return s.PageSnapshot(), true })
 	case "/healthz":
-		s.healthz(w)
+		s.healthz(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
@@ -354,7 +354,14 @@ func (s *Server) PageSnapshot() []byte {
 		MinInterval: s.Every.Seconds(), Throughput: s.pageRate.rate, ThroughputMinutes: s.pageRate.minutes, Build: build,
 	}
 	if len(s.page.data) > 0 {
-		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, s.page.age
+		var age *float64
+		if s.page.at != nil {
+			a := math.Round(s.Now().Sub(*s.page.at).Seconds()*1000) / 1000
+			age = &a
+		} else {
+			age = s.page.age
+		}
+		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, age
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {

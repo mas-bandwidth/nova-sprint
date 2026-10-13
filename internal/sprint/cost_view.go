@@ -255,14 +255,16 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 		t.UnpricedRuns += tot.Records - tot.ChargedOf
 		listed := new(big.Rat)
 		for _, con := range v.Consumers {
-			if con.Kind == ConsumerDecide && cmp.Or(con.Usage.Actual, con.Usage.Predicted) == "" {
+			if con.Kind == ConsumerDecide && con.Usage.MarginalUSD() == "" {
 				// a decide call with no price is no run: counted apart (DecideUnpriced)
 				t.UnpricedRuns--
 				t.DecideUnpriced++
 			}
-			if con.Kind == "read" && con.Usage.Unpriced == WhySubscription {
+			if con.Kind == "read" && subscriptionUsage(con.Usage) {
 				// a subscription read's cost is its tokens: priced, never a run unpriced
-				t.UnpricedRuns--
+				if con.Usage.MarginalUSD() == "" {
+					t.UnpricedRuns--
+				}
 				t.ReadTokens += con.Usage.Tokens.Total()
 			}
 			if con.Kind == "read" && con.Usage.Unpriced == cardcost.WhyNoTokens {
@@ -276,7 +278,7 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 				rd.addRead(con, s.Now)
 				t.Readers[cmp.Or(con.Who, "-")] = rd
 			}
-			usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted))
+			usd, err := amountOf(con.Usage.MarginalUSD())
 			if err != nil || usd == nil {
 				continue
 			}
@@ -577,13 +579,13 @@ func addReadDay(days map[string]ReadDay, con Consumer) {
 		return
 	}
 	route := cmp.Or(u.Route, "-")
-	if u.Unpriced == WhySubscription {
+	if subscriptionUsage(u) {
 		route = WhySubscription
 	}
 	d := days[route]
 	d.Reads++
 	d.Tokens += max(u.Tokens.Total(), 0)
-	if usd := cmp.Or(u.Actual, u.Predicted); usd != "" {
+	if usd := u.MarginalUSD(); usd != "" {
 		if sum, ok := cardcost.Sum(d.USD, usd); ok {
 			d.USD = sum
 		}
