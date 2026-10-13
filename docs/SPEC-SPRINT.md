@@ -4045,10 +4045,10 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   by id only for a primary in review. A card that is loaded is judged as it
   is. Before this, every primary accepted on a friend's read or a read card
   raised a rule 6 invariant judgment at the tick's check.
-- A primary is acceptable when as many different readers as it needs have an
-  ok read card at its current attempt and head: one for a flash card, two for a
-  pro card. For a pro card one reader's ok alone is never enough, whoever the
-  reader. A reader counts once, and a read card counts only when the row it
+- A primary is acceptable when as many ok read cards as it needs stand at its
+  current attempt and head: one for a flash card, two for a pro card; a card
+  needs that many ok read cards at its head; which machine ran them is no criterion,
+  and each generation counts. A read card counts only when the row it
   occupies, the reader its id names and its reader field are one reader; a card
   that disagrees counts for no one, and check reports it.
 - A primary in review with no read outstanding, not acceptable and no open

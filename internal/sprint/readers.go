@@ -400,15 +400,15 @@ func acceptable(s *Snapshot, pr *Card) bool {
 	return len(okReaders(s, pr)) >= need || scriptVerified(s, pr)
 }
 
-// ReadsStanding is the readers whose ok reads stand at the primary's current attempt and
-// head, past review as check's rule 6 counts them: its ok read cards (okReaders), the
-// coordinator's heavy read at that attempt and head (heavyRead), and a reader the accept
+// ReadsStanding is the counted read card ids whose ok reads stand at the primary's current
+// attempt and head, past review as check's rule 6 counts them: its ok read cards (okReaders),
+// the coordinator's heavy read at that attempt and head (heavyRead), and a reader the accept
 // recorded (the readers field) whose read was on the fleet table and is retired off its row
-// with its verdict, so a snapshot no longer loads it. Sorted, each reader once.
+// with its verdict, so a snapshot no longer loads it. Sorted, each read card once.
 func ReadsStanding(s *Snapshot, c *Card) []string {
 	readers := map[string]bool{}
 	for _, rc := range okReaders(s, c) {
-		readers[rc.F("reader")] = true
+		readers[rc.ID] = true
 	}
 	if r := c.F(FieldHeavyReader); r != "" && c.F(FieldHeavyVerdict) == "ok" && c.F(FieldHeavyAttempt) == c.F("attempt") && c.F(FieldHeavyHead) == c.F("head") {
 		readers[r] = true
@@ -434,13 +434,80 @@ func ReadsShort(s *Snapshot, c *Card) (have, need int, short bool) {
 	return have, need, need > 0 && have < need && !scriptVerified(s, c)
 }
 
+// readCardReasons returns the counted ok read cards and, for every other read of the attempt,
+// why it was not counted (not ok, another head, retired with no verdict, disagrees with its row).
+func readCardReasons(s *Snapshot, pr *Card, attempt int) (counted []string, others []string) {
+	if s == nil || pr == nil {
+		return nil, nil
+	}
+	attempt = max(attempt, 1)
+	oks, _ := standingReads(s, pr, attempt)
+	countedMap := map[string]bool{}
+	for _, o := range oks {
+		counted = append(counted, o.ID)
+		countedMap[o.ID] = true
+	}
+
+	prefix := pr.ID + ".r" + itoa(attempt) + "."
+	seen := map[string]bool{}
+	var all []*Card
+	if s.Readers != nil {
+		for _, c := range s.Readers.WithPrefix(prefix) {
+			if c != nil && !seen[c.ID] {
+				seen[c.ID] = true
+				all = append(all, c)
+			}
+		}
+	}
+	if s.Fleet != nil {
+		for _, c := range s.Fleet.WithPrefix(prefix) {
+			if c != nil && !seen[c.ID] && c.F("kind") == "read" && c.Col != Withdrawn {
+				seen[c.ID] = true
+				all = append(all, c)
+			}
+		}
+	}
+	SortCards(all)
+
+	for _, c := range all {
+		if countedMap[c.ID] {
+			continue
+		}
+		var reason string
+		onFleet := s.Fleet != nil && s.Fleet.Card(c.ID) != nil
+		onReaders := s.Readers != nil && s.Readers.Card(c.ID) != nil
+		switch {
+		case onFleet && !friendReadAgrees(c):
+			reason = "disagrees with its row"
+		case onReaders && !ReadCardAgrees(c):
+			reason = "disagrees with its row"
+		case !c.Placed() && (c.F("verdict") == "" || c.F("verdict") == "none"):
+			reason = "retired with no verdict"
+		case !readHeadMatchesAt(s, pr, attempt, c):
+			reason = "another head"
+		default:
+			reason = "not ok"
+		}
+		others = append(others, fmt.Sprintf("%s (%s)", c.ID, reason))
+	}
+	return counted, others
+}
+
 // ReadsShortWhy names a primary short of its reads and the count, "" when it is not.
 func ReadsShortWhy(s *Snapshot, c *Card) string {
 	have, need, short := ReadsShort(s, c)
 	if !short {
 		return ""
 	}
-	return fmt.Sprintf("%s has ok reads at head %s from %d of the %d readers it needs", c.ID, orDash(c.F("head")), have, need)
+	counted, others := readCardReasons(s, c, c.Int("attempt"))
+	base := fmt.Sprintf("%s has ok reads at head %s from %d of the %d ok reads it needs", c.ID, orDash(c.F("head")), have, need)
+	if len(counted) > 0 {
+		base += fmt.Sprintf(" (%s)", strings.Join(counted, ", "))
+	}
+	if len(others) > 0 {
+		base += "; not counted: " + strings.Join(others, ", ")
+	}
+	return base
 }
 
 // placedReadsAt is the primary's placed read cards at an attempt,
