@@ -1285,6 +1285,13 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 		readers := strings.Join(ids, ",")
 		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
 		maps.Copy(set, readStamps(oks))
+		// An accept opens a fresh attempt window whoever accepts (both machine/pump
+		// and coordinator; brief_bound.go, FieldDecidedAttempt; tla/Land.tla
+		// AcceptedNeverCapJudged): the attempt cap starts again from this attempt.
+		// Skip writing FieldDecidedAttempt if attempt is empty (never invent "1").
+		if at := c.F("attempt"); at != "" {
+			set[FieldDecidedAttempt] = at
+		}
 		heavyText := ""
 		if r.Heavy {
 			fields, overruled := heavyRead(s, c, r)
@@ -1592,7 +1599,13 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
+		finding := given["finding"]
+		findingAttempt := c.F("attempt")
+		if finding == "" && c.F(FieldRuleRefused) == RefusedPaths && c.F("finding") != "" {
+			finding = c.F("finding")
+			findingAttempt = c.F(FieldFindingAttempt)
+		}
+		set := map[string]string{"fix": fix, "finding": finding, "why": given["why"], FieldFindingAttempt: findingAttempt,
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
 		// Budget exhaustion at second attempt escalates to next tier.
 		if c.F(FieldFailure) == "budget" && c.Int("attempt") == 2 {
