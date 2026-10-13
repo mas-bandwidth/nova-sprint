@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,4 +167,91 @@ func TestABackupCheckedByItsChecksumIsNeverASemanticRestore(t *testing.T) {
 	require.Equal(t, 0, code, "%s%s", out, errs)
 	assert.Contains(t, out, "SNAPSHOT DRILL OK file="+dest)
 	assert.Contains(t, out, "restore=integrity; integrity only, not a semantic restore")
+}
+
+// backupBudgetDoc uses only the three proven snapshot domains. Extra values
+// remain outside those brief domains and must undergo the unchanged scan.
+func backupBudgetDoc(t *testing.T, brief string, extra map[string]string) []byte {
+	t.Helper()
+	manifest, err := json.Marshal(map[string]any{"table": "work", "members": []any{map[string]any{"set": map[string]string{"kind": "primary", "brief": brief}}}})
+	require.NoError(t, err)
+	root := map[string]any{
+		"version": 1,
+		"tables":  map[string]any{"work": map[string]any{"def": map[string]string{"Name": "work"}, "members": map[string]any{"p": map[string]any{"fields": map[string]string{"kind": "primary", "brief": brief}}}, "ops": map[string]any{"add": map[string]string{"body": string(manifest)}}}},
+		"logs":    map[string]any{"0": map[string]any{"lines": []any{map[string]any{"line": map[string]any{"kind": "queued", "table": "work", "text": map[string]string{"brief": brief}}}}}},
+		"kv":      extra,
+	}
+	doc, err := json.MarshalIndent(root, "", "  ")
+	require.NoError(t, err)
+	return doc
+}
+
+func TestBackupScansOnlyTheKnownNumericBriefBudgetValue(t *testing.T) {
+	t.Parallel()
+	const header = "card tier: flash\nmodel: simulation/twin\ntokens: 1000\ndeadline: 600\n\nTask."
+	doc := backupBudgetDoc(t, header, nil)
+	before := append([]byte(nil), doc...)
+	require.Empty(t, secretLines(doc), "all three proven integer budget locations pass")
+	require.Equal(t, before, doc, "scanning never alters the archive")
+	for _, tc := range []struct {
+		name, brief string
+		extra       map[string]string
+	}{
+		{"credential budget", strings.Replace(header, "1000", "sk-fakeSyntheticCredential123456789", 1), nil},
+		{"singular equal", header, map[string]string{"note": "token=123456789"}},
+		{"singular colon", header, map[string]string{"note": "token: 123456789"}},
+		{"plural equal", header, map[string]string{"note": "tokens=123456789"}},
+		{"plural colon", header, map[string]string{"note": "tokens: 123456789"}},
+		{"other token key", header, map[string]string{"note": "session_tokens=1000"}},
+		{"unknown brief path", header, map[string]string{"brief": header}},
+		{"task prose", header + "\ntokens: 123456789", nil},
+		{"duplicate header", strings.Replace(header, "tokens: 1000", "tokens: 1000\ntokens: 2000", 1), nil},
+		{"no pin", strings.Replace(header, "model: simulation/twin\n", "", 1), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotEmpty(t, secretLines(backupBudgetDoc(t, tc.brief, tc.extra)))
+		})
+	}
+}
+
+func TestBackupBudgetParsingFailsClosed(t *testing.T) {
+	t.Parallel()
+	doc := backupBudgetDoc(t, simulatedTwinBrief(), nil)
+	for _, tc := range []struct {
+		name string
+		doc  []byte
+	}{
+		{"malformed", doc[:len(doc)-1]},
+		{"trailing", append(append([]byte(nil), doc...), []byte(" {}")...)},
+		{"duplicate", bytes.Replace(doc, []byte(`"version": 1`), []byte(`"version": 1, "version": 1`), 1)},
+		{"decoded duplicate", bytes.Replace(doc, []byte(`"version": 1`), []byte(`"version": 1, "vers\u0069on": 1`), 1)},
+		{"unknown wrapper", append(append([]byte(`{"unknown":`), doc...), '}')},
+		{"unknown table", bytes.ReplaceAll(doc, []byte(`"work"`), []byte(`"other"`))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotEmpty(t, secretLines(tc.doc))
+			require.Equal(t, tc.doc, backupScanBytes(tc.doc))
+		})
+	}
+}
+
+func TestBackupWritesTheUnchangedSyntheticBudgetArchive(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sprint.twin")
+	for _, line := range twinSteps[:3] {
+		code, out, errs := twinProcess(t, file, line)
+		require.Equal(t, 0, code, "%s: %s%s", line, out, errs)
+	}
+	before, err := os.ReadFile(file)
+	require.NoError(t, err)
+	dest := filepath.Join(dir, "backup.bak")
+	code, out, errs := twinProcess(t, file, "nova-sprint backup --file "+dest)
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	saved, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	require.Equal(t, before, saved, "the budget exception affects the scan only")
+	require.Contains(t, string(saved), "tokens: 1000")
 }

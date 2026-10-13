@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -10,7 +11,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/log"
@@ -286,7 +291,7 @@ func backupCountsDiffer(live, got store.SnapshotCounts) string {
 // a backup. At most twenty are named.
 func secretLines(b []byte) []int {
 	var hits []int
-	for i, l := range strings.Split(string(b), "\n") {
+	for i, l := range strings.Split(string(backupScanBytes(b)), "\n") {
 		if log.Redact(l) != l {
 			if hits = append(hits, i+1); len(hits) == 20 {
 				break
@@ -302,4 +307,286 @@ func joinInts(n []int) string {
 		s[i] = fmt.Sprint(v)
 	}
 	return strings.Join(s, ",")
+}
+
+// backupSpan identifies bytes in the original archive, never a rewritten dump.
+type backupSpan struct{ start, end int }
+type backupString struct {
+	path  []string
+	value string
+	span  backupSpan
+}
+
+// backupJSON reads complete JSON and rejects duplicate decoded keys. Offsets
+// preserve every original byte, including unknown fields and nested escapes.
+func backupJSON(b []byte) (any, []backupString, error) {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	var ss []backupString
+	var value func([]string, int) (any, error)
+	value = func(path []string, depth int) (any, error) {
+		if depth > 128 {
+			return nil, errors.New("JSON nesting")
+		}
+		begin := int(d.InputOffset())
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		switch v := tok.(type) {
+		case json.Delim:
+			switch v {
+			case '{':
+				m := map[string]any{}
+				for d.More() {
+					key, err := d.Token()
+					if err != nil {
+						return nil, err
+					}
+					k, ok := key.(string)
+					if !ok {
+						return nil, errors.New("JSON key")
+					}
+					if _, duplicate := m[k]; duplicate {
+						return nil, errors.New("duplicate JSON key")
+					}
+					x, err := value(append(append([]string(nil), path...), k), depth+1)
+					if err != nil {
+						return nil, err
+					}
+					m[k] = x
+				}
+				end, err := d.Token()
+				if err != nil || end != json.Delim('}') {
+					return nil, errors.New("JSON object")
+				}
+				return m, nil
+			case '[':
+				var a []any
+				for d.More() {
+					x, err := value(append(append([]string(nil), path...), fmt.Sprint(len(a))), depth+1)
+					if err != nil {
+						return nil, err
+					}
+					a = append(a, x)
+				}
+				end, err := d.Token()
+				if err != nil || end != json.Delim(']') {
+					return nil, errors.New("JSON array")
+				}
+				return a, nil
+			}
+			return nil, errors.New("JSON delimiter")
+		case string:
+			end := int(d.InputOffset())
+			q := bytes.IndexByte(b[begin:end], '"')
+			if q < 0 {
+				return nil, errors.New("JSON string")
+			}
+			ss = append(ss, backupString{path, v, backupSpan{begin + q, end}})
+		}
+		return tok, nil
+	}
+	root, err := value(nil, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err = d.Token(); err != io.EOF {
+		return nil, nil, errors.New("trailing JSON")
+	}
+	return root, ss, nil
+}
+
+func backupAt(root any, path []string) any {
+	for _, p := range path {
+		switch x := root.(type) {
+		case map[string]any:
+			root = x[p]
+		case []any:
+			var n int
+			if _, err := fmt.Sscan(p, &n); err != nil || n < 0 || n >= len(x) {
+				return nil
+			}
+			root = x[n]
+		default:
+			return nil
+		}
+	}
+	return root
+}
+
+// backupBudget is the one unambiguous integer budget in the actual parsed pin
+// header. Task prose, invalid pins and duplicate tokens headers are not budgets.
+func backupBudget(brief string) (backupSpan, bool) {
+	m, why := cardhdr.ReadModel(brief)
+	if why != "" || m.Pin == "" || m.Tokens == "" {
+		return backupSpan{}, false
+	}
+	for _, c := range m.Tokens {
+		if c < '0' || c > '9' {
+			return backupSpan{}, false
+		}
+	}
+	offset := strings.IndexByte(brief, '\n') + 1
+	if offset == 0 {
+		return backupSpan{}, false
+	}
+	var span backupSpan
+	count := 0
+	for offset < len(brief) {
+		line, _, more := strings.Cut(brief[offset:], "\n")
+		key, val, ok := cardhdr.KeyValue(line)
+		if !ok {
+			break
+		}
+		if strings.EqualFold(key, "tokens") {
+			count++
+			if val != m.Tokens {
+				return backupSpan{}, false
+			}
+			start := offset + strings.IndexByte(line, ':') + 1
+			for start < len(brief) && (brief[start] == ' ' || brief[start] == '\t') {
+				start++
+			}
+			span = backupSpan{start, start + len(val)}
+		}
+		offset += len(line) + 1
+		if !more {
+			break
+		}
+	}
+	return span, count == 1
+}
+
+// backupStringMap maps each decoded byte to its original JSON byte span. A
+// nested manifest uses this again, composing offsets without reserializing it.
+func backupStringMap(b []byte, s backupString) ([]backupSpan, bool) {
+	var spans []backupSpan
+	for i := s.span.start + 1; i < s.span.end-1; {
+		end := i + 1
+		if b[i] == '\\' {
+			if end >= s.span.end-1 {
+				return nil, false
+			}
+			end++
+			if b[i+1] == 'u' {
+				end = i + 6
+				if end > s.span.end-1 {
+					return nil, false
+				}
+				if end+6 <= s.span.end-1 && b[end] == '\\' && b[end+1] == 'u' {
+					var one string
+					if json.Unmarshal(append(append([]byte{'"'}, b[i:end]...), '"'), &one) != nil {
+						return nil, false
+					}
+					if one == "\ufffd" {
+						end += 6
+					}
+				}
+			}
+			var decoded string
+			quoted := append(append([]byte{'"'}, b[i:end]...), '"')
+			if json.Unmarshal(quoted, &decoded) != nil {
+				return nil, false
+			}
+			for range []byte(decoded) {
+				spans = append(spans, backupSpan{i, end})
+			}
+		} else {
+			_, n := utf8.DecodeRune(b[i : s.span.end-1])
+			if n == 0 {
+				return nil, false
+			}
+			end = i + n
+			for j := i; j < end; j++ {
+				spans = append(spans, backupSpan{j, j + 1})
+			}
+		}
+		i = end
+	}
+	return spans, len(spans) == len(s.value)
+}
+
+// backupScanBytes masks only the proven budget value spans for the scanner.
+// The archive is unchanged. Invalid/ambiguous JSON is scanned strictly whole.
+func backupScanBytes(b []byte) []byte {
+	root, ss, err := backupJSON(b)
+	if err != nil || backupAt(root, []string{"version"}) != json.Number("1") {
+		return b
+	}
+	work := func(name string) bool {
+		return (name == "work" || strings.HasSuffix(name, "-work")) && backupAt(root, []string{"tables", name, "def", "Name"}) == name
+	}
+	var spans []backupSpan
+	add := func(doc []byte, s backupString, outer []backupSpan) bool {
+		budget, ok := backupBudget(s.value)
+		if !ok {
+			return true
+		}
+		mapping, ok := backupStringMap(doc, s)
+		if !ok || budget.end > len(mapping) {
+			return false
+		}
+		r := backupSpan{mapping[budget.start].start, mapping[budget.end-1].end}
+		if outer != nil {
+			if r.end > len(outer) {
+				return false
+			}
+			r = backupSpan{outer[r.start].start, outer[r.end-1].end}
+		}
+		spans = append(spans, r)
+		return true
+	}
+	for _, s := range ss {
+		p := s.path
+		switch {
+		case len(p) == 6 && p[0] == "tables" && work(p[1]) && p[2] == "members" && p[4] == "fields" && p[5] == "brief":
+			if backupAt(root, p[:5]) == nil || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "primary" {
+				continue
+			}
+			if !add(b, s, nil) {
+				return b
+			}
+		case len(p) == 5 && p[0] == "tables" && work(p[1]) && p[2] == "ops" && p[4] == "body":
+			inner, stringsIn, err := backupJSON([]byte(s.value))
+			if err != nil {
+				return b
+			}
+			if backupAt(inner, []string{"table"}) != p[1] {
+				continue
+			}
+			outer, ok := backupStringMap(b, s)
+			if !ok {
+				return b
+			}
+			for _, v := range stringsIn {
+				q := v.path
+				if len(q) == 4 && q[0] == "members" && q[2] == "set" && q[3] == "brief" && backupAt(inner, []string{"members", q[1], "set", "kind"}) == "primary" {
+					if !add([]byte(s.value), v, outer) {
+						return b
+					}
+				}
+			}
+		case len(p) == 7 && p[0] == "logs" && p[2] == "lines" && p[4] == "line" && p[5] == "text" && p[6] == "brief":
+			if backupAt(root, append(append([]string(nil), p[:5]...), "table")) != "work" || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "queued" {
+				continue
+			}
+			if !add(b, s, nil) {
+				return b
+			}
+		}
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+	var out bytes.Buffer
+	at := 0
+	for _, r := range spans {
+		if r.start < at || r.end > len(b) {
+			return b
+		}
+		out.Write(b[at:r.start])
+		out.WriteString(log.Redacted + " ")
+		at = r.end
+	}
+	out.Write(b[at:])
+	return out.Bytes()
 }
