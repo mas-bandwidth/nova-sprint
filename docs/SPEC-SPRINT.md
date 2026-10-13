@@ -1982,10 +1982,10 @@ failed finish, a reader's finding inside or outside PATHS, a deadline or harness
 a push or lane refused, a landing refused, in the shared ledgers too): the count is the
 card's `attempt` less `decided_attempt` (`sprint.AttemptsSince`; absent is 0), a redeal
 of one attempt being that one attempt (MaxRedeals bounds those on its own). *What
-resets it*: only a coordinator decision on the card writes `decided_attempt` (the
+resets it*: a coordinator decision on the card or an accept writes `decided_attempt` (the
 card's attempt at the decision): `brief` and `brief --tier` run by a person or the seat
 (`BriefReq.ByRule` false), `rework` answered by the seat, `--tier` and `--carry` included
-(`ReworkCard.Rule` empty), `continue`; a drop ends the card. A rule's widen or rework, a
+(`ReworkCard.Rule` empty), `continue`, and `accept` (`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
 stream's `set --base` and the machine's tier escalation never do: each replaces the
 brief or opens an attempt as before, but `brief_attempt` no longer bounds the cap. *At
 the bound*, whatever the attempt found, the card is the coordinator's as exactly one
@@ -3779,9 +3779,9 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   of 2026-10-05: three cards sat in review with no read asked and no note until
   the coordinator ran `ask` by hand, each after a stall judgment;
   `TestAReviewCardIsAskedAReadTheSameTick`). The ask's `cannot ask` judgment is for a
-  primary that no readers could read to the count it needs, whatever their
-  room (so not even its first read is asked when no second reader could ever
-  read it). One read card per reader. The two rules meet in one pin,
+  primary that no up reader may read at its read tier. The next tick closes
+  it when an eligible reader exists, even at room or while further reads wait.
+  One read card per reader. The two rules meet in one pin,
   `TestSequentialReadsAtReaderWidthKeepThreeReadsPerLanding`: pro cards whose
   first read fails once land on three reads each while no reader holds more
   reads than its machine's width (with `TestAProCardsReadsAreAskedOneAtATime`
@@ -3867,7 +3867,7 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   suffix (`<primary>.r<attempt>.<reader>.g1`), once; the next attempt is read on
   new cards, by every reader; and
   the store's per-tick record enumeration enumerates both identities without
-  extra round trips. The tick's `cannot ask` is one judgment per tick, `no
+  extra round trips. The tick's `cannot ask` is one judgment per unchanged eligible set at an attempt, `no
   eligible reader for <ids>`, every such primary a subject of it (the night
   of 2026-10-03: five cards whose reads were taken back from five readers in
   turn, five judgments). Its
@@ -4533,11 +4533,14 @@ docs/SPEC-CARD-CONTRACT.md, where a rework starts), its read cards retired, its
 finding `the landing refused its head: <way>`, and the coordinator gets one
 happened note addressed to the seat, `the landing refused a card's head:
 reworked at the tip`, naming the card and the lander's words, with nothing to
-answer. A card at its brief's bound (`sprint.AtBriefBound`: the same refusal as
-the one its last rework answered, or the stream's or the sprint's attempt cap
-counted from its last brief) is not reworked: it goes back to review with the
-bound's judgment, `a card has reached its bound: the brief is wrong, not the
-worker` (brief or drop), the lander's words in its text. A conflict the lander
+answer. An accepted card in merging is never judged by the attempt cap alone
+(`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to
+merge, and only a repeated refusal (the same finding twice on the brief,
+`bb.Finding != ""`) or exhausted widenings bound it. A card at its brief's bound
+(`sprint.AtBriefBound`: the same refusal as the one its last rework answered, or
+exhausted widenings) is not reworked: it goes back to review with the bound's
+judgment, `a card has reached its bound: the brief is wrong, not the worker`
+(brief or drop), the lander's words in its text. A conflict the lander
 could not place (a generated ledger it could not resolve, a head that is no
 commit or that origin does not hold, a conflict with no kind) is its own
 failure: the stream stops on the card, stuck, with the judgment `stream stopped:
@@ -5379,7 +5382,7 @@ the tick would make, no other open judgment on it).
 | repair skipped changes the store refused as recorded | card (look), return, drop, rework, ack | yes |
 | an operation was stuck | check, ack | yes |
 | a reminder could not be delivered | goal set (a new route), goal drop, ack | yes |
-| cannot ask (enough readers are up, and a primary has fewer readers with no read card at its attempt, placed or retired, than its tier needs: one for a flash card, two for a pro card; one judgment per tick, `no eligible reader for <ids>`, every such primary a subject of it) | reader add, wait | no |
+| cannot ask (no up unit may read the primary at its read tier; one judgment per unchanged eligible set at an attempt) | ask, rework, drop, wait | no |
 | fewer than two readers up | reader up, reader add, wait | no |
 | no fleet member is up (when every member that beats is held, it says so and offers only fleet up and wait) | fleet beat (on a machine), fleet up (releases a hold), wait | no |
 | the fleet is starving (ready, sentinels aside, is under twice the up members' width while a wave is held: `the fleet is starving: ready <n> is under twice the width <2w>; release a wave: nova-sprint release <sentinel> --reason '<why>'`, raised once and updated in place every tick while it holds, naming the first held sentinel in work order; closed when no wave is held; `TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth`) | release (the wave's sentinel; never a single card), wait | no |
@@ -8267,14 +8270,12 @@ tick. Running a tick twice in a row changes nothing the second time.
 The tick writes a judgment once while its condition holds and closes it when
 the condition clears (closing a primary's last judgment in review, it writes
 the judgment the primary needs next, as every step that leaves one in review
-does): cannot ask (enough readers are up and fewer different readers than its
-tier needs, one for a flash card and two for a pro card, are free for a
-primary with no read card at its attempt, placed or retired: a reader is
-asked an attempt once, and once more when its read was retired with no verdict;
-one condition per primary whatever its count of free readers, and the
-primaries of one tick one judgment, `no eligible reader for <ids>`, the ids
-those no open judgment of the type names yet, each its own subject, closed
-when it is asked),
+does): cannot ask (no up unit may read a primary at its read tier;
+one condition per primary while the eligible set is unchanged at an attempt,
+and the primaries of one tick one judgment, `no eligible reader for <ids>`,
+the ids those no open judgment of the type names yet, each its own subject.
+The next tick closes it when an eligible unit exists, even at room; ask closes
+it when it deals a read, and rework ends its attempt),
 fewer than two readers up (the sprint's, one whatever the primaries waiting:
 the ask asks no primary that needs more readers than are up while it stands,
 section 6),
@@ -9357,3 +9358,18 @@ friend reaches that friend's inbox by the route her judgments already take: the
 push loop writes a group addressed to someone to that actor's own inbox
 directory (`pushTarget.dirOf`, `~/<actor>-working/inbox/sprint-judgments`), the
 group carrying the note's addressee (`sprint.Group.To`).
+
+#### Cannot ask episodes (v1.2.17)
+
+An eligible unit ends `cannot ask` on the next tick, even without room, with
+`a reader may read <card> now (<units>)`. Waiting for room is a different wait.
+One unchanged eligible set at an attempt raises one judgment; an eligibility
+change can start another episode. `ask <card> --answers <j>` deals a read and
+closes its judgment; a refused ask names the missing reader and remedy.
+`rework` closes it by ending the attempt. SprintRules checks
+`CannotAskClosedWhenEligible` and `OneCannotAskAnEpisode`; held-while-eligible
+and repeated-flap witnesses independently violate those rules.
+
+A `wait` on `cannot ask` quiets its reader condition until the requested review
+time; if no reader becomes eligible, that time raises one reminder. Eligibility
+still closes the wait earlier. The wait does not block an eligible read.

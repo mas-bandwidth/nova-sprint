@@ -258,6 +258,7 @@ MCLandBound.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	required	-
 MCLandBoundBrokenNoWidenCap.cfg	MCLandBound.tla	invariant	AttemptsBounded	ignore-terminal	land	required	-
 MCLandBoundBrokenNoSameFinding.cfg	MCLandBound.tla	invariant	SameRefusalHalts	ignore-terminal	land	required	-
 MCLandBoundReachWidenLands.cfg	MCLandBound.tla	invariant	ReachWidenLands	ignore-terminal	land	required	-
+MCLandBrokenCapAccepted.cfg	MCLandBound.tla	invariant	AcceptedNeverCapJudged	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-
@@ -693,6 +694,8 @@ MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestor
 MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCSprintRulesEpisodesBrokenHeldWhileEligible.cfg	MCSprintRules.tla	action	CannotAskClosedWhenEligible	ignore-terminal	sprintrules	required	-
+MCSprintRulesEpisodesBrokenFlapEligible.cfg	MCSprintRules.tla	invariant	OneCannotAskAnEpisode	ignore-terminal	sprintrules	required	-
 MCSprintTablesBrokenOldHeadReviewed.cfg	MCSprintTables.tla	invariant	NoOldBriefHeadInReview	ignore-terminal	sprinttables	required	-
 MCNeedsBlockedRun.cfg	MCNeedsBlocked.tla	pass	-	ignore-terminal	needsblocked	required	-
 MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependentsCovered	ignore-terminal	needsblocked	required	-
