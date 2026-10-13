@@ -383,6 +383,18 @@ on something dropped" judgment, in one step. Where the drop and the add were mad
 judgments of that pair. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 2, "A
 card replaced by its twin".
 
+### Where a sentinel is placed, and what it blocks
+
+`add --sentinel <id>` with `--needs` on cards of its own stream places the
+sentinel directly after the last of them in the line (its producer), so it
+waits on that card and what is before it only; with no need on its own
+stream it goes to the end of the line, as before. `--before`, `--after` and
+`--score` still place it explicitly. `nova-sprint sentinels` prints, per
+sentinel, `waits-behind=` (the unlanded cards ahead of it in its line) and
+`blocks=` (the cards behind it and the cards of other streams that need
+it). A cycle refusal marks each edge of its loop: `a -needs-> b` for a
+named need, `a -line-> b` for an edge of its place in line.
+
 ### A sentinel whose cards were deferred
 
 When the cards a sentinel waits on move to a later release, `sentinel set v1 --needs

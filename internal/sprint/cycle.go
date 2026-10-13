@@ -287,9 +287,24 @@ func (g *needGraph) sentinelsIn(loop []string) []string {
 	return out
 }
 
-// tellLoop is a loop as the refusal and check print it.
+// tellLoop is a loop as the refusal and check print it: each edge is
+// marked -needs-> when the card names the next as a need, or -line->
+// when the edge is its place in line (behind a sentinel, or a sentinel
+// waiting on the cards before it), so the seat sees which edge is the
+// line's.
 func (g *needGraph) tellLoop(loop []string) string {
-	out := strings.Join(loop, " needs ")
+	var b strings.Builder
+	b.WriteString(loop[0])
+	for i := 0; i+1 < len(loop); i++ {
+		named, _ := g.needs(loop[i])
+		if contains(named, loop[i+1]) {
+			b.WriteString(" -needs-> ")
+		} else {
+			b.WriteString(" -line-> ")
+		}
+		b.WriteString(loop[i+1])
+	}
+	out := b.String()
 	if gates := g.sentinelsIn(loop); len(gates) > 0 {
 		out += " (through sentinel " + strings.Join(gates, ", ") + ": a card behind a sentinel needs it, and a sentinel needs every card of its stream before it)"
 	}
