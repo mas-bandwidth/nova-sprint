@@ -32,7 +32,8 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
 - **no tier** — a cost record that names no tier, counted under its own heading in `cost_by_tier`.
   Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: untiered.
 - **primary** — one unit of planned work tracked in a stream through its outcome.
-  It may be a work card or a sentinel; a read card reviews a primary and is not itself a primary.
+  Each attempt has a work card cut from its primary. A sentinel is a primary of sentinel
+  kind that holds the cards behind it; a read card reviews a primary's work attempt.
   Defined: [SPEC-SPRINT.md, The cards](../SPEC-SPRINT.md#2-the-cards).
 - **promotion** — the one step that takes the sprint branch to the development branch.
   Defined: [SPEC-SPRINT.md, Merging](../SPEC-SPRINT.md#7-merging).
