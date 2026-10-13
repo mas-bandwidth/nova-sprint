@@ -8436,9 +8436,10 @@ first, and the stall after it is a new one. Every judgment kind has a verb that 
 (`TestEveryJudgmentKindHasAVerbThatClosesIt`): `landing stalled` is closed by
 `ack --reason` (held until the next landing or the bound) or `wait` (a review time), and by
 the next landing; `no route serves the tier` is closed by `route add` serving its tier on
-the next tick, by `ack --reason`, or by `drop`. Every tick-kept condition closes on the
+the next tick, by `ack --reason`, or by `drop`. The no-route condition closes on the
 first tick it no longer holds, with a happened note `the condition cleared: <kind> no
-longer holds`; a held ack ends then too. A plan that only writes the episode's stamps
+longer holds`; a held ack ends then too. Every other tick-kept condition closes
+silently on the first tick it no longer holds, as it did before this card. A plan that only writes the episode's stamps
 carries a unit of its own, since the store's tick passes over an empty plan. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
 

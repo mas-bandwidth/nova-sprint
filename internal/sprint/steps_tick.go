@@ -90,8 +90,8 @@ const MaxProviderErrorBytes = 200
 // it, and the judgment "returned to review" decides it.
 const FieldReturnedAttempt = "returned_attempt"
 
-// NConditionCleared is the happened note a tick-kept condition closes with
-// on the first tick it no longer holds (notify, tickLandingStall).
+// NConditionCleared is the happened note the no-route condition closes with
+// on the first tick it no longer holds (notify in TickDeal).
 const NConditionCleared = "the condition cleared"
 
 // The tick's own notification types.
@@ -2329,10 +2329,15 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		closing[o.Note.ID] = true
 		cleared[o.Note.ID] = o.Note.Type
 	}
-	// Every tick-kept condition closes on the first tick it no longer holds,
+	// The no-route condition closes on the first tick it no longer holds,
 	// with a note saying so; a held ack ends then too (its entry is in Closes).
+	// The note is named for this kind only (SPEC-SPRINT s7): every other
+	// tick-kept kind closes silently, as it did before this card.
 	// tla/SprintRules.tla NoRouteTick / NoRouteClosesWhenServed
 	for _, typ := range cleared {
+		if typ != NNoRoute {
+			continue
+		}
 		n := happened(NConditionCleared, "", s.Now)
 		n.What = "the condition cleared: " + typ + " no longer holds"
 		n.Who, n.To = who, s.Coordinator

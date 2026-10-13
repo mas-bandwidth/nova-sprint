@@ -1508,8 +1508,10 @@ NoRouteRaisesOnlyUnpinnedReady == [][ntier' = ntier \/ (~npinned /\ nready)]_nor
 NoRouteRaisesToNearestServed == [][ntier' = ntier \/ ntier' = NearestServed(ntier)]_norouteVars
 
 \* A tick judgment whose condition is false closes within one tick: once a
-\* route serves the tier, the no-route judgment does not stay open.
-NoRouteClosesWhenServed == (njudged /\ ~nrcond) ~> ~njudged
+\* route serves the tier and keeps serving it, the no-route judgment does not
+\* stay open. If the route stops serving again first (nrcond holds again), the
+\* judgment rightly stays: the tick closes it on a later clear tick.
+NoRouteClosesWhenServed == (njudged /\ ~nrcond) ~> (~njudged \/ nrcond)
 
 \* The landing-stall judgment is open only while cards wait (LsLand clears it).
 StallJudgedOnlyWhileWaiting == lsjudged => lswait > 0
@@ -1642,7 +1644,9 @@ Next ==
 \* The rules and a mind act when they may; the outside is unfair. The stall's running tick
 \* and the machine's start are fair (a stopped machine adds no running time, so a stall can
 \* only be owed once the machine has run the bound); the alert's send is fair so a raise is
-\* eventually told; the tier's tick is fair so the tier judgment closes when routes wake.
+\* eventually told; the tier's tick is fair so the tier judgment closes when routes wake;
+\* the no-route tick is strongly fair, as the stall's is: the outside may toggle the
+\* card's readiness or pin between ticks, and the tick still runs.
 Fairness ==
   /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
   /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
@@ -1652,7 +1656,7 @@ Fairness ==
   /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
   /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>)
   /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
-  /\ WF_vars(Part = "noroute" /\ NoRouteTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>)
+  /\ SF_vars(Part = "noroute" /\ NoRouteTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

@@ -442,8 +442,9 @@ one judgment, `the lander refuses every landing`, naming the reason and the reme
 Every judgment kind lists a verb that closes it: `landing stalled` takes `ack --reason`
 (held until the next landing or the bound) or `wait` (a review time) and closes on the
 next landing; `no route serves the tier` takes `route add` (closes on the tick after a
-route serves its tier), `ack --reason` or `drop`. A tick-kept condition that no longer
-holds closes on that tick with `the condition cleared: <kind> no longer holds`. A pass
+route serves its tier), `ack --reason` or `drop`. The no-route condition closes on
+the first tick it no longer holds, with `the condition cleared: <kind> no longer holds`;
+every other tick-kept condition closes silently on that tick. A pass
 that gets past it closes it; another reason closes it and raises its own. A judgment the
 store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. A failure
 before any batch, or a merge queue the loop cannot read, is worded as a failure: `LAND
