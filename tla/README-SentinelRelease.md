@@ -37,6 +37,20 @@ The abstract name `dev` denotes each stream's recorded protected
 integration target (`main` or `dev`). A freshly fetched ancestry proof is enough;
 no forge pull-request API evidence is assumed.
 
+## Mapping a dropped producer to runtime state
+
+The abstract `state[p] = "dropped"` means a producer currently dropped and
+unplaced: the runtime mapping requires both `outcome == "dropped"` and
+`!Placed`. A newly placed Ready record maps to `"working"` even if it retains
+an old dropped outcome. The outcome field alone cannot authorize the waiver.
+
+This bounded model has no drop-and-re-add action. `NewHead` starts only from
+`"landed"`, and `ChangeScope` changes proof scope without changing producer
+state. Its measured cases therefore do not cover a stale dropped outcome on
+re-add. That mapping requires runtime adapter checks, the fenced placement
+identity, and tests against the actual store's drop/re-add behavior. No re-add
+coverage is inferred from the existing scope-change witness.
+
 ## Consumer refresh and the distributed boundary
 
 `MergeConsumer` means a successful merge/push of the observed development
