@@ -228,3 +228,18 @@ func TestSubscriptionLegacyMarkerCannotOverrideStampedBilling(t *testing.T) {
   require.Empty(t,w.s.receiptBillingRefusal(card,"billing=subscription input=12"),"unstamped historical read marker remains compatible")
  }
 }
+
+func TestSubscriptionAbsentTokensRetainDeclaredZeroAfterRouteChanges(t *testing.T) {
+ t.Parallel()
+ w:=setup(t,1)
+ u:=cardcost.NoUsage();u.Billing="subscription";u.ReceiptVersion=2
+ for _,billing:=range []string{"plan","metered",""} {
+  w.s.Routes=[]Route{{Name:"original",Prices:cardcost.Prices{Billing:billing,Input:"999"}}}
+  if billing=="" { w.s.Routes=nil }
+  got:=cardcost.ParseUsage(costRecord(w.s,u.String(),"original","",false,"",""))
+  require.Equal(t,"0",got.Predicted)
+  require.Empty(t,got.Unpriced,"absence is not a missing-price demotion of declared subscription")
+  require.Empty(t,got.ActualBy)
+  require.Equal(t,cardcost.Unreported,got.Tokens.Input)
+ }
+}

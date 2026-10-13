@@ -38,6 +38,10 @@ import (
 func costRecord(s *Snapshot, usage, route, model string, onlyEnabled bool, from, began string) string {
 	u := cardcost.ParseUsage(usage).Timed(from, began, s.Now)
 	r, ok := s.priceRoute(route, cmp.Or(u.Model, model), onlyEnabled)
+ if subscriptionUsage(u) {
+  if ok { return u.Priced(r.Name,s.billingPrices(r)).String() }
+  return u.Priced(route,cardcost.Prices{}).String()
+ }
 	if ok && s.billingPrices(r).Billing == cardcost.BillingSubscription {
 		return u.Priced(r.Name, s.billingPrices(r)).String()
 	}
