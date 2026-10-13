@@ -164,6 +164,9 @@ var Decisions = map[string][]string{
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},
+	// the machine held a member for its takes that end with no model call: the
+	// judgment is the hold's cause, so answering it ends the hold (hold_cause.go)
+	NMemberIdleReaps: {"ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

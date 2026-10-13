@@ -25,7 +25,11 @@ import (
 // resting route, and the rest ends by itself at its time. A take that ended with NO RESULT
 // is the model's output on that card, never the provider's: it counts against the card's
 // attempt and the route's ok%, and it never rests the route (rule 3 of 2026-10-02 rested on
-// three of them; that rule is retired, and a rest it wrote holds no route: Retired). The
+// three of them; that rule is retired, and a rest it wrote holds no route: Retired). One
+// no-result take is not the model's: a take whose child made no model call at all (no
+// token reported). Such takes on two or more members of one route within IdleReapWindow
+// are the route's, and rest it (RestNoModelCall, hold_cause.go; the owner, 2026-10-13,
+// after mini-m5 was held ten hours for the providers' fault). The
 // rest is the sprint's, never config: nova-config's enabled stays the coordinator's.
 const (
 	RouteRestWindow = 10
@@ -546,10 +550,17 @@ func RestsDue(s *Snapshot) []RouteRest {
 	}
 	rests, ends := RouteRests(s.Routes, s.Fleet), routeEnds(s.Fleet)
 	backs := rateBackoffs(s.Fleet)
+	// takes that ended with no model call on two or more members: the route's
+	// (hold_cause.go, noModelCallRests; tla/HoldCause.tla RouteFaultRests)
+	noCall := noModelCallRests(s, rests)
 	var out []RouteRest
 	for _, r := range s.Routes {
 		last, had := rests[r.Name]
 		if had && last.Resting(s.Now) {
+			continue
+		}
+		if nc, ok := noCall[r.Name]; ok {
+			out = append(out, nc)
 			continue
 		}
 		var window []routeEnd
@@ -767,10 +778,15 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 			}
 			n := happened(NRouteRested, TierSubject(tier), s.Now)
 			n.To, n.Who = s.Coordinator, who
-			if r.Cause == RestRateBackoff {
+			switch r.Cause {
+			case RestRateBackoff:
 				// one note, never a judgment: the backoff ends by itself
 				n.What = fmt.Sprintf("rate-limit backoff of %s on %s, until %s", r.Until.Sub(r.At), r.Route, stamp(r.Until))
-			} else {
+			case RestNoModelCall:
+				// the provider is judged here, never a member (hold_cause.go)
+				n.What = fmt.Sprintf("route %s rested until %s: %s; cards %s; look at its provider %s (its balance and key: nova-sprint routes); nova-sprint routes wake %s ends it",
+					r.Route, stamp(r.Until), r.Why, strings.Join(r.Cards, ", "), orDash(prov), r.Route)
+			default:
 				n.What = fmt.Sprintf("route %s rested until %s: its provider failed %d of its last %d ended takes or fewer (a 5xx or a timeout: %s); the deal draws no work card on it until then; nova-sprint routes shows it, nova-sprint routes wake %s ends it",
 					r.Route, stamp(r.Until), len(r.Cards), RouteRestWindow, strings.Join(r.Cards, ", "), r.Route)
 			}

@@ -24,6 +24,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `Land`, `LandPass`, `LatePush` | The landing protocol, the land pass over streams, and a late push. |
 | `CardISA` (over `CardMachine`) | The card instruction set; `CardMachine` is the model of nova-tools' deleted Lua card machine, kept for `CardISA` which `EXTENDS` it. |
 | `Holds` | A held card, a sentinel and its release, and a stream's hold, stop, resume and reopen. |
+| `HoldCause` | A fleet member's hold with its cause (a judgment, a doctor check, the machine's idle-reap judgment) ended by the tick in the step that sees the cause end, a cause-less hold reported once every period, and the attribution of idle reaps: two or more members on one route rest the route and hold no member. Witnesses: `holdleaks`, `silent`, `blamemember`. |
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |

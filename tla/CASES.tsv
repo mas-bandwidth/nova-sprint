@@ -674,3 +674,7 @@ MCNeedsBlockedBrokenAdmitHeld.cfg	MCNeedsBlocked.tla	invariant	AdmittedNeedsReso
 MCOneLander.cfg	MCOneLander.tla	pass	-	ignore-terminal	onelander	required	-
 MCOneLanderBrokenNoFence.cfg	MCOneLander.tla	invariant	AtMostOneLander	ignore-terminal	onelander	required	-
 MCOneLanderBrokenPlainDefault.cfg	MCOneLander.tla	invariant	ServerIsTheLander	ignore-terminal	onelander	required	-
+MCHoldCause.cfg	MCHoldCause.tla	pass	-	ignore-terminal	holdcause	required	-
+MCHoldCauseBrokenHoldleaks.cfg	MCHoldCause.tla	invariant	NoHoldOutlivesItsCause	ignore-terminal	holdcause	required	-
+MCHoldCauseBrokenSilent.cfg	MCHoldCause.tla	invariant	NoSilentHold	ignore-terminal	holdcause	required	-
+MCHoldCauseBrokenBlamemember.cfg	MCHoldCause.tla	action	HeldOnlyWhenAlone	ignore-terminal	holdcause	required	-

@@ -187,6 +187,9 @@ var TickDecisions = map[string][]string{
 	// a member up and pegged with no card working (pegged.go): named per member, held,
 	// seen for the episode, or quiet a while
 	NMemberPegged: {"fleet down <m>", "ack", "wait 15m"},
+	// a coordinator's hold with no cause, once every period (hold_cause.go): release it,
+	// name its cause, or seen
+	NHoldNoCause: {"ack", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -1040,6 +1043,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	conds = append(conds, friendSyncConds(s)...)
 	// landings on the sprint branch not promoted into dev (promotion.go)
 	conds = append(conds, devBehindCond(s)...)
+	// a coordinator's hold that names no cause, once every period it stands (hold_cause.go)
+	conds = append(conds, holdNoCauseConds(s, r)...)
 	// one deal order for friends and machines, by the ladder: a low card fills only a lane no
 	// other card ready can (ladderOrder, priority.go)
 	ready = ladderOrder(dealOrder(s, ready))
@@ -1156,13 +1161,18 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
 	fc := faultClear(s, r)
 	p.Units = append(p.Units, fc.Units...)
 	p.Notes = append(p.Notes, fc.Notes...)
+	// a hold whose cause ended ends in this step, and a member whose takes end with no
+	// model call on routes that serve elsewhere is held with its cause (hold_cause.go;
+	// tla/HoldCause.tla Tick)
+	holdCauseClear(s, r, &p)
+	idleReapHolds(s, r, &p)
 	// every provider out of credit: the binding stops the machine as the plan commits
 	// tla/DirtyTick.tla Stop
 	p.Stop = stop

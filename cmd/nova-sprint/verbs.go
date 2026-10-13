@@ -422,6 +422,7 @@ one answer to each judgment (every one prints its own, filled in):
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
   STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
+  a member's takes end with no model call    ack <note> --reason '<what you saw to on the member>'  (the machine's hold of it names this judgment as its cause: the tick releases the member in the step that sees it answered)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
 (failed, bound, late, conflict, brief-defect, base-gate, read-broken); nova-sprint rules prints what

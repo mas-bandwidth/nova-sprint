@@ -1206,11 +1206,35 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 			b, _ := json.Marshal(v)
 			return string(b) + "\n", 0, true
 		}
+		// each held member's cause, its age and the verb that releases it (hold_cause.go),
+		// read for the text frame alone, so where --json keeps its one read of records
+		holds, err := st.Holds(ctx)
+		if err != nil {
+			return "", a.readFailed("where", err, stderr), false
+		}
+		frame += heldMembersText(holds, v.At)
 		if r.release.set {
 			return releaseFrame(v.Releases, r.release.name), 0, true
 		}
 		return frame, 0, true
 	})
+}
+
+// heldMembersText is where's lines of the fleet members held (sprint.HoldLine): each one's
+// cause, or that it names none, how long it has been held and by whom, and the verb that
+// releases it; "" when no member is held.
+func heldMembersText(holds []sprint.HoldView, now time.Time) string {
+	var b strings.Builder
+	for _, h := range holds {
+		if h.Kind != sprint.HoldMember {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\nheld members:\n")
+		}
+		b.WriteString("  " + sprint.HoldLine(h, now) + "\n")
+	}
+	return b.String()
 }
 
 // drawLoop prints the frames frame gives: once, or with --watch every --every until
