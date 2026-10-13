@@ -132,7 +132,6 @@ type pageSnapshot struct {
 	Throughput        *float64        `json:"throughput"`
 	ThroughputMinutes float64         `json:"throughputMinutes"`
 	Build             string          `json:"build"`
-	ServerVersion     string          `json:"server_version"`
 }
 
 // pageCopy is the last good read as the page reads it: its data, the data's own time (where's
@@ -324,6 +323,26 @@ func (s *Server) pageRecord(body []byte, up *snapshot, end time.Time) {
 	s.pageRate.add(end, int64(cellNumber(v.Landed)))
 }
 
+// withServerVersion is data with its server_version set to version when data has none, as the
+// live page's server sets it (server.py: data.setdefault("server_version", ...)); app.js reads the
+// version chip off data.server_version (the owner 2026-10-12 ~01:20Z). data itself when version is
+// empty, data already carries one, or data is no JSON object.
+func withServerVersion(data json.RawMessage, version string) json.RawMessage {
+	if version == "" {
+		return data
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal(data, &top) != nil || top == nil {
+		return data
+	}
+	var have string
+	if json.Unmarshal(top["server_version"], &have) == nil && have != "" {
+		return data
+	}
+	top["server_version"] = mustJSON(version)
+	return mustJSON(top)
+}
+
 // PageSnapshot is /api/sprint's body on the page's listeners now (pageSnapshot).
 func (s *Server) PageSnapshot() []byte {
 	build := s.Build()
@@ -332,10 +351,9 @@ func (s *Server) PageSnapshot() []byte {
 	snap := pageSnapshot{
 		OK: s.snap.OK, AttemptAt: s.snap.AttemptAt, Error: s.snap.Error, ReadSeconds: s.snap.ReadSeconds,
 		MinInterval: s.Every.Seconds(), Throughput: s.pageRate.rate, ThroughputMinutes: s.pageRate.minutes, Build: build,
-		ServerVersion: s.Version,
 	}
 	if len(s.page.data) > 0 {
-		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = s.page.data, s.page.at, s.page.age
+		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, s.page.age
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {

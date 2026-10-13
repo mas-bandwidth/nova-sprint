@@ -26,8 +26,8 @@ import (
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
 // critical."): the page is that page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "ad147572a5f12eae86b431114cdca73754f8cd3a4b10eaa6d0cc84b158f84eef"
-	liveAppSHA256   = "f47ac28196ceac26d0da0802943327a6b52dfb1f46a7b8f34157671807c8f845"
+	liveIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
+	liveAppSHA256   = "90ef262f2b49be61642162dd4ea4b2480e30f50e0d52ecceaa6c999edf560691"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -79,7 +79,7 @@ func TestThePageIsTheLivePageByteForByte(t *testing.T) {
 }
 
 // liveEnvelope is the keys the live server's /api/sprint carries (server.py: _state and build).
-var liveEnvelope = []string{"ok", "data", "fetchedAt", "dataAgeSeconds", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build", "server_version"}
+var liveEnvelope = []string{"ok", "data", "fetchedAt", "dataAgeSeconds", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build"}
 
 // /api/sprint on the page's listeners carries the live server's keys and no other: every key
 // app.js reads of the envelope (accept: data, build, throughput, throughputMinutes), and none of

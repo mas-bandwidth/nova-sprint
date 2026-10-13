@@ -34,6 +34,23 @@ function cents(s) { // "$26.16" -> 2616, "-" -> null; rounded up to the cent
 function money(c) { return "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 // whole dollars rounded up, for the Cost breakdown panel only (the owner 2026-10-04 2:45 PM: "Round up to nearest $", "for this case"); money() keeps the cent everywhere else
 function dollars(c) { var d = Math.ceil(c / 100 - 1e-9); return "$" + (d === 0 ? 0 : d).toLocaleString("en-US"); }
+// the sprint's duration once done: from the epoch's clear to the end of the last 10-minute bucket a card landed in (landedSeries)
+function tookText(d) {
+  var t0 = Date.parse(d.cleared || ""), s = d.landedSeries, last = -1;
+  if (isNaN(t0) || !s || !s.buckets) return "\u00a0";
+  for (var i = 0; i < s.buckets; i++) {
+    var n = 0;
+    ["fleet", "friends"].forEach(function (k) { if (s[k] && s[k][i]) n += s[k][i]; });
+    if (n > 0) last = i;
+  }
+  var t1 = last >= 0 ? (s.start + (last + 1) * s.bucketSeconds) * 1000 : Date.parse(d.at);
+  var m = Math.max(0, Math.round((t1 - t0) / 60000)), dd = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60;
+  var parts = [];
+  if (dd) parts.push(dd + (dd === 1 ? " day" : " days"));
+  if (hh) parts.push(hh + (hh === 1 ? " hour" : " hours"));
+  if (mm || !parts.length) parts.push(mm + (mm === 1 ? " minute" : " minutes"));
+  return parts.join(" ");
+}
 function zoneAbbr(d) {
   try { var p = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(d).filter(function (x) { return x.type === "timeZoneName"; })[0]; return p ? p.value : ""; }
   catch (e) { return ""; }
@@ -84,7 +101,7 @@ function el(tag, cls, text) {
 // cell flashes only when it goes lit <-> unlit. The clock never flashes
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
-["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput", "coord", "epoch", "machine",
+["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput",
  "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
@@ -609,17 +626,21 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  if (all) { setText($("pct"), (landed / all * 100).toFixed(1) + "%"); if ($("pct-complete")) $("pct-complete").style.display = ""; }
-  else { setText($("pct"), "not started"); if ($("pct-complete")) $("pct-complete").style.display = "none"; }
+  // an empty sprint says only "not started" (the owner 2026-10-12 ~01:09Z, ~01:22Z)
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started");
+  if ($("pct-complete")) $("pct-complete").style.display = all ? "" : "none";
+  if ($("of-all2")) $("of-all2").style.display = all ? "" : "none";
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
-  var stopped = /STOPPED/.test(String(d.machine || ""));
+  var done = !!(all && landed >= all), stopped = /STOPPED/.test(String(d.machine || "")) && !done;
   if (stopped) {
-    // the owner 2026-10-12 ~00:58Z: the STOP word lives here, dark red, not a chip
+    // the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red"; ~01:08Z "darker";
+    // ~01:32Z STOP at every width ("cleaner"); the STOP word lives here, not a chip
     setText($("eta"), "STOP"); setClass($("eta"), "big eta-stop"); etaAtLast = null; setText($("eta-at"), "\u00a0");
-  } else if (all && landed >= all) {
-    // the owner 2026-10-12 ~00:32Z: ETA DONE in green, with the time the sprint took below it
-    setText($("eta"), "DONE"); setClass($("eta"), "big eta-done");
-    setText($("eta-at"), d.took || "\u00a0");
+  } else if (done) {
+    // the owner 2026-10-12 ~00:32Z: "ETA DONE, with done in bright green"; ~00:35Z: "Below DONE
+    // show the time it took in days, hours, minutes"
+    setText($("eta"), "DONE"); setClass($("eta"), "big eta-done"); etaAtLast = null;
+    setText($("eta-at"), tookText(d));
   } else if (m) {
     setClass($("eta"), "big");
     setHTML($("eta"), etaText(m[1]));
@@ -634,6 +655,7 @@ function renderHero(d, s, ft) {
   // card is that over the cards that landed
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
+  setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout")
   var per = landed ? money(Math.ceil(recorded / landed)) + " per card" : "";
   setText($("cost-per"), per || " ");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
@@ -649,7 +671,31 @@ function renderHero(d, s, ft) {
     else { vc.hidden = true; }
   }
   setMachine(d.machine);
+  // the chips beside the logo fit or go (the owner 2026-10-12 ~01:00Z to ~03:08Z): measured only
+  // when what they say changes, so a poll does no layout work
+  var mk = [d.coordinator, d.epoch, d.server_version].join("\u0001");
+  if (mk !== metaKey) { metaKey = mk; fitMetaChips(); }
 }
+
+// The wordmark, the coordinator chip and the epoch chip stay only while the header holds them and
+// the clock on one line; the clock has priority. The wordmark goes first (the owner 2026-10-12
+// ~03:08Z: "only when it fits, hide otherwise"), then the epoch, then the coordinator (~01:20Z,
+// ~01:25Z); the version always stays. Runs on load, on resize, and when the chips' text changes.
+var metaKey = null;
+function fitMetaChips() {
+  var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean), live = $("live"), ver = $("version-chip"), logo = $("logo");
+  if (!live || !logo || !live.getBoundingClientRect) return;
+  order.forEach(function (c) { c.classList.remove("nofit"); });
+  var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  function overflows() {
+    var tr = live.getBoundingClientRect(), lr = logo.getBoundingClientRect(), mid = (lr.top + lr.bottom) / 2, right = lr.right;
+    var wrapped = tr.top > mid || tr.bottom < mid;
+    [ver].concat(order).forEach(function (c) { if (c && c.offsetParent !== null) { var r = c.getBoundingClientRect(); right = Math.max(right, r.right); if (r.top > mid || r.bottom < mid) wrapped = true; } });
+    return wrapped || right + 2 * rem > tr.left;
+  }
+  for (var k = 0; k < order.length && overflows(); k++) order[k].classList.add("nofit");
+}
+window.addEventListener("resize", fitMetaChips);
 
 // ---------- poll loop ----------
 var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0, stoppedLast = false;
@@ -856,7 +902,7 @@ function renderInflight(sum) {
   var draw = function (w) {
     var parts = [[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
     box.textContent = "";
-    if (!parts.length) box.textContent = " ";
+    if (!parts.length) box.textContent = "\u00a0"; // blank when nothing is in flight; the line keeps its height (the owner 2026-10-12 ~01:10Z)
     parts.forEach(function (p, i) {
       if (i) box.appendChild(el("span", "pw", " \u00b7 "));
       box.appendChild(el("span", "pn", String(p[0]))); box.appendChild(el("span", "pw", " " + p[1]));
@@ -891,7 +937,8 @@ function renderTopStreams(d) {
   setCount(head, cellCount, function () { return quiet(el("div")); });
   putKid(head, 0, "", "stream");
   order.forEach(function (t, i) { putKid(head, 1 + i, "num", t); }); // plain headers, as every table's: the color keys are the legend's alone
-  putKid(head, cellCount - 1, "num", "total");
+  // the phone shows only stream | its cost (the owner 2026-10-12 ~00:55Z: "it's the cost per stream")
+  putKid(head, cellCount - 1, "num", window.matchMedia && window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total");
   var shown = rows.slice(0, n);
   var byName = {}; shown.forEach(function (r) { byName[r.name] = r; });
   syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
@@ -906,9 +953,20 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  if (!box._none) box._none = el("div", "row faint");
-  if (!rows.length && box._none.parentNode !== box) box.appendChild(box._none);
-  if (rows.length && box._none.parentNode === box) box._none.remove();
+  // with no stream spending, the table keeps its row lines and stays blank: no message (the owner
+  // 2026-10-12 ~01:07Z); the count follows the pie's measured width (measureMetrics), as topN does
+  var blankN = rows.length ? 0 : (pw ? Math.max(3, Math.round((pw - rem) / (5 * rem))) : 10);
+  if (!box._blank) box._blank = [];
+  while (box._blank.length < blankN) {
+    var b = el("div", "row blank");
+    for (var bi = 0; bi < cellCount; bi++) b.appendChild(el("div", "", "\u00a0"));
+    box._blank.push(b);
+  }
+  box._blank.forEach(function (b, i) {
+    while (b.children.length < cellCount) b.appendChild(el("div", "", "\u00a0"));
+    while (b.children.length > cellCount) b.lastChild.remove();
+    if (i < blankN) { if (b.parentNode !== box) box.appendChild(b); } else if (b.parentNode === box) b.remove();
+  });
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");
