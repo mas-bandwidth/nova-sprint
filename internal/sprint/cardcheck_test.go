@@ -115,7 +115,7 @@ func TestCardCheckFindsEachCoreKind(t *testing.T) {
 	assert.Contains(t, got[2].Finding, "internal/c.go is named in PATHS by a5 and a6")
 	assert.Contains(t, got[3].Finding, "needs a1 of stream s1, which lands on sprint/s1, not on sprint/s2")
 	assert.Contains(t, got[4].Finding, "is displayed as its id")
-	assert.Contains(t, got[7].Finding, "over the drain's 16384-byte bound")
+	assert.Contains(t, got[7].Finding, "over the 16384 bytes a brief may be")
 
 	for _, fix := range []struct {
 		kind string
