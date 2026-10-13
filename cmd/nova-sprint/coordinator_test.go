@@ -30,10 +30,10 @@ func TestInitOnASprintWithACoordinatorIsTheCoordinators(t *testing.T) {
 	require.Contains(t, errs, "init does not change the coordinator", "init naming another coordinator: exit %d %q", code, errs)
 }
 
-// --actor has no default: it is --actor or NOVA_SPRINT_ACTOR, else a verb
-// that writes is refused. A worker's verb is its --as member's; reads need
-// no actor; the machine's verbs are the machine's.
-func TestTheActorHasNoDefault(t *testing.T) {
+// Without a proven coordinator hook, a writer needs --actor or
+// NOVA_SPRINT_ACTOR. A worker's verb is its --as member's; reads need no
+// actor; the machine's verbs are the machine's.
+func TestTheActorRequiresAnExplicitOrProvenDefault(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b")

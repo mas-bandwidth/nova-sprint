@@ -209,18 +209,20 @@ func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bo
 // defaultHookActor fills in an omitted actor only when the store's coordinator has
 // both live, proven pushes. The identity comes from the sprint store, never from a
 // local seat/configuration file. Explicit --actor and NOVA_SPRINT_ACTOR retain their
-// ordinary precedence. The discovery reads the backend directly so it does not tick
+// ordinary precedence. When a candidate cannot be proven, notice names the withheld
+// default without exposing backend details; resolved says whether this call inserted
+// the proven identity. The discovery reads the backend directly so it does not tick
 // or otherwise mutate a twin before the command's normal store path.
-func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProcessActor bool) ([]string, string) {
+func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProcessActor bool) ([]string, string, bool) {
 	v := readVerb(args)
 	if v.words == 0 || v.help || v.err != nil || v.given("actor") || hookExemptCall(v.name, args[v.words:]) {
-		return args, ""
+		return args, "", false
 	}
 	if verbClasses[v.name] != classCoordinator && verbClasses[v.name] != classSeat {
-		return args, ""
+		return args, "", false
 	}
 	if !ignoreProcessActor && a.getenv("NOVA_SPRINT_ACTOR") != "" {
-		return args, ""
+		return args, "", false
 	}
 	redis := redisOverride
 	if redis == "" {
@@ -230,29 +232,41 @@ func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProces
 		redis = f.Value.String()
 	}
 	if strings.TrimSpace(redis) == "" {
-		return args, ""
+		return args, "ACTOR default withheld: no sprint store address is configured", false
 	}
 	ctx := context.Background()
 	b, err := a.backend(ctx, redis, sprint.Names{})
 	if err != nil {
-		return args, ""
+		return args, "ACTOR default withheld: the sprint backend could not be opened", false
 	}
 	st := &store.Store{B: b, Now: a.now}
 	holder, err := b.Coordinator(ctx)
-	if err != nil || holder == "" || !hookArmed(holder) {
-		return args, ""
+	if err != nil {
+		return args, "ACTOR default withheld: the sprint backend could not read the coordinator", false
+	}
+	if holder == "" {
+		return args, "ACTOR default withheld: no coordinator is recorded in the sprint store", false
+	}
+	if !hookArmed(holder) {
+		return args, "ACTOR default withheld: the coordinator hook gate is not armed", false
 	}
 	seat, seatOK, err := readHook(ctx, st)
-	if err != nil || !sprint.HookLive(seat, seatOK, holder, st.Now()) {
-		return args, ""
+	if err != nil {
+		return args, "ACTOR default withheld: the sprint backend could not read the coordinator's hook record", false
+	}
+	if !sprint.HookLive(seat, seatOK, holder, st.Now()) {
+		return args, "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven", false
 	}
 	shared, err := a.hookerShared(ctx, holder)
-	if err != nil || !shared.PushLive(sprint.HookPushBus, st.Now()) {
-		return args, ""
+	if err != nil {
+		return args, "ACTOR default withheld: the bus backend could not read the coordinator's push proof", false
+	}
+	if !shared.PushLive(sprint.HookPushBus, st.Now()) {
+		return args, "ACTOR default withheld: the coordinator's bus push proof is missing, stale, or invalid", false
 	}
 	out := slices.Clone(args)
 	out = slices.Insert(out, v.words, "--actor", holder)
-	return out, "ACTOR " + oneline.Field(holder) + " (coordinator hook proven)"
+	return out, "ACTOR " + oneline.Field(holder) + " (coordinator hook proven)", true
 }
 
 // hookFirst runs the gate before the verb, on the verb's own words, so its refusal is
