@@ -674,6 +674,19 @@ function renderHero(d, s, ft) {
     if (d.server_version) { setText($("version"), d.server_version); vc.hidden = false; }
     else { vc.hidden = true; }
   }
+  var idl = $("idle");
+  if (idl) {
+    if (d.idle) {
+      var itext = /^idle:\s*/i.test(d.idle) ? d.idle : "idle: " + d.idle;
+      setText(idl, itext);
+      idl.hidden = false;
+    } else if (d.blockers && d.blockers.length) {
+      setText(idl, "idle: " + d.blockers.join("; "));
+      idl.hidden = false;
+    } else {
+      idl.hidden = true;
+    }
+  }
   setMachine(d.machine);
 }
 

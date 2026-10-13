@@ -63,8 +63,10 @@
 (* (sentinel.go:51-103): it names needs, is reached, waits on nothing    *)
 (* and its stream is not held; it never waives. SentinelSet replaces a   *)
 (* waiting sentinel's needs (steps_sentinel.go:475-570): here plain ->   *)
-(* cut (names a). The coordinator's stream hold (Hold) is read and       *)
-(* respected by the cut release (sentinel.go:60).                        *)
+(* cut (names a). SentinelBrief replaces a waiting sentinel's brief and  *)
+(* needs and updates its reached stamp (steps_edit.go briefSentinel).    *)
+(* The coordinator's stream hold (Hold) is read and respected by the cut *)
+(* release (sentinel.go:60).                                             *)
 (*                                                                       *)
 (* The stream and the card machine run side by side: their variables are *)
 (* disjoint, so a step of one leaves the other's state unchanged, and    *)
@@ -463,6 +465,20 @@ CutRelease ==
   /\ cardReleasedBy' = [cardReleasedBy EXCEPT !["S"] = "machine"]
   /\ UNCHANGED <<cardHeld, cardNeeds, cardWaived, cardReached, cardTaken, cardStreamHeld>>
 
+\* what S would wait for under a proposed needs set (steps_sentinel.go:544,
+\* steps_edit.go briefSentinel)
+WaitsForWith(needs) ==
+  {n \in needs : cardCol[n] /= "landed" /\ n \notin cardWaived["S"]} \cup PositionWaits("S")
+
+\* how S's reached stamp updates when its needs change (steps_sentinel.go:
+\* 545-557, steps_edit.go briefSentinel): cleared when new unlanded waits
+\* appear, set when all waits have landed and S is reachable and not held.
+ReachedAfter(needs) ==
+  LET waits == WaitsForWith(needs)
+  IN IF cardReached["S"] /\ waits /= {} THEN FALSE
+     ELSE IF ~cardReached["S"] /\ ~cardHeld["S"] /\ waits = {} /\ Reachable THEN TRUE
+     ELSE cardReached["S"]
+
 \* the coordinator replaces a waiting sentinel's needs (steps_sentinel.go:
 \* 475-570). Here the only move admitted is plain -> cut (naming a); emptying
 \* is refused and setting the needs it has is refused, so one line is the cut.
@@ -470,7 +486,19 @@ SentinelSet ==
   /\ cardCol["S"] = "waiting"
   /\ cardNeeds["S"] = {}
   /\ cardNeeds' = [cardNeeds EXCEPT !["S"] = {"a"}]
-  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardReached, cardTaken, cardReleasedBy, cardStreamHeld>>
+  /\ cardReached' = [cardReached EXCEPT !["S"] = ReachedAfter({"a"})]
+  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardTaken, cardReleasedBy, cardStreamHeld>>
+
+\* the coordinator replaces a waiting sentinel's brief and needs (steps_edit.go
+\* briefSentinel): needs is any non-empty subset of {"a", "h"} (emptying,
+\* self-need and a cycle through b are refused), and cardReached is updated
+\* in the same step.
+SentinelBrief ==
+  /\ cardCol["S"] = "waiting"
+  /\ \E needs \in (SUBSET {"a", "h"}) \ {{}} :
+       /\ cardNeeds' = [cardNeeds EXCEPT !["S"] = needs]
+       /\ cardReached' = [cardReached EXCEPT !["S"] = ReachedAfter(needs)]
+  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardTaken, cardReleasedBy, cardStreamHeld>>
 
 \* the coordinator holds or releases the stream's hold (hold.go holdStream);
 \* the cut release respects it (sentinel.go:60)
@@ -484,6 +512,7 @@ CardNext ==
   \/ \E actor \in Actors : Release(actor)
   \/ CutRelease
   \/ SentinelSet
+  \/ SentinelBrief
   \/ StreamHold
   \/ DealA \/ TakeA \/ LandCardA
 

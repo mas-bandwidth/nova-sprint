@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
@@ -205,6 +206,74 @@ const (
 	GateHostCheck  = "gate-needs-host"
 	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
 )
+
+// Remedy returns the one-line remedy for a check token drawn by card lint.
+func Remedy(check string) string {
+	if check == GateHostCheck {
+		return GateHostRemedy
+	}
+	if r, ok := cardtree.Remedies[check]; ok && r != "" {
+		return r
+	}
+	if r, ok := swarm.CardHeaderRemedies[check]; ok && r != "" {
+		return r
+	}
+	if r := swarm.ChildRemedy(swarm.DefaultChildRules, check); r != "" {
+		return r
+	}
+	if r := swarm.BriefRemedy(check); r != "" {
+		return r
+	}
+	switch check {
+	case "tier-line":
+		return "line 1 names the card's tier: write tier: and one of " + cardhdr.RouteList + " on it"
+	case "test-outside-paths":
+		return "the TEST package must be a directory that PATHS names; widen PATHS or change the TEST package"
+	case "personal-name":
+		return "remove the personal or friend name from prose; a name inside a path or a double-quoted word is fine"
+	case "author-name":
+		return "do not name the author on a By: line; sign the attempt with your own name"
+	case "dropped-card":
+		return "remove reference to the dropped card; a brief stands alone and owes nothing to a dropped card"
+	case "model-lines":
+		return "line 1 names the card's tier and model invariants: write tier: and model invariants on line 1"
+	case "placeholder":
+		return "fill it in before the card is handed out: replace each <...> with the card's value"
+	case "sibling-path":
+		return "name the sibling repository in a SIBLINGS header (owner/name@ref, comma separated)"
+	case "start-named":
+		return swarm.StartNamedRemedy
+	case "stop-named":
+		return swarm.StopNamedRemedy
+	case "no-parent-path":
+		return swarm.CardParentPathWanted
+	case "depends-on":
+		return "the card carries DEPENDS-ON: <id>[, <id>...] naming cards this card needs, or DEPENDS-ON: none"
+	case "result-first":
+		return "line 1 IS the contract: " + swarm.CardContractWanted + ". A title, a heading or a # comment on line 1 is this drift, however right the words are"
+	case "clone-step":
+		return "STEP 1 enters the repository from the working directory: the whole step, its line and the lines under it, holds a git clone -q <url> repo && cd repo, or a cd into a checkout that may already be there"
+	case "steps-numbered":
+		return "each step is its own line beginning STEP <n>., numbered 1, 2, 3 with no gap and no repeat"
+	case "red-test":
+		return "name the reproducing test by its own name -- TestSomething -- or, for a card that only reads, say probe or read in so many words"
+	case "test-command":
+		return "write the gate verbatim, exactly as the card is to run it"
+	case "deadline":
+		return "give the card its own bound: a deadline line, or finish within <n> minutes"
+	case "files-named":
+		return "name the file or the package the work lives in, so the change has a home to start from"
+	case "scratch-absolute":
+		return "spell scratch against a named root -- <job>/scratch, $PWD/scratch, an absolute path -- and never as the bare word"
+	case "no-sandbox":
+		return "a card runs INSIDE the wall and never invokes it; drop the nova-sandbox line"
+	case "result-last":
+		return "the LAST step writes RESULT.md, and RESULT.md's own line 1 is the contract line from line 1 of this card"
+	case "size":
+		return "keep the brief within budget: point at a file instead of pasting it, and drop quoted source"
+	}
+	return "resolve the " + check + " finding"
+}
 
 // gateNeedsHostRE finds `ssh <token>` or `on <token>` in a STEP line; the token is held
 // host-like by gateNeedsHost, so an ordinary "on the member" (no host) passes.
