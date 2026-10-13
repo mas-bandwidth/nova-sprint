@@ -132,8 +132,8 @@ img#logo.logo-tile { width: 6rem; height: 6rem; flex: none; border-radius: 22.5%
 .wordmark.nofit { display: none; }  /* the owner 2026-10-12 ~03:08Z: "nova-sprint" only when it fits */
 .wordmark { transform: translateY(-.0795em); display: inline-block; width: 5.262em; white-space: nowrap; }  /* Nunito 800's width of "nova-sprint", reserved before the font arrives */
 #live-text { transform: translateY(-.1em); }
-.chip { display: inline-flex; align-items: center; gap: 0.75rem; height: 3rem; padding: 0 1rem .2333em; border: 1px solid var(--border); border-radius: 0.75rem; color: var(--text-2); font-size: 1.5rem; }
-.chip b { color: var(--text); font-weight: 550; }
+.chip, .idle { display: inline-flex; align-items: center; gap: 0.75rem; height: 3rem; padding: 0 1rem .2333em; border: 1px solid var(--border); border-radius: 0.75rem; color: var(--text-2); font-size: 1.5rem; }
+.chip b, .idle b { color: var(--text); font-weight: 550; }
 .live { display: inline-flex; align-items: center; gap: 1rem; font-size: 1.625rem; color: var(--text-2); }
 .dot { width: 1rem; height: 1rem; border-radius: 50%; background: var(--text-3); flex: none; }
 .live.ok .dot { background: var(--good); }
@@ -453,6 +453,7 @@ footer a:hover { color: var(--text); }
       <span class="chip" id="version-chip" hidden>version <b id="version">-</b></span>
       <span class="chip opt-chip" id="coord-chip"><span class="coord-label">coordinator</span> <b id="coord">-</b></span>
       <span class="chip opt-chip" id="epoch-chip">epoch <b id="epoch">-</b></span>
+      <span class="idle" id="idle" hidden></span>
       <nav class="release" id="release" aria-label="release" hidden></nav>
     </div>
   </div>
