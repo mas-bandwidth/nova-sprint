@@ -198,9 +198,9 @@ func (c *cardCheck) staleHead() []CardFinding {
 		if head == "" || !AttemptPredatesBrief(card, attempt) {
 			continue
 		}
-		out = append(out, CardFinding{CheckStaleHead, card.ID,
+		out = append(out, refusing(CheckStaleHead, card.ID,
 			fmt.Sprintf("head %s of attempt %d was made under an earlier brief", head, attempt),
-			"nova-sprint rework " + card.ID + " --fix 'brief replaced'"})
+			"nova-sprint rework "+card.ID+" --fix 'brief replaced'"))
 	}
 	return out
 }
