@@ -34,7 +34,10 @@ func TestTheDashboardRowsSayHowManyAreReads(t *testing.T) {
 		Fields: map[string]string{"tiers": "flash", "width": "4", "roles": "builder,reader"}}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
-	ta.ok("init --members m1:8")
+	// reader-x is up from the start, so start's settings gate finds a reader for the flash
+	// reads (start-refuses-a-non-working-setting); it is no member's, so no read card is
+	// dealt to it and fred still takes the read
+	ta.ok("init --members m1:8 --readers reader-x")
 	ta.ok("set --read-cards on")
 	root := t.TempDir()
 	ta.ok("friend sync --root " + root) // roster only: fred is down, so m1 is dealt every card

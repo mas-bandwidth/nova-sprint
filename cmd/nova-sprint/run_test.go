@@ -57,6 +57,9 @@ func TestRunTicksOnlyWhileRunning(t *testing.T) {
 	ta.ok("add --stream s1 --count 3")
 	st, _, code := ta.a.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)
+	// the loop's server record says it lands, as run with no flag does since v1.2.17
+	// (start refuses on a server that lands nothing: start-refuses-a-non-working-setting)
+	ta.a.serverLands = true
 	var out, errb bytes.Buffer
 	ta.a.runLoop(context.Background(), st, 20, 3, &out, &errb)
 	require.NotContains(t, out.String(), "MOVED", "run while stopped:\n%s", out.String())
