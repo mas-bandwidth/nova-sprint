@@ -39,6 +39,7 @@ func TestAFriendsCardIsNeverWithdrawnForARestingRoute(t *testing.T) {
 		h.up("amy")
 		h.machine()
 	}
+	h.up("amy")      // the live friend must be observed before START
 	h.startMachine() // every provider out of credit and no friend up stopped it
 	beatTick()       // the friends' deal places them on her row
 	gens, cols := map[string]int{}, map[string]string{}

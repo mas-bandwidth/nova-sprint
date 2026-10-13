@@ -102,6 +102,7 @@ func readsWorld(t *testing.T, primaries int) *world {
 	w.s.ReaderStates = map[string]string{}
 	for _, r := range readers {
 		w.s.ReaderStates[r] = ReaderUp
+		w.s.Readers.Texts[r] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
 	}
 	pairs := [][2]string{{"r1", "r2"}, {"r2", "r3"}, {"r1", "r3"}}
 	for i := 1; i <= primaries; i++ {

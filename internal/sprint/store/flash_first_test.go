@@ -212,6 +212,7 @@ func TestAnEscalationNoRouteServesIsJudgedUnderItsTier(t *testing.T) {
 	assert.Equal(t, sprint.StreamSubject(sprint.TierSubject("pro")), open[0].Subject())
 	assert.Empty(t, h.openOf(sprint.NBound))
 	h.m.SetRoutes([]sprint.Route{route("flash-a", "flash"), route("pro-a", "pro")})
+	h.startMachine()
 	h.machine()
 	assert.Equal(t, "pro-a", h.workCards()["s1-1.w2"].F(sprint.FieldRoute), "a pro route deals the escalation")
 	assert.Empty(t, h.a2Open(sprint.NNoRoute))

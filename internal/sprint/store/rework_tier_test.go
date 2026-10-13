@@ -379,6 +379,13 @@ func (h *harness) paid(provider string) {
 		h.must(FundedStep(sprint.FundedReq{Provider: provider, Reason: "paid", Who: "coordinator"}))
 		h.tick(time.Minute)
 		h.machine()
+		m, _, err := h.st.Machine(h.ctx)
+		require.NoError(h.t, err)
+		if m.State == Stopped {
+			assert.Equal(h.t, sprint.NothingFundedCause, m.Cause, "legacy FundsCause retains its paid restart")
+			h.startMachine()
+			h.machine()
+		}
 	}
 }
 

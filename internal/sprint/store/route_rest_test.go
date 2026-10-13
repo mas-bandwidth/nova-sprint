@@ -72,6 +72,12 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	// the backoff ends by itself; the cards are dealt again
 	h.tick(5 * time.Minute)
 	h.machine()
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	assert.Equal(t, Stopped, m.State, "expiry reports recovery without restarting")
+	assert.Equal(t, sprint.Withdrawn, h.snap().Fleet.Card("s1-3.w1").Col)
+	h.startMachine()
+	h.machine()
 	s = h.snap()
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		assert.Equal(t, sprint.Ready, s.Fleet.Card(id).Col, "%s is dealt again once the backoff ends", id)
@@ -126,6 +132,12 @@ func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 
 	// the rest ends by itself; the window begins again after it, so the old ends rest nothing
 	h.tick(sprint.RouteRestFor)
+	h.machine()
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	assert.Equal(t, Stopped, m.State, "expiry reports recovery without restarting")
+	assert.Equal(t, sprint.Withdrawn, h.snap().Fleet.Card("s1-3.w1").Col)
+	h.startMachine()
 	h.machine()
 	w := h.snap().Fleet.Card("s1-3.w1")
 	assert.Equal(t, sprint.Ready, w.Col, "dealt again when the rest ends")

@@ -642,7 +642,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 		all[typ] = ds
 	}
 	all[NRemindFailed] = []string{"goal set friend-a --to <route>", "goal drop friend-a", "ack"}
-	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NScoredLow: true, NRaiseReadTier: true,
+	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NNothingFunded: true, NScoredLow: true, NRaiseReadTier: true,
 		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendDeaf: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
 		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true, NFleetFailure: true, NMemberPegged: true,
 		NHoldNoCause: true, NMemberIdleReaps: true}
@@ -668,7 +668,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 // judgment the coordinator's answer closes is none of them.
 func TestTickKeptList(t *testing.T) {
 	t.Parallel()
-	keeps := []string{NBound, NCannotAsk, NFewReaders, NReviewNoReader, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NGateNeeds, NReadyOver, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NNoFrontierRoom, NRemindFailed,
+	keeps := []string{NBound, NCannotAsk, NFewReaders, NReviewNoReader, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NGateNeeds, NReadyOver, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NNothingFunded, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NNoFrontierRoom, NRemindFailed,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
 		NBaseCIRed, NMirrorNeed, NMemberPegged,

@@ -59,6 +59,7 @@ func TestCheckCardsNamesProviderGaps(t *testing.T) {
 func TestWhereNamesMalformedProviderOnceWithoutCallingItUnfunded(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.m.SetRoutes(nil) // this negative fixture declares only its two providers
 	ta.ok("init --readers reader-a --members m1")
 	ta.m.SetProviders(map[string]sprint.Provider{
 		"broken":   {Name: "broken", Billing: "plan", Problem: "funded field is missing or empty"},

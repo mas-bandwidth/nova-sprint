@@ -162,6 +162,9 @@ func TestACardWithNoRouteIsNotDealtAndJudgedOncePerTier(t *testing.T) {
 	assert.NotContains(t, cards, "s1-1.w1")
 	assert.NotContains(t, cards, "s3-1.w1")
 
+	// A genuinely live queued flash primary permits START while the other
+	// tiers remain undealable; it is not merely an unused configured route.
+	h.addReady("live", 1, briefOf("flash", ""))
 	h.startMachine()
 	for i := 0; i < 3; i++ {
 		h.machine()
@@ -576,6 +579,7 @@ func TestReadsTheirCardsTierCannotServeAreJudgedAtOnce(t *testing.T) {
 	assert.Len(t, h.a2Open(sprint.NNoRoute), 1, "written once, not every tick")
 	assert.Equal(t, 1, h.notesOf(sprint.NNoRoute))
 	h.m.SetRoutes([]sprint.Route{route("heavy-a", "heavy"), route("flash-a", "flash")})
+	h.startMachine()
 	h.machine()
 	assert.Empty(t, h.a2Open(sprint.NNoRoute), "a flash route, which reads a pro card while no pro route is enabled, closes it")
 }

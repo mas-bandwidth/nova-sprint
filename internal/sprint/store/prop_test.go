@@ -1001,6 +1001,9 @@ func (r *propRun) check(i int, a pAct) *propFail {
 		if err != nil {
 			return fail("error", "read: %v", err)
 		}
+		if err := r.st.RoutesInto(r.ctx, fs); err != nil {
+			return fail("error", "routes: %v", err)
+		}
 		// The parts plan on the sprint as the next pump leaves its work table:
 		// every step but the pump's plans on the tables with the work table's
 		// queue applied (engine.Run), as the deadlines part of the tick did.

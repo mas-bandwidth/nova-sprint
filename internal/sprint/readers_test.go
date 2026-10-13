@@ -67,6 +67,7 @@ func TestAReadAskedOfAReaderThatIsNotUpIsTakenBackAndAskedAgain(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-d"))
+	w.s.Readers.Texts["reader-d"] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
 	toReview(w, "s1-1")
 	w.must(Ask(w.s, AskReq{}))
 	pr := w.s.Work.Card("s1-1")

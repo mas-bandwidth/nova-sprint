@@ -66,6 +66,7 @@ func TestDealClosesTheJudgmentForNoMemberWhenAMemberIsUp(t *testing.T) {
 		"move work s1-2 s1:ready>s1:working",
 		"prop work stream_index=2",
 		"prop fleet deal_index=2",
+		"prop fleet route_index_pro=2",
 		"create fleet s1-1.w1 >m1:ready",
 		"create fleet s1-2.w1 >m1:ready",
 		"close no fleet member is up [stream:]")
@@ -93,6 +94,7 @@ func TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded(t *testing.T) {
 	require.Len(t, ids, 1, "the fixture: %d judgments that it cannot ask", len(ids))
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-c"))
 	w.s.ReaderStates["reader-c"] = sprint.ReaderUp
+	w.s.Readers.Texts["reader-c"] = map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}
 	got := refmodel.AskMoves(w.snapshot(w.fresh()), later(0))
 	// the tick closes the judgment and raises no "stranded in review" with it:
 	// the reads it places this tick are the primary's reads (notify), and the

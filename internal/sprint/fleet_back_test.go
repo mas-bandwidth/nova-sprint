@@ -79,6 +79,7 @@ type backRig struct {
 func newBackRig(t *testing.T, cards int) *backRig {
 	t.Helper()
 	m := store.NewMem()
+	m.SetRoutes([]sprint.Route{{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
 	r := &backRig{t: t, mem: m, ctx: context.Background(), now: holdT0, beats: map[string]bool{"m1": true, "m2": true}, adopts: newFakeAdopter("v1.2.0")}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",

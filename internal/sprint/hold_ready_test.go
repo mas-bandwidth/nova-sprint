@@ -17,6 +17,8 @@ import (
 func TestAHeldFriendKeepsNoReadyCards(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
+	// These pro cards exercise friend placement, not the fleet route chooser.
+	r.st.B.(*store.Mem).SetRoutes([]sprint.Route{{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
 	// Bob has width 0 so all cards are initially dealt to amy.
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{
 		{Name: "amy", Width: 2, Class: "pro"},

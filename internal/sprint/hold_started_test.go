@@ -22,6 +22,8 @@ func TestHoldingAFriendReturnsItsStartedCards(t *testing.T) {
 	t.Parallel()
 	const sha = "0123456789abcdef0123456789abcdef01234567"
 	r := newHoldRig(t, 0, 4)
+	// These pro cards exercise friend placement, not the fleet route chooser.
+	r.st.B.(*store.Mem).SetRoutes([]sprint.Route{{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
 	r.tick()
 	r.startFriends()
 	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-9", Brief: friendsBrief("only friend amy")}}}))

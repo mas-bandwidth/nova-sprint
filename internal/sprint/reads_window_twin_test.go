@@ -57,7 +57,7 @@ func (r *readsRig) round() {
 		if v == "" {
 			continue
 		}
-		req := sprint.ReadReq{As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Verdict: v, Who: c.Row}
+		req := sprint.ReadReq{Usage: "input=1000 output=100", As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Verdict: v, Who: c.Row}
 		if v == "broken" {
 			req.Finding = missingFinding
 			if r.n%3 == 2 {

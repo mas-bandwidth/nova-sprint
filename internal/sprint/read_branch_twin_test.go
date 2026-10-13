@@ -102,7 +102,7 @@ func TestABrokenReadOnAMissingBranchIsReaskedNotReworked(t *testing.T) {
 	// the reader finds no commit on the branch it was handed; the server's check at the close
 	// finds the branch not on origin, and the work's head on another
 	finding := "RULE: the branch this read names, " + named + ", is not on origin. There is no commit to judge."
-	r.must(store.ReadStep(sprint.ReadReq{As: first.Row, Sel: sprint.Sel{IDs: []string{first.ID}}, Verdict: "broken", Finding: finding,
+	r.must(store.ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: first.Row, Sel: sprint.Sel{IDs: []string{first.ID}}, Verdict: "broken", Finding: finding,
 		Missing: map[string]sprint.MissingBranch{first.ID: {Named: named, Holds: holds}}, Who: first.Row}))
 	s, err := r.st.Load(r.ctx, store.All, func(*sprint.Snapshot) map[string][]string { return map[string][]string{sprint.Readers: {first.ID}} })
 	require.NoError(t, err)
@@ -145,6 +145,6 @@ func TestABrokenReadOnAMissingBranchIsReaskedNotReworked(t *testing.T) {
 	assert.Contains(t, said[0], holds)
 
 	// the same broken verdict without the server's finding is a verdict, judged as before
-	r.must(store.ReadStep(sprint.ReadReq{As: rc.Row, Sel: sprint.Sel{IDs: []string{rc.ID}}, Verdict: "broken", Finding: "internal/sprint/x.go:1 breaks STEP 2: put the line back", Who: rc.Row}))
+	r.must(store.ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: rc.Row, Sel: sprint.Sel{IDs: []string{rc.ID}}, Verdict: "broken", Finding: "internal/sprint/x.go:1 breaks STEP 2: put the line back", Who: rc.Row}))
 	assert.NotEmpty(t, openOf(r.snap(), sprint.NReadBroken, "s1-1"), "a broken read on a branch origin holds is a finding against the work")
 }

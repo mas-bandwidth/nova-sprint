@@ -65,6 +65,22 @@ func holeTable(table string) string {
 	return table
 }
 
+// Preserve the wrapped backend's optional route capabilities: recording writes
+// must not turn a configured private sprint into one with no executable route.
+func (r *holeRec) Routes(ctx context.Context) (RouteSet, int64, error) {
+	if b, ok := r.holeBackend.(RouteReader); ok {
+		return b.Routes(ctx)
+	}
+	return RouteSet{}, 0, nil
+}
+
+func (r *holeRec) PriceRoutes(ctx context.Context) ([]sprint.Route, int64, error) {
+	if b, ok := r.holeBackend.(PriceReader); ok {
+		return b.PriceRoutes(ctx)
+	}
+	return nil, 0, nil
+}
+
 func (r *holeRec) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error) {
 	r.mu.Lock()
 	r.writes = append(r.writes, holeWrite{r.cur, holeTable(m.Table), slices.Clone(m.Members)})
