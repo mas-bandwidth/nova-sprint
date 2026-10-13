@@ -670,17 +670,19 @@ function renderHero(d, s, ft) {
     else { vc.hidden = true; }
   }
   setMachine(d.machine);
-  // the chips beside the logo fit or go (the owner 2026-10-12 ~01:00Z to ~03:08Z): measured only
-  // when what they say changes, so a poll does no layout work
-  var mk = [d.coordinator, d.epoch, d.server_version].join("\u0001");
-  if (mk !== metaKey) { metaKey = mk; fitMetaChips(); }
 }
 
 // The wordmark, the coordinator chip and the epoch chip stay only while the header holds them and
 // the clock on one line; the clock has priority. The wordmark goes first (the owner 2026-10-12
 // ~03:08Z: "only when it fits, hide otherwise"), then the epoch, then the coordinator (~01:20Z,
-// ~01:25Z); the version always stays. Runs on load, on resize, and when the chips' text changes.
+// ~01:25Z); the version always stays. Runs on resize, and after a refresh's clock is drawn when the
+// header's text changed width: the chips' words, or the clock's length (9 to 10 o'clock, the zone).
+// A refresh that changes neither does no layout work (the poll's rule, the held-PageDown judder).
 var metaKey = null;
+function fitMetaIfChanged(d) {
+  var lt = $("live-text"), mk = [d.coordinator, d.epoch, d.server_version, lt ? lt.innerHTML.length : 0].join("\u0001");
+  if (mk !== metaKey) { metaKey = mk; fitMetaChips(); }
+}
 function fitMetaChips() {
   var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean), live = $("live"), ver = $("version-chip"), logo = $("logo");
   if (!live || !logo || !live.getBoundingClientRect) return;
@@ -1049,6 +1051,7 @@ function accept(j) {
   try { render(d); } catch (e) { console.error(e); }
   coinSnapshot(d);
   setLive(new Date(at));
+  fitMetaIfChanged(d); // after the clock is drawn: the fit measures the clock as it is shown
 }
 // The land coin (docs/SPEC-SPRINT-DASHBOARD.md, "The coin"; the owner 2026-10-11: "Whenever a card
 // lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping.

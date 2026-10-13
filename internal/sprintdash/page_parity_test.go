@@ -39,11 +39,17 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	envRunning := ownerEnvelope(t, ownerWhere(ownerRunning))
 	envDone := ownerEnvelope(t, ownerWhere(ownerDone))
 	out := renderOwner(t, app, []ownerCase{
-		{"stopped", envStopped, false}, {"stopped-phone", envStopped, true},
-		{"running", envRunning, false}, {"running-phone", envRunning, true},
-		{"done", envDone, false},
+		{Name: "stopped", Env: envStopped, Narrow: false}, {Name: "stopped-phone", Env: envStopped, Narrow: true},
+		{Name: "running", Env: envRunning, Narrow: false}, {Name: "running-phone", Env: envRunning, Narrow: true},
+		{Name: "done", Env: envDone, Narrow: false},
 	})
 	st, stp, run, runp, done := out["stopped"], out["stopped-phone"], out["running"], out["running-phone"], out["done"]
+	// the edge header, refreshed a tick later at 10:00:20 PM (one character wider) with s-1's
+	// waiting count changed
+	later := bytes.Replace(ownerWhere(ownerStopped), []byte(`"at":"2026-10-13T01:52:20Z"`), []byte(`"at":"2026-10-13T02:00:20Z"`), 1)
+	later = bytes.Replace(later, []byte(`"waiting":"7"`), []byte(`"waiting":"6"`), 1)
+	edge := renderOwner(t, app, []ownerCase{{Name: "edge", Env: envStopped, Edge: true, Then: ownerEnvelope(t, later)}})["edge"]
+	require.Empty(t, edge.Errors, "edge: the page renders without an error")
 	for name, r := range out {
 		require.Empty(t, r.Errors, "%s: the page renders without an error", name)
 	}
@@ -84,7 +90,7 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.False(t, st.Hidden["version-chip"], "P3 shown when known")
 	assert.False(t, stp.Hidden["version-chip"], "P3 the version stays on every width")
 	has(served, `<span class="chip" id="version-chip" hidden>version <b id="version">-</b></span>`, "P3 hidden until known")
-	unknown := renderOwner(t, app, []ownerCase{{"unknown", ownerEnvelopeVersion(t, ownerWhere(ownerStopped), ""), false}})["unknown"]
+	unknown := renderOwner(t, app, []ownerCase{{Name: "unknown", Env: ownerEnvelopeVersion(t, ownerWhere(ownerStopped), ""), Narrow: false}})["unknown"]
 	assert.True(t, unknown.Hidden["version-chip"], "P3 hidden when unknown")
 	// P4 chip "coordinator rowan"; on a phone just "rowan"; hidden when there is no room
 	has(served, `<span class="chip opt-chip" id="coord-chip"><span class="coord-label">coordinator</span> <b id="coord">-</b></span>`, "P4")
@@ -98,6 +104,12 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.False(t, st.Nofit["epoch-chip"], "P5 shown wide")
 	assert.True(t, stp.Nofit["epoch-chip"], "P5 hidden when there is no room")
 	has(served, `.opt-chip.nofit { display: none; }`, "P4 P5")
+	// the clock has priority: fitted after the clock is drawn, and again when the clock grows
+	assert.Equal(t, map[string]bool{"wordmark": false, "coord-chip": false, "epoch-chip": false}, edge.FirstNofit, "P2 P4 P5 every chip fits beside 9:52:20 PM EDT at the edge width")
+	assert.Equal(t, "10:00:20 PM EDT", ownerTags.ReplaceAllString(edge.HTML["live-text"], ""), "the clock grew a character")
+	assert.True(t, edge.Nofit["wordmark"], "P2 the wordmark goes when the clock grows past the edge")
+	assert.False(t, edge.Nofit["epoch-chip"], "P5 the epoch stays while the clock fits without it")
+	assert.False(t, edge.Nofit["coord-chip"], "P4 the coordinator stays while the clock fits without it")
 	assert.Equal(t, []string{"wordmark", "epoch-chip", "coord-chip"}, stp.NofitOrder, "P2 P5 P4 the wordmark goes first, then the epoch, then the coordinator")
 	// P6 release nav hidden (the envelope carries no releases)
 	has(served, `<nav class="release" id="release" aria-label="release" hidden></nav>`, "P6")
@@ -112,7 +124,7 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.Equal(t, "0.0%", st.Text["pct"], "P8")
 	has(served, `<span class="only-wide" id="pct-complete"> complete</span>`, "P8 complete")
 	assert.Equal(t, "", st.Display["pct-complete"], "P8 complete shown")
-	empty := renderOwner(t, app, []ownerCase{{"empty", ownerEnvelope(t, ownerWhere(ownerEmpty)), false}})["empty"]
+	empty := renderOwner(t, app, []ownerCase{{Name: "empty", Env: ownerEnvelope(t, ownerWhere(ownerEmpty)), Narrow: false}})["empty"]
 	assert.Equal(t, "not started", empty.Text["pct"], "P8 not started when the sprint is empty")
 	assert.Equal(t, "none", empty.Display["pct-complete"], "P8 only not started")
 	assert.Equal(t, "none", empty.Display["of-all2"], "P8 only not started, narrow")
@@ -121,7 +133,7 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.Equal(t, "big", run.Class["eta"], "P9")
 	assert.Equal(t, "around 12:12 AM EDT", strings.ReplaceAll(run.Text["eta-at"], "\u202f", " "), "P9")
 	assert.Equal(t, "12:12 AM", strings.ReplaceAll(runp.Text["eta-at"], "\u202f", " "), "P9 the shortest form when the tile is narrow")
-	none := renderOwner(t, app, []ownerCase{{"none", ownerEnvelope(t, ownerWhere(ownerNoETA)), false}})["none"]
+	none := renderOwner(t, app, []ownerCase{{Name: "none", Env: ownerEnvelope(t, ownerWhere(ownerNoETA)), Narrow: false}})["none"]
 	assert.Equal(t, "-", none.Text["eta"], "P9 -")
 	assert.Equal(t, "not in the summary", none.Text["eta-at"], "P9")
 	// P10 ETA "STOP" in dark red while the machine is STOPPED
@@ -217,6 +229,14 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.Equal(t, 1, st.GroupStarts, "P27 one rule between stopped and held")
 	assert.Equal(t, "num", st.StreamCellClass["s-1"][2], "P27 a count above zero is not grey (waiting 7)")
 	assert.Equal(t, "num zero", st.StreamCellClass["s-1"][3], "P27 a zero count is grey (ready 0)")
+	// changed figures flash blue: s-1's waiting 7 -> 6 flashes on the next refresh, its unchanged ready does not
+	assert.Equal(t, "6", edge.Streams[ownerRow(edge.Streams, "stream 1")][2], "P27 the changed figure")
+	assert.True(t, edge.StreamFlash["s-1"][2], "P27 a changed figure flashes")
+	assert.False(t, edge.StreamFlash["s-1"][3], "P27 an unchanged figure does not flash")
+	assert.False(t, st.StreamFlash["s-1"][2], "P27 nothing flashes on the first render")
+	has(served, `.flash { animation: flash 1.5s ease-out; }`, "P27 the flash")
+	has(served, `@keyframes flash { from { color: var(--flash); background-color: var(--flash-tint); } to { } }`, "P27 in the flash blue")
+	has(served, `--flash: #7cb4ff;`, "P27 blue")
 	// P28 Work and Fleet compact: name | status | count, counts centred, status beside them
 	has(served, `.streams.compact .row, .fleet.compact .row { --count-w: 10.5rem; grid-template-columns: minmax(0, 1fr) var(--status-w) var(--count-w); }`, "P28")
 	has(served, `.streams.compact .row > :nth-child(9), .fleet.compact .row > :nth-child(5) { justify-self: center; margin-left: 0; }`, "P28 counts centred")
@@ -263,6 +283,16 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 }
 
 var ownerTags = regexp.MustCompile(`<[^>]*>`)
+
+// ownerRow is the index of the row whose first cell is name, -1 when none.
+func ownerRow(rows [][]string, name string) int {
+	for i, r := range rows {
+		if len(r) > 0 && r[0] == name {
+			return i
+		}
+	}
+	return -1
+}
 
 // ownerSorted is items ordered by prefix.
 func ownerSorted(items, order []string) []string {
@@ -391,6 +421,11 @@ type ownerCase struct {
 	Name   string          `json:"name"`
 	Env    json.RawMessage `json:"env"`
 	Narrow bool            `json:"narrow"`
+	// Edge: a header whose clock box is as wide as its text, at the width where every chip fits
+	// beside "9:52:20 PM EDT" and not beside one character more
+	Edge bool `json:"edge"`
+	// Then: a second refresh accepted after Env (a later tick)
+	Then json.RawMessage `json:"then,omitempty"`
 }
 
 // ownerRender is what one stubbed-DOM render reads back.
@@ -422,6 +457,8 @@ type ownerRender struct {
 	FleetPill       map[string]string   `json:"fleetPill"`
 	FleetTrack      map[string]string   `json:"fleetTrack"`
 	Extra           map[string][]string `json:"extra"`
+	FirstNofit      map[string]bool     `json:"firstNofit"`
+	StreamFlash     map[string][]bool   `json:"streamFlash"`
 }
 
 // renderOwner runs the shipped app.js over each case's envelope, each on a fresh stubbed DOM,
@@ -456,6 +493,22 @@ const vm = require('vm');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 function renderCase(c) {
   const errors = [];
+  // the text a viewer reads: a node's children's, else its markup's with the tags taken out, else its own
+  const textOf = (x) => x.children && x.children.length ? x.children.map(textOf).join('') : (x._html ? x._html.replace(/<[^>]*>/g, '') : (x._text || x.textContent || ''));
+  // the edge header: the logo, then the wordmark (300), version (100), coordinator (100) and epoch
+  // (100) chips side by side, a hidden one taking no room; the clock box ends at 785 and is 10 a
+  // character wide, so it fits 14 characters beside every chip (645 >= 610 + 2 rem) and not 15
+  const EDGE_W = { wordmark: 300, 'version-chip': 100, 'coord-chip': 100, 'epoch-chip': 100 };
+  function edgeRect(id) {
+    if (id === 'live') { const n = textOf(getEl('live-text')).length; return { top: 0, bottom: 10, left: 785 - 10 * n, right: 785 }; }
+    if (!(id in EDGE_W)) return null;
+    let x = 10;
+    for (const k of ['wordmark', 'version-chip', 'coord-chip', 'epoch-chip']) {
+      const e = getEl(k); if (!e.classList.contains('nofit') && !e.hidden) x += EDGE_W[k];
+      if (k === id) return { top: 0, bottom: 10, left: x - EDGE_W[k], right: x };
+    }
+    return null;
+  }
   const nofitOrder = [];
   function createElement(tag, id) {
     const _classes = new Set();
@@ -482,7 +535,7 @@ function renderCase(c) {
       querySelector(){ return null; }, querySelectorAll(){ return []; },
       closest(){ return null; },
       remove(){ if (this.parentNode) this.parentNode.removeChild(this); }, cloneNode(){ return createElement(tag); },
-      getBoundingClientRect(){ return rects[el.id] || { top: 0, bottom: 10, left: 0, right: 10 }; },
+      getBoundingClientRect(){ return (c.edge && edgeRect(el.id)) || rects[el.id] || { top: 0, bottom: 10, left: 0, right: 10 }; },
       get scrollWidth(){ return c.narrow && (el.id === 'eta-at' || el.id === 'inflight-sub') ? 200 : 50; }, clientWidth: 100, offsetWidth: 50, offsetHeight: 20, offsetParent: {}
     };
     return el;
@@ -510,13 +563,14 @@ function renderCase(c) {
   vm.createContext(context);
   try { vm.runInContext(input.appJS, context); } catch (e) { errors.push('load: ' + (e.stack || e)); }
   try { vm.runInContext('accept', context)(c.env); } catch (e) { errors.push('accept: ' + (e.stack || e)); }
+  const firstNofit = {};
+  ['wordmark', 'coord-chip', 'epoch-chip'].forEach(id => { firstNofit[id] = getEl(id).classList.contains('nofit'); });
+  if (c.then) { try { vm.runInContext('accept', context)(c.then); } catch (e) { errors.push('accept then: ' + (e.stack || e)); } }
   const ids = ['landed', 'all', 'all2', 'pct', 'pct-complete', 'of-all2', 'eta', 'eta-at', 'cost', 'cost-whole', 'cost-per', 'inflight',
     'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'live-text', 'tier-sub',
     'streams-sub', 'fleet-head', 'overall', 'providers-panel', 'readers-panel', 'release'];
   const r = { errors, text: {}, val: {}, html: {}, class: {}, title: {}, hidden: {}, display: {}, nofit: {}, nofitOrder, children: {},
-    streamName: {}, streamTag: {}, streamPill: {}, streamPillTitle: {}, streamCellClass: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0 };
-  // the text a viewer reads: a node's children's, else its markup's with the tags taken out, else its own
-  const textOf = (x) => x.children && x.children.length ? x.children.map(textOf).join('') : (x._html ? x._html.replace(/<[^>]*>/g, '') : (x._text || x.textContent || ''));
+    streamName: {}, streamTag: {}, streamPill: {}, streamPillTitle: {}, streamCellClass: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0, firstNofit, streamFlash: {} };
   const cellText = textOf;
   ids.forEach(id => { const e = getEl(id);
     r.text[id] = textOf(e); r.val[id] = e._val == null ? '' : String(e._val); r.html[id] = e.innerHTML; r.class[id] = e.className;
@@ -530,6 +584,7 @@ function renderCase(c) {
   r.streams = streams.children.map(row => row.children.map(cellText));
   if (streams._map) streams._map.forEach((row, k) => {
     r.streamName[k] = textOf(row.nameT); r.streamTag[k] = textOf(row.tag); r.streamPill[k] = row.pill.className; r.streamPillTitle[k] = row.pill.title; r.streamCellClass[k] = row.node.children.map(x => x.className);
+    r.streamFlash[k] = row.node.children.map(x => !!(x._fv && x._fv.classList.contains('flash')));
     if (row.node.classList.contains('group-start')) r.groupStarts++;
   });
   const fleet = getEl('fleet');

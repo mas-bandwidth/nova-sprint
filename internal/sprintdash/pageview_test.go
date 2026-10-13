@@ -26,8 +26,8 @@ import (
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
 // critical."): the page is that page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
-	liveAppSHA256   = "96d087e53bc2761b7e776a304459c962654e7a72ddaaf3244ff7bfafaaaa7b2f"
+	pageIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
+	pageAppSHA256   = "704139c62bd0d2898873d71fd3c2c0ab1f0ce071381ec36e4c0e38f9786581f0"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -57,8 +57,8 @@ func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 	require.NoError(t, err)
 	index, err := os.ReadFile("page/index.html")
 	require.NoError(t, err)
-	assert.Equal(t, liveAppSHA256, sha(app), "page/app.js is the live app.js")
-	assert.Equal(t, liveIndexSHA256, sha(index), "page/index.html is the live index.html")
+	assert.Equal(t, pageAppSHA256, sha(app), "page/app.js is the locked app.js")
+	assert.Equal(t, pageIndexSHA256, sha(index), "page/index.html is the locked index.html")
 	assert.Equal(t, app, file("app.js"), "the embedded app.js is page/app.js")
 	assert.Equal(t, index, file("index.html"), "the embedded index.html is page/index.html")
 
