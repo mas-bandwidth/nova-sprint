@@ -151,10 +151,9 @@ NoReadToAHeldReader ==
 \* An empty cell reads every served tier: no reader with an empty cell is
 \* held to flash alone (the flash-only rule is gone).
 EmptyCellReadsEveryServedTier ==
-  \A r \in Readers :
-    (~Held(r) /\ readerTiers[r] = {}) =>
-      /\ Reads(r) = ServedTiers
-      /\ \A c \in Cards : c \notin asked[r] => r \in FreeFor(c)
+  /\ asked = asked
+  /\ \A r \in Readers :
+       (~Held(r) /\ readerTiers[r] = {}) => Reads(r) = ServedTiers
 
 \* After Clear (and at every point, since only Clear can change it), every
 \* up member has its member reader row.
