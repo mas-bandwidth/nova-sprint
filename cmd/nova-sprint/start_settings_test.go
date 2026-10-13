@@ -3,14 +3,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/units"
 )
 
 // start's settings gate (v1.2.17, start-refuses-a-non-working-setting; the owner,
@@ -106,7 +111,7 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 			st, err := ta.a.store(common{redis: "mem:0", actor: "machine"})
 			require.NoError(ta.t, err)
 			require.NoError(ta.t, st.SetServer(context.Background(), store.ServerRecord{Actor: "machine", Land: false}))
-		}, setting: []string{"land"}, verb: "nova-sprint run --listen"},
+		}, setting: []string{"land"}, verb: "nova-sprint install server --listen <address:port>, then restart its unit"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -184,7 +189,7 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 		help := out + errs
 		i := strings.Index(help, "-land")
 		require.GreaterOrEqual(t, i, 0, help)
-		assert.Contains(t, help[i:], "On by default since v1.2.17")
+		assert.Contains(t, help[i:], "the server (run --listen) lands by default and a plain run does not")
 
 		home := t.TempDir()
 		env := map[string]string{"NOVA_SPRINT_REDIS": "127.0.0.1:6380", "NOVA_SPRINT_ACTOR": "seat-a", OwnerEnv: "owner-a"}
@@ -204,4 +209,155 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 		assert.Contains(t, install(), "\"--land\"\n", "no flag: the unit lands")
 		assert.Contains(t, install("--land=false"), `"--land=false"`)
 	})
+}
+
+// At most one lander (cold read 1 of PR 188, F1; tla/OneLander.tla): unset, --land is on
+// for the server (run --listen) and off for a plain run; a land loop is refused, with one
+// line naming the other, while another process's fresh record says it lands; a loop that
+// does not land never writes over that record; units --check flags a server unit that
+// names no --land and any other unit that lands.
+func TestAtMostOneLander(t *testing.T) {
+	t.Parallel()
+
+	t.Run("land defaults on for the server and off for a plain run", func(t *testing.T) {
+		t.Parallel()
+		var unset landFlag
+		assert.True(t, unset.lands(true), "run --listen lands")
+		assert.False(t, unset.lands(false), "a plain run does not")
+		on, off := landFlag{}, landFlag{}
+		require.NoError(t, on.Set("true"))
+		require.NoError(t, off.Set("false"))
+		assert.True(t, on.lands(false), "an explicit --land lands a plain run")
+		assert.False(t, off.lands(true), "--land=false: the server lands nothing")
+	})
+
+	t.Run("a land loop is refused beside another lander, and allowed with none", func(t *testing.T) {
+		t.Parallel()
+		ta := newTestApp(t)
+		ta.ok("init --readers reader-a,reader-b --members m1")
+		st, err := ta.a.store(common{redis: "mem:0", actor: "machine"})
+		require.NoError(t, err)
+		ctx := context.Background()
+
+		why, err := ta.a.landerClash(ctx, st)
+		require.NoError(t, err)
+		assert.Empty(t, why, "no record: the loop lands")
+
+		require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "machine", Land: true, PID: 4242, Host: "another-host.invalid"}))
+		why, err = ta.a.landerClash(ctx, st)
+		require.NoError(t, err)
+		assert.Contains(t, why, "LAND REFUSED another lander is up: actor=machine pid=4242 host=another-host.invalid")
+
+		// a loop that does not land never writes over the lander's record
+		ta.a.serverLands = false
+		ta.a.sayServer(ctx, st, time.Time{}, io.Discard)
+		r, ok, err := st.Server(ctx)
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, 4242, r.PID, "the lander's record stands")
+		assert.True(t, r.Land)
+
+		// the other lander's record says it lands nothing: no clash
+		require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "machine", Land: false, PID: 4242, Host: "another-host.invalid"}))
+		why, err = ta.a.landerClash(ctx, st)
+		require.NoError(t, err)
+		assert.Empty(t, why)
+
+		// the record is this process's own: no clash
+		host, _ := os.Hostname()
+		require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "machine", Land: true, PID: os.Getpid(), Host: host}))
+		why, err = ta.a.landerClash(ctx, st)
+		require.NoError(t, err)
+		assert.Empty(t, why)
+	})
+
+	t.Run("units --check flags a server unit with no --land and a second lander", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		server, ok := units.UnitKindOf("server")
+		require.True(t, ok)
+		table, ok := units.UnitKindOf("table")
+		require.True(t, ok)
+		write := func(k units.UnitKind, args ...string) {
+			q := make([]string, len(args))
+			for i, a := range args {
+				q[i] = `"` + a + `"`
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(dir, k.File("linux")), []byte("[Service]\nExecStart="+strings.Join(q, " ")+"\n"), 0o644))
+		}
+		check := func() map[string]units.UnitState {
+			states, err := units.CheckUnits(dir, "linux", []units.UnitKind{server, table})
+			require.NoError(t, err)
+			out := map[string]units.UnitState{}
+			for _, s := range states {
+				out[s.Kind] = s
+			}
+			return out
+		}
+		write(server, "/opt/nova/bin/nova-sprint", "run", "--listen", "10.0.0.1:6390", "--redis", "10.0.0.1:6380")
+		write(table, "/opt/nova/bin/nova-sprint", "where", "--watch", "--every", "1s", "--land")
+		s := check()
+		assert.Equal(t, units.UnitDifferent, s["server"].State)
+		assert.Contains(t, s["server"].Why, "names neither --land nor --land=false")
+		assert.Equal(t, units.UnitDifferent, s["table"].State)
+		assert.Contains(t, s["table"].Why, "a second lander")
+
+		write(server, "/opt/nova/bin/nova-sprint", "run", "--listen", "10.0.0.1:6390", "--redis", "10.0.0.1:6380", "--land", "--land-parallel", "2")
+		write(table, "/opt/nova/bin/nova-sprint", "where", "--watch", "--every", "1s")
+		s = check()
+		assert.Equal(t, units.UnitInstalled, s["server"].State, s["server"].Why)
+		assert.Equal(t, units.UnitInstalled, s["table"].State, s["table"].Why)
+		write(server, "/opt/nova/bin/nova-sprint", "run", "--listen", "10.0.0.1:6390", "--land=false")
+		assert.Equal(t, units.UnitInstalled, check()["server"].State, "an explicit --land=false is the unit's word (start refuses it)")
+	})
+
+	t.Run("a RUNNING machine whose server lands nothing raises one judgment", func(t *testing.T) {
+		t.Parallel()
+		ta := newTestApp(t)
+		ta.ok("init --readers reader-a,reader-b --members m1")
+		ta.ok("add --stream s1 --count 2")
+		ta.ok("start")
+		st, err := ta.a.store(common{redis: "mem:0", actor: "machine"})
+		require.NoError(t, err)
+		has := func() bool {
+			for _, g := range ta.inboxGroups() {
+				if g.Type == sprint.NServerLandsNothing {
+					return true
+				}
+			}
+			return false
+		}
+		assert.False(t, has(), "no server record: no judgment")
+		require.NoError(t, st.SetServer(context.Background(), store.ServerRecord{Actor: "machine", Land: false, PID: 7, Host: "srv"}))
+		assert.True(t, has(), "a fresh record that lands nothing while RUNNING")
+		require.NoError(t, st.SetServer(context.Background(), store.ServerRecord{Actor: "machine", Land: true, PID: 7, Host: "srv"}))
+		assert.False(t, has(), "the server lands: no judgment")
+	})
+}
+
+// The land loop's pause between cycles ends at once when its context does (cold read 1 of
+// PR 188): the sleep is the app's own, here one that never returns until released.
+func TestTheLandPauseEndsWhenTheLoopDoes(t *testing.T) {
+	t.Parallel()
+	a := newApp(func(string) string { return "" })
+	release := make(chan struct{})
+	slept := make(chan time.Duration, 2)
+	a.sleep = func(d time.Duration) { slept <- d; <-release }
+	t.Cleanup(func() { close(release) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { a.landPause(ctx); close(done) }()
+	assert.Equal(t, LandEvery, <-slept, "the pause sleeps LandEvery")
+	select {
+	case <-done:
+		t.Fatal("the pause ended before its sleep or its context")
+	default:
+	}
+	cancel()
+	<-done // returns on the cancel, the sleep still blocked
+
+	b := newApp(func(string) string { return "" })
+	b.sleep = func(time.Duration) {}
+	b.landPause(context.Background()) // a sleep that returns ends the pause
 }

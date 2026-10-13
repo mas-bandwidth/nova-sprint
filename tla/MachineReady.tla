@@ -49,6 +49,12 @@
 (* (anything but set: a migration, a hand edit, an older binary), or "set". *)
 (* The gate is start's: a value changed while RUNNING is the tick's alarms' *)
 (* to name, outside this module.                                           *)
+(* Start is one atomic step here; in the code the gate's read             *)
+(* (startSettingsGate: DoctorRead, the server record) and the RUNNING      *)
+(* write (store.SetMachine) are two steps, so a value written between     *)
+(* them is not seen by that start (cold read 1 of PR 188, F3; no fix now). *)
+(* The fleet's live state while RUNNING is the judgment                    *)
+(* machine:landsnothing's (store/ops.go machineGroups), not this module's. *)
 (* readersUp is the fleet's live state (a reader up for the tiers the cards  *)
 (* need): never a setting, so never in the gate; start warns on it         *)
 (* (SettingFinding.Live) and readers come up after the start.             *)
@@ -184,9 +190,15 @@ StartRefusedSettings ==
 
 \* a setting written by anything but set: a migration, a hand edit of the table, an
 \* older binary (the direct table write of TestStartRefusesEveryNonWorkingSettingNoSetWrote)
+\* As the code reads set_by (sprint.SetByRecord): a set's choice holds while the value is
+\* still the one the set wrote, so a write of the same value keeps it "set" and a write of
+\* another value makes it "write". The model's value is its working bit, an abstraction:
+\* in the code two different non-working values (fleet_tiers heavy, then frontier) differ
+\* and the second is no set's choice; here both are FALSE and the choice holds. The gate
+\* is only stricter in the code than in the model.
 Write(s, v) ==
     /\ working' = [working EXCEPT ![s] = v]
-    /\ setBy' = [setBy EXCEPT ![s] = "write"]
+    /\ setBy' = [setBy EXCEPT ![s] = IF setBy[s] = "set" /\ v = working[s] THEN "set" ELSE "write"]
     /\ prev' = Shown
     /\ last' = "write"
     /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>

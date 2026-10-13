@@ -27,7 +27,7 @@ func TestStartAndStopSayTheStateBeforeAndAfter(t *testing.T) {
 	require.Contains(t, errs, "the machine is READY: it has not started since the clear; nothing to stop", "stop when READY")
 	out = ta.ok("start")
 	require.Contains(t, out, "START OK before=READY after=RUNNING changed", "start")
-	require.Contains(t, out, "nothing is ticking: run: nova-sprint run", "start")
+	require.Contains(t, out, "nothing is ticking: run: nova-sprint install server --listen", "start: the server, which ticks and lands")
 	require.Contains(t, out, "0/3 0.0% -> ETA -  machine: running", "start")
 	require.Contains(t, ta.ok("start"), "unchanged: the machine is RUNNING already", "start when running")
 	out = ta.ok("tick")

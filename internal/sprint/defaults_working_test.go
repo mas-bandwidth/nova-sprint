@@ -2,10 +2,13 @@ package sprint
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // The settings gate's declarations (defaults_working.go): every setting the sprint holds is
@@ -121,4 +124,73 @@ func TestWorkingNamesEachNonWorkingSetting(t *testing.T) {
 	require.Len(t, fs, 1)
 	assert.Equal(t, PropReadCards, fs[0].Setting)
 	assert.Contains(t, fs[0].SetBy, w.s.Coordinator)
+}
+
+// The nova-config remedies the gate, the doctor and the lander print name only flags the
+// release line's nova-config takes: sprint set's flags are the sprint kind's fields (and
+// --actor), apply's are --kind with a kind's name and --actor. Read 2 of PR 188 ran an older
+// form against a nova-config whose sprint kind had no such field; this holds the printed
+// words to the kind the CLI builds its flags from.
+func TestTheNovaConfigRemediesNameRealFlags(t *testing.T) {
+	t.Parallel()
+	fields := map[string]bool{}
+	kinds := map[string]bool{}
+	for _, k := range config.Kinds {
+		kinds[k.Name] = true
+		if k.Name == config.KindSprint {
+			for _, f := range k.Fields {
+				fields[f.Name] = true
+			}
+		}
+	}
+	require.NotEmpty(t, fields, "the sprint kind has fields")
+	for _, remedy := range []string{GitIdentityRemedy, MaxAttemptsRemedy} {
+		steps := strings.Split(remedy, "&&")
+		require.Len(t, steps, 2, remedy)
+		set, apply := remedyWords(steps[0]), remedyWords(steps[1])
+		require.Equal(t, []string{"nova-config", "sprint", "set"}, set[:3], remedy)
+		for i := 3; i < len(set); i += 2 {
+			flag := strings.TrimPrefix(set[i], "--")
+			require.True(t, strings.HasPrefix(set[i], "--") && i+1 < len(set), "%s: %q is a flag with a value", remedy, set[i])
+			assert.True(t, flag == "actor" || fields[flag], "%s: --%s is a sprint kind field or --actor", remedy, flag)
+		}
+		require.Equal(t, []string{"nova-config", "apply"}, apply[:2], remedy)
+		for i := 2; i < len(apply); i += 2 {
+			require.True(t, i+1 < len(apply), remedy)
+			switch apply[i] {
+			case "--kind":
+				assert.True(t, kinds[apply[i+1]], "%s: --kind %s names a kind", remedy, apply[i+1])
+			case "--actor":
+			default:
+				t.Errorf("%s: apply takes --kind and --actor here, not %s", remedy, apply[i])
+			}
+		}
+	}
+	assert.Contains(t, GitIdentityRemedy, "'"+config.DefaultGitIdentity+"'")
+}
+
+// remedyWords is a shell command's words, '...' quoting one word.
+func remedyWords(s string) []string {
+	var out []string
+	var cur strings.Builder
+	quoted, in := false, false
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case r == '\'':
+			quoted, in = !quoted, true
+		case r == ' ' && !quoted:
+			if in {
+				out = append(out, cur.String())
+				cur.Reset()
+				in = false
+			}
+		default:
+			cur.WriteRune(r)
+			in = true
+		}
+	}
+	if in {
+		out = append(out, cur.String())
+	}
+	return out
 }

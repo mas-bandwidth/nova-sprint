@@ -299,16 +299,22 @@ func readsNeededWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	return []SettingFinding{{Setting: PropReadsNeeded, Value: v, Why: "every card in review needs " + v + " reads, above the readers up of " + strings.Join(short, ", ") + ": no card of it is accepted", Verb: "nova-sprint set --reads " + ReadTierDefault, Live: true}}
 }
 
-// gitIdentityVerb is the nova-config verb that gives the machine its own identity
-// (internal/sprint/doctor.go DoctorGitIdentity's remedy).
-const gitIdentityVerb = "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"
+// GitIdentityRemedy and MaxAttemptsRemedy are the nova-config verbs that give the sprint row a
+// working git_identity and max_attempts, as the v1.2 release line's nova-config takes them
+// (the installed v1.2.16 and nova-tools sprint/v1.2.17-tools: the sprint kind's fields are
+// its flags, and apply takes --kind; nova-tools main has no such sprint field and refuses
+// the flag). Every refusal of the identity names the first (start's gate, the doctor, the
+// lander); TestTheNovaConfigRemediesNameRealFlags holds both to pkg/config's sprint kind.
+const GitIdentityRemedy = "nova-config sprint set --git_identity '" + config.DefaultGitIdentity + "' --actor <you> && nova-config apply --kind sprint --actor <you>"
+
+var MaxAttemptsRemedy = fmt.Sprintf("nova-config sprint set --max_attempts %d --actor <you> && nova-config apply --kind sprint --actor <you>", AttemptsDefault)
 
 // gitIdentityWorking: none or unparseable (DoctorGitIdentity's first rule): the landing
 // refuses to commit. Its second rule, an email equal to the host's global user.email, is the
 // doctor's alone (WorkingBars).
 func gitIdentityWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	if _, ok := config.ParseGitIdentity(s.GitIdentity); !ok {
-		return []SettingFinding{{Setting: SettingGitIdentity, Value: orDash(s.GitIdentity), Why: "the sprint row names no git_identity it can parse: the landing refuses to commit", Verb: gitIdentityVerb}}
+		return []SettingFinding{{Setting: SettingGitIdentity, Value: orDash(s.GitIdentity), Why: "the sprint row names no git_identity it can parse: the landing refuses to commit", Verb: GitIdentityRemedy}}
 	}
 	return nil
 }
@@ -323,12 +329,12 @@ func maxAttemptsWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 	if _, ok := maxAttemptsOf(v); ok {
 		return nil
 	}
-	return []SettingFinding{{Setting: SettingMaxAttempts, Value: v, Why: fmt.Sprintf("max_attempts is not a whole number from 1 to %d", AttemptsMax), Verb: fmt.Sprintf("nova-config sprint set --max_attempts %d && nova-config apply", AttemptsDefault)}}
+	return []SettingFinding{{Setting: SettingMaxAttempts, Value: v, Why: fmt.Sprintf("max_attempts is not a whole number from 1 to %d", AttemptsMax), Verb: MaxAttemptsRemedy}}
 }
 
-// LandVerb is the verb that makes a server land: run lands by default since v1.2.17, so the
-// server is restarted without --land=false.
-const LandVerb = "nova-sprint run --listen <address:port> (restart the server without --land=false: it lands by default)"
+// LandVerb is the verb that makes a server land: the server unit (install server) lands by
+// default since v1.2.17; on the fleet it is installed again and its unit restarted.
+const LandVerb = "nova-sprint install server --listen <address:port>, then restart its unit (the server lands by default; by hand: nova-sprint run --listen <address:port>)"
 
 // landWorking: a server up whose run lands nothing (run --land=false); no server up is not
 // this setting's finding (start says nothing is ticking).

@@ -58,7 +58,23 @@ func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
 		if ctx.Err() != nil {
 			break
 		}
+		a.landPause(ctx)
+	}
+}
+
+// landPause waits LandEvery between land cycles on the app's own sleep, and returns at
+// once when ctx ends: a returning run stops an idle land loop immediately instead of
+// waiting out its LandStopBound (start-refuses-a-non-working-setting, cold read 1).
+// The sleep runs in its own goroutine, which ends when the sleep does.
+func (a *app) landPause(ctx context.Context) {
+	slept := make(chan struct{})
+	go func() {
+		defer close(slept)
 		a.sleep(LandEvery)
+	}()
+	select {
+	case <-ctx.Done():
+	case <-slept:
 	}
 }
 

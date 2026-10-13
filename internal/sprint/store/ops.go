@@ -470,9 +470,22 @@ func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]
 		default:
 			g := group("machine:silent", sprint.NMachineSilent,
 				fmt.Sprintf("the machine is RUNNING and nothing has ticked for %ds: its run loop is not running", int(gap/time.Second)),
-				sprint.Command{Decision: "run the loop", Lines: []string{"nova-sprint run"}},
+				sprint.Command{Decision: "run the server, which ticks and lands", Lines: []string{"nova-sprint install server --listen <address:port>", "restart its unit (by hand: nova-sprint run --listen <address:port>)"}},
 				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}})
 			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00last=%s\x00by-hand=false", g.ID, m.RunSeq, last.UTC().Format(time.RFC3339Nano))
+			out = append(out, g)
+		}
+		// a server that came up or restarted with --land=false while the machine RUNS lands
+		// nothing, and start's gate never saw it: one judgment while its fresh record says
+		// so (start-refuses-a-non-working-setting, F2 of cold read 1)
+		if r, ok, err := st.Server(ctx); err != nil {
+			return nil, err
+		} else if ok && !r.Land {
+			g := group("machine:landsnothing", sprint.NServerLandsNothing,
+				fmt.Sprintf("the machine is RUNNING and its server lands nothing (actor=%s pid=%d host=%s runs without --land): accepted cards are never merged", r.Actor, r.PID, r.Host),
+				sprint.Command{Decision: "run the server, which lands", Lines: []string{"nova-sprint install server --listen <address:port>", "restart its unit (by hand: nova-sprint run --listen <address:port>)"}},
+				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the server lands nothing' --until 1h"}})
+			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00server=%s/%d/%s", g.ID, m.RunSeq, r.Host, r.PID, r.Started.UTC().Format(time.RFC3339Nano))
 			out = append(out, g)
 		}
 		if hb.Failures >= 3 && hb.Error != "" {

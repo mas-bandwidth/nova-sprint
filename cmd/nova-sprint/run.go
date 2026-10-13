@@ -160,7 +160,7 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			if a.twinOpen(c.redis) {
 				fmt.Fprintf(stdout, "nothing is ticking between commands in a twin: tick by hand: nova-sprint tick\n")
 			} else {
-				fmt.Fprintf(stdout, "nothing is ticking: run: nova-sprint run\n")
+				fmt.Fprintf(stdout, "nothing is ticking: run: %s\n", sprint.LandVerb)
 			}
 		}
 	}
@@ -177,16 +177,16 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 // non-working. A finding no set of this epoch chose refuses the start, exit 1, nothing
 // written, one line each on stderr:
 //
-//	START REFUSED setting=<name> value=<v> why=<...> run: <verb>
+//	START REFUSED setting=<name> value=<v> why="<...>" run: <verb>
 //
 // A finding a set of this epoch chose starts, and is never silent: its lines, one each,
 //
-//	START WARN setting=<name> value=<v> set by <who> at <when>
+//	START WARN setting=<name> value=<v> set by <who> at <when> why="<...>" run: <verb>
 //
 // and a finding of the fleet's live state (no reader up for a needed tier, reads above the
 // readers up) starts with its line, never a refusal:
 //
-//	START WARN setting=<name> value=<v> why=<...> run: <verb>
+//	START WARN setting=<name> value=<v> why="<...>" run: <verb>
 //
 // are returned for stdout. A read that fails refuses as every read of start does.
 //
@@ -205,14 +205,14 @@ func (a *app) startSettingsGate(ctx context.Context, st *store.Store, stderr io.
 	for _, f := range findings {
 		if f.Live {
 			// the fleet's live state (the readers up), never a refusal: they come up after
-			warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s why=%s run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
+			warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s why=%q run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
 			continue
 		}
 		if f.SetBy == "" {
-			refused = append(refused, fmt.Sprintf("START REFUSED setting=%s value=%s why=%s run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
+			refused = append(refused, fmt.Sprintf("START REFUSED setting=%s value=%s why=%q run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
 			continue
 		}
-		warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s set by %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.SetBy)))
+		warns = append(warns, fmt.Sprintf("START WARN setting=%s value=%s set by %s why=%q run: %s", f.Setting, oneline.Field(f.Value), oneline.Escape(f.SetBy), oneline.Escape(f.Why), oneline.Escape(f.Verb)))
 	}
 	if len(refused) == 0 {
 		return warns, 0
@@ -369,14 +369,14 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	stdout = newRunOutput(stdout)
 	var profile, listen, decideDir, keyNames string
 	var profileTicks int
-	var land bool
+	var landF landFlag
 	landParallel := landParallelDefault
 	var rules, idle bool
 	st, c, code := a.machineVerb("run", args, stderr, answerRulesFlag(&rules, true), idleAlarmFlag(&idle, true), func(fs flagSet) {
 		fs.StringVar(&listen, "listen", "", "also be the sprint's server: the workers' verbs on this `address:port` (this machine's address on the fleet's private network; a name, a public address, a link-local address, and an every-network address are refused), where nova-swarm member --server <address>:<port> sends them, and the coordinator's verbs on 127.0.0.1 at the same port, where NOVA_SPRINT_SERVER=127.0.0.1:<port> sends them")
 		fs.StringVar(&keyNames, "keys", "", "the `NAME,...` of secrets this process reads from the seat login's nova-secrets seat (also recorded as keys.json beside the login): the decision key and each provider key. A name that cannot be read refuses at start. The unit's environment carries no key value")
 		fs.StringVar(&decideDir, "decide", "", "also keep the record of the sprint's attempt and grade decisions in this `dir` (nova-decide's layer 2: attempt.jsonl, grade.jsonl): the finishes' attempt decisions recorded, every card graded before its first deal with JEV_API_KEY from this environment or read in this process when --keys or keys.json names it, and each decision's outcome attached when its card lands or is dropped, every "+DecideEvery.String())
-		fs.BoolVar(&land, "land", true, "also land what the readers passed, every "+LandEvery.String()+", one landing at a time, as the coordinator (land's defaults: each card's REPO: and BASE: lines); every cycle prints one line, and a landing still running after "+LandDeadline.String()+" raises one judgment naming the stage; land is then not run by hand. On by default since v1.2.17: --land=false runs a server that lands nothing, and start refuses on it")
+		fs.Var(&landF, "land", "also land what the readers passed, every "+LandEvery.String()+", one landing at a time, as the coordinator (land's defaults: each card's REPO: and BASE: lines); every cycle prints one line, and a landing still running after "+LandDeadline.String()+" raises one judgment naming the stage; land is then not run by hand. Since v1.2.17 the server (run --listen) lands by default and a plain run does not: --land=false runs a server that lands nothing, which start refuses, and a land loop is refused while another lander's fresh record says it lands")
 		fs.IntVar(&landParallel, "land-parallel", landParallelDefault, "with --land, how many streams each landing merges at once before it lands them one at a time (land --land-parallel)")
 		fs.StringVar(&profile, "cpuprofile", "", "write a CPU profile of the loop's first ticks to this file (see --profile-ticks)")
 		fs.IntVar(&profileTicks, "profile-ticks", 10, "the ticks --cpuprofile covers; the profile is written after the last of them")
@@ -445,6 +445,23 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "run", err.Error())
 		}
 	}
+	// the server (run --listen) lands unless --land=false; a plain run lands only on an
+	// explicit --land, so a second loop never lands beside the server by default
+	// (tla/OneLander.tla StartLoop)
+	land := landF.lands(listen != "")
+	if land {
+		// at most one lander: a fresh record of another process that lands refuses
+		// this land loop, with one line naming it; the run goes on landing nothing
+		// (tla/OneLander.tla StartLoop, AtMostOneLander)
+		why, err := a.landerClash(context.Background(), st)
+		if err != nil {
+			return a.readFailed("run", err, stderr)
+		}
+		if why != "" {
+			fmt.Fprintln(stdout, why)
+			land = false
+		}
+	}
 	if land {
 		// this server lands: its record says so, and a land by hand beside it is
 		// refused before any clone is touched (landfence.go, serverLanding;
@@ -456,8 +473,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 			b.landMore = append(b.landMore, "--land-parallel", strconv.Itoa(landParallel))
 			b.mu.Unlock()
 		}
-		// the land loop ends with run: since v1.2.17 every run lands unless --land=false,
-		// so a run that returns (a replaced binary, a test's one loop) stops its land loop
+		// the land loop ends with run: a run that returns (a replaced binary, a test's one loop) stops its land loop
 		// and waits for it, bounded, before its output is given back
 		landCtx, stopLand := context.WithCancel(context.Background())
 		landDone := make(chan struct{})
@@ -511,6 +527,62 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		return exitReplaced
 	}
 	return 0
+}
+
+// landFlag is run's --land: unset, the server (run --listen) lands and a plain run does
+// not; --land or --land=false says so whatever the rest (start-refuses-a-non-working-setting,
+// cold read 1: a plain run never lands beside the server by default).
+type landFlag struct{ on, set bool }
+
+func (f *landFlag) String() string {
+	if f == nil {
+		return "false"
+	}
+	return strconv.FormatBool(f.on)
+}
+
+func (f *landFlag) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	f.on, f.set = v, true
+	return nil
+}
+
+func (f *landFlag) IsBoolFlag() bool { return true }
+
+// lands is whether the run lands: the flag when given, else whether it is the server.
+func (f *landFlag) lands(server bool) bool {
+	if f.set {
+		return f.on
+	}
+	return server
+}
+
+// landerClash is why this process must not start a land loop: a fresh server record
+// that says it lands and names another process (another host, or another pid on this
+// host that is alive), "" when there is none. The record is the store's one server key
+// (store.ServerRecord): every run loop writes it, so a second lander is seen within
+// store.ServerTTL of its start. The read and the loop's start are two steps, not one;
+// two loops starting inside one ServerEvery can both pass (tla/OneLander.tla, StartLoop
+// and its comment).
+//
+// tla/OneLander.tla StartLoop
+func (a *app) landerClash(ctx context.Context, st *store.Store) (string, error) {
+	r, ok, err := st.Server(ctx)
+	if err != nil || !ok || !r.Land {
+		return "", err
+	}
+	host, _ := os.Hostname()
+	if r.Host == host && r.PID == os.Getpid() {
+		return "", nil
+	}
+	if r.Host == host && r.PID > 0 && !swarm.Alive(r.PID, "") {
+		return "", nil
+	}
+	return fmt.Sprintf("LAND REFUSED another lander is up: actor=%s pid=%d host=%s, its record written %s; this run lands nothing; stop that lander first, or run this one without --land",
+		oneline.Field(r.Actor), r.PID, oneline.Field(r.Host), r.At.UTC().Format(time.RFC3339)), nil
 }
 
 // LandStopBound is how long a returning run waits for its land loop to stop.
@@ -923,6 +995,14 @@ func (a *app) sayServer(ctx context.Context, st *store.Store, said time.Time, st
 	now := a.now()
 	if !said.IsZero() && now.Sub(said) < store.ServerEvery {
 		return said
+	}
+	if !a.serverLands {
+		// a loop that does not land never writes over another lander's fresh record: the
+		// record is one key, the fence a land loop reads at its start (landerClash), and a
+		// plain run's heartbeat would erase it (tla/OneLander.tla Say)
+		if why, err := a.landerClash(ctx, st); err == nil && why != "" {
+			return now
+		}
 	}
 	if err := st.SetServer(ctx, a.serverRecord(st.Actor)); err != nil {
 		fmt.Fprintf(stderr, "%s run: the server's record was not written: %s\n", prog, oneline.Escape(err.Error()))
