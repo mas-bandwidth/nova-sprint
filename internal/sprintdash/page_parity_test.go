@@ -73,7 +73,7 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	absent(st.Text["inflight-sub"], "nothing in flight", "the in-flight tile is blank")
 	absent(app, "no stream has spent anything yet", "top streams with no spend draw blank ruled rows")
 	absent(strings.Join(st.Top[len(st.Top)-1], ""), "spent", "top streams with no spend: no message")
-	has(served, ".panel.friends { display: none; }", "the Friends panel is hidden (2026-10-11 ~21:55Z)")
+	absent(served, ".panel.friends { display: none; }", "the Friends panel is shown (2026-10-13)")
 
 	// P1 logo, top left, inline data PNG: it follows the live page, the 384 px robot tile with its
 	// attributes (the card names the nova-sprint image; the owner to rule)
@@ -254,8 +254,8 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	// P31 Fleet pill tones
 	assert.Equal(t, "pill good", st.FleetPill["machine-a"], "P31 up green")
 	assert.Equal(t, "pill warning", st.FleetPill["held-01"], "P31 held amber")
-	// P32 track cells scale to the fleet's own widest member while Friends is hidden
-	assert.True(t, strings.HasPrefix(st.FleetTrack["machine-a"], "repeat(16,"), "P32 the fleet's widest (16), never the friends' (32): %s", st.FleetTrack["machine-a"])
+	// P32 track cells scale to the fleet's own widest member (shared-scale case)
+	assert.True(t, strings.HasPrefix(st.FleetTrack["machine-a"], "repeat(16,"), "P32 the fleet's widest (16): %s", st.FleetTrack["machine-a"])
 	for _, c := range []string{".p-blocker", ".p-critical", ".p-fix", ".p-reader"} {
 		has(served, c, "P32 "+c)
 	}
@@ -264,8 +264,10 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	has(served, `.panel.off { opacity: .45; }`, "P33")
 	// P34 Fleet compact with no ok%
 	has(served, `.fleet.compact .row > :nth-child(7) { display: none; }`, "P34")
-	// P35 Friends hidden by CSS
-	has(served, `<section class="panel friends">`, "P35 kept, hidden")
+	// P35 Friends shown
+	has(served, `<section class="panel friends">`, "P35 shown")
+	absent(served, ".panel.friends { display: none; }", "P35 not hidden by CSS")
+
 	// P36-P38
 	has(served, `<section class="panel providers" id="providers-panel" hidden>`, "P36")
 	assert.True(t, st.Hidden["providers-panel"], "P36 no tables.providers")
