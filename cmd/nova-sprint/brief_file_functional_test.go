@@ -34,6 +34,7 @@ func TestAddBriefFileOnTheStore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "brief.md")
 	require.NoError(t, os.WriteFile(path, []byte(brief+"\n"), 0o600))
 	run("init", "--readers", "reader-a,reader-b", "--members", "m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	// a brief that fails the card lint is refused on the store, exit 2, and writes nothing
 	bare := filepath.Join(t.TempDir(), "bare.md")
 	require.NoError(t, os.WriteFile(bare, []byte("Fix the empty case.\n"), 0o600))

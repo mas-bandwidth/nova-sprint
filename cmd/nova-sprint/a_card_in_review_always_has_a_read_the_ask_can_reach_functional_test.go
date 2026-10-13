@@ -70,7 +70,11 @@ func TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore(t *testing.T) {
 	}
 
 	run("init", "--readers", "reader-a,reader-b,reader-c", "--members", "m1:8")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	run("set", "--read-cards", "off") // this regression returns and reasks legacy Readers records
+	for _, reader := range []string{"reader-a", "reader-b", "reader-c"} {
+		run("reader", "set", reader, "--tiers", "flash,pro")
+	}
 	dir := t.TempDir()
 	brief := filepath.Join(dir, "brief.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a flash card (s1) tier: flash\nTHE TASK.\nwork\n")), 0o600))
@@ -81,7 +85,7 @@ func TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore(t *testing.T) {
 	run("tick") // the pump deals to it
 	require.Contains(t, run("card", "s1-1"), "working", "s1-1 must be dealt before the take")
 	run("take", "--as", "m1", "--max", "1")
-	run("finish", "--as", "m1", "s1-1.w1@1", "--epoch", "0", "--report", "done")
+	run("finish", "--as", "m1", "s1-1.w1@1", "--epoch", "0", "--report", "done", "--usage", "input=1000 output=100")
 	run("queue", "--as", "reader-a") // the readers ask for their queues: they are up
 	run("queue", "--as", "reader-b")
 	run("queue", "--as", "reader-c")
@@ -96,7 +100,7 @@ func TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore(t *testing.T) {
 	run("rework", "s1-1", "--fix", "'answer the finding'")
 	run("tick") // the pump deals the next attempt
 	run("take", "--as", "m1", "--max", "1")
-	run("finish", "--as", "m1", "s1-1.w2@1", "--epoch", "0", "--report", "done")
+	run("finish", "--as", "m1", "s1-1.w2@1", "--epoch", "0", "--report", "done", "--usage", "input=1000 output=100")
 	run("tick") // attempt 2 moves to review and its read is asked
 
 	// The attempt-2 read ends without a verdict: no read of the attempt is out,

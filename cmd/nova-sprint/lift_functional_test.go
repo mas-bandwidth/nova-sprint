@@ -28,12 +28,14 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, fn.Load(ctx, c))
 	world := newFunctionalTestApp(t, addr)
+	declareFunctionalRoutes(t, c, "flash")
 	waiter := newFunctionalTestApp(t, addr)
 	do := func(line string) string {
 		t.Helper()
 		return world.runVerb(strings.Fields(line)...)
 	}
 	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+		"reader set reader-a --tiers flash", "reader set reader-b --tiers flash",
 		"add --stream s1 --count 2", "fleet beat m1", "start",
 		// the first tick's fleet update (last in the tick) brings m1 up; the
 		// second tick's pump deals to it
@@ -45,13 +47,16 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 	err := json.Unmarshal([]byte(do("queue --as m1 --json")), &q)
 	require.NoError(t, err, "m1's queue: %v %+v", err, q)
 	require.Len(t, q.Cards, 2, "m1's queue: %v %+v", err, q)
-	words := []string{"finish", "--as", "m1", "--epoch", "0"}
+	words := []string{"finish", "--as", "m1", "--epoch", "0", "--usage", "input=1000 output=100"}
 	for _, c := range q.Cards {
 		words = append(words, c.ID+"@1")
 	}
-	do(strings.Join(words, " "))
-	for _, l := range []string{"queue --as reader-a", "queue --as reader-b", "ask", "read --as reader-a --ok --limit 10 --epoch 0", "read --as reader-b --ok --limit 10 --epoch 0"} {
+	world.runVerb(words...)
+	for _, l := range []string{"queue --as reader-a", "queue --as reader-b", "ask"} {
 		do(l)
+	}
+	for _, reader := range []string{"reader-a", "reader-b"} {
+		world.runVerb("read", "--as", reader, "--ok", "--limit", "10", "--epoch", "0", "--usage", "input=1000 output=100")
 	}
 	require.Contains(t, do("accept --read-ok"), "ACCEPT OK moved=2", "accept --read-ok on the store")
 	recordMergeOn(t, world.app(), addr, "s1", 10, "0")

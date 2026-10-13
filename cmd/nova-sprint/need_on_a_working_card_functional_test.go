@@ -36,6 +36,7 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	}
 	dir := t.TempDir()
 	run("init", "--readers", "reader-a,reader-b", "--members", "m1")
+	declareFunctionalRoutes(t, c, "flash", "pro")
 	// work is first in line, so the deal cuts it; dep stays ready, not landed
 	run("add", "--one", "--stream", "a", "work", "--brief-file", writeHeaderBrief(t, dir, "work", "-", "internal/work.go"))
 	run("add", "--one", "--stream", "a", "dep", "--brief-file", writeHeaderBrief(t, dir, "dep", "-", "internal/dep.go"))
@@ -61,7 +62,7 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	assert.Contains(t, run("card", "work"), "working, waits for dep after this attempt")
 
 	// the attempt finishes; the card then waits for the need
-	run("finish", "--as", "m1", "work.w1@1", "--epoch", "0", "--report", "done")
+	run("finish", "--as", "m1", "work.w1@1", "--epoch", "0", "--report", "done", "--usage", "input=1000 output=100")
 	pr := run("card", "work")
 	assert.Contains(t, pr, "waiting", "the card waits for the need once its attempt ends")
 	assert.Contains(t, pr, "dep", "it waits for dep")
