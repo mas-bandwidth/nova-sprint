@@ -39,7 +39,7 @@ func declareFunctionalRoutes(t *testing.T, c *redis.Client, tiers ...string) {
 		require.NoError(t, c.SAdd(ctx, config.RoutesKey, name).Err())
 		require.NoError(t, c.HSet(ctx, config.RouteKey(name), "tier", tier, "provider", provider,
 			"model", "fixture", "tokens", "1000", "deadline", "600", "enabled", "true", "billing", "metered").Err())
-		require.NoError(t, c.Set(ctx, config.TierKey(tier), name, 0).Err())
+		require.NoError(t, c.HSet(ctx, config.TierKey(tier), "routes", name).Err())
 	}
 }
 
