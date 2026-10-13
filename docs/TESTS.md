@@ -147,7 +147,7 @@ READ OK moved=1 refused=0 notes=0 op=read-t38-1
 
 $ nova-sprint tick
 MOVED drain: s1-1.r1.m2 working -> ok (retired: read by m2) (read by m2)
-MOVED accept: s1-1 review -> merging queued (ok from m2)
+MOVED accept: s1-1 review -> merging queued (ok from s1-1.r1.m2)
 MOVED verdicts: s1-1.w1 finished -> ok (the readers' verdict)
 TABLES rows changed: work=1 readers=0 merge=1 fleet=1
 TICK OK state=RUNNING idle=no moved=3 notes=2

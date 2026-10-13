@@ -355,7 +355,7 @@ func TestJudgmentsReachTheInboxAndTheCoordinatorAnswers(t *testing.T) {
 	ta.ok("ask")
 	code, _, errs = ta.do("accept s1-1")
 	require.Equal(t, 1, code, "accept with no reads: %d %s", code, errs)
-	require.Contains(t, errs, "REFUSED s1-1: needs ok from two different readers", "accept with no reads: %d %s", code, errs)
+	require.Contains(t, errs, "REFUSED s1-1: needs ok from two ok reads", "accept with no reads: %d %s", code, errs)
 	require.Contains(t, errs, "ACCEPT FAILED", "accept with no reads: %d %s", code, errs)
 	ta.clean()
 }
@@ -516,11 +516,11 @@ func TestVerbLineOnAMachineNotRunningHasNoETA(t *testing.T) {
 	out = ta.ok("tick")
 	last := lastLine(out)
 	require.True(t, strings.HasPrefix(last, "0/4 0.0% -> ETA"), "the tick after an add on a running machine: last line %q in %s", last, out)
-	// stopped: the line starts with STOPPED (the stop's who, why and back-by time) and
+	// stopped: the line starts with STOPPED (the stop's why and back-by time) and
 	// has no ETA, as the header of where does
 	out = ta.ok("stop --reason r --until 9999h")
 	last = lastLine(out)
-	require.True(t, strings.HasPrefix(last, "STOPPED by coordinator: r, back by "), "stop: last line %q in %s", last, out)
+	require.True(t, strings.HasPrefix(last, "STOPPED, expected back by "), "stop: last line %q in %s", last, out)
 	require.True(t, strings.HasSuffix(last, "  0/4 0.0%"), "stop: last line %q in %s", last, out)
 	require.NotContains(t, out, "-> ETA", "stop: last line %q in %s", last, out)
 }
