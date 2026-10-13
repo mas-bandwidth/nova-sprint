@@ -278,7 +278,7 @@ func TestAdmissionCtestHasNoPackageButStillHoldsPaths(t *testing.T) {
 	t.Parallel()
 	tree := AdmissionTree{
 		Files: []string{"src/main.cpp", "CMakeLists.txt"},
-		Hold: func(string) ([]string, error) { return []string{"CMakeLists.txt"}, nil },
+		Hold:  func(string) ([]string, error) { return []string{"CMakeLists.txt"}, nil },
 	}
 	brief := "RESULT: c tier: heavy\nREPO: owner/repo\nBASE: main\nPATHS: src/main.cpp\nTEST: ctest DecodeAll\n\nTHE TASK. Fix decoding.\n"
 	assert.Empty(t, PathsAdmission(brief, tree), "a CTest name has no package directory hold")
