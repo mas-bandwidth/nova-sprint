@@ -31,6 +31,14 @@ const (
 	HomeShape = "shape"
 )
 
+// PropMembersRestored is the fleet table's per-epoch marker that the clear's owed step
+// restored the members and the readers into the epoch: written in the same store write as
+// the members' control cards (store.restoreMembers), so a clear run again over the epoch
+// never restores again, and while the flag says the step is owed and the marker is absent
+// no verb edits or removes a member's or a reader's row (store.ErrRestorePending;
+// tla/ClearDefaults.tla RestoreDone, RerunKeepsEpochWrites).
+const PropMembersRestored = "members_restored"
+
 // ShapeCarried is a shape row's Value: the old epoch's, carried by the clear.
 const ShapeCarried = "carried"
 
@@ -97,8 +105,9 @@ var Defaults = []Default{
 	{Name: PropAlarmReview, Home: HomeCarry, Value: AlarmReviewWorking, Why: "the coordinator's threshold, carried; 120 when never set"},
 	{Name: PropAlarmMerging, Home: HomeCarry, Value: AlarmMergingWorking, Why: "the coordinator's threshold, carried; 60 when never set"},
 	{Name: PropAlarmFleet, Home: HomeCarry, Value: AlarmFleetWorking, Why: "the coordinator's threshold, carried; 50 percent when never set"},
-	// the sprint's base: the coordinator's choice, carried; no default (start refuses
-	// without one, naming set --base)
+	// the sprint's base: the coordinator's choice, carried; no default (start WARNs without
+	// one, naming set --base, and never refuses: a sprint that lands on main or dev records
+	// none; defaults_working.go sprintBaseWorking)
 	{Name: PropSprintBase, Home: HomeCarry, Value: "", Why: "the branch every stream lands on, the coordinator's (set --base)"},
 	// the twins' brief directory: the machine's choice, carried; none falls to the environment
 	{Name: PropTwinBriefs, Home: HomeCarry, Value: "", Why: "where a twin's brief is written (else the environment, else the home)"},
@@ -157,7 +166,7 @@ var NotSettingProps = []string{
 	PropFriendSync, PropIdleSaid, PropIdleSince, PropLandRefusal, PropLandingStallSaid, PropLandingStallSince,
 	PropLastLanding, PropMergeWindowReason, PropMergeWindowUntil, PropPromotedAt, PropPromotedSha,
 	PropCarriedMedians, PropCostReconcilePrefix, PropReadsWindow, PropStatusSeen,
-	PropSetBy,
+	PropSetBy, PropMembersRestored,
 }
 
 // SetFlagProp is the property a flag of `set` writes where it is not the flag's own name
@@ -201,17 +210,20 @@ func (s *Snapshot) clearedDefault(name string) (string, bool) {
 // absent. A property present in the new epoch was written there after the advance (a set
 // that landed between the advance and this step) and is never overwritten
 // (SetSurvives). old is the cleared epoch's properties: a HomeProp value there away from its
-// default is not carried, and resets names each as "<name> was <v>, now <default>"; a
-// HomeCarry value is carried and named in no reset.
-func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
+// default is not carried, and resets names each the step writes as "<name> was <v>, now
+// <default>"; a HomeCarry value is carried and named in no reset. A setting the new epoch
+// holds is written by no one here, so it is in no reset: kept names it as "<name> kept at
+// <v>, set in the new epoch" (the cold read of #190 at 02af0680, finding 4).
+func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets, kept []string) {
 	var wrote []string
 	for _, d := range Defaults {
 		var want string
+		var reset string
 		switch d.Home {
 		case HomeProp:
 			want = d.Value
 			if was, ok := old[d.Name]; ok && was != d.Value {
-				resets = append(resets, d.Name+" was "+was+", now "+d.Value)
+				reset = d.Name + " was " + was + ", now " + d.Value
 			}
 		case HomeCarry:
 			want = d.Value
@@ -225,9 +237,15 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 			continue
 		}
 		if s != nil && s.Work != nil {
-			if _, had := s.Work.Prop(d.Name); had {
+			if cur, had := s.Work.Prop(d.Name); had {
+				if d.Home == HomeProp && cur != d.Value {
+					kept = append(kept, d.Name+" kept at "+cur+", set in the new epoch")
+				}
 				continue
 			}
+		}
+		if reset != "" {
+			resets = append(resets, reset)
 		}
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: d.Name, Value: want, WasAbsent: true})
 		wrote = append(wrote, d.Name+" "+want)
@@ -235,7 +253,7 @@ func SetDefaults(s *Snapshot, old map[string]string) (p Plan, resets []string) {
 	if len(wrote) > 0 {
 		p.Units = append(p.Units, Unit{Key: "defaults", Moved: "sprint defaults " + strings.Join(wrote, ", ")})
 	}
-	return p, resets
+	return p, resets, kept
 }
 
 // barRow is a nova-config sprint row field's row: its declared default (config.KindSprint),

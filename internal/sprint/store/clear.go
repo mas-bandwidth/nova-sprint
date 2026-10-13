@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -26,6 +27,10 @@ type ClearResult struct {
 	// "<name> was <v>, now <default>": the set-defaults step does not carry it
 	// (setDefaults; sprint.Defaults).
 	Defaults []string `json:"defaults,omitempty"`
+	// Kept is each working-default setting the new epoch already held away from its default
+	// (a set that landed after the advance), "<name> kept at <v>, set in the new epoch": the
+	// step writes nothing over it, so no reset names it (sprint.SetDefaults).
+	Kept []string `json:"kept,omitempty"`
 	// Owed says this clear advanced nothing: the epoch's advance flagged it owed its step
 	// (EpochState.DefaultsOwed) and the clear that made it stopped before the step was
 	// done, so this one finished the step there, carrying from the epoch that advance left
@@ -144,7 +149,7 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	}
 	// The advance flagged the new epoch owed its step, in the same write: restoreMembers,
 	// then the working defaults, then the flag cleared (owedStep).
-	if res.Defaults, err = next.owedStep(ctx, old); err != nil {
+	if res.Defaults, res.Kept, err = next.owedStep(ctx, old); err != nil {
 		return res, err
 	}
 	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
@@ -193,10 +198,19 @@ func placed(t *sprint.Table, except string) int {
 // sprint's setting, not its work). The members' and readers' cards, and the
 // old epoch's streams, reads, merges and open judgments, are left behind. It
 // reads the shape from old, the old epoch frozen since the advance, and writes
-// it at the new one.
+// it at the new one. It runs at most once per owed step: its last write, the members'
+// control cards, carries the epoch's marker (sprint.PropMembersRestored) in the same store
+// write, and owedStep skips it once the marker is there. Until then no verb edits or removes
+// a member's or a reader's row (ErrRestorePending), and a reader's tiers are written only
+// where the epoch holds none, so a run again never changes what the epoch wrote
+// (tla/ClearDefaults.tla RestoreRow, RestoreDone, RerunKeepsEpochWrites).
 func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error {
 	sh := sprint.ShapeOf(old)
 	sh.Streams = nil
+	cur, err := st.Load(ctx, []string{sprint.Readers}, nil)
+	if err != nil {
+		return fmt.Errorf("the readers of epoch %d: %w", st.epoch, err)
+	}
 	if len(sh.Readers) > 0 {
 		table := st.Names.Table(sprint.Readers)
 		if err := st.B.RowsAdd(ctx, table, sh.Readers); err != nil {
@@ -207,10 +221,12 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 				return fmt.Errorf("the readers' tiers column: %w", err)
 			}
 			for rd, tiers := range sh.ReaderTiers {
-				if spot := strings.TrimSpace(tiers); spot != "" {
-					if err := st.B.RowSet(ctx, table, rd, map[string]string{sprint.ReaderTiers: spot}); err != nil {
-						return fmt.Errorf("the tiers of reader %s: %w", rd, err)
-					}
+				spot := strings.TrimSpace(tiers)
+				if spot == "" || strings.TrimSpace(cur.Readers.Texts[rd][sprint.ReaderTiers]) != "" {
+					continue // the epoch's own tiers are never overwritten
+				}
+				if err := st.B.RowSet(ctx, table, rd, map[string]string{sprint.ReaderTiers: spot}); err != nil {
+					return fmt.Errorf("the tiers of reader %s: %w", rd, err)
 				}
 			}
 		}
@@ -222,7 +238,13 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 	}
 	at := st.epoch
 	res, err := st.Run(ctx, Step{Verb: "clear", Load: All, Mirrors: true, Epoch: &at,
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RestoreShape(s, sh) }})
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			p := sprint.RestoreShape(s, sh)
+			// the restore's marker, in the same write as the control cards (the fleet table's
+			// one manifest): a run again finds it and restores nothing
+			p.Props = append(p.Props, sprint.PropWrite{Table: sprint.Fleet, Name: sprint.PropMembersRestored, Value: "1", WasAbsent: true})
+			return p
+		}})
 	if err != nil {
 		return err
 	}
@@ -241,14 +263,24 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 // instead: restoreMembers adds only the rows and control cards the epoch lacks (RowsAdd,
 // RestoreShape) and the defaults write only the settings it lacks (sprint.SetDefaults), so
 // a clear run again after a crash anywhere in it finishes it (tla/ClearDefaults.tla
-// RestoreMembers, SetDefaults, SettleDefaults). It returns the defaults' resets.
-func (st *Store) owedStep(ctx context.Context, old *sprint.Snapshot) ([]string, error) {
+// RestoreRow, RestoreDone, SetDefaults, SettleDefaults). The step's phase is read off two
+// records: the flag with no restore marker is restore pending, the flag with the marker is
+// defaults pending, no flag is settled; the restore runs only while it is pending, so it
+// runs at most once (RerunKeepsEpochWrites). It returns the defaults' resets and the
+// settings it kept.
+func (st *Store) owedStep(ctx context.Context, old *sprint.Snapshot) (resets, kept []string, err error) {
 	// The fleet's members and the readers are not sprint work: their rows,
 	// widths and status survive a clear (the machines and the readers are still
 	// there); their holds, leases, stop records, alarms, streams, cards and
 	// read cards are the old epoch's and are left behind.
-	if err := st.restoreMembers(ctx, old); err != nil {
-		return nil, fmt.Errorf("restoring the members and the readers in epoch %d: %w; run: nova-sprint clear again", st.epoch, err)
+	done, err := st.membersRestored(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !done {
+		if err := st.restoreMembers(ctx, old); err != nil {
+			return nil, nil, fmt.Errorf("restoring the members and the readers in epoch %d: %w; run: nova-sprint clear again", st.epoch, err)
+		}
 	}
 	// Then set defaults: every working default written into the new epoch where it is
 	// absent, the coordinator's carried settings (the threshold alarms, the base) carried
@@ -256,17 +288,100 @@ func (st *Store) owedStep(ctx context.Context, old *sprint.Snapshot) ([]string, 
 	// (tla/ClearDefaults.tla SetDefaults, DefaultsAfterClear, CarrySurvives, NeverAbsent).
 	if st.beforeDefaults != nil {
 		if err := st.beforeDefaults(st); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	resets, err := st.setDefaults(ctx, old)
+	resets, kept, err = st.setDefaults(ctx, old)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := st.root.SettleDefaults(ctx, st.epoch); err != nil {
-		return nil, fmt.Errorf("settling the step epoch %d owed: %w; run: nova-sprint clear again", st.epoch, err)
+		return nil, nil, fmt.Errorf("settling the step epoch %d owed: %w; run: nova-sprint clear again", st.epoch, err)
 	}
-	return resets, nil
+	return resets, kept, nil
+}
+
+// membersRestored says the pinned epoch holds the restore's marker
+// (sprint.PropMembersRestored): its members and readers were restored by its owed step.
+func (st *Store) membersRestored(ctx context.Context) (bool, error) {
+	s, err := st.Load(ctx, []string{sprint.Fleet}, nil)
+	if err != nil {
+		return false, err
+	}
+	_, ok := s.Fleet.Prop(sprint.PropMembersRestored)
+	return ok, nil
+}
+
+// ErrRestorePending is a verb refused because the epoch's owed step has not restored its
+// members and readers yet: a clear run again finishes it, and the restore must never write
+// over a member's or a reader's row the epoch changed (tla/ClearDefaults.tla EditRow,
+// DeleteRow, RerunKeepsEpochWrites).
+var ErrRestorePending = errors.New("the clear of this epoch has not restored its members and readers yet")
+
+// RestorePending says the sprint's epoch is owed its step (EpochState.DefaultsOwed) and its
+// restore's marker is absent: the members and the readers are not restored yet.
+func (st *Store) RestorePending(ctx context.Context) (bool, error) {
+	pinned, err := st.pin(ctx)
+	if err != nil {
+		return false, err
+	}
+	es, err := pinned.EpochNow(ctx)
+	if err != nil {
+		return false, err
+	}
+	if es.N != pinned.epoch || !es.DefaultsOwed {
+		return false, nil
+	}
+	done, err := pinned.membersRestored(ctx)
+	return !done, err
+}
+
+// RefuseRestorePending refuses the verb while the epoch's restore is pending (RestorePending),
+// naming the clear that finishes it.
+func (st *Store) RefuseRestorePending(ctx context.Context, verb string) error {
+	pending, err := st.RestorePending(ctx)
+	if err != nil || !pending {
+		return err
+	}
+	return fmt.Errorf("%w: %s changes no member's or reader's row until it has; nothing was changed; run: nova-sprint clear (it finishes the step), then %s again", ErrRestorePending, verb, verb)
+}
+
+// SetReaderTiers sets the tiers cell of each named reader row ("" is every tier), refused
+// while the epoch's restore is pending (RefuseRestorePending).
+func (st *Store) SetReaderTiers(ctx context.Context, names []string, tiers string) error {
+	if err := st.RefuseRestorePending(ctx, "reader tiers"); err != nil {
+		return err
+	}
+	pinned, err := st.pin(ctx)
+	if err != nil {
+		return err
+	}
+	table := pinned.Names.Table(sprint.Readers)
+	for _, n := range names {
+		if err := pinned.B.RowSet(ctx, table, n, map[string]string{sprint.ReaderTiers: tiers}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveReaders deletes the named reader rows and then their records (beats, holds),
+// refused while the epoch's restore is pending (RefuseRestorePending).
+func (st *Store) RemoveReaders(ctx context.Context, names []string) error {
+	if err := st.RefuseRestorePending(ctx, "reader remove"); err != nil {
+		return err
+	}
+	pinned, err := st.pin(ctx)
+	if err != nil {
+		return err
+	}
+	if err := pinned.B.RowsDel(ctx, pinned.Names.Table(sprint.Readers), names); err != nil {
+		return err
+	}
+	if err := pinned.ForgetReaders(ctx, names); err != nil {
+		return fmt.Errorf("the rows were removed, their records were not: %w", err)
+	}
+	return nil
 }
 
 // finishOwed is a clear run again over an epoch flagged owed its step: it reads the epoch
@@ -280,7 +395,7 @@ func (st *Store) finishOwed(ctx context.Context, res ClearResult) (ClearResult, 
 	if err != nil {
 		return res, err
 	}
-	if res.Defaults, err = st.owedStep(ctx, old); err != nil {
+	if res.Defaults, res.Kept, err = st.owedStep(ctx, old); err != nil {
 		return res, err
 	}
 	sh := sprint.ShapeOf(old)
@@ -323,27 +438,27 @@ func (st *Store) owedSource(ctx context.Context) (*sprint.Snapshot, error) {
 // step at the new epoch writing every work-table property row of sprint.Defaults at its
 // Value (sprint.SetDefaults), by "clear". The bars are nova-config's and never written
 // here (their default is read-side, Bars.WithDefaults); the shape is restoreMembers'.
-// It returns each setting old held away from its default, "<name> was <v>, now <default>".
-func (st *Store) setDefaults(ctx context.Context, old *sprint.Snapshot) ([]string, error) {
+// It returns each setting it wrote that old held away from its default, "<name> was <v>,
+// now <default>", and each the new epoch held away from it and it kept.
+func (st *Store) setDefaults(ctx context.Context, old *sprint.Snapshot) (resets, kept []string, err error) {
 	var oldProps map[string]string
 	if old != nil && old.Work != nil {
 		oldProps = old.Work.Props()
 	}
-	var resets []string
 	at := st.epoch
 	res, err := st.Run(ctx, Step{Verb: "clear", Load: tables(sprint.Work), Epoch: &at,
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
-			p, r := sprint.SetDefaults(s, oldProps)
-			resets = r
+			p, r, k := sprint.SetDefaults(s, oldProps)
+			resets, kept = r, k
 			return p
 		}})
 	if err != nil {
-		return nil, fmt.Errorf("setting the working defaults in epoch %d: %w; run: nova-sprint clear again", at, err)
+		return nil, nil, fmt.Errorf("setting the working defaults in epoch %d: %w; run: nova-sprint clear again", at, err)
 	}
 	if len(res.Refused) > 0 {
-		return nil, fmt.Errorf("setting the working defaults in epoch %d: %s: %s; run: nova-sprint clear again", at, res.Refused[0].Key, res.Refused[0].Why)
+		return nil, nil, fmt.Errorf("setting the working defaults in epoch %d: %s: %s; run: nova-sprint clear again", at, res.Refused[0].Key, res.Refused[0].Why)
 	}
-	return resets, nil
+	return resets, kept, nil
 }
 
 // restore performs the restore the pinned epoch owes: it reads epoch from,

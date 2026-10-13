@@ -661,3 +661,5 @@ MCClearDefaultsBrokenNoFallback.cfg	MCClearDefaults.tla	invariant	ReadersSeeWork
 MCClearDefaultsBrokenRerunAdvance.cfg	MCClearDefaults.tla	invariant	CarrySurvives	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenMarkerInfer.cfg	MCClearDefaults.tla	invariant	FinishOnlyWhatIsOwed	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestored	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-

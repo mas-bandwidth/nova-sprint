@@ -37,7 +37,11 @@
 (* and the fleet's members and readers unrestored. The advance writes, in *)
 (* the same write, the set-defaults owed flag naming the new epoch (flag: *)
 (* store.EpochState.DefaultsOwed, the epoch hash's defaults field). The   *)
-(* owed step is RestoreMembers (clear.go restoreMembers), then SetDefaults *)
+(* owed step is the restore of the members and the readers, row by row    *)
+(* (RestoreRow: its rows, a reader's tiers only where the new epoch holds *)
+(* none), closed by RestoreDone, which writes the restore's marker        *)
+(* (restored: the fleet table's members_restored property) in the same    *)
+(* store write as the members' control cards; then SetDefaults           *)
 (* (clear.go setDefaults, sprint.SetDefaults: each setting still ABSENT,  *)
 (* never one the new epoch holds, so a Set that landed between the        *)
 (* advance and the step survives; a Carry setting takes the value the     *)
@@ -70,6 +74,18 @@
 (*                   (FinishOnlyWhatIsOwed)                               *)
 (*   "restoreskip"   the clear run again sets the defaults and clears the *)
 (*                   flag without restoreMembers (MembersRestored)        *)
+(* The phase of an owed step is read off two records: the flag with no    *)
+(* marker is restore pending, the flag with the marker is defaults        *)
+(* pending, no flag is settled. A clear run again restores only while the *)
+(* marker is absent, and while it is absent no verb edits or removes a    *)
+(* member's or a reader's row or a reader's tiers (EditRow, DeleteRow;    *)
+(* store.ErrRestorePending), so a re-run never changes a row the new      *)
+(* epoch wrote (RerunKeepsEpochWrites):                                   *)
+(*   "restorerepeat" the re-run ignores the marker and writes the tiers   *)
+(*                   unconditionally, as 02af0680 did: a tier edited or a *)
+(*                   row removed after the restore is restored again      *)
+(*   "noguard"       edits and removals land while the restore is pending *)
+(*                   and the re-run restores over them                    *)
 (***************************************************************************)
 EXTENDS Integers
 
@@ -79,13 +95,18 @@ CONSTANTS
     Carry,         \* the HomeCarry ones, carried across a clear
     OffWhenAbsent, \* the ones whose own accessor reads absent as off (the alarms)
     OneSetting,    \* the setting the "leaveone" witness leaves absent
+    Rows,          \* the members' and the readers' rows (their control cards and tiers with them)
     Broken         \* "none", or the reversed witness above
 
 States == {"READY", "RUNNING", "STOPPED"}
-Acts == {"init", "clearstop", "clearadvance", "restoremembers", "setdefaults", "settle", "crash", "olderclear",
+Acts == {"init", "clearstop", "clearadvance", "restorerow", "restoredone", "setdefaults", "settle", "crash", "olderclear",
+         "editrow", "deleterow",
          "set", "read", "start", "stop", "refused", "add", "tick"}
 Values == {"absent", "default", "away"}
 Phases == {"none", "restore", "defaults", "settle"}
+\* a row in the current epoch: not yet restored, as restored from the old epoch, edited (a
+\* reader's tiers set, a member's hold or width) or removed in this epoch
+RowStates == {"none", "old", "edited", "deleted"}
 
 VARIABLES
     run,          \* the record says RUNNING
@@ -105,14 +126,17 @@ VARIABLES
                   \* setting, in any epoch); an older binary's clear carries none and loses them
     flag,         \* the epoch the epoch record's set-defaults owed flag names; -1 is none
     phase,        \* where a clear is in its owed step; "none" when no clear is in one
-    members,      \* the current epoch holds the fleet's members and the readers
+    rows,         \* each row of the members and the readers in the current epoch
+    written,      \* ghost: each row's last write in the current epoch by a verb ("none": none)
+    restored,     \* the restore's marker in the current epoch (members_restored)
+    pending,      \* the rows the running restore has still to write
     older,        \* the current epoch was made by an older binary's clear
     markedCur,    \* ghost: SetDefaults ran in the current epoch (where 14caa8b3 wrote its
                   \* marker, defaults_set)
     markedBefore  \* ghost: an earlier epoch holds it
 
 vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, settings, setIn, lastRead, src, choice,
-          flag, phase, members, older, markedCur, markedBefore>>
+          flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* the derived state (Machine.Ready, MachineLine)
 ShownOf(r, s, e) == IF r THEN "RUNNING" ELSE IF s # e THEN "READY" ELSE "STOPPED"
@@ -146,7 +170,10 @@ TypeOK ==
     /\ choice \in [Carry -> Values]
     /\ flag \in -1..MaxEpoch
     /\ phase \in Phases
-    /\ members \in BOOLEAN
+    /\ rows \in [Rows -> RowStates]
+    /\ written \in [Rows -> {"none", "edited", "deleted"}]
+    /\ restored \in BOOLEAN
+    /\ pending \subseteq Rows
     /\ older \in BOOLEAN
     /\ markedCur \in BOOLEAN
     /\ markedBefore \in BOOLEAN
@@ -168,7 +195,10 @@ Init ==
     /\ choice = [c \in Carry |-> "absent"]
     /\ flag = -1
     /\ phase = "none"
-    /\ members = TRUE
+    /\ rows = [r \in Rows |-> "old"]
+    /\ written = [r \in Rows |-> "none"]
+    /\ restored = FALSE
+    /\ pending = {}
     /\ older = FALSE
     /\ markedCur = FALSE
     /\ markedBefore = FALSE
@@ -190,11 +220,15 @@ ClearStop ==
     /\ last' = "clearstop"
     /\ IF OwedRead /\ Broken # "rerunadvance"
        THEN /\ clearing' = FALSE
-            /\ phase' = IF Broken = "restoreskip" THEN "defaults" ELSE "restore"
+            /\ phase' = IF Broken = "restoreskip" THEN "defaults"
+                         ELSE IF restored /\ Broken # "restorerepeat" THEN "defaults"
+                         ELSE "restore"
+            /\ pending' = Rows
        ELSE /\ epoch < MaxEpoch
             /\ clearing' = TRUE
             /\ phase' = phase
-    /\ UNCHANGED <<epoch, ran, due, judged, settings, setIn, lastRead, src, choice, flag, members, older, markedCur, markedBefore>>
+            /\ pending' = pending
+    /\ UNCHANGED <<epoch, ran, due, judged, settings, setIn, lastRead, src, choice, flag, rows, written, restored, older, markedCur, markedBefore>>
 
 \* clear's second step (clear.go AdvanceEpoch): the new epoch has no work, no setting
 \* (settings being epoch keyed) and no members until restored; the same write flags it
@@ -215,21 +249,66 @@ ClearAdvance ==
     /\ setIn' = {}
     /\ flag' = epoch + 1
     /\ phase' = "restore"
-    /\ members' = FALSE
+    /\ rows' = [r \in Rows |-> "none"]
+    /\ written' = [r \in Rows |-> "none"]
+    /\ restored' = FALSE
+    /\ pending' = Rows
     /\ older' = FALSE
     /\ markedBefore' = (markedBefore \/ markedCur)
     /\ markedCur' = FALSE
     /\ UNCHANGED <<run, lastRead, choice>>
 
-\* the owed step's first part (clear.go restoreMembers): the members and the readers of the
-\* epoch the advance left, written where absent (idempotent)
-RestoreMembers ==
+\* a row as the restore leaves it (clear.go restoreMembers): RowsAdd adds a row the epoch
+\* lacks, so a removed row comes back; a reader's tiers are written only where the epoch
+\* holds none, so an edit stays; "restorerepeat" writes the tiers unconditionally
+RestoredRow(v) == IF v = "edited" /\ Broken # "restorerepeat" THEN "edited" ELSE "old"
+
+\* the owed step's first part (clear.go restoreMembers), one row at a time
+RestoreRow ==
     /\ phase = "restore"
-    /\ members' = TRUE
+    /\ \E r \in pending :
+        /\ rows' = [rows EXCEPT ![r] = RestoredRow(rows[r])]
+        /\ pending' = pending \ {r}
+    /\ prev' = Shown
+    /\ last' = "restorerow"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, written, restored, older, markedCur, markedBefore>>
+
+\* the restore's last write (clear.go restoreMembers, the RestoreShape step): the members'
+\* control cards and the marker in one store write
+RestoreDone ==
+    /\ phase = "restore"
+    /\ pending = {}
+    /\ restored' = TRUE
     /\ phase' = "defaults"
     /\ prev' = Shown
-    /\ last' = "restoremembers"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, older, markedCur, markedBefore>>
+    /\ last' = "restoredone"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, rows, written, pending, older, markedCur, markedBefore>>
+
+\* the restore is pending: the flag names the epoch and its marker is absent
+RestorePending == Owed /\ ~restored
+
+\* a verb edits a row of the epoch (set --tiers, a hold, a width): refused while the restore
+\* is pending (store.ErrRestorePending); "noguard" lets it land
+EditRow ==
+    /\ ~RestorePending \/ Broken = "noguard"
+    /\ \E r \in Rows :
+        /\ rows[r] \in {"old", "edited"}
+        /\ rows' = [rows EXCEPT ![r] = "edited"]
+        /\ written' = [written EXCEPT ![r] = "edited"]
+    /\ prev' = Shown
+    /\ last' = "editrow"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, restored, pending, older, markedCur, markedBefore>>
+
+\* a verb removes a row of the epoch (reader remove, the sync's drop of a member)
+DeleteRow ==
+    /\ ~RestorePending \/ Broken = "noguard"
+    /\ \E r \in Rows :
+        /\ rows[r] \in {"old", "edited"}
+        /\ rows' = [rows EXCEPT ![r] = "deleted"]
+        /\ written' = [written EXCEPT ![r] = "deleted"]
+    /\ prev' = Shown
+    /\ last' = "deleterow"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, restored, pending, older, markedCur, markedBefore>>
 
 \* the owed step's second part (clear.go setDefaults, sprint.SetDefaults): each setting still
 \* absent gets a carry value from src or its default; one the epoch holds is kept.
@@ -246,7 +325,7 @@ SetDefaults ==
     /\ markedCur' = TRUE
     /\ prev' = Shown
     /\ last' = "setdefaults"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, setIn, lastRead, src, choice, flag, members, older, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, setIn, lastRead, src, choice, flag, rows, written, restored, pending, older, markedBefore>>
 
 \* the owed step's last write (clear.go owedStep, SettleDefaults): the flag is cleared, only
 \* after both parts ran, and only while it names this epoch
@@ -256,7 +335,7 @@ SettleDefaults ==
     /\ phase' = "none"
     /\ prev' = Shown
     /\ last' = "settle"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* the clear stops anywhere: between its stop and its advance, or anywhere in its owed step
 Crash ==
@@ -265,7 +344,7 @@ Crash ==
     /\ phase' = "none"
     /\ prev' = Shown
     /\ last' = "crash"
-    /\ UNCHANGED <<run, stamp, epoch, ran, due, judged, settings, setIn, lastRead, src, choice, flag, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, ran, due, judged, settings, setIn, lastRead, src, choice, flag, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* an older binary's clear (v1.2.16): it stops the machine, advances and restores the
 \* members, writing no flag and no defaults; a flag left naming the epoch it leaves stays
@@ -284,12 +363,14 @@ OlderClear ==
     /\ last' = "olderclear"
     /\ settings' = [s \in Settings |-> "absent"]
     /\ setIn' = {}
-    /\ members' = TRUE
+    /\ rows' = [r \in Rows |-> "old"]
+    /\ written' = [r \in Rows |-> "none"]
+    /\ restored' = FALSE
     /\ older' = TRUE
     /\ markedBefore' = (markedBefore \/ markedCur)
     /\ markedCur' = FALSE
     /\ choice' = [c \in Carry |-> "absent"]
-    /\ UNCHANGED <<clearing, lastRead, src, flag, phase>>
+    /\ UNCHANGED <<clearing, lastRead, src, flag, phase, pending>>
 
 \* the coordinator's set (sprint.Set): one setting away from its default, at any time,
 \* between a clear's advance and its step included
@@ -300,7 +381,7 @@ Set ==
         /\ choice' = IF s \in Carry THEN [choice EXCEPT ![s] = "away"] ELSE choice
     /\ prev' = Shown
     /\ last' = "set"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, lastRead, src, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, lastRead, src, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* the value a reader reads: the stored one, else by the code's rule (clearedDefault): a
 \* cleared epoch's default; the first epoch's accessor's own (off for an alarm).
@@ -318,7 +399,7 @@ Read ==
                    ELSE "working"
     /\ prev' = Shown
     /\ last' = "read"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
 \* it reads; it may land between ClearStop and ClearAdvance, or after a crashed clear
@@ -330,7 +411,7 @@ Start ==
     /\ judged' = FALSE
     /\ prev' = Shown
     /\ last' = "start"
-    /\ UNCHANGED <<epoch, clearing, due, settings, setIn, lastRead, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<epoch, clearing, due, settings, setIn, lastRead, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* stop by hand (store.StopUntil), and the tick's done and funds stops
 \* (stopWithCause): RUNNING to STOPPED
@@ -341,7 +422,7 @@ Stop ==
     /\ stamp' = IF run THEN StopStamp ELSE epoch
     /\ prev' = Shown
     /\ last' = "stop"
-    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* a stop of a READY machine is refused and changes nothing
 \* (machine_transition.go machineRecord, store.ErrNothingToStop)
@@ -350,14 +431,14 @@ StopRefused ==
     /\ Shown = "READY"
     /\ prev' = Shown
     /\ last' = "refused"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, setIn, lastRead, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* work added (add): moves are due
 AddWork ==
     /\ due' = TRUE
     /\ prev' = Shown
     /\ last' = "add"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings, setIn, lastRead, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings, setIn, lastRead, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
 \* a tick: a RUNNING machine moves what is due; every tick's read computes the
 \* machine judgment (machineGroups)
@@ -366,10 +447,10 @@ Tick ==
     /\ judged' = (due' /\ (Shown = "STOPPED" \/ (Broken = "readyjudges" /\ Shown = "READY")))
     /\ prev' = Shown
     /\ last' = "tick"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings, setIn, lastRead, src, choice, flag, phase, members, older, markedCur, markedBefore>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings, setIn, lastRead, src, choice, flag, phase, rows, written, restored, pending, older, markedCur, markedBefore>>
 
-Next == ClearStop \/ ClearAdvance \/ RestoreMembers \/ SetDefaults \/ SettleDefaults \/ Crash \/ OlderClear
-        \/ Set \/ Read \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
+Next == ClearStop \/ ClearAdvance \/ RestoreRow \/ RestoreDone \/ SetDefaults \/ SettleDefaults \/ Crash \/ OlderClear
+        \/ EditRow \/ DeleteRow \/ Set \/ Read \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
 
 Spec == Init /\ [][Next]_vars
 
@@ -416,8 +497,12 @@ ReadersSeeWorking == lastRead # "off"
 FinishOnlyWhatIsOwed == (last = "clearstop" /\ phase # "none") => Owed
 
 \* the flag is cleared only once the members and the readers are restored: an epoch a clear
-\* made and no longer owes holds them
-MembersRestored == ~Owed => members
+\* made and no longer owes holds every row (as restored, edited or removed since)
+MembersRestored == ~Owed => \A r \in Rows : rows[r] # "none"
+
+\* a clear run again never changes a row the epoch wrote: a reader's tiers set, a row removed
+\* after the crash stay as the epoch left them
+RerunKeepsEpochWrites == \A r \in Rows : written[r] # "none" => rows[r] = written[r]
 
 \* epoch 0 is never owed
 EpochZeroNeverOwed == epoch = 0 => ~Owed

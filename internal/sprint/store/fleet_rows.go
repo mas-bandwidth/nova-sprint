@@ -101,6 +101,10 @@ func (st *Store) putDropDebt(ctx context.Context, debt []string) error {
 // sync. A machine still beating after its row is gone is a stranger the tick
 // names. It is the members whose rows it deleted.
 func (st *Store) DropMembers(ctx context.Context, keep []string) ([]string, error) {
+	// never while the epoch's restore is pending: the restore would bring a row back
+	if err := st.RefuseRestorePending(ctx, "the drop of the fleet rows"); err != nil {
+		return nil, err
+	}
 	off := func(s *sprint.Snapshot) []string {
 		var out []string
 		for _, m := range s.Members() {
@@ -319,6 +323,9 @@ func ctlIDs(members []string) []string {
 // machine with no reader row is left; a reader named for no machine is never
 // named here.
 func (st *Store) DropReadersRetired(ctx context.Context, members []string) error {
+	if err := st.RefuseRestorePending(ctx, "the retire of the reader rows"); err != nil {
+		return err
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil || len(rows) == 0 {
 		return err

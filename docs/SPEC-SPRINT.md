@@ -7773,7 +7773,8 @@ row a name, a home and a value:
 - `carry`, a work-table property that is the coordinator's choice, carried across
   the clear: the threshold alarms alarm_review, alarm_merging and alarm_fleet (at
   their working thresholds 120, 60 and 50 when never set), sprint_base (no default:
-  start refuses without one, naming `set --base`) and twin_briefs;
+  start WARNs without one, naming `set --base`, and never refuses, since a sprint that
+  lands on main or dev records none) and twin_briefs;
 - `bar`, a field of nova-config's sprint row, at the default nova-config declares;
 - `shape`, what restoreMembers carries.
 
@@ -7797,7 +7798,18 @@ carrying from the epoch the advance left, and advances nothing (`CLEAR OK ...
 owed-finished=members:<n>,readers:<n>,defaults`; `--json`: `owed`, `owed_finished`),
 so a crash never loses the members, the readers or the coordinator's carried settings.
 An epoch without the flag (an older binary's clear, a fresh init, epoch 0) is never
-owed: its clear advances.
+owed: its clear advances. The restore runs at most once per owed step: its last write,
+the members' control cards, carries the epoch's marker (the fleet table's
+`members_restored` property) in the same store write, and a clear run again finds it and
+restores nothing. So the step's phase is read off two records: the flag with no marker
+is restore pending, the flag with the marker is defaults pending, no flag is settled.
+While the restore is pending, no verb changes a member's or a reader's row (reader add,
+reader remove, `set --tiers`, fleet sync, the tick's retire, start; they refuse naming
+`clear`), and the restore writes a reader's tiers only where the epoch holds none, so a
+clear run again never changes a row, a tier or a control card the new epoch wrote. `clear`
+reports a reset (`CLEAR DEFAULT`) only for a setting it wrote; a setting the new epoch
+already held away from its default is kept and named on a `CLEAR KEPT <name> kept at
+<v>, set in the new epoch` line (`--json`: `kept`).
 A reader of a cleared epoch before its step (a start that
 landed inside the clear, or a clear that stopped before its step) reads each absent
 setting as its default, the alarms included. The first epoch, which init leaves
@@ -7817,9 +7829,10 @@ Shape (TestEverySettingHasADeclaredDefault), and every Bars field and sprint-row
 field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The model
 is tla/ClearDefaults.tla (ClearAdvance's flag, RestoreMembers, SetDefaults,
 SettleDefaults, Crash, OlderClear, Set, Read; DefaultsAfterClear, SetSurvives,
-CarrySurvives, NeverAbsent, ReadersSeeWorking, FinishOnlyWhatIsOwed, MembersRestored;
-witnesses leaveone, carryadvance, overwrite, nofallback, rerunadvance, markerinfer
-and restoreskip).
+CarrySurvives, NeverAbsent, ReadersSeeWorking, FinishOnlyWhatIsOwed, MembersRestored,
+RerunKeepsEpochWrites; RestoreRow, RestoreDone, EditRow and DeleteRow per row; witnesses
+leaveone, carryadvance, overwrite, nofallback, rerunadvance, markerinfer, restoreskip,
+restorerepeat and noguard).
 
 
 <a id="14-the-machine"></a>

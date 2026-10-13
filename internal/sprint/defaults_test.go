@@ -157,7 +157,8 @@ func TestSetDefaultsWritesOnlyWhatIsAbsent(t *testing.T) {
 	// an empty new epoch, an old epoch with read cards off, an alarm set and a base
 	s := &Snapshot{Work: NewTable(Work)}
 	old := map[string]string{PropReadCards: SwitchOff, PropFleet: SwitchOn, PropAlarmReview: "3", PropAlarmReady: SwitchOff, PropSprintBase: "sprint/v9"}
-	p, resets := SetDefaults(s, old)
+	p, resets, kept := SetDefaults(s, old)
+	assert.Empty(t, kept, "an empty new epoch keeps nothing")
 	require.Len(t, p.Props, nRows+1, "every row written into an empty epoch, and the base carried; no marker (the owed flag is the epoch record's)")
 	assert.ElementsMatch(t, []string{"read_cards was off, now on", "alarm_ready was off, now on"}, resets, "only a HomeProp value away from its default is a reset")
 	got := map[string]string{}
@@ -175,15 +176,20 @@ func TestSetDefaultsWritesOnlyWhatIsAbsent(t *testing.T) {
 	}
 
 	// no base in the old epoch: the base stays absent (start refuses, naming set --base)
-	p, _ = SetDefaults(&Snapshot{Work: NewTable(Work)}, nil)
+	p, _, _ = SetDefaults(&Snapshot{Work: NewTable(Work)}, nil)
 	for _, pw := range p.Props {
 		assert.NotEqual(t, PropSprintBase, pw.Name, "no default base is invented")
 	}
 
 	// a set that landed in the new epoch before the step: never overwritten
 	s.Work.SetProps(map[string]string{PropReadCards: SwitchOff, PropAlarmReview: "7"})
-	p, _ = SetDefaults(s, old)
+	p, resets, kept = SetDefaults(s, old)
 	assert.Len(t, p.Props, nRows+1-2, "the two properties the new epoch holds are not written")
+	// the cold read of #190 at 02af0680, finding 4: read_cards was off in the old epoch and is
+	// off again in the new one: nothing is written, so no reset says "now on"; the choice is kept
+	assert.NotContains(t, resets, "read_cards was off, now on", "a reset is named only for a write the step makes")
+	assert.Contains(t, resets, "alarm_ready was off, now on", "a reset the step writes is named")
+	assert.Equal(t, []string{"read_cards kept at off, set in the new epoch"}, kept, "the new epoch's own choice is named as kept")
 	for _, pw := range p.Props {
 		assert.NotContains(t, []string{PropReadCards, PropAlarmReview}, pw.Name, "%s written over the new epoch's own set", pw.Name)
 	}

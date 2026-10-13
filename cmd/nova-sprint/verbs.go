@@ -3612,6 +3612,10 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 			tiersSet = true
 		}
 	}
+	if err := st.RefuseRestorePending(ctx, "reader add"); err != nil {
+		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
+		return 1
+	}
 	if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), names); err != nil {
 		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
@@ -3699,15 +3703,10 @@ func readerTiersArg(verbName string, fs *flag.FlagSet, raw string, required bool
 	return stored, true, 0
 }
 
-// writeReaderTiers sets the tiers cell on each named row. "" is every tier.
+// writeReaderTiers sets the tiers cell on each named row. "" is every tier. It is refused
+// while the epoch's restore is pending (store.SetReaderTiers, ErrRestorePending).
 func writeReaderTiers(ctx context.Context, st *store.Store, names []string, tiers string) error {
-	table := st.Names.Table(sprint.Readers)
-	for _, n := range names {
-		if err := st.B.RowSet(ctx, table, n, map[string]string{sprint.ReaderTiers: tiers}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return st.SetReaderTiers(ctx, names, tiers)
 }
 
 // readerNames are the readers a reader verb names: at least one, each a name
@@ -3815,13 +3814,10 @@ func (a *app) cmdReaderRemove(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s reader remove: %s; nothing was changed; a read moves on (read --as <reader>), is sent to another reader (ask --another), or leaves with its primary (rework, drop)\n", prog, oneline.Escape(strings.Join(holds, "; ")))
 		return 1
 	}
-	if err := st.B.RowsDel(ctx, st.Names.Table(sprint.Readers), names); err != nil {
+	// the rows go, then their beats and holds (store.RemoveReaders); refused while the
+	// epoch's restore is pending
+	if err := st.RemoveReaders(ctx, names); err != nil {
 		fmt.Fprintf(stderr, "%s reader remove: %s\n", prog, oneline.Escape(err.Error()))
-		return 1
-	}
-	// the rows are gone: their beats and holds go with them
-	if err := st.ForgetReaders(ctx, names); err != nil {
-		fmt.Fprintf(stderr, "%s reader remove: the rows were removed, their records were not: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
 	sayOK(stdout, c.json, "reader remove", "READER-REMOVE OK readers="+strings.Join(names, ","), map[string]any{"readers": names})
@@ -4365,13 +4361,17 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 			heldN[strings.ReplaceAll(k, " ", "_")] = v
 		}
 		sayOK(stdout, true, "clear", "", map[string]any{"from": res.From, "to": res.To, "at": res.At.UTC().Format(time.RFC3339), "held": heldN,
-			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults, "owed": res.Owed, "owed_finished": res.OwedFinished})
+			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults, "kept": res.Kept, "owed": res.Owed, "owed_finished": res.OwedFinished})
 		return 0
 	}
 	fmt.Fprintf(stdout, "CLEAR OK epoch=%d->%d at=%s held: %s%s\n", res.From, res.To, res.At.UTC().Format(time.RFC3339), strings.Join(held, " "), extra)
 	// each setting the old epoch held away from its working default, reset (sprint.Defaults)
 	for _, d := range res.Defaults {
 		fmt.Fprintln(stdout, "CLEAR DEFAULT "+oneline.Escape(d))
+	}
+	// each setting the new epoch held already: written by no one here, so no reset
+	for _, k := range res.Kept {
+		fmt.Fprintln(stdout, "CLEAR KEPT "+oneline.Escape(k))
 	}
 	if line != "" {
 		fmt.Fprintln(stdout, line)
