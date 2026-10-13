@@ -1,0 +1,110 @@
+# Automatic sentinel release
+
+`SentinelRelease` models the P8 automatic-release contract at a bounded cut:
+zero or two required producer streams, one sentinel, and two successive deals from a
+consumer stream. Each producer has at most two head revisions. It complements
+`Holds`; it is not a composition/refinement proof of that older model's manual
+and cut-sentinel transitions or of the entire sprint scheduler.
+
+## Release and proof boundary
+
+A producer landing and its stream head entering the actual remote development
+branch are different events. `MergeProducer` puts a stream-qualified head in
+`remoteDev`; `ObserveDev` reads that remote snapshot. `Probe` records ancestry
+for the exact producer/head and proof scope. `NewHead` and `ChangeScope` retain
+old probe results, so the release consumer must reject stale evidence itself.
+The scope counter abstracts invalidation by a needs/row/epoch revision. It does
+not model clear, graph editing, authentication, or Git commit parsing.
+
+`AutoRelease` requires every producer landed or dropped, and a current proof for every
+non-dropped producer's head. It commits the release with its notification and the observed
+development revision. The release snapshot is immutable history: a later
+remote advance cannot rewrite what authorized that release. There is no
+coordinator response, sentinel hold, manual-gate flag, or cancel window in this
+path. A second producer stream cannot borrow the first stream's proof.
+
+`EarlyRelease` is a separate, explicitly authorized override. It can release
+while work is still in flight or dropped, and is recorded as early. Automatic
+release's landed-and-ancestry invariant does not falsely claim to cover this
+intentional exception. No fairness premise schedules the override.
+
+A dropped producer counts as complete by explicit waiver and contributes no
+head. Dropping one producer never waives another producer's proof. An all-dropped
+cut is reachable and releases with no required producer heads. A separate empty
+instance releases immediately. Its notification says no producers; an all-dropped
+cut says all producers dropped. Neither invents a producing merge revision.
+The abstract name `dev` denotes each stream's recorded protected
+integration target (`main` or `dev`). A freshly fetched ancestry proof is enough;
+no forge pull-request API evidence is assumed.
+
+## Consumer refresh and the distributed boundary
+
+`MergeConsumer` means a successful merge/push of the observed development
+snapshot into the consumer branch, with a receipt for its next deal. A failed
+or conflicting merge cannot write a success receipt. `Deal` consumes that
+receipt once, requires the same observed snapshot, and refuses to use one
+merge for two successive deals. A newly observed development revision makes
+an older consumer receipt insufficient.
+
+Remote Git and the sprint store do not share a transaction. `remoteDev` may
+advance between a fetch and the store's deal commit, before `ObserveDev` reads
+that advance. The model deliberately permits that race. Its guarantee is a
+successful merge of the freshly observed revision, including the release's
+required heads, with current store-side proof checks. It does not assert that
+a consumer includes an unobserved remote advance at the instant of deal.
+Git history is append-only here; force pushes, history replacement, and a
+server accepting fabricated ancestry evidence are outside the abstraction.
+
+## Safety, liveness, and negative controls
+
+The control checks types, automatic landed/ancestry authorization, current
+proof scope, early-override authority, the atomic notification, successful
+consumer integration, observed-development freshness and one merge per deal.
+The automatic-only control excludes early overrides. The second control
+allows them and checks the same conditional safety rules.
+
+`StableEligibilityReleases` says that eventually stable completed producers whose
+non-dropped heads are actually in the development branch eventually release the sentinel.
+Fair scheduling of successful observation/probe and the automatic tick is
+assumed; a permanently unavailable forge is not modeled as guaranteed progress.
+`ReleasedEventuallyDeals` additionally assumes successful consumer integration
+and deal retries eventually run. These are weak-fairness premises on machine
+and integration actions, never on coordinator actions. Changes of head/scope
+and unrelated development moves are bounded; infinite moving-target histories
+are outside this finite instance.
+
+Terminal-state deadlock detection is disabled because an asynchronous server
+may wait with no state change. Temporal properties still inspect infinite
+stuttering behavior: the `manualgate` mutation must fail liveness even though
+all eligible facts hold. No elapsed-time bound is claimed.
+
+The reachability cases deliberately assert that automatic, early, all-dropped
+or empty-cut release never happens; their expected counterexamples establish those paths are not
+vacuous. Other witnesses remove exactly one guard or corrupt one outcome:
+unlanded producer, absent development ancestry, stale head, another stream's
+proof, stale scope, missing notice, a coordinator prerequisite, stale consumer
+snapshot, false success after merge failure, reuse of a prior merge, relabeling
+an early override as automatic, a worker claiming override authority, and one dropped producer wrongly waiving
+all other ancestry checks, plus an empty-cut notification falsely naming a
+producing merge.
+
+Cases and exact expected properties are in `CASES.tsv`, group
+`sentinelrelease`. Measured Linux records belong in `RUNS.tsv`; prior records
+remain in `RUNS-HISTORY.tsv`. No run is claimed until those records exist.
+
+## Measured validation
+
+The 2026-10-13 Linux run checks all 21 declared cases with one TLC worker
+and a 110-second limit per case: three controls, four reachability witnesses,
+and fourteen guard/outcome mutations. The automatic-only control explores
+27,935 distinct states; the early-enabled control explores 21,501; the empty
+control explores 68. All three pass their safety and temporal properties.
+Seventeen invariant witnesses exit 12; the manual-gate liveness witness exits
+13. These are expected failures of deliberately broken or unreachable-claim
+variants, recorded as matching results by the runner.
+
+Two earlier control attempts failed before completing validation: a Boolean
+assignment precedence error and a mixed string/tuple token representation.
+Both authentic failed receipts remain in `RUNS-HISTORY.tsv`; the corrected
+model's measured receipts are in `RUNS.tsv`. Source review alone did not catch
+those errors. The final runner freshness check reports no stale groups.
