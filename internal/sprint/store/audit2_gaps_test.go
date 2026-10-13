@@ -13,6 +13,7 @@ package store
 // while the defect is there.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -160,9 +161,15 @@ func TestAutoSentinelDoesNotDependOnAcknowledgment(t *testing.T) {
 	require.Equal(t, sprint.Landed, h.state("s1-1"), "s1-1 %s, reached %d", h.state("s1-1"), len(h.a2Open(sprint.NSentinelReached)))
 	require.Empty(t, h.a2Open(sprint.NSentinelReached), "progress does not open a coordinator gate")
 	enableTrunk()
-	h.machine()
-	h.machine()
-	h.machine()
+	consumerTrunk := h.st.ConsumerTrunk
+	h.st.ConsumerTrunk = func(ctx context.Context, s *sprint.Snapshot) []sprint.ConsumerMerge {
+		proofs := consumerTrunk(ctx, s)
+		t.Logf("actual acquired consumer receipt: card=%+v proofs=%+v", sprint.SentinelCardOf(s.Work.Card("after")), proofs)
+		return proofs
+	}
+	for i := 0; i < 3; i++ {
+		t.Logf("actual consumer tick %d: %+v", i, h.machine())
+	}
 	require.Equal(t, sprint.Landed, h.state("stop"))
 	if h.state("after") != sprint.Working {
 		s := h.snap()
