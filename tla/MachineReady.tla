@@ -58,6 +58,28 @@
 (* readersUp is the fleet's live state (a reader up for the tiers the cards  *)
 (* need): never a setting, so never in the gate; start warns on it         *)
 (* (SettingFinding.Live) and readers come up after the start.             *)
+(*                                                                         *)
+(* The card check gate (v1.2.17, start-refuses-until-a-clean-check; the    *)
+(* owner, 2026-10-13: "if you start a sprint before checking, then it will *)
+(* fail and tell you to check."): nova-sprint check cards writes one check *)
+(* record for the epoch (rec: clean or failed; recDigest: the digest of    *)
+(* the cards it checked; internal/sprint/store/check_record.go), and start *)
+(* refuses unless the record is clean and its digest equals the cards' now *)
+(* (cmd/nova-sprint/run.go startCardCheckGate). digest abstracts the       *)
+(* sha256 over every card's id, stream, tier, priority, needs and brief    *)
+(* (sprint.CardsDigest): a change (an admit, move, brief, needs, priority  *)
+(* or tier edit) moves it, and a change undone moves it back, as content   *)
+(* does. defectOf is whether the cards at each digest hold a finding of    *)
+(* the core kinds (sprint.CheckCards), fixed per epoch: the same cards     *)
+(* check the same. The record is the epoch's (recFresh): a clear leaves    *)
+(* the old epoch's record in the store, which reads it as none.            *)
+(*   "stalerecord"   start reads the record's verdict and not its digest:  *)
+(*                   a change after a clean check starts (StartOnlyChecked)*)
+(*   "failedrecord"  start takes any record of the cards now, a failed one *)
+(*                   too                              (StartOnlyChecked)   *)
+(*   "clearkeeps"    start reads another epoch's record as this epoch's:   *)
+(*                   a start with no record after a clear                  *)
+(*                                                    (StartOnlyChecked)   *)
 (***************************************************************************)
 EXTENDS Integers
 
@@ -68,8 +90,10 @@ CONSTANTS
 
 States == {"READY", "RUNNING", "STOPPED"}
 Acts == {"init", "clearstop", "clearadvance", "start", "stop", "refused", "add", "tick",
-         "write", "set", "startrefused", "readers"}
+         "write", "set", "startrefused", "readers", "check", "change", "startunchecked"}
 Writers == {"clear", "write", "set"}
+Records == {"none", "clean", "failed"}
+Digests == 0..1
 
 VARIABLES
     run,        \* the record says RUNNING
@@ -83,10 +107,17 @@ VARIABLES
     last,       \* the last action
     working,    \* each setting's value leaves the machine working (sprint.Working finds none)
     setBy,      \* who wrote each setting's value in this epoch: clear, write or set
-    readersUp   \* the fleet's live state: a reader is up for the tiers the cards need
+    readersUp,  \* the fleet's live state: a reader is up for the tiers the cards need
+    rec,        \* the check record's verdict as stored: none, clean or failed
+    recDigest,  \* the digest of the cards the stored record checked
+    recFresh,   \* the stored record is this epoch's (its Epoch field)
+    digest,     \* the digest of the cards now (sprint.CardsDigest of the live table)
+    defectOf    \* the cards at each digest hold a finding of the core kinds
 
-vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy, readersUp>>
+vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy, readersUp,
+          rec, recDigest, recFresh, digest, defectOf>>
 settings == <<working, setBy, readersUp>>
+cards == <<rec, recDigest, recFresh, digest, defectOf>>
 
 \* the gate start reads (startSettingsGate): every setting working, or its non-working
 \* value chosen by a set of this epoch (then a START WARN line, never silence)
@@ -98,6 +129,19 @@ StartGate ==
       [] Broken = "overrefuse" -> \A s \in Settings : working[s]
       [] Broken = "readersgate" -> Gate /\ readersUp
       [] OTHER                 -> Gate
+
+\* the record as the store reads it (store.CheckRecordOf): another epoch's record is none
+RecRead == IF recFresh \/ Broken = "clearkeeps" THEN rec ELSE "none"
+
+\* the card check gate start reads (startCardCheckGate): a clean record of this epoch whose
+\* digest equals the cards' now; each witness reads less
+CardGate ==
+    CASE Broken = "stalerecord"  -> RecRead = "clean"
+      [] Broken = "failedrecord" -> RecRead # "none" /\ recDigest = digest
+      [] OTHER                   -> RecRead = "clean" /\ recDigest = digest
+
+\* the truth the gate must agree with: the cards now were checked clean in this epoch
+CardsChecked == rec = "clean" /\ recFresh /\ recDigest = digest
 
 \* the derived state (Machine.Ready, MachineLine)
 ShownOf(r, s, e) == IF r THEN "RUNNING" ELSE IF s # e THEN "READY" ELSE "STOPPED"
@@ -116,6 +160,11 @@ TypeOK ==
     /\ working \in [Settings -> BOOLEAN]
     /\ setBy \in [Settings -> Writers]
     /\ readersUp \in BOOLEAN
+    /\ rec \in Records
+    /\ recDigest \in Digests
+    /\ recFresh \in BOOLEAN
+    /\ digest \in Digests
+    /\ defectOf \in [Digests -> BOOLEAN]
 
 \* the first epoch's settings are whatever init left: any value, by no set
 Init ==
@@ -131,6 +180,11 @@ Init ==
     /\ working \in [Settings -> BOOLEAN]
     /\ setBy = [s \in Settings |-> "clear"]
     /\ readersUp \in BOOLEAN
+    /\ rec = "none"
+    /\ recDigest = 0
+    /\ recFresh = FALSE
+    /\ digest = 0
+    /\ defectOf \in [Digests -> BOOLEAN]
 
 \* the stop's stamp (machine_transition.go): a stop of a RUNNING machine records the
 \* epoch it ran in; the reversed witness leaves the stamp as it was
@@ -145,7 +199,7 @@ ClearStop ==
     /\ stamp' = IF run THEN StopStamp ELSE stamp
     /\ prev' = Shown
     /\ last' = "clearstop"
-    /\ UNCHANGED <<epoch, ran, due, judged, settings>>
+    /\ UNCHANGED <<epoch, ran, due, judged, settings, cards>>
 
 \* clear's second step (clear.go AdvanceEpoch): the new epoch has no work; a start
 \* that landed after ClearStop runs on into it. The new epoch's settings are any value
@@ -164,21 +218,28 @@ ClearAdvance ==
     /\ last' = "clearadvance"
     /\ working' \in [Settings -> BOOLEAN]
     /\ setBy' = [s \in Settings |-> "clear"]
-    /\ UNCHANGED <<run, readersUp>>
+    \* the new epoch's cards: none yet, then whatever is added; the old epoch's record stays
+    \* in the store and is read as none (its Epoch is the old one)
+    /\ recFresh' = FALSE
+    /\ digest' = 0
+    /\ defectOf' \in [Digests -> BOOLEAN]
+    /\ UNCHANGED <<run, readersUp, rec, recDigest>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
 \* it reads; it may land between ClearStop and ClearAdvance. Enabled only through
-\* the settings gate (run.go startSettingsGate, before setMachine writes anything).
+\* the settings gate (run.go startSettingsGate, before setMachine writes anything) and
+\* the card check gate (run.go startCardCheckGate).
 Start ==
     /\ ~run
     /\ StartGate
+    /\ CardGate
     /\ run' = TRUE
     /\ stamp' = epoch
     /\ ran' = TRUE
     /\ judged' = FALSE
     /\ prev' = Shown
     /\ last' = "start"
-    /\ UNCHANGED <<epoch, clearing, due, settings>>
+    /\ UNCHANGED <<epoch, clearing, due, settings, cards>>
 
 \* start refused by the gate: one START REFUSED line per finding, exit 1, nothing written
 StartRefusedSettings ==
@@ -186,7 +247,35 @@ StartRefusedSettings ==
     /\ ~StartGate
     /\ prev' = Shown
     /\ last' = "startrefused"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
+
+\* start refused by the card check gate: no record of this epoch, a failed one, or a clean
+\* one whose digest is not the cards' now; exit 1, nothing written
+StartRefusedCheck ==
+    /\ ~run
+    /\ ~CardGate
+    /\ prev' = Shown
+    /\ last' = "startunchecked"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
+
+\* nova-sprint check cards: the core kinds over the cards now, and one record of this
+\* epoch written, clean or failed, whatever the machine's state (a failed run overwrites
+\* a clean one)
+Check ==
+    /\ rec' = IF defectOf[digest] THEN "failed" ELSE "clean"
+    /\ recDigest' = digest
+    /\ recFresh' = TRUE
+    /\ prev' = Shown
+    /\ last' = "check"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, digest, defectOf>>
+
+\* a change to the cards (an admit, a move, a brief, needs, priority or tier edit): the
+\* digest moves; no verb touches the record, start recomputes the digest live
+CardChange ==
+    /\ digest' \in Digests \ {digest}
+    /\ prev' = Shown
+    /\ last' = "change"
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, rec, recDigest, recFresh, defectOf>>
 
 \* a setting written by anything but set: a migration, a hand edit of the table, an
 \* older binary (the direct table write of TestStartRefusesEveryNonWorkingSettingNoSetWrote)
@@ -201,7 +290,7 @@ Write(s, v) ==
     /\ setBy' = [setBy EXCEPT ![s] = IF setBy[s] = "set" /\ v = working[s] THEN "set" ELSE "write"]
     /\ prev' = Shown
     /\ last' = "write"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp, cards>>
 
 \* nova-sprint set (the work table's change log names it): the owner's choice, working or not
 SetSetting(s, v) ==
@@ -209,7 +298,7 @@ SetSetting(s, v) ==
     /\ setBy' = [setBy EXCEPT ![s] = "set"]
     /\ prev' = Shown
     /\ last' = "set"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, readersUp, cards>>
 
 \* stop by hand (store.StopUntil), and the tick's done and funds stops
 \* (stopWithCause): RUNNING to STOPPED
@@ -220,7 +309,7 @@ Stop ==
     /\ stamp' = IF run THEN StopStamp ELSE epoch
     /\ prev' = Shown
     /\ last' = "stop"
-    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings>>
+    /\ UNCHANGED <<epoch, clearing, ran, due, judged, settings, cards>>
 
 \* a stop of a READY machine is refused and changes nothing
 \* (machine_transition.go machineRecord, store.ErrNothingToStop)
@@ -229,14 +318,14 @@ StopRefused ==
     /\ Shown = "READY"
     /\ prev' = Shown
     /\ last' = "refused"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
 
 \* work added (add): moves are due
 AddWork ==
     /\ due' = TRUE
     /\ prev' = Shown
     /\ last' = "add"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, judged, settings, cards>>
 
 \* a tick: a RUNNING machine moves what is due; every tick's read computes the
 \* machine judgment (machineGroups)
@@ -245,17 +334,18 @@ Tick ==
     /\ judged' = (due' /\ (Shown = "STOPPED" \/ (Broken = "readyjudges" /\ Shown = "READY")))
     /\ prev' = Shown
     /\ last' = "tick"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, settings, cards>>
 
 \* the fleet's live state changes: a reader comes up or goes down (the readers' beats)
 ReadersChange ==
     /\ readersUp' = ~readersUp
     /\ prev' = Shown
     /\ last' = "readers"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, working, setBy>>
+    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, working, setBy, cards>>
 
 Next == ClearStop \/ ClearAdvance \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
         \/ StartRefusedSettings
+        \/ StartRefusedCheck \/ Check \/ CardChange
         \/ ReadersChange
         \/ \E s \in Settings, v \in BOOLEAN : Write(s, v) \/ SetSetting(s, v)
 
@@ -284,7 +374,16 @@ RanIsNotReady == (ran /\ ~run) => Shown = "STOPPED"
 StartOnlyWorking == last = "start" => Gate
 
 \* the gate never over-refuses: a machine not running whose every non-working setting a
-\* set of this epoch chose may start (with its START WARN lines), whatever readers are up
-DeliberateSetStarts == (~run /\ Gate) => ENABLED Start
+\* set of this epoch chose may start (with its START WARN lines), whatever readers are up,
+\* once a clean check of the cards now is recorded
+DeliberateSetStarts == (~run /\ Gate /\ CardGate) => ENABLED Start
+
+\* the machine never becomes RUNNING over cards no clean check of this epoch matches: no
+\* record after a clear, a failed record, or a change after the clean check is refused
+\* (start-refuses-until-a-clean-check)
+StartOnlyChecked == last = "start" => CardsChecked
+
+\* a clean record that matches the cards is true of them: they hold no finding
+CleanRecordHasNoDefect == CardsChecked => ~defectOf[digest]
 
 =============================================================================

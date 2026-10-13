@@ -21,12 +21,15 @@
 \* spend; judged, the low-on-funds judgment is open; event, what the last step
 \* was (the record the rules read); redeal, the redeals spent so far: a take
 \* that ends spends one, an out-of-credit refusal on a limited route spends
-\* none (OutOfCreditSpendsNoRedeal).
+\* none (OutOfCreditSpendsNoRedeal), and neither does a provider 5xx under
+\* MaxRateReturns (fivexx: its card is returned untouched, and it still counts
+\* toward the route's rest as a transient end does; Provider5xxSpendsNoRedeal).
 \*
 \* The design, Broken = {}:
 \*   Launch     a take is launched on a serving route (in flight).
 \*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
-\*              a 5xx, a timeout at the provider, credit: a 402, auth: a 401);
+\*              a timeout at the provider, or a 5xx past MaxRateReturns,
+\*              fivexx: a 5xx returned untouched, credit: a 402, auth: a 401);
 \*              the tick that sees it rests the provider on a refusal, and the
 \*              route when its window holds After transient failures. A
 \*              no-result counts in the window and never toward a rest.
@@ -53,15 +56,32 @@
 \*   "authclock" the retired timed key rest (RouteRestFor, until 2026-10-10): the
 \*              clock ends an auth rest: AuthEndsOnlyWoken
 \*   "coordclock" the clock ends an open coordinator rest: CoordOpenEndsOnlyWoken
+\*   "fivexxspend" the take ending of BASE 65973f2b: a provider 5xx ends the take
+\*              and spends a redeal: Provider5xxSpendsNoRedeal
+\*   "unbounded" the exhausted case: a 5xx at MaxReturns is still returned
+\*              untouched: Provider5xxReturnsBounded
+\* Not modelled: an out-of-credit return on a limited route shares the card's
+\* FieldRateReturns in the code; returns here counts the 5xx returns alone, and
+\* OutOfCreditSpendsNoRedeal still claims no spend past that bound. Counts takes
+\* each fivexx as its own end; the code matches it by numbering a returned take's
+\* record by its return (route.go, returnTakeNumber), never by redeals + 1, which
+\* a return leaves unspent.
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Routes, W, After, Broken
 
-VARIABLES provRest, own, win, low, judged, event, redeal
-vars == <<provRest, own, win, low, judged, event, redeal>>
+VARIABLES provRest, own, win, low, judged, event, redeal, returns
+vars == <<provRest, own, win, low, judged, event, redeal, returns>>
 
-Kinds == {"ok", "noresult", "transient", "credit", "auth"}
-Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock", "launch", "ignored"}
+\* MaxRateReturns (internal/sprint/rate_budget.go, 5), at a small instance: the
+\* card's 5xx returns untouched before a 5xx ends its take as any provider
+\* failure does. returns is the card's FieldRateReturns as the 5xx path counts it.
+MaxReturns == 2
+
+Kinds == {"ok", "noresult", "transient", "fivexx", "credit", "auth"}
+\* fivexx is a 5xx returned untouched (returns < MaxReturns); fivexxend is a 5xx
+\* at the bound, which ends the take and spends a redeal
+Events == Kinds \cup {"fivexxend", "balance", "raise", "payment", "funded", "coord", "wake", "clock", "launch", "ignored"}
 
 \* the bounded windows of ended takes
 Ends == UNION {[1..n -> Kinds] : n \in 0..W}
@@ -80,6 +100,7 @@ TypeOK ==
     /\ judged \in BOOLEAN
     /\ event \in Events \cup {"init"}
     /\ redeal \in 0..W
+    /\ returns \in 0..MaxReturns
 
 Init ==
     /\ provRest = "none"
@@ -89,14 +110,25 @@ Init ==
     /\ judged = FALSE
     /\ event = "init"
     /\ redeal = 0
+    /\ returns = 0
 
 Resting(r) == provRest # "none" \/ own[r] # "none"
 
 \* the newest W of a window with one more end
 Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 
-\* the ends that count toward a route's own rest (RestsDue: transient only)
-Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
+\* the ends that count toward a route's own rest (RestsDue: transient only; a
+\* 5xx returned untouched still leaves its FieldProviderTake, so it counts)
+Counts(k) == k \in {"transient", "fivexx"} \/ ("noresult" \in Broken /\ k = "noresult")
+
+\* a 5xx is returned untouched while the card's returns are under MaxReturns
+\* (steps_work.go: c.Int(FieldRateReturns) < MaxRateReturns); "unbounded"
+\* reverses the bound, so a 5xx at it is still returned untouched
+Returned(k) == k = "fivexx" /\ (returns < MaxReturns \/ "unbounded" \in Broken)
+
+\* the ends that spend no redeal: an out-of-credit refusal on a limited route,
+\* and a 5xx returned untouched (rateLimitedReturned), unless reversed
+NoSpend(k) == k = "credit" \/ (Returned(k) /\ "fivexxspend" \notin Broken)
 
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
 
@@ -116,7 +148,7 @@ Launch(r) ==
     /\ win[r].flight = "none"
     /\ win' = [win EXCEPT ![r] = WithFlight(r, "after")]
     /\ event' = "launch"
-    /\ UNCHANGED <<provRest, own, low, judged, redeal>>
+    /\ UNCHANGED <<provRest, own, low, judged, redeal, returns>>
 
 \* a take on a serving route ends; the tick's rests in the same step
 TakeEnds(r, k) ==
@@ -131,8 +163,9 @@ TakeEnds(r, k) ==
                         /\ win' = [win EXCEPT ![r] = [ends |-> << >>, flight |-> win[r].flight]]
                    ELSE /\ own' = own
                         /\ win' = [win EXCEPT ![r] = [ends |-> w, flight |-> win[r].flight]]
-    /\ event' = k
-    /\ redeal' = IF k = "credit" THEN redeal ELSE IF redeal < W THEN redeal + 1 ELSE redeal
+    /\ event' = IF k = "fivexx" /\ ~Returned(k) THEN "fivexxend" ELSE k
+    /\ redeal' = IF NoSpend(k) THEN redeal ELSE IF redeal < W THEN redeal + 1 ELSE redeal
+    /\ returns' = IF Returned(k) /\ returns < MaxReturns THEN returns + 1 ELSE returns
     /\ UNCHANGED <<low, judged>>
 
 \* a take in flight ends refused: one launched after the last rest's mark rests
@@ -150,14 +183,14 @@ Refuse(r, cause) ==
               /\ win' = [win EXCEPT ![r] = WithFlight(r, "none")]
               /\ event' = "ignored"
               /\ redeal' = redeal
-    /\ UNCHANGED <<own, low, judged>>
+    /\ UNCHANGED <<own, low, judged, returns>>
 
 \* the poll reads the balance: it writes no rest
 Balance(l) ==
     /\ low' = l
     /\ provRest' = IF "balance" \in Broken /\ l /\ provRest = "none" THEN "balance" ELSE provRest
     /\ event' = "balance"
-    /\ UNCHANGED <<own, win, judged, redeal>>
+    /\ UNCHANGED <<own, win, judged, redeal, returns>>
 
 \* the tick holds the low-on-funds judgment open exactly while the balance is low
 Raise ==
@@ -165,14 +198,14 @@ Raise ==
     /\ judged # low
     /\ judged' = low
     /\ event' = "raise"
-    /\ UNCHANGED <<provRest, own, win, low, redeal>>
+    /\ UNCHANGED <<provRest, own, win, low, redeal, returns>>
 
 \* a payment the poll sees, or funded: a credit rest ends
 Pay(e) ==
     /\ provRest = "credit"
     /\ provRest' = "none"
     /\ event' = e
-    /\ UNCHANGED <<own, win, low, judged, redeal>>
+    /\ UNCHANGED <<own, win, low, judged, redeal, returns>>
 
 \* the coordinator rests the provider, timed or open (routes rest, --until or not)
 RestProvider ==
@@ -180,28 +213,28 @@ RestProvider ==
     /\ provRest' = "coord"
     /\ win' = [r \in Routes |-> [ends |-> << >>, flight |-> IF win[r].flight = "after" THEN "before" ELSE win[r].flight]]
     /\ event' = "coord"
-    /\ UNCHANGED <<own, low, judged, redeal>>
+    /\ UNCHANGED <<own, low, judged, redeal, returns>>
 
 RestProviderOpen ==
     /\ provRest = "none"
     /\ provRest' = "coordopen"
     /\ win' = [r \in Routes |-> [ends |-> << >>, flight |-> IF win[r].flight = "after" THEN "before" ELSE win[r].flight]]
     /\ event' = "coord"
-    /\ UNCHANGED <<own, low, judged, redeal>>
+    /\ UNCHANGED <<own, low, judged, redeal, returns>>
 
 RestRoute(r) ==
     /\ own[r] = "none"
     /\ own' = [own EXCEPT ![r] = "coord"]
     /\ win' = [win EXCEPT ![r] = [ends |-> << >>, flight |-> win[r].flight]]
     /\ event' = "coord"
-    /\ UNCHANGED <<provRest, low, judged, redeal>>
+    /\ UNCHANGED <<provRest, low, judged, redeal, returns>>
 
 RestRouteOpen(r) ==
     /\ own[r] = "none"
     /\ own' = [own EXCEPT ![r] = "coordopen"]
     /\ win' = [win EXCEPT ![r] = [ends |-> << >>, flight |-> win[r].flight]]
     /\ event' = "coord"
-    /\ UNCHANGED <<provRest, low, judged, redeal>>
+    /\ UNCHANGED <<provRest, low, judged, redeal, returns>>
 
 \* the coordinator wakes the provider (its rest, any cause, and its routes' own),
 \* or one route's own while its provider serves
@@ -210,14 +243,14 @@ WakeProvider ==
     /\ provRest' = "none"
     /\ own' = [r \in Routes |-> "none"]
     /\ event' = "wake"
-    /\ UNCHANGED <<win, low, judged, redeal>>
+    /\ UNCHANGED <<win, low, judged, redeal, returns>>
 
 WakeRoute(r) ==
     /\ provRest = "none"
     /\ own[r] # "none"
     /\ own' = [own EXCEPT ![r] = "none"]
     /\ event' = "wake"
-    /\ UNCHANGED <<provRest, win, low, judged, redeal>>
+    /\ UNCHANGED <<provRest, win, low, judged, redeal, returns>>
 
 \* the clock ends a timed rest; a credit rest has none, and an open
 \* coordinator rest ends only when woken
@@ -225,14 +258,14 @@ ExpireRoute(r) ==
     /\ own[r] \in {"provider", "coord"}
     /\ own' = [own EXCEPT ![r] = "none"]
     /\ event' = "clock"
-    /\ UNCHANGED <<provRest, win, low, judged, redeal>>
+    /\ UNCHANGED <<provRest, win, low, judged, redeal, returns>>
 
 ExpireProvider ==
     /\ provRest \in (IF "authclock" \in Broken THEN {"auth", "coord"} ELSE {"coord"})
                   \cup (IF "coordclock" \in Broken THEN {"coordopen"} ELSE {})
     /\ provRest' = "none"
     /\ event' = "clock"
-    /\ UNCHANGED <<own, win, low, judged, redeal>>
+    /\ UNCHANGED <<own, win, low, judged, redeal, returns>>
 
 Next ==
     \/ \E r \in Routes, k \in Kinds : TakeEnds(r, k)
@@ -257,7 +290,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Raise)
 \* a serving route begins to rest only on a provider-typed failure or the
 \* coordinator's word: never a no-result, never a balance read
 RestOnlyByProviderOrCoordinator ==
-    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "credit", "auth", "coord"}]_vars
+    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "fivexx", "fivexxend", "credit", "auth", "coord"}]_vars
 
 \* a provider's credit rest ends only on a payment seen, funded, or the
 \* coordinator's wake: never by the clock
@@ -288,5 +321,24 @@ LowIsRaised == [](low => <>(judged \/ ~low))
 \* ended take spends one (TakeEnds), so the property is not vacuous.
 OutOfCreditSpendsNoRedeal ==
     [][event' = "credit" => redeal' = redeal]_vars
+
+\* a provider 5xx under MaxReturns (a fivexx event: the eligible returns only)
+\* spends no redeal: its card is returned untouched (steps_work.go,
+\* rateLimitedReturned with label "provider 5xx"), while Counts still counts it
+\* toward the route's rest. The reversed witness "fivexxspend" is the take ending
+\* of BASE, which spends one.
+Provider5xxSpendsNoRedeal ==
+    [][event' = "fivexx" => redeal' = redeal]_vars
+
+\* the returns are bounded: a 5xx is returned untouched only under MaxReturns,
+\* and each return counts one. The reversed witness "unbounded" returns a 5xx
+\* at the bound untouched.
+Provider5xxReturnsBounded ==
+    [][event' = "fivexx" => (returns < MaxReturns /\ returns' = returns + 1)]_vars
+
+\* past the bound a 5xx ends the take as any provider failure does (takeEnded):
+\* it comes only at the bound and spends a redeal (redeal saturates at W)
+Provider5xxPastBoundEndsTheTake ==
+    [][event' = "fivexxend" => (returns = MaxReturns /\ (redeal' = redeal + 1 \/ redeal = W))]_vars
 
 =============================================================================

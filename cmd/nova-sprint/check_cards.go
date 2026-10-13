@@ -1,0 +1,194 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+)
+
+// nova-sprint check cards: the core pre-start card check (v1.2.17,
+// start-refuses-until-a-clean-check; the owner, 2026-10-13: "OK so all the card checks we do
+// now, should be a new verb 'nova-sprint check'", and "if you start a sprint before checking,
+// then it will fail and tell you to check."). It reads the epoch's work table and its streams,
+// runs the core kinds (sprint.CheckCards), prints one line a finding, and writes the epoch's
+// check record (store.PutCardCheck), which start reads (startCardCheckGate). The check verb
+// beside it (cmdCheck) is the store's invariants and is unchanged. docs/SPEC-SPRINT.md section
+// 14, "The card check"; tla/MachineReady.tla Check.
+func init() {
+	verbClasses["check cards"] = classCoordinator
+}
+
+// checkCardsOut is check cards' --json object.
+type checkCardsOut struct {
+	Clean    bool                 `json:"clean"`
+	Cards    int                  `json:"cards"`
+	Kinds    string               `json:"kinds,omitempty"`
+	Streams  []string             `json:"streams,omitempty"`
+	Findings []sprint.CardFinding `json:"findings"`
+	Digest   string               `json:"digest"`
+	Epoch    uint64               `json:"epoch"`
+}
+
+func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
+	const name = "check cards"
+	fs, c := a.verbSetup(name)
+	var streams listFlag
+	fs.Var(&streams, "stream", "check only this stream (again, or comma separated, for more); a check so limited writes a record start does not take: start wants every card checked")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	if len(pos) > 0 {
+		return refuse(stderr, name, "takes no words, found "+pos[0])
+	}
+	st, err := a.store(*c)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	ctx := context.Background()
+	// the work table's cards and the records their needs name (a dropped card is kept, not
+	// placed), and the merge table's control cards of the streams
+	snap, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, checkNeedsExtras)
+	if err != nil {
+		return a.readFailed(name, err, stderr)
+	}
+	rs, code := a.briefRules(name, "", c, &st, stderr)
+	if code != 0 {
+		return code
+	}
+	in := sprint.CardCheckIn{Streams: streams, MaxBriefBytes: store.MaxBriefBytes, Trees: map[sprint.CardTreeKey]sprint.AdmissionTree{},
+		Lint: func(brief string) []string { return cardLint(brief, rs) }}
+	for _, cb := range sprint.CardBasesToRead(snap, streams) {
+		in.Trees[sprint.CardTreeKey{Repo: cb.Named, Base: cb.Ref}] = a.cardTree(ctx, cb)
+	}
+	findings := sprint.CheckCards(snap, in)
+	cards := sprint.CheckedCardsOf(snap)
+	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(findings) == 0, Streams: streams,
+		Kinds: sprint.CardCheckKinds(findings), Cards: cards, Digest: sprint.CardsDigest(cards)}
+	for _, f := range findings {
+		rec.Findings = append(rec.Findings, f.Line())
+	}
+	// every run writes the record, a failed one over a clean one (tla/MachineReady.tla Check)
+	if rec, err = st.PutCardCheck(ctx, rec); err != nil {
+		return a.readFailed(name, err, stderr)
+	}
+	a.outcome, a.changed = "done", "yes"
+	if c.json {
+		o := checkCardsOut{Clean: rec.Clean, Cards: len(cards), Kinds: rec.Kinds, Streams: rec.Streams, Findings: findings, Digest: rec.Digest, Epoch: rec.Epoch}
+		if o.Findings == nil {
+			o.Findings = []sprint.CardFinding{}
+		}
+		b, _ := json.Marshal(o) // ignored: strings, ints and slices of them always encode
+		fmt.Fprintln(stdout, string(b))
+	} else {
+		for _, f := range findings {
+			fmt.Fprintln(stdout, oneline.Escape(f.Line()))
+		}
+		if rec.Clean {
+			fmt.Fprintf(stdout, "CHECK CARDS OK cards=%d\n", len(cards))
+		} else {
+			fmt.Fprintf(stdout, "CHECK CARDS FAILED kinds=%s\n", rec.Kinds)
+		}
+	}
+	if !rec.Clean {
+		return 1
+	}
+	return 0
+}
+
+// checkNeedsExtras loads the record of every need the placed cards name, placed or kept: a need
+// naming a dropped card is told from one naming no card.
+func checkNeedsExtras(s *sprint.Snapshot) map[string][]string {
+	var ids []string
+	for _, c := range s.Work.Cards() {
+		ids = append(ids, sprint.Split(c.F("needs"))...)
+	}
+	return map[string][]string{sprint.Work: ids}
+}
+
+// cardLint is the card lint brief check runs over one stored brief (lintBriefReads): its
+// model-line why, or each lint finding's check and line, none when it passes. A server's
+// rule set (rs.server: the server lints) is linted with the built-in rules here, as the
+// server would with the sprint's.
+func cardLint(brief string, rs ruleSet) []string {
+	if rs.server {
+		rs = ruleSet{rules: swarm.DefaultChildRules}
+	}
+	why, findings := lintBriefReads(brief, rs)
+	if why != "" {
+		return []string{modelLinesWhy(why)}
+	}
+	var out []string
+	for _, f := range findings {
+		out = append(out, fmt.Sprintf("%s (line %d)", f.Check, f.Line))
+	}
+	return out
+}
+
+// cardTree is the base tree of a (repository, base) for kind 3: the test's when it hands one
+// (checkTree), else the lander's clone at the BASE tip, as add's PATHS admission reads it.
+func (a *app) cardTree(ctx context.Context, cb swarm.CardBase) sprint.AdmissionTree {
+	if a.checkTree != nil {
+		return a.checkTree(ctx, cb)
+	}
+	return a.admissionTree(ctx, &lander{a: a}, cb)
+}
+
+// startCardCheckGate is start's card check gate (start-refuses-until-a-clean-check): from READY
+// or STOPPED, before the machine changes, it reads the epoch's check record and the cards now,
+// and refuses, exit 1, nothing written, with no record, a failed one, one a --stream check
+// limited, or a clean one whose digest is not the cards' now (recomputed from the live table, so
+// any admit, move, brief, needs, priority or tier change voids it with no hook in those verbs).
+// A start of a RUNNING machine changes nothing and is not gated. No flag, variable or setting
+// skips it: newApp sets cardCheckGate (docs/SPEC-SPRINT.md section 14, "The card check"). The
+// one store it does not gate is a mem twin (st.ByHand: --redis mem:<file>, for learning and
+// tests, never a fleet's), so the help's walkthrough and the first-run transcript run as
+// written; check cards runs on a twin as anywhere.
+//
+// tla/MachineReady.tla Start, StartRefusedCheck: StartOnlyChecked
+func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io.Writer) int {
+	if !a.cardCheckGate || st.ByHand {
+		return 0
+	}
+	m, _, err := st.Machine(ctx)
+	if err != nil {
+		return a.readFailed("start", err, stderr)
+	}
+	if m.Running() {
+		return 0
+	}
+	rec, ok, err := st.CardCheck(ctx)
+	if err != nil {
+		return a.readFailed("start", err, stderr)
+	}
+	why := ""
+	switch {
+	case !ok:
+		why = fmt.Sprintf("run nova-sprint check cards first: no check record for epoch %d", st.PinnedEpoch())
+	case !rec.Clean:
+		why = "run nova-sprint check cards: the last check found " + rec.Kinds
+	case len(rec.Streams) > 0:
+		why = "run nova-sprint check cards: the last check covered stream(s) " + strings.Join(rec.Streams, ",") + " only"
+	default:
+		snap, err := st.Load(ctx, []string{sprint.Work}, nil)
+		if err != nil {
+			return a.readFailed("start", err, stderr)
+		}
+		now := sprint.CheckedCardsOf(snap)
+		if sprint.CardsDigest(now) != rec.Digest {
+			why = "run nova-sprint check cards: the cards changed since the check (" + sprint.CardsChange(rec.Cards, now) + ")"
+		}
+	}
+	if why == "" {
+		return 0
+	}
+	fmt.Fprintf(stderr, "%s start: %s; the machine is not started and nothing was written\n", prog, oneline.Escape(why))
+	return 1
+}

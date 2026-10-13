@@ -100,6 +100,17 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its providers), then "+prog+" funded <provider> --reason <the payment> once one is paid"))
 			return 1
 		}
+		// every need of the cards resolved, computed live before the record's gate, so a hold
+		// raised after a clean check is caught (a-missing-or-blocked-need-is-found-at-check-
+		// and-while-running; startNeedsGate)
+		if code := a.startNeedsGate(ctx, st, stderr); code != 0 {
+			return code
+		}
+		// a clean card check of this epoch that matches the cards now, or refused, nothing
+		// written (start-refuses-until-a-clean-check; check_cards.go startCardCheckGate)
+		if code := a.startCardCheckGate(ctx, st, stderr); code != 0 {
+			return code
+		}
 		// every setting the design depends on is working, or a set of this epoch chose it:
 		// else refused, nothing written (start-refuses-a-non-working-setting)
 		warns, code := a.startSettingsGate(ctx, st, stderr)
@@ -168,6 +179,49 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		fmt.Fprintln(stdout, line)
 	}
 	return 0
+}
+
+// startNeedsGate is start's needs gate (v1.2.17, a-missing-or-blocked-need-is-found-at-check-
+// and-while-running; docs/SPEC-SPRINT.md section 9, rule 11): from READY or STOPPED it reads the
+// work table, the streams and the open judgments, and refuses, exit 1, nothing written, while
+// any unlanded card has an unresolved need (sprint.TableUnresolved: absent, dropped, unknown
+// stream, held, cycle), one line a card and need on stderr:
+//
+//	nova-sprint start: run nova-sprint check cards: <card> needs <need> (<reason>)
+//
+// It is live, not the check record's: a hold raised after a clean check is caught. A start of a
+// RUNNING machine changes nothing and is not gated; the gate is on wherever the card check's is
+// (cardCheckGate, and not on a mem twin, st.ByHand), with no waiver.
+//
+// tla/NeedsBlocked.tla Start, StartRefused: StartOnlyResolved
+func (a *app) startNeedsGate(ctx context.Context, st *store.Store, stderr io.Writer) int {
+	if !a.cardCheckGate || st.ByHand {
+		return 0
+	}
+	m, _, err := st.Machine(ctx)
+	if err != nil {
+		return a.readFailed("start", err, stderr)
+	}
+	if m.Running() {
+		return 0
+	}
+	snap, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, checkNeedsExtras)
+	if err != nil {
+		return a.readFailed("start", err, stderr)
+	}
+	unresolved := sprint.TableUnresolved(snap)
+	if len(unresolved) == 0 {
+		return 0
+	}
+	n := 0
+	for _, id := range sprint.UnresolvedIDs(unresolved) {
+		for _, u := range unresolved[id] {
+			n++
+			fmt.Fprintf(stderr, "%s start: run nova-sprint check cards: %s needs %s (%s)\n", prog, id, u.Need, u.Reason)
+		}
+	}
+	fmt.Fprintf(stderr, "%s start: %d unresolved need(s): the machine is not started and nothing was written; run nova-sprint check cards for each one's words and the verbs that decide it\n", prog, n)
+	return 1
 }
 
 // startSettingsGate is start's settings gate (v1.2.17; the owner, 2026-10-13: "OK these

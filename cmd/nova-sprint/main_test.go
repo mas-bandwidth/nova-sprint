@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -64,6 +65,13 @@ func newTestApp(t *testing.T) *testApp {
 		defer ta.mu.Unlock()
 		ta.sent = append(ta.sent, m)
 		return nil
+	}
+	// the rig's ~240 bare starts run on briefless --count cards: the card check gate is off
+	// here, and every gate test turns it on (check_cards_test.go); a base tree is never read
+	// from a clone (no git, no network)
+	ta.a.cardCheckGate = false
+	ta.a.checkTree = func(context.Context, swarm.CardBase) sprint.AdmissionTree {
+		return sprint.AdmissionTree{Missing: "no base tree is read in a unit test"}
 	}
 	// run's wait on a quiet log steps the clock by the time it may take
 	ta.m.LogWait = func(d time.Duration) { ta.a.sleep(d) }

@@ -21,7 +21,10 @@
 \*   verb, an outside event: Stamp, and Silence as the stamp ages past the window), the one
 \*   wait a generation, the hold of a card whose holder never stamped (the default: wait
 \*   only), and the return and redeal of one whose holder stamped and went silent, once its
-\*   holder has had its own whole deadline (own counts it, Window is it).
+\*   holder has had its own whole deadline (own counts it, Window is it). A take is withdrawn
+\*   from outside (Withdraw: the provider failed it, or the environment exited) with no
+\*   attempt spent; the late judgment (judged) exists only while the take is live, and one
+\*   open when its take is withdrawn closes (steps_tick.go TickDeadlines, LateStands).
 \* Part "reads": one card's attempts under a reader's broken reads (rules.go, ruleReadBroken):
 \*   the rule reworks it with the finding as the fix, on the same tier; a finding that names
 \*   a file outside PATHS widens the card's PATHS in place by that file (the same card, never
@@ -108,6 +111,10 @@
 \*                (the rule before the stamp existed): NeverStampedNeverReturned
 \*   "returnearly" the late rule returns a stamped card before its holder's own deadline:
 \*                HeldToItsOwnDeadline
+\*   "withdrawnlate" the deadlines part raises a late judgment on a withdrawn take and keeps
+\*                one open across the withdrawal (the code before v1.2.17, which raised
+\*                "a work card is past its deadline ... at withdrawn" while its primary sat
+\*                ready): LateOnlyWhileLive
 \*   "stopfirst"  the base gate stops the stream on its first failure: BaseStopsOnThird
 \*   "everytick"  the idle alarm is pushed every tick of an episode: AlarmOncePerEpisode
 \*   "nobound"    the read-broken rule reworks a card at its brief's bound: ReadAnswersBounded
@@ -185,7 +192,7 @@ RdFindings == RdFiles \cup {"in1", "in2"}
 \* -- every part's variables
 VARIABLES col, need, blocked, twin,               \* twins
           tier, fails, st, attempts, envFails, fclass, same, bbound, \* rules
-          gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, \* late
+          gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged, \* late
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
@@ -199,7 +206,7 @@ VARIABLES col, need, blocked, twin,               \* twins
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
-lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline>>
+lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged>>
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
@@ -246,6 +253,7 @@ TypeOK ==
   /\ badReturn \in BOOLEAN
   /\ own \in 0..Window
   /\ badDeadline \in BOOLEAN
+  /\ judged \in BOOLEAN
   /\ rdst \in {"working", "broken", "bound", "done", "judged"}
   /\ rdatt \in Nat
   /\ rdlast \in RdFindings \cup {None}
@@ -301,7 +309,7 @@ Init ==
   /\ tier = 1 /\ fails = 0 /\ st = "working" /\ attempts = 0 /\ envFails = 0
   /\ fclass = None /\ same = FALSE /\ bbound = FALSE
   /\ gen = 0 /\ waited = -1 /\ progress = FALSE /\ late = FALSE /\ waits = 0 /\ lst = "working"
-  /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE
+  /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE /\ judged = FALSE
   /\ rdst = "working" /\ rdatt = 1 /\ rdlast = None /\ rdfind = None /\ rdpaths = {}
   /\ rdwidens = 0 /\ rdtotal = 0 /\ rdfixed = {} /\ rdsince = 1 /\ rdminds = 0
   /\ gfails = 0 /\ stopped = FALSE
@@ -493,9 +501,11 @@ Answered == (st \in {"failed", "bound"}) ~> (st \notin {"failed", "bound"})
 -----------------------------------------------------------------------------
 \* Part "late": one work card past its deadline (internal/sprint rules.go, ruleLate).
 
+\* the deadlines part raises the late judgment (steps_tick.go TickDeadlines, N4): only on a
+\* live take (LateOnlyWhileLive); "withdrawnlate" raises it on a withdrawn one too
 GoLate ==
-  /\ lst = "working" /\ ~late
-  /\ late' = TRUE
+  /\ (lst = "working" \/ Broken = "withdrawnlate") /\ ~late
+  /\ late' = TRUE /\ judged' = TRUE
   /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
 \* the holder's `progress` verb (the member while its child prints, the friend daemon while a
@@ -503,26 +513,28 @@ GoLate ==
 Stamp ==
   /\ lst = "working"
   /\ stamped' = TRUE /\ progress' = TRUE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn, own, badDeadline>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn, own, badDeadline, judged>>
 
 \* the holder goes silent: its last stamp ages past RuleProgressWindow
 Silence ==
   /\ progress
   /\ progress' = FALSE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn, own, badDeadline>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn, own, badDeadline, judged>>
 
 \* the holder's own deadline passes: own counts its time, Window is its deadline
 OwnTick ==
   /\ lst = "working" /\ own < Window
   /\ own' = own + 1
-  /\ UNCHANGED <<gen, waited, progress, late, waits, lst, stamped, badReturn, badDeadline>>
+  /\ UNCHANGED <<gen, waited, progress, late, waits, lst, stamped, badReturn, badDeadline, judged>>
 
 \* the late rule: a wait once a generation with progress; a card whose holder stamped and went
 \* silent, or whose one wait is spent, returned and redealt, once its holder has had its own
 \* whole deadline (own = Window) or its one wait is spent; a card whose holder never stamped
-\* this take held (the default, wait only: the judgment closed, raised again later)
+\* this take held (the default, wait only: the judgment closed, raised again later). Every
+\* answer closes the judgment.
 RuleLate ==
   /\ late
+  /\ judged' = FALSE
   /\ IF progress /\ (waited # gen \/ Broken = "waitalways")
        THEN /\ waited' = gen /\ waits' = waits + 1 /\ late' = FALSE
             /\ UNCHANGED <<gen, lst, progress, stamped, badReturn, own, badDeadline>>
@@ -537,12 +549,24 @@ RuleLate ==
      ELSE /\ late' = FALSE
           /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
+\* an outside event: the take is withdrawn (the provider failed it, or the environment exited
+\* 134), the work card to withdrawn and its primary back to ready, with no attempt spent (gen
+\* and waits unchanged). The tick closes a late judgment open on it (LateStands: a withdrawn
+\* work card never stands); "withdrawnlate" keeps it open.
+Withdraw ==
+  /\ lst = "working"
+  /\ lst' = "withdrawn"
+  /\ IF Broken = "withdrawnlate"
+       THEN UNCHANGED <<late, judged>>
+       ELSE late' = FALSE /\ judged' = FALSE
+  /\ UNCHANGED <<gen, waited, progress, waits, stamped, badReturn, own, badDeadline>>
+
 Redeal ==
   /\ lst = "withdrawn"
   /\ lst' = "working" /\ own' = 0
-  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn, badDeadline>>
+  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn, badDeadline, judged>>
 
-LateNext == (GoLate \/ Stamp \/ Silence \/ OwnTick \/ RuleLate \/ Redeal) /\ waits <= 1
+LateNext == (GoLate \/ Stamp \/ Silence \/ OwnTick \/ RuleLate \/ Withdraw \/ Redeal) /\ waits <= 1
 
 \* One wait a generation, whatever the progress.
 WaitOnce == waits <= 1
@@ -556,6 +580,10 @@ HeldToItsOwnDeadline == ~badDeadline
 
 \* Progress is a stamp of this take's holder.
 ProgressIsStamped == progress => stamped
+
+\* A late judgment is open only while its take is live (steps_tick.go TickDeadlines N4 and
+\* LateStands): a withdrawn take raises none, and one open when its take is withdrawn closes.
+LateOnlyWhileLive == judged => lst = "working"
 
 \* The reachability witness's invariant: no card is ever returned. The design returns a card
 \* whose holder stamped and went silent, so TLC's counterexample is the proof it is reached.
