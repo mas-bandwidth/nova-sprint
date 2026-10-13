@@ -39,6 +39,9 @@ type StreamClock struct {
 	// repositories it lands dev and main of; empty for a plain stream
 	// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
 	Promotion string `json:",omitempty"`
+	// TierBlocked is the tier blocking every ready or waiting primary of the stream
+	// while the tier has no live route (tla/SprintRules.tla QuietWhileUnfunded).
+	TierBlocked string `json:",omitempty"`
 }
 
 // Stalled says a stream that has not landed has made no progress for longer
@@ -297,6 +300,10 @@ func Inbox(r InboxReq) []Group {
 	})
 	out := judg
 	for _, st := range r.Streams {
+		if st.TierBlocked != "" {
+			// tla/SprintRules.tla QuietWhileUnfunded
+			continue
+		}
 		if st.State == StreamLanded || st.Empty || st.Held || r.Now.Before(st.Quiet) || r.Stale <= 0 || st.Progress.IsZero() || r.running(st.Progress) <= r.Stale {
 			continue
 		}

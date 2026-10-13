@@ -10,24 +10,24 @@
 \* the same mark as Wake (Until = the end), so Wake stands for both ends here.
 EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS Routes, W, After, Broken
-VARIABLES rest1, own1, win1, low1, redeal1, judged1,
-          rest2, own2, win2, low2, redeal2, judged2,
+VARIABLES rest1, own1, win1, low1, redeal1, returns1, judged1,
+          rest2, own2, win2, low2, redeal2, returns2, judged2,
           event, takes, ended, running, friendUp
 Providers == {"p1", "p2"}
 Slots == {1, 2}
 Route(p) == IF p = "p1" THEN "r1" ELSE "r2"
 R1 == INSTANCE RouteRest WITH Routes <- {"r1"}, provRest <- rest1,
-    own <- own1, win <- win1, low <- low1, judged <- judged1, redeal <- redeal1
+    own <- own1, win <- win1, low <- low1, judged <- judged1, redeal <- redeal1, returns <- returns1
 R2 == INSTANCE RouteRest WITH Routes <- {"r2"}, provRest <- rest2,
-    own <- own2, win <- win2, low <- low2, judged <- judged2, redeal <- redeal2
+    own <- own2, win <- win2, low <- low2, judged <- judged2, redeal <- redeal2, returns <- returns2
 rest == [p \in Providers |-> IF p = "p1" THEN rest1 ELSE rest2]
 own == [p \in Providers |-> IF p = "p1" THEN own1 ELSE own2]
 win == [p \in Providers |-> IF p = "p1" THEN win1 ELSE win2]
 low == [p \in Providers |-> IF p = "p1" THEN low1 ELSE low2]
 redeal == [p \in Providers |-> IF p = "p1" THEN redeal1 ELSE redeal2]
 Resting(p) == IF p = "p1" THEN R1!Resting("r1") ELSE R2!Resting("r2")
-pvars == <<rest1, own1, win1, low1, redeal1, judged1,
-           rest2, own2, win2, low2, redeal2, judged2,
+pvars == <<rest1, own1, win1, low1, redeal1, returns1, judged1,
+           rest2, own2, win2, low2, redeal2, returns2, judged2,
            event, takes, ended, running, friendUp>>
 
 \* Finite order abstraction of e.taken.After(last.Mark()), NOT a wrapping clock:
@@ -43,15 +43,15 @@ PFInit ==
     /\ running = TRUE
     /\ friendUp = FALSE
 
-Other(p) == IF p = "p1" THEN UNCHANGED <<rest2, own2, win2, low2, redeal2, judged2>>
-            ELSE UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1>>
+Other(p) == IF p = "p1" THEN UNCHANGED <<rest2, own2, win2, low2, redeal2, returns2, judged2>>
+            ELSE UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1>>
 MachineStill == UNCHANGED <<running, friendUp>>
 Launch(p, s, stamp) ==
     /\ ~Resting(p)
     /\ takes[p][s] = "none"
     /\ stamp \in {"after", "unknown"}
     /\ takes' = [takes EXCEPT ![p][s] = stamp]
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, event, ended, running, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, event, ended, running, friendUp>>
 
 Eligible(p, s) == ~ended[p] \/ takes[p][s] = "after"
 Refuse(p, s, cause) ==
@@ -61,7 +61,7 @@ Refuse(p, s, cause) ==
            /\ ~Resting(p)
          THEN /\ IF p = "p1" THEN R1!TakeEnds("r1", cause) ELSE R2!TakeEnds("r2", cause)
               /\ Other(p)
-         ELSE /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2>>
+         ELSE /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2>>
               /\ event' = "ignored"
     /\ takes' = [takes EXCEPT ![p][s] = "none"]
     /\ UNCHANGED ended
@@ -111,14 +111,14 @@ Stop ==
     /\ running /\ AllOutBroken
     /\ ~friendUp \/ "nofriendexception" \in Broken
     /\ running' = FALSE /\ event' = "stop"
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, takes, ended, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp>>
 Start ==
     /\ ~running /\ (~AllOutBroken \/ friendUp)
     /\ running' = TRUE /\ event' = "start"
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, takes, ended, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, takes, ended, friendUp>>
 Friend(b) ==
     /\ friendUp' = b
-    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, event, takes, ended, running>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, returns1, judged1, rest2, own2, win2, low2, redeal2, returns2, judged2, event, takes, ended, running>>
 PFNext ==
     \/ \E p \in Providers, s \in Slots, stamp \in {"after", "unknown"} : Launch(p,s,stamp)
     \/ \E p \in Providers, s \in Slots, c \in {"credit", "auth"} : Refuse(p,s,c)

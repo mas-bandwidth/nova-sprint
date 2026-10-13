@@ -3,6 +3,7 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -58,6 +59,154 @@ func stampAfter(a, b string) bool {
 	ta, errA := time.Parse(time.RFC3339Nano, a)
 	tb, errB := time.Parse(time.RFC3339Nano, b)
 	return errA == nil && errB == nil && ta.After(tb)
+}
+
+// The lander's standing refusal (docs/SPEC-SPRINT.md section 7, the server's
+// lander; the owner, 2026-10-13, on the epoch-20 landing that refused for twenty
+// minutes with only LAND IDLE in the log: "OK these MUST be fixed. blocker
+// priority."). When the server's land loop (cmd/nova-sprint/landloop.go) is refused,
+// the refusal stands until a landing goes through or the refusal changes: its first
+// beat raises one NLanderRefuses judgment to the coordinator naming the reason and
+// the remedy, the same refusal again (by LandRefusalKey) raises none, a pass that
+// gets past it closes it, and another reason closes it and raises its own. Only a
+// refusal before any batch stands: a pass whose batches landed or were refused one by
+// one is none (each refused batch has PropLandRefusal and its own judgment). The tick's landing-stall alarm names it as
+// the cause. The model is tla/ServerSwitch.tla (LandRefused, LandOk; the invariants
+// RefusalJudgedAtOnce, AtMostOneJudgmentPerRefusal, BeatNamesTheRefusal).
+const NLanderRefuses = "the lander refuses every landing"
+
+// NLanderFails is the lander's standing failure: land failed before any batch (it
+// said no refusal, or nothing), or the server's loop could not read the merge queue.
+// It is judged as NLanderRefuses is, in its own words, so a store that blinked is
+// never called a refusal.
+const NLanderFails = "the lander fails every landing"
+
+// IsLanderStanding says a type is the lander's standing refusal or failure: an ack
+// of one keeps its acknowledgement (steps_ack.go), so the same cause is not raised
+// again while it stands, and LandRefusalClose closes both once it clears.
+func IsLanderStanding(typ string) bool { return typ == NLanderRefuses || typ == NLanderFails }
+
+// LandRefusalDecisions are the decisions on the lander's standing refusal: check
+// its cause and run the remedy its text names, or ack it.
+var LandRefusalDecisions = []string{"check", "ack"}
+
+// landRefusalJudgments is the open judgments of the lander's standing refusal or
+// failure, and their acknowledgements: what a clear, or a replaced cause, closes, so a
+// stale acknowledgement never blocks a later raise of the same cause.
+func landRefusalJudgments(s *Snapshot) []Open {
+	var open []Open
+	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
+		if (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && IsLanderStanding(o.Note.Type) {
+			open = append(open, o)
+		}
+	}
+	return open
+}
+
+// landRefusalCode is a judgment text's class at its head (cmd/nova-sprint landClass):
+// code=<class> [stream=<s>]: ...
+var landRefusalCode = regexp.MustCompile(`^code=(\S+?)(?: stream=(\S+?))?:`)
+
+// landRefusalNumber is a number in a refusal's text, with any unit it carries: a count,
+// an id, a timing, an epoch.
+var landRefusalNumber = regexp.MustCompile(`[0-9]+(\.[0-9]+)?[a-zµ]*`)
+
+// LandRefusalKey is what makes two refusals the same refusal: the text with every
+// number (and its unit) one placeholder, spaces folded, lower case. A refusal whose
+// text carries a pass's timings, counts or ids is the same refusal pass after pass, so
+// its since stands and its one judgment is never closed and raised again
+// (tla/ServerSwitch.tla LandRefused, the reversed witness "rawkey").
+//
+// A text that carries its class at the source (code=<class> [stream=<s>]:, as the land
+// loop writes every cause land names) is keyed on that class and stream alone: the
+// human text after it is display, refreshed to the latest wording. Only a text with no
+// class falls back to the fold, which mis-folds both ways (a duration across units, a
+// sha, a path change it; a stream, a host, an exit code merge into it), so it is the
+// fallback and never the key of a cause land classes.
+func LandRefusalKey(text string) string {
+	if m := landRefusalCode.FindStringSubmatch(text); m != nil {
+		return "code=" + m[1] + " stream=" + m[2]
+	}
+	return strings.ToLower(strings.Join(strings.Fields(landRefusalNumber.ReplaceAllString(text, "#")), " "))
+}
+
+// LandRefusalSaid says a judgment of type typ and the refusal what (by LandRefusalKey)
+// is in the store's open notes, open or acknowledged: the seat has it, or has
+// acknowledged it.
+func LandRefusalSaid(open []Open, typ, what string) bool {
+	key := LandRefusalKey(what)
+	for _, o := range open {
+		if o.Note.Type == typ && (o.Note.Kind == Judgment || o.Note.Kind == Acknowledged) && LandRefusalKey(o.Note.What) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// LandRefusalRaise is the plan that raises the standing refusal's judgment, what its
+// reason and remedy, by who: none when a judgment of the same refusal (LandRefusalKey)
+// is open already (a server restarted under the same refusal says it once). prev is
+// the refusal this one replaced on this server: its judgment is closed in the same
+// plan, and no other, so a second server's refusal never closes the first's.
+//
+// This is the cause's first raise on this server (the land loop calls it only for a
+// cause its memory has not judged; a judged one is re-checked with LandRefusalSaid,
+// which honours the seat's ack). An acknowledgement of the same cause found here
+// predates this server's knowledge of it: it may be left from an earlier episode whose
+// close was owed in a server's memory and lost with it (a restart between a clear and
+// its close). The store cannot tell that from a cause that stood throughout, so the
+// acknowledgement is never read as said: it is closed, and the judgment raised anew,
+// in this one step. The owed close is so held by the store itself (the
+// acknowledgement), and consumed here or by the next clear's LandRefusalClose. The cost
+// is one judgment raised again after a restart under a cause the seat had acked
+// (tla/ServerSwitch.tla StaleSilent; the witness "restartack").
+//
+// tla/ServerSwitch.tla LandRefused
+func LandRefusalRaise(s *Snapshot, typ, what, who, prevType, prev string) Plan {
+	var p Plan
+	if LandRefusalSaid(s.Open, typ, what) {
+		return p
+	}
+	key := LandRefusalKey(what)
+	for _, o := range landRefusalJudgments(s) {
+		if o.Note.Kind == Acknowledged && o.Note.Type == typ && LandRefusalKey(o.Note.What) == key {
+			p.Closes = append(p.Closes, o) // a stale acknowledgement, never read as said
+		}
+	}
+	if prev != "" && (prevType != typ || LandRefusalKey(prev) != key) {
+		// the replaced cause's judgment and its acknowledgement, if the seat acked it
+		for _, o := range landRefusalJudgments(s) {
+			if o.Note.Type == prevType && LandRefusalKey(o.Note.What) == LandRefusalKey(prev) {
+				p.Closes = append(p.Closes, o)
+			}
+		}
+	}
+	p.Notes = append(p.Notes, Note{Kind: Judgment, Type: typ, What: what, Who: who, To: s.Coordinator, At: s.Now,
+		SprintLevel: true, Decisions: append([]string(nil), LandRefusalDecisions...)})
+	return p
+}
+
+// LandRefusalClose is the plan that closes the standing refusal's judgment, and its
+// acknowledgement, once a pass has got past it (a landing, or a batch refused on its
+// own). It closes every lander judgment open, another live server's too: a second
+// server whose own cause still stands writes its judgment again on its next beat (its
+// re-check against the store), one extra raise, accepted.
+//
+// tla/ServerSwitch.tla LandOk
+func LandRefusalClose(s *Snapshot) Plan {
+	return Plan{Closes: landRefusalJudgments(s)}
+}
+
+// LandRefusalStanding is the lander's standing refusal or failure, its type, reason
+// and remedy, as its open judgment says; "" when none stands.
+func LandRefusalStanding(s *Snapshot) string {
+	for _, o := range landRefusalJudgments(s) {
+		if o.Note.Kind != Judgment {
+			continue
+		}
+		return o.Note.Type + ": " + o.Note.What
+	}
+	return ""
 }
 
 // landingStallBound is the landing-stall bound: the sprint's setting
@@ -441,8 +590,18 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	if len(reds) > 0 {
 		ciWord = "CI red: " + strings.Join(reds, ", ")
 	}
-	return fmt.Sprintf("no card has landed in %s with %d in review and %d merging; reads out: %s; waiting on the coordinator's judgment: %d (oldest %s%s); accepted and not merged: %d (%s); the lander's last refusal: %s; %s",
+	what := fmt.Sprintf("no card has landed in %s with %d in review and %d merging; reads out: %s; waiting on the coordinator's judgment: %d (oldest %s%s); accepted and not merged: %d (%s); the lander's last refusal: %s; %s",
 		d.Round(time.Second), len(review), len(merging), readsOut, judged, orDash(oldestAlias), seatStall, len(merging), mergeState, refusal, ciWord)
+	return what + landingStallCause(s)
+}
+
+// landingStallCause is what the landing-stall alarm appends when the lander's
+// refusal stands: the generic alarm names the cause, never only the count.
+func landingStallCause(s *Snapshot) string {
+	if standing := LandRefusalStanding(s); standing != "" {
+		return "; " + standing
+	}
+	return ""
 }
 
 // TickLandingStall is the tick end's landing-stall alarm (docs/SPEC-SPRINT.md,
@@ -555,7 +714,7 @@ func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 				n := Note{Kind: Judgment, Type: NLandingStall, What: what, Who: r.who(), To: s.Coordinator, At: s.Now, SprintLevel: true}
 				p.Notes = append(p.Notes, n)
 			}
-			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second))})
+			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second)) + landingStallCause(s)})
 			write(PropLandingStallSaid, landingStamp(s.Now))
 		}
 	}
