@@ -96,6 +96,7 @@ type promoter struct {
 	now                    time.Time
 	dry                    bool
 	env                    []string
+	forgeEnv               []string
 	// gitRun and ghRun, when set, stand in for git and gh (a test). Nil runs
 	// the real programs.
 	gitRun func(ctx context.Context, dir string, args ...string) (string, error)
@@ -239,6 +240,7 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 		now: now, dry: *dry, env: withMachineGitIdentity(env, identity),
 		every: *every, landings: *landings, started: now,
 	}
+	p.forgeEnv = a.forgeCommandEnv(p.env)
 	if f, ok := promoteForges.Load(*repo); ok {
 		p.forge = f.(promoteForge)
 	}
@@ -926,7 +928,9 @@ func (p *promoter) gh(ctx context.Context, args ...string) (string, error) {
 	if p.dir != "" {
 		b.Cmd.Dir = p.dir
 	}
-	if p.env != nil {
+	if p.forgeEnv != nil {
+		b.Cmd.Env = p.forgeEnv
+	} else if p.env != nil {
 		b.Cmd.Env = p.env
 	}
 	var stdout, stderr bytes.Buffer

@@ -73,7 +73,7 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	absent(st.Text["inflight-sub"], "nothing in flight", "the in-flight tile is blank")
 	absent(app, "no stream has spent anything yet", "top streams with no spend draw blank ruled rows")
 	absent(strings.Join(st.Top[len(st.Top)-1], ""), "spent", "top streams with no spend: no message")
-	has(served, ".panel.friends { display: none; }", "the Friends panel is hidden (2026-10-11 ~21:55Z)")
+	absent(served, ".panel.friends { display: none; }", "the Friends panel is shown (2026-10-13)")
 
 	// P1 logo, top left, inline data PNG: it follows the live page, the 384 px robot tile with its
 	// attributes (the card names the nova-sprint image; the owner to rule)
@@ -111,6 +111,13 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	assert.False(t, edge.Nofit["epoch-chip"], "P5 the epoch stays while the clock fits without it")
 	assert.False(t, edge.Nofit["coord-chip"], "P4 the coordinator stays while the clock fits without it")
 	assert.Equal(t, []string{"wordmark", "epoch-chip", "coord-chip"}, stp.NofitOrder, "P2 P5 P4 the wordmark goes first, then the epoch, then the coordinator")
+	// idle chip: hidden by default, shown with reason when idle
+	has(served, `<span class="idle" id="idle" hidden></span>`, "idle element in index.html")
+	assert.True(t, st.Hidden["idle"], "idle chip hidden when empty")
+	withIdle := bytes.Replace(ownerWhere(ownerRunning), []byte(`"at":"2026-10-13T01:52:20Z"`), []byte(`"at":"2026-10-13T01:52:20Z","idle":"29 behind in flight; 12 behind sentinel X"`), 1)
+	idleOut := renderOwner(t, app, []ownerCase{{Name: "idle", Env: ownerEnvelope(t, withIdle), Narrow: false}})["idle"]
+	assert.False(t, idleOut.Hidden["idle"], "idle chip shown when idle reason present")
+	assert.Equal(t, "idle: 29 behind in flight; 12 behind sentinel X", idleOut.Text["idle"])
 	// P6 release nav hidden (the envelope carries no releases)
 	has(served, `<nav class="release" id="release" aria-label="release" hidden></nav>`, "P6")
 	assert.Equal(t, 0, st.Children["release"], "P6 no release links")
@@ -254,8 +261,8 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	// P31 Fleet pill tones
 	assert.Equal(t, "pill good", st.FleetPill["machine-a"], "P31 up green")
 	assert.Equal(t, "pill warning", st.FleetPill["held-01"], "P31 held amber")
-	// P32 track cells scale to the fleet's own widest member while Friends is hidden
-	assert.True(t, strings.HasPrefix(st.FleetTrack["machine-a"], "repeat(16,"), "P32 the fleet's widest (16), never the friends' (32): %s", st.FleetTrack["machine-a"])
+	// P32 track cells scale to the fleet's own widest member (shared-scale case)
+	assert.True(t, strings.HasPrefix(st.FleetTrack["machine-a"], "repeat(16,"), "P32 the fleet's widest (16): %s", st.FleetTrack["machine-a"])
 	for _, c := range []string{".p-blocker", ".p-critical", ".p-fix", ".p-reader"} {
 		has(served, c, "P32 "+c)
 	}
@@ -264,8 +271,10 @@ func TestThePageShowsExactlyTheOwnersElements(t *testing.T) {
 	has(served, `.panel.off { opacity: .45; }`, "P33")
 	// P34 Fleet compact with no ok%
 	has(served, `.fleet.compact .row > :nth-child(7) { display: none; }`, "P34")
-	// P35 Friends hidden by CSS
-	has(served, `<section class="panel friends">`, "P35 kept, hidden")
+	// P35 Friends shown
+	has(served, `<section class="panel friends">`, "P35 shown")
+	absent(served, ".panel.friends { display: none; }", "P35 not hidden by CSS")
+
 	// P36-P38
 	has(served, `<section class="panel providers" id="providers-panel" hidden>`, "P36")
 	assert.True(t, st.Hidden["providers-panel"], "P36 no tables.providers")
@@ -548,6 +557,7 @@ function renderCase(c) {
   // the panels index.html serves hidden; the version chip starts shown here, so its hiding is app.js's
   ['readers-panel', 'providers-panel', 'landings-panel'].forEach(id => { getEl(id).hidden = true; });
   getEl('release').hidden = true;
+  getEl('idle').hidden = true;
   const context = {
     window: { addEventListener(){}, matchMedia: (q) => ({ matches: c.narrow && q === '(max-width: 1100px)' }) },
     document: { getElementById: getEl, createElement: (t) => createElement(t), createElementNS: (ns, t) => createElement(t),
@@ -567,7 +577,7 @@ function renderCase(c) {
   ['wordmark', 'coord-chip', 'epoch-chip'].forEach(id => { firstNofit[id] = getEl(id).classList.contains('nofit'); });
   if (c.then) { try { vm.runInContext('accept', context)(c.then); } catch (e) { errors.push('accept then: ' + (e.stack || e)); } }
   const ids = ['landed', 'all', 'all2', 'pct', 'pct-complete', 'of-all2', 'eta', 'eta-at', 'cost', 'cost-whole', 'cost-per', 'inflight',
-    'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'live-text', 'tier-sub',
+    'inflight-sub', 'tput', 'coord', 'epoch', 'version', 'version-chip', 'wordmark', 'coord-chip', 'epoch-chip', 'idle', 'live-text', 'tier-sub',
     'streams-sub', 'fleet-head', 'overall', 'providers-panel', 'readers-panel', 'release'];
   const r = { errors, text: {}, val: {}, html: {}, class: {}, title: {}, hidden: {}, display: {}, nofit: {}, nofitOrder, children: {},
     streamName: {}, streamTag: {}, streamPill: {}, streamPillTitle: {}, streamCellClass: {}, fleetPill: {}, fleetTrack: {}, groupStarts: 0, firstNofit, streamFlash: {} };

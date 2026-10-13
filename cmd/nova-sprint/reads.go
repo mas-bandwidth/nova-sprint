@@ -671,6 +671,8 @@ type whereView struct {
 	StageTimes  *sprint.StageTimes    `json:"stage_times,omitempty"`
 	Stalled     []string              `json:"stalled,omitempty"`
 	Critical    []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Blockers    []string              `json:"blockers,omitempty"` // top blockers tracing why waiting cards are not moving (sprint.IdleBlockers)
+	Idle        string                `json:"idle,omitempty"`     // the idle line ("idle: ..."), for the dashboard header and CLI
 	Coordinator string                `json:"coordinator,omitempty"`
 	Pending     string                `json:"pending,omitempty"`
 	Epoch       uint64                `json:"epoch"`
@@ -1040,6 +1042,8 @@ type whereRun struct {
 	all   bool
 	cards bool
 	rows  bool
+	// dashboard folds stream_costs, reader rows, sentinel-free summary, drops archived streams
+	dashboard bool
 	// archived puts the archived streams' rows in --json's tables and rows
 	archived bool
 	release  releaseFlag
@@ -1092,6 +1096,7 @@ func (a *app) cmdWhere(args []string, stdout, stderr io.Writer) int {
 	cards := fs.Bool("cards", false, "with --json: also every work card dealt to a fleet row and not finished (its row, state, since, deadline and branch) and the open judgments on them, as the dashboard's pull routes serve them, and every machine's lanes (lane list)")
 	archived := fs.Bool("archived", false, "with --json: the archived streams' rows of the work and merge tables in tables, and their primaries in --rows, beside the live ones (stream archive); the summary and the drawn footers count only the streams on the table either way, and archived_cards and archived_landed carry theirs")
 	rows := fs.Bool("rows", false, "with --json: also every primary's row of the work table (id, stream, state, score, and its fields but the brief: card <id> --brief), in work order, so a child reads every card in one call and never loops card calls")
+	dashboard := fs.Bool("dashboard", false, "with --json: fold stream_costs and reader counts, sentinel-free summary, drop archived rows")
 	stale := fs.Duration("stale", defaultStale, "a stream with no progress for longer is shown stalled (--json)")
 	atEpoch := fs.Int64("at-epoch", -1, "the sprint as it was at an earlier epoch (before a clear)")
 	var rel releaseFlag
@@ -1129,7 +1134,10 @@ func (a *app) cmdWhere(args []string, stdout, stderr io.Writer) int {
 	if *rows && !c.json {
 		return refuse(stderr, "where", "--rows is a field of the JSON view: give --json with it")
 	}
-	r := whereRun{c: *c, watch: *watch, all: *all, cards: *cards, rows: *rows, archived: *archived, release: rel, every: *every, stale: *stale, atEpoch: *atEpoch}
+	if *dashboard && !c.json {
+		return refuse(stderr, "where", "--dashboard is a field of the JSON view: give --json with it")
+	}
+	r := whereRun{c: *c, watch: *watch, all: *all, cards: *cards, rows: *rows, dashboard: *dashboard, archived: *archived, release: rel, every: *every, stale: *stale, atEpoch: *atEpoch}
 	if addr := a.server(fs); addr != "" {
 		// the sprint's server draws each frame: one plain where a frame, so the watch
 		// never holds the server between frames
@@ -1205,13 +1213,40 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 		}
 		if r.c.json {
 			b, _ := json.Marshal(v)
+			if r.dashboard {
+				b = sprintdash.PageData(b, v.At)
+			}
 			return string(b) + "\n", 0, true
 		}
+		// each held member's cause, its age and the verb that releases it (hold_cause.go),
+		// read for the text frame alone, so where --json keeps its one read of records
+		holds, err := st.Holds(ctx)
+		if err != nil {
+			return "", a.readFailed("where", err, stderr), false
+		}
+		frame += heldMembersText(holds, v.At)
 		if r.release.set {
 			return releaseFrame(v.Releases, r.release.name), 0, true
 		}
 		return frame, 0, true
 	})
+}
+
+// heldMembersText is where's lines of the fleet members held (sprint.HoldLine): each one's
+// cause, or that it names none, how long it has been held and by whom, and the verb that
+// releases it; "" when no member is held.
+func heldMembersText(holds []sprint.HoldView, now time.Time) string {
+	var b strings.Builder
+	for _, h := range holds {
+		if h.Kind != sprint.HoldMember {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\nheld members:\n")
+		}
+		b.WriteString("  " + sprint.HoldLine(h, now) + "\n")
+	}
+	return b.String()
 }
 
 // drawLoop prints the frames frame gives: once, or with --watch every --every until
@@ -1330,6 +1365,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		v.SeatWaits, v.Stops = seatWaitsOf(facts.Stops, now), facts.Stops.Stops
 	}
 	v.Held = int64(facts.Held)
+	// each stream clock's held cards, beside its stored state and never in
+	// its place (a-waiting-stream-is-never-shown-held): the tick counted
+	// them into the where record, so where reads no card for them.
+	for i := range clocks {
+		clocks[i].HeldCards = facts.HeldStreams[clocks[i].Stream]
+	}
 	if facts.SeriesCounted {
 		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings)
 		series := sprint.LandedSeriesOfLandings(facts.Series, now)
@@ -1345,6 +1386,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	v.Buffer = fmt.Sprintf("%d/%d", v.Ready, 2*v.Width)
 	v.Low = v.Ready < int64(v.Width)
 	v.Tiers = facts.Tiers
+	v.Blockers = facts.Blockers
+	if len(v.Blockers) > 0 {
+		v.Idle = sprint.IdleLine(v.Blockers)
+	}
 	if len(facts.StageTimes.All) > 0 {
 		v.StageTimes = &facts.StageTimes
 	}
@@ -1385,6 +1430,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	}
 	var b strings.Builder
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
+	if line := sprint.IdleLine(v.Blockers); line != "" {
+		b.WriteString(line + "\n")
+	}
 	b.WriteString(providersLine(v.Providers, v.ProviderGaps) + "\n")
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")

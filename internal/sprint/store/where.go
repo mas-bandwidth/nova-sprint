@@ -32,11 +32,16 @@ const keyWhere = "where" // STRING, the where record (JSON)
 // LandingRate may count from then on (sprint.RecentLandings), in Unix seconds,
 // oldest first.
 type WhereRecord struct {
-	Epoch    uint64                `json:"epoch"`
-	Rev      uint64                `json:"rev"`
-	Held     int                   `json:"held"`
-	Landings []int64               `json:"landings,omitempty"`
-	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Epoch uint64 `json:"epoch"`
+	Rev   uint64 `json:"rev"`
+	Held  int    `json:"held"`
+	// HeldStreams is Held counted per stream (sprint.HeldBackByStream):
+	// where --json's stream clocks carry it as held_cards beside each
+	// stream's stored state (a-waiting-stream-is-never-shown-held).
+	HeldStreams map[string]int        `json:"held_streams,omitempty"`
+	Landings    []int64               `json:"landings,omitempty"`
+	Critical    []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Blockers    []string              `json:"blockers,omitempty"` // the top blockers tracing why waiting cards are not moving (sprint.IdleBlockers)
 	// Sentinels is each stream's sentinel primaries, all and landed, counted here
 	// from the cards: a sentinel is a stop the coordinator releases, not work, so
 	// where's x/y, the ETA and the landing rate leave them out (docs/SPEC-SPRINT.md
@@ -135,10 +140,11 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
+	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), HeldStreams: sprint.HeldBackByStream(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
+	r.Blockers = sprint.IdleBlockers(s, 3)
 	if s.Fleet != nil {
 		r.FleetRev = s.Fleet.Revision
 	}
@@ -399,8 +405,10 @@ type WhereFacts struct {
 	Machine   Machine
 	Heartbeat Heartbeat
 	Held      int
-	Landed    []time.Time
-	Critical  []sprint.CriticalCard // the five heaviest, from the record (weight.go)
+	// HeldStreams is the record's per-stream held count (WhereRecord.HeldStreams).
+	HeldStreams map[string]int
+	Landed      []time.Time
+	Critical    []sprint.CriticalCard // the five heaviest, from the record (weight.go)
 	// Sentinels is the record's per-stream sentinel counts (WhereRecord.Sentinels),
 	// so where counts no sentinel in x/y, the ETA and the landing rate; nil without
 	// the record.
@@ -420,6 +428,8 @@ type WhereFacts struct {
 	RowCards  map[string]map[string]int
 	ReadCards sprint.ReadCardCounts
 	FixStates map[string]map[string]int
+	// Blockers is the record's top blockers (WhereRecord.Blockers); nil without the record.
+	Blockers []string
 	// RowWorking is the record's working cards by fleet row (sprint.RowWorkingKeys), counted
 	// at the fleet table's revision FleetRev; nil without the record, when where shows the
 	// table's counts (as it does when the fleet moved since the count).
@@ -526,13 +536,14 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		}
 		// a record counted from another stats record (a reset or a tidy since) is not taken
 		if ok && r.Epoch == st.epoch && r.Stats == stats.statsStamp(st.epoch) && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
-			f.Held, f.Critical, f.Tiers, f.Streams, f.StageTimes, f.DealtFleet = r.Held, r.Critical, r.Tiers, r.Streams, r.StageTimes, r.DealtFleet
+			f.Held, f.HeldStreams, f.Critical, f.Tiers, f.Streams, f.StageTimes, f.DealtFleet = r.Held, r.HeldStreams, r.Critical, r.Tiers, r.Streams, r.StageTimes, r.DealtFleet
 			f.Sentinels = r.Sentinels
 			f.CostCheck = r.CostCheck
 			f.ReadsWaiting, f.Priorities, f.StreamPriorities = r.ReadsWaiting, r.Priorities, r.StreamPriorities
 			f.ReadsWindow = r.ReadsWindow
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
+			f.Blockers = r.Blockers
 			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
@@ -541,8 +552,13 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		}
 	}
 	var err error
-	if f.Held, err = st.HeldBack(ctx); err != nil {
-		return f, err
+	// the held cards, total and per stream, from one read of the waiting
+	// column (sprint.HeldBack, sprint.HeldBackByStream).
+	if t, herr := st.workColumn(ctx, sprint.Waiting); herr != nil {
+		return f, herr
+	} else if t != nil {
+		snap := &sprint.Snapshot{Work: t}
+		f.Held, f.HeldStreams = sprint.HeldBack(snap), sprint.HeldBackByStream(snap)
 	}
 	// the streams' spend from the cards, as the tick counts it (keepWhere), so the cost
 	// column and the tile show the cards as they are when no record of them is there yet
@@ -584,6 +600,7 @@ func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
 	check := sprint.CostCheckOf(s, streams)
 	f.Streams, f.CostCheck = st.streamsSince(s, streams, stats), &check
 	f.Sentinels = sentinelCounts(s)
+	f.Blockers = sprint.IdleBlockers(s, 3)
 	return nil
 }
 

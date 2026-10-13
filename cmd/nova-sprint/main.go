@@ -55,6 +55,16 @@ var version string
 
 func main() {
 	a := newApp(os.Getenv)
+	if seatEnvironmentNeeded(os.Args[1:]) {
+		if err := a.loadSeatEnvironment(); err != nil {
+			path, pathErr := a.seatEnvironmentPath()
+			if pathErr != nil {
+				path = "optional seat-environment.json"
+			}
+			fmt.Fprintf(os.Stderr, "nova-sprint: seat environment %s: %s; run: nova-up --seat to repair it, or remove that file to use explicit configuration\n", oneline.Field(path), oneline.Escape(err.Error()))
+			os.Exit(2)
+		}
+	}
 	a.briefRecord = a.defaultBriefRecord // a test's app has none: no brief record, no brief decision
 	a.seatLoginOn()                      // a test's app has none: no recorded store login (storelogin.go)
 	defer a.close()
@@ -65,17 +75,18 @@ func main() {
 // shared by every verb it runs (the driver runs many), its clock, and how it
 // sleeps. Tests give it a backend of their own.
 type app struct {
-	getenv  func(string) string
-	now     func() time.Time
-	sleep   func(time.Duration)
-	backend func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
-	conns   map[string]*redisconn.Conn
-	cached  map[string]store.Backend
-	twins   map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
-	meter   hostload.Source  // how fleet beat measures this machine
-	etaMu   sync.Mutex
-	etas    []etaSample // the view's estimates of the last etaHold (heldETA)
-	etaKey  etaKey      // the cards to land the held estimates were made over
+	seatEnvironment *seatEnvironment
+	getenv          func(string) string
+	now             func() time.Time
+	sleep           func(time.Duration)
+	backend         func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
+	conns           map[string]*redisconn.Conn
+	cached          map[string]store.Backend
+	twins           map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
+	meter           hostload.Source  // how fleet beat measures this machine
+	etaMu           sync.Mutex
+	etas            []etaSample // the view's estimates of the last etaHold (heldETA)
+	etaKey          etaKey      // the cards to land the held estimates were made over
 
 	// inventory reads the machines of nova-config and their widths (fleet
 	// sync): tests give it the config's in-memory store.
@@ -394,7 +405,7 @@ func newApp(getenv func(string) string) *app {
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
 	a.briefBar = a.readBriefBar
-	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
+	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost, env: func() []string { return a.forgeCommandEnv(a.gitEnv) }}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
 	a.busWatches = map[string]*bus.Watch{}
 	// start refuses until a clean card check matches the cards; no waiver
 	// (start-refuses-until-a-clean-check, tla/MachineReady.tla StartOnlyChecked)
@@ -685,7 +696,7 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
 	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
-	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; no default: a verb that writes wants one; a worker's verb is its --as name's)")
+	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)")
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
 
@@ -778,9 +789,87 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	return st, nil
 }
 
+// isGlobalBoolFlag reports whether the flag name is a known boolean flag that does not take an argument.
+func isGlobalBoolFlag(name string) bool {
+	switch name {
+	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
+		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
+		return true
+	default:
+		return false
+	}
+}
+
+// matchVerbAt reports how many words match a verb at args[i:], or 0 if none match.
+func matchVerbAt(args []string) int {
+	for _, v := range verbs {
+		w := strings.Fields(v.name)
+		if len(args) >= len(w) && slices.Equal(args[:len(w)], w) {
+			return len(w)
+		}
+	}
+	if len(args) > 0 {
+		if args[0] == "help" || verbflag.IsHelp(args[0]) || args[0] == "--version" || args[0] == "version" {
+			return 1
+		}
+		if len(groupVerbs(args[0])) > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
+// normalizeArgs rearranges global flags placed before the verb to follow the verb,
+// so `nova-sprint [flags...] <verb> [args...]` behaves identically to
+// `nova-sprint <verb> [flags...] [args...]`.
+func normalizeArgs(args []string) []string {
+	if len(args) == 0 || !strings.HasPrefix(args[0], "-") {
+		return args
+	}
+	// Flags appear before the verb. Scan to find the verb position.
+	i := 0
+	verbStart, verbLen := -1, 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			name := strings.TrimLeft(arg, "-")
+			if strings.Contains(name, "=") || isGlobalBoolFlag(name) {
+				i++
+				continue
+			}
+			// Non-bool flag without '=': consumes next argument as its value if present
+			if i+1 < len(args) {
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		// Found the first positional non-flag token
+		verbStart = i
+		if w := matchVerbAt(args[i:]); w > 0 {
+			verbLen = w
+		} else {
+			verbLen = 1 // unknown verb: keep 1 word
+		}
+		break
+	}
+	if verbStart == -1 {
+		return args // only flags present, leave for help/version/refuse
+	}
+	verb := args[verbStart : verbStart+verbLen]
+	preFlags := args[:verbStart]
+	postArgs := args[verbStart+verbLen:]
+	if verb[0] == "help" {
+		return append([]string{"help"}, postArgs...)
+	}
+	return append(append(append([]string(nil), verb...), preFlags...), postArgs...)
+}
+
 // run is the one entry point: the command line, and the driver, which runs
 // every verb it plays through it with an argument list.
 func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
+	args = normalizeArgs(args)
 	// every verb's answer is a refusal unless its report (report) says otherwise:
 	// refuse() and every pre-write refusal are the default, and the report sets
 	// the outcome where it is known (serve.go reads it after the run).
@@ -805,6 +894,11 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
+	}
+	var actorNotice string
+	args, actorNotice, _ = a.defaultHookActor(args, "", false)
+	if actorNotice != "" {
+		fmt.Fprintln(stderr, actorNotice)
 	}
 	// the shadow tick (server switch --dry-run runs the candidate's `tick
 	// --shadow`) opens its store read-only before the window's fn load: its
