@@ -136,8 +136,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
-	NCannotAsk:         {"reader add", "wait"},        // a card no reader can be asked holds nothing: it waits for a reader (wait_refused.go)
+	NBound:             {"rework with a fix", "drop"},     // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"ask", "rework", "drop", "wait"}, // ask deals a read; rework/drop end the attempt; wait parks the condition
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NReviewNoReader:    {"reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
@@ -1574,9 +1574,27 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	if len(ids) > 0 {
 		p = Ask(s, AskReq{Sel: Sel{Only: ids}, Who: r.who()})
 	}
-	conds = append(conds, cannotAskCond(s, p.Refused)...)
+	// SprintRules.CannotAskClosedWhenEligible: full room is not cannot ask.
+	refused := slices.DeleteFunc(slices.Clone(p.Refused), func(f Refusal) bool {
+		c := s.Work.Placed(f.Key)
+		return c != nil && len(s.freeReaders(c, c.Int("attempt"))) > 0
+	})
+	for _, c := range cards {
+		names := s.freeReaders(c, c.Int("attempt"))
+		if len(names) == 0 {
+			continue
+		}
+		for _, o := range closesFor(s.Open, []string{NCannotAsk}, c.ID) {
+			p.Notes = append(p.Notes, decided(o, "a reader may read "+c.ID+" now ("+strings.Join(names, ", ")+")", MachineActor, s.Now, c.ID))
+		}
+	}
+	conds = append(conds, cannotAskCond(s, refused)...)
 	p.Refused = nil
 	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReviewNoReader, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks}, r)
+	// Ask already closes a dealt primary's judgment inside its unit.
+	p.Closes = slices.DeleteFunc(p.Closes, func(o Open) bool {
+		return slices.ContainsFunc(p.Units, func(u Unit) bool { return slices.ContainsFunc(u.Closes, func(c Open) bool { return c.Key == o.Key }) })
+	})
 	return p, due
 }
 

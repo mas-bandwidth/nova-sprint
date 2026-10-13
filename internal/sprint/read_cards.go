@@ -75,7 +75,6 @@ const ReadCardDeadline = 60 * time.Minute
 // loads and the deal may advance through (K=4). Past it, a reader is skipped.
 const readCardLoadWindow = 4
 
-
 // The retired_by of a read card the read-card ask takes back: past its deadline, or its
 // primary no longer in review at the card's attempt (reworked, its brief replaced, dropped,
 // accepted); RetiredByReturned is a read handed back with no verdict (read --return).
@@ -668,11 +667,23 @@ func readCardsAskWhy(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]st
 // cursor per read tier with the cards it deals (docs/SPEC-SPRINT.md section 1, the read-card
 // deal).
 func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string) (p Plan, waits map[string]string) {
+	return readCardsAskSelected(s, seats, ri, why, full, nil)
+}
+
+// readCardsAskSelected uses the same deal rule for a coordinator ask of named primaries.
+func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string, only map[string]bool) (p Plan, waits map[string]string) {
 	waits = map[string]string{}
 	if s == nil || s.Work == nil || s.Fleet == nil {
 		return p, waits
 	}
 	back := readCardsTakeBack(s)
+	if only != nil {
+		for id := range back {
+			if !only[id] {
+				delete(back, id)
+			}
+		}
+	}
 	// the cards taken back stand no more: the wants are counted without them
 	view := s
 	if len(back) > 0 {
@@ -718,6 +729,9 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 	declared := map[string]bool{}
 	done := map[string]bool{}
 	for _, pr := range readCardsWaiting(view, idx) {
+		if only != nil && !only[pr.ID] {
+			continue
+		}
 		done[pr.ID] = true
 		want := readCardsWanted(view, pr, idx)
 		attempt := readAttempt(pr)
@@ -868,7 +882,14 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 			names = append(names, un.name)
 		}
 		u.Moved = pr.ID + " asked of " + strings.Join(names, ", ") + " (read cards)"
-		u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, pr.ID)
+		u.Closes = closesFor(s.Open, []string{NCannotAsk, NStranded, NStalled}, pr.ID)
+		u.Closes = append(u.Closes, closesFor(s.Acked, []string{NCannotAsk}, pr.ID)...)
+		// TickDeal applies before the ask part: preserve its eligible units in the answer.
+		for _, o := range u.Closes {
+			if o.Note.Type == NCannotAsk {
+				u.Notes = append(u.Notes, decided(o, "a reader may read "+pr.ID+" now ("+strings.Join(names, ", ")+")", MachineActor, s.Now, pr.ID))
+			}
+		}
 		p.Units = append(p.Units, u)
 	}
 	if why != nil {
@@ -934,26 +955,43 @@ func readCardsAskPart(s *Snapshot, r TickReq, seats []FriendSeat) (Plan, int) {
 	refused, held, ended := cannotAskEpisodes(s, r, waits)
 	view := *s
 	view.Open = append(slices.Clone(s.Open), held...)
+	ending := func(o Open) bool {
+		return !slices.ContainsFunc(refused, func(f Refusal) bool { return f.Key == o.Subject() }) && slices.ContainsFunc(ended, func(e Open) bool { return e.Key == o.Key })
+	}
+	view.Open = slices.DeleteFunc(view.Open, ending)
+	view.Acked = slices.DeleteFunc(slices.Clone(s.Acked), ending)
 	conds = append(conds, cannotAskCond(&view, refused)...)
+	// notify already reads acknowledgements; do not present held waits twice.
+	view.Open = slices.DeleteFunc(slices.Clone(s.Open), ending)
 	conds = append(conds, frontierRoomCondsOfWaits(s, waits, full)...)
 	p.Closes = append(p.Closes, ended...)
-	due := notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoFrontierRoom}, r)
+	// Eligibility is independent of free room. Record the units in the closing answer.
+	units := readUnitsOf(s, seats)
+	idx := fleetReadIndex(s)
+	for _, c := range s.Work.Column(Review) {
+		var names []string
+		for _, un := range units {
+			if mayReadCard(s, un, c, max(c.Int("attempt"), 1), attemptUnit(s, c.ID, readAttempt(c)), idx[c.ID]) {
+				names = append(names, un.name)
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+		for _, o := range append(slices.Clone(s.Open), s.Acked...) {
+			if o.Note.Type == NCannotAsk && o.Subject() == c.ID {
+				p.Notes = append(p.Notes, decided(o, "a reader may read "+c.ID+" now ("+strings.Join(names, ", ")+")", MachineActor, s.Now, c.ID))
+			}
+		}
+	}
+	due := notify(&p, &view, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoFrontierRoom}, r)
 	return p, due + len(waits)
 }
 
-// cannotAskEpisodes is the read-card ask's cannot-ask condition, one judgment an episode
-// (fault inventory 2026-10-10, item 22: one card judged six times in one wait at one
-// attempt). An episode is a primary in review waiting for a reader at one attempt: it is
-// raised when no unit up may read the primary (NoReaderMayRead), and it stands, whatever
-// the wait's reason this tick, while the primary still waits at that attempt: a primary
-// whose readers are at their room this tick stays a subject of the judgment open on it
-// (or of the coordinator's wait on it), never closed to be raised again when the reason
-// turns back. It ends when the primary is dealt its reads or leaves review (it waits no
-// more: notify closes it) or its attempt moves on (its waiting mark is of another attempt:
-// ended, closed here, and a new episode raised on a later tick). refused is the primaries
-// the condition holds on; held is the coordinator's waits not yet run out on cannot ask,
-// which name a primary as surely as an open judgment does (cannotAskCond's text names the
-// primaries no judgment or wait holds, the ones notify writes it on).
+// cannotAskEpisodes implements SprintRules.EpTick and CannotAskClosedWhenEligible.
+// NoReaderMayRead holds one judgment while no eligible unit exists at the attempt;
+// room is a different wait and ends that episode on this tick. An eligibility change
+// back to no reader can start one new episode, never another on each unchanged tick.
 func cannotAskEpisodes(s *Snapshot, r TickReq, waits map[string]string) (refused []Refusal, held, ended []Open) {
 	on := map[string][]Open{} // the primary's open cannot-ask judgments and live waits
 	for _, o := range s.Open {
@@ -978,8 +1016,9 @@ func cannotAskEpisodes(s *Snapshot, r TickReq, waits map[string]string) (refused
 		held = append(held, o)
 	}
 	for _, id := range slices.Sorted(maps.Keys(waits)) {
-		if !strings.HasPrefix(waits[id], NoReaderMayRead) && len(on[id]) == 0 {
-			continue // waiting for room, and no episode open: nothing to judge
+		if !strings.HasPrefix(waits[id], NoReaderMayRead) {
+			ended = append(ended, on[id]...)
+			continue // eligible readers at room end cannot ask too
 		}
 		if c := s.Work.Placed(id); c != nil && len(on[id]) > 0 && c.F(FieldWaitingReader) != "" && waitingAt(c) != max(c.Int("attempt"), 1) {
 			// its attempt moved on: the judgment is of the episode before, ended here (the
@@ -989,6 +1028,7 @@ func cannotAskEpisodes(s *Snapshot, r TickReq, waits map[string]string) (refused
 		}
 		refused = append(refused, Refusal{Key: id, Why: waits[id]})
 	}
+	held = slices.DeleteFunc(held, func(o Open) bool { return slices.ContainsFunc(ended, func(e Open) bool { return e.Key == o.Key }) })
 	return refused, held, ended
 }
 

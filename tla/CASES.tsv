@@ -693,3 +693,5 @@ MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestor
 MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCSprintRulesEpisodesBrokenHeldWhileEligible.cfg	MCSprintRules.tla	action	CannotAskClosedWhenEligible	ignore-terminal	sprintrules	required	-
+MCSprintRulesEpisodesBrokenFlapEligible.cfg	MCSprintRules.tla	invariant	OneCannotAskAnEpisode	ignore-terminal	sprintrules	required	-
