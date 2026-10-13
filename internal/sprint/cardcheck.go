@@ -33,11 +33,30 @@ const (
 	CheckStaleFix  = "stale-fix"  // 8: no card at priority fix with no failed attempt this epoch
 	CheckStaleHead = "stale-head" // a pushed head from an attempt before the current brief
 	CheckLint      = "lint"       // 9: every brief passes the card lint
-	CheckBriefSize = "brief-size" // 16: every brief within the store's bound and the drain's
+	CheckBriefSize         = "brief-size"        // 16: every brief within the store's bound and the drain's
+	CheckSentinelWide      = "sentinel-wide"     // sentinel waits on producers sharing no PATHS/NEW glob with consumer
+	CheckSentinelConsumers = "sentinel-consumers" // missing consumer from sentinel CONSUMERS line
+	CheckOwner             = "owner"             // who=friend card missing WHO: or ran on fleet
+	CheckFailedInReview    = "failed-in-review"  // card in review with last finish failed
 )
 
 // CheckKinds is the core kinds in print order.
-var CheckKinds = []string{CheckNeeds, CheckFiles, CheckSameFile, CheckBases, CheckNames, CheckStaleFix, CheckStaleHead, CheckLint, CheckBriefSize, CheckRoutes}
+var CheckKinds = []string{
+	CheckNeeds,
+	CheckFiles,
+	CheckSameFile,
+	CheckBases,
+	CheckNames,
+	CheckStaleFix,
+	CheckStaleHead,
+	CheckLint,
+	CheckBriefSize,
+	CheckSentinelWide,
+	CheckSentinelConsumers,
+	CheckOwner,
+	CheckFailedInReview,
+	CheckRoutes,
+}
 
 // DrainBriefBytes is the drain's bound on one brief field (a brief over 16 KB poisoned the drain queue
 // on 2026-10-11): a card whose brief is over it is a finding of kind brief-size.
@@ -71,6 +90,11 @@ type CardFinding struct {
 // refusing is a finding that fails the check and start.
 func refusing(kind, subject, finding, remedy string) CardFinding {
 	return CardFinding{Kind: kind, Subject: subject, Finding: finding, Remedy: remedy, Severity: SeverityRefuse}
+}
+
+// warning is a finding that warns and fails neither the check nor start.
+func warning(kind, subject, finding, remedy, serialized string) CardFinding {
+	return CardFinding{Kind: kind, Subject: subject, Finding: finding, Remedy: remedy, Severity: SeverityWarn, Serialized: serialized}
 }
 
 // Refuses says the finding fails the check and start: every finding but a warning, one with
@@ -158,6 +182,10 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 	out = append(out, c.staleHead()...)
 	out = append(out, c.lint()...)
 	out = append(out, c.briefSize()...)
+	out = append(out, c.sentinelWide()...)
+	out = append(out, c.sentinelConsumers()...)
+	out = append(out, c.owner()...)
+	out = append(out, c.failedInReview()...)
 	out = append(out, ProviderFindings(s)...)
 	return out
 }
@@ -198,12 +226,13 @@ func (c *cardCheck) staleHead() []CardFinding {
 		if head == "" || !AttemptPredatesBrief(card, attempt) {
 			continue
 		}
-		out = append(out, CardFinding{CheckStaleHead, card.ID,
+		out = append(out, refusing(CheckStaleHead, card.ID,
 			fmt.Sprintf("head %s of attempt %d was made under an earlier brief", head, attempt),
-			"nova-sprint rework " + card.ID + " --fix 'brief replaced'"})
+			"nova-sprint rework "+card.ID+" --fix 'brief replaced'"))
 	}
 	return out
 }
+
 
 func (c *cardCheck) inStreams(stream string) bool {
 	return len(c.in.Streams) == 0 || slices.Contains(c.in.Streams, stream)
@@ -810,3 +839,175 @@ func ProviderFindings(s *Snapshot) []CardFinding {
 	}
 	return out
 }
+
+var parenRE = regexp.MustCompile(`\([^)]*\)`)
+
+// ConsumersOfBrief is the cards that need a sentinel (FieldConsumers): read from
+// its CONSUMERS: header line; ok is false when the brief carries no such line.
+func ConsumersOfBrief(brief string) ([]string, bool) {
+	val, ok := swarm.CardHeaderValue([]byte(brief), "CONSUMERS")
+	if !ok {
+		return nil, false
+	}
+	cleaned := parenRE.ReplaceAllString(val, " ")
+	var out []string
+	for _, f := range strings.FieldsFunc(cleaned, func(r rune) bool {
+		return r == ',' || r == ';' || unicode.IsSpace(r)
+	}) {
+		f = strings.TrimSpace(f)
+		if f != "" && f != "-" && f != "none" {
+			out = append(out, f)
+		}
+	}
+	return out, true
+}
+
+func cardGlobs(brief string) []string {
+	var out []string
+	for _, p := range swarm.CardPaths([]byte(brief)) {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "none" || p == "-" || everyCardWrites(p) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func globsShare(ps, cs []string) bool {
+	for _, gp := range ps {
+		for _, gc := range cs {
+			if gp == gc || diffcheck.Covers(gp, gc) || diffcheck.Covers(gc, gp) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sentinelWide warns on a sentinel whose WaitsFor list includes producers sharing
+// no non-ledger PATHS/NEW glob with the consumer.
+func (c *cardCheck) sentinelWide() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		if IsSentinel(card) {
+			continue
+		}
+		cGlobs := cardGlobs(card.F("brief"))
+		for _, n := range Split(card.F("needs")) {
+			sentinel := c.s.Work.Placed(n)
+			if sentinel == nil || !IsSentinel(sentinel) {
+				continue
+			}
+			var unshared []string
+			for _, pid := range WaitsFor(c.s, sentinel, nil) {
+				pCard := c.s.Work.Placed(pid)
+				if pCard == nil || IsSentinel(pCard) {
+					continue
+				}
+				pGlobs := cardGlobs(pCard.F("brief"))
+				if !globsShare(pGlobs, cGlobs) {
+					unshared = append(unshared, pid)
+				}
+			}
+			if len(unshared) > 0 {
+				slices.Sort(unshared)
+				out = append(out, warning(
+					CheckSentinelWide,
+					sentinel.ID,
+					fmt.Sprintf("waits on %d producer(s) sharing no PATHS/NEW glob with consumer %s: %s", len(unshared), card.ID, strings.Join(unshared, ", ")),
+					fmt.Sprintf("move %s after %s, or narrower sentinel", strings.Join(unshared, ", "), sentinel.ID),
+					"sentinel "+sentinel.ID,
+				))
+			}
+		}
+	}
+	return out
+}
+
+// sentinelConsumers refuses a sentinel whose CONSUMERS header does not name
+// every open card that needs it.
+func (c *cardCheck) sentinelConsumers() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		if !IsSentinel(card) || card.F("brief") == "" {
+			continue
+		}
+		var allConsumers []string
+		for _, w := range c.s.Work.Cards() {
+			if !w.Placed() || w.Col == Landed || IsSentinel(w) {
+				continue
+			}
+			if slices.Contains(Split(w.F("needs")), card.ID) {
+				allConsumers = append(allConsumers, w.ID)
+			}
+		}
+		slices.Sort(allConsumers)
+		declared, ok := ConsumersOfBrief(card.F("brief"))
+		var missing []string
+		for _, consumer := range allConsumers {
+			if !ok || !slices.Contains(declared, consumer) {
+				missing = append(missing, consumer)
+			}
+		}
+		if len(missing) > 0 {
+			remedy := fmt.Sprintf("nova-sprint brief %s --brief-file <a brief naming every consumer: CONSUMERS: %s>", card.ID, strings.Join(allConsumers, ", "))
+			out = append(out, refusing(
+				CheckSentinelConsumers,
+				card.ID,
+				fmt.Sprintf("CONSUMERS line missing %s", strings.Join(missing, ", ")),
+				remedy,
+			))
+		}
+	}
+	return out
+}
+
+// owner refuses a card whose who= is friend lacking a WHO: line in brief,
+// or whose attempts all ran on fleet members.
+func (c *cardCheck) owner() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		if IsSentinel(card) {
+			continue
+		}
+		if card.F(FieldWho) == WhoFriend {
+			if WhoOfBrief(card.F("brief")) == "" {
+				out = append(out, refusing(
+					CheckOwner,
+					card.ID,
+					"who=friend but brief has no WHO: line",
+					"nova-sprint card "+card.ID+" --who fleet (or set WHO: line in brief)",
+				))
+			} else if card.Int("attempt") > 0 && card.F(FieldRoutes) != "" && len(Split(card.F(FieldRoutes))) >= card.Int("attempt") {
+				out = append(out, refusing(
+					CheckOwner,
+					card.ID,
+					fmt.Sprintf("who=friend but attempts ran on fleet members: %s", card.F(FieldRoutes)),
+					"nova-sprint card "+card.ID+" --who fleet (or set WHO: line in brief)",
+				))
+			}
+		}
+	}
+	return out
+}
+
+// failedInReview refuses a card in review whose last attempt failed.
+func (c *cardCheck) failedInReview() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		if card.Col != Review {
+			continue
+		}
+		if card.F("result") == "failed" || strings.HasSuffix(card.F("last_finish"), ":failed") {
+			out = append(out, refusing(
+				CheckFailedInReview,
+				card.ID,
+				fmt.Sprintf("attempt %s failed and remains in review", orDash(card.F("attempt"))),
+				fmt.Sprintf("rework, redo or drop: nova-sprint rework %s (or redo, drop)", card.ID),
+			))
+		}
+	}
+	return out
+}
+

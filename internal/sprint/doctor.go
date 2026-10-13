@@ -222,6 +222,7 @@ func Doctor(in DoctorInput) []DoctorCheck {
 	out = append(out, DoctorProviders(in)...)
 	out = append(out, DoctorReadyNotDealt(in)...)
 	out = append(out, DoctorLanderLoop(in)...)
+	out = append(out, DoctorFailedInReview(in)...)
 	out = append(out, DoctorSeat(in)...)
 	out = append(out, DoctorGitIdentity(in)...)
 	for i := range out {
@@ -1017,6 +1018,35 @@ func DoctorLanderLoop(in DoctorInput) (out []DoctorCheck) {
 	}
 	if len(out) == 0 {
 		out = append(out, okCheck(area, check, "all", fmt.Sprintf("review=%d no refused head offered again, none stranded", len(s.Work.Column(Review)))))
+	}
+	return out
+}
+
+// DoctorFailedInReview reports any card in Review whose last attempt failed:
+// a card in review whose finish failed stalls the stream until rework, redo, or drop.
+func DoctorFailedInReview(in DoctorInput) []DoctorCheck {
+	if in.Snap == nil || in.Snap.Work == nil {
+		return nil
+	}
+	const area, check = AreaCards, CheckFailedInReview
+	var out []DoctorCheck
+	for _, c := range in.Snap.Work.Cards() {
+		if !c.Placed() || c.Col != Review {
+			continue
+		}
+		if c.F("result") == "failed" || strings.HasSuffix(c.F("last_finish"), ":failed") {
+			out = append(out, DoctorCheck{
+				Area:     area,
+				Check:    check,
+				Subject:  c.ID,
+				Status:   DoctorFail,
+				Evidence: fmt.Sprintf("attempt=%s result=%s head=%s", orDash(c.F("attempt")), orDash(c.F("result")), shortSHA(c.F("head"))),
+				Remedy:   "nova-sprint rework " + c.ID,
+			})
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, okCheck(area, check, "all", "no failed card in review"))
 	}
 	return out
 }
