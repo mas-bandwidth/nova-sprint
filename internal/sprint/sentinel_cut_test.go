@@ -17,18 +17,25 @@ func TestACutSentinelReleasesItselfOnTheTick(t *testing.T) {
 	require.Equal(t, Waiting, w.state("b"), "b waits behind the sentinel")
 	p, _ := TickResolve(w.s, TickReq{})
 	require.Empty(t, p.Units, "released before its needs landed: %+v", p)
-	accepted(w, "s1-1", "s1-2")
+	for _, id := range []string{"s1-1", "s1-2"} {
+		w.s.Work.Card(id).Fields["brief"] = "fixture\nREPO: /fixture/repo\n"
+	}
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1", "s1-2"}}}))
+	for _, id := range []string{"s1-1", "s1-2"} {
+		work := w.s.Fleet.Card(w.s.Work.Card(id).F("work"))
+		w.must(Take(w.s, TakeReq{As: work.Row, Sel: Sel{IDs: []string{work.ID}}, Gens: gensOf(w.s, work.ID)}))
+		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{work.ID}}, Gens: gensOf(w.s, work.ID), Head: id + "-head"}))
+	}
+	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1", "s1-2"}}}))
+	readOK(w, "s1-1")
+	readOK(w, "s1-2")
+	w.must(Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1", "s1-2"}}}))
 	mergeOne(w, "s1")
 	p = mergeOne(w, "s1")
 	require.Len(t, notesIn(p, NSentinelReached), 1, "the last landing reached it: %+v", p.Units)
 	require.Equal(t, Waiting, cut.Col, "the landing step never lands it")
 	// Fake forge facts use explicit heads/repositories and exact scope; a mere
 	// landed state above was not enough to release.
-	for _, id := range []string{"s1-1", "s1-2"} {
-		p := w.s.Work.Card(id)
-		p.Fields["head"] = id + "-head"
-		p.Fields["brief"] = "fixture\nREPO: /fixture/repo\n"
-	}
 	observation := SentinelObservation{Input: SentinelInputOf(w.s, cut)}
 	for _, id := range []string{"s1-1", "s1-2"} {
 		observation.Inclusions = append(observation.Inclusions, DevInclusion{Producer: id, Repo: "/fixture/repo", Stream: "s1", Trunk: Trunk(w.s, "s1"), Head: id + "-head", Containing: "observed-trunk", Included: true})

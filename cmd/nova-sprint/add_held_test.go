@@ -27,7 +27,10 @@ func TestHeldSentinelAdmissionRefusedAndOrdinaryHeldCardReleases(t *testing.T) {
 		require.Equal(t, sprint.Waiting, ta.primary(id).Col)
 	}
 	for _, g := range ta.inboxGroups() {
-		require.NotEqual(t, sprint.NSentinelReached, g.Type)
+		if g.Type == sprint.NSentinelReached {
+			require.Equal(t, sprint.Happened, g.Kind)
+			require.Empty(t, g.Decisions)
+		}
 		require.NotEqual(t, sprint.NStalled, g.Type)
 	}
 	ta.clean()

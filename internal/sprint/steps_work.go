@@ -962,7 +962,7 @@ func ResolveExtras(s *Snapshot) []string {
 			if s.Work.Placed(id) == nil {
 				out = append(out, id)
 			}
-			if need != nil && IsSentinel(need) && need.F("release_kind") != "early override" {
+			if need != nil && IsSentinel(need) && !sentinelDropped(SentinelCardOf(need)) && need.F("release_kind") != "early override" {
 				visit(need)
 			}
 		}

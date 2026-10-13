@@ -53,6 +53,9 @@ func TestEmptySentinelDoesNotWaitForOtherStreamLanding(t *testing.T) {
 	ta.ok("add --stream docs --sentinel docs-round2 --actor lead")
 	ta.ok("add --stream docs d1 --one --actor lead --brief-file " + proBriefFile(t))
 	ta.deal(1)
+	ta.ok("start --actor lead")
+	ta.ok("tick")
+	require.Equal(t, sprint.Landed, ta.primary("docs-round2").Col, "empty sentinel releases while unrelated producer is working")
 	ta.ok("take --as m1 s1-1.w1@1")
 	ta.ok("finish --as m1 s1-1.w1@1")
 	ta.ok("ask --actor lead")
@@ -107,9 +110,15 @@ func TestASentinelIsReachedWhenTheCardsPlacedBeforeItLand(t *testing.T) {
 	ta.ok("accept s1-1 --actor lead")
 	ta.ok("merge --stream s1")
 	progress := sentinelProgressNotes(t, ta, "s1")
-	require.Len(t, progress, 1)
-	assert.Contains(t, progress[0].What, "sentinel stop reached: 1 cards of s1 have landed")
-	require.False(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached))
+	require.Len(t, progress, 2, "empty admission and later producer completion are two progress facts")
+	assert.Contains(t, progress[0].What, "sentinel stop reached: 0 cards of s1 have landed")
+	assert.Contains(t, progress[1].What, "sentinel stop reached: 1 cards of s1 have landed")
+	for _, g := range ta.inboxGroups() {
+		if g.Type == sprint.NSentinelReached {
+			require.Equal(t, sprint.Happened, g.Kind)
+			require.Empty(t, g.Decisions)
+		}
+	}
 	require.Equal(t, sprint.Waiting, ta.primary("stop").Col, "actual producer ancestry is still absent")
 }
 

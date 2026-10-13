@@ -26,7 +26,7 @@ func TestSentinelTickLoadsRetainedDroppedTransitiveProducer(t *testing.T) {
 	// still load the dropped ordinary producer for the downstream proof input.
 	h.setCard(sprint.Work, "upstream", map[string]string{"release_kind": "automatic"})
 	h.must(AddStep(sprint.AddReq{Stream: "consumer", IDs: []string{"downstream"}, Sentinel: true, Needs: []string{"upstream"}}))
-	loaded, err := h.st.Load(h.ctx, []string{sprint.Work, sprint.Merge}, tickExtras)
+	loaded, err := h.st.Load(h.ctx, All, tickExtras)
 	require.NoError(t, err)
 	require.NotNil(t, loaded.Work.Card("p"))
 	require.Nil(t, loaded.Work.Placed("p"))
@@ -93,4 +93,27 @@ func resolveFixtureConsumers(h *harness, ids []string) Result {
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan { s.ConsumerMerges = h.st.ConsumerTrunk(h.ctx, s); return plan(s) }
 	return h.must(step)
+}
+
+// This is an explicit stored-shape fixture: guarded metadata writes can
+// carry an old audit field on a placed record. Normal Add does not reuse a
+// kept dropped identity; no such command behavior is claimed here.
+func TestSentinelStoredPlacedProducerWithDroppedAuditIsNotWaived(t *testing.T) {
+	h := newHarness(t)
+	h.must(AddStep(sprint.AddReq{Stream: "producer", IDs: []string{"p"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "producer", IDs: []string{"stop"}, Sentinel: true, Needs: []string{"p"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "producer", IDs: []string{"consumer-after"}}))
+	h.setCard(sprint.Work, "p", map[string]string{"outcome": "dropped"})
+	loaded, err := h.st.Load(h.ctx, All, tickExtras)
+	require.NoError(t, err)
+	require.NotNil(t, loaded.Work.Placed("p"))
+	require.Equal(t, sprint.Ready, loaded.StateOf("p"))
+	require.Equal(t, "dropped", loaded.Work.Card("p").F("outcome"))
+	result := h.run(TickPartStep("resolve", sprint.TickResolve, sprint.TickReq{}, nil, nil, nil))
+	require.Equal(t, sprint.Waiting, h.state("stop"), "placed work is not a dropped completion waiver")
+	require.Empty(t, result.Moved)
+	require.Equal(t, sprint.Waiting, h.state("consumer-after"))
+	require.Empty(t, h.snap().Work.Card("consumer-after").F("work"), "consumer must remain undealt")
+	_, _, ok := sprint.SentinelDevReason(loaded, loaded.Work.Card("stop"), nil)
+	require.False(t, ok)
 }

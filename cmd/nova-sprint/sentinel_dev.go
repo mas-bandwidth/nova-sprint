@@ -26,7 +26,7 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 			input := sprint.SentinelInputOf(s, c)
 			observation := sprint.SentinelObservation{Input: input}
 			for _, p := range input.Producers {
-				if p.Kind == "sentinel" || p.Outcome == "dropped" || p.State != string(sprint.Landed) || p.Head == "" {
+				if p.Kind == "sentinel" || (p.Outcome == "dropped" && !p.Placed) || p.State != string(sprint.Landed) || p.Head == "" {
 					continue
 				}
 				repo := swarm.ReadCardBase([]byte(p.Brief)).Repo

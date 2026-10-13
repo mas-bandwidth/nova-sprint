@@ -21,10 +21,11 @@ type SentinelCard struct {
 	ID, Stream, State, Head, Brief, Outcome, Needs, Kind, ReleaseKind string
 	Score                                                             float64
 	Revision                                                          uint64
+	Placed                                                            bool
 }
 
 func SentinelCardOf(c *Card) SentinelCard {
-	return SentinelCard{ID: c.ID, Kind: c.F("kind"), ReleaseKind: c.F("release_kind"), Stream: c.Row, State: c.Col, Head: c.F("head"), Brief: c.F("brief"), Outcome: c.F("outcome"), Needs: c.F("needs"), Score: c.Score, Revision: c.Rev}
+	return SentinelCard{ID: c.ID, Placed: c.Placed(), Kind: c.F("kind"), ReleaseKind: c.F("release_kind"), Stream: c.Row, State: c.Col, Head: c.F("head"), Brief: c.F("brief"), Outcome: c.F("outcome"), Needs: c.F("needs"), Score: c.Score, Revision: c.Rev}
 }
 
 // SentinelInputOf includes named producers and every primary before the
@@ -55,7 +56,7 @@ func SentinelInputOf(s *Snapshot, c *Card) SentinelInput {
 		}
 		in.Producers = append(in.Producers, SentinelCardOf(producer))
 		in.Targets[producer.Row] = StreamBranch(s, producer.Row) + "@" + Trunk(s, producer.Row)
-		if IsSentinel(producer) && producer.F("release_kind") != "early override" {
+		if IsSentinel(producer) && !sentinelDropped(SentinelCardOf(producer)) && producer.F("release_kind") != "early override" {
 			nested := Split(producer.F("needs"))
 			for _, p := range streamLine(s, producer.Row) {
 				if p.Score < producer.Score && !IsSentinel(p) {
@@ -102,7 +103,7 @@ func SentinelDevReason(s *Snapshot, c *Card, observations []SentinelObservation)
 	live := 0
 	dropped := 0
 	for _, producer := range input.Producers {
-		if producer.Outcome == "dropped" {
+		if sentinelDropped(producer) {
 			dropped++
 			continue
 		}
@@ -128,7 +129,7 @@ func SentinelDevReason(s *Snapshot, c *Card, observations []SentinelObservation)
 		}
 		var merges []DevInclusion
 		for _, producer := range input.Producers {
-			if producer.Outcome == "dropped" || producer.Kind == "sentinel" {
+			if sentinelDropped(producer) || producer.Kind == "sentinel" {
 				continue
 			}
 			repo := swarm.ReadCardBase([]byte(producer.Brief)).Repo
@@ -208,3 +209,5 @@ func consumerCrossesRelease(s *Snapshot, c *Card, landing map[string]bool) bool 
 	}
 	return false
 }
+
+func sentinelDropped(c SentinelCard) bool { return c.Outcome == "dropped" && !c.Placed }

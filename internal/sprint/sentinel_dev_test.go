@@ -35,7 +35,7 @@ func TestSentinelAutoReleaseRequiresFreshActualTrunkProof(t *testing.T) {
 
 func TestSentinelEmptyAndDroppedNeedNoInventedMerge(t *testing.T) {
 	s, c, _ := sentinelProofFixture(t)
-	s.Work.Card("p").Fields["outcome"] = "dropped"
+	s.Work.Put(&Card{ID: "p", Fields: map[string]string{"outcome": "dropped"}})
 	reason, merges, ok := SentinelDevReason(s, c, nil)
 	require.True(t, ok)
 	require.Equal(t, "all producers dropped", reason)
@@ -105,4 +105,28 @@ func TestSentinelReachedIsProgressRatherThanCoordinatorGate(t *testing.T) {
 	note := reachedNote(s, c, nil, 0, MachineActor)
 	require.Equal(t, Happened, note.Kind)
 	require.Empty(t, note.Decisions)
+}
+
+func TestSentinelPlacedProducerWithRetainedDroppedOutcomeIsNotComplete(t *testing.T) {
+	s, c, _ := sentinelProofFixture(t)
+	p := s.Work.Card("p")
+	p.Col = Ready
+	p.Fields["outcome"] = "dropped"
+	_, _, ok := SentinelDevReason(s, c, nil)
+	require.False(t, ok, "a recreated placed producer is new work, not a dropped waiver")
+}
+
+func TestDroppedNamedSentinelDoesNotWaiveAnIndependentProducer(t *testing.T) {
+	s, _, _ := sentinelProofFixture(t)
+	s.Work.Card("p").Col = Ready
+	s.Work.Put(&Card{ID: "stop", Fields: map[string]string{"kind": "sentinel", "outcome": "dropped", "needs": "p"}})
+	downstream := &Card{ID: "next-stop", Row: "consumer", Col: Waiting, Fields: map[string]string{"kind": "sentinel", "needs": "stop"}}
+	s.Work.Put(downstream)
+	reason, proof, ok := SentinelDevReason(s, downstream, nil)
+	require.True(t, ok)
+	require.Equal(t, "all producers dropped", reason)
+	require.Empty(t, proof)
+	downstream.Fields["needs"] = "stop,p"
+	_, _, ok = SentinelDevReason(s, downstream, nil)
+	require.False(t, ok, "a dropped control producer does not waive independently named active work")
 }
