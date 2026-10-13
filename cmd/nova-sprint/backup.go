@@ -568,7 +568,7 @@ func backupScanBytes(b []byte) []byte {
 				}
 			}
 		case len(p) == 7 && p[0] == "logs" && p[2] == "lines" && p[4] == "line" && p[5] == "text" && p[6] == "brief":
-			if backupAt(root, append(append([]string(nil), p[:5]...), "table")) != "work" || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "queued" {
+			if backupAt(root, append(append([]string(nil), p[:5]...), "table")) != "work" || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "move" {
 				continue
 			}
 			if !add(b, s, nil) {

@@ -178,7 +178,7 @@ func backupBudgetDoc(t *testing.T, brief string, extra map[string]string) []byte
 	root := map[string]any{
 		"version": 1,
 		"tables":  map[string]any{"work": map[string]any{"def": map[string]string{"Name": "work"}, "members": map[string]any{"p": map[string]any{"fields": map[string]string{"kind": "primary", "brief": brief}}}, "ops": map[string]any{"add": map[string]string{"body": string(manifest)}}}},
-		"logs":    map[string]any{"0": map[string]any{"lines": []any{map[string]any{"line": map[string]any{"kind": "queued", "table": "work", "text": map[string]string{"brief": brief}}}}}},
+		"logs":    map[string]any{"0": map[string]any{"lines": []any{map[string]any{"line": map[string]any{"kind": "move", "table": "work", "text": map[string]string{"brief": brief}}}}}},
 		"kv":      extra,
 	}
 	doc, err := json.MarshalIndent(root, "", "  ")
