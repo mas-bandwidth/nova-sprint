@@ -22,7 +22,7 @@ type Applier interface {
 	// Function library when the store has none (fn.LoadMissing).
 	Prepare(ctx context.Context) error
 	// Write adds (prev nil) or updates one row through the runtime's own
-	// functions. A refusal (CEILING, an actor without the role) is a
+	// functions. A refusal (a bench's CEILING, an actor without the role) is a
 	// *RefusedError.
 	Write(ctx context.Context, kind string, row Row, prev View, actor, idem string) error
 	// Remove removes one row's keys. A row the runtime still holds (a

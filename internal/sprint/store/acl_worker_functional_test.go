@@ -26,7 +26,7 @@ import (
 func TestRedisAWorkersStepsRunUnderTheRenderedMemberACL(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	addr := testutil.Start(t)
+	addr := testutil.StartRaw(t)
 	admin := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(ctx, admin))

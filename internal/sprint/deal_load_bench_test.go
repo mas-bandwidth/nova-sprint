@@ -170,6 +170,12 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 // store's few routes (servedRoute) and skips the set in the check (routeServed), so the
 // deal allocates a bounded near 23 a ready card, whatever the store's size.
 func TestTickDealAllocatesNoPerCardRouteMapAtScale(t *testing.T) {
+	if underRace {
+		// the race detector's instrumentation adds allocations of its own (43.16 a card
+		// under -race against 39.14 without), so the bound is meaningful only without it;
+		// the non-race run asserts it unchanged
+		t.Skip("allocation count is not meaningful under -race; asserted in the non-race run")
+	}
 	s := loadedStore(t, 80000, 80000, 8)
 	ready := len(s.Work.Column(Ready))
 	require.Equal(t, 80000, ready, "80,000 ready primaries, the loaded store's scale")

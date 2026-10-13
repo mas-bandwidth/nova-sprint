@@ -49,6 +49,9 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	t.Cleanup(a.close)
 	a.serveAddr = "mem:" + file
 	a.readTip, a.readHeads = nil, nil // a broken read's branch is checked only when a test gives a tip
+	// the rig's bare starts run on briefless --count cards: the card check gate is off here,
+	// and every gate test turns it on (check_cards_test.go)
+	a.cardCheckGate = false
 	r := &serverRig{t: t, a: a}
 	for _, l := range lines {
 		r.boss(l)

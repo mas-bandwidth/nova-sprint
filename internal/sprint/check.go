@@ -214,6 +214,11 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{8, fmt.Sprintf("%s is in merge %s and not on the work table", c.ID, c.Col)})
 		}
 	}
+	// 8. Every open judgment names a card on the table or a live stream
+	// (tla/JudgmentRetire.tla NoOrphanAfterTick; docs/SPEC-SPRINT.md section 9).
+	for _, o := range OrphanJudgments(s) {
+		out = append(out, Violation{8, fmt.Sprintf("judgment %s (%s) names %s, not on the table", o.ID, o.Type, o.Target)})
+	}
 	// 9. A stopped stream has an open judgment notification.
 	for _, st := range s.Merge.Rows() {
 		ctl := s.StreamCtl(st)

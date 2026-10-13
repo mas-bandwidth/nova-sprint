@@ -1022,18 +1022,17 @@ func okReaders(s *Snapshot, pr *Card) []*Card {
 }
 
 // standingReads is the reads that stand on the primary's attempt, from the readers table
-// and the fleet table alike: the ok reads, one a reader, the reader named by its stable
-// reader field (ReadCardAgrees and friendReadAgrees hold it to the card's id; a read retired
-// off its fleet row has no row, so the row names no reader), the readers table's in reader
-// row order and then the fleet's; and the broken reads at the attempt's head (a broken read
-// that pins no head stands too). A read is at the attempt's head when it is the primary's
-// head at its current attempt (a fleet read: or the attempt's work head, readHeadMatches),
-// and the attempt's work head at an earlier one. The accept (okReaders, hasBrokenAtHead) and
-// the readers' verdict on the attempt's work (readVerdict, TickVerdicts) count from it alone,
-// so they cannot disagree: a card accepted on its reads is work counted ok, whichever table
-// its reads are on (Stella's finding of 2026-10-11: the verdicts counted the readers table
-// alone, and a card accepted on two fleet reads left its worker's card in finished, her
-// friends row's done at 0).
+// and the fleet table alike: the ok read cards (tla/ReadCards.tla OkReadsAccept; distinct
+// read cards at the head, whatever machine ran them, each generation counting), the readers
+// table's in reader row order and then the fleet's; and the broken reads at the attempt's head
+// (a broken read that pins no head stands too). A read is at the attempt's head when it is
+// the primary's head at its current attempt (a fleet read: or the attempt's work head,
+// readHeadMatches), and the attempt's work head at an earlier one. The accept (okReaders,
+// hasBrokenAtHead) and the readers' verdict on the attempt's work (readVerdict, TickVerdicts)
+// count from it alone, so they cannot disagree: a card accepted on its reads is work counted
+// ok, whichever table its reads are on (Stella's finding of 2026-10-11: the verdicts counted the
+// readers table alone, and a card accepted on two fleet reads left its worker's card in finished,
+// her friends row's done at 0).
 func standingReads(s *Snapshot, pr *Card, attempt int) (oks, broken []*Card) {
 	if s == nil || pr == nil {
 		return nil, nil
@@ -1050,8 +1049,8 @@ func standingReads(s *Snapshot, pr *Card, attempt int) (oks, broken []*Card) {
 			h := c.F("head")
 			atHead := (current && h == pr.F("head")) || (!current && h != "" && h == workHead)
 			switch {
-			case c.Col == OK && atHead && ReadCardAgrees(c) && !seen[c.F("reader")]:
-				seen[c.F("reader")] = true
+			case c.Col == OK && atHead && ReadCardAgrees(c) && !seen[c.ID]:
+				seen[c.ID] = true
 				oks = append(oks, c)
 			case c.Col == Broken && (h == "" || atHead):
 				broken = append(broken, c)
@@ -1070,9 +1069,8 @@ func standingReads(s *Snapshot, pr *Card, attempt int) (oks, broken []*Card) {
 		if real == nil {
 			continue
 		}
-		r := real.F("reader")
-		if friendReadAgrees(real) && readHeadMatchesAt(s, pr, attempt, real) && !seen[r] {
-			seen[r] = true
+		if friendReadAgrees(real) && readHeadMatchesAt(s, pr, attempt, real) && !seen[real.ID] {
+			seen[real.ID] = true
 			oks = append(oks, real)
 		}
 	}
@@ -1080,16 +1078,19 @@ func standingReads(s *Snapshot, pr *Card, attempt int) (oks, broken []*Card) {
 	return oks, append(broken, fbr...)
 }
 
-// readersWord names the readers a primary needs (ReadsNeededIn, none, one or two):
-// "one reader" for a flash card, "two different readers" for a pro card.
+// readersWord names the ok reads a primary needs (ReadsNeededIn, none, one or two):
+// "one ok read" for a flash card, "two ok reads" for a pro card.
 func readersWord(n int) string {
 	if n == 0 {
-		return "no reader"
+		return "no ok read"
 	}
 	if n == 1 {
-		return "one reader"
+		return "one ok read"
 	}
-	return "two different readers"
+	if n == 2 {
+		return "two ok reads"
+	}
+	return fmt.Sprintf("%d ok reads", n)
 }
 
 // ReadCardAgrees says a read card is where its identity says: the row it
@@ -1146,9 +1147,21 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 		if oks := okReaders(s, c); len(oks)+max(heavyReads, coord) < ReadsNeededIn(s, c) {
 			var names []string
 			for _, o := range oks {
-				names = append(names, o.F("reader"))
+				names = append(names, o.ID)
 			}
-			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+max(heavyReads, coord), orDash(strings.Join(names, ",")))
+			if heavyReads > 0 || coord > 0 {
+				if c.F(FieldHeavyReader) != "" {
+					names = append(names, c.F(FieldHeavyReader))
+				} else {
+					names = append(names, "coordinator")
+				}
+			}
+			msg := fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+max(heavyReads, coord), orDash(strings.Join(names, ",")))
+			_, others := readCardReasons(s, c, c.Int("attempt"))
+			if len(others) > 0 {
+				msg += "; not counted: " + strings.Join(others, ", ")
+			}
+			return msg
 		}
 		if !r.Heavy && hasBrokenAtHead(s, c) {
 			// a broken read at the head outweighs any number of oks: accept never queues the
@@ -1206,11 +1219,11 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 			u.Changes = append(u.Changes, change(Merge, createEntry(c.ID, c.Row, Queued, c.Score,
 				map[string]string{"kind": "merge", "primary": c.ID, "stream": c.Row, FieldQueued: stamp(s.Now)})))
 		}
-		var names []string
+		var ids []string
 		for _, o := range oks {
-			names = append(names, o.F("reader"))
+			ids = append(ids, o.ID)
 		}
-		readers := strings.Join(names, ",")
+		readers := strings.Join(ids, ",")
 		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
 		maps.Copy(set, readStamps(oks))
 		heavyText := ""
@@ -2287,15 +2300,26 @@ func stillGone(gone, named []string) bool {
 // left to the resolve part, which already judges the same facts (NBlocked,
 // NMissingNeed) as it moves it; every other unlanded state is judged here. A
 // judgment whose need is landed, waived or re-pointed closes.
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func TickNeeds(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	opens := map[string][]Open{}
 	for _, o := range s.Open {
 		opens[o.Subject()] = append(opens[o.Subject()], o)
 	}
+	covered := CoveredDependents(s)
 	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
 		for _, c := range s.Work.Column(st) {
 			if IsSentinel(c) {
+				continue
+			}
+			if blockerID, isCovered := covered[c.ID]; isCovered {
+				for _, o := range opens[c.ID] {
+					if o.Note.Type == NNeedsGone {
+						p.Closes = append(p.Closes, o)
+						p.Notes = append(p.Notes, decided(o, "covered by "+blockerID, r.who(), s.Now, c.ID))
+					}
+				}
 				continue
 			}
 			gone := goneNamedNeeds(s, c)
@@ -2404,6 +2428,8 @@ type DropReq struct {
 // with it the dependants and their dependants go too. --relink re-points the
 // need of each dependent to a new card; --waive removes the need from each
 // dependent (docs/SPEC-SPRINT.md section 11).
+//
+// tla/NeedsBlocked.tla NoStrandingDrop
 func Drop(s *Snapshot, r DropReq) Plan {
 	var p Plan
 	var all []*Card
@@ -2450,10 +2476,12 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		// names one of the dropping cards no longer names a card that is gone:
 		// its need is re-pointed at the new card (--relink) or removed and
 		// recorded with the reason (--waive), so no unlanded card is left
-		// stranded (rule (a), every-need-names-a-live-card-checked-every-second).
-		if r.Relink != "" && s.Work.Placed(r.Relink) == nil {
-			p.refuse(r.Relink, r.Relink+" is no primary on the table; nothing was changed")
-			return p
+		// tla/NeedsBlocked.tla NoStrandingDrop
+		if r.Relink != "" {
+			if unres := UnresolvedNeeds(s, "", []string{r.Relink}, nil); len(unres) > 0 {
+				p.refuse(r.Relink, fmt.Sprintf("relink target %s is unresolved (%s): %s; nothing was changed", r.Relink, unres[0].Reason, unres[0].Words))
+				return p
+			}
 		}
 		// one rewrite per dependent, however many dropping cards it names
 		dependents := map[string]bool{}

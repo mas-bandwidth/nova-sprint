@@ -290,26 +290,17 @@ func Add(s *Snapshot, r AddReq) Plan {
 	var in []admit
 	lastGate := ""
 	seen := map[string]bool{}
+	var needsWhy []string // each card and need the add refuses (UnresolvedNeeds)
 	for i, id := range ids {
 		needs := append([]string(nil), needsOf(i)...)
-		// A need names a primary that can still land: one on the table
-		// (waiting, ready, working, review, merging or landed), a sentinel, or
-		// one of this add. missing is the needs that name no record at all;
-		// off is the needs that name a kept record off the table (a dropped
-		// card), whose outcome the refusal names.
-		var missing, off []string
-		for _, n := range needs {
-			if adding[n] {
-				continue
-			}
-			c := s.Work.Card(n)
-			switch {
-			case c == nil:
-				missing = append(missing, n)
-			case !c.Placed() && !IsSentinel(c):
-				off = append(off, n)
-			}
-		}
+		// A need is resolved, or one of this add, or refused with its one reason:
+		// absent, dropped, an unknown stream, held at its bound with no decision
+		// (needs_resolve.go UnresolvedNeeds; tla/NeedsBlocked.tla AdmittedNeedsResolved).
+		unresolved := UnresolvedNeeds(s, id, needs, adding)
+		// a need of this add's own stream is in a known stream: the add writes its control card
+		unresolved = slices.DeleteFunc(unresolved, func(u UnresolvedNeed) bool {
+			return u.Reason == UnresolvedUnknownStream && s.Work.Card(u.Need).Row == r.Stream
+		})
 		// bench is the members its brief's BENCH line names: every placement of its work
 		// cards deals it only to them, and a name that is no fleet member is refused with
 		// the members there are (bench_deal.go)
@@ -334,19 +325,15 @@ func Add(s *Snapshot, r AddReq) Plan {
 		case devWhy != "": // a card cut on dev, outside the promotion stream (docs/SPEC-SPRINT.md section 7)
 			p.refuse(id, devWhy)
 			continue
-		case len(missing) > 0 || len(off) > 0:
-			var why []string
-			if len(missing) > 0 {
-				why = append(why, "needs "+strings.Join(missing, ",")+", which is no primary on the table or in this add")
-			}
-			for _, n := range off {
-				why = append(why, "needs "+n+", which was "+orDash(s.Work.Card(n).F("outcome")))
-			}
-			msg := strings.Join(why, "; ")
+		case len(unresolved) > 0:
+			msg := NeedsRefusal(unresolved)
 			if len(r.Cards) > 0 {
 				msg = r.Cards[i].File + ": " + msg
 			}
 			p.refuse(id, msg)
+			for _, u := range unresolved {
+				needsWhy = append(needsWhy, id+" needs "+u.Need+" ("+u.Reason+")")
+			}
 			continue
 		case benchWhy != "":
 			p.refuse(id, benchWhy)
@@ -371,6 +358,16 @@ func Add(s *Snapshot, r AddReq) Plan {
 			lastGate = id
 		}
 		in = append(in, a)
+	}
+	// an add of more than one card with an unresolved need is refused whole, naming every
+	// card and need: a partial import strands the dependents inside it (tla/NeedsBlocked.tla)
+	if len(needsWhy) > 0 && len(ids) > 1 {
+		var each []string
+		for _, ref := range p.Refused {
+			each = append(each, ref.Why)
+		}
+		return refuseAll("the add is refused whole, nothing is written (a partial import strands the cards that need it): " +
+			strings.Join(needsWhy, "; ") + " [" + strings.Join(each, "; ") + "]")
 	}
 	// Every card admitted records its repository and base on its stream's control
 	// card: the union of what the stream already records and this add's briefs, so a
@@ -1011,6 +1008,8 @@ func ResolveExtras(s *Snapshot) []string {
 
 // Resolve moves waiting -> ready where every need has landed. A need that was
 // dropped or missing is a judgment for the coordinator, once.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func Resolve(s *Snapshot, r ResolveReq) Plan { return Lawful(resolvePlan(s, r)) }
 
 func resolvePlan(s *Snapshot, r ResolveReq) Plan {
@@ -1024,7 +1023,21 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 	for _, o := range s.Open {
 		bySubject[o.Subject()] = append(bySubject[o.Subject()], o)
 	}
+	covered := CoveredDependents(s)
 	for _, c := range chosen {
+		// tla/NeedsBlocked.tla BlockedDependentsCovered
+		if blockerID, isCovered := covered[c.ID]; isCovered {
+			for _, o := range bySubject[c.ID] {
+				if (o.Note.Type == NMissingNeed || o.Note.Type == NBlocked) && o.Subject() == c.ID {
+					p.Closes = append(p.Closes, o)
+					p.Notes = append(p.Notes, decided(o, "covered by "+blockerID, r.Who, s.Now, c.ID))
+				}
+			}
+			if len(r.IDs) > 0 {
+				p.refuse(c.ID, "needs a blocked card: covered by "+blockerID)
+			}
+			continue
+		}
 		// A missing prerequisite that now exists is no longer a missing-need
 		// judgment; it still has to land before the primary can move.
 		for _, o := range bySubject[c.ID] {
@@ -1981,6 +1994,17 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
+			if isProvider5xx(r.Report) && c.Int(FieldRateReturns) < MaxRateReturns {
+				// the provider's own server failed the take (class provider-5xx): a transient
+				// provider fault, never the card's. The card is returned untouched on any
+				// route (no FieldTakeEnded, no redeal, no attempt) under MaxRateReturns, and
+				// its record still counts toward the route's 3-in-10 rest; past the bound the
+				// take ends as any provider failure does (tla/RouteRest.tla,
+				// Provider5xxSpendsNoRedeal)
+				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "provider 5xx",
+					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider's server failed the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
+				continue
+			}
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
 			continue
 		case cardhdr.EndNoResult:
@@ -2146,6 +2170,31 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
 		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)
 		set[FieldRanAttempts] = ranAttempts
+		// tla/SprintTables.tla Finish: an old generation returns for a fresh
+		// attempt without a review head or a historical staging base.
+		if AttemptPredatesBrief(pr, attempt) {
+			why := fmt.Sprintf("brief replaced: the head of attempt %d was made under the earlier brief", attempt)
+			cardSet["report"] = cutText(why+"\n"+r.Report, MaxCardTextBytes)
+			cardSet["head_superseded"] = "true"
+			u.Changes[0] = change(Fleet, moveEntry(c, c.Row, into, cardSet))
+			delete(set, "head")
+			delete(set, "result")
+			for _, key := range []string{FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect} {
+				delete(set, key)
+			}
+			set["why"] = why
+			to := Ready
+			if len(after) > 0 {
+				to = Waiting
+			}
+			u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, "head", "result", "readers", FieldPassedHead, FieldWaitsAfter, FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect)))
+			u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> %s; %s", c.ID, result, pr.ID, to, why)
+			if !late {
+				friendNext(s, c, &u, p.Units)
+			}
+			p.Units = append(p.Units, u)
+			continue
+		}
 		// the brief's bound as this finish leaves the card (brief_bound.go): the same failure
 		// escalates below the ceiling only under the attempt cap, counting only attempts whose
 		// worker ran and reported
@@ -2476,8 +2525,9 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 }
 
 // rateLimitedReturned is the no-spend path of a take the provider rate limited
-// (IsRateLimited), on ANY route and with no bound, and of a take on a LIMITED route
-// (rateLimitedRoute) the provider refused for want of credit (outOfCredit), fewer than
+// (IsRateLimited), on ANY route and with no bound; of a take on a LIMITED route
+// (rateLimitedRoute) the provider refused for want of credit (outOfCredit); and of a take
+// on ANY route the provider's own server failed (isProvider5xx); the last two fewer than
 // MaxRateReturns times (FieldRateReturns, counted here for those alone; past it that take
 // ends as any provider failure does). A rate limit never fails a card: it leaves a
 // FieldRateTake record and the route backs off briefly from it (rateBackoffs;
@@ -2490,7 +2540,9 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 // record; moved is the unit's words. A rate limit writes NO FieldProviderTake, so it never
 // counts toward the route's 3-in-10 rest; an out-of-credit refusal DOES write one, so the provider
 // rests exactly as it did when the take ended (routeEnds, providerRestsDue; tla/RouteRest.tla,
-// OutOfCreditSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
+// OutOfCreditSpendsNoRedeal), and so does a 5xx, so the route's 3-in-10 rest counts it
+// exactly as it counted the ended take (routeEnds, transient; tla/RouteRest.tla,
+// Provider5xxSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
 // line stays on the card for its reader; what the run cost is the producer's record, as a
 // staging refusal's is.
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved string) Unit {
@@ -2513,15 +2565,18 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 	} else {
 		set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	}
-	if refusal(r.Report) != "" {
-		// the refusal is recorded so the provider rests as it always has (routeEnds reads
-		// ProviderTakes), with the take's own usage; only FieldTakeEnded and the redeal are
-		// left off (no redeal spent, the card returns to ready)
+	if !IsRateLimited(r.Report) && (refusal(r.Report) != "" || isProvider5xx(r.Report)) {
+		// the refusal, or the 5xx, is recorded so the provider or the route rests as it
+		// always has (routeEnds reads ProviderTakes), with the take's own usage; only
+		// FieldTakeEnded and the redeal are left off (no redeal spent, the card returns to
+		// ready). The record is numbered by this return (returnTakeNumber), never by the
+		// redeals, which a return leaves as they were: two returns on one card are two
+		// records, so three 5xx returns on one card rest the route as three ended takes did
 		usage := ""
 		if r.Usage != "" {
 			usage = rec
 		}
-		set[FieldProviderTake+itoa(c.Int("redeals")+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+		set[FieldProviderTake+itoa(returnTakeNumber(c.Int(FieldRateReturns)+1))] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	prSet := map[string]string{}

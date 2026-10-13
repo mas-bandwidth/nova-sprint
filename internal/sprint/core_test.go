@@ -92,7 +92,7 @@ func TestTheWholeLifeOfAPrimary(t *testing.T) {
 	acc := Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1"}}})
 	require.Empty(t, acc.Units, "accept with one ok: %+v", acc)
 	require.Len(t, acc.Refused, 1, "accept with one ok: %+v", acc)
-	require.Contains(t, acc.Refused[0].Why, "two different readers", "accept with one ok: %+v", acc)
+	require.Contains(t, acc.Refused[0].Why, "two ok reads", "accept with one ok: %+v", acc)
 	// the second read was asked with the first, of a different reader
 	first = readsAt(w.s, w.s.Work.Card("s1-1"), 1)
 	require.Len(t, first, 2)

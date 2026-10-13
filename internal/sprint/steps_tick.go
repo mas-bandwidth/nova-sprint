@@ -408,6 +408,7 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 // plans folded into the deadlines part, so the needs check runs every tick
 // without an operation of its own (rule (b),
 // every-need-names-a-live-card-checked-every-second).
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p, n := TickDeadlines(s, r)
 	q, _ := TickFleetFailure(s, r)
@@ -416,6 +417,8 @@ func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p.Notes = append(p.Notes, h.Notes...)
 	needs, _ := TickNeeds(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, needs.Notes...), append(p.Closes, needs.Closes...), append(p.Updates, needs.Updates...)
+	blocked, _ := TickNeedBlocked(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, blocked.Notes...), append(p.Closes, blocked.Closes...), append(p.Updates, blocked.Updates...)
 	return p, n
 }
 
@@ -1024,8 +1027,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	for _, tier := range slices.Sorted(maps.Keys(unserved)) {
+		what := fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])
+		if _, ok := s.TierNotLive(tier); ok {
+			what = whyOf[tier]
+		}
 		conds = append(conds, cond{typ: NNoRoute, stream: TierSubject(tier), streamLevel: true, primaries: unserved[tier],
-			what: fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])})
+			what: what})
 	}
 	// one judgment per provider while its routes rest for its funds or its key, never one
 	// per card (provider_funds.go)
@@ -1093,6 +1100,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	p.Rows, p.Units, p.Refused = append(p.Rows, fp.Rows...), append(p.Units, fp.Units...), append(p.Refused, fp.Refused...)
+	p.Refused = append(p.Refused, reads.Refused...)
 	p.Props = append(p.Props, fp.Props...)
 	p.Props = append(p.Props, reads.Props...)
 	for _, row := range reads.Rows {
@@ -1698,8 +1706,12 @@ func openJudgmentOn(s *Snapshot, subject string) bool {
 
 // TickDeadlines writes one judgment for each card or stream past its
 // deadline, in running time (N4, N5, N6), and closes it when the card or the
-// stream moves. It keeps the backlog alarms too (tickAlarms, docs/SPEC-SPRINT.md
-// section 8, "Backlog alarms").
+// stream moves; a work card's only while its take is live (tla/SprintRules.tla
+// LateOnlyWhileLive: a withdrawn take raises none and closes one open). It
+// keeps the backlog alarms too (tickAlarms, docs/SPEC-SPRINT.md section 8,
+// "Backlog alarms").
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	var conds []cond
@@ -1710,25 +1722,25 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// N4: work cards dealt and never taken, taken and not finished, by the
 	// card's state (WorkDeadline): never taken past the dealt bound from the
 	// first deal since its last take, not finished from the attempt's first
-	// take. On a machine's row no redeal or withdrawal rewrites either: a
-	// member whose beat lapses again and again cannot reset them, and the
-	// time a card spends withdrawn counts while its primary is ready or
-	// working. The one exception is a friend's
-	// card dealt again after a take-back: it is measured from her own deal,
-	// and a never-taken judgment raised before that deal (while it sat
-	// withdrawn) closes on it (LateStands).
-	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn) {
-		if c.Col == Withdrawn && c.F("kind") == "read" {
-			continue // a read withdrawn is history: its primary is asked again (friendReadLive)
-		}
-		if c.Col == Withdrawn {
-			if st := s.StateOf(c.F("primary")); st != Ready && st != Working {
-				continue // no live work attempt remains to owe this deadline
-			}
-		}
+	// take. A deadline exists only while a take is live: the card dealt (in a
+	// member's ready queue) or working. A card withdrawn from its take (a
+	// provider failed it, an environment exited, its member went down) raises
+	// none, whatever its primary's state, and a late judgment open on it
+	// closes (LateStands); tla/SprintRules.tla LateOnlyWhileLive. The stamps
+	// are not rewritten: on a machine's row no redeal or withdrawal rewrites
+	// either, so a member whose beat lapses again and again cannot reset them,
+	// and a card taken again is still measured from the attempt's first take.
+	// The one exception is a friend's card dealt again after a take-back: it
+	// is measured from her own deal.
+	for _, c := range s.Fleet.Column(Ready, Working) {
 		if IsFriendRow(c.Row) {
 			// a friend's card past its deadline is redealt (TickFriendRedeal), never a late
 			// judgment: her card's deadline is no failure (docs/SPEC-SPRINT.md section 1)
+			continue
+		}
+		if c.Col != Working && s.CardTierBlocked(c) {
+			// an unfunded tier quiets the deadlines of its cards that are not working
+			// tla/SprintRules.tla QuietWhileUnfunded
 			continue
 		}
 		field, limit, word, own := WorkDeadline(s, c)
@@ -1785,11 +1797,29 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	// N6: a stream merging, or waiting with queued cards, with no merge step.
+	covered := CoveredDependents(s)
 	for _, st := range s.Merge.Rows() {
 		ctl := s.StreamCtl(st)
 		state := ctl.F("state")
 		if state != StreamMerging && (state != StreamWaiting || s.Merge.Count(st, Queued) <= 0) {
 			continue
+		}
+		// tla/NeedsBlocked.tla BlockedDependentsCovered
+		// a stream whose every unlanded card is a covered dependent raises no NMergeLate
+		unlanded := s.Work.openLine(st)
+		if len(unlanded) > 0 {
+			allCovered := true
+			for _, uc := range unlanded {
+				if uc.Placed() && uc.Col != Landed && !IsSentinel(uc) {
+					if _, ok := covered[uc.ID]; !ok {
+						allCovered = false
+						break
+					}
+				}
+			}
+			if allCovered {
+				continue
+			}
 		}
 		last := max(ctl.F("since"), ctl.F("moved"))
 		if d, ok := r.running(s.Now, last); ok && d > DeadlineMergeIdle {
@@ -1877,8 +1907,8 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	var order []string
 	byID := map[string]*judg{}
 	for _, o := range s.Open {
-		if o.Note.Kind != Judgment || o.Note.Type == NSprintDone {
-			continue // the sprint is done has no due time
+		if o.Note.Kind != Judgment || o.Note.Type == NSprintDone || quietedByTier(s, o.Note) {
+			continue // the sprint is done has no due time; tla/CoordinatorPass.tla NotBehindOnQuiet
 		}
 		j := byID[o.Note.ID]
 		if j == nil {
@@ -1895,7 +1925,7 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		j := byID[o.Note.What]
-		if j == nil || !contains(j.subjects, o.Subject()) || !overdue(j.note) {
+		if j == nil || !contains(j.subjects, o.Subject()) || !overdue(j.note) || quietedByTier(s, j.note) {
 			p.Closes = append(p.Closes, o)
 			continue
 		}
@@ -1941,7 +1971,12 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 
 // JudgmentOverdue says the judgment is past its due time in running time: its review
 // time when the coordinator set one (wait), else DeadlineJudgment after it was written.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func JudgmentOverdue(s *Snapshot, r TickReq, n Note) bool {
+	if quietedByTier(s, n) || quietedByBlocker(s, n) {
+		return false
+	}
 	if !n.Review.IsZero() {
 		// The review time wait set counts running time from when wait set
 		// it, by the tree's one clock comparison, the same one a timer is
@@ -1950,6 +1985,59 @@ func JudgmentOverdue(s *Snapshot, r TickReq, n Note) bool {
 	}
 	d, ok := r.running(s.Now, stamp(n.At))
 	return ok && d > DeadlineJudgment
+}
+
+// quietedByTier reports whether an unfunded tier quiets the judgment:
+// every card it holds is tier-blocked (its escalating tier has no live route),
+// or it is the tier's own NNoRoute judgment whose cause is rests.
+// tla/CoordinatorPass.tla NotBehindOnQuiet: an unfunded tier quiets its judgments,
+// so no overdue line is written and the coordinator's pass does not count it behind.
+func quietedByTier(s *Snapshot, n Note) bool {
+	if s == nil {
+		return false
+	}
+	if n.Type == NNoRoute {
+		tier := strings.TrimPrefix(n.Stream, "tier:")
+		if tier == "" && strings.HasPrefix(n.What, "tier ") {
+			f := strings.Fields(n.What)
+			if len(f) > 1 {
+				tier = f[1]
+			}
+		}
+		if tier != "" {
+			if _, ok := s.TierNotLive(tier); ok {
+				return true
+			}
+		}
+		return false
+	}
+	cards := cardsHeldBy(n)
+	if len(cards) == 0 || s.Work == nil {
+		return false
+	}
+	return s.everyHeldCardTierBlocked(cards)
+}
+
+// quietedByBlocker says the judgment is quieted by an active blocker judgment:
+// neither NNeedBlocked nor the blocker's holding judgment is counted overdue or seat-silent.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
+func quietedByBlocker(s *Snapshot, n Note) bool {
+	if s == nil {
+		return false
+	}
+	if n.Type == NNeedBlocked {
+		return true
+	}
+	if contains(NeedHoldingKinds, n.Type) {
+		cards := cardsHeldBy(n)
+		for _, b := range Blockers(s) {
+			if contains(cards, b.ID) && len(b.Dependents) > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cond is a condition the tick tells the coordinator of: a judgment of a type
@@ -2014,31 +2102,29 @@ func lateKind(what string) string {
 }
 
 // LateStands says the cause of a lateness still stands: no move that resolves
-// it has happened. Not finished stands while the attempt's work card is
-// ready, working or withdrawn (a redeal or a return to ready does not finish
-// it); never taken while the card is not taken (ready or withdrawn) and the
-// clock it is measured by (WorkDeadline's field) started before the note: a
-// friend's card dealt to her after the note was raised is measured from her
-// own deal, so the lateness the note records, the clock before, stands no
-// more and the note closes on her deal (her own bound raises its own
-// judgment); not begun while the read is asked; not reported while it is
-// asked or reading. While its cause stands a lateness stays raised, whether
-// or not it is late at this moment: no judgment flaps closed and open again.
+// it has happened. A work card's lateness stands only while its take is live
+// (tla/SprintRules.tla LateOnlyWhileLive): a work card withdrawn from its take
+// never stands, whatever its primary's state, so the late judgment closes on
+// the withdrawal. Not finished stands while the attempt's work card is ready
+// or working (a redeal or a return to a member's ready queue does not finish
+// it); never taken while the card is dealt and not taken (ready) and the clock
+// it is measured by (WorkDeadline's field) started before the note: a friend's
+// card dealt to her after the note was raised is measured from her own deal,
+// so the lateness the note records, the clock before, stands no more and the
+// note closes on her deal (her own bound raises its own judgment); not begun
+// while the read is asked; not reported while it is asked or reading. While
+// its cause stands a lateness stays raised, whether or not it is late at this
+// moment: no judgment flaps closed and open again.
 func LateStands(s *Snapshot, n Note) bool {
 	kind := lateKind(n.What)
 	switch n.Type {
 	case NWorkLate:
 		c := s.Fleet.Placed(n.Card)
-		if c == nil {
-			return false
-		}
-		if c.Col == Withdrawn {
-			if st := s.StateOf(c.F("primary")); st != Ready && st != Working {
-				return false // the attempt no longer has a live work deadline
-			}
+		if c == nil || c.Col == Withdrawn {
+			return false // no live take remains to owe this deadline
 		}
 		if kind == WordNeverTaken || kind == "not taken" { // "not taken": raised before the dealt bound
-			if c.Col != Ready && c.Col != Withdrawn {
+			if c.Col != Ready {
 				return false
 			}
 			// measured from a stamp at or after the note (the note's second: stamps are
@@ -2053,7 +2139,7 @@ func LateStands(s *Snapshot, n Note) bool {
 			}
 			return true
 		}
-		return c.Col == Ready || c.Col == Working || c.Col == Withdrawn
+		return c.Col == Ready || c.Col == Working
 	case NReadLate:
 		c := s.Readers.Placed(n.Card)
 		if c == nil {

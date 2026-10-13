@@ -55,6 +55,7 @@ func TestAskInsteadTakesOneReadOffOneReaderStoppedAndRunning(t *testing.T) {
 		assert.Contains(t, out+errs, "--instead takes back one read of one primary", line)
 	}
 
+	ta.ok("start") // a stop is of a running machine: READY refuses it (docs/SPEC-SPRINT.md section 14)
 	for _, machine := range []string{"stop --reason r --until 9999h", "start"} {
 		ta.ok(machine)
 		held, free := holds()

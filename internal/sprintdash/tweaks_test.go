@@ -25,9 +25,9 @@ import (
 //  5. Money in that panel: whole dollars rounded up; cents only when every tier is under $10.
 //     No "untiered" entry.
 //  6. The pie draws its slices in the legend's order.
-//  7. The machine pill on this human page shows only "running", "STOPPED" or "STALE":
-//     a tick late by 60 s or more shows STALE, and the progress bar keeps pulsing while STALE;
-//     tick lateness belongs to coordinator's views, never this page.
+//  7. The machine line drives only the bar's hold: a stopped machine holds the bar still
+//     (the owner 2026-10-04 9:14 AM); the red machine STOPPED chip is gone, STOP lives in the
+//     ETA tile (the owner 2026-10-12 ~00:58Z).
 //
 // Always dark: the page stays dark, no theme toggle.
 func TestPageCarriesGlennsTweaksOf20261004(t *testing.T) {
@@ -119,29 +119,24 @@ func TestPageCarriesGlennsTweaksOf20261004(t *testing.T) {
 	assert.Equal(t, "$10", jsRes.Dollars["1000"])
 	assert.Equal(t, "$11", jsRes.Dollars["1001"])
 
-	// 7 (behavior): machine pill states and the 60 s STALE threshold, through the real setMachine.
-	// The page derives nothing from a clock: the threshold is the number in the machine line
-	// ("tick late Ns"), so the cases are the lines either side of 60.
+	// 7 (behavior): a stopped machine holds the segmented bar still, through the real setMachine;
+	// the machine chip and pill are gone (the owner 2026-10-12 ~00:58Z: STOP lives in the ETA tile).
 	cases := []struct {
 		machineLine string
-		wantPill    string
 		wantStopped bool
-		wantAlert   bool
 	}{
-		{machineLine: "machine: running (tick late 10s)", wantPill: "running"},
-		{machineLine: "machine: running (tick late 59s)", wantPill: "running"},
-		{machineLine: "machine: running (tick late 60s)", wantPill: "STALE"},
-		{machineLine: "machine: running (tick late 120s)", wantPill: "STALE"},
-		{machineLine: "machine: STOPPED", wantPill: "STOPPED", wantStopped: true, wantAlert: true},
-		{machineLine: "machine: STOPPED (out of credit)", wantPill: "STOPPED", wantStopped: true, wantAlert: true},
+		{machineLine: "machine: running (tick late 10s)"},
+		{machineLine: "machine: running (tick late 59s)"},
+		{machineLine: "machine: running (tick late 60s)"},
+		{machineLine: "machine: running (tick late 120s)"},
+		{machineLine: "machine: STOPPED", wantStopped: true},
+		{machineLine: "machine: STOPPED (out of credit)", wantStopped: true},
 	}
 	require.Len(t, jsRes.Machines, len(cases))
 	for i, cs := range cases {
 		m := jsRes.Machines[i]
 		require.Equal(t, cs.machineLine, m.Input)
-		assert.Equal(t, cs.wantPill, m.Pill, "pill text for %s", cs.machineLine)
 		assert.Equal(t, cs.wantStopped, m.OverallStopped, "overall stopped class for %s", cs.machineLine)
-		assert.Equal(t, cs.wantAlert, m.ChipAlert, "chip alert for %s", cs.machineLine)
 	}
 }
 
@@ -149,8 +144,6 @@ type jsTweaksResult struct {
 	Dollars  map[string]string `json:"dollars"`
 	Machines []struct {
 		Input          string `json:"input"`
-		Pill           string `json:"pill"`
-		ChipAlert      bool   `json:"chipAlert"`
 		OverallStopped bool   `json:"overallStopped"`
 	} `json:"machines"`
 	Inflight struct {
@@ -213,8 +206,6 @@ const machineResults = machineCases.map(line => {
   context.setMachine(line);
   return {
     input: line,
-    pill: getEl("machine")._val || getEl("machine").textContent,
-    chipAlert: getEl("machine-chip").classList.contains("alert"),
     overallStopped: getEl("overall").classList.contains("stopped")
   };
 });

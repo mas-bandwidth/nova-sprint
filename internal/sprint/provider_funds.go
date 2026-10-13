@@ -100,17 +100,33 @@ func transient(line string) bool {
 	return m != nil && (m[1] == class5xx || m[1] == classTimeout)
 }
 
+// isProvider5xx says a take's line is the provider's own server error: its cause class is
+// class5xx exactly, never a no-result line. Such a take returns its card untouched (no
+// attempt and no redeal spent) up to MaxRateReturns times, and its record still counts
+// toward the route's 3-in-10 rest (transient) (steps_work.go, rateLimitedReturned;
+// tla/RouteRest.tla, Provider5xxSpendsNoRedeal). A timeout is not one: it ends the take.
+func isProvider5xx(line string) bool {
+	line = strings.TrimSpace(line)
+	if IsNoResult(line) {
+		return false
+	}
+	m := causeRE.FindStringSubmatch(line)
+	return m != nil && m[1] == class5xx
+}
+
 // IsRateLimited says a failed take's report is the provider's rate limit: class
 // rate-limited, a 429 that is not a refusal for credit or the key, or the provider's
 // words for a request or concurrency limit ("Too many requests", "concurrency ...
 // exceeds"). When the line parses a class the provider itself gave its own server error
 // or a timeout (class5xx or classTimeout), only class=rate-limited or a 429 makes it one
-// and the word fallback is skipped: such a take is the provider's own failure and spends
-// its take, so three of them rest the route (docs/SPEC-SPRINT.md section 5;
-// tla/RateBackoff.tla; tla/RouteRest.tla, RestProvider), never the brief backoff a word
-// match would read. A line with no parsed class, or with another class, keeps the word
-// fallback. An out-of-credit or key refusal
-// is never one: it ends the take as before.
+// and the word fallback is skipped: such a take is the provider's own failure, never the
+// brief backoff a word match would read, and its record counts toward the route's 3-in-10
+// rest, so three of them rest the route (docs/SPEC-SPRINT.md section 5;
+// tla/RateBackoff.tla; tla/RouteRest.tla, RestProvider). A timeout ends its take; a 5xx
+// returns its card untouched under MaxRateReturns and spends no redeal (isProvider5xx;
+// tla/RouteRest.tla, Provider5xxSpendsNoRedeal). A line with no parsed class, or with
+// another class, keeps the word fallback. An out-of-credit or key refusal is never one: it
+// takes its own path (outOfCredit, refusal).
 func IsRateLimited(report string) bool {
 	line := strings.TrimSpace(report)
 	if IsNoResult(line) || !IsProviderFailure(line) && causeRE.FindStringSubmatch(line) == nil {

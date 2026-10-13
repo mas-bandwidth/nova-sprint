@@ -117,6 +117,8 @@ func TestTheCoordinatorViewRanksAJudgmentByTheCardsBehindIt(t *testing.T) {
 	ta.ok("add --stream s2 --count 1 --one")
 	ta.deal(2)
 	ta.failOnce("m1", "s1-1.w1@1", "tests red")
+	ta.ok("start") // started and stopped: the machine-stopped alarm is a STOPPED machine's (READY raises none)
+	ta.ok("stop --reason r --until 1h")
 
 	v := ta.coordView("")
 	var j viewItem

@@ -365,7 +365,7 @@ func TestAudit2ClosedDeadRunLoopIsNoJudgment(t *testing.T) {
 	}
 	require.NotNil(t, silent, "a RUNNING machine an hour without a tick: %+v", silent)
 	require.NotEmpty(t, silent.Commands, "a RUNNING machine an hour without a tick: %+v", silent)
-	require.Equal(t, "nova-sprint run", silent.Commands[0].Lines[0], "a RUNNING machine an hour without a tick: %+v", silent)
+	require.Equal(t, "nova-sprint install server --listen <address:port>", silent.Commands[0].Lines[0], "a RUNNING machine an hour without a tick: %+v", silent)
 	// three failed ticks in a row are a group too
 	h.m.Fail = func(p string) error {
 		if p == "fence" {
@@ -385,11 +385,13 @@ func TestAudit2ClosedDeadRunLoopIsNoJudgment(t *testing.T) {
 	require.True(t, failing, "three failed ticks: no group")
 }
 
-// GAP D (not ack, clear). clear leaves the machine STOPPED; its "machine
-// stopped" note is written at the old epoch. Work added at the new epoch is
-// never dealt, and the new epoch's inbox is empty: no group at all, however
-// long (STOPPED time does not count, so not even the stale line).
-func TestAudit2ClosedClearLeavesTheMachineStoppedSilently(t *testing.T) {
+// GAP D (not ack, clear). clear left the machine STOPPED and the new epoch's
+// inbox empty. Closed, then changed by v1.2.17 (the owner, 2026-10-13: "I would
+// like a new state right after the sprint is cleared 'READY'"): clear leaves the
+// machine READY and the new epoch's own note says so; work added at the new epoch
+// is not dealt before the start, and its due moves raise no judgment (READY is a
+// sprint being prepared, not a stall: docs/SPEC-SPRINT.md section 14, "READY").
+func TestAudit2ClosedClearLeavesTheMachineReadyAndSaysSo(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(1)
@@ -402,12 +404,25 @@ func TestAudit2ClosedClearLeavesTheMachineStoppedSilently(t *testing.T) {
 	require.Equal(t, sprint.Ready, h.state("s1-1"), "s1-1 %s", h.state("s1-1"))
 	var due, note bool
 	for _, g := range h.a2Inbox().Groups {
+		due = due || g.Type == sprint.NStoppedWithDue
+		note = note || g.Type == sprint.NMachineStopped && strings.Contains(g.What, "READY")
+	}
+	if due || !note {
+		require.Failf(t, "", "the new epoch's inbox: moves due %v (want none: READY), READY note %v: %+v", due, note, h.a2Inbox().Groups)
+	}
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	require.True(t, m.Ready(), "the cleared machine is READY: %+v", m)
+	// started and stopped by hand, the same due moves are the STOPPED machine's
+	// judgment, whose answer is start
+	h.startMachine()
+	_, _, _, err = h.st.StopUntil(h.ctx, "a bench", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	due = false
+	for _, g := range h.a2Inbox().Groups {
 		due = due || g.Type == sprint.NStoppedWithDue && strings.Contains(g.What, "3 moves are due") && g.Commands[0].Lines[0] == "nova-sprint start"
-		note = note || g.Type == sprint.NMachineStopped
 	}
-	if !due || !note {
-		require.Failf(t, "", "the new epoch's inbox: moves due %v, stopped note %v: %+v", due, note, h.a2Inbox().Groups)
-	}
+	require.True(t, due, "STOPPED with moves due: %+v", h.a2Inbox().Groups)
 }
 
 // DEFECT E. A sprint set up and never started has no STOPPED span (init

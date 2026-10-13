@@ -396,6 +396,7 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	ta.busProven(name)
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
 	ta.lined(func() { ta.ok("where") })
+	ta.lined(func() { ta.ok("start"); ta.ok("stop --reason r --until 9999h") }) // STOPPED with moves due is a judgment (a READY sprint raises none)
 
 	// a judgment for the seat is pushed with its id
 	ta.lined(func() { ta.ok("remind --in 1m --note look-here --for " + name) })
@@ -1313,6 +1314,7 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	ta.failHookWrite(1)
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
 	ta.lined(func() { ta.ok("where") })
+	ta.lined(func() { ta.ok("start"); ta.ok("stop --reason r --until 9999h") }) // STOPPED with moves due is a judgment (a READY sprint raises none)
 	ta.lined(func() { ta.ok("remind --in 1m --note look-here --for " + name) })
 	ta.step(2 * time.Minute)
 	ta.lined(func() { ta.ok("tick") })

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // FieldRepo is a stream's control card field: the repositories its cards name, in the
@@ -92,41 +94,121 @@ type StreamsView struct {
 	Mixed   []string    `json:"mixed,omitempty"`
 }
 
-// streamFieldValues reads a field of a stream's control card and its placed
-// cards, deduplicated and sorted: the rule StreamRepos and StreamBasesOf share
-// (the repositories and bases a stream's cards name, each from its field).
-func streamFieldValues(s *Snapshot, stream, field string) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(v string) {
-		for _, r := range Split(v) {
-			if !seen[r] {
-				seen[r] = true
-				out = append(out, r)
+// StreamReposAndBases gives a stream's repos and bases: the union of its open
+// cards' briefs' REPO and BASE as basesInUse reads them, the control card's
+// fields only where no brief names one. streams and bases both call it; neither
+// keeps its own reading (docs/SPEC-SPRINT.md section 11).
+func StreamReposAndBases(s *Snapshot, stream string) (repos, bases []string) {
+	var briefRepos, briefBases []string
+	seenRepo := map[string]bool{}
+	seenBase := map[string]bool{}
+	for _, col := range States {
+		if !IsOpen(col) {
+			continue
+		}
+		for _, c := range s.Work.Cell(stream, col) {
+			if c.F("kind") == "sentinel" {
+				continue
+			}
+			cb := swarm.ReadCardBase([]byte(c.F("brief")))
+			r := cb.Named
+			if r == "" {
+				r = cb.Repo
+			}
+			if r != "" && !seenRepo[r] {
+				seenRepo[r] = true
+				briefRepos = append(briefRepos, r)
+			}
+			if cb.Ref != "" && !seenBase[cb.Ref] {
+				seenBase[cb.Ref] = true
+				briefBases = append(briefBases, cb.Ref)
 			}
 		}
 	}
-	if ctl := s.StreamCtl(stream); ctl != nil {
-		add(ctl.F(field))
-	}
-	for _, c := range s.Work.Cards() {
-		if c.Placed() && c.Row == stream {
-			add(c.F(field))
+	if len(briefRepos) > 0 {
+		repos = briefRepos
+	} else {
+		if ctl := s.StreamCtl(stream); ctl != nil {
+			for _, r := range Split(ctl.F(FieldRepo)) {
+				if !seenRepo[r] {
+					seenRepo[r] = true
+					repos = append(repos, r)
+				}
+			}
+		}
+		for _, c := range s.Work.Cards() {
+			if c.Placed() && c.Row == stream {
+				for _, r := range Split(c.F(FieldRepo)) {
+					if !seenRepo[r] {
+						seenRepo[r] = true
+						repos = append(repos, r)
+					}
+				}
+			}
 		}
 	}
-	sort.Strings(out)
-	return out
+	if len(briefBases) > 0 {
+		bases = briefBases
+	} else {
+		if ctl := s.StreamCtl(stream); ctl != nil {
+			for _, b := range Split(ctl.F(FieldBase)) {
+				if !seenBase[b] {
+					seenBase[b] = true
+					bases = append(bases, b)
+				}
+			}
+		}
+		for _, c := range s.Work.Cards() {
+			if c.Placed() && c.Row == stream {
+				for _, b := range Split(c.F(FieldBase)) {
+					if !seenBase[b] {
+						seenBase[b] = true
+						bases = append(bases, b)
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(repos)
+	sort.Strings(bases)
+	return repos, bases
 }
 
-// StreamRepos is the repositories a stream's cards name: the union of its control
-// card's repo field (every add records there) and the cards placed in its row.
+// CardRepoAndBase gives a card's repo and base: its brief's REPO and BASE as
+// swarm.ReadCardBase reads them, falling back to its stream's repo and base
+// (StreamReposAndBases) where the brief names none.
+func CardRepoAndBase(s *Snapshot, c *Card) (repo, base string) {
+	if c == nil {
+		return "", ""
+	}
+	cb := swarm.ReadCardBase([]byte(c.F("brief")))
+	repo = cb.Named
+	if repo == "" {
+		repo = cb.Repo
+	}
+	base = cb.Ref
+	if repo == "" || base == "" {
+		sRepos, sBases := StreamReposAndBases(s, c.Row)
+		if repo == "" && len(sRepos) > 0 {
+			repo = sRepos[0]
+		}
+		if base == "" && len(sBases) > 0 {
+			base = sBases[0]
+		}
+	}
+	return repo, base
+}
+
+// StreamRepos is the repositories a stream's cards name (StreamReposAndBases).
 func StreamRepos(s *Snapshot, stream string) []string {
-	return streamFieldValues(s, stream, FieldRepo)
+	repos, _ := StreamReposAndBases(s, stream)
+	return repos
 }
 
-// StreamBases is the bases a stream's cards name, as StreamRepos reads the repositories.
+// StreamBasesOf is the bases a stream's cards name (StreamReposAndBases).
 func StreamBasesOf(s *Snapshot, stream string) []string {
-	return streamFieldValues(s, stream, FieldBase)
+	_, bases := StreamReposAndBases(s, stream)
+	return bases
 }
 
 // StreamTitle is the first sentence of a brief's THE TASK: the text after `THE TASK.`
@@ -159,7 +241,7 @@ func StreamTitle(brief string) string {
 func StreamsOf(s *Snapshot, r StreamsReq) StreamsView {
 	var v StreamsView
 	for _, stream := range s.Work.Rows() {
-		repos := StreamRepos(s, stream)
+		repos, bases := StreamReposAndBases(s, stream)
 		if len(r.Repos) > 0 && !anyRepo(r.Repos, repos) {
 			continue
 		}
@@ -173,7 +255,7 @@ func StreamsOf(s *Snapshot, r StreamsReq) StreamsView {
 		if r.Release != "" && release != r.Release {
 			continue
 		}
-		row := StreamRow{Stream: stream, Repos: repos, Bases: StreamBasesOf(s, stream), Release: release, Display: StreamDisplay(stream, display, release)}
+		row := StreamRow{Stream: stream, Repos: repos, Bases: bases, Release: release, Display: StreamDisplay(stream, display, release)}
 		for _, col := range States {
 			for _, c := range s.Work.Cell(stream, col) {
 				if IsOpen(col) {

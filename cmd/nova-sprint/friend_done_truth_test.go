@@ -73,8 +73,8 @@ func TestADoneIsEveryCardTheRowCompleted(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	for _, f := range []config.Row{
-		{Name: "stella", Fields: map[string]string{"slots": "8", "tiers": "flash", "width": "8", "roles": "builder,reader"}},
-		{Name: "fred", Fields: map[string]string{"slots": "8", "tiers": "flash", "mode": "one-shot", "width": "8", "roles": "builder,reader"}},
+		{Name: "stella", Fields: map[string]string{"tiers": "flash", "width": "8", "roles": "builder,reader"}},
+		{Name: "fred", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "8", "roles": "builder,reader"}},
 	} {
 		_, err := cfg.Insert(context.Background(), config.KindFriend, f, "t")
 		require.NoError(t, err)

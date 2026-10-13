@@ -146,7 +146,7 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	subject := map[string]Open{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) {
+		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		cards := []string{o.Subject()}
@@ -196,4 +196,146 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 		d.What = prefix + strings.Join(events[id], "; ")
 		p.Notes = append(p.Notes, d)
 	}
+
+	// An orphan judgment retires with one decided note naming its epoch
+	// (tla/JudgmentRetire.tla NoOrphanAfterTick; docs/SPEC-SPRINT.md section 8,
+	// "A judgment retires with its card").
+	for _, o := range OrphanJudgments(s) {
+		if closing[o.Open.Key] {
+			continue
+		}
+		closing[o.Open.Key] = true
+		p.Closes = append(p.Closes, o.Open)
+		what := fmt.Sprintf("retired: %s is not on the table of epoch %d", o.Target, s.Epoch)
+		if e := offTable(s, o.Target); e != "" {
+			what = RetiredPrefix + e
+		}
+		d := decided(o.Open, what, MachineActor, s.Now)
+		p.Notes = append(p.Notes, d)
+	}
+}
+
+// Orphan is an open judgment naming an off-table or absent card or stream
+// (tla/JudgmentRetire.tla NoOrphanAfterTick; docs/SPEC-SPRINT.md section 8,
+// "A judgment retires with its card", and section 9).
+type Orphan struct {
+	ID     string
+	Type   string
+	Target string
+	Open   Open
+	Absent bool
+}
+
+// isNonCardSubject reports whether sub is not a card (docs/SPEC-SPRINT.md
+// section 8, "A judgment retires with its card"): FriendRow(f) and member rows,
+// StreamSubject(TierSubject(t)), ProviderSubject(p), and SprintSubject.
+func isNonCardSubject(s *Snapshot, sub string) bool {
+	if sub == "" || sub == SprintSubject || strings.HasPrefix(sub, "sprint:") {
+		return true
+	}
+	if strings.Contains(sub, "@") || strings.Contains(sub, "/") {
+		return true
+	}
+	if IsFriendRow(sub) || strings.HasPrefix(sub, "friend.") || strings.HasPrefix(sub, friendRowPrefix) || strings.HasPrefix(sub, "stream:friend") {
+		return true
+	}
+	if strings.HasPrefix(sub, "timer:") || strings.HasPrefix(sub, "stream:timer:") {
+		return true
+	}
+	if strings.HasPrefix(sub, "tier:") || strings.HasPrefix(sub, "stream:tier:") {
+		return true
+	}
+	if strings.HasPrefix(sub, "provider:") || strings.HasPrefix(sub, "stream:provider:") {
+		return true
+	}
+	if strings.HasPrefix(sub, "member:") || strings.HasPrefix(sub, "stream:member:") {
+		return true
+	}
+	if strings.HasPrefix(sub, "reader:") || strings.HasPrefix(sub, "stream:reader:") {
+		return true
+	}
+	if s != nil && s.Fleet != nil && (s.Fleet.HasRow(sub) || (strings.HasPrefix(sub, "stream:") && s.Fleet.HasRow(strings.TrimPrefix(sub, "stream:")))) {
+		return true
+	}
+	if s != nil && s.Readers != nil && (s.Readers.HasRow(sub) || (strings.HasPrefix(sub, "stream:") && s.Readers.HasRow(strings.TrimPrefix(sub, "stream:")))) {
+		return true
+	}
+	if !strings.HasPrefix(sub, "stream:") && strings.Contains(sub, ":") {
+		return true
+	}
+	return false
+}
+
+// OrphanJudgments reports each open judgment naming an off-table or absent card
+// or stream (tla/JudgmentRetire.tla NoOrphanAfterTick; docs/SPEC-SPRINT.md section 8
+// and section 9). On a snapshot that loaded the named cards, any judgment returned
+// is one the tick has failed to retire.
+func OrphanJudgments(s *Snapshot) []Orphan {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	var out []Orphan
+	seen := map[string]bool{}
+	for _, o := range s.Open {
+		n := o.Note
+		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
+			continue
+		}
+		if seen[n.ID] {
+			continue
+		}
+		sub := o.Subject()
+
+		// Stream-level judgments:
+		if n.StreamLevel {
+			// A stream-level judgment that retires with cards (e.g. NNoRoute, NStarving on tier:frontier)
+			// whose cards have no record once loaded.
+			if contains(retiresWithCards, n.Type) && len(n.Primaries) > 0 {
+				allAbsent := true
+				target := ""
+				for _, pid := range n.Primaries {
+					c := s.Work.Card(pid)
+					if c != nil {
+						allAbsent = false
+						break
+					}
+					if target == "" {
+						target = pid
+					}
+				}
+				if allAbsent && target != "" {
+					seen[n.ID] = true
+					out = append(out, Orphan{ID: n.ID, Type: n.Type, Target: target, Open: o, Absent: true})
+				}
+				continue
+			}
+
+			// A judgment naming a removed or absent work stream (s.StreamCtl(st) == nil).
+			// Only true work streams (non-empty, no colons, not a member/reader/friend/provider/tier row).
+			st := n.Stream
+			if st == "" && strings.HasPrefix(sub, "stream:") {
+				st = strings.TrimPrefix(sub, "stream:")
+			}
+			if st == "" || isNonCardSubject(s, st) || strings.Contains(st, ":") {
+				continue
+			}
+			if s.StreamCtl(st) == nil {
+				seen[n.ID] = true
+				out = append(out, Orphan{ID: n.ID, Type: n.Type, Target: st, Open: o, Absent: true})
+			}
+			continue
+		}
+
+		// Card-level judgments (!n.StreamLevel):
+		// Subjects that are not cards are never orphans.
+		if isNonCardSubject(s, sub) || strings.Contains(sub, ":") || sub == "" {
+			continue
+		}
+		c := s.Work.Card(sub)
+		if c == nil {
+			seen[n.ID] = true
+			out = append(out, Orphan{ID: n.ID, Type: n.Type, Target: sub, Open: o, Absent: true})
+		}
+	}
+	return out
 }

@@ -55,7 +55,7 @@ func TestATwinNotTickingIsRunningAndItsRemedyIsTheTick(t *testing.T) {
 	assert.NotContains(t, inbox, "nova-sprint run\n", "a twin refuses run")
 
 	where := twinOK(t, file, later, "where")
-	assert.Contains(t, where, "SPRINT TABLE  coordinator boss\n\n0/2 0.0% -> ETA -\n\n", "where's header shows the progress of a running machine")
+	assert.Contains(t, where, "SPRINT TABLE  coordinator boss\n\n0/2 0.0% -> ETA -\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", "where's header shows the progress of a running machine")
 
 	add := twinOK(t, file, later, "add --stream s1 --count 1 --one")
 	assert.Contains(t, add, "-> ETA -  machine: running\n", "a verb's sprint line")
@@ -63,5 +63,5 @@ func TestATwinNotTickingIsRunningAndItsRemedyIsTheTick(t *testing.T) {
 
 	// a stop by hand is still STOPPED on a twin
 	twinOK(t, file, later, "stop --reason r --until 9999h")
-	assert.Contains(t, twinOK(t, file, later, "inbox"), "machine: STOPPED by ")
+	assert.Contains(t, twinOK(t, file, later, "inbox"), "machine: STOPPED, expected back by ")
 }

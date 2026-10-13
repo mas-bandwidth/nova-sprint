@@ -159,7 +159,14 @@ func (st *Store) DropMembers(ctx context.Context, keep []string) ([]string, erro
 		if err := pinned.putDropDebt(ctx, append(dropOwed, names...)); err != nil {
 			return err
 		}
+		// RowsDelIf reads the restore state in its own exchange: never while the epoch's
+		// restore is pending (the restore would bring the row back), never at an epoch the
+		// drop did not read
 		deleted, err = pinned.B.RowsDelIf(ctx, pinned.Names.Table(sprint.Fleet), guards)
+		var ge *GuardError
+		if errors.As(err, &ge) {
+			deleted, err = nil, pinned.guardRefusal(ge.Outcome, "the drop of the fleet rows")
+		}
 		return err
 	}
 	pinned, err := st.pin(ctx)
@@ -332,7 +339,10 @@ func (st *Store) DropReadersRetired(ctx context.Context, members []string) error
 	if len(gone) == 0 {
 		return nil
 	}
-	if err := st.B.RowsDel(ctx, st.Names.Table(sprint.Readers), gone); err != nil {
+	// in one exchange with the restore guard (guardedRows)
+	if err := st.guardedRows(ctx, "the retire of the reader rows", func(pinned *Store) []RowWrite {
+		return []RowWrite{{Op: "del", Table: pinned.Names.Table(sprint.Readers), Rows: gone}}
+	}); err != nil {
 		return err
 	}
 	return st.ForgetReaders(ctx, gone)

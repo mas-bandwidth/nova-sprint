@@ -3,6 +3,7 @@ package sprintdash
 import (
 	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -323,6 +324,26 @@ func (s *Server) pageRecord(body []byte, up *snapshot, end time.Time) {
 	s.pageRate.add(end, int64(cellNumber(v.Landed)))
 }
 
+// withServerVersion is data with its server_version set to version when data has none, as the
+// live page's server sets it (server.py: data.setdefault("server_version", ...)); app.js reads the
+// version chip off data.server_version (the owner 2026-10-12 ~01:20Z). data itself when version is
+// empty, data already carries one, or data is no JSON object.
+func withServerVersion(data json.RawMessage, version string) json.RawMessage {
+	if version == "" {
+		return data
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal(data, &top) != nil || top == nil {
+		return data
+	}
+	var have string
+	if json.Unmarshal(top["server_version"], &have) == nil && have != "" {
+		return data
+	}
+	top["server_version"] = mustJSON(version)
+	return mustJSON(top)
+}
+
 // PageSnapshot is /api/sprint's body on the page's listeners now (pageSnapshot).
 func (s *Server) PageSnapshot() []byte {
 	build := s.Build()
@@ -333,7 +354,7 @@ func (s *Server) PageSnapshot() []byte {
 		MinInterval: s.Every.Seconds(), Throughput: s.pageRate.rate, ThroughputMinutes: s.pageRate.minutes, Build: build,
 	}
 	if len(s.page.data) > 0 {
-		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = s.page.data, s.page.at, s.page.age
+		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, s.page.age
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {
@@ -345,10 +366,17 @@ func (s *Server) PageSnapshot() []byte {
 // tileFile is the embedded file each tile logo route serves.
 var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/logo-tile-384.png": "logo-robot-384.png"}
 
+// liveLogoData is the logo the live page carries in its slot (dashboard/live/index.html, as
+// changed 2026-10-12): the 384 px robot tile, logo-robot-384.png, byte for byte, inline as a data
+// PNG. The card's P1 names the nova-sprint image (the owner 2026-10-12 ~00:28Z: "The nova sprint
+// logo goes top left, and replaces the robot logo"); the live page, the owner's most recent state,
+// carries the robot, so this follows the live page until the owner rules.
+var liveLogoData = "data:image/png;base64," + base64.StdEncoding.EncodeToString(file("logo-robot-384.png"))
+
 // index is the page with its script versioned by the build and the logo slot and favicon
-// filled as the live page's server fills them (its index_page): with no --logo, the robot
-// tile at 192 px and 384 px, the markup that server writes, character for character, the
-// build in place of its version; with --logo, an svg logo is drawn inline in the page's
+// filled as the live page's server fills them (its index_page): with no --logo, the
+// live page's logo, the 384 px robot tile, inline as a data PNG (liveLogoData), the build in
+// place of its version; with --logo, an svg logo is drawn inline in the page's
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
 func (s *Server) index() []byte {
 	build := s.Build()
@@ -356,7 +384,7 @@ func (s *Server) index() []byte {
 	slot, icon := "", ""
 	if s.Logo == "" {
 		v := build
-		slot = `<img id="logo" class="logo-tile" src="/logo-tile-192.png?v=` + v + `" srcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x" alt="">`
+		slot = `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
 		icon = `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="apple-touch-icon" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="preload" as="image" href="/logo-tile-192.png?v=` + v + `" imagesrcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x">`

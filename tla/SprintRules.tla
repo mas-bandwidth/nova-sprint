@@ -21,7 +21,10 @@
 \*   verb, an outside event: Stamp, and Silence as the stamp ages past the window), the one
 \*   wait a generation, the hold of a card whose holder never stamped (the default: wait
 \*   only), and the return and redeal of one whose holder stamped and went silent, once its
-\*   holder has had its own whole deadline (own counts it, Window is it).
+\*   holder has had its own whole deadline (own counts it, Window is it). A take is withdrawn
+\*   from outside (Withdraw: the provider failed it, or the environment exited) with no
+\*   attempt spent; the late judgment (judged) exists only while the take is live, and one
+\*   open when its take is withdrawn closes (steps_tick.go TickDeadlines, LateStands).
 \* Part "reads": one card's attempts under a reader's broken reads (rules.go, ruleReadBroken):
 \*   the rule reworks it with the finding as the fix, on the same tier; a finding that names
 \*   a file outside PATHS widens the card's PATHS in place by that file (the same card, never
@@ -108,6 +111,10 @@
 \*                (the rule before the stamp existed): NeverStampedNeverReturned
 \*   "returnearly" the late rule returns a stamped card before its holder's own deadline:
 \*                HeldToItsOwnDeadline
+\*   "withdrawnlate" the deadlines part raises a late judgment on a withdrawn take and keeps
+\*                one open across the withdrawal (the code before v1.2.17, which raised
+\*                "a work card is past its deadline ... at withdrawn" while its primary sat
+\*                ready): LateOnlyWhileLive
 \*   "stopfirst"  the base gate stops the stream on its first failure: BaseStopsOnThird
 \*   "everytick"  the idle alarm is pushed every tick of an episode: AlarmOncePerEpisode
 \*   "nobound"    the read-broken rule reworks a card at its brief's bound: ReadAnswersBounded
@@ -161,6 +168,8 @@
 \*   "toldbeforesend" the alert marks a raise told before its send succeeds:
 \*                ToldOnlyAfterSend
 \*   "newtoken"   the alert sends a fresh bus token each retry: NoSecondMessage
+\*   "noquiet"    the tick raises a card or stream judgment while the tier rests:
+\*                QuietWhileUnfunded
 
 EXTENDS Integers, FiniteSets
 
@@ -185,7 +194,7 @@ RdFindings == RdFiles \cup {"in1", "in2"}
 \* -- every part's variables
 VARIABLES col, need, blocked, twin,               \* twins
           tier, fails, st, attempts, envFails, fclass, same, bbound, \* rules
-          gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, \* late
+          gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged, \* late
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
@@ -195,11 +204,12 @@ VARIABLES col, need, blocked, twin,               \* twins
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
           ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
-          alopen, almsg, altold                       \* alert
+          alopen, almsg, altold,                      \* alert
+          rest, card, tierJ, cardJ, staleJ            \* tier
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
-lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline>>
+lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged>>
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
@@ -210,7 +220,8 @@ stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
 norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
 alertVars == <<alopen, almsg, altold>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+tierVars == <<rest, card, tierJ, cardJ, staleJ>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -246,6 +257,7 @@ TypeOK ==
   /\ badReturn \in BOOLEAN
   /\ own \in 0..Window
   /\ badDeadline \in BOOLEAN
+  /\ judged \in BOOLEAN
   /\ rdst \in {"working", "broken", "bound", "done", "judged"}
   /\ rdatt \in Nat
   /\ rdlast \in RdFindings \cup {None}
@@ -292,6 +304,11 @@ TypeOK ==
   /\ ntier \in 1..4 /\ nready \in BOOLEAN /\ npinned \in BOOLEAN /\ nfriend \in BOOLEAN
   /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN
   /\ alopen \in BOOLEAN /\ almsg \in 0..2 /\ altold \in BOOLEAN
+  /\ rest \in BOOLEAN
+  /\ card \in {"ready", "bound", "working"}
+  /\ tierJ \in BOOLEAN
+  /\ cardJ \in BOOLEAN
+  /\ staleJ \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -301,7 +318,7 @@ Init ==
   /\ tier = 1 /\ fails = 0 /\ st = "working" /\ attempts = 0 /\ envFails = 0
   /\ fclass = None /\ same = FALSE /\ bbound = FALSE
   /\ gen = 0 /\ waited = -1 /\ progress = FALSE /\ late = FALSE /\ waits = 0 /\ lst = "working"
-  /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE
+  /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE /\ judged = FALSE
   /\ rdst = "working" /\ rdatt = 1 /\ rdlast = None /\ rdfind = None /\ rdpaths = {}
   /\ rdwidens = 0 /\ rdtotal = 0 /\ rdfixed = {} /\ rdsince = 1 /\ rdminds = 0
   /\ gfails = 0 /\ stopped = FALSE
@@ -322,6 +339,7 @@ Init ==
   /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
   /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
   /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
+  /\ rest = FALSE /\ card = "ready" /\ tierJ = FALSE /\ cardJ = FALSE /\ staleJ = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -493,9 +511,11 @@ Answered == (st \in {"failed", "bound"}) ~> (st \notin {"failed", "bound"})
 -----------------------------------------------------------------------------
 \* Part "late": one work card past its deadline (internal/sprint rules.go, ruleLate).
 
+\* the deadlines part raises the late judgment (steps_tick.go TickDeadlines, N4): only on a
+\* live take (LateOnlyWhileLive); "withdrawnlate" raises it on a withdrawn one too
 GoLate ==
-  /\ lst = "working" /\ ~late
-  /\ late' = TRUE
+  /\ (lst = "working" \/ Broken = "withdrawnlate") /\ ~late
+  /\ late' = TRUE /\ judged' = TRUE
   /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
 \* the holder's `progress` verb (the member while its child prints, the friend daemon while a
@@ -503,26 +523,28 @@ GoLate ==
 Stamp ==
   /\ lst = "working"
   /\ stamped' = TRUE /\ progress' = TRUE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn, own, badDeadline>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn, own, badDeadline, judged>>
 
 \* the holder goes silent: its last stamp ages past RuleProgressWindow
 Silence ==
   /\ progress
   /\ progress' = FALSE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn, own, badDeadline>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn, own, badDeadline, judged>>
 
 \* the holder's own deadline passes: own counts its time, Window is its deadline
 OwnTick ==
   /\ lst = "working" /\ own < Window
   /\ own' = own + 1
-  /\ UNCHANGED <<gen, waited, progress, late, waits, lst, stamped, badReturn, badDeadline>>
+  /\ UNCHANGED <<gen, waited, progress, late, waits, lst, stamped, badReturn, badDeadline, judged>>
 
 \* the late rule: a wait once a generation with progress; a card whose holder stamped and went
 \* silent, or whose one wait is spent, returned and redealt, once its holder has had its own
 \* whole deadline (own = Window) or its one wait is spent; a card whose holder never stamped
-\* this take held (the default, wait only: the judgment closed, raised again later)
+\* this take held (the default, wait only: the judgment closed, raised again later). Every
+\* answer closes the judgment.
 RuleLate ==
   /\ late
+  /\ judged' = FALSE
   /\ IF progress /\ (waited # gen \/ Broken = "waitalways")
        THEN /\ waited' = gen /\ waits' = waits + 1 /\ late' = FALSE
             /\ UNCHANGED <<gen, lst, progress, stamped, badReturn, own, badDeadline>>
@@ -537,12 +559,24 @@ RuleLate ==
      ELSE /\ late' = FALSE
           /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
+\* an outside event: the take is withdrawn (the provider failed it, or the environment exited
+\* 134), the work card to withdrawn and its primary back to ready, with no attempt spent (gen
+\* and waits unchanged). The tick closes a late judgment open on it (LateStands: a withdrawn
+\* work card never stands); "withdrawnlate" keeps it open.
+Withdraw ==
+  /\ lst = "working"
+  /\ lst' = "withdrawn"
+  /\ IF Broken = "withdrawnlate"
+       THEN UNCHANGED <<late, judged>>
+       ELSE late' = FALSE /\ judged' = FALSE
+  /\ UNCHANGED <<gen, waited, progress, waits, stamped, badReturn, own, badDeadline>>
+
 Redeal ==
   /\ lst = "withdrawn"
   /\ lst' = "working" /\ own' = 0
-  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn, badDeadline>>
+  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn, badDeadline, judged>>
 
-LateNext == (GoLate \/ Stamp \/ Silence \/ OwnTick \/ RuleLate \/ Redeal) /\ waits <= 1
+LateNext == (GoLate \/ Stamp \/ Silence \/ OwnTick \/ RuleLate \/ Withdraw \/ Redeal) /\ waits <= 1
 
 \* One wait a generation, whatever the progress.
 WaitOnce == waits <= 1
@@ -556,6 +590,10 @@ HeldToItsOwnDeadline == ~badDeadline
 
 \* Progress is a stamp of this take's holder.
 ProgressIsStamped == progress => stamped
+
+\* A late judgment is open only while its take is live (steps_tick.go TickDeadlines N4 and
+\* LateStands): a withdrawn take raises none, and one open when its take is withdrawn closes.
+LateOnlyWhileLive == judged => lst = "working"
 
 \* The reachability witness's invariant: no card is ever returned. The design returns a card
 \* whose holder stamped and went silent, so TLC's counterexample is the proof it is reached.
@@ -1491,34 +1529,89 @@ NoSecondMessage == almsg <= 1
 EveryRaiseTold == alopen ~> altold
 
 -----------------------------------------------------------------------------
+\* Part "tier": a tier with no live route is one judgment and quiets its cards
+\* (internal/sprint route.go, steps_tick.go, inbox.go, seat_answers.go).
+\*
+\* While every route rests (rest), exactly one NNoRoute judgment is open (tierJ).
+\* While unfunded (rest), no per-card deadline/raised-again push is raised (cardJ)
+\* and no stream stale judgment is shown (staleJ) for any non-working card.
+\* Once a route returns (~rest), NNoRoute closes and per-card checks resume.
+
+RestAll ==
+  /\ ~rest
+  /\ ~tierJ
+  /\ rest' = TRUE
+  /\ tierJ' = TRUE
+  /\ cardJ' = (IF card # "working" THEN FALSE ELSE cardJ)
+  /\ staleJ' = (IF card # "working" THEN FALSE ELSE staleJ)
+  /\ UNCHANGED card
+
+Wake ==
+  /\ rest
+  /\ rest' = FALSE
+  /\ UNCHANGED <<card, tierJ, cardJ, staleJ>>
+
+Take ==
+  /\ ~rest
+  /\ card = "ready"
+  /\ card' = "working"
+  /\ UNCHANGED <<rest, tierJ, cardJ, staleJ>>
+
+TierTick ==
+  /\ IF rest
+       THEN /\ tierJ' = TRUE
+            /\ IF Broken = "noquiet"
+                 THEN /\ cardJ' = TRUE
+                      /\ staleJ' = staleJ
+                 ELSE /\ cardJ' = (IF card # "working" THEN FALSE ELSE cardJ)
+                      /\ staleJ' = (IF card # "working" THEN FALSE ELSE staleJ)
+       ELSE /\ tierJ' = FALSE
+            /\ cardJ' \in BOOLEAN
+            /\ staleJ' \in BOOLEAN
+  /\ UNCHANGED <<rest, card>>
+
+TierNext == RestAll \/ Wake \/ Take \/ TierTick
+
+\* A tier with no live route is one judgment.
+OneTierJudgment == rest => tierJ
+
+\* While an unfunded tier has no live route, its non-working cards and streams are quiet.
+QuietWhileUnfunded == (rest /\ card # "working") => (~cardJ /\ ~staleJ)
+
+\* Once funded again, the tier judgment closes under fairness of the tick.
+ResumesWhenFunded == (~rest /\ card = "ready") ~> (~tierJ)
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>
-  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars>>
-  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars>>
-  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars, tierVars>>
+  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>
+  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>
+  \/ Part = "tier" /\ TierNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
 
 \* The rules and a mind act when they may; the outside is unfair. The stall's running tick
 \* and the machine's start are fair (a stopped machine adds no running time, so a stall can
 \* only be owed once the machine has run the bound); the alert's send is fair so a raise is
-\* eventually told.
+\* eventually told; the tier's tick is fair so the tier judgment closes when routes wake.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars>>)
-  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>)
-  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>)
-  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
+  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>)
+  /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

@@ -500,6 +500,17 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 				}
 			}
 		}
+		if !f.Machine.Running() {
+			// READY is read off the record at the epoch these facts are of (Machine.Ready;
+			// docs/SPEC-SPRINT.md section 14, "READY")
+			es := EpochState{N: st.epoch, Cleared: st.cleared}
+			if !st.pinned {
+				if es, err = st.EpochNow(ctx); err != nil {
+					return f, err
+				}
+			}
+			f.Machine = f.Machine.readyAt(es)
+		}
 		if r := readStoreRTT(vals[3], oks[3]); len(r.Samples) > 0 && st.now().Sub(time.UnixMilli(r.At)) <= StoreRTTWindow {
 			f.HasStoreRTT, f.StoreRTTP50MS, f.StoreRTTP99MS = true, r.P50MS, r.P99MS
 		}

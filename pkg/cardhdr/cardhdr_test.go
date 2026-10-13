@@ -124,15 +124,15 @@ func TestParseTestAcceptsOnePackageAndOneTestOrNoneWithAWhy(t *testing.T) {
 		in   string
 		want TestLine
 	}{
-		{"./pkg/x TestFoo", TestLine{Package: "./pkg/x", Name: "TestFoo"}},
-		{"pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo"}},
-		{". TestFoo", TestLine{Package: ".", Name: "TestFoo"}},
-		{"pkg/x/ TestFoo", TestLine{Package: "pkg/x/", Name: "TestFoo"}},
-		{"  pkg/x   ExampleFoo  ", TestLine{Package: "pkg/x", Name: "ExampleFoo"}},
-		{"pkg/x FuzzFoo_1", TestLine{Package: "pkg/x", Name: "FuzzFoo_1"}},
-		{"pkg/x Test", TestLine{Package: "pkg/x", Name: "Test"}},
-		{"-tags functional pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Tags: "functional"}},
-		{"-tags=functional,slow pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Tags: "functional,slow"}},
+		{"./pkg/x TestFoo", TestLine{Package: "./pkg/x", Name: "TestFoo", Runner: "go"}},
+		{"pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Runner: "go"}},
+		{". TestFoo", TestLine{Package: ".", Name: "TestFoo", Runner: "go"}},
+		{"pkg/x/ TestFoo", TestLine{Package: "pkg/x/", Name: "TestFoo", Runner: "go"}},
+		{"  pkg/x   ExampleFoo  ", TestLine{Package: "pkg/x", Name: "ExampleFoo", Runner: "go"}},
+		{"pkg/x FuzzFoo_1", TestLine{Package: "pkg/x", Name: "FuzzFoo_1", Runner: "go"}},
+		{"pkg/x Test", TestLine{Package: "pkg/x", Name: "Test", Runner: "go"}},
+		{"-tags functional pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Tags: "functional", Runner: "go"}},
+		{"-tags=functional,slow pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Tags: "functional,slow", Runner: "go"}},
 		{"none the change is documentation only", TestLine{None: true, Why: "the change is documentation only"}},
 		{"none: docs only", TestLine{None: true, Why: "docs only"}},
 		{"none - docs only", TestLine{None: true, Why: "docs only"}},
@@ -151,7 +151,7 @@ func TestParseTestRefusalsNameTheRemedy(t *testing.T) {
 		{"   ", "DONE-WHEN cannot be turned into a test (no TEST line): " + TestRemedy},
 		{"none", "TEST: none says no why: write TEST: none <why the change has no test>, or TEST: <package> <TestName>"},
 		{"none:", "TEST: none says no why"},
-		{"none-why", "is not `[-tags <tags>] <package> <TestName>` or `none <why>`"},
+		{"none-why", "is not `[-tags <tags>] <package> <TestName>`, `ctest <TestName>` or `none <why>`"},
 		{"./... TestFoo", "TEST ./... TestFoo names a package pattern (./...), not one package"},
 		{"pkg/... TestFoo", "names a package pattern (pkg/...)"},
 		{"../x TestFoo", "is not `[-tags <tags>] <package> <TestName>`"},
@@ -170,6 +170,37 @@ func TestParseTestRefusalsNameTheRemedy(t *testing.T) {
 		require.NotEmpty(t, why, "%q", tc.in)
 		assert.Contains(t, why, tc.want, "%q", tc.in)
 		assert.Contains(t, why, "TEST: none <why", "%q: every refusal carries the remedy", tc.in)
+	}
+}
+
+// TestParseTestReadsACtestLine proves the `ctest <TestName>` form: a ctest name with
+// letters, digits, _, . and - parses with Runner "ctest" and no package; a Go line parses
+// exactly as before (Runner "go", package and name); a ctest name with a space or an empty
+// name is refused with the remedy.
+func TestParseTestReadsACtestLine(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		in   string
+		want TestLine
+	}{
+		{"ctest DecodeAll", TestLine{Runner: "ctest", Name: "DecodeAll"}},
+		{"ctest rocketnet.decode_all", TestLine{Runner: "ctest", Name: "rocketnet.decode_all"}},
+		{"ctest suite/one-two_3.4", TestLine{Runner: "ctest", Name: "suite/one-two_3.4"}},
+		{"  ctest   Foo  ", TestLine{Runner: "ctest", Name: "Foo"}},
+		{"CTEST Foo", TestLine{Runner: "ctest", Name: "Foo"}},
+		// a Go line reads as before.
+		{"pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Runner: "go"}},
+		{"-tags functional pkg/x TestFoo", TestLine{Package: "pkg/x", Name: "TestFoo", Tags: "functional", Runner: "go"}},
+	} {
+		got, why := ParseTest(tc.in)
+		assert.Empty(t, why, "%q", tc.in)
+		assert.Equal(t, tc.want, got, "%q", tc.in)
+	}
+	for _, in := range []string{"ctest Foo Bar", "ctest", "ctest ", "ctest Foo*", "ctest -tags x Foo", "ctest Foo:bar"} {
+		got, why := ParseTest(in)
+		assert.Equal(t, TestLine{}, got, "%q", in)
+		require.NotEmpty(t, why, "%q", in)
+		assert.Contains(t, why, "ctest <TestName>", "%q carries the remedy", in)
 	}
 }
 

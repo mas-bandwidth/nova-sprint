@@ -49,6 +49,24 @@ stored with and dealt on. The tier is read by the lint and the store; a card bri
 line 1 names no tier is refused by the lint with a tier-line finding. `brief --tier`
 still changes it later, with `--reason` as today.
 
+## The TEST line
+
+A brief's `TEST:` line names the test the card's DONE-WHEN proves, in one of three forms
+(`cardhdr.ParseTest`). The Go form `[-tags <tags>] <package> <TestName>` names one
+repository-relative package path and a Go test name (`Test`, `Example` or `Fuzz`), run
+`go test <package> -run <TestName>`; its `TestLine.Runner` is `go`. The ctest form
+`ctest <TestName>` names one CMake test (letters, digits, `_`, `.`, `-` and `/`, no
+spaces), run `ctest --test-dir build -R '^<TestName>$'`; its `Runner` is `ctest`, its
+package empty, and its test is held by the brief's `PATHS:` checks, not to a package
+directory. `none <why>` names no test and says why. Anything else is refused with the
+remedy. The lint holds a ctest `TEST:` as it holds a Go one: the test must be absent from
+the base tree (found as `add_test(NAME <TestName>` or `add_test(<TestName>` in a
+`CMakeLists.txt` or `*.cmake` at the base, so an existing ctest test is refused), and a
+ctest line in a repository with no `CMakeLists.txt` at the base is refused with that
+reason. A brief's task, the body and the `TEST:` line it names, is the bound's text (CLI,
+`brief`). Preflight's TEST check greps `*.go` for a Go line and `CMakeLists.txt` and
+`*.cmake` for a ctest line.
+
 ## The SIBLINGS header
 
 A brief that names a sibling path (`../<name>`, a sibling repository by name) in its

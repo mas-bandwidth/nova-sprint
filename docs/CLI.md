@@ -52,6 +52,10 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 `where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the `where` frame.
 
+### Provider coverage
+
+`where` prints `providers:` after its machine line: each applied provider's funding, and funded providers' unique per-tier in/enabled counts, followed by warnings for omitted funded routes or configured arrays, including empty ones, without an enabled funded native-tier route. `where --json` carries those facts in `providers` beside existing balance/rest fields, and the same gaps in `provider_gaps`. A route without an applied provider row has no fabricated funding value. An applied provider hash with missing or invalid funding remains readable, counts as not funded, and carries one named diagnostic with a provider-apply remedy; text says unknown and JSON omits its funding value, preserving the difference from an explicitly unfunded row. The full `check cards` reports kind `routes`, exits 1 for every such gap or no provider rows, and prints the route/tier name and `nova-config tier set <tier> --routes <array>,<route>`, `nova-config tier show <tier>`, or `nova-config apply --kind provider` remedy; start requires a clean full check and rechecks the same provider findings live, so funding or arrays changed after that check still refuse a start from READY or STOPPED. Empty arrays mean every enabled native-tier route; an entry from another tier does not cover a route because the deal ignores it. The coordinator can run `nova-config provider` through the sprint.
+
 ### Server version
 
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
@@ -61,13 +65,18 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
 nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
+# add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
 nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
-nova-sprint stop
-nova-sprint run [--answer-rules=false] [--idle-alarm=false]
+# start refuses, exit 1, nothing written, while a setting the design depends on is non-working and no set of this epoch chose it: one line each, START REFUSED setting=<name> value=<v> why=<...> run: <verb> (read_cards off, fleet and friends off, fleet_tiers/friends_tiers serving no needed tier, git_identity empty or unparseable, max_attempts outside 1..100, a server run with --land=false); a value a set of this epoch chose starts with one START WARN setting=<name> value=<v> set by <who> at <when> why="<...>" run: <verb> line each, and the readers up (none for a needed tier, or fewer than reads_needed) are live state: a START WARN line, never a refusal
+# start (from READY or STOPPED) also refuses, exit 1, nothing written, until a clean card check of this epoch matches the cards (v1.2.17, start-refuses-until-a-clean-check; no flag, variable or setting skips it), one line on stderr: "run nova-sprint check cards first: no check record for epoch <n>" (none, as after a clear), "run nova-sprint check cards: the last check found <kind:n,...>" (a failed record), "run nova-sprint check cards: the last check covered stream(s) <s> only" (a --stream check), or "run nova-sprint check cards: the cards changed since the check (<card> added | removed | changed: <stream (a move) | needs | priority | tier | brief>)"; a start of a RUNNING machine changes nothing, and a mem twin (--redis mem:<file>) is not gated
+# before the record's gate, start computes every unresolved need live (absent, dropped, unknown stream, held at its bound with no decision, cycle) and refuses, exit 1, nothing written, one line a card and need: "run nova-sprint check cards: <card> needs <need> (<reason>)"; a hold raised after a clean check is caught
+nova-sprint stop --reason <text> [--until <time or duration>]
+# stop puts the machine into STOPPED until an explicit start (v1.2.17); --reason is required; --until is optional display metadata for readers (a duration from now like 90m, a clock time like 2:04 PM or 14:04, or an RFC 3339 time), showing "STOPPED, expected back by <until> (<reason>); start ends it"; without --until it shows "STOPPED until the next start (<reason>)"
+nova-sprint run [--answer-rules=false] [--idle-alarm=false] [--land | --land=false]   # since v1.2.17 the server (run --listen) lands by default and a plain run lands only on --land; --land=false is the server's opt-out, which start refuses; a land loop is refused (LAND REFUSED) while another lander's fresh record says it lands
 nova-sprint tick [--answer-rules] [--idle-alarm]
 nova-sprint promote [--once] [--poll <duration>] [--every <duration>] [--landings <n>] [--branch <name>] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint selftest [--dir <d>] [--keep]
@@ -87,15 +96,18 @@ nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
+nova-sprint redo <card>... [--stream <s>] [--answers <note>]   # merge conflicts only (a card merging whose merge stuck, or a stream stopped on a conflict); for any other card, rework
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
-nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id>, or --waive removes the need from each (recorded with the reason): no drop strands a need
+nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id> (refusing an unresolved target), or --waive removes the need from each (recorded with the reason): no drop strands a need
+nova-sprint defer (<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]   # defers waiting cards to the roadmap; refused if any unlanded card needs the card being deferred, naming the dependents (no defer strands a dependent)
 nova-sprint needs set <id> (--needs <a,b> | --clear) [--answers <note>]   # the coordinator's alone: re-point a card's needs in place; a card in merging or review whose need is gone is answerable here
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
 nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
-nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result.
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
@@ -134,7 +146,7 @@ nova-sprint friend sync [--pg <dsn>] [--root <dir>] [--every <duration>]
 nova-sprint friend sync install --every <duration> [--redis <addr>] [--pg <dsn>] [--root <dir>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint friend sync uninstall [--dir <dir>] [--dry-run]
 nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]
-nova-sprint install server --listen <address:port> [--redis <addr>] [--land] [--decide <dir>] [--dir <dir>] [--log <file>] [--dry-run]
+nova-sprint install server --listen <address:port> [--redis <addr>] [--land=false] [--decide <dir>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install member --as <member> --server <address:port> [--harness <path>] [--root <dir>] [--pass <NAME,...>] [--swarm <path>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install seat-push|friend-sync (seat install's and friend sync install's flags)
 nova-sprint install table --out <file> [--every <duration>] [--redis <addr>] [--dir <dir>] [--log <file>] [--dry-run]
@@ -166,7 +178,10 @@ nova-sprint card <id> [--brief | --fields] [--json] [--at-epoch <n>]
 nova-sprint card (--all | --stream <s>) --json [--at-epoch <n>]
 nova-sprint card base <id> <branch> [--repo-dir <clone>]
 nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]
+# every stream with its repositories, bases, release, open and landed counts, and with --cards each card in state order; repos and bases come from the union of its open cards' briefs' REPO and BASE (the source bases uses), the control card's fields only where no brief names one
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
+nova-sprint check cards [--stream <s>...] [--json]
+# the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams, one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; a --stream check's record never opens the start
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
@@ -198,6 +213,8 @@ nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
 
+**`clear`** advances the epoch, then sets every working default in the new epoch (`sprint.Defaults`: read_cards on, fleet and friends on, tiers all, the bounds at their defaults, the feed alarm on; the coordinator's threshold alarms and base carried, a threshold never set at its working value), writing only what the new epoch does not hold, so no setting is absent after a clear, no alarm is turned off, and no `prop` value of the old epoch is carried; each one the old epoch held away from its default prints as `CLEAR DEFAULT <name> was <v>, now <default>` (`--json`: `defaults`). nova-config's sprint row is never written by a clear: an unapplied `git_identity` reads as the machine identity, and `doctor` warns. See [SPEC-SPRINT.md, working defaults](SPEC-SPRINT.md#working-defaults).
+
 **`audit`** is the one answer to "is anything blocked, stuck or looped": one
 read of the work, fleet and readers tables prints one line per unlanded primary
 with its id, stream, state, tier, attempt, holder (the member or friend whose
@@ -214,6 +231,16 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 `withdrawn`, `ended`), for how long, and its last read outcome (its verdict, `no verdict (ran=false)` for a read that never ran, or the return or hold reason). A card with no read out
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
+
+**`check`** verifies the sprint's invariants across all tables ([SPEC-SPRINT.md section 9](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#9-what-is-always-true), "What is always true"), printing each violation. Under Rule 8 ("No card lost or made twice"), it inspects and reports orphan judgments: every open judgment must name a card placed on the table or a live stream (`judgment <id> (<type>) names <target>, not on the table`).
+
+**`where`'s readers cells** count the read cards each reader has in flight
+(`tables.readers`, and the one summed row the text frame draws): with read cards on
+(the default) `asked` is the read cards dealt (ready) to the reader on the fleet
+table and `reading` those it has taken (working), beside any reads of the legacy
+readers table; a member reader `reader-<m>` counts its member's read cards, and a
+friend reader `reader-<friend>` the friend's. The dashboard reads the same `tables`
+shape and needs no change.
 
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
@@ -248,8 +275,8 @@ unless `--needs-from-brief` takes the text whole. **The tier**:
 the tier is a card field, so a text whose line 1 names another tier than the
 card's recorded one keeps the recorded one (`tier kept: <recorded> (the brief's
 line 1 says <t>)`), unless `--tier <t>` names one; `tier <card> --set <t>
---reason <why>` sets it without a text edit. Both refuse a tier below frontier
-for a card whose `PATHS:` covers `tla/` (the lint's tla-is-frontier rule). **The bound**: the bound hashes the
+--reason <why>` sets it without a text edit. Both refuse a tier below heavy
+for a card whose `PATHS:` covers `tla/` (the lint's tla-is-heavy-or-above rule). **The bound**: the bound hashes the
 task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
 edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
 `TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts
@@ -395,6 +422,12 @@ sentinel, `waits-behind=` (the unlanded cards ahead of it in its line) and
 it). A cycle refusal marks each edge of its loop: `a -needs-> b` for a
 named need, `a -line-> b` for an edge of its place in line.
 
+### Deferring cards and relinking needs
+
+`defer` takes waiting cards off the table and appends them to the roadmap. If an unlanded card still needs the card being deferred, `defer` is refused, naming the dependents: `<id> is needed by <deps>; defer them too, or drop <id> with --cascade, --relink <card> or --waive`. No defer strands a dependent.
+
+When dropping a needed card with `--relink <new-id>`, `drop` verifies that `<new-id>` is placed and not unresolved (held, dropped, absent, or an unknown stream). A relink to a held or absent card is refused: relinking to a held card moves the strand, it does not resolve it.
+
 ### A sentinel whose cards were deferred
 
 When the cards a sentinel waits on move to a later release, `sentinel set v1 --needs
@@ -416,6 +449,29 @@ card's origin first and one not there is refused, nothing changed; else the brie
 kept, the log gains one line, `<id> BASE <old> -> <new>`, and the next land pass tries the
 card once. `ack` of the judgment has the next pass try the card once on its old base. The
 contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, a dead base.
+
+### The server's lander names a standing refusal
+
+`run --listen --land` prints one line every two seconds. While a landing is refused, every
+line is `LAND REFUSED queued=<n> since=<age> reason=<reason> run: <remedy>`, never `LAND
+IDLE`, until a pass gets past it or the refusal changes. Only a refusal before any batch
+stands (a pass of landed and refused batches is none; each refused batch has its own
+judgment), keyed on its reason with numbers folded, so timings never make it new. The first
+refused cycle raises
+one judgment, `the lander refuses every landing`, naming the reason and the remedy
+(decisions `check`, `ack`), and the tick's `landing stalled` judgment names it too. A pass
+that gets past it closes it; another reason closes it and raises its own. A judgment the
+store does not take is said once as `LAND JUDGMENT NOT WRITTEN: <why>` and tried again. A failure
+before any batch, or a merge queue the loop cannot read, is worded as a failure: `LAND
+FAILED queued=<n> since=<age> reason=<reason> run: <remedy>` and the judgment `the lander
+fails every landing`; the queue's first good read clears it. The cause is keyed on the class land names
+at the source, `code=<class>` (and `stream=<s>`), never on its words; `ack` of its judgment
+keeps it acknowledged while the cause stands, and a pass that gets past the cause closes
+both. A restarted server asks once more about a cause that was acknowledged before the
+restart (it cannot tell that acknowledgement from one left by an earlier episode whose close
+was lost with the old server), and an `ack` of that judgment sticks. `LAND IDLE` with cards queued says
+why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
+The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
 
 ### Role views: what a model reads instead of the dashboard
 
@@ -596,13 +652,23 @@ only, until the brief record's own outcomes support a bar
 before it writes: the repository `REPO:` names, in the lander's clone, at the tip of `BASE:`,
 fetched once a call, read with git and no go command. The tokens are `paths-at-base`,
 `donewhen-test-name`, `paths-cover-named`, `paths-cover-test`, `paths-cover-testdata`,
-`paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-frontier` and
+`paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-heavy-or-above` and
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
 `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
-exit 2, nothing written. A base that cannot be read refuses with `MISSING: <what>`; a brief
+exit 2, nothing written. A `TEST:` line is accepted in its Go form
+(`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
+C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
+rather than in `*.go`; preflight's TEST check does the same, and the brief check accepts a
+ctest `TEST:` with no package, its test file held by the `PATHS:` checks instead of a
+directory ([SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), the TEST line). A base that cannot be
+read refuses with `MISSING: <what>`; a brief
 naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 11, the brief checks).
+
+The `brief check`'s `tla-records` rule reads the card's base tree too, and a repository
+whose base holds no `tla/CASES.tsv` holds no models and is not held to it, the same file
+the lander's run-record check reads.
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a

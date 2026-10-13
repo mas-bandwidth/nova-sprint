@@ -270,7 +270,7 @@ func TestFriendCleanReadsTheRosterFromAStoreFile(t *testing.T) {
 	require.NoError(t, err)
 	_, _, _, err = st.Migrate(context.Background())
 	require.NoError(t, err)
-	_, err = st.Insert(context.Background(), config.KindFriend, config.Row{Name: "bo", Fields: map[string]string{"slots": "1", "tiers": "flash"}}, "t")
+	_, err = st.Insert(context.Background(), config.KindFriend, config.Row{Name: "bo", Fields: map[string]string{"tiers": "flash"}}, "t")
 	require.NoError(t, err)
 	code, out, errs := f.run("--file", path, "--dry-run")
 	require.Equal(t, 0, code, errs)

@@ -230,7 +230,12 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 			if base == "" {
 				base = "HEAD"
 			}
-			if _, err := a.preflightGit(ctx, repoDir, "grep", "-q", "-F", "--", tl.Name, base, "--", "*.go"); err != nil {
+			specs := []string{"*.go"}
+			if tl.Runner == "ctest" {
+				specs = []string{"CMakeLists.txt", "*.cmake"}
+			}
+			args := append([]string{"grep", "-q", "-F", "--", tl.Name, base, "--"}, specs...)
+			if _, err := a.preflightGit(ctx, repoDir, args...); err != nil {
 				add("TEST", fmt.Sprintf("%s is not at %s in %s", tl.Name, base, repoDir))
 			}
 		}

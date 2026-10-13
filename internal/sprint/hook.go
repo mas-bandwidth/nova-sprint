@@ -314,10 +314,34 @@ func HookSaid(rec HookRecord, ok bool, name string, now time.Time) string {
 //
 // The owner, 2026-10-11: "Any card waiting for judgement should alert you via warning
 // every second once it has been in this state for 10 seconds or longer." and "These
-// must be push notifications." Every look of the coordinator's hook (each second) that
+// must be push notifications." A look of the coordinator's hook (each second) that
 // finds a judgment open JudgmentWarnAfter or longer pushes one warning over the hook
-// listing every such judgment, again every second until it is answered: an ack of the
-// push does not silence it, and nothing turns it off.
+// listing every such judgment, and again until it is answered: an ack of the push does
+// not silence it, and nothing turns it off. It repeats at a bounded rate (v1.2.17: a
+// warning every second drowned a seat preparing a cleared sprint, its reads refused
+// once ten minutes of them went unacknowledged): at once when a judgment joins the
+// set, else no more often than once a JudgmentWarnEvery (JudgmentWarnDue;
+// docs/SPEC-SPRINT.md, "The waiting-judgment warning").
+
+// JudgmentWarnEvery is the most often the warning repeats for the same set of waiting
+// judgments; a judgment joining the set is warned about at once.
+const JudgmentWarnEvery = time.Minute
+
+// JudgmentWarnDue says the look at now pushes the warning ws: the first warning of a
+// set (none sent since the set was last empty: warnedAt zero), a judgment of ws not in
+// the set last seen (warned, by id: it joined since), or JudgmentWarnEvery or longer
+// since the last warning was sent (warnedAt). A set that only shrank waits its minute.
+func JudgmentWarnDue(ws []JudgmentWarning, warned map[string]bool, warnedAt, now time.Time) bool {
+	if warnedAt.IsZero() || now.Sub(warnedAt) >= JudgmentWarnEvery {
+		return true
+	}
+	for _, w := range ws {
+		if !warned[w.ID] {
+			return true
+		}
+	}
+	return false
+}
 
 // JudgmentWarnAfter is how long a judgment waits on the coordinator before it is warned
 // about every look.
@@ -379,7 +403,7 @@ func JudgmentWarnings(groups []Group, now time.Time, firstSeen map[string]time.T
 }
 
 // JudgmentWarningSet is the warning's set: each judgment's alias (else id), in order, the
-// one line said every second while the set does not change.
+// one line said again, at most once a JudgmentWarnEvery, while the set does not change.
 func JudgmentWarningSet(ws []JudgmentWarning) string {
 	ids := make([]string, len(ws))
 	for i, w := range ws {
@@ -392,7 +416,7 @@ func JudgmentWarningSet(ws []JudgmentWarning) string {
 // then each judgment with its cards, how long it has waited, and what answers it.
 func JudgmentWarningText(ws []JudgmentWarning) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s; answer each: an ack of this push does not silence it, and it repeats every second until they are answered\n", JudgmentWarningSet(ws))
+	fmt.Fprintf(&b, "%s; answer each: an ack of this push does not silence it, and it repeats once a minute until they are answered, at once when another joins\n", JudgmentWarningSet(ws))
 	for _, w := range ws {
 		fmt.Fprintf(&b, "%s %s cards=%s waited=%s\n", cmp.Or(w.Alias, "-"), w.ID, cmp.Or(strings.Join(w.Cards, ","), "-"), w.Waited)
 		for _, a := range w.Answer {
