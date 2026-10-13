@@ -154,7 +154,7 @@ func TestFleetSyncTakesTheWidthAsSet(t *testing.T) {
 	inv.set("m1", 32)
 	inv.set("m2", 16)
 	for _, f := range []string{"f1", "f2", "f3", "f4"} {
-		_, err := inv.m.Insert(context.Background(), config.KindFriend, config.Row{Name: f, Fields: map[string]string{"slots": "32", "tiers": "flash", "roles": "builder"}}, "t")
+		_, err := inv.m.Insert(context.Background(), config.KindFriend, config.Row{Name: f, Fields: map[string]string{"tiers": "flash", "roles": "builder"}}, "t")
 		require.NoError(t, err)
 	}
 	_, _, err := inv.m.Update(context.Background(), config.KindFleet, config.KindFleet, map[string]string{"coordinator": "m2"}, "t")

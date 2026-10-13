@@ -49,7 +49,7 @@ func TestFleetSyncFollowsTheInventoryOnTheStore(t *testing.T) {
 	// f1 runs on m1 by her beat and f2 has no beat: neither takes anything
 	// off any width
 	for f, slots := range map[string]string{"f1": "3", "f2": "1"} {
-		_, err := cfg.Insert(ctx, config.KindFriend, config.Row{Name: f, Fields: map[string]string{"slots": slots, "tiers": "flash", "roles": "builder"}}, "t")
+		_, err := cfg.Insert(ctx, config.KindFriend, config.Row{Name: f, Fields: map[string]string{"width": slots, "tiers": "flash", "roles": "builder"}}, "t")
 		require.NoError(t, err)
 	}
 	_, _, err := cfg.Update(ctx, config.KindFleet, config.KindFleet, map[string]string{"coordinator": "m2"}, "t")

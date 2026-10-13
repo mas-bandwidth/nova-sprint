@@ -35,8 +35,8 @@ func TestAOneShotFriendRunsAReadCardFromItsBrief(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	for _, f := range []config.Row{
-		{Name: "fred", Fields: map[string]string{"slots": "2", "tiers": "flash", "mode": "one-shot", "width": "32", "roles": "builder,reader"}},
-		{Name: "alex", Fields: map[string]string{"slots": "2", "tiers": "flash", "mode": "one-shot", "width": "8", "roles": "builder"}},
+		{Name: "fred", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "32", "roles": "builder,reader"}},
+		{Name: "alex", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "8", "roles": "builder"}},
 	} {
 		_, err := cfg.Insert(context.Background(), config.KindFriend, f, "t")
 		require.NoError(t, err)
