@@ -74,27 +74,41 @@ func TestDealClosesTheJudgmentForNoMemberWhenAMemberIsUp(t *testing.T) {
 
 func TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded(t *testing.T) {
 	t.Parallel()
-	w := newWorld("reader-a")
+	w := newWorld("reader-a", "reader-b")
 	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: coordinator}))
 	w.add(t, "s1", 1)
 	w.deal(t, "s1-1")
 	w.take(t, "s1-1")
 	w.finish(t, "s1-1", false)
+	// Both up readers have spent this attempt; a native default reader is held.
+	// This is genuinely no eligible reader, rather than only too few for a pair.
+	w.s.ReaderStates = map[string]string{"reader-a": sprint.ReaderUp, "reader-b": sprint.ReaderUp, "reader-m1": sprint.ReaderHeld}
+	for _, rd := range []string{"reader-a", "reader-b"} {
+		for _, id := range []string{sprint.ReadCardID("s1-1", 1, rd), sprint.ReadCardSecondID("s1-1", 1, rd)} {
+			w.s.Readers.Put(&sprint.Card{ID: id, Rev: 1, Fields: map[string]string{"kind": "read", "primary": "s1-1", "stream": "s1", "reader": rd, "attempt": "1", "head": "h1", "asked": t0.Format(time.RFC3339), "retired": t0.Format(time.RFC3339), "retired_by": sprint.RetiredByLevel}})
+		}
+	}
 	w.applyPart(t, "ask", 0)
 	ids := openIDs(w, sprint.NCannotAsk)
 	require.Len(t, ids, 1, "the fixture: %d judgments that it cannot ask", len(ids))
-	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-b"))
+	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-c"))
+	w.s.ReaderStates["reader-c"] = sprint.ReaderUp
 	got := refmodel.AskMoves(w.snapshot(w.fresh()), later(0))
 	// the tick closes the judgment and raises no "stranded in review" with it:
 	// the reads it places this tick are the primary's reads (notify), and the
 	// reference says what the tick does
 	expect(t, got,
-		"set work s1-1 asked=reader-a,reader-b",
-		"prop readers ask_index=2",
-		"create readers s1-1.r1.reader-a >reader-a:asked",
-		"create readers s1-1.r1.reader-b >reader-b:asked",
-		"prop readers stream_index_ask=1",
+		"decided cannot ask [s1-1]",
 		"close cannot ask [s1-1]")
+	var decisions []refmodel.Move
+	for _, m := range got {
+		if m.Kind == refmodel.KindDecided {
+			decisions = append(decisions, m)
+		}
+	}
+	require.Len(t, decisions, 1)
+	assert.Contains(t, decisions[0].Attrs, "answers="+ids[0])
+	assert.Equal(t, "a reader may read s1-1 now (reader-c)", decisions[0].Words)
 	theClose(t, got, sprint.NCannotAsk, ids[0], "s1-1")
 }
 
