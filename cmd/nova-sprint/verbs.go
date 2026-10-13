@@ -201,6 +201,7 @@ func init() {
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
 		{"stats", "[--routes [--since <10m|RFC3339>]]", "stats", (*app).cmdStats},
 		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
+		{"settings", "[--json]", "settings", (*app).cmdSettings},
 		{"reads", "--review [--stream <s>] [--json]", "reads --review", (*app).cmdReads},
 		{"doctor", "", "doctor", (*app).cmdDoctor},
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},
@@ -3890,6 +3891,14 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
+	}
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" && *unserved == "" {
+		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
+		if err != nil {
+			return a.readFailed("set", err, stderr)
+		}
+		printSettings(stdout, s, c.json)
+		return 0
 	}
 	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
