@@ -797,6 +797,7 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	if len(args) == 0 {
 		return refuse(stderr, "", "no verb; available: "+strings.Join(verbNames(), ", ")+"; run: nova-sprint help")
 	}
+	args = hoistGlobalFlags(args)
 	if args[0] == "help" || verbflag.IsHelp(args[0]) {
 		return helpCommand(args[1:], stdout, stderr)
 	}
@@ -1063,3 +1064,56 @@ func versionHas(id, build string, fx *roadmapdoc.Fixes, carried map[string]bool,
 // space, so a title the ledger wrapped still prints as the one line the version
 // verb promises.
 func versionTitle(title string) string { return strings.Join(strings.Fields(title), " ") }
+
+// hoistGlobalFlags moves known global flags given before the verb to just
+// after the verb's words, so `nova-sprint --redis <t> where` parses the same
+// as `nova-sprint where --redis <t>` (card sprint-accepts-global-flags-before-verb).
+var globalValueFlags = map[string]bool{"redis": true, "actor": true, "op": true, "epoch": true, "max": true}
+var globalBoolFlags = map[string]bool{"json": true}
+
+func hoistGlobalFlags(args []string) []string {
+	i := 0
+	var hoisted []string
+	for i < len(args) {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			break
+		}
+		name := strings.TrimLeft(a, "-")
+		hasEq := strings.Contains(name, "=")
+		if hasEq {
+			name = name[:strings.Index(name, "=")]
+		}
+		switch {
+		case globalBoolFlags[name]:
+			hoisted = append(hoisted, a)
+			i++
+		case globalValueFlags[name]:
+			hoisted = append(hoisted, a)
+			i++
+			if !hasEq && i < len(args) {
+				hoisted = append(hoisted, args[i])
+				i++
+			}
+		default:
+			return args // unknown leading flag: leave for the usual refusal
+		}
+	}
+	if i == 0 || i >= len(args) {
+		return args
+	}
+	rest := args[i:]
+	words := 1
+	if len(rest) >= 2 {
+		for _, v := range verbs {
+			if v.name == rest[0]+" "+rest[1] {
+				words = 2
+				break
+			}
+		}
+	}
+	out := append([]string{}, rest[:words]...)
+	out = append(out, hoisted...)
+	out = append(out, rest[words:]...)
+	return out
+}
