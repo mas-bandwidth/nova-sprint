@@ -124,7 +124,6 @@ func TestDeferRefusesACardWithLiveDependents(t *testing.T) {
 	require.NotNil(t, w.s.Work.Placed("card-a"), "card-a remains on the table")
 }
 
-
 func TestRelinkToAHeldCardIsRefused(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
