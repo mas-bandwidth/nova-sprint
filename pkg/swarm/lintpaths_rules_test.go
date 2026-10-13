@@ -187,18 +187,18 @@ func TestLiveAndTemporaryBases(t *testing.T) {
 	}
 }
 
-// frontierLine is line 1 with its tier frontier: the tier word replaced where there is one,
-// an empty tier filled, and appended where line 1 names none.
-func TestFrontierLine(t *testing.T) {
+// tierLine is line 1 with its tier the one named: the tier word replaced where
+// there is one, an empty tier filled, and appended where line 1 names none.
+func TestTierLine(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "card x tier: frontier", frontierLine("card x tier: pro"))
-	assert.Equal(t, "card x tier: frontier", frontierLine("card x tier:"))
-	assert.Equal(t, "card x tier: frontier", frontierLine("card x tier:   "))
-	assert.Equal(t, "card x tier: frontier", frontierLine("card x"))
-	assert.Equal(t, "card x tier: frontier", frontierLine("card x   "))
-	assert.Equal(t, "card tier: frontier more", frontierLine("card tier: flash more"))
-	assert.Equal(t, " tier: frontier", frontierLine(""))
-	assert.Equal(t, "frontier tier: frontier", frontierLine("frontier"), "the word alone is no tier")
+	assert.Equal(t, "card x tier: heavy", tierLine("card x tier: pro", "heavy"))
+	assert.Equal(t, "card x tier: heavy", tierLine("card x tier:", "heavy"))
+	assert.Equal(t, "card x tier: heavy", tierLine("card x tier:   ", "heavy"))
+	assert.Equal(t, "card x tier: heavy", tierLine("card x", "heavy"))
+	assert.Equal(t, "card x tier: heavy", tierLine("card x   ", "heavy"))
+	assert.Equal(t, "card tier: heavy more", tierLine("card tier: flash more", "heavy"))
+	assert.Equal(t, " tier: heavy", tierLine("", "heavy"))
+	assert.Equal(t, "frontier tier: frontier", tierLine("frontier", "frontier"), "the word alone is no tier")
 }
 
 // goPkgArg is ./-relative; orElse, uniq and notIn are the list helpers the fix lines use.
@@ -281,8 +281,32 @@ func TestBriefRemedy(t *testing.T) {
 	assert.Contains(t, BriefRemedy("paths-read-marker"), PathsReadRemedy)
 }
 
+// The tla-is-heavy-or-above rule: a card whose PATHS covers tla/ is tier heavy
+// or above, so heavy and frontier lint clean and pro and flash are refused
+// naming the rule (the owner downgraded the frontier TLA+ to heavy, since
+// nova-config accepts no frontier route; v1.2.17).
+func TestATLACardIsHeavyOrAbove(t *testing.T) {
+	t.Parallel()
+	lint := func(line1 string) []string {
+		fs, _ := LintBrief([]byte(line1+"\nPATHS: tla/Model.tla\n\nTHE TASK. the model\n"), BriefBase{})
+		var out []string
+		for _, f := range fs {
+			out = append(out, f.Check)
+		}
+		return out
+	}
+	assert.Empty(t, lint("card x tier: heavy"), "heavy is the rule's floor and lints clean")
+	assert.Empty(t, lint("card x tier: frontier"), "frontier is above heavy and lints clean")
+	for _, below := range []string{"pro", "flash"} {
+		fs, _ := LintBrief([]byte("card x tier: "+below+"\nPATHS: tla/Model.tla\n\nTHE TASK. the model\n"), BriefBase{})
+		require.Equal(t, []string{"tla-is-heavy-or-above"}, checksOf(fs), below)
+		assert.Contains(t, fs[0].Excerpt, "below heavy", below)
+		assert.Contains(t, BriefRemedy("tla-is-heavy-or-above"), "heavy", below)
+	}
+}
+
 // LintBrief without a tree: the checks that need none still hold the brief (pr-carry,
-// tier-set, tla-is-frontier, who-serves-tier, base-is-live, paths-cover-named off START,
+// tier-set, tla-is-heavy-or-above, who-serves-tier, base-is-live, paths-cover-named off START,
 // paths-cover-test, donewhen-test-name's parse), the ones that need it draw MISSING when a
 // base was named and not handed over, and nothing when the brief names no base; the fix
 // lines answer the PATHS, NEW and SHARED findings and line 1.
@@ -335,19 +359,21 @@ func TestLintBriefWithoutATree(t *testing.T) {
 		assert.Equal(t, "paths-cover-named", fs[1].Check)
 	})
 
-	t.Run("tier-set and tla-is-frontier fix line 1", func(t *testing.T) {
+	t.Run("tier-set and tla-is-heavy-or-above fix line 1", func(t *testing.T) {
 		t.Parallel()
 		fs, fix := LintBrief(brief("card x tier: -", "PATHS: tla/Model.tla", "x"), BriefBase{})
-		assert.Equal(t, []string{"tier-set", "tla-is-frontier"}, checks(fs))
+		assert.Equal(t, []string{"tier-set", "tla-is-heavy-or-above"}, checks(fs))
 		assert.Equal(t, 1, fs[0].Line)
-		assert.Contains(t, fs[1].Excerpt, "line 1 names tier -, not frontier")
-		assert.Equal(t, BriefFix{"card x tier: frontier"}, fix)
+		assert.Contains(t, fs[1].Excerpt, "line 1 names tier -, below heavy")
+		assert.Equal(t, BriefFix{"card x tier: heavy"}, fix)
 		fs, fix = LintBrief(brief("card x", "PATHS: pkg/a/*.go,tla/", "x"), BriefBase{})
-		assert.Equal(t, []string{"tier-set", "tla-is-frontier"}, checks(fs))
-		assert.Equal(t, BriefFix{"card x tier: frontier"}, fix)
+		assert.Equal(t, []string{"tier-set", "tla-is-heavy-or-above"}, checks(fs))
+		assert.Equal(t, BriefFix{"card x tier: heavy"}, fix)
 		fs, fix = LintBrief(brief("card x tier: frontier", "PATHS: tla/", "x"), BriefBase{})
 		assert.Empty(t, fs)
 		assert.Nil(t, fix)
+		fs, _ = LintBrief(brief("card x tier: heavy", "PATHS: tla/", "x"), BriefBase{})
+		assert.Empty(t, fs, "heavy is the rule's floor")
 		fs, _ = LintBrief(brief("card x tier: pro", "PATHS: pkg/tla/x.go", "x"), BriefBase{})
 		assert.Empty(t, fs, "tla inside another path is not the model")
 	})
