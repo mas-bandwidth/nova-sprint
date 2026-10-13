@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
@@ -186,6 +188,16 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 		e := map[string]string{"NOVA_SPRINT_REDIS": twin, "NOVA_SPRINT_ACTOR": "boss"}
 		ia := newApp(func(k string) string { return e[k] })
 		ia.gitEnv = env
+		// The full check reads applied declarations even on a learning twin.
+		// Seed only this throwaway twin; never the caller's configured backend.
+		if len(args) > 1 && args[0] == "check" && args[1] == "cards" {
+			b, err := ia.twinBackend(twin)
+			if err != nil {
+				ia.close()
+				return 1, "", err.Error()
+			}
+			b.(*store.Mem).SetProviders(map[string]sprint.Provider{"selftest": {Name: "selftest", Billing: "plan", Funded: false}})
+		}
 		var o, errb bytes.Buffer
 		code = ia.run(args, &o, &errb)
 		ia.close()

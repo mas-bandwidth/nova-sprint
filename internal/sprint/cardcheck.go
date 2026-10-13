@@ -24,6 +24,7 @@ import (
 // The core kinds, in the order the check prints them (the numbers of the v1.3 card
 // nova-sprint-check-gates-the-start).
 const (
+	CheckRoutes    = "routes"     // applied provider rows and funded route coverage
 	CheckNeeds     = "needs"      // 1: every need names a card of this epoch, not dropped; no self-need, no cycle
 	CheckFiles     = "files"      // 3: no file written by two streams
 	CheckSameFile  = "same-file"  // 5: no two cards of a stream name one PATHS file with no need between them
@@ -35,7 +36,7 @@ const (
 )
 
 // CheckKinds is the core kinds in print order.
-var CheckKinds = []string{CheckNeeds, CheckFiles, CheckSameFile, CheckBases, CheckNames, CheckStaleFix, CheckLint, CheckBriefSize}
+var CheckKinds = []string{CheckNeeds, CheckFiles, CheckSameFile, CheckBases, CheckNames, CheckStaleFix, CheckLint, CheckBriefSize, CheckRoutes}
 
 // DrainBriefBytes is the drain's bound on one brief (a brief over 16 KB poisoned the drain queue
 // on 2026-10-11): a card whose brief is over it is a finding of kind brief-size.
@@ -106,6 +107,7 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 	out = append(out, c.staleFix()...)
 	out = append(out, c.lint()...)
 	out = append(out, c.briefSize()...)
+	out = append(out, ProviderFindings(s)...)
 	return out
 }
 
@@ -567,4 +569,26 @@ func CardsChange(was, now []CheckedCard) string {
 		i, j = i+1, j+1
 	}
 	return ""
+}
+
+// ProviderFindings is the shared sprint-wide provider check, also recomputed
+// by start after a clean record: applied configuration can change independently
+// of the cards' digest. Each malformed provider is named exactly once.
+func ProviderFindings(s *Snapshot) []CardFinding {
+	out := []CardFinding{}
+	if len(s.Providers) == 0 {
+		out = append(out, CardFinding{CheckRoutes, "-", "no provider rows applied", "nova-config apply --kind provider"})
+	}
+	for _, p := range s.ProviderProblems() {
+		out = append(out, CardFinding{CheckRoutes, "provider:" + p.Name, p.Problem, "nova-config apply --kind provider"})
+	}
+	routes, tiers := s.ProviderGaps("")
+	for _, r := range routes {
+		array := append(append([]string{}, s.tierArray(r.Tier)...), r.Route)
+		out = append(out, CardFinding{CheckRoutes, r.Route, "enabled route of funded provider " + r.Provider + " is in no tier array", "nova-config tier set " + r.Tier + " --routes " + strings.Join(array, ",")})
+	}
+	for _, t := range tiers {
+		out = append(out, CardFinding{CheckRoutes, "tier:" + t, "holds no route of a funded provider", "nova-config tier show " + t})
+	}
+	return out
 }

@@ -63,11 +63,12 @@ type memState struct {
 	// after its cursor: it is handed the time the wait may take and returns
 	// when it has passed (a test's clock steps by it, or appends a line). Nil
 	// waits on the wall clock for a line or the time, whichever comes first.
-	LogWait func(d time.Duration)
-	logged  chan struct{}       // closed, and replaced, by every commit that appends to a log
-	routes  []sprint.Route      // the model tiers' routes (routes.go)
-	tiers   map[string][]string // the tiers' route arrays (routes.go)
-	bars    Bars                // the sprint row's nova-decide bars (routes.go)
+	LogWait   func(d time.Duration)
+	logged    chan struct{}              // closed, and replaced, by every commit that appends to a log
+	providers map[string]sprint.Provider // applied provider declarations (routes.go)
+	routes    []sprint.Route             // the model tiers' routes (routes.go)
+	tiers     map[string][]string        // the tiers' route arrays (routes.go)
+	bars      Bars                       // the sprint row's nova-decide bars (routes.go)
 }
 
 // memLog is one epoch's sprint keys.

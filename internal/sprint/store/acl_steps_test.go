@@ -56,9 +56,17 @@ func (k *keyRecorder) answer(cmd redis.Cmder) {
 	}
 	switch c := cmd.(type) {
 	case *redis.StringSliceCmd:
-		c.SetVal([]string{"flash-a"})
+		if args[1] == "providers" {
+			c.SetVal([]string{"p"})
+		} else {
+			c.SetVal([]string{"flash-a"})
+		}
 	case *redis.MapStringStringCmd:
-		c.SetVal(map[string]string{"tier": "flash", "provider": "p", "model": "m", "enabled": "true"})
+		if args[1] == "provider:p" {
+			c.SetVal(map[string]string{"billing": "plan", "funded": "true"})
+		} else {
+			c.SetVal(map[string]string{"tier": "flash", "provider": "p", "model": "m", "enabled": "true"})
+		}
 	case *redis.StringCmd:
 		c.SetVal("")
 	}
