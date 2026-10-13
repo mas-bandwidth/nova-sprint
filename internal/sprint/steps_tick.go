@@ -136,8 +136,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
-	NCannotAsk:         {"reader add", "wait"},        // a card no reader can be asked holds nothing: it waits for a reader (wait_refused.go)
+	NBound:             {"rework with a fix", "drop"},     // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"ask", "rework", "drop", "wait"}, // ask deals a read; rework/drop end the attempt; wait parks the condition
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NReviewNoReader:    {"reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
@@ -187,6 +187,12 @@ var TickDecisions = map[string][]string{
 	// a member up and pegged with no card working (pegged.go): named per member, held,
 	// seen for the episode, or quiet a while
 	NMemberPegged: {"fleet down <m>", "ack", "wait 15m"},
+	// a coordinator's hold with no cause, once every period (hold_cause.go): release it,
+	// name its cause, or seen
+	NHoldNoCause: {"ack", "wait"},
+	// the machine held a member for its takes that end with no model call: the
+	// judgment is the hold's cause, answered or waited (hold_cause.go idleReapConds)
+	NMemberIdleReaps: {"ack", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -1047,6 +1053,10 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	conds = append(conds, friendSyncConds(s)...)
 	// landings on the sprint branch not promoted into dev (promotion.go)
 	conds = append(conds, devBehindCond(s)...)
+	// a coordinator's hold that names no cause, once every period it stands (hold_cause.go)
+	conds = append(conds, holdNoCauseConds(s, r)...)
+	// the machine's idle-reap hold, its judgment raised again when a wait runs out (hold_cause.go)
+	conds = append(conds, idleReapConds(s)...)
 	// one deal order for friends and machines, by the ladder: a low card fills only a lane no
 	// other card ready can (ladderOrder, priority.go)
 	ready = ladderOrder(dealOrder(s, ready))
@@ -1164,13 +1174,18 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
 	fc := faultClear(s, r)
 	p.Units = append(p.Units, fc.Units...)
 	p.Notes = append(p.Notes, fc.Notes...)
+	// a hold whose cause ended ends in this step, and a member whose takes end with no
+	// model call on routes that serve elsewhere is held with its cause (hold_cause.go;
+	// tla/HoldCause.tla Tick)
+	holdCauseClear(s, r, &p)
+	idleReapHolds(s, r, &p)
 	// every provider out of credit: the binding stops the machine as the plan commits
 	// tla/DirtyTick.tla Stop
 	p.Stop = stop
@@ -1578,9 +1593,27 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	if len(ids) > 0 {
 		p = Ask(s, AskReq{Sel: Sel{Only: ids}, Who: r.who()})
 	}
-	conds = append(conds, cannotAskCond(s, p.Refused)...)
+	// SprintRules.CannotAskClosedWhenEligible: full room is not cannot ask.
+	refused := slices.DeleteFunc(slices.Clone(p.Refused), func(f Refusal) bool {
+		c := s.Work.Placed(f.Key)
+		return c != nil && len(s.freeReaders(c, c.Int("attempt"))) > 0
+	})
+	for _, c := range cards {
+		names := s.freeReaders(c, c.Int("attempt"))
+		if len(names) == 0 {
+			continue
+		}
+		for _, o := range closesFor(s.Open, []string{NCannotAsk}, c.ID) {
+			p.Notes = append(p.Notes, decided(o, "a reader may read "+c.ID+" now ("+strings.Join(names, ", ")+")", MachineActor, s.Now, c.ID))
+		}
+	}
+	conds = append(conds, cannotAskCond(s, refused)...)
 	p.Refused = nil
 	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReviewNoReader, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks}, r)
+	// Ask already closes a dealt primary's judgment inside its unit.
+	p.Closes = slices.DeleteFunc(p.Closes, func(o Open) bool {
+		return slices.ContainsFunc(p.Units, func(u Unit) bool { return slices.ContainsFunc(u.Closes, func(c Open) bool { return c.Key == o.Key }) })
+	})
 	return p, due
 }
 
@@ -2063,7 +2096,7 @@ func condKey(typ, subject, card, what string) string {
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
-		NStopMemberDown, NStopPinWaits, NFriendStalled,
+		NStopMemberDown, NStopPinWaits, NFriendStalled, NMemberIdleReaps,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged:
 		what = ""
