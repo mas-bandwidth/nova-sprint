@@ -300,6 +300,10 @@ func Inbox(r InboxReq) []Group {
 	})
 	out := judg
 	for _, st := range r.Streams {
+		if st.TierBlocked != "" {
+			// tla/SprintRules.tla QuietWhileUnfunded
+			continue
+		}
 		if st.State == StreamLanded || st.Empty || st.Held || r.Now.Before(st.Quiet) || r.Stale <= 0 || st.Progress.IsZero() || r.running(st.Progress) <= r.Stale {
 			continue
 		}

@@ -342,7 +342,7 @@ func (s *Snapshot) tierServed(tier string, rested []string) (up []string, why st
 	}
 	why = "no enabled route and no up friend serves tier " + tier + ": enable a route (nova-config route add <name> --tier " + tier + " ..., name it in nova-config tier set " + tier + " --routes <name,...>, then nova-config apply) or bring up a friend whose row lists " + tier + "; or pin the card with a model: <provider>/<model> line"
 	if len(rested) > 0 {
-		why = "every enabled route of tier " + tier + " in its array rests (" + strings.Join(rested, "; ") + ") and no up friend serves it: the deal draws one when its rest ends; or run nova-config route add <name> --tier " + tier + " ..., bring up a friend whose row lists " + tier + ", or pin the card with a model: <provider>/<model> line"
+		why = "tier " + tier + " cannot be dealt: every route rests (" + strings.Join(rested, "; ") + ") and no up friend serves it: the deal draws one when its rest ends; or run nova-config route add <name> --tier " + tier + " ..., bring up a friend whose row lists " + tier + ", or pin the card with a model: <provider>/<model> line"
 	}
 	for _, side := range [][3]string{{PropFleetTiers, "the fleet's", "--fleet-tiers"}, {PropFriendsTiers, "the friends'", "--friends-tiers"}} {
 		if !s.sideTakes(side[0], tier) {
@@ -376,6 +376,120 @@ func (s *Snapshot) tierArray(tier string) []string {
 	}
 	return out
 }
+
+// TierNotLive reports whether a tier has no live route: its route array is not empty,
+// every route in it rests at s.Now, and no up friend serves it.
+// tla/SprintRules.tla OneTierJudgment, QuietWhileUnfunded.
+func (s *Snapshot) TierNotLive(tier string) (reasons []string, ok bool) {
+	arr := s.tierArray(tier)
+	if len(arr) == 0 {
+		return nil, false
+	}
+	s, _ = s.withRests()
+	for _, f := range s.Friends {
+		if friendTakes(s, f, tier) && friendDealable(s, f) {
+			return nil, false
+		}
+	}
+	var out []string
+	for _, name := range arr {
+		rest, ok := s.resting(name)
+		if !ok || !rest.Resting(s.Now) {
+			return nil, false
+		}
+		out = append(out, name+" until "+rest.UntilSaid()+": "+rest.Said())
+	}
+	return out, true
+}
+
+// CardTierBlocked reports whether card c (a primary or work card) is blocked
+// because its escalating tier has no live route.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func (s *Snapshot) CardTierBlocked(c *Card) bool {
+	if c == nil {
+		return false
+	}
+	pr := c
+	if p := c.F("primary"); p != "" {
+		if placed := s.Work.Placed(p); placed != nil {
+			pr = placed
+		} else if card := s.Work.Card(p); card != nil {
+			pr = card
+		}
+	}
+	ec := escalating(s, pr)
+	tier := cardTierOf(ec)
+	if tier == "" {
+		return false
+	}
+	_, notLive := s.TierNotLive(tier)
+	return notLive
+}
+
+// everyHeldCardTierBlocked reports whether every card in cards is tier-blocked.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func (s *Snapshot) everyHeldCardTierBlocked(cards []string) bool {
+	if len(cards) == 0 {
+		return false
+	}
+	for _, id := range cards {
+		c := s.Work.Card(id)
+		if c == nil {
+			c = s.Fleet.Card(id)
+		}
+		if c == nil || !s.CardTierBlocked(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// TierBlockedStreams returns a map of streams whose every ready or waiting primary
+// is tier-blocked and which have no cards working, in review, or merging.
+// tla/SprintRules.tla QuietWhileUnfunded.
+func TierBlockedStreams(s *Snapshot) map[string]string {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, st := range s.Streams() {
+		// Nothing working, in review, or merging
+		if len(s.Work.Cell(st, Working)) > 0 || len(s.Work.Cell(st, Review)) > 0 || len(s.Work.Cell(st, Merging)) > 0 {
+			continue
+		}
+		ready := s.Work.Cell(st, Ready)
+		waiting := s.Work.Cell(st, Waiting)
+		var blockedTier string
+		allBlocked := true
+		count := 0
+		for _, c := range append(ready, waiting...) {
+			if IsSentinel(c) {
+				continue
+			}
+			count++
+			ec := escalating(s, c)
+			tier := cardTierOf(ec)
+			if tier == "" {
+				allBlocked = false
+				break
+			}
+			if _, notLive := s.TierNotLive(tier); !notLive {
+				allBlocked = false
+				break
+			}
+			if blockedTier == "" {
+				blockedTier = tier
+			}
+		}
+		if allBlocked && count > 0 {
+			out[st] = blockedTier
+		}
+	}
+	return out
+}
+
+// TierBlockedStreams is the snapshot's tier-blocked streams.
+func (s *Snapshot) TierBlockedStreams() map[string]string { return TierBlockedStreams(s) }
 
 // routeIndex is one tier's rolling index over its route array (tla/RouteIndex.tla,
 // ridx): a counter round (round.go) in steps, and the steps each unit moved it.
