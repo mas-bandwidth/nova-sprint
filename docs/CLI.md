@@ -52,6 +52,10 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 `where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the `where` frame.
 
+### Provider coverage
+
+`where` prints `providers:` after its machine line: each applied provider's funding, and funded providers' unique per-tier in/enabled counts, followed by warnings for omitted funded routes or configured arrays, including empty ones, without an enabled funded native-tier route. `where --json` carries those facts in `providers` beside existing balance/rest fields, and the same gaps in `provider_gaps`. A route without an applied provider row has no fabricated funding value. An applied provider hash with missing or invalid funding remains readable, counts as not funded, and carries one named diagnostic with a provider-apply remedy; text says unknown and JSON omits its funding value, preserving the difference from an explicitly unfunded row. The full `check cards` reports kind `routes`, exits 1 for every such gap or no provider rows, and prints the route/tier name and `nova-config tier set <tier> --routes <array>,<route>`, `nova-config tier show <tier>`, or `nova-config apply --kind provider` remedy; start requires a clean full check and rechecks the same provider findings live, so funding or arrays changed after that check still refuse a start from READY or STOPPED. Empty arrays mean every enabled native-tier route; an entry from another tier does not cover a route because the deal ignores it. The coordinator can run `nova-config provider` through the sprint.
+
 ### Server version
 
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
@@ -204,6 +208,8 @@ nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
 
+**`clear`** advances the epoch, then sets every working default in the new epoch (`sprint.Defaults`: read_cards on, fleet and friends on, tiers all, the bounds at their defaults, the feed alarm on; the coordinator's threshold alarms and base carried, a threshold never set at its working value), writing only what the new epoch does not hold, so no setting is absent after a clear, no alarm is turned off, and no `prop` value of the old epoch is carried; each one the old epoch held away from its default prints as `CLEAR DEFAULT <name> was <v>, now <default>` (`--json`: `defaults`). nova-config's sprint row is never written by a clear: an unapplied `git_identity` reads as the machine identity, and `doctor` warns. See [SPEC-SPRINT.md, working defaults](SPEC-SPRINT.md#working-defaults).
+
 **`audit`** is the one answer to "is anything blocked, stuck or looped": one
 read of the work, fleet and readers tables prints one line per unlanded primary
 with its id, stream, state, tier, attempt, holder (the member or friend whose
@@ -220,6 +226,8 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 `withdrawn`, `ended`), for how long, and its last read outcome (its verdict, `no verdict (ran=false)` for a read that never ran, or the return or hold reason). A card with no read out
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
+
+**`check`** verifies the sprint's invariants across all tables ([SPEC-SPRINT.md section 9](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#9-what-is-always-true), "What is always true"), printing each violation. Under Rule 8 ("No card lost or made twice"), it inspects and reports orphan judgments: every open judgment must name a card placed on the table or a live stream (`judgment <id> (<type>) names <target>, not on the table`).
 
 **`where`'s readers cells** count the read cards each reader has in flight
 (`tables.readers`, and the one summed row the text frame draws): with read cards on

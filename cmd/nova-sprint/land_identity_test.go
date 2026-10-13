@@ -47,11 +47,12 @@ func TestLandCommitCarriesTheConfiguredIdentity(t *testing.T) {
 }
 
 // TestLandRefusesWhenNoIdentityIsConfigured proves the landing refuses to commit, naming the
-// setting, when the sprint row names no git_identity.
+// setting, when the sprint row's git_identity does not parse (an empty one reads the machine
+// identity, sprint.Defaults).
 func TestLandRefusesWhenNoIdentityIsConfigured(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
-	r.m.SetGitIdentity("")
+	r.m.SetGitIdentity("nobody") // malformed: an empty row reads the machine identity (sprint.Defaults)
 	r.ok("add --stream s1 --count 1 --one")
 	heads := map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}
 	r.queued(heads, "s1-1")

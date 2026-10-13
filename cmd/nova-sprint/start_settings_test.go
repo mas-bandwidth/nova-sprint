@@ -70,6 +70,9 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 		ta := newTestApp(t)
 		ta.ok("init --readers reader-a,reader-b --members m1")
 		ta.ok("clear --confirm sprint")
+		// the base the coordinator records (the clear carries it); a sprint with none starts
+		// with a START WARN for it (sprintBaseWorking), which these cases do not count
+		ta.directProp(sprint.PropSprintBase, "sprint/s1")
 		return ta
 	}
 
@@ -103,7 +106,7 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 			ta.directProp(sprint.PropFriends, "off")
 			ta.directProp(sprint.PropFleetTiers, "heavy")
 		}, setting: []string{"fleet_tiers"}, verb: "nova-sprint set --fleet-tiers all"},
-		{name: "git identity empty", break_: func(ta *testApp) { ta.m.SetGitIdentity("") },
+		{name: "git identity malformed", break_: func(ta *testApp) { ta.m.SetGitIdentity("nobody") }, // an empty one reads the machine identity (sprint.Defaults)
 			setting: []string{"git_identity"}, verb: "nova-config sprint set --git_identity"},
 		{name: "max attempts out of range", break_: func(ta *testApp) { ta.m.SetMaxAttempts("0") },
 			setting: []string{"max_attempts"}, verb: "nova-config sprint set --max_attempts 4"},

@@ -100,6 +100,16 @@ var workingChecks = map[string]workingCheck{
 	PropAlarmMerging:        {BySet: true},
 	PropAlarmFleet:          {BySet: true},
 	PropAlarmReady:          {BySet: true},
+	// the rows clear-sets-every-working-default added (sprint.Defaults): every value set
+	// takes runs the machine, but a missing base after a clear
+	PropFriendFinish:   {BySet: true},
+	PropPeggedBound:    {BySet: true},
+	PropFriendStartMax: {},
+	PropIdentical:      {},
+	PropReadyMax:       {},
+	PropLowBalanceUsd:  {},
+	PropTwinBriefs:     {},
+	PropSprintBase:     {Check: sprintBaseWorking, BySet: true},
 }
 
 // WorkingDeclared says the setting has a declaration in the gate (a predicate, or none
@@ -316,6 +326,19 @@ func gitIdentityWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
 		return []SettingFinding{{Setting: SettingGitIdentity, Value: orDash(s.GitIdentity), Why: "the sprint row names no git_identity it can parse: the landing refuses to commit", Verb: GitIdentityRemedy}}
 	}
 	return nil
+}
+
+// sprintBaseWorking: a cleared epoch with no base recorded (the clear carries the old
+// epoch's, so none was set there either): add and brief hold no card to the sprint's
+// branch. The first epoch, which init leaves with none, is not judged (add holds dev
+// alone until set --base). It WARNs and never refuses (Live): a sprint that lands on main
+// or dev can record no base at all (set --base refuses a protected branch), so a refusal
+// would keep it from ever starting after a clear.
+func sprintBaseWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
+	if s == nil || s.Epoch == 0 || SprintBase(s) != "" {
+		return nil
+	}
+	return []SettingFinding{{Setting: PropSprintBase, Value: "-", Why: "the sprint records no base after a clear: no card is held to the branch every stream lands on (none is right for a sprint that lands on main or dev)", Verb: "nova-sprint set --base sprint/<name>", Live: true}}
 }
 
 // maxAttemptsWorking: nova-config's max_attempts applied but not a whole number from 1 to

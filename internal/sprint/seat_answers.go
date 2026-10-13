@@ -85,7 +85,13 @@ func heldPastDeadline(s *Snapshot, r TickReq) []heldBy {
 		if !ok {
 			continue
 		}
-		out = append(out, heldBy{id: n.ID, typ: n.Type, cards: cardsHeldBy(n), age: age, note: n})
+		cards := cardsHeldBy(n)
+		if len(cards) > 0 && s.everyHeldCardTierBlocked(cards) {
+			// reraiseHeld and seatSilentConds skip a judgment whose every held card is tier-blocked
+			// tla/SprintRules.tla QuietWhileUnfunded
+			continue
+		}
+		out = append(out, heldBy{id: n.ID, typ: n.Type, cards: cards, age: age, note: n})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].age > out[j].age })
 	return out
