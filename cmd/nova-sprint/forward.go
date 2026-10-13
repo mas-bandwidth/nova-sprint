@@ -52,6 +52,7 @@ type verbArgs struct {
 
 // readVerb is the argument list read by its verb's flags, as the verb parses them.
 func readVerb(argv []string) (v verbArgs) {
+	argv = normalizeArgs(argv)
 	for _, vb := range verbs {
 		w := strings.Fields(vb.name)
 		if len(argv) >= len(w) && slices.Equal(argv[:len(w)], w) && len(w) > v.words {
@@ -139,7 +140,13 @@ func (v verbArgs) unserved() string {
 // is the server, or the verb was given its own --redis (fs, as parsed). (docs/SPEC-SPRINT.md,
 // "The server".)
 func (a *app) server(fs *flag.FlagSet) string {
-	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") {
+	redisAddr := firstEnv(a.getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr)
+	if fs != nil {
+		if f := fs.Lookup("redis"); f != nil && (verbArgs{fs: fs}).given("redis") {
+			redisAddr = f.Value.String()
+		}
+	}
+	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") || isTwin(strings.TrimSpace(redisAddr)) {
 		return ""
 	}
 	addr, _ := a.namedServer()
