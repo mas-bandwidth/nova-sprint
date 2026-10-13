@@ -173,7 +173,7 @@ func ConsumerBarriersOf(s *Snapshot, c *Card) ConsumerBarrierInput {
 	for _, id := range Split(c.F("needs")) {
 		add(s.Work.Card(id))
 	}
-	for _, stop := range streamLine(s, c.Row) {
+	for _, stop := range s.Work.Cell(c.Row, Landed) {
 		if stop.Score < c.Score {
 			add(stop)
 		}
@@ -209,7 +209,7 @@ func ConsumerNeedsTrunk(s *Snapshot, c *Card) bool {
 			return true
 		}
 	}
-	for _, stop := range streamLine(s, c.Row) {
+	for _, stop := range s.Work.Cell(c.Row, Landed) {
 		if IsSentinel(stop) && stop.Score < c.Score && inState(stop, Landed) == "" {
 			return true
 		}
