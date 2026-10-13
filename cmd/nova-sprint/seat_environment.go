@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -40,7 +41,7 @@ func (a *app) seatEnvironmentPath() (string, error) {
 func (a *app) loadSeatEnvironment() error {
 	path, err := a.seatEnvironmentPath()
 	if err != nil {
-		return err
+		return nil // No usable optional configuration location; explicit settings still work.
 	}
 	fi, err := os.Lstat(path)
 	if os.IsNotExist(err) {
@@ -71,16 +72,16 @@ func (a *app) loadSeatEnvironment() error {
 		return errors.New("seat file unreadable")
 	}
 	if err := uniqueJSONKeys(b); err != nil {
-		return errors.New("invalid seat data")
+		return safeSeatJSONError(err)
 	}
 	if err := seatJSONFields(b); err != nil {
-		return errors.New("unsupported seat fields")
+		return err
 	}
 	var s seatEnvironment
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&s); err != nil {
-		return errors.New("invalid seat data")
+		return errors.New("seat data has an invalid field type")
 	}
 	if s.Version != 1 {
 		return errors.New("unsupported seat version")
@@ -130,18 +131,30 @@ func (a *app) loadSeatEnvironment() error {
 	return nil
 }
 
-func seatEndpoint(v string) bool {
-	if v == "" || strings.ContainsAny(v, "\x00\r\n") {
+// Keep these rules identical to tools pkg/seatcred.ValidSeatEndpoint.
+func seatEndpoint(value string) bool {
+	if strings.HasPrefix(value, "mem:") || strings.Contains(value, "://") || strings.ContainsAny(value, "@/?#") {
 		return false
 	}
-	if strings.HasPrefix(v, "mem:") {
-		return len(v) > 4
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f || r == '\'' || r == '"' || r == ' ' {
+			return false
+		}
 	}
-	if strings.ContainsAny(v, "@/?#\t ") || strings.Contains(v, "://") {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || host == "" {
 		return false
 	}
-	_, port, err := net.SplitHostPort(v)
-	return err == nil && port != ""
+	n, err := strconv.ParseUint(port, 10, 16)
+	return err == nil && n > 0
+}
+
+func safeSeatJSONError(err error) error {
+	switch err.Error() {
+	case "duplicate key", "trailing data", "invalid JSON":
+		return err
+	}
+	return errors.New("seat data has malformed JSON")
 }
 
 // Walk tokens rather than unmarshalling a map, which silently accepts duplicate
