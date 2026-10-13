@@ -59,10 +59,10 @@ func TestRedisRouteReadersCanReadButNotWriteProviderRows(t *testing.T) {
 		if role.Name == redisacl.Coordinator {
 			continue
 		}
-		args := []string{"reset", "on", "nopass", "+@read", "+@write", "+@connection"}
+		args := []string{"reset", "on", ">provider-test-only", "+@read", "+@write", "+@connection"}
 		args = append(args, role.Keys...)
 		require.NoError(t, c.ACLSetUser(ctx, "provider-read-"+role.Name, args...).Err())
-		r := redis.NewClient(&redis.Options{Addr: c.Options().Addr, Username: "provider-read-" + role.Name})
+		r := redis.NewClient(&redis.Options{Addr: c.Options().Addr, Username: "provider-read-" + role.Name, Password: "provider-test-only"})
 		t.Cleanup(func() { _ = r.Close() })
 		names, err := r.SMembers(ctx, config.ProvidersKey).Result()
 		require.NoError(t, err, role.Name)
