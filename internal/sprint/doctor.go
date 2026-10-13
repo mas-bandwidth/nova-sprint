@@ -1193,11 +1193,11 @@ func DoctorGitIdentity(in DoctorInput) (out []DoctorCheck) {
 	case !ok:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
 			Evidence: "the sprint row names no git_identity: the landing refuses to commit",
-			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
+			Remedy:   GitIdentityRemedy}}
 	case in.HostGitEmail != "" && parsed.Email == in.HostGitEmail:
 		return []DoctorCheck{{Area: area, Check: check, Subject: "identity", Status: DoctorFail,
 			Evidence: fmt.Sprintf("git_identity email %s equals the host's global user.email: the machine would commit as the owner", parsed.Email),
-			Remedy:   "nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' && nova-config apply"}}
+			Remedy:   GitIdentityRemedy}}
 	default:
 		return []DoctorCheck{okCheck(area, check, "identity", fmt.Sprintf("git_identity=%s", id))}
 	}

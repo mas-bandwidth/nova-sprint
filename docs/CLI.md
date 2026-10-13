@@ -66,8 +66,9 @@ nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--
 nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
+# start refuses, exit 1, nothing written, while a setting the design depends on is non-working and no set of this epoch chose it: one line each, START REFUSED setting=<name> value=<v> why=<...> run: <verb> (read_cards off, fleet and friends off, fleet_tiers/friends_tiers serving no needed tier, git_identity empty or unparseable, max_attempts outside 1..100, a server run with --land=false); a value a set of this epoch chose starts with one START WARN setting=<name> value=<v> set by <who> at <when> why="<...>" run: <verb> line each, and the readers up (none for a needed tier, or fewer than reads_needed) are live state: a START WARN line, never a refusal
 nova-sprint stop
-nova-sprint run [--answer-rules=false] [--idle-alarm=false]
+nova-sprint run [--answer-rules=false] [--idle-alarm=false] [--land | --land=false]   # since v1.2.17 the server (run --listen) lands by default and a plain run lands only on --land; --land=false is the server's opt-out, which start refuses; a land loop is refused (LAND REFUSED) while another lander's fresh record says it lands
 nova-sprint tick [--answer-rules] [--idle-alarm]
 nova-sprint promote [--once] [--poll <duration>] [--every <duration>] [--landings <n>] [--branch <name>] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint selftest [--dir <d>] [--keep]
@@ -134,7 +135,7 @@ nova-sprint friend sync [--pg <dsn>] [--root <dir>] [--every <duration>]
 nova-sprint friend sync install --every <duration> [--redis <addr>] [--pg <dsn>] [--root <dir>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint friend sync uninstall [--dir <dir>] [--dry-run]
 nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]
-nova-sprint install server --listen <address:port> [--redis <addr>] [--land] [--decide <dir>] [--dir <dir>] [--log <file>] [--dry-run]
+nova-sprint install server --listen <address:port> [--redis <addr>] [--land=false] [--decide <dir>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install member --as <member> --server <address:port> [--harness <path>] [--root <dir>] [--pass <NAME,...>] [--swarm <path>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install seat-push|friend-sync (seat install's and friend sync install's flags)
 nova-sprint install table --out <file> [--every <duration>] [--redis <addr>] [--dir <dir>] [--log <file>] [--dry-run]

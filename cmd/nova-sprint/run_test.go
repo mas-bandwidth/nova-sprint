@@ -27,7 +27,7 @@ func TestStartAndStopSayTheStateBeforeAndAfter(t *testing.T) {
 	require.Contains(t, errs, "the machine is READY: it has not started since the clear; nothing to stop", "stop when READY")
 	out = ta.ok("start")
 	require.Contains(t, out, "START OK before=READY after=RUNNING changed", "start")
-	require.Contains(t, out, "nothing is ticking: run: nova-sprint run", "start")
+	require.Contains(t, out, "nothing is ticking: run: nova-sprint install server --listen", "start: the server, which ticks and lands")
 	require.Contains(t, out, "0/3 0.0% -> ETA -  machine: running", "start")
 	require.Contains(t, ta.ok("start"), "unchanged: the machine is RUNNING already", "start when running")
 	out = ta.ok("tick")
@@ -57,6 +57,9 @@ func TestRunTicksOnlyWhileRunning(t *testing.T) {
 	ta.ok("add --stream s1 --count 3")
 	st, _, code := ta.a.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)
+	// the loop's server record says it lands, as run with no flag does since v1.2.17
+	// (start refuses on a server that lands nothing: start-refuses-a-non-working-setting)
+	ta.a.serverLands = true
 	var out, errb bytes.Buffer
 	ta.a.runLoop(context.Background(), st, 20, 3, &out, &errb)
 	require.NotContains(t, out.String(), "MOVED", "run while stopped:\n%s", out.String())
