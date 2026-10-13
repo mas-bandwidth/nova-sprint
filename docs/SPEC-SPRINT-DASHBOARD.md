@@ -101,6 +101,8 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-13 ~02:10Z the owner: "I don't want work stream names to look like variable names or tags. I want them to be human readable."
 - 2026-10-13 the owner: "What happens next is you update it with all the stuff you changed and i haven't seen for a day"
 - 2026-10-13 the owner, of the machine's new state after a clear (READY, docs/SPEC-SPRINT.md section 14): "When you are in it print 'READY' to ETA"
+- 2026-10-13 the owner: "Please fix the sprint dashboard so it shows the friends table by default."
+- 2026-10-13 the owner: "maybe gzip it on upload?"
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
 ~01:07Z, ~01:09Z, ~01:10Z, ~01:22Z, ~01:25Z, ~01:42Z and ~03:10Z, whose words were not recorded)

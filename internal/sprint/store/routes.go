@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,9 @@ func (st *Store) priceRoutes(ctx context.Context) ([]sprint.Route, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the routes to price with (%s, %s): %w", config.RoutesKey, config.RouteKey("<name>"), err)
 	}
+	if err := receiptRouteBillings(rs); err != nil {
+		return nil, err
+	}
 	sort.Slice(rs, func(i, j int) bool { return rs[i].Name < rs[j].Name })
 	return append([]sprint.Route{}, rs...), nil
 }
@@ -70,7 +74,28 @@ func (r *Redis) PriceRoutes(ctx context.Context) ([]sprint.Route, int64, error) 
 	for _, n := range names {
 		out = append(out, RouteOf(n, hs[n].Val()))
 	}
-	return out, 2, nil
+	// Only absent route billing inherits the applied provider declaration. Fetch once
+	// per distinct provider in one pipeline, never once per receipt.
+	billing := map[string]interface{ Val() map[string]string }{}
+	pp := r.C.Pipeline()
+	for _, rt := range out {
+		if rt.Prices.Billing == "" && rt.Provider != "" && billing[rt.Provider] == nil {
+			billing[rt.Provider] = pp.HGetAll(ctx, config.ProviderKey(rt.Provider))
+		}
+	}
+	trips := int64(2)
+	if len(billing) > 0 {
+		if err := redisconn.Exec(ctx, pp); err != nil {
+			return nil, trips + 1, err
+		}
+		trips++
+		for i := range out {
+			if b := billing[out[i].Provider]; out[i].Prices.Billing == "" && b != nil && b.Val()["billing"] == cardcost.BillingSubscription {
+				out[i].Prices.Billing = b.Val()["billing"]
+			}
+		}
+	}
+	return out, trips, nil
 }
 
 // PriceRoutes is the routes SetRoutes gave the store.
@@ -80,7 +105,13 @@ func (m *Mem) PriceRoutes(context.Context) ([]sprint.Route, int64, error) {
 	if err := m.fail("routes"); err != nil {
 		return nil, 0, err
 	}
-	return append([]sprint.Route(nil), m.routes...), 0, nil
+	out := append([]sprint.Route(nil), m.routes...)
+	for i := range out {
+		if out[i].Prices.Billing == "" && m.providers[out[i].Provider].Billing == cardcost.BillingSubscription {
+			out[i].Prices.Billing = cardcost.BillingSubscription
+		}
+	}
+	return out, 0, nil
 }
 
 // RouteSet is what a step that deals or asks plans with: the routes, the
@@ -259,6 +290,9 @@ func (st *Store) routesTrips(ctx context.Context) (RouteSet, int64, error) {
 	}
 	if set.Routes == nil {
 		set.Routes = []sprint.Route{}
+	}
+	if err := receiptRouteBillings(set.Routes); err != nil {
+		return RouteSet{}, trips, err
 	}
 	sort.Slice(set.Routes, func(i, j int) bool { return set.Routes[i].Name < set.Routes[j].Name })
 	return set, trips, nil
@@ -563,4 +597,13 @@ func (m *Mem) SetProviders(providers map[string]sprint.Provider) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.providers = maps.Clone(providers)
+}
+
+func receiptRouteBillings(routes []sprint.Route) error {
+	for _, r := range routes {
+		if r.Prices.Billing != "" && !slices.Contains(cardcost.Billings, r.Prices.Billing) {
+			return fmt.Errorf("route %s has unsupported billing %q; adopt the paired config/sprint schema or restore metered, plan or subscription before writing receipts", r.Name, r.Prices.Billing)
+		}
+	}
+	return nil
 }

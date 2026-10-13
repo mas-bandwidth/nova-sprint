@@ -1322,6 +1322,8 @@ and a `: keepalive` comment goes every 15 s. The page and any client prefer `/ev
 a second on a fixed timer, never after an answer. A friend pulls her view as
 docs/FRIENDS.md says.
 
+The dashboard decouples the 1 s page tick from slow background reads (the owner, 2026-10-13 ~13:50 ET: "Once again the dashboard does not seem to be keeping up. It is supposed to regularly update at 1s ... it appears to be hitching. please investigate and get a friend to fix for the next point release." and "maybe gzip it on upload?"): the server ticks the page at 1 s from its cache every second regardless of how long the current background read takes; at most one read runs at a time in the background, and a read exceeding 1 s is logged (`slow read: took %.3fs: %s`). The served page's `dataAgeSeconds` increases with elapsed time since the read was fetched (the page clock turns amber at 2 s, red at 5 s). Responses on both `--listen` and `--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`, `/app.js`, `/api/sprint`, and pull routes), setting `Content-Encoding: gzip` and `Vary: Accept-Encoding`. To eliminate multi-process jq folds, `where --json --dashboard` folds `stream_costs` into `tables.work`, reader rows into `tables.fleet` (`reads_working` and `working`), sentinel-free x/y and ETA in `summary`, and drops archived streams without loading card rows; `--dashboard` requires `--json`.
+
 Each table keeps its member records under a prefix of its own, so a primary's
 record in work and its record in merge are separate. The tables are named
 plainly: `work`, `merge`, `readers` and `fleet`, and the view is `sprint`; the
@@ -7906,10 +7908,14 @@ in the same transaction as the delete; a step that takes a member's control card
 its own snapshot; start under the machine transition's lock. They refuse naming `clear`,
 and a verb whose epoch a clear left while it ran writes nothing. So a clear, the second of
 two at once included, never changes a row, a tier (an intentional empty one included) or
-a control card the new epoch wrote. `clear` and `start` must be externally serialized:
-the operator must never run them concurrently. A single seat identity is not a lock, and
-the start guard is not safe against a concurrent clear advancing the epoch (the advance
-does not yet take the machine fence; v1.2.18 card clear-and-start-share-the-machine-fence). `clear`
+a control card the new epoch wrote. `clear` and `start` share the machine fence: before advancing, clear takes the old
+ epoch's fence and stops any start that landed since its first stop, recapturing live
+ leases and refusing the advance until those leases are returned. Advance checks that
+ fence's owner in the same exchange as the epoch update. Every start record writes only
+ while its own fence is still held, at its pinned epoch and with the restore settled;
+ a changed epoch, restore phase or owner refuses the write. Clear releases the old fence
+ after advance and before restoring the new epoch, so interrupted restores remain
+ recoverable. Concurrent operators need no external clear/start serialization. `clear`
 reports a reset (`CLEAR DEFAULT`) only for a setting it wrote; a setting the new epoch
 already held away from its default is kept and named on a `CLEAR KEPT <name> kept at
 <v>, set in the new epoch` line (`--json`: `kept`).
@@ -8028,7 +8034,8 @@ stored cards), **bases** (each stream on its own branch, never the trunk and nev
 stream's, the promotion stream aside; a need across two streams on different branches unless
 the needed card is the producer stream's sentinel), **names** (each stream's display name set,
 not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
-epoch), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
+epoch), **stale-head** (a pushed head on an open card whose attempt is at or below its
+`brief_attempt`; `brief --keep-head` exempts it), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
 with no brief is a finding) and **brief-size** (a brief over `store.MaxBriefBytes`, or a card's
 record, its brief with its other fields, over the drain's 16384 bytes). It prints `CHECK <kind>
 <card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK cards=<n>` (exit 0)
@@ -9403,3 +9410,7 @@ and repeated-flap witnesses independently violate those rules.
 A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
+
+### Typed subscription receipt contract (v1.2.19)
+
+[Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.

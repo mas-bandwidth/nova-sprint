@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -128,7 +130,10 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 		return res, err
 	}
 	res.From, res.To, res.At = st.epoch, st.epoch+1, st.now()
-	ok, err := st.root.AdvanceEpoch(ctx, st.epoch, res.At)
+	if st.beforeAdvance != nil {
+		st.beforeAdvance()
+	}
+	ok, err := st.advanceClear(ctx, res.At)
 	if err != nil {
 		return res, fmt.Errorf("%w: advancing the sprint's epoch: %v; run: nova-sprint clear again", ErrUnknown, err)
 	}
@@ -579,4 +584,42 @@ func (st *Store) restore(ctx context.Context, from uint64) (*sprint.Snapshot, er
 		}
 	}
 	return snap, st.root.SettleEpoch(ctx, at)
+}
+
+// advanceClear owns the FROM epoch fence through its final STOP and advance.
+// A START that won after clear's first STOP is stopped again here. Restoration
+// happens after releasing this old fence; it uses the new epoch's own fence.
+func (st *Store) advanceClear(ctx context.Context, at time.Time) (bool, error) {
+	r := st.retry(ctx)
+	for r.next(st.attempts()) {
+		s, gen, err := st.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, nil, nil)
+		if err != nil {
+			return false, err
+		}
+		var nonce [16]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return false, err
+		}
+		lock := OpRecord{ID: "clear-advance-" + hex.EncodeToString(nonce[:]) + "-lock", Verb: "clear advance lock", At: st.now(), Lock: true}
+		ok, err := st.B.Acquire(ctx, gen, lock)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			continue
+		}
+		before, _, err := st.Machine(ctx)
+		if err == nil {
+			_, _, err = st.machineRecord(ctx, before, s, false, st.Actor, "", time.Time{}, lock.ID)
+		}
+		if err == nil && len(activeStopLeases(s)) > 0 {
+			err = errors.New("clear stopped new live work/read leases before its advance; cancel and stop-return them, then run clear again")
+		}
+		advanced := false
+		if err == nil {
+			advanced, err = st.root.AdvanceEpoch(ctx, st.epoch, at, lock.ID)
+		}
+		return advanced, errors.Join(err, st.B.Release(context.WithoutCancel(ctx), lock, false))
+	}
+	return false, fmt.Errorf("clear advance: machine fence kept changing (%d tries); run clear again", r.tries)
 }

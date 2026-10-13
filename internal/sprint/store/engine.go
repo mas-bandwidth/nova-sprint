@@ -120,6 +120,8 @@ type Store struct {
 	// before its guarded exchange, and in a start between its pin and its lock: the pause a
 	// clear's advance can land in (guardedRows, machineTransition).
 	beforeGuardedWrite func()
+	beforeAdvance      func() // test pause before clear takes its advance fence
+	afterStartGuard    func() // test pause while START owns the machine fence
 	// LockAfterLoss has a part of the tick that lost a try take the fence
 	// before its next read (lock.go). The program's stores set it; a test
 	// harness whose other writers write from inside a part's plan (a writer
