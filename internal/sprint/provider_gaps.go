@@ -12,6 +12,7 @@ type Provider struct {
 	Name    string `json:"name"`
 	Billing string `json:"billing"`
 	Funded  bool   `json:"funded"`
+	Problem string `json:"problem,omitempty"` // malformed declaration, never a funded row
 }
 
 // RouteGap names an enabled, funded route absent from every effective array.
@@ -37,9 +38,16 @@ type ProviderCoverage struct {
 }
 
 // ProviderGapReport is the same sprint-wide gaps the check and where report.
+// ProviderProblem is one named malformed applied row, independent of its route count.
+type ProviderProblem struct {
+	Name    string `json:"name"`
+	Problem string `json:"problem"`
+}
+
 type ProviderGapReport struct {
-	Routes []RouteGap `json:"routes"`
-	Tiers  []string   `json:"tiers"`
+	InvalidProviders []ProviderProblem `json:"invalid_providers,omitempty"`
+	Routes           []RouteGap        `json:"routes"`
+	Tiers            []string          `json:"tiers"`
 }
 
 // providerTiers includes native tiers and explicitly configured arrays. Frontier
@@ -99,7 +107,7 @@ func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string)
 				continue
 			}
 			included[name] = true
-			if s.Providers[r.Provider].Funded {
+			if s.ProviderFunded(r.Provider) {
 				funded = true
 			}
 		}
@@ -108,7 +116,7 @@ func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string)
 		}
 	}
 	for _, r := range s.Routes {
-		if r.Enabled && s.Providers[r.Provider].Funded && !included[r.Name] && (tier == "" || tier == r.Tier) {
+		if r.Enabled && s.ProviderFunded(r.Provider) && !included[r.Name] && (tier == "" || tier == r.Tier) {
 			routes = append(routes, RouteGap{Route: r.Name, Provider: r.Provider, Tier: r.Tier})
 		}
 	}
@@ -154,7 +162,7 @@ func (s *Snapshot) ProviderCoverages() []ProviderCoverage {
 // ProvidersLine formats the same coverage and gaps carried by where --json.
 func (s *Snapshot) ProvidersLine() string {
 	routes, tiers := s.ProviderGaps("")
-	return ProvidersLine(s.ProviderCoverages(), ProviderGapReport{Routes: routes, Tiers: tiers})
+	return ProvidersLine(s.ProviderCoverages(), ProviderGapReport{Routes: routes, Tiers: tiers, InvalidProviders: s.ProviderProblems()})
 }
 
 // ProvidersLine draws applied funding facts only: no balance implies funding.
@@ -165,6 +173,10 @@ func ProvidersLine(rows []ProviderCoverage, gaps ProviderGapReport) string {
 	parts := []string{}
 	for _, p := range rows {
 		word := p.Name + " unfunded"
+		if p.Problem != "" {
+			parts = append(parts, p.Name+" unknown ("+p.Problem+"; remedy=nova-config apply --kind provider)")
+			continue
+		}
 		if p.Funded {
 			word = p.Name + " funded"
 			counts := []string{}
@@ -185,4 +197,22 @@ func ProvidersLine(rows []ProviderCoverage, gaps ProviderGapReport) string {
 		line += " WARN tiers " + strings.Join(gaps.Tiers, ",") + " hold no route of a funded provider (check cards names them)"
 	}
 	return line
+}
+
+// ProviderFunded excludes malformed rows; no balance implies funding.
+func (s *Snapshot) ProviderFunded(name string) bool {
+	p, applied := s.Providers[name]
+	return applied && p.Problem == "" && p.Funded
+}
+
+// ProviderProblems gives each malformed applied provider exactly once, in name order.
+func (s *Snapshot) ProviderProblems() []ProviderProblem {
+	out := []ProviderProblem{}
+	for name, p := range s.Providers {
+		if p.Problem != "" {
+			out = append(out, ProviderProblem{Name: name, Problem: p.Problem})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }

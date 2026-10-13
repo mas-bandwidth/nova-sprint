@@ -113,3 +113,16 @@ func TestAConfiguredEmptyTierWithFundedFallbackIsClean(t *testing.T) {
 	assert.Empty(t, tiers)
 	assert.Equal(t, "providers: opencode funded (heavy 1/1)", s.ProvidersLine())
 }
+
+func TestMalformedProviderCannotFundATier(t *testing.T) {
+	t.Parallel()
+	s := providerGapSnapshot()
+	p := s.Providers["opencode"]
+	p.Problem = "funded field is invalid"
+	s.Providers["opencode"] = p
+	routes, tiers := s.ProviderGaps("")
+	assert.Empty(t, routes)
+	assert.Equal(t, []string{"pro"}, tiers)
+	assert.False(t, s.ProviderFunded("opencode"))
+	require.Len(t, s.ProviderProblems(), 1)
+}

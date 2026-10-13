@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -53,4 +54,29 @@ func TestCheckCardsNamesProviderGaps(t *testing.T) {
 	// Other full-check kinds can still fail an otherwise empty fixture.
 	_, out, errs := ta.do("check cards")
 	assert.NotContains(t, out+errs, "CHECK routes")
+}
+
+func TestWhereNamesMalformedProviderOnceWithoutCallingItUnfunded(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.m.SetProviders(map[string]sprint.Provider{
+		"broken":   {Name: "broken", Billing: "plan", Problem: "funded field is missing or empty"},
+		"unfunded": {Name: "unfunded", Billing: "plan", Funded: false},
+	})
+	text := ta.ok("where")
+	assert.Contains(t, text, "broken unknown (funded field is missing or empty; remedy=nova-config apply --kind provider)")
+	assert.NotContains(t, text, "broken unfunded")
+	assert.Equal(t, 1, strings.Count(text, "funded field is missing or empty"))
+	var v whereView
+	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))
+	require.Len(t, v.Providers, 2)
+	assert.Nil(t, v.Providers[0].Funded)
+	assert.NotEmpty(t, v.Providers[0].Problem)
+	require.NotNil(t, v.Providers[1].Funded)
+	assert.False(t, *v.Providers[1].Funded)
+	assert.Empty(t, v.Providers[1].Problem)
+	require.Len(t, v.ProviderGaps.InvalidProviders, 1)
+	assert.Equal(t, "broken", v.ProviderGaps.InvalidProviders[0].Name)
+	assert.Contains(t, text, providersLine(v.Providers, v.ProviderGaps)+"\n")
 }

@@ -53,8 +53,10 @@ func TestRedisProvidersWithoutRoutesAreStillShown(t *testing.T) {
 	assert.Equal(t, []string{"heavy"}, tiers)
 	assert.Equal(t, "plan", set.Providers["p"].Billing)
 	require.NoError(t, c.HDel(ctx, config.ProviderKey("p"), "funded").Err())
-	_, _, err = st.B.(RouteReader).Routes(ctx)
-	require.ErrorContains(t, err, "missing or invalid funded")
+	set, _, err = st.B.(RouteReader).Routes(ctx)
+	require.NoError(t, err)
+	assert.NotEmpty(t, set.Providers["p"].Problem)
+	assert.False(t, set.Providers["p"].Funded)
 }
 
 func TestRedisRouteReadersCanReadButNotWriteProviderRows(t *testing.T) {
@@ -79,5 +81,29 @@ func TestRedisRouteReadersCanReadButNotWriteProviderRows(t *testing.T) {
 		require.NoError(t, err, role.Name)
 		assert.Equal(t, "true", hash["funded"])
 		require.ErrorContains(t, r.HSet(ctx, config.ProviderKey("p"), "funded", "false").Err(), "NOPERM", role.Name)
+	}
+}
+
+func TestRedisMalformedProvidersDoNotAbortRoutes(t *testing.T) {
+	t.Parallel()
+	st, c := liveStore(t)
+	ctx := context.Background()
+	require.NoError(t, c.SAdd(ctx, config.ProvidersKey, "missing", "invalid", "unpopulated", "valid").Err())
+	require.NoError(t, c.HSet(ctx, config.ProviderKey("missing"), "billing", "plan").Err())
+	require.NoError(t, c.HSet(ctx, config.ProviderKey("invalid"), "billing", "plan", "funded", "garbage").Err())
+	require.NoError(t, c.HSet(ctx, config.ProviderKey("valid"), "billing", "plan", "funded", "true").Err())
+	for i := 0; i < 2; i++ {
+		set, trips, err := st.B.(RouteReader).Routes(ctx)
+		require.NoError(t, err, "every tick can read malformed applied config")
+		assert.Equal(t, int64(2), trips)
+		s := &sprint.Snapshot{}
+		set.into(s)
+		problems := s.ProviderProblems()
+		require.Len(t, problems, 3, "one finding per malformed provider, independent of repeated reads")
+		assert.Equal(t, []string{"invalid", "missing", "unpopulated"}, []string{problems[0].Name, problems[1].Name, problems[2].Name})
+		assert.True(t, s.ProviderFunded("valid"))
+		for _, name := range []string{"invalid", "missing", "unpopulated"} {
+			assert.False(t, s.ProviderFunded(name))
+		}
 	}
 }

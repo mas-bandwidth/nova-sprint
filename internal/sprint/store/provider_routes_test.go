@@ -41,9 +41,32 @@ func TestProviderKeysAreReadableByRouteReaders(t *testing.T) {
 
 func TestAnAbsentFundingFieldIsNotUnfunded(t *testing.T) {
 	t.Parallel()
-	_, err := ProviderOf("p", map[string]string{"billing": "metered"})
-	require.Error(t, err)
+	missing, err := ProviderOf("p", map[string]string{"billing": "metered"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, missing.Problem)
 	p, err := ProviderOf("p", map[string]string{"billing": "metered", "funded": "false"})
 	require.NoError(t, err)
 	assert.False(t, p.Funded)
+	assert.Empty(t, p.Problem)
+}
+
+func TestMalformedProviderFundingDoesNotAbortRead(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		hash map[string]string
+	}{
+		{"missing", map[string]string{"billing": "plan"}},
+		{"invalid", map[string]string{"billing": "plan", "funded": "garbage"}},
+		{"unpopulated", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p, err := ProviderOf(tc.name, tc.hash)
+			assert.NoError(t, err, "invalid config is a named check finding, not a tick read error")
+			assert.False(t, p.Funded)
+			assert.NotEmpty(t, p.Problem)
+			assert.Equal(t, tc.name, p.Name)
+		})
+	}
 }

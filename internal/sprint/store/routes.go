@@ -501,14 +501,24 @@ func (st *Store) GitIdentity(ctx context.Context) (string, error) {
 	return set.Bars.GitIdentity, err
 }
 
-// ProviderOf reads an applied provider hash. Missing/invalid funding is not
-// silently treated as an explicitly unfunded row: the config read fails closed.
+// ProviderOf reads an applied provider hash. Malformed funding is non-fatal
+// for tick route reads, but remains a named diagnostic and never counts funded.
 func ProviderOf(name string, h map[string]string) (sprint.Provider, error) {
+	p := sprint.Provider{Name: name, Billing: h["billing"]}
 	funded, err := strconv.ParseBool(h["funded"])
-	if err != nil {
-		return sprint.Provider{}, fmt.Errorf("provider %s has missing or invalid funded: nova-config apply --kind provider", name)
+	if err == nil {
+		p.Funded = funded
+		return p, nil
 	}
-	return sprint.Provider{Name: name, Billing: h["billing"], Funded: funded}, nil
+	switch {
+	case len(h) == 0:
+		p.Problem = "provider hash is missing"
+	case h["funded"] == "":
+		p.Problem = "funded field is missing or empty"
+	default:
+		p.Problem = fmt.Sprintf("funded field is invalid: %q", h["funded"])
+	}
+	return p, nil
 }
 
 // SetProviders gives the twin the provider rows nova-config apply writes.

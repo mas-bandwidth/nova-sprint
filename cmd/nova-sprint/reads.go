@@ -1832,6 +1832,7 @@ type providerView struct {
 	sprint.ProviderRow
 	Billing string                `json:"billing,omitempty"`
 	Funded  *bool                 `json:"funded,omitempty"`
+	Problem string                `json:"problem,omitempty"`
 	Tiers   []sprint.ProviderTier `json:"tiers,omitempty"`
 }
 
@@ -1852,7 +1853,10 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 	}
 	for _, p := range s.ProviderCoverages() {
 		row := rows[p.Name]
-		row.Name, row.Billing, row.Funded, row.Tiers = p.Name, p.Billing, &p.Funded, p.Tiers
+		row.Name, row.Billing, row.Problem, row.Tiers = p.Name, p.Billing, p.Problem, p.Tiers
+		if p.Problem == "" {
+			row.Funded = &p.Funded
+		}
 		rows[p.Name] = row
 	}
 	out := []providerView{}
@@ -1861,7 +1865,7 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	routes, tiers := s.ProviderGaps("")
-	return out, sprint.ProviderGapReport{Routes: routes, Tiers: tiers}, nil
+	return out, sprint.ProviderGapReport{Routes: routes, Tiers: tiers, InvalidProviders: s.ProviderProblems()}, nil
 }
 
 // providersLine formats only declarations from the same structured view used
@@ -1869,8 +1873,12 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 func providersLine(rows []providerView, gaps sprint.ProviderGapReport) string {
 	coverage := []sprint.ProviderCoverage{}
 	for _, row := range rows {
-		if row.Funded != nil {
-			coverage = append(coverage, sprint.ProviderCoverage{Provider: sprint.Provider{Name: row.Name, Billing: row.Billing, Funded: *row.Funded}, Tiers: row.Tiers})
+		if row.Funded != nil || row.Problem != "" {
+			funded := false
+			if row.Funded != nil {
+				funded = *row.Funded
+			}
+			coverage = append(coverage, sprint.ProviderCoverage{Provider: sprint.Provider{Name: row.Name, Billing: row.Billing, Funded: funded, Problem: row.Problem}, Tiers: row.Tiers})
 		}
 	}
 	return sprint.ProvidersLine(coverage, gaps)
