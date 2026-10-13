@@ -57,8 +57,11 @@ func main() {
 	a := newApp(os.Getenv)
 	if seatEnvironmentNeeded(os.Args[1:]) {
 		if err := a.loadSeatEnvironment(); err != nil {
-			path, _ := a.seatEnvironmentPath()
-			fmt.Fprintf(os.Stderr, "nova-sprint: seat environment %s is invalid; run: nova-up --seat to repair it, or remove that file to use explicit configuration\n", oneline.Field(path))
+			path, pathErr := a.seatEnvironmentPath()
+			if pathErr != nil {
+				path = "optional seat-environment.json"
+			}
+			fmt.Fprintf(os.Stderr, "nova-sprint: seat environment %s: %s; run: nova-up --seat to repair it, or remove that file to use explicit configuration\n", oneline.Field(path), oneline.Escape(err.Error()))
 			os.Exit(2)
 		}
 	}

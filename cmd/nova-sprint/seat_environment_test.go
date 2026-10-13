@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -186,7 +187,7 @@ func TestSeatEnvironmentForgeReferenceIsOnlyADefault(t *testing.T) {
 	require.NoError(t, err)
 	a := seatEnvApp(t, string(b))
 	require.NoError(t, a.loadSeatEnvironment())
-	assert.Equal(t, dir, a.forgeIdentityDefault())
+	assert.Equal(t, dir, a.seatEnvironment.ForgeIdentity)
 	assert.Empty(t, a.getenv("GH_CONFIG_DIR"), "file does not export a process variable")
 	base := a.getenv
 	a.getenv = func(k string) string {
@@ -195,7 +196,7 @@ func TestSeatEnvironmentForgeReferenceIsOnlyADefault(t *testing.T) {
 		}
 		return base(k)
 	}
-	assert.Equal(t, "/explicit/config", a.forgeIdentityDefault())
+	assert.Equal(t, "/explicit/config", a.getenv("GH_CONFIG_DIR"))
 	assert.Empty(t, a.getenv("NOVA_SPRINT_ACTOR"))
 }
 
@@ -366,4 +367,32 @@ func TestSeatEnvironmentExplicitBusPasswordReferenceKeepsDefaultUser(t *testing.
 	require.NoError(t, err)
 	assert.Empty(t, resolved.User)
 	assert.Equal(t, "explicit-default-user-value", env(resolved.PasswordEnv))
+}
+
+func TestSeatEnvironmentMissingOptionalHomeDoesNotBlockExplicitConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, home := range []func() (string, error){func() (string, error) { return "", errors.New("home unavailable") }, func() (string, error) { return ".", nil }} {
+		a := newApp(func(string) string { return "" })
+		a.home = home
+		require.NoError(t, a.loadSeatEnvironment())
+		assert.Nil(t, a.seatEnvironment)
+	}
+}
+func TestSeatEnvironmentEndpointMatchesProducer(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"mem:/tmp/twin", "host:any", "host:0", "host:65536", ":6380", "host:12\x7f", "host:1'"} {
+		assert.False(t, seatEndpoint(v), v)
+	}
+	for _, v := range []string{"host:1", "host:65535", "[::1]:6380"} {
+		assert.True(t, seatEndpoint(v), v)
+	}
+}
+func TestSeatEnvironmentSafeSpecificCauses(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ body, cause string }{{`{"version":1,"version":1}`, "duplicate key"}, {`{"version":1,"secret":"INJECTED_SECRET"}`, "unknown field"}, {`{"version":1,"environment":null}`, "null field"}, {`{`, "malformed JSON"}} {
+		err := seatEnvApp(t, tc.body).loadSeatEnvironment()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), tc.cause)
+		assert.NotContains(t, err.Error(), "INJECTED_SECRET")
+	}
 }

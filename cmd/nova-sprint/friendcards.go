@@ -1000,14 +1000,16 @@ func (a *app) seatBusOptions(o redisconn.Options) (redisconn.Options, func(strin
 				return redisconn.Options{}, nil, err
 			}
 			o.User, o.PasswordEnv = l.User, seatLoginPassword
+			password := ""
+			if err := secret.Use(func(p string) error { password = p; return nil }); err != nil {
+				return redisconn.Options{}, nil, err
+			}
 			base := getenv
 			getenv = func(k string) string {
 				if k != seatLoginPassword {
 					return base(k)
 				}
-				v := ""
-				_ = secret.Use(func(p string) error { v = p; return nil })
-				return v
+				return password
 			}
 		}
 	}
