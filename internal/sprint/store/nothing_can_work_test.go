@@ -321,3 +321,73 @@ func TestAStillBlockedStopReportsTheFreshRestReason(t *testing.T) {
 	assert.Contains(t, h.machineRecord().Reason, "new rest reason")
 	assert.Contains(t, res.Halted, "new rest reason", "the tick reports the same current evidence as the committed stop")
 }
+
+// Append to nothing_can_work_test.go in an isolated, frozen merged candidate.
+// Uses existing imports and harness; no production callback or scheduler pause.
+type retiredCauseDuringClear struct {
+	*Mem
+	before func(OpRecord)
+	ran    bool
+}
+
+func (b *retiredCauseDuringClear) Routes(ctx context.Context) (RouteSet, int64, error) {
+	set, trips, err := b.Mem.Routes(ctx)
+	if err != nil || b.ran {
+		return set, trips, err
+	}
+	f, err := b.Mem.ReadFence(ctx)
+	if err != nil {
+		return RouteSet{}, trips, err
+	}
+	if f.Pending != nil && f.Pending.Lock && f.Pending.Verb == "machine cause lock" {
+		b.ran = true
+		b.before(*f.Pending)
+	}
+	return set, trips, nil
+}
+
+func TestARetiredFundedStopCannotOverwriteClearReady(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.startMachine()
+	seq := h.machineRecord().RunSeq
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-live", Reason: "blocked", Until: h.now.Add(time.Hour)}))
+	why, err := h.st.NothingFundedCanWork(h.ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, why)
+	oldEpoch, err := h.st.EpochNow(h.ctx)
+	require.NoError(t, err)
+	b := &retiredCauseDuringClear{Mem: h.m}
+	var cleared Machine
+	b.before = func(op OpRecord) {
+		// This is the real expired-empty-lock repair path, not a fabricated
+		// fence mutation. The old stop remains suspended in its live read.
+		h.mu.Lock()
+		h.now = h.now.Add(h.st.grace() + time.Second)
+		h.mu.Unlock()
+		repaired, err := h.st.finishOp(h.ctx, op)
+		require.NoError(t, err)
+		require.Equal(t, RepairAbandoned, repaired.Done)
+		clearer := *h.st
+		clearer.beforeRestore = func(*Store) error { return errors.New("witness pauses new epoch restore") }
+		_, err = clearer.Clear(h.ctx)
+		require.ErrorContains(t, err, "witness pauses new epoch restore")
+		es, err := h.st.EpochNow(h.ctx)
+		require.NoError(t, err)
+		require.Equal(t, oldEpoch.N+1, es.N)
+		pending, err := h.st.RestorePending(h.ctx)
+		require.NoError(t, err)
+		require.True(t, pending)
+		cleared = h.machineRecord()
+		require.True(t, cleared.Ready(), "clear advanced without a new START")
+		require.Empty(t, cleared.Cause)
+	}
+	h.st.B = b
+	_, _, changed, err := h.st.stopWithCauseReason(h.ctx, sprint.NothingFundedCause, why, seq)
+	require.True(t, b.ran, "the stop reached its live revalidation while owning the fence")
+	assert.False(t, changed, "a retired stop writer cannot claim a commit (err=%v)", err)
+	assert.Equal(t, cleared, h.machineRecord(), "an old stop cannot overwrite clear's new-epoch READY record")
+	assert.True(t, h.machineRecord().Ready())
+	assert.Empty(t, h.machineRecord().Cause)
+}
