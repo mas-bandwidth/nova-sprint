@@ -468,7 +468,8 @@ EscalatedOnce == esc => same = N
 \* Change lands (one resets same, which is the ~changed outcome), and the
 \* episode opened with at least N raise windows of clock left before
 \* MaxClock: a later opening is outside this property, as MaxClock bounds
-\* the checked instance, not the machine.
-UnchangedEscalates == (open /\ ~changed /\ first # -1 /\ clk + N * Every <= MaxClock) ~> (esc \/ ~open)
+\* the checked instance, not the machine. A Change landing mid-episode is
+\* the third outcome: it resets the count, and pushes resume.
+UnchangedEscalates == (open /\ ~changed /\ first # -1 /\ clk + N * Every <= MaxClock) ~> (esc \/ ~open \/ changed)
 
 =============================================================================
