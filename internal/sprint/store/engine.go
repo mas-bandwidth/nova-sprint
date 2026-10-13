@@ -183,6 +183,9 @@ type Step struct {
 	// a late finish or verdict once STOP has committed. RequiresStopped is the
 	// complementary fence on an acknowledged stop-return.
 	StartsWork, ReportsWork, RequiresStopped bool
+	// StopEpisode makes a recovery notification belong to the captured stop.
+	// Its Cause and START generation are checked after Acquire, before apply.
+	StopEpisode *Machine
 	// DropRefusedReadCreates says the step is the tick deal: a read card create
 	// refused with MEMBEREXISTS drops that read unit and re-applies the remaining
 	// plan in the same step, so a refused read never blocks work cards.
@@ -911,6 +914,17 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				break
 			}
 			continue
+		}
+		if step.StopEpisode != nil {
+			held, gerr := st.sameStopEpisode(ctx, *step.StopEpisode)
+			if gerr != nil || !held {
+				rerr := st.B.Release(context.WithoutCancel(ctx), op, false)
+				empty := Result{Verb: res.Verb, Attempts: res.Attempts}
+				if rerr != nil {
+					empty.Pending = op.ID
+				}
+				return empty, errors.Join(gerr, rerr)
+			}
 		}
 		applied, receipts, err := st.apply(ctx, op, &applyContext{step, &plan, snap, &res, &op})
 		var bound *boundError
@@ -2604,4 +2618,10 @@ func abandonment(op OpRecord, by string, now time.Time) OpRecord {
 	n := sprint.Note{ID: op.ID + ".abandoned", Kind: sprint.Happened, Type: sprint.NAbandoned, At: now, Who: by,
 		What: fmt.Sprintf("operation %s (%s) by %s, %s old: its first manifest never applied", op.ID, op.Verb, who, now.Sub(op.At).Round(time.Second))}
 	return OpRecord{ID: op.ID, Verb: op.Verb, At: op.At, Notes: []sprint.Note{n}}
+}
+
+// sameStopEpisode is called only while the step owns the operation fence.
+func (st *Store) sameStopEpisode(ctx context.Context, want Machine) (bool, error) {
+	now, _, err := st.Machine(ctx)
+	return err == nil && !now.Running() && now.Cause == want.Cause && now.RunSeq == want.RunSeq, err
 }

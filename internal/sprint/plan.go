@@ -105,6 +105,8 @@ type Plan struct {
 	// Stop is the cause the binding stops the machine with as the step commits: the
 	// tick's deal when every provider is out of credit (FundsCause words); "" is none.
 	Stop string
+	// StopCause names the automatic stop; empty retains the legacy FundsCause.
+	StopCause string
 	// pre is the pre-state the plan was built on, set only by the steps of
 	// this package that may admit or move a primary into ready (on): the
 	// lifecycle judges a primary's needs against it, and a plan without one

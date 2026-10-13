@@ -474,3 +474,192 @@ func AnyFriendUp(friends []FriendSeat) bool {
 	}
 	return false
 }
+
+// NothingFundedCause is distinct from FundsCause: only tiers with dealable work
+// count, and any rest cause or effective tier-array gap can block them.
+// tla/ProviderFunds.tla NeverRunningUnfunded (fair-tick temporal response).
+const NothingFundedCause = "nothing funded can work"
+
+const (
+	NNothingFunded   = "nothing funded can work"
+	NFundedLiveAgain = "a funded route is live again"
+)
+
+// workedTiers names execution tiers, not a brief's ceiling. Reads use their
+// actual drawn/persisted tier, including the heavy-to-pro and pro-to-flash
+// fallbacks. An up reader with its own model can execute a waiting read even
+// while fleet routes rest; that is work the sprint can still do.
+func (s *Snapshot) workedTiers() (tiers []string, ownReadLive bool) {
+	if s == nil || s.Work == nil || s.Fleet == nil {
+		return nil, false
+	}
+	worked := map[string]bool{}
+	capOf := s.AttemptsCapOf()
+	for _, c := range s.Work.Column(Ready) {
+		if IsSentinel(c) || StreamHeld(s, c.Row) || len(WaitsFor(s, c, nil)) > 0 || AtEnvExitBound(s, c) != nil {
+			continue
+		}
+		if _, ok := AtAttemptCap(c, capOf(c.Row)); ok {
+			continue
+		}
+		worked[s.DealTier(escalating(s, c))] = true
+		m, _ := modelOf(c)
+		ownReadLive = ownReadLive || m.Pin != ""
+	}
+	idx := fleetReadIndex(s)
+	units := readUnitsOf(s, s.Friends)
+	readerLive := func(pr *Card) bool {
+		attempt := readAttempt(pr)
+		worker := attemptUnit(s, pr.ID, attempt)
+		if s.ReadCardsOn() {
+			for _, u := range units {
+				independent := u.friend || s.ownModelReader(ReaderPrefix+u.name) || len(s.Routes) == 0
+				if independent && mayReadCard(s, u, pr, attempt, worker, idx[pr.ID]) {
+					return true
+				}
+			}
+			return false
+		}
+		if s.Readers == nil {
+			return false
+		}
+		for _, rd := range s.freeReaders(pr, attempt) {
+			name, _ := ReaderMachine(rd)
+			if name != worker && (s.ownModelReader(rd) || len(s.Routes) == 0) {
+				return true
+			}
+		}
+		return false
+	}
+	if s.ReadCardsOn() {
+		for _, pr := range s.Work.Column(Review) {
+			if StreamHeld(s, pr.Row) || readCardsWanted(s, pr, idx) == 0 {
+				continue
+			}
+			tier := s.readTierDrawn(pr)
+			worked[tier] = true
+			ownReadLive = ownReadLive || readerLive(pr)
+		}
+		for _, rc := range s.Fleet.Column(Ready) {
+			if !isRead(rc) {
+				continue
+			}
+			pr := s.Work.Placed(rc.F("primary"))
+			if pr == nil || pr.Col != Review || StreamHeld(s, pr.Row) || readAttempt(pr) != rc.Int("attempt") {
+				continue
+			}
+			tier := rc.F(FieldTier)
+			if tier == "" {
+				tier = s.readTierDrawn(pr)
+			}
+			worked[tier] = true
+			for _, u := range units {
+				if u.row == rc.Row && (u.friend || s.ownModelReader(ReaderPrefix+u.name) || len(s.Routes) == 0) {
+					ownReadLive = true
+				}
+			}
+		}
+	} else {
+		for _, pr := range readsWaitingCards(s) {
+			if StreamHeld(s, pr.Row) {
+				continue
+			}
+			tier := s.readTierDrawn(pr)
+			worked[tier] = true
+			ownReadLive = ownReadLive || readerLive(pr)
+		}
+	}
+	delete(worked, "")
+	return slices.Sorted(maps.Keys(worked)), ownReadLive
+}
+
+// workedTierBlocked is TierNotLive's rest rule with the deal's effective
+// native-tier membership. Empty arrays fall back to enabled native routes;
+// disabled, unknown and foreign-tier entries cannot fabricate a live route.
+func (s *Snapshot) workedTierBlocked(tier string) (reasons []string, blocked bool) {
+	if len(s.Routes) == 0 {
+		return nil, false
+	} // legacy unconfigured members run their own model
+	for _, f := range s.Friends {
+		if friendTakes(s, f, tier) && friendDealable(s, f) {
+			return nil, false
+		}
+	}
+	array := s.tierArray(tier)
+	selected := map[string]bool{}
+	for _, name := range array {
+		selected[name] = true
+	}
+	eligible := 0
+	for _, r := range s.Routes {
+		if !r.Enabled || r.Tier != tier {
+			continue
+		}
+		if !selected[r.Name] {
+			if s.ProviderFunded(r.Provider) {
+				reasons = append(reasons, fmt.Sprintf("tier array %s [%s] excludes enabled funded route %s", tier, strings.Join(array, ","), r.Name))
+			}
+			continue
+		}
+		eligible++
+		rest, ok := s.resting(r.Name)
+		if !ok || !rest.Resting(s.Now) {
+			return nil, false
+		}
+		cause := rest.Cause
+		switch cause {
+		case RestCredit:
+			cause = "out of credit"
+		case RestAuth:
+			cause = "auth refused"
+		case RestCoordinator:
+			cause = "rested by the seat"
+		}
+		why := cause + " until " + rest.UntilSaid()
+		if rest.Said() != cause {
+			why += " (" + rest.Said() + ")"
+		}
+		reasons = append(reasons, r.Name+" "+why)
+	}
+	if eligible == 0 {
+		reasons = append(reasons, fmt.Sprintf("tier array %s [%s] has no enabled native-tier route", tier, strings.Join(array, ",")))
+	}
+	slices.Sort(reasons)
+	return reasons, true
+}
+
+// NothingFundedCanWork is the stop/start predicate, using the same execution
+// tier and route eligibility in both callers. No work is not a funds stop.
+// tla/ProviderFunds.tla NeverRunningUnfunded; Stop remains FundsCause first.
+func (s *Snapshot) NothingFundedCanWork() string {
+	tiers, readLive := s.workedTiers()
+	if len(tiers) == 0 || readLive {
+		return ""
+	}
+	s, _ = s.withRests()
+	var words []string
+	for _, tier := range tiers {
+		reasons, blocked := s.workedTierBlocked(tier)
+		if !blocked {
+			return ""
+		}
+		words = append(words, tier+": "+strings.Join(reasons, "; "))
+	}
+	return "sprint stopped: " + NothingFundedCause + " (" + strings.Join(words, "; ") + "): restore a route in its tier array or end its rest, then nova-sprint start"
+}
+
+// HasLiveWorkedTier is the recovery notification's predicate. It does not
+// resume the machine: only the owner's start does (StartIsTheCoordinators).
+func (s *Snapshot) HasLiveWorkedTier() bool {
+	tiers, readLive := s.workedTiers()
+	if readLive {
+		return true
+	}
+	s, _ = s.withRests()
+	for _, tier := range tiers {
+		if _, blocked := s.workedTierBlocked(tier); !blocked {
+			return true
+		}
+	}
+	return false
+}

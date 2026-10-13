@@ -100,6 +100,16 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(why, prog+" where --json (its providers), then "+prog+" funded <provider> --reason <the payment> once one is paid"))
 			return 1
 		}
+		// The worked-tier stop is independent of the all-credit payment path.
+		// tla/ProviderFunds.tla NeverRunningUnfunded, StartIsTheCoordinators.
+		why, err = st.NothingFundedCanWork(ctx)
+		if err != nil {
+			return a.readFailed(name, err, stderr)
+		}
+		if why != "" {
+			fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.Escape(why))
+			return 1
+		}
 		// every need of the cards resolved, computed live before the record's gate, so a hold
 		// raised after a clean check is caught (a-missing-or-blocked-need-is-found-at-check-
 		// and-while-running; startNeedsGate)
@@ -1132,7 +1142,12 @@ credit is rested until a payment is seen (a balance read higher than the read
 before it, or than at the refusal), nova-sprint funded <provider> says it was
 paid, or nova-sprint routes wake <provider> ends it. When every provider is
 OUT the tick stops the machine (STOPPED, every provider is out of credit) and
-start is refused until one is paid. Low on funds never stops it. Every
+start is refused until one is paid. Low on funds never stops it.
+If every tier with dealable ready work or waiting reads has no live route,
+the tick stops with "nothing funded can work" and names each tier's route
+rests or array gaps. Rest endings never restart it: a live-again note prompts
+the owner's start, which refuses while the condition still holds. Empty tier
+arrays use enabled native-tier routes. Every
 other verbs can inspect and repair stopped state. run stops (exit 3) when its own binary is replaced
 on disk, so its supervisor starts the new build.`) + "\n"
 }

@@ -112,7 +112,9 @@ type Machine struct {
 	// A stop by hand, a clear, and a start leave it empty; an add of work
 	// to a done sprint empties it too, as the sprint is no longer done.
 	Cause string `json:"cause,omitempty"`
-	// Reason and Until are a stop by hand's --reason and --until
+	// Reason also carries NothingFundedCause's worked-tier evidence. Until
+	// remains empty for automatic stops: no clock can restart that cause.
+	// Reason and Until are otherwise a stop by hand's --reason and --until
 	// (docs/SPEC-SPRINT.md section 14): why, and when the tick starts the
 	// machine itself again; a start, and the machine's own stops, leave
 	// them empty.
@@ -314,8 +316,8 @@ func MachineLine(now time.Time, m Machine, hb Heartbeat) string {
 		// (section 14, "READY")
 		return "machine: " + Ready
 	}
-	if !m.Running() && m.Cause == sprint.FundsCause {
-		return "machine: STOPPED (" + sprint.FundsCause + ")"
+	if !m.Running() && (m.Cause == sprint.FundsCause || m.Cause == sprint.NothingFundedCause) {
+		return "machine: STOPPED (" + m.Cause + ")"
 	}
 	if !m.Running() && m.Reason != "" && !m.Until.IsZero() {
 		// a stop by hand says who, why and when it is back (section 14)
@@ -829,6 +831,13 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		// showed 59 working with no run anywhere, as no tick ran to notice.
 		if err := st.liveStopped(ctx, beats, &res); err != nil {
 			return res, err
+		}
+		// A recovered worked tier is a note, never an automatic START.
+		// tla/ProviderFunds.tla ResumableWhenFunded, StartIsTheCoordinators.
+		if m.Cause == sprint.NothingFundedCause {
+			if err := st.fundedLiveAgain(ctx, m, &res); err != nil {
+				return res, err
+			}
 		}
 		// a card added to an archived stream draws it again, STOPPED or not
 		if err := st.archivePart(ctx, false, &res); err != nil {
@@ -1486,7 +1495,7 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		began := t.st.meter()
 		due := 0
 		var done *sprint.Note
-		stop := "" // the deal's: every provider out of credit (sprint.FundsCause)
+		stop, stopCause := "", sprint.FundsCause // the deal's reason and distinct cause
 		var planned sprint.Plan
 		// the stall ladder's wakes of the plan last made (sprint.TickFriendStall): kept,
 		// never sent, as the part plans, and sent once its step commits (tickRun.wake;
@@ -1522,6 +1531,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			p = t.laneChecked(s, r, part.Name, p)
 			planned = p
 			stop = p.Stop
+			if p.StopCause != "" {
+				stopCause = p.StopCause
+			}
 			if part.Name == sprint.PartDone {
 				done = nil
 				if len(p.Notes) > 0 {
@@ -1639,7 +1651,7 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		if stop != "" && !r.Lost {
 			// Every provider is out of credit: the machine stops itself as the part's step
 			// commits, with the cause, and the tick ends here (nova-tools#5199).
-			if err := t.st.stopFor(t.ctx, sprint.FundsCause, stop, t.runSeq, t.res); err != nil {
+			if err := t.st.stopFor(t.ctx, stopCause, stop, t.runSeq, t.res); err != nil {
 				t.err = fmt.Errorf("tick %s: stopping the machine: %w", part.Name, err)
 				return tickFailed
 			}
@@ -1888,11 +1900,13 @@ func (st *Store) stopDone(ctx context.Context, n sprint.Note, runSeq uint64, res
 	return st.pushDone(ctx, n, res)
 }
 
+// tla/ProviderFunds.tla NeverRunningUnfunded: the observed blocked condition stops
+// at the tick commit, with FundsCause and NothingFundedCause kept distinct.
 // stopFor stops the machine as the tick's step commits, its record STOPPED with the cause
 // and a STOPPED span opened (the done part's stop, stopDone, is the other): the tick's
 // result says why. A machine STOPPED already is left as it is.
 func (st *Store) stopFor(ctx context.Context, cause, why string, runSeq uint64, res *TickResult) error {
-	_, after, changed, err := st.stopWithCause(ctx, cause, runSeq)
+	_, after, changed, err := st.stopWithCauseReason(ctx, cause, why, runSeq)
 	if err != nil {
 		return err
 	}
@@ -2321,4 +2335,36 @@ func (st *Store) shadowRead(ctx context.Context) (*sprint.Snapshot, error) {
 		return snap, nil
 	}
 	return nil, fmt.Errorf("the sprint is busy: an operation was pending or the fence moved on each of %d reads in %s; a shadow tick repairs nothing; run it again", r.tries, r.slept().Round(time.Millisecond))
+}
+
+// fundedLiveAgain records one recovery note per explicit run's stop. The
+// monotonic run generation marker and note commit together in the fleet
+// batch; an older stopped look cannot replace a newer generation's marker.
+func (st *Store) fundedLiveAgain(ctx context.Context, m Machine, res *TickResult) error {
+	seats, err := st.friendSeats(ctx, nil, st.now())
+	if err != nil {
+		return err
+	}
+	r, err := st.Run(ctx, Step{Verb: "tick funded live again", Load: All, Extras: nothingWorkExtras, Routes: true, RequiresStopped: true, StopEpisode: &m,
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			const prop = "nothing_funded_live_again_run"
+			was, ok := s.Fleet.Prop(prop)
+			prior, _ := strconv.ParseUint(was, 10, 64)
+			if ok && prior >= m.RunSeq {
+				return sprint.Plan{}
+			}
+			s.Friends = seats
+			if !s.HasLiveWorkedTier() {
+				return sprint.Plan{}
+			}
+			return sprint.Plan{Props: []sprint.PropWrite{{Table: sprint.Fleet, Name: prop, Value: strconv.FormatUint(m.RunSeq, 10), Was: was, WasAbsent: !ok}},
+				Notes: []sprint.Note{{Kind: sprint.Happened, Type: sprint.NFundedLiveAgain, Who: sprint.MachineActor, To: s.Coordinator, At: s.Now, What: "a funded route is live again: nova-sprint start"}}}
+		}})
+	if err != nil {
+		return err
+	}
+	if r.Notes > 0 {
+		res.Parts = append(res.Parts, PartResult{Name: "funded live again", Result: r})
+	}
+	return nil
 }

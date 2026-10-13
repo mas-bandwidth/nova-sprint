@@ -1,0 +1,156 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTheStoreStopsAndStartRefusesUntilAWorkedTierIsLive(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, providerRoute("flash-live", "flash", "flash"), providerRoute("pro-credit", "pro", "credit"), providerRoute("pro-auth", "pro", "key"), providerRoute("heavy-seat", "heavy", "seat"))
+	h.addReady("pro-stream", 2, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.addReady("heavy-stream", 1, "RESULT: heavy-work sha=000000000000 tier: heavy\n\nThe task.")
+	h.startMachine()
+	at := h.now.UTC().Format(time.RFC3339)
+	until := h.now.Add(3 * time.Hour).UTC().Format(time.RFC3339)
+	h.must(Step{Verb: "fixture rests", Load: All, Plan: func(s *sprint.Snapshot) sprint.Plan {
+		var p sprint.Plan
+		for provider, value := range map[string]string{
+			"credit": at + " " + until + " old.w1 " + sprint.RestCredit + " out of credit",
+			"key":    at + " open - " + sprint.RestAuth + " auth refused",
+			"seat":   at + " " + h.now.Add(4*time.Hour).UTC().Format(time.RFC3339) + " - " + sprint.RestCoordinator + " rested by the seat",
+		} {
+			name := sprint.PropProviderRest(provider)
+			was, ok := s.Fleet.Prop(name)
+			p.Props = append(p.Props, sprint.PropWrite{Table: sprint.Fleet, Name: name, Value: value, Was: was, WasAbsent: !ok})
+		}
+		return p
+	}})
+	res := h.machine()
+	m := h.machineRecord()
+	require.False(t, m.Running(), "ready pro/heavy are blocked while the only live flash route has no work")
+	assert.Equal(t, "nothing funded can work", m.Cause)
+	assert.Contains(t, m.Reason, "pro:")
+	assert.Contains(t, m.Reason, "heavy:")
+	assert.Equal(t, "machine: STOPPED (nothing funded can work)", MachineLine(h.now, m, Heartbeat{}))
+	assert.Contains(t, res.Halted, "pro-credit")
+	require.Len(t, h.openOf("nothing funded can work"), 1)
+	_, _, _, err := h.st.SetMachine(h.ctx, true)
+	require.Error(t, err, "owner's start refuses until a worked tier has a live route")
+	assert.Contains(t, err.Error(), "pro:")
+	assert.Contains(t, err.Error(), "heavy:")
+	for range 4 {
+		h.tick(30 * time.Minute)
+		h.machine()
+	}
+	assert.False(t, h.machineRecord().Running())
+	for _, typ := range []string{sprint.NWorkLate, sprint.NStreamStale, sprint.NOverdue} {
+		assert.Empty(t, h.tickNotes(typ), "no stopped-time alarm: %s", typ)
+	}
+	assert.Empty(t, h.tickNotes("a funded route is live again"))
+	h.tick(time.Hour)
+	h.machine()
+	assert.False(t, h.machineRecord().Running(), "a rest ending does not restart the sprint")
+	require.Len(t, h.tickNotes("a funded route is live again"), 1)
+	h.machine()
+	require.Len(t, h.tickNotes("a funded route is live again"), 1, "one recovery note per stop")
+	h.startMachine()
+	assert.True(t, h.machineRecord().Running())
+}
+
+// A new hand STOP or START generation between the recovery look and its
+// Acquire must discard the old episode's notification, before any write.
+type recoveryInterleave struct {
+	*Mem
+	before      func()
+	ran         bool
+	failRelease bool
+}
+
+func (b *recoveryInterleave) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
+	if op.Verb == "tick funded live again" && !b.ran {
+		b.ran = true
+		b.before()
+	}
+	return b.Mem.Acquire(ctx, gen, op)
+}
+
+func (b *recoveryInterleave) Release(ctx context.Context, op OpRecord, commit bool) error {
+	if b.failRelease && op.Verb == "tick funded live again" && !commit {
+		return errors.New("release receipt lost")
+	}
+	return b.Mem.Release(ctx, op, commit)
+}
+
+func TestRecoveryCannotNotifyForAnOlderStopEpisode(t *testing.T) {
+	t.Parallel()
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprint(restart), func(t *testing.T) {
+			t.Parallel()
+			h := routeHarness(t, route("pro-live", "pro"))
+			h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+			h.startMachine()
+			old := h.machineRecord()
+			_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", old.RunSeq)
+			require.NoError(t, err)
+			old = h.machineRecord()
+			b := &recoveryInterleave{Mem: h.m}
+			b.before = func() {
+				if restart {
+					h.startMachine()
+					m := h.machineRecord()
+					_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", m.RunSeq)
+					require.NoError(t, err)
+				} else {
+					_, _, _, err := h.st.StopUntil(h.ctx, "new owner's stop", time.Time{})
+					require.NoError(t, err)
+				}
+			}
+			h.st.B = b
+			var res TickResult
+			require.NoError(t, h.st.fundedLiveAgain(h.ctx, old, &res))
+			assert.Empty(t, h.tickNotes("a funded route is live again"))
+			assert.Empty(t, res.Parts)
+		})
+	}
+}
+
+func TestARecoveryGuardReleaseFailureWritesNoNote(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-live", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.startMachine()
+	m := h.machineRecord()
+	_, _, _, err := h.st.stopWithCause(h.ctx, "nothing funded can work", m.RunSeq)
+	require.NoError(t, err)
+	m = h.machineRecord()
+	b := &recoveryInterleave{Mem: h.m, failRelease: true}
+	b.before = func() {
+		_, _, _, err := h.st.StopUntil(h.ctx, "new owner's stop", time.Time{})
+		require.NoError(t, err)
+	}
+	h.st.B = b
+	var res TickResult
+	err = h.st.fundedLiveAgain(h.ctx, m, &res)
+	require.ErrorContains(t, err, "release receipt lost")
+	assert.Empty(t, h.tickNotes("a funded route is live again"))
+	assert.Empty(t, res.Parts)
+}
+
+func TestAFirstStartRefusesBlockedWorkUnderItsTransitionFence(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("pro-resting", "pro"))
+	h.addReady("s1", 1, "RESULT: pro-work sha=000000000000 tier: pro\n\nThe task.")
+	h.must(RouteRestStep(sprint.RouteRestReq{Target: "pro-resting", Reason: "rested by the seat", Until: h.now.Add(time.Hour)}))
+	before := h.machineRecord()
+	_, _, _, err := h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, "nothing funded can work")
+	assert.Equal(t, before, h.machineRecord())
+}

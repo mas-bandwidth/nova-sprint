@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sort"
@@ -550,4 +551,55 @@ func (m *Mem) SetProviders(providers map[string]sprint.Provider) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.providers = maps.Clone(providers)
+}
+
+// nothingWorkExtras reads the records of named needs, including kept landed
+// records, so the stop never treats an unresolved primary as dealable.
+func nothingWorkExtras(s *sprint.Snapshot) map[string][]string {
+	var ids []string
+	for _, c := range s.Work.Cards() {
+		ids = append(ids, sprint.Split(c.F("needs"))...)
+	}
+	return map[string][]string{sprint.Work: ids}
+}
+
+func (st *Store) nothingWorkSnapshot(ctx context.Context) (*sprint.Snapshot, error) {
+	s, err := st.Load(ctx, All, nothingWorkExtras)
+	if err != nil {
+		return nil, err
+	}
+	if err = st.RoutesInto(ctx, s); err != nil {
+		return nil, err
+	}
+	s.Friends, err = st.friendSeats(ctx, s, st.now())
+	return s, err
+}
+
+// NothingFundedCanWork is the live start refusal beside OutOfCredit, not a
+// replacement for the paid-ends-it path. The same predicate drives TickDeal.
+// tla/ProviderFunds.tla NeverRunningUnfunded and StartIsTheCoordinators.
+func (st *Store) NothingFundedCanWork(ctx context.Context) (string, error) {
+	s, err := st.nothingWorkSnapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	return s.NothingFundedCanWork(), nil
+}
+
+// nothingFundedStartGuard executes under machineTransition's operation lock,
+// over its fenced workload. Every START entrypoint uses it, even after another
+// stop cause or before the first run; a failed check writes no machine state.
+func (st *Store) nothingFundedStartGuard(ctx context.Context, s *sprint.Snapshot) error {
+	if err := st.RoutesInto(ctx, s); err != nil {
+		return err
+	}
+	var err error
+	s.Friends, err = st.friendSeats(ctx, s, st.now())
+	if err != nil {
+		return err
+	}
+	if why := s.NothingFundedCanWork(); why != "" {
+		return errors.New(why)
+	}
+	return nil
 }

@@ -513,6 +513,20 @@ stops the system (`machine: STOPPED (every provider is out of credit)`) and `sta
 until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
 says one was paid. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
 
+If every execution tier with dealable ready work or waiting reads has no live route,
+`where` says `machine: STOPPED (nothing funded can work)`. The stop record and one
+sprint-level judgment name each tier's resting routes and causes, or its array gaps.
+The owner receives it through the checked owner target, alongside the seat's hook.
+Only the owner's `start` resumes it; start refuses with the current reasons while
+nothing can run. A rest ending produces one `a funded route is live again: nova-sprint
+start` note per stop, without restarting automatically. This keeps one explicit resume
+path and avoids restarting onto routes whose staggered rest clocks may refuse again.
+An enabled funded route omitted from its native tier array cannot run (the six pro
+opencode omissions fixed by tier pro rev 742 on 2026-10-13); empty arrays fall back to
+all enabled native-tier routes. Reads count at their actual drawn tier, and an up reader
+with its own model can keep read-only work running. The existing all-credit stop and
+payment path take precedence; no ready work or waiting reads means no new mixed-rest stop.
+
 ### Answered by rule
 
 The run loop's tick answers the mechanical judgments itself, by rule, and records each as

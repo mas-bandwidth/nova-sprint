@@ -39,7 +39,13 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 	r := pinned.retry(ctx)
 	for r.next(pinned.attempts()) {
 		// STOP records the same live owner leases that START later checks.
-		s, gen, ferr := pinned.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, nil, nil)
+		load := []string{sprint.Fleet, sprint.Readers}
+		var extras func(*sprint.Snapshot) map[string][]string
+		if running {
+			load = All
+			extras = nothingWorkExtras
+		}
+		s, gen, ferr := pinned.Fenced(ctx, load, extras, nil)
 		if ferr != nil {
 			return before, after, false, ferr
 		}
@@ -60,6 +66,9 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 		// land between this read and the record (tla/ClearDefaults.tla Start)
 		if running {
 			err = pinned.startRestoreGuard(ctx, s)
+			if err == nil {
+				err = pinned.nothingFundedStartGuard(ctx, s)
+			}
 		}
 		if err == nil {
 			before, _, err = pinned.Machine(ctx)
@@ -420,6 +429,12 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 // operator's fenced write, leaving that later explicit reason intact. Its
 // observed START generation also prevents it from stopping a later restart.
 func (st *Store) stopWithCause(ctx context.Context, cause string, runSeq uint64) (before, after Machine, changed bool, err error) {
+	return st.stopWithCauseReason(ctx, cause, "", runSeq)
+}
+
+// stopWithCauseReason preserves the same STOP/START fence while recording the
+// worked-tier stop's evidence. FundsCause and DoneCause keep their old records.
+func (st *Store) stopWithCauseReason(ctx context.Context, cause, why string, runSeq uint64) (before, after Machine, changed bool, err error) {
 	pinned, err := st.pin(ctx)
 	if err != nil {
 		return before, after, false, err
@@ -456,6 +471,9 @@ func (st *Store) stopWithCause(ctx context.Context, cause string, runSeq uint64)
 					after.Spans = after.Spans[len(after.Spans)-MaxStopSpans:]
 				}
 				after.State, after.Since, after.Who, after.Cause = Stopped, now, sprint.MachineActor, cause
+				if cause == sprint.NothingFundedCause {
+					after.Reason = why
+				}
 				// it ran in the epoch as read now: STOPPED there, never READY
 				// (tla/MachineReady.tla Stop, RanIsNotReady)
 				var es EpochState

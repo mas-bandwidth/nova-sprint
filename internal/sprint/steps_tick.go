@@ -156,6 +156,7 @@ var TickDecisions = map[string][]string{
 	NProviderLow:    {"ack", "wait"}, // the same
 	NProviderKey:    {"ack", "wait"},
 	NAllOutOfCredit: {"ack", "wait"},
+	NNothingFunded:  {"ack", "wait"},
 	NInvariant:      {"look at the card", "repair", "wait"},
 	NWorkLate:       {"fleet level", "fleet down <member>", "wait", "drop"},
 	NReadLate:       {"ask --another", "wait", "drop"},
@@ -1035,6 +1036,16 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// per card (provider_funds.go)
 	pc, stop := providerConds(s)
 	pc, stop = friendsKeepRunning(pc, stop, r.Friends)
+	stopCause := FundsCause
+	// The existing all-credit stop wins. Otherwise only tiers with work count.
+	// tla/ProviderFunds.tla NeverRunningUnfunded (fair-tick temporal response).
+	if stop == "" {
+		stop = s.NothingFundedCanWork()
+		if stop != "" {
+			stopCause = NothingFundedCause
+			pc = append(pc, cond{typ: NNothingFunded, sprintLevel: true, what: stop})
+		}
+	}
 	conds = append(conds, pc...)
 	// a member or a friend whose cards are timing out, three within the window (overload.go)
 	conds = append(conds, overloadConds(s, r.Friends)...)
@@ -1160,7 +1171,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NNothingFunded, NFriendSyncFailing, NMirrorNeed}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
@@ -1170,6 +1181,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// every provider out of credit: the binding stops the machine as the plan commits
 	// tla/DirtyTick.tla Stop
 	p.Stop = stop
+	if stop != "" {
+		p.StopCause = stopCause
+	}
 	return p, due
 }
 
@@ -2000,6 +2014,7 @@ type cond struct {
 	card        string // the consumer card a late judgment is of: its own cause
 	primaries   []string
 	streamLevel bool
+	sprintLevel bool
 	what        string
 	decisions   []string
 	tier        string // the tier a judgment proposes (NRaiseReadTier)
@@ -2010,7 +2025,7 @@ type cond struct {
 // stays one condition, so they are keyed by their type and subject only.
 func condKey(typ, subject, card, what string) string {
 	switch typ {
-	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NReviewNoReader, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
+	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NReviewNoReader, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NNothingFunded, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
@@ -2115,6 +2130,9 @@ func placeOf(c *Card) string {
 }
 
 func (c cond) subjects() []string {
+	if c.sprintLevel {
+		return []string{SprintSubject}
+	}
 	if c.streamLevel {
 		return []string{StreamSubject(c.stream)}
 	}
@@ -2209,11 +2227,11 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			continue
 		}
 		primaries := c.primaries
-		if !c.streamLevel {
+		if !c.streamLevel && !c.sprintLevel {
 			primaries = fresh
 		}
 		n := Note{Kind: Judgment, Type: c.typ, Stream: c.stream, Primaries: primaries, Count: len(primaries), What: c.what,
-			Who: who, At: s.Now, StreamLevel: c.streamLevel, Marked: true, Card: c.card, Tier: c.tier}
+			Who: who, At: s.Now, StreamLevel: c.streamLevel, SprintLevel: c.sprintLevel, Marked: true, Card: c.card, Tier: c.tier}
 		n.Decisions = append([]string(nil), c.decisions...)
 		if len(n.Decisions) == 0 {
 			n.Decisions = append([]string(nil), TickDecisions[c.typ]...)

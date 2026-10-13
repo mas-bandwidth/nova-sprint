@@ -3273,6 +3273,33 @@ order the cards were dealt in, so a card brought to the front of its stream by
     with the same line (exit 1) while every provider stays out; once one is paid (a read that
     ends its rest, or `funded`), the coordinator starts it and the judgment closes
     (`TestEveryProviderOutOfCreditStopsTheMachine`, `TestEveryProviderOutOfCreditStopsTheSprint`).
+  - Nothing funded can work: when at least one execution tier has dealable ready
+    primaries (not sentinels, held streams or unresolved needs) or waiting reads, and
+    every such tier has no live enabled route in its native tier array and no up
+    serving friend, TickDeal plans a distinct `nothing funded can work` stop. Waiting
+    reads use their actual read tier, including heavy-to-pro and pro-to-flash fallback;
+    an up reader with its own model is executable read work even without a fleet route.
+    The record carries `sprint stopped: nothing funded can work (pro: <route> out of
+    credit until <time>; <route> auth refused until woken; heavy: <route> rested by the
+    seat until <time>; ...)`, and `where` says `machine: STOPPED (nothing funded can work)`.
+    There is one sprint-level judgment, sent to the checked owner and the seat hook.
+    The existing every-provider-credit stop takes precedence, including an idle sprint,
+    and retains its paid-ends-it path. Mixed-rest idle sprints do not take this new stop.
+    A configured enabled funded route outside its native tier array is not live and is
+    named in the reason: six pro opencode routes were omitted until tier pro revision
+    742 (2026-10-13). Empty arrays fall back to all enabled native-tier routes; disabled,
+    missing and foreign-tier entries cannot keep a tier live.
+    Only the owner's `start` resumes this cause. It refuses while the same live predicate
+    holds; rest clocks never restart the sprint. Once a worked tier is live, one happened
+    note per stop says `a funded route is live again: nova-sprint start`. Explicit resume
+    preserves the funds design's single start path, avoids rest-expiry stop/start flapping,
+    and lets the owner who paid decide when to run. Stopped spans exclude deadline time;
+    no work-late, stream-stale or overdue judgment is raised while this cause is stopped.
+    `ProviderFunds.NeverRunningUnfunded` checks a fair separate tick's temporal response:
+    `(running /\ blocked) ~> (~running \/ ~blocked)`. It is not instantaneous safety
+    against outside configuration changes: if the cause clears before the tick, the tick
+    does not stop stale work. `ResumableWhenFunded` checks eventual owner notification,
+    and `StartIsTheCoordinators` keeps explicit start as the only resume.
   - `where --json` carries `providers`, the providers table: a row for each provider the
     routes name, `name`, `balance` (dollars and cents rounded up, a negative one `-$0.51`, or
     `unknown`), `balance_at`, `spend_hour`, `state` (`serving`; `resting until <end> (<cause>:
