@@ -885,7 +885,7 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		return code
 	}
 	var actorNotice string
-	args, actorNotice = a.defaultHookActor(args, "", false)
+	args, actorNotice, _ = a.defaultHookActor(args, "", false)
 	if actorNotice != "" {
 		fmt.Fprintln(stderr, actorNotice)
 	}

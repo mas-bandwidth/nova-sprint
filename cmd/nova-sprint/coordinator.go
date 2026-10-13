@@ -22,9 +22,9 @@ import (
 //     sprint's owner, or taken by the one taking it with the owner's name
 //     (sprint.NotSeat); the verb judges who may, and the step again.
 //
-// Every class but read, machine and worker wants an actor: --actor or
-// NOVA_SPRINT_ACTOR. A coordinator or seat verb without one may use the
-// coordinator's name only after both of that name's hooks are proven live.
+// Every class but read, machine and worker wants an actor. A coordinator or
+// seat verb without --actor or NOVA_SPRINT_ACTOR may use the coordinator's name
+// only after both of that name's hooks are proven live.
 const (
 	classCoordinator = "coordinator"
 	classWorker      = "worker"
@@ -74,7 +74,7 @@ func needsActor(c common) string {
 	if c.actor != "" || c.read {
 		return ""
 	}
-	return "--actor <name> is required (or NOVA_SPRINT_ACTOR): who acts is recorded with every change, and there is no default; nothing was changed"
+	return "--actor <name> is required (or NOVA_SPRINT_ACTOR): who acts is recorded with every change; nothing was changed"
 }
 
 // coordinatorOnly is why the actor may not run the verb: "" is may. The first

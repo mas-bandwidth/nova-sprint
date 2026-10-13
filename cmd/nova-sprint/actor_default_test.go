@@ -128,6 +128,7 @@ func TestCoordinatorActorDefaultNeedsBothLivePushes(t *testing.T) {
 	assert.Equal(t, 2, code, "%s%s", out, errs)
 	assert.Contains(t, errs, "--actor <name> is required", errs)
 	assert.Contains(t, errs, "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven", errs)
+	assert.NotContains(t, errs, "there is no default", errs)
 	assert.NotContains(t, errs, "ACTOR "+name, errs)
 	assert.Equal(t, before, ta.applies(), "an unproven identity must not write")
 }
@@ -247,6 +248,7 @@ func TestCoordinatorActorDefaultNamesBackendFailureWithoutLeakingDetails(t *test
 	assert.Contains(t, errs, "--actor <name> is required", errs)
 	assert.Contains(t, errs, "ACTOR default withheld: the sprint backend could not be opened", errs)
 	assert.NotContains(t, errs, "private connection detail", errs)
+	assert.NotContains(t, errs, "there is no default", errs)
 	assert.Equal(t, before, ta.applies(), "a backend failure does not infer an actor or write")
 }
 
