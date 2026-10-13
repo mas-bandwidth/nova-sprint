@@ -81,6 +81,11 @@ func (st *Store) LaneStep(ctx context.Context, kind, machine, who string, give b
 	if why := laneWhy(kind, machine, who); why != "" {
 		return sprint.LaneAnswer{}, fmt.Errorf("%s", why)
 	}
+	if sprint.LanesDisabled {
+		// disabled until v1.3 (sprint.LanesDisabled): a take is granted at once, a give
+		// gives nothing back, and the record is neither read nor written
+		return sprint.LaneAnswer{Granted: !give}, nil
+	}
 	width, err := st.LaneWidth(ctx)
 	if err != nil {
 		return sprint.LaneAnswer{}, err

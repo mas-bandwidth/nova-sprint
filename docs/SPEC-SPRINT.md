@@ -8820,6 +8820,15 @@ cannot give.
 
 ## 18. Lanes
 
+**DISABLED until v1.3** (Glenn, 2026-10-13: "Stop with these bench locks. Verboten."
+"Disable until then. Not a sanctioned or stable feature. Not to be used."). While
+`sprint.LanesDisabled` is set, `lane take` is granted at once and `lane give` gives
+nothing back, each printing one `BENCH LOCK DISABLED` line; nothing is queued or
+written, and the lander's gate runs on its batch's own bench slot unlocked (in a
+directory of its own). Take no bench lock. The replacement is v1.3 card
+`the-server-schedules-bench-work-not-a-lock`: the server hands out a bench and a slot.
+What follows describes the machinery as it stands, kept and tested until then.
+
 The one-Go-test-stream-per-machine rule (docs/STANDARD.md, "one test stream per
 machine") is a lock the system grants, not the coordinator: a worker about to run a
 Go build or test takes one of the machine's Go lanes, runs, and gives it back. The
