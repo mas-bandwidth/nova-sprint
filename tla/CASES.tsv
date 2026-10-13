@@ -653,3 +653,7 @@ MCMachineReadyBrokenReadersGate.cfg	MCMachineReady.tla	invariant	DeliberateSetSt
 MCOneLander.cfg	MCOneLander.tla	pass	-	ignore-terminal	onelander	required	-
 MCOneLanderBrokenNoFence.cfg	MCOneLander.tla	invariant	AtMostOneLander	ignore-terminal	onelander	required	-
 MCOneLanderBrokenPlainDefault.cfg	MCOneLander.tla	invariant	ServerIsTheLander	ignore-terminal	onelander	required	-
+MCNeedsBlockedRun.cfg	MCNeedsBlocked.tla	pass	-	ignore-terminal	needsblocked	required	-
+MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependentsCovered	ignore-terminal	needsblocked	required	-
+MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
+
