@@ -350,7 +350,7 @@ type hookerBox struct {
 	cur        sprint.Hooker
 	bus        *bus.Bus
 	cache      map[string]hookCopy
-	generation map[string]uint64 // incremented by hookerForget before an off-lock read may commit
+	generation map[string]uint64 // incremented by hookerForget before an off-lock read may commit; see tla/HookCache.tla
 	refilling  bool
 }
 
