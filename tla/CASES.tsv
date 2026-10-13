@@ -712,3 +712,6 @@ MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependents
 MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
 MCClearDefaultsStartAdvance.cfg	MCClearDefaults.tla	pass	-	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunningWhileRestorePending	ignore-terminal	cleardefaults	required	-
+MCHookCache.cfg	MCHookCache.tla	pass	-	ignore-terminal	hookcache	required	-
+MCHookCacheBrokenNoGenGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
+MCHookCacheBrokenNoRefillGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
