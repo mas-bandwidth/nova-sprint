@@ -235,8 +235,8 @@ func TestUnresolvableRecoveryDebtRaisesJudgmentToSeat(t *testing.T) {
 				if n.Kind == Judgment && n.Type == NRecoveryUnresolvable {
 					judgments++
 					assert.Equal(t, w.s.Coordinator, n.To, "the judgment is addressed to the seat")
-					assert.Contains(t, n.Decisions, "friend give amy", "give answers it")
-					assert.Contains(t, n.Decisions, "friend take amy", "take answers it")
+					assert.Contains(t, n.Decisions, "restore the repository", "the honest remedy is named")
+					assert.NotContains(t, n.Decisions, "friend take amy", "take cannot answer debt recoveryAdmissions holds")
 				}
 				if n.Kind == Happened {
 					happened++
@@ -247,6 +247,29 @@ func TestUnresolvableRecoveryDebtRaisesJudgmentToSeat(t *testing.T) {
 	assert.Equal(t, 1, judgments, "unresolvable debt raises exactly one standing judgment")
 	assert.Zero(t, happened, "unresolvable debt is not left as a happened note")
 	require.NotEmpty(t, w.s.Fleet.Card(id).F(FieldRecoveryPending), "debt itself remains until resolved")
+}
+
+// S2, real binding shape: an empty repository arrives WITH an error from
+// the reader ("names no repository"). Structural evidence must outrank the
+// error text, or the judgment is bypassed exactly when the brief is broken.
+func TestUnresolvableEmptyRepoWithBindingErrorRaisesJudgment(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	id := "s1-1.w1"
+	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Down}}
+	recoveryStart(w, seats)
+	c := w.s.Fleet.Card(id)
+	r := RecoveryHeadRequest{Card: id, Gen: c.Int(FieldRecoveryGen), CurrentGen: c.Int("gen"), Epoch: w.s.Epoch, Repo: "", Branch: c.F(FieldRecoveryBranch)}
+	p, _ := TickRecoveryHeads(w.s, TickReq{RecoveryHeads: []RecoveryHead{{RecoveryHeadRequest: r, Error: "the revoked generation names no repository"}}})
+	found := false
+	for _, u := range p.Units {
+		for _, n := range u.Notes {
+			if n.Kind == Judgment && n.Type == NRecoveryUnresolvable {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "empty repo with a binding error is structural, not retriable")
 }
 
 // S2 companion: a transient remote failure is retriable, so it stays a

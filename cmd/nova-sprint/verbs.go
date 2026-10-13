@@ -420,6 +420,7 @@ one answer to each judgment (every one prints its own, filled in):
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
   STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
+  a recovered friend's branch head cannot be resolved    restore the repository or branch it names (or correct the brief that named it), then ack <note> --reason '<what was restored>'  (no retry can read it; the next tick resolves the debt and keeps the carried baseline; ack alone discards nothing)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
 (failed, bound, late, conflict, brief-defect, base-gate, read-broken); nova-sprint rules prints what

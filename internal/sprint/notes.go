@@ -166,9 +166,10 @@ var Decisions = map[string][]string{
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},
-	// answered per card by friend give / friend take, or acknowledged where
-	// the work is gone (TickRecoveryHeads names the concrete commands).
-	NRecoveryUnresolvable: {"friend give", "friend take", "ack", "wait"},
+	// answered by restoring the repository or branch the debt names, then
+	// ack; friend give/take cannot answer it while recoveryAdmissions
+	// holds the lease, so they are not promised here.
+	NRecoveryUnresolvable: {"restore the repository", "ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

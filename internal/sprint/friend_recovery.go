@@ -175,12 +175,15 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 		case !known:
 		case fact.RecoveryHeadRequest != request:
 			why = "branch head evidence names a different card, generation, epoch or source"
+		case request.Repo == "" || request.Gen < 1 || request.Branch != BranchOf(s.Prefix, s.Epoch, c.ID, request.Gen):
+			// structural evidence outranks the reader's error text: the
+			// real binding supplies an error for an empty repository too,
+			// and that must not make structural debt look retriable.
+			why = "the revoked generation has no readable repository or exact source branch"
+			unresolvable = true
 		case fact.Error != "":
 			why = cutText(fact.Error, MaxCardTextBytes)
 			unresolvable = strings.Contains(strings.ToLower(fact.Error), "not found")
-		case request.Repo == "" || request.Gen < 1 || request.Branch != BranchOf(s.Prefix, s.Epoch, c.ID, request.Gen):
-			why = "the revoked generation has no readable repository or exact source branch"
-			unresolvable = true
 		case fact.Head != "" && !typedrec.IsFullSha(fact.Head):
 			why = "branch head is not a full commit SHA"
 		default:
@@ -198,11 +201,10 @@ func TickRecoveryHeads(s *Snapshot, r TickReq) (Plan, int) {
 			// pending text, so neither note is raised again.
 			var n Note
 			if unresolvable {
-				friend := strings.TrimPrefix(c.F(FieldRecoveredFrom), friendRowPrefix)
 				n = judgment(NRecoveryUnresolvable, c.F("stream"), s.Now, 0, c.F("primary"))
 				n.Card, n.Who, n.To = c.ID, r.who(), s.Coordinator
-				n.What = "No new take until " + request.Branch + " can be resolved: " + why + "; no retry of this read can succeed, so the seat answers for " + c.ID
-				n.Decisions = []string{"friend give " + friend, "friend take " + friend, "ack", "wait"}
+				n.What = "No new take until " + request.Branch + " can be resolved: " + why + "; no retry of this read can succeed. Restore the repository or branch it names (or correct the brief that named it), then ack: the next tick resolves the debt and keeps the carried baseline; ack alone discards nothing"
+				n.Decisions = []string{"restore the repository", "ack", "wait"}
 			} else {
 				n = happened(NFriendRecoveryPending, c.F("stream"), s.Now, c.F("primary"))
 				n.Card, n.Who, n.What = c.ID, r.who(), "No new take until "+request.Branch+" is read: "+why+"; tick retries without discarding the carried baseline"
