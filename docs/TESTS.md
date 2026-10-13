@@ -4,9 +4,9 @@ Moved from nova-tools docs/TESTS.md on 2026-10-04.
 
 ## nova-sprint
 
-This is a test-binary transcript, not an installed first run. The package's
-test-only hook seam makes this transcript deterministic over a local twin;
-the installed-command walkthrough is in the
+This is a test-binary transcript, not an installed first run. The local twin's
+operation-id counter makes this transcript's IDs repeatable; the production
+CLI walkthrough is in the
 [first-lap note](FIRST-LAP.md).
 In the test binary, `--redis mem:<file>` loads an in-memory twin from a file
 and saves it after each command. Commands run one at a time. This transcript
