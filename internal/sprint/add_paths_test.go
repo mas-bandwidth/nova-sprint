@@ -273,3 +273,15 @@ func TestAdmissionPathsReadMarker(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmissionCtestHasNoPackageButStillHoldsPaths(t *testing.T) {
+	t.Parallel()
+	tree := AdmissionTree{
+		Files: []string{"src/main.cpp", "CMakeLists.txt"},
+		Hold:  func(string) ([]string, error) { return []string{"CMakeLists.txt"}, nil },
+	}
+	brief := "RESULT: c tier: heavy\nREPO: owner/repo\nBASE: main\nPATHS: src/main.cpp\nTEST: ctest DecodeAll\n\nTHE TASK. Fix decoding.\n"
+	assert.Empty(t, PathsAdmission(brief, tree), "a CTest name has no package directory hold")
+	missing := strings.Replace(brief, "PATHS: src/main.cpp", "PATHS: src/missing.cpp", 1)
+	assert.NotEmpty(t, PathsAdmission(missing, tree), "the named source path still must exist")
+}

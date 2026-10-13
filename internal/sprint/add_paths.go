@@ -69,7 +69,7 @@ func PathsAdmission(brief string, tree AdmissionTree) []string {
 	}
 	news := admitList(h["NEW"])
 	idents := admitIdents(h["START"] + "\n" + h["STOP"])
-	if tl, why := cardhdr.ParseTest(h["TEST"]); why == "" && !tl.None && tl.Name != "" {
+	if tl, why := cardhdr.ParseTest(h["TEST"]); why == "" && !tl.None && tl.Name != "" && tl.Package != "" {
 		pkg := strings.TrimPrefix(strings.TrimPrefix(tl.Package, "./"), "/")
 		idents = append(idents, namedIdent{kind: "test", name: tl.Name, file: pkg})
 	}
