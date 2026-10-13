@@ -36,7 +36,7 @@ func liveFleetTwin(t *testing.T) *store.Store {
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	for _, line := range []string{
 		"nova-sprint init --readers reader-a,reader-b --members m1,m2",
-		"nova-sprint add --stream s1 --count 2",
+		"nova-sprint add --stream s1 --count 2 --brief-file s1-1.md",
 		"nova-sprint start",
 		"nova-sprint tick",
 	} {

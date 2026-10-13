@@ -201,8 +201,8 @@ func (ta *testApp) toMerging(streams ...string) {
 	}
 	ta.ok("finish --as m1 " + strings.Join(words, " "))
 	ta.ok("ask --limit 100")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	// both reads of each card were asked together, so both readers' oks come back in one
 	// step each: no judgment (the tick accepts; here, STOPPED, the stuck-case verb does),
 	// and the red is j3

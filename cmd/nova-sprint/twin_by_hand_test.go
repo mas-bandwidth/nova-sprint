@@ -45,7 +45,7 @@ func TestATwinNotTickingIsRunningAndItsRemedyIsTheTick(t *testing.T) {
 	t.Parallel()
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	twinOK(t, file, t0, "init --readers ra,rb --members m1")
-	twinOK(t, file, t0, "add --stream s1 --count 2")
+	twinOK(t, file, t0, "add --stream s1 --count 2 --brief-file s1-1.md")
 	twinOK(t, file, t0, "start")
 	twinOK(t, file, t0, "tick")
 	later := t0.Add(store.MachineSilence + 30*time.Second)
@@ -60,7 +60,7 @@ func TestATwinNotTickingIsRunningAndItsRemedyIsTheTick(t *testing.T) {
 	where := twinOK(t, file, later, "where")
 	assert.Contains(t, where, "SPRINT TABLE  coordinator boss\n\n0/2 0.0% -> ETA -\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", "where's header shows the progress of a running machine")
 
-	add := twinOK(t, file, later, "add --stream s1 --count 1 --one")
+	add := twinOK(t, file, later, "add --stream s1 --count 1 --one --brief-file s1-1.md")
 	assert.Contains(t, add, "-> ETA -  machine: running\n", "a verb's sprint line")
 	assert.NotContains(t, add, "\nSTOPPED")
 

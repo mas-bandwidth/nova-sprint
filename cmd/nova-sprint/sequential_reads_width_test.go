@@ -64,7 +64,14 @@ func (r *readsRig) readAll(asked map[string][]string, verdict ...string) {
 		}
 		res := r.one(append(append([]string{"read", "--as", rd, "--begin"}, ids...), "--epoch", "0")...)
 		require.Equal(r.t, 0, res.Code, res.Stderr)
-		res = r.one(append(append(append([]string{"read", "--as", rd}, verdict...), ids...), "--epoch", "0")...)
+		args := append(append(append([]string{"read", "--as", rd}, verdict...), ids...), "--epoch", "0")
+		for _, v := range verdict {
+			if v == "--ok" || v == "--broken" {
+				args = append(args, "--usage", "input=1000 output=100")
+				break
+			}
+		}
+		res = r.one(args...)
 		require.Equal(r.t, 0, res.Code, res.Stderr)
 	}
 }

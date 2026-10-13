@@ -19,6 +19,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/log"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
@@ -448,6 +449,9 @@ func backupBudget(brief string) (backupSpan, bool) {
 			for start < len(brief) && (brief[start] == ' ' || brief[start] == '\t') {
 				start++
 			}
+			if start+len(val) > len(brief) || brief[start:start+len(val)] != val {
+				return backupSpan{}, false // unsupported separators stay strictly scanned
+			}
 			span = backupSpan{start, start + len(val)}
 		}
 		offset += len(line) + 1
@@ -514,6 +518,15 @@ func backupScanBytes(b []byte) []byte {
 	if err != nil || backupAt(root, []string{"version"}) != json.Number("1") {
 		return b
 	}
+	_, tablesOK := backupAt(root, []string{"tables"}).(map[string]any)
+	if !tablesOK {
+		return b
+	}
+	if logs := backupAt(root, []string{"logs"}); logs != nil {
+		if _, ok := logs.(map[string]any); !ok {
+			return b
+		}
+	}
 	work := func(name string) bool {
 		return (name == "work" || strings.HasSuffix(name, "-work")) && backupAt(root, []string{"tables", name, "def", "Name"}) == name
 	}
@@ -541,6 +554,15 @@ func backupScanBytes(b []byte) []byte {
 		p := s.path
 		switch {
 		case len(p) == 6 && p[0] == "tables" && work(p[1]) && p[2] == "members" && p[4] == "fields" && p[5] == "brief":
+			if _, ok := backupAt(root, p[:3]).(map[string]any); !ok {
+				return b
+			}
+			if _, ok := backupAt(root, p[:4]).(map[string]any); !ok {
+				return b
+			}
+			if _, ok := backupAt(root, p[:5]).(map[string]any); !ok {
+				return b
+			}
 			if backupAt(root, p[:5]) == nil || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "primary" {
 				continue
 			}
@@ -548,12 +570,28 @@ func backupScanBytes(b []byte) []byte {
 				return b
 			}
 		case len(p) == 5 && p[0] == "tables" && work(p[1]) && p[2] == "ops" && p[4] == "body":
+			if _, ok := backupAt(root, p[:3]).(map[string]any); !ok {
+				return b
+			}
+			if _, ok := backupAt(root, p[:4]).(map[string]any); !ok {
+				return b
+			}
+			manifest, err := ntable.ValidateBatchManifestRaw([]byte(s.value))
+			if err != nil || manifest.Table != p[1] {
+				return b
+			}
 			inner, stringsIn, err := backupJSON([]byte(s.value))
 			if err != nil {
 				return b
 			}
 			if backupAt(inner, []string{"table"}) != p[1] {
 				continue
+			}
+			if _, ok := inner.(map[string]any); !ok {
+				return b
+			}
+			if _, ok := backupAt(inner, []string{"members"}).([]any); !ok {
+				return b
 			}
 			outer, ok := backupStringMap(b, s)
 			if !ok {
@@ -562,12 +600,29 @@ func backupScanBytes(b []byte) []byte {
 			for _, v := range stringsIn {
 				q := v.path
 				if len(q) == 4 && q[0] == "members" && q[2] == "set" && q[3] == "brief" && backupAt(inner, []string{"members", q[1], "set", "kind"}) == "primary" {
+					if _, ok := backupAt(inner, q[:2]).(map[string]any); !ok {
+						return b
+					}
+					if _, ok := backupAt(inner, q[:3]).(map[string]any); !ok {
+						return b
+					}
 					if !add([]byte(s.value), v, outer) {
 						return b
 					}
 				}
 			}
 		case len(p) == 7 && p[0] == "logs" && p[2] == "lines" && p[4] == "line" && p[5] == "text" && p[6] == "brief":
+			if _, ok := backupAt(root, p[:2]).(map[string]any); !ok {
+				return b
+			}
+			if _, ok := backupAt(root, p[:3]).([]any); !ok {
+				return b
+			}
+			for _, end := range []int{4, 5, 6} {
+				if _, ok := backupAt(root, p[:end]).(map[string]any); !ok {
+					return b
+				}
+			}
 			if backupAt(root, append(append([]string(nil), p[:5]...), "table")) != "work" || backupAt(root, append(append([]string(nil), p[:5]...), "kind")) != "move" {
 				continue
 			}

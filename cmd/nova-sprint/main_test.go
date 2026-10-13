@@ -316,7 +316,7 @@ func TestTheCommandDrivesAStreamToLanded(t *testing.T) {
 	}
 	ta.ok("ask")
 	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {
-		ta.ok("read --as " + r + " --ok --limit 10")
+		ta.ok("read --as " + r + " --ok --limit 10 --usage 'input=1000 output=100'")
 	}
 	ta.clean()
 	out = ta.ok("accept --read-ok")

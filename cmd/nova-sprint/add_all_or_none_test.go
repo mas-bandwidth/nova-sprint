@@ -194,7 +194,7 @@ func (ta *testApp) toMergingAdded(stream string) {
 	}
 	ta.ok("finish --as m1 " + strings.Join(words, " "))
 	ta.ok("ask --limit 100")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100 --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok --limit 100 --usage 'input=1000 output=100'")
 	ta.ok("accept --read-ok")
 }

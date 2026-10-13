@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // twinWithKey is a twin file holding one key set to value, as a store a worker
@@ -173,7 +174,7 @@ func TestABackupCheckedByItsChecksumIsNeverASemanticRestore(t *testing.T) {
 // remain outside those brief domains and must undergo the unchanged scan.
 func backupBudgetDoc(t *testing.T, brief string, extra map[string]string) []byte {
 	t.Helper()
-	manifest, err := json.Marshal(map[string]any{"table": "work", "members": []any{map[string]any{"set": map[string]string{"kind": "primary", "brief": brief}}}})
+	manifest, err := json.Marshal(ntable.BatchManifest{Schema: 1, Table: "work", Epoch: "0", ExpectedTableRevision: "0", OperationID: "add", Members: []ntable.BatchMemberEntry{{ID: "p", Expect: &ntable.MemberExpect{Revision: "1"}, Set: map[string]string{"kind": "primary", "brief": brief}}}})
 	require.NoError(t, err)
 	root := map[string]any{
 		"version": 1,
@@ -254,4 +255,52 @@ func TestBackupWritesTheUnchangedSyntheticBudgetArchive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before, saved, "the budget exception affects the scan only")
 	require.Contains(t, string(saved), "tokens: 1000")
+}
+
+func TestBackupBudgetDoesNotAcceptObjectArraySchemaAliases(t *testing.T) {
+	t.Parallel()
+	doc := backupBudgetDoc(t, simulatedTwinBrief(), nil)
+	for _, domain := range []string{"members", "lines"} {
+		t.Run(domain, func(t *testing.T) {
+			t.Parallel()
+			var root map[string]any
+			require.NoError(t, json.Unmarshal(doc, &root))
+			if domain == "members" {
+				table := root["tables"].(map[string]any)["work"].(map[string]any)
+				body := table["ops"].(map[string]any)["add"].(map[string]any)
+				var manifest map[string]any
+				require.NoError(t, json.Unmarshal([]byte(body["body"].(string)), &manifest))
+				manifest["members"] = map[string]any{"0": manifest["members"].([]any)[0]}
+				raw, err := json.Marshal(manifest)
+				require.NoError(t, err)
+				body["body"] = string(raw)
+			} else {
+				log := root["logs"].(map[string]any)["0"].(map[string]any)
+				log["lines"] = map[string]any{"0": log["lines"].([]any)[0]}
+			}
+			raw, err := json.Marshal(root)
+			require.NoError(t, err)
+			require.Equal(t, raw, backupScanBytes(raw), "unknown container schema stays completely strict")
+			require.NotEmpty(t, secretLines(raw))
+		})
+	}
+}
+
+func TestBackupBudgetByteMappingPreservesAdjacentSecrets(t *testing.T) {
+	t.Parallel()
+	brief := "🌙 card tier: flash\nmodel: simulation/twin\nPATHS: quote\"back\\字\ntokens: 1000\ndeadline: 600\n\nTask."
+	doc := backupBudgetDoc(t, brief, nil)
+	expected := bytes.ReplaceAll(doc, []byte("tokens: 1000"), []byte("tokens: [redacted] "))
+	require.Equal(t, expected, backupScanBytes(doc), "every other original byte is preserved")
+	require.Empty(t, secretLines(doc))
+	escaped := bytes.ReplaceAll(doc, []byte("tokens: 1000"), []byte(`tokens: \u0031\u0030\u0030\u0030`))
+	require.Empty(t, secretLines(escaped), "decoded numeric values map through escaped bytes")
+	// The same nested op body is scanned outside its known numeric field.
+	for _, prose := range []string{"token=123456789", "tokens: 123456789"} {
+		raw := backupBudgetDoc(t, brief+"\n"+prose, nil)
+		require.NotEmpty(t, secretLines(raw), "task prose is not budget metadata")
+	}
+	unsupported := backupBudgetDoc(t, strings.Replace(brief, "tokens: 1000", "tokens:\u20031000", 1), nil)
+	require.Equal(t, unsupported, backupScanBytes(unsupported), "unsupported separator encoding is strict")
+	require.NotEmpty(t, secretLines(unsupported))
 }
