@@ -112,6 +112,11 @@ func (a *app) loadSeatEnvironment() error {
 		if v := env(k); v != "" {
 			return v
 		}
+		if k == "NOVA_SPRINT_REDIS" {
+			if v := env("NOVA_REDIS_ADDR"); v != "" {
+				return v
+			}
+		}
 		return s.Environment[k]
 	}
 	return nil

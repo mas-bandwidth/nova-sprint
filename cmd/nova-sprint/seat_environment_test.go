@@ -258,3 +258,18 @@ func TestSeatEnvironmentRejectsOtherOwnerWithoutHostPrivileges(t *testing.T) {
 	st.Uid++
 	assert.False(t, seatFileOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
 }
+
+func TestSeatEnvironmentKeepsLegacyProcessAddressAheadOfFile(t *testing.T) {
+	t.Parallel()
+	a := seatEnvApp(t, `{"version":1,"environment":{"NOVA_SPRINT_REDIS":"file:6380"}}`)
+	base := a.getenv
+	a.getenv = func(k string) string {
+		if k == "NOVA_REDIS_ADDR" {
+			return "legacy-process:6380"
+		}
+		return base(k)
+	}
+	require.NoError(t, a.loadSeatEnvironment())
+	_, c := a.verbSetup("where")
+	assert.Equal(t, "legacy-process:6380", c.redis)
+}
