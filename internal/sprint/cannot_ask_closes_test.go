@@ -133,3 +133,67 @@ func TestACannotAskClosesWhenAReaderMayRead(t *testing.T) {
 		require.Equal(t, Ready, w.s.Work.Card("s1-1").Col)
 	})
 }
+
+// Stored acknowledgements remain answerable; use actual Ack/Wait plans, then the
+// store's acknowledged-note index (the core world only indexes open judgments).
+func TestACannotAskAnswerSurvivesAcknowledgement(t *testing.T) {
+	t.Parallel()
+	for _, wait := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ack", true: "wait"}[wait], func(t *testing.T) {
+			t.Parallel()
+			w, none, _, free := cannotAskEpisodeWorld(t)
+			askTick(t, w, none)
+			j := openCannotAsk(w, "s1-1")[0]
+			if wait {
+				w.must(Wait(w.s, WaitReq{Note: j.Note.ID, Until: w.s.Now.Add(30 * time.Minute), Who: w.s.Coordinator}))
+			} else {
+				// A persisted historical judgment can explicitly offer ack. Preserve that
+				// compatibility without adding ack to today's cannot-ask decisions.
+				for i := range w.s.Open {
+					if w.s.Open[i].Key == j.Key {
+						w.s.Open[i].Note.Decisions = append(w.s.Open[i].Note.Decisions, "ack")
+					}
+				}
+				w.must(Ack(w.s, AckReq{Notes: []string{j.Note.ID}, Reason: "reader setup in progress", Who: w.s.Coordinator}))
+			}
+			hold := w.notes[len(w.notes)-1]
+			require.Equal(t, Acknowledged, hold.Kind)
+			w.s.Acked = append(w.s.Acked, Open{Key: OpenKey(hold.ID, "s1-1"), Note: hold})
+			req := AskReq{Sel: Sel{IDs: []string{"s1-1"}}, Answers: []string{hold.ID}, Who: w.s.Coordinator}
+			w.s.Friends = none
+			refused := Ask(w.s, req)
+			require.NotEmpty(t, refused.Refused)
+			require.Contains(t, refused.Refused[0].Why, NoReaderMayRead)
+			require.NotContains(t, refused.Refused[0].Why, "resolves no obligation")
+			require.Empty(t, refused.Units)
+			w.s.Friends = free[:2]
+			putReviewBy(w, "s1-2", "s1-2: other (s1) tier: heavy\n", "bob", 2)
+			wrong := req
+			wrong.IDs = []string{"s1-2"}
+			bad := Ask(w.s, wrong)
+			require.NotEmpty(t, bad.Refused)
+			require.Empty(t, bad.Units, "another primary cannot answer this hold")
+			unknown := req
+			unknown.Answers = []string{"missing-note"}
+			bad = Ask(w.s, unknown)
+			require.NotEmpty(t, bad.Refused)
+			require.Empty(t, bad.Units)
+			other := hold
+			other.ID = "other-kind"
+			other.Type = NStranded
+			w.s.Acked = append(w.s.Acked, Open{Key: OpenKey(other.ID, "s1-1"), Note: other})
+			different := req
+			different.Answers = []string{other.ID}
+			bad = Ask(w.s, different)
+			require.NotEmpty(t, bad.Refused)
+			require.Empty(t, bad.Units, "an unrelated acknowledged kind cannot enable fleet Ask")
+			p := Ask(w.s, req)
+			require.Empty(t, p.Refused)
+			require.NotEmpty(t, p.Units)
+			require.Contains(t, noteIDs(p.Units[0].Closes), hold.ID)
+			w.must(p)
+			require.Len(t, readCardsOf(w, "s1-1"), 1, "one fleet read answers the acknowledged condition")
+			require.Empty(t, readCardsOf(w, "s1-2"))
+		})
+	}
+}

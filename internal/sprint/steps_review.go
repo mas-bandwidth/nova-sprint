@@ -158,8 +158,10 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		return ""
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
-	answeringCannotAsk := slices.ContainsFunc(s.Open, func(o Open) bool {
-		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID)
+	cannotAskJudgments := append(slices.Clone(s.Open), s.Acked...)
+	answeringCannotAsk := slices.ContainsFunc(cannotAskJudgments, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID) &&
+			slices.ContainsFunc(chosen, func(c *Card) bool { return c.ID == o.Subject() })
 	})
 	if s.ReadCardsOn() && !another && answeringCannotAsk {
 		only := map[string]bool{}
@@ -399,7 +401,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 	// No read was dealt, so no obligation is claimed resolved (SprintRules.AskDealt).
 	if len(p.Refused) > 0 && len(r.Answers) > 0 {
 		for _, id := range r.Answers {
-			for _, o := range s.Open {
+			for _, o := range cannotAskJudgments {
 				if o.Note.ID == id && o.Note.Type == NCannotAsk && slices.ContainsFunc(p.Refused, func(f Refusal) bool { return f.Key == o.Subject() }) {
 					for i := range p.Refused {
 						p.Refused[i].Why += "; add or bring up a reader at its tier, then ask " + o.Subject() + " --answers " + id + ", or rework or drop the primary"
