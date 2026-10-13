@@ -3612,19 +3612,14 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 			tiersSet = true
 		}
 	}
-	if err := st.RefuseRestorePending(ctx, "reader add"); err != nil {
-		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
-		return 1
-	}
-	if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), names); err != nil {
-		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
-		return 1
-	}
+	// the rows and their tiers in one exchange with the restore guard (store.AddReaders)
+	var set *string
 	if tiersSet {
-		if err := writeReaderTiers(ctx, st, names, tiers); err != nil {
-			fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
-			return 1
-		}
+		set = &tiers
+	}
+	if err := st.AddReaders(ctx, names, set); err != nil {
+		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
+		return 1
 	}
 	line := "READER-ADD OK readers=" + strings.Join(names, ",")
 	facts := map[string]any{"readers": names}

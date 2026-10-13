@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -198,50 +200,65 @@ func placed(t *sprint.Table, except string) int {
 // sprint's setting, not its work). The members' and readers' cards, and the
 // old epoch's streams, reads, merges and open judgments, are left behind. It
 // reads the shape from old, the old epoch frozen since the advance, and writes
-// it at the new one. It runs at most once per owed step: its last write, the members'
-// control cards, carries the epoch's marker (sprint.PropMembersRestored) in the same store
-// write, and owedStep skips it once the marker is there. Until then no verb edits or removes
-// a member's or a reader's row (ErrRestorePending), and a reader's tiers are written only
-// where the epoch holds none, so a run again never changes what the epoch wrote
-// (tla/ClearDefaults.tla RestoreRow, RestoreDone, RerunKeepsEpochWrites).
+// it at the new one. It runs at most once per owed step, whatever clears run at once
+// (tla/ClearDefaults.tla RestoreRow, RestoreSettled, RestoreDone, RerunKeepsEpochWrites):
+//   - its rows and the readers' tiers go in one guarded exchange (Backend.GuardedRows) that
+//     reads, in the same exchange, that the restore is still pending (the flag names the
+//     epoch, the marker is absent); a clear that finds the marker another clear wrote writes
+//     nothing (GuardSettled);
+//   - its last write, the members' control cards, carries the marker
+//     (sprint.PropMembersRestored) in the same manifest, and a step that finds the marker
+//     in its snapshot writes nothing at all;
+//   - no verb edits or removes a member's or a reader's row while the restore is pending,
+//     each checking it in the same exchange as its write (ErrRestorePending).
+//
+// So while the restore is pending every row it writes is its own, and the tiers are
+// written as the old epoch held them; once the marker is written nothing of the restore
+// is written again, and an epoch's own write, an intentional empty tiers included, stays.
 func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error {
 	sh := sprint.ShapeOf(old)
 	sh.Streams = nil
-	cur, err := st.Load(ctx, []string{sprint.Readers}, nil)
-	if err != nil {
-		return fmt.Errorf("the readers of epoch %d: %w", st.epoch, err)
-	}
-	if len(sh.Readers) > 0 {
-		table := st.Names.Table(sprint.Readers)
-		if err := st.B.RowsAdd(ctx, table, sh.Readers); err != nil {
-			return fmt.Errorf("the rows of the readers: %w", err)
+	if len(sh.ReaderTiers) > 0 {
+		// the column is the definition's (a migration's), not the epoch's rows
+		if err := st.EnsureReaderTiers(ctx); err != nil {
+			return fmt.Errorf("the readers' tiers column: %w", err)
 		}
-		if len(sh.ReaderTiers) > 0 {
-			if err := st.EnsureReaderTiers(ctx); err != nil {
-				return fmt.Errorf("the readers' tiers column: %w", err)
-			}
-			for rd, tiers := range sh.ReaderTiers {
-				spot := strings.TrimSpace(tiers)
-				if spot == "" || strings.TrimSpace(cur.Readers.Texts[rd][sprint.ReaderTiers]) != "" {
-					continue // the epoch's own tiers are never overwritten
-				}
-				if err := st.B.RowSet(ctx, table, rd, map[string]string{sprint.ReaderTiers: spot}); err != nil {
-					return fmt.Errorf("the tiers of reader %s: %w", rd, err)
-				}
+	}
+	readers, fleet := st.Names.Table(sprint.Readers), st.Names.Table(sprint.Fleet)
+	var writes []RowWrite
+	if len(sh.Readers) > 0 {
+		writes = append(writes, RowWrite{Op: "add", Table: readers, Rows: sh.Readers})
+		for _, rd := range slices.Sorted(maps.Keys(sh.ReaderTiers)) {
+			if spot := strings.TrimSpace(sh.ReaderTiers[rd]); spot != "" {
+				writes = append(writes, RowWrite{Op: "set", Table: readers, Rows: []string{rd}, Texts: map[string]string{sprint.ReaderTiers: spot}})
 			}
 		}
 	}
 	if len(sh.Members) > 0 {
-		if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Fleet), sh.Members); err != nil {
-			return fmt.Errorf("the rows of the fleet: %w", err)
+		writes = append(writes, RowWrite{Op: "add", Table: fleet, Rows: sh.Members})
+	}
+	if st.beforeRestore != nil {
+		if err := st.beforeRestore(st); err != nil {
+			return err
 		}
+	}
+	switch o, err := st.B.GuardedRows(ctx, st.restoreGuard(true), writes); {
+	case err != nil:
+		return fmt.Errorf("the rows of the members and the readers: %w", err)
+	case o == GuardSettled:
+		return nil // another clear restored the epoch and wrote its marker
+	case o == GuardMoved:
+		return fmt.Errorf("the sprint left epoch %d as it was restored (another clear); run: nova-sprint where", st.epoch)
 	}
 	at := st.epoch
 	res, err := st.Run(ctx, Step{Verb: "clear", Load: All, Mirrors: true, Epoch: &at,
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			if _, marked := s.Fleet.Prop(sprint.PropMembersRestored); marked {
+				return sprint.Plan{} // another clear's restore is done: nothing of this one is written
+			}
 			p := sprint.RestoreShape(s, sh)
 			// the restore's marker, in the same write as the control cards (the fleet table's
-			// one manifest): a run again finds it and restores nothing
+			// one manifest)
 			p.Props = append(p.Props, sprint.PropWrite{Table: sprint.Fleet, Name: sprint.PropMembersRestored, Value: "1", WasAbsent: true})
 			return p
 		}})
@@ -249,10 +266,34 @@ func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error
 		return err
 	}
 	if len(res.Refused) > 0 {
+		if done, derr := st.membersRestored(ctx); derr == nil && done {
+			return nil // another clear's marker landed between the plan and the write
+		}
 		return fmt.Errorf("the member control cards: %s: %s", res.Refused[0].Key, res.Refused[0].Why)
 	}
 	return nil
 }
+
+// restoreGuard is the guard of a write at the pinned epoch: the restore's own writes want
+// it pending (pending true), a verb's want it not (pending false).
+func (st *Store) restoreGuard(pending bool) RestoreGuard {
+	return RestoreGuard{Pending: pending, MarkerTable: st.Names.Table(sprint.Fleet), Marker: sprint.PropMembersRestored}
+}
+
+// guardRefusal is a verb's refusal for a guarded exchange that wrote nothing.
+func (st *Store) guardRefusal(o GuardOutcome, verb string) error {
+	switch o {
+	case GuardPending:
+		return fmt.Errorf("%w: %s changes no member's or reader's row until it has; nothing was changed; run: nova-sprint clear (it finishes the step), then %s again", ErrRestorePending, verb, verb)
+	case GuardMoved:
+		return fmt.Errorf("%w: the sprint left epoch %d while %s ran; nothing was changed; run %s again", ErrClearedUnderVerb, st.epoch, verb, verb)
+	}
+	return nil
+}
+
+// ErrClearedUnderVerb is a guarded verb that found the sprint at another epoch than the one it
+// pinned: a clear advanced between its read and its write, and it wrote nothing.
+var ErrClearedUnderVerb = errors.New("the sprint was cleared under this verb")
 
 // owedStep is the step an epoch's advance flagged it owed (EpochState.DefaultsOwed), at the
 // pinned epoch: restoreMembers, then the working defaults, both carried from old, the epoch
@@ -272,7 +313,9 @@ func (st *Store) owedStep(ctx context.Context, old *sprint.Snapshot) (resets, ke
 	// The fleet's members and the readers are not sprint work: their rows,
 	// widths and status survive a clear (the machines and the readers are still
 	// there); their holds, leases, stop records, alarms, streams, cards and
-	// read cards are the old epoch's and are left behind.
+	// read cards are the old epoch's and are left behind. The marker read here is
+	// only the fast path: restoreMembers' writes check it again, each in its own
+	// exchange, so a clear that read it absent and finds it written writes nothing.
 	done, err := st.membersRestored(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -336,46 +379,63 @@ func (st *Store) RestorePending(ctx context.Context) (bool, error) {
 	return !done, err
 }
 
-// RefuseRestorePending refuses the verb while the epoch's restore is pending (RestorePending),
-// naming the clear that finishes it.
-func (st *Store) RefuseRestorePending(ctx context.Context, verb string) error {
-	pending, err := st.RestorePending(ctx)
-	if err != nil || !pending {
+// guardedRows is a verb's row writes at the epoch it pins, in one exchange with the check
+// that the epoch's restore is not pending and that the sprint is still at that epoch
+// (Backend.GuardedRows): the check and the write can never see two epochs or two phases.
+func (st *Store) guardedRows(ctx context.Context, verb string, writes func(pinned *Store) []RowWrite) error {
+	pinned, err := st.pin(ctx)
+	if err != nil {
 		return err
 	}
-	return fmt.Errorf("%w: %s changes no member's or reader's row until it has; nothing was changed; run: nova-sprint clear (it finishes the step), then %s again", ErrRestorePending, verb, verb)
+	if st.beforeGuardedWrite != nil {
+		st.beforeGuardedWrite()
+	}
+	o, err := pinned.B.GuardedRows(ctx, pinned.restoreGuard(false), writes(pinned))
+	if err != nil {
+		return err
+	}
+	return pinned.guardRefusal(o, verb)
 }
 
-// SetReaderTiers sets the tiers cell of each named reader row ("" is every tier), refused
-// while the epoch's restore is pending (RefuseRestorePending).
+// SetReaderTiers sets the tiers cell of each named reader row ("" is every tier), in one
+// exchange with the restore guard (guardedRows): refused while the epoch's restore is
+// pending, and never written at an epoch the verb did not check.
 func (st *Store) SetReaderTiers(ctx context.Context, names []string, tiers string) error {
-	if err := st.RefuseRestorePending(ctx, "reader tiers"); err != nil {
-		return err
-	}
-	pinned, err := st.pin(ctx)
-	if err != nil {
-		return err
-	}
-	table := pinned.Names.Table(sprint.Readers)
-	for _, n := range names {
-		if err := pinned.B.RowSet(ctx, table, n, map[string]string{sprint.ReaderTiers: tiers}); err != nil {
-			return err
+	return st.guardedRows(ctx, "reader tiers", func(pinned *Store) []RowWrite {
+		table := pinned.Names.Table(sprint.Readers)
+		var w []RowWrite
+		for _, n := range names {
+			w = append(w, RowWrite{Op: "set", Table: table, Rows: []string{n}, Texts: map[string]string{sprint.ReaderTiers: tiers}})
 		}
-	}
-	return nil
+		return w
+	})
 }
 
-// RemoveReaders deletes the named reader rows and then their records (beats, holds),
-// refused while the epoch's restore is pending (RefuseRestorePending).
+// AddReaders adds the named reader rows and, when tiers is given, their tiers cells, in one
+// exchange with the restore guard (guardedRows).
+func (st *Store) AddReaders(ctx context.Context, names []string, tiers *string) error {
+	return st.guardedRows(ctx, "reader add", func(pinned *Store) []RowWrite {
+		table := pinned.Names.Table(sprint.Readers)
+		w := []RowWrite{{Op: "add", Table: table, Rows: names}}
+		if tiers != nil {
+			for _, n := range names {
+				w = append(w, RowWrite{Op: "set", Table: table, Rows: []string{n}, Texts: map[string]string{sprint.ReaderTiers: *tiers}})
+			}
+		}
+		return w
+	})
+}
+
+// RemoveReaders deletes the named reader rows, in one exchange with the restore guard
+// (guardedRows), and then their records (beats, holds).
 func (st *Store) RemoveReaders(ctx context.Context, names []string) error {
-	if err := st.RefuseRestorePending(ctx, "reader remove"); err != nil {
+	if err := st.guardedRows(ctx, "reader remove", func(pinned *Store) []RowWrite {
+		return []RowWrite{{Op: "del", Table: pinned.Names.Table(sprint.Readers), Rows: names}}
+	}); err != nil {
 		return err
 	}
 	pinned, err := st.pin(ctx)
 	if err != nil {
-		return err
-	}
-	if err := pinned.B.RowsDel(ctx, pinned.Names.Table(sprint.Readers), names); err != nil {
 		return err
 	}
 	if err := pinned.ForgetReaders(ctx, names); err != nil {

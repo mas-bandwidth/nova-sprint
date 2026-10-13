@@ -309,20 +309,142 @@ func (r *Redis) RowsDel(ctx context.Context, table string, rows []string) error 
 // condTries times; past that nothing is deleted and the caller's next run
 // tries again).
 func (r *Redis) RowsDelIf(ctx context.Context, table string, guards []RowGuard) ([]string, error) {
-	return r.delIf(ctx, table, guards, true, func(p redis.Pipeliner, g RowGuard, body string) {
-		p.FCall(ctx, ntable.FnRowDel, []string{ntable.DefKey(table)}, table, g.Row, body)
+	// the restore state (the epoch hash and the table's properties) is watched and read in
+	// the same optimistic transaction: no member row is deleted while the restore is pending
+	g := verbGuard(table)
+	rows, o, err := r.delIf(ctx, table, guards, true, &g, func(p redis.Pipeliner, rg RowGuard, body string) {
+		p.FCall(ctx, ntable.FnRowDel, []string{ntable.DefKey(table)}, table, rg.Row, body)
 	})
+	if err == nil && o != GuardApplied {
+		return nil, &GuardError{Outcome: o}
+	}
+	return rows, err
+}
+
+// restoreOutcome reads the restore state inside a WATCH: the epoch hash's n and defaults
+// fields and the marker on the marker table's properties at the pinned epoch.
+func (r *Redis) restoreOutcome(ctx context.Context, tx *redis.Tx, g RestoreGuard) (GuardOutcome, error) {
+	vals, err := tx.HMGet(ctx, r.Names.EpochKey(), "n", "defaults").Result()
+	if err != nil {
+		return GuardApplied, err
+	}
+	at := strconv.FormatUint(r.Pinned, 10)
+	n, _ := vals[0].(string)
+	if n == "" {
+		n = "0"
+	}
+	flag, _ := vals[1].(string)
+	marked, err := tx.HExists(ctx, ntable.PropsKeyAt(g.MarkerTable, r.Pinned), g.Marker).Result()
+	if err != nil {
+		return GuardApplied, err
+	}
+	owed := r.Pinned > 0 && flag == at
+	return guardOutcome(n == at, owed && !marked, g), nil
+}
+
+// GuardedRows is WATCH on the epoch hash and the marker table's properties, the restore
+// state read, then every write sent through the table layer's own row verb in one
+// MULTI/EXEC; a change of a watched key aborts the EXEC and the state is read again.
+func (r *Redis) GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
+	options, err := r.optionsBody()
+	if err != nil {
+		return GuardApplied, err
+	}
+	watch := []string{r.Names.EpochKey(), ntable.PropsKeyAt(g.MarkerTable, r.Pinned)}
+	for try := 0; try < condTries; try++ {
+		out := GuardApplied
+		var cmds []redis.Cmder
+		err := r.C.Watch(ctx, func(tx *redis.Tx) error {
+			o, err := r.restoreOutcome(ctx, tx, g)
+			if err != nil {
+				return err
+			}
+			if o != GuardApplied {
+				out = o
+				return nil
+			}
+			if r.beforeExec != nil {
+				r.beforeExec()
+			}
+			cmds, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+				for _, w := range writes {
+					if err := queueRowWrite(ctx, p, w, options); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			return err
+		}, watch...)
+		if errors.Is(err, redis.TxFailedErr) {
+			continue // the epoch, its flag or the marker changed: read again
+		}
+		if err != nil {
+			return GuardApplied, err
+		}
+		for _, c := range cmds {
+			if fc, ok := c.(*redis.Cmd); ok {
+				if reply, err := fc.Slice(); err == nil && len(reply) > 0 && fmt.Sprint(reply[0]) == "REFUSED" {
+					return GuardApplied, fmt.Errorf("the table layer refused a guarded row write: %v", reply)
+				}
+			}
+		}
+		return out, nil
+	}
+	return GuardApplied, fmt.Errorf("the sprint's epoch or its restore's marker kept changing under a guarded row write (%d tries); nothing was changed; run it again", condTries)
+}
+
+// queueRowWrite queues one row write through the table layer's row verb, as ntable's own
+// RowsAdd, RowSet and RowDel send it.
+func queueRowWrite(ctx context.Context, p redis.Pipeliner, w RowWrite, options string) error {
+	keys := []string{ntable.DefKey(w.Table)}
+	switch w.Op {
+	case "add":
+		body, err := json.Marshal(struct {
+			Rows []string       `json:"rows"`
+			Spec ntable.RowSpec `json:"spec"`
+		}{w.Rows, ntable.RowSpec{}})
+		if err != nil {
+			return err
+		}
+		p.FCall(ctx, ntable.FnRowsAdd, keys, w.Table, string(body), options)
+	case "set":
+		body, err := json.Marshal(w.Texts)
+		if err != nil {
+			return err
+		}
+		p.FCall(ctx, ntable.FnRowSet, keys, w.Table, w.Rows[0], string(body), options)
+	case "del":
+		for _, row := range w.Rows {
+			p.FCall(ctx, ntable.FnRowDel, keys, w.Table, row, options)
+		}
+	default:
+		return fmt.Errorf("a guarded row write %q is no row verb", w.Op)
+	}
+	return nil
+}
+
+// optionsBody is the write options every table-layer write carries: the pinned epoch.
+func (r *Redis) optionsBody() (string, error) {
+	body, err := json.Marshal(struct {
+		Epoch string `json:"epoch"`
+		Actor string `json:"actor"`
+		Fence string `json:"fence"`
+		Idem  string `json:"idem"`
+	}{Epoch: strconv.FormatUint(r.Pinned, 10)})
+	return string(body), err
 }
 
 // KeysDelIf deletes the keys of the guards that hold, whose rows are not in the
 // table, in one optimistic transaction as RowsDelIf: a row added or a record
 // placed again after the read aborts it.
 func (r *Redis) KeysDelIf(ctx context.Context, table string, guards []RowGuard) ([]string, error) {
-	return r.delIf(ctx, table, guards, false, func(p redis.Pipeliner, g RowGuard, _ string) {
+	rows, _, err := r.delIf(ctx, table, guards, false, nil, func(p redis.Pipeliner, g RowGuard, _ string) {
 		if len(g.Keys) > 0 {
 			p.Del(ctx, g.Keys...)
 		}
 	})
+	return rows, err
 }
 
 // condTries is how many times a conditional delete reads again after another
@@ -330,10 +452,12 @@ func (r *Redis) KeysDelIf(ctx context.Context, table string, guards []RowGuard) 
 const condTries = 3
 
 // delIf is the one transaction of RowsDelIf and KeysDelIf: rowPresent says the
-// guard's row must be in the table (a row delete) or must not be (a key delete).
-func (r *Redis) delIf(ctx context.Context, table string, guards []RowGuard, rowPresent bool, op func(redis.Pipeliner, RowGuard, string)) ([]string, error) {
+// guard's row must be in the table (a row delete) or must not be (a key delete). With rg,
+// the restore state is watched and read in the same transaction, and nothing is deleted
+// unless it is the state rg wants.
+func (r *Redis) delIf(ctx context.Context, table string, guards []RowGuard, rowPresent bool, rg *RestoreGuard, op func(redis.Pipeliner, RowGuard, string)) ([]string, GuardOutcome, error) {
 	if len(guards) == 0 {
-		return nil, nil
+		return nil, GuardApplied, nil
 	}
 	body, err := json.Marshal(struct {
 		Epoch string `json:"epoch"`
@@ -342,9 +466,12 @@ func (r *Redis) delIf(ctx context.Context, table string, guards []RowGuard, rowP
 		Idem  string `json:"idem"`
 	}{Epoch: strconv.FormatUint(r.Pinned, 10)})
 	if err != nil {
-		return nil, err
+		return nil, GuardApplied, err
 	}
 	watch := []string{ntable.RowsKeyAt(table, r.Pinned)}
+	if rg != nil {
+		watch = append(watch, r.Names.EpochKey(), ntable.PropsKeyAt(rg.MarkerTable, r.Pinned))
+	}
 	ids := make([]string, len(guards))
 	for i, g := range guards {
 		watch = append(watch, g.Key)
@@ -353,8 +480,19 @@ func (r *Redis) delIf(ctx context.Context, table string, guards []RowGuard, rowP
 	for try := 0; try < condTries; try++ {
 		var pass []RowGuard
 		var cmds []redis.Cmder
+		out := GuardApplied
 		err := r.C.Watch(ctx, func(tx *redis.Tx) error {
 			pass = nil
+			if rg != nil {
+				o, err := r.restoreOutcome(ctx, tx, *rg)
+				if err != nil {
+					return err
+				}
+				if o != GuardApplied {
+					out = o
+					return nil
+				}
+			}
 			shape, err := ntable.Shape(ctx, tx, table)
 			if err != nil {
 				return err
@@ -396,22 +534,25 @@ func (r *Redis) delIf(ctx context.Context, table string, guards []RowGuard, rowP
 			continue // another writer changed a watched key: read again
 		}
 		if err != nil {
-			return nil, err
+			return nil, GuardApplied, err
+		}
+		if out != GuardApplied {
+			return nil, out, nil
 		}
 		for _, c := range cmds {
 			if fc, ok := c.(*redis.Cmd); ok {
 				if reply, err := fc.Slice(); err == nil && len(reply) > 0 && fmt.Sprint(reply[0]) == "REFUSED" {
-					return nil, fmt.Errorf("the table layer refused a conditional delete on %s: %v", table, reply)
+					return nil, GuardApplied, fmt.Errorf("the table layer refused a conditional delete on %s: %v", table, reply)
 				}
 			}
 		}
-		out := make([]string, len(pass))
+		rows := make([]string, len(pass))
 		for i, g := range pass {
-			out[i] = g.Row
+			rows[i] = g.Row
 		}
-		return out, nil
+		return rows, GuardApplied, nil
 	}
-	return nil, nil
+	return nil, GuardApplied, nil
 }
 
 // Place puts a record that is on no cell back into the cell, through the table

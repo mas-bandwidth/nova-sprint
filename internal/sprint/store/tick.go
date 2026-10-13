@@ -455,13 +455,6 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 		verb, typ = "start", sprint.NMachineStarted
 	}
 	res = Result{Verb: verb}
-	// no start while the epoch's restore is pending: the tick would run on an epoch with no
-	// members and change rows the restore writes (ErrRestorePending)
-	if running {
-		if err := st.RefuseRestorePending(ctx, "start"); err != nil {
-			return before, before, res, err
-		}
-	}
 	var changed bool
 	before, after, changed, err = st.machineTransition(ctx, running, who, reason, until)
 	if err != nil {
@@ -2031,6 +2024,9 @@ func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time) (bool, error)
 }
 func (r readOnly) SettleEpoch(context.Context, uint64) error    { return ErrReadOnly }
 func (r readOnly) SettleDefaults(context.Context, uint64) error { return ErrReadOnly }
+func (r readOnly) GuardedRows(context.Context, RestoreGuard, []RowWrite) (GuardOutcome, error) {
+	return GuardApplied, ErrReadOnly
+}
 func (r readOnly) AtEpoch(epoch uint64, old bool) Backend {
 	return readOnly{b: r.b.AtEpoch(epoch, old)}
 }

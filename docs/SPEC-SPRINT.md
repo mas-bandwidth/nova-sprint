@@ -7798,15 +7798,22 @@ carrying from the epoch the advance left, and advances nothing (`CLEAR OK ...
 owed-finished=members:<n>,readers:<n>,defaults`; `--json`: `owed`, `owed_finished`),
 so a crash never loses the members, the readers or the coordinator's carried settings.
 An epoch without the flag (an older binary's clear, a fresh init, epoch 0) is never
-owed: its clear advances. The restore runs at most once per owed step: its last write,
-the members' control cards, carries the epoch's marker (the fleet table's
-`members_restored` property) in the same store write, and a clear run again finds it and
-restores nothing. So the step's phase is read off two records: the flag with no marker
-is restore pending, the flag with the marker is defaults pending, no flag is settled.
-While the restore is pending, no verb changes a member's or a reader's row (reader add,
-reader remove, `set --tiers`, fleet sync, the tick's retire, start; they refuse naming
-`clear`), and the restore writes a reader's tiers only where the epoch holds none, so a
-clear run again never changes a row, a tier or a control card the new epoch wrote. `clear`
+owed: its clear advances. The restore runs at most once per owed step, however many
+clears run at once: its last write, the members' control cards, carries the epoch's
+marker (the fleet table's `members_restored` property) in the same store write; its row
+writes (the readers' and the members' rows, the readers' tiers) go in one exchange with a
+read of the epoch, its flag and the marker (WATCH and MULTI/EXEC on Redis, the one lock on
+Mem), written only while the restore is still pending; and the control-card step writes
+nothing when its snapshot holds the marker. So the step's phase is read off two records:
+the flag with no marker is restore pending, the flag with the marker is defaults pending,
+no flag is settled. While the restore is pending, no verb changes a member's or a
+reader's row: reader add, reader remove and `set --tiers` check it in the same exchange
+as their write, at the epoch they pinned; the sync's and the tick's drops of a member row
+in the same transaction as the delete; a step that takes a member's control card off in
+its own snapshot; start under the machine transition's lock. They refuse naming `clear`,
+and a verb whose epoch a clear left while it ran writes nothing. So a clear, the second of
+two at once included, never changes a row, a tier (an intentional empty one included) or
+a control card the new epoch wrote. `clear`
 reports a reset (`CLEAR DEFAULT`) only for a setting it wrote; a setting the new epoch
 already held away from its default is kept and named on a `CLEAR KEPT <name> kept at
 <v>, set in the new epoch` line (`--json`: `kept`).
@@ -7830,9 +7837,9 @@ field (TestEveryBarHasADeclaredDefault) to a row or a listed non-setting. The mo
 is tla/ClearDefaults.tla (ClearAdvance's flag, RestoreMembers, SetDefaults,
 SettleDefaults, Crash, OlderClear, Set, Read; DefaultsAfterClear, SetSurvives,
 CarrySurvives, NeverAbsent, ReadersSeeWorking, FinishOnlyWhatIsOwed, MembersRestored,
-RerunKeepsEpochWrites; RestoreRow, RestoreDone, EditRow and DeleteRow per row; witnesses
-leaveone, carryadvance, overwrite, nofallback, rerunadvance, markerinfer, restoreskip,
-restorerepeat and noguard).
+RerunKeepsEpochWrites; two clears at once, RestoreRow, RestoreSettled, RestoreDone,
+EditRow and DeleteRow per row; witnesses leaveone, carryadvance, overwrite, nofallback,
+rerunadvance, markerinfer, restoreskip, restorerepeat, noguard and nonatomicrestore).
 
 
 <a id="14-the-machine"></a>

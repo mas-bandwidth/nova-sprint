@@ -268,12 +268,6 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		}
 		return a.syncNothing(c.json, rep, stdout)
 	}
-	// the sync takes members' control cards off and drops rows: never while the epoch's
-	// restore is pending (store.ErrRestorePending)
-	if err := st.RefuseRestorePending(ctx, name); err != nil {
-		fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.Escape(err.Error()))
-		return 1
-	}
 	step := store.FleetStep(sprint.FleetReq{Op: "sync", Sync: want, Machines: machines, Who: c.actor})
 	if c.json {
 		return a.syncWriteJSON(ctx, c, st, step, rep, want, machines, stdout)

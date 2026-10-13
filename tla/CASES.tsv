@@ -663,3 +663,4 @@ MCClearDefaultsBrokenMarkerInfer.cfg	MCClearDefaults.tla	invariant	FinishOnlyWha
 MCClearDefaultsBrokenRestoreSkip.cfg	MCClearDefaults.tla	invariant	MembersRestored	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenRestoreRepeat.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenNoGuard.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-
+MCClearDefaultsBrokenNonAtomicRestore.cfg	MCClearDefaults.tla	invariant	RerunKeepsEpochWrites	ignore-terminal	cleardefaults	required	-

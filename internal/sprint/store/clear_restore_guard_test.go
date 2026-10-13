@@ -22,13 +22,12 @@ func TestNoRowEditLandsWhileTheRestoreIsPending(t *testing.T) {
 	upMembers(h)
 	setTiersRaw(h, "reader-a", "pro")
 	var advanced atomic.Bool
-	fleet := "apply " + h.st.Names.Table(sprint.Fleet) + " before"
 	h.m.Fail = func(p string) error {
 		if p == "advance" {
 			advanced.Store(true)
 		}
-		if advanced.Load() && p == fleet {
-			return errors.New("crashed inside restoreMembers")
+		if advanced.Load() && p == "guarded-rows" {
+			return errors.New("crashed at the restore's first write")
 		}
 		return nil
 	}
@@ -39,15 +38,21 @@ func TestNoRowEditLandsWhileTheRestoreIsPending(t *testing.T) {
 	pending, err := h.st.RestorePending(h.ctx)
 	require.NoError(t, err)
 	require.True(t, pending, "the crash was before the restore's marker")
+	every := ""
 	for what, err := range map[string]error{
 		"set --tiers":   h.st.SetReaderTiers(h.ctx, []string{"reader-a"}, "heavy"),
+		"reader add":    h.st.AddReaders(h.ctx, []string{"reader-z"}, &every),
 		"reader remove": h.st.RemoveReaders(h.ctx, []string{"reader-b"}),
 		"start":         func() error { _, _, _, err := h.st.SetMachine(h.ctx, true); return err }(),
-		"drop members":  func() error { _, err := h.st.DropMembers(h.ctx, []string{"m1"}); return err }(),
-		"retire":        h.st.DropReadersRetired(h.ctx, []string{"m2"}),
 	} {
 		assert.ErrorIs(t, err, ErrRestorePending, "%s is refused while the restore is pending", what)
 	}
+	// the sync's and the tick's drops find nothing of the epoch to drop (no control card record
+	// was written, no reader row): they delete nothing
+	dropped, err := h.st.DropMembers(h.ctx, []string{"m1"})
+	require.NoError(t, err)
+	assert.Empty(t, dropped)
+	require.NoError(t, h.st.DropReadersRetired(h.ctx, []string{"m2"}))
 
 	res, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
