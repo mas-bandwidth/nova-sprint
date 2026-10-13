@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func TestHookCloseEvidenceClientCloseIsRecordedGoneAtOnce(t *testing.T) {
 			t.Parallel()
 			name := pc.as
 			ta, _ := hookSprint(t, name)
-			c := ta.hookOnFailing(name)
+			c, ended := ta.hookOnFailing(name)
 			hello := c.next("hello")
 			require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
 			ta.busProven(name)
@@ -90,7 +91,8 @@ func TestHookCloseEvidenceClientCloseIsRecordedGoneAtOnce(t *testing.T) {
 			assert.Equal(t, at.Add(pc.bound).UTC(), rec.Since.UTC(), "Since is the server's clock at the end, within the bound")
 			assert.True(t, rec.Proven.IsZero() && rec.Live.IsZero(), "a closed hook is neither proven nor live")
 			assert.False(t, sprint.HookLive(rec, true, name, ta.a.now()))
-			assert.Equal(t, 1, ta.waitTold("seat "+name+" is "+pc.state+" -> glenn"), "the owner is told once")
+			<-ended // hookRun returns once end has written the record and told the owner
+			assert.Equal(t, 1, ta.told("seat "+name+" is "+pc.state+" -> glenn"), "the owner is told once")
 			ta.refusedFirst("where", sprint.HookFirst)
 		})
 	}
@@ -122,9 +124,12 @@ func TestHookCloseEvidenceQuietButConnectedIsNotClosed(t *testing.T) {
 	assert.Empty(t, rec.Why)
 	assert.True(t, sprint.HookLive(rec, true, name, ta.a.now()))
 
-	// connected and quiet of acts, with the transport's keepalive only, for an hour
+	// connected and quiet of acts, with the transport's keepalive only, for an hour: each
+	// keepalive is seen by the server (its acted moves to now) before the clock steps, so
+	// the test's order is the stream's order and no look runs ahead of a line in flight
 	for minute := 1; minute <= 60; minute++ {
 		c.tell(hookMsg{T: "alive"})
+		s.waitActed(ta.a.now())
 		ta.step(time.Minute)
 		s.look(context.Background())
 		for _, m := range c.drained() {
@@ -138,7 +143,7 @@ func TestHookCloseEvidenceQuietButConnectedIsNotClosed(t *testing.T) {
 		require.Empty(t, rec.Why, "minute %d", minute)
 	}
 	assert.Empty(t, lapsesOf(ta), "no lapse judgment for a connected hook")
-	assert.Equal(t, 0, ta.waitTold("seat "+name+" is gone -> glenn"), "the owner told of a close that did not happen")
+	assert.Equal(t, 0, ta.told("seat "+name+" is gone -> glenn"), "the owner told of a close that did not happen")
 }
 
 // The Codex shape: a friend's session holds no stream to the sprint server, and the hook
@@ -167,33 +172,34 @@ func TestHookCloseEvidenceCodexShapeAFriendHasNoHookToClose(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, before, after, "the seat's record is untouched by a friend's refused hook")
 	assert.Equal(t, seat, after.Name)
-	assert.Equal(t, 0, ta.waitTold("seat "+friend+" is gone -> glenn"), "the owner told of a friend's hook")
+	assert.Equal(t, 0, ta.told("seat "+friend+" is gone -> glenn"), "the owner told of a friend's hook")
 	ta.lined(func() { ta.ok("where") })
 }
 
-// waitTold is how many bus messages with subject -> to the test app's bus has sent,
-// waiting a bounded moment for the first (the end writes the record, then tells the
-// owner: a count read right after the record's write would race the push). Zero when
-// none comes within the bound.
-func (ta *testApp) waitTold(subject string) int {
-	ta.t.Helper()
-	count := func() int {
-		ta.mu.Lock()
-		defer ta.mu.Unlock()
-		n := 0
-		for _, x := range subjects(ta) {
-			if x == subject {
-				n++
-			}
+// told is how many bus messages with subject -> to the test app's bus has sent.
+func (ta *testApp) told(subject string) int {
+	ta.mu.Lock()
+	defer ta.mu.Unlock()
+	n := 0
+	for _, x := range subjects(ta) {
+		if x == subject {
+			n++
 		}
-		return n
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	return n
+}
+
+// waitActed yields until the session's last act is at or after at: a line the test wrote
+// on the pipe has been read and counted by the server's read loop. No clock is read.
+func (s *hookSession) waitActed(at time.Time) {
 	for {
-		if n := count(); n > 0 || time.Now().After(deadline) {
-			return n
+		s.mu.Lock()
+		acted := s.acted
+		s.mu.Unlock()
+		if !acted.Before(at) {
+			return
 		}
-		time.Sleep(5 * time.Millisecond)
+		runtime.Gosched()
 	}
 }
 
@@ -226,11 +232,13 @@ func (f *failingConn) Read(p []byte) (int, error) {
 }
 
 // hookOnFailing is hookOn with the server's end wrapped in a failingConn, so a test can
-// end the stream with a transport error as well as an EOF.
-func (ta *testApp) hookOnFailing(name string) *hookClient {
+// end the stream with a transport error as well as an EOF; ended is closed once the
+// server's hookRun has returned (the end recorded, the owner told).
+func (ta *testApp) hookOnFailing(name string) (c *hookClient, ended <-chan struct{}) {
 	ta.t.Helper()
 	server, client := net.Pipe()
-	c := &hookClient{t: ta.t, conn: client, lines: make(chan hookMsg, 64)}
+	c = &hookClient{t: ta.t, conn: client, lines: make(chan hookMsg, 64)}
+	done := make(chan struct{})
 	go func() {
 		sc := bufio.NewScanner(client)
 		sc.Buffer(make([]byte, 64*1024), 1<<20)
@@ -245,7 +253,10 @@ func (ta *testApp) hookOnFailing(name string) *hookClient {
 		}
 		close(c.lines)
 	}()
-	go ta.a.hookRun(context.Background(), name, &failingConn{Conn: server}, 0)
+	go func() {
+		ta.a.hookRun(context.Background(), name, &failingConn{Conn: server}, 0)
+		close(done)
+	}()
 	ta.t.Cleanup(func() { _ = client.Close() })
-	return c
+	return c, done
 }
