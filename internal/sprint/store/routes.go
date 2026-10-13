@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 )
@@ -266,6 +267,12 @@ func (st *Store) cached(ctx context.Context, c *RouteCache) (RouteSet, error) {
 	return c.set, nil
 }
 
+// routeArrayTiers are the tiers whose route array the load reads: every tier a card is
+// dealt on, frontier too (a frontier card is drawn from its routes like every tier,
+// tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes). It is this list and not
+// config.RouteTiers, which leaves frontier out until the config side holds it.
+var routeArrayTiers = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy, cardhdr.RouteFrontier}
+
 // Routes reads the set and the sprint row's nova-decide bars (Bars) in one
 // pipeline: one round trip when the set names no route, so a read card with no
 // route still draws its bars and git_identity, as the twin's Routes returns
@@ -296,8 +303,8 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 	for _, n := range names {
 		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
 	}
-	arrays := make(map[string]interface{ Val() string }, len(config.RouteTiers))
-	for _, t := range config.RouteTiers {
+	arrays := make(map[string]interface{ Val() string }, len(routeArrayTiers))
+	for _, t := range routeArrayTiers {
 		arrays[t] = pipe2.HGet(ctx, config.TierKey(t), "routes")
 	}
 	if err := redisconn.Exec(ctx, pipe2); err != nil {
@@ -308,7 +315,7 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 		out = append(out, RouteOf(n, hs[n].Val()))
 	}
 	tiers := map[string][]string{}
-	for _, t := range config.RouteTiers {
+	for _, t := range routeArrayTiers {
 		if a := sprint.Split(arrays[t].Val()); len(a) > 0 {
 			tiers[t] = a
 		}

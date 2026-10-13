@@ -27,6 +27,11 @@ MCReadTierProFlash == [t \in Tiers |-> IF t = "pro" THEN "flash" ELSE t]
 
 MCArr == [t \in {"flash", "pro"} |-> IF t = "flash" THEN <<"a", "b", "c">> ELSE <<"d", "e", "e">>]
 MCTierOf == [c \in Cards |-> IF c \in ProCards THEN "pro" ELSE "flash"]
+
+\* The frontier instance (MCRouteIndexFrontier.cfg): a flash tier and a frontier
+\* tier of one route, f; ProCards are the frontier cards there.
+MCArrF == [t \in {"flash", "frontier"} |-> IF t = "flash" THEN <<"a", "b", "c">> ELSE <<"f">>]
+MCTierOfF == [c \in Cards |-> IF c \in ProCards THEN "frontier" ELSE "flash"]
 \* a read card is no work card's twin: the reads are left out of the symmetry
 MCSym == Permutations(Cards \ (ProCards \cup Pinned \cup Reads \cup BenchedCards \cup RefusedCards)) \cup Permutations(ProCards \ Reads)
 =============================================================================
