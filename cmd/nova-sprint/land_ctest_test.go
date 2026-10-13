@@ -66,3 +66,12 @@ func TestACtestCardLandsOnItsOwnTest(t *testing.T) {
 	require.Empty(t, l2.treeGate(t.Context(), bare, true, nil))
 	assert.Contains(t, l2.ledgerLog, "no gate: no go.mod and no CMakeLists.txt")
 }
+
+// Dots in accepted ctest names are literal: selecting Decode.All must not run
+// DecodeXAll, which would let a different test stand in for the card's test.
+func TestCtestGateSelectsLiteralNames(t *testing.T) {
+	t.Parallel()
+	stages := cmakeGateRuns([]string{"Decode.All", "suite/Encode-All"})
+	require.Len(t, stages, 3)
+	assert.Equal(t, []string{"ctest", "--test-dir", "build", "-R", `^(Decode\.All|suite/Encode-All)$`, "--output-on-failure"}, stages[2].Runs[0].Run)
+}
