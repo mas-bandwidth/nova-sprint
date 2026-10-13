@@ -1,4 +1,4 @@
-# Paired subscription receipts (v1.2.18)
+# Paired subscription receipts (v1.2.19)
 
 `subscription` is an explicit route/provider billing declaration. Its marginal per-card USD is zero without token-price arithmetic, even when tokens are absent or a legacy sheet is present. `plan` retains metered-value prediction; metered pricing remains unchanged. An explicit route declaration wins; only an absent route declaration inherits a subscription provider declaration. Names, harnesses, zero prices and token sums never choose billing.
 

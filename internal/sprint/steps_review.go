@@ -159,6 +159,45 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		return ""
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
+	cannotAskJudgments := append(slices.Clone(s.Open), s.Acked...)
+	answeringCannotAsk := slices.ContainsFunc(cannotAskJudgments, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID) &&
+			slices.ContainsFunc(chosen, func(c *Card) bool { return c.ID == o.Subject() })
+	})
+	if s.ReadCardsOn() && !another && answeringCannotAsk {
+		only := map[string]bool{}
+		for _, c := range chosen {
+			only[c.ID] = true
+		}
+		// SprintRules.AskDealt: ask uses the fleet read-card deal, not legacy reads.
+		var ri routeIndexes
+		if s.Fleet != nil && len(s.Routes) > 0 {
+			ri = routeIndexesOf(s)
+		}
+		dealt, waits := readCardsAskSelected(s, s.Friends, ri, nil, nil, only)
+		p.Rows = append(p.Rows, dealt.Rows...)
+		p.Units = append(p.Units, dealt.Units...)
+		p.Props = append(p.Props, dealt.Props...)
+		p.Refused = append(p.Refused, dealt.Refused...)
+		for _, c := range chosen {
+			if why, ok := waits[c.ID]; ok && !slices.ContainsFunc(dealt.Units, func(u Unit) bool {
+				return u.Key == c.ID && slices.ContainsFunc(u.Changes, func(ch Change) bool {
+					return ch.Table == Fleet && ch.Entry.Create != nil && ch.Entry.Set["kind"] == "read"
+				})
+			}) {
+				p.refuse(c.ID, why+"; add or bring up a reader at its tier, then ask "+c.ID+", or rework or drop it")
+			}
+		}
+		if len(p.Refused) > 0 && len(r.Answers) > 0 {
+			return Plan{Refused: p.Refused}
+		}
+		if ri != nil {
+			ri.write(&p)
+		}
+		streamIndexWrite(&p, srr, s.Work.Placed)
+		answered(&p, s, r.Answers, r.Who)
+		return p
+	}
 	rr := askRound(s)
 	// a read goes to the reader with the greatest share of room, its free room
 	// as a part of its width (readerRooms), the reads this ask places taken
@@ -331,9 +370,9 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			// judgment (a reader found it broken, or the brief's bound it raised) stays
 			// open and the card goes back to work with the finding (docs/SPEC-SPRINT.md
 			// section 8, the read-broken rule; tla/SprintRules.tla, Part "reads").
-			u.Closes = closesFor(s.Open, []string{NReadsExhausted, NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, []string{NCannotAsk, NReadsExhausted, NStranded, NStalled}, c.ID)
 		} else {
-			u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, []string{NCannotAsk, NStranded, NStalled}, c.ID)
 		}
 		asked := map[string]string{}
 		for _, rd := range chosenReaders {
@@ -358,6 +397,20 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		// (the reference model's AskAnother moves no
 		// stream index)
 		streamIndexWrite(&p, srr, s.Work.Placed)
+	}
+	// A refused cannot-ask answer retains the concrete reader reason and remedy.
+	// No read was dealt, so no obligation is claimed resolved (SprintRules.AskDealt).
+	if len(p.Refused) > 0 && len(r.Answers) > 0 {
+		for _, id := range r.Answers {
+			for _, o := range cannotAskJudgments {
+				if o.Note.ID == id && o.Note.Type == NCannotAsk && slices.ContainsFunc(p.Refused, func(f Refusal) bool { return f.Key == o.Subject() }) {
+					for i := range p.Refused {
+						p.Refused[i].Why += "; add or bring up a reader at its tier, then ask " + o.Subject() + " --answers " + id + ", or rework or drop the primary"
+					}
+					return Plan{Refused: p.Refused}
+				}
+			}
+		}
 	}
 	answered(&p, s, r.Answers, r.Who)
 	return p
@@ -985,6 +1038,12 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
 	case reads == 0 && len(before) == 0:
 		return Note{}, false
+	case reads == 0 && s.Readers != nil && slices.ContainsFunc(before, func(o Open) bool {
+		return o.Note.Type == NCannotAsk && st.closing[o.Note.ID]
+	}) && len(s.freeReaders(pr, attempt)) > 0:
+		// SprintRules.CannotAskClosedWhenEligible: a remaining room/count wait
+		// after eligibility closes cannot ask is not stranded work.
+		return Note{}, false
 	case reads == 0 && s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0:
 		// its read cards are the read-card ask's: dealt, marked waiting for a reader, or
 		// cannot ask (readCardsAskPart), never stranded as never asked
@@ -1384,7 +1443,8 @@ type ReworkCard struct {
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
-var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
+// SprintRules.EpNext: rework ends the cannot-ask attempt.
+var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:
