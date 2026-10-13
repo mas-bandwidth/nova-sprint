@@ -2808,7 +2808,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   budget, a deadline and enabled; each tier's route array is nova-config's
   `tier` kind (`tier:<name>`, read with the routes in the same round trip), an
   ordered list of route names, a name repeated for more turns, and a tier with
-  none takes its enabled routes in name order. The deal (and a redeal, and a
+  none takes its enabled routes in name order. Applied provider rows (`providers`, `provider:<name>`) declare billing and funding and ride the same route read. The full `check cards` fails with kind `routes` for each enabled route of a funded provider absent from every effective tier array, each nonempty explicit array with no enabled funded route, or no applied provider rows; it names the route/tier and a `nova-config` remedy. Empty arrays retain the enabled native-tier fallback. `where` prints provider funding and unique per-tier in/enabled counts after the machine line, with the same coverage and `provider_gaps` in JSON; balance/rest fields remain available. The deal (and a redeal, and a
   rework's next attempt) resolves the card at deal time: a pin is its route
   (`pin`) and moves no index; a store with no route deals as before (the member
   runs its override); a frontier card with no pin is the friends' by design (a
