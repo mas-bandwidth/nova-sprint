@@ -2,7 +2,6 @@ package sprint_test
 
 import (
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -160,7 +159,7 @@ func TestACoordinatorsDecisionOpensAFreshWindowOfAttempts(t *testing.T) {
 	r.brokenRead("r-1", "internal/y/b.go:44 the renamed call drops its second return")
 	r.tick()
 	require.Equal(t, 8, r.attemptOf("r-1"))
-	r.ledgerRefused("r-1", strings.Repeat("d4", 20))
+	r.failedAttempt("r-1", "build broken: internal/y/b.go:45: missing return")
 	r.tick()
 	r.noAttemptPast("r-1", 8)
 }
