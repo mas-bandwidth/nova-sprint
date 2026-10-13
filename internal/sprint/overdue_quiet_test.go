@@ -285,3 +285,123 @@ func TestAQuietEndsAndTheJudgmentCountsAgain(t *testing.T) {
 	require.NotEmpty(t, conds, "behindConds must count NBound once pro route is live")
 	assert.Equal(t, NCoordinatorBehind, conds[0].typ)
 }
+
+// TestRestedTierNoRouteNotReRaisedByTickRuleNoRoute verifies that a rested tier's
+// NNoRoute judgment is not re-raised/re-tiered by TickRuleNoRoute while the tier
+// is not live, and that once the rest ends (TierNotLive false), TickRuleNoRoute resumes.
+func TestRestedTierNoRouteNotReRaisedByTickRuleNoRoute(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	t0 := now.Add(-3 * time.Hour) // well past DeadlineJudgment (1h)
+
+	workTable := NewTable(Work)
+	workTable.SetRows([]string{"s1"})
+	workTable.Put(&Card{
+		ID:     "c1",
+		Row:    "s1",
+		Col:    Ready,
+		Score:  100,
+		Fields: map[string]string{PrimaryField: "c1", FieldTierNow: "flash", "brief": "RESULT: c1 sha=0123456789ab tier: flash\nPATHS: a.go\n"},
+	})
+
+	noRouteJ := Note{
+		ID:          "j-noroute-flash",
+		Kind:        Judgment,
+		Type:        NNoRoute,
+		Stream:      TierSubject("flash"),
+		StreamLevel: true,
+		Primaries:   []string{"c1"},
+		Count:       1,
+		At:          t0,
+		What:        "tier flash cannot be dealt: every route rests (r1: credit)",
+		Decisions:   []string{"route add", "look at the card", "drop"},
+	}
+
+	routes := []Route{
+		{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true},
+		{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
+	}
+	// r1 is resting until 1 hour from now:
+	rests := map[string]RouteRest{
+		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
+	}
+
+	fleetTable := NewTable(Fleet)
+	fleetTable.SetRows([]string{"m1"})
+
+	s := &Snapshot{
+		Now:         now,
+		Coordinator: "coordinator",
+		Work:        workTable,
+		Fleet:       fleetTable,
+		Routes:      routes,
+		rests:       rests,
+		Open: []Open{
+			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("flash"))), Note: noRouteJ},
+		},
+	}
+	r := TickReq{Who: MachineActor, AnswerRules: true}
+
+	// 1. While flash is rested (TierNotLive true), TickRuleNoRoute does not re-raise or re-tier c1:
+	p, _ := TickRuleNoRoute(s, r)
+	assert.Empty(t, p.Units, "TickRuleNoRoute must not re-tier cards of a rested tier's NNoRoute")
+
+	// 2. Once the rest ends (Until in past), TierNotLive is false; TickRuleNoRoute resumes and re-tiers c1 to pro:
+	s.rests["r1"] = RouteRest{Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)}
+	pResume, _ := TickRuleNoRoute(s, r)
+	require.NotEmpty(t, pResume.Units, "TickRuleNoRoute must resume re-tiering once rest ends")
+	assert.Equal(t, "c1", pResume.Units[0].Key)
+	assert.Contains(t, pResume.Units[0].Moved, "re-tiered from flash to pro")
+}
+
+// TestRestedTierNoRouteNotInSeatWaitsOverdue verifies that a rested tier's
+// NNoRoute judgment is not counted in SeatWaitsOf overdue tally while quieted,
+// and that once the rest ends (TierNotLive false), SeatWaitsOf resumes counting it.
+func TestRestedTierNoRouteNotInSeatWaitsOverdue(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	t0 := now.Add(-3 * time.Hour) // past DeadlineJudgment (1h)
+
+	noRouteJ := Note{
+		ID:          "j-noroute-flash",
+		Kind:        Judgment,
+		Type:        NNoRoute,
+		Stream:      TierSubject("flash"),
+		StreamLevel: true,
+		Primaries:   []string{"c1"},
+		Count:       1,
+		At:          t0,
+		What:        "tier flash cannot be dealt: every route rests (r1: credit)",
+		Decisions:   []string{"route add", "look at the card", "drop"},
+	}
+
+	routes := []Route{
+		{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true},
+	}
+	rests := map[string]RouteRest{
+		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
+	}
+
+	s := &Snapshot{
+		Now:         now,
+		Coordinator: "coordinator",
+		Routes:      routes,
+		rests:       rests,
+		Open: []Open{
+			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("flash"))), Note: noRouteJ},
+		},
+	}
+	r := TickReq{Who: MachineActor}
+
+	// 1. While flash is rested (TierNotLive true), SeatWaitsOf counts the judgment but not as overdue:
+	w := SeatWaitsOf(s, r)
+	assert.Equal(t, 1, w.Judgments, "SeatWaitsOf must count the open judgment")
+	assert.Equal(t, 0, w.Overdue, "SeatWaitsOf must not count quieted judgment overdue")
+
+	// 2. Once the rest ends (Until in past), TierNotLive is false; SeatWaitsOf resumes counting it overdue:
+	s.rests["r1"] = RouteRest{Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)}
+	wResume := SeatWaitsOf(s, r)
+	assert.Equal(t, 1, wResume.Judgments)
+	assert.Equal(t, 1, wResume.Overdue, "SeatWaitsOf must count judgment overdue once rest ends")
+}
+
