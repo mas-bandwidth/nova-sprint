@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -122,3 +124,61 @@ func TestSentinelSetNeedsRepointsInPlace(t *testing.T) {
 	require.Contains(t, out, "r1 waiting -> ready", "release")
 	ta.clean()
 }
+
+func TestBriefEditsSentinelFromCLI(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead")
+	ta.ok("add --stream s1 --count 3 --actor lead --brief-file " + proBriefFile(t))
+	ta.ok("add --stream s1 --sentinel stop --needs s1-1,s1-2 --actor lead")
+	ta.ok("add --stream s2 b --one --needs stop --actor lead --brief-file " + proBriefFile(t))
+	ta.ok("drop s1-3 --reason 'deferred' --actor lead")
+
+	writeSentinelFile := func(name, content string) string {
+		p := filepath.Join(t.TempDir(), name)
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
+		return p
+	}
+
+	// Compact sentinel format (no RESULT:, no PATHS:, no child RULES:) succeeds and repoints needs.
+	compact := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: b (waits on stop)\n\n## Gate\nVerify s1-1."
+	out := ta.ok("brief stop --actor lead --brief-file " + writeSentinelFile("stop.md", compact))
+	require.Contains(t, out, "sentinel stop brief replaced")
+	require.Equal(t, compact, ta.primary("stop").F("brief"))
+	require.Equal(t, "s1-1", ta.primary("stop").F("needs"))
+
+	// Full sentinel format with RESULT:, TIER: none, and Needs: header.
+	full := "RESULT: stop sha=deadbeef tier: flash\nSTREAM: s1\nKIND: sentinel\nTIER: none\nNeeds: s1-1, s1-2\nCONSUMERS: b\n\n## Gate\nVerify s1-1 and s1-2."
+	out = ta.ok("brief stop --actor lead --brief-file " + writeSentinelFile("stop-full.md", full))
+	require.Contains(t, out, "sentinel stop brief replaced")
+	require.Equal(t, full, ta.primary("stop").F("brief"))
+	require.Equal(t, "s1-1,s1-2", ta.primary("stop").F("needs"))
+
+	// Missing consumer in CONSUMERS: is refused.
+	badConsumers := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: s1-2\n\n## Gate"
+	code, _, errs := ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("bad-consumers.md", badConsumers))
+	require.Equal(t, 1, code, "missing consumer: %s", errs)
+	require.Contains(t, errs, "CONSUMERS line missing b")
+
+	// Wrong STREAM: is refused.
+	badStream := "KIND: sentinel\nSTREAM: s2\nNEEDS: s1-1\nCONSUMERS: b\n\n## Gate"
+	code, _, errs = ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("bad-stream.md", badStream))
+	require.Equal(t, 1, code, "bad stream: %s", errs)
+	require.Contains(t, errs, "sentinel stop is in stream s1, brief specifies STREAM: s2; stream cannot be moved by brief")
+
+	// Dropped card in NEEDS: is loaded via step.Extras and refused as off the table, dropped.
+	droppedNeed := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1, s1-3\nCONSUMERS: b\n\n## Gate"
+	code, _, errs = ta.do("brief stop --actor lead --brief-file " + writeSentinelFile("dropped-need.md", droppedNeed))
+	require.Equal(t, 1, code, "dropped need: %s", errs)
+	require.Contains(t, errs, "not a card on the table: s1-3 (off the table, dropped)")
+
+	// brief --dir edits a sentinel brief and repoints its needs.
+	dir := t.TempDir()
+	dirBrief := "KIND: sentinel\nSTREAM: s1\nNEEDS: s1-1\nCONSUMERS: b\n\n## Gate via dir"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "stop.md"), []byte(dirBrief), 0o600))
+	out = ta.ok("brief --actor lead --dir " + dir)
+	require.Contains(t, out, "sentinel stop brief replaced")
+	require.Equal(t, "s1-1", ta.primary("stop").F("needs"))
+	ta.clean()
+}
+

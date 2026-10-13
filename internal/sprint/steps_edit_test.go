@@ -193,12 +193,141 @@ func TestBriefIsRefusedForASentinelAndAnUnknownCard(t *testing.T) {
 	t.Parallel()
 	w := editWorld(t)
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"}))
-	p := Brief(w.s, briefOne("a-stop", "new"))
+	w.must(Brief(w.s, briefOne("a-stop", "new sentinel brief")))
+	assert.Equal(t, "new sentinel brief", w.s.Work.Placed("a-stop").F("brief"))
+	w.place(w.s.Work, "a-stop", "a", Landed)
+	p := Brief(w.s, briefOne("a-stop", "newer"))
 	require.Len(t, p.Refused, 1)
-	assert.Contains(t, p.Refused[0].Why, "a-stop is a sentinel, not a primary")
+	assert.Contains(t, p.Refused[0].Why, "a-stop is landed: a sentinel landed keeps its brief")
 	p = Brief(w.s, briefOne("zz", "new"))
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "no primary zz on the work table")
+}
+
+func TestBriefEditsWaitingSentinelAndChecksMachineReadLines(t *testing.T) {
+	t.Parallel()
+	w := editWorld(t)
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-3"}, Brief: "old three", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Needs: []string{"a-1", "a-2"}, Brief: "initial stop", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "b", IDs: []string{"b-1"}, Needs: []string{"a-stop"}, Brief: "consumer one", Who: "coordinator"}))
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"a-3"}}, Reason: "deferred", Who: "coordinator"}))
+
+	before := *w.s.Work.Placed("a-stop")
+
+	// Valid compact sentinel brief updates brief and repoints needs from header.
+	validBrief := "KIND: sentinel\nSTREAM: a\nTIER: none\nNEEDS: a-1\nCONSUMERS: b-1 (waits on a-stop)\n\n## Gate\nCheck a-1."
+	p := Brief(w.s, BriefReq{
+		Cards:          []BriefCard{{ID: "a-stop", Brief: validBrief, Needs: []string{"a-1"}}},
+		NeedsFromBrief: true,
+		Who:            "coordinator",
+	})
+	require.Empty(t, p.Refused)
+	w.must(p)
+
+	c := w.s.Work.Placed("a-stop")
+	assert.Equal(t, validBrief, c.F("brief"))
+	assert.Equal(t, "a-1", c.F("needs"))
+	assert.Contains(t, c.F(FieldNeedsSet), "a-1,a-2 -> a-1")
+	assert.Equal(t, before.Row, c.Row)
+	assert.Equal(t, before.Col, c.Col)
+	assert.Equal(t, before.Score, c.Score)
+	assert.Equal(t, before.F("attempt"), c.F("attempt"))
+	assert.Empty(t, c.F(FieldBriefAttempt))
+
+	// Machine-read line checks on sentinel brief.
+	badCases := []struct {
+		name  string
+		brief string
+		why   string
+	}{
+		{
+			name:  "wrong KIND",
+			brief: "KIND: primary\nSTREAM: a\nNEEDS: a-1\n",
+			why:   "KIND: wants sentinel, found primary",
+		},
+		{
+			name:  "wrong STREAM",
+			brief: "KIND: sentinel\nSTREAM: b\nNEEDS: a-1\n",
+			why:   "sentinel a-stop is in stream a, brief specifies STREAM: b; stream cannot be moved by brief",
+		},
+		{
+			name:  "bad TIER",
+			brief: "KIND: sentinel\nSTREAM: a\nTIER: ultra\nNEEDS: a-1\n",
+			why:   "TIER: wants frontier, heavy, pro or flash or none, found ultra",
+		},
+		{
+			name:  "bad PRIORITY",
+			brief: "KIND: sentinel\nSTREAM: a\nPRIORITY: bananas\nNEEDS: a-1\n",
+			why:   "PRIORITY:",
+		},
+		{
+			name:  "bad BENCH",
+			brief: "KIND: sentinel\nSTREAM: a\nBENCH: mars\nNEEDS: a-1\n",
+			why:   "BENCH:",
+		},
+		{
+			name:  "unknown need",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1, nosuch\n",
+			why:   "not a card on the table: nosuch (no card)",
+		},
+		{
+			name:  "dropped need",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1, a-3\n",
+			why:   "not a card on the table: a-3 (off the table, dropped)",
+		},
+		{
+			name:  "duplicate need",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1, a-1\n",
+			why:   "a-1 is named twice",
+		},
+		{
+			name:  "self need",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-stop\n",
+			why:   "a sentinel does not need itself",
+		},
+		{
+			name:  "cycle in needs",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: b-1\n",
+			why:   "cycle",
+		},
+		{
+			name:  "empty needs on sentinel",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: none\n",
+			why:   "released, not emptied",
+		},
+		{
+			name:  "missing consumer in CONSUMERS",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: a-2\n",
+			why:   "CONSUMERS line missing b-1",
+		},
+		{
+			name:  "self in CONSUMERS",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: b-1, a-stop\n",
+			why:   "CONSUMERS names the sentinel itself",
+		},
+		{
+			name:  "dropped card in CONSUMERS",
+			brief: "KIND: sentinel\nSTREAM: a\nNEEDS: a-1\nCONSUMERS: b-1, a-3\n",
+			why:   "a-3 (off the table, dropped)",
+		},
+	}
+	for _, tc := range badCases {
+		res := Brief(w.s, BriefReq{
+			Cards: []BriefCard{{ID: "a-stop", Brief: tc.brief}},
+			Who:   "coordinator",
+		})
+		require.Len(t, res.Refused, 1, tc.name)
+		assert.Empty(t, res.Units, tc.name)
+		assert.Contains(t, res.Refused[0].Why, tc.why, tc.name)
+	}
+
+	// KIND: sentinel on a primary card is refused.
+	res := Brief(w.s, BriefReq{
+		Cards: []BriefCard{{ID: "a-1", Brief: "KIND: sentinel\n\nnot a sentinel"}},
+		Who:   "coordinator",
+	})
+	require.Len(t, res.Refused, 1)
+	assert.Contains(t, res.Refused[0].Why, "a-1 is a primary, not a sentinel")
 }
 
 // moveWorld is editWorld with stream b: b-1 ready, and b-2 waiting on a-1, a

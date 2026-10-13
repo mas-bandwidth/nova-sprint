@@ -1765,7 +1765,7 @@ func (a *app) briefFiles(dir string, files []string, stderr io.Writer) ([]string
 func briefNeeds(brief string) []string {
 	value, found := "", false
 	for _, line := range strings.Split(brief, "\n") {
-		if key, v, ok := cardhdr.KeyValue(line); ok && key == "Needs" {
+		if key, v, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "needs") {
 			value, found = v, true
 			break
 		}
@@ -1779,10 +1779,40 @@ func briefNeeds(brief string) []string {
 			id = cut
 		}
 		switch id = strings.TrimSpace(id); {
-		case id == "", id == "-", id == "none", strings.Contains(id, "#"):
+		case id == "", id == "-", strings.EqualFold(id, "none"), strings.Contains(id, "#"):
 			continue
 		}
 		out = append(out, id)
+	}
+	return out
+}
+
+func briefConsumers(brief string) []string {
+	var out []string
+	for i, line := range strings.Split(brief, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		key, v, ok := cardhdr.KeyValue(line)
+		if !ok {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		if !strings.EqualFold(key, "consumers") {
+			continue
+		}
+		for _, id := range strings.Split(v, ",") {
+			if cut, _, hasParen := strings.Cut(id, "("); hasParen {
+				id = cut
+			}
+			id = strings.TrimSpace(id)
+			if id == "" || id == "-" || strings.EqualFold(id, "none") {
+				continue
+			}
+			out = append(out, id)
+		}
 	}
 	return out
 }
@@ -2014,12 +2044,35 @@ func friendOwnRules(brief string) bool {
 	return why == "" && w.Friend && friendRulesHeadRE.MatchString(brief)
 }
 
+// isSentinelBrief reports whether a brief's header block declares KIND: sentinel or TIER: none.
+func isSentinelBrief(brief string) bool {
+	for i, l := range strings.Split(brief, "\n") {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		k, v, ok := cardhdr.KeyValue(l)
+		if !ok {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		if strings.EqualFold(k, "KIND") && strings.EqualFold(strings.TrimSpace(v), "sentinel") {
+			return true
+		}
+		if strings.EqualFold(k, "TIER") && strings.EqualFold(strings.TrimSpace(v), "none") {
+			return true
+		}
+	}
+	return false
+}
+
 // lintBriefReads holds one brief to the card lint's child rules and to its
 // model lines: it returns the model-line why ("" when the lines read) and the
 // lint findings. The single-brief and many-brief paths both call it, so one
 // brief is held the same however it is given.
 func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm.CardHeaderFinding) {
-	if _, why := cardhdr.ReadModel(brief); why != "" {
+	if m, why := cardhdr.ReadModel(brief); why != "" && (!isSentinelBrief(brief) || !strings.EqualFold(m.Tier, "none")) {
 		return why, nil
 	}
 	if rs = cardRules(brief, rs); rs.held != "" {
@@ -2029,14 +2082,9 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	} else {
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
 	}
-	if friendOwnRules(brief) {
-		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the child
-		// RULES paragraph: a friend is not a child, and her card carries its own rules
-		// (docs/SPEC-SPRINT.md section 1, a friend's card; rules by reference: a card that
-		// names no held file carries its own rules, as every card did before). The rule-
-		// checks are the child paragraph's presence checks (pkg/swarm/lintchild.go); the
-		// step- scans still hold her card, a line of it outside its RULES paragraph that
-		// contradicts its carried rules being a finding under any set.
+	if friendOwnRules(brief) || isSentinelBrief(brief) {
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE, OR A SENTINEL BRIEF, IS ACCEPTED,
+		// not held for the child RULES paragraph: neither is dealt to a child.
 		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
 			return strings.HasPrefix(f.Check, "rule-")
 		})
@@ -3120,11 +3168,28 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	if why := briefSizeCheck("brief", len(*brief)); why != "" {
 		return refuse(stderr, "brief", why)
 	}
-	rs, code := a.holdBrief("brief", *brief, *rules, c, &st, stderr)
-	if code != 0 {
-		return code
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
+	}
+	var rs ruleSet
+	if !isSentinelCard(st, ids[0]) || isSentinelBrief(*brief) {
+		var code int
+		rs, code = a.holdBrief("brief", *brief, *rules, c, &st, stderr)
+		if code != 0 {
+			return code
+		}
 	}
 	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, *reason, *keepHead, stdout, stderr)
+}
+
+func isSentinelCard(st *store.Store, id string) bool {
+	if st == nil {
+		return false
+	}
+	info, err := st.CardOf(context.Background(), id)
+	return err == nil && info.Primary != nil && sprint.IsSentinel(info.Primary)
 }
 
 // briefWiden is brief <id> --widen: the card's brief with its PATHS widened by its latest
@@ -3200,7 +3265,14 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code != 0 {
 		return code
 	}
-	if code := lintBriefFiles("brief", cards, rs, c.max, stderr); code != 0 {
+	var lintCards []sprint.CardAdd
+	for _, cd := range cards {
+		if isSentinelCard(st, cd.ID) && !isSentinelBrief(cd.Brief) {
+			continue
+		}
+		lintCards = append(lintCards, cd)
+	}
+	if code := lintBriefFiles("brief", lintCards, rs, c.max, stderr); code != 0 {
 		return code
 	}
 	return a.replaceBriefs(cards, ans, rs, c, st, "", false, "", keepHead, stdout, stderr)
@@ -3228,27 +3300,40 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief, Reason: reason, KeepHead: keepHead}
-	texts := make([]string, len(cards))
-	checks := make([]briefCheck, len(cards))
-	for i, cd := range cards {
-		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief}
+	var texts, streams []string
+	var checks []briefCheck
+	for _, cd := range cards {
+		isSent := isSentinelCard(st, cd.ID) || isSentinelBrief(cd.Brief)
+		if !isSent {
+			checks = append(checks, briefCheck{id: cd.ID, brief: cd.Brief})
+		}
 	}
-	if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
-		return code
+	if len(checks) > 0 {
+		if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
+			return code
+		}
 	}
-	streams := make([]string, len(cards))
-	for i, cd := range cards {
-		texts[i] = cd.Brief
+	for _, cd := range cards {
+		isSent := isSentinelCard(st, cd.ID)
+		stream := ""
 		// the card's own stream, for its named friend's restriction; a card the store does
 		// not know yet is left to the write step's refusal
 		if info, err := st.CardOf(context.Background(), cd.ID); err == nil && info.Primary != nil {
-			streams[i] = info.Primary.F("stream")
+			stream = info.Primary.F("stream")
 		}
-		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
-		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		heldRules := ""
+		if !isSent && !isSentinelBrief(cd.Brief) {
+			texts = append(texts, cd.Brief)
+			streams = append(streams, stream)
+			heldRules = cardRules(cd.Brief, rs).held
+			c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		}
+		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: heldRules, Needs: uniquify(briefNeeds(cd.Brief))})
 	}
-	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
-		return code
+	if len(texts) > 0 {
+		if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
+			return code
+		}
 	}
 	// a new BASE is held as add holds one: the sprint's base, outside the promotion
 	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
@@ -3259,6 +3344,17 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	step := store.BriefStep(req)
+	var extraWork []string
+	for _, bc := range req.Cards {
+		extraWork = append(extraWork, bc.ID)
+		extraWork = append(extraWork, bc.Needs...)
+		extraWork = append(extraWork, briefConsumers(bc.Brief)...)
+	}
+	if len(extraWork) > 0 {
+		step.Extras = func(*sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Work: extraWork}
+		}
+	}
 	replace := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
 	return a.runStep("brief", *c, st, step, stdout, stderr)

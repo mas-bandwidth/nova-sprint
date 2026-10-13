@@ -9116,7 +9116,14 @@ and its reached judgment is answered. A blocked or missing judgment on it that
 named only needs it no longer names is answered. `--needs ""` is refused: a
 sentinel with nothing to wait on is released, not emptied. The coordinator's alone
 (`sprint.SentinelSet`; `TestSentinelSetNeedsRepointsInPlace`,
-`TestSentinelSetReachesAndUnreaches`).
+`TestSentinelSetReachesAndUnreaches`). `brief <id> (--brief <text> | --brief-file
+<path>)` and `brief --dir <dir>` also replace a waiting sentinel's brief in place,
+exempting it from child `RULES` paragraph checks while checking its machine-read
+header lines (`KIND`, `STREAM`, `TIER`, `PRIORITY`, `BENCH`, `NEEDS`/`DEPENDS-ON`,
+and `CONSUMERS`) and updating its `needs`, `needs_set`, and `reached` state when
+its `NEEDS` line changes (`sprint.Brief`, `briefSentinel`;
+`TestBriefEditsWaitingSentinelAndChecksMachineReadLines`,
+`TestBriefEditsSentinelFromCLI`).
 
 ### The tick postconditions
 
