@@ -247,4 +247,3 @@ func TestRefmodelStateCloneDeepCopiesRefusedWays(t *testing.T) {
 	clone.Primaries["s1-1"].RefusedWays[0] = "mutated"
 	assert.Equal(t, "other", s.Primaries["s1-1"].RefusedWays[0], "modifying slice element in clone does not affect original")
 }
-
