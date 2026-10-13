@@ -5574,8 +5574,10 @@ inbox (and by `where --json`). A stream with nothing on the table (every primary
 or restored empty by a clear) is waiting with no `since` and is never stale. A
 stream whose every card on the table and not landed waits (behind a sentinel, or on
 a need) and none moves is blocked by what it waits on, which the table shows, and is
-never stale: its clock reads `blocked` with `blocked_by` naming the sentinel or card
-of another stream its first waiting card waits on, else `needs`. A coordinator hold
+never stale: its clock reads `blocked`, and on clocks read with a work-table
+snapshot in hand `blocked_by` names the sentinel or card of another stream its
+first waiting card waits on — following its own stream's sentinel when the wait
+runs through it — else `needs`. A coordinator hold
 is a separate fact (the clock's `Held`, `hold <stream>`); a stream may read both.
 `wait stale:<stream>~<epoch> --for <duration>` writes the time on the stream's
 control card (`stale_review`), and the stream is not shown stale before it.

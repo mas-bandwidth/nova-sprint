@@ -32,8 +32,11 @@ type StreamClock struct {
 	Reason string `json:",omitempty"`
 	// Blocked says every card of the stream on the table and not landed waits
 	// (behind a sentinel, or on a need) and none moves: it is blocked by what
-	// it waits on, named in BlockedBy, and is never stale. A coordinator hold
-	// (Held) is a separate fact; both may hold at once.
+	// it waits on, and is never stale. BlockedBy names that wait
+	// (StreamBlockedBy) on clocks a caller reads with a work-table snapshot
+	// in hand; StreamClocks itself reads no card records and leaves it
+	// empty. A coordinator hold (Held) is a separate fact; both may hold
+	// at once.
 	Blocked   bool   `json:"blocked,omitempty"`
 	BlockedBy string `json:"blocked_by,omitempty"`
 	// Quiet is the time wait set on the stream's stale judgment (FieldStaleReview):
@@ -50,16 +53,18 @@ type StreamClock struct {
 }
 
 // StreamBlockedBy is what a blocked stream waits on: the sentinel or card
-// of another stream that its first waiting primary's needs or line position
+// of another stream that its first waiting card's needs or line position
 // name (WaitsFor), else "needs" — the wait is on needs no other stream's
-// card names, or the first waiting primary names nothing.
+// card names, or the first waiting card names nothing. A waiting sentinel
+// is a waiting card like any other, and a wait that runs through the
+// stream's own sentinel follows that sentinel's wait to the other stream.
 func StreamBlockedBy(s *Snapshot, stream string) string {
 	if s == nil || s.Work == nil {
 		return "needs"
 	}
 	var waiting []*Card
 	for _, c := range s.Work.Cards() {
-		if c.Row == stream && c.Col == string(Waiting) && !IsSentinel(c) {
+		if c.Row == stream && c.Col == string(Waiting) {
 			waiting = append(waiting, c)
 		}
 	}
@@ -67,9 +72,28 @@ func StreamBlockedBy(s *Snapshot, stream string) string {
 	if len(waiting) == 0 {
 		return "needs"
 	}
-	for _, w := range WaitsFor(s, waiting[0], nil) {
-		if t := s.Work.Card(w); t != nil && t.Row != stream {
+	return followBlockedBy(s, stream, waiting[0], map[string]bool{})
+}
+
+// followBlockedBy follows one waiting card's wait: the first named card of
+// another stream, stepping through the stream's own sentinels on the way.
+func followBlockedBy(s *Snapshot, stream string, c *Card, seen map[string]bool) string {
+	if c == nil || seen[c.ID] {
+		return "needs"
+	}
+	seen[c.ID] = true
+	for _, w := range WaitsFor(s, c, nil) {
+		t := s.Work.Card(w)
+		if t == nil {
+			continue
+		}
+		if t.Row != stream {
 			return w
+		}
+		if IsSentinel(t) {
+			if by := followBlockedBy(s, stream, t, seen); by != "needs" {
+				return by
+			}
 		}
 	}
 	return "needs"
