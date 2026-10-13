@@ -119,6 +119,12 @@ first pass that is ok after it prints `FRIEND-SYNC OK again after <n> failing
 passes`. An interrupt ends it with 0 (`FRIEND-SYNC STOP interrupted`), and a
 binary replaced under it with 3, so its supervisor starts the new one.
 
+Every pass, cards or none, puts each friend row's name on the bus store's
+roster (the `friends` set at `NOVA_BUS_REDIS`, a Redis apart from the sprint
+store), so a row just added is a known bus name before anything is dealt her;
+a pass that added any says `FRIEND-SYNC BUS-NAMES added=<names>`, and with
+`NOVA_BUS_REDIS` unset it tells the bus nothing.
+
 It is installed as a nova-config loop row kept alive on the machine that holds
 the friends' working directories, its secrets by name from that machine's seat
 and no shell in its argv; `--root` is left out, so the friends' directories are

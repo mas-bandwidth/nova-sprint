@@ -256,6 +256,19 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 			fmt.Fprintln(stdout, l)
 		}
 	}
+	// every friend row is a known name of the bus store each pass, so a row just
+	// added can be written to before any card is dealt her (docs/FRIENDS.md)
+	names := make([]string, 0, len(specs))
+	for _, s := range specs {
+		names = append(names, s.Name)
+	}
+	enrolled, err := a.busEnroll(ctx, names...)
+	if len(enrolled) > 0 {
+		say("FRIEND-SYNC BUS-NAMES added=" + strings.Join(enrolled, ",") + ": the bus store now knows the friend rows")
+	}
+	if err != nil {
+		say("FRIEND-SYNC NOTE: the friend rows' names could not all be put on the bus store's roster (" + oneline.Escape(err.Error()) + ")")
+	}
 	for _, s := range specs {
 		// her starts first, so a card she began is working before its report is read
 		if err := a.friendStartsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say); err != nil {
@@ -278,7 +291,7 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	}
 	sayOK(stdout, c.json, name, line, map[string]any{"added": orEmpty(added), "removed": orEmpty(removed), "updated": orEmpty(updated), "friends": len(rows),
 		"delivered": delivered, "finished": finished, "cards": orEmpty(said)})
-	return 0, len(added)+len(removed)+len(updated)+delivered+finished > 0
+	return 0, len(added)+len(removed)+len(updated)+delivered+finished+len(enrolled) > 0
 }
 
 // friendJobWalk bounds the walk of one job's directory for her first write: a checkout of

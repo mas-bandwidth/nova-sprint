@@ -63,7 +63,7 @@ func TestADealToABudIsDeliveredOnTheBus(t *testing.T) {
 	ta.ok("tick")
 	out := ta.ok("friend sync --root " + root)
 	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=bud-a card=s1-1.w1")
-	assert.Contains(t, out, "FRIEND-CARD BUS-NAMES added=bud-a: the bus store now knows the friend row")
+	assert.Contains(t, out, "FRIEND-SYNC BUS-NAMES added=bud-a: the bus store now knows the friend rows", "the pass enrolls her row before her card is sent")
 	assert.NotContains(t, out, "FRIEND-CARD NOTE", out)
 	assert.NotContains(t, out, "is no known name", out)
 	assert.NotContains(t, ta.ok("card s1-1"), "a friend was not told of her card")
@@ -85,5 +85,35 @@ func TestADealToABudIsDeliveredOnTheBus(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `the name "Bad Name" is not lowercase letters, digits and hyphens`)
 	assert.Equal(t, []string{"bud-b"}, added, "the good names are added all the same")
+	ta.clean()
+}
+
+// Each friend sync pass puts every friend row's name on the bus store's roster,
+// cards or none (Aurora, 2026-10-12: a new row with nothing dealt her was no
+// known bus name, and nova-bus send --as aurora was refused). Witness: with no
+// bus store named the pass tells the bus nothing; with one, one pass adds every
+// row and a second adds none.
+func TestFriendSyncEnrollsEveryFriendRowOnTheBusStore(t *testing.T) {
+	t.Parallel()
+	ta, _ := friendApp(t, "amy", "bob", "cyd")
+	root := t.TempDir()
+	store := &staleRoster{Fake: bustest.NewFake(time.Date(2026, 10, 12, 20, 0, 0, 0, time.UTC))}
+	ta.a.busOpen = func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: store}, func() {}, nil
+	}
+	out := ta.ok("friend sync --root " + root)
+	assert.NotContains(t, out, "BUS-NAMES", "no bus store named: nothing is enrolled")
+	assert.Empty(t, store.enrolled)
+
+	env := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		return map[string]string{busRedisEnv: "127.0.0.1:6381"}[k] + env(k)
+	}
+	out = ta.ok("friend sync --root " + root)
+	assert.Contains(t, out, "FRIEND-SYNC BUS-NAMES added=amy,bob,cyd: the bus store now knows the friend rows")
+	assert.ElementsMatch(t, []string{"amy", "bob", "cyd"}, store.enrolled, "every row is a known bus name after one pass")
+	out = ta.ok("friend sync --root " + root)
+	assert.NotContains(t, out, "BUS-NAMES", "a second pass adds none")
+	assert.Len(t, store.enrolled, 3)
 	ta.clean()
 }
