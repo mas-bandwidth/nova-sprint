@@ -33,7 +33,7 @@ func TestAFailedStepPrintsOneReasonPerRefusalDirectAndForwarded(t *testing.T) {
 		"nova-sprint init --readers reader-a,reader-b --members m1:2",
 		"nova-sprint start",
 	)
-	fakeNow := time.Now()
+	fakeNow := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	r.a.now = func() time.Time { return fakeNow }
 	r.boss("nova-sprint remind --in 1s --note stall-check")
 	fakeNow = fakeNow.Add(2 * time.Second)
