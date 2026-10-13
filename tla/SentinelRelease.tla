@@ -5,8 +5,9 @@
 \* atomicity. See README-SentinelRelease.md for the concrete boundary.
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Producers, MaxHead, AllowEarly, Broken
+CONSTANTS Producers, OtherProducer, MaxHead, AllowEarly, Broken
 ASSUME /\ IsFiniteSet(Producers)
+       /\ OtherProducer \notin Producers
        /\ MaxHead \in Nat \ {0}
        /\ AllowEarly \in BOOLEAN
        /\ Broken \in {"none", "unlanded", "nodev", "stalehead", "wrongstream",
@@ -14,7 +15,8 @@ ASSUME /\ IsFiniteSet(Producers)
                       "failedmerge", "reusedmerge", "earlyauto", "worker", "dropwaivesall", "emptynotice"}
 
 Heads == Producers \X (1..MaxHead)
-Tokens == Heads \cup {"other"}
+OtherHead == <<OtherProducer, 0>>
+Tokens == Heads \cup {OtherHead}
 States == {"working", "landed", "dropped"}
 EmptyProof == [scope |-> 0, head |-> 0, included |-> {}]
 
@@ -138,8 +140,8 @@ MergeProducer(p) ==
 
 \* One unrelated commit exposes a dev move between consumer merge and deal.
 AdvanceDev ==
-  /\ "other" \notin remoteDev
-  /\ remoteDev' = remoteDev \cup {"other"}
+  /\ OtherHead \notin remoteDev
+  /\ remoteDev' = remoteDev \cup {OtherHead}
   /\ UNCHANGED <<state, head, scope, observedDev, proof,
                   releaseVars, consumerVars>>
 
