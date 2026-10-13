@@ -183,6 +183,11 @@ type Step struct {
 	// a late finish or verdict once STOP has committed. RequiresStopped is the
 	// complementary fence on an acknowledged stop-return.
 	StartsWork, ReportsWork, RequiresStopped bool
+	// DropRefusedReadCreates says the step is the tick deal: a read card create
+	// refused with MEMBEREXISTS drops that read unit and re-applies the remaining
+	// plan in the same step, so a refused read never blocks work cards.
+	// tla/DirtyTick.tla OneRefusedReadNeverBlocksWork
+	DropRefusedReadCreates bool
 	// Twin, when set, is the tick's twin (twin.go): a step that loads the four
 	// tables plans on it while the fence is at its generation, instead of
 	// reading them, and applies its receipts to it when it commits.
@@ -907,7 +912,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			}
 			continue
 		}
-		applied, receipts, err := st.apply(ctx, op)
+		applied, receipts, err := st.apply(ctx, op, &applyContext{step, &plan, snap, &res, &op})
 		var bound *boundError
 		if err != nil || !applied {
 			// Another writer (the tick, another verb, repair) finished this
@@ -1316,7 +1321,7 @@ func invalid(man ntable.BatchManifest) string {
 // revision, a place, a member, a field of the store's state); a bound or a
 // rule of the table layer holds whatever the state, and is never retried.
 func curable(err error, man ntable.BatchManifest) bool {
-	if errors.Is(err, ntable.ErrMalformedManifest) || refusalCode(err) == "LIMIT" {
+	if errors.Is(err, ntable.ErrMalformedManifest) || refusalCode(err) == "LIMIT" || refusalCode(err) == "MEMBEREXISTS" {
 		return false
 	}
 	return invalid(man) == ""
@@ -1797,12 +1802,28 @@ func (e *boundError) Error() string {
 	return fmt.Sprintf("table %s: the store refused it on a bound or a rule: %v", e.Table, e.Cause)
 }
 
+func (e *boundError) Unwrap() error {
+	return e.Cause
+}
+
+type applyContext struct {
+	step Step
+	plan *sprint.Plan
+	snap *sprint.Snapshot
+	res  *Result
+	op   *OpRecord
+}
+
 // apply sends the operation's manifests in order. applied is false when the
 // first manifest was refused: nothing of the operation applied.
 // The receipts are each manifest's, in order, when the store gave one with
 // its account of the batch (a manifest another writer had applied gives
 // none): the tick's twin applies them (twin.go).
-func (st *Store) apply(ctx context.Context, op OpRecord) (bool, []receipt, error) {
+func (st *Store) apply(ctx context.Context, op OpRecord, extra ...*applyContext) (bool, []receipt, error) {
+	var actx *applyContext
+	if len(extra) > 0 {
+		actx = extra[0]
+	}
 	var receipts []receipt
 	sent := 0 // the manifests applied in one exchange (BatchApplier) so far
 	for i, man := range op.Manifests {
@@ -1835,6 +1856,77 @@ func (st *Store) apply(ctx context.Context, op OpRecord) (bool, []receipt, error
 			}
 		}
 		if i == 0 && (ntable.IsRefusal(err) || errors.Is(err, ntable.ErrMalformedManifest)) {
+			if actx != nil && actx.step.DropRefusedReadCreates && refusalCode(err) == "MEMBEREXISTS" && actx.plan != nil {
+				// tla/DirtyTick.tla OneRefusedReadNeverBlocksWork:
+				// a refused read card create never blocks the deal. Drop that unit and
+				// re-apply the remaining plan so work cards are still dealt.
+				var refusedMember string
+				for _, e := range man.Members {
+					plainID := strings.SplitN(e.ID, "~", 2)[0]
+					if (e.Create != nil || (e.Expect != nil && e.Expect.Absent)) && (strings.Contains(err.Error(), e.ID) || strings.Contains(err.Error(), plainID)) {
+						refusedMember = e.ID
+						break
+					}
+				}
+				if refusedMember != "" {
+					plainRefused := strings.SplitN(refusedMember, "~", 2)[0]
+					droppedIdx := -1
+					for idx, u := range actx.plan.Units {
+						for _, ch := range u.Changes {
+							plainID := strings.SplitN(ch.Entry.ID, "~", 2)[0]
+							if plainID == plainRefused || ch.Entry.ID == refusedMember {
+								isRead := ch.Table == sprint.Fleet && (ch.Entry.Set["kind"] == "read" || ch.Entry.Set[sprint.FieldReadCard] == "1")
+								if isRead {
+									droppedIdx = idx
+									break
+								}
+							}
+						}
+						if droppedIdx != -1 {
+							break
+						}
+					}
+					if droppedIdx != -1 {
+						droppedUnit := actx.plan.Units[droppedIdx]
+						actx.plan.Units = slices.Delete(actx.plan.Units, droppedIdx, droppedIdx+1)
+						refusal := sprint.Refusal{Key: droppedUnit.Key, Why: err.Error()}
+						actx.plan.Refused = append(actx.plan.Refused, refusal)
+						if actx.res != nil {
+							actx.res.Refused = append(actx.res.Refused, refusal)
+							actx.res.Moved = nil
+							for _, remU := range actx.plan.Units {
+								if remU.Moved != "" {
+									actx.res.Moved = append(actx.res.Moved, remU.Moved)
+								}
+							}
+						}
+						newOp, opErr := st.operation(op.Verb, actx.step.Actor, op.ID, *actx.plan, actx.snap)
+						if opErr != nil {
+							return false, nil, opErr
+						}
+						newOp.Stuck = op.Stuck
+						newOp.Queue = op.Queue
+						newOp.Drain = op.Drain
+						newOp.CallerOp = op.CallerOp
+						if len(op.Queue) > 0 {
+							newOp.Log = append(newOp.Log, queuedLines(op.Queue, actx.snap, newOp.ID)...)
+						}
+						if actx.res != nil {
+							actx.res.Tables = opCounts(newOp)
+							actx.res.Notes = len(newOp.Notes) + len(newOp.Decided)
+							body, _ := json.Marshal(*actx.res)
+							newOp.Result = string(body)
+						}
+						if actx.op != nil {
+							*actx.op = newOp
+						}
+						if len(newOp.Manifests) == 0 {
+							return true, nil, nil
+						}
+						return st.apply(ctx, newOp, actx)
+					}
+				}
+			}
 			if !curable(err, man) {
 				return false, nil, &boundError{Table: man.Table, Cause: err}
 			}

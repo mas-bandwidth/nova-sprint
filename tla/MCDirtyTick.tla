@@ -98,6 +98,11 @@ ScnHeldStream == [heldStreams |-> {"s1"}] @@ Base
 ScnReadsFirst == [readCost |-> "half", askw |-> [c \in Cards |-> c = "c2"], lapse |-> FALSE] @@
   [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
                !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
+\* A refused read card create: c1 ready, c2 in review with its read pending
+\* (askw) and refused by the table (refused). The pump drops the read create,
+\* leaving c2 askw, and deals c1 into the room on m1. The witness "readblocks"
+\* leaves the whole pump unapplied (the work deal is skipped).
+ScnReadRefused == [refused |-> {"c2"}] @@ ScnReadsFirst
 
 \* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
 \* (r1's machine): the ask asks r1 nothing and places the read on r2. No

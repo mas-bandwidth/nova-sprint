@@ -58,7 +58,7 @@ func TestAMergingCardShortOfItsReadsGoesBackToReview(t *testing.T) {
 			assert.True(t, rule6(w.s), "check: merging on one read of two")
 
 			// what the lander refuses it with (land.go readsWhy): the card and its count
-			assert.Equal(t, "s1-1 has ok reads at head "+pr.F("head")+" from 1 of the 2 readers it needs", ReadsShortWhy(w.s, pr))
+			assert.Equal(t, "s1-1 has ok reads at head "+pr.F("head")+" from 1 of the 2 ok reads it needs (s1-1.r1.reader-a)", ReadsShortWhy(w.s, pr))
 
 			// the tick's pump: back to review, off the merge queue, never held for the seat
 			p, _ := TickAccept(w.s, TickReq{})
@@ -137,7 +137,7 @@ func TestMarkLandingChecksTheReadsAndTheTickHonoursTheMark(t *testing.T) {
 	w.s.Work.SetProp(PropReadsNeeded, "2")
 	p := MarkLanding(w.s, pr.Row, pin)
 	require.Len(t, p.Refused, 1)
-	assert.Contains(t, p.Refused[0].Why, "s1-1 has ok reads at head "+pr.F("head")+" from 1 of the 2 readers it needs")
+	assert.Contains(t, p.Refused[0].Why, "s1-1 has ok reads at head "+pr.F("head")+" from 1 of the 2 ok reads it needs")
 	assert.Empty(t, p.Units)
 
 	w.s.Work.SetProp(PropReadsNeeded, "1")

@@ -679,7 +679,7 @@ func tickExtras(s *sprint.Snapshot) map[string][]string {
 // as stale. guard refuses the part on any other ground. due, when not nil, is
 // set to what the last plan left due past the part's bounds.
 func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *uint64, guard func(*sprint.Snapshot) string, due *int) Step {
-	return Step{Verb: "tick " + name, Actor: sprint.MachineActor, Load: All, Extras: tickExtras, Epoch: epoch,
+	step := Step{Verb: "tick " + name, Actor: sprint.MachineActor, Load: All, Extras: tickExtras, Epoch: epoch,
 		Mirrors: mirrors(name),
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			if guard != nil {
@@ -694,6 +694,10 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 			// no judgment for a stream the tables lack: its next step is refused
 			return unchangedNotWritten(s, sprint.ForTables(s, p))
 		}}
+	if name == "deal" {
+		step.DropRefusedReadCreates = true
+	}
+	return step
 }
 
 // mirrors says the part's step brings the display cells up to date after it.

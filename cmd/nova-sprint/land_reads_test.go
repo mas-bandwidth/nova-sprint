@@ -19,7 +19,7 @@ func TestLandRefusesACardShortOfItsReads(t *testing.T) {
 	r.ok("set --reads 2")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.Equal(t, 1, code, "a refusal is reported")
-	assert.Contains(t, out+errs, "s1-1 has ok reads at head "+head+" from 1 of the 2 readers it needs")
+	assert.Contains(t, out+errs, "s1-1 has ok reads at head "+head+" from 1 of the 2 ok reads it needs")
 	assert.Equal(t, []string{"base"}, r.mainLog(), "nothing pushed")
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
 	// a running machine's pump (a stopped one ticks nothing)
