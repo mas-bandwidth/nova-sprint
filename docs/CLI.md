@@ -43,7 +43,7 @@ first tick. Nothing runs between commands: tick by hand with `nova-sprint
 tick`. `run`, `inbox --wait` and `where --watch` are refused. A card's move is
 queued until the next tick prints `MOVED drain`; the tick after `merge`
 completes its move to landed. The flow's output shows results, moves (`MOVED`),
-refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
+refusals with reasons (`REFUSED`, on stderr; a failed step's status line also carries the first reason as `why=<first reason>`), and the sprint's summary
 (`landed/all percent -> ETA ...`).
 [TESTS.md](TESTS.md#nova-sprint) carries the exact transcript through `merge`;
 `cmd/nova-sprint/firstrun_test.go` runs it line by line.

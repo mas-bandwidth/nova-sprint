@@ -6806,6 +6806,8 @@ layer retires this section.
 
 ## 11. Verbs
 
+Every verb's step prints one `REFUSED <key>: <why>` line per refusal on stderr, and a failed step's status line (`<VERB> FAILED moved=<n> refused=<n> notes=<n> why=<first reason>`) carries the first refusal's reason as `why=`, so the one line a reader scans says why it failed, direct or forwarded through the server.
+
 Each takes a set and is one step. A set is ids, a stream, a column, `--max n`,
 or an inbox group (`--group <id>`; a group number is refused, naming the ids).
 Every verb taking `--group` takes `--expect <n>`: when the group's members now

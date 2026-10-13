@@ -42,7 +42,11 @@ func refusalLines(ctx context.Context, st *store.Store, refused []sprint.Refusal
 	lines := make([]string, len(refused))
 	need := false
 	for i, r := range refused {
-		lines[i] = r.Key + ": " + r.Why
+		why := r.Why
+		if why == "" {
+			why = "no reason was given (a defect: report it)"
+		}
+		lines[i] = r.Key + ": " + why
 		need = need || takesRemedy(r.Why)
 	}
 	if !need || st == nil {

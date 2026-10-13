@@ -1069,6 +1069,13 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 		status = "FAILED"
 	}
 	fields := fmt.Sprintf("moved=%d refused=%d notes=%d", len(res.Moved), len(res.Refused), res.Notes)
+	if len(res.Refused) > 0 {
+		why := res.Refused[0].Why
+		if why == "" {
+			why = "no reason was given (a defect: report it)"
+		}
+		fields += " why=" + oneline.Field(why)
+	}
 	if verbName == "add" {
 		fields = fmt.Sprintf("stream=%s cards=%d before=%s %s", oneline.Field(c.addStream), len(res.Moved), oneline.Field(dashed(c.addBefore)), fields)
 	}
