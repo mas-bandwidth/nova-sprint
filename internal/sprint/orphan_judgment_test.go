@@ -28,6 +28,26 @@ func TestAJudgmentNamingNoCardOfTheEpochRetires(t *testing.T) {
 	assert.Contains(t, p.Notes[0].What, "not on the table")
 }
 
+// At an epoch >= 1, an orphan judgment naming an absent card retires with
+// the exact epoch number in its decided note.
+func TestAJudgmentNamingNoCardOfTheEpochRetiresAtEpochOne(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 0)
+	w.s.Epoch = 1
+
+	bound := judgment(NBound, "s1", w.s.Now, 0, "absent-1")
+	w.note(bound)
+	require.Len(t, w.s.Open, 1)
+
+	var p Plan
+	RetireJudgments(w.s, &p, "coordinator")
+	require.NotEmpty(t, p.Closes, "RetireJudgments must close the orphan judgment")
+	require.Len(t, p.Notes, 1, "RetireJudgments must write one decided note")
+	assert.Equal(t, MachineActor, p.Notes[0].Who)
+	assert.Contains(t, p.Notes[0].What, "absent-1")
+	assert.Contains(t, p.Notes[0].What, "not on the table of epoch 1")
+}
+
 // An orphan judgment is not counted by the seat-silent alarm: retired by the
 // tick, it holds no card and causes no NSeatSilent or NRaisedAgain even hours
 // past its deadline.
