@@ -629,10 +629,12 @@ review time. A landing, or nothing left waiting, closes either hold immediately.
 | a provider refuses its key | `ack`, `wait` |
 | a read card is past its deadline | `ask --another`, `wait`, `drop` |
 | a read's branch is not on origin | `ack`, `rework with a fix`, `drop` |
-| a reader breaks nearly everything | `act` |
+| a reader breaks nearly everything | `ack`, `act` |
 | a reader found it broken | `rework with the finding`, `ask another reader`, `drop` |
 | a ready card is not dealt | `drop` |
 | a reminder could not be delivered | `ack` |
+| a member's environment is broken | `fleet up <member>`, `wait` |
+| a provider's usage and the sprint's cost records disagree | `ack`, `wait` |
 | a repository lacks a bench mirror | `fleet up <m>`, `wait` |
 | a stream has had no merge step past its deadline | `merge --stream <s>`, `wait` |
 | a stream has not changed state or count past its deadline | `wait` |
@@ -641,7 +643,7 @@ review time. A landing, or nothing left waiting, closes either hold immediately.
 | an open card is cut on another base | `act`, `wait` |
 | an operation was stuck | `check`, `ack` |
 | an up friend has an empty row while cards wait | `ack`, `wait` |
-| broken reads outrun ok reads | `raise the read tier`, `act` |
+| broken reads outrun ok reads | `raise the read tier`, `ack`, `act` |
 | cannot ask | `reader add`, `wait` |
 | ci red | `rework with a fix`, `return`, `drop`, `ack` |
 | dev is behind | `promoted`, `wait 30m` |
