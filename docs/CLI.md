@@ -895,11 +895,9 @@ use it. It reads GitHub only (no GitLab, no Gitea), never writes to GitHub (the
 seam refuses any GraphQL document that is not a query), and captures the fields
 SPEC-WORK-V1 section 1.3 lists, not reactions or other timeline events.
 
-**Try it with no login.** `nova-work verify -h` prints the tree's grammar and a
-minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
+**Try it with no login.** `nova-work example --dir ./example` writes a minimal pair of tree files and a recorded GraphQL replay fixture. Run `nova-work verify --tree ./example/tree.lisp --against ./example/against.lisp` with no network or credentials: `VERIFY OK ... differences=0`, exit 0. `nova-work verify -h` also prints the tree's grammar and a minimal tree. Save that tree as `a.lisp`, copy it to `b.lisp` with
 `:archived true`, and run `nova-work verify --tree a.lisp --against b.lisp`: one
-`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1. The same
-file against itself is `VERIFY OK ... differences=0`, exit 0.
+`VERIFY DRIFT ... field=archived` line under `VERIFY FAIL`, exit 1.
 
 **First run against GitHub.** Needs `gh auth status` to pass and one repository
 you can read: export `ORG` and `REPO`, then run the three lines of the banner's
@@ -928,6 +926,17 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 `VERIFY OK ... differences=0`, the receipt that the tree holds what GitHub
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
+
+### example
+
+Writes a minimal pair of tree files (`tree.lisp`, `against.lisp`) and a recorded
+GraphQL import replay fixture (`call-01.json`, `call-02.json`) under `--dir`.
+These allow running `nova-work verify` and `nova-work import` offline without `gh`
+credentials or network access:
+
+```
+nova-work example --dir <dir> [--replace]
+```
 
 ### roadmap check, list, add, remove, pull, done, note, render
 
