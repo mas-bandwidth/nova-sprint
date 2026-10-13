@@ -31,6 +31,9 @@ func (a *app) seatEnvironmentPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if !filepath.IsAbs(h) {
+		return "", errors.New("seat environment has no absolute home directory")
+	}
 	return filepath.Join(h, ".config", "nova-sprint", "seat-environment.json"), nil
 }
 
@@ -49,6 +52,11 @@ func (a *app) loadSeatEnvironment() error {
 	if !seatFileOwned(fi, os.Getuid()) {
 		return errors.New("unsafe or unowned seat file")
 	}
+	dir, err := os.Lstat(filepath.Dir(path))
+	if err != nil || !seatDirectoryOwned(dir, os.Getuid()) {
+		return errors.New("unsafe or unowned seat directory")
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -246,4 +254,12 @@ func seatJSONFields(b []byte) error {
 		}
 	}
 	return nil
+}
+
+func seatDirectoryOwned(fi os.FileInfo, uid int) bool {
+	if !fi.IsDir() || fi.Mode().Perm()&0022 != 0 {
+		return false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == uid
 }

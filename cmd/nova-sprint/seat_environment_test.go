@@ -273,3 +273,61 @@ func TestSeatEnvironmentKeepsLegacyProcessAddressAheadOfFile(t *testing.T) {
 	_, c := a.verbSetup("where")
 	assert.Equal(t, "legacy-process:6380", c.redis)
 }
+
+func TestSeatEnvironmentExplicitPasswordReferenceKeepsDefaultUser(t *testing.T) {
+	t.Parallel()
+	l := storeLogin{Redis: "seat:6380", User: "coordinator", Store: "/store", As: "seat", Key: "/key", Sops: "sops", Secret: "FILE_PASSWORD"}
+	b, err := json.Marshal(seatEnvironment{Version: 1, Login: &l})
+	require.NoError(t, err)
+	a := seatEnvApp(t, string(b))
+	base := a.getenv
+	a.getenv = func(k string) string {
+		switch k {
+		case "NOVA_SPRINT_REDIS_PASSWORD_ENV":
+			return "EXPLICIT_PASSWORD"
+		case "EXPLICIT_PASSWORD":
+			return "explicit-default-user-value"
+		}
+		return base(k)
+	}
+	require.NoError(t, a.loadSeatEnvironment())
+	a.seatLoginOn()
+	reads := 0
+	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
+		reads++
+		return secrets.NewSecret("file-coordinator-value"), nil
+	}
+	o, env, err := a.storeOptions(l.Redis)
+	require.NoError(t, err)
+	resolved, err := redisconn.Resolve(o, env)
+	require.NoError(t, err)
+	assert.Empty(t, resolved.User, "an explicit password reference without a user means default-user auth")
+	assert.Equal(t, "explicit-default-user-value", env(resolved.PasswordEnv))
+	assert.Zero(t, reads, "explicit auth must never resolve the recorded coordinator secret")
+}
+
+func TestSeatEnvironmentRejectsUntrustedConfigDirectory(t *testing.T) {
+	t.Parallel()
+	a := seatEnvApp(t, `{"version":1}`)
+	path, err := a.seatEnvironmentPath()
+	require.NoError(t, err)
+	dir := filepath.Dir(path)
+	require.NoError(t, os.Chmod(dir, 0775))
+	require.Error(t, a.loadSeatEnvironment())
+	assert.Nil(t, a.seatEnvironment)
+	require.NoError(t, os.Chmod(dir, 0700))
+	require.NoError(t, a.loadSeatEnvironment())
+	fi, err := os.Lstat(dir)
+	require.NoError(t, err)
+	st := *fi.Sys().(*syscall.Stat_t)
+	st.Uid++
+	assert.False(t, seatDirectoryOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
+}
+
+func TestSeatEnvironmentDoesNotReadRelativeHomeConfig(t *testing.T) {
+	t.Parallel()
+	a := newApp(func(string) string { return "" })
+	a.home = func() (string, error) { return ".", nil }
+	_, err := a.seatEnvironmentPath()
+	require.Error(t, err)
+}
