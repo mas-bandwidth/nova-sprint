@@ -5591,7 +5591,16 @@ the table.
   and one whose cause is the landing itself (`landed work scored low`) never retire this
   way; nor does a broken rule (`NInvariant`), which closes when its rule holds again.
 
-The test is `TestAJudgmentRetiresWhenItsCardLeavesTheTable`.
+To prevent an orphan judgment from standing indefinitely when a tick only reads placed
+cards (a sparse tick), the tick loads the unplaced work cards named by every open judgment
+(its subject when that is a primary, its primaries, and its card: `tickExtras` in
+`internal/sprint/store/tick.go`). True orphans — open judgments naming a card absent from
+the store or a dropped card with no control card — retire with `retired: <target> is not on
+the table of epoch <n>` (or `retired with its card: ...` if the stream's control card records
+an off-table drop event). The model invariant is `NoOrphanAfterTick` in `tla/JudgmentRetire.tla`.
+The tests are `TestAJudgmentRetiresWhenItsCardLeavesTheTable`, `TestADroppedCardsJudgmentRetiresOnASparseTick` (store),
+`TestAJudgmentNamingNoCardOfTheEpochRetires`, `TestAnOrphanIsNotCountedSeatSilent`, and
+`TestCheckNamesEachOrphan`.
 
 ### Push, not poll
 
@@ -6630,7 +6639,9 @@ exactly, member by member, never by their counts.
 6. No primary enters merging without ok read cards from as many different readers at its head as its tier needs (one for a flash card, two for a pro card; section 6).
 7. A score never changes except by rank: every copy has its primary's score.
 8. No card lost or made twice: a card in flight names a primary on the table,
-   and a primary has at most one live work card.
+   and a primary has at most one live work card. Every open judgment must name a
+   card placed on the table or a live stream; `check` reports orphan judgments
+   naming an off-table or absent target as Rule 8 violations (`judgment <id> (<type>) names <target>, not on the table`; `tla/JudgmentRetire.tla NoOrphanAfterTick`).
 9. A stopped stream has an open judgment notification.
 10. (`check` reports a pending operation under this number.)
 11. A primary anywhere but waiting has every need landed or waived. A need that
