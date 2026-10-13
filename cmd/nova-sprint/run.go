@@ -39,6 +39,7 @@ type machineOut struct {
 	Changed bool               `json:"changed"`
 	Tick    *store.TickResult  `json:"tick,omitempty"`
 	Notes   int                `json:"notes"`
+	Closed  []string           `json:"closed,omitempty"`
 	Error   string             `json:"error,omitempty"`
 	Sprint  string             `json:"sprint,omitempty"`
 	Refused []sprint.Refusal   `json:"refused,omitempty"`
@@ -135,7 +136,7 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 	changed := before.Running() != after.Running()
 	line := sprintLine(ctx, st)
 	if c.json {
-		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Sprint: line, Reason: after.Reason}
+		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Closed: res.Said, Sprint: line, Reason: after.Reason}
 		if !after.Until.IsZero() {
 			o.Until = after.Until.UTC().Format(time.RFC3339)
 		}
@@ -166,6 +167,9 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		what = "unchanged: the machine is " + after.StateWord() + " already"
 	}
 	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), shownWord(before), shownWord(after), what)
+	for _, closed := range res.Said {
+		fmt.Fprintf(stdout, "%s NOTE %s\n", token(name), oneline.Escape(closed))
+	}
 	if running {
 		if _, hb, err := st.Machine(ctx); err == nil && a.now().Sub(hb.Alive()) > store.MachineSilence {
 			if a.twinOpen(c.redis) {
@@ -452,6 +456,14 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
 	}
+	var startupStore *store.Store
+	if listen != "" {
+		pinned, err := st.Pinned(context.Background())
+		if err != nil {
+			return a.readFailed("run", err, stderr)
+		}
+		startupStore = pinned
+	}
 	// the locked shape: a store missing a column this build writes is refused
 	// before any key is read, port bound or loop begun, so a build never starts
 	// on a table it would write a missing column to (internal/sprint/TABLES.lock,
@@ -514,6 +526,12 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		if why != "" {
 			fmt.Fprintln(stdout, why)
 			land = false
+		}
+	}
+	// All startup refusal gates passed; recheck the epoch this startup began in.
+	if startupStore != nil {
+		if err := a.recheckStartedServer(context.Background(), startupStore, stdout); err != nil {
+			return a.readFailed("run", err, stderr)
 		}
 	}
 	if land {

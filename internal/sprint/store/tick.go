@@ -428,7 +428,8 @@ func (st *Store) MachineLineOf(m Machine, hb Heartbeat) string {
 }
 
 // SetMachine sets the state RUNNING (start) or STOPPED (stop). Setting the
-// state it has changes nothing and writes nothing. A change is recorded as a
+// state it has leaves that state unchanged; successful starts recheck open
+// judgments even when RUNNING already. A change is recorded as a
 // happened notification (who, when); a STOPPED span is opened by stop and
 // closed by start, and its time added to the total time STOPPED. The flag is
 // read by the tick before every part: the part in flight finishes, and no
@@ -451,6 +452,13 @@ func (st *Store) StopUntil(ctx context.Context, reason string, until time.Time) 
 // setMachine is start, stop, and a stop by hand with its reason and time, as
 // who (docs/SPEC-SPRINT.md section 14).
 func (st *Store) setMachine(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, res Result, err error) {
+	if running {
+		pinned, pinErr := st.pin(ctx)
+		if pinErr != nil {
+			return before, after, res, pinErr
+		}
+		st = pinned // the successful start and recheck stay in this epoch
+	}
 	verb, typ := "stop", sprint.NMachineStopped
 	if running {
 		verb, typ = "start", sprint.NMachineStarted
@@ -462,16 +470,35 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 		return before, before, res, err
 	}
 	if !changed {
-		return before, after, res, nil
+		if running {
+			res, err = st.RecheckJudgments(ctx, verb)
+		}
+		return before, after, res, err
 	}
 	what := fmt.Sprintf("%s -> %s by %s", before.StateWord(), after.StateWord(), who)
 	if reason != "" {
 		what = fmt.Sprintf("%s -> %s", before.StateWord(), sprint.StoppedText(who, reason, until, after.Since))
 	}
-	res, err = st.Run(ctx, Step{Verb: verb, Plan: func(s *sprint.Snapshot) sprint.Plan {
+	step := Step{Verb: verb}
+	if running {
+		step = st.recheckJudgmentsStep(verb)
+	}
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		var p sprint.Plan
+		if running {
+			p = sprint.RecheckJudgments(s, who)
+		}
 		n := sprint.Note{Kind: sprint.Happened, Type: typ, Who: who, At: s.Now, What: what}
-		return sprint.Plan{Notes: []sprint.Note{n}}
-	}})
+		p.Notes = append(p.Notes, n)
+		return p
+	}
+	res, err = st.Run(ctx, step)
+	if running {
+		err = recheckError(res, err)
+		if err != nil {
+			res.Said = nil
+		}
+	}
 	res.Moved = []string{fmt.Sprintf("machine %s -> %s", before.StateWord(), after.StateWord())}
 	return before, after, res, err
 }

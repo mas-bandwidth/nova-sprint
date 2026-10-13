@@ -7916,6 +7916,20 @@ rerunadvance, markerinfer, restoreskip, restorerepeat, noguard and nonatomicrest
 
 ## 14. The system
 
+A successful `start`, including an already RUNNING system, rechecks open judgments.
+Every successful server startup does the same, including first rollout, restart,
+and rollback; the adopt command needs no additional store connection. The pass
+closes ended deadline obligations (a withdrawn take or a completed read), no-route
+conditions that no longer hold, and judgments outlived by a card's move or absence.
+A still-valid or unrecognized obligation stays open. Each closure keeps its decided
+history and prints `START NOTE closed judgment <id> on <subject>: <type>` or the
+corresponding `SERVER NOTE` line. Repeating the pass records no duplicate closure
+and deals no work. The startup's captured epoch cannot close a later cleared
+sprint's judgments. Table and epoch evidence are guarded by the ordinary operation
+fence; configured routes are the snapshot read for this pass, and external config
+writes are not jointly atomic with the table transaction.
+(tla/JudgmentRecheck.tla ClosedOnlyProven, ExactlyOnce, OpenMatchesHistory.)
+
 **READY** (the owner, 2026-10-13: "I would like a new state right after the sprint is
 cleared 'READY'", "this is the state we are in before the machine is started", "it is
 different to stop. When you are in it print 'READY' to ETA"; tla/MachineReady.tla). The
