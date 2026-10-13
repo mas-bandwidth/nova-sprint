@@ -76,7 +76,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 						c.Problem("--text is required for a roadmap item; it wants what the item is")
 					}
 					if c.Str("release") != "" && strings.TrimSpace(c.Str("origin")) == "" {
-						c.Problem("--origin is required for a fix; it wants where the fix came from (a pull request, an issue, a card)")
+						c.Problem(`--origin is required for a fix; it wants where the fix came from, e.g. "PR #123", a 40-character commit SHA, or a commit reference`)
 					}
 				})
 			},
