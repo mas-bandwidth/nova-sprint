@@ -4357,10 +4357,14 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 			heldN[strings.ReplaceAll(k, " ", "_")] = v
 		}
 		sayOK(stdout, true, "clear", "", map[string]any{"from": res.From, "to": res.To, "at": res.At.UTC().Format(time.RFC3339), "held": heldN,
-			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line})
+			"finished": res.Finished, "abandoned": res.Abandoned, "restored": res.Restored, "machine_was": res.Machine, "sprint": line, "defaults": res.Defaults})
 		return 0
 	}
 	fmt.Fprintf(stdout, "CLEAR OK epoch=%d->%d at=%s held: %s%s\n", res.From, res.To, res.At.UTC().Format(time.RFC3339), strings.Join(held, " "), extra)
+	// each setting the old epoch held away from its working default, reset (sprint.Defaults)
+	for _, d := range res.Defaults {
+		fmt.Fprintln(stdout, "CLEAR DEFAULT "+oneline.Escape(d))
+	}
 	if line != "" {
 		fmt.Fprintln(stdout, line)
 	}

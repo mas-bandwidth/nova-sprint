@@ -7756,6 +7756,31 @@ are kept. A primary left in review with no read out and no reader row raises
 the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
 sprint with its readers gone still tells the coordinator rather than idling.
 
+<a id="working-defaults"></a>
+
+**Working defaults.** A clear advances the epoch, then sets every working default
+in the new epoch (the owner, 2026-10-13: "you advance epoch, and then set defaults
+in the new epoch that need to be set"). `sprint.Defaults`
+(internal/sprint/defaults.go) is the one table of every setting's default, each
+row a name, a home and a value: `prop` (a work-table property, epoch keyed:
+read_cards on, fleet and friends on, fleet and friends tiers all, rework_priority
+fix, unserved_tier_falls_to off, read_tier and reads default, each bound at its
+default duration or count, the four backlog alarms off), `bar` (a field of
+nova-config's sprint row) or `shape` (what restoreMembers carries). After
+restoreMembers and before the new epoch's READY record, one step by `clear`
+writes every `prop` row's value into the new epoch (store.setDefaults,
+sprint.SetDefaults), so no setting of a cleared epoch is ever absent and none of
+the old epoch's is carried: a value the old epoch held away from its default is
+reset, and `clear` names each on a `CLEAR DEFAULT <name> was <v>, now <default>`
+line (`--json`: `defaults`). The `bar` rows are nova-config's and a clear never writes them (an
+apply would undo it): their default is read-side, an empty field whose row says so
+read as the row's value (store.Bars.WithDefaults), so an unapplied `git_identity`
+commits as the machine identity, `nova-sprint <nova-sprint@example.invalid>`,
+never the host's. The class tests TestEverySettingHasADeclaredDefault and
+TestEveryBarHasADeclaredDefault hold every field of SetReq, Shape and Bars to a row
+or a listed non-setting. The model is tla/MachineReady.tla (SetDefaults,
+DefaultsAfterClear, NeverAbsent; witnesses leaveone and carryoff).
+
 <a id="14-the-machine"></a>
 
 ## 14. The system
