@@ -16,7 +16,7 @@ func TestWhereCarriesIdleBlockers(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1:8")
 	ta.ok("add --stream s1 --count 2 --brief-file " + proBriefFile(t))
-	ta.ok("add --one --stream s2 --brief-file " + proBriefFile(t) + " --needs s1-1")
+	ta.ok("add --one --stream s2 --count 1 --brief-file " + proBriefFile(t) + " --needs s1-1")
 
 	// before start / tick: no blockers running yet, but cards wait
 	ta.ok("tick")
