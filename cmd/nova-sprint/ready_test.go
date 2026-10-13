@@ -85,6 +85,8 @@ func TestTheTickAcceptsAndReadOkSaysNothingWaits(t *testing.T) {
 	for _, g := range ta.inboxGroups() {
 		require.False(t, g.Type == sprint.NReadyToAccept, "a ready to accept judgment: %+v", g)
 	}
+	ta.ok("start") // started and stopped: STOPPED (a sprint never started is READY and judges nothing)
+	ta.ok("stop --reason r --until 1h")
 	out := ta.ok("inbox")
 	require.Contains(t, out, "the machine is STOPPED and 2 moves are due", "the accepts are moves due:\n%s", out)
 	ta.ok("start")

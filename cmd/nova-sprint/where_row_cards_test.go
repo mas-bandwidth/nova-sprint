@@ -31,7 +31,7 @@ func TestTheDashboardRowsSayHowManyAreReads(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "fred",
-		Fields: map[string]string{"slots": "4", "tiers": "flash", "width": "4", "roles": "builder,reader"}}, "t")
+		Fields: map[string]string{"tiers": "flash", "width": "4", "roles": "builder,reader"}}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	ta.ok("init --members m1:8")

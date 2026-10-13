@@ -133,7 +133,7 @@ func TestAnAcceptedPrimarysWorkIsCountedOk(t *testing.T) {
 	w.must(Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1"}}, Who: "seat"}))
 	pr := w.s.Work.Card("s1-1")
 	require.Equal(t, Merging, pr.Col)
-	require.Equal(t, "b3,hetzner1", pr.F("readers"))
+	require.Equal(t, "s1-1.r1.b3,s1-1.r1.hetzner1", pr.F("readers"))
 	w.part(TickVerdicts, TickReq{})
 	assert.Equal(t, [3]int{0, 1, 0}, doneCells(w, FriendRow("stella")))
 }

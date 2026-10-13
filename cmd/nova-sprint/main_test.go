@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -64,6 +65,13 @@ func newTestApp(t *testing.T) *testApp {
 		defer ta.mu.Unlock()
 		ta.sent = append(ta.sent, m)
 		return nil
+	}
+	// the rig's ~240 bare starts run on briefless --count cards: the card check gate is off
+	// here, and every gate test turns it on (check_cards_test.go); a base tree is never read
+	// from a clone (no git, no network)
+	ta.a.cardCheckGate = false
+	ta.a.checkTree = func(context.Context, swarm.CardBase) sprint.AdmissionTree {
+		return sprint.AdmissionTree{Missing: "no base tree is read in a unit test"}
 	}
 	// run's wait on a quiet log steps the clock by the time it may take
 	ta.m.LogWait = func(d time.Duration) { ta.a.sleep(d) }
@@ -265,7 +273,7 @@ func TestTheCommandDrivesAStreamToLanded(t *testing.T) {
 	require.Contains(t, out, "INIT OK tables=work,readers,merge,fleet view=sprint", "init")
 	out = ta.ok("add --stream s1 --count 4")
 	require.Contains(t, out, "ADD OK stream=s1 cards=4 before=- moved=4", "add")
-	require.Contains(t, out, "\nSTOPPED  0/4 0.0%", "add")
+	require.Contains(t, out, "\nREADY  0/4 0.0%", "add") // never started: READY
 	require.NotContains(t, out, "-> ETA", "add")
 	ta.clean()
 	ta.ok("start")
@@ -347,7 +355,7 @@ func TestJudgmentsReachTheInboxAndTheCoordinatorAnswers(t *testing.T) {
 	ta.ok("ask")
 	code, _, errs = ta.do("accept s1-1")
 	require.Equal(t, 1, code, "accept with no reads: %d %s", code, errs)
-	require.Contains(t, errs, "REFUSED s1-1: needs ok from two different readers", "accept with no reads: %d %s", code, errs)
+	require.Contains(t, errs, "REFUSED s1-1: needs ok from two ok reads", "accept with no reads: %d %s", code, errs)
 	require.Contains(t, errs, "ACCEPT FAILED", "accept with no reads: %d %s", code, errs)
 	ta.clean()
 }
@@ -489,15 +497,16 @@ func TestTablesAreNamedPlainlyAndConfirmIsTheViewName(t *testing.T) {
 	require.True(t, strings.HasPrefix(errs, "nova-sprint where REFUSED: NOVA_SPRINT_PREFIX is set: "), "the prefix variable is checked before --redis: %d %q", code, errs)
 }
 
-// A verb on a stopped machine ends with a line that starts with STOPPED and
-// has no ETA, as the header of where does; with no cards it is STOPPED alone.
-func TestVerbLineOnAStoppedMachineHasNoETA(t *testing.T) {
+// A verb on a machine not running ends with a line that has no ETA, as the header
+// of where does: READY (never started, docs/SPEC-SPRINT.md section 14) alone with
+// no cards, READY and the progress with cards, and STOPPED and its why once stopped.
+func TestVerbLineOnAMachineNotRunningHasNoETA(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	out := ta.ok("init --readers reader-a --members m1")
-	require.Equal(t, "STOPPED", lastLine(out), "init on a stopped machine, no cards: last line %q in %s", lastLine(out), out)
+	require.Equal(t, "READY", lastLine(out), "init, never started (READY, no ETA), no cards: last line %q in %s", lastLine(out), out)
 	out = ta.ok("add --stream s1 --count 3")
-	require.Equal(t, "STOPPED  0/3 0.0%", lastLine(out), "add on a stopped machine: last line %q in %s", lastLine(out), out)
+	require.Equal(t, "READY  0/3 0.0%", lastLine(out), "add on a machine never started: last line %q in %s", lastLine(out), out)
 	require.NotContains(t, out, "-> ETA", "add on a stopped machine: last line %q in %s", lastLine(out), out)
 	ta.ok("start")
 	out = ta.ok("add --stream s2 --count 1 --one")
@@ -507,6 +516,13 @@ func TestVerbLineOnAStoppedMachineHasNoETA(t *testing.T) {
 	out = ta.ok("tick")
 	last := lastLine(out)
 	require.True(t, strings.HasPrefix(last, "0/4 0.0% -> ETA"), "the tick after an add on a running machine: last line %q in %s", last, out)
+	// stopped: the line starts with STOPPED (the stop's why and back-by time) and
+	// has no ETA, as the header of where does
+	out = ta.ok("stop --reason r --until 9999h")
+	last = lastLine(out)
+	require.True(t, strings.HasPrefix(last, "STOPPED, expected back by "), "stop: last line %q in %s", last, out)
+	require.True(t, strings.HasSuffix(last, "  0/4 0.0%"), "stop: last line %q in %s", last, out)
+	require.NotContains(t, out, "-> ETA", "stop: last line %q in %s", last, out)
 }
 
 func lastLine(out string) string {
@@ -539,7 +555,7 @@ func TestClearByTheCommand(t *testing.T) {
 	out := ta.clearWithReturns(0, "m1", "s1-1.w1@1", "s1-2.w1@1")
 	require.Contains(t, out, "CLEAR OK epoch=0->1", "clear")
 	require.Contains(t, out, "primaries=2", "clear")
-	require.Contains(t, out, "\nSTOPPED\n", "clear: %s", out)
+	require.Contains(t, out, "\nREADY\n", "clear leaves READY (docs/SPEC-SPRINT.md section 14): %s", out)
 	require.NotContains(t, out, "-> ETA", "clear")
 	code, _, errs := ta.do("finish --as m1 --epoch 0 s1-1.w1@1")
 	require.Equal(t, 1, code, "a late finish: %d %s", code, errs)

@@ -194,6 +194,10 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 	// --cascade (docs/SPEC-SPRINT.md section 11), so no blocked judgment opens.
 	ta.ok("add --stream s3 b --one --needs s2-1")
 	ta.ok("fleet down m2")
+	// started and stopped: a STOPPED machine with moves due is a judgment (a sprint
+	// never started is READY and raises none, docs/SPEC-SPRINT.md section 14)
+	ta.ok("start")
+	ta.ok("stop --reason r --until 1h")
 
 	out := ta.ok("handover")
 	for _, want := range []string{

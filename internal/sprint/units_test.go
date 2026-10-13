@@ -58,7 +58,11 @@ func TestEveryUnitASprintNeedsIsInstalledByAVerb(t *testing.T) {
 			}
 
 			for _, k := range UnitKinds {
-				u := ServiceUnit{Kind: k, OS: goos, Args: append([]string{"/opt/nova/bin/" + k.Tool}, append(k.Verb, "--a b", `50%$"`)...),
+				line := append([]string{"/opt/nova/bin/" + k.Tool}, append(k.Verb, "--a b", `50%$"`)...)
+				if k.Kind == "server" {
+					line = append(line, "--land") // the server unit says whether it lands (units --check)
+				}
+				u := ServiceUnit{Kind: k, OS: goos, Args: line,
 					Env: [][2]string{{"NOVA_SPRINT_ACTOR", "seat"}, {"NOVA_PG_PASSWORD_ENV", "NOVA_PG_CONFIG_PASSWORD"}}, Every: 5 * time.Minute}
 				r, err := in.InstallUnit(u)
 				require.NoError(t, err, k.Kind)

@@ -24,10 +24,12 @@ import (
 // ask of 2026-10-11; the pulse now animates opacity on the compositor and the per-poll layout
 // fit runs from a data-derived key, the owner's ask of 2026-10-11: "There's also a weird
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
-// critical."): the page is that page, byte for byte (pageview.go).
+// critical."; the ETA cell says READY in green before the first start since a clear, the
+// owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"): the page is that
+// page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "4aee69bbf53c916ea43fce57de132cfb5b4f9679d8a4546988cf0778860fa140"
-	liveAppSHA256   = "f7723ec15c5f72dd01bc29825fd7bddcbd056c84fd249ead613adbe1c9e4d912"
+	pageIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
+	pageAppSHA256   = "319e649504e180cb20c56a4211728cdba4848caa00fc21e298fe272c0c27a850"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -46,25 +48,27 @@ func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:
 // buildQuery is the cache-busting query a served page carries.
 var buildQuery = regexp.MustCompile(`\?v=[0-9a-f]+`)
 
-// The served index.html and app.js are the live page's files byte for byte: app.js as it is,
+// The served index.html and app.js are the page's files byte for byte: app.js as it is,
 // index.html with the live server's three fills (server.py index_page: the script versioned, the
-// robot tile in the logo slot, its favicon links), the build in place of its version.
-func TestThePageIsTheLivePageByteForByte(t *testing.T) {
+// live page's robot tile inline as a data PNG in the logo slot, the robot tile as the favicon), the
+// build in place of its version.
+func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
 	app, err := os.ReadFile("page/app.js")
 	require.NoError(t, err)
 	index, err := os.ReadFile("page/index.html")
 	require.NoError(t, err)
-	assert.Equal(t, liveAppSHA256, sha(app), "page/app.js is the live app.js")
-	assert.Equal(t, liveIndexSHA256, sha(index), "page/index.html is the live index.html")
+	assert.Equal(t, pageAppSHA256, sha(app), "page/app.js is the locked app.js")
+	assert.Equal(t, pageIndexSHA256, sha(index), "page/index.html is the locked index.html")
 	assert.Equal(t, app, file("app.js"), "the embedded app.js is page/app.js")
 	assert.Equal(t, index, file("index.html"), "the embedded index.html is page/index.html")
 
 	assert.Equal(t, app, get(t, r.s, "/app.js").Body.Bytes(), "/app.js is the live app.js, byte for byte")
 	const v = "?v=X"
-	// server.py index_page, the tile branch, its version written v
-	slot := `<img id="logo" class="logo-tile" src="/logo-tile-192.png` + v + `" srcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x" alt="">`
+	// server.py index_page, the logo branch, its version written v: the live page's robot tile inline
+	// as a data PNG (the live page's logo, liveLogoData), the build in place of its version
+	slot := `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
 	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()

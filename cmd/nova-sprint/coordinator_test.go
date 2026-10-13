@@ -72,6 +72,7 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"release":           "release s1-stop --reason r",
 		"resolve":           "resolve",
 		"start":             "start",
+		"check cards":       "check cards",
 		"stop":              "stop --reason r --until 9999h",
 		"ask":               "ask",
 		"accept":            "accept s1-1",

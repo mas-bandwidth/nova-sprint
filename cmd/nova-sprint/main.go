@@ -43,6 +43,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -117,6 +118,13 @@ type app struct {
 	// checkTwin, when set (a test), is every store's CheckTwin: each part a
 	// tick plans on its twin is checked against a fresh read (store/twin.go).
 	checkTwin func(held, fresh *sprint.Snapshot) error
+	// cardCheckGate is start's card check gate (check_cards.go, startCardCheckGate): on in
+	// newApp, with no flag, variable or setting that turns it off; the test rigs whose bare
+	// starts run on briefless --count cards keep it off, and every gate test turns it on.
+	cardCheckGate bool
+	// checkTree, when set (a test), is the base tree check cards reads for a (repository,
+	// base) in place of the lander's clone (cardTree): a unit test reads no git.
+	checkTree func(ctx context.Context, cb swarm.CardBase) sprint.AdmissionTree
 	// readTwins is the process's read twin of each store, by address: what
 	// its verbs last read, so a verb after the first reads only what changed
 	// (store/twin.go). It is not the mem twin above, which is a store.
@@ -152,6 +160,9 @@ type app struct {
 	// beforePush, when set (a test), runs before each push land makes, with
 	// the attempt (1, then 2 after the base moved).
 	beforePush func(attempt int)
+	// onSetFlags, when set (a test), is given the set verb's whole flag set before it parses
+	// (TestEverySetFlagHasADeclaredDefault reads every flag at run time).
+	onSetFlags func(fs flagSet)
 	// gateRan, when set (a test), runs before each tree gate land runs, with the directory
 	// gated and whether the tree tests run: the count of gates a pass makes (landpass.go).
 	gateRan func(dir string, tests bool)
@@ -385,6 +396,9 @@ func newApp(getenv func(string) string) *app {
 	a.briefBar = a.readBriefBar
 	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
 	a.busWatches = map[string]*bus.Watch{}
+	// start refuses until a clean card check matches the cards; no waiver
+	// (start-refuses-until-a-clean-check, tla/MachineReady.tla StartOnlyChecked)
+	a.cardCheckGate = true
 	return a
 }
 

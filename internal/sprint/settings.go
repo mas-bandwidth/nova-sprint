@@ -341,15 +341,15 @@ func stronger(a, b string) string {
 // 2026-10-12: the cap is nova-config's sprint row max_attempts (brief_bound.go,
 // AttemptsCap).
 type SetReq struct {
-	ReworkPriority    string   `json:",omitempty"`
+	ReworkPriority    string   `json:",omitempty" prop:"rework_priority"`
 	Streams           []string `json:",omitempty"`
-	ReadTier          string   `json:",omitempty"`
-	DealtMax          string   `json:",omitempty"`
+	ReadTier          string   `json:",omitempty" prop:"read_tier"`
+	DealtMax          string   `json:",omitempty" prop:"dealt_max"`
 	Attempts          string   `json:",omitempty"`
-	FriendIdle        string   `json:",omitempty"`
-	LandingStallBound string   `json:",omitempty"`
-	FriendStallAfter  string   `json:",omitempty"`
-	FriendStallStep   string   `json:",omitempty"`
+	FriendIdle        string   `json:",omitempty" prop:"friend_idle"`
+	LandingStallBound string   `json:",omitempty" prop:"landing_stall_bound"`
+	FriendStallAfter  string   `json:",omitempty" prop:"friend_stall_after"`
+	FriendStallStep   string   `json:",omitempty" prop:"friend_stall_step"`
 	// Reason, with Streams and ReadTier, is why the read tier is set, recorded on the
 	// stream's control card (FieldReadTierReason); Answers the judgments this answers.
 	Reason  string   `json:",omitempty"`
@@ -371,31 +371,31 @@ type SetReq struct {
 	// with when its brief's line 1 names none; default or none takes it off.
 	DefaultTier string `json:",omitempty"`
 	// The backlog alarms' thresholds (alarms.go): a count, a percent, on, or off.
-	AlarmReview  string `json:",omitempty"`
-	AlarmMerging string `json:",omitempty"`
-	AlarmFleet   string `json:",omitempty"`
-	AlarmReady   string `json:",omitempty"`
-	GoLanes      string `json:",omitempty"` // the Go lanes of every machine (PropGoLanes, section 18)
+	AlarmReview  string `json:",omitempty" prop:"alarm_review"`
+	AlarmMerging string `json:",omitempty" prop:"alarm_merging"`
+	AlarmFleet   string `json:",omitempty" prop:"alarm_fleet"`
+	AlarmReady   string `json:",omitempty" prop:"alarm_ready"`
+	GoLanes      string `json:",omitempty" prop:"go_lanes"` // the Go lanes of every machine (PropGoLanes, section 18)
 	// The drift alarm's thresholds of the base ahead of dev (drift.go): commits and hours,
 	// whole numbers from 1, or default.
-	DriftCommits string `json:",omitempty"`
-	DriftHours   string `json:",omitempty"`
+	DriftCommits string `json:",omitempty" prop:"drift_commits"`
+	DriftHours   string `json:",omitempty" prop:"drift_hours"`
 	// Fleet and Friends are the work switches (PropFleet, PropFriends): on or off.
-	Fleet   string `json:",omitempty"`
-	Friends string `json:",omitempty"`
+	Fleet   string `json:",omitempty" prop:"fleet"`
+	Friends string `json:",omitempty" prop:"friends"`
 	// FleetTiers and FriendsTiers are the tiers each side may take (PropFleetTiers,
 	// PropFriendsTiers): tiers comma separated, or all.
-	FleetTiers   string `json:",omitempty"`
-	FriendsTiers string `json:",omitempty"`
+	FleetTiers   string `json:",omitempty" prop:"fleet_tiers"`
+	FriendsTiers string `json:",omitempty" prop:"friends_tiers"`
 	// ReadCards turns read cards on or off (PropReadCards, read_cards.go): on, off, or
 	// default (on).
-	ReadCards string `json:",omitempty"`
+	ReadCards string `json:",omitempty" prop:"read_cards"`
 	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, 3, or
 	// default (each card's own rule, ReadsNeeded).
-	Reads string `json:",omitempty"`
+	Reads string `json:",omitempty" prop:"reads_needed"`
 	// UnservedTierFallsTo is the tier an unserved card falls to (PropUnservedTierFallsTo):
 	// heavy, pro, flash, off, or default (off).
-	UnservedTierFallsTo string `json:",omitempty"`
+	UnservedTierFallsTo string `json:",omitempty" prop:"unserved_tier_falls_to"`
 	// Base, with Streams, re-points every card of the stream not yet landed to
 	// another base branch (stream set --base, streamSetBaseCards).
 	Base string `json:",omitempty"`
@@ -766,6 +766,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: kv[0], Value: kv[1], Was: was, WasAbsent: !had})
 		moved = append(moved, strings.ReplaceAll(kv[0], "_", "-")+" "+orDefault(kv[1], kv[0]))
 	}
+	// the epoch's set record: start's settings gate warns on a value a set chose and
+	// refuses one no set chose (defaults_working.go, SetByWrite)
+	p.Props = append(p.Props, SetByWrite(s, r.Who, p.Props)...)
 	p.Units = append(p.Units, Unit{Key: "set", Moved: "sprint " + strings.Join(moved, ", ")})
 	return p
 }

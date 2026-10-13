@@ -4,12 +4,14 @@ package config
 // by the deal (internal/sprint/store, the routes read); a route's row is the
 // hash route:<name> and a tier's the hash tier:<name>, each name in its set.
 const (
-	RoutesKey = "routes"
-	TiersKey  = "tiers"
+	RoutesKey    = "routes"
+	ProvidersKey = "providers"
+	TiersKey     = "tiers"
 )
 
 // FriendBeatKey is a friend's own heartbeat (nova-friend): its host field
-// is the machine she runs on now, what her desired slots are charged to.
+// is the machine she runs on now, what her desired hash is recorded with;
+// no machine caps a friend (her width is her one capacity number).
 func FriendBeatKey(f string) string { return "friend:" + f + ":beat" }
 
 // RouteKey is a route's hash: its fields, name, rev and at. The deal reads
@@ -23,3 +25,6 @@ func TierKey(name string) string { return "tier:" + name }
 // SprintKey is the plain key one sprint field is written to:
 // sprint:coordinator.
 func SprintKey(field string) string { return "sprint:" + field }
+
+// ProviderKey is an applied provider row, including billing and funded.
+func ProviderKey(name string) string { return "provider:" + name }

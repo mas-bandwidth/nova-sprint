@@ -549,13 +549,14 @@ func keptOffTable(s *Snapshot, id string) bool {
 }
 
 // tierBelowFrontierForTLA is why a brief edit's --tier is refused: a tier below
-// frontier for a brief whose PATHS or NEW covers tla/ (the lint's tla-is-frontier
-// rule, as briefTier refuses it for tier --set); "" when tier is unset or allowed.
+// heavy for a brief whose PATHS or NEW covers tla/ (the lint's
+// tla-is-heavy-or-above rule, as briefTier refuses it for tier --set); "" when
+// tier is unset or heavy or above.
 func tierBelowFrontierForTLA(id, tier, brief string) string {
-	if tier == "" || tier == cardhdr.RouteFrontier || !briefCoversTLA(brief) {
+	if tier == "" || tier == cardhdr.RouteFrontier || tier == cardhdr.RouteHeavy || !briefCoversTLA(brief) {
 		return ""
 	}
-	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the frontier tier's work: --tier " + tier + " is below frontier and refused (the lint's tla-is-frontier rule); nothing was changed"
+	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: --tier " + tier + " is below heavy and refused (the lint's tla-is-heavy-or-above rule); nothing was changed"
 }
 
 // sameNeeds says two need lists are the same, in order: the ordinary brief path
@@ -619,8 +620,8 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	case c.F(FieldTier) == r.Tier:
 		p.refuse(c.ID, c.ID+" is pinned to tier "+r.Tier+" already; nothing was changed")
 		return p
-	case r.Tier != cardhdr.RouteFrontier && briefCoversTLA(c.F("brief")):
-		p.refuse(c.ID, c.ID+"'s PATHS covers tla/, a TLA+ model, and a model is the frontier tier's work: a tier below frontier is refused (the lint's tla-is-frontier rule); nothing was changed")
+	case r.Tier != cardhdr.RouteFrontier && r.Tier != cardhdr.RouteHeavy && briefCoversTLA(c.F("brief")):
+		p.refuse(c.ID, c.ID+"'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: a tier below heavy is refused (the lint's tla-is-heavy-or-above rule); nothing was changed")
 		return p
 	}
 	if m, _ := cardhdr.ReadModel(c.F("brief")); m.Pin != "" {
@@ -647,8 +648,8 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 }
 
 // briefCoversTLA says the brief's PATHS or NEW covers tla/ (the lint's
-// tla-is-frontier rule): a TLA+ model, the frontier tier's work, so a tier below
-// frontier is refused.
+// tla-is-heavy-or-above rule): a TLA+ model, the heavy tier's work or above, so
+// a tier below heavy is refused.
 func briefCoversTLA(brief string) bool {
 	for _, e := range swarm.CardPaths([]byte(brief)) {
 		e = strings.TrimSpace(e)

@@ -48,7 +48,7 @@ func TestTheHeroOfASprintDoneIsTheEpochs(t *testing.T) {
 		d["landed"], d["all"] = 9, 9
 		d["summary"] = "9/9 100.0% done"
 	})
-	assert.Equal(t, [3]string{"9", "9", "done"}, [3]string{res.Landed, res.All, res.Eta})
+	assert.Equal(t, [3]string{"9", "9", "DONE"}, [3]string{res.Landed, res.All, res.Eta})
 	assert.Equal(t, "$4.50", res.Cost, "the epoch's cost: the table's and the archived streams'")
 	assert.Equal(t, "$0.50 per card", res.Per, "$4.50 over 9")
 	assert.Empty(t, res.Title)

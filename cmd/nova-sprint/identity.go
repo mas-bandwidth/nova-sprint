@@ -2,19 +2,22 @@ package main
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // identityRemedy is the one remedy every machine-identity refusal names.
-const identityRemedy = "run: nova-config sprint set --git_identity 'nova-sprint <nova-sprint@example.invalid>' then nova-config apply"
+const identityRemedy = "run: " + sprint.GitIdentityRemedy
 
 // readMachineIdentity reads the sprint row's git_identity and returns the author and
-// committer environment it spells (docs/SPEC-SPRINT.md, the machine's commit identity);
-// why is a refusal when none is configured, naming the setting. what is the machine's
+// committer environment it spells (docs/SPEC-SPRINT.md, the machine's commit identity); an
+// unapplied row reads config.DefaultGitIdentity (store.Bars.WithDefaults), and why is a
+// refusal only for a value that does not parse as Name <email>, naming the setting. what is the machine's
 // verb the refusal speaks of (a landing, a promotion), so the words name what refused.
 func readMachineIdentity(ctx context.Context, st *store.Store, what string) ([]string, string) {
 	id, err := st.GitIdentity(ctx)
@@ -23,7 +26,7 @@ func readMachineIdentity(ctx context.Context, st *store.Store, what string) ([]s
 	}
 	parsed, ok := config.ParseGitIdentity(id)
 	if !ok {
-		return nil, "the sprint row names no git_identity, so the " + what + " would commit as the host's global git config; " + identityRemedy
+		return nil, "the sprint row's git_identity " + strconv.Quote(id) + " is not 'Name <email>', so the " + what + " would commit as the host's global git config; " + identityRemedy
 	}
 	return parsed.Env(), ""
 }

@@ -26,10 +26,11 @@ func (st *Store) Init(ctx context.Context) error {
 	if err := st.B.ViewSet(ctx, st.Names.ViewDef()); err != nil {
 		return err
 	}
-	// The machine is STOPPED from the start: the time before the first start
-	// is a STOPPED span, and counts toward no deadline. The view shows it
-	// (section 1): STOPPED, written with the record in one step; on a sprint
-	// that has a machine already, the view's state is written from it.
+	// The machine is READY from the start (section 14, "READY"): the time
+	// before the first start is a STOPPED span in the record, and counts toward
+	// no deadline. The view shows it (section 1): READY, written with the record
+	// in one step; on a sprint that has a machine already, the view's state is
+	// written from it.
 	if kv, ok := st.B.(KV); ok {
 		m, _, err := st.Machine(ctx)
 		if err != nil {
@@ -37,7 +38,7 @@ func (st *Store) Init(ctx context.Context) error {
 		}
 		if m.State == "" {
 			now := st.now()
-			return st.putMachine(ctx, Machine{State: Stopped, Since: now, Who: st.Actor, Spans: []Span{{From: now}}})
+			return st.putMachine(ctx, Machine{State: Stopped, Since: now, Who: st.Actor, Spans: []Span{{From: now}}, ready: true})
 		}
 		return kv.ShowState(ctx, st.Names.View(), ViewState(m))
 	}
@@ -414,11 +415,23 @@ func (st *Store) Inbox(ctx context.Context, deadline, stale time.Duration, max i
 	if err != nil {
 		return v, err
 	}
-	req := sprint.InboxReq{Now: st.now(), Open: v.Open, Recent: notes, Streams: clocks, Deadline: deadline, Stale: stale, Prefix: st.Names.Prefix, Epoch: st.epoch}
-	if snap, err := st.Load(ctx, []string{sprint.Work}, nil); err == nil {
-		req.Weights = sprint.Weights(snap) // the heaviest judgments first (weight.go)
-		req.OnWork = func(id string) bool { return snap.Work != nil && snap.Work.Placed(id) != nil }
+	var snapOnWork func(string) bool
+	var snapWeights map[string]int
+	if snap, err := st.Load(ctx, []string{sprint.Work, sprint.Fleet}, nil); err == nil {
+		snapWeights = sprint.Weights(snap) // the heaviest judgments first (weight.go)
+		snapOnWork = func(id string) bool { return snap.Work != nil && snap.Work.Placed(id) != nil }
+		if routes, tiers, err := st.Routes(ctx); err == nil {
+			snap.Routes = routes
+			snap.Tiers = tiers
+		}
+		blocked := sprint.TierBlockedStreams(snap)
+		for i := range clocks {
+			if t, ok := blocked[clocks[i].Stream]; ok {
+				clocks[i].TierBlocked = t
+			}
+		}
 	}
+	req := sprint.InboxReq{Now: st.now(), Open: v.Open, Recent: notes, Streams: clocks, Deadline: deadline, Stale: stale, Prefix: st.Names.Prefix, Epoch: st.epoch, Weights: snapWeights, OnWork: snapOnWork}
 	var machine []sprint.Group
 	if _, ok := st.B.(KV); ok {
 		// One clock for overdue: running time, as the tick's deadlines.
@@ -438,8 +451,13 @@ func (st *Store) Inbox(ctx context.Context, deadline, stale time.Duration, max i
 // machineGroups is what the machine's record says the coordinator must act
 // on, computed at read time as the stale line is: a RUNNING machine that is
 // not ticking (its run loop died), a tick failing three times in a row, and
-// a STOPPED machine with moves due.
+// a STOPPED machine with moves due. A READY machine raises none: its due
+// moves are a sprint being prepared, not a stall (docs/SPEC-SPRINT.md section
+// 14, "READY"; tla/MachineReady.tla ReadyNeverJudges).
 func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]sprint.Group, error) {
+	if m.Ready() {
+		return nil, nil
+	}
 	now := st.now()
 	var out []sprint.Group
 	group := func(id, typ, what string, cmds ...sprint.Command) sprint.Group {
@@ -464,9 +482,22 @@ func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]
 		default:
 			g := group("machine:silent", sprint.NMachineSilent,
 				fmt.Sprintf("the machine is RUNNING and nothing has ticked for %ds: its run loop is not running", int(gap/time.Second)),
-				sprint.Command{Decision: "run the loop", Lines: []string{"nova-sprint run"}},
+				sprint.Command{Decision: "run the server, which ticks and lands", Lines: []string{"nova-sprint install server --listen <address:port>", "restart its unit (by hand: nova-sprint run --listen <address:port>)"}},
 				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}})
 			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00last=%s\x00by-hand=false", g.ID, m.RunSeq, last.UTC().Format(time.RFC3339Nano))
+			out = append(out, g)
+		}
+		// a server that came up or restarted with --land=false while the machine RUNS lands
+		// nothing, and start's gate never saw it: one judgment while its fresh record says
+		// so (start-refuses-a-non-working-setting, F2 of cold read 1)
+		if r, ok, err := st.Server(ctx); err != nil {
+			return nil, err
+		} else if ok && !r.Land {
+			g := group("machine:landsnothing", sprint.NServerLandsNothing,
+				fmt.Sprintf("the machine is RUNNING and its server lands nothing (actor=%s pid=%d host=%s runs without --land): accepted cards are never merged", r.Actor, r.PID, r.Host),
+				sprint.Command{Decision: "run the server, which lands", Lines: []string{"nova-sprint install server --listen <address:port>", "restart its unit (by hand: nova-sprint run --listen <address:port>)"}},
+				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the server lands nothing' --until 1h"}})
+			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00server=%s/%d/%s", g.ID, m.RunSeq, r.Host, r.PID, r.Started.UTC().Format(time.RFC3339Nano))
 			out = append(out, g)
 		}
 		if hb.Failures >= 3 && hb.Error != "" {
