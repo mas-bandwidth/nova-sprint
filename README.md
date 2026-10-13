@@ -133,8 +133,8 @@ Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
 Then go wider. Work alongside the team, or come back in the morning.
 
-Start with the [local first lap](docs/FIRST-LAP.md) to try the card flow without a
-Redis server, model account, or Git remote. For installation and a live team,
+Start with the [first-lap note](docs/FIRST-LAP.md) to check your installation
+and learn the current path to a first card. For installation and a live team,
 see [getting started](docs/GETTING-STARTED.md) and the
 [coordinator's guide](docs/SPRINT-COORDINATOR.md).
 

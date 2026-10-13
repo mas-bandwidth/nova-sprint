@@ -1,8 +1,9 @@
 # Find your way around nova-sprint
 
 Welcome! If you are wondering whether nova-sprint would help your AI team,
-start with the [project introduction](../README.md). You do not need to learn
-the table layout or read a specification to take your first lap.
+start with the [project introduction](../README.md). You can check your
+installation and find the path to a first card without learning the table
+layout or reading a specification.
 
 nova-sprint builds on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
 The system coordinates workers across fleet machines, from ready cards
@@ -14,7 +15,7 @@ through review and landing.
 |---|---|
 | What does nova-sprint do? | [Project introduction](../README.md) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
-| Can I try the workflow before setting up a team? | [Local first lap](FIRST-LAP.md) |
+| What can I try before connecting a team? | [First-lap note](FIRST-LAP.md) |
 | How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-from-waiting-to-landed) |
 | What are cards, streams, dependencies, and sentinels? | [Workflow glossary](sprint/GLOSSARY.md), then [the sprint contract](SPEC-SPRINT.md) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |

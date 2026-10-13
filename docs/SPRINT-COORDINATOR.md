@@ -13,12 +13,13 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
 
 ### A first live start
 
-Try the [local first lap](FIRST-LAP.md) before connecting a team. For a live
-sprint, start with one server beside the Redis store and use the coordinator
-actor named by the sprint. In the interactive coordinator shell, set
-`NOVA_SPRINT_SERVER` to that server's local address and `NOVA_SPRINT_ACTOR` to
-the coordinator; see the [environment reference](ENVIRONMENT.md) for the
-connection choices.
+Read the [first-lap note](FIRST-LAP.md) for installation checks and the current
+twin limitation. For a live sprint, start with one server beside the Redis
+store and use the coordinator actor named by the sprint. In the interactive
+coordinator shell, set `NOVA_SPRINT_SERVER` to that server's local address,
+`NOVA_BUS_REDIS` to the bus store, and `NOVA_SPRINT_ACTOR` to the coordinator.
+The server process also needs `NOVA_BUS_REDIS`. See the
+[environment reference](ENVIRONMENT.md) for the connection choices.
 
 For live coordination, run `nova-sprint hook` before other coordinator verbs.
 Prove each challenge while the hook is connected, read the complete event
@@ -179,7 +180,7 @@ bound judgment by itself: the verb nova-decide chose is applied, by the line the
 its probability is at or above `decide_judgment_bar` (nova-config's sprint row: `nova-config sprint set
 --decide_judgment_bar <p> --as <coordinator>`, then `nova-config apply --kind sprint`); `--bar <p>` gives one for
 a run. The row ships it empty, and with no bar nothing is applied: every decision is recorded and each row says
-what a bar would apply, so the record trains first. 0.8 is a starting point measured on 100 of the coordinator's own judgments, not an independent calibration (Nova Tools [SPEC-NOVA-DECIDE.md](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-NOVA-DECIDE.md#13-the-judgment-decision): 59
+what a bar would apply, so the record trains first. 0.8 is a starting point measured on 100 of the coordinator's own judgments, not an independent calibration (Nova Tools [nova-decide package documentation](https://pkg.go.dev/github.com/mas-bandwidth/nova-tools/pkg/decide): 59
 of 100 the coordinator's own verb; at 0.8 it applies 40, 39 of them the coordinator's; on blocked, 3 of 21, and
 bound, 3 of 13, Jev says drop, and a drop is never applied). What it lists is yours, each with why: every drop (with the reason the
 decision chose), everything under the bar, a verb the judgment does not print, a card applied before whose

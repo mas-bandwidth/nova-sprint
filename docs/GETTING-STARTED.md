@@ -38,24 +38,27 @@ command show what is on your `PATH`.
 Ask your AI friend:
 
 > Help me get started with nova-sprint (https://github.com/mas-bandwidth/nova-sprint).
-> Read the getting-started guide and walk through the local first lap with me.
-> Then help me set up a small live sprint with you as coordinator: one useful task,
-> a worker, an independent review, and a checked landing. Let's agree on the repository,
-> model access, capacity, and what you can decide before adding more work.
+> Read the getting-started guide and the first-lap note with me. Check my
+> installation, then help me set up a small live sprint with you as coordinator:
+> one useful task, a worker, an independent review, and a checked landing.
+> Let's agree on the repository, model access, capacity, and what you can decide
+> before adding more work.
 
-The **[local first lap](FIRST-LAP.md)** needs no Redis server, model account,
-or Git remote. It shows the handoffs without spending model tokens or changing code.
-A live team also needs a sprint server, Redis for shared runtime state and
-communications, PostgreSQL for durable fleet configuration through
-`nova-config`, configured workers and reviewers, and model credentials.
+The **[first lap](FIRST-LAP.md)** starts with version and help checks. The
+no-Redis card-flow recipe still shown by `nova-sprint help` is currently blocked
+by the required coordinator hook, so use a configured sprint for a first card.
+A live team also needs a sprint server, a Redis store for shared sprint state,
+a separate bus Redis store for hook communication, PostgreSQL for durable fleet
+configuration through `nova-config`, configured workers and reviewers, and
+model credentials.
 Use Tailscale when machines communicate across networks, and Ansible to
 provision and maintain the fleet consistently. The
 [Nova Tools README](https://github.com/mas-bandwidth/nova-tools#readme)
 explains the tool dependencies. Installing binaries is the
 first step; the **[coordinator's guide](SPRINT-COORDINATOR.md)** covers the
 connections and checks for a live team. The
-[environment reference](ENVIRONMENT.md) explains how a local twin, a direct
-store connection, and a running server fit together.
+[environment reference](ENVIRONMENT.md) explains how direct store connections
+and a running server fit together.
 
 Once that first real task lands, give your coordinator the next few. Let
 independent work run in parallel, then leave it with a plan to continue while

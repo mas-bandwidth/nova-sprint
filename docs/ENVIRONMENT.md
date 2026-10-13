@@ -1,29 +1,34 @@
 # Environment for nova-sprint
 
 Use these variables to choose where a command connects and which actor it
-represents. The local first lap uses a twin file; a live team normally sends
-client commands through the running sprint server.
+represents. A local twin uses a file; a live team normally sends client
+commands through the running sprint server.
 
 | Variable | Purpose | Example | Used by |
 |---|---|---|---|
 | `NOVA_SPRINT_REDIS` | Preferred environment address of the sprint store. `mem:<file>` names a local twin file. The `--redis` flag takes precedence. | `mem:sprint.twin` | Commands that access a store directly, including `run`; twin exercises |
 | `NOVA_SPRINT_SERVER` | Address of a running sprint server. When set, served commands are sent to that server. | `127.0.0.1:<port>` | Coordinator, workers, and readers using the server |
+| `NOVA_BUS_REDIS` | Address of the bus store used by the coordinator hook. | `<bus-host>:<port>` | Sprint server and coordinator hook session |
 | `NOVA_SPRINT_ACTOR` | Default actor name for commands that need one. Explicit `--as` names a worker or reader. | `boss` | Commands that act for a coordinator, worker, or reader |
 
-For a local first lap, use `--redis mem:sprint.twin` on each command and set
-`NOVA_SPRINT_ACTOR=boss`. The explicit `--redis` makes the command use that
-file-backed simulation locally even if `NOVA_SPRINT_SERVER` or a server in the
-seat record is configured. The twin has no background server, so advance it
-with `nova-sprint tick --redis mem:sprint.twin` after each handoff.
+For a local twin, `--redis mem:sprint.twin` makes a command use that file-backed
+simulation even if `NOVA_SPRINT_SERVER` or a server in the seat record is
+configured. The twin has no background server, so it can only advance with
+`nova-sprint tick --redis mem:sprint.twin` after each handoff. The documented
+no-Redis card-flow recipe currently stops at `add`, which requires a live,
+proven sprint and bus hook; see the
+[first-lap limitation](FIRST-LAP.md) before using that recipe.
 
 For a live sprint, the coordinator starts one server beside the Redis store.
-The server process uses `NOVA_SPRINT_REDIS`; the coordinator's interactive
-shell sets `NOVA_SPRINT_SERVER` to the server's local address and
-`NOVA_SPRINT_ACTOR` to the coordinator named by the sprint. Worker and reader
-processes use the server address and identify themselves with `--as`. Do not
-start another server or run direct store-writing commands alongside the live
-server. See the [coordinator's guide](SPRINT-COORDINATOR.md) for the hook and
-live setup sequence.
+The server process uses `NOVA_SPRINT_REDIS` and `NOVA_BUS_REDIS`; the
+coordinator's interactive shell sets `NOVA_SPRINT_SERVER` to the server's
+local address, `NOVA_BUS_REDIS` to the same bus store, and `NOVA_SPRINT_ACTOR`
+to the coordinator named by the sprint. The hook session needs both server
+and bus addresses. Worker and reader processes use the server address and
+identify themselves with `--as`. Do not start another server or run direct
+store-writing commands alongside the live server. See the
+[coordinator's guide](SPRINT-COORDINATOR.md) for the hook and live setup
+sequence.
 
 For direct store commands, `--redis` takes precedence over
 `NOVA_SPRINT_REDIS`, which takes precedence over the older `NOVA_REDIS_ADDR`
