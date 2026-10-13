@@ -204,7 +204,7 @@ func (a *app) briefStoreFreeChecks(items []briefItem) []briefFinding {
 	for _, it := range items {
 		b := briefCheck{id: it.id, brief: it.text}
 		out = append(out, collectHold(it.file, it.id, "tla-records", chkTla, func(w io.Writer) int {
-			return holdTlaRecords("brief check", w, b)
+			return a.holdTlaRecords("brief check", w, b)
 		})...)
 		out = append(out, collectHold(it.file, it.id, "paths-admit", chkPathsAdmit, func(w io.Writer) int {
 			return a.holdPathsAdmit("brief check", w, b)

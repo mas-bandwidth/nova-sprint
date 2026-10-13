@@ -45,11 +45,14 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	if len(edited) == 0 && !planEdited {
 		return nil, nil
 	}
-	tla := filepath.Join(dir, "tla")
-	plan, err := os.ReadFile(filepath.Join(tla, tlc.CasesFile))
-	if errors.Is(err, fs.ErrNotExist) {
+	if !HoldsCases(func(name string) bool {
+		_, err := os.Stat(filepath.Join(dir, "tla", name))
+		return err == nil
+	}) {
 		return nil, nil
 	}
+	tla := filepath.Join(dir, "tla")
+	plan, err := os.ReadFile(filepath.Join(tla, tlc.CasesFile))
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +112,13 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	}
 	return out, nil
 }
+
+// HoldsCases says a tree holds the TLA+ case plan, tla/CASES.tsv: a tree whose tla/
+// holds no case plan holds no models and is not checked. exists is the tree's own test
+// of a name under tla/ (the lander stats a working tree; the brief check lists a git
+// tree), so the lander's run-record check and the brief check's tla-records rule read
+// this one test of the tree and not two.
+func HoldsCases(exists func(name string) bool) bool { return exists(tlc.CasesFile) }
 
 // recordOwed is the one line a case without a current run record is refused with: the case,
 // its group, the inputs of it the merge edited, and the command that writes the record.

@@ -76,7 +76,7 @@ func TestAddRefusesATlaEditWithoutARecordsRefresh(t *testing.T) {
 func TestTlaPathsReadMarkerKeepsRecordsGate(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	code := holdTlaRecords("add", &stderr, briefCheck{id: "c", brief: "RESULT: c tier: frontier\nPATHS: tla/Foo.tla (read), b.go\n\nTHE TASK. Read the model.\n"})
+	code := (&app{}).holdTlaRecords("add", &stderr, briefCheck{id: "c", brief: "RESULT: c tier: frontier\nPATHS: tla/Foo.tla (read), b.go\n\nTHE TASK. Read the model.\n"})
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr.String(), "tla/Foo.tla")
 	assert.Contains(t, stderr.String(), "tlacheck merge --keep tla/RUNS.tsv")

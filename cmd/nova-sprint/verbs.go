@@ -1528,7 +1528,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 	}
-	if code := holdTlaRecords("add", stderr, briefCheck{id: strings.Join(ids, ","), brief: *brief}); code != 0 {
+	if code := a.holdTlaRecords("add", stderr, briefCheck{id: strings.Join(ids, ","), brief: *brief}); code != 0 {
 		return code
 	}
 	if *sentinel == "" {
@@ -1704,7 +1704,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	for i, cd := range cards {
 		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief, stream: stream}
 	}
-	if code := holdTlaRecords("add", stderr, checks...); code != 0 {
+	if code := a.holdTlaRecords("add", stderr, checks...); code != 0 {
 		return code
 	}
 	if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
@@ -1842,41 +1842,80 @@ func headerPaths(brief, key string) []string {
 // records class test (internal/ci/tlc_records_class_test.go) calls stale on the base.
 // A brief that only reads tla/ names no model there and is untouched. One such brief
 // refuses the whole call, exit 2, nothing written.
-func holdTlaRecords(verbName string, stderr io.Writer, briefs ...briefCheck) int {
+//
+// The rule reads the card's base tree first, as the lander does (internal/sprint/
+// land_records.go, sprint.HoldsCases): a repository with no tla/CASES.tsv holds no
+// models, so there is nothing to refresh there and the rule does not apply. A base no
+// tree can be read for (the brief names no REPO: or no BASE:, or it cannot be fetched)
+// keeps the rule, never a tree that was never read.
+func (a *app) holdTlaRecords(verbName string, stderr io.Writer, briefs ...briefCheck) int {
+	ctx := context.Background()
+	l := &lander{a: a}
 	var red []string
 	for _, b := range briefs {
-		paths := append(headerPaths(b.brief, "PATHS"), headerPaths(b.brief, "NEW")...)
-		var models []string
-		records := false
-		for _, p := range paths {
-			if namesModel(p) {
-				models = append(models, p)
-			}
-			records = records || pathCovers(p, tlaRecordsFile)
+		tree, haveTree := a.cardBaseTree(ctx, l, swarm.ReadCardBase([]byte(b.brief)))
+		if why := tlaRecordsWhy(b, tree, haveTree); why != "" {
+			red = append(red, why)
 		}
-		if len(models) == 0 {
-			continue
-		}
-		var why []string
-		if !records {
-			why = append(why, "does not cover "+tlaRecordsFile)
-		}
-		if !stepsMergeRecords(b.brief) {
-			why = append(why, "names no STEP that runs tlacheck merge --keep")
-		}
-		if len(why) == 0 {
-			continue
-		}
-		who := "the brief"
-		if b.id != "" {
-			who = "the brief of " + b.id
-		}
-		red = append(red, fmt.Sprintf("%s edits the TLA+ model %s and %s", who, strings.Join(models, ","), strings.Join(why, " and ")))
 	}
 	if len(red) == 0 {
 		return 0
 	}
 	return refuse(stderr, verbName, strings.Join(red, "; ")+"; a model edit refreshes the TLC records, or the records class test calls them stale on the base: name "+tlaRecordsFile+" in PATHS and add a STEP that runs the changed groups on a Linux bench, then tlacheck merge --keep "+tlaRecordsFile+", as tla/README.md says (\"Refreshing the records after a model edit\"); nothing was written")
+}
+
+// tlaRecordsWhy is the one-line refusal one brief earns, "" when it passes: a brief
+// whose PATHS: or NEW: lines name no model passes; one whose base tree was read (haveTree)
+// and holds no tla/CASES.tsv passes, since there is nothing to refresh (sprint.HoldsCases,
+// the lander's own test of the tree); else it must cover tla/RUNS.tsv and name a STEP that
+// merges it. tree is the base tree's repo-relative paths.
+func tlaRecordsWhy(b briefCheck, tree []string, haveTree bool) string {
+	paths := append(headerPaths(b.brief, "PATHS"), headerPaths(b.brief, "NEW")...)
+	var models []string
+	records := false
+	for _, p := range paths {
+		if namesModel(p) {
+			models = append(models, p)
+		}
+		records = records || pathCovers(p, tlaRecordsFile)
+	}
+	if len(models) == 0 {
+		return ""
+	}
+	if haveTree && !sprint.HoldsCases(func(name string) bool { return slices.Contains(tree, "tla/"+name) }) {
+		return ""
+	}
+	var why []string
+	if !records {
+		why = append(why, "does not cover "+tlaRecordsFile)
+	}
+	if !stepsMergeRecords(b.brief) {
+		why = append(why, "names no STEP that runs tlacheck merge --keep")
+	}
+	if len(why) == 0 {
+		return ""
+	}
+	who := "the brief"
+	if b.id != "" {
+		who = "the brief of " + b.id
+	}
+	return fmt.Sprintf("%s edits the TLA+ model %s and %s", who, strings.Join(models, ","), strings.Join(why, " and "))
+}
+
+// cardBaseTree is the card's base tree as repo-relative paths and whether one was read:
+// the lander's clone of its REPO at the BASE tip (admissionTree, the same tree add's
+// PATHS admission reads, fetched once a call). A brief that names no REPO: or no BASE:,
+// or whose base cannot be read, is no tree, and the caller keeps its own rule rather
+// than skip one it never read.
+func (a *app) cardBaseTree(ctx context.Context, l *lander, cb swarm.CardBase) ([]string, bool) {
+	if cb.Repo == "" || cb.Ref == "" {
+		return nil, false
+	}
+	tree := a.admissionTree(ctx, l, cb)
+	if tree.Missing != "" {
+		return nil, false
+	}
+	return tree.Files, true
 }
 
 // tlaRecordsFile is the TLC records every model's runs are measured into.
