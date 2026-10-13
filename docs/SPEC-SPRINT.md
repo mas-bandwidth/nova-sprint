@@ -7878,10 +7878,14 @@ in the same transaction as the delete; a step that takes a member's control card
 its own snapshot; start under the machine transition's lock. They refuse naming `clear`,
 and a verb whose epoch a clear left while it ran writes nothing. So a clear, the second of
 two at once included, never changes a row, a tier (an intentional empty one included) or
-a control card the new epoch wrote. `clear` and `start` must be externally serialized:
-the operator must never run them concurrently. A single seat identity is not a lock, and
-the start guard is not safe against a concurrent clear advancing the epoch (the advance
-does not yet take the machine fence; v1.2.18 card clear-and-start-share-the-machine-fence). `clear`
+a control card the new epoch wrote. `clear` and `start` share the machine fence: before advancing, clear takes the old
+ epoch's fence and stops any start that landed since its first stop, recapturing live
+ leases and refusing the advance until those leases are returned. Advance checks that
+ fence's owner in the same exchange as the epoch update. Every start record writes only
+ while its own fence is still held, at its pinned epoch and with the restore settled;
+ a changed epoch, restore phase or owner refuses the write. Clear releases the old fence
+ after advance and before restoring the new epoch, so interrupted restores remain
+ recoverable. Concurrent operators need no external clear/start serialization. `clear`
 reports a reset (`CLEAR DEFAULT`) only for a setting it wrote; a setting the new epoch
 already held away from its default is kept and named on a `CLEAR KEPT <name> kept at
 <v>, set in the new epoch` line (`--json`: `kept`).
