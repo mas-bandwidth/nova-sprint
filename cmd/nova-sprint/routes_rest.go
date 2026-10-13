@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func (a *app) cmdRoutesRest(args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "why the routes rest, in a few words (required)")
 	dur := fs.String("for", "", "how long they rest, a duration from now (30m, 2h); without --for or --until they rest until routes wake")
 	until := fs.String("until", "", "when they serve again, an RFC3339 time, instead of --for")
+	ans := fs.String("answers", "", answersWords)
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 {
 		return refuse(stderr, name, argErr("wants one word, a provider or a route as nova-sprint routes names it, ", err, pos...))
@@ -57,7 +59,10 @@ func (a *app) cmdRoutesRest(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, store.RouteRestStep(sprint.RouteRestReq{Target: pos[0], Reason: *reason, Until: at, Who: c.actor}), stdout, stderr)
+	if err := unaliasFlag(context.Background(), st, fs, "answers"); err != nil {
+		return refuse(stderr, name, "--answers: "+err.Error())
+	}
+	return a.runStep(name, *c, st, store.RouteRestStep(sprint.RouteRestReq{Target: pos[0], Reason: *reason, Until: at, Who: c.actor, Answers: answers(*ans)}), stdout, stderr)
 }
 
 // cmdRoutesWake is routes wake <provider|route> --reason <text>: the coordinator ends the

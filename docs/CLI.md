@@ -197,6 +197,9 @@ nova-sprint unhook
 nova-sprint seat install --harness <name> --target <dir> [--session <id>] [--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]
 nova-sprint seat check
 nova-sprint routes
+nova-sprint routes rest <provider|route> --reason <text> [--for <duration> | --until <RFC3339>] [--answers <notes>]
+# rests every route of the provider, or the one route, until the time or until routes wake; --answers closes the named judgments the rest resolves (a provider's low-funds judgment) in the same step, one it does not resolve refusing the whole step; resting a provider or route that already rests is a no-op OK ("rests already until <until>; nothing changed", exit 0, --answers still closes), and a --until later than the one held extends the rest and says so
+nova-sprint routes wake <provider|route> --reason <text>
 nova-sprint rules
 nova-sprint funded <provider> --reason <text>
 nova-sprint cost reconcile [--dry-run] [--json]

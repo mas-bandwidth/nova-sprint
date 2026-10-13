@@ -31,11 +31,14 @@ const (
 
 // RouteRestReq is the coordinator's rest of a provider's routes or of one route: Target
 // names a provider (as the routes name it) or a route; Until is zero for a rest until woken.
+// Answers are the judgments the rest answers in its own step (answered): the low-funds
+// judgment of the provider it rests, whose decisions list routes rest.
 type RouteRestReq struct {
-	Target string
-	Reason string
-	Until  time.Time
-	Who    string
+	Target  string
+	Reason  string
+	Until   time.Time
+	Who     string
+	Answers []string
 }
 
 // RouteWakeReq is the coordinator's end of the rest that holds a provider or a route.
@@ -86,17 +89,19 @@ func RestRoutes(s *Snapshot, r RouteRestReq) Plan {
 		until = r.Until
 	}
 	rest := RouteRest{At: s.Now, Until: until, Cause: RestCoordinator, Why: oneLine("rested by " + r.Who + ": " + r.Reason)}
-	// a rest that holds is never replaced (tla/RouteRest.tla, RestProvider and RestRoute: a
-	// rest begins only on a serving provider or route): a refused take's credit rest would
-	// end with the coordinator's time and take the provider out of the all-out stop
+	// A rest that holds is never replaced (tla/RouteRest.tla, RestProvider and RestRoute: a
+	// rest begins only on a serving provider or route; a second rest is a stutter, the
+	// model's states unchanged): resting a provider or route that already rests is a
+	// no-op OK that changes nothing, never a new rest over a refused take's credit rest
+	// (which would end with the coordinator's time and take the provider out of the
+	// all-out stop); a --until later than the one held extends that rest and says so.
+	// --answers on an already-resting provider still closes the judgments it answers.
 	if pr, ok := ProviderRests(s.Fleet)[provider]; ok && pr.Resting(s.Now) && isProvider {
-		p.refuse(r.Target, "provider "+provider+" rests already until "+pr.UntilSaid()+" ("+pr.Cause+": "+pr.Said()+"): nova-sprint routes wake "+provider+" ends it first")
-		return p
+		return restAlready(s, r, provider, pr)
 	}
 	if !isProvider {
 		if own, ok := parseRule3(func() string { v, _ := s.Fleet.Prop(PropRule3Rest(provider)); return v }())[routes[0]]; ok && own.Resting(s.Now) {
-			p.refuse(r.Target, "route "+routes[0]+" rests already until "+own.UntilSaid()+" ("+own.Cause+": "+own.Said()+"): nova-sprint routes wake "+routes[0]+" ends it first")
-			return p
+			return restAlready(s, r, provider, own)
 		}
 	}
 	if isProvider {
@@ -116,7 +121,61 @@ func RestRoutes(s *Snapshot, r RouteRestReq) Plan {
 	n.What = fmt.Sprintf("routes %s rest until %s: %s; the deal draws no work card on them until then; nova-sprint routes wake %s ends it", strings.Join(routes, ", "), rest.UntilSaid(), rest.Why, r.Target)
 	p.Notes = append(p.Notes, n)
 	p.Units = append(p.Units, Unit{Key: r.Target, Moved: "routes " + strings.Join(routes, ", ") + " rest until " + rest.UntilSaid()})
+	answerRest(&p, s, r, provider)
 	return p
+}
+
+// restAlready is a routes rest of a provider or route that already rests: a no-op OK
+// that changes nothing and says so, or, with a --until later than the one held, the
+// one write that extends the held rest to it and says so (tla/RouteRest.tla: a second
+// rest is a stutter; its states are unchanged but for the extended end). The held
+// rest itself is never replaced: its cause, cards and words stand, so a refused
+// take's credit rest keeps its place in the all-out stop.
+func restAlready(s *Snapshot, r RouteRestReq, provider string, held RouteRest) Plan {
+	var p Plan
+	if !r.Until.IsZero() && !held.Open() && r.Until.After(held.Until) {
+		next := held
+		next.Until = r.Until
+		if held.Provider != "" {
+			was, _ := s.Fleet.Prop(PropProviderRest(provider))
+			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropProviderRest(provider), Value: next.value(), Was: was})
+		} else {
+			name := PropRule3Rest(provider)
+			was, had := s.Fleet.Prop(name)
+			merged := parseRule3(was)
+			merged[held.Route] = next
+			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: rule3Text(merged), Was: was, WasAbsent: !had})
+		}
+		p.Units = append(p.Units, Unit{Key: r.Target, Moved: fmt.Sprintf("%s rests already until %s; this rest extends it until %s", r.Target, held.UntilSaid(), stamp(r.Until))})
+	} else {
+		p.Units = append(p.Units, Unit{Key: r.Target, Moved: fmt.Sprintf("%s rests already until %s; nothing changed", r.Target, held.UntilSaid())})
+	}
+	answerRest(&p, s, r, provider)
+	return p
+}
+
+// answerRest closes, in the rest's own step, the named judgments the rest resolves
+// (answered, as release does): an open judgment whose decisions list routes rest,
+// the low-funds judgment of the provider rested. An id the rest does not resolve
+// is refused by answered with its reason, and the whole step writes nothing.
+func answerRest(p *Plan, s *Snapshot, r RouteRestReq, provider string) {
+	if len(r.Answers) == 0 {
+		return
+	}
+	for _, o := range s.Open {
+		if contains(r.Answers, o.Note.ID) && Lists(o.Note, "routes rest") {
+			dup := false
+			for _, c := range p.Closes {
+				if c.Key == o.Key {
+					dup = true
+				}
+			}
+			if !dup {
+				p.Closes = append(p.Closes, o)
+			}
+		}
+	}
+	answered(p, s, r.Answers, r.Who)
 }
 
 // WakeRoutes is routes wake: the rest holding the provider (its one property, any cause)

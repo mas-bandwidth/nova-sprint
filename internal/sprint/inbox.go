@@ -657,8 +657,20 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, "nova-config "+d, cmd+"friend sync")
 		case strings.HasPrefix(d, "funded "):
 			add(d, cmd+d+" --reason '<the payment made>'")
+		case strings.HasPrefix(d, "fund "):
+			// a payment is the owner's, made outside the tool; funded records it
+			add(d, cmd+"funded "+strings.TrimPrefix(d, "fund ")+" --reason '<the payment made>'")
+		case strings.HasPrefix(d, "routes rest "):
+			add(d, cmd+d+" --reason '<why>'")
+		case strings.HasPrefix(d, "routes wake "):
+			add(d, cmd+d+" --reason '<why>'")
 		case d == "ack":
-			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText)
+			if (g.Type == NProviderFunds || g.Type == NProviderLow) && strings.HasPrefix(first.Stream, "provider:") {
+				// the truthful answer when the owner chose not to top up (provider_funds.go)
+				add(d, cmd+"ack "+strings.Join(g.Notes, ",")+` --reason "the owner chose not to fund `+strings.TrimPrefix(first.Stream, "provider:")+`"`)
+			} else {
+				add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText)
+			}
 		case d == "read the report":
 			add(d, append(look(), cmd+"ack "+strings.Join(g.Notes, ",")+" --reason '<what the report says>'")...)
 		case d == "look at the readers" || d == "look at the reader":

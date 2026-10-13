@@ -152,8 +152,8 @@ var TickDecisions = map[string][]string{
 	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
 	NNoRoute:           {"route add", "look at the card", "drop"},
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
-	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
-	NProviderLow:    {"ack", "wait"}, // the same
+	NProviderFunds:  {"funded <provider>", "routes wake <provider>", "ack", "wait"},                    // named per provider (providerConds); ack prints the truthful not-funded line there
+	NProviderLow:    {"fund <provider>", "funded <provider>", "routes rest <provider>", "wait", "ack"}, // the same, in providerConds' order
 	NProviderKey:    {"ack", "wait"},
 	NAllOutOfCredit: {"ack", "wait"},
 	NInvariant:      {"look at the card", "repair", "wait"},

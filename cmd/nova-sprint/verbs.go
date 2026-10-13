@@ -189,7 +189,7 @@ func init() {
 		{"hook", "[--prove <sprint>.<bus> | --ack <id> --session <token>] [--quiet-happened]", "hook --ack 1 --session token", (*app).cmdHook},
 		{"unhook", "", "unhook", (*app).cmdUnhook},
 		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
-		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},
+		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>] [--answers <notes>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},
 		{"routes wake", "<provider|route> --reason <text>", "routes wake openrouter --reason 'the rest was a balance rule the machine no longer keeps'", (*app).cmdRoutesWake},
 		{"routes limit", "<provider|route> (--rpm <n> | --concurrent <n>) --reason <text>", "routes limit pro-mercury3 --rpm 10 --reason 'Inception asks under 10 requests a minute on the preview'", (*app).cmdRoutesLimit},
 		{"routes", "", "routes", (*app).cmdRoutes},

@@ -295,8 +295,8 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 			routes := strings.Join(slices.Sorted(slices.Values(h.routes)), ", ")
 			conds = append(conds, cond{typ: NProviderFunds, stream: ProviderSubject(p), streamLevel: true,
 				decisions: []string{"funded " + p, "routes wake " + p, "ack", "wait"},
-				what: fmt.Sprintf("provider %s is out of funds (balance %s): it refused a take for credit; a payment is the owner's; its routes %s rest until %s (%s); the balance poll ends the rest when it sees a payment (a balance over zero read higher than the read before it, or than the balance at the refusal), or nova-sprint funded %s once it is paid, or nova-sprint routes wake %s --reason <why> to try it again unpaid; nova-sprint where --json shows the balance",
-					p, b.Said(), routes, h.rest.UntilSaid(), h.rest.Why, p, p)})
+				what: fmt.Sprintf("provider %s is out of funds (balance %s): it refused a take for credit; a payment is the owner's; its routes %s rest until %s (%s); the balance poll ends the rest when it sees a payment (a balance over zero read higher than the read before it, or than the balance at the refusal), or nova-sprint funded %s once it is paid, or nova-sprint routes wake %s --reason <why> to try it again unpaid; the truthful answer when the owner chose not to fund it: nova-sprint ack <note> --reason \"the owner chose not to fund %s\"; nova-sprint where --json shows the balance",
+					p, b.Said(), routes, h.rest.UntilSaid(), h.rest.Why, p, p, p)})
 		case h != nil:
 			routes := strings.Join(slices.Sorted(slices.Values(h.routes)), ", ")
 			conds = append(conds, cond{typ: NProviderKey, stream: ProviderSubject(p), streamLevel: true,
@@ -309,8 +309,8 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 			}
 			conds = append(conds, cond{typ: NProviderLow, stream: ProviderSubject(p), streamLevel: true,
 				decisions: []string{"fund " + p, "funded " + p, "routes rest " + p, "wait", "ack"},
-				what: fmt.Sprintf("fund %s: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
-					p, b.Said(), spent, strings.Join(slices.Sorted(slices.Values(serving[p])), ", "), p)})
+				what: fmt.Sprintf("fund %s: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; the truthful answer when the owner chose not to fund it: nova-sprint ack <note> --reason \"the owner chose not to fund %s\"; nova-sprint where --json shows the balance",
+					p, b.Said(), spent, strings.Join(slices.Sorted(slices.Values(serving[p])), ", "), p, p)})
 		}
 	}
 	if stop = AllOutOfCredit(s.Routes, s.rests, s.Now); stop != "" {
