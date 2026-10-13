@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
@@ -101,11 +104,45 @@ func newScrubbedApp(t *testing.T, addr string) *app {
 // the test's own store and never forwards, and writes its stdout and stderr
 // into out and errb, returning its code. It is how a functional test's several
 // apps run their verbs.
+//
+// A start goes as the real flow does: the epoch's cards are checked first
+// (recordCleanCardCheck), since start refuses until a clean card check of the
+// epoch matches the cards (start-refuses-until-a-clean-check).
 func runOnStore(a *app, store string, argv []string, out, errb io.Writer) int {
 	if !slices.Contains(argv, "--redis") {
 		argv = append(argv, "--redis", store)
 	}
+	if len(argv) > 0 && argv[0] == "start" {
+		if err := recordCleanCardCheck(a, store); err != nil {
+			fmt.Fprintf(errb, "the rig's card check before start: %v\n", err)
+			return 2
+		}
+	}
 	return runInto(a, argv, out, errb)
+}
+
+// recordCleanCardCheck is the functional rig's check before a start: it writes the
+// epoch's check record for the cards on the store's work table as they are, clean,
+// with their digest (store.PutCardCheck, sprint.CheckedCardsOf), as a clean
+// nova-sprint check cards writes it. The functional tests' cards are briefless
+// --count cards, which the real check's lint kind refuses; what they test is the
+// machine after the start, and the gate itself is the unit tests' (check_cards_test.go,
+// start_needs_test.go). A change to the cards after this and before the start is
+// still refused, as the gate refuses it anywhere.
+func recordCleanCardCheck(a *app, addr string) error {
+	ctx := context.Background()
+	b, err := a.backend(ctx, addr, sprint.Names{})
+	if err != nil {
+		return err
+	}
+	st := &store.Store{B: b, Names: sprint.Names{}, Actor: "functional-rig", Now: a.now, NewID: store.NewID}
+	snap, err := st.Load(ctx, []string{sprint.Work}, nil)
+	if err != nil {
+		return err
+	}
+	cards := sprint.CheckedCardsOf(snap)
+	_, err = st.PutCardCheck(ctx, store.CheckRecord{At: a.now().UTC(), By: "functional-rig", Clean: true, Cards: cards, Digest: sprint.CardsDigest(cards)})
+	return err
 }
 
 // runInto is the one direct app.run in a test file: every test that runs a verb

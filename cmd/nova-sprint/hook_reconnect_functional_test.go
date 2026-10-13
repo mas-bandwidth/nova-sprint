@@ -222,7 +222,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	require.Equal(t, "ok", first.send(t, hookMsg{T: "prove", Challenge: challenge}).T)
 	out.Reset()
 	errs.Reset()
-	require.Equal(t, 0, runInto(app, []string{"start", "--redis", addr}, &out, &errs), "running-time fixture: %s%s", out.String(), errs.String())
+	require.Equal(t, 0, runOnStore(app, addr, []string{"start", "--redis", addr}, &out, &errs), "running-time fixture: %s%s", out.String(), errs.String())
 	require.Eventually(t, func() bool {
 		h := app.hookHub()
 		h.mu.Lock()
