@@ -16,8 +16,8 @@ old probe results, so the release consumer must reject stale evidence itself.
 The scope counter abstracts invalidation by a needs/row/epoch revision. It does
 not model clear, graph editing, authentication, or Git commit parsing.
 
-`AutoRelease` requires every producer landed and a current proof for every
-producer's head. It commits the release with its notification and the observed
+`AutoRelease` requires every producer landed or dropped, and a current proof for every
+non-dropped producer's head. It commits the release with its notification and the observed
 development revision. The release snapshot is immutable history: a later
 remote advance cannot rewrite what authorized that release. There is no
 coordinator response, sentinel hold, manual-gate flag, or cancel window in this
@@ -28,12 +28,13 @@ while work is still in flight or dropped, and is recorded as early. Automatic
 release's landed-and-ancestry invariant does not falsely claim to cover this
 intentional exception. No fairness premise schedules the override.
 
-Current draft policy is strict: a dropped producer is not landed and cannot
-authorize automatic release. The runtime owner must confirm this policy and
-the handling of a sentinel with no producers before integration. The instance
-requires a nonempty producer set and makes no empty-cut claim. The abstract
-name `dev` denotes the actual configured integration target; literal `dev`
-versus another recorded protected target remains a runtime policy decision.
+A dropped producer counts as complete by explicit waiver and contributes no
+head. Dropping one producer never waives another producer's proof. An all-dropped
+cut is reachable and releases with no required producer heads. The instance
+requires a nonempty producer table and makes no claim about admission of an
+empty sentinel. The abstract name `dev` denotes each stream's recorded protected
+integration target (`main` or `dev`). A freshly fetched ancestry proof is enough;
+no forge pull-request API evidence is assumed.
 
 ## Consumer refresh and the distributed boundary
 
@@ -61,8 +62,8 @@ consumer integration, observed-development freshness and one merge per deal.
 The automatic-only control excludes early overrides. The second control
 allows them and checks the same conditional safety rules.
 
-`StableEligibilityReleases` says that eventually stable landed producers whose
-heads are actually in the development branch eventually release the sentinel.
+`StableEligibilityReleases` says that eventually stable completed producers whose
+non-dropped heads are actually in the development branch eventually release the sentinel.
 Fair scheduling of successful observation/probe and the automatic tick is
 assumed; a permanently unavailable forge is not modeled as guaranteed progress.
 `ReleasedEventuallyDeals` additionally assumes successful consumer integration
@@ -82,7 +83,8 @@ vacuous. Other witnesses remove exactly one guard or corrupt one outcome:
 unlanded producer, absent development ancestry, stale head, another stream's
 proof, stale scope, missing notice, a coordinator prerequisite, stale consumer
 snapshot, false success after merge failure, reuse of a prior merge, relabeling
-an early override as automatic, and a worker claiming override authority.
+an early override as automatic, a worker claiming override authority, and one dropped producer wrongly waiving
+all other ancestry checks.
 
 Cases and exact expected properties are in `CASES.tsv`, group
 `sentinelrelease`. Measured Linux records belong in `RUNS.tsv`; prior records

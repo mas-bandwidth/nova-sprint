@@ -11,7 +11,7 @@ ASSUME /\ Producers # {}
        /\ AllowEarly \in BOOLEAN
        /\ Broken \in {"none", "unlanded", "nodev", "stalehead", "wrongstream",
                       "stalescope", "silent", "manualgate", "staleconsumer",
-                      "failedmerge", "reusedmerge", "earlyauto", "worker"}
+                      "failedmerge", "reusedmerge", "earlyauto", "worker", "dropwaivesall"}
 
 Heads == Producers \X (1..MaxHead)
 Tokens == Heads \cup {"other"}
@@ -19,14 +19,14 @@ States == {"working", "landed", "dropped"}
 EmptyProof == [scope |-> 0, head |-> 0, included |-> {}]
 
 VARIABLES state, head, scope, remoteDev, observedDev, proof,
-          released, releaseHeads, releaseDev, releaseLanded, releaseFresh,
-          releaseAuthorized, notice, noticeDev,
+          released, releaseHeads, releaseDev, releaseDone, releaseFresh,
+          releaseAuthorized, releaseDropped, notice, noticeDev,
           consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
           everyDealObserved, everyDealMerged, everyDealNewMerge
 
 vars == <<state, head, scope, remoteDev, observedDev, proof,
-          released, releaseHeads, releaseDev, releaseLanded, releaseFresh,
-          releaseAuthorized, notice, noticeDev,
+          released, releaseHeads, releaseDev, releaseDone, releaseFresh,
+          releaseAuthorized, releaseDropped, notice, noticeDev,
           consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
           everyDealObserved, everyDealMerged, everyDealNewMerge>>
 
@@ -41,9 +41,10 @@ TypeOK ==
   /\ released \in {"none", "auto", "early"}
   /\ releaseHeads \subseteq Heads
   /\ releaseDev \subseteq Tokens
-  /\ releaseLanded \in BOOLEAN
+  /\ releaseDone \in BOOLEAN
   /\ releaseFresh \in BOOLEAN
   /\ releaseAuthorized \in BOOLEAN
+  /\ releaseDropped \subseteq Producers
   /\ notice \in BOOLEAN
   /\ noticeDev \subseteq Tokens
   /\ consumerBase \subseteq Tokens
@@ -65,9 +66,10 @@ Init ==
   /\ released = "none"
   /\ releaseHeads = {}
   /\ releaseDev = {}
-  /\ releaseLanded = FALSE
+  /\ releaseDone = FALSE
   /\ releaseFresh = FALSE
   /\ releaseAuthorized = FALSE
+  /\ releaseDropped = {}
   /\ notice = FALSE
   /\ noticeDev = {}
   /\ consumerBase = {}
@@ -79,14 +81,15 @@ Init ==
   /\ everyDealMerged = TRUE
   /\ everyDealNewMerge = TRUE
 
-releaseVars == <<released, releaseHeads, releaseDev, releaseLanded,
-                 releaseFresh, releaseAuthorized, notice, noticeDev>>
+releaseVars == <<released, releaseHeads, releaseDev, releaseDone,
+                 releaseFresh, releaseAuthorized, releaseDropped, notice, noticeDev>>
 consumerVars == <<consumerBase, mergeOK, mergeSucceeded, mergeRound, deals,
                   everyDealObserved, everyDealMerged, everyDealNewMerge>>
 
-CurrentHeads == {<<p, head[p]>> : p \in Producers}
-AllLanded == \A p \in Producers : state[p] = "landed"
-Eligible == AllLanded /\ CurrentHeads \subseteq remoteDev
+RequiredProducers == {p \in Producers : state[p] # "dropped"}
+CurrentHeads == {<<p, head[p]>> : p \in RequiredProducers}
+AllDone == \A p \in Producers : state[p] \in {"landed", "dropped"}
+Eligible == AllDone /\ CurrentHeads \subseteq remoteDev
 
 Land(p) ==
   /\ state[p] = "working"
@@ -94,7 +97,8 @@ Land(p) ==
   /\ UNCHANGED <<head, scope, remoteDev, observedDev, proof,
                   releaseVars, consumerVars>>
 
-\* A dropped producer is deliberately not a landed producer in this draft.
+\* A dropped producer is complete by waiver and contributes no head. Other
+\* producers still need their own landed state and ancestry evidence.
 Drop(p) ==
   /\ released = "none"
   /\ state[p] = "working"
@@ -155,39 +159,42 @@ Probe(p) ==
 Fresh(p) == /\ proof[p].scope = scope
             /\ proof[p].head = head[p]
             /\ <<p, head[p]>> \in proof[p].included
-ProofsFresh == \A p \in Producers : Fresh(p)
+ProofsFresh == \A p \in RequiredProducers : Fresh(p)
 
 \* Each mutation removes one consuming guard. A previous head or another
 \* stream's head is evidence about that head only, even if both have index 1.
 AcceptedProofs ==
   CASE Broken = "stalehead" ->
-         \A p \in Producers : /\ proof[p].scope = scope
+         \A p \in RequiredProducers : /\ proof[p].scope = scope
                                /\ proof[p].head > 0
                                /\ <<p, proof[p].head>> \in proof[p].included
     [] Broken = "stalescope" ->
-         \A p \in Producers : /\ proof[p].head = head[p]
+         \A p \in RequiredProducers : /\ proof[p].head = head[p]
                                /\ <<p, head[p]>> \in proof[p].included
     [] Broken = "wrongstream" ->
-         \A p \in Producers : \E q \in Producers :
+         \A p \in RequiredProducers : \E q \in RequiredProducers :
            /\ proof[q].scope = scope
            /\ proof[q].head = head[p]
            /\ <<q, head[p]>> \in proof[q].included
+    [] Broken = "dropwaivesall" ->
+         (RequiredProducers # Producers) \/ ProofsFresh
     [] OTHER -> ProofsFresh
 
 CommitRelease(kind, authorized) ==
   /\ released' = kind
   /\ releaseHeads' = CurrentHeads
   /\ releaseDev' = observedDev
-  /\ releaseLanded' = AllLanded
+  /\ releaseDone' = AllDone
   /\ releaseFresh' = ProofsFresh
   /\ releaseAuthorized' = authorized
+  /\ releaseDropped' = Producers \ RequiredProducers
   /\ notice' = Broken # "silent"
   /\ noticeDev' = observedDev
   /\ UNCHANGED <<state, head, scope, remoteDev, observedDev, proof, consumerVars>>
 
 AutoRelease ==
   /\ released = "none"
-  /\ AllLanded \/ Broken = "unlanded"
+  /\ AllDone \/ Broken = "unlanded"
   /\ AcceptedProofs \/ Broken \in {"nodev", "unlanded"}
   /\ Broken # "manualgate"
   /\ CommitRelease("auto", TRUE)
@@ -245,8 +252,8 @@ Next ==
   \/ \E actor \in {"coordinator", "worker"} : EarlyRelease(actor)
   \/ MergeConsumer \/ MergeFailure \/ Deal
 
-AutoRequiresLandedAndDev ==
-  released = "auto" => (releaseLanded /\ releaseHeads \subseteq releaseDev)
+AutoRequiresCompletedAndDev ==
+  released = "auto" => (releaseDone /\ releaseHeads \subseteq releaseDev)
 AutoUsesCurrentProof == released = "auto" => releaseFresh
 EarlyIsAuthorized == released = "early" => releaseAuthorized
 ReleaseHasNotice == released # "none" => (notice /\ noticeDev = releaseDev)
@@ -257,6 +264,9 @@ EveryDealHasNewMerge == everyDealNewMerge
 \* Reachability witnesses deliberately negate permitted outcomes.
 NeverAutoReleased == released # "auto"
 NeverEarlyReleased == released # "early"
+NeverAllDroppedAutoReleased == ~(released = "auto" /\ releaseDropped = Producers)
+DroppedContributesNoHead ==
+  \A p \in releaseDropped : \A h \in 1..MaxHead : <<p, h>> \notin releaseHeads
 
 \* Git is append-only in this abstraction. Successful fetch/probe and
 \* integration retries are eventually scheduled. No coordinator action is
