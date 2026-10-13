@@ -1435,11 +1435,11 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	case *prove != "" && *ack != 0:
 		return refuse(stderr, name, "--prove and --ack are one at a time")
 	case *prove != "" && *ackAll:
-		return refuse(stderr, name, "--prove and --ack-all are one at a time")
+		return refuse(stderr, name, "--prove and --ack-all are one at a time; run: nova-sprint hook --ack-all")
 	case *ack != 0 && *ackAll:
-		return refuse(stderr, name, "--ack and --ack-all are one at a time")
+		return refuse(stderr, name, "--ack and --ack-all are one at a time; run: nova-sprint hook --ack-all")
 	case *session != "" && *ackAll:
-		return refuse(stderr, name, "--session is not used with --ack-all: it sends no token, the hook uses the session it holds; nothing was changed")
+		return refuse(stderr, name, "--session is not used with --ack-all: it sends no token, the hook uses the session it holds; nothing was changed; run: nova-sprint hook --ack-all")
 	case *session != "" && *ack == 0:
 		return refuse(stderr, name, "--session is only used with --ack")
 	case *prove != "":

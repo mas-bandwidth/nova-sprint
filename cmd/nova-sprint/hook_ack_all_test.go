@@ -155,3 +155,22 @@ func TestTheWarningIsQuietWhileItsSetHoldsOnARunningMachine(t *testing.T) {
 	require.Len(t, joined, 1, "joining judgment warns at once, within seconds not a minute: %+v", joined)
 	assert.Contains(t, joined[0].Text, "WARNING 2 judgment(s)", joined[0].Text)
 }
+
+// Every refusal of an --ack-all line prints the exact ack line to run instead
+// (the one remedy line, never hook -h): each conflicting flag beside --ack-all
+// is refused at exit 2 with `; run: nova-sprint hook --ack-all` on the line.
+func TestHookAckAllRefusalsPrintTheExactAckLine(t *testing.T) {
+	t.Parallel()
+	const name = "hook-ack-all-refused"
+	ta, _ := hookSprint(t, name)
+	for _, argv := range []string{
+		"hook --ack-all --prove some-challenge --actor " + name,
+		"hook --ack-all --ack 1 --actor " + name,
+		"hook --ack-all --session some-token --actor " + name,
+	} {
+		code, _, errs := ta.do(argv)
+		require.Equal(t, 2, code, argv+": "+errs)
+		assert.Contains(t, errs, "; run: nova-sprint hook --ack-all", argv+": "+errs)
+		assert.NotContains(t, errs, "hook -h", argv+": "+errs)
+	}
+}
