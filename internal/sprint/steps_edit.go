@@ -48,6 +48,27 @@ func unstarted(s *Snapshot, id, keeps string) string {
 // moves the card working -> waiting for them (steps_work.go finishPlan).
 const FieldWaitsAfter = "waits_after"
 
+// FieldBriefKeepHead explicitly retains heads across this brief replacement.
+const FieldBriefKeepHead = "brief_keep_head"
+
+// FieldHeadBriefAttempt tracks head provenance separately from the task bound:
+// even a routing-only replacement supersedes an in-flight brief.
+const FieldHeadBriefAttempt = "head_brief_attempt"
+
+// AttemptPredatesBrief is the shared eligibility rule for finish and card checks.
+// tla/SprintTables.tla Brief and Finish: a replaced generation never enters review
+// unless the coordinator explicitly kept its head. Attempt zero is admission.
+func AttemptPredatesBrief(c *Card, attempt int) bool {
+	if c == nil || attempt <= 0 || c.F(FieldBriefKeepHead) == "true" {
+		return false
+	}
+	replaced := c.Int(FieldBriefAttempt)
+	if c.F(FieldHeadBriefAttempt) != "" {
+		replaced = c.Int(FieldHeadBriefAttempt)
+	}
+	return attempt <= replaced
+}
+
 // BriefCard is one primary's new brief (brief <id>, or one file of brief --dir).
 type BriefCard struct {
 	ID, Brief string

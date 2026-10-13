@@ -16,8 +16,7 @@ import (
 
 // A brief correction edits the card in place (the owner, 2026-10-06: "We gotta stop doing
 // this twin shit. it's waste."): the same id, the brief changed, the next attempt staged
-// from the admitted base unless explicitly kept, with the record saying what changed
-// and why. These run on the twin.
+// from the last pushed head, the record saying what changed and why. These run on the twin.
 
 // boundWorld is a sprint whose attempt cap is one (nova-config's sprint row max_attempts, as
 // apply writes it to the twin), with n cards of stream s1 each failed once: each in review at
@@ -154,9 +153,9 @@ func (ta *testApp) readersOf(id string) []*sprint.Card {
 }
 
 // A card in review whose attempt pushed a head and whose read is open takes a brief in
-// place: its reads retire with the edit, and the next attempt starts at the admitted
-// base without the superseded branch or head, retaining the same id.
-func TestBriefRetiresItsReadsAndDropsTheOldHead(t *testing.T) {
+// place: the readers table's read is retired with the edit, and the next attempt is staged
+// from that pushed head (BaseOf, the rework's carry), the same id.
+func TestBriefRetiresItsReadsAndCarriesThePushedHead(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
@@ -178,9 +177,8 @@ func TestBriefRetiresItsReadsAndDropsTheOldHead(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("take --as m1 s1-1.w2@1 --json")), &take))
 	require.Len(t, take.Packets, 1)
-	assert.Empty(t, take.Packets[0].BaseHead, "the old brief head is not a staging base")
-	assert.Empty(t, take.Packets[0].Base, "the old brief branch is not a staging base")
-	assert.Zero(t, take.Packets[0].BaseFrom)
+	assert.Equal(t, landHead, take.Packets[0].BaseHead, "staged from the last pushed head")
+	assert.Equal(t, 1, take.Packets[0].BaseFrom)
 	assert.Contains(t, take.Packets[0].Brief, "the new work")
 	ta.clean()
 }
@@ -211,30 +209,4 @@ func TestAFriendsOpenReadIsRetiredByBriefAndByRework(t *testing.T) {
 			assert.False(t, g.Type == sprint.NReadBroken && g.Kind == sprint.Judgment, "%s: no read-broken judgment on the old attempt", c.verb)
 		}
 	}
-}
-
-func TestBriefKeepHeadDirectAndDirectory(t *testing.T) {
- t.Parallel()
- for _, directory := range []bool{false, true} {
-  name := "direct"
-  if directory { name = "directory" }
-  t.Run(name, func(t *testing.T) {
-   t.Parallel()
-   ta := newTestApp(t)
-   ta.ok("init --readers reader-a,reader-b --members m1")
-   ta.ok("add --stream s1 s1-1 --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "s1-1", "the old work", ""))
-   ta.deal(1)
-   ta.ok("take --as m1 s1-1.w1@1")
-   dir := t.TempDir()
-   file := writeNeedsBrief(t, dir, "s1-1", "the new work", "")
-   cmd := "brief s1-1 --brief-file " + file
-   if directory { cmd = "brief --dir " + dir }
-   out := ta.ok(cmd + " --keep-head")
-   assert.Contains(t, out, "head kept: eligible for review (--keep-head)")
-   ta.ok("finish --as m1 s1-1.w1@1 --head " + landHead + " --report done")
-   assert.Equal(t, sprint.Review, ta.primary("s1-1").Col)
-   assert.Equal(t, landHead, ta.primary("s1-1").F("head"))
-   ta.clean()
-  })
- }
 }
