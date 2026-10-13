@@ -58,7 +58,7 @@ func workTool(gh github) *tool.Tool {
 --dry-run reads GitHub exactly as the import does (every issue, the same calls) and writes nothing.
 verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none is the proof.
 verify --against compares two tree files and reads no network (a minimal tree: verify -h).
-first run: gh logged in (gh auth status); export ORG and REPO, a repository you can read.`,
+first run: nova-work example --dir ./example writes an offline fixture; no gh login needed.`,
 		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
 			"encoded tree did not read back equal, or roadmap check found problems; 2 could not run (a flag, the budget, gh, GitHub, a file)",
 		UsageNote:  roadmapUsageNote,
@@ -115,6 +115,17 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 					})
 				},
 				Run: gh.verifyTree,
+			},
+			{
+				Name:      "example",
+				Usage:     "example --dir <dir>",
+				Effect:    tool.LocalWrite + ": writes tree.lisp, tree-again.lisp and calls/call-01.json, calls/call-02.json under --dir",
+				Detail:    "Writes the offline first-run fixture: two identical tree files and a recorded GraphQL import replay (acme/widgets, no issues). Prove the trees with verify --tree <dir>/tree.lisp --against <dir>/tree-again.lisp (no gh, no network); read the recording with import --org acme --repo acme/widgets --fixture <dir>/calls --out <tree>.",
+				ExitTable: "0 the fixture is written; 2 could not run (a flag, an unwritable directory)",
+				Flags: func(f *tool.Flags) {
+					f.Required("dir", "the directory to write the example fixture into (created if needed)")
+				},
+				Run: example,
 			},
 		}, gh.roadmapVerbs()...),
 			tool.Verb{
