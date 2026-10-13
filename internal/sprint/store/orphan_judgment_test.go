@@ -11,6 +11,16 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
+// A small live backlog keeps these retirement tests running while frontier waits.
+func orphanJudgmentFundedWork(h *harness) {
+	h.t.Helper()
+	for _, member := range []string{"m1", "m2"} {
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: member, Width: 1}))
+	}
+	h.m.SetProviders(map[string]sprint.Provider{"prov-flash-a": {Name: "prov-flash-a", Billing: "metered", Funded: true}, "prov-flash-b": {Name: "prov-flash-b", Billing: "metered", Funded: true}, "prov-pro-a": {Name: "prov-pro-a", Billing: "metered", Funded: true}, "prov-pro-b": {Name: "prov-pro-b", Billing: "metered", Funded: true}})
+	h.addReady("funded-control", 2*sprint.DealAhead+1, briefOf("pro", ""))
+}
+
 // A dropped card's judgment retires on a sparse tick (docs/SPEC-SPRINT.md section 8,
 // "A judgment retires with its card"): the tick loads the cards its open judgments
 // name, sees the dropped card off the table, and retires the judgment with the decided
@@ -18,6 +28,7 @@ import (
 func TestADroppedCardsJudgmentRetiresOnASparseTick(t *testing.T) {
 	t.Parallel()
 	h := flashAndPro(t)
+	orphanJudgmentFundedWork(h)
 	h.addReady("s1", 1, "tier: frontier\n\nThe task.\n")
 	h.startMachine()
 	h.machine()
@@ -70,6 +81,7 @@ func TestADroppedCardsJudgmentRetiresAtEpochOne(t *testing.T) {
 	require.Equal(t, uint64(1), h.st.PinnedEpoch())
 	h.m = h.st.B.(*Mem)
 
+	orphanJudgmentFundedWork(h)
 	h.addReady("s1", 1, "tier: frontier\n\nThe task.\n")
 	h.startMachine()
 	h.machine()

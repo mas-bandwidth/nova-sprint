@@ -321,6 +321,9 @@ type backupString struct {
 // backupJSON reads complete JSON and rejects duplicate decoded keys. Offsets
 // preserve every original byte, including unknown fields and nested escapes.
 func backupJSON(b []byte) (any, []backupString, error) {
+	if !utf8.Valid(b) {
+		return nil, nil, errors.New("invalid JSON UTF-8")
+	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
 	var ss []backupString

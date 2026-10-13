@@ -224,6 +224,7 @@ func TestBackupBudgetParsingFailsClosed(t *testing.T) {
 		doc  []byte
 	}{
 		{"malformed", doc[:len(doc)-1]},
+		{"invalid UTF-8", bytes.Replace(doc, []byte(`"version": 1`), append([]byte(`"unknown": "`), append([]byte{0xff}, []byte(`", "version": 1`)...)...), 1)},
 		{"trailing", append(append([]byte(nil), doc...), []byte(" {}")...)},
 		{"duplicate", bytes.Replace(doc, []byte(`"version": 1`), []byte(`"version": 1, "version": 1`), 1)},
 		{"decoded duplicate", bytes.Replace(doc, []byte(`"version": 1`), []byte(`"version": 1, "vers\u0069on": 1`), 1)},

@@ -245,15 +245,45 @@ func TestAProCardsFlashAttemptIsReadOnFlash(t *testing.T) {
 // a silent second attempt.
 func TestAStoreWithNoRouteEscalatesNothing(t *testing.T) {
 	t.Parallel()
-	h := routeHarness(t)
-	h.addReady("s1", 1, briefOf("pro", ""))
-	h.startMachine()
-	h.machine()
-	h.boundOut("s1-1")
-	pr := h.snap().Work.Card("s1-1")
-	assert.Equal(t, 1, pr.Int("attempt"), "no second attempt")
-	assert.Empty(t, pr.F(sprint.FieldTierNow))
-	assert.Len(t, h.openOf(sprint.NBound), 1, "the bound's judgment")
+	t.Run("start refuses unserved work", func(t *testing.T) {
+		t.Parallel()
+		h := routeHarness(t)
+		h.addReady("s1", 1, briefOf("pro", ""))
+		_, _, _, err := h.st.SetMachine(h.ctx, true)
+		require.ErrorContains(t, err, sprint.NothingFundedCause)
+		assert.Empty(t, h.workCards(), "no work is dealt by a refused start")
+	})
+	t.Run("direct bound planning never escalates", func(t *testing.T) {
+		t.Parallel()
+		h := routeHarness(t)
+		h.addReady("s1", 1, briefOf("pro", ""))
+		// Coordinator steps exercise the legacy no-route twin without starting it.
+		h.must(DealStep(sprint.DealReq{}))
+		for i := 0; i <= sprint.MaxRedeals; i++ {
+			h.failTake(h.snap().Work.Card("s1-1").F("work"), providerLine)
+			s := h.snapRoutes()
+			if sprint.AtRedealBound(s, s.Work.Card("s1-1")) != nil {
+				break
+			}
+			h.must(DealStep(sprint.DealReq{}))
+		}
+		s := h.snapRoutes()
+		pr := s.Work.Card("s1-1")
+		require.NotNil(t, sprint.AtRedealBound(s, pr), "real failed takes reached the bound")
+		assert.Empty(t, s.NextTier(pr), "no route means no escalation")
+		assert.Equal(t, 1, pr.Int("attempt"), "no second attempt")
+		assert.Empty(t, pr.F(sprint.FieldTierNow))
+		plan, _ := sprint.TickDeal(s, sprint.TickReq{})
+		var bounds []sprint.Note
+		for _, note := range plan.Notes {
+			if note.Type == sprint.NBound {
+				bounds = append(bounds, note)
+			}
+		}
+		require.Len(t, bounds, 1, "the bound's judgment")
+		assert.Equal(t, []string{"s1-1"}, bounds[0].Primaries)
+		assert.Empty(t, plan.Units, "bound work creates no second attempt")
+	})
 }
 
 // The second identical failure across attempts below the ceiling escalates (rules 1 and 2

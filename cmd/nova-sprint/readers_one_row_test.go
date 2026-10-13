@@ -29,9 +29,9 @@ func TestWhereReadersTableIsOneRowTheSumOfAllReaders(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.inReview(6)
 	ta.ok("ask")
-	ta.ok("read --as reader-a --ok --limit 2")
+	ta.ok("read --as reader-a --ok --limit 2 --usage 'input=1000 output=100'")
 	ta.ok("read --as reader-b --begin --limit 1")
-	ta.ok("read --as reader-c --broken --finding 'line 3: the empty case is not handled' --limit 1")
+	ta.ok("read --as reader-c --broken --finding 'line 3: the empty case is not handled' --limit 1 --usage 'input=1000 output=100'")
 
 	var v struct {
 		Tables map[string]map[string]map[string]string

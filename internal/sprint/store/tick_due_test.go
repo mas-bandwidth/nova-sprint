@@ -249,6 +249,10 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
+	// A native pro route keeps both the work and its two required reads executable.
+	h.m.SetRoutes([]sprint.Route{providerRoute("pro-a", "pro", "funded-pro")})
+	h.m.SetProviders(map[string]sprint.Provider{"funded-pro": {Name: "funded-pro", Billing: "metered", Funded: true}})
+	h.readersRead("pro")
 	h.startMachine()
 	h.machine()
 	h.work("m1")
@@ -267,6 +271,7 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	require.Equal(t, was, n, "few readers written %d times (was %d), open %d, after one reader came", n, was, open)
 	require.Equal(t, 1, open, "few readers written %d times (was %d), open %d, after one reader came", n, was, open)
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-b"}))
+	h.readersRead("pro")
 	h.beat()
 	h.tick(time.Second)
 	h.machine()

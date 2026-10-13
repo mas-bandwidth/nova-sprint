@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"sort"
 	"strings"
 	"testing"
@@ -95,17 +97,29 @@ func (r *readsRig) work(n int) {
 
 func TestReadsTogetherAtReaderWidthTakeFourReadsPerLanding(t *testing.T) {
 	t.Parallel()
+	server := newServerRig(t,
+		"nova-sprint init --readers reader-m1,reader-m2 --members m1:2,m2:1",
+		"nova-sprint set --read-cards off",
+	)
+	// This fleet reader-width fixture actually executes pro work and pro reads;
+	// the separate learning pin cannot supply its route or its reader capability.
+	mem := server.a.twins[server.a.serveAddr].mem
+	mem.SetRoutes([]sprint.Route{{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true}})
+	mem.SetProviders(map[string]sprint.Provider{"fixture": {Name: "fixture", Billing: "plan", Funded: true}})
+	st, err := server.a.store(common{redis: server.a.serveAddr, actor: "boss"})
+	require.NoError(t, err)
+	require.NoError(t, st.EnsureReaderTiers(context.Background()))
+	for _, reader := range []string{"reader-m1", "reader-m2"} {
+		require.NoError(t, st.B.RowSet(context.Background(), st.Names.Table(sprint.Readers), reader, map[string]string{sprint.ReaderTiers: "pro"}))
+	}
+	server.boss("nova-sprint add --stream s1 --count 3 --brief-file " + proBriefFile(t))
+	server.boss("nova-sprint start")
+	server.boss("nova-sprint tick")
+	server.boss("nova-sprint tick")
 	r := &readsRig{
-		serverRig: newServerRig(t,
-			"nova-sprint init --readers reader-m1,reader-m2 --members m1:2,m2:1",
-			"nova-sprint set --read-cards off",
-			"nova-sprint add --stream s1 --count 3 --brief-file "+proBriefFile(t), // pro: two reads each
-			"nova-sprint start",
-			"nova-sprint tick",
-			"nova-sprint tick",
-		),
-		width: map[string]int{"reader-m1": 2, "reader-m2": 1}, // reader-<m> runs at m's width
-		asked: map[string]map[string]bool{},
+		serverRig: server,
+		width:     map[string]int{"reader-m1": 2, "reader-m2": 1}, // reader-<m> runs at m's width
+		asked:     map[string]map[string]bool{},
 	}
 	r.queue("reader-m1") // a reader's queue is its beat: a reader that never beat is asked nothing
 	r.queue("reader-m2")

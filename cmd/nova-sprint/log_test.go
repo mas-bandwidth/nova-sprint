@@ -84,8 +84,8 @@ func TestCardTellsTheStory(t *testing.T) {
 	ta.ok("take --as m1 s1-1.w2@1")
 	ta.ok("finish --as m1 s1-1.w2@1 --head h2 --report 'handled; tests green'")
 	ta.ok("ask") // the pair: a card's reads are asked together
-	ta.ok("read --as reader-a --ok s1-1.r2.reader-a --finding 'the empty case is tested'")
-	ta.ok("read --as reader-b --ok s1-1.r2.reader-b --finding 'fine'")
+	ta.ok("read --as reader-a --ok s1-1.r2.reader-a --finding 'the empty case is tested' --usage 'input=1000 output=100'")
+	ta.ok("read --as reader-b --ok s1-1.r2.reader-b --finding 'fine' --usage 'input=1000 output=100'")
 	ta.ok("accept s1-1")
 	ta.ok("merge --stream s1")
 	out = ta.ok("card s1-1")
