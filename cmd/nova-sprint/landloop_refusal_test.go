@@ -632,3 +632,109 @@ func TestAClearedAckedCauseThatReturnsBeforeItsCloseIsRaisedAnew(t *testing.T) {
 	}
 	assert.Contains(t, sprint.LandRefusalStanding(s), "code=git-identity", "the stall alarm names the returned cause")
 }
+
+// landerAcks is the lander's acknowledgements the store holds, and its standing cause as
+// the stall alarm reads it.
+func (r *refusalRig) landerAcks() (acked []string, standing string) {
+	r.t.Helper()
+	st, err := r.ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(r.t, err)
+	s, err := st.Load(r.t.Context(), []string{sprint.Work}, nil)
+	require.NoError(r.t, err)
+	for _, o := range s.Acked {
+		if sprint.IsLanderStanding(o.Note.Type) {
+			acked = append(acked, o.Note.What)
+		}
+	}
+	return acked, sprint.LandRefusalStanding(s)
+}
+
+// A cause the seat acked, cleared by a landing whose close the store did not take, then
+// a restart before any beat wrote that close, and the same cause back on the new
+// server: the close owed in the old server's memory is gone with it, and the stale
+// acknowledgement is all the store holds. The new server's first raise never reads it
+// as said: it closes it and raises the cause anew in one step (read 5's probe,
+// TestProbe189eRestartLosesOwedClose; tla/ServerSwitch.tla StaleSilent, the witness
+// "restartack").
+func TestAStaleAckAcrossARestartIsRaisedAnew(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	var down sync.Mutex
+	broken := false
+	backend := r.ta.a.backend
+	r.ta.a.backend = func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error) {
+		down.Lock()
+		b := broken
+		down.Unlock()
+		if b {
+			return nil, errors.New("the store blinked")
+		}
+		return backend(ctx, addr, names)
+	}
+	id := landClass("git-identity", "no identity; run: nova-config apply")
+	r.set(id)
+	_, _ = r.beat(nil)
+	js := r.judgments()
+	require.Len(t, js, 1)
+	r.ta.ok("ack " + js[0].Note.ID + " --reason seen")
+	down.Lock()
+	broken = true
+	down.Unlock()
+	r.set("")
+	out, _ := r.beat(nil) // landed; the close is owed in this server's memory, not written
+	require.Contains(t, out, "LAND JUDGMENT NOT WRITTEN: the close of the lander's refusal")
+
+	// the restart: a new server on the same store, the old one's memory gone
+	ta2 := newTestApp(t)
+	ta2.a.backend = backend
+	r2 := newRefusalRigOn(t, ta2)
+	acked, _ := r2.landerAcks()
+	require.Len(t, acked, 1, "the stale acknowledgement is what the store holds")
+	r2.set(id) // the cause is back on the new server
+	for i := range 10 {
+		out, _ := r2.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6", "beat %d: the cause is named", i+1)
+		assert.NotContains(t, out, "LAND JUDGMENT NOT WRITTEN", "beat %d", i+1)
+		if js := r2.judgments(); assert.Len(t, js, 1, "beat %d: the returned cause is raised anew, once", i+1) {
+			assert.Contains(t, js[0].Note.What, "code=git-identity")
+		}
+	}
+	acked, standing := r2.landerAcks()
+	assert.Empty(t, acked, "the stale acknowledgement was closed")
+	assert.Contains(t, standing, "code=git-identity", "the stall alarm names the returned cause")
+	assert.Len(t, r2.allJudgments(), 2, "the first episode's judgment and the returned cause's")
+}
+
+// An ack given before a restart, under a cause that stood throughout, is asked once
+// more: the store cannot tell it from a stale one, so the new server's first raise
+// closes it and raises the cause anew (one judgment, the documented cost); the seat's
+// ack of that judgment then sticks as before.
+func TestAnAckBeforeARestartIsAskedOnceMoreThenSticks(t *testing.T) {
+	t.Parallel()
+	r := newRefusalRig(t)
+	id := landClass("git-identity", "no identity; run: nova-config apply")
+	r.set(id)
+	_, _ = r.beat(nil)
+	js := r.judgments()
+	require.Len(t, js, 1)
+	r.ta.ok("ack " + js[0].Note.ID + " --reason seen")
+	_, _ = r.beat(nil)
+	require.Empty(t, r.judgments(), "acked, not raised again on the same server")
+
+	ta2 := newTestApp(t)
+	ta2.a.backend = r.ta.a.backend
+	r2 := newRefusalRigOn(t, ta2)
+	r2.set(id)
+	_, _ = r2.beat(nil)
+	js = r2.judgments()
+	require.Len(t, js, 1, "the new server asks once more")
+	acked, _ := r2.landerAcks()
+	assert.Empty(t, acked, "the acknowledgement from before the restart was closed with the raise")
+	r2.ta.ok("ack " + js[0].Note.ID + " --reason 'seen again'")
+	for i := range 6 {
+		out, _ := r2.beat(nil)
+		assert.Contains(t, out, "LAND REFUSED queued=6", "beat %d", i+1)
+		assert.Empty(t, r2.judgments(), "beat %d: acked on this server, not raised again", i+1)
+	}
+	assert.Len(t, r2.allJudgments(), 2, "one raise per server")
+}

@@ -144,20 +144,36 @@ func LandRefusalSaid(open []Open, typ, what string) bool {
 }
 
 // LandRefusalRaise is the plan that raises the standing refusal's judgment, what its
-// reason and remedy, by who: none when one of the same refusal (LandRefusalKey) is
-// open or acknowledged already (a server restarted under the same refusal says it
-// once). prev is the refusal this one replaced on this server: its judgment is closed
-// in the same plan, and no other, so a second server's refusal never closes the
-// first's.
+// reason and remedy, by who: none when a judgment of the same refusal (LandRefusalKey)
+// is open already (a server restarted under the same refusal says it once). prev is
+// the refusal this one replaced on this server: its judgment is closed in the same
+// plan, and no other, so a second server's refusal never closes the first's.
+//
+// This is the cause's first raise on this server (the land loop calls it only for a
+// cause its memory has not judged; a judged one is re-checked with LandRefusalSaid,
+// which honours the seat's ack). An acknowledgement of the same cause found here
+// predates this server's knowledge of it: it may be left from an earlier episode whose
+// close was owed in a server's memory and lost with it (a restart between a clear and
+// its close). The store cannot tell that from a cause that stood throughout, so the
+// acknowledgement is never read as said: it is closed, and the judgment raised anew,
+// in this one step. The owed close is so held by the store itself (the
+// acknowledgement), and consumed here or by the next clear's LandRefusalClose. The cost
+// is one judgment raised again after a restart under a cause the seat had acked
+// (tla/ServerSwitch.tla StaleSilent; the witness "restartack").
 //
 // tla/ServerSwitch.tla LandRefused
 func LandRefusalRaise(s *Snapshot, typ, what, who, prevType, prev string) Plan {
 	var p Plan
-	all := append(append([]Open(nil), s.Open...), s.Acked...)
-	if LandRefusalSaid(all, typ, what) {
+	if LandRefusalSaid(s.Open, typ, what) {
 		return p
 	}
-	if prev != "" && (prevType != typ || LandRefusalKey(prev) != LandRefusalKey(what)) {
+	key := LandRefusalKey(what)
+	for _, o := range landRefusalJudgments(s) {
+		if o.Note.Kind == Acknowledged && o.Note.Type == typ && LandRefusalKey(o.Note.What) == key {
+			p.Closes = append(p.Closes, o) // a stale acknowledgement, never read as said
+		}
+	}
+	if prev != "" && (prevType != typ || LandRefusalKey(prev) != key) {
 		// the replaced cause's judgment and its acknowledgement, if the seat acked it
 		for _, o := range landRefusalJudgments(s) {
 			if o.Note.Type == prevType && LandRefusalKey(o.Note.What) == LandRefusalKey(prev) {

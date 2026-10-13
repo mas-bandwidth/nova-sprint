@@ -510,7 +510,10 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 		// before its close was written would otherwise meet its own stale
 		// acknowledgement and stay silent (LandRefusalRaise writes nothing for a cause
 		// acknowledged). Until the close lands, nothing is raised (tla/ServerSwitch.tla
-		// closeOwed, CloseWrite; the witness "staleack").
+		// closeOwed, CloseWrite; the witness "staleack"). The owe is this server's
+		// memory; its durable form is the acknowledgement the store still holds, which a
+		// restarted server's first raise of the cause closes in the same step as the
+		// new judgment (sprint.LandRefusalRaise; the witness "restartack").
 		if closeAs == "" {
 			closeAs = sprint.MachineActor
 		}
@@ -641,7 +644,9 @@ type landBeat struct {
 	closing, swept bool
 	closeAs        string
 	// closeGen counts the clears (clearRefusal): a close written for one generation
-	// leaves a later clear's close owed.
+	// leaves a later clear's close owed. closing is memory and a restart loses it; what
+	// it owed stays in the store as the lander's acknowledgement, which the next
+	// server never reads as said on a first raise (sprint.LandRefusalRaise).
 	closeGen int
 	// notWritten is the last LAND JUDGMENT NOT WRITTEN reason said (judgeNotWritten).
 	notWritten string

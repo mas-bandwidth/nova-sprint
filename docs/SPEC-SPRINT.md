@@ -8481,11 +8481,20 @@ said as `LAND JUDGMENT NOT WRITTEN: its judgment could not be checked ...`): one
 another step is raised again; one the seat acknowledged stays acknowledged, since `ack` of
 `the lander refuses every landing` or `the lander fails every landing` keeps an
 acknowledgement as a tick-kept judgment's ack does, so the same cause is never raised again
-while it stands; and a server restarted under a cause whose judgment is open or
-acknowledged does not raise it twice. A `check` answer closes it, and the next cycle raises
+while it stands on that server; and a server restarted under a cause whose judgment is
+open does not raise it twice. A `check` answer closes it, and the next cycle raises
 it again while the cause stands. When a pass gets past the cause, its judgment and its
 acknowledgement are both closed (`LandRefusalClose`), so a stale acknowledgement never
-blocks a later raise of the same cause; that close takes every lander judgment open,
+blocks a later raise of the same cause. That close is owed from the clear until it is
+written, and nothing is raised while it is owed. The owe is the loop's memory, and a
+restart loses it; what it owed stays in the store as the acknowledgement itself, so a
+cause's first raise on a server (`LandRefusalRaise`) never reads an acknowledgement as
+said: it closes it and writes the judgment anew in the same step, and the next clear's
+close takes one whose cause has not returned. The store cannot tell an acknowledgement left
+from an earlier episode from one given to a cause that stood throughout, so a restart under
+an acknowledged cause asks the seat once more (one judgment), and the seat's ack of that
+judgment then sticks (tla/ServerSwitch.tla `StaleSilent`, the witnesses `staleack` and
+`restartack`). `LandRefusalClose` takes every lander judgment open,
 another live server's too, which that server writes again on its next cycle (one extra
 raise, accepted). The tick's `landing stalled` judgment, and its alarm line, append `; the
 lander refuses every landing: <reason>; run: <remedy>` while that judgment is open, so the

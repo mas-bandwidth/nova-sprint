@@ -431,7 +431,9 @@ FAILED queued=<n> since=<age> reason=<reason> run: <remedy>` and the judgment `t
 fails every landing`; the queue's first good read clears it. The cause is keyed on the class land names
 at the source, `code=<class>` (and `stream=<s>`), never on its words; `ack` of its judgment
 keeps it acknowledged while the cause stands, and a pass that gets past the cause closes
-both. `LAND IDLE` with cards queued says
+both. A restarted server asks once more about a cause that was acknowledged before the
+restart (it cannot tell that acknowledgement from one left by an earlier episode whose close
+was lost with the old server), and an `ack` of that judgment sticks. `LAND IDLE` with cards queued says
 why: `why=running` (a landing in flight), `why=no-coordinator`, or `why=nothing-landable`.
 The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, the server's lander.
 
