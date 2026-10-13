@@ -106,8 +106,9 @@ var CardHeaderRemedies = map[string]string{
 // CardHeaderChecks is the four tokens of §5 rule 1; `cmd/nova-swarm/lint.go` merges these
 // into its cardLintRemedies, so a start-named or stop-named line names its remedy.
 const (
-	StartNamedRemedy = "the brief carries `START: <files or packages to read first>`, the files or packages the child reads before it spends; it names where the work begins, so the reading is bounded before a token is spent"
-	StopNamedRemedy  = "the brief carries `STOP: <the condition that ends the task>`, the condition that ends the task; it bounds a flash child's reading, which otherwise runs past its budget"
+	StartNamedRemedy     = "the brief carries `START: <files or packages to read first>`, the files or packages the child reads before it spends; it names where the work begins, so the reading is bounded before a token is spent"
+	StopNamedRemedy      = "the brief carries `STOP: <the condition that ends the task>`, the condition that ends the task; it bounds a flash child's reading, which otherwise runs past its budget"
+	ConsumersNamedRemedy = "the brief carries `CONSUMERS: <cards that need this sentinel>`, naming every card that needs it; a sentinel brief missing CONSUMERS: is refused"
 )
 
 // CardHeaderChecks is every token this file draws, in one byte-stable order.
@@ -253,6 +254,7 @@ var cardHeaderKeys = map[string]bool{
 	"START": true, "STOP": true,
 	"DEPENDS-ON": true, "PRIORITY": true, "NEW": true, "SHARED": true,
 	"REPO": true, "BASE": true, "tier": true, "RESULT": true,
+	"CONSUMERS": true, "WHO": true,
 }
 
 // LintHeaderStranded returns one finding per header key (cardHeaderKeys) written as a
@@ -278,11 +280,12 @@ func LintHeaderStranded(raw []byte) []CardHeaderFinding {
 // token of their own, so a stranded or repeated one answers under `kind-declared`, which
 // is the token for "the typed header is not the header the gate will read".
 var cardKeyCheck = map[string]string{
-	"KIND":   "kind-declared",
-	"PATHS":  "paths-declared",
-	"TEST":   "test-named",
-	"LEGS":   "kind-declared",
-	"SOURCE": "kind-declared",
+	"KIND":      "kind-declared",
+	"PATHS":     "paths-declared",
+	"TEST":      "test-named",
+	"LEGS":      "kind-declared",
+	"SOURCE":    "kind-declared",
+	"CONSUMERS": "consumers-named",
 }
 
 // StartNamedCheck and StopNamedCheck are the tokens for the two reading lines of the
@@ -292,8 +295,9 @@ var cardKeyCheck = map[string]string{
 // flash brief and prints it as a note for tier pro, or no tier. Both carry a remedy in
 // StartNamedRemedy and StopNamedRemedy above, so the note names what to write.
 const (
-	StartNamedCheck = "start-named"
-	StopNamedCheck  = "stop-named"
+	StartNamedCheck     = "start-named"
+	StopNamedCheck      = "stop-named"
+	ConsumersNamedCheck = "consumers-named"
 )
 
 // validGlobs is the PATHS: rule, and it is `hygiene.ValidatePaths` ITSELF, not a
@@ -514,6 +518,14 @@ func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf f
 		}
 		if f := h["STOP"]; !f.found {
 			add(StopNamedCheck, 1, "no STOP: line under the contract line; the brief names the condition that ends the task")
+		}
+	}
+	if kind.value == "sentinel" {
+		f := h["CONSUMERS"]
+		if !f.found {
+			add(ConsumersNamedCheck, 1, "no CONSUMERS: line under the contract line; the brief carries CONSUMERS: <cards that need this sentinel>")
+		} else if strings.TrimSpace(f.value) == "" {
+			add(ConsumersNamedCheck, f.line, "CONSUMERS: with no cards after it; a sentinel brief names every card that needs it")
 		}
 	}
 	return out
