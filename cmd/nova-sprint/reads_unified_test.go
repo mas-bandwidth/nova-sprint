@@ -37,7 +37,7 @@ func TestAnyUnitWithRoomAtOrAboveTheReadTierServesARead(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{
-		Name: "amy", Fields: map[string]string{"slots": "2", "tiers": "flash", "mode": "one-shot", "width": "1"},
+		Name: "amy", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "1"},
 	}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)

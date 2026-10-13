@@ -151,7 +151,7 @@ func TestTheFriendsTableCountsTheFriendsSprintCards(t *testing.T) {
 func TestFriendSyncWritesTheConfiguredWidth(t *testing.T) {
 	t.Parallel()
 	ta, cfg := friendApp(t, "amy")
-	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "cat", Fields: map[string]string{"slots": "2", "tiers": "flash", "width": "3"}}, "t")
+	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "cat", Fields: map[string]string{"tiers": "flash", "width": "3"}}, "t")
 	require.NoError(t, err)
 	ta.ok("friend sync")
 	width := func() map[string]string {
@@ -215,7 +215,7 @@ func friendRows(names ...string) friendsFn {
 	return func(context.Context, string) ([]config.Row, error) {
 		rows := make([]config.Row, len(names))
 		for i, n := range names {
-			rows[i] = config.Row{Name: n, Fields: map[string]string{"slots": "2", "tiers": "flash"}}
+			rows[i] = config.Row{Name: n, Fields: map[string]string{"tiers": "flash"}}
 		}
 		return rows, nil
 	}
@@ -223,7 +223,7 @@ func friendRows(names ...string) friendsFn {
 
 func addFriendRow(t *testing.T, cfg *config.Mem, name string) {
 	t.Helper()
-	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: name, Fields: map[string]string{"slots": "2", "tiers": "flash"}}, "t")
+	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: name, Fields: map[string]string{"tiers": "flash"}}, "t")
 	require.NoError(t, err)
 }
 
@@ -502,7 +502,7 @@ func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
 	mode, width := "", ""
 	r.a.friends = func(context.Context, string) ([]config.Row, error) {
-		f := map[string]string{"slots": "2", "tiers": "flash"}
+		f := map[string]string{"tiers": "flash"}
 		if mode != "" {
 			f["mode"], f["width"] = mode, width
 		}
