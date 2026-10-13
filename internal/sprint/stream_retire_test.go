@@ -118,12 +118,18 @@ func TestRemovingAStreamRetiresItsOpenJudgments(t *testing.T) {
 
 	t.Run("a judgment open before the change retires on the next tick", func(t *testing.T) {
 		t.Parallel()
-		r := stoppedRed(t)
+		r := newConflictRig(t)
+		r.must(store.AddStep(sprint.AddReq{Stream: "s2", Count: 1, Brief: "c: the other work (s2) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
+		r.toMerging("s2-1")
+		r.must(store.MergeStep(sprint.MergeReq{Stream: "s2", Batch: 1, Red: true, Suspects: []string{"s2-1"}}))
 		j := r.openOf("s2")[0].Note
-		r.removeRows("s2") // a remove of before this change: rows only
-		require.Len(t, r.openOf("s2"), 1)
+		// START rechecks too: start before the card leaves its table, so
+		// this scenario still proves the tick's retirement and actor.
 		_, _, _, err := r.st.SetMachine(r.ctx, true)
 		require.NoError(t, err)
+		r.must(store.DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"s2-1"}}, Reason: "obsolete"}))
+		r.removeRows("s2") // a remove of before this change: rows only
+		require.Len(t, r.openOf("s2"), 1)
 		r.tick()
 		assert.Empty(t, r.openOf("s2"), "the tick retired it")
 		assert.NotContains(t, r.inboxStreams(), "s2")
@@ -132,6 +138,25 @@ func TestRemovingAStreamRetiresItsOpenJudgments(t *testing.T) {
 		assert.Equal(t, j.ID, got[0].Answers)
 		assert.Contains(t, got[0].What, sprint.WhyGone, "with a note saying why")
 		assert.Equal(t, sprint.MachineActor, got[0].Who)
+	})
+
+	t.Run("start retires an absent stream before the tick", func(t *testing.T) {
+		t.Parallel()
+		r := stoppedRed(t)
+		j := r.openOf("s2")[0].Note
+		r.removeRows("s2")
+		_, _, result, err := r.st.SetMachine(r.ctx, true)
+		require.NoError(t, err)
+		require.Len(t, result.Said, 1)
+		assert.Contains(t, result.Said[0], j.ID)
+		assert.Empty(t, r.openOf("s2"))
+		got := r.retired("s2")
+		require.Len(t, got, 1)
+		assert.Equal(t, j.ID, got[0].Answers)
+		assert.Contains(t, got[0].What, sprint.WhyGone)
+		assert.Equal(t, r.st.Actor, got[0].Who, "START attributes its own closure")
+		r.tick()
+		assert.Len(t, r.retired("s2"), 1, "the tick cannot duplicate START's decision")
 	})
 
 	t.Run("the tick raises no judgment for a stream the tables lack", func(t *testing.T) {

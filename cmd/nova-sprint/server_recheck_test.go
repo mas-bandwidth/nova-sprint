@@ -60,14 +60,16 @@ func TestAnEarlierServerStartupCannotCloseTheClearedSprintsJudgments(t *testing.
 		return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Judgment, Type: sprint.NWorkFailed, Primaries: []string{"absent"}, At: s.Now}}}
 	}})
 	require.NoError(t, err)
-	seeded, err := m.OpenNotes(ctx)
+	current, err := st.Pinned(ctx)
+	require.NoError(t, err)
+	seeded, err := current.B.OpenNotes(ctx)
 	require.NoError(t, err)
 	require.Len(t, seeded, 1, "the new epoch really holds the fixture judgment")
 	var out bytes.Buffer
 	err = (&app{}).recheckStartedServer(ctx, pinned, &out)
 	require.ErrorContains(t, err, "epoch")
 	assert.Empty(t, out.String())
-	open, err := m.OpenNotes(ctx)
+	open, err := current.B.OpenNotes(ctx)
 	require.NoError(t, err)
 	assert.Len(t, open, 1, "the new sprint's judgment remains open")
 }
