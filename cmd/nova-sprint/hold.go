@@ -27,7 +27,13 @@ withdrawn to ready). A held friend keeps no card, with
 --return or without: every card on the friend's row goes back to ready, begun or not, and
 a started one with a push carries its pushed head to the next taker. Its status reads held, the reason
 beside it (where --json --cards: holds; handover), and the hold is a line
-of the log.
+of the log. A fleet member's hold may name its cause, --cause j<n> (a
+judgment open now): the tick ends the hold in the step that sees the
+judgment answered or retired, and logs "released: cause <x> resolved" to
+the seat. A doctor check is no cause in v1.2.x: --cause doctor:<check> is
+refused. A member's hold with no cause is
+reported to the seat every two hours until it is released or names one;
+where lists each held member's cause, its age and the verb that releases it.`) + "\n" + strings.TrimSpace(`
 unhold <name>... [--reason <text>] releases it: a member that beats is up at
 once, a reader's and a friend's state is their beat's, a stream is dealt again.
 fleet down <member> (hold --return), reader away <reader>... (hold --return),
@@ -71,6 +77,10 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 	ret := false
 	if !release && kind != sprint.HoldFriend {
 		fs.BoolVar(&ret, "return", false, "hand back only a member's ready cards; when the member is down, its dead working cards too; hand back a reader's reads asked or begun or withdraw a stream's working cards (default: a member that is up keeps its taken cards and finishes them; what is begun finishes for other names, but a held friend keeps no card either way)")
+	}
+	cause := new(string)
+	if !release && kind != sprint.HoldFriend {
+		cause = fs.String("cause", "", "what ends a fleet member's hold: a judgment open now (its alias j<n> or its id); the tick releases the hold in the step that sees it end, and logs 'released: cause <x> resolved' to the seat. A hold with no cause is reported every "+sprint.HoldNoCauseEvery.String()+" until it is released or names one")
 	}
 	dry := fs.Bool("dry-run", false, "check the names and the reason, print what would be held or released, and write nothing")
 	var repo listFlag
@@ -131,7 +141,21 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		fmt.Fprintf(stdout, "%s DRY-RUN names=%s return=%t; nothing was written\n", strings.ToUpper(name), strings.Join(pos, ","), ret)
 		return 0
 	}
-	return a.runHold(name, "", *c, st, sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor}, nil, stdout, stderr)
+	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor}
+	if req.Cause = strings.TrimSpace(*cause); req.Cause != "" {
+		if _, doctor := sprint.DoctorCause(req.Cause); doctor {
+			// no doctor cause in v1.2.x (hold_cause.go, DoctorCauseDeferred)
+			return refuse(stderr, verb, "--cause "+req.Cause+": "+sprint.DoctorCauseDeferred)
+		}
+		// a judgment: its alias read back to the id it names in this epoch, kept beside
+		// the word as the coordinator wrote it (hold_cause.go)
+		ids, err := unalias(context.Background(), st, []string{req.Cause})
+		if err != nil {
+			return refuse(stderr, verb, "--cause: "+err.Error())
+		}
+		req.CauseNote = ids[0]
+	}
+	return a.runHold(name, "", *c, st, req, nil, stdout, stderr)
 }
 
 // runHold runs one hold or unhold as verbName (an old verb's words when it aliases one:
