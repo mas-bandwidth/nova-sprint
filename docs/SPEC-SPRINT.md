@@ -3731,15 +3731,19 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   goes back to each card's tier. `where` says `reads: <n>` while a count is set,
   and `where --json` carries `reads_needed`, the count or "default".
 - A reader row carries the tiers it reads (`readers.tiers`, text, no fold;
-  an empty cell is the default: a fleet reader reads flash alone while the store
-  holds routes, and a friend's or a bud's reader, which brings its own model,
-  every tier; the owner, 2026-10-06, "I'm ok with flash readers on fleet but not
-  pro"; `sprint.fleetReadsFlashOnly`; a store with no route has every reader run
-  its own model, and an empty cell there reads every tier). `reader add <reader>...
+  an empty cell is the default: every tier a route serves, for a fleet reader
+  and for a friend's or a bud's reader alike; a store with no route has every
+  reader run its own model, and an empty cell there reads every tier too).
+  Every up fleet member has a member reader row `reader-<member>`, made by
+  init, by a member's join (`fleet up`) and by a clear when missing, and up
+  while its member is up and not held. `reader add <reader>...
   [--tiers flash[,pro,heavy,frontier]|all|default]` and `reader set <reader>... --tiers
-  ...` write them; omitted and `default` store empty, and `all` stores every tier
-  by name (`flash,pro,heavy,frontier`), so a fleet row reads pro only when its row
-  names it.
+  ...` write them; a bare fleet member name given to `reader add`, `reader
+  set` or `reader up` names its member reader itself, `reader add` writes
+  the row up and prints `member-reader=<yes|no>` for each row; omitted and
+  `default` store empty, and `all` stores every tier
+  by name (`flash,pro,heavy,frontier`), so a fleet row reads only the tiers
+  its row names when it names any.
   The ask (`freeReaders`, `enoughReadersUp`, the level, and a returned read
   asked again in place) counts a reader only for a primary whose read tier
   (`readTierOf`) the cell names, and never asks a reader a read outside that
@@ -3747,7 +3751,7 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
   one existing judgment `fewer than two readers up` and asks nothing of a
   reader outside the tier. `where` and the reader verbs print the tiers
   (`default` when the cell is empty). The readers' level plans with the routes,
-  as the ask does, so it moves no read above flash to a fleet row that names none. A table created before the column gains it
+  as the ask does, so it moves a read to a fleet row only at a tier the row serves (every served tier when its cell is empty). A table created before the column gains it
   at `init` or at the next `reader set` (and at `reader add` when `--tiers`
   is given). The model is `tla/ReaderTiers.tla`: no read is asked of a reader
   outside the primary's tier. `tla/ReadsByRoom.tla` and `tla/DirtyTick.tla`

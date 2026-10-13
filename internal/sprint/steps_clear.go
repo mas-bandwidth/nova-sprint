@@ -23,9 +23,31 @@ type Shape struct {
 	ReaderTiers map[string]string `json:"reader_tiers,omitempty"`
 }
 
+// MemberReaderRows is the reader row of every up fleet member the readers
+// table lacks: reader-<member> for each member up and not held. Init, a
+// member's join and a clear make these rows when missing, so every up
+// member is a reader with no seat action (read_cards.go memberReads;
+// tla/ReaderTiers.tla EveryUpMemberIsAReader).
+func MemberReaderRows(s *Snapshot) []string {
+	if s == nil || s.Readers == nil {
+		return nil
+	}
+	var out []string
+	for _, m := range s.UpMembers() {
+		if rd := ReaderPrefix + m; !s.Readers.HasRow(rd) {
+			out = append(out, rd)
+		}
+	}
+	return out
+}
+
 // ShapeOf is a snapshot's shape.
 func ShapeOf(s *Snapshot) Shape {
 	sh := Shape{Readers: append([]string(nil), s.Readers.Rows()...), Members: s.Members(), Status: map[string]string{}}
+	// a clear keeps every up member a reader: a member reader row the old
+	// epoch lacked is created by the clear, as init and a join create it
+	// (tla/ReaderTiers.tla Clear, EveryUpMemberIsAReader)
+	sh.Readers = append(sh.Readers, MemberReaderRows(s)...)
 	for _, r := range append(append([]string(nil), s.Work.Rows()...), s.Merge.Rows()...) {
 		if !contains(sh.Streams, r) {
 			sh.Streams = append(sh.Streams, r)

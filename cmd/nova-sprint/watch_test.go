@@ -211,6 +211,7 @@ func TestWhereShowsEveryTableAndEveryStream(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --members m1")
+	ta.ok("reader remove reader-m1") // the fixture's readers are the named ones; init's member reader goes
 	// a table with no row is its header, one rule and the summary row (the owner,
 	// 2026-10-02: "when the work stream table is empty, please just show the summary row")
 	for _, name := range []string{"work", "readers", "merge"} {
