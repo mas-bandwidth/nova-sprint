@@ -1,11 +1,8 @@
-# Glossary: nova-sprint 1.0.0
+# nova-sprint glossary
 
-The words the nova-sprint spec and help use, one line each: what it means, the
-section that defines it, and the words it replaced where it replaced any. The
-words of the building blocks are in [../GLOSSARY.md](../GLOSSARY.md) (nova-tools
-1.2.0). This file moves to nova-sprint's `docs/` at the split
-([../SPLIT-NOVA-SPRINT.md](../SPLIT-NOVA-SPRINT.md)). The rules of naming are
-in [../TERMINOLOGY.md](../TERMINOLOGY.md).
+The words the nova-sprint specification and help use, one line each: what each
+means and where its contract is defined. Entries marked `Replaces:` record a
+retired term; use the current term in new briefs and conversation.
 
 An entry reads `**term** — definition. Defined: [where](link). Replaces: words.`
 The `Replaces:` clause is the one place a retired word may stand in a glossary.
@@ -26,7 +23,7 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
   Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: asleep.
 - **held** — a friend or reader the coordinator has put on hold, whatever it beats.
   Defined: [SPEC-SPRINT.md, The readers](../SPEC-SPRINT.md#6-the-readers).
-- **landed** — the final state of a primary: its code is on the development branch.
+- **landed** — the final state of a primary after it merges onto its stream's sprint branch; promotion moves the sprint branch to the development branch.
   Defined: [SPEC-SPRINT.md, The lifecycle of a primary](../SPEC-SPRINT.md#3-the-lifecycle-of-a-primary).
 - **lander** — the merger that lands a primary's pull request onto the sprint branch in batches.
   Defined: [SPEC-SPRINT.md, Merging](../SPEC-SPRINT.md#7-merging).
@@ -34,11 +31,14 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
   Defined: [SPEC-SPRINT.md, Lanes](../SPEC-SPRINT.md#18-lanes).
 - **no tier** — a cost record that names no tier, counted under its own heading in `cost_by_tier`.
   Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: untiered.
-- **primary** — one unit of work between an issue and a pull request, one stream for life.
+- **primary** — one unit of planned work tracked in a stream through its outcome.
+  It may be a work card or a sentinel; a read card reviews a primary and is not itself a primary.
   Defined: [SPEC-SPRINT.md, The cards](../SPEC-SPRINT.md#2-the-cards).
 - **promotion** — the one step that takes the sprint branch to the development branch.
   Defined: [SPEC-SPRINT.md, Merging](../SPEC-SPRINT.md#7-merging).
-- **reader** — a friend that reads a primary in review and says ok or not; a pro card needs two.
+- **reader** — a member or friend assigned to review a primary's work attempt and record a verdict; a pro card needs two.
+  Defined: [SPEC-SPRINT.md, The readers](../SPEC-SPRINT.md#6-the-readers).
+- **read card** — one reader's assignment to review a primary's work attempt.
   Defined: [SPEC-SPRINT.md, The readers](../SPEC-SPRINT.md#6-the-readers).
 - **seat** — the coordinator's place, held by one friend at a time and handed over by a verb.
   Defined: [SPEC-SPRINT.md, Verbs](../SPEC-SPRINT.md#11-verbs).
@@ -52,6 +52,8 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
   Defined: [SPEC-SPRINT.md, The system](../SPEC-SPRINT.md#14-the-system). Replaces: machine for nova-sprint itself.
 - **tick** — one pass of the system over every table: resolve, deal, rebalance, accept, merge.
   Defined: [SPEC-SPRINT.md, The system](../SPEC-SPRINT.md#14-the-system).
+- **twin** — a file-backed in-memory simulation used to learn or test the workflow without a Redis server; commands run one at a time and ticks are manual.
+  Defined: [first lap](../FIRST-LAP.md).
 - **tier** — the strength class a card runs at (flash, pro, frontier); a card with none is dealt at flash.
   Defined: [SPEC-SPRINT.md, The fleet](../SPEC-SPRINT.md#5-the-fleet).
 - **work card** — the live card cut from a primary and dealt to a member for one attempt.
