@@ -615,12 +615,14 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			// a return is counted once: the card is back in asked since it, not begun
 			return "returned already at " + c.F(FieldReturned) + " and not begun since: a return is counted once"
 		}
-		if !r.Begin && !r.Return {
-			// a routed read's verdict is priced as work is, or it is no verdict (cost.go)
+		if !r.Begin {
+			// A return also writes cost/history: bind every receipt before durable writes.
 			if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
 				return why
 			}
-			return ReadUsageMissing(c, r.Usage, r.Verdict)
+			if !r.Return {
+				return ReadUsageMissing(c, r.Usage, r.Verdict)
+			}
 		}
 		return ""
 	}, s.Readers.Card)

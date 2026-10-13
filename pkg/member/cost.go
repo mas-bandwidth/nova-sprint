@@ -51,6 +51,14 @@ func ReceiptUsage(job string) (usage cardcost.Usage, found bool, err error) {
 	for i, name := range strings.Split(sc.Text(), "\t") {
 		col[name] = i
 	}
+	// A damaged typed header must retain its contract on the error path.
+	_, typedHeader := col["raw_usage"]
+	defer func() {
+		if err != nil && typedHeader {
+			usage = cardcost.NoUsage()
+			usage.ReceiptVersion = cardcost.ReceiptVersion
+		}
+	}()
 	for _, name := range []string{"provider", "model", "tokens_in", "tokens_out", "cache_write", "cache_read", "reasoning", "usd"} {
 		if _, ok := col[name]; !ok {
 			return cardcost.NoUsage(), false, fmt.Errorf("%s has no %s column", ReceiptName, name)

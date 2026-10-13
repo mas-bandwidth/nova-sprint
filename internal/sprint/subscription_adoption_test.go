@@ -249,3 +249,67 @@ func TestSubscriptionAbsentTokensRetainDeclaredZeroAfterRouteChanges(t *testing.
 		require.Equal(t, cardcost.Unreported, got.Tokens.Input)
 	}
 }
+
+func TestSubscriptionReturnedReadBindsReceiptBeforeDurableWrite(t *testing.T) {
+	t.Parallel()
+	for _, billing := range []string{"subscription", "plan", "metered"} {
+		t.Run(billing, func(t *testing.T) {
+			t.Parallel()
+			w, reads := routedReads(t)
+			rc := reads[0]
+			w.s.Routes[0].Prices.Billing = billing
+			w.s.Routes[0].Harness = "muse"
+			rc.Fields[FieldBilling] = billing
+			rc.Fields[FieldHarness] = "muse"
+			good := subscriptionRawFixture(t)
+			good.Billing = billing
+			for i := range good.Raw.Records {
+				good.Raw.Records[i].Billing = billing
+			}
+			missing := cardcost.NoUsage()
+			missing.ReceiptVersion = 2
+			missing.Billing = billing
+			mismatch := subscriptionRawFixture(t)
+			if billing == "subscription" {
+				mismatch.Billing = "plan"
+				for i := range mismatch.Raw.Records {
+					mismatch.Raw.Records[i].Billing = "plan"
+				}
+			}
+			negatives := []string{missing.String(), mismatch.String()}
+			if billing == "subscription" {
+				negatives = append(negatives, "input=12")
+			}
+			before := w.s.Work.Card("s1-1").F(FieldCostTotal)
+			req := ReadReq{As: rc.Row, Sel: Sel{IDs: []string{rc.ID}}, Return: true, Reason: "no verdict yet"}
+			for _, usage := range negatives {
+				req.Usage = usage
+				p := Read(w.s, req)
+				require.NotEmpty(t, p.Refused)
+				require.Empty(t, p.Units)
+				require.Empty(t, rc.F(FieldReturned))
+				require.Equal(t, before, w.s.Work.Card("s1-1").F(FieldCostTotal))
+			}
+			req.Usage = good.String()
+			p := Read(w.s, req)
+			require.Empty(t, p.Refused)
+			w.must(p)
+			rc = w.s.Readers.Card(rc.ID)
+			require.NotEmpty(t, rc.F(FieldReturned))
+			require.Contains(t, rc.F(FieldReadTake+"1"), "raw_usage=")
+		})
+	}
+}
+
+func TestSubscriptionAbsentDataDoesNotInventMeteredZero(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	for _, billing := range []string{"metered", "plan", ""} {
+		w.s.Routes = []Route{{Name: "ordinary", Prices: cardcost.Prices{Billing: billing, Input: "0.3"}}}
+		u := cardcost.ParseUsage(costRecord(w.s, "", "ordinary", "", false, "", ""))
+		require.Empty(t, u.Predicted)
+		require.Empty(t, u.Actual)
+		require.Equal(t, cardcost.WhyNoTokens, u.Unpriced)
+		require.Empty(t, cardcost.NoTotal().Add(u).Charged, "absence remains unknown outside explicit subscription")
+	}
+}

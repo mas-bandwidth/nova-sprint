@@ -32,7 +32,13 @@ func TestSubscriptionReceiptCompatibilityFenceBeforeStore(t *testing.T) {
 			}
 			a.now = func() time.Time { return time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC) }
 			var out, err bytes.Buffer
-			require.Equal(t, 2, a.run(args, &out, &err))
+			code := 0
+			if verb == "finish" {
+				code = a.cmdFinish(args[1:], &out, &err)
+			} else {
+				code = a.cmdRead(args[1:], &out, &err)
+			}
+			require.Equal(t, 2, code)
 			require.Contains(t, err.String(), "receipt")
 			require.NotContains(t, err.String(), "dial")
 			forwarded := serveOne(a, false, args...)

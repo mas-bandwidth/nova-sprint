@@ -56,3 +56,16 @@ func TestSubscriptionDurableReceiptPreservesOriginalRawRuns(t *testing.T) {
 	require.Zero(t, u.ReceiptVersion)
 	require.NotContains(t, usageArgs(Result{Usage: u.String()}), "--receipt-contract")
 }
+
+func TestSubscriptionDamagedTypedHeaderRetainsContract(t *testing.T) {
+	t.Parallel()
+	job := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(job, ReceiptName), []byte("provider\tmodel\traw_usage\n"), 0600))
+	u, found, err := ReceiptUsage(job)
+	require.Error(t, err)
+	require.False(t, found)
+	require.Equal(t, 2, u.ReceiptVersion)
+	require.Nil(t, u.Raw)
+	require.Equal(t, cardcost.Unreported, u.Tokens.Input)
+	require.Contains(t, usageArgs(Result{Usage: u.String()}), "--receipt-contract", "damaged capable receipt cannot downgrade into legacy")
+}
