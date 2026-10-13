@@ -122,6 +122,7 @@ func TestTwinRunsWithoutBusHookOrServer(t *testing.T) {
 
 	dir := t.TempDir()
 	twinFile := filepath.Join(dir, "twin.sprint")
+	brief := writeSimulationBrief(t, dir)
 
 	// Hostile environment: bus points to non-existent port, server points to non-existent port
 	env := map[string]string{
@@ -143,7 +144,7 @@ func TestTwinRunsWithoutBusHookOrServer(t *testing.T) {
 	code, out, errs := runCli("--redis", "mem:"+twinFile, "init", "--readers", "reader-m2", "--members", "m1,m2")
 	require.Equal(t, 0, code, "init exit %d\nstdout: %s\nstderr: %s", code, out, errs)
 
-	code, out, errs = runCli("--redis", "mem:"+twinFile, "add", "--stream", "s1", "--count", "1", "--one")
+	code, out, errs = runCli("--redis", "mem:"+twinFile, "add", "--stream", "s1", "--count", "1", "--one", "--brief-file", brief)
 	require.Equal(t, 0, code, "add exit %d\nstdout: %s\nstderr: %s", code, out, errs)
 
 	code, out, errs = runCli("--redis", "mem:"+twinFile, "start")
@@ -161,6 +162,7 @@ func TestTwinRunsWithoutBusHookOrServer(t *testing.T) {
 	delete(env, "NOVA_BUS_REDIS")
 	env["NOVA_SPRINT_REDIS"] = "mem:" + walkthroughFile
 	for _, line := range twinSteps {
+		line = strings.ReplaceAll(line, "--brief-file s1-1.md", "--brief-file "+brief)
 		args, err := onboarding.SplitShell(strings.TrimPrefix(line, prog+" "))
 		require.NoError(t, err, "split shell line: %s", line)
 		code, out, errs = runCli(args...)
