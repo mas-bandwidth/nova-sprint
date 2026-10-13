@@ -81,7 +81,13 @@ func (h *harness) readersTable() {
 	require.NoError(h.t, err)
 	// Previously no routes let these legacy readers serve every tier.
 	// Configured fixture routes require the same eligibility to be explicit.
-	h.readersRead("flash,pro,heavy,frontier")
+	require.NoError(h.t, pinned.EnsureReaderTiers(h.ctx))
+	for _, rd := range s.Readers.Rows() {
+		if _, configured := s.Readers.Texts[rd][sprint.ReaderTiers]; configured {
+			continue
+		}
+		require.NoError(h.t, pinned.B.RowSet(h.ctx, pinned.Names.Table(sprint.Readers), rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+	}
 }
 
 func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock(); h.beat() }

@@ -17,6 +17,10 @@ func readCardsWorld(t *testing.T, width int, members ...string) *world {
 		readers = append(readers, ReaderPrefix+m)
 	}
 	w := newWorld(t, readers...)
+	w.s.Readers.Texts = map[string]map[string]string{}
+	for _, rd := range readers {
+		w.s.Readers.Texts[rd] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
+	}
 	for _, m := range members {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
 	}

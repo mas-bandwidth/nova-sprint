@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // The twin: `--redis mem:<file>` (or NOVA_SPRINT_REDIS=mem:<file>) runs every
@@ -45,7 +46,7 @@ var realSteps = []string{
 	"git init -q --bare origin.git && git clone -q origin.git work",
 	"git -C work commit -q --allow-empty -m base && git -C work push -q origin HEAD:sprint/s1",
 	"nova-sprint init --readers reader-m2 --members m1,m2",
-	"nova-sprint add --stream s1 --count 1 --one",
+	"nova-sprint add --stream s1 --count 1 --one --brief-file s1-1.md",
 	"nova-sprint start",
 	"nova-sprint tick",
 	"nova-sprint tick",
@@ -68,7 +69,7 @@ var realSteps = []string{
 // to what a twin does.
 var twinSteps = []string{
 	"nova-sprint init --readers reader-m2 --members m1,m2",
-	"nova-sprint add --stream s1 --count 1 --one",
+	"nova-sprint add --stream s1 --count 1 --one --brief-file s1-1.md",
 	"nova-sprint start",
 	"nova-sprint tick",
 	"nova-sprint tick",
@@ -81,6 +82,12 @@ var twinSteps = []string{
 	"nova-sprint merge --stream s1 --batch 1",
 	"nova-sprint tick",
 	"nova-sprint where",
+}
+
+// simulatedTwinBrief is explicit input for a learning mem-file flow only.
+// It names no real paid provider, and the walkthrough launches no model child.
+func simulatedTwinBrief() string {
+	return "RESULT: s1-1 sha=0123456789ab tier: flash\nmodel: simulation/twin\ntokens: 1000\ndeadline: 600\n\nTHE TASK. Simulate one card's take, finish, read and landing by hand.\n\n" + swarm.ChildRulesParagraph() + "\n"
 }
 
 // twinWords is how a twin is tried, in nova-sprint help and nova-sprint help
@@ -99,6 +106,8 @@ the forge; work is the worker's checkout and the clone land merges and pushes in
 
   export NOVA_SPRINT_REDIS=mem:sprint.twin NOVA_SPRINT_ACTOR=boss
 `)
+	b.WriteString("Before this mem-only walkthrough, save this explicit simulated card as s1-1.md:\n\n" + simulatedTwinBrief() + "\n")
+	b.WriteString("The simulation pin is only for the learning twin: no model child or real provider is used. On a real Redis/fleet sprint, use a real brief instead, apply the provider, enabled route and tier declarations, and obtain a clean card check before start; an empty effective route set refuses ordinary work.\n\n")
 	for _, l := range realSteps {
 		b.WriteString("  " + l + "\n")
 	}

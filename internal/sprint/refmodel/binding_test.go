@@ -82,6 +82,14 @@ func loadSample(tb testing.TB, s sample) *loaded {
 		if len(tab.Rows()) > 0 {
 			l.must(l.m.RowsAdd(l.ctx, stored, tab.Rows()))
 		}
+		if name == sprint.Readers && len(tab.Texts) > 0 {
+			l.must(l.st.EnsureReaderTiers(l.ctx))
+		}
+		for row, texts := range tab.Texts {
+			if len(texts) > 0 {
+				l.must(l.m.RowSet(l.ctx, stored, row, texts))
+			}
+		}
 		var placed, kept, removed []ntable.BatchMemberEntry
 		for _, c := range tab.Cards() {
 			id := c.ID

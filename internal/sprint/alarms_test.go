@@ -33,6 +33,12 @@ type alarmRig struct {
 func newAlarmRig(t *testing.T) *alarmRig {
 	t.Helper()
 	r := &alarmRig{t: t, ctx: context.Background(), m: store.NewMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+	// This private simulation declares executable work instead of empty config.
+	r.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "a-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
@@ -48,6 +54,10 @@ func newAlarmRig(t *testing.T) *alarmRig {
 	require.NoError(t, r.m.RowsAdd(r.ctx, "a-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
 	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"})) // standalone reader fixture
+	require.NoError(t, r.st.EnsureReaderTiers(r.ctx))
+	for _, rd := range []string{"reader-a", "reader-b"} {
+		require.NoError(t, r.m.RowSet(r.ctx, "a-readers", rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+	}
 	r.beat()
 	return r
 }

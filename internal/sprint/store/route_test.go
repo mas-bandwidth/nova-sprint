@@ -300,6 +300,7 @@ func TestATickReadsTheRoutesOnce(t *testing.T) {
 	}
 	h.addReady("s1", 3, briefOf("pro", ""))
 	h.startMachine()
+	reads = 0 // START has its own live predicate read; measure this tick alone.
 	h.machine()
 	assert.Equal(t, 1, reads, "one read of the routes in the tick")
 }

@@ -65,7 +65,7 @@ func (k *walk) advance(id string, to sprint.State) bool {
 			k.try(sprint.Ask(k.s, sprint.AskReq{Sel: sprint.Sel{IDs: []string{id}}, Who: sprint.MachineActor}))
 			for _, rc := range k.s.Readers.Of(id) {
 				if rc.Col == sprint.Asked {
-					k.try(sprint.Read(k.s, sprint.ReadReq{As: rc.Row, Verdict: "ok", Finding: "f", Sel: sprint.Sel{IDs: []string{rc.ID}}, Who: rc.Row}))
+					k.try(sprint.Read(k.s, sprint.ReadReq{Usage: "input=1000 output=100", As: rc.Row, Verdict: "ok", Finding: "f", Sel: sprint.Sel{IDs: []string{rc.ID}}, Who: rc.Row}))
 				}
 			}
 		}
@@ -146,7 +146,7 @@ func unevenReads(k *walk) []sample {
 	for _, c := range k.s.Readers.Cell(first, sprint.Asked) {
 		mine = append(mine, c.ID)
 	}
-	if len(mine) == 0 || !k.try(sprint.Read(k.s, sprint.ReadReq{As: first, Sel: sprint.Sel{IDs: mine}, Verdict: "ok", Finding: "f", Who: first})) {
+	if len(mine) == 0 || !k.try(sprint.Read(k.s, sprint.ReadReq{Usage: "input=1000 output=100", As: first, Sel: sprint.Sel{IDs: mine}, Verdict: "ok", Finding: "f", Who: first})) {
 		return nil
 	}
 	return []sample{k.sample()}
@@ -267,6 +267,14 @@ func aCardPastItsCap(k *walk) []sample {
 // it: the rebalance's case (sprint.Rebalance; the walks give no friend).
 func aQueuedCardOnAFullFriend(k *walk) []sample {
 	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	// Make fleet pro unavailable while the ordinary unpinned cards are dealt
+	// to the friend. Restore it before sampling the real rebalance opportunity.
+	routes := append([]sprint.Route(nil), k.s.Routes...)
+	for i := range k.s.Routes {
+		if k.s.Routes[i].Tier == cardhdr.RoutePro {
+			k.s.Routes[i].Enabled = false
+		}
+	}
 	for range 2 {
 		if k.addTo(k.streams[0]) == "" {
 			return nil
@@ -286,6 +294,7 @@ func aQueuedCardOnAFullFriend(k *walk) []sample {
 	if !took {
 		return nil
 	}
+	k.s.Routes = routes
 	return []sample{k.sample()}
 }
 

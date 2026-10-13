@@ -34,6 +34,7 @@ func TestTheHelpsWalkthroughLandsACardForReal(t *testing.T) {
 	}
 	sprintEnv := map[string]string{"NOVA_SPRINT_REDIS": "mem:" + filepath.Join(dir, "sprint.twin"), "NOVA_SPRINT_ACTOR": "boss"}
 	var last string
+	brief := writeSimulationBrief(t, dir) // this walkthrough's backend is mem:, not a real fleet
 	for _, line := range realSteps {
 		if strings.HasPrefix(line, "git ") {
 			for _, part := range strings.Split(line, " && ") {
@@ -48,6 +49,9 @@ func TestTheHelpsWalkthroughLandsACardForReal(t *testing.T) {
 		args, err := onboarding.SplitShell(strings.TrimPrefix(line, prog+" "))
 		require.NoError(t, err, line)
 		for i := range args {
+			if i > 0 && args[i-1] == "--brief-file" {
+				args[i] = brief
+			}
 			if i > 0 && args[i-1] == "--repo-dir" {
 				args[i] = filepath.Join(dir, args[i])
 			}

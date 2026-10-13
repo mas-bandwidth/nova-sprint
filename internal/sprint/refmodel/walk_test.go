@@ -226,7 +226,7 @@ func (k *walk) read() bool {
 		return false
 	}
 	c := cs[k.pick(len(cs))]
-	r := sprint.ReadReq{As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Who: c.Row}
+	r := sprint.ReadReq{Usage: "input=1000 output=100", As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Who: c.Row}
 	if k.pick(4) == 0 && c.Col == sprint.Asked {
 		r.Begin = true
 	} else {
@@ -621,5 +621,5 @@ func (k *walk) readAll() bool {
 	for _, c := range append(k.s.Readers.Cell(best, sprint.Asked), k.s.Readers.Cell(best, sprint.Reading)...) {
 		ids = append(ids, c.ID)
 	}
-	return k.try(sprint.Read(k.s, sprint.ReadReq{As: best, Sel: sprint.Sel{IDs: ids}, Verdict: "ok", Finding: "f", Who: best}))
+	return k.try(sprint.Read(k.s, sprint.ReadReq{Usage: "input=1000 output=100", As: best, Sel: sprint.Sel{IDs: ids}, Verdict: "ok", Finding: "f", Who: best}))
 }

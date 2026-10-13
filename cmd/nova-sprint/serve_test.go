@@ -38,6 +38,7 @@ type serverRig struct {
 	t      *testing.T
 	a      *app
 	served [][]string // every verb sent to the server, in order
+	brief  string     // explicit simulated model input for this mem-only fixture
 }
 
 // newServerRig is a server whose sprint the coordinator's lines made.
@@ -52,7 +53,7 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	// the rig's bare starts run on briefless --count cards: the card check gate is off here,
 	// and every gate test turns it on (check_cards_test.go)
 	a.cardCheckGate = false
-	r := &serverRig{t: t, a: a}
+	r := &serverRig{t: t, a: a, brief: writeSimulationBrief(t, t.TempDir())}
 	for _, l := range lines {
 		r.boss(l)
 	}
@@ -63,6 +64,9 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 // control, as the run loop runs a tick: never during a batch.
 func (r *serverRig) boss(line string) string {
 	r.t.Helper()
+	if strings.HasPrefix(strings.TrimPrefix(line, prog+" "), "add ") && !strings.Contains(line, "--brief") {
+		line += " --brief-file " + r.brief
+	} // explicit mem-only input; no fabricated route or funding
 	r.a.serial.Lock()
 	defer r.a.serial.Unlock()
 	var out, errb bytes.Buffer

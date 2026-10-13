@@ -40,6 +40,13 @@ func friendsBrief(who string) string {
 func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	t.Helper()
 	m := store.NewMem()
+	// This private simulation declares executable work instead of empty config.
+	m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
+
 	r := &holdRig{t: t, ctx: context.Background(), now: holdT0}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
@@ -53,6 +60,16 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	readMode, readErr := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
 	require.NoError(t, readErr)
 	require.Empty(t, readMode.Refused)
+	require.NoError(t, r.st.EnsureReaderTiers(r.ctx))
+	for _, rd := range []string{"reader-a", "reader-b", "reader-c"} {
+		rows, err := r.st.ReaderRows(r.ctx)
+		require.NoError(t, err)
+		for _, row := range rows {
+			if row == rd {
+				require.NoError(t, m.RowSet(r.ctx, "t-readers", rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+			}
+		}
+	}
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()

@@ -148,6 +148,13 @@ type landedRig struct {
 func newLandedRig(t *testing.T) *landedRig {
 	t.Helper()
 	m := store.NewMem()
+	// This private simulation declares executable work instead of empty config.
+	m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
+
 	r := &landedRig{t: t, ctx: context.Background(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	r.st = &store.Store{
 		B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "friend.lander",
@@ -162,6 +169,16 @@ func newLandedRig(t *testing.T) *landedRig {
 	readMode, readErr := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
 	require.NoError(t, readErr)
 	require.Empty(t, readMode.Refused)
+	require.NoError(t, r.st.EnsureReaderTiers(r.ctx))
+	for _, rd := range []string{"reader-a", "reader-b", "reader-c"} {
+		rows, err := r.st.ReaderRows(r.ctx)
+		require.NoError(t, err)
+		for _, row := range rows {
+			if row == rd {
+				require.NoError(t, m.RowSet(r.ctx, "t-readers", rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}))
+			}
+		}
+	}
 	return r
 }
 
@@ -234,7 +251,7 @@ func (r *landedRig) land(id, stream string) {
 		for _, rc := range s.Readers.Of(id) {
 			if rc.Col == sprint.Asked || rc.Col == sprint.Reading {
 				r.must(store.ReadStep(sprint.ReadReq{
-					As: rc.F("reader"), Verdict: "ok", Sel: sprint.Sel{IDs: []string{rc.ID}}, Who: rc.F("reader"),
+					Usage: "input=1000 output=100", As: rc.F("reader"), Verdict: "ok", Sel: sprint.Sel{IDs: []string{rc.ID}}, Who: rc.F("reader"),
 				}))
 			}
 		}

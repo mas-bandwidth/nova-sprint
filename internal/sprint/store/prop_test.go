@@ -257,6 +257,12 @@ var errCut = errors.New("cut by the test")
 func newPropRun(cfg propConfig) (*propRun, error) {
 	r := &propRun{stopAfter: -1, cfg: cfg, m: NewMem(), ctx: context.Background(), now: t0, score: map[string]float64{}, tried: map[string]bool{}, known: map[string]int{}, stats: map[string]int{}, acked: map[string]bool{}, ranked: map[string]bool{},
 		rng: rand.New(rand.NewPCG(cfg.seed, 0xfa11))}
+	// This private simulation declares executable work instead of empty config.
+	r.m.SetRoutes([]sprint.Route{
+		{Name: "fixture-flash", Tier: "flash", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-pro", Tier: "pro", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+		{Name: "fixture-heavy", Tier: "heavy", Provider: "fixture", Model: "fixture", Tokens: 1000, Deadline: 600, Enabled: true},
+	})
 	n := 0
 	r.st = &Store{B: &propBackend{Mem: r.m, r: r}, Names: sprint.Names{Prefix: "p-"}, Actor: "coord",
 		Now:   func() time.Time { return r.now },
@@ -282,6 +288,16 @@ func newPropRun(cfg propConfig) (*propRun, error) {
 	res, err := r.st.Run(r.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coord"}))
 	if err == nil && len(res.Refused) > 0 {
 		err = fmt.Errorf("legacy read setting refused: %v", res.Refused)
+	}
+	if err == nil {
+		err = r.st.EnsureReaderTiers(r.ctx)
+	}
+	if err == nil {
+		for _, rd := range cfg.readers {
+			if err = r.m.RowSet(r.ctx, "p-readers", rd, map[string]string{sprint.ReaderTiers: "flash,pro,heavy,frontier"}); err != nil {
+				break
+			}
+		}
 	}
 	return r, err
 }

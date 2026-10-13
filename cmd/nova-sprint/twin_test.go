@@ -22,6 +22,9 @@ func twinProcess(t *testing.T, file, line string) (int, string, string) {
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:" + file, "NOVA_SPRINT_ACTOR": "boss"}
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
+	// The documented mem-only precondition is explicit, not hidden route config.
+	brief := writeSimulationBrief(t, t.TempDir())
+	line = strings.ReplaceAll(line, "--brief-file s1-1.md", "--brief-file "+brief)
 	var out, errb bytes.Buffer
 	code := runInto(a, split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
 	return code, out.String(), errb.String()
@@ -165,4 +168,12 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 		code, out, errs := ta.do(line)
 		assert.NotEqual(t, 2, code, "%s: exit 2, the usage refusal\n%s%s", line, out, errs)
 	}
+}
+
+// writeSimulationBrief implements the help's explicit mem-only input precondition.
+func writeSimulationBrief(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "s1-1.md")
+	require.NoError(t, os.WriteFile(path, []byte(simulatedTwinBrief()), 0o600))
+	return path
 }

@@ -110,6 +110,8 @@ func TestClearKeepsTheReadersTiers(t *testing.T) {
 	for _, rd := range []string{"reader-a", "reader-b"} {
 		require.NoError(t, h.m.RowSet(h.ctx, h.st.Names.Table(sprint.Readers), rd, map[string]string{sprint.ReaderTiers: "pro"}))
 	}
+	// This reader is explicitly the default blank-tier negative case.
+	require.NoError(t, h.m.RowSet(h.ctx, h.st.Names.Table(sprint.Readers), "reader-c", map[string]string{sprint.ReaderTiers: ""}))
 	stored := func(t *sprint.Table, rd string) string {
 		if t == nil || t.Texts == nil {
 			return ""

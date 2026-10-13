@@ -54,7 +54,12 @@ func (w *world) readersTable() {
 		w.s.Readers.Texts = map[string]map[string]string{}
 	}
 	for _, rd := range w.s.Readers.Rows() {
-		w.s.Readers.Texts[rd] = map[string]string{ReaderTiers: "flash,pro,heavy,frontier"}
+		if w.s.Readers.Texts[rd] == nil {
+			w.s.Readers.Texts[rd] = map[string]string{}
+		}
+		if _, configured := w.s.Readers.Texts[rd][ReaderTiers]; !configured {
+			w.s.Readers.Texts[rd][ReaderTiers] = "flash,pro,heavy,frontier"
+		}
 	}
 }
 

@@ -68,7 +68,7 @@ func main() {
 // selftestBrief is the brief of the selftest's one card: a tier on line 1 and the child rules,
 // so it passes add's card checks and the card lint check cards runs.
 func selftestBrief() string {
-	return "RESULT: s1-1 sha=0123456789ab tier: flash\nPATHS: main.go\n\nTHE TASK. Land the selftest's empty commit.\n\n" + swarm.ChildRulesParagraph() + "\n"
+	return "RESULT: s1-1 sha=0123456789ab tier: flash\nmodel: simulation/selftest\ntokens: 1000\ndeadline: 600\nPATHS: main.go\n\nTHE TASK. Land the selftest's empty commit.\n\n" + swarm.ChildRulesParagraph() + "\n"
 }
 
 // cmdSelftest is the verb: the whole landing of one card through the tree

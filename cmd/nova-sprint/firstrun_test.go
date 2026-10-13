@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,13 +43,30 @@ func TestTheFirstRunTranscriptRunsOverATwin(t *testing.T) {
 	}
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:" + file, "NOVA_SPRINT_ACTOR": "boss"}
+	brief := writeSimulationBrief(t, filepath.Dir(file))
 	var got []onboarding.Result
 	for _, s := range steps {
 		a := newApp(func(k string) string { return env[k] })
 		var out, errb bytes.Buffer
-		code := runInto(a, s.Args, &out, &errb)
+		args := append([]string(nil), s.Args...)
+		for i := range args {
+			if i > 0 && args[i-1] == "--brief-file" && args[i] == "s1-1.md" {
+				args[i] = brief
+			}
+		}
+		code := runInto(a, args, &out, &errb)
 		a.close()
 		got = append(got, onboarding.Result{Code: code, Stdout: out.String(), Stderr: errb.String()})
+	}
+	// Optional raw fixture receipt; comparisons below always run unchanged.
+	if path := os.Getenv("NOVA_SPRINT_FIRST_RUN_RECEIPT"); path != "" {
+		var receipt bytes.Buffer
+		for i, step := range steps {
+			fmt.Fprintln(&receipt, step.Line)
+			receipt.WriteString(got[i].Stdout)
+			receipt.WriteString(got[i].Stderr)
+		}
+		require.NoError(t, os.WriteFile(path, receipt.Bytes(), 0o600))
 	}
 	for _, p := range onboarding.CompareTranscript(steps, got, nil) {
 		t.Error(p)

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,8 @@ func twinAt(t *testing.T, file string, now time.Time, line string) (int, string,
 	a.now = func() time.Time { return now }
 	defer a.close()
 	var out, errb bytes.Buffer
+	brief := writeSimulationBrief(t, t.TempDir())
+	line = strings.ReplaceAll(line, "--brief-file s1-1.md", "--brief-file "+brief)
 	code := runInto(a, split(line), &out, &errb)
 	return code, out.String(), errb.String()
 }

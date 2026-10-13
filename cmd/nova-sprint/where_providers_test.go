@@ -103,6 +103,8 @@ func TestFullCheckNamesNoProviderAndMalformedProvider(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1")
+	ta.m.SetProviders(nil) // this case explicitly has no applied declarations
+	ta.m.SetRoutes(nil)
 	code, out, errs := ta.do("check cards")
 	assert.Equal(t, 1, code, out+errs)
 	assert.Contains(t, out, "CHECK routes - no provider rows applied remedy=nova-config apply --kind provider")

@@ -84,7 +84,7 @@ func TestTheAskNeverAsksAReaderOutsideItsTiers(t *testing.T) {
 func newTierWorld(t *testing.T, all, all2 string) *world {
 	t.Helper()
 	w := newWorld(t, "reader-flash", "reader-all", "reader-all2")
-	w.s.Readers.Texts = map[string]map[string]string{"reader-flash": {"tiers": "flash"}}
+	w.s.Readers.Texts = map[string]map[string]string{"reader-flash": {"tiers": "flash"}, "reader-all": {ReaderTiers: "flash,pro,heavy,frontier"}, "reader-all2": {ReaderTiers: "flash,pro,heavy,frontier"}}
 	w.s.ReaderStates = map[string]string{"reader-flash": ReaderUp, "reader-all": all, "reader-all2": all2}
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
