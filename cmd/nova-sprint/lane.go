@@ -24,6 +24,9 @@ import (
 // laneWords is nova-sprint help lane, and the banner's paragraph on the lanes.
 func laneWords() string {
 	return strings.TrimSpace(fmt.Sprintf(`
+The lanes are DISABLED until v1.3 (Glenn 2026-10-13: not a sanctioned or stable
+feature; not to be used): lane take is granted at once and lane give gives nothing
+back, each printing one BENCH LOCK DISABLED line; take no bench lock.
 The lanes: one Go build or test stream per machine, a lock the machine grants:
   nova-sprint lane take go --machine <m> --as <worker> --wait 30m
     a store write: granted (exit 0) while the machine's holders are under its
@@ -74,6 +77,9 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	}
 	if *wait < 0 {
 		return refuse(stderr, name, "--wait wants a duration from 0, found "+wait.String())
+	}
+	if sprint.LanesDisabled {
+		return a.laneDisabled(name, kind, *machine, *as, true, c.json, stdout, stderr)
 	}
 	if *wait > 0 && !*dry {
 		return a.laneWait(args, *wait, stdout, stderr)
@@ -141,6 +147,23 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// laneDisabled is a lane take or give while the lanes are disabled until v1.3
+// (sprint.LanesDisabled): the one DISABLED line on stderr, then the take granted (or the
+// give accepted) at once, with no store opened, nothing queued and nothing written, so
+// the caller runs unlocked.
+func (a *app) laneDisabled(name, kind, machine, as string, take, asJSON bool, stdout, stderr io.Writer) int {
+	fmt.Fprintln(stderr, sprint.LanesDisabledLine)
+	a.outcome, a.changed = "accepted", "no"
+	facts := map[string]any{"kind": kind, "machine": machine, "as": as, "disabled": true, "card": sprint.LanesDisabledCard, "outcome": a.outcome, "changed": a.changed}
+	line := fmt.Sprintf("LANE-GIVE OK %s machine=%s as=%s gave=no disabled=yes: nothing was held", kind, machine, as)
+	if take {
+		facts["granted"] = true
+		line = fmt.Sprintf("LANE-TAKE OK %s machine=%s as=%s disabled=yes: run unlocked; nothing was held or queued", kind, machine, as)
+	}
+	sayOK(stdout, asJSON, name, line, facts)
+	return 0
+}
+
 // laneWait is lane take --wait: the take asked again every sprint.LaneAskEvery, each
 // ask the verb with no --wait run as it would be typed (so through the server under
 // NOVA_SPRINT_SERVER), until it is granted, or refused for a reason that is not the
@@ -188,6 +211,9 @@ func (a *app) cmdLaneGive(args []string, stdout, stderr io.Writer) int {
 	kind, code := laneArgs(name, fs, args, stderr, machine, as)
 	if code != 0 {
 		return code
+	}
+	if sprint.LanesDisabled {
+		return a.laneDisabled(name, kind, *machine, *as, false, c.json, stdout, stderr)
 	}
 	c.orActor(*as)
 	st, err := a.store(*c)

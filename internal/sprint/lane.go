@@ -45,6 +45,21 @@ const (
 	PropGoLanes = "go_lanes"
 )
 
+// LanesDisabled turns every lane take and give into a no-op until v1.3 (Glenn,
+// 2026-10-13: "Stop with these bench locks. Verboten." "Disable until then. Not a
+// sanctioned or stable feature. Not to be used."). A take is granted at once and a give
+// gives nothing back; nothing is read, queued or written (store.LaneStep), so no run
+// waits behind an unrelated run on the same machine. The machinery above and below stays,
+// tested with this false (TestMain), until v1.3 card LanesDisabledCard replaces it with
+// the server scheduling bench work.
+var LanesDisabled = true
+
+// LanesDisabledCard is the v1.3 card that replaces the lanes.
+const LanesDisabledCard = "the-server-schedules-bench-work-not-a-lock"
+
+// LanesDisabledLine is the one line a disabled take or give prints.
+const LanesDisabledLine = "BENCH LOCK DISABLED (Glenn 2026-10-13: not a sanctioned or stable feature; not to be used; v1.3 card " + LanesDisabledCard + ")"
+
 // LaneKinds is every lane kind there is.
 var LaneKinds = []string{LaneGo}
 

@@ -1014,6 +1014,13 @@ func (l *lander) takeGateLane(ctx context.Context, hosts []string) (string, erro
 	if len(hosts) == 0 {
 		return "", fmt.Errorf("no bench to take a Go lane on")
 	}
+	if sprint.LanesDisabled {
+		// disabled until v1.3 (sprint.LanesDisabled): the batch's own slot, unlocked;
+		// the remote gate runs in a directory of its own (mktemp -d), so two gates on
+		// one bench do not meet
+		l.stage("lane", sprint.LanesDisabledLine)
+		return hosts[0], nil
+	}
 	who := l.laneWho()
 	proc := "lane take go --machine " + hosts[0] + " --as " + who + " (" + l.gateWhose() + ")"
 	asked := map[string]bool{}
@@ -1080,6 +1087,9 @@ func (l *lander) waitLaneAsk(ctx context.Context) error {
 // (laneWho): a sibling's hold or place on the same bench stays. A cancelled landing still
 // gives it back; the hold expires at LaneHoldFor when the give does not land.
 func (l *lander) giveGateLane(machine string) {
+	if sprint.LanesDisabled {
+		return // disabled until v1.3: nothing was taken
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	l.a.serial.Lock()

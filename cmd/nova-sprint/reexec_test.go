@@ -49,6 +49,10 @@ const (
 func TestMain(m *testing.M) {
 	// a test arms the hook's gate for the names it registers (hook.go)
 	hookArmedDefault = false
+	// the lanes are disabled until v1.3 (sprint.LanesDisabled); their tests keep the
+	// machinery tested until it is replaced, and TestTheBenchLockIsDisabledUntilV13
+	// pins the disabled path
+	sprint.LanesDisabled = false
 	start := testbin.Enter(reexecTool, func(_ []string, getenv func(string) string) bool {
 		return getenv(reexecCLIEnv) == "1"
 	})
