@@ -215,6 +215,14 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
 
+**`where`'s readers cells** count the read cards each reader has in flight
+(`tables.readers`, and the one summed row the text frame draws): with read cards on
+(the default) `asked` is the read cards dealt (ready) to the reader on the fleet
+table and `reading` those it has taken (working), beside any reads of the legacy
+readers table; a member reader `reader-<m>` counts its member's read cards, and a
+friend reader `reader-<friend>` the friend's. The dashboard reads the same `tables`
+shape and needs no change.
+
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
 that is the tier the card is stored with and dealt on: a `tier: heavy` card's first deal draws

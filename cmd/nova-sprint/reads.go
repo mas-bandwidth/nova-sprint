@@ -1450,8 +1450,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			t = doneColumn(t, done, func(key string) string { return key })
 		}
 		if logical == sprint.Readers {
-			// each reader's width beside reading, derived from its fleet row
-			t = readersWidths(t, shapes[slices.Index(sprint.ViewOrder, sprint.Fleet)])
+			// each reader's width beside reading, derived from its fleet row, and its read
+			// cards in flight on the fleet table counted beside the readers table's own
+			// reads (readersReadCards)
+			fleet := shapes[slices.Index(sprint.ViewOrder, sprint.Fleet)]
+			t = readersWidths(t, fleet)
+			t = readersReadCards(t, fleet, facts.RowCards)
 		}
 		rows := map[string]map[string]any{}
 		for _, r := range t.Rows {
@@ -1955,6 +1959,63 @@ func readersWidths(t ntable.Table, fleet ntable.Table) ntable.Table {
 	}
 	t.Columns, t.Rows = cols, rows
 	return t
+}
+
+// readersReadCards counts each reader row's read cards in flight on the fleet table beside
+// the readers table's own reads: the read cards dealt (ready) to the reader add to its
+// asked cell, and those taken (working) to its reading cell. With read cards on (the
+// default, sprint.ReadCardsOn) the reads are cards on the fleet table, not rows of the
+// readers table, so without this the readers rows read zero while the readers read. A
+// reader row reader-<m> counts the read cards on the member m's fleet row, or, when m is a
+// friend (friend.<m> is a fleet row), on the friend's row (a held friend's reader row is
+// reader-<friend>). rowCards is the tick's read counts per fleet row
+// (sprint.RowCardCounts), nil before the first tick. Display only: the stored readers
+// table, its rows and where --json carry the counts as the tables' cells.
+func readersReadCards(t ntable.Table, fleet ntable.Table, rowCards map[string]map[string]int) ntable.Table {
+	if rowCards == nil {
+		return t
+	}
+	asked, reading := t.Column(sprint.Asked), t.Column(sprint.Reading)
+	if asked < 0 && reading < 0 {
+		return t
+	}
+	rows := slices.Clone(t.Rows)
+	for i, r := range rows {
+		row, ok := readerFleetRow(r.Key, fleet)
+		if !ok {
+			continue
+		}
+		n := rowCards[row]
+		if n == nil {
+			continue
+		}
+		cells := slices.Clone(r.Cells)
+		add := func(j int, count int) {
+			if j >= 0 && j < len(cells) {
+				cells[j].Count += int64(count)
+			}
+		}
+		add(asked, n["reads_ready"])
+		add(reading, n["reads_working"])
+		r.Cells = cells
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
+}
+
+// readerFleetRow is the fleet row a readers-table row counts read cards on: reader-<m>
+// names the member m's row, or the friend's row friend.<m> when the fleet table has one.
+// A row that is no reader row has none.
+func readerFleetRow(row string, fleet ntable.Table) (string, bool) {
+	m, ok := sprint.ReaderMachine(row)
+	if !ok {
+		return "", false
+	}
+	if f := sprint.FriendRow(m); fleet.Row(f) >= 0 {
+		return f, true
+	}
+	return m, true
 }
 
 // columnNames is the columns' names in order.
