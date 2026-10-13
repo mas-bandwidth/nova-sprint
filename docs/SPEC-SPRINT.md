@@ -7984,10 +7984,23 @@ stream's, the promotion stream aside; a need across two streams on different bra
 the needed card is the producer stream's sentinel), **names** (each stream's display name set,
 not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
 epoch), **lint** (every open primary's brief passes the card lint `brief check` runs; a primary
-with no brief is a finding) and **brief-size** (a brief over `store.MaxBriefBytes`, or a card's
-record, its brief with its other fields, over the drain's 16384 bytes). It prints `CHECK <kind>
-<card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK cards=<n>` (exit 0)
-or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store that did not answer.
+with no brief is a finding) and **brief-size** (a brief over the 16384 bytes the store and the
+drain hold a brief field to, `store.MaxBriefBytes`; the drain bounds each text field an entry
+sets, never a card's whole record, so a card's attempt, consumer and cost history is not
+measured: v1.2.17 summed every field and refused cards whose briefs were under the bound). It
+prints `CHECK <kind> <card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK
+cards=<n>` (exit 0) or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store
+that did not answer. **Warnings** (v1.2.18; the owner, 2026-10-13: "the gate keeps refusing on
+needs, bases, routes and brief size, but only warns on file overlap that a sentinel or stream
+order already serializes"; tla/MachineReady.tla WarnsNeverFail, WarnOnlyStarts): a same-file
+finding (both cards of one stream, whose lander lands them in line order), and a files finding
+whose every pair of writing cards, one of each stream, is ordered by the work table's live waits
+(`WaitsFor`: a named need not landed and not waived, a waiting card's stop, a stop's line before
+it; at any depth, so through a sentinel), is a warning: printed as `CHECK <kind> <card|stream>
+<finding> WARN serialized=<why> remedy=<what to do>`, kept with the record's findings, counted
+as `warned=<kind:n,...>` on the last line and in `--json` (`warned`; each finding's `severity`,
+`refuse` or `warn`, and `serialized`), and failing neither the check nor start. A files finding
+with one pair unordered, or a writer it cannot name, refuses; every other kind refuses.
 Every run writes the epoch's one **check record** (internal/sprint/store/check_record.go, beside
 the machine's record and keyed by epoch as it is: one of another epoch reads as none, so a clear
 leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
