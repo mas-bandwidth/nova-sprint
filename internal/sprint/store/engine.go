@@ -1991,7 +1991,7 @@ func (st *Store) send(ctx context.Context, man ntable.BatchManifest) (ntable.Rec
 			return rc, nil
 		}
 		if unreadableReceipt(err) {
-			return ntable.Receipt{}, fmt.Errorf("%w: the store's receipt could not be read (%v): its table functions do not match this build; run: nova-redis fn load --addr <host:port>", ErrUnknown, err)
+			return ntable.Receipt{}, fmt.Errorf("%w: the store's receipt could not be read (%v): its table functions do not match this build; run: nova-redis fn load --redis <host:port>", ErrUnknown, err)
 		}
 		if ntable.IsRefusal(err) || errors.Is(err, ntable.ErrMalformedManifest) {
 			return rc, err

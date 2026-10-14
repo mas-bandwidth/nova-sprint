@@ -38,7 +38,15 @@ func TestARefusalCarriesTheRefusedWordAndWhatItFound(t *testing.T) {
 		code, _, errs := ta.do(line)
 		assert.Equal(t, 2, code, line)
 		assert.True(t, strings.HasPrefix(errs, "nova-sprint REFUSED: "), errs)
-		assert.Contains(t, errs, "init, add, quack", line)
+		if line == "" {
+			assert.Contains(t, errs, "init, add, quack", line)
+		} else {
+			// an unknown verb names the verb groups and help, not every verb on
+			// one line the reader cannot read
+			assert.Contains(t, errs, "the verb groups are fleet, friend, reader, goal, stream, lane, merge-window", line)
+			assert.Contains(t, errs, "run: nova-sprint help", line)
+			assert.NotContains(t, errs, "init, add, quack", line)
+		}
 		assert.Equal(t, 1, strings.Count(errs, "\n"), "one line: %q", errs)
 	}
 }
