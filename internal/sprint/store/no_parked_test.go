@@ -144,30 +144,36 @@ func TestWaitStillWorksOnAnAlarm(t *testing.T) {
 	}
 }
 
-// A failure the fleet shares is judged at once: one sprint-level judgment, at the cards' first
-// failure, naming the failure and the cards, that takes no wait; each card reworks itself on
-// its tier meanwhile, and the judgment is not raised again while it is open.
-func TestASharedFailureIsOneFleetJudgmentAtOnce(t *testing.T) {
-	t.Parallel()
+// failedFleet is s1's cards dealt and failed the same way in one tick, the rules on: the fleet's one failure judgment, raised and open.
+func failedFleet(t *testing.T) (*harness, sprint.Open) {
+	t.Helper()
 	h := ruled(t)
 	n := sprint.RuleSameFailureCards
 	h.addReady("s1", n, briefOf("flash", ""))
 	h.startMachine()
 	h.machine()
-	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
 	for i := 1; i <= n; i++ {
-		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied")
 	}
 	h.machine()
 	open := h.judgmentsOf(sprint.NFleetFailure)
 	require.Len(t, open, 1, "one judgment for the fleet's failure, at the first failure")
-	what := open[0].Note.What
+	return h, open[0]
+}
+
+// A failure the fleet shares is judged at once: one sprint-level judgment, at the cards' first
+// failure, naming the failure and the cards, that takes no wait; each card reworks itself on
+// its tier meanwhile, and the judgment is not raised again while it is open.
+func TestASharedFailureIsOneFleetJudgmentAtOnce(t *testing.T) {
+	t.Parallel()
+	h, open := failedFleet(t)
+	what := open.Note.What
 	assert.Contains(t, what, "step 2 broken", "it names the failure")
-	for i := 1; i <= n; i++ {
+	for i := 1; i <= sprint.RuleSameFailureCards; i++ {
 		assert.Contains(t, what, fmt.Sprintf("s1-%d", i), "it names the cards")
 		assert.Equal(t, 2, h.snap().Work.Card(fmt.Sprintf("s1-%d", i)).Int("attempt"), "each card reworks itself meanwhile")
 	}
-	_, err := h.waitOn(open[0].Note.ID)
+	_, err := h.waitOn(open.Note.ID)
 	require.Error(t, err, "the fleet's failure takes no wait")
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "never raised again while it is open")
@@ -259,24 +265,13 @@ func TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird(t *testing.T) {
 // failure of the class finishing after the ack raises it again.
 func TestAnAckedFleetFailureHoldsUntilANewFailure(t *testing.T) {
 	t.Parallel()
-	h := ruled(t)
-	n := sprint.RuleSameFailureCards
-	h.addReady("s1", n, briefOf("flash", ""))
-	h.startMachine()
-	h.machine()
-	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
-	for i := 1; i <= n; i++ {
-		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
-	}
-	h.machine()
-	open := h.judgmentsOf(sprint.NFleetFailure)
-	require.Len(t, open, 1)
-	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "the toolchain is mended", Who: h.st.Actor}))
+	h, open := failedFleet(t)
+	h.must(AckStep(sprint.AckReq{Notes: []string{open.Note.ID}, Reason: "the toolchain is mended", Who: h.st.Actor}))
 	h.tick(time.Minute)
 	h.machine()
 	require.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "ack then tick: not raised again")
 	h.tick(time.Minute)
-	h.failTake("s1-1.w2", report)
+	h.failTake("s1-1.w2", "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied")
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "a new failure of the class after the ack raises it again")
 }
@@ -285,21 +280,10 @@ func TestAnAckedFleetFailureHoldsUntilANewFailure(t *testing.T) {
 // is not reopened by it; and the fleet's failure is raised with the rules off too.
 func TestARepairedFailureDoesNotReopenAnAckedFleetFailure(t *testing.T) {
 	t.Parallel()
-	h := ruled(t)
-	n := sprint.RuleSameFailureCards
-	h.addReady("s1", n, briefOf("flash", ""))
-	h.startMachine()
-	h.machine()
-	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
-	for i := 1; i <= n; i++ {
-		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
-	}
-	h.machine()
-	open := h.judgmentsOf(sprint.NFleetFailure)
-	require.Len(t, open, 1)
+	h, open := failedFleet(t)
 	h.tick(time.Minute)
 	h.finishAttempt("s1-1", false, "0123456789abcdef0123456789abcdef01234567") // repaired: a successful finish
-	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "mended", Who: h.st.Actor}))
+	h.must(AckStep(sprint.AckReq{Notes: []string{open.Note.ID}, Reason: "mended", Who: h.st.Actor}))
 	for range 2 {
 		h.tick(time.Minute)
 		h.machine()
