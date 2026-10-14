@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The delivery modes (pkg/config FriendModes, the friend row's mode).

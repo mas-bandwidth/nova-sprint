@@ -13,7 +13,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisfn"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisfn"
 )
 
 const Library = "nova_sprint"

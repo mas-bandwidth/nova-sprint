@@ -20,9 +20,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
 )
 
 // syncedBuf is a bytes.Buffer safe for the server and hook children, which write

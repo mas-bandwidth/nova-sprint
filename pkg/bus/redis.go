@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
 	"github.com/redis/go-redis/v9"
 )
 

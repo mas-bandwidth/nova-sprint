@@ -6,7 +6,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // Continue is the coordinator continuing a primary from the carried head

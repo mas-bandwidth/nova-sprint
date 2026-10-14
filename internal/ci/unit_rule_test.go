@@ -125,7 +125,7 @@ var unitRuleCalls = map[string]map[string]string{
 // unitRuleImports is the packages whose every use is a forbidden one: delayproxy is
 // a TCP proxy.
 var unitRuleImports = map[string]string{
-	"github.com/mas-bandwidth/nova-sprint/pkg/delayproxy": "socket",
+	"github.com/mas-bandwidth/nova-tools/pkg/delayproxy": "socket",
 }
 
 // unitRuleMethods is the method names forbidden on any receiver: testify's
@@ -641,8 +641,8 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			[]string{"6 time time.Now"}},
 		"a dot-imported sleep": {"package p\nimport . \"time\"\nfunc TestX() { Sleep(1) }\n",
 			[]string{"3 time time.Sleep"}},
-		"a delayproxy Serve under a dot import": {"package p\nimport . \"github.com/mas-bandwidth/nova-sprint/pkg/delayproxy\"\nfunc TestX() { Serve(nil, \"127.0.0.1:0\", 0, Options{}) }\n",
-			[]string{"2 socket github.com/mas-bandwidth/nova-sprint/pkg/delayproxy (dot import)"}},
+		"a delayproxy Serve under a dot import": {"package p\nimport . \"github.com/mas-bandwidth/nova-tools/pkg/delayproxy\"\nfunc TestX() { Serve(nil, \"127.0.0.1:0\", 0, Options{}) }\n",
+			[]string{"2 socket github.com/mas-bandwidth/nova-tools/pkg/delayproxy (dot import)"}},
 	}
 	for name, c := range yes {
 		t.Run("yes/"+name, func(t *testing.T) {

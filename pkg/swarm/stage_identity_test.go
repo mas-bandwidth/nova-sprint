@@ -12,7 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // stageTestGit runs git in dir with a clean, fixed environment (no host global config),

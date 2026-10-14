@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // The steps of review: ask and read (mechanical, and the readers' own), and

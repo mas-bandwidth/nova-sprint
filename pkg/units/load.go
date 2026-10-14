@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // LoadUnit loads (op load: unloaded first, so a changed unit is read again) or

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 )
 
 // The friends (sprint.Friends; docs/SPEC-SPRINT.md section 1, the friends

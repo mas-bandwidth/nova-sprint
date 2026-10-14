@@ -15,7 +15,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // The doctor's reaches past the store (doctor.go): nova-config's machine and loop rows, the

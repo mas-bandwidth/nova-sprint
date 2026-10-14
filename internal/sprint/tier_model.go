@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // A card that writes a TLA+ model is tiered frontier (the owner, 2026-10-04: "When we do

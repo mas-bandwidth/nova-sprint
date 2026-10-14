@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 )
 
 func TestServerGroupAndSwitchHelp(t *testing.T) {

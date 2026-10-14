@@ -19,9 +19,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 )
 
 // Row is one entry of a source: the file (or package directory) the work lives in,

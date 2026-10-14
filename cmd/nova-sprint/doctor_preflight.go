@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // cmdDoctorPreflight is `doctor --preflight <candidate binary>`: the release gate's

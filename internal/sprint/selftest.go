@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // SelftestLandOption configures SelftestLand.

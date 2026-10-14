@@ -13,7 +13,7 @@ current card uses; the wait mechanisms of today become one kind.
 
 ## The kinds
 
-The instruction kind is a column of the one list, `pkg/hygiene/kinds.txt`:
+The instruction kind is a column of the one list, `pkg/hygiene/kinds.txt` (in nova-tools):
 the `KIND:` line the brief already carries names the instruction, so the spec
 adds no second vocabulary. One line, one list.
 
@@ -43,7 +43,7 @@ The operands and results, field by field, are today's card lines:
 | `SCRIPT` | `SCRIPT:` | a work step's language and program |
 | `head` | the finish's `head:` | the primary's `head` |
 | `verdict` | the finish's `verdict:` | the primary's result; a read's verdict on its read card |
-| `KIND` | `KIND:` | one row of `pkg/hygiene/kinds.txt` |
+| `KIND` | `KIND:` | one row of `pkg/hygiene/kinds.txt` (in nova-tools) |
 
 ## The one wait kind
 
@@ -111,6 +111,6 @@ concepts after: 1
   no-stall rule's hold.
 - `internal/sprint/steps_sentinel.go`: `IsSentinel`, `WaitsFor`, `Reachable`,
   `Release`, the sentinel's release, which is the same wait.
-- `pkg/hygiene/kinds.txt`: the one list of work kinds.
+- `pkg/hygiene/kinds.txt` (in nova-tools): the one list of work kinds.
 - `pkg/cardtree/tree.go`: the script step, which runs with no model.
 - `docs/SPEC-SPRINT.md` section 2 (the cards), section 5 (the fleet, for the wave) and section 16 (sentinel cards).

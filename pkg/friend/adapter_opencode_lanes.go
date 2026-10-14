@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // LaneHarness is a Deliverer that can open a session of the friend and

@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // THE TYPED CARD HEADER, CHECKED BEFORE ANY SPEND (SPEC-TOOLWORK.md §5 rule 1, #1651).

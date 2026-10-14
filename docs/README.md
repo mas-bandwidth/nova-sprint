@@ -39,7 +39,7 @@ example.
 | [Work tree format](SPEC-WORK-V1.md) | The GitHub issue mirror, the fields it preserves, and import/verify behaviour. |
 | [Work language](SPEC-WORKLANG.md) | The small data grammar used to read tree files without evaluating them. |
 | [Executable examples](TESTS.md) | Exact command transcripts checked by tests. |
-| [Test harness](../pkg/testkit/HARNESS.md) | Shared helpers for contributors writing command tests. |
+| [Test harness](https://github.com/mas-bandwidth/nova-tools/blob/main/pkg/testkit/HARNESS.md) | Shared helpers for contributors writing command tests. |
 | [State-machine models](../tla/README.md) | What the TLA+ models explore and how to interpret their results. |
 | [Brand and voice](BRAND.md) | The robot friends, name, colours, and writing style. |
 | [Asset provenance](ASSET-PROVENANCE.md) | Where the artwork and font came from. |

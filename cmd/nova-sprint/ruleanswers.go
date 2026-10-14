@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // rules: what the tick's rules would answer, now, read-only (sprint.RuleAnswers;

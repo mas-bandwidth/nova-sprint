@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 )
 
 // A head the lander refuses for a cause of its own (it does not merge, changes files outside

@@ -12,7 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 )
 
 // Read cards on the twin store (store.Mem): a read is a consumer card (docs/SPEC-SPRINT.md

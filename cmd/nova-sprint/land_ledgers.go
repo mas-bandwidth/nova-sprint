@@ -23,7 +23,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // evidenceEntries is a decoded evidence ledger's records: each entry keyed by its id

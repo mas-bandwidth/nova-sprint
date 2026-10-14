@@ -37,7 +37,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The files of a repository's work record, relative to its root.

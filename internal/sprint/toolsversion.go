@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 )
 
 // The nova-tools nova-sprint runs on (docs/SPEC-SPRINT.md, "The nova-tools it runs

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The daemon reads every outbox job (the night of 2026-10-05: a friend held eight

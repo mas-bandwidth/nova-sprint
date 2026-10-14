@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // execCommand runs one helper process and returns its stdout. The encrypt step

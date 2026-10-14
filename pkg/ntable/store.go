@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 	"github.com/redis/go-redis/v9"
 )
 

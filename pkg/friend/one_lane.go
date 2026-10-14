@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // A card has one live lane (the night of 2026-10-05: the same card ran in two lanes at once

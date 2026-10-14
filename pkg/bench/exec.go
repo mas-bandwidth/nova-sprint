@@ -11,8 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testguard"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/testguard"
 )
 
 // SSHOptions are on every ssh this package starts: BatchMode so a missing key

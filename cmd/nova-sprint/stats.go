@@ -14,7 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // cmdStats is the epoch's numbers since the last stats tidy or stats reset, the later

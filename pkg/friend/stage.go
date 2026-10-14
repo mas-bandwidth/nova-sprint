@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The daemon stages every job it holds (the finding of 2026-10-05: the first lanes of the

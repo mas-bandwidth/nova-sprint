@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // init is the sentry. A copy of the test binary started with the mark never
