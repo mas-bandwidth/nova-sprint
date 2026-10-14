@@ -2,6 +2,8 @@ package tlc
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const cleanFinish = "Model checking completed. No error has been found.\n1 states generated, 1 distinct states found\n"
@@ -11,18 +13,11 @@ const cleanFinish = "Model checking completed. No error has been found.\n1 state
 func TestParseAcceptsACleanFinish(t *testing.T) {
 	t.Parallel()
 	o := Parse(cleanFinish)
-	if !o.Completed {
-		t.Fatal("clean finish is not completed")
-	}
-	if o.Generated != "1" || o.Distinct != "1" {
-		t.Fatalf("stats = %s/%s want 1/1", o.Generated, o.Distinct)
-	}
-	if len(o.Violations) != 0 {
-		t.Fatalf("clean finish reported violations: %+v", o.Violations)
-	}
-	if o.InitialState {
-		t.Fatal("clean finish marked an initial-state violation")
-	}
+	assert.True(t, o.Completed, "clean finish is not completed")
+	assert.Equal(t, "1", o.Generated)
+	assert.Equal(t, "1", o.Distinct)
+	assert.Empty(t, o.Violations, "clean finish reported violations")
+	assert.False(t, o.InitialState, "clean finish marked an initial-state violation")
 }
 
 // TestViolatedNamesAnInvariant: Parse reads a named invariant, and Violated
@@ -31,24 +26,12 @@ func TestViolatedNamesAnInvariant(t *testing.T) {
 	t.Parallel()
 	out := "Error: Invariant Safety is violated.\n1 states generated, 1 distinct states found\n"
 	o := Parse(out)
-	if o.Completed {
-		t.Fatal("a violation is not completed")
-	}
-	if !o.Violated("Invariant", "Safety") {
-		t.Fatal("Violated did not see Invariant Safety")
-	}
-	if o.Violated("Invariant", "Other") {
-		t.Fatal("Violated saw a different invariant")
-	}
-	if o.Violated("Action property", "Safety") {
-		t.Fatal("Violated conflated kind")
-	}
-	if !anyViolated(o, "Invariant", "Safety|Another") {
-		t.Fatal("anyViolated missed a name in the | list")
-	}
-	if anyViolated(o, "Invariant", "Nope|AlsoNope") {
-		t.Fatal("anyViolated saw a name that was not violated")
-	}
+	assert.False(t, o.Completed, "a violation is not completed")
+	assert.True(t, o.Violated("Invariant", "Safety"), "Violated did not see Invariant Safety")
+	assert.False(t, o.Violated("Invariant", "Other"), "Violated saw a different invariant")
+	assert.False(t, o.Violated("Action property", "Safety"), "Violated conflated kind")
+	assert.True(t, anyViolated(o, "Invariant", "Safety|Another"), "anyViolated missed a name in the | list")
+	assert.False(t, anyViolated(o, "Invariant", "Nope|AlsoNope"), "anyViolated saw a name that was not violated")
 }
 
 // TestParseMarksAnInitialStateViolation: "violated by the initial state" sets
@@ -57,15 +40,10 @@ func TestParseMarksAnInitialStateViolation(t *testing.T) {
 	t.Parallel()
 	out := "Error: Invariant InitOK is violated by the initial state:\n"
 	o := Parse(out)
-	if !o.InitialState {
-		t.Fatal("initial-state violation not marked")
-	}
-	if o.Generated != "1" || o.Distinct != "1" {
-		t.Fatalf("initial-state stats = %s/%s want 1/1", o.Generated, o.Distinct)
-	}
-	if !o.Violated("Invariant", "InitOK") {
-		t.Fatal("initial-state invariant not read")
-	}
+	assert.True(t, o.InitialState, "initial-state violation not marked")
+	assert.Equal(t, "1", o.Generated)
+	assert.Equal(t, "1", o.Distinct)
+	assert.True(t, o.Violated("Invariant", "InitOK"), "initial-state invariant not read")
 }
 
 // TestTemporalViolationsReadNamedAndGeneric: a named temporal property and the
@@ -77,16 +55,16 @@ func TestTemporalViolationsReadNamedAndGeneric(t *testing.T) {
 		"State 1: <1 back-to-state loop> x = 1\n"
 	o := Parse(named)
 	tv := o.TemporalViolations()
-	if len(tv) != 1 || tv[0].Kind != "Temporal property" || tv[0].Name != "EventuallyAlways" {
-		t.Fatalf("TemporalViolations = %+v", tv)
-	}
+	assert.Len(t, tv, 1)
+	assert.Equal(t, "Temporal property", tv[0].Kind)
+	assert.Equal(t, "EventuallyAlways", tv[0].Name)
 
 	generic := "Temporal properties were violated.\n"
 	o = Parse(generic)
 	tv = o.TemporalViolations()
-	if len(tv) != 1 || tv[0].Kind != "Temporal property" || tv[0].Name != "" {
-		t.Fatalf("generic TemporalViolations = %+v", tv)
-	}
+	assert.Len(t, tv, 1)
+	assert.Equal(t, "Temporal property", tv[0].Kind)
+	assert.Equal(t, "", tv[0].Name)
 }
 
 // TestParseReadsADeadlock: a deadlock fragment is read without being mistaken
@@ -97,12 +75,8 @@ func TestParseReadsADeadlock(t *testing.T) {
 		"The error occurred when TLC was evaluating the next-state relation.\n" +
 		"1 states generated, 1 distinct states found\n"
 	o := Parse(out)
-	if o.Completed {
-		t.Fatal("a deadlock is not a completion")
-	}
-	if len(o.Violations) != 0 {
-		t.Fatalf("deadlock reported violations: %+v", o.Violations)
-	}
+	assert.False(t, o.Completed, "a deadlock is not a completion")
+	assert.Empty(t, o.Violations, "deadlock reported violations")
 }
 
 // TestParseDoesNotCompleteACutShortOutput: output cut short by a timeout never
@@ -110,12 +84,8 @@ func TestParseReadsADeadlock(t *testing.T) {
 func TestParseDoesNotCompleteACutShortOutput(t *testing.T) {
 	t.Parallel()
 	o := Parse("java.lang.OutOfMemoryError\n... (output truncated by timeout)\n")
-	if o.Completed {
-		t.Fatal("cut-short output completed")
-	}
-	if len(o.Violations) != 0 {
-		t.Fatalf("cut-short output reported violations: %+v", o.Violations)
-	}
+	assert.False(t, o.Completed, "cut-short output completed")
+	assert.Empty(t, o.Violations, "cut-short output reported violations")
 }
 
 // TestAcceptsPinsPassAndViolations: Accepts accepts a pass on exit 0 plus the
@@ -124,32 +94,18 @@ func TestParseDoesNotCompleteACutShortOutput(t *testing.T) {
 func TestAcceptsPinsPassAndViolations(t *testing.T) {
 	t.Parallel()
 	passCase := Case{Expected: "pass"}
-	if !Accepts(passCase, ExitPass, cleanFinish, "") {
-		t.Fatal("Accepts refused a clean pass")
-	}
-	if Accepts(passCase, ExitInvariant, cleanFinish, "") {
-		t.Fatal("Accepts accepted pass with exit 12")
-	}
+	assert.True(t, Accepts(passCase, ExitPass, cleanFinish, ""), "Accepts refused a clean pass")
+	assert.False(t, Accepts(passCase, ExitInvariant, cleanFinish, ""), "Accepts accepted pass with exit 12")
 
 	inv := Case{Expected: "invariant", Property: "Safety"}
-	if !Accepts(inv, ExitInvariant, "Error: Invariant Safety is violated.\n", "") {
-		t.Fatal("Accepts refused a matching invariant")
-	}
-	if Accepts(inv, ExitPass, cleanFinish, "") {
-		t.Fatal("Accepts accepted an invariant on a clean finish")
-	}
+	assert.True(t, Accepts(inv, ExitInvariant, "Error: Invariant Safety is violated.\n", ""), "Accepts refused a matching invariant")
+	assert.False(t, Accepts(inv, ExitPass, cleanFinish, ""), "Accepts accepted an invariant on a clean finish")
 
 	act := Case{Expected: "action", Property: "A"}
-	if !Accepts(act, ExitProperty, "Error: Action property A is violated.\n", "") {
-		t.Fatal("Accepts refused a matching action property")
-	}
+	assert.True(t, Accepts(act, ExitProperty, "Error: Action property A is violated.\n", ""), "Accepts refused a matching action property")
 
 	tmp := Case{Expected: "temporal", Property: "EventuallyAlways"}
 	cfg := "COMPUTE\nPROPERTY EventuallyAlways\n"
-	if !Accepts(tmp, ExitProperty, "Error: Temporal property EventuallyAlways was violated.\n", cfg) {
-		t.Fatal("Accepts refused a matching temporal property")
-	}
-	if Accepts(tmp, ExitProperty, "Error: Temporal property SomethingElse was violated.\n", cfg) {
-		t.Fatal("Accepts accepted a temporal violation of another property")
-	}
+	assert.True(t, Accepts(tmp, ExitProperty, "Error: Temporal property EventuallyAlways was violated.\n", cfg), "Accepts refused a matching temporal property")
+	assert.False(t, Accepts(tmp, ExitProperty, "Error: Temporal property SomethingElse was violated.\n", cfg), "Accepts accepted a temporal violation of another property")
 }

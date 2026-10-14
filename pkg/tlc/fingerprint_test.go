@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCheckedFilesListsTheResultAndInputListFiles: CheckedFiles is ResultFiles
@@ -12,10 +15,7 @@ import (
 func TestCheckedFilesListsTheResultAndInputListFiles(t *testing.T) {
 	t.Parallel()
 	want := append(append([]string{}, ResultFiles...), InputListFiles...)
-	got := CheckedFiles()
-	if !equalStrings(got, want) {
-		t.Fatalf("CheckedFiles()=%v want %v", got, want)
-	}
+	assert.Equal(t, want, CheckedFiles())
 }
 
 // TestCheckRunnerAcceptsMatchingRunnerFiles: a root whose runner files are the
@@ -24,21 +24,13 @@ func TestCheckRunnerAcceptsMatchingRunnerFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, filepath.FromSlash(RunnerDir))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 	for _, name := range CheckedFiles() {
 		raw, err := sources.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), raw, 0o644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), raw, 0o644))
 	}
-	if err := CheckRunner(root); err != nil {
-		t.Fatalf("CheckRunner: %v", err)
-	}
+	assert.NoError(t, CheckRunner(root), "CheckRunner")
 }
 
 // TestCheckRunnerNoticesAChangedRunnerFile: a changed runner file is refused,
@@ -47,32 +39,20 @@ func TestCheckRunnerNoticesAChangedRunnerFile(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, filepath.FromSlash(RunnerDir))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 	raw, err := sources.ReadFile("outcome.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "outcome.go"), append(raw, []byte("\n// changed\n")...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "outcome.go"), append(raw, []byte("\n// changed\n")...), 0o644))
 	err = CheckRunner(root)
-	if err == nil {
-		t.Fatal("CheckRunner accepted a changed runner file")
-	}
-	if !strings.Contains(err.Error(), "outcome.go") {
-		t.Fatalf("CheckRunner error does not name the file: %v", err)
-	}
+	require.Error(t, err, "CheckRunner accepted a changed runner file")
+	assert.ErrorContains(t, err, "outcome.go")
 }
 
 // TestCheckRunnerNoopsWithoutARunnerDir: a root with no pkg/tlc has nothing to
 // check.
 func TestCheckRunnerNoopsWithoutARunnerDir(t *testing.T) {
 	t.Parallel()
-	if err := CheckRunner(t.TempDir()); err != nil {
-		t.Fatalf("CheckRunner on an empty root: %v", err)
-	}
+	assert.NoError(t, CheckRunner(t.TempDir()), "CheckRunner on an empty root")
 }
 
 // TestFingerprintNoticesAChangedModule: editing a case's module changes its
@@ -85,27 +65,15 @@ func TestFingerprintNoticesAChangedModule(t *testing.T) {
 
 	path := filepath.Join(root, "tla", c.Module)
 	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, append(raw, []byte("\n\\* edited\n")...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(raw, []byte("\n\\* edited\n")...), 0o644))
 
 	fp, _, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fp == fresh.InputSHA256 {
-		t.Fatal("editing a module did not change the fingerprint")
-	}
+	require.NoError(t, err)
+	assert.NotEqual(t, fresh.InputSHA256, fp, "editing a module did not change the fingerprint")
 	stale, err := StaleGroups(src, cases, []Record{fresh})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stale) != 1 || stale[0] != c.Group {
-		t.Fatalf("StaleGroups after editing a module = %v, want [%s]", stale, c.Group)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []string{c.Group}, stale)
 }
 
 // TestFingerprintNoticesAChangedConfig: editing a case's configuration changes
@@ -115,20 +83,12 @@ func TestFingerprintNoticesAChangedConfig(t *testing.T) {
 	root, cases, src := recordsPlan(t)
 	c := cases[0]
 	fp0, _, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	path := filepath.Join(root, "tla", c.Config)
-	if err := os.WriteFile(path, []byte("SPECIFICATION Spec\nCONSTANT N = 3\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("SPECIFICATION Spec\nCONSTANT N = 3\n"), 0o644))
 	fp1, _, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fp1 == fp0 {
-		t.Fatal("editing a configuration did not change the fingerprint")
-	}
+	require.NoError(t, err)
+	assert.NotEqual(t, fp0, fp1, "editing a configuration did not change the fingerprint")
 }
 
 // TestFingerprintNoticesAnAddedModule: adding a module the case extends covers a
@@ -138,45 +98,19 @@ func TestFingerprintNoticesAnAddedModule(t *testing.T) {
 	root, cases, src := recordsPlan(t)
 	c := cases[0]
 	fp0, files0, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	modulePath := filepath.Join(root, "tla", c.Module)
 	raw, err := os.ReadFile(modulePath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	header, body, _ := strings.Cut(string(raw), "\n")
 	edited := header + "\nEXTENDS AddedModule\n" + body
-	if err := os.WriteFile(modulePath, []byte(edited), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "tla", "AddedModule.tla"),
-		[]byte("---- MODULE AddedModule ----\nVARIABLE y\n====\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(modulePath, []byte(edited), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "tla", "AddedModule.tla"),
+		[]byte("---- MODULE AddedModule ----\nVARIABLE y\n====\n"), 0o644))
 
 	fp1, files1, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fp1 == fp0 {
-		t.Fatal("adding a module did not change the fingerprint")
-	}
-	if files1 <= files0 {
-		t.Fatalf("adding a module covered %d inputs, want more than %d", files1, files0)
-	}
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	require.NoError(t, err)
+	assert.NotEqual(t, fp0, fp1, "adding a module did not change the fingerprint")
+	assert.Greater(t, files1, files0, "adding a module must cover more inputs")
 }
