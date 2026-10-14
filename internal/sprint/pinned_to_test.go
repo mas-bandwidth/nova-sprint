@@ -11,8 +11,21 @@ import (
 func TestAHardPinIsPinnedToTheFriendItNamesOnly(t *testing.T) {
 	t.Parallel()
 	pin := &Card{ID: "p1-1", Fields: map[string]string{FieldWho: "only.friend.amy"}}
-	assert.True(t, pinnedTo(pin, "amy"), "a hard pin to amy is amy's pin")
-	assert.False(t, pinnedTo(pin, "bea"), "a hard pin to amy dealt to bea is not bea's pin: her start bound and level may move it")
 	free := &Card{ID: "p1-2", Fields: map[string]string{}}
-	assert.False(t, pinnedTo(free, "amy"), "a card with no pin is nobody's pin")
+	cases := []struct {
+		name string
+		card *Card
+		who  string
+		want bool
+	}{
+		{"a hard pin to amy is amy's pin", pin, "amy", true},
+		{"a hard pin to amy dealt to bea is not bea's pin: her start bound and level may move it", pin, "bea", false},
+		{"a card with no pin is nobody's pin", free, "amy", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, pinnedTo(tc.card, tc.who))
+		})
+	}
 }

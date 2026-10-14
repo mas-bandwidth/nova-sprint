@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/must"
 )
 
 // fakeQueue is a forge's merge queues as the lander asks them, and no forge: the branches
@@ -50,9 +52,7 @@ func TestLanderPausesWhileTheQueueHoldsAGroup(t *testing.T) {
 		t.Parallel()
 		q := &fakeQueue{held: map[string]bool{"dev": true}}
 		why := LandPause(ctx, MergeWindow{}, now, q, repo, "dev")
-		assert.Contains(t, why, "paused")
-		assert.Contains(t, why, "the merge queue of dev holds a group")
-		assert.Contains(t, why, "the cards stay queued")
+		must.ContainsAll(t, why, "paused", "the merge queue of dev holds a group", "the cards stay queued")
 		q.set("dev", false)
 		assert.Empty(t, LandPause(ctx, MergeWindow{}, now, q, repo, "dev"), "the queue cleared: the landing goes on")
 		assert.Equal(t, []string{repo + " dev", repo + " dev"}, q.asked, "the queue is asked of the repository and branch landed onto")
@@ -66,18 +66,14 @@ func TestLanderPausesWhileTheQueueHoldsAGroup(t *testing.T) {
 		t.Parallel()
 		q := &fakeQueue{held: map[string]bool{}, err: errors.New("the forge said 502")}
 		why := LandPause(ctx, MergeWindow{}, now, q, repo, "dev")
-		assert.Contains(t, why, "paused")
-		assert.Contains(t, why, "the merge queue of dev could not be read")
-		assert.Contains(t, why, "the forge said 502")
+		must.ContainsAll(t, why, "paused", "the merge queue of dev could not be read", "the forge said 502")
 	})
 	t.Run("an open window pauses every branch with its reason, and asks no queue", func(t *testing.T) {
 		t.Parallel()
 		q := &fakeQueue{held: map[string]bool{}}
 		w := MergeWindow{Until: now.Add(10 * time.Minute), Reason: "the release merges by hand"}
 		why := LandPause(ctx, w, now, q, repo, "dev")
-		assert.Contains(t, why, "paused")
-		assert.Contains(t, why, "a merge window is open until 2026-10-04T18:10:00Z")
-		assert.Contains(t, why, "the release merges by hand")
+		must.ContainsAll(t, why, "paused", "a merge window is open until 2026-10-04T18:10:00Z", "the release merges by hand")
 		assert.Empty(t, q.asked, "a window open pauses before any forge is asked")
 		assert.Empty(t, LandPause(ctx, w, now.Add(10*time.Minute), q, repo, "dev"), "the window closes at its end")
 	})

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/must"
 )
 
 // A HOLD that proposes PATHS is the machine's to answer (docs/SPEC-SPRINT.md section 8, the
@@ -141,9 +142,8 @@ func TestAHoldWithPathsProposedCutsTheWidenedTwinByRule(t *testing.T) {
 		require.Len(t, js, 1, "one judgment")
 		what := js[0].Note.What
 		file := filepath.Join(dir, "p-b", "p-b-t.md")
-		assert.Contains(t, what, "internal/shared/s.go")
-		assert.Contains(t, what, "other", "names the card that shares the file")
-		assert.Contains(t, what, "nova-sprint add --stream s2 --replaces p-b --before p-b --brief-file "+file, "the complete command")
+		must.ContainsAll(t, what, "internal/shared/s.go", "other",
+			"nova-sprint add --stream s2 --replaces p-b --before p-b --brief-file "+file)
 
 		brief, err := os.ReadFile(file)
 		require.NoError(t, err, "the machine wrote the twin's brief")

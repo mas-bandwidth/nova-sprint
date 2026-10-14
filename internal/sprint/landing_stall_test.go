@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/must"
 )
 
 // The landing stall (docs/SPEC-SPRINT.md, the judgments section; the owner,
@@ -40,12 +42,9 @@ func TestLandingStallIsJudgedWhenCardsWaitAndNothingLands(t *testing.T) {
 	require.Len(t, got, 1, "one judgment for the stall")
 	assert.Equal(t, Judgment, got[0].Kind)
 	assert.Equal(t, "coordinator", got[0].To)
-	assert.Contains(t, got[0].What, "1 in review and 1 merging")
-	assert.Contains(t, got[0].What, "reads out")
-	assert.Contains(t, got[0].What, "waiting on the coordinator's judgment: 1")
-	assert.Contains(t, got[0].What, "accepted and not merged: 1")
-	assert.Contains(t, got[0].What, "the lander's last refusal: s1-2")
-	assert.Contains(t, got[0].What, "CI green")
+	must.ContainsAll(t, got[0].What, "1 in review and 1 merging", "reads out",
+		"waiting on the coordinator's judgment: 1", "accepted and not merged: 1",
+		"the lander's last refusal: s1-2", "CI green")
 }
 
 func TestLandingStallNamesTheRedCI(t *testing.T) {
@@ -226,13 +225,8 @@ func TestEveryLandingIsPushedToTheCoordinator(t *testing.T) {
 	require.Len(t, got, 1, "one push for the batch")
 	assert.Equal(t, Happened, got[0].Kind)
 	assert.Equal(t, "coordinator", got[0].To)
-	assert.Contains(t, got[0].What, "landed s1-1")
-	assert.Contains(t, got[0].What, "stream s1")
-	assert.Contains(t, got[0].What, "abcdef0123")
-	assert.Contains(t, got[0].What, "the thing is fixed")
-	assert.Contains(t, got[0].What, "the fix on two lines")
-	assert.Contains(t, got[0].What, "attempts 3")
-	assert.Contains(t, got[0].What, "reads ")
+	must.ContainsAll(t, got[0].What, "landed s1-1", "stream s1", "abcdef0123",
+		"the thing is fixed", "the fix on two lines", "attempts 3", "reads ")
 }
 
 // The merge step writes the landing-stall facts (docs/SPEC-SPRINT.md, the
@@ -254,11 +248,8 @@ func TestMergeWritesTheLandingStallFacts(t *testing.T) {
 	require.NotEmpty(t, last, "the stamp is the landing's time")
 	got := w.notesOf(NLanding)
 	require.Len(t, got, 1, "one landing push for the batch")
-	assert.Contains(t, got[0].What, "landed s1-1")
-	assert.Contains(t, got[0].What, "abcdef0123", "the push reads the work card's head")
-	assert.Contains(t, got[0].What, "the thing is fixed", "the push reads the work card's :title")
-	assert.Contains(t, got[0].What, "the fix on two lines", "the push reads the work card's :text")
-	assert.Contains(t, got[0].What, "attempts 3")
+	must.ContainsAll(t, got[0].What, "landed s1-1", "abcdef0123",
+		"the thing is fixed", "the fix on two lines", "attempts 3")
 }
 
 // The merge step records the lander's last refusal (docs/SPEC-SPRINT.md, the

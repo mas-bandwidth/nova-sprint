@@ -39,68 +39,66 @@ func idleSaid(t *testing.T) *world {
 	return w
 }
 
-// (c) Every member's width is taken away (fleet up <m> --width 0: held or
-// drained): nothing works, and the note never says working again.
-func TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain(t *testing.T) {
+// TestAnIdleEpisodeEndsSayingWhy is the episode's four ends: (c) no width up --
+// every member down, held or drained (fleet up <m> --width 0); (a) the fleet
+// working at half its width again, the one recovery, which keeps the
+// working-again note; (b) no card waits; and (d) the fleet's work switched off
+// (set --fleet off). Each but (a) ends naming its cause, and never says working
+// again.
+func TestAnIdleEpisodeEndsSayingWhy(t *testing.T) {
 	t.Parallel()
-	w := idleSaid(t)
-	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Drain: true, Who: "coordinator"}))
+	drain := func(t *testing.T, w *world) {
+		for _, m := range []string{"m1", "m2"} {
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Drain: true, Who: "coordinator"}))
+		}
+		working, width := FleetWorking(w.s)
+		require.Equal(t, 0, width, "every member drains: no width up")
+		require.Equal(t, 0, working)
 	}
-	working, width := FleetWorking(w.s)
-	require.Equal(t, 0, width, "every member drains: no width up")
-	require.Equal(t, 0, working)
-	tickIdle(t, w)
-	assert.Empty(t, w.notesOf(NIdleCleared), "no width up is no recovery: never a working-again note")
-	for _, n := range w.notes {
-		assert.NotContains(t, n.What, "working again")
+	work := func(t *testing.T, w *world) {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1, Who: "coordinator"}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 1, Who: "coordinator"}))
+		w.s.Fleet.Put(&Card{ID: WorkCardID("idle-a", 1), Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "primary"}})
+		working, width := FleetWorking(w.s)
+		require.Equal(t, 1, working, "one card works")
+		require.Equal(t, 2, width, "two members of width 1")
 	}
-	ended := w.notesOf(NIdleEnded)
-	require.Len(t, ended, 1, "the end names the cause")
-	assert.Contains(t, ended[0].What, "no width up: every member is down, held or drained (fleet up <member> --width <n>)")
-}
-
-// (a) The fleet works at half its width again: the recovery keeps the
-// working-again note, and pushes no end note.
-func TestAnIdleEpisodeEndedByWorkSaysWorkingAgain(t *testing.T) {
-	t.Parallel()
-	w := idleSaid(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1, Who: "coordinator"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 1, Who: "coordinator"}))
-	w.s.Fleet.Put(&Card{ID: WorkCardID("idle-a", 1), Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "primary"}})
-	working, width := FleetWorking(w.s)
-	require.Equal(t, 1, working, "one card works")
-	require.Equal(t, 2, width, "two members of width 1")
-	tickIdle(t, w)
-	clears := w.notesOf(NIdleCleared)
-	require.Len(t, clears, 1, "working half its width again: the recovery note")
-	assert.Contains(t, clears[0].What, "working again")
-	assert.Empty(t, w.notesOf(NIdleEnded), "no end note on the recovery")
-}
-
-// (b) No card waits: the episode ends naming that.
-func TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause(t *testing.T) {
-	t.Parallel()
-	w := idleSaid(t)
-	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-9"}}, Reason: "done with it", Who: "coordinator"}))
-	tickIdle(t, w)
-	ended := w.notesOf(NIdleEnded)
-	require.Len(t, ended, 1, "no card waits: the end names it")
-	assert.Contains(t, ended[0].What, "no card waits")
-	assert.Empty(t, w.notesOf(NIdleCleared))
-}
-
-// (d) The fleet's work is switched off (set --fleet off): the episode ends
-// naming the switch.
-func TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause(t *testing.T) {
-	t.Parallel()
-	w := idleSaid(t)
-	w.must(Set(w.s, SetReq{Fleet: SwitchOff, Who: "coordinator"}))
-	tickIdle(t, w)
-	ended := w.notesOf(NIdleEnded)
-	require.Len(t, ended, 1, "the switch ends the episode and names it")
-	assert.Contains(t, ended[0].What, "the fleet's work is switched off (set --fleet on)")
-	assert.Empty(t, w.notesOf(NIdleCleared))
+	cases := []struct {
+		end     func(t *testing.T, w *world)
+		why     string
+		cleared bool
+	}{
+		{drain, "no width up: every member is down, held or drained (fleet up <member> --width <n>)", false},
+		{work, "working again", true},
+		{func(t *testing.T, w *world) {
+			w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-9"}}, Reason: "done with it", Who: "coordinator"}))
+		}, "no card waits", false},
+		{func(t *testing.T, w *world) {
+			w.must(Set(w.s, SetReq{Fleet: SwitchOff, Who: "coordinator"}))
+		}, "the fleet's work is switched off (set --fleet on)", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.why, func(t *testing.T) {
+			t.Parallel()
+			w := idleSaid(t)
+			tc.end(t, w)
+			tickIdle(t, w)
+			clears := w.notesOf(NIdleCleared)
+			if tc.cleared {
+				require.Len(t, clears, 1, "working half its width again: the recovery note")
+				assert.Contains(t, clears[0].What, tc.why)
+				assert.Empty(t, w.notesOf(NIdleEnded), "no end note on the recovery")
+				return
+			}
+			assert.Empty(t, clears, "no recovery: never a working-again note")
+			ended := w.notesOf(NIdleEnded)
+			require.Len(t, ended, 1, "the end names the cause")
+			assert.Contains(t, ended[0].What, tc.why)
+			for _, n := range w.notes {
+				assert.NotContains(t, n.What, "working again")
+			}
+		})
+	}
 }
 
 // The alarm is raised once an episode, never once a tick (docs/SPEC-SPRINT.md section 14,

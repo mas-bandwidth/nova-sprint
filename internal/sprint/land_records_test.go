@@ -2,8 +2,6 @@ package sprint_test
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
 )
 
@@ -30,12 +29,7 @@ var recordsModels = map[string]string{
 // current record per case, its fingerprint the one the tree gives it.
 func runsFor(t *testing.T, files map[string]string) string {
 	t.Helper()
-	dir := t.TempDir()
-	for f, s := range files {
-		p := filepath.Join(dir, filepath.FromSlash(f))
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte(s), 0o600))
-	}
+	dir := fsx.Tree(t, files)
 	src, err := tlc.SourceAt(dir)
 	require.NoError(t, err)
 	cases, err := tlc.ParseCases(strings.NewReader(files["tla/CASES.tsv"]))
