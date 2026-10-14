@@ -355,7 +355,7 @@ func TestTheLandPauseEndsWhenTheLoopDoes(t *testing.T) {
 	assert.Equal(t, LandEvery, <-slept, "the pause sleeps LandEvery")
 	select {
 	case <-done:
-		t.Fatal("the pause ended before its sleep or its context")
+		require.FailNow(t, "the pause ended before its sleep or its context")
 	default:
 	}
 	cancel()

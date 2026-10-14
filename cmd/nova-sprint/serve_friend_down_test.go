@@ -77,6 +77,6 @@ func (r *serverRig) friendRow(name string) store.FriendRow {
 			return f
 		}
 	}
-	r.t.Fatalf("where --json has no friend %s", name)
+	require.FailNowf(r.t, "", "where --json has no friend %s", name)
 	return store.FriendRow{}
 }

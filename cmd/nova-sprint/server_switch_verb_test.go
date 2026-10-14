@@ -161,7 +161,7 @@ func TestServerSwitchReadsTheCommitARealBinaryNames(t *testing.T) {
 	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "-ldflags", "-X main.version="+stamp, "github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint")
 	build.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
+		require.FailNowf(t, "", "go build: %v\n%s", err, out)
 	}
 	out, err := runBuiltSprint(t, bin, "version")
 	require.NoError(t, err)

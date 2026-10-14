@@ -59,7 +59,7 @@ func TestTheInterruptOfTheCommandIsSIGINTAndSIGTERM(t *testing.T) {
 			err = cmd.Wait()
 			var exit *exec.ExitError
 			if errors.As(err, &exit) {
-				t.Fatalf("%v did not end the context of the command: the child %v:\n%s", sig, exit.ProcessState, strings.Join(seen, "\n"))
+				require.FailNowf(t, "", "%v did not end the context of the command: the child %v:\n%s", sig, exit.ProcessState, strings.Join(seen, "\n"))
 			}
 			require.NoError(t, err, strings.Join(seen, "\n"))
 			require.Contains(t, seen, "INTERRUPT CHILD ENDED", "%v did not end the context of the command", sig)
@@ -83,6 +83,6 @@ func TestInterruptChildWaitsForItsSignal(t *testing.T) {
 	case <-ctx.Done():
 		fmt.Println("INTERRUPT CHILD ENDED")
 	case <-time.After(25 * time.Second):
-		t.Errorf("%s did not end the context of the command", os.Getenv(interruptChildEnv))
+		require.Failf(t, "", "%s did not end the context of the command", os.Getenv(interruptChildEnv))
 	}
 }

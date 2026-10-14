@@ -56,7 +56,7 @@ func TestTickPastItsDeadlineIsGivenUp(t *testing.T) {
 	<-cancelled // the tick's context is cancelled
 	select {
 	case <-ended:
-		t.Fatal("ended is closed before the tick's goroutine returned")
+		require.FailNow(t, "ended is closed before the tick's goroutine returned")
 	default:
 	}
 }
@@ -472,14 +472,14 @@ func TestATickPastItsDeadlineWithAStderrThatNeverDrainsIsStillCancelled(t *testi
 	case <-cancelled:
 	case <-time.After(5 * time.Second):
 		close(stopped)
-		t.Fatal("the tick's context was never cancelled: the watchdog waited on a stderr that never drains")
+		require.FailNow(t, "the tick's context was never cancelled: the watchdog waited on a stderr that never drains")
 	}
 	select {
 	case got := <-over:
 		assert.True(t, got, "tickWithin returns over")
 	case <-time.After(5 * time.Second):
 		close(stopped)
-		t.Fatal("tickWithin never returned: the watchdog waited on its own dump")
+		require.FailNow(t, "tickWithin never returned: the watchdog waited on its own dump")
 	}
 	assert.Contains(t, out.String(), " TICK DEADLINE the tick begun at ")
 	assert.Contains(t, out.String(), " TICK STACKS the goroutine stacks were not written to stderr within ")
@@ -522,7 +522,7 @@ func TestThreeWedgedTicksWithAStderrThatNeverDrainsExitFour(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(8 * time.Second):
-		t.Fatal("the wedged process never exited: the watchdog waited on a stderr that never drains")
+		require.FailNow(t, "the wedged process never exited: the watchdog waited on a stderr that never drains")
 	}
 	assert.Equal(t, []int{exitTickDeadline}, l.exits)
 	assert.Equal(t, 1, l.calls, "no tick begins beside the one given up")
