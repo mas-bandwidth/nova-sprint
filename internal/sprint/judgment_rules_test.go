@@ -26,7 +26,7 @@ func answerOn(t *testing.T, w *world, r TickReq, typ, subject string) RuleAnswer
 			return a
 		}
 	}
-	t.Fatalf("no %q judgment open on %s: %+v", typ, subject, w.s.Open)
+	require.FailNowf(t, "no %q judgment open on %s: %+v", typ, subject, w.s.Open)
 	return RuleAnswer{}
 }
 

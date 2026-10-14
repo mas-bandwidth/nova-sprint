@@ -61,7 +61,7 @@ func TestEveryAnswerTheIdleReapJudgmentListsWorksOnItsState(t *testing.T) {
 			case "wait":
 				p = Wait(w.s, WaitReq{Note: j.Note.ID, Until: w.s.Now.Add(30 * time.Minute), Who: w.s.Coordinator})
 			default:
-				t.Fatalf("the judgment lists %q, which no test runs", d)
+				require.FailNowf(t, "the judgment lists %q, which no test runs", d)
 			}
 			require.Empty(t, p.Refused, "%s is listed and refused: %+v", d, p.Refused)
 			require.Len(t, p.Units, 1, "%s answered nothing: %+v", d, p)
