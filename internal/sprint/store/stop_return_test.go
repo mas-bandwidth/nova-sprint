@@ -85,7 +85,7 @@ func TestOldTickPartCannotCommitAcrossStopAndRestart(t *testing.T) {
 	select {
 	case <-b.entered:
 	case got := <-finished:
-		t.Fatalf("old tick part finished before acquire: result=%+v err=%v", got.res, got.err)
+		require.Failf(t, "old tick part finished before acquire", "result=%+v err=%v", got.res, got.err)
 	}
 	_, _, _, err = h.st.StopUntil(h.ctx, "operator cancellation", h.now.Add(time.Hour))
 	require.NoError(t, err)
