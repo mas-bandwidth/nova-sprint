@@ -47,12 +47,12 @@ the flow, three lines:
   nova-sprint where
 
 usage:
-  nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
-  nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-  nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+  nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
+  nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
+  nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
   nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
   nova-card template
-  nova-card version
+  nova-card version [--json]
   nova-card help [<verb>]
 
 generate reads the repository, the branch and the base sha from --repo-dir (its origin URL,
@@ -82,6 +82,8 @@ what it prints:
   CARDS NOTE <what was skipped: a row the ledger did not read, a tool with no help>
   LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>              and nothing is written
   LINT OK file=<file>
+  generate --json: one object {dir,cards,waves,tier,frontier,shared_paths,dry_run,notes,manifest}
+  version --json: one object {tool,version,platform,go_version}
 
 exit codes: 0 done; 1 a brief is red, named on its LINT DRIFT line, and nothing was written;
 2 could not run: a missing flag, a source that cannot be read, a checkout with no HEAD
@@ -197,6 +199,31 @@ type lintJSONOutput struct {
 	Findings []lintJSONFinding `json:"findings"`
 }
 
+// generateJSONCard is one planned card in generate --json's manifest, the same
+// row manifest.tsv carries (docs/CLI.md, nova-card).
+type generateJSONCard struct {
+	ID   string   `json:"id"`
+	File string   `json:"file"`
+	Test string   `json:"test"`
+	Wave int      `json:"wave"`
+	Deps []string `json:"deps"`
+}
+
+// generateJSONOutput is the structured JSON object emitted by nova-card
+// generate --json: the CARDS OK line's facts and the manifest as one object
+// (docs/CLI.md, nova-card).
+type generateJSONOutput struct {
+	Dir         string             `json:"dir"`
+	Cards       int                `json:"cards"`
+	Waves       int                `json:"waves"`
+	Tier        string             `json:"tier"`
+	Frontier    int                `json:"frontier"`
+	SharedPaths bool               `json:"shared_paths"`
+	DryRun      bool               `json:"dry_run"`
+	Notes       []string           `json:"notes"`
+	Manifest    []generateJSONCard `json:"manifest"`
+}
+
 func cmdLint(args []string, stdout, stderr io.Writer) int {
 	fs := verbflag.New("lint")
 	var cards multi
@@ -275,6 +302,7 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	minutes := fs.Int("minutes", 0, "the Deadline line's `minutes` (default: 45 flash, 60 pro)")
 	maxCards := fs.Int("max", 0, "write at most this many cards, in source order; 0 is all")
 	dryRun := fs.Bool("dry-run", false, "plan and lint, print the manifest and the CARDS line, and write nothing")
+	jsonOut := fs.Bool("json", false, "print the result as one JSON object instead of the manifest and the CARDS line")
 	opts := lintFlags(fs)
 	if err := verbflag.Parse(fs, args); err != nil {
 		return refuse(stderr, "generate", verbflag.Explain(fs, err))
@@ -404,6 +432,9 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if *dryRun {
+		if *jsonOut {
+			return printGenerateJSON(stdout, stderr, *out, plan, frontier, notes, true)
+		}
 		for _, n := range notes {
 			fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
 		}
@@ -425,11 +456,45 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	if err := os.WriteFile(filepath.Join(*out, "manifest.tsv"), []byte(cardgen.Manifest(plan)), 0o644); err != nil {
 		return refuse(stderr, "generate", "cannot write manifest.tsv: "+err.Error())
 	}
+	if *jsonOut {
+		return printGenerateJSON(stdout, stderr, *out, plan, frontier, notes, false)
+	}
 	for _, n := range notes {
 		fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
 	}
 	line := cardgen.OKLine(*out, plan) + frontierWord(frontier)
 	fmt.Fprintln(stdout, line)
+	return 0
+}
+
+// printGenerateJSON writes generate --json's one object: the CARDS OK line's
+// facts and the manifest, from the same plan the text form prints, so the two
+// renderings cannot drift (docs/CLI.md, nova-card; docs/STANDARD.md section 3,
+// the --json form of a verb's result).
+func printGenerateJSON(stdout, stderr io.Writer, dir string, plan cardgen.Plan, frontier int, notes []string, dryRun bool) int {
+	out := generateJSONOutput{
+		Dir:         dir,
+		Cards:       len(plan.Cards),
+		Waves:       plan.Waves,
+		Tier:        plan.Tier,
+		Frontier:    frontier,
+		SharedPaths: plan.Shared,
+		DryRun:      dryRun,
+		Notes:       append([]string{}, notes...),
+		Manifest:    make([]generateJSONCard, 0, len(plan.Cards)),
+	}
+	for _, c := range plan.Cards {
+		deps := c.Deps
+		if deps == nil {
+			deps = []string{}
+		}
+		out.Manifest = append(out.Manifest, generateJSONCard{ID: c.ID, File: c.File, Test: c.Test, Wave: c.Wave, Deps: deps})
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return refuse(stderr, "generate", err.Error())
+	}
+	fmt.Fprintln(stdout, string(b))
 	return 0
 }
 
