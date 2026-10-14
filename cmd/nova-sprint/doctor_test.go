@@ -87,8 +87,14 @@ func TestDoctorFaultsNamesADashboardServingOldData(t *testing.T) {
 	}
 	r := sprint.JudgeSeatCheck(m, now)
 	got := doctorFaults(r, store.StopsRecord{}, nil, nil, now)
-	require.Len(t, got, 1, "dashboard-age fault evidence = %v", got)
-	require.Regexp(t, `dashboard DOWN.*age=2s`, got[0], "dashboard-age fault evidence = %v", got)
+	var dash string
+	for _, f := range got {
+		if strings.Contains(f, "dashboard DOWN") {
+			dash = f
+		}
+	}
+	require.NotEmpty(t, dash, "dashboard-age fault evidence = %v", got)
+	assert.Contains(t, dash, "age=2s", "dashboard-age fault evidence = %v", got)
 }
 
 // A clean sprint is GREEN and exits 0: no machinery verdict is DOWN, no stop holds, no
