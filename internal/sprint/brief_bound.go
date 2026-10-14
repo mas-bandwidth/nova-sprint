@@ -336,7 +336,8 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 // run (AtLaneBroken), so it is never a harness end. Only WORKER and BRIEF ends are votes:
 // a card that reached the cap with more harness ends than votes is the harness's, and the
 // brief-defect mark and the brief-wrong wording never come from it. tla/SprintRules.tla, Part "answers": a
-// harness end is redealt and counts toward max_attempts as an attempt, never a vote.
+// harness end is redealt and counts toward max_attempts as an attempt, never a vote
+// (anvotes, AnMark, MarkOnlyOnVotes; reversed witness MCSprintRulesAnswersBrokenHarnessVotes).
 func harnessEnds(c *Card) int {
 	attempt, decided := c.Int("attempt"), c.Int(FieldDecidedAttempt)
 	runs := ranAttempts(c)
