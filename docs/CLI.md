@@ -718,6 +718,32 @@ command again finishes it), or when `--source` holds no
 `fleet/tools.yml`; 2 usage. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 14,
 "Adopting a build".
 
+### The release-window sentinel
+
+The seat play writes one JSON file when a release window (an adopt, above) opens and removes it
+when it ends or is rolled back: `${NOVA_RELEASE_WINDOW_FILE:-$HOME/.nova/release-window.json}`, shape
+`{"open":true,"reason":"adopt v1.2.24","opened":"2026-10-14T03:00:00Z","until":"2026-10-14T03:30:00Z","back_in_s":300}`,
+`until` the play's own upper bound. It is advice for a human or an agent reading a refusal; no
+verb's behaviour, exit code or write depends on it. A verb that fails to reach the store (a
+refused dial, a timeout, "the store did not answer": the exit-2 path of `storeCtx` and
+`openConn`) reads it once, after the failure, never before and never on success. The refusal then
+says, in place:
+
+- **open** (the file parses, `open` is true, now is before `until`) — the refusal line is prefixed,
+  not replaced: `RELEASE WINDOW OPEN: adopt v1.2.24; the server is expected back in about 240 s
+  (until 03:30:00Z); this is planned, not a failure; retry then. ` before the original refusal,
+  unchanged. With `--json` the same facts go in a `release_window` object beside the refusal. The
+  exit code does not change.
+- **stale** (now is not before `until`) — one added note, `release window file is stale (until
+  03:30:00Z passed): the outage may be a failure; run: nova-sprint where`, the refusal otherwise
+  unchanged. An expired sentinel never says planned.
+- **none** or **unreadable** (no file, a directory in its place, malformed JSON, `open` false) —
+  nothing is added, and no error is printed for the file itself.
+
+A verb that reaches the store never reads the file, and no verb ever writes it. The contract is
+[SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "The
+release-window sentinel".
+
 ### Exit codes
 
 | exit | meaning |
