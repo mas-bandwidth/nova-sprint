@@ -7,11 +7,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 // The member-env beat-form probe (docs/SPEC-SPRINT.md, "The doctor's refused-verb and
@@ -65,50 +63,18 @@ func parseBeatForm(out []byte) BeatForm {
 	return BeatForm{}
 }
 
-// probeBeatForms probes each member's host at once, over ssh as the fleet reaches it (its
-// machine row's login), or the local shell on this host, inside doctorProbeBudget. A host
-// that does not answer has Known false: a down member is the member-down stop's, never a
+// probeBeatForms is the beat-form probe over probeMemberHosts (doctor_probe.go): a host
+// that does not answer has Known false, a down member is the member-down stop's, never a
 // beat-form FAIL.
 func (a *app) probeBeatForms(ctx context.Context, machines []sprint.DoctorMachine, self string) map[string]BeatForm {
-	ctx, cancel := context.WithTimeout(ctx, doctorProbeBudget)
-	defer cancel()
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	out := map[string]BeatForm{}
-	for _, m := range machines {
-		wg.Add(1)
-		go func(m sprint.DoctorMachine) {
-			defer wg.Done()
-			host := m.Name
-			if m.User != "" {
-				host = m.User + "@" + m.Name
-			}
-			script := beatFormScript(m)
-			var stdout, stderr bytes.Buffer
-			var err error
-			code := 0
-			if m.Name == self {
-				cmd, c := subproc.Command(ctx, subproc.Tool, "sh", "-c", script)
-				defer c()
-				cmd.Stdout, cmd.Stderr = &stdout, &stderr
-				err = cmd.Run()
-			} else {
-				code, err = bench.Exec{}.Shell(ctx, host, "sh -c "+bench.Quote(script), &stdout, &stderr)
-				if err == nil && code == 255 { // ssh's own failure: the host was not reached
-					err = fmt.Errorf("ssh exit 255: %s", probeClip(stderr.String(), 160))
-				}
-			}
+	return probeMemberHosts(ctx, machines, self, beatFormScript,
+		func(_ context.Context, _ sprint.DoctorMachine, run memberProbeRun) BeatForm {
 			bf := BeatForm{}
-			if err == nil || stdout.Len() > 0 {
-				bf = parseBeatForm(stdout.Bytes())
+			if run.Err == nil || len(run.Stdout) > 0 {
+				bf = parseBeatForm(run.Stdout)
 			}
-			mu.Lock()
-			out[m.Name] = bf
-			mu.Unlock()
-		}(m)
-	}
-	wg.Wait()
-	return out
+			return bf
+		})
 }
 
 // beatFormChecks is the member-env beat-form FAIL for each member up whose installed beat
