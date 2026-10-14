@@ -176,7 +176,8 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 // she goes down, no age), and names the re-arm steps of her receiver, each a command
 // the tools have: nova-hook status and nova-hook hook (docs/SPEC-HOOK.md), and the
 // receive line nova-bus recv --forever --exec (docs/SPEC-BUS.md).
-// tla/FriendHeard.tla DeafJudged.
+// The judgment itself is not modelled; the phase it reads is tla/FriendHeard.tla Phase = deaf
+// (DeafNeverLongerThanBound, DeafLeavesDeaf).
 func deafConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	seats := slices.SortedFunc(slices.Values(r.Friends), func(a, b FriendSeat) int { return strings.Compare(a.Name, b.Name) })

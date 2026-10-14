@@ -333,7 +333,7 @@ func FriendStatus(f FriendPresence, now time.Time) string {
 // down, what is missing and the age of the last event, and the beat's age when she beats,
 // so a row read down while her daemon beats says why; for a beat that says down, until
 // when and why; for held, "held". The word is up, down or held only (FriendPhase has the
-// internal phase). tla/FriendHeard.tla Shown.
+// internal phase). tla/FriendHeard.tla DisplayIsTwoWords, DeafDisplaysUp, AsleepDisplaysDown.
 func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	phase, evidence := FriendPhase(f, now)
 	switch phase {
@@ -360,7 +360,7 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 //     session does not.
 //
 // A friend therefore reaches down only through deaf, and deaf lasts FriendDeafHold at most
-// (tla/FriendHeard.tla: NoUpToDown, DeafBounded). Her beat is no event: a daemon beating
+// (tla/FriendHeard.tla: UpToDownPassesDeaf, DeafNeverLongerThanBound). Her beat is no event: a daemon beating
 // for a dead session proves an app is open (asleep, then), and it is the beat alone that a
 // pong or proof she carried is dropped for once the daemon has stopped beating
 // FriendBeatBound ago, since her daemon alone runs her lanes; a recorded Heard is not

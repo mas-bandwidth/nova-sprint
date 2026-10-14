@@ -303,7 +303,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		// bound (docs/SPEC-SPRINT.md section 1, a friend's health; FriendReturn).
 		// ... unless she is up, or deaf and shown up, on a valid event of her own: a friend who
 		// works by hand after her daemon stopped keeps her cards, which come back only from
-		// down (tla/FriendHeard.tla CardsOnlyFromDown)
+		// down (tla/FriendHeard.tla CardsReturnOnlyFromDownOrAsleep)
 		if f, ok := FriendOfRow(row); ok && b.Beaten() && s.Now.Sub(b.At) > FriendBeatBound && !friendShownUp(s, f) {
 			p = friendStoppedReturn(s, p, f, row, b)
 			continue
