@@ -11,15 +11,14 @@ EXTENDS Naturals, FiniteSets, TLC
 \* fleet, whose tier set (fleetTiers) holds its tier. Every deal is gated on the
 \* worker's tier set (friendTakes for a friend, the fleet's set for the fleet):
 \* a flash card never reaches a friend whose tiers are pro alone. A hard pin
-\* waits ready for its friend alone until it is released past its bound while
-\* she is not up, then it is offered on as a named pin is (OnlyToItsFriend holds
-\* only before the release). A card taken back from a friend (friend take) is
+\* waits ready for its friend alone, however long she is not up, and nothing releases
+\* it by time (OnlyToItsFriend; the seat's unpin is the one release). A card taken back from a friend (friend take) is
 \* never dealt to her again (takenBack). The rebalance moves a card dealt and
 \* not started, queued on a worker whose lane works, to a worker up with an idle
 \* lane (no card held) whose tier set admits the card's tier and that the card
 \* has not left. The model checks selection, not transport, route rotation or
-\* retry bounds; the pin release's bound is the tick's step, as
-\* tla/FriendDealtReturn.tla reads the dealt bound.
+\* retry bounds. Until 2026-10-13 the tick released a hard pin past a bound (the judgment
+\* deadline) and dealt it on: BadRelease "timer" is that release and breaks OnlyToItsFriend.
 \* BadOnly is the reversed witness: "only" lets a hard pin fall through to the
 \* general deal (OnlyToItsFriend breaks); BadRebalance "started" lets the
 \* rebalance move a started card (NoStartedCardMoves breaks), "tiers" lets it
@@ -27,7 +26,7 @@ EXTENDS Naturals, FiniteSets, TLC
 \* deal's tier gate (DealtAdmitted breaks); BadBack "dealback" redeals a
 \* taken-back card to the same friend (NeverBackToTheSameFriend breaks); "none"
 \* is the code's rule.
-CONSTANT BadOnly, BadRebalance, BadTier, BadBack
+CONSTANT BadOnly, BadRebalance, BadTier, BadBack, BadRelease
 Cards == {"plain", "preferred", "only"}
 Friends == {"a", "b"}
 Workers == Friends \cup {"fleet"}
@@ -93,9 +92,11 @@ TakeBack(c) == /\ owner[c] \in Friends /\ c \notin started
 Unpin(c) == /\ owner[c] = "none" /\ c \notin started /\ pin[c] # "none"
             /\ pin' = [pin EXCEPT ![c] = "none"]
             /\ UNCHANGED <<owner,up,started,fleetTiers,left,takenBack,rebalanced,released>>
-\* a hard pin released past its bound (the tick's step) while its friend is not
-\* up: it is a preference from then on, offered on as a named pin is.
-Release(c) == /\ pin[c] = "only" /\ c \notin released
+\* the code before 2026-10-13: a hard pin released past its bound (the tick's step) while
+\* its friend is not up, a preference from then on. The code has none; only the reversed
+\* witness BadRelease "timer" takes this step.
+Release(c) == /\ BadRelease = "timer"
+              /\ pin[c] = "only" /\ c \notin released
               /\ owner[c] = "none" /\ "a" \notin up
               /\ released' = released \cup {c}
               /\ UNCHANGED <<owner,pin,up,started,fleetTiers,left,takenBack,rebalanced>>
@@ -124,7 +125,9 @@ Presence == /\ up' \in SUBSET Workers /\ UNCHANGED <<owner,pin,started,fleetTier
 Next == (\E c \in Cards, w \in Workers : Deal(c,w) \/ Rebalance(c,w))
         \/ (\E c \in Cards : Start(c) \/ TakeBack(c) \/ Unpin(c) \/ Release(c)) \/ Presence
 Spec == Init /\ [][Next]_vars
-OnlyToItsFriend == \A c \in Cards : pin[c] = "only" /\ c \notin released => owner[c] \in {"none","a"}
+\* a hard pin is dealt to its friend alone, on every path that places a card (the deal, the
+\* seat's give, the rebalance), whatever else is up and however long she is not
+OnlyToItsFriend == \A c \in Cards : pin[c] = "only" => owner[c] \in {"none","a"}
 \* every card the deal placed sits on a worker whose tier set admits its tier
 DealtAdmitted == \A c \in Cards : owner[c] \in Workers => Admits(owner[c], CardTier[c])
 \* a card taken back from a friend is never dealt to her again

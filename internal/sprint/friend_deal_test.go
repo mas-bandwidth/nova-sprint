@@ -452,3 +452,55 @@ func TestAFriendWithNoRolesIsDealtWorkAndAskedARead(t *testing.T) {
 	askReaders(t, w2, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}})
 	require.NotNil(t, w2.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend with no role list is asked the read, as before roles")
 }
+
+// A hard pin (WHO: only friend <name>) is dealt to her alone (docs/SPEC-SPRINT.md, WHO
+// preference; tla/WhoPreference.tla OnlyToItsFriend). Whatever keeps her from taking it, she
+// is down, her tiers do not hold its tier, her room is full, another friend up with room and
+// two machines up with room never get it: it waits ready, and it is dealt to her the tick
+// she can take it. A research card pinned to one friend was dealt to another (2026-10-13).
+func TestAHardPinIsDealtToItsFriendAloneWhoeverElseIsUpWithRoom(t *testing.T) {
+	t.Parallel()
+	aurora := FriendSeat{Name: "aurora", Width: 4, Status: Up, Class: "flash,pro"}
+
+	for _, tc := range []struct {
+		name string
+		emma FriendSeat
+		full bool // hard pins to her fill her room first
+	}{
+		{"down", FriendSeat{Name: "emma", Width: 1, Status: Down, Class: "flash,pro"}, false},
+		{"tiers do not hold the tier", FriendSeat{Name: "emma", Width: 1, Status: Up, Class: "heavy"}, false},
+		{"restricted to other streams", FriendSeat{Name: "emma", Width: 1, Status: Up, Class: "flash,pro", Streams: []string{"zz*"}}, false},
+		{"room full", FriendSeat{Name: "emma", Width: 1, Status: Up, Class: "flash,pro"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// the hard pin is the last card; with a full room, hard pins to her fill it first (a
+			// preference would be moved off her by the level, a hard pin never is)
+			briefs := []string{friendBrief("only friend emma")}
+			if tc.full {
+				room, _ := friendRoom(tc.emma)
+				briefs = nil
+				for range room + 1 {
+					briefs = append(briefs, friendBrief("only friend emma"))
+				}
+			}
+			w := friendWorld(t, briefs...)
+			pin := "s1-" + itoa(len(briefs))
+			for range 3 {
+				dealWith(w, tc.emma, aurora)
+			}
+			assert.Equal(t, Ready, w.s.StateOf(pin), "the hard pin waits ready")
+			assert.Nil(t, w.s.Fleet.Card(pin+".w1"), "no worker is dealt it: aurora and the machines have room")
+			assert.Zero(t, w.s.Fleet.Count(FriendRow("aurora"), Ready)+w.s.Fleet.Count(FriendRow("aurora"), Working), "aurora is dealt nothing of it")
+		})
+	}
+
+	// and the tick she can take it, it is hers
+	w := friendWorld(t, friendBrief("only friend emma"))
+	dealWith(w, FriendSeat{Name: "emma", Width: 1, Status: Down, Class: "flash,pro"}, aurora)
+	require.Equal(t, Ready, w.s.StateOf("s1-1"))
+	dealWith(w, FriendSeat{Name: "emma", Width: 1, Status: Up, Class: "flash,pro"}, aurora)
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc)
+	assert.Equal(t, FriendRow("emma"), wc.Row)
+}

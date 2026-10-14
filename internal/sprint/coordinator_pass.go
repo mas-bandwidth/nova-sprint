@@ -572,7 +572,7 @@ func emptyRowDecisions(name string, cards []idleWait) []string {
 
 // pinConds is one condition for each named pin whose work card is ready or
 // working on a row that is not its friend's. A hard pin (OnlyFriend) waits for
-// her, and is one of these only once released past its bound (PinReleased). The text is the one the deal wrote when it
+// her and is never one of these: nothing releases it by time. The text is the one the deal wrote when it
 // rotated the card, when that judgment is already open, so a later pass does
 // not close it and open another.
 func pinConds(s *Snapshot, r TickReq) []cond {
@@ -610,7 +610,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 					continue
 				}
 				pinned, ok := FriendCard(pr)
-				// a hard pin off her row was released (PinReleased): judged as a named pin is
+				// a hard pin is never off her row by the deal (a card on another row is a named pin or a seat's hand)
 				if !ok || pinned == "" || row == FriendRow(pinned) {
 					continue
 				}

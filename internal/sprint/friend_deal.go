@@ -688,8 +688,9 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if name != "" && (free[name] <= 0 || slices.Contains(left, name) || !friendTakes(s, seat[name], tier) || !friendRestrictionAllows(seat[name], c)) {
 			name = "" // the friend it names is not up with room, it has left her, not her tier, or outside her restriction
 		}
-		// a hard pin whose friend has been not up past its bound is a preference (PinReleased)
-		hard := OnlyFriend(c) && !PinReleased(s, c, seats)
+		// a hard pin (WHO: only friend <name>) waits for her alone, whatever else is up and however
+		// long she is not: no timer releases it (docs/SPEC-SPRINT.md, WHO preference); unpin does
+		hard := OnlyFriend(c)
 		if name == "" && !hard {
 			var may []string
 			for _, f := range up {

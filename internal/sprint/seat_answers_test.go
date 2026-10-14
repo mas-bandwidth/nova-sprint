@@ -11,11 +11,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
-// A card hard-pinned to a friend who is held waits for her only until the judgment's
-// deadline: then it is offered on (to a friend up or the fleet), never left to the seat (the owner,
-// 2026-10-12: "a card pinned to one friend waits while she is not up" held its card 31
-// minutes unanswered). Before, the pin held for an hour.
-func TestAHardPinToAHeldFriendIsReleasedAtItsDeadline(t *testing.T) {
+// A card hard-pinned to a friend who is held is NOT answered by the machine at the judgment's
+// deadline. Until 2026-10-13 the machine offered it on then (to a friend up or the fleet), a
+// safe default for a card any worker can do; a card pinned to one friend by name is not that
+// (WHO: only friend <name> is hers alone, docs/SPEC-SPRINT.md, WHO preference), and a research
+// card pinned to one friend was done by another. The pin-waits stop is how the seat sees and
+// answers it (ack, bring her up, unpin).
+func TestAHardPinToAHeldFriendIsNotAnsweredAtTheJudgmentDeadline(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
 	r.tickBeating(time.Second, "m1", "m2")
@@ -31,17 +33,34 @@ func TestAHardPinToAHeldFriendIsReleasedAtItsDeadline(t *testing.T) {
 	r.tickBeating(sprint.DeadlineJudgment/2+time.Second, "m1", "m2")
 	r.tickBeating(time.Second, "m1", "m2")
 	got := r.snap().Work.Card("p1-1")
-	require.Equal(t, sprint.Working, got.Col, "past the judgment's deadline the pin is released: dealt on")
-	wc := r.snap().Fleet.Card(sprint.WorkCardID("p1-1", 1))
-	require.NotNil(t, wc)
-	assert.NotEqual(t, sprint.FriendRow("amy"), wc.Row, "dealt to someone up, never to the held friend")
+	require.Equal(t, sprint.Ready, got.Col, "past the judgment's deadline the pin still waits for her")
+	assert.Nil(t, r.snap().Fleet.Card(sprint.WorkCardID("p1-1", 1)), "dealt to no one: bob up with room, the machines idle")
 }
 
-// The pin's deadline is running time (Stella's read of #123): hours the machine was STOPPED
-// do not count, so a sprint resumed after a long stop does not release every pin at once;
-// the pin is released once the running time past its stop reaches the deadline. Before, the
-// release read the wall clock, and the first tick after the resume dealt the card on.
-func TestAPinIsNotReleasedByTheTimeTheMachineWasStopped(t *testing.T) {
+// The seat's own answer to the stop releases the pin: unpin removes the WHO line, so the card
+// is anyone's and the next tick deals it on. The one release there is, and it is a person's.
+func TestUnpinIsTheOnlyReleaseOfAHardPinToAHeldFriend(t *testing.T) {
+	t.Parallel()
+	r := newHoldRig(t, 0, 0)
+	r.tickBeating(time.Second, "m1", "m2")
+	r.hold(sprint.HoldReq{Names: []string{"amy"}, Reason: "out of credits"})
+	r.must(store.AddStep(sprint.AddReq{Stream: "p1", Cards: []sprint.CardAdd{{ID: "p1-1", Brief: friendsBrief("only friend amy")}}}))
+	r.tickBeating(time.Second, "m1", "m2")
+	r.tickBeating(3*sprint.DeadlineJudgment, "m1", "m2")
+	require.Equal(t, sprint.Ready, r.snap().Work.Card("p1-1").Col)
+
+	r.must(store.UnpinStep(sprint.UnpinReq{IDs: []string{"p1-1"}, Reason: "anyone may do it", Who: "coordinator"}))
+	r.tickBeating(time.Second, "m1", "m2")
+	r.tickBeating(time.Second, "m1", "m2")
+	require.Equal(t, sprint.Working, r.snap().Work.Card("p1-1").Col, "unpinned, it is dealt on")
+	wc := r.snap().Fleet.Card(sprint.WorkCardID("p1-1", 1))
+	require.NotNil(t, wc)
+	assert.NotEqual(t, sprint.FriendRow("amy"), wc.Row, "never to the held friend")
+}
+
+// Hours the machine was STOPPED change nothing about a hard pin either: a sprint resumed
+// after a long stop deals the card to no one but its friend.
+func TestAHardPinIsStillHeldAfterTheMachineWasStopped(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
 	r.tickBeating(time.Second, "m1", "m2")
@@ -62,11 +81,9 @@ func TestAPinIsNotReleasedByTheTimeTheMachineWasStopped(t *testing.T) {
 	require.NoError(t, err)
 	r.tickBeating(time.Second, "m1", "m2")
 	r.tickBeating(time.Second, "m1", "m2")
-	require.Equal(t, sprint.Ready, r.snap().Work.Card("p1-1").Col, "the stopped hours do not count: the pin still waits for her")
+	require.Equal(t, sprint.Ready, r.snap().Work.Card("p1-1").Col, "the pin still waits for her")
 
-	// the rest of the deadline in running time: released, dealt on
-	r.tickBeating(sprint.DeadlineJudgment/2, "m1", "m2")
+	r.tickBeating(sprint.DeadlineJudgment, "m1", "m2")
 	r.tickBeating(time.Second, "m1", "m2")
-	got := r.snap().Work.Card("p1-1")
-	require.Equal(t, sprint.Working, got.Col, "past the deadline in running time the pin is released")
+	require.Equal(t, sprint.Ready, r.snap().Work.Card("p1-1").Col, "and past the deadline in running time too")
 }

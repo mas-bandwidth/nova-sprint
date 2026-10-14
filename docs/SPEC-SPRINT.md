@@ -432,17 +432,21 @@ left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing
 parts on friends where we would normally do friend work."). WHO is a preference (docs/SPEC-CARD-CONTRACT.md, the WHO line; `cardhdr.ReadWho`
 is the one parser). A card with no WHO line, or `WHO: -`, is unpinned. `WHO: friend`
 is any friend. `WHO: friend <name>` prefers that friend while she is up with room.
-`WHO: only friend <name>` is the one hard pin and waits for her alone, until its pin-waits
-stop (`a card pinned to one friend waits while she is not up`) has stood
-`sprint.PinReleaseBound` (one hour): past it, while she is still not up, the pin is a
-preference and the deals offer it on as a named pin is offered while she is not up, to a
-friend up or a machine, with the pin-ignored judgment (`sprint.PinReleased`; the fault
-inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and more;
-`TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn`; tla/SprintRules.tla, Part "episodes").
-The bound runs, in running time, from the stop's latest note: the coordinator's `ack` writes
-a new one and starts it again; a `wait` on it is refused, since the stop names a card on the
-work table (a wait never parks a card), so it extends nothing and the pin is released at the
-bound (`TestAWaitOnThePinStopIsRefusedAndExtendsNothing`). `add` and
+`WHO: only friend <name>` is the one hard pin: it is dealt to her alone, on every path
+that places a card (the friends' deal, the machines' deal, the level, the rebalance, a
+hold's or a stall's redeal, `friend take`, `friend give`), and it waits ready for her while
+she is not up, her tiers do not hold its tier, or her room is full, for as long as that is
+true. No timer releases it: it is never offered to another friend or to a machine, however
+long she is away (the owner, 2026-10-13: a research card pinned to one friend was dealt to
+another, which had been the release of the pin at the judgment deadline of 2026-10-12;
+`TestAHardPinToAFriendNotUpIsDealtToNoOneAtAnyAge`,
+`TestAHardPinIsDealtToItsFriendAloneWhoeverElseIsUpWithRoom`; tla/WhoPreference.tla
+`OnlyToItsFriend`, tla/SprintRules.tla Part "episodes" `PinStaysHome`). While it waits on a
+friend who is not up, its pin-waits stop (`a card pinned to one friend waits while she is
+not up`) is raised and re-raised to the coordinator, who answers it: bring her up, `unpin`
+the card (the one release, and a person's act), or `ack` it. A `wait` on it is refused,
+since the stop names a card on the work table (a wait never parks a card)
+(`TestAWaitOnThePinStopIsRefusedAndTheStopStands`). `add` and
 `brief` refuse any other WHO value, a name that is no row of the friends table, and
 `WHO: friend` while the table has no row (exit 2, nothing written). A named friend's
 configured work restriction is held too: a card whose stream matches none of her
@@ -553,8 +557,7 @@ take it (held, not up, the card has left her, her tiers do not hold the tier, or
 she has no room), and whose row and column hold the card now. The pass keeps
 that one judgment, and raises it when the card is already sitting off her row,
 until it is back on her row or leaves ready and working. A hard pin is not
-rotated and is not this judgment, except a hard pin released past its bound
-(`sprint.PinReleased`), which is judged as a named pin is. A
+rotated and is never this judgment: nothing places it off her row. A
 hard pin (`WHO: only friend <name>`) with no room waits ready, held by the
 no-stall rule as waiting for her (`sprint.TickDeal`, its friend deal,
 `sprint.OnlyFriend`); a card a friend takes is never held for want of a machine
@@ -6164,13 +6167,12 @@ for, the same table `wait` refuses by) is never left unanswered. Two rules.
   review (`needs`). A return a person makes for any other reason, and a red CI at its head,
   still hold it for the seat. A stream set to seat-accept (`stream set <s> --seat-accept
   on`) keeps the hand step: its cards are "ready to accept" until the seat accepts them.
-- **Pinned to a friend not up: released at the deadline.** A card hard-pinned to a friend
-  who is held or down is offered on, to a friend up or the fleet, once its pin-waits stop
-  has stood DeadlineJudgment of running time (PinReleaseBound; it was an hour). The tick
-  judges the deadline, since it alone holds the STOPPED spans, and records the release
-  (`a hard pin was released at its deadline`, an acknowledged note naming the stop's note);
-  the deals read the record, so a system stopped past the deadline releases nothing when
-  it resumes.
+- **Pinned to a friend not up: no safe default, so it escalates.** A card hard-pinned
+  (`WHO: only friend <name>`) to a friend who is held or down is hers alone and is NOT
+  offered on at the deadline (it was, 2026-10-12, to a friend up or the fleet; the owner,
+  2026-10-13: a research card pinned to one friend was done by another). Its pin-waits stop
+  is a judgment that holds a card, so it is raised again at each deadline it passes
+  (rule (b)) until the seat brings her up, `unpin`s the card, or acks it.
 - **No route serves its tier: raised.** Once "no route serves the tier" is past its
   deadline, each ready card it holds is raised to the nearest tier above its own that a
   route or a friend up serves, pinned there as `rework --tier` pins it, and the seat is

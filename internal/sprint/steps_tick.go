@@ -917,7 +917,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			}
 			continue
 		}
-		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
+		if friendPlaced[c.ID] || OnlyFriend(c) {
 			continue
 		}
 		if wc := AtRedealBound(s, c); wc != nil {
@@ -1904,10 +1904,6 @@ func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	// unanswered (seat_answers.go)
 	held := reraiseHeld(s, r)
 	p.Notes, p.Closes = append(p.Notes, held.Notes...), append(p.Closes, held.Closes...)
-	// a hard pin is released at its deadline in running time, judged here, where the
-	// STOPPED spans are (releasePins; PinReleased reads the record)
-	pins := releasePins(s, r)
-	p.Notes, p.Closes = append(p.Notes, pins.Notes...), append(p.Closes, pins.Closes...)
 	// a judgment the pass closes takes its overdue hold with it, in the same plan, so the
 	// next tick has nothing left to close (a level the pass escalates closes the one before)
 	closing := map[string]bool{}

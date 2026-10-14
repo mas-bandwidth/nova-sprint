@@ -52,9 +52,8 @@
 \*   started, finishes the attempt. Every rework is one attempt more and starts from the
 \*   head the attempt before pushed (a head here is its attempt's number).
 \*
-\* Part "episodes": a hard pin released past its bound on a running clock that stops
-\*   while the machine is STOPPED (PinReleased reads the NPinReleased record the tick
-\*   writes), the cannot-ask judgment once a wait, and a rule's answer consumed by the
+\* Part "episodes": a hard pin dealt to its friend alone and released by nothing (no timer),
+\*   the cannot-ask judgment once a wait, and a rule's answer consumed by the
 \*   attempt it started (its own comment and reversed witnesses below, with the part).
 \*
 \* Part "judgments": the three rules that answer the judgments the tick raises
@@ -163,8 +162,8 @@
 \*   "lowers"     the no-route rule moves a card to a weaker tier: NoRouteNeverLowers
 \*   "pinnedraise" the no-route rule raises a card whose tier is pinned:
 \*                NoRouteRaisesOnlyUnpinnedReady
-\*   "stoppedcounts" the pin's running clock advances while the machine is STOPPED:
-\*                PinClockSkipsStopped
+\*   "pinrelease" a hard pin is dealt on once its friend has been not up PinBound ticks (the
+\*                code before 2026-10-13): PinStaysHome
 \*   "toldbeforesend" the alert marks a raise told before its send succeeds:
 \*                ToldOnlyAfterSend
 \*   "newtoken"   the alert sends a fresh bus token each retry: NoSecondMessage
@@ -199,7 +198,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, \* answers
-          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          pup, pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
@@ -214,7 +213,7 @@ rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rd
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
-epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+epVars == <<pup, pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
@@ -282,8 +281,7 @@ TypeOK ==
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
   /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
   /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
-  /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
-  /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
+  /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in 0..MaxClock
   /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
   /\ aflapped \in BOOLEAN
@@ -328,7 +326,7 @@ Init ==
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE /\ andec = 0
-  /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
+  /\ pup = FALSE /\ pcol = "ready" /\ pwait = 0
   /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aflapped = FALSE /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
@@ -974,26 +972,17 @@ ReachMindJudges == anst # "judged"
 \* (items 12, 22, 23), each a small machine; the tick (EpTick) is one step for all three, the
 \* outside moves between ticks. eclk is running time, one step a tick.
 \*
-\* The hard pin (stops.go PinReleased, pinStops; seat_answers.go releasePins; friend_deal.go
-\* friendDealPass; steps_tick.go TickDeal; coordinator_pass.go pinConds): a card pinned to one
-\* friend alone, ready.
+\* The hard pin (friend_deal.go friendDealPass; steps_tick.go TickDeal; stops.go pinStops;
+\* friend_take.go FriendGive): a card pinned to one friend alone (WHO: only friend <name>), ready.
 \*   pup    she is up (an outside event: held, down, back).
 \*   pcol   the card: ready, dealt to her ("mine"), or dealt to another worker ("away").
-\*   pwait  the running clock its pin-waits stop (NStopPinWaits) was raised at; -1 none.
-\*   pign   the pin-ignored judgment (NPinIgnored) is open.
-\*   pdw    how long the stop had stood when the card was dealt away; -1 never.
-\*   prec   the NPinReleased record: the tick records the release once the stop note has
-\*          stood PinBound of running time; PinReleased reads it.
-\*   pstopped the machine is STOPPED (an outside event): the running clock does not advance.
-\* The tick deals it to her while she is up; while she is not, the pass keeps the stop, and
-\* once the stop has stood PinBound (Window here; the code's PinReleaseBound, one hour) of
-\* running time the tick records the release (prec) and the deal offers it on, and the pass
-\* keeps the pin-ignored judgment while it is away. STOPPED time does not count: while the
-\* machine is stopped the running clock stands still, so the tick writes no record and a
-\* machine stopped past the bound releases nothing on resume. Not modelled: the
-\* coordinator's answer to the stop. An ack or a wait writes a new stop note at its own time,
-\* and the code's clock (PinReleased) is that note's At, so each answer starts the hour again;
-\* the release comes PinReleaseBound after the last answer. Here pwait is set once.
+\*   pwait  how many ticks it has waited ready on her while she was not up.
+\* The tick deals it to her while she is up and to no one else, ever: while she is not up it
+\* waits ready, however many ticks, with another friend and the machines up and idle. Its
+\* pin-waits stop (NStopPinWaits) is the seat's to answer (bring her up, unpin, ack) and
+\* releases nothing. Until 2026-10-13 the code released a pin past a bound of running time
+\* (PinReleased, releasePins: the judgment deadline) and dealt it on, and a card pinned to one
+\* friend was done by another; the reversed witness "pinrelease" is that release.
 \*
 \* Cannot ask (read_cards.go readCardsAskPart, steps_tick.go cannotAskCond and notify): a
 \* primary in review that wants a read.
@@ -1017,10 +1006,8 @@ ReachMindJudges == anst # "judged"
 \* writing the answer; that attempt's finish consumes the answer.
 \*
 \* Reversed witnesses:
-\*   "pinforever"  a hard pin is never released (the code before): PinWaitBounded
-\*   "pinsilent"   released without the pin-ignored judgment: AwayIsJudged
-\*   "pinearly"    released at once, the bound not waited: PinHonouredWithinBound
-\*   "stoppedcounts" the running clock advances while STOPPED: PinClockSkipsStopped
+\*   "pinrelease"  a hard pin is dealt on once its friend has been not up PinBound ticks (the
+\*                 code before): PinStaysHome
 \*   "askflap"     after eligibility changes, repeats the judgment on unchanged ticks:
 \*                 OneCannotAskAnEpisode (legacy witness name retained)
 \*   "askheldeligible" an eligible reader leaves the episode open: CannotAskClosedWhenEligible
@@ -1031,39 +1018,21 @@ ReachMindJudges == anst # "judged"
 
 PinBound == Window
 
-\* the tick records the release once the stop note has stood PinBound of running time
-\* (the pinearly defect at once; pinforever never). The running clock stands still while
-\* the machine is STOPPED, so a machine stopped short of the bound writes no record.
-PinRecordDue ==
-  IF Broken = "pinearly" THEN TRUE
-  ELSE IF Broken = "pinforever" THEN FALSE
-  ELSE eclk - pwait >= PinBound
-
-\* the hard pin is a preference now: she is not up, and its stop's NPinReleased record is
-\* there (written by the tick this step or an earlier one)
-PinReleased ==
-  /\ ~pup /\ pwait # -1
-  /\ prec \/ PinRecordDue
+\* the code before released a pin once it had waited PinBound ticks on a friend not up; the
+\* witness keeps that, the code now has none
+PinReleasedByTime == Broken = "pinrelease" /\ ~pup /\ pwait >= PinBound
 
 \* the outside: she is held or down, or back up
 PinFlip ==
   /\ pup' = ~pup
-  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
-
-\* the outside: the machine is STOPPED or starts again (stopped time does not count)
-PinStop ==
-  /\ ~pstopped /\ pstopped' = TRUE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
-PinStart ==
-  /\ pstopped /\ pstopped' = FALSE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the card's attempt ends wherever it ran; its next attempt is pinned to her
-\* again (ReworkPinned), ready, a new episode
+\* again (ReworkPinned), ready, a new wait
 PinNextAttempt ==
   /\ pcol \in {"mine", "away"}
-  /\ pcol' = "ready" /\ pdw' = -1 /\ prec' = FALSE
-  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ pcol' = "ready" /\ pwait' = 0
+  /\ UNCHANGED <<pup, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the reason the card waits changes while it waits
 AskReason ==
@@ -1071,24 +1040,24 @@ AskReason ==
   /\ areason' = IF areason = "noreader" THEN "room" ELSE "noreader"
   /\ aflapped' = TRUE
   /\ anotes' = 0
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, ast, aatt, aopen, aseen, rcol, rans, ratt>>
 
 \* the outside: a read is dealt it; the read comes back with no verdict and it waits again
 \* (a new episode: a read was dealt); its attempt is answered and the next one waits; it
 \* leaves review
 AskDealt ==
   /\ ast = "waits" /\ ast' = "asked"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskBack ==
   /\ ast = "asked" /\ ast' = "waits"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskNextAttempt ==
   /\ ast # "gone" /\ aatt < Cap
   /\ aatt' = aatt + 1 /\ ast' = "waits" /\ aflapped' = FALSE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, areason, aseen, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, areason, aseen, rcol, rans, ratt>>
 AskGone ==
   /\ ast # "gone" /\ ast' = "gone"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* a rule answers the card in review: its next attempt, ready, and the answer, in one step
 RuleAnswers ==
@@ -1096,17 +1065,17 @@ RuleAnswers ==
   /\ rans' = TRUE
   /\ IF Broken = "answernomove" THEN UNCHANGED <<rcol, ratt>>
      ELSE rcol' = "ready" /\ ratt' = ratt + 1
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes>>
 
 \* the outside: the attempt is dealt and taken; it finishes, back in review, the answer
 \* consumed
 RDealt ==
   /\ rcol = "ready" /\ rcol' = "working"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rans, ratt>>
 RFinish ==
   /\ rcol = "working" /\ rcol' = "review"
   /\ rans' = (Broken = "keepanswer" /\ rans)
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, ratt>>
 
 \* the cannot-ask condition the tick reads, and whether it raises one
 AskHolds == ast = "waits" /\ (areason = "noreader" \/ Broken = "askheldeligible")
@@ -1115,19 +1084,12 @@ AskRaise == ast = "waits" /\ areason = "noreader"
 \* one tick: the deal and the pass for the pin, the ask's judgment, nothing for the answer
 EpTick ==
   /\ eclk < MaxClock
-  /\ LET now == IF pstopped /\ Broken # "stoppedcounts" THEN eclk ELSE eclk + 1
-     IN /\ eclk' = now
-        \* the tick records the release once the stop note has stood the bound of running
-        \* time (a stopped machine's clock is frozen, so it records nothing)
-        /\ prec' = (~pup /\ pwait # -1 /\ PinRecordDue)
-        \* the pin: dealt to her while she is up; released past its bound; the stop kept
-        \* while it waits ready on her not up; the pin-ignored judgment kept while it is away
-        /\ pcol' = IF pcol = "ready" /\ pup THEN "mine"
-                   ELSE IF pcol = "ready" /\ PinReleased THEN "away"
-                   ELSE pcol
-        /\ pdw' = IF pcol = "ready" /\ ~pup /\ PinReleased THEN eclk - pwait ELSE pdw
-        /\ pwait' = IF pcol' = "ready" /\ ~pup THEN (IF pwait = -1 THEN now ELSE pwait) ELSE -1
-        /\ pign' = (pcol' = "away" /\ Broken # "pinsilent")
+  /\ eclk' = eclk + 1
+  \* the pin: dealt to her while she is up, to no one else; the wait counted while she is not
+  /\ pcol' = IF pcol = "ready" /\ pup THEN "mine"
+             ELSE IF pcol = "ready" /\ PinReleasedByTime THEN "away"
+             ELSE pcol
+  /\ pwait' = IF pcol' = "ready" /\ ~pup THEN pwait + 1 ELSE 0
   \* cannot ask: raised once an episode, held while it holds, closed when it clears
   /\ aseen' = (ast = "waits")
   /\ IF AskHolds
@@ -1141,32 +1103,21 @@ EpTick ==
             ELSE /\ aopen' = FALSE
                  \* the episode ends when the card no longer waits (a flap keeps counting)
                  /\ anotes' = IF ast = "waits" THEN anotes ELSE 0
-  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, aflapped, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, ast, aatt, areason, aflapped, rcol, rans, ratt>>
 
 \* the attempt the card waits at changes: a new episode (the pass ends the judgment of the
 \* attempt before on the next tick, cannotAskEpisodes; modelled by ending the episode on the
 \* attempt step)
 EpNext ==
-  \/ PinFlip \/ PinStop \/ PinStart \/ PinNextAttempt
+  \/ PinFlip \/ PinNextAttempt
   \/ AskReason \/ AskDealt \/ AskBack \/ AskGone
   \/ AskNextAttempt /\ aopen' = FALSE /\ anotes' = 0
   \/ RuleAnswers \/ RDealt \/ RFinish
   \/ EpTick
 
-\* A hard pin waits on a friend who is not up no longer than its bound: the tick that finds
-\* the bound passed deals it on.
-PinWaitBounded == pwait # -1 => eclk - pwait <= PinBound
-
-\* A hard pin dealt away from its friend is judged: the pin-ignored judgment is open.
-AwayIsJudged == pcol = "away" => pign
-
-\* A hard pin is honoured for its bound: dealt away only after its stop stood PinBound.
-PinHonouredWithinBound == pdw # -1 => pdw >= PinBound
-
-\* STOPPED time does not count toward the pin's deadline: while the machine is STOPPED
-\* the running clock stands still, so a machine stopped short of the bound releases
-\* nothing on resume.
-PinClockSkipsStopped == [][pstopped => eclk' = eclk]_epVars
+\* A hard pin is dealt to its friend alone: never to another worker, however long she is not
+\* up (OnlyToItsFriend in tla/WhoPreference.tla, over every path that places a card).
+PinStaysHome == pcol # "away"
 
 \* One cannot-ask judgment per unchanged eligible set at one attempt.
 \* AskReason starts another episode when that set changes.
