@@ -345,6 +345,7 @@ from the owner edits one line here and nothing else moves.
   wide (double the first attempt, ~64 px); every column gutter ~56 px.
 - Cells: no steady pulse; a cell flashes once when it lights or unlights. No numeric column in Fleet ever flashes.
 - OK% and Load: plain numbers, right-aligned, no bars, no dots. Total row: Ready and Done and OK% numbers, no cells.
+- Load is 0-100%, where 100% is full use of the machine (all cores).
 - Done and OK% (and the Friends table's) count from the last `nova-sprint stats tidy --fleet` (`--friends`): the tidy takes
   the history off the done cells the page's counts are read from. Not yet: "since <time>" beside OK%, as for Cost.
 
