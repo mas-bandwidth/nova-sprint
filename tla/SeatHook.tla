@@ -14,9 +14,11 @@
 \* asked once a connection; a challenge unanswered past its bound unhooks. Proven,
 \* the hook stays live while acts reach the server (Part "cadence" below).
 \* A drop of the connection is recorded as gone at once, and `nova-sprint unhook`
-\* as away; each is pushed to the owner. Every coordinator command reads the
-\* server's record (the store key seat-hook) and is refused unless the hook is
-\* live and proven and no delivered push is unacknowledged past its bound.
+\* as away; each is pushed to the owner. Every coordinator command on a live
+\* store reads the server's record (the store key seat-hook) and is refused
+\* unless the hook is live and proven and no delivered push is unacknowledged
+\* past its bound; a mem twin (st.ByHand: --redis mem:<file>) runs the
+\* coordinator's verbs with no hook, and nothing on a live store changes.
 \*
 \* The state:
 \*   sub        the server's subscription: "none" or "open"
@@ -37,6 +39,9 @@
 \*              it, and past the ack bound
 \*   rec        the record the gate reads: its state and whether it says proven
 \*   ends, told the subscription's ends and the pushes of them to the owner
+\*   twin       the store is a mem twin (st.ByHand: --redis mem:<file>): the
+\*              coordinator's verbs run with no hook (docs/SPEC-SPRINT.md, "The
+\*              hook"; cmd/nova-sprint/hook.go); a live store still wants it
 \*   cmdBad     ghost: a coordinator command ran against the rule
 \*
 \* The outside: the session stops reading, the connection drops, unhook, and the
@@ -102,6 +107,10 @@
 \*                   without its bus half, the gate does not read the shared
 \*                   record, and a bus subscription that fails does not end the
 \*                   hook: a command runs with no bus push (CommandSafe)
+\*   "liveexempt"    the twin exemption is applied to a live store too: a
+\*                   command on a store that is not a twin runs with no gate
+\*                   (the code's st.ByHand check is dropped), so a live command
+\*                   runs against the rule (CommandSafe)
 \*
 \* The bus push (2026-10-11, the owner: "For a coordinator, this is hooking into
 \* to sprint push notifications and message bus push notifications."; docs/
@@ -122,10 +131,10 @@ EXTENDS Naturals, FiniteSets
 CONSTANTS Items, MaxChallenges, MaxTime, HookSilentBound, KeepaliveEvery, HookAnswerBound, Broken, Outside
 
 VARIABLES d, sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
-          delivered, acked, overdue, rec, ends, told, cmdBad, cad, busSub, bus, busLive
+          delivered, acked, overdue, rec, ends, told, cmdBad, cad, busSub, bus, busLive, twin
 
 vars == <<sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
-          delivered, acked, overdue, rec, ends, told, cmdBad, cad, busSub, bus, busLive>>
+          delivered, acked, overdue, rec, ends, told, cmdBad, cad, busSub, bus, busLive, twin>>
 
 busVars == <<busSub, bus, busLive>>
 
@@ -155,6 +164,7 @@ TypeOK ==
     /\ bus \in {"none", "armed", "proven"}
     /\ busLive \in 0..(MaxTime + HookSilentBound)
     /\ cad \in [acted : 0..MaxTime, provedAt : 0..MaxTime, lapses : 0..2]
+    /\ twin \in BOOLEAN
 
 
 LegacyInit ==
@@ -179,6 +189,7 @@ LegacyInit ==
     /\ bus = "none"
     /\ busLive = 0
     /\ cad = [acted |-> 0, provedAt |-> 0, lapses |-> 0]
+    /\ twin \in BOOLEAN
 
 
 \* The pushes delivered and neither acknowledged nor within their bound.
@@ -244,7 +255,7 @@ Hook ==
     /\ busLive' = 0
     /\ cad' = [acted |-> now, provedAt |-> now, lapses |-> 0]
 
-    /\ UNCHANGED <<now, seen, ends, told, cmdBad>>
+    /\ UNCHANGED <<now, seen, ends, told, cmdBad, twin>>
 
 \* The session reads the challenge off its stream (the Monitor's event).
 Read ==
@@ -255,7 +266,7 @@ Read ==
     /\ chal \notin seen
     /\ seen' = seen \cup {chal}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, reading, now, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* "nostream": the challenge is somewhere besides the stream; the session that
@@ -281,7 +292,7 @@ Prove(v) ==
     /\ cad' = [cad EXCEPT !.acted = now, !.provedAt = now]
 
     /\ UNCHANGED <<sub, issued, seen, reading, now, delivered, acked, overdue,
-                   ends, told, cmdBad, busSub>>
+                   ends, told, cmdBad, busSub, twin>>
 
 \* "nosub": a pong with no subscription (the old seat pong against a record).
 HandPong ==
@@ -292,7 +303,7 @@ HandPong ==
     /\ answered' = issued
     /\ rec' = [rec EXCEPT !.proven = TRUE]
     /\ UNCHANGED <<sub, chal, chalAt, issued, seen, reading, now, live, delivered,
-                   acked, overdue, ends, told, cmdBad, cad, busVars>>
+                   acked, overdue, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* "rechallenge": the old cadence, a proven hook challenged again on a connection
@@ -307,7 +318,7 @@ Rechallenge ==
     /\ chal' = issued + 1
     /\ chalAt' = now
     /\ UNCHANGED <<sub, proven, answered, seen, reading, now, live, delivered,
-                   acked, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   acked, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* An act reaches the server over a proven, open hook: a coordinator verb, an
@@ -321,7 +332,7 @@ Act ==
     /\ cad' = [cad EXCEPT !.acted = now]
     /\ live' = now + HookSilentBound
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, now,
-                   delivered, acked, overdue, rec, ends, told, cmdBad, busVars>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, busVars, twin>>
 
 \* No act past HookSilentBound: the hook lapses, once, with one judgment (written
 \* first), gone, the owner told ("lapsetwice": the subscription stays, so the look
@@ -334,7 +345,7 @@ Lapse ==
     /\ cad.lapses < 2
     /\ cad' = [cad EXCEPT !.lapses = @ + 1]
     /\ IF "lapsetwice" \in Broken
-       THEN UNCHANGED <<sub, proven, chal, chalAt, live, rec, ends, told>>
+       THEN UNCHANGED <<sub, proven, chal, chalAt, live, rec, ends, told, twin>>
        ELSE /\ sub' = "none"
             /\ proven' = FALSE
             /\ chal' = 0
@@ -344,7 +355,7 @@ Lapse ==
             /\ ends' = ends + 1
             /\ told' = told + 1
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, busVars>>
+                   cmdBad, busVars, twin>>
 
 
 \* A missed challenge unhooks: the record says gone and the owner is told
@@ -363,7 +374,7 @@ Miss ==
     /\ told' = told + 1
     /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, cad, bus, busLive>>
+                   cmdBad, cad, bus, busLive, twin>>
 
 
 \* A judgment or push is delivered over the subscription, with its id.
@@ -372,7 +383,7 @@ Deliver(i) ==
     /\ i \notin delivered
     /\ delivered' = delivered \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, acked, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   now, live, acked, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* hook --ack <id>, over the subscription, by a session that read it.
@@ -382,7 +393,7 @@ Ack(i) ==
     /\ i \in delivered \ acked
     /\ acked' = acked \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   now, live, delivered, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* A delivered push passes its ack bound.
@@ -390,16 +401,19 @@ Overdue(i) ==
     /\ i \in delivered \ (acked \cup overdue)
     /\ overdue' = overdue \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, acked, rec, ends, told, cmdBad, cad, busVars>>
+                   now, live, delivered, acked, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
-\* A coordinator command: it runs only through the gate; the ghost marks a run
-\* against the rule.
+\* A coordinator command: on a live store it runs only through the gate; on a mem
+\* twin (twin) it runs with no gate (docs/SPEC-SPRINT.md, "The hook"; the
+\* exemption is st.ByHand in cmd/nova-sprint/hook.go). The ghost marks a live
+\* store's run against the rule ("liveexempt": the exemption is applied to a live
+\* store too, so a live command runs with no gate and CommandSafe fails).
 Cmd ==
-    /\ Gate
-    /\ cmdBad' = (cmdBad \/ ~Rule)
+    /\ (twin \/ "liveexempt" \in Broken \/ Gate)
+    /\ cmdBad' = (cmdBad \/ (~twin /\ ~Rule))
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, acked, overdue, rec, ends, told, cad, busVars>>
+                   now, live, delivered, acked, overdue, rec, ends, told, cad, busVars, twin>>
 
 
 \* The outside: the session stops reading (its Monitor died, or it does not
@@ -409,7 +423,7 @@ StopReading ==
     /\ reading
     /\ reading' = FALSE
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, now, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 \* The connection drops: recorded gone at once and told ("silentdrop": neither).
@@ -427,7 +441,7 @@ Drop ==
     /\ told' = IF "silentdrop" \in Broken THEN told ELSE told + 1
     /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, cad, bus, busLive>>
+                   cmdBad, cad, bus, busLive, twin>>
 
 \* The bus subscription fails (three reads in a row): the hook process closes its
 \* server connection, which the server records as a drop ("nobus": the hook goes
@@ -437,7 +451,7 @@ BusDrop ==
     /\ busSub
     /\ busSub' = FALSE
     /\ IF "nobus" \in Broken
-       THEN UNCHANGED <<sub, proven, chal, chalAt, live, rec, ends, told>>
+       THEN UNCHANGED <<sub, proven, chal, chalAt, live, rec, ends, told, twin>>
        ELSE /\ sub = "open"
             /\ sub' = "none"
             /\ proven' = FALSE
@@ -448,7 +462,7 @@ BusDrop ==
             /\ ends' = ends + 1
             /\ told' = told + 1
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, cad, bus, busLive>>
+                   cmdBad, cad, bus, busLive, twin>>
 
 
 \* nova-sprint unhook: recorded away and told.
@@ -467,7 +481,7 @@ Unhook ==
     /\ bus' = "none"
     /\ busLive' = 0
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, cad>>
+                   cmdBad, cad, twin>>
 
 \* The next server's start: a record left hooked by a server that died is a
 \* subscription that server held, gone with it; it is rewritten gone, its Live
@@ -487,7 +501,7 @@ ServerStart ==
     /\ told' = IF "nostartrewrite" \in Broken THEN told ELSE told + 1
     /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad, cad, bus, busLive>>
+                   cmdBad, cad, bus, busLive, twin>>
 
 
 \* The look's clock: one step a turn of the look, so TLC chooses when the
@@ -499,7 +513,7 @@ Tick ==
     /\ (Outside \/ sub # "open" \/ ~proven \/ now + 1 - cad.acted <= KeepaliveEvery)
     /\ now' = now + 1
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad, busVars, twin>>
 
 
 LegacyNext ==
@@ -680,8 +694,9 @@ Spec == LegacyInit /\ DurableInit /\ [][LegacyNext /\ UNCHANGED d]_<<vars, d>>
         /\ WF_vars(Read) /\ WF_vars(\E v \in Challenges : Prove(v))
         /\ WF_vars(Act) /\ WF_vars(Lapse) /\ WF_vars(Miss) /\ WF_vars(Hook)
 
-\* No coordinator command succeeds without a live, proven hook and every
-\* delivered push past its bound acknowledged.
+\* No coordinator command on a live store succeeds without a live, proven hook
+\* and every delivered push past its bound acknowledged; a mem twin's commands
+\* need no hook (docs/SPEC-SPRINT.md, "The hook"; the twin exemption).
 CommandSafe == ~cmdBad
 
 \* Every delivered push is acknowledged or blocks the gate.

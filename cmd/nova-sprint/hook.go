@@ -249,6 +249,17 @@ func (a *app) defaultHookActor(args []string, redisOverride string, ignoreProces
 	if holder == "" {
 		return args, "ACTOR default withheld: no coordinator is recorded in the sprint store", false
 	}
+	// a twin (st.ByHand, mem:<file>) runs the coordinator's verbs with no seat
+	// hook (docs/SPEC-SPRINT.md, "The hook"; the gate is modelled in
+	// tla/SeatHook.tla), so the omitted actor is the coordinator's name alone, no
+	// push proven. This is the direct command's path only: the server
+	// (ignoreProcessActor) judges its caller, never borrows its own holder for a
+	// caller who named none.
+	if !ignoreProcessActor && a.twinOpen(redis) {
+		out := slices.Clone(args)
+		out = slices.Insert(out, v.words, "--actor", holder)
+		return out, "ACTOR " + oneline.Field(holder) + " (mem twin: no hook is needed)", true
+	}
 	if !hookArmed(holder) {
 		return args, "ACTOR default withheld: the coordinator hook gate is not armed", false
 	}
