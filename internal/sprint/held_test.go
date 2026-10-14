@@ -463,7 +463,21 @@ func TestReleasedTrunkWaitDoesNotHideUnmetDependencyStalls(t *testing.T) {
 			case "upstream":
 				s.Work.Put(&Card{ID: "dependency", Row: "s1", Col: Waiting, Score: 2, Fields: map[string]string{"needs": "missing"}})
 			}
-			why, root, ok := newHeld(running(w), s.Now).waits(pr)
+			// Public hold planning may project a legitimate missing-needs
+			// judgment. It must still identify the dependency, not a trunk.
+			projected := Holder(running(w), s.Now, pr.ID)
+			require.NotContains(t, projected.Why, "actual merge")
+			if kind == "cycle" {
+				require.True(t, projected.Stalled())
+			}
+			// Isolate the no-judgment waits contract: no stored open/acked
+			// notes and no future tick judgment or move supplies a holder.
+			checker := newHeld(running(w), s.Now)
+			checker.judged = map[string][]string{}
+			checker.tick = map[string]string{}
+			checker.tickStream = map[string]string{}
+			checker.memo = map[string]Hold{}
+			why, root, ok := checker.waits(pr)
 			require.False(t, ok, "an earlier release cannot mask %s: %s", kind, why)
 			require.NotContains(t, why, "actual merge")
 			if kind == "upstream" {
