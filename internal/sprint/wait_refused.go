@@ -61,6 +61,9 @@ var WaitRefused = map[string]string{
 	// a harness fault repeated: the second identical one on a card, or on many cards, holds
 	// the card until the cause is mended and it is rebriefed or dropped (harness_fault.go)
 	NHarnessFault: "mend the cause (the toolchain, a route or a provider), then rebrief it, or drop it",
+	// the seat's silence: the judgments holding cards past their deadline wait on the seat,
+	// and it clears only when each is answered (seat_answers.go, SeatSilentDecision)
+	NSeatSilent: "answer each judgment it names: nova-sprint inbox",
 }
 
 // WaitAllowedOnACard is the kinds a rework discharges on its primary (ReworkResolves) that
