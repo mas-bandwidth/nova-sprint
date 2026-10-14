@@ -196,6 +196,21 @@ var verbEffect = map[string]string{
 	"watch":            "local write: watches the sprint and wakes the machine; with --state writes the state file, writes nothing to the store",
 }
 
+// init corrects effect-line entries that are registered by other source files in
+// this package (outside the PATHS this card may touch) so that every verb's
+// effect line starts with one of the four onboarding classes named in
+// docs/STANDARD.md section 2. The other files still set their own entries, so
+// this override must run after them; verbhelp.go sorts after them by filename.
+func init() {
+	verbEffect["adopt"] = "local write: writes the version, the tools and the units on the target machines through ansible-playbook; the tools play builds the version if missing and runs the new build's checks on the seat (shadow tick, nova-friend install --dry-run) before anything changes; then, in a window, it stops the seat's old server and member (bootout, seen gone in ps), migrates the configuration store as its owning role (nova-config migrate --window, refusing while any other nova session holds the database), loads the function library, installs the tools and bootstraps every stopped or stale nova launchd agent, points the dashboard links at the installed nova-sprint and reinstalls each stale friend daemon with nova-friend install; a refusal in the window puts the tools and library of before back and restarts the old agents (the migration is never undone); --dry-run runs the play with --check and writes nothing"
+	verbEffect["fleet beat"] = "store write: records the member's beat in the sprint's store; --dry-run plans the beat and prints what it would write and hands it to the doctor's member-env beat-form probe; --dry-run writes nothing (docs/SPEC-SPRINT.md, \"The doctor's refused-verb and beat-form checks\")"
+	verbEffect["fleet level"] = "store write: levels the members' ready queues and rebalances the reads and the cards off full units (rebalance.go), what the tick would move; --dry-run writes nothing"
+	verbEffect["fleet quiet"] = "store write: sets or ends the member's quiet in the sprint's store (the deal gives it nothing until then, every worker's view carries a QUIET line); --dry-run writes nothing"
+	verbEffect["routes limit"] = "store write: sets a model's requests-per-minute budget (--rpm, on a route: its model) or a provider's concurrency budget (--concurrent, on a provider or a route: its provider) in the sprint's store, 0 clearing it; every member, reader and lane takes it before each model request, and the deal falls back past a full provider; --dry-run writes nothing"
+	verbEffect["routes rest"] = "store write: rests every route of the provider, or the one route, in the sprint's store until the time or until routes wake (the deal draws no work card on them); --dry-run writes nothing"
+	verbEffect["routes wake"] = "store write: ends the rest holding the provider or the route in the sprint's store now, with the reason (never a payment: that is funded's); --dry-run writes nothing"
+}
+
 // commonExit is the codes of every other verb.
 const commonExit = "exit codes: 0 done, 1 failed or incomplete (including refused; the line names why), 2 usage or a store that did not answer"
 

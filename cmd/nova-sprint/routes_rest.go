@@ -12,8 +12,8 @@ import (
 func init() {
 	verbClasses["routes rest"] = classCoordinator
 	verbClasses["routes wake"] = classCoordinator
-	verbEffect["routes rest"] = "store write: rests every route of the provider, or the one route, in the sprint's store until the time or until routes wake (the deal draws no work card on them); --dry-run writes nothing"
-	verbEffect["routes wake"] = "store write: ends the rest holding the provider or the route in the sprint's store now, with the reason (never a payment: that is funded's); --dry-run writes nothing"
+	verbEffect["routes rest"] = "local write: rests every route of the provider, or the one route, in the sprint's store until the time or until routes wake (the deal draws no work card on them); --dry-run writes nothing"
+	verbEffect["routes wake"] = "local write: ends the rest holding the provider or the route in the sprint's store now, with the reason (never a payment: that is funded's); --dry-run writes nothing"
 	stepDryRun["routes rest"] = true
 	stepDryRun["routes wake"] = true
 }
