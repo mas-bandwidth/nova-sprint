@@ -262,13 +262,19 @@ func (a *app) cmdViewCoordinator(args []string, stdout, stderr io.Writer) int {
 func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 	const name = "view worker"
 	fs, c := a.verbSetup(name)
-	as := fs.String("as", "", "the fleet member or the friend whose view it is")
+	as := fs.String("as", "", "the fleet member or the friend whose view it is; a friend may be named by her bare name or by her fleet row friend.<name>")
 	since := fs.String("since", "", "the cursor an earlier view printed: leave out every card it showed that has not changed")
 	if pos, err := parse(fs, args); err != nil || len(pos) > 0 {
 		return refuse(stderr, name, argErr("takes no words ", err, pos...))
 	}
-	if !sprint.ValidID(*as) {
-		return refuse(stderr, name, "--as <member|friend> names the worker whose view it is (letters, digits, _ and -)")
+	// a friend may be named by her fleet row's spelling, friend.<name>, the one queue
+	// accepts, as well as by her bare name (docs/SPEC-SPRINT.md section 11, Role views)
+	who := *as
+	if f, ok := sprint.FriendOfRow(who); ok {
+		who = f
+	}
+	if !sprint.ValidID(who) {
+		return refuse(stderr, name, "--as <member|friend> names the worker whose view it is (letters, digits, _ and -), or a friend's fleet row friend.<name>")
 	}
 	seen, err := parseCursor(*since)
 	if err != nil {
@@ -278,12 +284,12 @@ func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	v, ok, err := a.workerView(context.Background(), st, *as)
+	v, ok, err := a.workerView(context.Background(), st, who)
 	if err != nil {
 		return a.readFailed(name, err, stderr)
 	}
 	if !ok {
-		fmt.Fprintf(stderr, "%s %s: %s is no fleet member and no friend of the sprint; a reader's cards are its queue: nova-sprint queue --as %s\n", prog, name, oneline.Escape(*as), oneline.Escape(*as))
+		fmt.Fprintf(stderr, "%s %s: %s is no fleet member and no friend of the sprint (a friend is named %s too); a reader's cards are its queue: nova-sprint queue --as %s\n", prog, name, oneline.Escape(who), oneline.Escape(sprint.FriendRow(who)), oneline.Escape(who))
 		return 1
 	}
 	sinceWorker(&v, seen)
@@ -291,7 +297,7 @@ func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 		viewJSON(stdout, v)
 		return 0
 	}
-	fmt.Fprint(stdout, workerText(v))
+	fmt.Fprint(stdout, workerText(v, c.max))
 	return 0
 }
 
@@ -930,8 +936,9 @@ func workerNext(v workerView, c *sprint.Card, p sprint.Packet) string {
 }
 
 // workerText is the worker's view as lines: the summary, what is next, a card a line, a
-// result a line.
-func workerText(v workerView) string {
+// result a line. --max bounds the cards listed, with a MORE line (0 is all; docs/SPEC-SPRINT.md
+// section 11, Role views).
+func workerText(v workerView, max int) string {
 	var b strings.Builder
 	line := func(s string) { b.WriteString(oneline.Escape(s) + "\n") }
 	line("VIEW worker " + v.Sum)
@@ -941,7 +948,11 @@ func workerText(v workerView) string {
 	for _, q := range v.Quiet {
 		line(q)
 	}
-	for _, c := range v.Cards {
+	for i, c := range v.Cards {
+		if max > 0 && i == max {
+			line(fmt.Sprintf("MORE kind=card shown=%d total=%d run: nova-sprint view worker --as %s ... --max 0", max, len(v.Cards), v.As))
+			break
+		}
 		l := "CARD " + c.ID + " " + c.St + " att=" + strconv.Itoa(c.Att) + " base=" + cmp.Or(c.Base, "-") + " paths=" + cmp.Or(strings.Join(c.Paths, ","), "-")
 		if !c.DL.IsZero() {
 			l += " deadline=" + ageWord(c.DL.Sub(v.At))

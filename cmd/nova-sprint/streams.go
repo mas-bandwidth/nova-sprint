@@ -53,25 +53,34 @@ func (a *app) cmdStreams(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
-	fmt.Fprint(stdout, streamsText(v))
+	fmt.Fprint(stdout, streamsText(v, c.max))
 	return 0
 }
 
 // streamsText is the view in lines: the closing count, a STREAM line a stream, a CARD
 // line a card with --cards, and a NOTE line for each stream whose cards name more than
-// one repository (the finding the verb prints).
-func streamsText(v streamsView) string {
+// one repository (the finding the verb prints). --max bounds the streams listed and each
+// listed stream's cards, each with a MORE line (0 is all; docs/SPEC-SPRINT.md section 11).
+func streamsText(v streamsView, max int) string {
 	var b strings.Builder
 	cards := 0
 	for _, s := range v.Streams {
 		cards += len(s.Cards)
 	}
 	fmt.Fprintf(&b, "STREAMS OK streams=%d cards=%d\n", len(v.Streams), cards)
-	for _, s := range v.Streams {
+	for i, s := range v.Streams {
+		if max > 0 && i == max {
+			fmt.Fprintf(&b, "MORE kind=stream shown=%d total=%d run: nova-sprint streams ... --max 0\n", max, len(v.Streams))
+			break
+		}
 		fmt.Fprintf(&b, "STREAM %s repos=%s bases=%s release=%s display=%s open=%d landed=%d state=%s\n",
 			s.Stream, streamsDash(strings.Join(s.Repos, ",")), streamsDash(strings.Join(s.Bases, ",")),
 			streamsDash(s.Release), streamsDash(s.Display), s.Open, s.Landed, streamsDash(s.State))
-		for _, c := range s.Cards {
+		for j, c := range s.Cards {
+			if max > 0 && j == max {
+				fmt.Fprintf(&b, "MORE kind=card stream=%s shown=%d total=%d run: nova-sprint streams --cards ... --max 0\n", s.Stream, max, len(s.Cards))
+				break
+			}
 			fmt.Fprintf(&b, "CARD %s stream=%s state=%s tier=%s title=%s needs=%s\n",
 				c.ID, s.Stream, c.State, streamsDash(c.Tier), streamsDash(c.Title), streamsDash(strings.Join(c.Needs, ",")))
 		}
