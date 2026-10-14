@@ -44,9 +44,21 @@ func runnerLog(root, dir string) string {
 		rootReal, _ := filepath.EvalSymlinks(root) // ignored: a root that cannot be resolved is compared as it is
 		if filepath.Dir(real) == cmp.Or(rootReal, root) {
 			// beside dir is root's own runner.log, which collect never reads: dir's alone
-			if fi, err := os.Stat(filepath.Join(dir, "runner.log")); err != nil || !fi.Mode().IsRegular() {
+			path := filepath.Join(dir, "runner.log")
+			f, err := os.Open(path)
+			if err != nil {
 				return ""
 			}
+			fi, err := f.Stat()
+			if err != nil || !fi.Mode().IsRegular() {
+				_ = f.Close()
+				return ""
+			}
+			off := max(fi.Size()-friend.RunnerLogCap, 0)
+			b := make([]byte, fi.Size()-off)
+			n, _ := f.ReadAt(b, off)
+			_ = f.Close()
+			return string(b[:n])
 		}
 	}
 	return friend.RunnerLog(dir)
