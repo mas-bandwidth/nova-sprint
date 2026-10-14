@@ -44,7 +44,8 @@ func TestEveryDefaultsRowDeclaresWhetherItCanBeNonWorking(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, len(rows), 20, "every row read: %v", rows)
 	for _, name := range rows {
-		assert.True(t, WorkingDeclared(name), "setting %s has no declaration in workingChecks: say whether it can be non-working (a predicate) or not (nil)", name)
+		_, ok := workingChecks[name]
+		assert.True(t, ok, "setting %s has no declaration in workingChecks: say whether it can be non-working (a predicate) or not (nil)", name)
 	}
 	for _, name := range []string{PropReadCards, PropFleet, PropFriends, PropFleetTiers, PropFriendsTiers, PropReadsNeeded, SettingReaders, SettingGitIdentity, SettingMaxAttempts, SettingLand} {
 		assert.True(t, WorkingCanBeNonWorking(name), "%s has a predicate", name)

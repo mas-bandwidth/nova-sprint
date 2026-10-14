@@ -57,9 +57,9 @@ func TestConsumersRecordedOnTheCardKeyedByEpoch(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
 	set := map[string]string{}
 
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Route: "r1", Model: "m1", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader1", Taken: "t2"})
-	AddConsumer(pr, set, ConsumerRec{Key: "land", Epoch: 8, Kind: "land", Taken: "t3"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Route: "r1", Model: "m1", Taken: "t1"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Route: "r1", Model: "m1", Taken: "t1"})
+	set[consumerField(ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader1", Taken: "t2"})] = encodeConsumerRec(ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader1", Taken: "t2"})
+	set[consumerField(ConsumerRec{Key: "land", Epoch: 8, Kind: "land", Taken: "t3"})] = encodeConsumerRec(ConsumerRec{Key: "land", Epoch: 8, Kind: "land", Taken: "t3"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -79,8 +79,12 @@ func TestAddConsumerIsIdempotentPerKey(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
 	set := map[string]string{}
 	rec := ConsumerRec{Key: "w1", Epoch: 1, Kind: "work", Who: "m", Taken: "t"}
-	AddConsumer(pr, set, rec)
-	AddConsumer(pr, set, rec)
+	if k := consumerField(rec); pr.F(k) == "" && set[k] == "" {
+		set[k] = encodeConsumerRec(rec)
+	}
+	if k := consumerField(rec); pr.F(k) == "" && set[k] == "" {
+		set[k] = encodeConsumerRec(rec)
+	}
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -90,13 +94,13 @@ func TestAddConsumerIsIdempotentPerKey(t *testing.T) {
 func TestStalledIsTheNewestConsumerEndedAndNoneOut(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
 	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Taken: "t1", Ended: "e1", Outcome: "ok"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Taken: "t1", Ended: "e1", Outcome: "ok"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Taken: "t1", Ended: "e1", Outcome: "ok"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
 	require.True(t, ConsumersOf(pr).Stalled(), "the only consumer ended: none is out")
 
-	AddConsumer(pr, set, ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2"})
+	set[consumerField(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2"})] = encodeConsumerRec(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -116,8 +120,8 @@ func TestCardWithNoConsumersIsNotStalled(t *testing.T) {
 func TestViewCardsCarriesConsumerCounts(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
 	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader-a", Taken: "t2"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1"})
+	set[consumerField(ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader-a", Taken: "t2"})] = encodeConsumerRec(ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader-a", Taken: "t2"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -133,7 +137,7 @@ func TestViewCardsCarriesConsumerCounts(t *testing.T) {
 func TestProducerConsumerCheckNamesTheStall(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
 	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -153,7 +157,7 @@ func TestProducerConsumerCheckNamesTheStall(t *testing.T) {
 func TestTheMachineNamesTheStallFromTheConsumerRecord(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
 	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}
@@ -194,8 +198,8 @@ func TestLandingIsRecordedOnTheProducerCard(t *testing.T) {
 func TestConsumersBlockPrintsCountsThenNewestLast(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
 	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"})
+	set[consumerField(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"})] = encodeConsumerRec(ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"})
+	set[consumerField(ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"})] = encodeConsumerRec(ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"})
 	for k, val := range set {
 		pr.Fields[k] = val
 	}

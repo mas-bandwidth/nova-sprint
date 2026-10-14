@@ -73,8 +73,9 @@ func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 	ready := len(s.Work.Column(Ready))
 	require.Equal(t, 20000, ready, "20,000 ready primaries the tick walks and deals")
 
-	resetModelMemo()
-	t.Cleanup(resetModelMemo)
+	modelCache.Clear()
+	modelReads.Store(0)
+	t.Cleanup(func() { modelCache.Clear(); modelReads.Store(0) })
 	before := modelReads.Load()
 	TickDeal(s, TickReq{})
 	parsed := modelReads.Load() - before
@@ -111,8 +112,9 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	ready := len(s.Work.Column(Ready))
 	require.Equal(t, 80000, ready, "80,000 ready primaries, the loaded store's scale")
 
-	resetModelMemo()
-	t.Cleanup(resetModelMemo)
+	modelCache.Clear()
+	modelReads.Store(0)
+	t.Cleanup(func() { modelCache.Clear(); modelReads.Store(0) })
 
 	// the drain part at load: the queue is empty on the first tick, so the pump has
 	// nothing to apply; measure it beside the deal to show which part the tick spends
@@ -151,7 +153,8 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	// and by the allocation hold in TestTickDealAllocatesNoPerCardRouteMapAtScale. The
 	// sub-second wall itself is measured only by BenchmarkTickDealAtLoad and
 	// BenchmarkTickDrainAtLoad, outside the gate.
-	resetModelMemo()
+	modelCache.Clear()
+	modelReads.Store(0)
 	before := modelReads.Load()
 	TickDeal(s, TickReq{})
 	parsed := modelReads.Load() - before
@@ -180,8 +183,9 @@ func TestTickDealAllocatesNoPerCardRouteMapAtScale(t *testing.T) {
 	ready := len(s.Work.Column(Ready))
 	require.Equal(t, 80000, ready, "80,000 ready primaries, the loaded store's scale")
 
-	resetModelMemo()
-	t.Cleanup(resetModelMemo)
+	modelCache.Clear()
+	modelReads.Store(0)
+	t.Cleanup(func() { modelCache.Clear(); modelReads.Store(0) })
 	TickDeal(s, TickReq{}) // warm the memo, as the tick warms it on its first run
 
 	allocs := testing.AllocsPerRun(3, func() { TickDeal(s, TickReq{}) })
@@ -209,7 +213,8 @@ func BenchmarkTickDealAtLoad(b *testing.B) {
 	} {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
-			resetModelMemo()
+			modelCache.Clear()
+	modelReads.Store(0)
 			TickDeal(s, TickReq{}) // warm the memo once, as the tick does on its first run
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -231,7 +236,8 @@ func BenchmarkTickDrainAtLoad(b *testing.B) {
 	} {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
-			resetModelMemo()
+			modelCache.Clear()
+	modelReads.Store(0)
 			TickDeal(s, TickReq{})
 			plan, _ := TickDeal(s, TickReq{})
 			_, q := QueueOf(plan, DrainVerb, MachineActor)

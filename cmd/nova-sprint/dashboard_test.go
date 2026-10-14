@@ -24,11 +24,11 @@ func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 	ta.ok("init --readers reader-a --members m1,m2")
 	ta.ok("add --stream s1 --count 3")
 	want := string(sprintdash.PageData([]byte(ta.ok("where --json --archived --rows")), ta.a.now()))
-	got, err := ta.a.whereJSON("", false)
+	got, err := ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false)
 	require.NoError(t, err)
 	assert.JSONEq(t, ta.ok("where --json --cards --rows"), string(got), "the rows place the critical cards (sprintdash.placed)")
 
-	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) }, Now: ta.a.now, Every: time.Second}
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
 	var v struct {
@@ -45,7 +45,7 @@ func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 func TestDashboardReadFailureIsWheresRefusal(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	_, err := ta.a.whereJSON("", false) // no init: no sprint here yet
+	_, err := ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) // no init: no sprint here yet
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "where exited 1: nova-sprint where: this store: no sprint here yet")
 
@@ -161,7 +161,7 @@ func TestWhereCardsIsWhatThePullRoutesRead(t *testing.T) {
 		Since: c.Since, Deadline: c.Since.Add(2 * time.Hour), Branch: "sprint/s1-1.w1.g1.e0", Priority: "normal"}, c)
 	assert.False(t, c.Since.IsZero())
 
-	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) }, Now: ta.a.now, Every: time.Second}
 	w := httptest.NewRecorder()
 	srv.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/friend/amy", nil))
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -191,7 +191,7 @@ func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	ta.ok("start --actor lead")
 	ta.ok("tick") // the tick counts the critical path into the where record
 
-	page := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	page := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) }, Now: ta.a.now, Every: time.Second}
 	srv := page.Pull()
 	for _, path := range []string{"/api/sprint", "/api/sprint?release=v1.0.0", "/api/sprint?release=v1.1.0"} {
 		w := httptest.NewRecorder()

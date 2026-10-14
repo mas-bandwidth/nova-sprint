@@ -112,13 +112,6 @@ var workingChecks = map[string]workingCheck{
 	PropSprintBase:     {Check: sprintBaseWorking, BySet: true},
 }
 
-// WorkingDeclared says the setting has a declaration in the gate (a predicate, or none
-// because no value of it can stop the machine).
-func WorkingDeclared(name string) bool {
-	_, ok := workingChecks[name]
-	return ok
-}
-
 // WorkingCanBeNonWorking says the setting has a predicate: some value of it leaves the
 // machine degraded.
 func WorkingCanBeNonWorking(name string) bool { return workingChecks[name].Check != nil }

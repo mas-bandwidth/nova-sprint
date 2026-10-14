@@ -2,6 +2,7 @@ package sprint_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -148,7 +149,12 @@ func TestSwitchFromBaseRefusesOffBaseAndRecordsTheBase(t *testing.T) {
 	got, rerr := os.ReadFile(target)
 	require.NoError(t, rerr)
 	assert.Contains(t, string(got), lineAt(tw.b), "the candidate is the server's binary")
-	rec, ok, rerr := sprint.ReadBaseRecord(target)
+	data, rerr := os.ReadFile(target + ".base.json")
+	var rec sprint.BaseRecord
+	if rerr == nil {
+		json.Unmarshal(data, &rec)
+	}
+	ok := rerr == nil && rec.Repo != "" && rec.Base != ""
 	require.NoError(t, rerr)
 	require.True(t, ok)
 	assert.Equal(t, sprint.BaseRecord{Repo: tw.server, Base: "main"}, rec)

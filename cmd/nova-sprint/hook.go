@@ -594,25 +594,6 @@ func hookNonce() string {
 	return hex.EncodeToString(b)
 }
 
-// hookRead runs f on a store for reading, off the server's line of control: the read
-// lane's (servelanes.go), under the lane's own line, when the server has lanes; else (a
-// twin file, or no server: a test's) on the line.
-func (a *app) hookRead(ctx context.Context, f func(st *store.Store) error) error {
-	l := a.lanesFor(ctx)
-	if l == nil {
-		return a.onLine(ctx, f)
-	}
-	if err := l.line.LockCtx(ctx); err != nil {
-		return err
-	}
-	defer l.line.Unlock()
-	st, err := l.read.store(common{redis: l.read.serveAddr})
-	if err != nil {
-		return err
-	}
-	return f(st)
-}
-
 // onLine runs f holding the server's line of control (a.serial), where every verb the
 // server runs and the tick run: a record written here is never seen half-way by a
 // forwarded verb.
