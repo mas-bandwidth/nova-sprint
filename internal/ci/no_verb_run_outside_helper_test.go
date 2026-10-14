@@ -15,25 +15,6 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// verbSet is every single-word verb of nova-sprint (verbs.go): the first word of
-// the argument list a verb runs with. A test that runs one without going through
-// the functional helper could forward to a live sprint server (forward.go), so it
-// is what this scan looks for.
-var verbSet = map[string]bool{
-	"init": true, "add": true, "quack": true, "preflight": true, "release": true,
-	"resolve": true, "start": true, "stop": true, "run": true, "tick": true,
-	"selftest": true, "take": true, "finish": true, "progress": true, "ask": true,
-	"queue": true, "read": true, "accept": true, "rework": true, "return": true,
-	"redo": true, "drop": true, "defer": true, "priority": true, "unpin": true,
-	"rebase": true, "rank": true, "relink": true, "recut": true, "twin": true,
-	"brief": true, "move": true, "tier": true, "merge": true, "land": true,
-	"verify": true, "landed": true, "snapshot": true, "backup": true, "demo": true,
-	"promote": true, "resume": true, "hold": true, "unhold": true, "fleet": true,
-	"friend": true, "collect": true, "gc": true, "where": true, "inbox": true,
-	"lane": true, "log": true, "version": true, "help": true, "memo": true,
-	"seat": true, "set": true,
-}
-
 // helperFile is the one test file that runs verbs on the app directly (through
 // the helper's runVerbOut / runInto); it is the allowed site.
 const helperFile = "testhelpers_functional_test.go"
@@ -260,17 +241,6 @@ func receiverIsApp(info *types.Info, x ast.Expr) bool {
 	}
 	obj := named.Obj()
 	return obj.Name() == "app" && obj.Pkg() != nil && obj.Pkg().Name() == "main"
-}
-
-// firstLiteral is the string value of the first string literal in the call's
-// arguments, searching the argument tree, "" when there is none.
-func firstLiteral(args []ast.Expr) string {
-	for _, a := range args {
-		if s := literalValue(a); s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // literalValue is the string value of an expression: a string literal itself, a
