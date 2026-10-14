@@ -1492,15 +1492,30 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	// the fleet's cards, read once for ok% (sprint.OkCounts, a pure view over the
+	// cells): a finish counts at its finish, ok while its read is pending. The cards
+	// are read only when a finished card needs its worker's word split out, or a
+	// stats reset's mark filters ok and failed by finish stamp; otherwise the
+	// shape's ok and failed cells are already the counts.
+	var fleetCards *sprint.Table
+	if fleetAt := slices.Index(sprint.ViewOrder, sprint.Fleet); fleetAt >= 0 && fleetAt < len(shapes) &&
+		(cellCount(shapes[fleetAt], sprint.Finished) > 0 || !doneSince.IsZero()) {
+		fleetSnap, err := st.Load(ctx, []string{sprint.Fleet}, nil)
+		if err != nil {
+			return whereView{}, "", err
+		}
+		fleetCards = fleetSnap.Fleet
+	}
 	for i, t := range shapes {
 		logical := sprint.ViewOrder[i]
 		if logical == sprint.Fleet {
 			// a friend's row holds her sprint cards: counted on the friends table, never a
 			// machine of the fleet table (sprint.FriendRow)
-			// ok% counts from the stats reset's mark (sprint.ResetMark.FleetSince), done the
-			// cards each row completed since it
-			t, friendCards = splitFriendRows(facts.Reset.FleetSince(t))
+			// done is the cards each row completed since the stats reset's mark, and ok%
+			// counts every finish at the finish (sprint.OkCounts, OkPctCells)
+			t, friendCards = splitFriendRows(t)
 			t = doneColumn(t, done, func(key string) string { return key })
+			t = sprint.OkPctCells(t, fleetCards, doneSince, func(key string) string { return key })
 		}
 		if logical == sprint.Readers {
 			// each reader's width beside reading, derived from its fleet row, and its read
@@ -1594,14 +1609,18 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			friends[i].Working, friends[i].Held, friends[i].Stale = sprint.LiveCountKeys(facts.RowWorking[row], sprint.RowBeat(beats, row), now)
 		}
 		friends[i].DealtFleet = facts.DealtFleet[f.Name]
-		friends[i].OK = c.OK
-		friends[i].Failed = c.Failed
+		friends[i].OK, friends[i].Failed = c.OK, c.Failed
+		if fleetCards != nil {
+			ok, failed, _ := sprint.OkCounts(fleetCards, sprint.FriendRow(f.Name), doneSince)
+			friends[i].OK, friends[i].Failed = ok, failed
+		}
 		if f.Status == sprint.Down {
 			friends[i].Working = 0 // down, she works nothing
 		}
 	}
 	v.Friends = friends
 	ft := doneColumn(a.friendsTable(friends, now), done, sprint.FriendRow)
+	ft = sprint.OkPctCells(ft, fleetCards, doneSince, sprint.FriendRow)
 	v.Tables[sprint.Friends] = map[string]map[string]any{}
 	for _, r := range ft.Rows {
 		cells := map[string]any{}
