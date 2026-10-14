@@ -283,7 +283,7 @@ the functional ones are release acceptance (`make release-accept`).
   `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`,
   `TestAMemberRestartReturnsItsReadsAtOnce`,
   `TestAWorkingReadTheBeatNamesIsNeverReturned`.
-- Unit, `pkg/member/read_retry_test.go`:
+- Unit, nova-tools `pkg/member/read_retry_ghost_test.go`:
   `TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost`.
 - Functional (`-tags functional`), `cmd/nova-sprint/read_lost_functional_test.go`:
   `TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`,

@@ -26,7 +26,6 @@ cardcost	DIVERGED: subscription receipts and unpriced zero cost vs tools' change
 config	DIVERGED: 14 sprint commits, 4 conflicting files (kind, redis, lines, apply)
 diffcheck	DIVERGED: a directory PATHS entry covers its files; conflicts with tools
 friend	DIVERGED: imports nova-sprint/internal/sprint; needs the coupling inverted first
-member	DIVERGED: 113 unported lines, member.go conflicts
 nsprint	DIVERGED: testutil StartRaw and capacity.lua vs tools' changes
 ntable	DIVERGED: Clear / ns_table_clear and ChangesKey not in tools
 redisacl	DIVERGED: routes/providers keys vs tools' own edit

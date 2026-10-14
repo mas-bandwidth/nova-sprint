@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
@@ -90,12 +90,12 @@ func TestAReaderRunsTheWidthOfItsMachinesFleetRow(t *testing.T) {
 		require.NoError(t, err, log.String())
 	}
 	tick() // the first pass learns the width (its packets were asked for at width 0)
-	require.Contains(t, log.String(), "width 0 -> 2 (the fleet row)", "the row's width is read with the queue")
+	require.Contains(t, log.String(), "width 0 -> 2 (nova-config)", "the row's width is read with the queue")
 	tick()
 	require.Len(t, rn.packets, 2, "two reads at width 2: %s", log.String())
 
 	r.boss("nova-sprint fleet up m1 --width 1")
 	tick()
-	assert.Contains(t, log.String(), "width 2 -> 1 (the fleet row)")
+	assert.Contains(t, log.String(), "width 2 -> 1 (nova-config)")
 	assert.Len(t, rn.packets, 2, "nothing new while the running fill the lowered width: %s", log.String())
 }
