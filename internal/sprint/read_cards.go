@@ -195,10 +195,14 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		}
 		g := f
 		g.ReadsFirst = 0
-		room, width := friendRoom(g)
+		_, width := friendRoom(g)
 		row := FriendRow(f.Name)
 		work, reads := rowLoad(s, row)
-		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: 2*(room-work) - reads, idle: 2*width - 2*work - reads})
+		// a friend's read counts against her width as a work card does
+		// (friendLiveLanes, friendFreeLanes): her free lanes are what the read ask
+		// may fill, so no read is dealt to a friend at her width
+		free := friendFreeLanes(width, work, reads)
+		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: free, idle: free})
 	}
 	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
 		if !memberReads(s, m) {
