@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -578,7 +577,7 @@ func roundCount(order []string, value string) uint64 {
 	if n, err := strconv.ParseUint(value, 10, 64); err == nil {
 		return n
 	}
-	i := sort.SearchStrings(order, value)
+	i, _ := slices.BinarySearch(order, value)
 	if i < len(order) && order[i] == value {
 		i++
 	}
@@ -590,7 +589,7 @@ func roundCount(order []string, value string) uint64 {
 // index starts to reach it (SprintEvents.tla Past, on the counter).
 func roundPast(order []string, value, name string) string {
 	c := roundCount(order, value)
-	i := sort.SearchStrings(order, name)
+	i, _ := slices.BinarySearch(order, name)
 	if len(order) > 0 && i < len(order) && order[i] == name {
 		n := len(order)
 		c += uint64((i-int(c%uint64(n))+n)%n) + 1
