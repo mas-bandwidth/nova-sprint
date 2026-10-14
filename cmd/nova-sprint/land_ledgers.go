@@ -80,15 +80,6 @@ func formString(f worklang.Form) string {
 	}
 }
 
-// evidenceMerged holds the merged evidence data to what the two sides did, entry by entry,
-// exactly as sexpEntriesMerged holds the roadmap data (landsexp.go): an entry all three
-// share is the side's that changed it (both changing it differently is a conflict), one a
-// side removed is gone, one a side added is there as added (both adding one id differently
-// is a conflict), and nothing else is there.
-func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
-	return entriesMerged(evidenceEntries, unionKeys[string], file, base, ours, theirs, merged)
-}
-
 // landDataLimits is the bound on a lander decode of the roadmap data (docs/fixes.sexp,
 // docs/roadmap.sexp) and the evidence ledgers: the same shape as roadmapdoc.Limits with
 // room for a repository whose data stands past 512 KiB (the schema repository's
@@ -104,8 +95,8 @@ var landDataLimits = worklang.Limits{MaxBytes: 16 << 20, MaxNodes: 16 << 20, Max
 // conflict), one a side removed is gone, one a side added is there as added (both adding
 // one id differently is a conflict), and nothing else is there. It is the three-way merge
 // frame the evidence and roadmap ledgers share: parse reads one side into records keyed by
-// id, unionKeys their sorted keys. evidenceMerged (this file) and sexpEntriesMerged
-// (landsexp.go) each call it with their own entry parse and key union.
+// id, unionKeys their sorted keys. unionSexpOf and sexpEntriesMerged (landsexp.go) each
+// call it with their own entry parse (tla/LandLedgers.tla, ResolveLand).
 func entriesMerged[V comparable](parse func(file string, data []byte) (map[string]V, error), unionKeys func(...map[string]V) []string, file string, base, ours, theirs, merged []byte) error {
 	var e [3]map[string]V
 	for i, side := range [][]byte{base, ours, theirs} {
@@ -162,7 +153,8 @@ func entriesMerged[V comparable](parse func(file string, data []byte) (map[strin
 	return nil
 }
 
-// unionKeys is the keys of the maps, sorted, each once.
+// unionKeys is the keys of the maps, sorted, each once. Evidence records, roadmap records
+// and form keys share it (tla/LandLedgers.tla, ResolveLand).
 func unionKeys[V any](ms ...map[string]V) []string {
 	var out []string
 	for _, m := range ms {
@@ -177,43 +169,10 @@ func unionKeys[V any](ms ...map[string]V) []string {
 }
 
 // unionEvidenceSexp merges an evidence ledger at a merge whose base holds it (a content
-// conflict): base, the tip's side (ours) and the card's (theirs), the same line merge as
-// unionSexp (landsexp.go), held to the evidence decode instead of the roadmap decode.
+// conflict): the shared line merge (unionSexpOf, landsexp.go), held to the evidence decode
+// (tla/LandLedgers.tla, ResolveLand).
 func unionEvidenceSexp(file string, base, ours, theirs []byte) ([]byte, error) {
-	var bodies [3][]string
-	var closers [3]int
-	var tail string
-	for i, side := range [][]byte{base, ours, theirs} {
-		body, k, t := splitClosers(string(side))
-		if k == 0 {
-			return nil, errors.New("a side does not end in a closing parenthesis")
-		}
-		closers[i], bodies[i] = k, strings.Split(body, "\n")
-		if i == 1 {
-			tail = t
-		}
-	}
-	if closers[0] != closers[1] || closers[0] != closers[2] {
-		return nil, fmt.Errorf("the sides end in %d, %d and %d closing parentheses, which is no entry added or removed", closers[0], closers[1], closers[2])
-	}
-	ko, io, err := lineEdits(bodies[0], bodies[1])
-	if err != nil {
-		return nil, err
-	}
-	kt, it, err := lineEdits(bodies[0], bodies[2])
-	if err != nil {
-		return nil, err
-	}
-	lines, err := mergeLineEdits(bodies[0], ko, kt, io, it)
-	if err != nil {
-		return nil, err
-	}
-	lines = tidyBlanks(bodies[0], lines)
-	out := []byte(strings.Join(lines, "\n") + strings.Repeat(")", closers[0]-1) + tail)
-	if err := evidenceMerged(file, base, ours, theirs, out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return unionSexpOf(file, base, ours, theirs, evidenceEntries)
 }
 
 // unionEvidenceSexpAdd merges an evidence ledger the base does not hold (an add/add
