@@ -15,6 +15,7 @@ import (
 
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -2671,23 +2672,30 @@ type cardView struct {
 	Texts    []storyText `json:"texts"`
 }
 
+// cmdCard is one card's story, or the listing of every card (docs/SPEC-SPRINT.md
+// section 11, the card verb): --all and --stream print a bounded table, --json
+// one object, --ndjson the line form.
 func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("card")
 	atEpoch := fs.Int64("at-epoch", -1, "the primary as it was at an earlier epoch (before a clear)")
 	fields := fs.Bool("fields", false, "every field of the primary and its cards, one record a line, instead of its story")
 	brief := fs.Bool("brief", false, "the brief alone, as the card holds it, and nothing else (a card with no brief is refused, exit 1); not with --fields")
-	all := fs.Bool("all", false, "every card on the table, one JSON object a line (its fields, column, needs and brief length), in one read; with --json, and no id")
-	stream := fs.String("stream", "", "--all of one stream's cards")
+	all := fs.Bool("all", false, "every card on the table: a table of id, state, tier, stream and attempts, bounded by --max; --json is one object {cards:[...]}")
+	stream := fs.String("stream", "", "the cards of this stream, as --all")
+	ndjson := fs.Bool("ndjson", false, "with --all or --stream: every card, one JSON object a line (the line form; --json is one object)")
 	pos, err := parse(fs, args)
 	if bulk := *all || *stream != ""; err == nil && bulk {
-		if len(pos) > 0 || *brief || *fields || !c.json {
-			return refuse(stderr, "card", "--all and --stream print every card, one JSON object a line: give --json, and no id, --brief or --fields; run: nova-sprint card --all --json")
+		if len(pos) > 0 || *brief || *fields {
+			return refuse(stderr, "card", "--all and --stream take no id, --brief or --fields; run: nova-sprint card --all")
+		}
+		if c.json && *ndjson {
+			return refuse(stderr, "card", "--json is one object and --ndjson is one object a line: give one of them")
 		}
 		st, err := a.storeAt(*c, *atEpoch)
 		if err != nil {
 			return refuse(stderr, "card", err.Error())
 		}
-		return a.cardsBulk(st, *stream, stdout, stderr)
+		return a.cardsBulk(st, *stream, c.max, c.json, *ndjson, stdout, stderr)
 	}
 	if err != nil || len(pos) != 1 {
 		return refuse(stderr, "card", argErr("wants one primary id ", err, pos...))
@@ -2820,7 +2828,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// cardLine is one card as card --all --json prints it: its id, stream, column
+// cardLine is one card as card --all --ndjson prints it: its id, stream, column
 // (place), score, needs, the length of its brief in bytes, and every other field
 // (the brief's text is `card <id> --brief`).
 type cardLine struct {
@@ -2833,10 +2841,27 @@ type cardLine struct {
 	Fields   map[string]string `json:"fields"`
 }
 
-// cardsBulk is card --all --json: every card on the work table (one stream's
-// with stream), in its stream's line, from one read of the table; no log is
-// read, and no hold is counted (card <id> tells one card's).
-func (a *app) cardsBulk(st *store.Store, stream string, stdout, stderr io.Writer) int {
+// cardBulk is one card of the listing (docs/SPEC-SPRINT.md section 11, the card
+// verb): the line form's fields, and the table's state, tier and attempts.
+type cardBulk struct {
+	cardLine
+	State    string `json:"state"`
+	Tier     string `json:"tier"`
+	Attempts int    `json:"attempts"`
+}
+
+// cardAllJSON is card --all|--stream --json: one object, the cards --max shows
+// and more when the rest are cut (docs/SPEC-SPRINT.md section 11, the card verb).
+type cardAllJSON struct {
+	Cards []cardBulk `json:"cards"`
+	More  *moreView  `json:"more,omitempty"`
+}
+
+// cardsBulk is card --all and card --stream (docs/SPEC-SPRINT.md section 11, the
+// card verb): a bounded table, one JSON object under --json, or the line form
+// under --ndjson. One read of the work table; no log, and no hold (card <id>
+// tells one card's).
+func (a *app) cardsBulk(st *store.Store, stream string, max int, asJSON, ndjson bool, stdout, stderr io.Writer) int {
 	s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 	if err != nil {
 		return a.readFailed("card", err, stderr)
@@ -2845,26 +2870,82 @@ func (a *app) cardsBulk(st *store.Store, stream string, stdout, stderr io.Writer
 	slices.SortStableFunc(cards, func(x, y *sprint.Card) int {
 		return cmp.Or(cmp.Compare(x.Row, y.Row), cmp.Compare(x.Score, y.Score), cmp.Compare(x.ID, y.ID))
 	})
+	rows := []cardBulk{}
 	for _, c := range cards {
 		if stream != "" && c.Row != stream {
 			continue
 		}
-		fields := maps.Clone(c.Fields)
-		delete(fields, "brief")
-		if fields == nil {
-			fields = map[string]string{}
+		rows = append(rows, cardBulkOf(c))
+	}
+	if ndjson {
+		for _, r := range rows {
+			b, err := json.Marshal(r.cardLine)
+			if err != nil {
+				return a.readFailed("card", err, stderr)
+			}
+			fmt.Fprintln(stdout, string(b))
 		}
-		needs := sprint.Split(c.F("needs"))
-		if needs == nil {
-			needs = []string{}
-		}
-		b, err := json.Marshal(cardLine{ID: c.ID, Stream: c.Row, Column: c.Col, Score: c.Score, Needs: needs, BriefLen: len(c.F("brief")), Fields: fields})
+		return 0
+	}
+	shown := len(rows)
+	var more *moreView
+	if max > 0 && len(rows) > max {
+		shown = max
+		more = &moreView{Shown: max, Total: len(rows)}
+	}
+	if asJSON {
+		b, err := json.Marshal(cardAllJSON{Cards: rows[:shown], More: more})
 		if err != nil {
 			return a.readFailed("card", err, stderr)
 		}
 		fmt.Fprintln(stdout, string(b))
+		return 0
 	}
+	cardAllTable(stdout, rows[:shown], len(rows), stream)
 	return 0
+}
+
+// cardBulkOf is one work-table card as the listing carries it (docs/SPEC-SPRINT.md
+// section 11, the card verb).
+func cardBulkOf(c *sprint.Card) cardBulk {
+	fields := maps.Clone(c.Fields)
+	delete(fields, "brief")
+	if fields == nil {
+		fields = map[string]string{}
+	}
+	needs := sprint.Split(c.F("needs"))
+	if needs == nil {
+		needs = []string{}
+	}
+	return cardBulk{
+		cardLine: cardLine{ID: c.ID, Stream: c.Row, Column: c.Col, Score: c.Score, Needs: needs, BriefLen: len(c.F("brief")), Fields: fields},
+		State:    c.Col,
+		Tier:     sprint.CardTierShown(c),
+		Attempts: sprint.ConsumersOf(c).Attempts,
+	}
+}
+
+// cardAllTable prints the bounded table and its MORE line (docs/SPEC-SPRINT.md
+// section 11, the card verb).
+func cardAllTable(w io.Writer, shown []cardBulk, total int, stream string) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "id\tstate\ttier\tstream\tattempts")
+	for _, r := range shown {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\n", oneline.Escape(r.ID), oneline.Escape(r.State), oneline.Escape(r.Tier), oneline.Escape(r.Stream), r.Attempts)
+	}
+	_ = tw.Flush()
+	if len(shown) < total {
+		fmt.Fprintf(w, "MORE kind=cards shown=%d total=%d run: %s\n", len(shown), total, cardAllAgain(stream))
+	}
+}
+
+// cardAllAgain is the command that prints the listing --max cut (docs/SPEC-SPRINT.md
+// section 11, the card verb).
+func cardAllAgain(stream string) string {
+	if stream != "" {
+		return "nova-sprint card --stream " + stream + " --max 0"
+	}
+	return "nova-sprint card --all --max 0"
 }
 
 // whoWord is the CARD OK line's who of a friend's card (sprint.FieldWho: who=friend for

@@ -93,7 +93,7 @@ func TestCardStateIsTheTableColumnInEveryReader(t *testing.T) {
 		assert.Equal(t, want, r.Column, r.ID)
 		assert.Equal(t, r.Column, r.State, "state remains a deprecated alias for one release")
 	}
-	lines := strings.Split(strings.TrimSpace(ta.ok("card --all --json")), "\n")
+	lines := strings.Split(strings.TrimSpace(ta.ok("card --all --ndjson")), "\n")
 	require.Len(t, lines, 4)
 	for _, line := range lines {
 		var r row
