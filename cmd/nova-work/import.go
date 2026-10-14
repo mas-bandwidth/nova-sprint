@@ -32,9 +32,14 @@ func checkImport(c *tool.Call) {
 	case !dirExists(out):
 		c.Problem(fmt.Sprintf("the directory of --out %q does not exist; make it first, or name a file in one that does", out))
 	}
-	if dry && len(repos(c)) == 0 {
-		c.Problem(fmt.Sprintf("--dry-run with no --repo reads every repository of --org %s, up to --max-calls %d calls; name one repository and run: nova-work import --org %s --repo %s/<name> --dry-run",
-			org, c.Int("max-calls"), oneline.ShellWord(org), oneline.ShellWord(org)))
+	if len(repos(c)) == 0 {
+		if dry {
+			c.Problem(fmt.Sprintf("--dry-run with no --repo reads every repository of --org %s, up to --max-calls %d calls; name one repository and run: nova-work import --org %s --repo %s/<name> --dry-run",
+				org, c.Int("max-calls"), oneline.ShellWord(org), oneline.ShellWord(org)))
+		} else {
+			c.Problem(fmt.Sprintf("--repo is required; import reads every issue of every repository of --org %s, so name one and run: nova-work import --org %s --repo %s/<name> --out %s",
+				org, oneline.ShellWord(org), oneline.ShellWord(org), oneline.ShellWord(out)))
+		}
 	}
 	if out != "" && !c.Bool("replace") && fileExists(out) {
 		c.Problem(fmt.Sprintf("--out %s exists; pass --replace to replace it: nova-work import --org %s --out %s --replace",

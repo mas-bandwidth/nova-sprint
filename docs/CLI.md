@@ -912,13 +912,15 @@ same result as one JSON object.
 
 ### import
 
-Reads every issue of `--org` (or of each `--repo`) through your `gh` login,
-read-only, and writes one local tree file, `--out`, only after the encoded tree
-has read back equal to what was fetched. `--dry-run` is not offline: it reads
-GitHub exactly as the import does (every issue, the same calls), checks the
-round trip, and writes nothing. A dry run costs what the import costs:
-`IMPORT PLAN` names `est_calls`, and `--max-calls` (default 1500) refuses a plan
-past it before any issue is read.
+Reads every issue of each `--repo` of `--org` through your `gh` login, read-only,
+and writes one local tree file, `--out`, only after the encoded tree has read
+back equal to what was fetched. `--repo` is required: a read with none would
+cover every repository of `--org` — and even `--dry-run` reads GitHub exactly as
+the import does (every issue, the same calls) — so one repository is always
+named, and a cold dry run cannot spend the organization's whole call budget.
+`--dry-run` is not offline: it reads GitHub as the import does, checks the round
+trip, and writes nothing. `IMPORT PLAN` names `est_calls`, and `--max-calls`
+(default 1500) refuses a plan past it before any issue is read.
 
 ### verify
 
@@ -943,12 +945,12 @@ nova-work example --dir <dir> [--replace]
 ```
 nova-work roadmap check  [--repo <dir>]
 nova-work roadmap list   [--repo <dir>] [--file roadmap|fixes] [--release <v> | --group <g>] [--state <s>] [--text <t>] [--max <n>]
-nova-work roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>]
-nova-work roadmap remove [--repo <dir>] --id <id>...
-nova-work roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>)
-nova-work roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit>
-nova-work roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>]
-nova-work roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>]
+nova-work roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>] [--dry-run]
+nova-work roadmap remove [--repo <dir>] --id <id>... [--dry-run]
+nova-work roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>) [--dry-run]
+nova-work roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit> [--dry-run]
+nova-work roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>] [--dry-run]
+nova-work roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>] [--dry-run]
 ```
 
 Edit and read a repository's own work record: `docs/roadmap.sexp` (rendered to
@@ -960,11 +962,12 @@ the sync tests (`TestRoadmapIsGeneratedFromTheSexp`,
 (comments, spacing, the other records) is kept; a removed record takes only its
 own trailing comment with it. `--id` repeats for more entries.
 
-The verbs read and write local files only: no GitHub call per entry. A batch of
-edits lands as one commit and one pull request, so GitHub sees an occasional push
-rather than one API call per item (the 2026-10-10 cleanup made about 1,000 calls,
-one per issue and pull request closed or moved, and tripped GitHub's secondary
-rate limit).
+The verbs read and write local files only: no GitHub call per entry. Every writing
+verb takes `--dry-run`: it prints the edit it would make (the files it would
+rewrite) and writes nothing. A batch of edits lands as one commit and one pull
+request, so GitHub sees an occasional push rather than one API call per item (the
+2026-10-10 cleanup made about 1,000 calls, one per issue and pull request closed
+or moved, and tripped GitHub's secondary rate limit).
 
 - `check`: both files decode, no id stands in both, each page is what its data
   renders. Exit 1, one `ROADMAP-CHECK FAILED` line per problem.
