@@ -262,8 +262,7 @@ func TestMergeWritesTheLandersLastRefusal(t *testing.T) {
 	w.must(MergeStep(w.s, MergeReq{Stream: "s1", Conflict: "s1-1", ConflictKind: "generated", Note: "the ledger could not resolve"}))
 	v, ok := w.s.Work.Prop(PropLandRefusal)
 	require.True(t, ok, "the merge step records the lander's last refusal")
-	assert.Contains(t, v, "s1-1", "the refusal names the card")
-	assert.Contains(t, v, "the ledger could not resolve", "the refusal names the reason")
+	must.ContainsAll(t, v, "s1-1", "the ledger could not resolve")
 }
 
 // The landing stall is watched from the deadlines part, independent of the idle
@@ -379,8 +378,7 @@ func TestALandingPushOfLongLedgerTextsStaysInsideTheFieldBound(t *testing.T) {
 	n := landingPush(w.s, "s1", "rowan", cards, ledger, w.s.Now)
 	assert.LessOrEqual(t, len(n.What), MaxCardTextBytes, "the push is inside the field bound")
 	for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
-		assert.Contains(t, n.What, "landed "+id+" ", "every card keeps its line")
-		assert.Contains(t, n.What, "the title of "+id)
+		must.ContainsAll(t, n.What, "landed "+id+" ", "the title of "+id)
 	}
 }
 
@@ -424,8 +422,7 @@ func TestALandingPushOfAHundredCardsKeepsEveryCardsLine(t *testing.T) {
 	require.LessOrEqual(t, len(n.What), MaxCardTextBytes, "the push is inside the field bound")
 	for i := 1; i <= 100; i++ {
 		id := fmt.Sprintf("s9-%d", i)
-		assert.Contains(t, n.What, "landed "+id+" (stream s9", "%s keeps its line", id)
-		assert.Contains(t, n.What, "title "+id+" ", "%s keeps its ledger title", id)
+		must.ContainsAll(t, n.What, "landed "+id+" (stream s9", "title "+id+" ")
 	}
 }
 
