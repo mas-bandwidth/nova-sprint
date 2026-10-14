@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
