@@ -71,8 +71,8 @@ func (ta *testApp) askedOf(reader string) []string {
 	return ids
 }
 
-// A reader's own queue is its beat: with no beat it is down, a beat makes it
-// up, and past the beat bound it is away.
+// A reader's own queue --beat is its beat: with no beat it is down, a beat
+// makes it up, and past the beat bound it is away.
 func TestAReaderIsUpWhileItBeatsAndAwayWhenItLapses(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -80,12 +80,12 @@ func TestAReaderIsUpWhileItBeatsAndAwayWhenItLapses(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	assert.Equal(t, "up", ta.readerState("reader-a"))
 	assert.Equal(t, "down", ta.readerState("reader-c"), "a row no reader process has beaten for is down")
-	ta.ok("queue --as reader-c")
-	assert.Equal(t, "up", ta.readerState("reader-c"), "queue --as is the reader's beat")
+	ta.ok("queue --as reader-c --beat")
+	assert.Equal(t, "up", ta.readerState("reader-c"), "queue --as --beat is the reader's beat")
 	ta.a.sleep(sprint.ReaderBeatBound + time.Second)
 	assert.Equal(t, "away", ta.readerState("reader-c"), "no beat past the bound is away")
 	assert.Equal(t, "up", ta.readerState("reader-a"), "a reader that keeps asking for its queue stays up")
-	ta.ok("queue --as reader-c")
+	ta.ok("queue --as reader-c --beat")
 	assert.Equal(t, "up", ta.readerState("reader-c"))
 }
 
@@ -96,7 +96,7 @@ func TestReaderAwayAndUp(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	out := ta.ok("reader away reader-c")
 	assert.Contains(t, out, "READER-AWAY OK readers=reader-c")
-	ta.ok("queue --as reader-c") // it still beats
+	ta.ok("queue --as reader-c --beat") // it still beats
 	assert.Equal(t, "held", ta.readerState("reader-c"), "reader away is hold --return in the old words: its state reads held")
 	assert.Equal(t, "up", ta.readerState("reader-a"))
 	out = ta.ok("reader up reader-c")
