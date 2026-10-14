@@ -219,7 +219,7 @@ func answerOf(t *testing.T, h *harness, typ, subject string) sprint.RuleAnswer {
 			return a
 		}
 	}
-	t.Fatalf("no %q judgment open on %s", typ, subject)
+	require.FailNowf(t, "no judgment open", "no %q judgment open on %s", typ, subject)
 	return sprint.RuleAnswer{}
 }
 
