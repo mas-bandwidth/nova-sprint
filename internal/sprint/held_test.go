@@ -203,13 +203,13 @@ func TestHeldByWhatItWaitsOn(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}}))
 	hd := mustHold(t, running(w), "late", HeldByWaiting)
 	require.Contains(t, hd.Why, "needs s1-1 (a)", "the chain: %s", hd)
-	// Behind a reached sentinel whose judgment is open.
+	// An empty cut releases on the next tick without a coordinator judgment.
 	w2 := setup(t, 0)
 	w2.must(Add(w2.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	w2.must(Add(w2.s, AddReq{Stream: "s1", IDs: []string{"after"}}))
-	mustHold(t, running(w2), "stop", HeldByJudgment)
+	mustHold(t, running(w2), "stop", HeldByTick)
 	hd = mustHold(t, running(w2), "after", HeldByWaiting)
-	require.Contains(t, hd.Why, "waits behind sentinel stop (c)", "behind the sentinel: %s", hd)
+	require.Contains(t, hd.Why, "waits behind sentinel stop (b)", "behind the sentinel: %s", hd)
 }
 
 func TestNotHeldWhenTheChainEndsInAStall(t *testing.T) {
@@ -267,12 +267,12 @@ func TestAStallStaysAStallWhileTheMachineIsStopped(t *testing.T) {
 
 func TestTheOtherStalls(t *testing.T) {
 	t.Parallel()
-	// A reached sentinel with no open judgment.
+	// A reached empty sentinel needs no judgment to release.
 	w := setup(t, 0)
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	w.s.Open = nil
-	f := mustStall(t, running(w), "stop", "reached, and no judgment is open on it")
-	require.Contains(t, f.Decisions, "release", "a reached sentinel's decisions: %v", f.Decisions)
+	hd := mustHold(t, running(w), "stop", HeldByTick)
+	require.Contains(t, hd.Why, "automatic: no producers")
 	// A stopped stream with no open judgment.
 	w = setup(t, 1)
 	w.s.StreamCtl("s1").Fields["state"], w.s.StreamCtl("s1").Fields["cause"] = StreamStopped, "conflict"

@@ -61,10 +61,11 @@ func TestNeedsRanksDecisionsByCardsBlockedBehindThem(t *testing.T) {
 		assert.Equal(t, "x", got[1].Cards[0])
 	})
 
-	t.Run("held sentinels, stopped streams and held cards count through needs and stream order", func(t *testing.T) {
+	t.Run("proof-pending sentinels, stopped streams and held cards count through needs and stream order", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
-		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+		producer := pendingSentinelTrunkFixture(w)
+		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"gate"}, Sentinel: true, Needs: []string{producer}}))
 		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c1", "c2", "c3"}}))
 		w.must(Add(w.s, AddReq{Stream: "d", IDs: []string{"d1"}, Needs: []string{"c1"}}))
 		w.must(Add(w.s, AddReq{Stream: "e", IDs: []string{"e1", "e2"}}))

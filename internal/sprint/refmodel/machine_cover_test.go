@@ -234,12 +234,12 @@ func TestMachineCoverTickResolve(t *testing.T) {
 		open   []Judgment
 		closed []Judgment
 	}{
-		"a waiting card whose needs landed moves to ready": {
+		"a released sentinel consumer waits without merge evidence": {
 			s: func() State {
 				s := mcSentinel(mcSprint(), "s1", "e1", Landed, 1)
 				return mcCard(s, "s1", "p1", Waiting, 2, "e1")
 			}(),
-			cells: map[string]string{"p1": Ready},
+			cells: map[string]string{"p1": Waiting},
 		},
 		"an unmet need keeps it waiting": {
 			s: func() State {
@@ -248,14 +248,14 @@ func TestMachineCoverTickResolve(t *testing.T) {
 			}(),
 			cells: map[string]string{"p1": Waiting},
 		},
-		"a sentinel is marked reached and never moves": {
+		"an empty sentinel releases without a manual judgment": {
 			s: func() State {
 				s := mcSprint()
 				s.Streams["s2"] = Stream{State: SWaiting}
 				return mcSentinel(s, "s2", "e1", Waiting, 1)
 			}(),
-			cells: map[string]string{"e1": Waiting},
-			open:  []Judgment{{JReached, "e1"}},
+			cells:  map[string]string{"e1": Landed},
+			closed: []Judgment{{JReached, "e1"}},
 		},
 		"a dropped need opens the blocked judgment once": {
 			s: func() State {
@@ -648,7 +648,7 @@ func TestMachineCoverRelease(t *testing.T) {
 		ready   bool // p1 (or the waiter) moved to ready
 	}{
 		"the coordinator lands a reached sentinel": {
-			s: reached(), ids: []string{"e1"}, who: "coord", landed: true, ready: true,
+			s: reached(), ids: []string{"e1"}, who: "coord", landed: true, ready: false,
 		},
 		"nothing before it releases without the mark": {
 			s: func() State {
@@ -670,8 +670,8 @@ func TestMachineCoverRelease(t *testing.T) {
 		"a primary is not a sentinel": {
 			s: reached(), ids: []string{"p1"}, who: "coord", wantErr: "not a reached sentinel",
 		},
-		"an unreached sentinel with something before it is refused": {
-			s: notReachedBefore(), ids: []string{"e1"}, who: "coord", wantErr: "not a reached sentinel",
+		"the coordinator can explicitly release before completion": {
+			s: notReachedBefore(), ids: []string{"e1"}, who: "coord", landed: true,
 		},
 		"a landed sentinel is refused": {
 			s: func() State {
@@ -700,6 +700,9 @@ func TestMachineCoverRelease(t *testing.T) {
 			assert.NoError(t, err)
 			if tc.landed {
 				assert.Equal(t, Landed, got.Primaries[tc.ids[0]].State)
+				if _, ok := got.Primaries["p1"]; ok {
+					assert.Equal(t, Waiting, got.Primaries["p1"].State, "early release does not invent a consumer merge")
+				}
 			}
 			if tc.ready {
 				assert.Equal(t, Ready, got.Primaries["p1"].State, "its waiter moves to ready")

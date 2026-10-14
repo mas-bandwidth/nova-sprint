@@ -196,16 +196,18 @@ func StreamSubject(s string) string { return "stream:" + s }
 
 // Primary is one primary's abstract record.
 type Primary struct {
-	Stream  string
-	Kind    string   // primary or sentinel
-	State   string   // a work cell, or Off
-	Needs   []string // sorted
-	Waived  []string // sorted: the dropped needs the coordinator waived
-	Score   float64
-	Attempt int      // the attempt of its current or next work card, from 1
-	Head    int      // the attempt whose finished work is its head; 0 before
-	Pair    []string // sorted: the readers of the reads that stand at its attempt (the work table's asked field)
-	Reached bool     // a sentinel whose needs have all landed or been waived
+	Repo          string // declared producer/consumer repository, not inferred from landing
+	Stream        string
+	Kind          string   // primary or sentinel
+	State         string   // a work cell, or Off
+	Needs         []string // sorted
+	Waived        []string // sorted: the dropped needs the coordinator waived
+	Score         float64
+	Attempt       int      // the attempt of its current or next work card, from 1
+	Head          int      // the attempt whose finished work is its head; 0 before
+	Pair          []string // sorted: the readers of the reads that stand at its attempt (the work table's asked field)
+	Reached       bool     // a sentinel whose needs have all landed or been waived
+	ReleasedEarly bool     // explicit early override, distinct from automatic release
 	// CI and CIHead are its last CI observation: "", "red" or "green", and
 	// the attempt whose head it was for (0: no head yet).
 	CI     string
@@ -277,9 +279,11 @@ type MergeCard struct {
 
 // Stream is one stream's merge state and the cause of its stop.
 type Stream struct {
-	State string
-	Cause string
-	Cap   int // its attempt cap, 0 for none (sprint.FieldAttempts)
+	Branch string
+	Trunk  string
+	State  string
+	Cause  string
+	Cap    int // its attempt cap, 0 for none (sprint.FieldAttempts)
 }
 
 // Judgment is one open judgment on one subject: a primary, a stream
@@ -293,6 +297,7 @@ func (j Judgment) String() string { return j.Type + "|" + j.Subject }
 
 // State is the abstract state of one sprint.
 type State struct {
+	protocol  *ProtocolInput // outside facts for this transition only; never retained after Tick
 	Primaries map[string]Primary
 	Work      map[string]WorkCard
 	Reads     map[string]ReadCard
@@ -306,7 +311,7 @@ type State struct {
 	Machine   string
 	Epoch     uint64
 	Pending   string // the verb of the pending operation (D1), "" when none
-	// Coordinator is the one actor who releases sentinels.
+	// Coordinator is the actor permitted to override a sentinel with early release.
 	Coordinator string
 	// Cap is the sprint's attempt cap, 0 for none (nova-config's sprint row max_attempts,
 	// sprint.Snapshot.MaxAttempts).
@@ -352,6 +357,7 @@ func New(readers, members []string, coordinator string) State {
 // Clone is a deep copy.
 func (s State) Clone() State {
 	c := s
+	c.protocol = s.protocol.clone()
 	c.Primaries = make(map[string]Primary, len(s.Primaries))
 	for k, v := range s.Primaries {
 		v.Needs = append([]string(nil), v.Needs...)

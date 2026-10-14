@@ -57,16 +57,9 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	require.True(t, fr.Placed(), "fr-1.w1 dealt")
 	require.Equal(t, "friend.amy", fr.Row, "the friend card is amy's")
 
-	// Release the sentinel while stopped, as this fixture originally did, after
-	// both work cards were dealt and before any owner began them.
-	_, _, _, err = r.st.SetMachine(r.ctx, false)
-	require.NoError(t, err)
-	r.must(store.ReleaseStep(sprint.ReleaseReq{
-		IDs: []string{"gate-1"}, Reason: "nothing before it", Coordinator: "coordinator", Who: "coordinator",
-	}))
-	require.Equal(t, sprint.Landed, r.snap().StateOf("gate-1"), "the sentinel released")
-	_, _, _, err = r.st.SetMachine(r.ctx, true)
-	require.NoError(t, err)
+	// The first tick released the empty sentinel automatically. Its landing
+	// still counts once independently of the two worker-owned cards below.
+	require.Equal(t, sprint.Landed, r.snap().StateOf("gate-1"), "the empty sentinel released automatically")
 	r.land("mach-1", "mach")
 	r.land("fr-1", "fr")
 

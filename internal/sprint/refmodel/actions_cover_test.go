@@ -472,7 +472,8 @@ func TestActionsCoverResolveAll(t *testing.T) {
 
 	assert.Equal(t, Ready, s.Primaries["p"].State)
 	assert.True(t, s.Primaries["x"].Reached)
-	assert.True(t, s.Open[Judgment{JReached, "x"}])
+	assert.False(t, s.Open[Judgment{JReached, "x"}])
+	assert.Equal(t, Waiting, s.Primaries["x"].State, "no external ancestry supplied")
 }
 
 // TestActionsCoverMergeRed covers MergeRed (actions.go): a red branch stops

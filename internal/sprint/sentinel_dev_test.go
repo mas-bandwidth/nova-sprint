@@ -175,3 +175,15 @@ func TestConsumerReceiptPinsReleasedBarrierVector(t *testing.T) {
 		require.False(t, ConsumerTrunkReady(s, c))
 	}
 }
+
+// This positive lifecycle fixture is complete but awaits a real trunk proof;
+// it keeps a wave waiting without the removed sentinel manual-hold option.
+func pendingSentinelTrunkFixture(w *world) string {
+	id := "fixture-unmerged-producer"
+	w.must(Add(w.s, AddReq{Stream: "proof", Cards: []CardAdd{{ID: id, Brief: "producer\nREPO: /fixture/repo\n"}}}))
+	producer := w.s.Work.Card(id)
+	producer.Col = Landed
+	producer.Fields["head"] = "fixture-unmerged-head"
+	w.s.Work.Put(producer)
+	return id
+}

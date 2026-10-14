@@ -41,7 +41,7 @@ func bigSprint(t *testing.T) *testApp {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1,m2 --coordinator lead")
 	for i := 1; i <= 5; i++ {
-		ta.ok(fmt.Sprintf("add --stream w%d --sentinel gate%d --held --actor lead", i, i))
+		ta.ok(fmt.Sprintf("add --stream w%d --sentinel gate%d --actor lead", i, i))
 		ta.ok(fmt.Sprintf("add --stream w%d --count 499 --actor lead", i))
 	}
 	// done keeps one card not landed, so no tick archives it (stream archive) and its 350
@@ -72,6 +72,9 @@ func bigSprint(t *testing.T) *testApp {
 			ExpectedTableRevision: fmt.Sprint(rev), OperationID: fmt.Sprintf("seed-landed-%d", k), Members: ms[k:min(k+100, len(ms))]})
 		require.NoError(t, err)
 		rev = rc.After
+	}
+	for i := 1; i <= 5; i++ {
+		ta.ok(fmt.Sprintf("sentinel set gate%d --needs done-1 --actor lead", i))
 	}
 	return ta
 }

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -226,30 +228,34 @@ func (b *propBackend) Acquire(ctx context.Context, gen uint64, op OpRecord) (boo
 
 // propRun is one run: the store, the clock, and what the checks remember.
 type propRun struct {
-	cfg        propConfig
-	m          *Mem
-	st         *Store
-	ctx        context.Context
-	now        time.Time
-	ids        []string           // every primary admitted, in order
-	tried      map[string]bool    // every id an add named: a cut add may land at a later repair
-	score      map[string]float64 // each primary's score, as admitted or ranked
-	ranked     map[string]bool    // the primaries a rank since the last quiet check ranks
-	log        []string           // the verbs run
-	cut        string             // the store call failing now
-	stopAfter  int                // the parts of the tick that take the fence before the machine stops (-1 none)
-	rng        *rand.Rand         // the fair coordinator's choices
-	known      map[string]int     // the known findings met, by name
-	stats      map[string]int     // what the run did, for the log
-	acked      map[string]bool    // the subjects the coordinator acknowledged a judgment on
-	seq        int
-	errs       []error
-	tickRes    *TickResult
-	cutUsed    bool
-	logAfter   string                  // the last log line the check has read
-	inboxAfter string                  // the last inbox entry the check has read
-	raised     map[string]sprint.Note  // the judgments the log raised, by id
-	replay     map[string]sprint.Place // the log replayed so far (rule 13)
+	cfg         propConfig
+	m           *Mem
+	st          *Store
+	ctx         context.Context
+	now         time.Time
+	ids         []string           // every primary admitted, in order
+	tried       map[string]bool    // every id an add named: a cut add may land at a later repair
+	score       map[string]float64 // each primary's score, as admitted or ranked
+	ranked      map[string]bool    // the primaries a rank since the last quiet check ranks
+	log         []string           // the verbs run
+	cut         string             // the store call failing now
+	stopAfter   int                // the parts of the tick that take the fence before the machine stops (-1 none)
+	rng         *rand.Rand         // the fair coordinator's choices
+	known       map[string]int     // the known findings met, by name
+	stats       map[string]int     // what the run did, for the log
+	acked       map[string]bool    // the subjects the coordinator acknowledged a judgment on
+	seq         int
+	errs        []error
+	tickRes     *TickResult
+	cutUsed     bool
+	logAfter    string                 // the last log line the check has read
+	inboxAfter  string                 // the last inbox entry the check has read
+	raised      map[string]sprint.Note // the judgments the log raised, by id
+	forgeTips   map[string]string
+	forgeHeads  map[string]map[string]bool
+	forgeMerges map[string]sprint.ConsumerMerge
+	forgeSeq    int
+	replay      map[string]sprint.Place // the log replayed so far (rule 13)
 }
 
 var errCut = errors.New("cut by the test")
@@ -262,6 +268,16 @@ func newPropRun(cfg propConfig) (*propRun, error) {
 		Now:   func() time.Time { return r.now },
 		NewID: func() string { n++; return fmt.Sprint(n) },
 		Sleep: func(time.Duration) {}, Rand: func(int64) int64 { return 0 }}
+	r.forgeTips = map[string]string{}
+	r.forgeHeads = map[string]map[string]bool{}
+	r.forgeMerges = map[string]sprint.ConsumerMerge{}
+	for _, stream := range cfg.streams {
+		key := propRepo(stream) + "\n" + sprint.DevBranch
+		r.forgeTips[key] = "genesis:" + stream
+		r.forgeHeads[key] = map[string]bool{}
+	}
+	r.st.SentinelProof = r.forgeSentinels
+	r.st.ConsumerTrunk = r.forgeConsumers
 	r.m.Fail = func(point string) error {
 		if r.cut != "" && point == r.cut {
 			r.cutUsed = true
@@ -314,7 +330,92 @@ func (r *propRun) snap() *sprint.Snapshot {
 		r.errs = append(r.errs, err)
 		return nil
 	}
+	s.ConsumerMerges = r.forgeConsumers(r.ctx, s)
 	return s
+}
+
+// This is a logical forge actor, not a Git observation. Only the fair drain
+// invokes publication; observers never turn Landed or a fresh card into proof.
+func propRepo(stream string) string { return "/fixture/prop/" + stream }
+
+func (r *propRun) forgeKey(s *sprint.Snapshot, c *sprint.Card) string {
+	repo := swarm.ReadCardBase([]byte(c.F("brief"))).Repo
+	key := repo + "\n" + sprint.Trunk(s, c.Row)
+	if repo != propRepo(c.Row) || sprint.StreamBranch(s, c.Row) != "sprint/"+c.Row || r.forgeTips[key] == "" {
+		return ""
+	}
+	return key
+}
+
+func (r *propRun) forgeSentinels(_ context.Context, s *sprint.Snapshot) []sprint.SentinelObservation {
+	var out []sprint.SentinelObservation
+	for _, c := range s.Work.Column(sprint.Waiting) {
+		if !sprint.IsSentinel(c) {
+			continue
+		}
+		in := sprint.SentinelInputOf(s, c)
+		obs := sprint.SentinelObservation{Input: in}
+		for _, producer := range in.Producers {
+			pc := s.Work.Card(producer.ID)
+			if pc == nil {
+				continue
+			}
+			key := r.forgeKey(s, pc)
+			if key == "" || !r.forgeHeads[key][producer.Head] {
+				continue
+			}
+			obs.Inclusions = append(obs.Inclusions, sprint.DevInclusion{Producer: producer.ID, Repo: propRepo(pc.Row), Stream: pc.Row, Trunk: sprint.Trunk(s, pc.Row), Head: producer.Head, Containing: r.forgeTips[key], Included: true})
+		}
+		out = append(out, obs)
+	}
+	return out
+}
+
+func (r *propRun) forgeConsumers(_ context.Context, s *sprint.Snapshot) []sprint.ConsumerMerge {
+	var out []sprint.ConsumerMerge
+	for _, c := range s.Work.Column(sprint.Waiting, sprint.Ready) {
+		fact, ok := r.forgeMerges[c.ID]
+		key := r.forgeKey(s, c)
+		if ok && key != "" && fact.Observed == r.forgeTips[key] && fact.Epoch == s.Epoch && reflect.DeepEqual(fact.Card, sprint.SentinelCardOf(c)) && reflect.DeepEqual(fact.Barriers, sprint.ConsumerBarriersOf(s, c)) {
+			out = append(out, fact)
+		}
+	}
+	return out
+}
+
+func (r *propRun) publishForge() {
+	s := r.snap()
+	if s == nil {
+		return
+	}
+	r.say("  (the fair logical forge publishes and merges recorded repository trunks)")
+	for _, c := range s.Work.Column(sprint.Landed) {
+		if sprint.IsSentinel(c) || c.F("head") == "" {
+			continue
+		}
+		key := r.forgeKey(s, c)
+		if key == "" || r.forgeHeads[key][c.F("head")] {
+			continue
+		}
+		r.forgeHeads[key][c.F("head")] = true
+		r.forgeSeq++
+		r.forgeTips[key] = fmt.Sprintf("prop-trunk:%d", r.forgeSeq)
+	}
+	for _, c := range s.Work.Column(sprint.Waiting, sprint.Ready) {
+		key := r.forgeKey(s, c)
+		if key == "" || !sprint.ConsumerNeedsTrunk(s, c) {
+			continue
+		}
+		fact := sprint.ConsumerMerge{Epoch: s.Epoch, Card: sprint.SentinelCardOf(c), Barriers: sprint.ConsumerBarriersOf(s, c), Repo: propRepo(c.Row), Branch: sprint.StreamBranch(s, c.Row), Trunk: sprint.Trunk(s, c.Row), Observed: r.forgeTips[key], Success: true, ContainsObserved: true}
+		old := r.forgeMerges[c.ID]
+		fact.Merged = old.Merged
+		if reflect.DeepEqual(old, fact) {
+			continue
+		}
+		r.forgeSeq++
+		fact.Merged = fmt.Sprintf("prop-merge:%d", r.forgeSeq)
+		r.forgeMerges[c.ID] = fact
+	}
 }
 
 func (r *propRun) newID(prefix string) string {
@@ -344,6 +445,8 @@ func (r *propRun) act(a pAct) {
 	reader, _ := pickOf(cfg.readers, a.A)
 	stream, _ := pickOf(cfg.streams, a.A)
 	switch a.K {
+	case "publish":
+		r.publishForge()
 	case "up", "down":
 		op := map[string]string{"up": "release", "down": "hold"}[a.K] // the verbs: fleet down holds, fleet up releases
 		r.run("nova-sprint fleet "+a.K+" "+member, FleetStep(sprint.FleetReq{Op: op, Member: member, Who: "coord", Fresh: true}))
@@ -401,11 +504,12 @@ func (r *propRun) act(a pAct) {
 			return
 		}
 		if c, ok := pickOf(s.Fleet.Cell(member, sprint.Working), a.B); ok {
-			line := fmt.Sprintf("nova-sprint finish %s@%s --as %s", c.ID, c.F("gen"), member)
+			head := fmt.Sprintf("prop-head:%s:%s", c.ID, c.F("gen"))
+			line := fmt.Sprintf("nova-sprint finish %s@%s --as %s --head %s", c.ID, c.F("gen"), member, head)
 			if a.F {
 				line += " --failed --report boom"
 			}
-			r.run(line, FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}, Failed: a.F, Report: "boom", Who: member}))
+			r.run(line, FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}, Failed: a.F, Head: head, Report: "boom", Who: member}))
 		}
 	case "begin":
 		s := r.snap()
@@ -468,7 +572,7 @@ func (r *propRun) tick() {
 // admitted, in line before a reached sentinel of the stream when inLine.
 func (r *propRun) add(stream string, picks []int, inLine bool) {
 	id := r.newID("p")
-	req := sprint.AddReq{Brief: proBrief, Stream: stream, IDs: []string{id}, Who: "coord"}
+	req := sprint.AddReq{Brief: proBrief + "\nREPO: " + propRepo(stream) + "\n", Stream: stream, IDs: []string{id}, Who: "coord"}
 	for _, k := range picks {
 		if n, ok := pickOf(r.ids, k); ok && !contains(req.Needs, n) {
 			req.Needs = append(req.Needs, n)
@@ -730,7 +834,7 @@ func (r *propRun) decide(v InboxView, g sprint.Group, choice int, progress bool)
 		r.add(stream, nil, false)
 	case g.Type == sprint.NSentinelReached && d == "do more before going on":
 		id := r.newID("p")
-		r.run("nova-sprint add --stream "+st+" --before "+card+" "+id, AddStep(sprint.AddReq{Stream: st, IDs: []string{id}, Before: card, Who: "coord"}))
+		r.run("nova-sprint add --stream "+st+" --before "+card+" "+id, AddStep(sprint.AddReq{Brief: proBrief + "\nREPO: " + propRepo(st) + "\n", Stream: st, IDs: []string{id}, Before: card, Who: "coord"}))
 		r.admitted(id)
 	case d == "release":
 		r.run("nova-sprint release "+strings.Join(members, " ")+" --reason seen --answers "+strings.Join(notes, ","),
@@ -1136,6 +1240,9 @@ func (r *propRun) drain(i0 int) *propFail {
 	}
 	for round := 0; round < 400; round++ {
 		fault := func(n int) bool { return round < 60 && r.rng.IntN(n+round) == 0 }
+		if f := do(pAct{K: "publish"}); f != nil {
+			return f
+		}
 		if f := do(pAct{K: "tick"}); f != nil {
 			return f
 		}
@@ -1315,4 +1422,46 @@ func propSeeds(t *testing.T, from, to uint64, shrinkBudget int) {
 func TestRandomSprintsNeverStallAndAlwaysFinish(t *testing.T) {
 	t.Parallel()
 	propSeeds(t, 1, 2, 300) // one seed here; the slow tier runs 2,000 (prop_slow_test.go)
+}
+
+func TestPropFairForgeReleasesEmptyCrossStreamBarrier(t *testing.T) {
+	t.Parallel()
+	cfg := propConfig{seed: 1, streams: []string{"s1", "s2"}, members: []string{"m1", "m2"}, readers: []string{"a", "b", "c", "d"}}
+	fail, log, _ := runProp(cfg, []pAct{{K: "sentinel", A: 1}, {K: "add", A: 0, N: []int{0}}})
+	assert.Nil(t, fail, "fair drain must finish the original empty-sentinel shrink: %s", strings.Join(log, "\n"))
+}
+
+func TestPropForgeDoesNotInventConsumerMergeBeforePublication(t *testing.T) {
+	t.Parallel()
+	cfg := propConfig{seed: 1, streams: []string{"s1", "s2"}, members: []string{"m1", "m2"}, readers: []string{"a", "b", "c", "d"}}
+	r, err := newPropRun(cfg)
+	if !assert.NoError(t, err) {
+		return
+	}
+	r.act(pAct{K: "sentinel", A: 1})
+	r.act(pAct{K: "add", A: 0, N: []int{0}})
+	r.act(pAct{K: "tick"})
+	s := r.snap()
+	if !assert.NotNil(t, s) {
+		return
+	}
+	c := s.Work.Card("p2")
+	if !assert.NotNil(t, c) {
+		return
+	}
+	if !assert.True(t, sprint.ConsumerNeedsTrunk(s, c), "the empty cross-stream barrier must have released") {
+		return
+	}
+	assert.Empty(t, r.forgeConsumers(r.ctx, s), "a released sentinel alone is not consumer merge proof")
+	r.publishForge()
+	s = r.snap()
+	if !assert.NotNil(t, s) {
+		return
+	}
+	assert.True(t, sprint.ConsumerTrunkReady(s, s.Work.Card("p2")), "the separate fair publisher supplies the current receipt")
+	// A later trunk observation invalidates the recorded merge instead of
+	// silently giving another branch or card the previous success.
+	key := r.forgeKey(s, s.Work.Card("p2"))
+	r.forgeTips[key] = "prop-trunk:changed"
+	assert.Empty(t, r.forgeConsumers(r.ctx, s))
 }

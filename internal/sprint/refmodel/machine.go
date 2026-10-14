@@ -17,14 +17,15 @@ import "maps"
 // table is the model's at once. The pump, the tick's first update, is the only
 // place a card is taken out of waiting or ready or accepted out of review.
 
-// TickChoices is the choices a tick makes: the member each primary is dealt
+// TickChoices includes explicit outside protocol observations and the choices a tick makes: the member each primary is dealt
 // to, the member each levelled card moves to, and the two readers each
 // primary is asked of. A primary the choices do not name is dealt or asked by
 // the first allowed choice in row order.
 type TickChoices struct {
-	Deal  map[string]string
-	Level map[string]string
-	Ask   map[string][]string
+	Protocol *ProtocolInput
+	Deal     map[string]string
+	Level    map[string]string
+	Ask      map[string][]string
 }
 
 // SetMachine is start and stop (spec section 14): the machine's state; the
@@ -65,6 +66,7 @@ func Tick(s State, ch TickChoices) (State, error) {
 	if err != nil {
 		return s, err
 	}
+	n.protocol = ch.Protocol.clone()
 	n.levelReads()
 	n.tickResolve()
 	if err := n.tickDeal(ch.Deal); err != nil {
@@ -79,6 +81,7 @@ func Tick(s State, ch TickChoices) (State, error) {
 	n.tickResume()
 	n.tickVerdicts()
 	n.tickDone()
+	n.protocol = nil
 	return n, nil
 }
 
@@ -108,10 +111,9 @@ func (n *State) tickDone() {
 	}
 }
 
-// tickResolve is T1: every stream's waiting cards in score order; a primary
-// whose needs are all met moves to ready; a sentinel is never moved and is
-// marked reached, its judgment opened; a dropped need is the blocked
-// judgment, once.
+// tickResolve is T1: ordinary needs resolve, automatic sentinels release
+// using explicit outside proof, and reached progress opens no judgment.
+// A dropped ordinary need opens the blocked judgment once.
 func (n *State) tickResolve() {
 	for _, st := range n.StreamNames() {
 		for _, p := range n.StreamOrder(st) {
@@ -119,11 +121,12 @@ func (n *State) tickResolve() {
 			if pr.State != Waiting {
 				continue
 			}
-			if len(n.DroppedNeeds(p)) > 0 && !n.Open[Judgment{JBlocked, p}] {
+			if pr.Kind != KindSentinel && len(n.DroppedNeeds(p)) > 0 && !n.Open[Judgment{JBlocked, p}] {
 				n.open(JBlocked, p)
 			}
 		}
 	}
+	n.releaseSentinels()
 	n.resolveAll()
 }
 
@@ -162,7 +165,7 @@ func (n *State) tickDeal(choice map[string]string) error {
 	var ready []string
 	bound := map[string]bool{}
 	for id, p := range n.Primaries {
-		if p.State == Ready && p.Kind != KindSentinel {
+		if p.State == Ready && p.Kind != KindSentinel && n.consumerTrunkReady(id) {
 			if n.AtBound(id) != "" {
 				bound[id] = true
 				continue
@@ -299,8 +302,8 @@ func (n *State) tickAccept() error {
 
 // Release is the spec's release (section 16): the coordinator alone lands
 // reached sentinels (waiting -> landed, the only step that may), and in the
-// same step moves every waiting primary whose needs are all met to ready and
-// marks reached every sentinel now due; it closes the judgments open on each
+// step preserves consumers waiting until their scoped trunk merge, and
+// records reached progress for other sentinels now due; it closes the judgments open on each
 // sentinel; the stream's state follows (section 7: landed when every primary
 // of it on the table has landed). From the spec, not yet in the model.
 func Release(s State, ids []string, who string) (State, error) {
@@ -315,7 +318,7 @@ func Release(s State, ids []string, who string) (State, error) {
 	}
 	for _, id := range ids {
 		p, ok := s.Primaries[id]
-		if !ok || p.Kind != KindSentinel || p.State != Waiting || !p.Reached && (s.HasBefore(id) || !s.NeedsMet(id)) {
+		if !ok || p.Kind != KindSentinel || p.State != Waiting {
 			return s, refuse("%s is not a reached sentinel, nor one with nothing before it", id)
 		}
 	}
@@ -325,7 +328,7 @@ func Release(s State, ids []string, who string) (State, error) {
 		x := n.Streams[st]
 		x.State = n.streamAfter(st, x.State, []string{id}, nil)
 		n.Streams[st] = x
-		n.setPrimary(id, func(x *Primary) { x.State = Landed })
+		n.setPrimary(id, func(x *Primary) { x.State = Landed; x.ReleasedEarly = true })
 		n.closeOn(id)
 	}
 	n.resolveAll()

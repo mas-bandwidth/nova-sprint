@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // Observed is what the engine's store holds, as read: the four tables (with
@@ -55,7 +56,7 @@ func Abstract(o Observed) State {
 		a.Cap = n
 	}
 	for _, st := range s.Work.Rows() {
-		x := Stream{State: SWaiting}
+		x := Stream{State: SWaiting, Branch: sprint.StreamBranch(s, st), Trunk: sprint.Trunk(s, st)}
 		if ctl := s.StreamCtl(st); ctl != nil {
 			x.State = ctl.F("state")
 			x.Cap = ctl.Int(sprint.FieldAttempts)
@@ -71,9 +72,9 @@ func Abstract(o Observed) State {
 		if k != KindPrimary && k != KindSentinel {
 			continue
 		}
-		p := Primary{Stream: c.F("stream"), Kind: k, State: Off, Score: c.Score,
+		p := Primary{Repo: swarm.ReadCardBase([]byte(c.F("brief"))).Repo, Stream: c.F("stream"), Kind: k, State: Off, Score: c.Score,
 			Needs: sorted(sprint.Split(c.F("needs"))), Waived: sorted(sprint.Split(c.F("waived"))),
-			Attempt: c.Int("attempt"), Pair: sorted(sprint.Split(c.F("asked"))), Reached: c.F("reached") != ""}
+			Attempt: c.Int("attempt"), Pair: sorted(sprint.Split(c.F("asked"))), Reached: c.F("reached") != "", ReleasedEarly: c.F("release_kind") == "early override"}
 		if c.Placed() {
 			p.State = c.Col
 		}

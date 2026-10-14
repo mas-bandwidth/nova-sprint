@@ -100,6 +100,11 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 		ReaderStates: maps.Clone(s.ReaderStates), NoRoom: maps.Clone(s.NoRoom),
 		Friends: cloneFriends(s.Friends), FriendTextPronouns: maps.Clone(s.FriendTextPronouns), Running: s.Running,
 	}
+	c.ConsumerMerges = slices.Clone(s.ConsumerMerges)
+	for i := range c.ConsumerMerges {
+		c.ConsumerMerges[i].Barriers.Sentinels = slices.Clone(s.ConsumerMerges[i].Barriers.Sentinels)
+		c.ConsumerMerges[i].Barriers.Targets = maps.Clone(s.ConsumerMerges[i].Barriers.Targets)
+	}
 	for tier, routes := range c.Tiers {
 		c.Tiers[tier] = slices.Clone(routes)
 	}

@@ -43,9 +43,9 @@ func TestTheIdleAlarmNamesTheRootsOnceAnEpisode(t *testing.T) {
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"a", "b", "c"}, Needs: []string{"root"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"a1", "a2", "a3", "b1", "b2"}, Needs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"c1", "c2"}, Needs: []string{"c"}}))
-	// two more behind a sentinel never released
-	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"gate"}, Sentinel: true, Held: true}))
-	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"g1", "g2"}}))
+	// two more depend on an ordinary primary intentionally held
+	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"gate"}, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"g1", "g2"}, Needs: []string{"gate"}}))
 	h.must(DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"held-one"}}, Reason: "re-cut"}))
 	// root has dependants, so drop refuses it: its dropped record is seeded and
 	// the resolve opens the blocked judgments
@@ -65,7 +65,7 @@ func TestTheIdleAlarmNamesTheRootsOnceAnEpisode(t *testing.T) {
 	assert.Equal(t, h.st.Actor, n.To, "addressed to the coordinator")
 	assert.True(t, strings.HasPrefix(n.What, "fleet 0/"), n.What)
 	assert.Contains(t, n.What, "10 behind 3 drop-blocked judgments (oldest 6m0s)")
-	assert.Contains(t, n.What, "2 behind sentinel gate (held)")
+	assert.Contains(t, n.What, "2 behind gate (held)")
 	for i := 0; i < 3; i++ {
 		h.tick(time.Minute)
 		h.machine()

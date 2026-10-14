@@ -494,7 +494,8 @@ func TestTheLandingStepAndTheTickDoNothingTwice(t *testing.T) {
 	h.readAll()
 	h.landAll("s1")
 	require.Equal(t, sprint.Ready, h.state("y"), "after the landing step: y %s, reached %d", h.state("y"), len(h.openOf(sprint.NSentinelReached)))
-	require.Len(t, h.openOf(sprint.NSentinelReached), 1, "after the landing step: y %s, reached %d", h.state("y"), len(h.openOf(sprint.NSentinelReached)))
+	require.Empty(t, h.openOf(sprint.NSentinelReached), "progress cannot become a coordinator gate")
+	require.Len(t, h.notesTo(sprint.NSentinelReached), 1, "one HAPPENED progress notification")
 	before := h.written(sprint.NSentinelReached)
 	res := h.machine()
 	for _, p := range res.Parts {

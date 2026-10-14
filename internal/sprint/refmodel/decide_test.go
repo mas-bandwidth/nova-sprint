@@ -207,8 +207,9 @@ func TestResolveReachesASentinelWhoseNeedsLanded(t *testing.T) {
 	got := refmodel.ResolveMoves(w.snapshot(w.fresh()), later(0))
 	expect(t, got,
 		"set work gate-1 reached=2030-01-02T03:04:05Z",
-		"open sentinel reached [gate-1]")
-	// reached once, and never made ready: the coordinator releases it
+		"notice sentinel reached [gate-1]")
+	// Progress is notified once. Without explicit producer ancestry input the
+	// model does not infer an automatic release from landed state alone.
 	w.must(t, sprint.Resolve(w.s, sprint.ResolveReq{Sel: sprint.Sel{Only: []string{"gate-1"}}}))
 	expect(t, refmodel.ResolveMoves(w.snapshot(w.fresh()), later(0)))
 }

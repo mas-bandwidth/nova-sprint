@@ -43,10 +43,10 @@ func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b,reader-c")
 	// drop refuses a card a waiting card needs (docs/SPEC-SPRINT.md section 11),
 	// so no drop-blocked root is made here (the store test of the alarm pins
-	// it); the cards wait behind a held sentinel
+	// it); the cards need an ordinary held primary
 	ta.ok("add --stream s1 root other")
-	ta.ok("add --stream s2 --sentinel gate --held")
-	ta.ok("add --stream s2 a b")
+	ta.ok("add --stream s2 gate --held")
+	ta.ok("add --stream s2 a b --needs gate")
 	ta.ok("start")
 	ta.ok("tick --idle-alarm")
 	ta.mu.Lock()
@@ -55,7 +55,7 @@ func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	ta.ok("tick --idle-alarm")
 	inbox := ta.ok("inbox")
 	assert.Contains(t, inbox, "the fleet is idle")
-	assert.Contains(t, inbox, "2 behind sentinel gate (held)")
+	assert.Contains(t, inbox, "2 behind gate (held)")
 	ta.ok("tick --idle-alarm")
 	assert.Equal(t, 1, strings.Count(ta.ok("inbox"), "the fleet is idle"), "once an episode")
 }

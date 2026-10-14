@@ -897,8 +897,8 @@ func MergeGreen(s State, stream string, batch int) (State, error) {
 }
 
 // resolveAll moves every waiting primary whose needs are all met to ready,
-// and marks reached every sentinel whose needs are all met, opening its
-// judgment (spec sections 7 and 16).
+// and records reached progress for sentinels, without a coordinator judgment.
+// A released-barrier consumer also requires its scoped outside merge input.
 func (n *State) resolveAll() {
 	for _, p := range Keys(n.Primaries) {
 		pr := n.Primaries[p]
@@ -909,8 +909,10 @@ func (n *State) resolveAll() {
 			if !pr.Reached && n.Reachable(p) {
 				pr.Reached = true
 				n.Primaries[p] = pr
-				n.open(JReached, p)
 			}
+			continue
+		}
+		if !n.consumerTrunkReady(p) {
 			continue
 		}
 		pr.State = Ready

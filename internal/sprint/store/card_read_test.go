@@ -46,7 +46,7 @@ func TestCardLogIsTheWholeLogsLinesAboutIt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(6)
-	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"gate"}, Sentinel: true, Needs: []string{"s1-1"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 3, Brief: proBrief}))
 	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"n2"}, Needs: []string{"s1-1", "s2-1"}, Brief: proBrief}))
 	h.startMachine()

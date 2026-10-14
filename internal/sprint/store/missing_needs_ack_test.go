@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -51,7 +52,18 @@ func TestAckCombinesDependencyJudgmentsForOnePrimary(t *testing.T) {
 				if sentinel {
 					require.Equal(t, sprint.Waiting, c.Col, "sentinel: %+v", c)
 					require.NotEmpty(t, c.F("reached"), "sentinel: %+v", c)
-					require.Len(t, h.nOpenOf(sprint.NSentinelReached, "waiter"), 1, "sentinel: %+v", c)
+					require.Empty(t, h.nOpenOf(sprint.NSentinelReached, "waiter"), "progress is not an ackable gate")
+					notes, _, err := h.m.NotesSince(h.ctx, "", 100000)
+					require.NoError(t, err)
+					progress := 0
+					for _, n := range notes {
+						if n.Type == sprint.NSentinelReached && slices.Contains(n.Primaries, "waiter") {
+							require.Equal(t, sprint.Happened, n.Kind)
+							require.Empty(t, n.Decisions)
+							progress++
+						}
+					}
+					require.Equal(t, 1, progress)
 				} else {
 					require.Equal(t, sprint.Ready, c.Col, "primary: %+v", c)
 				}

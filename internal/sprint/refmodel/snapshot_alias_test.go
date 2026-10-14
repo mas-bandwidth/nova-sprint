@@ -194,3 +194,16 @@ func metadataSnapshot() refmodel.Snapshot {
 		}}},
 	}}
 }
+
+func TestCloneKeepsConsumerReceiptBranchesIndependent(t *testing.T) {
+	t.Parallel()
+	source := metadataSnapshot()
+	source.Tables.ConsumerMerges = []sprint.ConsumerMerge{{Card: sprint.SentinelCard{ID: "after", Revision: 4}, Barriers: sprint.ConsumerBarrierInput{Sentinels: []sprint.SentinelCard{{ID: "stop", Revision: 2}}, Targets: map[string]string{"s1": "branch@main"}}}}
+	clone := source.Clone()
+	clone.Tables.ConsumerMerges[0].Card.Revision++
+	clone.Tables.ConsumerMerges[0].Barriers.Sentinels[0].Revision++
+	clone.Tables.ConsumerMerges[0].Barriers.Targets["s1"] = "other@dev"
+	require.Equal(t, uint64(4), source.Tables.ConsumerMerges[0].Card.Revision)
+	require.Equal(t, uint64(2), source.Tables.ConsumerMerges[0].Barriers.Sentinels[0].Revision)
+	require.Equal(t, "branch@main", source.Tables.ConsumerMerges[0].Barriers.Targets["s1"])
+}

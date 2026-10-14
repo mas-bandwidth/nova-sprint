@@ -94,7 +94,7 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	holesUp(h, 4)
-	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true, Needs: []string{"s1-1"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "g", Count: 3}))
 	h.must(AddStep(sprint.AddReq{Stream: "n", IDs: []string{"needy"}, Needs: []string{"g-2"}}))
 	_, ok := h.whereRecord()
@@ -129,10 +129,13 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 	h.machine()
 	require.Equal(t, 6, holds("held while STOPPED").Held)
 
+	// This positive driver declares scoped consumer merges for the early override.
+	installSentinelFixtureForge(h, "gate", nil, []string{"g-1", "g-2", "needy"})
 	// released: the gate lands, the three behind it and the needy card go on
 	h.startMachine()
 	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"gate"}, Reason: "the wave is loaded", Coordinator: h.st.Actor, Who: h.st.Actor}))
 	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"late-1", "late-2"}, Reason: "the wave is loaded", Coordinator: h.st.Actor, Who: h.st.Actor}))
+	h.machine() // the fresh Waiting consumer receipts resolve this wave before its Ready deal
 	for round := 0; round < 12; round++ {
 		h.machine()
 		rec := holds(fmt.Sprintf("released, round %d", round))
@@ -233,9 +236,11 @@ func (h *harness) whereFacts(st *Store) (WhereFacts, bool) {
 func TestTheFirstTickCountsTheWhereRecordAndAClearMakesItAnew(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true}))
 	h.must(AddStep(sprint.AddReq{Stream: "g", Count: 4}))
 	holesUp(h, 3)
+	r := sprint.SentinelSetReq{ID: "gate", Needs: []string{"s1-1"}, Who: h.st.Actor}
+	h.must(Step{Verb: "sentinel set", Args: ArgsOf(r), Load: All, Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SentinelSet(s, r) }})
 	st, err := h.st.Pinned(h.ctx)
 	require.NoError(t, err)
 	before, counted := h.whereFacts(st)
@@ -253,7 +258,7 @@ func TestTheFirstTickCountsTheWhereRecordAndAClearMakesItAnew(t *testing.T) {
 	// a verb moves the table of a STOPPED machine: until its next tick the
 	// record is a revision behind, and where reads the cards
 	h.stopMachine()
-	h.must(AddStep(sprint.AddReq{Stream: "g2", IDs: []string{"gate2"}, Sentinel: true, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "g2", IDs: []string{"gate2"}, Sentinel: true}))
 	stale, counted := h.whereFacts(st)
 	require.False(t, counted, "a revision behind on a STOPPED machine: the cards")
 	require.Equal(t, 6, stale.Held)
@@ -294,7 +299,7 @@ func (h *harness) putWhere(r WhereRecord) {
 func TestTheTickRecountsAWhereRecordOfAnotherEpoch(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "g", IDs: []string{"gate"}, Sentinel: true}))
 	h.machine() // STOPPED: counts the record
 	rec, ok := h.whereRecord()
 	require.True(t, ok)
