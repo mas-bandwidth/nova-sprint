@@ -271,14 +271,29 @@ func probeClip(s string, n int) string {
 	return s
 }
 
-// probeMembersReal probes each member's host at once, over ssh as the fleet reaches it (its
-// machine row's login), or the local shell on this host, inside doctorProbeBudget.
-func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMachine, tools func(member string) []string, self string) map[string]sprint.MemberProbe {
+// memberProbeRun is one member's probe run by probeMemberHosts: whether it ran on this
+// host's own shell (the member is this seat), the login the fleet reaches it at, what it
+// printed, and the run's error and stderr.
+type memberProbeRun struct {
+	Local  bool
+	Host   string
+	Stdout []byte
+	Stderr string
+	Err    error
+}
+
+// probeMemberHosts runs one probe script on each member's host at once, over ssh as the
+// fleet reaches it (its machine row's login), or the local shell on this host when the
+// member is this seat, inside doctorProbeBudget: script builds each member's script, and
+// found reads one run into the caller's own result, inside the run's goroutine with the
+// budget's own ctx, so a deadline past it is seen as it was. What a host that does not
+// answer holds is found's to say.
+func probeMemberHosts[T any](ctx context.Context, machines []sprint.DoctorMachine, self string, script func(m sprint.DoctorMachine) string, found func(ctx context.Context, m sprint.DoctorMachine, run memberProbeRun) T) map[string]T {
 	ctx, cancel := context.WithTimeout(ctx, doctorProbeBudget)
 	defer cancel()
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	out := map[string]sprint.MemberProbe{}
+	out := map[string]T{}
 	for _, m := range machines {
 		wg.Add(1)
 		go func(m sprint.DoctorMachine) {
@@ -287,37 +302,49 @@ func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMach
 			if m.User != "" {
 				host = m.User + "@" + m.Name
 			}
-			p := sprint.MemberProbe{Member: m.Name, Host: host, FreeKB: -1, LinkChanges: -1}
-			script := probeScript(m.Name, m.Seat, tools(m.Name))
+			s := script(m)
 			var stdout, stderr bytes.Buffer
 			var err error
 			code := 0
 			if m.Name == self {
-				p.Host = "local"
-				cmd, c := subproc.Command(ctx, subproc.Tool, "sh", "-c", script)
+				cmd, c := subproc.Command(ctx, subproc.Tool, "sh", "-c", s)
 				defer c()
 				cmd.Stdout, cmd.Stderr = &stdout, &stderr
 				err = cmd.Run()
 			} else {
-				code, err = bench.Exec{}.Shell(ctx, host, "sh -c "+bench.Quote(script), &stdout, &stderr)
+				code, err = bench.Exec{}.Shell(ctx, host, "sh -c "+bench.Quote(s), &stdout, &stderr)
 				if err == nil && code == 255 { // ssh's own failure: the host was not reached
 					err = fmt.Errorf("ssh exit 255: %s", probeClip(stderr.String(), 160))
 				}
 			}
-			switch {
-			case err != nil && stdout.Len() == 0:
-				p.Err = probeClip(err.Error()+" "+stderr.String(), 200)
-			case ctx.Err() != nil && stdout.Len() == 0:
-				p.Err = "no answer within " + doctorProbeBudget.String()
-			default:
-				p.Reached = true
-				parseProbe(&p, stdout.Bytes())
-			}
+			r := found(ctx, m, memberProbeRun{Local: m.Name == self, Host: host, Stdout: stdout.Bytes(), Stderr: stderr.String(), Err: err})
 			mu.Lock()
-			out[m.Name] = p
+			out[m.Name] = r
 			mu.Unlock()
 		}(m)
 	}
 	wg.Wait()
 	return out
+}
+
+// probeMembersReal is the wiring's probeMembers (machinery.go): the member-env script
+// (probeScript) and its reading (parseProbe), one MemberProbe per machine.
+func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMachine, tools func(member string) []string, self string) map[string]sprint.MemberProbe {
+	return probeMemberHosts(ctx, machines, self, func(m sprint.DoctorMachine) string { return probeScript(m.Name, m.Seat, tools(m.Name)) },
+		func(ctx context.Context, m sprint.DoctorMachine, run memberProbeRun) sprint.MemberProbe {
+			p := sprint.MemberProbe{Member: m.Name, Host: run.Host, FreeKB: -1, LinkChanges: -1}
+			if run.Local {
+				p.Host = "local"
+			}
+			switch {
+			case run.Err != nil && len(run.Stdout) == 0:
+				p.Err = probeClip(run.Err.Error()+" "+run.Stderr, 200)
+			case ctx.Err() != nil && len(run.Stdout) == 0:
+				p.Err = "no answer within " + doctorProbeBudget.String()
+			default:
+				p.Reached = true
+				parseProbe(&p, run.Stdout)
+			}
+			return p
+		})
 }
