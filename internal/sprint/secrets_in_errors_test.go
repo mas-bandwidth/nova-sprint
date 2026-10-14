@@ -1,11 +1,6 @@
 package sprint_test
 
 import (
-	"errors"
-	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/repotree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secretcheck"
 )
 
@@ -67,56 +63,27 @@ internal/sprint.ParseWidth echoes the rejected width with %q (internal/sprint/wi
 internal/sprint/store.NewDeliverer echoes the rejected route with %q (internal/sprint/store/remind.go:147 returns the error of internal/sprint/remind.go:108; the bus refusal at remind.go:155 echoes it too)
 `
 
-// sprintSecretFiles is every non-test Go file under the roots, parsed, keyed from the
-// repository's root (this package's directory is internal/sprint).
-func sprintSecretFiles(t *testing.T) []secretcheck.File {
-	t.Helper()
-	root := filepath.Join("..", "..")
-	fset := token.NewFileSet()
-	var out []secretcheck.File
-	for _, r := range sprintSecretRoots {
-		err := filepath.WalkDir(filepath.Join(root, r), func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				// a directory another package's tests make and remove under a
-				// walked root (a hook's short socket directory) can vanish
-				// between the listing and the open; not a secret, and no file
-				// of it is read
-				if errors.Is(err, fs.ErrNotExist) {
-					return nil
-				}
-				return err
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			rel, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			rel = filepath.ToSlash(rel)
-			f, _ := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution) // ignored: a file that does not parse has a nil AST and is skipped
-			out = append(out, secretcheck.File{Rel: rel, AST: f, Testdata: strings.Contains("/"+rel, "/testdata/")})
-			return nil
-		})
-		require.NoError(t, err)
-	}
-	return out
-}
-
 // TestNoSecretReachesAnErrorInTheSprint is the class rule over nova-sprint's paths.
 func TestNoSecretReachesAnErrorInTheSprint(t *testing.T) {
 	t.Parallel()
-	found := secretcheck.OpenersIn(sprintSecretFiles(t))
+	parsed := repotree.Parsed(t, repotree.Query{
+		Under:      sprintSecretRoots,
+		Ext:        ".go",
+		SkipSuffix: []string{"_test.go"},
+	})
+	files := make([]secretcheck.File, len(parsed))
+	for i, pf := range parsed {
+		files[i] = secretcheck.File{
+			Rel:      pf.Path,
+			AST:      pf.AST,
+			Testdata: strings.Contains("/"+pf.Path, "/testdata/"),
+		}
+	}
+	found := secretcheck.OpenersIn(files)
 	require.NotEmpty(t, found, "the walk found no Open*/Parse*/Dial*/New* function; a rule that checks nothing passes")
-	for _, f := range secretcheck.TableFindings(found, sprintSecretOpeners, nil) {
-		t.Error(f)
-	}
+	assert.Empty(t, secretcheck.TableFindings(found, sprintSecretOpeners, nil), "a table row names a function the sprint no longer has")
 	allowed, bad := secretcheck.ParseAllowlist(sprintSecretLeakAllowlist)
-	for _, b := range bad {
-		t.Error(b)
-	}
-	for _, f := range secretcheck.Verdict(secretcheck.LeakFindings(sprintSecretOpeners, secretcheck.Shapes), allowed) {
-		t.Error(f)
-	}
+	assert.Empty(t, bad, "an allowlist line is malformed")
+	assert.Empty(t, secretcheck.Verdict(secretcheck.LeakFindings(sprintSecretOpeners, secretcheck.Shapes), allowed), "a secret reaches an error")
 	assert.True(t, found["internal/sprint.ParseRoute"], "the walk reads the sprint's own package")
 }
