@@ -17,6 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
 )
 
@@ -60,15 +61,17 @@ import (
 
 // Store runs sprint steps against a Backend.
 type Store struct {
-	B        Backend
-	Names    sprint.Names
-	Actor    string
-	Now      func() time.Time
-	NewID    func() string       // a fresh operation id family; nil is NewID
-	Sleep    func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
-	Rand     func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
-	Attempts int                 // plans per step before giving up on a busy fence; default FenceTries
-	Resends  int                 // sends of one manifest after a lost reply; default 3
+	// ReadFriendHooks reads nova-hook on the bus Redis. Nil means no liveness evidence.
+	ReadFriendHooks func(context.Context, ...string) ([]hook.Status, time.Time, error)
+	B               Backend
+	Names           sprint.Names
+	Actor           string
+	Now             func() time.Time
+	NewID           func() string       // a fresh operation id family; nil is NewID
+	Sleep           func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
+	Rand            func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
+	Attempts        int                 // plans per step before giving up on a busy fence; default FenceTries
+	Resends         int                 // sends of one manifest after a lost reply; default 3
 	// Grace is how long an operation is taken as in flight (its writer alive)
 	// before a writer that finds its first manifest unapplied abandons it.
 	Grace time.Duration
@@ -852,7 +855,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && op.Health == nil && len(op.HealthClear) == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
+		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -1579,7 +1582,7 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 // entries, each expecting the revision the one before it leaves; then the
 // notifications and the answers.
 func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprint.Snapshot) (OpRecord, error) {
-	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Health: plan.Health, HealthClear: plan.HealthClear, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
+	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
 	entries := map[string][]ntable.BatchMemberEntry{}
 	seen := map[entryKey]int{} // index+1 in entries[table]
 	cause := map[entryKey]string{}

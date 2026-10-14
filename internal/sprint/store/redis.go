@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/redis/go-redis/v9"
 )
 
 // Redis is the Backend of a Redis store holding the table layer's function
@@ -894,17 +894,6 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		}
 		p.Set(ctx, r.Names.Key(keyCoordinator), op.Seat.Holder, 0)
 		p.Set(ctx, r.Names.Key(keySeat), rec, 0)
-	}
-	// a clear first, so an observation written by the same commit stands
-	for _, f := range op.HealthClear {
-		p.Del(ctx, r.Names.Key(friendHealthKey(f)))
-	}
-	if op.Health != nil {
-		rec, err := json.Marshal(op.Health.Health)
-		if err != nil {
-			return err
-		}
-		p.Set(ctx, r.Names.Key(friendHealthKey(op.Health.Friend)), string(rec), 0)
 	}
 	if len(op.CloseTimers) > 0 {
 		raw, err := r.C.Get(ctx, r.Names.Key(keyTimers)).Result()

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"io"
 	"net"
 	"net/http"
@@ -39,12 +40,12 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
-	"github.com/redis/go-redis/v9"
 )
 
 const prog = "nova-sprint"
@@ -75,6 +76,7 @@ func main() {
 // shared by every verb it runs (the driver runs many), its clock, and how it
 // sleeps. Tests give it a backend of their own.
 type app struct {
+	readFriendHooks func(context.Context, ...string) ([]hook.Status, time.Time, error)
 	seatEnvironment *seatEnvironment
 	getenv          func(string) string
 	now             func() time.Time
@@ -206,9 +208,6 @@ type app struct {
 	// serveAddr is the store the server runs the workers' verbs on.
 	serial    controlLine
 	serveAddr string
-	// serveStarted is when this server started serving (serve.go), zero for a verb run
-	// alone: a beat's old --pong <time> counts for sprint.LegacyPongGrace after it.
-	serveStarted time.Time
 	// serving says the verb running is one a worker sent to the server (set and
 	// cleared under serial): its step names the epoch its worker holds, or is
 	// refused (runStep).
@@ -739,6 +738,21 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.ReadFriendHooks = a.readFriendHooks
+	if st.ReadFriendHooks == nil {
+		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
+			b, close, err := a.busOpen(ctx, a.getenv(busRedisEnv), a.getenv(busUserEnv))
+			if err != nil {
+				return nil, time.Time{}, err
+			}
+			defer close()
+			r, ok := b.Store.(bus.Redis)
+			if !ok {
+				return nil, time.Time{}, errors.New("friend presence requires the nova-hook Redis record")
+			}
+			return (hook.Store{C: r.C, Timeout: 5 * time.Second}).Read(ctx, names...)
+		}
+	}
 	// every verb this process runs on the store reads through one twin: a
 	// verb after the first reads only what changed (store/twin.go)
 	a.readTwinsMu.Lock()

@@ -154,7 +154,7 @@ func TestFriendSyncRunsAsAnInstalledLoopWithNoShell(t *testing.T) {
 	// the beat is the daemon's: the help names no shell loop beating for a friend
 	for _, help := range []string{friendWords(), friendVerbWords("friend beat")} {
 		assert.NotContains(t, help, "while :")
-		assert.Contains(t, help, "nova-friend")
+		assert.Contains(t, help, "nova-hook")
 	}
 }
 

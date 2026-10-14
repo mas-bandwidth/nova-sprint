@@ -66,7 +66,7 @@ func ResolveStep(r sprint.ResolveReq) Step {
 
 // TakeStep is a worker taking work cards.
 func TakeStep(r sprint.TakeReq) Step {
-	// a take for a friend's row reads the friends' seats: her status is FriendStatus, never
+	// a take for a friend's row reads the friends' seats: her status comes from nova-hook and the sprint hold, never
 	// a control card's (sprint's takeSeat)
 	friends := slices.ContainsFunc(sprint.Split(r.As), sprint.IsFriendRow)
 	load := tables(sprint.Fleet)

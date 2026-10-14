@@ -34,7 +34,7 @@ func (r *holdRig) tickBeating(d time.Duration, members ...string) {
 	for _, f := range []string{"amy", "bob"} {
 		_, err := r.st.FriendBeat(r.ctx, f)
 		require.NoError(r.t, err)
-		_, _, _, err = r.st.FriendHealth(r.ctx, f, "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+		err = setFriendHook(r.st, f, sprint.Up)
 		require.NoError(r.t, err)
 	}
 	_, err := r.st.Tick(r.ctx)

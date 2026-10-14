@@ -13,15 +13,18 @@ The `Replaces:` clause is the one place a retired word may stand in a glossary.
   Defined: [SPEC-SPRINT.md, Notifications](../SPEC-SPRINT.md#8-notifications).
 - **dealer** — the tick step that cuts a work card for a ready primary and gives it to a fleet member or friend.
   Defined: [SPEC-SPRINT.md, The fleet](../SPEC-SPRINT.md#5-the-fleet).
-- **down** — the table word for a friend, reader or machine that is not answering; the daemon's
-  finer observation is kept on the row. Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: asleep.
+- **down** — for a friend, missing, unproven or down nova-hook evidence; for a fleet
+  machine, expired beat evidence. A friend's down display takes precedence over its sprint hold.
+  Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: asleep.
 - **epoch** — one run of the four tables; every key is named at its epoch and `clear` starts the next.
   Defined: [SPEC-SPRINT.md, Epochs and clear](../SPEC-SPRINT.md#13-epochs-and-clear).
 - **fleet** — the machines that run work cards, each a member with a beat and a width.
   Defined: [SPEC-SPRINT.md, The fleet](../SPEC-SPRINT.md#5-the-fleet).
-- **friend health** — the coordinator's observation of a friend: up, held or down, with the time it was seen.
-  Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: asleep.
-- **held** — a friend or reader the coordinator has put on hold, whatever it beats.
+- **friend availability** — nova-hook's liveness evidence combined with sprint's separate hold;
+  down takes precedence, otherwise a held friend displays held and an unheld friend displays up.
+  Defined: [SPEC-SPRINT.md, The tables](../SPEC-SPRINT.md#1-the-tables). Replaces: friend health.
+- **held** — a scheduling hold set by sprint; a friend's hold persists while hook evidence
+  displays down and displays held when the hook is live and proven.
   Defined: [SPEC-SPRINT.md, The readers](../SPEC-SPRINT.md#6-the-readers).
 - **landed** — the final state of a primary after it merges onto its stream's sprint branch; promotion moves the sprint branch to the development branch.
   Defined: [SPEC-SPRINT.md, The lifecycle of a primary](../SPEC-SPRINT.md#3-the-lifecycle-of-a-primary).

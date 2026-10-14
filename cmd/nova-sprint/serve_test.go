@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"io"
 	"net"
 
@@ -46,6 +47,7 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:" + file, "NOVA_SPRINT_ACTOR": "boss"}
 	a := newApp(func(k string) string { return env[k] })
+	a.readFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) { return nil, time.Time{}, nil }
 	t.Cleanup(a.close)
 	a.serveAddr = "mem:" + file
 	a.readTip, a.readHeads = nil, nil // a broken read's branch is checked only when a test gives a tip

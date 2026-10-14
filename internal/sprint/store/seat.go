@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -98,13 +96,9 @@ func (st *Store) SeatCheck(ctx context.Context) (SeatCheck, error) {
 // "Handing over the seat", seat-key-follows-record.w5): the seat record's
 // holder when the seat has a record; else, over a key that already holds the
 // coordinator, that holder (init does not change the coordinator); else first,
-// the name init was given (--coordinator, else its actor). A store whose key
-// holds none while a friend-health record survives (an observation made under
-// an earlier seat) is not new: writing a coordinator name onto it moves the
-// seat, and the move is recorded as a seat change, so the earlier observation
-// lapses by FriendEvidence's generation check. A fresh store's first init
-// writes no seat record. It returns the name the key holds. The run loop
-// never writes the key; init and the seat's steps alone do, from the record.
+// the name init was given (--coordinator, else its actor). A fresh init writes
+// no seat record. Friend liveness and its hook record do not affect this choice.
+// The run loop never writes the key; init and the seat's steps do.
 func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 	rec, ok, err := st.Seat(ctx)
 	if err != nil {
@@ -120,49 +114,13 @@ func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 	if coord != "" {
 		return coord, st.B.SetCoordinator(ctx, coord)
 	}
-	has, err := st.hasFriendHealth(ctx)
-	if err != nil {
-		return "", err
-	}
-	if has {
-		return st.initSeatMove(ctx, first)
-	}
 	return first, st.B.SetCoordinator(ctx, first)
-}
-
-// hasFriendHealth says a friend-health record survives: an observation made
-// under an earlier seat, so the sprint is not new. A friend taken off the
-// roster has her record removed with her (SyncFriends), so a surviving record
-// is a rostered friend's.
-func (st *Store) hasFriendHealth(ctx context.Context) (bool, error) {
-	r, kv, err := st.roster(ctx)
-	if kv == nil {
-		return false, nil // a store that keeps no keys has no friend-health record
-	}
-	if err != nil || len(r) == 0 {
-		return false, err
-	}
-	names := slices.Sorted(maps.Keys(r))
-	keys := make([]string, 0, len(names))
-	for _, n := range names {
-		keys = append(keys, friendHealthKey(n))
-	}
-	_, oks, err := getKeys(ctx, kv, keys)
-	if err != nil {
-		return false, err
-	}
-	for _, ok := range oks {
-		if ok {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // initSeatMove records init's move of the seat onto a not-new store whose key
 // holds none: the seat change as the seat's own step writes it, its generation
 // stepped, written with the key, its log line and its note, so an observation
-// made under an earlier seat lapses (FriendEvidence's generation check).
+// records the new coordinator generation.
 func (st *Store) initSeatMove(ctx context.Context, first string) (string, error) {
 	step := Step{Named: true, Verb: "init", Args: "init --coordinator " + first,
 		Plan: func(s *sprint.Snapshot) sprint.Plan {

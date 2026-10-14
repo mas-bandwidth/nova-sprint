@@ -170,7 +170,6 @@ var TickDecisions = map[string][]string{
 	// a member's open files over its alarm bound (fd.go): named per member, seen, or quiet a while
 	NFilesAlarm: {"fleet up <m> --width <half>", "fleet down <m>", "ack", "wait 15m"},
 	// the coordinator's pass (coordinator_pass.go): each names its own
-	NFriendDeaf:        {"ack", "wait"},
 	NFriendIdle:        {"ack", "wait"},
 	NCoordinatorBehind: {"act", "wait"},
 	// the drift alarms (drift.go): mended, or quiet for a while; raised again every
@@ -222,10 +221,6 @@ type TickReq struct {
 	IdleAlarm bool
 	// WakeFriend wakes a friend by bus message during the stall ladder (cmd/nova-sprint/friendcards.go).
 	WakeFriend func(friend string, rung int, d time.Duration) error
-	// Sessions is each friend's session as her last beat carries it, and whether the
-	// coordinator holds her, read by the binding with every tick (coordinator_pass.go);
-	// nil is none read, and no friend is deaf.
-	Sessions map[string]FriendSession
 	// Drift is the repository's drift facts, read by the binding (ReadDrift, with the last
 	// whole-tree gate at the base; drift.go, docs/SPEC-SPRINT.md section 8, "Drift alarms"):
 	// the deadlines part keeps a judgment for each drift. nil is none read, and no drift
@@ -2093,7 +2088,7 @@ func condKey(typ, subject, card, what string) string {
 	switch typ {
 	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NReviewNoReader, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
 		NBrokenReadsOutrun, NReaderBreaks,
-		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
+		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled, NMemberIdleReaps,

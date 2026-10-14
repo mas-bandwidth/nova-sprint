@@ -138,9 +138,10 @@ type FriendReturnCard struct {
 
 // FriendReturnReq returns a friend's abandoned cards to ready.
 type FriendReturnReq struct {
-	Friend string
-	Who    string // who acts: the coordinator
-	Cards  []FriendReturnCard
+	Stopped bool // Return carries the STOP receipt for its captured owner lease.
+	Friend  string
+	Who     string // who acts: the coordinator
+	Cards   []FriendReturnCard
 	// Push addresses each card's note to the coordinator, so inbox --push carries it: the
 	// run loop's pass, which nobody watches as it acts (friend_reconcile_tick.go).
 	Push bool
@@ -191,6 +192,10 @@ func FriendReturn(s *Snapshot, r FriendReturnReq) Plan {
 			p.refuse(fc.ID, "its primary "+c.F("primary")+" is not working on it")
 			continue
 		}
+		retired := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReconcile, "return_reason": fc.Why}
+		if r.Stopped {
+			retired["stopped_from_gen"], retired["gen"] = itoa(fc.Gen), itoa(fc.Gen+1)
+		}
 		what := "returned by friend reconcile: " + fc.Why
 		n := happened(NFriendReturned, pr.Row, s.Now, pr.ID)
 		n.Who, n.What = r.Who, what
@@ -198,7 +203,7 @@ func FriendReturn(s *Snapshot, r FriendReturnReq) Plan {
 			n.To, n.Hint = s.Coordinator, "run: nova-sprint card "+pr.ID
 		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-			change(Fleet, removeEntry(c, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReconcile, "return_reason": fc.Why})),
+			change(Fleet, removeEntry(c, retired)),
 			change(Work, moveEntry(pr, pr.Row, Ready, nil, "work")),
 		}, Notes: []Note{n}, Moved: fmt.Sprintf("%s working -> retired, %s; %s working -> ready", c.ID, what, pr.ID)})
 	}
