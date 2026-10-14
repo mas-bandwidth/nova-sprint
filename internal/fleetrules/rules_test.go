@@ -5,6 +5,9 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // childRulesSHA256 is the sha256 of child-rules.txt. nova-tools holds the same file as
@@ -17,13 +20,10 @@ const childRulesSHA256 = "28fd38b11be263e28c7fc9167f3a24c8cfc4428c676b06c913fd69
 func TestChildRulesMatchTheToolsCopy(t *testing.T) {
 	t.Parallel()
 	raw, err := Rules.ReadFile("child-rules.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sum := sha256.Sum256(raw)
-	if got := hex.EncodeToString(sum[:]); got != childRulesSHA256 {
-		t.Fatalf("child-rules.txt sha256 %s, want %s: change nova-tools' fleet/child-rules.txt byte for byte with it and update the digest in both repositories", got, childRulesSHA256)
-	}
+	assert.Equal(t, childRulesSHA256, hex.EncodeToString(sum[:]),
+		"child-rules.txt sha256: change nova-tools' fleet/child-rules.txt byte for byte with it and update the digest in both repositories")
 }
 
 // TestChildRulesNeverRewriteHistory pins the worker brief's history rule: a child that
@@ -32,16 +32,12 @@ func TestChildRulesMatchTheToolsCopy(t *testing.T) {
 func TestChildRulesNeverRewriteHistory(t *testing.T) {
 	t.Parallel()
 	raw, err := Rules.ReadFile("child-rules.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	n := 0
 	for _, line := range strings.Split(string(raw), "\n") {
 		if strings.HasPrefix(line, "[no-rewrite-history] Never amend, rebase or reset onto origin") {
 			n++
 		}
 	}
-	if n != 1 {
-		t.Fatalf("want the history rule exactly once in child-rules.txt, got %d", n)
-	}
+	assert.Equal(t, 1, n, "want the history rule exactly once in child-rules.txt")
 }

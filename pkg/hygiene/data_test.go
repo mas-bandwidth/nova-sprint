@@ -4,19 +4,21 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKindDataIsEmbedded(t *testing.T) {
-	if strings.TrimSpace(kindData) == "" {
-		t.Fatal("kindData is empty: the //go:embed kinds.txt directive is missing above it")
-	}
+	t.Parallel()
+	assert.NotEmpty(t, strings.TrimSpace(kindData),
+		"kindData is empty: the //go:embed kinds.txt directive is missing above it")
 }
 
 func TestKindsDeclareEveryKindInKindsTxt(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("kinds.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	declared := map[string]bool{}
 	for _, name := range Kinds() {
 		declared[name] = true
@@ -33,7 +35,7 @@ func TestKindsDeclareEveryKindInKindsTxt(t *testing.T) {
 			continue
 		}
 		if !declared[name] {
-			t.Errorf("kind %q is in kinds.txt but is not declared; declared: %v", name, Kinds())
+			assert.True(t, declared[name], "kind %q is in kinds.txt but is not declared; declared: %v", name, Kinds())
 		}
 	}
 }

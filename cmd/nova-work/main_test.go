@@ -52,7 +52,7 @@ func unreachable(t *testing.T) github {
 		lookPath: func(p string) (string, error) { return "", fmt.Errorf("exec: %q: %w", p, exec.ErrNotFound) },
 		query: func(string) workgh.Query {
 			return func(context.Context, string, map[string]any) ([]byte, error) {
-				t.Error("the run reached GitHub")
+				assert.Fail(t, "the run reached GitHub")
 				return nil, errors.New("no GitHub in this test")
 			}
 		},

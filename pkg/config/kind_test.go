@@ -18,7 +18,7 @@ func sprintKind(t *testing.T) *Kind {
 			return k
 		}
 	}
-	t.Fatal("no sprint kind")
+	require.FailNow(t, "no sprint kind")
 	return nil
 }
 
@@ -32,7 +32,7 @@ func TestTheSprintRowsMaxAttemptsDefaultsToFour(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("the sprint row has no max_attempts field")
+	require.FailNow(t, "the sprint row has no max_attempts field")
 }
 
 func TestCheckSprintHoldsMaxAttemptsToAWholeNumberFromOneToTheCeiling(t *testing.T) {
