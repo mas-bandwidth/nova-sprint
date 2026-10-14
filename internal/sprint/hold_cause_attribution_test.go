@@ -42,6 +42,13 @@ func putOK(w *world, id, route, member string, at time.Time) {
 		"kind": "work", FieldRoute: route, "ok": "yes", "finished": stamp(at)}})
 }
 
+// dReapsOnM1 puts m1's three idle reaps on ds, at -9, -6 and -3 minutes.
+func dReapsOnM1(w *world) {
+	for i, ago := range []time.Duration{9, 6, 3} {
+		putReap(w, "x"+itoa(i+1)+".w1", "ds", "m1", w.s.Now.Add(-ago*time.Minute))
+	}
+}
+
 func forEpochs(t *testing.T, run func(t *testing.T, epoch uint64)) {
 	for _, epoch := range []uint64{0, 3} {
 		t.Run("epoch"+itoa(int(epoch)), func(t *testing.T) {
@@ -90,11 +97,8 @@ func TestAnIdleReapOnOneMemberOfAServingRouteHoldsItWithItsCause(t *testing.T) {
 	t.Parallel()
 	forEpochs(t, func(t *testing.T, epoch uint64) {
 		w := reapWorld(t, epoch)
-		now := w.s.Now
-		putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-		putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-		putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
-		putOK(w, "y1.w1", "ds", "m2", now.Add(-5*time.Minute))
+		dReapsOnM1(w)
+		putOK(w, "y1.w1", "ds", "m2", w.s.Now.Add(-5*time.Minute))
 
 		assert.Empty(t, RestsDue(w.s), "one member's reaps on a route that serves rest nothing")
 		w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
@@ -125,24 +129,36 @@ func TestAnIdleReapOnOneMemberOfAServingRouteHoldsItWithItsCause(t *testing.T) {
 // evidence the route serves says the fault is the member's. A dead provider is the likelier
 // cause, so the route rests, and never silently: the seat is told the route, the count and
 // the member, and that the member is not held (the coordinator's ruling on #206; a route
-// only one member used would otherwise never rest and say nothing).
-func TestAnIdleReapOnARouteThatServesNoOneHoldsNoMember(t *testing.T) {
+// only one member used would otherwise never rest and say nothing). An ok end before the
+// first reap says nothing of the route since (the cold read of #206, finding 2, the
+// reader's b1 probe at epoch 3).
+func TestAnIdleReapOnARouteNoOneServesSinceHoldsNoMember(t *testing.T) {
 	t.Parallel()
-	w := reapWorld(t, 1)
-	now := w.s.Now
-	putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-	putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
-	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
-	assert.Empty(t, w.s.MemberCtl("m1").F("held"), "m1 was held with no route serving elsewhere")
-	rest, ok := RouteRests(w.s.Routes, w.s.Fleet)["ds"]
-	require.True(t, ok, "the dead route did not rest")
-	assert.Equal(t, "no-model-call", rest.Cause)
-	said := false
-	for _, n := range w.notesOf(NRouteRested) {
-		said = said || (n.To == w.s.Coordinator && strings.Contains(n.What, "route ds: 3 no-model-call ends, all on m1; route rested, m1 not held"))
+	for _, tc := range []struct {
+		name     string
+		epoch    uint64
+		okBefore bool
+	}{
+		{"AnIdleReapOnARouteThatServesNoOneHoldsNoMember", 1, false},
+		{"AnOkEndBeforeTheFirstReapHoldsNoMember", 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := reapWorld(t, tc.epoch)
+			if tc.okBefore {
+				putOK(w, "y1.w1", "ds", "m2", w.s.Now.Add(-14*time.Minute))
+			}
+			dReapsOnM1(w)
+			w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
+			assert.Empty(t, w.s.MemberCtl("m1").F("held"), "m1 was held with no route serving since its first reap: %v", w.s.MemberCtl("m1").Fields)
+			rest, ok := RouteRests(w.s.Routes, w.s.Fleet)["ds"]
+			require.True(t, ok, "the dead route did not rest")
+			assert.Equal(t, RestNoModelCall, rest.Cause)
+			notes := restNoteOn(w, "ds")
+			require.Len(t, notes, 1, "the seat was not told: %+v", w.notesOf(NRouteRested))
+			assert.Contains(t, notes[0].What, "route ds: 3 no-model-call ends, all on m1; route rested, m1 not held")
+		})
 	}
-	assert.True(t, said, "the seat was not told the route, the count and the member: %+v", w.notesOf(NRouteRested))
 }
 
 // A hold the coordinator made with no cause is reported to the seat every two hours,
