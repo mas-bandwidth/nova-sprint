@@ -2649,6 +2649,17 @@ type cardView struct {
 	Texts    []storyText `json:"texts"`
 }
 
+// readCardPrimaryHint is the primary a read card reads, when the id names a read
+// card placed or retired: its own "primary" field through lookup, "" for a
+// non-read card or an unknown id (a-readers-second-verdict-answers-already-recorded).
+func readCardPrimaryHint(id string, lookup func(string) *sprint.Card) string {
+	c := lookup(id)
+	if c == nil || c.F("kind") != "read" {
+		return ""
+	}
+	return c.F("primary")
+}
+
 func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("card")
 	atEpoch := fs.Int64("at-epoch", -1, "the primary as it was at an earlier epoch (before a clear)")
@@ -2690,6 +2701,18 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed("card", err, stderr)
 	}
 	if v.Primary == nil {
+		if primary := readCardPrimaryHint(id, func(sid string) *sprint.Card {
+			s, err := st.Load(ctx, []string{sprint.Fleet}, func(*sprint.Snapshot) map[string][]string {
+				return map[string][]string{sprint.Fleet: []string{sid}}
+			})
+			if err != nil {
+				return nil
+			}
+			return s.Fleet.Card(sid)
+		}); primary != "" {
+			fmt.Fprintf(stderr, "%s card: %s is a read card of %s; run: nova-sprint card %s\n", prog, oneline.Escape(id), oneline.Escape(primary), oneline.Escape(primary))
+			return 1
+		}
 		fmt.Fprintf(stderr, "%s card: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
 		return 1
 	}

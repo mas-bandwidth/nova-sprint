@@ -68,6 +68,7 @@ nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
 # reader serves is read one tier down: the read card's tier names the strongest tier with an
 # enabled route and a reader up ("read at heavy: no frontier reader").
+# A reader who reports a verdict already recorded for its read is answered ALREADY RECORDED, exit 0; a different verdict is refused.
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
@@ -153,6 +154,7 @@ nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--d
 nova-sprint card <id> [--brief | --fields] [--json] [--at-epoch <n>]
 nova-sprint card (--all | --stream <s>) --json [--at-epoch <n>]
 nova-sprint card base <id> <branch> [--repo-dir <clone>]
+# a read card id is answered with the primary it reads
 nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]
 # every stream with its repositories, bases, release, open and landed counts, and with --cards each card in state order; repos and bases come from the union of its open cards' briefs' REPO and BASE (the source bases uses), the control card's fields only where no brief names one
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
