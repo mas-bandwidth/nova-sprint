@@ -8,6 +8,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A child that ends 134 or 137, or that leaves no result at all at ANY exit, did not judge
@@ -17,6 +19,7 @@ import (
 // read. The no-result case at exit 0 is the attempt-3 reader's finding: the card says any
 // exit, and 0 is also what a member that passes no exit reports.
 func TestEnvExitClassifiesTheMemberEnvironmentExit(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		report string
@@ -34,9 +37,8 @@ func TestEnvExitClassifiesTheMemberEnvironmentExit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ended, env := EnvExit(tc.report, tc.exit)
-			if ended != tc.ended || env != tc.env {
-				t.Fatalf("EnvExit(%q, %d) = %q, %v; want %q, %v", tc.report, tc.exit, ended, env, tc.ended, tc.env)
-			}
+			assert.Equal(t, tc.ended, ended, "EnvExit(%q, %d)", tc.report, tc.exit)
+			assert.Equal(t, tc.env, env, "EnvExit(%q, %d)", tc.report, tc.exit)
 		})
 	}
 }
@@ -44,15 +46,11 @@ func TestEnvExitClassifiesTheMemberEnvironmentExit(t *testing.T) {
 // EnvironmentExit is the attempt's word for the finish, "exit=<n>" when it is the
 // environment's, so a card's record says which exit ended it.
 func TestEnvironmentExitNamesTheCode(t *testing.T) {
-	if got := EnvironmentExit(134); got != "environment exit=134" {
-		t.Fatalf("EnvironmentExit(134) = %q", got)
-	}
-	if got := EnvironmentExit(137); got != "environment exit=137" {
-		t.Fatalf("EnvironmentExit(137) = %q", got)
-	}
-	if !IsEnvironmentExit(EnvironmentExit(0)) || IsEnvironmentExit("failed") {
-		t.Fatal("IsEnvironmentExit reads the ended word")
-	}
+	t.Parallel()
+	assert.Equal(t, "environment exit=134", EnvironmentExit(134))
+	assert.Equal(t, "environment exit=137", EnvironmentExit(137))
+	assert.True(t, IsEnvironmentExit(EnvironmentExit(0)), "IsEnvironmentExit reads the ended word")
+	assert.False(t, IsEnvironmentExit("failed"), "IsEnvironmentExit reads the ended word")
 }
 
 // hundredLines is "1\n2\n...100\n": its last forty lines are 61 to 100.
@@ -68,44 +66,41 @@ func hundredLines() string {
 // card (docs/SPEC-SPRINT.md, "An environment exit"; a-card-carries-its-consumer-history
 // reads it). More than 40 keeps the tail; fewer keeps all; the empty output is empty.
 func TestHarnessTailKeepsTheLastFortyLines(t *testing.T) {
-	if got := HarnessTail("", 40); got != "" {
-		t.Fatalf("an empty tail = %q", got)
-	}
+	t.Parallel()
+	assert.Empty(t, HarnessTail("", 40), "an empty tail")
 	short := "a\nb\nc\n"
-	if got := HarnessTail(short, 40); got != short {
-		t.Fatalf("fewer than 40 lines = %q", got)
-	}
+	assert.Equal(t, short, HarnessTail(short, 40), "fewer than 40 lines keeps all")
 	got := strings.Split(strings.TrimRight(HarnessTail(hundredLines(), 40), "\n"), "\n")
-	if len(got) != 40 || got[0] != "61" || got[39] != "100" {
-		t.Fatalf("the tail's last 40 = %d lines, first %q last %q", len(got), got[0], got[39])
-	}
+	require.Len(t, got, 40, "the tail's last 40 lines")
+	assert.Equal(t, "61", got[0])
+	assert.Equal(t, "100", got[39])
 }
 
 // EnvironmentExitRecord is the finish's one record of an environment exit: the ended word at
 // the child's exit and the last HarnessTailLines of its harness output, so the cause rides
 // the card; forty very long lines are cut to their last HarnessTailBytes, the end kept.
 func TestEnvironmentExitRecordCarriesTheEndedWordAndTail(t *testing.T) {
-	if got := EnvironmentExitRecord(134, ""); got.Ended != "environment exit=134" || got.Harness != "" {
-		t.Fatalf("EnvironmentExitRecord(134, \"\") = %+v", got)
-	}
-	got := EnvironmentExitRecord(137, hundredLines())
-	if got.Ended != "environment exit=137" {
-		t.Fatalf("Ended = %q", got.Ended)
-	}
+	t.Parallel()
+	got := EnvironmentExitRecord(134, "")
+	assert.Equal(t, "environment exit=134", got.Ended)
+	assert.Empty(t, got.Harness)
+	got = EnvironmentExitRecord(137, hundredLines())
+	assert.Equal(t, "environment exit=137", got.Ended)
 	lines := strings.Split(strings.TrimRight(got.Harness, "\n"), "\n")
-	if len(lines) != 40 || lines[0] != "61" || lines[39] != "100" {
-		t.Fatalf("Harness tail = %d lines, first %q last %q", len(lines), lines[0], lines[39])
-	}
+	require.Len(t, lines, 40, "the harness tail")
+	assert.Equal(t, "61", lines[0])
+	assert.Equal(t, "100", lines[39])
 	long := strings.Repeat(strings.Repeat("x", 2000)+"\n", 39) + "the cause\n"
 	cut := EnvironmentExitRecord(134, long).Harness
-	if len(cut) > HarnessTailBytes || !strings.HasSuffix(cut, "the cause\n") || !strings.HasPrefix(cut, "...") {
-		t.Fatalf("a long tail is cut to its end: %d bytes, ends %q", len(cut), cut[max(0, len(cut)-12):])
-	}
+	assert.LessOrEqual(t, len(cut), HarnessTailBytes, "a long tail is cut to its end")
+	assert.True(t, strings.HasSuffix(cut, "the cause\n"), "a long tail keeps its end")
+	assert.True(t, strings.HasPrefix(cut, "..."), "a long tail is cut from the front")
 }
 
 // The doctor's rate thresholds (docs/SPEC-SPRINT.md, "An environment exit"): over 10% with
 // n >= 10 is FAIL, 3% to 10% is WARN, below is OK; the counts come from the attempt records.
 func TestEnvExitRateThresholds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		env, n int
 		want   string
@@ -120,9 +115,7 @@ func TestEnvExitRateThresholds(t *testing.T) {
 		{5, 12, DoctorFail},
 		{9, 9, DoctorOK}, // under the floor: a small sample says nothing
 	} {
-		if got := EnvExitStatus(tc.env, tc.n); got != tc.want {
-			t.Fatalf("EnvExitStatus(%d, %d) = %q; want %q", tc.env, tc.n, got, tc.want)
-		}
+		assert.Equal(t, tc.want, EnvExitStatus(tc.env, tc.n), "EnvExitStatus(%d, %d)", tc.env, tc.n)
 	}
 }
 
@@ -130,21 +123,16 @@ func TestEnvExitRateThresholds(t *testing.T) {
 // remedy is the card to read; an OK rate is an OK line with no card; a member under the
 // floor is no line at all.
 func TestEnvExitCheckNamesTheRateAndTheCard(t *testing.T) {
+	t.Parallel()
 	c, ok := EnvExitCheck("b1", 12, 30, "Error: Unknown: ChildProcess.spawn (opencode)", "s1-7")
-	if !ok {
-		t.Fatal("a 40% rate is named")
-	}
+	require.True(t, ok, "a 40% rate is named")
 	want := "DOCTOR FAIL member-env b1 child exits: 12 of 30 children in the last hour ended 134/137 with no result (40%), last: Error: Unknown: ChildProcess.spawn (opencode) remedy=nova-sprint card s1-7"
-	if got := c.Line(); got != want {
-		t.Fatalf("EnvExitCheck line = %q\nwant %q", got, want)
-	}
+	assert.Equal(t, want, c.Line())
 	c, ok = EnvExitCheck("m1", 0, 50, "", "")
-	if !ok || c.Line() != "DOCTOR OK member-env m1 child exits: 0 of 50 children in the last hour ended 134/137 with no result (0%), last: - remedy=-" {
-		t.Fatalf("an OK rate is an OK line: %v %q", ok, c.Line())
-	}
-	if _, ok := EnvExitCheck("m1", 5, 9, "x", "s1-1"); ok {
-		t.Fatal("under EnvExitMinN children is no line")
-	}
+	require.True(t, ok)
+	assert.Equal(t, "DOCTOR OK member-env m1 child exits: 0 of 50 children in the last hour ended 134/137 with no result (0%), last: - remedy=-", c.Line())
+	_, ok = EnvExitCheck("m1", 5, 9, "x", "s1-1")
+	assert.False(t, ok, "under EnvExitMinN children is no line")
 }
 
 // A finish whose child exit is 134 or 137 is an environment exit that spends nothing
@@ -155,6 +143,7 @@ func TestEnvExitCheckNamesTheRateAndTheCard(t *testing.T) {
 // FieldTakeEnded), and does not hold the member. It is never failed work. Before this card
 // such a finish was takeEnded's (a spent redeal) or, at another report, failed work.
 func TestFinishRecordsAnEnvironmentExitOnTheAttempt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		exit   int
@@ -167,54 +156,37 @@ func TestFinishRecordsAnEnvironmentExitOnTheAttempt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s, r := envExitSprint(t, tc.exit, tc.report, hundredLines())
 			p := Finish(s, r)
-			if len(p.Refused) != 0 {
-				t.Fatalf("the finish refused: %+v", p.Refused)
-			}
-			if len(p.Units) != 1 {
-				t.Fatalf("one unit, got %d: %+v", len(p.Units), p.Units)
-			}
+			require.Empty(t, p.Refused)
+			require.Len(t, p.Units, 1)
 			u := p.Units[0]
 			wc := envExitEntryOf(u, "c1")
-			if wc.Move == nil || wc.Move.Col != Withdrawn {
-				t.Fatalf("the work card withdraws, not %+v", wc.Move)
-			}
-			ended := "environment exit=" + itoa(tc.exit)
-			if got := wc.Set[FieldEnvExit]; got != ended {
-				t.Fatalf("ended = %q; want %s", got, ended)
-			}
-			if _, ok := wc.Set[FieldTakeEnded]; ok {
-				t.Fatal("an environment exit spends no redeal: FieldTakeEnded must not be set")
-			}
-			if _, ok := wc.Set["redeals"]; ok {
-				t.Fatal("an environment exit counts no redeal")
-			}
+			require.NotNil(t, wc.Move, "the work card withdraws")
+			assert.Equal(t, Withdrawn, wc.Move.Col, "the work card withdraws")
+			assert.Equal(t, "environment exit="+itoa(tc.exit), wc.Set[FieldEnvExit])
+			_, hasTakeEnded := wc.Set[FieldTakeEnded]
+			assert.False(t, hasTakeEnded, "an environment exit spends no redeal: FieldTakeEnded must not be set")
+			_, hasRedeals := wc.Set["redeals"]
+			assert.False(t, hasRedeals, "an environment exit counts no redeal")
 			lines := strings.Split(strings.TrimRight(wc.Set[FieldHarnessTail], "\n"), "\n")
-			if len(lines) != HarnessTailLines || lines[0] != "61" || lines[HarnessTailLines-1] != "100" {
-				t.Fatalf("harness tail = %d lines first %q last %q", len(lines), lines[0], lines[HarnessTailLines-1])
-			}
+			require.Len(t, lines, HarnessTailLines, "the harness tail")
+			assert.Equal(t, "61", lines[0])
+			assert.Equal(t, "100", lines[HarnessTailLines-1])
 			pr := envExitEntryOf(u, "p1")
-			if pr.Move == nil || pr.Move.Col != Ready {
-				t.Fatalf("the primary returns to ready, not %+v", pr.Move)
-			}
+			require.NotNil(t, pr.Move, "the primary returns to ready")
+			assert.Equal(t, Ready, pr.Move.Col, "the primary returns to ready")
 			for _, f := range []string{"attempt", "failed", "result"} {
-				if _, ok := pr.Set[f]; ok {
-					t.Fatalf("the primary's %s is unchanged by an environment exit: %+v", f, pr.Set)
-				}
+				_, ok := pr.Set[f]
+				assert.False(t, ok, "the primary's %s is unchanged by an environment exit", f)
 			}
-			if pr.Set[FieldHarnessTail] != wc.Set[FieldHarnessTail] {
-				t.Fatal("the primary carries the same harness tail")
-			}
+			assert.Equal(t, wc.Set[FieldHarnessTail], pr.Set[FieldHarnessTail], "the primary carries the same harness tail")
 			rec := pr.Set[FieldCostRecord+"c1#g1"]
-			if !strings.Contains(rec, "end=environment-exit="+itoa(tc.exit)) || !strings.Contains(rec, "who=m1") {
-				t.Fatalf("the take's consumer record on the primary ends on the environment: %q", rec)
-			}
+			assert.Contains(t, rec, "end=environment-exit="+itoa(tc.exit), "the take's consumer record on the primary ends on the environment")
+			assert.Contains(t, rec, "who=m1")
 			found := false
 			for _, n := range u.Notes {
 				found = found || n.Type == NMemberEnvExit
 			}
-			if !found {
-				t.Fatalf("no %s note: %+v", NMemberEnvExit, u.Notes)
-			}
+			assert.True(t, found, "no %s note: %+v", NMemberEnvExit, u.Notes)
 		})
 	}
 }
@@ -226,28 +198,25 @@ func TestFinishRecordsAnEnvironmentExitOnTheAttempt(t *testing.T) {
 // set, the work card carries `ended=environment exit=<n>` and the tail, and the take's
 // consumer record ends `no result environment exit=<n>`, which the doctor counts.
 func TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake(t *testing.T) {
+	t.Parallel()
 	for _, exit := range []int{0, 1} {
 		t.Run("exit "+itoa(exit), func(t *testing.T) {
 			s, r := envExitSprint(t, exit, "no result: no RESULT.md shape", hundredLines())
 			p := Finish(s, r)
-			if len(p.Refused) != 0 || len(p.Units) != 1 {
-				t.Fatalf("one unit, no refusal: %+v %+v", p.Refused, p.Units)
-			}
+			require.Empty(t, p.Refused)
+			require.Len(t, p.Units, 1)
 			wc := envExitEntryOf(p.Units[0], "c1")
-			if wc.Set[FieldEnvExit] != "environment exit="+itoa(exit) || wc.Set[FieldTakeEnded] == "" {
-				t.Fatalf("an ended take with the environment's word: %+v", wc.Set)
-			}
-			if lines := strings.Split(strings.TrimRight(wc.Set[FieldHarnessTail], "\n"), "\n"); len(lines) != HarnessTailLines {
-				t.Fatalf("the tail rides the card: %d lines", len(lines))
-			}
+			assert.Equal(t, "environment exit="+itoa(exit), wc.Set[FieldEnvExit])
+			assert.NotEmpty(t, wc.Set[FieldTakeEnded], "an ended take with the environment's word")
+			lines := strings.Split(strings.TrimRight(wc.Set[FieldHarnessTail], "\n"), "\n")
+			assert.Len(t, lines, HarnessTailLines, "the tail rides the card")
 			pr := envExitEntryOf(p.Units[0], "p1")
-			if pr.Move == nil || pr.Move.Col != Ready || pr.Set["failed"] != "" {
-				t.Fatalf("the primary is ready, never failed: %+v %+v", pr.Move, pr.Set)
-			}
+			require.NotNil(t, pr.Move, "the primary is ready, never failed")
+			assert.Equal(t, Ready, pr.Move.Col, "the primary is ready, never failed")
+			assert.Empty(t, pr.Set["failed"], "the primary is ready, never failed")
 			rec := pr.Set[FieldCostRecord+"c1#g1"]
-			if !strings.Contains(rec, "end=no-result-environment-exit="+itoa(exit)) || pr.Set[FieldHarnessTail] == "" {
-				t.Fatalf("the take's record names the exit and the primary the tail: %q", rec)
-			}
+			assert.Contains(t, rec, "end=no-result-environment-exit="+itoa(exit), "the take's record names the exit")
+			assert.NotEmpty(t, pr.Set[FieldHarnessTail], "the primary carries the tail")
 		})
 	}
 }
@@ -256,6 +225,7 @@ func TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake(t *testing.T) {
 // environment exit: the attempt is not marked `ended=environment exit=<n>`. A friend's row
 // is no member's environment: her no-result finish is judged as before.
 func TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		exit   int
@@ -269,12 +239,8 @@ func TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit(t *testing.T) {
 			s, r := envExitSprint(t, tc.exit, tc.report, "")
 			r.Failed = tc.failed
 			p := Finish(s, r)
-			if len(p.Units) != 1 {
-				t.Fatalf("one unit, got %d: %+v", len(p.Units), p.Units)
-			}
-			if got := envExitEntryOf(p.Units[0], "c1").Set[FieldEnvExit]; got != "" {
-				t.Fatalf("ended = %q; want none", got)
-			}
+			require.Len(t, p.Units, 1)
+			assert.Empty(t, envExitEntryOf(p.Units[0], "c1").Set[FieldEnvExit], "ended; want none")
 		})
 	}
 }
@@ -309,6 +275,7 @@ func envExitEntryOf(u Unit, id string) ntable.BatchMemberEntry {
 // record ending so. Before this card the same return was retired by returned, which spends
 // the member at the attempt (a card read once by every member ended `cannot ask`).
 func TestAReadsEnvironmentExitSpendsNoReader(t *testing.T) {
+	t.Parallel()
 	s := &Snapshot{Now: time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC), Work: NewTable(Work), Readers: NewTable(Readers),
 		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator"}
 	s.Work.SetRows([]string{"s1"})
@@ -319,29 +286,22 @@ func TestAReadsEnvironmentExitSpendsNoReader(t *testing.T) {
 		"attempt": "1", "head": "abc", "gen": "1", "asked": stamp(s.Now.Add(-time.Minute)), FieldReadCard: "1"}})
 	p := Read(s, ReadReq{Sel: Sel{IDs: []string{rid}}, As: "m1", Return: true, Reason: "no verdict (ran=false verdict=\"\"): aborted",
 		Exit: 134, Harness: "Error: Unknown: ChildProcess.spawn (opencode)\nAborted (core dumped)\n", Who: "m1"})
-	if len(p.Refused) != 0 || len(p.Units) != 1 {
-		t.Fatalf("one unit, no refusal: %+v %+v", p.Refused, p.Units)
-	}
+	require.Empty(t, p.Refused)
+	require.Len(t, p.Units, 1)
 	rc := envExitEntryOf(p.Units[0], rid)
-	if rc.Set["retired_by"] != RetiredByEnvironment || rc.Set[FieldEnvExit] != "environment exit=134" ||
-		!strings.HasPrefix(rc.Set[FieldHarnessTail], "Error: Unknown: ChildProcess.spawn") {
-		t.Fatalf("the read card is retired by the environment with its record: %+v", rc.Set)
-	}
+	assert.Equal(t, RetiredByEnvironment, rc.Set["retired_by"])
+	assert.Equal(t, "environment exit=134", rc.Set[FieldEnvExit])
+	assert.True(t, strings.HasPrefix(rc.Set[FieldHarnessTail], "Error: Unknown: ChildProcess.spawn"), "the read card is retired by the environment with its record")
 	after := &Card{ID: rid, Row: "m1", Fields: rc.Set}
-	if readSpent([]*Card{after}) {
-		t.Fatal("an environment exit spends no reader: the member may read the card again")
-	}
-	if !readSpent([]*Card{{ID: rid, Row: "m1", Fields: map[string]string{"retired_by": RetiredByReturned}}}) {
-		t.Fatal("a return of the reader's own still spends it")
-	}
+	assert.False(t, readSpent([]*Card{after}), "an environment exit spends no reader: the member may read the card again")
+	assert.True(t, readSpent([]*Card{{ID: rid, Row: "m1", Fields: map[string]string{"retired_by": RetiredByReturned}}}), "a return of the reader's own still spends it")
 	pr := envExitEntryOf(p.Units[0], "p1")
 	found := false
 	for k, v := range pr.Set {
 		found = found || strings.HasPrefix(k, FieldCostRecord) && strings.Contains(v, "end=environment-exit=134")
 	}
-	if !found || pr.Set[FieldHarnessTail] == "" {
-		t.Fatalf("the primary carries the run's record and the tail: %+v", pr.Set)
-	}
+	assert.True(t, found, "the primary carries the run's record")
+	assert.NotEmpty(t, pr.Set[FieldHarnessTail], "the primary carries the tail")
 }
 
 // EnvExitChildren counts each member's children in the window from the attempt records on
@@ -351,6 +311,7 @@ func TestAReadsEnvironmentExitSpendsNoReader(t *testing.T) {
 // doctor's "ended 134/137"), the histogram every environment exit by code; and the latest
 // 134/137's card and the first line of its harness tail are kept for the doctor's line.
 func TestEnvExitChildrenCountsTheMemberEnvironmentExits(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC)
 	s := &Snapshot{Now: now, Work: NewTable(Work), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
 	s.Work.SetRows([]string{"s1"})
@@ -387,16 +348,16 @@ func TestEnvExitChildrenCountsTheMemberEnvironmentExits(t *testing.T) {
 		con("p4.w3", "work", "ghost", "environment exit=134", now.Add(-time.Minute)))
 
 	got := EnvExitChildren(s, now, time.Hour)
-	if len(got) != 1 {
-		t.Fatalf("counts = %+v; want m1 alone", got)
-	}
+	require.Len(t, got, 1, "counts = %+v; want m1 alone", got)
 	c := got[0]
-	if c.Member != "m1" || c.Env != 2 || c.N != 12 || c.Exits["134"] != 1 || c.Exits["137"] != 1 || c.Exits["0"] != 1 {
-		t.Fatalf("m1 = %+v; want env=2 (134/137 only) n=12, one each of 134, 137 and 0 in the histogram", c)
-	}
-	if c.Card != "p3" || c.Last != "killed" {
-		t.Fatalf("m1 last = %q card %q; want the latest exit's (p3)", c.Last, c.Card)
-	}
+	assert.Equal(t, "m1", c.Member)
+	assert.Equal(t, 2, c.Env, "env counts 134/137 only")
+	assert.Equal(t, 12, c.N)
+	assert.Equal(t, 1, c.Exits["134"])
+	assert.Equal(t, 1, c.Exits["137"])
+	assert.Equal(t, 1, c.Exits["0"])
+	assert.Equal(t, "p3", c.Card, "the latest exit's card")
+	assert.Equal(t, "killed", c.Last, "the latest exit's tail")
 }
 
 // The deal step refuses a card at EnvExitCardCap environment exits at its attempt, naming the
@@ -416,17 +377,13 @@ func TestTheDealRefusesACardAtTheEnvironmentExitCap(t *testing.T) {
 			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 		}
 	}
-	if got := len(envExitHistory(w.s.Fleet.Card(wc))); got != EnvExitCardCap {
-		t.Fatalf("the attempt's history holds %d exits; want %d", got, EnvExitCardCap)
-	}
+	assert.Len(t, envExitHistory(w.s.Fleet.Card(wc)), EnvExitCardCap, "the attempt's history holds the cap in exits")
 	p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})
-	if len(p.Units) != 0 || len(p.Refused) != 1 || !strings.Contains(p.Refused[0].Why, "ended on the member's environment 3 times (the cap is 3) and is not dealt again") ||
-		!strings.Contains(p.Refused[0].Why, "exits 134, 134, 134") {
-		t.Fatalf("the deal refuses it at the cap: %+v", p)
-	}
-	if w.s.Work.Card("s1-1").F("attempt") != "1" {
-		t.Fatalf("the same attempt: %s", w.s.Work.Card("s1-1").F("attempt"))
-	}
+	assert.Empty(t, p.Units)
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "ended on the member's environment 3 times (the cap is 3) and is not dealt again")
+	assert.Contains(t, p.Refused[0].Why, "exits 134, 134, 134")
+	assert.Equal(t, "1", w.s.Work.Card("s1-1").F("attempt"), "the same attempt")
 }
 
 // A no-result at exit 0 whose finish carries a nothing-to-do decision over its bar is routed by
@@ -434,17 +391,18 @@ func TestTheDealRefusesACardAtTheEnvironmentExitCap(t *testing.T) {
 // spends nothing (HardEnvExit). Before the fix finishPlan sent it to envExited, which spent
 // nothing, skipped the failed-work routing and added `m1=0` to the 134/137 cap's history.
 func TestADecidedNothingToDoIsNeverAnEnvironmentExit(t *testing.T) {
+	t.Parallel()
 	s, r := envExitSprint(t, 0, "no result: no RESULT.md shape", "")
 	s.Fleet.Card("c1").Fields[FieldDecideAttemptNothingToDo] = "0.5"
 	r.Decided = decide.ClassNothingToDo + " p=0.9 op=" + decide.AttemptOp("p1", 3, "state")
 	p := Finish(s, r)
-	if len(p.Refused) != 0 || len(p.Units) != 1 {
-		t.Fatalf("one unit, no refusal: %+v %+v", p.Refused, p.Units)
-	}
+	require.Empty(t, p.Refused)
+	require.Len(t, p.Units, 1)
 	wc := envExitEntryOf(p.Units[0], "c1")
-	if wc.Move == nil || wc.Move.Col == Withdrawn || wc.Set[FieldEnvExitHistory] != "" || wc.Set[FieldEnvExit] != "" {
-		t.Fatalf("routed as the decision's failed work, never an environment exit: %+v %+v", wc.Move, wc.Set)
-	}
+	require.NotNil(t, wc.Move, "routed as the decision's failed work, never an environment exit")
+	assert.NotEqual(t, Withdrawn, wc.Move.Col, "routed as the decision's failed work, never an environment exit")
+	assert.Empty(t, wc.Set[FieldEnvExitHistory])
+	assert.Empty(t, wc.Set[FieldEnvExit])
 }
 
 // readEnvSprint is a sprint with the primary p1 in review at attempt 1 and m1's read card of it
@@ -473,6 +431,7 @@ func readEnvSprint(t *testing.T, prior string) (*Snapshot, string) {
 // the reader and the exit codes. An exit of another attempt or reader does not count. Before
 // the fix a read whose child always died 134 was dealt again forever.
 func TestAReadsEnvironmentExitsAreCappedAndJudgedOnce(t *testing.T) {
+	t.Parallel()
 	ret := func(s *Snapshot, rid string, exit int) Plan {
 		return Read(s, ReadReq{Sel: Sel{IDs: []string{rid}}, As: "m1", Return: true, Reason: "no verdict (ran=false verdict=\"\"): aborted",
 			Exit: exit, Harness: "Error: Unknown: ChildProcess.spawn (opencode)\n", Who: "m1"})
@@ -480,43 +439,35 @@ func TestAReadsEnvironmentExitsAreCappedAndJudgedOnce(t *testing.T) {
 	// the second: below the cap, unspent, counted (another attempt's and reader's exits not)
 	s, rid := readEnvSprint(t, "0:m1=134,1:m2=134,1:m1=134")
 	p := ret(s, rid, 137)
-	if len(p.Units) != 1 || envExitEntryOf(p.Units[0], rid).Set["retired_by"] != RetiredByEnvironment {
-		t.Fatalf("below the cap: retired by the environment, unspent: %+v", p.Units)
-	}
-	if got := envExitEntryOf(p.Units[0], "p1").Set[FieldEnvExitReads]; got != "0:m1=134,1:m2=134,1:m1=134,1:m1=137" {
-		t.Fatalf("the primary counts it: %q", got)
-	}
+	require.Len(t, p.Units, 1, "below the cap: retired by the environment, unspent")
+	assert.Equal(t, RetiredByEnvironment, envExitEntryOf(p.Units[0], rid).Set["retired_by"], "below the cap: retired by the environment, unspent")
+	assert.Equal(t, "0:m1=134,1:m2=134,1:m1=134,1:m1=137", envExitEntryOf(p.Units[0], "p1").Set[FieldEnvExitReads], "the primary counts it")
 	for _, n := range p.Units[0].Notes {
-		if n.Type == NBound {
-			t.Fatalf("no judgment below the cap: %+v", n)
-		}
+		assert.NotEqual(t, NBound, n.Type, "no judgment below the cap")
 	}
 	// the third: the cap
 	s, rid = readEnvSprint(t, "1:m1=134,1:m1=137")
 	p = ret(s, rid, 134)
-	if len(p.Units) != 1 {
-		t.Fatalf("one unit: %+v", p)
-	}
+	require.Len(t, p.Units, 1)
 	rc := envExitEntryOf(p.Units[0], rid)
-	if rc.Set["retired_by"] != RetiredByReturned || !readSpent([]*Card{{ID: rid, Row: "m1", Fields: rc.Set}}) {
-		t.Fatalf("at the cap the reader is spent: %+v", rc.Set)
-	}
+	assert.Equal(t, RetiredByReturned, rc.Set["retired_by"])
+	assert.True(t, readSpent([]*Card{{ID: rid, Row: "m1", Fields: rc.Set}}), "at the cap the reader is spent")
 	var bounds []Note
 	for _, n := range p.Units[0].Notes {
 		if n.Type == NBound && n.Kind == Judgment {
 			bounds = append(bounds, n)
 		}
 	}
-	if len(bounds) != 1 || !strings.Contains(bounds[0].What, rid+": m1's read of attempt 1 ended on the environment 3 times (the cap is 3) and is not dealt to m1 again: exits 134, 137, 134") ||
-		WaitRefusal(bounds[0]) == "" {
-		t.Fatalf("one bound judgment naming the read, the reader and the codes, wait refused: %+v", bounds)
-	}
+	require.Len(t, bounds, 1, "one bound judgment naming the read, the reader and the codes")
+	assert.Contains(t, bounds[0].What, rid+": m1's read of attempt 1 ended on the environment 3 times (the cap is 3) and is not dealt to m1 again: exits 134, 137, 134")
+	assert.NotEmpty(t, WaitRefusal(bounds[0]), "wait refused")
 }
 
 // The readers table's read is capped the same way: below the cap a 134/137 return goes back to
 // asked without counting a re-ask; at EnvReadCap it is retired as a return of the reader's own,
 // with one bound judgment.
 func TestAReadersTableReadsEnvironmentExitsAreCapped(t *testing.T) {
+	t.Parallel()
 	s := &Snapshot{Now: time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC), Work: NewTable(Work), Readers: NewTable(Readers),
 		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator"}
 	s.Work.SetRows([]string{"s1"})
@@ -526,22 +477,18 @@ func TestAReadersTableReadsEnvironmentExitsAreCapped(t *testing.T) {
 	s.Readers.Put(&Card{ID: "p1.r1", Row: "reader-a", Col: Reading, Fields: map[string]string{"kind": "read", "primary": "p1", "stream": "s1",
 		"reader": "reader-a", "attempt": "1", "head": "abc", "gen": "1", "asked": stamp(s.Now.Add(-time.Minute)), "begun": stamp(s.Now)}})
 	p := Read(s, ReadReq{Sel: Sel{IDs: []string{"p1.r1"}}, As: "reader-a", Return: true, Reason: "aborted", Exit: 137, Who: "reader-a"})
-	if len(p.Refused) != 0 || len(p.Units) != 1 {
-		t.Fatalf("one unit: %+v %+v", p.Refused, p.Units)
-	}
+	require.Empty(t, p.Refused)
+	require.Len(t, p.Units, 1)
 	rc := envExitEntryOf(p.Units[0], "p1.r1")
-	if !rc.Remove || rc.Set["retired_by"] != RetiredByReturned {
-		t.Fatalf("at the cap the read is retired as returned: %+v", rc)
-	}
+	assert.True(t, rc.Remove, "at the cap the read is retired as returned")
+	assert.Equal(t, RetiredByReturned, rc.Set["retired_by"])
 	found := 0
 	for _, n := range p.Units[0].Notes {
 		if n.Type == NBound && strings.Contains(n.What, "exits 134, 134, 137") {
 			found++
 		}
 	}
-	if found != 1 {
-		t.Fatalf("one bound judgment: %+v", p.Units[0].Notes)
-	}
+	assert.Equal(t, 1, found, "one bound judgment: %+v", p.Units[0].Notes)
 }
 
 // Two readers' environment exits of one primary in the one Read step accumulate on the
@@ -549,6 +496,7 @@ func TestAReadersTableReadsEnvironmentExitsAreCapped(t *testing.T) {
 // exit off the history it is building, not the primary's original field each time, so both
 // readers' entries survive and the reader that reached the cap is judged once.
 func TestTwoReadersEnvironmentExitsOfOnePrimaryAccumulate(t *testing.T) {
+	t.Parallel()
 	s := &Snapshot{Now: time.Date(2026, 10, 11, 18, 25, 0, 0, time.UTC), Work: NewTable(Work), Readers: NewTable(Readers),
 		Merge: NewTable(Merge), Fleet: NewTable(Fleet), Coordinator: "coordinator", Actor: "coordinator"}
 	s.Work.SetRows([]string{"s1"})
@@ -563,9 +511,7 @@ func TestTwoReadersEnvironmentExitsOfOnePrimaryAccumulate(t *testing.T) {
 	s.Readers.Put(rc("p1.r1.reader-b", "reader-b"))
 	p := Read(s, ReadReq{Sel: Sel{IDs: []string{"p1.r1.reader-a", "p1.r1.reader-b"}}, As: "reader-a,reader-b", Return: true,
 		Reason: "no verdict (ran=false verdict=\"\"): aborted", Exit: 137, Harness: "Error: Unknown: ChildProcess.spawn (opencode)\n", Who: "m1"})
-	if len(p.Refused) != 0 {
-		t.Fatalf("no refusal: %+v", p.Refused)
-	}
+	require.Empty(t, p.Refused, "no refusal")
 	var final string
 	for _, u := range p.Units {
 		for _, ch := range u.Changes {
@@ -575,9 +521,7 @@ func TestTwoReadersEnvironmentExitsOfOnePrimaryAccumulate(t *testing.T) {
 		}
 	}
 	want := "1:reader-a=134,1:reader-a=137,1:reader-a=137,1:reader-b=137"
-	if final != want {
-		t.Fatalf("both readers' exits accumulate on the primary:\n got %q\nwant %q", final, want)
-	}
+	assert.Equal(t, want, final, "both readers' exits accumulate on the primary")
 	bounds := 0
 	for _, u := range p.Units {
 		for _, n := range u.Notes {
@@ -586,7 +530,5 @@ func TestTwoReadersEnvironmentExitsOfOnePrimaryAccumulate(t *testing.T) {
 			}
 		}
 	}
-	if bounds != 1 {
-		t.Fatalf("one bound judgment for the reader that reached the cap: %d", bounds)
-	}
+	assert.Equal(t, 1, bounds, "one bound judgment for the reader that reached the cap")
 }

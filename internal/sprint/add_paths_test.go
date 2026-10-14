@@ -256,7 +256,7 @@ func TestAdmissionPathsReadMarker(t *testing.T) {
 			t.Parallel()
 			tree := AdmissionTree{Files: []string{"a.go", "b.go"}, Missing: tc.missing,
 				Hold: func(string) ([]string, error) {
-					t.Fatal("no holder lookup is needed for this fixture")
+					assert.Fail(t, "no holder lookup is needed for this fixture")
 					return nil, nil
 				}}
 			brief := "RESULT: c tier: pro\nREPO: owner/repo\nBASE: sprint/s\nPATHS: " + tc.paths + "\nSTART: " + tc.start + "\nTEST: none fixture\n\nTHE TASK. Read the fixture.\n"

@@ -169,7 +169,7 @@ func TestTheNovaConfigRemediesNameRealFlags(t *testing.T) {
 				assert.True(t, kinds[apply[i+1]], "%s: --kind %s names a kind", remedy, apply[i+1])
 			case "--actor":
 			default:
-				t.Errorf("%s: apply takes --kind and --actor here, not %s", remedy, apply[i])
+				assert.Failf(t, "apply takes --kind and --actor here", "%s: not %s", remedy, apply[i])
 			}
 		}
 	}

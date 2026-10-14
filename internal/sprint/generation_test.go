@@ -3,6 +3,7 @@ package sprint
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,16 +86,18 @@ func TestStartAfterAWithdrawalDealsTheSameCard(t *testing.T) {
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1", "s1-2"}}}))
 	pr := w.s.Work.Card("s1-1")
 	c := w.s.Fleet.Card("s1-1.w1")
-	switch {
-	case pr.Col != Working || pr.F("work") != "s1-1.w1" || pr.Int("attempt") != 1:
-		t.Fatalf("the primary: %s work %s attempt %d", pr.Col, pr.F("work"), pr.Int("attempt"))
-	case c.Col != Ready || c.Int("gen") <= genW || c.F("member") != c.Row:
-		t.Fatalf("the card dealt again: %s gen %d member %s", placeWord(c), c.Int("gen"), c.F("member"))
-	case c.Score != score0 || c.Score != pr.Score || c.Int("attempt") != 1 || c.F("withdrawn") != "" || c.F("taken") != "":
-		t.Fatalf("the card changed: score %v (was %v) attempt %d withdrawn %q taken %q", c.Score, score0, c.Int("attempt"), c.F("withdrawn"), c.F("taken"))
-	case w.s.Fleet.Card("s1-1.w2") != nil:
-		t.Fatalf("a second attempt's card was cut")
-	}
+	assert.Equal(t, Working, pr.Col, "the primary's column")
+	assert.Equal(t, "s1-1.w1", pr.F("work"), "the primary's work card")
+	assert.Equal(t, 1, pr.Int("attempt"), "the primary's attempt")
+	assert.Equal(t, Ready, c.Col, "the card dealt again")
+	assert.Greater(t, c.Int("gen"), genW, "the card's generation advanced")
+	assert.Equal(t, c.Row, c.F("member"), "the card's member")
+	assert.Equal(t, score0, c.Score, "the card keeps its score")
+	assert.Equal(t, pr.Score, c.Score, "the card's score matches the primary")
+	assert.Equal(t, 1, c.Int("attempt"), "the card's attempt")
+	assert.Empty(t, c.F("withdrawn"), "the card's withdrawn field")
+	assert.Empty(t, c.F("taken"), "the card's taken field")
+	assert.Nil(t, w.s.Fleet.Card("s1-1.w2"), "a second attempt's card was not cut")
 	w.clean("dealt again")
 	// the worker that held the old generation is stale; the new one finishes
 	stale := Finish(w.s, FinishReq{Sel: Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: gen0}})
