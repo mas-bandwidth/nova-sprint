@@ -54,7 +54,7 @@ func TestTheMigrationGivesTheFleetTableItsLockedShape(t *testing.T) {
 			require.Equal(t, live, f[2], "%q: the live store's fleet table", line)
 			hidden = append(hidden, f[4])
 		default:
-			t.Fatalf("%q: a migration line of a form this test does not apply", line)
+			require.FailNowf(t, "migration line", "%q: a migration line of a form this test does not apply", line)
 		}
 	}
 	require.Equal(t, 3, ran, "the migration's three writes")

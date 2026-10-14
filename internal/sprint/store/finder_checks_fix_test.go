@@ -56,7 +56,7 @@ func (h *harness) toReader(id, reader string) *sprint.Card {
 		require.NotEmpty(h.t, rcs, "%s: a read outstanding", id)
 		h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{id}}, Instead: rcs[0].Row}))
 	}
-	h.t.Fatalf("%s: never asked of %s", id, reader)
+	require.FailNowf(h.t, "never asked", "%s: never asked of %s", id, reader)
 	return nil
 }
 

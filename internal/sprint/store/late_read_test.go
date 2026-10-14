@@ -17,73 +17,62 @@ import (
 // its returned read went back to the route it failed on, and the level moved
 // its other read from reader to reader.
 
-// A returned read asked again in place, no other reader free, runs on a route
-// drawn afresh, never the one it returned on while the tier has another.
-func TestAReturnedReadAskedAgainInPlaceRunsOnAnotherRoute(t *testing.T) {
+// A returned read, asked again in place with no other reader free or taken to
+// a reader the away mark frees, runs on a route drawn afresh, never the one it
+// returned on while the tier has another: the same exclusion either way.
+func TestAReturnedReadRunsOnAnotherRoute(t *testing.T) {
 	t.Parallel()
-	h := routeHarness(t, route("pro-a", "pro"), route("pro-b", "pro"))
-	require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-c", true, "tester"))
-	require.NoError(t, h.st.BeatReaders(h.ctx))
-	h.addReady("s1", 1, briefOf("pro", ""))
-	h.setPrimary("s1-1", map[string]string{sprint.FieldTierNow: "pro"}) // a pro card on pro (flash first: escalated)
-	h.startMachine()
-	h.machine()
-	h.work("m1")
-	h.work("m2")
-	h.machine()
-	// the tick asked the pair together (reads are asked together, sprint.ReadsWanted)
-	var back *sprint.Card
-	for _, rc := range readsAt(h.snap(), h.snap().Work.Card("s1-1")) {
-		if rc.F(sprint.FieldRoute) == "pro-b" {
-			back = rc
-		}
+	for _, tc := range []struct {
+		name string
+		free bool // the away reader comes back before the tick, so the read is taken to it
+	}{
+		{"asked again in place", false},
+		{"taken to another reader", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := routeHarness(t, route("pro-a", "pro"), route("pro-b", "pro"))
+			require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-c", true, "tester"))
+			require.NoError(t, h.st.BeatReaders(h.ctx))
+			h.addReady("s1", 1, briefOf("pro", ""))
+			h.setPrimary("s1-1", map[string]string{sprint.FieldTierNow: "pro"}) // a pro card on pro (flash first: escalated)
+			h.startMachine()
+			h.machine()
+			h.work("m1")
+			h.work("m2")
+			h.machine()
+			// the tick asked the pair together (reads are asked together, sprint.ReadsWanted)
+			var back *sprint.Card
+			for _, rc := range readsAt(h.snap(), h.snap().Work.Card("s1-1")) {
+				if rc.F(sprint.FieldRoute) == "pro-b" {
+					back = rc
+				}
+			}
+			// the deal took pro-a, the reads pro-b and pro-a: the index is at pro-b
+			require.NotNil(t, back, "a read on pro-b")
+			h.must(ReadStep(sprint.ReadReq{As: back.Row, Return: true, Reason: "no verdict (ran=false)", Sel: sprint.Sel{IDs: []string{back.ID}}}))
+			if tc.free {
+				require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-c", false, "tester"))
+				require.NoError(t, h.st.BeatReaders(h.ctx))
+			}
+			h.machine()
+			if tc.free {
+				assert.Nil(t, h.snap().Readers.Placed(back.ID), "the returned read is taken back")
+				moved := h.snap().Readers.Placed(sprint.ReadCardID("s1-1", 1, "reader-c"))
+				require.NotNil(t, moved, "asked of the free reader")
+				assert.Equal(t, "pro-a", moved.F(sprint.FieldRoute), "a route drawn afresh, not the one it returned on")
+				h.clean("taken to another reader")
+				return
+			}
+			again := h.snap().Readers.Placed(back.ID)
+			require.NotNil(t, again, "asked again in place")
+			assert.Equal(t, sprint.Asked, again.Col)
+			assert.Empty(t, again.F(sprint.FieldReturned))
+			assert.Equal(t, "pro-a", again.F(sprint.FieldRoute), "a route drawn afresh, not the one it returned on")
+			assert.Equal(t, "prov-pro-a/model-pro-a", again.F(sprint.FieldModel))
+			h.clean("asked again in place")
+		})
 	}
-	// the deal took pro-a, the reads pro-b and pro-a: the index is at pro-b
-	require.NotNil(t, back, "a read on pro-b")
-	h.must(ReadStep(sprint.ReadReq{As: back.Row, Return: true, Reason: "no verdict (ran=false)", Sel: sprint.Sel{IDs: []string{back.ID}}}))
-	h.machine()
-	again := h.snap().Readers.Placed(back.ID)
-	require.NotNil(t, again, "asked again in place")
-	assert.Equal(t, sprint.Asked, again.Col)
-	assert.Empty(t, again.F(sprint.FieldReturned))
-	assert.Equal(t, "pro-a", again.F(sprint.FieldRoute), "a route drawn afresh, not the one it returned on")
-	assert.Equal(t, "prov-pro-a/model-pro-a", again.F(sprint.FieldModel))
-	h.clean("asked again in place")
-}
-
-// A returned read taken to another free reader runs on a route drawn afresh,
-// never the one it returned on while the tier has another: the same exclusion
-// as a read asked again in place.
-func TestAReturnedReadTakenToAnotherReaderRunsOnAnotherRoute(t *testing.T) {
-	t.Parallel()
-	h := routeHarness(t, route("pro-a", "pro"), route("pro-b", "pro"))
-	require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-c", true, "tester"))
-	require.NoError(t, h.st.BeatReaders(h.ctx))
-	h.addReady("s1", 1, briefOf("pro", ""))
-	h.setPrimary("s1-1", map[string]string{sprint.FieldTierNow: "pro"}) // a pro card on pro (flash first: escalated)
-	h.startMachine()
-	h.machine()
-	h.work("m1")
-	h.work("m2")
-	h.machine()
-	// the tick asked the pair together (reads are asked together, sprint.ReadsWanted)
-	var back *sprint.Card
-	for _, rc := range readsAt(h.snap(), h.snap().Work.Card("s1-1")) {
-		if rc.F(sprint.FieldRoute) == "pro-b" {
-			back = rc
-		}
-	}
-	// the deal took pro-a, the reads pro-b and pro-a: the index is at pro-b
-	require.NotNil(t, back, "a read on pro-b")
-	h.must(ReadStep(sprint.ReadReq{As: back.Row, Return: true, Reason: "no verdict (ran=false)", Sel: sprint.Sel{IDs: []string{back.ID}}}))
-	require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-c", false, "tester"))
-	require.NoError(t, h.st.BeatReaders(h.ctx))
-	h.machine()
-	assert.Nil(t, h.snap().Readers.Placed(back.ID), "the returned read is taken back")
-	moved := h.snap().Readers.Placed(sprint.ReadCardID("s1-1", 1, "reader-c"))
-	require.NotNil(t, moved, "asked of the free reader")
-	assert.Equal(t, "pro-a", moved.F(sprint.FieldRoute), "a route drawn afresh, not the one it returned on")
-	h.clean("taken to another reader")
 }
 
 // levelMove is one move of the readers' level: the card it left and the card

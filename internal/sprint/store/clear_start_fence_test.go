@@ -78,52 +78,49 @@ func TestClearStopsAnInterveningCompletedStart(t *testing.T) {
 	scenarioCompletedStartBeforeClearAdvance(t, newHarness(t))
 }
 
-func TestMachineWriteRequiresItsFenceOwner(t *testing.T) {
+// A machine write whose fence owner retired with its lock — a transition or a
+// noop write under a RUNNING machine — is refused with errFenceMoved and
+// changes nothing.
+func TestMachineWritesRequireTheirFenceOwner(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
-	upMembers(h)
-	st, err := h.st.Pinned(h.ctx)
-	require.NoError(t, err)
-	f, err := st.B.ReadFence(h.ctx)
-	require.NoError(t, err)
-	lock := OpRecord{ID: "retired-start-lock", Verb: "machine transition lock", Lock: true, At: h.now}
-	ok, err := st.B.Acquire(h.ctx, f.Gen, lock)
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.NoError(t, st.B.Release(h.ctx, lock, false))
-	before, _, err := st.Machine(h.ctx)
-	require.NoError(t, err)
-	_, _, err = st.machineRecord(h.ctx, before, h.snap(), true, st.Actor, "", time.Time{}, lock.ID)
-	require.ErrorIs(t, err, errFenceMoved)
-	after, _, err := st.Machine(h.ctx)
-	require.NoError(t, err)
-	assert.Equal(t, before, after)
-}
-
-func TestMachineNoopWriteRequiresItsFenceOwner(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	upMembers(h)
-	_, _, _, err := h.st.SetMachine(h.ctx, true)
-	require.NoError(t, err)
-	st, err := h.st.Pinned(h.ctx)
-	require.NoError(t, err)
-	f, err := st.B.ReadFence(h.ctx)
-	require.NoError(t, err)
-	lock := OpRecord{ID: "retired-noop-lock", Verb: "machine transition lock", Lock: true, At: h.now}
-	ok, err := st.B.Acquire(h.ctx, f.Gen, lock)
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.NoError(t, st.B.Release(h.ctx, lock, false))
-	before, _, err := st.Machine(h.ctx)
-	require.NoError(t, err)
-	view := h.viewState()
-	_, _, err = st.machineRecord(h.ctx, before, h.snap(), true, st.Actor, "", time.Time{}, lock.ID)
-	require.ErrorIs(t, err, errFenceMoved)
-	after, _, err := st.Machine(h.ctx)
-	require.NoError(t, err)
-	assert.Equal(t, before, after)
-	assert.Equal(t, view, h.viewState())
+	for _, tc := range []struct {
+		name string
+		noop bool // a noop write under a RUNNING machine, beside a transition
+		lock string
+	}{
+		{"a transition", false, "retired-start-lock"},
+		{"a noop write", true, "retired-noop-lock"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t)
+			upMembers(h)
+			if tc.noop {
+				_, _, _, err := h.st.SetMachine(h.ctx, true)
+				require.NoError(t, err)
+			}
+			st, err := h.st.Pinned(h.ctx)
+			require.NoError(t, err)
+			f, err := st.B.ReadFence(h.ctx)
+			require.NoError(t, err)
+			lock := OpRecord{ID: tc.lock, Verb: "machine transition lock", Lock: true, At: h.now}
+			ok, err := st.B.Acquire(h.ctx, f.Gen, lock)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.NoError(t, st.B.Release(h.ctx, lock, false))
+			before, _, err := st.Machine(h.ctx)
+			require.NoError(t, err)
+			view := h.viewState()
+			_, _, err = st.machineRecord(h.ctx, before, h.snap(), true, st.Actor, "", time.Time{}, lock.ID)
+			require.ErrorIs(t, err, errFenceMoved)
+			after, _, err := st.Machine(h.ctx)
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+			if tc.noop {
+				assert.Equal(t, view, h.viewState())
+			}
+		})
+	}
 }
 
 func scenarioAdvanceHonorsFromEpochFence(t *testing.T, h *harness) {
