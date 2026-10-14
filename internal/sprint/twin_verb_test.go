@@ -120,7 +120,7 @@ func TestTwinIsRefusedWholeWhenItCannotHold(t *testing.T) {
 		assert.Empty(t, p.Units, "%s: nothing is written", tc.name)
 	}
 	p := Twin(w.s, TwinReq{ID: "cards3", Needs: []string{"dep1"}, Who: "coordinator"})
-	assert.Contains(t, p.Refused[0].Why, "dep1 needs cards4", "the cycle names its edge")
+	assert.Contains(t, p.Refused[0].Why, "dep1 -needs-> cards4", "the cycle names its edge")
 	assert.True(t, w.s.Work.Card("cards3").Placed(), "the card is where it was")
 	assert.Equal(t, "cards3", w.s.Work.Card("dep1").F("needs"))
 }

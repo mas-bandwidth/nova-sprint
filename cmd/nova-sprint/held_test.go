@@ -30,7 +30,7 @@ func TestHeldAndSentinelsListWhatAWaveWaitsOn(t *testing.T) {
 	assert.Contains(t, ta.ok("held --stream b"), "HELD OK cards=1 held=1 behind=0\n")
 
 	out = ta.ok("sentinels")
-	assert.Contains(t, out, "SENTINEL a-stop stream=a reached=- behind=3 needs=-\n")
+	assert.Contains(t, out, "SENTINEL a-stop stream=a reached=- behind=3 waits-behind=a-1,a-2 blocks=a-3,a-4,a-5 needs=-\n")
 	assert.Contains(t, out, "SENTINELS OK sentinels=1\n")
 	assert.Contains(t, ta.ok("sentinels --stream b"), "SENTINELS OK sentinels=0\n")
 
@@ -41,7 +41,7 @@ func TestHeldAndSentinelsListWhatAWaveWaitsOn(t *testing.T) {
 	}
 	var sv struct{ Sentinels []sentinelCard }
 	ta.json("sentinels", &sv)
-	assert.Equal(t, []sentinelCard{{ID: "a-stop", Stream: "a", Behind: 3}}, sv.Sentinels)
+	assert.Equal(t, []sentinelCard{{ID: "a-stop", Stream: "a", Behind: 3, WaitsBehind: []string{"a-1", "a-2"}, Blocks: []string{"a-3", "a-4", "a-5"}}}, sv.Sentinels)
 
 	code, _, errs := ta.do("held a-1")
 	assert.Equal(t, 2, code)

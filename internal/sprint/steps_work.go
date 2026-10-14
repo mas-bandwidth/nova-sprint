@@ -177,6 +177,29 @@ func Add(s *Snapshot, r AddReq) Plan {
 	if why != "" {
 		return refuseAll(why)
 	}
+	if r.Sentinel && len(scores) == 1 && r.Before == "" && r.After == "" && r.Score == nil {
+		// A sentinel with a need on a card of its own stream is placed
+		// directly after the last of them in the line (its producer),
+		// not at the end: it then waits on that card and what is before
+		// it only. With no such need it goes to the end, as before. The
+		// model already allows any place in the line
+		// (tla/SprintTables.tla, the sentinel insert).
+		line := streamLine(s, r.Stream)
+		producer := -1
+		for i, c := range line {
+			if contains(r.Needs, c.ID) {
+				producer = i
+			}
+		}
+		if producer >= 0 {
+			lo := line[producer].Score
+			if producer+1 < len(line) {
+				scores[0] = (lo + line[producer+1].Score) / 2
+			} else {
+				scores[0] = lo + 1
+			}
+		}
+	}
 	for _, t := range []string{Work, Merge} {
 		if !s.T(t).HasRow(r.Stream) {
 			p.Rows = append(p.Rows, RowAdd{t, r.Stream})
@@ -764,6 +787,31 @@ func admits(p Plan) bool {
 		}
 	}
 	return false
+}
+
+// SentinelWaitsBehind is the unlanded cards of the sentinel's own stream
+// ahead of it in the line: what it waits behind (PositionWaits).
+func SentinelWaitsBehind(s *Snapshot, c *Card) []string {
+	return PositionWaits(s, c, nil)
+}
+
+// SentinelBlocks is what the sentinel blocks: the waiting cards behind it
+// in its own stream (Behind), then the cards of other streams that name
+// it as a need and have not landed, in work order.
+func SentinelBlocks(s *Snapshot, c *Card) []string {
+	var out []string
+	for _, x := range Behind(s, c) {
+		out = append(out, x.ID)
+	}
+	for _, x := range s.Work.Cards() {
+		if x.Row == c.Row || x.Col == string(Landed) || contains(out, x.ID) {
+			continue
+		}
+		if contains(Split(x.F("needs")), c.ID) {
+			out = append(out, x.ID)
+		}
+	}
+	return out
 }
 
 // WaitsFor is what a primary still waits for: its needs that have not landed

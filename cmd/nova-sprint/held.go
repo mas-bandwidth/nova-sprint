@@ -31,14 +31,17 @@ type heldCard struct {
 }
 
 // sentinelCard is one sentinel on the table: whether it is reached, the needs
-// it names that have not landed, and the waiting cards it gates (what its
-// release lets go).
+// it names that have not landed, the unlanded cards ahead of it in its line
+// (what it waits behind), and what it blocks: the cards behind it and the
+// cards of other streams that need it.
 type sentinelCard struct {
-	ID      string   `json:"id"`
-	Stream  string   `json:"stream"`
-	Reached bool     `json:"reached"`
-	Needs   []string `json:"needs,omitempty"`
-	Behind  int      `json:"behind"`
+	ID          string   `json:"id"`
+	Stream      string   `json:"stream"`
+	Reached     bool     `json:"reached"`
+	Needs       []string `json:"needs,omitempty"`
+	Behind      int      `json:"behind"`
+	WaitsBehind []string `json:"waits_behind,omitempty"`
+	Blocks      []string `json:"blocks,omitempty"`
 }
 
 // cmdHeld lists the held cards and what each waits on: every waiting primary
@@ -93,7 +96,7 @@ func (a *app) cmdSentinels(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	for _, x := range cards {
-		fmt.Fprintf(stdout, "SENTINEL %s stream=%s reached=%s behind=%d needs=%s\n", oneline.Escape(x.ID), oneline.Escape(x.Stream), yesOrDash(x.Reached), x.Behind, oneline.Field(dashed(strings.Join(x.Needs, ","))))
+		fmt.Fprintf(stdout, "SENTINEL %s stream=%s reached=%s behind=%d waits-behind=%s blocks=%s needs=%s\n", oneline.Escape(x.ID), oneline.Escape(x.Stream), yesOrDash(x.Reached), x.Behind, oneline.Field(dashed(strings.Join(x.WaitsBehind, ","))), oneline.Field(dashed(strings.Join(x.Blocks, ","))), oneline.Field(dashed(strings.Join(x.Needs, ","))))
 	}
 	fmt.Fprintf(stdout, "SENTINELS OK sentinels=%d\n", len(cards))
 	return 0
@@ -146,7 +149,7 @@ func sprintSentinels(s *sprint.Snapshot, only string) []sentinelCard {
 		if !sprint.IsSentinel(c) || only != "" && c.Row != only {
 			continue
 		}
-		out = append(out, sentinelCard{ID: c.ID, Stream: c.Row, Reached: c.F("reached") != "", Needs: sprint.NamedWaits(s, c, nil), Behind: len(sprint.Behind(s, c))})
+		out = append(out, sentinelCard{ID: c.ID, Stream: c.Row, Reached: c.F("reached") != "", Needs: sprint.NamedWaits(s, c, nil), Behind: len(sprint.Behind(s, c)), WaitsBehind: sprint.SentinelWaitsBehind(s, c), Blocks: sprint.SentinelBlocks(s, c)})
 	}
 	return out
 }
