@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )

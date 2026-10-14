@@ -12,7 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // brief is a move as one short line: what it does to which card or judgment,

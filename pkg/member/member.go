@@ -34,7 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"

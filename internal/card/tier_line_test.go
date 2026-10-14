@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // The tier on line 1 is one rule in both forms (docs/CLI.md, add, "The tier on line 1"): a
