@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/onboardtest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
 )
 
 // cleanLine normalizes a line of text, unquoting Go string literals if scanning source code.
@@ -66,35 +68,31 @@ func extractBriefExamples(text string) []string {
 
 func TestEveryBriefExampleInTheHelpPassesTheCardLint(t *testing.T) {
 	t.Parallel()
-	a := newApp(func(string) string { return "" })
-
-	helpOf := func(args ...string) string {
-		t.Helper()
-		var out, errb bytes.Buffer
-		code := runInto(a, args, &out, &errb)
-		require.Equal(t, 0, code, "%v: %s", args, errb.String())
-		return out.String()
+	main := testkit.Main(func(args []string, _ io.Reader, out, errb io.Writer) int {
+		return runInto(newApp(func(string) string { return "" }), args, out, errb)
+	})
+	names := make([]string, 0, len(verbs))
+	for _, v := range verbs {
+		names = append(names, v.name)
 	}
+	onboardtest.Check(t, main, onboardtest.Spec{Name: "nova-sprint", Verbs: names})
 
-	// 1. Rendered help: check add and brief specifically.
-	for _, cmd := range [][]string{
-		{"help", "add"},
-		{"add", "-h"},
-		{"help", "brief"},
-		{"brief", "-h"},
+	// 1. help add and help brief (the same banner as add -h and brief -h) each
+	// print a brief example that passes the lint.
+	for _, cmd := range []struct{ verb, form string }{
+		{"add", "help add"}, {"add", "add -h"},
+		{"brief", "help brief"}, {"brief", "brief -h"},
 	} {
-		rendered := helpOf(cmd...)
-		examples := extractBriefExamples(rendered)
-		require.NotEmpty(t, examples, "%v must print at least one brief example", cmd)
+		examples := extractBriefExamples(onboardtest.Help(t, main, cmd.verb))
+		require.NotEmpty(t, examples, "%s must print at least one brief example", cmd.form)
 		for _, ex := range examples {
-			assertBriefPassesLint(t, ex, strings.Join(cmd, " "))
+			assertBriefPassesLint(t, ex, cmd.form)
 		}
 	}
 
 	// 2. Check all other verbs in the verb table in case any carries a brief example.
 	for _, v := range verbs {
-		args := append(strings.Fields(v.name), "-h")
-		rendered := helpOf(args...)
+		rendered := onboardtest.Help(t, main, strings.Fields(v.name)...)
 		for _, ex := range extractBriefExamples(rendered) {
 			assertBriefPassesLint(t, ex, v.name+" -h")
 		}
