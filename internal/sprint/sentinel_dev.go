@@ -204,9 +204,11 @@ func ConsumerNeedsTrunk(s *Snapshot, c *Card) bool {
 	if c == nil || IsSentinel(c) {
 		return false
 	}
-	for _, id := range Split(c.F("needs")) {
-		if stop := s.Work.Card(id); stop != nil && IsSentinel(stop) && inState(stop, Landed) == "" {
-			return true
+	if needs := c.F("needs"); needs != "" {
+		for _, id := range Split(needs) {
+			if stop := s.Work.Card(id); stop != nil && IsSentinel(stop) && inState(stop, Landed) == "" {
+				return true
+			}
 		}
 	}
 	for _, stop := range s.Work.Cell(c.Row, Landed) {

@@ -124,7 +124,7 @@ func liveKeys(t *testing.T, c *redis.Client) []string {
 
 // A whole small sprint to landed, driven by ticks: two streams, a dependency
 // inside the stream, a dependency across streams, a sentinel that stops the
-// stream until the coordinator releases it, two members, three readers; the
+// stream until its declared heads are published by a separate logical forge, two members, three readers; the
 // machine's records, the inbox, the cursor and the stream's progress as they
 // are on the real store.
 func TestRedisASprintToLandedByTicks(t *testing.T) {
@@ -133,12 +133,21 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	require.NoError(t, h.st.B.SetCoordinator(h.ctx, "tester"))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}, Repo: propRepo("s1")}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Repo: propRepo("s1"), Needs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"after"}}))
-	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Needs: []string{"b"}}))
-	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"z"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"after"}, Repo: propRepo("s1")}))
+	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Repo: propRepo("s2"), Needs: []string{"b"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"z"}, Repo: propRepo("s2")}))
+	// A test-local symbolic forge ledger, advanced only by the explicit publisher.
+	forge := &propRun{st: h.st, ctx: h.ctx, forgeTips: map[string]string{}, forgeHeads: map[string]map[string]bool{}, forgeMerges: map[string]sprint.ConsumerMerge{}}
+	for _, stream := range []string{"s1", "s2"} {
+		key := propRepo(stream) + "\n" + sprint.DevBranch
+		forge.forgeTips[key] = "functional-genesis:" + stream
+		forge.forgeHeads[key] = map[string]bool{}
+	}
+	h.st.SentinelProof = forge.forgeSentinels
+	h.st.ConsumerTrunk = forge.forgeConsumers
 	h.clean("setup")
 	line := h.st.MachineLine(h.ctx)
 	require.Equal(t, "machine: READY", line, "a new sprint, never started, is READY (docs/SPEC-SPRINT.md section 14): %q", line)
@@ -151,10 +160,22 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	}
 	h.startMachine()
 
+	work := func(member string) {
+		for {
+			h.run(TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{Limit: 100}, Who: member}))
+			cards := h.snap().Fleet.Cell(member, sprint.Working)
+			if len(cards) == 0 {
+				return
+			}
+			for _, card := range cards {
+				h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: []string{card.ID}}, Gens: map[string]int{card.ID: card.Int("gen")}, Head: "functional-head:" + card.ID, Who: member}))
+			}
+		}
+	}
 	round := func() {
 		h.machine()
-		h.work("m1")
-		h.work("m2")
+		work("m1")
+		work("m2")
 		h.machine()
 		h.readAll()
 		for _, st := range []string{"s1", "s2"} {
@@ -164,11 +185,11 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 			}
 		}
 	}
-	reached := func() bool { return len(liveOpen(h, sprint.NSentinelReached)) == 1 }
+	reached := func() bool { return liveWritten(h, sprint.NSentinelReached) == 1 }
 	for i := 0; i < 12; i++ {
 		round()
 		h.clean(fmt.Sprintf("round %d", i))
-		if h.state("y") == sprint.Landed && h.state("z") == sprint.Landed && reached() {
+		if h.state("y") == sprint.Landed && h.state("z") == sprint.Landed {
 			break
 		}
 		h.tick(time.Second)
@@ -178,15 +199,18 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 		require.Equal(t, sprint.Landed, h.state(id), "%s is %s before the sentinel", id, h.state(id))
 	}
 	if h.state("stop") != sprint.Waiting || h.state("after") != sprint.Waiting || !reached() {
-		require.Fail(t, fmt.Sprintf("at the sentinel: stop %s after %s reached %d", h.state("stop"), h.state("after"), len(liveOpen(h, sprint.NSentinelReached))))
+		require.Fail(t, fmt.Sprintf("at the sentinel: stop %s after %s reached %d", h.state("stop"), h.state("after"), liveWritten(h, sprint.NSentinelReached)))
 	}
-	// The tick does nothing twice: a further tick moves and writes nothing.
+	require.Equal(t, 0, liveWritten(h, sprint.NSentinelLanded), "no automatic landing before published ancestry")
+	// Without published ancestry, further ticks cannot release or deal the consumer.
 	before := liveWritten(h, sprint.NSentinelReached)
 	h.quiet("at the sentinel")
-	require.Equal(t, before, liveWritten(h, sprint.NSentinelReached), "a second tick wrote the sentinel's judgment again")
-	// The coordinator releases it; the tick moves what waited behind it.
-	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"stop"}, Reason: "a, b, y and z are green", Coordinator: "tester", Who: "tester"}))
+	require.Equal(t, before, liveWritten(h, sprint.NSentinelReached), "a tick without ancestry wrote a release notice")
+	// The separate logical forge actor publishes actual fixture finish heads and
+	// scoped consumer merge facts; no coordinator release or acknowledgment.
+	require.Empty(t, forge.forgeConsumers(h.ctx, h.snap()), "no unpublished consumer merge")
 	for i := 0; i < 8 && h.state("after") != sprint.Landed; i++ {
+		forge.publishForge()
 		round()
 		h.clean(fmt.Sprintf("after the release, round %d", i))
 		h.tick(time.Second)
@@ -198,7 +222,10 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	for _, st := range []string{"s1", "s2"} {
 		require.Equal(t, string(sprint.StreamLanded), s.StreamCtl(st).F("state"), "stream %s is %s", st, s.StreamCtl(st).F("state"))
 	}
-	require.False(t, reached(), "the sentinel's judgment is still open after its release")
+	require.True(t, reached(), "the reached progress notification is preserved")
+	require.Equal(t, 1, liveWritten(h, sprint.NSentinelLanded), "one HAPPENED notice records the automatic release")
+	require.Empty(t, liveOpen(h, sprint.NSentinelReached), "automatic release is not an open judgment")
+	require.Empty(t, forge.errs, "logical forge snapshot errors")
 	h.clean("landed")
 	// The machine's records: state, heartbeat with its ticks.
 	m, hb, err := h.st.Machine(h.ctx)
@@ -818,18 +845,25 @@ func TestRedisTheCoordinatorsRecords(t *testing.T) {
 		require.Fail(t, fmt.Sprintf("the coordinator: %q %v", who, err))
 	}
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"producer"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Needs: []string{"producer"}, Sentinel: true}))
+	h.setTimer(time.Second, "tester")
 	h.startMachine()
 	h.machine()
-	open := liveOpen(h, sprint.NSentinelReached)
+	h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{IDs: []string{"producer"}}, Who: "m1"}))
+	h.tick(time.Second)
+	h.machine()
+	open := liveOpen(h, sprint.NTimer)
 	require.Len(t, open, 1, "open judgments: %d", len(open))
 	when := h.now.Add(2 * time.Hour).UTC().Truncate(time.Second)
 	require.NoError(t, h.st.SetReview(h.ctx, open[0].Note.ID, when))
-	if got := liveOpen(h, sprint.NSentinelReached); len(got) != 1 || !got[0].Note.Review.Equal(when) {
+	if got := liveOpen(h, sprint.NTimer); len(got) != 1 || !got[0].Note.Review.Equal(when) {
 		require.Fail(t, fmt.Sprintf("the review time: %+v", got))
 	}
 	require.Error(t, h.st.SetReview(h.ctx, "no-such-note", when), "a review time of no judgment was accepted")
-	// release by another actor is refused; by the coordinator it lands
+	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "reviewed", Who: "tester"}))
+	require.Empty(t, liveOpen(h, sprint.NTimer), "the timer acknowledgment closes its judgment")
+	// early release by another actor is refused; by the coordinator it lands
 	coordinator, err := h.st.B.Coordinator(h.ctx)
 	require.NoError(t, err)
 	res, err := h.st.Run(h.ctx, ReleaseStep(sprint.ReleaseReq{IDs: []string{"stop"}, Reason: "x", Coordinator: coordinator, Who: "someone-else"}))
@@ -837,9 +871,10 @@ func TestRedisTheCoordinatorsRecords(t *testing.T) {
 		require.Fail(t, fmt.Sprintf("a release by another actor: %+v %v", res, err))
 	}
 	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"stop"}, Reason: "x", Coordinator: "tester", Who: "tester"}))
+	h.machine() // the running machine applies the queued early release
 	require.Equal(t, sprint.Landed, h.state("stop"), "stop is %s", h.state("stop"))
-	open = liveOpen(h, sprint.NSentinelReached)
-	require.Empty(t, open, "the judgment is open after the release: %d", len(open))
+	open = liveOpen(h, sprint.NTimer)
+	require.Empty(t, open, "the acknowledged timer judgment reopened after the release: %d", len(open))
 	h.clean("released")
 }
 

@@ -187,3 +187,17 @@ func pendingSentinelTrunkFixture(w *world) string {
 	w.s.Work.Put(producer)
 	return id
 }
+
+func TestConsumerEmptyNeedsStillRequiresItsPositionalTrunkMerge(t *testing.T) {
+	t.Parallel()
+	s, stop, _ := sentinelProofFixture(t)
+	c := &Card{ID: "consumer", Row: stop.Row, Col: Ready, Score: stop.Score + 1, Rev: 1, Fields: map[string]string{"brief": "consumer\nREPO: /fixture/repo\n"}}
+	s.Work.Put(c)
+	require.False(t, ConsumerNeedsTrunk(s, c), "an unreleased cut does not create a merge receipt")
+	stop.Col = Landed
+	s.Work.Put(stop)
+	require.True(t, ConsumerNeedsTrunk(s, c), "empty named needs does not waive a positional release")
+	require.False(t, ConsumerTrunkReady(s, c), "missing actual merge stays blocked")
+	s.ConsumerMerges = []ConsumerMerge{{Barriers: ConsumerBarriersOf(s, c), Epoch: s.Epoch, Card: SentinelCardOf(c), Repo: "/fixture/repo", Branch: StreamBranch(s, c.Row), Trunk: Trunk(s, c.Row), Observed: "def", Merged: "merged", Success: true, ContainsObserved: true}}
+	require.True(t, ConsumerTrunkReady(s, c))
+}

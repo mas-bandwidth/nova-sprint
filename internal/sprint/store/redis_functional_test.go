@@ -249,7 +249,7 @@ func TestRedisARejoinBetweenTheReadAndTheExecKeepsTheRow(t *testing.T) {
 }
 
 // HeldBack on the real table layer reads the work table's waiting cells alone and
-// counts what no tick moves on its own (nova-tools#5096 item 16): a held sentinel
+// counts what no tick moves on its own (nova-tools#5096 item 16): a held primary
 // and the cards behind it, not a ready card of another stream.
 func TestRedisHeldBackReadsTheWaitingColumn(t *testing.T) {
 	t.Parallel()
@@ -259,8 +259,8 @@ func TestRedisHeldBackReadsTheWaitingColumn(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, n, "an empty table holds nothing back")
 	for _, r := range []sprint.AddReq{
-		{Stream: "w", IDs: []string{"gate"}, Sentinel: true, Held: true, Who: "functional"},
-		{Stream: "w", IDs: []string{"a", "b"}, Who: "functional"},
+		{Stream: "w", IDs: []string{"gate"}, Held: true, Who: "functional"},
+		{Stream: "w", IDs: []string{"a", "b"}, Needs: []string{"gate"}, Who: "functional"},
 		{Stream: "v", IDs: []string{"c"}, Who: "functional"},
 	} {
 		res, err := st.Run(ctx, AddStep(r))
