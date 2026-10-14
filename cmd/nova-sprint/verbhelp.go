@@ -349,11 +349,6 @@ const cardAddWords = "a brief is held to the card lint\n" +
 // codes (docs/CLI.md, add --partial).
 const addPartialWords = "\n\nadd --partial, with --brief-dir or a repeated --brief-file, runs every check over every brief, holds back every brief with a finding and every card that needs a held card through its Needs: or DEPENDS-ON: line, and admits the rest in one store write; one HELD <id>: line per held card, then the add's closing line. It exits 0 when every card was admitted, 1 when some were held and the rest written, and 2 when none could be admitted, or for a usage refusal: --partial is refused with ids, --count, --sentinel or --land-protected, since a marked first add is one step."
 
-// readWords is read's prose: a verdict on a priced (routed) read carries the
-// run's usage report, and an unpriced read carries none (docs/SPEC-SPRINT.md
-// section 2, "Reads are priced like work").
-const readWords = "a read's verdict carries its run's cost: a priced (routed) read needs --usage <raw usage report> beside --ok or --broken, the harness's own token report; an unpriced read (a store with no route for it) needs none.\n"
-
 // verbProse is the explanation a verb's -h carries past its flags. The banner
 // still carries the inbox walkthrough and the friends section on their own.
 func verbProse(name string) string {
@@ -362,8 +357,6 @@ func verbProse(name string) string {
 		return doctorPreflightWords + "\n"
 	case "inbox":
 		return inboxExample
-	case "read":
-		return readWords
 	case "release":
 		return releaseHoldWords
 	case "sentinel set":

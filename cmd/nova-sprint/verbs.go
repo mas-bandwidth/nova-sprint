@@ -507,10 +507,19 @@ func verbExample(name string) string {
 			b.WriteString(startCardCheckWords())
 		case "add":
 			b.WriteString(firstLapHook())
+		case "read":
+			b.WriteString(readWords())
 		}
 		return b.String()
 	}
 	return ""
+}
+
+// readWords is read's prose: a verdict on a priced (routed) read carries the
+// run's usage report, and an unpriced read carries none (docs/SPEC-SPRINT.md
+// section 2, "Reads are priced like work").
+func readWords() string {
+	return "a read's verdict carries its run's cost: a priced (routed) read needs --usage <raw usage report> beside --ok or --broken, the harness's own token report; an unpriced read (a store with no route for it) needs none.\n"
 }
 
 func versionLine() string {
@@ -2770,6 +2779,7 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "take", "a member's take by id names no lane: take --as <member> <card>@<gen>; a lane is a friend's")
 	}
 	if *as == "" || len(gens) != len(ids) {
+		// docs/SPEC-SPRINT.md section 2, queue --as; docs/STANDARD.md section 3
 		return refuse(stderr, "take", "wants --as <member>, and every card named as <card>@<gen>, the generation from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	c.orActor(*as)
@@ -2985,6 +2995,7 @@ func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "progress", err.Error())
 	}
 	if *as == "" || len(ids) == 0 {
+		// docs/SPEC-SPRINT.md section 2, queue --as; docs/STANDARD.md section 3
 		return refuse(stderr, "progress", "wants --as <worker> and the cards it holds, each as <card> or <card>@<gen>, from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	c.orActor(*as)
@@ -3044,6 +3055,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if *as == "" || n != 1 {
+		// docs/SPEC-SPRINT.md section 2, queue --as; docs/STANDARD.md section 3
 		return refuse(stderr, "read", "wants --as <reader> and one of --begin, --ok, --broken, --return <card> --reason <text>, the card from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	// Attribution is never a finding (docs/SPEC-SPRINT.md, reader-ignores-attribution):
