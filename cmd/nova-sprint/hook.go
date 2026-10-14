@@ -296,8 +296,16 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	if c.actor == "" || !hookArmed(c.actor) {
 		return 0, false
 	}
+	// the way out for the reader who meant a twin: when no store is named, or the store
+	// named is a mem twin that did not open, the refusal keeps its first sentence and
+	// names --redis mem:<file> (nova-sprint help, "trying it without a Redis";
+	// docs/FIRST-LAP.md). The gate's exit code does not change.
+	twinHint := ""
+	if strings.TrimSpace(c.redis) == "" || isTwin(c.redis) {
+		twinHint = "; learning without Redis? use --redis mem:<file> (nova-sprint help twin)"
+	}
 	refuse := func(why string) (int, bool) {
-		fmt.Fprintln(stderr, why)
+		fmt.Fprintln(stderr, why+twinHint)
 		return 1, true
 	}
 	if strings.TrimSpace(c.redis) == "" {
@@ -314,7 +322,7 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	if why == "" {
 		return 0, false
 	}
-	fmt.Fprintln(stderr, why)
+	fmt.Fprintln(stderr, why+twinHint)
 	// the gate's refusal names the server to hook into when neither source names one:
 	// the environment first, else the seat's record (namedServer); a process that is
 	// the server, or a verb with its own store, names one itself. (docs/SPEC-SPRINT.md,
