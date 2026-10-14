@@ -68,7 +68,7 @@ var realSteps = []string{
 // to what a twin does.
 var twinSteps = []string{
 	"nova-sprint init --readers reader-m2 --members m1,m2",
-	"nova-sprint add --stream s1 --count 1 --one",
+	"nova-sprint add --stream s1 --count 1 --one --brief-file brief.txt",
 	"nova-sprint start",
 	"nova-sprint tick",
 	"nova-sprint tick",
