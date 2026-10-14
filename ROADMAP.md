@@ -138,7 +138,7 @@ Replaces 1 open sprint card, each mapped to `lander-bench-fault-classifier`.
 
 Admission already refuses a need that names no record, but a dropped card is still a record. Add refuses a need on a card that can no longer land, and dropping a card lists the cards that need it.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -154,7 +154,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 Now that the lander unions generated ledger conflicts, nova-card no longer needs alternating waves for one ledger. It plans the cards in one wave.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -170,7 +170,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Refuse staging when every member is ineligible, bound the fleet trial, and make a width change one operation, each with a model scenario and a named test.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04)
 
@@ -178,7 +178,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 The inbox view prints one bounded judgment, and the sprint seat reaches its store without a password in the environment.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04)
 
@@ -204,7 +204,7 @@ The first v1.4 rewrite step. Each item in the 2026-10-10 inventory where a clien
 
 Why it waits: Point releases continue meanwhile; their faults are the input to this rewrite cleanup.
 
-Target: v1.4
+Target: v1.5
 
 From: the owner, 2026-10-11
 
@@ -214,7 +214,7 @@ Name the layers that are really there and secure each in turn, lowest first, eac
 
 Why it waits: Comes after the client/server conversion of the 2026-10-10 inventory, so the layers are secured on the converted design rather than on client-held state.
 
-Target: v1.4
+Target: v1.5
 
 From: the owner, 2026-10-11
 
@@ -222,7 +222,7 @@ From: the owner, 2026-10-11
 
 The card verb reads the whole work table and log on each call; make a read use per-card indexes and finish under 100 ms at 2,000 cards.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04)
 
@@ -230,7 +230,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 The system promotes the base to dev itself and raises an alarm when the live server, a card branch or the base drifts.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04)
 
@@ -246,7 +246,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Cards are re-dealt when the holder does not serve the card's tier. A card counts as working only once started, cards pinned to a down friend raise one judgment, and the overload alarm covers friends.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -254,7 +254,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 A rework of a card pinned to one friend stays with that friend. A grouped rework gives each card its own finding instead of the first card's text.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -262,7 +262,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Heavy and frontier reads go to readers that can serve them, read slots are separate from work lanes and delivered like cards, and a reader row with no process behind it is flagged. A read whose child never ran is asked again without counting.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -278,7 +278,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The lander takes an exclusive lock per clone and reports a stuck pass. Its build gate runs on a bench instead of the coordinator machine, and a dead base is refused once with one judgment.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -286,7 +286,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Cards name only the real base, the server runs only from the base, and a periodic reminder shows when branches drift apart.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -294,7 +294,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The add lint accepts a friend card with its own rules line and says exactly whether the friend or the child rule set applies.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -302,7 +302,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 With no store settings, nova-sprint verbs go to the local server address, so no wrapper script or secret is needed.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -366,7 +366,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 Refuse adding a card with base dev or main outside a promotion stream. A stream can be marked as promotion, and land refuses a batch that would reach a protected base.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -374,7 +374,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Pipeline or batch each tick part's reads and writes to under twenty round trips per tick. Raise one judgment per episode when the store round trip median passes a bar.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04); card moved out of the sprint (work record, 2026-10-04)
 
@@ -390,7 +390,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 A verify-landed verb checks that every card recorded landed is on its branch, and lists work that is on the branch but not recorded landed. It gives the coordinator a way to correct either mistake.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -398,7 +398,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 A read taken back or run without a verdict is asked again of another reader and does not count against the reads bound. A server restart keeps reads whose lease is live, modelled first in TLA+.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
 
@@ -422,7 +422,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The lander's gate runs the wider package and whole-tree checks, so a batch cannot turn the base red. A red base stops landing with one judgment and resumes streams by rule, and the base and development branch are synced every cycle.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
 
@@ -446,7 +446,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 A tick that runs long over a slow link no longer marks members down who are beating on time.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5015
 
@@ -454,7 +454,7 @@ From: PR #5015
 
 Readers check for comments contradicting code, stranded fragments, edits outside declared paths, and broken cross-package references before approving.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5113
 
@@ -462,7 +462,7 @@ From: PR #5113
 
 On its first tick the server must not halt the sprint because of stored refusals. An unknown balance is never treated as out of credit.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5228; issue #5220
 
@@ -470,7 +470,7 @@ From: PR #5228; issue #5220
 
 The finish help and default match the head that land accepts. A land without a full sha is a failed finish, and stale reports stay fenced.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5235; PR #5246; issue #5154
 
@@ -478,7 +478,7 @@ From: PR #5235; PR #5246; issue #5154
 
 Before a deal, and in a store with no route, the card's own tier is its ceiling and the card verb prints it. The model calls the one tier function.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5243
 
@@ -494,7 +494,7 @@ From: PR #5247
 
 A friend take is rejected when the brief's epoch differs from the live epoch, and the epoch is carried into the store step so a concurrent clear fences it.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5268
 
@@ -518,7 +518,7 @@ From: PR #5308
 
 The dashboard reads tiers and per-card cost by tier from where. A running system with a late tick reads running, not stopped.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5323; PR #5326
 
@@ -526,7 +526,7 @@ From: PR #5323; PR #5326
 
 Verbs that only read or beat must not queue behind the single line of control, and a verb whose caller is gone is dropped.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5325
 
@@ -534,7 +534,7 @@ From: PR #5325
 
 The priority verb stores every level. A blocker is dealt first and evicts the lowest level, then the shortest running card.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5405; PR #5459; card from the sprint store (2026-10-10)
 
@@ -542,7 +542,7 @@ From: PR #5405; PR #5459; card from the sprint store (2026-10-10)
 
 Remove the old ask path. Every ok primary in review gets a read, and withdrawals and returns spend no reader.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5419; PR #5428; PR #5434
 
@@ -558,7 +558,7 @@ From: PR #5427; PR #5461
 
 Rework cards get fix priority and land gates are staged from the tested tree.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5451
 
@@ -566,7 +566,7 @@ From: PR #5451
 
 The tier line goes before structured header fields so REPO and CARRY briefs stay parseable.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5452
 
@@ -574,7 +574,7 @@ From: PR #5452
 
 Free working lanes fill first across friends and the fleet, cheapest capable first, then the ready stack grows to twice the width. Priority ladder order and tie breaks hold, and a frontier card goes to a friend whose tiers hold it.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5531; PR #5545; PR #5552
 
@@ -590,7 +590,7 @@ From: PR #5532
 
 The dashboard header dot turns red when the system is stopped, green when running, and neutral when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of serving.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5526; PR #5528
 
@@ -622,7 +622,7 @@ From: nova-sprint issue #35
 
 The card push and table verbs accept the injected ACL password from the environment. Address errors never print credentials.
 
-Target: v1.3
+Target: v1.5
 
 From: nova-sprint issue #36
 
@@ -630,7 +630,7 @@ From: nova-sprint issue #36
 
 The server once reached a very large resident size and stopped answering verbs while the fleet stalled behind it. Memory is bounded and a watchdog restarts a wedged server.
 
-Target: v1.3
+Target: v1.5
 
 From: nova-sprint issue #38
 
@@ -646,7 +646,7 @@ From: nova-sprint issue #42
 
 A card that fails at launch returns to ready and is dealt again. It is known to have failed within seconds, is not hammered back in, and is raised to the coordinator.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2040
 
@@ -662,7 +662,7 @@ From: issue #2354
 
 A launcher refusal before any process starts returns the card to the queue instead of raising it unknown. The queue remembers dealt labels and refuses a repeat unless forced.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2381; issue #2382
 
@@ -726,7 +726,7 @@ From: issue #2450
 
 A typed approve line is counted, and an untyped hold can be released by a read.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2454
 
@@ -758,7 +758,7 @@ From: issue #2595; issue #2664; issue #2679; issue #2593; issue #3141
 
 The sprint verb records the start once, and bench counts read it, so counts never include an earlier sprint.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2727
 
@@ -782,7 +782,7 @@ From: issue #2592
 
 The batch test step keeps the raw go test JSON stream, paginated review captures are not truncated at the output cap, and the gate's receipt is stored where a reader can fetch it.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2626; issue #2654; issue #2693; issue #3183
 
@@ -870,7 +870,7 @@ From: issue #3407
 
 Cards, pull requests and issues state dependencies in one canonical form read by one parser. Unknown dependency state is never treated as satisfied.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #3409
 
@@ -966,7 +966,7 @@ From: issue #3878; issue #4195
 
 Once the unused-verb check confirms it, the old friend-queue, routing, lander and sprint-file verbs are deleted together.
 
-Target: v1.4
+Target: v1.5
 
 From: issue #4191
 
@@ -1030,7 +1030,7 @@ From: issue #5174; PR #5300
 
 Two cards that shrink the same ledger conflict by line. Regenerate the ledger at the merged tree, and stage rework from the current head.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #5215
 
@@ -1038,7 +1038,7 @@ From: issue #5215
 
 Leveling runs at tick start, but the deal places cards later in the tick without regard to it. Make the deal and the level agree.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #5408; card from the sprint store (2026-10-10)
 
@@ -1054,7 +1054,7 @@ From: issue #1655
 
 A work client call without a deadline waits forever on a session that never answers. The spec fixes a default bound and the client enforces it.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #1643
 
@@ -1102,7 +1102,7 @@ From: issue #2008
 
 Every remote call has a timeout and each host is isolated, so a dead machine and stale connection sockets cannot freeze the loops.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2009
 
@@ -1158,7 +1158,7 @@ From: issue #2034; issue #2049
 
 Two members sharing a commit are not a conflict. The planner finds stacks by ancestry, not by base ref.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #2036
 
@@ -1278,7 +1278,7 @@ From: card from the sprint store (2026-10-10)
 
 A card whose brief is wrong is shown as its own column, not as review. Report form is checked by lint at finish, and add applies the header fixes its lint computes.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1286,7 +1286,7 @@ From: card from the sprint store (2026-10-10)
 
 When a hold names its own fix, the system applies it instead of waiting for the coordinator to read it.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1294,7 +1294,7 @@ From: card from the sprint store (2026-10-10)
 
 A red base is said as the base's and no card is blamed. A red batch ejects the failing card and lands the rest. A push rejected because the base moved is retried, never a stop.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1302,7 +1302,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 A verb sent during a server switch gets a restarting reply and waits. Every verb of one client version is readable by the last release.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1310,7 +1310,7 @@ From: card from the sprint store (2026-10-10)
 
 A route can carry a requests-per-minute budget that the deal keeps. The end of a route rest is jittered so routes do not return together.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1326,7 +1326,7 @@ From: card from the sprint store (2026-10-10)
 
 A sweep over a whole tool is cut by site so each card finishes inside its deadline. A card that edits one test file gets only that file as its paths, so two cards do not collide at land.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
 
@@ -1334,7 +1334,7 @@ From: card from the sprint store (2026-10-10); cards moved out of the sprint (wo
 
 A restarted server warms its in-memory copy of the store before its first tick, so early ticks do not miss the deadline and crash-loop.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1342,7 +1342,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 Mechanical judgments are answered in the step that raises them, and a finished card is offered to a free reader at once, with a measured target of under 30 seconds.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1350,7 +1350,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 A land pass prints a progress line for each phase, so the coordinator can tell a slow pass from a stuck one.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1366,7 +1366,7 @@ From: card from the sprint store (2026-10-10)
 
 A failed attempt is handled by the system, and the deal keeps friends supplied with work even when the coordinator is out, so no friend idles or polls for lack of cards.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1390,7 +1390,7 @@ From: card from the sprint store (2026-10-10)
 
 The server answers verbs in well under a second even while busy, and stop writes its state in one store step without waiting for the tick.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1398,7 +1398,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 A stats reset verb clears total cost, per-card and per-tier cost, stream cost cells and each row's done and ok percent from a recorded mark.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1406,7 +1406,7 @@ From: card from the sprint store (2026-10-10)
 
 The bench a lane gates on is chosen at lane start from the fleet rows by cores and current load, and the choice and reason are written into the brief.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1414,7 +1414,7 @@ From: card from the sprint store (2026-10-10)
 
 The card lint refuses the listed brief defects, and a repository or branch name is not mistaken for a personal name.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1422,7 +1422,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 A pushed head never waits in merging for a manual merge step. The lander writes the landing record itself when it pushes a stream's batch.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1430,7 +1430,7 @@ From: card from the sprint store (2026-10-10)
 
 Promotion never names the base branch as a PR head. It opens and merges from a throwaway branch after a whole-tree gate, or the report names what blocks it.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1438,7 +1438,7 @@ From: card from the sprint store (2026-10-10)
 
 Adding a stream records its rows and places in one write, so the table never disagrees with the facts.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1462,7 +1462,7 @@ From: card from the sprint store (2026-10-10)
 
 The seat install verb installs the push loop as the tool's own verb and pushes judgments to the seat.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1470,7 +1470,7 @@ From: card from the sprint store (2026-10-10)
 
 At add, by git and without a model, a card is refused when its work already sits on the base branch.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1478,7 +1478,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 Readers must not bounce cards for harness failures or trailer-only misreads. A detector separates these from real defects.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
 
@@ -1486,7 +1486,7 @@ From: card from the sprint store (2026-10-10); cards moved out of the sprint (wo
 
 A lane never carries an earlier attempt onto a moved base by hand. The stage does it and reports the result.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1582,7 +1582,7 @@ From: nova-sprint commit 639ccef (not carried by the re-seed, nova-sprint PR #28
 
 The bench tree git points at a worktree that exists only on the coordinator machine, so git fails on benches; give the bench tree its own repository.
 
-Target: v1.3
+Target: v1.5
 
 From: v1.2.4 held ledger
 
@@ -1590,7 +1590,7 @@ From: v1.2.4 held ledger
 
 Drain and deal take 0.4 to 0.7 seconds at load, so the tick gate is over one second; bring the whole tick under it.
 
-Target: v1.3
+Target: v1.5
 
 From: v1.2.4 held ledger; PR #5557
 
@@ -1646,7 +1646,7 @@ Replaces 4 open sprint cards, each mapped to `decision-evaluation`.
 
 The result finish is mechanical: shas come from git, not from the model, and an unformatted Go file is refused before landing.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5276
 
@@ -1670,7 +1670,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated kinds pass lint. The card header shape and the worker card practice agree so a spec shaped card is admitted.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
 
@@ -1686,7 +1686,7 @@ From: issue #2042
 
 The review verdict passes any rounded score of eight or more whatever the confidence. Low confidence lowers or flags the verdict.
 
-Target: v1.3
+Target: v1.5
 
 From: issue #3393
 
@@ -1696,7 +1696,7 @@ A card above a size bound writes a plan first, and a reader reviews the plan bef
 
 Why it waits: A new system stage, not a fix.
 
-Target: v1.3
+Target: v1.5
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
@@ -1706,7 +1706,7 @@ The last gate checks the reads instead of adding another read: that each reader 
 
 Why it waits: A new gate, not a fix.
 
-Target: v1.3
+Target: v1.5
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
@@ -1716,7 +1716,7 @@ An append-only log of the coordinator's decisions, which the system reads before
 
 Why it waits: New capability.
 
-Target: v1.3
+Target: v1.5
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
@@ -1776,7 +1776,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Holds that name a brief defect are counted against the card generator, not the worker, and reader verdicts and past-deadline friend cards are counted correctly in the ok percent.
 
-Target: v1.3
+Target: v1.5
 
 From: cards moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
 
@@ -1792,7 +1792,7 @@ From: cards moved out of the sprint (work record, 2026-10-04)
 
 A sprint test that wrote into the source tree uses a temp directory, and a CI class test checks the tree is clean after the package tests.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -1808,7 +1808,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The change-stream catch-up recognizes row order and row delete events, and the test waits on the twin state, not the clock. This removes a flaky merge-queue failure.
 
-Target: v1.3
+Target: v1.5
 
 From: PR #5230; PR #5233; issue #5197; issue #5214
 
@@ -1840,7 +1840,7 @@ From: issue #5172
 
 Prove that a worker that lost its lease cannot write, lanes are read in priority order with a directory fallback, and an expired remote call stays unknown and keeps its seat until answered or bounded.
 
-Target: v1.4
+Target: v1.5
 
 From: issue #2196; issue #2197; issue #2198
 
@@ -1848,7 +1848,7 @@ From: issue #2196; issue #2197; issue #2198
 
 Add acceptance tests that drop the nodes projection and rebuild it from the journal, and that a disagreement is reported as a projection bug.
 
-Target: v1.4
+Target: v1.5
 
 From: issue #2202
 
@@ -1856,7 +1856,7 @@ From: issue #2202
 
 A card's job directory is removed once its results are moved and its pull request is confirmed, bench lanes clean their own temporary files, and the working volume is guarded.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); issue #2379; issue #2566; issue #2632
 
@@ -1872,7 +1872,7 @@ From: card from the sprint store (2026-10-10)
 
 The time from ready to dealt to started is measured per card, shown as median and p90, and alarmed once per episode when the p90 passes its target.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1880,7 +1880,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 The idle trace and idle alarm code gets unit tests for every root, raising its statement coverage from a small fraction.
 
-Target: v1.4
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1888,7 +1888,7 @@ From: card from the sprint store (2026-10-10)
 
 The sprint store and its test utility packages get the same test environment scaffold as the other packages. Their tests stay under the time bound.
 
-Target: v1.4
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -1896,7 +1896,7 @@ From: card from the sprint store (2026-10-10)
 
 Lander tests that run git and go move to the functional tier, and the land decisions are pinned in a memory test.
 
-Target: v1.4
+Target: v1.5
 
 From: nova-sprint commit 2b74be0 (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
 
@@ -1904,7 +1904,7 @@ From: nova-sprint commit 2b74be0 (not carried by the re-seed, nova-sprint PR #28
 
 The shadow tick refuses any other library digest before the window, so an adopt cannot carry a library change; run it inside the window after the load, with TLA+, and digest code bytes only.
 
-Target: v1.3
+Target: v1.5
 
 From: seat decision, 2026-10-10
 
@@ -1964,7 +1964,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The models still ask reads as a pair, pin round-robin, miss the taken-back reader and omit the friend ready queue; update them to match the code.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -1972,7 +1972,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Write a model of the branch rules so a side branch, a temporary landing branch or a red base is caught by rule.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -1980,7 +1980,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The sprint dashboard drops the light theme and its toggle and always renders dark.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -1988,7 +1988,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The friend deadline rule and the member deadline rule become one function with one spec paragraph used by both tables.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -1996,7 +1996,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Gather every address check for the sprint and its stores into one function, cited from each caller, so local-only mode has one definition.
 
-Target: v1.4
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -2012,7 +2012,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The where frame and the watch writes are compared against a committed lock file so the view cannot drift from its design.
 
-Target: v1.4
+Target: v1.5
 
 From: PR #5014
 
@@ -2020,7 +2020,7 @@ From: PR #5014
 
 Help gives a direct first-run path and explains what import dry-run and verify max do. The shared dry-run flag help promises only the result and no changes.
 
-Target: v1.4
+Target: v1.5
 
 From: PR #5275
 
@@ -2036,7 +2036,7 @@ From: PR #5335
 
 The sprint models cover a card taken back from a friend and redealt, and the live friend lane judgments, each with reversed witnesses. A CI guard keeps the model records current.
 
-Target: v1.4
+Target: v1.5
 
 From: PR #5511; PR #5556; PR #5239; PR #5508; PR #5510
 
@@ -2060,7 +2060,7 @@ From: issue #2338
 
 The reference model assumes two reads per card and has no tier. Teach it reads needed and add flash cards and routed stores to its fixtures.
 
-Target: v1.4
+Target: v1.5
 
 From: issue #5195
 
@@ -2068,7 +2068,7 @@ From: issue #5195
 
 Models for how a stop returns reads and claimed cards, and for the promise that a backup path holds only a verified file. Each is checked on a small instance and cited from the code.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -2076,7 +2076,7 @@ From: card from the sprint store (2026-10-10)
 
 A model for a read on a missing branch that spends no reader, and for a friend card's lifecycle and the friend's liveness. Each names the evidence the code reads.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -2084,7 +2084,7 @@ From: card from the sprint store (2026-10-10)
 
 Packages with no users are deleted together with their tests, one step each, checked by the build.
 
-Target: v1.4
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -2092,7 +2092,7 @@ From: card from the sprint store (2026-10-10)
 
 Small TLA+ models for the gc rule, the landing cleanup queue and the tick's friend-lane check, each with invariants checked on a small instance and cited from the code.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -2100,7 +2100,7 @@ From: card from the sprint store (2026-10-10)
 
 Model the cap deal, deal routes and width, presence beats and leases, down windows and take-back, and the priority ladder in TLA+, checked with TLC.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04); cards moved out of the sprint (work record, 2026-10-04)
 
@@ -2108,7 +2108,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 Model brief lint and twins, needs and sentinels, read cards, seat push, and the merge tree with promotion in TLA+, and check them with TLC.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -2116,7 +2116,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 Model the attempt, generation and epoch counters, the card columns, held cards and sentinels, and the lander streams. Each model is checked and cited from the code.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
 
@@ -2128,7 +2128,7 @@ Friend AIs, their lanes, harnesses and the way the sprint deals to them.
 
 A friend report starts with an exact Verdict line and an exact Head line, and the friend card sync keeps reading older reports leniently.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -2144,7 +2144,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 Delivery of a card to a friend uses known names, the friend is told, finished work is returned and the dashboard stays accurate.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -2168,7 +2168,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 The tick reconciles each friend's store with her inbox and outbox, and a mechanical stall ladder returns cards held by a stalled friend with no step needing the coordinator.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -2176,7 +2176,7 @@ From: card moved out of the sprint (work record, 2026-10-04)
 
 A card for any friend goes to the up friend of the class with the most room. A full friend is not refilled while another of her class is idle.
 
-Target: v1.3
+Target: v1.5
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
@@ -2208,7 +2208,7 @@ From: issue #3635; issue #4095; issue #4096; issue #4098; issue #3915; card move
 
 The system detects a friend who is idle or under width with ready cards and sends the take request itself. The deal is bounded by lanes actually started.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
@@ -2224,7 +2224,7 @@ From: card from the sprint store (2026-10-10)
 
 A friend card that is only reported finished is not counted ok until a reader accepts it or it lands. This keeps the friends table honest.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
 
@@ -2232,7 +2232,7 @@ From: card from the sprint store (2026-10-10); card moved out of the sprint (wor
 
 A friend's working set on the dashboard must equal her live child lanes, and work and its report are one act.
 
-Target: v1.3
+Target: v1.5
 
 From: card from the sprint store (2026-10-10)
 
