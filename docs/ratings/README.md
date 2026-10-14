@@ -13,6 +13,6 @@ nova-sprint release certification.
 - [1.1.0 sprint read](1.1.0/sprint-read.md) and [sprint use](1.1.0/sprint-use.md).
 - [1.1.0 work-tree read](1.1.0/work-read.md) and [work-tree use](1.1.0/work-use.md).
 - Additional named reviewers are under `1.1.0/emma`, `1.1.0/johnny`, and
-  `1.1.0/zhi`; pinned reports are under `snapshots`.
+  `1.1.0/zhi`.
 
 For instructions to use today, start with [the documentation index](../README.md).
