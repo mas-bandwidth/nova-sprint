@@ -60,15 +60,15 @@ func TestFsxTreeMakesFilesAndRefusesEscapes(t *testing.T) {
 			lines: map[string][]string{"empty": {}},
 		},
 		{
-			name:  "absolute key refused",
-			files: map[string]string{"/abs": "x"},
-			fail:  true,
+			name:   "absolute key refused",
+			files:  map[string]string{"/abs": "x"},
+			fail:   true,
 			failAs: "escapes",
 		},
 		{
-			name:  ".. key refused",
-			files: map[string]string{"../out": "x"},
-			fail:  true,
+			name:   ".. key refused",
+			files:  map[string]string{"../out": "x"},
+			fail:   true,
 			failAs: "escapes",
 		},
 	}
