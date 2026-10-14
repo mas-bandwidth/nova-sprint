@@ -1410,6 +1410,11 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 			// seat_answers.go, rule (a)), never a "returned to review" left to the seat
 			markReturnedFor(&q, c, ReturnedForNeeds)
 		}
+		if len(q.Refused) == 0 {
+			// the weights the edit changes: the card with its new needs weighs as it will,
+			// and its old needs are not counted twice (weight.go, weighUnits)
+			q.Units = append(q.Units, weighUnits(s, []*Card{withField(c, "needs", strings.Join(wants, ","))}, map[string]bool{c.ID: true})...)
+		}
 		answered(&q, s, r.Answers, r.Who)
 		return Lawful(q)
 	}
@@ -1435,6 +1440,10 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 		u.Moved = fmt.Sprintf("%s needs %s stream=%s %s", c.ID, orDash(set["needs"]), c.Row, c.Col)
 	}
 	p.Units = append(p.Units, u)
+	// the weights the edit changes: the card with its new needs weighs as it will,
+	// and its old needs are not counted twice (weight.go, weighUnits). The card's own
+	// weight does not depend on its own needs, so it is no unit here.
+	p.Units = append(p.Units, weighUnits(s, []*Card{withField(c, "needs", strings.Join(wants, ","))}, map[string]bool{c.ID: true})...)
 	answered(&p, s, r.Answers, r.Who)
 	return Lawful(p)
 }
