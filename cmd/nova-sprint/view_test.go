@@ -101,7 +101,9 @@ func TestTheCoordinatorViewNamesAnIdleFleetAndItsRelease(t *testing.T) {
 	// The release feeds the fleet after the actual consumer branch merges the
 	// observed trunk; the dry alarm is gone and the old cursor counts it.
 	ta.ok("release s1-stop --reason 'the layer is green'")
-	ta.ok("tick")
+	ta.ok("tick") // drain the queued release; its barrier was absent during acquisition
+	ta.ok("tick") // merge the trunk for the now-released Waiting consumers
+	ta.ok("tick") // acquire fresh Ready identities before their deal
 	merged := r.git(r.remote, "rev-parse", "refs/heads/sprint/s1")
 	r.git(r.remote, "merge-base", "--is-ancestor", trunkHead, merged)
 	r.git(r.remote, "merge-base", "--is-ancestor", consumerHead, merged)
