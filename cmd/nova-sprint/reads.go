@@ -2649,6 +2649,28 @@ type cardView struct {
 	Texts    []storyText `json:"texts"`
 }
 
+// readCardPrimaryHint is the answer for an id that names no primary but is a
+// read card's id: the line naming the primary it reads, through lookup (the
+// card's own "primary" field, placed or retired). Any other id, or a read card
+// the lookup cannot give, answers "" and keeps the caller's line (this card,
+// a-readers-second-verdict-answers-already-recorded; docs/CLI.md, the card
+// verb: a read card id is answered with the primary it reads). It is pure: the
+// lookup is all the state it reads.
+func readCardPrimaryHint(id string, lookup func(string) *sprint.Card) string {
+	if _, _, _, ok := sprint.ParseReadCard(id); !ok {
+		return ""
+	}
+	c := lookup(id)
+	if c == nil {
+		return ""
+	}
+	primary := c.F("primary")
+	if primary == "" {
+		return ""
+	}
+	return fmt.Sprintf("card: %s is a read card of %s; run: nova-sprint card %s", oneline.Escape(id), oneline.Escape(primary), oneline.Escape(primary))
+}
+
 func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("card")
 	atEpoch := fs.Int64("at-epoch", -1, "the primary as it was at an earlier epoch (before a clear)")
@@ -2690,6 +2712,16 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed("card", err, stderr)
 	}
 	if v.Primary == nil {
+		if hint := readCardPrimaryHint(id, func(cardID string) *sprint.Card {
+			rs, err := st.Records(ctx, sprint.Fleet, []string{cardID})
+			if err != nil || len(rs) == 0 {
+				return nil
+			}
+			return rs[0]
+		}); hint != "" {
+			fmt.Fprintln(stderr, hint)
+			return 1
+		}
 		fmt.Fprintf(stderr, "%s card: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
 		return 1
 	}

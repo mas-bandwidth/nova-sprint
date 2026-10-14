@@ -620,10 +620,31 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 }
 
 // FriendReadOutboxLine is how a read on a friend's row is returned: her
-// outbox report, which friend sync reads (FriendReadClose), or the read verb
-// her packet prints, which writes the same close (readCardVerb).
+// outbox report alone, which friend sync reads within seconds (FriendReadClose),
+// and records as her verdict. It says plainly not to also run the read verb for
+// the same card: a second submission answers ALREADY RECORDED (this card,
+// docs/SPEC-SPRINT.md). The verb stays available for a reader with no outbox.
 func FriendReadOutboxLine(row, id string, epoch uint64) string {
-	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync reads it); or run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change: friend sync reads it within seconds and records the verdict; do not also run nova-sprint read for this card: a second submission answers ALREADY RECORDED. The verb is for a reader with no outbox: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+}
+
+// readRecordedByReader says the retired read card c is this reader's own, closed
+// with her own verdict (retired_by read), and returns the verdict already
+// recorded on it. The reader is the id's own (ParseReadCard) or the card's
+// reader field; a placed card, another retire reason or another reader's card
+// answers false. It is how a second submission of the same verdict is answered
+// ALREADY RECORDED instead of refused (this card,
+// a-readers-second-verdict-answers-already-recorded; docs/SPEC-SPRINT.md, a
+// reader who reports a verdict already recorded for its read).
+func readRecordedByReader(c *Card, name string) (string, bool) {
+	if c == nil || c.Placed() || c.F("retired_by") != "read" {
+		return "", false
+	}
+	_, _, idReader, ok := ParseReadCard(c.ID)
+	if !ok || (idReader != name && c.F("reader") != name) {
+		return "", false
+	}
+	return c.F("verdict"), true
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
@@ -665,6 +686,18 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		case c.F("kind") != "read":
 			return "not a read (it is " + orDash(c.F("kind")) + "): work is reported with finish"
 		case !c.Placed():
+			// A reader who reports the verdict already recorded for her own retired
+			// read is answered ALREADY RECORDED, exit 0, and writes nothing (this card,
+			// docs/SPEC-SPRINT.md); a different verdict on it is refused before any
+			// write, a reader's verdict at an attempt being final.
+			if !r.Return && r.Verdict != "" {
+				if recorded, ok := readRecordedByReader(c, name); ok {
+					if recorded == r.Verdict {
+						return ""
+					}
+					return "already recorded " + orDash(recorded) + " at " + orDash(c.F("retired")) + "; a reader's verdict at an attempt is final, and a different one is not taken"
+				}
+			}
 			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to report"
 		case c.Row != row:
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
@@ -678,6 +711,14 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	namePrimarysReads(&p, all)
 	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	for _, c := range chosen {
+		// the stutter: this verdict is already recorded on this reader's own retired
+		// read; answer it and write nothing (this card, docs/SPEC-SPRINT.md)
+		if !r.Return && r.Verdict != "" {
+			if recorded, ok := readRecordedByReader(c, name); ok && recorded == r.Verdict {
+				p.Said = append(p.Said, "ALREADY RECORDED "+recorded+" at "+orDash(c.F("retired"))+" ("+c.ID+")")
+				continue
+			}
+		}
 		pr := s.Work.Card(c.F("primary"))
 		if r.Return {
 			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {

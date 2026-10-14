@@ -68,6 +68,7 @@ nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
 # reader serves is read one tier down: the read card's tier names the strongest tier with an
 # enabled route and a reader up ("read at heavy: no frontier reader").
+# A reader who reports a verdict already recorded for its read is answered ALREADY RECORDED, exit 0; a different verdict is refused.
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
@@ -280,6 +281,7 @@ records, its needs, its place in line and its hold from one read of the tables
 (docs/SPEC-SPRINT.md section 17, the card log index). `card --all --json` prints every card on the table in one call,
 one JSON object a line: `id`, `stream`, `column`, `score`, `needs`, `brief_len` and
 the other fields (the brief's text is `card <id> --brief`); `card --stream <s> --json` prints one stream's.
+A read card id is answered with the primary it reads.
 
 A card's live `column` comes from its table row in `card <id> --json`,
 `card --all --json`, `where --json --rows` and `needs --json`. The rows listing
