@@ -107,6 +107,7 @@ func SettingsRows() []SettingRow {
 			return strconv.Itoa(LaneWidth(v, ok))
 		}),
 		settingRow("landing-stall-bound", PropLandingStallBound, "Snapshot.landingStallBound", func(s *Snapshot) string { return s.landingStallBound().String() }),
+		settingRow("ci-queued-bound", PropCIQueuedBound, "Snapshot.ciQueuedBound", func(s *Snapshot) string { return s.ciQueuedBound().String() }),
 		settingRow("pegged-bound", PropPeggedBound, "Snapshot.PeggedBound", func(s *Snapshot) string { return s.PeggedBound().String() }),
 		settingRow("read-cards", PropReadCards, "Snapshot.ReadCardsOn", func(s *Snapshot) string {
 			if s.ReadCardsOn() {

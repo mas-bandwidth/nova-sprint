@@ -91,6 +91,11 @@ type Store struct {
 	// the binding read, passed into the tick's TickReq. nil passes none, and no
 	// red-base judgment is raised or closed.
 	BaseCI func() []sprint.BaseCIFacts
+	// CIQueued, when set (run and tick), is the tick's read of the CI jobs queued at
+	// a forge (sprint.TickCIQueued, ci_queued.go): the facts the binding read, passed
+	// into the tick's TickReq. nil passes none, and no queued-CI judgment is raised
+	// or closed.
+	CIQueued func() []sprint.CIQueuedFacts
 	// Inventory, when set (run and tick), is the tick's read of the machine records
 	// nova-config names (the same config read as fleet sync; sprint.TickRetireAbsent,
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or

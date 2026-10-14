@@ -328,6 +328,7 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 	st.AnswerRules, st.IdleAlarm = rules, idle
 	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
+	st.CIQueued = a.ciQueuedFn(st)
 	ctx := context.Background()
 	res, err := st.Tick(ctx)
 	err = noSprintYet(err)
@@ -449,6 +450,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	st.AnswerRules, st.IdleAlarm = rules, idle
 	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
+	st.CIQueued = a.ciQueuedFn(st)
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
 	}

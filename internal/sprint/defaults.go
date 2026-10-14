@@ -92,6 +92,7 @@ var Defaults = []Default{
 	{Name: PropFriendStartMax, Home: HomeProp, Value: FriendStartMaxDefault.String(), Why: "a friend's card unstarted this long is levelled"},
 	{Name: PropPeggedBound, Home: HomeProp, Value: PeggedBoundDefault.String(), Why: "a member pegged with no card this long is a judgment"},
 	{Name: PropLandingStallBound, Home: HomeProp, Value: LandingStallBound.String(), Why: "the owner's stall watch: one minute"},
+	{Name: PropCIQueuedBound, Home: HomeProp, Value: CIQueuedBound.String(), Why: "a CI job queued this long with no runner is a judgment"},
 	{Name: PropFriendStallAfter, Home: HomeProp, Value: FriendStallAfterDefault.String(), Why: "the friend stall ladder begins"},
 	{Name: PropFriendStallStep, Home: HomeProp, Value: FriendStallStepDefault.String(), Why: "each rung of the friend stall ladder"},
 	{Name: PropDriftCommits, Home: HomeProp, Value: strconv.Itoa(DriftCommitsDefault), Why: "the base may be this many commits ahead of dev"},
