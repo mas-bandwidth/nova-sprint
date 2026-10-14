@@ -100,9 +100,11 @@ func ParseReadQueue(out string) ([]AskedRead, error) {
 	return asked, nil
 }
 
-// ReadQueueArgv is the sprint verb that is the reader's beat and answers its queue.
+// ReadQueueArgv is the sprint verb that writes the reader's beat and answers its queue
+// (docs/SPEC-SPRINT.md section 6, the reader presence rule: the beat is `queue --as
+// <reader> --beat`'s alone; the queue itself reads only).
 func ReadQueueArgv(friend string) []string {
-	return []string{"queue", "--as", ReaderOf(friend), "--json"}
+	return []string{"queue", "--as", ReaderOf(friend), "--json", "--beat"}
 }
 
 // ReadBeginArgv begins an asked read.
