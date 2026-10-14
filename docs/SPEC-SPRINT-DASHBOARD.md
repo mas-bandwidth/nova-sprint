@@ -34,6 +34,16 @@ links written as that server writes them, the build number in place of its versi
 reference does not draw is drawn: no release picker and no release filter (every stream shows,
 finished ones too), no seat pill, no row, tag, tooltip or figure of the Go page's own.
 
+The live page is HTML, not XML: the comment at its logo slot (page/index.html line 448) itself
+contains `--` (a nested `<!--LOGO-->` inside that comment), which XML forbids inside a comment, so
+the page does not parse as XML and nothing here claims it does; TestDashboardPageIsTheSpec reads
+its markup with the comments taken out. What the live page does not carry, this page does not
+carry: no coin or sound (no AudioContext, no speaker glyph), no READY word in the ETA cell, no
+conditional fitIfChanged/fitKey width pass (render calls fitTables), and its pulse animates the
+`--pulse` custom property as the live CSS does. Earlier Go-only descriptions of those things in
+this file are superseded by this paragraph and by live/SPEC.md, which was reconciled into this
+file: where the two disagreed, the live page and live/SPEC.md win.
+
 `/api/sprint` and `/events` on the page's listeners serve the reference server's envelope and no
 other key: `ok`, `data`, `fetchedAt` (the data's own `at`), `dataAgeSeconds`, `attemptAt`, `error`,
 `readSeconds`, `minInterval`, `throughput`, `throughputMinutes`, `build`; a query names nothing.
@@ -104,6 +114,10 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-13 the owner: "Please fix the sprint dashboard so it shows the friends table by default."
 - 2026-10-13 the owner: "maybe gzip it on upload?"
 - 2026-10-13 the owner: "OK add these for v1.2.20."
+- 2026-10-14 20:59Z the owner: "You will port the existing python dashboard to golang."
+- 2026-10-14 21:00Z the owner: "Yes, and then we retire the python dashboard, and only use the golang one."
+- 2026-10-14 the owner: "This is the one I look at! http://69.67.149.151"
+- 2026-10-14 the owner: "You will port the existing python dashboard to golang." (the page files this ask first brought over digest, with pageview.go as it then stood, to 88fc6fba1cc8af3b6aa5bcc9d7d964781dd43d0c96149506b81b322982b6429b: page/index.html and page/app.js byte-identical to the Python live page, dashboard/live/; the same PR's server.py tile-slot port of pageview.go is held by the next lock line, digest c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830)
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -113,18 +127,8 @@ of 2026-10-13 holds the digest of the page that carries them all, under the owne
 them over. Each change's own ask is quoted here, dated; an intermediate page that carried only
 some of them never existed, so no digest of one is written.
 
-**The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
-The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
-'ca-ching' sound, like a coin dropping. Keep it subtle." When a refresh's data carries a landed
-count higher than the refresh before's, the page plays one short coin — two sine partials, the
-second a fifth above the first, about 0.25 s, a fast decay, peak gain 0.15 — synthesized in app.js
-with WebAudio, so no audio file joins the repository and the page makes no extra request. It plays
-once per refresh however many landed in it, never on the first load and never when the count falls
-(a clear); the tick id the copy was read at is its `at`, so two reads of one tick play nothing. A
-browser refuses audio before a gesture, so the page carries one small speaker glyph beside the
-landed count, off until clicked once per browser (the choice kept in localStorage); clicked on, it
-plays the coin once, as the test he hears before relying on it, and it is the only addition to the
-page.
+**The coin** is retired with the Go-only page: the live page carries no coin, no sound and no
+speaker glyph, and none is added (the owner's port ask, 2026-10-14, above).
 
 ### The page is this list (the owner's asks, 2026-10-11 to 2026-10-13)
 

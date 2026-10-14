@@ -181,11 +181,9 @@ function setCells(box, classes, columns, cellRem) {
   while (box.children.length > classes.length) box.lastChild.remove();
   classes.forEach(function (c, i) { setClass(box.children[i], c ? "cell " + c : "cell"); });
 }
-// How many cells fit across a box at MIN_CELL px each. `w` is a width measured at the last layout
-// (measureMetrics); the live read is a first-render fallback only, so a poll never forces a
-// synchronous layout just to count cells.
-function cellsThatFit(box, w) {
-  w = w || box.clientWidth || 600;
+// How many cells fit across a box at MIN_CELL px each.
+function cellsThatFit(box) {
+  var w = box.clientWidth || 600;
   return Math.max(1, Math.floor((w + GAP) / (MIN_CELL + GAP)));
 }
 // Cards per cell from 1, 2, 3, 4, 5, 10, 20, 25, 50, 100: the smallest that fits.
@@ -265,7 +263,9 @@ function budLabel(name, table) {
   return name;
 }
 function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(function (a, n) { return Math.max(a, int(table[n].width)); }, 0)); }
-function sharedScale(d) { return Math.max(tableScale(d.tables.fleet), tableScale(d.tables.friends)); }
+// the bar scale is shared with the friends table only while that table is shown; hidden, the fleet's own widest lane sets it (the owner 2026-10-12 ~01:42Z)
+function friendsShown() { var p = document.querySelector(".panel.friends"); return !!(p && getComputedStyle(p).display !== "none"); }
+function sharedScale(d) { return friendsShown() ? Math.max(tableScale(d.tables.fleet), tableScale(d.tables.friends)) : tableScale(d.tables.fleet); }
 
 // ---------- sections ----------
 function streamOrder(d) {
@@ -277,12 +277,16 @@ function streamOrder(d) {
 function streamStatus(state, c, total) {
   if (total > 0 && c.landed === total) return ["landed", "done"];
   if (state === "stopped") return ["stopped", "critical"];
-  if (total > 0 && c.waiting === total) return ["held", "warning"];
+  // held only for a hold set on the stream (the server's State "held", hold <stream>): cards that all
+  // wait on their needs are waiting, never held (the owner 2026-10-13: "don't show held on a work stream
+  // just because all its cards are in waiting state")
+  if (state === "held") return ["held", "warning"];
+  if (total > 0 && c.waiting === total) return ["waiting", "neutral"];
   if (c.ready + c.working + c.review + (c.fix || 0) + c.merging > 0) return ["working", "active"];
   if (state === "landed") return ["landed", "done"];
-  // cards still waiting and nothing in flight (some landed already): held, like a stream
-  // whose cards all wait; the page names only the four states SPEC.md lists
-  if (c.waiting > 0) return ["held", "warning"];
+  // cards still waiting and nothing in flight (some landed already): waiting, like a stream
+  // whose cards all wait
+  if (c.waiting > 0) return ["waiting", "neutral"];
   return [state || "idle", "neutral"];
 }
 
@@ -356,9 +360,7 @@ function renderStreams(d) {
     if (r.node.dataset.status !== status) r.node.dataset.status = status;
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
-    // the stream cell shows the stream's display name (stream set --display; point-fix-<release>
-    // when a release is set), else its key; the row stays keyed, sorted and grouped by the key
-    setText(r.nameT, (states[k] || {}).Display || k);
+    setText(r.nameT, k);
     var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
     setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
@@ -377,37 +379,18 @@ function renderStreams(d) {
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
-  setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
-  // the "landed" header is centred over its n / total cell: same width as the cell, text centred.
-  // The width is measured by measureMetrics at the last layout, not read here: a read after the
-  // writes above would force a synchronous layout on every poll (this card).
+  // stream counts, never cards: "landed" here read as cards beside the table's landed column (Glenn 2026-10-14), so it names its unit
+  setText($("streams-sub"), keys.length + " streams · " + landedStreams + " streams landed · " + held + " held");
+  // the "landed" header is centred over its n / total cell: same width as the cell, text centred
+  var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
+  if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
   return { sum: sum, all: all };
 }
-
-// Widths a poll needs, measured once per layout — load, resize and fit — instead of every POLL_MS:
-// reading clientWidth/offsetWidth/getComputedStyle forces a synchronous layout, and a page-wide
-// reflow once a second is what starved the browser's smooth scroll under a held Page Down (this
-// card; README's rule that the poll does no layout work). measureMetrics runs on load, on resize
-// (registered before the renderers' resize listeners, so it refreshes before they read the cache),
-// and at the end of fitTables, the one place a fit-key change lands. It also applies the streams
-// "landed" header's width, so renderStreams never reads the cell's offsetWidth after its writes.
-var METRICS = { rem: 0, pie: 0, overall: 0, landedW: 0 };
-function measureMetrics() {
-  METRICS.rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  var pie = $("pie"); if (pie) METRICS.pie = pie.clientWidth;
-  var ob = $("overall"); if (ob) METRICS.overall = ob.clientWidth;
-  var st = $("streams");
-  if (st && st._total && st._head) {
-    METRICS.landedW = st._total._c[LANDED_AT].offsetWidth;
-    if (METRICS.landedW) st._head.children[LANDED_AT].style.width = METRICS.landedW + "px";
-  }
-}
-window.addEventListener("resize", measureMetrics);
 
 var overallLast = null;
 function renderOverall(sum, all) {
   overallLast = { sum: sum, all: all };
-  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box, METRICS.overall)), n = Math.ceil(all / per);
+  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box)), n = Math.ceil(all / per);
   var share = allocate(sum, all, n), classes = [];
   STATES.forEach(function (st) { for (var i = 0; i < share[st]; i++) classes.push(st); });
   setCells(box, classes, n);
@@ -474,6 +457,9 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
     var m = table[k], raw = int(m.working), working = shownWorking(m), width = int(m.width), done = int(m.done);
     var okv = m.okpct != null ? m.okpct : m["ok%"];
     t.ready += int(m.ready); t.working += working; t.width += width; t.done += done; t.ok += int(m.ok);
+    // the total ok% weighs each row by its own ok% denominator (ok + failed), never by done, a different count (the owner 2026-10-14: "they lie")
+    var okn = int(m.ok), okf = m.failed != null ? int(m.failed) : (pct(okv) > 0 ? Math.round(okn * 100 / pct(okv)) - okn : 0);
+    t.okn = (t.okn || 0) + okn; t.okd = (t.okd || 0) + okn + okf;
     var st = shownStatus(m.status);
     if (st in t) t[st]++;
     if (shownStatus(m.status) === "up") { t.upWidth += width; t.upWorking += working; }
@@ -492,12 +478,12 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
   // working as "x / y": the sum of working over the sum of width (SPEC.md, the owner 8:10 PM)
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));
   setNum(c[5], t.done);
-  setOk(c[6], t.done ? t.ok / t.done * 100 : null, t.done);
+  setOk(c[6], t.okd ? t.okn / t.okd * 100 : null, t.okd);
   return { t: t, n: names.length };
 }
 
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", tableScale(d.tables.fleet));
+  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d));
   setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
@@ -532,16 +518,17 @@ function sideWord(work, tiers) {
 }
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 
-// the machine line (the owner 2026-10-04 2:55 PM): the human page shows RUNNING, STOPPED or STALE;
-// tick lateness is the coordinator's view only. The STOP word lives in the ETA tile (renderHero),
-// not a chip; the machine chip is gone (the owner 2026-10-12 ~00:58Z).
+// the machine pill: red when the machine line says every provider is out of credit (SPEC.md)
 function setMachine(line) {
   var text = String(line || "-").replace(/^machine:\s*/, "");
+  // the human page shows RUNNING, STOPPED or STALE; tick lateness is the coordinator's view only (the owner 2026-10-04 2:55 PM)
   var late = /^running\b.*tick late (\d+)s/i.exec(text);
   if (late) text = Number(late[1]) >= 60 ? "STALE" : "running";
   else if (/^running\b/i.test(text)) text = "running";
   var stopped = /STOPPED/.test(text);
+  // the human page says STOPPED and nothing more; the reason is the coordinator's view (the owner 2026-10-04 10:15 PM: "STOPPED is plenty")
   if (stopped) text = "STOPPED";
+  // the machine chip is gone (the owner 2026-10-12 ~00:58Z): STOPPED shows in the ETA tile instead
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
@@ -625,41 +612,26 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  // an empty sprint says only "not started" (the owner 2026-10-12 ~01:09Z, ~01:22Z)
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started");
-  if ($("pct-complete")) $("pct-complete").style.display = all ? "" : "none";
-  if ($("of-all2")) $("of-all2").style.display = all ? "" : "none";
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
+  var pctSuffix = $("pct-suffix"); if (pctSuffix) pctSuffix.style.display = all ? "" : "none"; var ofAll2 = $("of-all2"); if (ofAll2) ofAll2.style.display = all ? "" : "none"; // an empty sprint says only "not started" (the owner ~01:22Z)
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
-  var done = !!(all && landed >= all), stopped = /STOPPED/.test(String(d.machine || "")) && !done;
-  // READY, before the first start since the clear, is said in the ETA cell in the page's green (SPEC-SPRINT-DASHBOARD.md, the owner 2026-10-13)
-  var ready = /^(machine:\s*)?READY\b/.test(String(d.machine || "")) && !done;
-  $("eta").style.color = ready ? "var(--good)" : "";
-  if (ready) {
-    setText($("eta"), "READY"); setClass($("eta"), "big"); etaAtLast = null; setText($("eta-at"), "\u00a0");
-  } else if (stopped) {
-    // the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red"; ~01:08Z "darker";
-    // ~01:32Z STOP at every width ("cleaner"); the STOP word lives here, not a chip
-    setText($("eta"), "STOP"); setClass($("eta"), "big eta-stop"); etaAtLast = null; setText($("eta-at"), "\u00a0");
-  } else if (done) {
-    // the owner 2026-10-12 ~00:32Z: "ETA DONE, with done in bright green"; ~00:35Z: "Below DONE
-    // show the time it took in days, hours, minutes"
-    setText($("eta"), "DONE"); setClass($("eta"), "big eta-done"); etaAtLast = null;
-    setText($("eta-at"), tookText(d));
-  } else if (m) {
-    setClass($("eta"), "big");
+  var machineStopped = /STOPPED/.test(String(d.machine || "")) && !(all && landed >= all);
+  if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
+  else if (m) {
     setHTML($("eta"), etaText(m[1]));
     var ms = etaMs(m[1]);
-    // the viewer's zone after the time, the same source as the clock (SPEC.md, the owner 10:00 PM)
+    // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
-  } else { setClass($("eta"), "big"); setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
+  } else if (all && landed >= all) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>");  /* the owner 2026-10-12 ~00:32Z: "DONE with done in bright green" */ setText($("eta-at"), tookText(d));  /* the owner 2026-10-12 ~00:35Z: "Below DONE show the time it took in days, hours, minutes" */ }
+  else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
-  setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout")
+  setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
   var per = landed ? money(Math.ceil(recorded / landed)) + " per card" : "";
   setText($("cost-per"), per || " ");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
@@ -667,54 +639,14 @@ function renderHero(d, s, ft) {
   // throughput: cards landed per hour over the last hour, from the server's samples
   setText($("tput"), throughput == null ? "\u2014" : String(Math.round(throughput)));
   setTitle($("tput"), throughput == null ? "needs ten minutes of samples" : "over the last " + Math.round(throughputMinutes) + " min");
-  setText($("coord"), d.coordinator || "-"); setText($("epoch"), d.epoch != null ? d.epoch : "-");
-  // the version chip (the owner 2026-10-12 ~01:20Z): the server's version, hidden when unknown
-  var vc = $("version-chip");
-  if (vc) {
-    if (d.server_version) { setText($("version"), d.server_version); vc.hidden = false; }
-    else { vc.hidden = true; }
-  }
-  var idl = $("idle");
-  if (idl) {
-    if (d.idle) {
-      var itext = /^idle:\s*/i.test(d.idle) ? d.idle : "idle: " + d.idle;
-      setText(idl, itext);
-      idl.hidden = false;
-    } else if (d.blockers && d.blockers.length) {
-      setText(idl, "idle: " + d.blockers.join("; "));
-      idl.hidden = false;
-    } else {
-      idl.hidden = true;
-    }
-  }
+  
   setMachine(d.machine);
+  setText($("coord"), d.coordinator || "-");
+  // the running sprint server's version (server.py reads it from the process; absent when unknown) and the epoch (the owner ~01:20Z)
+  var vc = $("ver-chip"); if (vc) { vc.hidden = !d.server_version; if (d.server_version) setText($("ver"), d.server_version); }
+  setText($("epoch"), d.epoch != null ? d.epoch : "-");
+  fitMetaChips(); // the coordinator's name in its chip beside the logo (the owner 2026-10-12 ~01:00Z)
 }
-
-// The wordmark, the coordinator chip and the epoch chip stay only while the header holds them and
-// the clock on one line; the clock has priority. The wordmark goes first (the owner 2026-10-12
-// ~03:08Z: "only when it fits, hide otherwise"), then the epoch, then the coordinator (~01:20Z,
-// ~01:25Z); the version always stays. Runs on resize, and after a refresh's clock is drawn when the
-// header's text changed width: the chips' words, or the clock's length (9 to 10 o'clock, the zone).
-// A refresh that changes neither does no layout work (the poll's rule, the held-PageDown judder).
-var metaKey = null;
-function fitMetaIfChanged(d) {
-  var lt = $("live-text"), mk = [d.coordinator, d.epoch, d.server_version, lt ? lt.innerHTML.length : 0].join("\u0001");
-  if (mk !== metaKey) { metaKey = mk; fitMetaChips(); }
-}
-function fitMetaChips() {
-  var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean), live = $("live"), ver = $("version-chip"), logo = $("logo");
-  if (!live || !logo || !live.getBoundingClientRect) return;
-  order.forEach(function (c) { c.classList.remove("nofit"); });
-  var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  function overflows() {
-    var tr = live.getBoundingClientRect(), lr = logo.getBoundingClientRect(), mid = (lr.top + lr.bottom) / 2, right = lr.right;
-    var wrapped = tr.top > mid || tr.bottom < mid;
-    [ver].concat(order).forEach(function (c) { if (c && c.offsetParent !== null) { var r = c.getBoundingClientRect(); right = Math.max(right, r.right); if (r.top > mid || r.bottom < mid) wrapped = true; } });
-    return wrapped || right + 2 * rem > tr.left;
-  }
-  for (var k = 0; k < order.length && overflows(); k++) order[k].classList.add("nofit");
-}
-window.addEventListener("resize", fitMetaChips);
 
 // ---------- poll loop ----------
 var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0;
@@ -755,98 +687,27 @@ function setLive(since) {
 function setLiveHTML(e, s) { if (e.innerHTML !== s) e.innerHTML = s; }
 var DEBUG_FLASH = /(?:^|[?&])debug=flash(?:&|$)/.test(location.search), prevSig = null;
 // The full form of a table, unless any of its rows or cells would overflow: then the compact form.
-// The fit follows README's rule that the poll does no layout work: it runs on load, on resize, and
-// from render() only when fitKey(d) changes, and it measures the full form without toggling .compact
-// on a live panel that keeps it (an off-screen copy is measured instead), so a held PageDown is
-// never starved by a style or layout pass once a second (the owner 2026-10-11: "weird slowness").
-function overflow(box) {
-  return [].some.call(box.querySelectorAll(".row"), function (r) {
-    if (r.scrollWidth > r.clientWidth + 1) return true;
-    // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
-    return [].some.call(r.children, function (c) {
-      var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
-      // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
-      if (c.classList.contains("name")) return false;
-      return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
-    });
-  });
-}
+// Measured with the class removed and set again in the same task, so nothing flickers.
 function fitTables() {
   ["streams", "fleet", "friends", "providers"].forEach(function (id) {
     var panel = document.querySelector(".panel." + id), head = panel && panel.querySelector(".row.head");
     if (!head) return;
-    // The full form is measured on an off-screen, visible, natural-width copy: neither .compact
-    // (the point of the measure) nor .folded. A folded panel's .scroll is display:none, so its
-    // rows read zero widths and would wrongly clear .compact on a live panel; taking both classes
-    // off the copy measures the layout the panel shows when it is open, folded or not, and never
-    // toggles a class on the live panel between the reads (the reader's fix, this card, attempt 4).
-    var copy = panel.cloneNode(true);
-    copy.classList.remove("compact"); copy.classList.remove("folded");
-    copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
-    // the copy carries the panel's own width: an absolute box would otherwise shrink to fit its
-    // content and answer for a page no one sees (stella's hold, this card)
-    if (panel.offsetWidth) copy.style.width = panel.offsetWidth + "px";
-    document.body.appendChild(copy);
-    var over = overflow(copy);
-    copy.remove();
-    if (over) panel.classList.add("compact"); else panel.classList.remove("compact");
-    // an ellipsized name in the full form carries its full text on hover; the fit sets it on the
-    // live rows, and the panel is already in hand (no document-wide query, no forced layout)
-    [].forEach.call(panel.querySelectorAll(".row .name"), function (c) {
-      if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
+    panel.classList.remove("compact");
+    // every row, not only the header: a row's pill or name can be wider than its header
+    var over = [].some.call(panel.querySelectorAll(".row"), function (r) {
+      if (r.scrollWidth > r.clientWidth + 1) return true;
+      // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
+      return [].some.call(r.children, function (c) {
+        var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
+        // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
+        if (c.classList.contains("name")) { if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent; return false; }
+        return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
+      });
     });
+    if (over) panel.classList.add("compact");
   });
-  measureMetrics();
-}
-// A fold or unfold shows or hides a panel's scroll body (index.html: .panel.folded > .scroll),
-// so the layout can differ from the last fit. Re-measure after the toggle lands, so a panel the
-// fit measured hidden is fit again now that it shows (the reader's fix, this card, attempt 4);
-// without it a wrong .compact would persist until a resize or a fit-key change.
-function fitOnFold(e) {
-  var b = e.target && e.target.closest ? e.target.closest(".panel-head .fold") : null;
-  if (b) setTimeout(fitTables, 0);
-}
-window.addEventListener("click", fitOnFold);
-// The fit key: the text each panel's rows draw, from the data (never the DOM), so render() fits
-// only when the layout can have changed. It follows the rendered names, status and tags — a
-// stream's display name, its status pill and its tag line, a bud's label, a provider's state and
-// note — and folds every digit to one character, so a figure that keeps its width leaves the key
-// alone and a stable poll does no width measurement at all (stella's hold, this card). A new row,
-// a longer name or a new tag moves it.
-function shape(s) { return String(s == null ? "" : s).replace(/[0-9]/g, "#"); }
-function money0(c) { return c === null ? "-" : money(c); }
-function budKey(k, tab) {
-  var m = tab[k] || {};
-  return [shape(budLabel(k, tab)), shape(shownStatus(m.status)), shape(int(m.working)), shape(int(m.width)),
-    shape(int(m.done)), shape(int(m.ready)), shape(m.window || "")].join("\u0001");
-}
-function fitKey(d) {
-  d = d || {};
-  var t = d.tables || {}, work = t.work || {}, merge = t.merge || {}, states = {}, arch = archivedSet(d);
-  (d.streams || []).forEach(function (s) { states[s.Stream] = s; });
-  var streams = streamOrder(d).filter(function (k) { return !arch[k]; }).map(function (k) {
-    var w = work[k] || {}, m = merge[k] || {}, s = states[k] || {}, c = {}, total = 0;
-    FLOW.forEach(function (st) { c[st] = int(w[st]); total += c[st]; });
-    var tags = []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
-    return [shape(s.Display || k), shape(streamStatus(s.State, c, total)[0]), shape(tags.join(" · ")),
-      shape(money0(cents(w.cost))), shape(c.landed), shape(total)].join("\u0001");
-  }).join("\n");
-  var buds = function (name) { var tab = t[name] || {}; return Object.keys(tab).map(function (k) { return budKey(k, tab); }).join("\n"); };
-  var providers = Object.keys(t.providers || {}).map(function (k) {
-    var p = t.providers[k] || {};
-    return [shape(k), shape(providerState(p.state)[0]), shape(money0(cents(p.balance))), shape(money0(cents(p.spend_hour))), shape(p.note || "")].join("\u0001");
-  }).join("\n");
-  return ["streams:" + streams, "fleet:" + buds("fleet"), "friends:" + buds("friends"), "providers:" + providers].join("|");
-}
-var lastFitKey = null;
-function fitIfChanged(d) {
-  var k = fitKey(d);
-  if (k === lastFitKey) return; // the layout cannot have changed: no style or layout pass this poll
-  lastFitKey = k;
-  fitTables();
 }
 window.addEventListener("resize", fitTables);
-
 // Spend row (the owner 2026-10-04 10:15 AM): the pie of cards by tier and the ten most expensive streams.
 var TIERS = ["flash", "pro", "heavy", "frontier"], topN = 10, lastSpendData = null;
 window.addEventListener("resize", function () { if (lastSpendData) renderTopStreams(lastSpendData); });
@@ -943,11 +804,9 @@ function renderTopStreams(d) {
   rows.sort(function (a, b) { return b.cost - a.cost; });
   var cols = String(order.length + 1); // the tiers with spend, then total
   if (box.style.getPropertyValue("--tier-cols") !== cols) box.style.setProperty("--tier-cols", cols);
-  // the root font size and the pie's width are measured once per layout (measureMetrics), never
-  // re-read on a poll: a computed-style or a width read forces a synchronous layout (this card)
-  var pw = METRICS.pie, rem = METRICS.rem || 16;
+  var pie = $("pie"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   var n = 10;
-  if (pw) n = Math.max(3, Math.min(rows.length, Math.round((pw + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
+  if (pie && pie.clientWidth) n = Math.max(3, Math.min(rows.length, Math.round((pie.clientWidth + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
   topN = n;
   // the rows are keyed by stream and patched in place like every other table's; the header and
   // each row grow or lose cells at the end when the tiers with spend change
@@ -956,8 +815,7 @@ function renderTopStreams(d) {
   setCount(head, cellCount, function () { return quiet(el("div")); });
   putKid(head, 0, "", "stream");
   order.forEach(function (t, i) { putKid(head, 1 + i, "num", t); }); // plain headers, as every table's: the color keys are the legend's alone
-  // the phone shows only stream | its cost (the owner 2026-10-12 ~00:55Z: "it's the cost per stream")
-  putKid(head, cellCount - 1, "num", window.matchMedia && window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total");
+  putKid(head, cellCount - 1, "num", window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total"); // the phone shows only stream | its cost (the owner 2026-10-12 ~00:55Z: "it's the cost per stream")
   var shown = rows.slice(0, n);
   var byName = {}; shown.forEach(function (r) { byName[r.name] = r; });
   syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
@@ -972,9 +830,8 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  // with no stream spending, the table keeps its row lines and stays blank: no message (the owner
-  // 2026-10-12 ~01:07Z); the count follows the pie's measured width (measureMetrics), as topN does
-  var blankN = rows.length ? 0 : (pw ? Math.max(3, Math.round((pw - rem) / (5 * rem))) : 10);
+  // with no stream spending, the table keeps its row lines and stays blank: no message (the owner 2026-10-12 ~01:07Z)
+  var blankN = rows.length ? 0 : (pie && pie.clientWidth ? Math.max(3, Math.round((pie.clientWidth - rem) / (5 * rem))) : 10);
   if (!box._blank) box._blank = [];
   while (box._blank.length < blankN) {
     var b = el("div", "row blank");
@@ -1043,7 +900,7 @@ function render(d) {
   renderProviders(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
-  fitIfChanged(d);
+  fitTables();
   if (DEBUG_FLASH) { // ?debug=flash: one line per refresh, same=1 when the rendered data did not change
     var sig = JSON.stringify([d.landed, d.all, d.summary, d.coordinator, d.epoch, d.machine, d.tables.work, d.tables.fleet, d.tables.friends || null,
       (d.streams || []).map(function (x) { return [x.Stream, x.State]; }), d.tables.merge]);
@@ -1059,7 +916,7 @@ function render(d) {
 function accept(j) {
   if (!j) return;
   var d = j.tables ? j : j.data;
-  if (j.build) { if (build == null) build = j.build; else if (build !== j.build) { location.reload(); return; } }
+  if (j.build) { if (build == null) build = j.build; else if (build !== j.build) { try { sessionStorage.setItem("dash-scroll", String(window.scrollY)); } catch (e) {} location.reload(); return; } }
   if (!d || !d.tables) return;
   var at = Date.parse(d.at);
   if (isNaN(at) || at <= shownAt) return;
@@ -1067,60 +924,8 @@ function accept(j) {
   if ("throughput" in j) { throughput = j.throughput == null ? null : j.throughput; throughputMinutes = j.throughputMinutes || 0; }
   renderRelease(j);
   try { render(d); } catch (e) { console.error(e); }
-  coinSnapshot(d);
   setLive(new Date(at));
-  fitMetaIfChanged(d); // after the clock is drawn: the fit measures the clock as it is shown
 }
-// The land coin (docs/SPEC-SPRINT-DASHBOARD.md, "The coin"; the owner 2026-10-11: "Whenever a card
-// lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping.
-// Keep it subtle."). One short two-tone chirp when a refresh shows more cards landed than the
-// refresh before, however many landed in it; never on the first load, never on a fall (a clear),
-// never twice in one refresh (d.at is the tick id the read carried). It is silent until the owner
-// clicks the speaker once, because browsers refuse audio before a gesture, and the choice is kept
-// in localStorage. The tone is synthesized here: no audio file, no extra network request.
-var COIN_KEY = "sprint-coin", coinLanded = null, coinTick = null, coinOn = false, coinCtx = null;
-try { coinOn = localStorage.getItem(COIN_KEY) === "1"; } catch (e) {}
-function coinAudio() {
-  if (coinCtx) return coinCtx;
-  var C = window.AudioContext || window.webkitAudioContext;
-  coinCtx = C ? new C() : null;
-  return coinCtx;
-}
-function coinChirp() { // two sine partials, the second a fifth above, ~0.25 s, fast decay, peak 0.15
-  var c = coinAudio(); if (!c) return;
-  if (c.state === "suspended") c.resume();
-  var t = c.currentTime;
-  [880, 1320].forEach(function (f) {
-    var o = c.createOscillator(), g = c.createGain();
-    o.type = "sine"; o.frequency.value = f;
-    g.gain.setValueAtTime(0.15, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-    o.connect(g); g.connect(c.destination);
-    o.start(t); o.stop(t + 0.25);
-  });
-}
-function coinSnapshot(d) {
-  var n = int(d && d.landed), id = d && d.at;
-  if (coinTick === id) return; // once per refresh, however many landed
-  var first = coinTick === null;
-  coinTick = id;
-  if (first) { coinLanded = n; return; } // never on the first load
-  if (n > coinLanded && coinOn) coinChirp();
-  coinLanded = n;
-}
-function coinPaint() {
-  var b = $("coin"); if (!b) return;
-  var t = "Land sounds: " + (coinOn ? "on" : "off");
-  b.classList.toggle("on", coinOn);
-  b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-pressed", coinOn ? "true" : "false");
-}
-function coinToggle() { // clicked on: the coin once, the test the owner hears before relying on it
-  coinOn = !coinOn;
-  try { localStorage.setItem(COIN_KEY, coinOn ? "1" : "0"); } catch (e) {}
-  coinPaint();
-  if (coinOn) coinChirp();
-}
-if ($("coin")) { $("coin").addEventListener("click", coinToggle); coinPaint(); }
 // The poll: a fixed 1 s timer that never waits on the round trip. Up to two fetches in flight;
 // a third tick is skipped (console.debug). A fetch that hangs is aborted after 10 s so it cannot
 // hold a slot. A failure changes nothing on the page.
@@ -1171,7 +976,6 @@ setInterval(function () { if (stream && Date.now() - streamHeard > STREAM_SILENT
 // pills, the clock or the button after load.
 
 // theme: always dark (the owner 2026-10-04 2:21 PM: no light theme, no toggle)
-measureMetrics(); // the widths a poll reads, measured once here and once per fit, never per POLL_MS
 startPoll();
 connectStream();
 
@@ -1246,3 +1050,31 @@ window.addEventListener("resize", function () { if (landLast) drawLandings(landL
 if ($("landings-panel")) $("landings-panel").addEventListener("click", function (e) { if (landLast && e.target.classList.contains("fold")) setTimeout(function () { drawLandings(landLast); }, 0); });
 pollLandings();
 setInterval(pollLandings, LAND_POLL_MS);
+
+// the version and epoch chips stay only while the header holds them and the clock on one line;
+// the clock has priority, so the last chip goes first (the owner 2026-10-12 ~01:20Z)
+function fitMetaChips() {
+  // the version always stays; epoch, then the coordinator, go while the header cannot hold them and the clock on one line (the owner ~01:25Z)
+  var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean)  /* the wordmark goes first (the owner 2026-10-12 ~03:08Z: "only when it fits, hide otherwise") */, live = $("live"), ver = $("ver-chip"), logo = $("logo");
+  if (!live || !logo) return;
+  order.forEach(function (c) { c.classList.remove("nofit"); });
+  var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  function overflows() {
+    var tr = live.getBoundingClientRect(), lr = logo.getBoundingClientRect(), mid = (lr.top + lr.bottom) / 2, right = lr.right;
+    var wrapped = tr.top > mid || tr.bottom < mid;
+    [ver].concat(order).forEach(function (c) { if (c && c.offsetParent !== null) { var r = c.getBoundingClientRect(); right = Math.max(right, r.right); if (r.top > mid || r.bottom < mid) wrapped = true; } });
+    return wrapped || right + 2 * rem > tr.left;
+  }
+  for (var k = 0; k < order.length && overflows(); k++) order[k].classList.add("nofit");
+}
+window.addEventListener("resize", fitMetaChips);
+
+// keep the reader's place across the build-change reload: the page is short until the first data
+// renders, so the browser's own restore lands at the top; restore after the panels fill instead
+(function () {
+  var y = null;
+  try { y = sessionStorage.getItem("dash-scroll"); sessionStorage.removeItem("dash-scroll"); } catch (e) {}
+  if (y == null) return;
+  var go = function () { window.scrollTo(0, +y); };
+  [500, 1500, 3000].forEach(function (ms) { setTimeout(go, ms); });
+})();

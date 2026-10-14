@@ -3,7 +3,6 @@ package sprintdash
 import (
 	"bytes"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -373,16 +372,9 @@ func (s *Server) PageSnapshot() []byte {
 // tileFile is the embedded file each tile logo route serves.
 var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/logo-tile-384.png": "logo-robot-384.png"}
 
-// liveLogoData is the logo the live page carries in its slot (dashboard/live/index.html, as
-// changed 2026-10-12): the 384 px robot tile, logo-robot-384.png, byte for byte, inline as a data
-// PNG. The card's P1 names the nova-sprint image (the owner 2026-10-12 ~00:28Z: "The nova sprint
-// logo goes top left, and replaces the robot logo"); the live page, the owner's most recent state,
-// carries the robot, so this follows the live page until the owner rules.
-var liveLogoData = "data:image/png;base64," + base64.StdEncoding.EncodeToString(file("logo-robot-384.png"))
-
 // index is the page with its script versioned by the build and the logo slot and favicon
-// filled as the live page's server fills them (its index_page): with no --logo, the
-// live page's logo, the 384 px robot tile, inline as a data PNG (liveLogoData), the build in
+// filled as the live page's server fills them (its index_page): with no --logo, its tile
+// branch (the tile img in the slot, the tile favicon links), the build in
 // place of its version; with --logo, an svg logo is drawn inline in the page's
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
 func (s *Server) index() []byte {
@@ -391,7 +383,9 @@ func (s *Server) index() []byte {
 	slot, icon := "", ""
 	if s.Logo == "" {
 		v := build
-		slot = `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
+		// server.py index_page, its tile branch: the tile img in the <!--LOGO--> slot (which
+		// sits inside a comment in the live page, beside its inline data-PNG logo)
+		slot = `<img id="logo" class="logo-tile" src="/logo-tile-192.png?v=` + v + `" srcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x" alt="">`
 		icon = `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="apple-touch-icon" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="preload" as="image" href="/logo-tile-192.png?v=` + v + `" imagesrcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x">`
