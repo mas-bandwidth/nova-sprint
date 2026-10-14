@@ -18,7 +18,7 @@ const DiskFloorPctDefault = 15.0
 // off. It returns true when the statfs read fails: an unreadable disk is
 // reported in the why but does not stop the member, because the existing
 // preflight's MISSING reading covers that case. free is injected (the
-// production value is statfsFree, a syscall.Statfs of root; the tests pass a
+// production value is StatfsFree, a syscall.Statfs of root; the tests pass a
 // fake). The word this returns is the member's NoRoom word, carried by its
 // beat and read by the deal, which passes the member by while it is set: the
 // model is tla/NoRoom.tla (read), WordIsThisTicks.

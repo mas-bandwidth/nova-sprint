@@ -3352,6 +3352,10 @@ order the cards were dealt in, so a card brought to the front of its stream by
   refuse when either refuses). The refusal is the member's no-room word, carried
   by its beat and read by the deal, which passes the member by while it is set
   (tla/NoRoom.tla, WordIsThisTicks).
+- Bench order: a BENCH card is dealt to the least-loaded of its named members
+  that has room (not NoRoom, not Overloaded); `benchOrder` drops those and
+  sorts the rest by beat Load asc, then cards held asc, then name (section 5's
+  BENCH line; `internal/sprint/bench_deal.go`; `TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom`).
 - Every rolling index (the fleet's `deal_index`, the readers' `ask_index`, the
   work table's `stream_index`, `stream_index_ask` and `stream_index_accept`) is
   a counter: a uint64 from 0 that goes up by one with every placement and by
