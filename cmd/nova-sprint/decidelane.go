@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"golang.org/x/sync/errgroup"
 )
 
 // THE DECIDE LANE (run --decide <dir>; docs/SPEC-SPRINT.md section 2, nova-decide's layer 2;
@@ -505,26 +506,23 @@ func (l *decideLane) grade(ctx context.Context, asks []sprint.GradeAsk) (map[str
 	var mu sync.Mutex
 	got := map[string]decide.Decided{}
 	var problems []string
-	gate := make(chan struct{}, GradeWidth)
-	var wg sync.WaitGroup
-	for _, g := range todo {
-		wg.Add(1)
-		gate <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-gate }()
-			dec, err := l.gradeOne(ctx, g)
+	var g errgroup.Group
+	g.SetLimit(GradeWidth)
+	for _, ask := range todo {
+		g.Go(func() error {
+			dec, err := l.gradeOne(ctx, ask)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				problems = append(problems, fmt.Sprintf("%s not graded: %v", g.Card, err))
-				delete(l.graded, g.Card) // asked again on the next round
-				return
+				problems = append(problems, fmt.Sprintf("%s not graded: %v", ask.Card, err))
+				delete(l.graded, ask.Card) // asked again on the next round
+				return nil
 			}
-			got[g.Card] = dec
-		}()
+			got[ask.Card] = dec
+			return nil
+		})
 	}
-	wg.Wait()
+	g.Wait()
 	slices.Sort(problems)
 	return got, problems
 }
