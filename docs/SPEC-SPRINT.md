@@ -670,7 +670,11 @@ carries her start and her deadline (`friendStartSet`, through the one move:
 `take --as friend.<name> <card>@<gen> [--lane <n>]` is `sprint.NamedLaneTake`,
 which takes the named card by `takeOne` — the row's seat and width, the card's
 route rest and the providers' concurrency budget held as a take by count holds
-them — and stamps it with the lane and, on her row, her start). A card on
+them — and stamps it with the lane and, on her row, her start). A friend's take
+by count moves only cards she has started; the rest stay ready (`takeOne`,
+`friendStarted`, `friendStartSet`, `tla/FriendReadyTake.tla`), each unstarted
+ready card noted on a NOTE line (`<id>: stays ready on friend.<name>'s row until
+her start (a take by count is no start)`). A card on
 another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says

@@ -126,14 +126,14 @@ func TestNoUnsetterTouchesACoordinatorsHold(t *testing.T) {
 		run  func(t *testing.T, w *world)
 	}{
 		{
-			name: "the passed probe", site: "steps_work.go:3196",
+			name: "the passed probe", site: "steps_work.go:3222",
 			run: func(t *testing.T, w *world) {
 				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 				holdSurvives(t, w.s.MemberCtl("m1"))
 			},
 		},
 		{
-			name: "the environment fault clear", site: "steps_work.go:2871",
+			name: "the environment fault clear", site: "steps_work.go:2897",
 			run: func(t *testing.T, w *world) {
 				w.s.MemberCtl("m1").Fields[FieldEnvFault] = "push"
 				var u Unit
