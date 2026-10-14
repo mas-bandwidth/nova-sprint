@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
@@ -56,94 +55,6 @@ func TestSeatReadsHolderEpochAndGeneration(t *testing.T) {
 // friend health by the holder at the seat's generation writes the observation; the
 // table shows her up at once and down ten seconds later; another actor and a stale
 // generation are refused with nothing written; the same observation again replays.
-func TestFriendHealthIsTheSeatsAndFencedByItsGeneration(t *testing.T) {
-	t.Parallel()
-	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
-	seen := ta.now.UTC().Format(time.RFC3339)
-	assert.Contains(t, ta.dry("friend health amy --state up --seen "+seen+" --generation 1 --dry-run"), "FRIEND-HEALTH DRY-RUN amy state=up seen="+seen+" generation=1; nothing was changed")
-	out := ta.ok("friend health amy --state up --seen " + seen + " --generation 1")
-	assert.Equal(t, "FRIEND-HEALTH OK amy state=up seen="+seen+" generation=1 status=up\n", out)
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    0 | 0.0% |       0 | up")
-
-	out = ta.ok("friend health amy --state up --seen " + seen + " --generation 1")
-	assert.Contains(t, out, "replayed=true", "the same proof again is answered as recorded")
-
-	code, _, errs := ta.do("friend health amy --state up --seen " + seen + " --generation 1 --actor stella")
-	assert.Equal(t, 2, code, errs)
-	assert.Contains(t, errs, "friend health is the coordinator's alone: coordinator, not stella")
-
-	ta.ok("coordinator stella --reason 'handing over'")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "an old seat's proof never looks up under a new seat")
-	ta.a.sleep(time.Second)
-	later := ta.now.UTC().Format(time.RFC3339)
-	code, _, errs = ta.do("friend health amy --state up --seen " + later + " --generation 1 --actor stella")
-	assert.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "the seat is stella's at generation 2, and this observation names generation 1: read the seat again (nova-sprint seat); nothing was changed")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "a refusal writes nothing")
-	ta.ok("friend health amy --state up --seen " + later + " --generation 2 --actor stella")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| up")
-	code, _, errs = ta.do("friend health amy --state up --seen " + ta.now.Add(time.Hour).UTC().Format(time.RFC3339) + " --generation 2 --actor stella")
-	assert.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "after the server's clock", "a proof dated after the server's clock is refused")
-
-	ta.a.sleep(sprint.FriendPongWindow + time.Second)
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "ten seconds without a newer proof")
-	ta.ok("friend beat amy")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "her own beat never makes an observed friend up again")
-
-	// usage: the words it wants
-	code, _, errs = ta.do("friend health amy --state sleepy --seen " + later + " --generation 2 --actor stella")
-	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--state wants one of up, asleep, down")
-	code, _, errs = ta.do("friend health amy --state up --seen yesterday --generation 2 --actor stella")
-	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--seen wants an RFC3339 time")
-	code, _, errs = ta.do("friend health amy --state up --seen " + later + " --actor stella")
-	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--generation wants the seat's generation")
-}
-
-// The table's words are up, held and down and nothing else: asleep is kept on the row
-// for the daemon and shown as down; a reason and an until from the observation, or
-// from friend down, are shown in the status cell and on the row; held is the
-// coordinator's hold alone, lifted by friend up.
-func TestTheFriendsTableShowsUpHeldOrDownWithTheReason(t *testing.T) {
-	t.Parallel()
-	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
-	seen := ta.now.UTC().Format(time.RFC3339)
-	ta.ok("friend health amy --state asleep --seen " + seen + " --generation 1")
-	frame := tableOf(ta.frame(), sprint.Friends)
-	assert.Contains(t, frame, "| down")
-	assert.NotContains(t, frame, "asleep")
-	var w whereView
-	ta.json("where", &w)
-	assert.Equal(t, sprint.Down, w.Tables[sprint.Friends]["amy"]["status"])
-
-	ta.a.sleep(time.Second)
-	later := ta.now.UTC().Format(time.RFC3339)
-	back := ta.now.Add(2 * time.Hour)
-	ta.ok("friend health amy --state down --seen " + later + " --generation 1 --reason 'opus rate limited' --until " + back.UTC().Format(time.RFC3339))
-	frame = tableOf(ta.frame(), sprint.Friends)
-	assert.Contains(t, frame, "down (opus rate limited, until "+ta.a.clock12(back, ta.now)+")", frame)
-
-	ta.ok("friend down amy --reason 'resting her' --until " + back.UTC().Format(time.RFC3339))
-	frame = tableOf(ta.frame(), sprint.Friends)
-	assert.Contains(t, frame, "held (resting her, until "+ta.a.clock12(back, ta.now)+")", frame)
-	ta.json("where", &w)
-	assert.True(t, strings.HasPrefix(cellText(w.Tables[sprint.Friends]["amy"]["status"]), sprint.Held+" ("), "where --json carries the cell as printed")
-	ta.ok("friend up amy")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "the hold lifted, the observation (down) stands")
-	ta.a.sleep(time.Second)
-	ta.ok("friend health amy --state up --seen " + ta.now.UTC().Format(time.RFC3339) + " --generation 1")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| up")
-}
-
-// A one-shot friend's delivery wakes her once per card: one bus message from the
-// coordinator, naming the card and its inbox path. A send that fails never fails
-// the delivery, is said on sync's line and written on the card's story. Batch mode
-// is TestFriendSyncWakesOncePerPassInBatchMode.
 func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) {
 	t.Parallel()
 	oneShot := func(ta *testApp) {
@@ -247,35 +158,3 @@ func TestFriendSyncSaysTheBusStoresAlarmAndTheNextSendClearsIt(t *testing.T) {
 // her session's evidence alone: with the observation gone she is up only on a card of hers
 // finished, and her beat never brings her up. --dry-run says what stood and writes nothing;
 // the seat's holder alone clears; an observation's flag beside --clear is refused.
-func TestFriendHealthClearLeavesHerOnHerSessionsEvidenceAlone(t *testing.T) {
-	t.Parallel()
-	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
-	ta.ok("friend health amy --state up --seen " + ta.now.UTC().Format(time.RFC3339) + " --generation 1")
-	ta.a.sleep(sprint.FriendPongWindow + time.Second)
-	ta.ok("friend beat amy")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "observed: her own beat never brings her up")
-
-	assert.Equal(t, "FRIEND-HEALTH DRY-RUN amy clear was=up; nothing was changed\n", ta.dry("friend health amy --clear --dry-run"))
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "a dry run removes nothing")
-
-	code, _, errs := ta.do("friend health amy --clear --actor stella")
-	assert.Equal(t, 2, code, errs)
-	assert.Contains(t, errs, "friend health is the coordinator's alone: coordinator, not stella")
-	code, _, errs = ta.do("friend health amy --clear --state up")
-	assert.Equal(t, 2, code, errs)
-	assert.Contains(t, errs, "--clear removes the friend's observation and takes no observation's flag")
-
-	assert.Equal(t, "FRIEND-HEALTH OK amy cleared=true was=up status=down\n", ta.ok("friend health amy --clear"))
-	ta.ok("friend beat amy")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "her beat is no evidence once the observation is gone")
-	var w whereView
-	ta.json("where", &w)
-	assert.Equal(t, sprint.Down, w.Tables[sprint.Friends]["amy"]["status"])
-
-	assert.Equal(t, "FRIEND-HEALTH OK amy cleared=true was=none status=down\n", ta.ok("friend health amy --clear"), "a friend with no observation clears all the same")
-
-	code, _, errs = ta.do("friend health nobody --clear")
-	assert.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "no friend nobody on the friends table")
-}

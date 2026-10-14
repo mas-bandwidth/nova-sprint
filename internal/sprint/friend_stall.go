@@ -14,23 +14,10 @@ import (
 // The model is tla/StallLadder.tla (with invariants NoCardHeldPastBound, NoStartedRedealt,
 // ReleasedOnlyByActivity).
 //
-// A friend holding dealt cards is stalled when no activity of hers and no card progress stamp
-// (FieldProgress) is newer than friend_stall_after (default 20m). Her activity is any of: her
-// session activity (FriendReport.Active); a beat whose running list is not empty (friend beat
-// --running: a one-shot lane, or cards worked in child agents, move no session), at the beat's
-// time; her session's proof (a check answered, or a bus message of hers) and its answer to the
-// coordinator's wake ping; and a finish or a report of hers: the newest of them (FriendWorked).
-// While stalled, the ladder climbs one rung per friend_stall_step (default 5m):
-//   (1) Wake turn 1: bus message to her pushed into daemon as a turn.
-//   (2) Wake turn 2: second wake bus message.
-//   (3) Coordinator note: pushed judgment ("friend <f> stalled <d>: two wakes unanswered").
-//   (4) Unstarted cards taken back: FriendTake with All: true (started cards stay and finish).
-//   (5) Friend marked down with reason "stalled", released to up by the tick itself at her
-//       first activity after it. The release clears the stall props and removes the
-//       coordinator's observation of her (Plan.HealthClear), writing none: an observation
-//       written by the tick would stand for FriendPongWindow and read as evidence her
-//       session never gave (ObservedStatus); with it
-//       removed her status is her session's evidence alone (FriendStatus).
+// A friend holding dealt cards is stalled when work reports and card progress
+// stay quiet past friend_stall_after. The ladder sends two work nudges, tells
+// the coordinator and returns unstarted cards. Its final rung records a work
+// stall until activity resumes; it never writes liveness or a second status.
 //
 // Every rung emits a happened note (Kind: Happened), which says what the rung did: the
 // part's units are only the cards and rows it changes. Any activity or progress resets her
@@ -92,8 +79,7 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 		mine := append(append([]*Card(nil), s.Fleet.Cell(row, Ready)...), s.Fleet.Cell(row, Working)...)
 
 		// 1. Activity signal: the newest evidence of hers (FriendWorked): her session's
-		// writes, her beat naming running cards, her session's proof (a check answered or a
-		// bus message of hers), and her finishes and reports, never one field alone
+		// writes, her report naming running cards, and card finishes and reports.
 		activity, _ := FriendWorked(s, f, friendWorkOf(r, f))
 		// Check if she is marked stall down
 		downStamp, _ := s.Fleet.Prop(PropFriendStallDown(f))
@@ -107,29 +93,14 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 		curRung, _ := strconv.Atoi(curRungStr)
 
 		// ReleasedOnlyByActivity (tla/StallLadder.tla): release from stall down occurs
-		// only when fresh activity of hers is observed (never card progress alone). The
-		// release writes no observation: it removes the one rung 5 wrote, so her status
-		// is her session's evidence alone (FriendStatus).
+		// only when fresh work activity is observed (never card progress alone).
 		if isStallDown && !activity.IsZero() && (downTime.IsZero() || !activity.Before(downTime)) {
 			write(PropFriendStallDown(f), "")
 			write(PropFriendStallRung(f), "")
 			curRung = 0
-			p.HealthClear = append(p.HealthClear, f)
-			if ctl := s.MemberCtl(row); ctl != nil {
-				p.Units = append(p.Units, Unit{
-					Key: ctl.ID,
-					Changes: []Change{
-						change(Fleet, setEntry(ctl, map[string]string{
-							"status": Up,
-							"since":  stamp(s.Now),
-						})),
-					},
-					Moved: snapshotFriendPronouns(s, f).Sprintf("friend %s up: released by {their} activity", f),
-				})
-			}
 			hn := happened(NFriendStall, "", s.Now)
 			hn.Who, hn.To = r.who(), s.Coordinator
-			hn.What = fmt.Sprintf("friend %s released to up: activity at %s", f, activity.UTC().Format(time.RFC3339))
+			hn.What = fmt.Sprintf("friend %s stall cleared: activity at %s", f, activity.UTC().Format(time.RFC3339))
 			p.Notes = append(p.Notes, hn)
 			isStallDown = false
 		}
@@ -278,35 +249,10 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 					hn.What = fmt.Sprintf("friend %s stalled %s: unstarted cards taken back", f, idleDuration.Round(time.Second))
 					p.Notes = append(p.Notes, hn)
 				case 5:
-					// tla/SeatHealth.tla Rung5Down
-					gen := max(s.SeatGeneration, FirstSeatGeneration)
-					if p.Health == nil {
-						p.Health = &FriendHealthWrite{
-							Friend: f,
-							Health: FriendHealth{
-								State:      Down,
-								Reason:     "stalled",
-								Seen:       s.Now,
-								Generation: gen,
-							},
-						}
-					}
 					write(PropFriendStallDown(f), stamp(s.Now))
-					if ctl := s.MemberCtl(row); ctl != nil {
-						p.Units = append(p.Units, Unit{
-							Key: ctl.ID,
-							Changes: []Change{
-								change(Fleet, setEntry(ctl, map[string]string{
-									"status": Down,
-									"since":  stamp(s.Now),
-								})),
-							},
-							Moved: fmt.Sprintf("friend %s down: stalled", f),
-						})
-					}
 					hn := happened(NFriendStall, "", s.Now)
 					hn.Who, hn.To = r.who(), s.Coordinator
-					hn.What = fmt.Sprintf("friend %s stalled %s: marked down (reason stalled)", f, idleDuration.Round(time.Second))
+					hn.What = fmt.Sprintf("friend %s stalled %s: work stalled (liveness unchanged)", f, idleDuration.Round(time.Second))
 					p.Notes = append(p.Notes, hn)
 				}
 			}
@@ -318,7 +264,7 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 }
 
 // FriendWork is the evidence of a friend's work the tables do not hold: what her daemon's
-// beat carries and the store's record of her last finish. Each is zero when there is none.
+// work report carries. Each is zero when there is none.
 type FriendWork struct {
 	// Active is the newest write under her working directory and outbox as her daemon's
 	// last walk found it (FriendReport.Active). The walk is bounded in files and time, so
@@ -326,19 +272,10 @@ type FriendWork struct {
 	Active time.Time
 	// Running is her beat's time while it names cards running (friend beat --running).
 	Running time.Time
-	// Proof is her session's last proof: a SESSION CHECK it answered, or a bus message of
-	// its own (Beat.Proof, FriendSession.Pong).
-	Proof time.Time
-	// Finished is when a card of hers last finished, working to done (the store's
-	// friend-finish record, FriendSeat.Finished), whatever row the card is on now.
-	Finished time.Time
-	// Answered is when her session last answered the coordinator's wake ping (her
-	// FriendHealth observation, up), FriendSeat.Answered.
-	Answered time.Time
 }
 
 // friendWorkOf is what the tick was given of the friend's work beside the tables: her
-// beat (by her name, else by her row), her session's proof, and her seat's.
+// work report (by her name, else by her row), and her seat's activity.
 func friendWorkOf(r TickReq, f string) FriendWork {
 	var w FriendWork
 	later := func(at *time.Time, t time.Time) {
@@ -359,15 +296,10 @@ func friendWorkOf(r TickReq, f string) FriendWork {
 				later(&w.Running, b.At)
 			}
 		}
-		later(&w.Proof, b.Proof)
 	}
-	later(&w.Proof, r.Sessions[f].Pong)
 	for _, seat := range r.Friends {
 		if seat.Name == f {
 			later(&w.Active, seat.Active)
-			later(&w.Proof, seat.Proof)
-			later(&w.Finished, seat.Finished)
-			later(&w.Answered, seat.Answered)
 		}
 	}
 	return w
@@ -375,9 +307,7 @@ func friendWorkOf(r TickReq, f string) FriendWork {
 
 // FriendWorked is the newest evidence that friend f is at work, and what it is (docs/SPEC-SPRINT.md
 // section friend-stall-ladder-r.w1): her session's writes, her beat naming running cards,
-// her session's proof (a check answered, or a bus message of hers), her session's answer to
-// the coordinator's wake ping, a finish of hers (the
-// store's record, or a card done on her row), a report of hers (FieldReported on a card of
+// a card done on her row, a report of hers (FieldReported on a card of
 // her row), and the coordinator's view of her row ("active"). Card progress and takes are
 // the cards', not hers (FriendCardMoved): they hold the stall ladder and never release her.
 // Zero and "" when there is none. On 2026-10-06 one field, her daemon's walk of her
@@ -399,9 +329,6 @@ func FriendWorked(s *Snapshot, f string, w FriendWork) (time.Time, string) {
 	}
 	see(w.Active, "session write")
 	see(w.Running, "beat naming running cards")
-	see(w.Proof, "session proof")
-	see(w.Finished, "finish")
-	see(w.Answered, "session answer")
 	if s == nil || s.Fleet == nil {
 		return at, what
 	}

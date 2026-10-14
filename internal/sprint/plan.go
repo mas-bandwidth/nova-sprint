@@ -88,15 +88,7 @@ type Plan struct {
 	// Seat is the seat's change (MoveSeat): the step's commit writes the
 	// coordinator and the seat's record with its note.
 	Seat *SeatChange
-	// Health is a friend's health observed (ObserveFriend): the step's commit
-	// writes it as her record.
-	Health *FriendHealthWrite
-	// HealthClear is the friends whose observation the step's commit removes (friend
-	// health --clear, ClearFriendHealth; the stall ladder's release, TickFriendStall), so
-	// her status is her session's evidence alone (FriendStatus).
-	HealthClear []string
-	// Timers is the timer record the step leaves (TimerNotes): the timers it
-	// raised are closed in the same commit as their judgment.
+	// Timers is the timer record closed with its judgments.
 	Timers *Timers
 	// CloseTimers is the ids of the timers this step closes: its commit
 	// deletes only these ids from the timer record, read inside the same commit,

@@ -13,18 +13,27 @@ import (
 // (engine.go: it is the owner's receipt, read off the owner's beats), and it starts and
 // reports no work. The beats are the tick's own read.
 func LiveReturnStep(beats map[string]sprint.Beat) Step {
-	return Step{Verb: sprint.LiveReturnVerb, Actor: sprint.MachineActor, Load: tables(sprint.Fleet), Mirrors: true,
+	return Step{Verb: sprint.LiveReturnVerb, Actor: sprint.MachineActor, Load: tables(sprint.Work, sprint.Fleet), Mirrors: true, Friends: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.LiveReturns(s, beats, true) }}
 }
 
 // liveStopped is a STOPPED tick's reconcile: a STOPPED machine takes and lands nothing new,
-// and still makes working what runs. Nothing is read or written while no beat carries a
-// live set (workers from before v1.2.6).
+// and still reconciles live runs and explicit nova-hook unhooks. A friend unhook
+// needs no work-report beat.
 // tla/LiveRuns.tla Tick
 func (st *Store) liveStopped(ctx context.Context, beats map[string]sprint.Beat, res *TickResult) error {
 	known := false
 	for _, b := range beats {
 		known = known || b.LiveKnown
+	}
+	if !known {
+		seats, err := st.FriendSeats(ctx, st.now())
+		if err != nil {
+			return fmt.Errorf("friend hook: %w", err)
+		}
+		for _, seat := range seats {
+			known = known || seat.Unhooked
+		}
 	}
 	if !known {
 		return nil
@@ -61,7 +70,7 @@ func stopOwned(s *sprint.Snapshot, d StopLease) bool {
 		return true
 	}
 	c := t.Card(d.ID)
-	if c == nil || !c.Placed() {
+	if c == nil {
 		return true
 	}
 	return !(c.Int("stopped_from_gen") == d.Gen && c.Int("gen") > d.Gen)

@@ -499,7 +499,7 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 			// moves), never her daemon's walk alone: on 2026-10-06 that walk read 3d while
 			// she reported hourly
 			kind = "friend idle"
-			why = "has a daemon that answers and no evidence of work for " + ageWord(now.Sub(friendLastWork(s, f))) + " (no session write, session proof or answer, finish, report or card move)"
+			why = "is up on nova-hook with no evidence of work for " + ageWord(now.Sub(friendLastWork(s, f))) + " (no session write, running work, finish, report or card move)"
 		}
 		if why == "" {
 			continue
@@ -1219,10 +1219,7 @@ func viewJSON(w io.Writer, v any) {
 // row and what her beat and the store's records say) or of a card of hers moving
 // (sprint.FriendCardMoved): what the idle item measures.
 func friendLastWork(s *sprint.Snapshot, f store.FriendRow) time.Time {
-	w := sprint.FriendWork{Active: f.Active, Proof: f.Proof, Finished: f.Finished}
-	if f.Health != nil && f.Health.State == sprint.Up {
-		w.Answered = f.Health.Seen
-	}
+	w := sprint.FriendWork{Active: f.Active}
 	if f.Report != nil && len(f.Report.Running) > 0 {
 		w.Running = f.Beat
 	}
