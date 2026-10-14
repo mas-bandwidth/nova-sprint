@@ -3,6 +3,9 @@ package sprint
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The doctor names the cause the member-down stop does not: a member whose beats the server
@@ -26,16 +29,10 @@ func TestRefusedBeatsNameTheMemberAtThree(t *testing.T) {
 		refusedAt(now, 20*time.Minute, RefusedBeatVerb, "old", "fleet beat old", "outside the window"),
 	}
 	got := RefusedBeatLines(recs, now)
-	if len(got) != 1 {
-		t.Fatalf("member-beat lines = %v", got)
-	}
+	require.Len(t, got, 1, "member-beat lines")
 	want := "member-beat batman: 3 beats refused in 10m0s, last: a beat wants --load, argv: fleet beat batman remedy="
-	if got[0][:len(want)] != want {
-		t.Fatalf("member-beat line = %q", got[0])
-	}
-	if len(RefusedBeats(recs, now)["superman"]) != 1 {
-		t.Fatalf("one refusal is under the bound")
-	}
+	assert.Equal(t, want, got[0][:len(want)], "member-beat line")
+	assert.Len(t, RefusedBeats(recs, now)["superman"], 1, "one refusal is under the bound")
 }
 
 // The refused-verbs check groups every verb, not only beat: N >= 10 of one verb word in the
@@ -50,13 +47,8 @@ func TestRefusedVerbLinesGroupEveryVerbAtTen(t *testing.T) {
 		recs = append(recs, refusedAt(now, time.Duration(i)*time.Second, "take", "m2", "take --as m2", "no card"))
 	}
 	got := RefusedVerbLines(recs, now)
-	if len(got) != 1 {
-		t.Fatalf("refused-verbs lines = %v", got)
-	}
-	want := "refused-verbs m1: queue x 10 in 10m0s, last: the store refused it"
-	if got[0] != want {
-		t.Fatalf("refused-verbs line = %q, want %q", got[0], want)
-	}
+	require.Len(t, got, 1, "refused-verbs lines")
+	assert.Equal(t, "refused-verbs m1: queue x 10 in 10m0s, last: the store refused it", got[0])
 }
 
 // The window is exactly RefusedWindow: a record a window old is out, one just inside is in.
@@ -66,9 +58,9 @@ func TestRefusedWindowIsExactlyTenMinutes(t *testing.T) {
 		refusedAt(now, RefusedWindow, "queue", "m1", "queue", "old edge"),
 		refusedAt(now, RefusedWindow-time.Second, "queue", "m1", "queue", "in window"),
 	}
-	if got := RefusedIn(recs, now, RefusedWindow); len(got) != 1 || got[0].Why != "in window" {
-		t.Fatalf("window = %v", got)
-	}
+	got := RefusedIn(recs, now, RefusedWindow)
+	require.Len(t, got, 1, "window")
+	assert.Equal(t, "in window", got[0].Why)
 }
 
 // The record is keyed by epoch and bounded by the window: PruneRefused keeps the recent
@@ -80,7 +72,6 @@ func TestRefusedRecordPrunesToTheWindow(t *testing.T) {
 		refusedAt(now, RefusedWindow+time.Second, RefusedBeatVerb, "batman", "fleet beat batman", "dropped"),
 	}}
 	got := PruneRefused(rec.Verbs, now)
-	if len(got) != 1 || got[0].Why != "kept" {
-		t.Fatalf("pruned record = %v", got)
-	}
+	require.Len(t, got, 1, "pruned record")
+	assert.Equal(t, "kept", got[0].Why)
 }

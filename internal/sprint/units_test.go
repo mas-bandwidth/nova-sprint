@@ -157,7 +157,7 @@ func TestAUnitRefusesAWrapperAVerbNotItsOwnAndASecret(t *testing.T) {
 		require.Error(t, err, name)
 		assert.Contains(t, err.Error(), tc.want, name)
 		dir := t.TempDir()
-		in := SeatInstaller{Dir: dir, Load: func(string) error { t.Fatal("a refused unit is loaded"); return nil }}
+		in := SeatInstaller{Dir: dir, Load: func(string) error { require.Fail(t, "a refused unit is loaded"); return nil }}
 		_, err = in.InstallUnit(u)
 		require.Error(t, err, name)
 		entries, _ := os.ReadDir(dir)

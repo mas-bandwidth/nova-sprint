@@ -108,7 +108,7 @@ func (w *world) lawful(p Plan) Plan {
 	p.Refused = slices.Clone(p.Refused)
 	p = Lawful(p)
 	for _, r := range p.Refused[before:] {
-		w.t.Errorf("the store's lawful-move check refuses %s: %s", r.Key, r.Why)
+		require.Fail(w.t, fmt.Sprintf("the store's lawful-move check refuses %s: %s", r.Key, r.Why))
 	}
 	return p
 }

@@ -210,9 +210,8 @@ func TestAcceptSeesAFrontierTierAFriendServes(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Review)
 	w.s.Friends = []FriendSeat{frontierFay(Up)}
-	if _, why, byFriend := w.s.routeServed(w.s.Work.Card("s1-1"), nil, ""); !byFriend {
-		t.Fatalf("accept's own check: a frontier tier a friend up serves is served, got %s", why)
-	}
+	_, why, byFriend := w.s.routeServed(w.s.Work.Card("s1-1"), nil, "")
+	require.True(t, byFriend, "accept's own check: a frontier tier a friend up serves is served, got %s", why)
 	for _, r := range Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1"}}}).Refused {
 		assert.NotContains(t, r.Why, "frontier", "accept refuses for the reads, never the tier: %s", r.Why)
 	}
@@ -225,18 +224,16 @@ func TestAFrontierTierAFriendServesRaisesNoNoRouteJudgment(t *testing.T) {
 	w := frontierWorld(t, Ready)
 	td, _ := TickDeal(w.s, TickReq{})
 	w.do(td)
-	if _, ok := openNoRoute(w); !ok {
-		t.Fatalf("frontier with no friend: the tier's judgment is raised: %v", w.s.Open)
-	}
+	_, ok := openNoRoute(w)
+	require.True(t, ok, "frontier with no friend: the tier's judgment is raised: %v", w.s.Open)
 	// a friend up whose row lists frontier serves it, though her row has no room: the card
 	// waits ready for her, as one waits on a full provider, never a judgment
 	fay := FriendSeat{Name: "fay", Width: 0, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}
 	w.s.Friends = []FriendSeat{fay}
 	td, _ = TickDeal(w.s, TickReq{Friends: []FriendSeat{fay}})
 	w.do(td)
-	if o, ok := openNoRoute(w); ok {
-		t.Fatalf("a friend up serves frontier: no judgment, got %s", o.Note.What)
-	}
+	o, ok := openNoRoute(w)
+	require.False(t, ok, "a friend up serves frontier: no judgment, got %s", o.Note.What)
 }
 
 // (iv) The idle root for the tier (idle.go's noRoute call) is not the no-route root while
@@ -246,9 +243,8 @@ func TestIdleRootForAFrontierTierAFriendServesIsNoNoRoute(t *testing.T) {
 	w := frontierWorld(t, Ready)
 	c := w.s.Work.Card("s1-1")
 	w.s.Friends = []FriendSeat{frontierFay(Up)}
-	if _, why := w.s.noRoute(escalating(w.s, c)); why != "" {
-		t.Fatalf("idle roots a frontier tier a friend up serves nowhere near rootNoRoute: %s", why)
-	}
+	_, why := w.s.noRoute(escalating(w.s, c))
+	require.Empty(t, why, "idle roots a frontier tier a friend up serves nowhere near rootNoRoute")
 }
 
 // (v) The same friend held, down, or with a row lacking frontier: the refusal and the

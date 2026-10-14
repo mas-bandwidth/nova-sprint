@@ -241,18 +241,15 @@ func TestNTicksKeepNoQueuedCardWhileALaneIsFree(t *testing.T) {
 	}
 	r.seedWork("superman", sprint.Working, 2)
 	r.seedFix("hetzner2") // one fix card, kind work, among the admitted cards
-	if v := NoQueuedCardWhileACapableLaneIsFree(r.snap()); v == "" {
-		t.Fatal("the run does not start with excess: hetzner2's 22 ready reads are its 8 free halves' start, so the rebalance has nothing to move and the invariant pins nothing")
-	}
+	v := NoQueuedCardWhileACapableLaneIsFree(r.snap())
+	require.NotEmpty(t, v, "the run does not start with excess: hetzner2's 22 ready reads are its 8 free halves' start, so the rebalance has nothing to move and the invariant pins nothing")
 
 	for tick := 0; tick < 12; tick++ {
 		r.add(3)                                // 36 work primaries over the run
 		r.seedRead("hetzner2", sprint.Ready, 2) // 24 read cards over the run
 		r.tick()
 		s := r.snap()
-		if v := NoQueuedCardWhileACapableLaneIsFree(s); v != "" {
-			t.Fatalf("tick %d: a unit keeps a queued card while another has a free lane:\n%s", tick, v)
-		}
+		require.Empty(t, NoQueuedCardWhileACapableLaneIsFree(s), "tick %d: a unit keeps a queued card while another has a free lane", tick)
 		for _, m := range r.members {
 			r.take(m)
 			r.finish(m, 1)

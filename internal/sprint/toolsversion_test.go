@@ -5,32 +5,31 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNovaToolsVersionIsTheFilesTag(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(filepath.Join("..", "..", NovaToolsVersionFile))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r, err := ParseNovaToolsVersion(string(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Tag != NovaToolsVersion {
-		t.Fatalf("%s names %s, the binary needs %s: a re-seed updates NovaToolsVersion with the file", NovaToolsVersionFile, r.Tag, NovaToolsVersion)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, NovaToolsVersion, r.Tag, "%s names %s, the binary needs %s: a re-seed updates NovaToolsVersion with the file", NovaToolsVersionFile, r.Tag, NovaToolsVersion)
 }
 
 func TestNovaToolsCanaryTagRoundTrips(t *testing.T) {
+	t.Parallel()
 	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
 	want := NovaToolsRecord{Tag: "v1.2.0-local.20261008.1", Commit: sha}
 	got, err := ParseNovaToolsVersion(FormatNovaToolsVersion(want.Tag, want.Commit))
-	if err != nil || got != want {
-		t.Fatalf("canary round trip: %+v %v", got, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
 }
 
 func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
+	t.Parallel()
 	line := func(v string) string { return "nova-bus " + v + " darwin/arm64 go1.26.6 build=0123456789ab\n" }
 	for _, c := range []struct {
 		name   string
@@ -48,21 +47,20 @@ func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 		{"newer major", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("v2.0.0")}, ""},
 	} {
 		got := NovaToolsRefusal(c.p, "v1.1.0")
-		switch {
-		case c.refuse == "" && got != "":
-			t.Errorf("%s: refused %q", c.name, got)
-		case c.refuse != "" && !strings.HasPrefix(got, c.refuse):
-			t.Errorf("%s: got %q, want it to start %q", c.name, got, c.refuse)
+		if c.refuse == "" {
+			assert.Empty(t, got, c.name)
+		} else {
+			assert.True(t, strings.HasPrefix(got, c.refuse), "%s: got %q, want it to start %q", c.name, got, c.refuse)
 		}
 	}
 }
 
 func TestNovaToolsVersionFileRoundTripsAndRefusesWhatIsNoRecord(t *testing.T) {
+	t.Parallel()
 	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
 	r, err := ParseNovaToolsVersion(FormatNovaToolsVersion("v1.1.0", sha))
-	if err != nil || r != (NovaToolsRecord{Tag: "v1.1.0", Commit: sha}) {
-		t.Fatalf("round trip: %+v %v", r, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, NovaToolsRecord{Tag: "v1.1.0", Commit: sha}, r, "round trip")
 	for _, bad := range []string{
 		"",
 		"# a comment alone\n",
@@ -73,8 +71,7 @@ func TestNovaToolsVersionFileRoundTripsAndRefusesWhatIsNoRecord(t *testing.T) {
 		"tag v1.1.0\ncommit 52046bd\n",
 		"tag v1.1.0\nversion v1.1.0\n",
 	} {
-		if r, err := ParseNovaToolsVersion(bad); err == nil {
-			t.Errorf("%q read as %+v", bad, r)
-		}
+		r, err := ParseNovaToolsVersion(bad)
+		assert.Error(t, err, "%q read as %+v", bad, r)
 	}
 }
