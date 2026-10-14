@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
@@ -292,6 +293,17 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "queue", err.Error())
 	}
+	// --max is the shared cap of a listing's rows, but a worker's queue is a packet
+	// per card (a card with its job text): a count cap would cut one in half
+	// (docs/STANDARD.md section 2, one cap flag). Queue has a packet limiter of its
+	// own (--packets, --as only), so --max on the worker's queue is refused, naming
+	// it, rather than offered; a queue with no limiter would drop the flag instead.
+	// A stream's queue lists merge rows, which carry no packet, so its --max stays.
+	maxGiven := false
+	fs.Visit(func(f *flag.Flag) { maxGiven = maxGiven || f.Name == "max" })
+	if maxGiven && *as != "" {
+		return refuse(stderr, "queue", "queue lists packets, not rows: pass --packets <n> to take fewer, or --json to read them whole")
+	}
 	want, err := packetsWanted(*packets, *have)
 	if err != nil {
 		return refuse(stderr, "queue", err.Error())
@@ -479,23 +491,27 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		}
 		lines = append(lines, l)
 	}
+	// a worker's queue names whether --as is a reader's row, as --json does: a name
+	// that is no reader's row is not an empty queue (docs/SPEC-SPRINT.md section 6)
+	readerWord := ""
+	if *as != "" {
+		readerWord = " reader=" + strconv.FormatBool(isReader)
+	}
 	if *as != "" && len(lines) > 0 {
-		// a member's or a reader's queue: each card with its packet, when the answer carries it
+		// a member's or a reader's queue: each card with its packet, when the answer
+		// carries it. No count cap: --max is refused, and --packets is what takes
+		// fewer (the packet is the unit, so a row cap would cut one in half)
 		for i, l := range lines {
-			if c.max > 0 && i >= c.max {
-				fmt.Fprintf(stdout, "CARD ... and %d more; --max 0 lists all\n", len(lines)-i)
-				break
-			}
 			fmt.Fprintln(stdout, "CARD "+oneline.Escape(l))
 			if cards[i].Packet != nil {
 				printPacket(stdout, *cards[i].Packet)
 			}
 		}
-		fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d\n", len(cards), epoch)
+		fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d%s\n", len(cards), epoch, readerWord)
 		return 0
 	}
 	listed(stdout, "CARD", lines, c.max, "queue")
-	fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d\n", len(cards), epoch)
+	fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d%s\n", len(cards), epoch, readerWord)
 	return 0
 }
 
