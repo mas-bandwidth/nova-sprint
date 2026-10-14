@@ -40,15 +40,6 @@ func (r *conflictRig) failedAttempt(id, report string) {
 	r.must(store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Failed: true, Report: report}))
 }
 
-// ledgerRefused drives the primary's attempt through work, ok reads and the accept to merging,
-// then the lander refuses its head on a conflict in the shared ledgers alone.
-func (r *conflictRig) ledgerRefused(id, head string) {
-	r.t.Helper()
-	r.toMergingAt(id, head)
-	why := "the head " + head + " of " + id + " does not merge: Auto-merging FIXES.md | CONFLICT (content): Merge conflict in FIXES.md | Automatic merge failed"
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "r", Batch: 1, Conflict: id, Note: why, ConflictKind: "file", ConflictPaths: []string{"FIXES.md", "docs/fixes.sexp"}}))
-}
-
 // snapRoutes is the rig's snapshot with the routes and the sprint row's bars read into it, as
 // a step with Routes set plans (store.Store.RoutesInto): what the attempt cap is read from.
 func (r *conflictRig) snapRoutes() *sprint.Snapshot {
