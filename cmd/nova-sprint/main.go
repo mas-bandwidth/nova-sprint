@@ -55,6 +55,16 @@ var version string
 
 func main() {
 	a := newApp(os.Getenv)
+	if seatEnvironmentNeeded(os.Args[1:]) {
+		if err := a.loadSeatEnvironment(); err != nil {
+			path, pathErr := a.seatEnvironmentPath()
+			if pathErr != nil {
+				path = "optional seat-environment.json"
+			}
+			fmt.Fprintf(os.Stderr, "nova-sprint: seat environment %s: %s; run: nova-up --seat to repair it, or remove that file to use explicit configuration\n", oneline.Field(path), oneline.Escape(err.Error()))
+			os.Exit(2)
+		}
+	}
 	a.briefRecord = a.defaultBriefRecord // a test's app has none: no brief record, no brief decision
 	a.seatLoginOn()                      // a test's app has none: no recorded store login (storelogin.go)
 	defer a.close()
@@ -65,17 +75,18 @@ func main() {
 // shared by every verb it runs (the driver runs many), its clock, and how it
 // sleeps. Tests give it a backend of their own.
 type app struct {
-	getenv  func(string) string
-	now     func() time.Time
-	sleep   func(time.Duration)
-	backend func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
-	conns   map[string]*redisconn.Conn
-	cached  map[string]store.Backend
-	twins   map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
-	meter   hostload.Source  // how fleet beat measures this machine
-	etaMu   sync.Mutex
-	etas    []etaSample // the view's estimates of the last etaHold (heldETA)
-	etaKey  etaKey      // the cards to land the held estimates were made over
+	seatEnvironment *seatEnvironment
+	getenv          func(string) string
+	now             func() time.Time
+	sleep           func(time.Duration)
+	backend         func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
+	conns           map[string]*redisconn.Conn
+	cached          map[string]store.Backend
+	twins           map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
+	meter           hostload.Source  // how fleet beat measures this machine
+	etaMu           sync.Mutex
+	etas            []etaSample // the view's estimates of the last etaHold (heldETA)
+	etaKey          etaKey      // the cards to land the held estimates were made over
 
 	// inventory reads the machines of nova-config and their widths (fleet
 	// sync): tests give it the config's in-memory store.
@@ -394,7 +405,7 @@ func newApp(getenv func(string) string) *app {
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
 	a.briefBar = a.readBriefBar
-	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
+	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost, env: func() []string { return a.forgeCommandEnv(a.gitEnv) }}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
 	a.busWatches = map[string]*bus.Watch{}
 	// start refuses until a clean card check matches the cards; no waiver
 	// (start-refuses-until-a-clean-check, tla/MachineReady.tla StartOnlyChecked)
@@ -685,7 +696,7 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
 	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
-	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; no default: a verb that writes wants one; a worker's verb is its --as name's)")
+	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)")
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
 
@@ -883,6 +894,11 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
+	}
+	var actorNotice string
+	args, actorNotice, _ = a.defaultHookActor(args, "", false)
+	if actorNotice != "" {
+		fmt.Fprintln(stderr, actorNotice)
 	}
 	// the shadow tick (server switch --dry-run runs the candidate's `tick
 	// --shadow`) opens its store read-only before the window's fn load: its

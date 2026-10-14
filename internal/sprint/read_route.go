@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A read needs a reader, not a route (docs/SPEC-SPRINT.md section 6; the card
@@ -80,15 +79,13 @@ func (s *Snapshot) tierRouted(tier string) bool {
 // readerServesTier says the reader may be asked a read of tier: its tiers cell names
 // the tier (readerReadsTier), and it brings its own model or a route of the tier is
 // there to draw (tierRouted). A held friend's reader serves nothing. A fleet reader
-// whose row names no tier reads flash alone (fleetReadsFlashOnly): the owner,
-// 2026-10-06, "I'm ok with flash readers on fleet but not pro"; its row names pro or
-// above (reader set --tiers) to read them.
+// whose row names no tier reads every tier a route serves: the flash-only rule
+// went with a-cleared-sprint-reads-with-no-seat-action (the owner, 2026-10-13:
+// defaults are the working machine); its row names tiers (reader set --tiers)
+// to read fewer.
 //
 // tla/ReaderTiers.tla Reads
 func (s *Snapshot) readerServesTier(reader, tier string) bool {
-	if tier != cardhdr.RouteFlash && s.fleetReadsFlashOnly(reader) {
-		return false
-	}
 	if s.heldFriendReader(reader) {
 		return false
 	}
@@ -102,14 +99,6 @@ func (s *Snapshot) readerServesTier(reader, tier string) bool {
 	}
 	// Fleet reader without explicit tier configuration serves tiers with enabled routes.
 	return s.tierRouted(tier)
-}
-
-// fleetReadsFlashOnly says the reader is the fleet's (it brings no model of its own and
-// draws its read's route), its row names no tier, and the store holds routes: it reads
-// flash and no other tier. A store with no route at all has every reader run its own model
-// (tierRouted), and an empty row there reads every tier, as a friend's reader does.
-func (s *Snapshot) fleetReadsFlashOnly(reader string) bool {
-	return len(s.Routes) > 0 && !s.ownModelReader(reader) && strings.TrimSpace(s.readerTiersStored(reader)) == ""
 }
 
 // ownModelReaderUp says a reader up that brings its own model serves tier: the reads of

@@ -93,6 +93,91 @@ const (
 // the roots grouped and named by the cards behind them, the most first, at most IdleRoots.
 // Every waiting card is traced once (memoized), so the counts are the table's.
 func TraceIdle(s *Snapshot, r TickReq) string {
+	if s == nil || s.Work == nil {
+		return ""
+	}
+	list := idleGroups(s)
+	if len(list) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, g := range list {
+		if i == IdleRoots {
+			parts = append(parts, fmt.Sprintf("and %d roots more", len(list)-IdleRoots))
+			break
+		}
+		parts = append(parts, formatIdleGroup(s, g))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// IdleBlockers returns at most n top blockers tracing why waiting cards are not moving,
+// the roots grouped and named by the cards behind them, the most first. When n <= 0,
+// all blockers are returned.
+func IdleBlockers(s *Snapshot, n int) []string {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	list := idleGroups(s)
+	if len(list) == 0 {
+		return nil
+	}
+	if n > 0 && len(list) > n {
+		list = list[:n]
+	}
+	out := make([]string, len(list))
+	for i, g := range list {
+		out[i] = formatIdleGroup(s, g)
+	}
+	return out
+}
+
+// IdleLine is where's line under the summary: "idle: <blocker>; ..."; "" when there are no blockers.
+func IdleLine(blockers []string) string {
+	if len(blockers) == 0 {
+		return ""
+	}
+	return "idle: " + strings.Join(blockers, "; ")
+}
+
+type idleGroup struct {
+	say      string
+	kind     string
+	behind   int
+	subjects map[string]bool
+	oldest   time.Time
+}
+
+func formatIdleGroup(s *Snapshot, g *idleGroup) string {
+	now := s.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	age := func() string {
+		if g.oldest.IsZero() {
+			return ""
+		}
+		return ", " + now.Sub(g.oldest).Round(time.Second).String()
+	}
+	switch g.kind {
+	case rootDropped:
+		a := ""
+		if !g.oldest.IsZero() {
+			a = " (oldest " + now.Sub(g.oldest).Round(time.Second).String() + ")"
+		}
+		return fmt.Sprintf("%d behind %d drop-blocked judgments%s", g.behind, len(g.subjects), a)
+	case rootMissing:
+		return fmt.Sprintf("%d behind %d cards with missing needs", g.behind, len(g.subjects))
+	case rootJudgment:
+		return fmt.Sprintf("%d behind %s%s)", g.behind, g.say, age())
+	case rootFlight, rootNext:
+		return fmt.Sprintf("%d behind %s", g.behind, g.kind)
+	default:
+		return fmt.Sprintf("%d behind %s", g.behind, g.say)
+	}
+}
+
+func idleGroups(s *Snapshot) []*idleGroup {
 	judgedOn := map[string]Open{}
 	for _, o := range s.Open {
 		if o.Note.Kind != Judgment {
@@ -173,14 +258,7 @@ func TraceIdle(s *Snapshot, r TickReq) string {
 		memo[c.ID] = out
 		return out
 	}
-	type group struct {
-		say      string
-		kind     string
-		behind   int
-		subjects map[string]bool
-		oldest   time.Time
-	}
-	groups := map[string]*group{}
+	groups := map[string]*idleGroup{}
 	for _, c := range waitingCards(s) {
 		x := root(c, map[string]bool{})
 		key := x.kind + "\x00" + x.subject
@@ -189,7 +267,7 @@ func TraceIdle(s *Snapshot, r TickReq) string {
 		}
 		g := groups[key]
 		if g == nil {
-			g = &group{say: x.say, kind: x.kind, subjects: map[string]bool{}}
+			g = &idleGroup{say: x.say, kind: x.kind, subjects: map[string]bool{}}
 			groups[key] = g
 		}
 		g.behind++
@@ -208,36 +286,7 @@ func TraceIdle(s *Snapshot, r TickReq) string {
 		}
 		return list[i].say < list[j].say
 	})
-	var parts []string
-	for i, g := range list {
-		if i == IdleRoots {
-			parts = append(parts, fmt.Sprintf("and %d roots more", len(list)-IdleRoots))
-			break
-		}
-		age := func() string {
-			if g.oldest.IsZero() {
-				return ""
-			}
-			return ", " + s.Now.Sub(g.oldest).Round(time.Second).String()
-		}
-		switch g.kind {
-		case rootDropped:
-			a := ""
-			if !g.oldest.IsZero() {
-				a = " (oldest " + s.Now.Sub(g.oldest).Round(time.Second).String() + ")"
-			}
-			parts = append(parts, fmt.Sprintf("%d behind %d drop-blocked judgments%s", g.behind, len(g.subjects), a))
-		case rootMissing:
-			parts = append(parts, fmt.Sprintf("%d behind %d cards with missing needs", g.behind, len(g.subjects)))
-		case rootJudgment:
-			parts = append(parts, fmt.Sprintf("%d behind %s%s)", g.behind, g.say, age()))
-		case rootFlight, rootNext:
-			parts = append(parts, fmt.Sprintf("%d behind %s", g.behind, g.kind))
-		default:
-			parts = append(parts, fmt.Sprintf("%d behind %s", g.behind, g.say))
-		}
-	}
-	return strings.Join(parts, "; ")
+	return list
 }
 
 // rank orders root kinds: a root that needs a person before one the machine will clear.

@@ -44,8 +44,8 @@ func newFunctionalTestApp(t *testing.T, redisAddr string) *functionalTestApp {
 	env := map[string]string{
 		"HOME":            home,
 		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
-		// the actor is recorded with every change (no default); it is not a
-		// server variable, so it does not forward. Every server-reaching
+		// the actor is recorded with every change; the default needs both
+		// hooks proven live. This is not a server variable, so it does not forward. Every server-reaching
 		// variable (NOVA_SPRINT_SERVER and the seat record) is otherwise
 		// scrubbed.
 		"NOVA_SPRINT_ACTOR": "coordinator",

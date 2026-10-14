@@ -671,6 +671,10 @@ func TestAConnectedSeatThatActsNeverLapses(t *testing.T) {
 		require.Equal(t, sprint.HookHooked, rec.State, "minute %d", minute)
 		require.True(t, sprint.HookLive(rec, true, name, ta.a.now()), "minute %d: live until %s", minute, rec.Live)
 	}
+	// The final synchronous verb records the act; the next look renews Live.
+	// Run that turn before checking the recorded bound, rather than relying on
+	// the background look or the preceding asynchronous keepalive.
+	s.look(context.Background())
 	rec, _ := ta.hookRecord()
 	assert.True(t, rec.Live.After(ta.a.now().Add(sprint.HookSilentBound-2*time.Minute)), "live a bound past the last act: %s", rec.Live)
 }
