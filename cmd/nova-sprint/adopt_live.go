@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -432,7 +431,7 @@ func (p liveProbe) readAgents(ctx context.Context, m *liveManifest) error {
 	if err != nil {
 		return err
 	}
-	sort.Strings(plists)
+	slices.Sort(plists)
 	for _, pl := range plists {
 		label := strings.TrimSuffix(filepath.Base(pl), ".plist")
 		m.Agents = append(m.Agents, p.agent(ctx, pl, fmt.Sprintf("gui/%d/%s", p.uid, label)))
@@ -456,7 +455,7 @@ func (p liveProbe) readDaemons(ctx context.Context, m *liveManifest) {
 	if err != nil {
 		return
 	}
-	sort.Strings(plists)
+	slices.Sort(plists)
 	for _, pl := range plists {
 		label := strings.TrimSuffix(filepath.Base(pl), ".plist")
 		m.Agents = append(m.Agents, p.agent(ctx, pl, "system/"+label))
@@ -478,7 +477,7 @@ func (p liveProbe) readSystemd(ctx context.Context, m *liveManifest) {
 		if err != nil {
 			continue
 		}
-		sort.Strings(units)
+		slices.Sort(units)
 		for _, u := range units {
 			m.Agents = append(m.Agents, p.systemdAgent(ctx, u, src.scope))
 		}

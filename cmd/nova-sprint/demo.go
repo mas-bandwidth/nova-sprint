@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,7 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -348,12 +349,11 @@ func writeDemoState(root string, st demoState) error {
 // into: <joined>.part-<suffix> each, one joined name; or one whole file.
 func demoParts(args []string) ([]string, string, error) {
 	parts := append([]string(nil), args...)
-	sort.SliceStable(parts, func(i, j int) bool {
-		bi, bj := filepath.Base(parts[i]), filepath.Base(parts[j])
-		if bi != bj {
-			return bi < bj
+	slices.SortStableFunc(parts, func(a, b string) int {
+		if c := cmp.Compare(filepath.Base(a), filepath.Base(b)); c != 0 {
+			return c
 		}
-		return parts[i] < parts[j]
+		return cmp.Compare(a, b)
 	})
 	joined := ""
 	for i, p := range parts {

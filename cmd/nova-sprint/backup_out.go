@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -174,7 +174,7 @@ func (b *backupOut) run(ctx context.Context) (backupResult, error) {
 	if err != nil || len(parts) == 0 {
 		return res, fmt.Errorf("split wrote no part of %s", xzPath)
 	}
-	sort.Strings(parts)
+	slices.Sort(parts)
 
 	// 4. the sums of the text and of the xz (and of each part)
 	textSum, err := fileSum(textPath)
@@ -622,7 +622,7 @@ func (r redisBackup) Take(ctx context.Context) (uint64, []store.DumpKey, map[str
 	if err := it.Err(); err != nil {
 		return 0, nil, nil, err
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	names = compactStrings(names)
 	keys, err := dumpKeys(ctx, r.b.C, names)
 	if err != nil {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -49,7 +49,7 @@ func (a *app) cmdRules(args []string, stdout, stderr io.Writer) int {
 	for k, n := range counts {
 		by = append(by, fmt.Sprintf("%s=%d", strings.ReplaceAll(k, " ", "_"), n))
 	}
-	sort.Strings(by)
+	slices.Sort(by)
 	if c.json {
 		if answers == nil {
 			answers = []sprint.RuleAnswer{}

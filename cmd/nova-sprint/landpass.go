@@ -961,8 +961,7 @@ func (l *lander) launch(pass context.Context, s *sprint.Snapshot, m *mergeRun, l
 	cutDone := make(chan struct{})
 	lane.prior = cutDone
 	go func() {
-		var cutOnce sync.Once
-		cutIsDone := func() { cutOnce.Do(func() { close(cutDone) }) }
+		cutIsDone := sync.OnceFunc(func() { close(cutDone) })
 		ctx, cancel := context.WithCancelCause(pass)
 		defer func() {
 			cancel(nil)

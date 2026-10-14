@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -145,11 +145,11 @@ func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
 		// plan) are named not run
 		findings = append(findings, a.briefStoreFreeChecks(items)...)
 	}
-	sort.SliceStable(findings, func(i, j int) bool {
-		if fileOrder[findings[i].File] != fileOrder[findings[j].File] {
-			return fileOrder[findings[i].File] < fileOrder[findings[j].File]
+	slices.SortStableFunc(findings, func(a, b briefFinding) int {
+		if c := cmp.Compare(fileOrder[a.File], fileOrder[b.File]); c != 0 {
+			return c
 		}
-		return findings[i].order < findings[j].order
+		return cmp.Compare(a.order, b.order)
 	})
 	if c.json {
 		out := append([]briefFinding(nil), findings...)

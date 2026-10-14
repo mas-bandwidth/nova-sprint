@@ -13,6 +13,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,6 @@ import (
 	"net/http"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1098,11 +1098,11 @@ func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool
 			items = append(items, f)
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if c := semver.Compare(items[i].Release, items[j].Release); c != 0 {
-			return c < 0
+	slices.SortStableFunc(items, func(a, b roadmapdoc.Fix) int {
+		if c := semver.Compare(a.Release, b.Release); c != 0 {
+			return c
 		}
-		return index[items[i].ID] < index[items[j].ID]
+		return cmp.Compare(index[a.ID], index[b.ID])
 	})
 	if jsonOut {
 		out := struct {

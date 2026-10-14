@@ -1,13 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -214,9 +214,7 @@ func sprintNeeds(s *sprint.Snapshot, only string, rootsOnly bool) needsView {
 		// more than its deepest waiting need's, so every card sorts after the
 		// cards it waits on; the work order is kept within a depth, where no
 		// card waits on another (docs/SPEC-SPRINT.md section 11).
-		sort.SliceStable(st.Cards, func(i, j int) bool {
-			return st.Cards[i].Depth < st.Cards[j].Depth
-		})
+		slices.SortStableFunc(st.Cards, func(a, b needsCard) int { return cmp.Compare(a.Depth, b.Depth) })
 		st.Widths = needsWidths(waiting, depth, st.Stream)
 		for _, c := range waiting {
 			if c.Row == st.Stream && cycle[c.ID] {

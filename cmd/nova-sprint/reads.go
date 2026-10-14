@@ -11,7 +11,6 @@ import (
 	"math"
 	"math/big"
 	"slices"
-	"sort"
 
 	"strconv"
 	"strings"
@@ -1911,7 +1910,7 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 	for _, row := range rows {
 		out = append(out, row)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b providerView) int { return cmp.Compare(a.Name, b.Name) })
 	routes, tiers := s.ProviderGaps("")
 	return out, sprint.ProviderGapReport{Routes: routes, Tiers: tiers, InvalidProviders: s.ProviderProblems()}, nil
 }
