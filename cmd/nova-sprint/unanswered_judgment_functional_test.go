@@ -238,9 +238,9 @@ func (r *ujRig) pushes(s *hookSession) []hookMsg {
 // The owner, 2026-10-12: "This must never happen again." A real server and store, the seat
 // hooked in and then silent, one card in each kind that held a card that night: within one
 // deadline every card with a safe default has moved with no seat verb (returned for its
-// missing read and read again, returned for its needs, pinned to a held friend, on a tier no
-// route serves), and the cards that need a mind (returned by the seat; pinned by the
-// coordinator to a tier no route serves) are named by "the seat is not answering", on the
+// missing read and read again, returned for its needs, on a tier no route serves), and the cards
+// that need a mind (returned by the seat; pinned to a held friend, which is hers alone and
+// released by no timer; pinned by the coordinator to a tier no route serves) are named by "the seat is not answering", on the
 // hook's stream and on the owner's bus.
 func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	t.Parallel()
@@ -307,7 +307,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.step(sprint.DeadlineJudgment / 2)
 	r.step(sprint.DeadlineJudgment/2 + time.Minute)
 	r.step(time.Second)
-	assert.Equal(t, sprint.Working, r.col("s4-1"), "the pin released at its deadline: dealt on")
+	assert.Equal(t, sprint.Ready, r.col("s4-1"), "pinned to a held friend: hers alone, no deadline releases it; dealt to no one")
 	assert.Equal(t, sprint.Working, r.col("s5-1"), "raised to heavy, the nearest served tier: dealt")
 	assert.Equal(t, sprint.Ready, r.col("s6-1"), "pinned to pro by the coordinator: stays put, never re-tiered")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
@@ -316,7 +316,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	// naming the card still held
 	var onHook bool
 	for _, p := range r.pushes(s) {
-		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") && strings.Contains(p.Text, "s6-1") {
+		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") && strings.Contains(p.Text, "s6-1") && strings.Contains(p.Text, "s4-1") {
 			onHook = true
 		}
 	}
@@ -326,7 +326,7 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.mu.Unlock()
 	var onBus bool
 	for _, m := range sent {
-		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "s6-1") && len(m.To) == 1 && m.To[0] == "glenn" {
+		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "s6-1") && strings.Contains(m.Body, "s4-1") && len(m.To) == 1 && m.To[0] == "glenn" {
 			onBus = true
 		}
 	}

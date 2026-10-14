@@ -71,6 +71,11 @@ func init() {
 	// no wait: the stop names a card on the work table, so a wait on it is refused
 	// (wait_refused.go, WaitRefusalIn) and never extends the pin (a hard pin is never released by time)
 	TickDecisions[NStopPinWaits] = []string{"ack"}
+	// a hard pin to a friend not up holds its card for her alone and no timer releases it (the
+	// machine no longer offers it on at the deadline): its stop is a judgment that holds a card, so
+	// it is raised again at each deadline and named by "the seat is not answering" until answered
+	// (seat_answers.go, rule (b))
+	WaitRefused[NStopPinWaits] = "bring the friend up, unpin the card (nova-sprint unpin <id> --reason <why>), or ack it"
 	TickDecisions[NFriendStalled] = []string{"ack", "wait"}
 }
 
