@@ -58,8 +58,7 @@ func TestTheCoordinatorViewNamesAnIdleFleetAndItsRelease(t *testing.T) {
 	trunkHead := r.commit("trunk.txt", "trunk\n", "new trunk")
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	ta := r.testApp
-	brief := filepath.Join(t.TempDir(), "view-card.md")
-	require.NoError(t, os.WriteFile(brief, []byte("view fixture\nREPO: "+r.remote+"\nBASE: main\n"), 0o600))
+	brief := writeBrief(t, "view fixture\nREPO: "+r.remote+"\nBASE: main\n")
 	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
 	ta.ok("add --stream s1 --sentinel s1-stop")
 	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
