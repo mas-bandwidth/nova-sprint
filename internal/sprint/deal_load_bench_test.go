@@ -214,7 +214,7 @@ func BenchmarkTickDealAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			modelCache.Clear()
-	modelReads.Store(0)
+			modelReads.Store(0)
 			TickDeal(s, TickReq{}) // warm the memo once, as the tick does on its first run
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -237,7 +237,7 @@ func BenchmarkTickDrainAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			modelCache.Clear()
-	modelReads.Store(0)
+			modelReads.Store(0)
 			TickDeal(s, TickReq{})
 			plan, _ := TickDeal(s, TickReq{})
 			_, q := QueueOf(plan, DrainVerb, MachineActor)

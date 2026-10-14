@@ -46,7 +46,6 @@ func removeStream(w *world, st string) {
 	}
 }
 
-
 // StreamRemoveExisting is the split stream remove acts on (the seat ledger
 // v1.2.4-held-2026-10-10.md bug 12, stream-remove-removes-what-exists): the
 // streams that may leave, in the order named, and a refusal for each name

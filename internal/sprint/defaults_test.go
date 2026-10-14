@@ -271,15 +271,19 @@ func TestTheRemainingAccessorsReadTheirDefaultWhenAbsent(t *testing.T) {
 	t.Parallel()
 	bare := &Snapshot{Work: NewTable(Work)}
 	assert.Equal(t, LaneWidthDefault, LaneWidth("", false))
-	d, _ := DefaultOf(PropGoLanes); assert.Equal(t, d.Value, strconv.Itoa(LaneWidth("", false)))
+	d, _ := DefaultOf(PropGoLanes)
+	assert.Equal(t, d.Value, strconv.Itoa(LaneWidth("", false)))
 	assert.Equal(t, LandingStallBound, bare.landingStallBound())
-	d, _ = DefaultOf(PropLandingStallBound); assert.Equal(t, d.Value, bare.landingStallBound().String())
+	d, _ = DefaultOf(PropLandingStallBound)
+	assert.Equal(t, d.Value, bare.landingStallBound().String())
 	usd, _ := lowBalanceUsdSetting(map[string]string{})
-	d, _ = DefaultOf(PropLowBalanceUsd); assert.Equal(t, d.Value, strconv.FormatFloat(usd, 'f', -1, 64))
+	d, _ = DefaultOf(PropLowBalanceUsd)
+	assert.Equal(t, d.Value, strconv.FormatFloat(usd, 'f', -1, 64))
 	assert.Equal(t, IdenticalDefault, bare.IdenticalBound("s1"))
 	set := map[string]string{}
 	reworkPriority(bare, &Card{ID: "c1"}, set)
-	d, _ = DefaultOf(PropReworkPriority); assert.Equal(t, d.Value, set[FieldPriority], "rework_priority absent is fix")
+	d, _ = DefaultOf(PropReworkPriority)
+	assert.Equal(t, d.Value, set[FieldPriority], "rework_priority absent is fix")
 }
 
 // The start gate's base finding: a cleared epoch with no base warns, naming set --base, and

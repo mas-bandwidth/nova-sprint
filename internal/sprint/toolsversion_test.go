@@ -49,4 +49,3 @@ func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 		}
 	}
 }
-

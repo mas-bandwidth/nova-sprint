@@ -30,7 +30,9 @@ func TestWhereShowsRunningWithATickLateNoteNotStopped(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 3")
-	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) }, Now: ta.a.now, Every: time.Second}
+	srv := &sprintdash.Server{Read: func() ([]byte, error) {
+		return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false)
+	}, Now: ta.a.now, Every: time.Second}
 	dashboard := func() string {
 		srv.Refresh()
 		w := httptest.NewRecorder()
