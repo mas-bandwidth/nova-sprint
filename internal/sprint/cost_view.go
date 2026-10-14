@@ -546,20 +546,6 @@ func amountOf(usd string) (*big.Rat, error) {
 	return r, nil
 }
 
-// PerLandedOf is a stream's dollars per landed card from the where view's cells alone
-// (the cost cell, MoneyText, over the landed count): what the text table shows when the
-// tick's record is not there; "-" with nothing landed or no cost.
-func PerLandedOf(costCell string, landed int) string {
-	if landed <= 0 || len(costCell) < 2 || costCell[0] != '$' {
-		return "-"
-	}
-	r, err := amountOf(costCell[1:])
-	if err != nil || r == nil {
-		return "-"
-	}
-	return cardcost.Cents(r.Quo(r, big.NewRat(int64(landed), 1)))
-}
-
 // ReadDay is one route's reads of a UTC day: the exact dollars charged (each read's
 // actual cost where reported, else its predicted one; "" when none was priced), the
 // tokens, and how many reads.

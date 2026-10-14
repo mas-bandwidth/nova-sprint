@@ -2,7 +2,6 @@ package sprint
 
 import (
 	"cmp"
-	"slices"
 	"strings"
 	"time"
 )
@@ -299,17 +298,4 @@ func auditAge(now, at time.Time) string {
 		d = 0
 	}
 	return d.Truncate(time.Second).String()
-}
-
-// auditSorted is the rows in stream, state and id order: one report's order.
-func auditSorted(rows []AuditRow) {
-	slices.SortFunc(rows, func(a, b AuditRow) int {
-		if c := strings.Compare(a.Stream, b.Stream); c != 0 {
-			return c
-		}
-		if c := strings.Compare(a.State, b.State); c != 0 {
-			return c
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
 }
