@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -147,4 +148,99 @@ func benchRefusal(bench []string) string {
 // (docs/SPEC-SPRINT.md section 5, a card's BENCH line).
 func benchRoom(bench []string) string {
 	return "every member of its bench " + Preview(bench, ", ") + " is at its room (DealAhead times its width): the tick deals it when one has room"
+}
+
+// benchDrop is a member of a bench the order dropped (benchOrder), with why: it
+// starts no card (no room: its word), or it is overloaded.
+type benchDrop struct {
+	Member string
+	Why    string
+}
+
+// benchOrder is the order the deal deals a card whose brief names a bench
+// (docs/SPEC-SPRINT.md section 5, a card's BENCH line; the owner, 2026-10-13:
+// "distribute CI and bench jobs across the fleet, vs. one machine"): members is
+// the up members of the bench the notQuiet pool left, and the card goes to the
+// least-loaded member of it that has room. A member whose fresh beat says it
+// starts no card (Snapshot.NoRoom) and an overloaded one (Overloaded) are
+// dropped; the rest are sorted by beat load ascending (Snapshot.Loads), then by
+// work cards held ascending (memberLoads), then by name. A card with no BENCH
+// line keeps the round order it has today; this is never applied to one.
+func benchOrder(s *Snapshot, members []string) []string {
+	q := memberLoads(s, members)
+	var out []string
+	for _, m := range members {
+		if s.NoRoom[m] != "" {
+			continue
+		}
+		if _, ol := Overloaded(s, m); ol {
+			continue
+		}
+		out = append(out, m)
+	}
+	slices.SortStableFunc(out, func(a, b string) int {
+		if la, lb := s.Loads[a], s.Loads[b]; la != lb {
+			if la < lb {
+				return -1
+			}
+			return 1
+		}
+		if qa, qb := q[a], q[b]; qa != qb {
+			return qa - qb
+		}
+		return strings.Compare(a, b)
+	})
+	return out
+}
+
+// benchDropped is each member of members the bench order drops (benchOrder), with
+// its reason: no room (its word), or overloaded.
+func benchDropped(s *Snapshot, members []string) []benchDrop {
+	var out []benchDrop
+	for _, m := range members {
+		switch {
+		case s.NoRoom[m] != "":
+			out = append(out, benchDrop{m, "no room: " + s.NoRoom[m]})
+		default:
+			if _, ol := Overloaded(s, m); ol {
+				out = append(out, benchDrop{m, "overloaded"})
+			}
+		}
+	}
+	return out
+}
+
+// benchNoRoom is the refusal of a card whose bench is up and every member of it
+// the order dropped (benchOrder) for room or overload: the tick deals it when one
+// has room, and it is never dealt off its bench.
+func benchNoRoom(bench []string, dropped []benchDrop) string {
+	var who []string
+	for _, d := range dropped {
+		who = append(who, d.Member+" ("+d.Why+")")
+	}
+	return "every member of its bench " + Preview(bench, ", ") + " starts no card (" + strings.Join(who, "; ") + "): the tick deals it when one has room"
+}
+
+// firstFreeOrdered is the first of ms holding fewer cards than a lane (its
+// width), in ms order: the bench order's first with a free lane, as nextLane
+// finds it without wrapping from the round index.
+func firstFreeOrdered(ms []string, q, lanes map[string]int) string {
+	for _, m := range ms {
+		if q[m] < lanes[m] {
+			return m
+		}
+	}
+	return ""
+}
+
+// firstOpenOrdered is the first of ms holding fewer cards than its room
+// (DealAhead times its width), in ms order: nextFree's second scan over the
+// bench order.
+func firstOpenOrdered(ms []string, q, room map[string]int) string {
+	for _, m := range ms {
+		if q[m] < room[m] {
+			return m
+		}
+	}
+	return ""
 }

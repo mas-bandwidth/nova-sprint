@@ -696,6 +696,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		snap.Answered = answered
 		if step.NoRoom != nil {
 			snap.NoRoom = step.NoRoom
+			if err := st.memberLoadsInto(ctx, snap); err != nil {
+				return res, err
+			}
 		} else if step.ReadNoRoom {
 			snap.NoRoom = map[string]string{}
 			if err := st.memberNoRoomInto(ctx, snap, snap.NoRoom); err != nil {

@@ -34,7 +34,7 @@ func selWords(verb string) []string {
 	w := []string{"who", "state", "ids-file"}
 	switch verb {
 	case "brief", "recut":
-		w = append(w, "stream", "set-base", "drop-who")
+		w = append(w, "stream", "set-base", "drop-who", "drop-bench")
 	case "release", "rank":
 		w = append(w, "stream")
 	case "priority":
@@ -221,6 +221,7 @@ func selectStep(verb string, q sprint.Selector, args any, mk func(ids []string) 
 func briefEditFlags(fs flagSet, e *sprint.BriefEdit) {
 	fs.StringVar(&e.SetBase, "set-base", "", "each selected card's brief with its BASE: line naming this branch (one put under line 1 when it has none)")
 	fs.BoolVar(&e.DropWho, "drop-who", false, "each selected card's brief with its WHO: line taken out: it names no friend, and is dealt to whoever its tier finds")
+	fs.BoolVar(&e.DropBench, "drop-bench", false, "each selected card's brief with its BENCH: line taken out: it is dealt round the fleet's pool like any card with no bench")
 }
 
 func checkTier(tier string) string {
@@ -244,7 +245,7 @@ func (a *app) cmdRecutSel(args []string, stdout, stderr io.Writer) int {
 		tier = fs.String("tier", "", "the tier every twin is pinned to ("+cardhdr.RouteList+"); default: each old card's pin")
 		return func() string {
 			if *tier == "" && !edit.Given() {
-				return "recut by selector wants --tier <" + cardhdr.RouteList + ">, --set-base <branch> or --drop-who: what every twin changes"
+				return "recut by selector wants --tier <" + cardhdr.RouteList + ">, --set-base <branch>, --drop-who or --drop-bench: what every twin changes"
 			}
 			return checkTier(*tier)
 		}
@@ -278,7 +279,7 @@ func (a *app) cmdBriefSel(args []string, stdout, stderr io.Writer) int {
 		tier = fs.String("tier", "", "re-tier every selected card ("+cardhdr.RouteList+"), as brief <id> --tier does")
 		return func() string {
 			if *tier == "" && !edit.Given() {
-				return "brief by selector takes a transform instead of a whole file: --set-base <branch>, --drop-who or --tier <" + cardhdr.RouteList + ">"
+				return "brief by selector takes a transform instead of a whole file: --set-base <branch>, --drop-who, --drop-bench or --tier <" + cardhdr.RouteList + ">"
 			}
 			return checkTier(*tier)
 		}
