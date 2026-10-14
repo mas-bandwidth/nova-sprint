@@ -89,6 +89,10 @@ const unconfiguredServer = "server: not configured in this shell (set NOVA_SPRIN
 // advisoryUnconfiguredServer returns r with its server line turned from the check's DOWN
 // addr=none verdict into an OK advisory line when no server address is configured in this
 // shell, and the advisory text ("" when a server is configured). Every other line is kept.
+// The report's own count and exit code follow its lines (docs/SPEC-SPRINT.md, "The seat
+// check"), so the DOWN the check counted for this line is taken back, as withConfigSeat
+// adds one when it appends a DOWN line (cmd/nova-sprint/seat.go): the report the doctor
+// embeds in --json and prints from Summary says OK, not a down verdict.
 func advisoryUnconfiguredServer(r sprint.SeatCheckReport) (sprint.SeatCheckReport, string) {
 	for i, l := range r.Lines {
 		if l.Up || l.Thing != sprint.SeatCheckServer || !slices.Contains(l.Facts, "addr=none") {
@@ -98,6 +102,10 @@ func advisoryUnconfiguredServer(r sprint.SeatCheckReport) (sprint.SeatCheckRepor
 		r.Lines[i].Up = true
 		r.Lines[i].Facts = []string{unconfiguredServer}
 		r.Lines[i].Remedy = ""
+		r.Down--
+		if r.Down <= 0 {
+			r.Down, r.ExitCode = 0, 0
+		}
 		return r, unconfiguredServer
 	}
 	return r, ""
@@ -277,7 +285,8 @@ func (a *app) cmdDoctorParsed(c common, area, preflight string, stdout, stderr i
 		fmt.Fprintf(stdout, "DOCTOR seat %s: %s\n", seat, oneline.Escape(rec.Seat.Line(now)))
 	}
 	// An unconfigured server is an advisory, not a down verdict: it is said whatever area
-	// was asked so the friends area, which reads the server too, never calls it down.
+	// was asked (only loops-redial reads the server's start, in the fleet area), so every
+	// area, friends included, hears that the shell names no server instead of a verdict.
 	if serverAdvisory != "" {
 		fmt.Fprintln(stdout, "DOCTOR advisory "+serverAdvisory)
 	}

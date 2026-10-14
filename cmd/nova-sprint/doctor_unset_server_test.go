@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +41,25 @@ func TestDoctorFriendsAreaCallsAnUnsetServerUnconfigured(t *testing.T) {
 	require.Equal(t, 0, code, "the friends area does not fail on an unconfigured server\n%s%s", out, errs)
 	assert.Contains(t, out, advisoryUnsetServer, "the friends area reports the advisory: %s", out)
 	assert.NotContains(t, out, "MACHINERY server DOWN", "no down verdict: %s", out)
+
+	// The advisory is not a down verdict in the report the doctor embeds either: --json
+	// carries the machinery report verbatim, so its own down count and exit code must
+	// follow the line that was turned up, not the check's DOWN addr=none verdict.
+	code, out, errs = ta.do("doctor --json")
+	require.Equal(t, 0, code, "an unconfigured server is no fault in --json\n%s%s", out, errs)
+	var jsonOut struct {
+		Status    string          `json:"status"`
+		Exit      int             `json:"exit"`
+		Machinery json.RawMessage `json:"machinery"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &jsonOut), "doctor --json: %s", out)
+	assert.Equal(t, "ok", jsonOut.Status, "the doctor is OK: %s", out)
+	assert.Equal(t, 0, jsonOut.Exit, "the doctor exits 0: %s", out)
+	var mach sprint.SeatCheckReport
+	require.NoError(t, json.Unmarshal(jsonOut.Machinery, &mach), "the machinery report: %s", out)
+	assert.Equal(t, 0, mach.Down, "the advisory line is not counted down: %s", jsonOut.Machinery)
+	assert.Equal(t, 0, mach.ExitCode, "the machinery report holds no down verdict: %s", jsonOut.Machinery)
+	assert.Contains(t, string(jsonOut.Machinery), advisoryUnsetServer, "the advisory rides along: %s", jsonOut.Machinery)
 }
 
 var errServerUnanswered = errors.New("connection refused")
