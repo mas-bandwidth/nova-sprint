@@ -9,31 +9,27 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
 )
 
 func suiteFixture(t *testing.T, cases int) (string, []Case, Jar) {
 	t.Helper()
-	root := t.TempDir()
-	dir := filepath.Join(root, "tla")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	plan := "config\tmodule\texpected\tproperty\tdeadlock\tgroup\tgate\tdebt\n"
+	files := map[string]string{}
 	selected := make([]Case, cases)
 	for i := range selected {
 		name := fmt.Sprintf("MCTest%d", i)
 		plan += fmt.Sprintf("%s.cfg\t%s.tla\tpass\t-\tcheck\ttiny\trequired\t-\n", name, name)
 		selected[i] = Case{Config: name + ".cfg", Module: name + ".tla", Expected: "pass", Property: "-", Deadlock: "check", Group: "tiny", Gate: "required", Debt: "-"}
-		if err := os.WriteFile(filepath.Join(dir, name+".cfg"), []byte("SPECIFICATION Spec\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name+".tla"), []byte("---- MODULE "+name+" ----\nVARIABLE x\nInit == x = 0\nNext == x' = x\n====\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		files["tla/"+name+".cfg"] = "SPECIFICATION Spec\n"
+		files["tla/"+name+".tla"] = "---- MODULE " + name + " ----\nVARIABLE x\nInit == x = 0\nNext == x' = x\n====\n"
 	}
-	if err := os.WriteFile(filepath.Join(dir, CasesFile), []byte(plan), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	files["tla/"+CasesFile] = plan
+	root := fsx.Tree(t, files)
 	return root, selected, Jar{Path: "unused", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 }
 
@@ -80,18 +76,16 @@ func TestRunSuiteRunsUpToParallelCasesAtOnce(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			close(release)
 			<-done
-			t.Fatalf("only %d cases started concurrently", i)
+			require.Failf(t, "too few concurrent", "only %d cases started concurrently", i)
 		}
 	}
 	close(release)
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("suite did not finish")
+		require.Fail(t, "suite did not finish")
 	}
-	if peak < 4 {
-		t.Fatalf("peak active cases=%d, want 4", peak)
-	}
+	assert.GreaterOrEqual(t, peak, 4, "peak active cases")
 }
 
 func TestRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder(t *testing.T) {
@@ -124,23 +118,16 @@ func TestRunSuiteRecordsPlanOrderWhenCasesFinishOutOfOrder(t *testing.T) {
 		return ExitPass
 	}
 	res, err := RunSuite(o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Records) != len(cases) {
-		t.Fatalf("got %d records", len(res.Records))
-	}
+	require.NoError(t, err)
+	require.Len(t, res.Records, len(cases))
 	for i, r := range res.Records {
-		if r.Config != cases[i].Config {
-			t.Fatalf("record[%d]=%s want %s", i, r.Config, cases[i].Config)
-		}
+		assert.Equal(t, cases[i].Config, r.Config, "record[%d]", i)
 	}
-	if len(finished) < 2 || finished[0] == cases[0].Config {
-		t.Fatalf("fake cases did not finish out of order: %v", finished)
-	}
-	if callbackOverlap.Load() || len(callbacks) != len(cases) || callbacks[0] != cases[len(cases)-1].Config {
-		t.Fatalf("OnCase was not serialized in finish order: overlap=%t callbacks=%v", callbackOverlap.Load(), callbacks)
-	}
+	require.GreaterOrEqual(t, len(finished), 2)
+	assert.NotEqual(t, cases[0].Config, finished[0], "fake cases did not finish out of order")
+	assert.False(t, callbackOverlap.Load())
+	require.Len(t, callbacks, len(cases))
+	assert.Equal(t, cases[len(cases)-1].Config, callbacks[0], "OnCase was not serialized in finish order")
 }
 
 func TestRunSuiteBudgetExhaustionRecordsUnstartedCases(t *testing.T) {
@@ -154,12 +141,8 @@ func TestRunSuiteBudgetExhaustionRecordsUnstartedCases(t *testing.T) {
 		return ExitPass
 	}
 	res, err := RunSuite(o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.Failed {
-		t.Fatal("budget exhaustion must fail suite")
-	}
+	require.NoError(t, err)
+	assert.True(t, res.Failed, "budget exhaustion must fail suite")
 	found := false
 	for _, c := range cases {
 		b, e := os.ReadFile(filepath.Join(o.Out, c.Config+".log"))
@@ -167,9 +150,7 @@ func TestRunSuiteBudgetExhaustionRecordsUnstartedCases(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Fatal("no unstarted case recorded the suite budget exhaustion")
-	}
+	assert.True(t, found, "no unstarted case recorded the suite budget exhaustion")
 }
 
 func TestRunSuiteParallelOnePreservesExecutionOrder(t *testing.T) {
@@ -183,15 +164,9 @@ func TestRunSuiteParallelOnePreservesExecutionOrder(t *testing.T) {
 		return successfulFake(ctx, r, log)
 	}
 	res, err := RunSuite(o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Failed {
-		t.Fatal("suite failed")
-	}
+	require.NoError(t, err)
+	assert.False(t, res.Failed, "suite failed")
 	for i, c := range cases {
-		if calls[i] != c.Config {
-			t.Fatalf("call[%d]=%s want %s", i, calls[i], c.Config)
-		}
+		assert.Equal(t, c.Config, calls[i], "call[%d]", i)
 	}
 }
