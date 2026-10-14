@@ -24,20 +24,20 @@ import (
 // The core kinds, in the order the check prints them (the numbers of the v1.3 card
 // nova-sprint-check-gates-the-start).
 const (
-	CheckRoutes    = "routes"     // applied provider rows and funded route coverage
-	CheckNeeds     = "needs"      // 1: every need names a card of this epoch, not dropped; no self-need, no cycle
-	CheckFiles     = "files"      // 3: no file written by two streams
-	CheckSameFile  = "same-file"  // 5: no two cards of a stream name one PATHS file with no need between them
-	CheckBases     = "bases"      // 6: each stream on its own branch, never the trunk; no need across two bases
-	CheckNames     = "names"      // 7: each stream's display name set and readable
-	CheckStaleFix  = "stale-fix"  // 8: no card at priority fix with no failed attempt this epoch
-	CheckStaleHead = "stale-head" // a pushed head from an attempt before the current brief
-	CheckLint      = "lint"       // 9: every brief passes the card lint
-	CheckBriefSize         = "brief-size"        // 16: every brief within the store's bound and the drain's
-	CheckSentinelWide      = "sentinel-wide"     // sentinel waits on producers sharing no PATHS/NEW glob with consumer
+	CheckRoutes            = "routes"             // applied provider rows and funded route coverage
+	CheckNeeds             = "needs"              // 1: every need names a card of this epoch, not dropped; no self-need, no cycle
+	CheckFiles             = "files"              // 3: no file written by two streams
+	CheckSameFile          = "same-file"          // 5: no two cards of a stream name one PATHS file with no need between them
+	CheckBases             = "bases"              // 6: each stream on its own branch, never the trunk; no need across two bases
+	CheckNames             = "names"              // 7: each stream's display name set and readable
+	CheckStaleFix          = "stale-fix"          // 8: no card at priority fix with no failed attempt this epoch
+	CheckStaleHead         = "stale-head"         // a pushed head from an attempt before the current brief
+	CheckLint              = "lint"               // 9: every brief passes the card lint
+	CheckBriefSize         = "brief-size"         // 16: every brief within the store's bound and the drain's
+	CheckSentinelWide      = "sentinel-wide"      // sentinel waits on producers sharing no PATHS/NEW glob with consumer
 	CheckSentinelConsumers = "sentinel-consumers" // missing consumer from sentinel CONSUMERS line
-	CheckOwner             = "owner"             // who=friend card missing WHO: or ran on fleet
-	CheckFailedInReview    = "failed-in-review"  // card in review with last finish failed
+	CheckOwner             = "owner"              // who=friend card missing WHO: or ran on fleet
+	CheckFailedInReview    = "failed-in-review"   // card in review with last finish failed
 )
 
 // CheckKinds is the core kinds in print order.
@@ -232,7 +232,6 @@ func (c *cardCheck) staleHead() []CardFinding {
 	}
 	return out
 }
-
 
 func (c *cardCheck) inStreams(stream string) bool {
 	return len(c.in.Streams) == 0 || slices.Contains(c.in.Streams, stream)
@@ -1010,4 +1009,3 @@ func (c *cardCheck) failedInReview() []CardFinding {
 	}
 	return out
 }
-

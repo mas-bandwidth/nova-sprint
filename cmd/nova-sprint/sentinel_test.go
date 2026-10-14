@@ -197,4 +197,3 @@ func TestBriefEditsSentinelFromCLI(t *testing.T) {
 	require.Equal(t, "s1-1", ta.primary("stop").F("needs"))
 	ta.clean()
 }
-

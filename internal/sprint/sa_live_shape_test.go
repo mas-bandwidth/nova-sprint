@@ -16,9 +16,9 @@ import (
 //
 //   - Stream schema-shared with 7 open primary cards (scores 82, 83, 155, 157, 159, 161, 162)
 //     and 3 shared sentinels at the tail (scores 901, 902, 903):
-//     * sentinel-schema-shared-fixed-form-corpus-ready (901)
-//     * sentinel-schema-shared-guard-chain-ready (902)
-//     * sentinel-schema-shared-wide-text-ready (903)
+//   - sentinel-schema-shared-fixed-form-corpus-ready (901)
+//   - sentinel-schema-shared-guard-chain-ready (902)
+//   - sentinel-schema-shared-wide-text-ready (903)
 //   - Primary card the-fixed-form-corpus-builds-on-every-bench (score 83, Col=Review)
 //     with who="friend", rule_tier="friend", no WHO: line in its brief, 6 fleet attempts
 //     (.w1..w6 on batman, hetzner1, hetzner2, studio, mini-m5, superman), result="failed",
@@ -26,18 +26,18 @@ import (
 //   - Consumer streams (schema-c, schema-cards, schema-cpp, schema-cs, schema-dart,
 //     schema-elixir, schema-go, schema-java, schema-js, schema-rust) and their leg sentinels
 //     (scores 905..912, 929), including:
-//     * sentinel-schema-shared-guard-chain-ready declaring only 1 of its 8 live consumers
-//       (js-carries-maps-and-union-arms-on-the-table-wire) and omitting 7 consumers.
-//     * sentinel-schema-{dart,elixir,java,js}-cards-leg-ready declaring only
-//       the-cards-page-and-roadmap-name-every-language and omitting the cross-stream
-//       *-rides-the-wire-fuzzer-and-retains-on-every-root consumer.
-//     * dart-carries-the-variable-class-beyond-the-card-constructs and
-//       java-carries-the-variable-class-beyond-the-card-constructs with who="friend",
-//       no WHO: line in brief, and fleet attempts.
-//     * fixed-dart-t12-extents-writes-guards-reconciled-6 (142 before sentinel 911),
-//       fixed-elixir-t12-ordinals-arms-6 (153 before sentinel 912), and
-//       fixed-rust-t12-framing-text-reconciled-6 (103 before sentinel 908) sitting before
-//       their stream's cards-leg sentinel.
+//   - sentinel-schema-shared-guard-chain-ready declaring only 1 of its 8 live consumers
+//     (js-carries-maps-and-union-arms-on-the-table-wire) and omitting 7 consumers.
+//   - sentinel-schema-{dart,elixir,java,js}-cards-leg-ready declaring only
+//     the-cards-page-and-roadmap-name-every-language and omitting the cross-stream
+//     *-rides-the-wire-fuzzer-and-retains-on-every-root consumer.
+//   - dart-carries-the-variable-class-beyond-the-card-constructs and
+//     java-carries-the-variable-class-beyond-the-card-constructs with who="friend",
+//     no WHO: line in brief, and fleet attempts.
+//   - fixed-dart-t12-extents-writes-guards-reconciled-6 (142 before sentinel 911),
+//     fixed-elixir-t12-ordinals-arms-6 (153 before sentinel 912), and
+//     fixed-rust-t12-framing-text-reconciled-6 (103 before sentinel 908) sitting before
+//     their stream's cards-leg sentinel.
 func BuildSALiveShape20261013() *Snapshot {
 	s := &Snapshot{
 		Now:         time.Date(2026, 10, 13, 20, 30, 0, 0, time.UTC),
@@ -712,27 +712,27 @@ func updateSentinelConsumersBrief(card *Card, consumers []string) {
 // and fix/briefs.zsh, plus the owner and failed-in-review resolutions:
 //
 //   - Fix 2 (needs additions):
-//     * a-c-card-round-trips-and-renders-the-shared-corpus adds sentinel-schema-shared-fixed-form-corpus-ready
-//     * fixed-js-t12-guards-and-wide-text-6 adds sentinel-schema-shared-fixed-form-corpus-ready
+//   - a-c-card-round-trips-and-renders-the-shared-corpus adds sentinel-schema-shared-fixed-form-corpus-ready
+//   - fixed-js-t12-guards-and-wide-text-6 adds sentinel-schema-shared-fixed-form-corpus-ready
 //   - Fix 3 (rank moves to narrow sentinels):
-//     * the-fixed-form-corpus-builds-on-every-bench: 83 -> 903.2
-//     * the-128-bit-and-fixed-point-fixed-rows-run-with-the-serialize-sibling: 159 -> 903.4
-//     * sentinel-schema-shared-fixed-form-corpus-ready: 901 -> 903.6
-//     * fixed-dart-t12-extents-writes-guards-reconciled-6: 142 -> 911.5
-//     * fixed-elixir-t12-ordinals-arms-6: 153 -> 912.5
-//     * fixed-rust-t12-framing-text-reconciled-6: 103 -> 908.5
+//   - the-fixed-form-corpus-builds-on-every-bench: 83 -> 903.2
+//   - the-128-bit-and-fixed-point-fixed-rows-run-with-the-serialize-sibling: 159 -> 903.4
+//   - sentinel-schema-shared-fixed-form-corpus-ready: 901 -> 903.6
+//   - fixed-dart-t12-extents-writes-guards-reconciled-6: 142 -> 911.5
+//   - fixed-elixir-t12-ordinals-arms-6: 153 -> 912.5
+//   - fixed-rust-t12-framing-text-reconciled-6: 103 -> 908.5
 //   - Fix 4 (sentinel CONSUMERS brief updates):
-//     * sentinel-schema-shared-guard-chain-ready lists all 8 live consumers
-//     * sentinel-schema-shared-fixed-form-corpus-ready lists all 9 live consumers (7 original + 2 from Fix 2)
-//     * sentinel-schema-dart-cards-leg-ready adds elixir-rides-the-wire-fuzzer-and-retains-on-every-root
-//     * sentinel-schema-elixir-cards-leg-ready adds java-rides-the-wire-fuzzer-and-retains-on-every-root
-//     * sentinel-schema-java-cards-leg-ready adds js-rides-the-wire-fuzzer-and-retains-on-every-root
-//     * sentinel-schema-js-cards-leg-ready adds rust-rides-the-wire-fuzzer-and-retains-on-every-root
+//   - sentinel-schema-shared-guard-chain-ready lists all 8 live consumers
+//   - sentinel-schema-shared-fixed-form-corpus-ready lists all 9 live consumers (7 original + 2 from Fix 2)
+//   - sentinel-schema-dart-cards-leg-ready adds elixir-rides-the-wire-fuzzer-and-retains-on-every-root
+//   - sentinel-schema-elixir-cards-leg-ready adds java-rides-the-wire-fuzzer-and-retains-on-every-root
+//   - sentinel-schema-java-cards-leg-ready adds js-rides-the-wire-fuzzer-and-retains-on-every-root
+//   - sentinel-schema-js-cards-leg-ready adds rust-rides-the-wire-fuzzer-and-retains-on-every-root
 //   - Owner & Failed-in-Review resolution:
-//     * Sets who="fleet" on the-fixed-form-corpus-builds-on-every-bench,
-//       dart-carries-the-variable-class-beyond-the-card-constructs, and
-//       java-carries-the-variable-class-beyond-the-card-constructs
-//     * Reworks the-fixed-form-corpus-builds-on-every-bench (Review -> Ready, clears failed result).
+//   - Sets who="fleet" on the-fixed-form-corpus-builds-on-every-bench,
+//     dart-carries-the-variable-class-beyond-the-card-constructs, and
+//     java-carries-the-variable-class-beyond-the-card-constructs
+//   - Reworks the-fixed-form-corpus-builds-on-every-bench (Review -> Ready, clears failed result).
 func ApplySALiveFixes20261013(s *Snapshot) {
 	// Fix 4 first so any subsequent NeedsSet checks pass against updated CONSUMERS lists.
 	updateSentinelConsumersBrief(s.Work.Card("sentinel-schema-shared-guard-chain-ready"), []string{
