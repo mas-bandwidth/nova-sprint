@@ -1567,6 +1567,7 @@ func Take(s *Snapshot, r TakeReq) Plan {
 		one := takeOne(s, q)
 		p.Units = append(p.Units, one.Units...)
 		p.Refused = append(p.Refused, one.Refused...)
+		p.Said = append(p.Said, one.Said...)
 	}
 	return p
 }
@@ -1704,6 +1705,27 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		// stream turns, then work order (rank) — never the order they were dealt in
 		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
 	}
+	// a friend's take by count moves only cards she has started; the rest stay ready
+	// (tla/FriendReadyTake.tla, Take, WorkingIsStarted; docs/SPEC-SPRINT.md
+	// section 1, "a friend's take by count moves only cards she has started; the rest stay ready")
+	if friend, ok := FriendOfRow(r.As); ok && !byID && r.Lane == 0 && !r.LaneByID {
+		var seat FriendSeat
+		for _, f := range s.Friends {
+			if f.Name == friend {
+				seat = f
+				break
+			}
+		}
+		var started []*Card
+		for _, c := range ready {
+			if friendStarted(s, seat, c) {
+				started = append(started, c)
+				continue
+			}
+			p.Said = append(p.Said, fmt.Sprintf("%s: stays ready on %s's row until her start (a take by count is no start)", c.ID, r.As))
+		}
+		ready = started
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
@@ -1769,7 +1791,11 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	for _, c := range chosen {
 		set, unset := takenStamps(c, s.Now), []string{"untaken_since"}
 		if friend, ok := FriendOfRow(r.As); ok {
-			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			if !byID && r.Lane == 0 && !r.LaneByID {
+				set, unset = friendStartSet(s, c, friend) // her start, stamped at its generation (tla/FriendReadyTake.tla)
+			} else {
+				set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			}
 		}
 		if r.Lane == 0 {
 			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)
