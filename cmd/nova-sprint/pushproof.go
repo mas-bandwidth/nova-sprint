@@ -17,6 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -66,9 +67,10 @@ func passive(d friend.Deliverer) bool {
 
 // folderAdapter is the seat's adapter for a harness with no deliver command
 // (sprint.AdapterFolder): Deliver writes the text as one file into Dir,
-// PUSH-<clock>-<n>.md, and answers 0. The file is written under a dot name and renamed,
-// so a reader never sees half of one. A Dir that is not a directory is a failure naming
-// it, and nothing is made.
+// PUSH-<clock>-<n>.md, and answers 0. The file is written by the house package
+// (pkg/atomicfile, "Contract and Guarantees": clean path, symlink-parent
+// refusal, ExactMode), so a reader never sees half of one. A Dir that is not a
+// directory is a failure naming it, and nothing is made.
 type folderAdapter struct {
 	Dir string
 	Now func() time.Time
@@ -79,22 +81,7 @@ func (f *folderAdapter) Deliver(_ context.Context, text string) (int, error) {
 		return 0, fmt.Errorf("the folder adapter writes into %s, and it is not a directory: make it, or install the seat with the folder the session reads", f.Dir)
 	}
 	name := "PUSH-" + f.Now().UTC().Format("20060102T150405Z") + "-" + pushNonce()[:8] + ".md"
-	tmp, err := os.CreateTemp(f.Dir, ".push-*")
-	if err != nil {
-		return 0, err
-	}
-	_, err = tmp.WriteString(text)
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), filepath.Join(f.Dir, name))
-	}
-	if err != nil {
-		_ = os.Remove(tmp.Name()) // ignored: the write already failed, and that is the error said
+	if err := atomicfile.WriteFile(filepath.Join(f.Dir, name), []byte(text), 0o600, atomicfile.ExactMode()); err != nil {
 		return 0, fmt.Errorf("the folder delivery failed: %s", err.Error())
 	}
 	return 0, nil

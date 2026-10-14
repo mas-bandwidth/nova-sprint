@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 )
 
 // DefaultRollbackWindow is how long server switch watches for a failed land before
@@ -37,47 +38,15 @@ type SwitchState struct {
 	Rollback    bool      `json:"rollback"`
 }
 
-// copyBinary copies a binary file atomically and ensures executable permission.
+// copyBinary copies a binary file atomically and ensures executable permission:
+// the source is read, then written by the house package (pkg/atomicfile,
+// "Contract and Guarantees": clean path, symlink-parent refusal), 0755.
 func copyBinary(src, dst string) error {
-	in, err := os.Open(src)
+	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close() // ignored: a read-only source; the copy's write side is checked
-
-	fi, err := in.Stat()
-	if err != nil {
-		return err
-	}
-
-	mode := fi.Mode() | 0o111 // ensure executable
-
-	dir := filepath.Dir(dst)
-	tmp, err := os.CreateTemp(dir, filepath.Base(dst)+".tmp.*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() {
-		// ignored: best-effort cleanup of temporary file
-		_ = os.Remove(tmpName)
-	}()
-
-	if _, err := io.Copy(tmp, in); err != nil {
-		// ignored: best-effort close on copy error
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		// ignored: best-effort close on chmod error
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpName, dst)
+	return atomicfile.WriteFile(dst, data, 0o755)
 }
 
 // ServerSwitch replaces the server binary with candidate binary, keeping previous binary
