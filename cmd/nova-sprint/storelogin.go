@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/redisauth"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
@@ -383,27 +384,12 @@ password.
 }
 
 // writePrivate writes b to path for its user alone (0600, its directory 0700), whole or
-// not at all: a temporary file beside it, renamed over it.
+// not at all: the house package's atomic write (pkg/atomicfile, "Contract and
+// Guarantees": clean path, symlink-parent refusal, ExactMode), 0600 exactly. The
+// directory is made here first: atomicfile never creates parents silently.
 func writePrivate(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".login-*.json")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer func() { _ = os.Remove(tmp) }() // ignored: gone after the rename; a failed write leaves nothing behind
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close() // ignored: the chmod's error is the one returned
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		_ = f.Close() // ignored: the write's error is the one returned
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, b, 0o600, atomicfile.ExactMode())
 }

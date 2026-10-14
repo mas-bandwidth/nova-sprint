@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 )
 
 // The twin: `--redis mem:<file>` (or NOVA_SPRINT_REDIS=mem:<file>) runs every
@@ -186,7 +186,9 @@ func (a *app) twinBackend(addr string) (store.Backend, error) {
 
 // saveTwins writes every open twin whose state changed, each to its file, in
 // one atomic rename (a reader of the file, or a crash, sees the file before or
-// after, never half). It is run at the end of every verb.
+// after, never half). It is run at the end of every verb. Each write is the
+// house package's (pkg/atomicfile, "Contract and Guarantees": clean path,
+// symlink-parent refusal, ExactMode), 0600 exactly.
 func (a *app) saveTwins() error {
 	var first error
 	for _, t := range a.twins {
@@ -202,7 +204,7 @@ func (a *app) saveTwins() error {
 			continue
 		}
 		if err == nil {
-			err = writeAtomic(t.path, doc)
+			err = atomicfile.WriteFile(t.path, doc, 0o600, atomicfile.ExactMode())
 		}
 		if err != nil {
 			if first == nil {
@@ -215,32 +217,11 @@ func (a *app) saveTwins() error {
 	return first
 }
 
-// writeAtomic writes the file whole or not at all: a temporary file in the
-// same directory, synced, then renamed over the target.
+// writeAtomic writes the file whole or not at all through the house package
+// (pkg/atomicfile, "Contract and Guarantees": clean path, symlink-parent
+// refusal, ExactMode), 0600 exactly. backup and demo share it.
 func writeAtomic(path string, doc []byte) error {
-	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	_, err = f.Write(doc)
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(name, 0o600)
-	}
-	if err == nil {
-		err = os.Rename(name, path)
-	}
-	if err != nil {
-		_ = os.Remove(name) // ignored: a best-effort removal of the temporary file; the write's error is the one returned
-	}
-	return err
+	return atomicfile.WriteFile(path, doc, 0o600, atomicfile.ExactMode())
 }
 
 // beatTwin says every member of the twin's fleet is alive: the machines of a
