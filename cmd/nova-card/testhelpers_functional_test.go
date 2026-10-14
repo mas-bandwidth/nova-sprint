@@ -178,7 +178,7 @@ func shortCache(t *testing.T) string {
 		t.Cleanup(func() { _ = os.RemoveAll(dir) })
 		return dir
 	}
-	t.Fatal("no directory short enough for the hook's unix socket could be made")
+	require.FailNow(t, "no directory short enough for the hook's unix socket could be made")
 	return ""
 }
 

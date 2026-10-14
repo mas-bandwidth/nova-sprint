@@ -194,7 +194,7 @@ func resultFormatDoneLine(t *testing.T, text string) string {
 			return l
 		}
 	}
-	t.Fatalf("no DONE line in %q", text)
+	assert.FailNow(t, "no DONE line in "+text)
 	return ""
 }
 
@@ -267,7 +267,7 @@ func TestParseTableRefusalMapsEveryTokenAndNothingElse(t *testing.T) {
 		assert.Equal(t, want, ParseTableRefusal(token), token)
 		assert.NotEqual(t, TableRefusalUnknown, want, token)
 		if prev, dup := seen[want]; dup {
-			t.Errorf("%s and %s share a value", prev, token)
+			assert.Fail(t, "two tokens share a value", "%s and %s", prev, token)
 		}
 		seen[want] = token
 		assert.Equal(t, TableRefusalUnknown, ParseTableRefusal(strings.ToLower(token)), "case matters: %s", token)

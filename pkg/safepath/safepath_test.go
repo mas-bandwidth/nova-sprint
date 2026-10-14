@@ -3,12 +3,15 @@ package safepath
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // The refusal texts are part of the contract: a reaper, a map and a person all
 // read them, so refuseUnsafeRoot and refuseUnsafePath must keep saying exactly
 // this, the root and the path phrased differently.
 func TestRefuseUnsafeKeepsTheTexts(t *testing.T) {
+	t.Parallel()
 	home := t.TempDir()
 	p := Policy{UserHomeDir: func() (string, error) { return home, nil }}
 
@@ -34,8 +37,6 @@ func TestRefuseUnsafeKeepsTheTexts(t *testing.T) {
 		} else {
 			err = p.refuseUnsafePath(c.give)
 		}
-		if err == nil || err.Error() != c.want {
-			t.Errorf("%s: got %v, want %q", c.name, err, c.want)
-		}
+		assert.EqualError(t, err, c.want, c.name)
 	}
 }

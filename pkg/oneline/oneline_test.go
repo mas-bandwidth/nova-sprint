@@ -143,7 +143,7 @@ func dropped(t *testing.T, got string) int {
 	m := got[strings.LastIndex(got, "...+")+len("...+"):]
 	n, err := strconv.Atoi(strings.TrimSuffix(m, "B"))
 	if err != nil || !strings.HasSuffix(m, "B") {
-		t.Fatalf("no mark on %q", got)
+		assert.FailNow(t, "no mark on "+got)
 	}
 	return n
 }

@@ -92,7 +92,7 @@ func TestTheSprintRowsGitIdentityFieldDefaultsToTheGenericIdentity(t *testing.T)
 			}
 		}
 	}
-	t.Fatal("the sprint row has no git_identity field")
+	require.FailNow(t, "the sprint row has no git_identity field")
 }
 
 func TestMigration0037DefaultsToTheGenericIdentity(t *testing.T) {
