@@ -2,16 +2,14 @@ package sprint
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/repotree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
@@ -101,20 +99,16 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 // call it.
 func TestATierCheckIsOneFunction(t *testing.T) {
 	t.Parallel()
-	files, err := filepath.Glob("*.go")
-	require.NoError(t, err)
-	fset := token.NewFileSet()
+	q := repotree.Query{
+		Under:      []string{"internal/sprint"},
+		Ext:        ".go",
+		SkipDirs:   []string{"testdata"},
+		SkipSuffix: []string{"_test.go"},
+	}
 	calls := map[string]bool{}
 	found := 0
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(f)
-		require.NoError(t, err)
-		file, err := parser.ParseFile(fset, f, src, 0)
-		require.NoError(t, err)
-		for _, d := range file.Decls {
+	for _, pf := range repotree.Parsed(t, q) {
+		for _, d := range pf.AST.Decls {
 			fn, ok := d.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
 				continue
@@ -124,7 +118,7 @@ func TestATierCheckIsOneFunction(t *testing.T) {
 				case *ast.BasicLit:
 					if x.Kind == token.STRING && strings.Contains(x.Value, "no enabled route") {
 						found++
-						assert.Equal(t, "tierServed", fn.Name.Name, "%s: a refusal for want of a route outside the one check", fset.Position(x.Pos()))
+						assert.Equal(t, "tierServed", fn.Name.Name, "%s: a refusal for want of a route outside the one check", pf.Fset.Position(x.Pos()))
 					}
 				case *ast.CallExpr:
 					if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "tierServed" {

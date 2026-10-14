@@ -16,6 +16,7 @@ import (
 // a dev base writes the branch and trunk, a main-only repository takes main as trunk, and
 // a cleared sprint writes the same fields with no setting.
 func TestAddWritesTheStreamBranchAndTrunk(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		base   string

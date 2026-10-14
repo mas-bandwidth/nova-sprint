@@ -20,6 +20,7 @@ func TestNovaToolsVersionIsTheFilesTag(t *testing.T) {
 }
 
 func TestNovaToolsVersionRoundTrips(t *testing.T) {
+	t.Parallel()
 	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
 	cases := []struct {
 		name string
