@@ -54,16 +54,40 @@ func workTool(gh github) *tool.Tool {
 		What:  "every issue of an organization's repositories in one tree file, verified field for field; a repository's roadmap and fixes edited as data",
 		Stage: preAlpha,
 		Stamp: version,
-		How: `import reads every issue through your gh login, read-only, into one tree file.
+		How: `first run: nova-work example --dir ./example (then verify --against, no network).
+import reads every issue through your gh login, read-only, into one tree file.
 --dry-run reads GitHub exactly as the import does (every issue, the same calls) and writes nothing.
-verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none is the proof.
-verify --against compares two tree files and reads no network (a minimal tree: verify -h).
-first run: nova-work example --dir ./example (then verify --against with no network or gh).`,
+import reads GitHub (every issue of the repo) even with --dry-run; give --repo explicitly.
+verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none is the proof.`,
 		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
 			"encoded tree did not read back equal, or roadmap check found problems; 2 could not run (a flag, the budget, gh, GitHub, a file)",
 		UsageNote:  roadmapUsageNote,
 		GroupNotes: map[string]string{"roadmap": roadmapUsageNote},
 		Verbs: append(append([]tool.Verb{
+			{
+				Name:      "example",
+				Usage:     "example --dir <dir> [--replace]",
+				Example:   "example --dir ./example",
+				Effect:    tool.LocalWrite + ": writes a minimal pair of tree files and a recorded GraphQL import replay fixture",
+				Detail:    exampleDetail,
+				ExitTable: "0 the example files and fixture are written; 2 could not run (a flag, unwritable directory)",
+				Flags: func(f *tool.Flags) {
+					f.Required("dir", "the directory to write the example tree files and fixture to")
+					f.Bool("replace", false, "replace existing files instead of refusing")
+					f.Check(func(c *tool.Call) {
+						dir := c.Str("dir")
+						if !c.Bool("replace") {
+							for _, name := range []string{"tree.lisp", "against.lisp", "call-01.json", "call-02.json"} {
+								if fileExists(filepath.Join(dir, name)) {
+									c.Problem(fmt.Sprintf("%s exists in %s; pass --replace to replace it", name, dir))
+									break
+								}
+							}
+						}
+					})
+				},
+				Run: writeExample,
+			},
 			{
 				Name: "import",
 				Usage: "import --org <org> (--out <tree.lisp> [--replace] | --dry-run) [--repo <owner/name>]... [--fixture <dir>] [--max-calls <n>] " +
@@ -116,30 +140,6 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 				},
 				Run: gh.verifyTree,
 			},
-			{
-				Name:      "example",
-				Usage:     "example --dir <dir> [--replace]",
-				Example:   "example --dir ./example",
-				Effect:    tool.LocalWrite + ": writes a minimal pair of tree files and a recorded GraphQL import replay fixture",
-				Detail:    exampleDetail,
-				ExitTable: "0 the example files and fixture are written; 2 could not run (a flag, unwritable directory)",
-				Flags: func(f *tool.Flags) {
-					f.Required("dir", "the directory to write the example tree files and fixture to")
-					f.Bool("replace", false, "replace existing files instead of refusing")
-					f.Check(func(c *tool.Call) {
-						dir := c.Str("dir")
-						if !c.Bool("replace") {
-							for _, name := range []string{"tree.lisp", "against.lisp", "call-01.json", "call-02.json"} {
-								if fileExists(filepath.Join(dir, name)) {
-									c.Problem(fmt.Sprintf("%s exists in %s; pass --replace to replace it", name, dir))
-									break
-								}
-							}
-						}
-					})
-				},
-				Run: writeExample,
-			},
 		}, gh.roadmapVerbs()...),
 			tool.Verb{
 				// help is the door every tool has; declaring it puts it in the
@@ -170,6 +170,7 @@ is written to --out only after it has been encoded, read back and compared
 with what was fetched, with zero differences. --dry-run reads GitHub exactly
 as the import does (every issue, read-only, the calls IMPORT PLAN counts),
 checks the round trip, and writes nothing: it needs gh and the network.
+import reads GitHub (every issue of the repo) even with --dry-run; give --repo explicitly.
 --fixture <dir> reads recorded GraphQL pages from that directory (call-01.json,
 call-02.json, each with vars and reply) instead of gh, so no login is needed.
 The first run of import is: nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --fixture ./calls --dry-run
