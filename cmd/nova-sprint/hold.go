@@ -12,9 +12,24 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
-// holdWords is hold and unhold in nova-sprint help (docs/SPEC-SPRINT.md section 11).
+// holdWords is hold and unhold in nova-sprint help (docs/SPEC-SPRINT.md section 11):
+// the hold family's one-screen map first, the verb to reach for when, then the prose.
 func holdWords() string {
 	return strings.TrimSpace(`
+the hold family, one screen (you want to ... use ...):
+
+  you want to ...                            use ...
+  hold a member, reader, friend or stream    nova-sprint hold <member|reader|friend|stream>... --reason <text>
+  hold fleet members alone                   nova-sprint fleet hold <member>... --reason <text>
+  hold friends alone                         nova-sprint friend hold <friend>... --reason <text>
+  release a hold                             nova-sprint unhold <name>... [--reason <text>]
+  set a waiting card aside, off the table    nova-sprint defer (<id>... | --stream <s>) --repo-dir <dir> --reason <text>
+
+  where, dashboard, view and watch (what each shows; a new reader runs where first):
+  where      the sprint table, its rows and the epoch log, one frame; a script or a model reads it (--json)
+  dashboard  the same read served as a page and pull routes, for a person's eyes
+  view       one role's document of what needs acting on now (view coordinator, view worker)
+  watch      blocks until the first thing that wakes the coordinator (watch --wake)`) + "\n" + strings.TrimSpace(`
 Hold and unhold: hold <name>... --reason <text> [--return] holds fleet members,
 readers, friends and streams, one verb for the four, the coordinator's alone:
 a name held takes no new cards; what is dealt and not begun is handed back now
