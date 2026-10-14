@@ -101,9 +101,9 @@ func TestGoalSetDefaultRouteIsPrintedAndHelpNamesGoal(t *testing.T) {
 	out := ta.ok("help goal")
 	require.Contains(t, out, "goal set", "help goal: %s", out)
 	require.True(t, strings.Contains(out, "every 5") || strings.Contains(out, "5\nminutes"), "help goal: %s", out)
-	out = ta.ok("help")
-	require.Contains(t, out, "nova-sprint goal show [<name>]", "help: %s", out)
-	require.Contains(t, out, "REMINDER <n> to <name>", "help: %s", out)
+	out = ta.ok("help --all")
+	require.Contains(t, out, "nova-sprint goal show [<name>]", "help --all: %s", out)
+	require.Contains(t, out, "REMINDER <n> to <name>", "help --all: %s", out)
 }
 
 // The reminder header names the person, the time and the epoch, and no sprint:
