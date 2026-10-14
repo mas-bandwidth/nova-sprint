@@ -738,7 +738,7 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 	room := 0
 	for _, f := range fs {
 		r, _ := friendRoom(f)
-		room += max(0, r-friendLoad(s, f.Name))
+		room += max(0, r-friendLiveLanes(s, f.Name))
 	}
 	ahead := c.dealTurn(pr.ID)
 	if ahead < room {
