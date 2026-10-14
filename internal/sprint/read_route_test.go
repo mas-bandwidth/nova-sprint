@@ -219,7 +219,7 @@ func TestAHeldFriendTakesBackHerReaderReads(t *testing.T) {
 	askReaders(t, w, nil)
 	for _, c := range w.s.Readers.Cards() {
 		if c.Placed() && c.F("reader") == ReaderPrefix+"amy" {
-			t.Errorf("a read %s is asked of a held friend's reader row", c.ID)
+			assert.Failf(t, "a held friend's reader row is asked a read", "%s", c.ID)
 		}
 	}
 

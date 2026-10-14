@@ -108,15 +108,9 @@ func TestNoSecretReachesAnErrorInTheSprint(t *testing.T) {
 	t.Parallel()
 	found := secretcheck.OpenersIn(sprintSecretFiles(t))
 	require.NotEmpty(t, found, "the walk found no Open*/Parse*/Dial*/New* function; a rule that checks nothing passes")
-	for _, f := range secretcheck.TableFindings(found, sprintSecretOpeners, nil) {
-		t.Error(f)
-	}
+	assert.Empty(t, secretcheck.TableFindings(found, sprintSecretOpeners, nil), "a table row names a function the sprint no longer has")
 	allowed, bad := secretcheck.ParseAllowlist(sprintSecretLeakAllowlist)
-	for _, b := range bad {
-		t.Error(b)
-	}
-	for _, f := range secretcheck.Verdict(secretcheck.LeakFindings(sprintSecretOpeners, secretcheck.Shapes), allowed) {
-		t.Error(f)
-	}
+	assert.Empty(t, bad, "an allowlist line is malformed")
+	assert.Empty(t, secretcheck.Verdict(secretcheck.LeakFindings(sprintSecretOpeners, secretcheck.Shapes), allowed), "a secret reaches an error")
 	assert.True(t, found["internal/sprint.ParseRoute"], "the walk reads the sprint's own package")
 }
