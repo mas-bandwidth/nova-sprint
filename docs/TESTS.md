@@ -75,6 +75,7 @@ CLI's local-twin walkthrough, run on Linux from v1.2.20 source, is in the
 ```text
 $ nova-sprint init --readers reader-m2 --members m1,m2
 INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-m2
+READY (not started; run: nova-sprint start)
 MOVED m1 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
 READY
@@ -208,6 +209,7 @@ which keeps the record in a temporary directory and prints it as
 ```text
 $ nova-sprint init --readers reader-a,reader-b --members m1
 INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-a,reader-b
+READY (not started; run: nova-sprint start)
 MOVED m1 added, down until it beats
 FLEET-UP OK moved=1 refused=0 notes=0 op=fleet-release-t1-1
 READY
