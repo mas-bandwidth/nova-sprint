@@ -50,6 +50,20 @@ const busy = `{"landed":0,"all":2,"summary":"0/2 0.0% -> ETA","machine":"machine
 	`"merge":{"s1":{"state":"merging","queued":"1"}},"work":{"s1":{"merging":"1","working":"1"}}},"streams":[{"Stream":"s1","State":"merging"}]}`
 const done = `{"landed":2,"all":2,"summary":"2/2 100.0% -> ETA","tables":{},"streams":[{"Stream":"s1","State":"landed"}]}`
 
+// rmIdle is busy's world with m1's queue as given and every other queue and
+// the inbox empty.
+func rmIdle(m1 string) *world {
+	return &world{where: []string{busy}, queue: map[string]string{"m1": m1, "reader-a": `{"cards":[]}`, "s1": `{"cards":[]}`}, inbox: `{"groups":[]}`}
+}
+
+// rmTicks runs the driver's loop and requires that it ended at its count of ticks.
+func rmTicks(t *testing.T, d *Driver) {
+	t.Helper()
+	why, err := d.Loop()
+	require.NoError(t, err, "%s %v", why, err)
+	require.Equal(t, "ticks", why, "%s %v", why, err)
+}
+
 func TestTheLoopPlaysTheWorldThroughVerbsOnly(t *testing.T) {
 	t.Parallel()
 	w := &world{where: []string{busy, busy, done}, queue: map[string]string{
@@ -123,17 +137,9 @@ func TestTheDriverRefusesToPlayWithNoMachineRunning(t *testing.T) {
 // The header is printed once, when the loop may play, before its first tick.
 func TestTheLoopPrintsItsHeaderOnceBeforeTheFirstTick(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{
-		"m1":       `{"cards":[]}`,
-		"reader-a": `{"cards":[]}`,
-		"s1":       `{"cards":[]}`,
-	}, inbox: `{"groups":[]}`}
 	var out bytes.Buffer
-	d := &Driver{Run: w.run, Facts: NewSeeded(1), Clock: &fakeClock{now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}, Out: &out,
-		Header: "chances: a header", Config: Config{Every: time.Second, Ticks: 3}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	rmTicks(t, &Driver{Run: rmIdle(`{"cards":[]}`).run, Facts: NewSeeded(1), Clock: &fakeClock{now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}, Out: &out,
+		Header: "chances: a header", Config: Config{Every: time.Second, Ticks: 3}})
 	text := out.String()
 	require.True(t, strings.HasPrefix(text, "chances: a header\ntick 1 "), "the header, once, before tick 1:\n%s", text)
 	require.Equal(t, 1, strings.Count(text, "chances: a header"), "the header, once, before tick 1:\n%s", text)
@@ -221,11 +227,8 @@ func TestTheOtherQueuesAreReadWhenAFactNeedsThem(t *testing.T) {
 // I6: a member the driver took down is brought up before it stops.
 func TestAMemberTakenDownIsBroughtUpBeforeTheDriverStops(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{"m1": `{"cards":[]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[]}`}, inbox: `{"groups":[]}`}
-	d := &Driver{Run: w.run, Facts: &scripted{down: map[string]bool{"m1": true}}, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 2, Hold: true}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	w := rmIdle(`{"cards":[]}`)
+	rmTicks(t, &Driver{Run: w.run, Facts: &scripted{down: map[string]bool{"m1": true}}, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 2, Hold: true}})
 	down := index(w.ran, 0, "fleet down m1")
 	up := index(w.ran, down, "fleet up m1")
 	require.GreaterOrEqual(t, down, 0, "m1 left down: %v", w.ran)
@@ -344,55 +347,43 @@ func TestAVerbRefusedAsClearedStopsThePass(t *testing.T) {
 // beating, no fleet verb is run for it, and it beats again when it comes back.
 func TestAMemberTakenDownFallsSilent(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{"m1": `{"cards":[]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[]}`}, inbox: `{"groups":[]}`}
-	d := &Driver{Run: w.run, Facts: &scripted{down: map[string]bool{"m1": true}}, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 2}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	w := rmIdle(`{"cards":[]}`)
+	rmTicks(t, &Driver{Run: w.run, Facts: &scripted{down: map[string]bool{"m1": true}}, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 2}})
 	require.Equal(t, -1, index(w.ran, 0, "fleet down"), "a silent member: %v", w.ran)
 	require.Equal(t, -1, index(w.ran, 0, "fleet up"), "a silent member: %v", w.ran)
 	require.Equal(t, -1, index(w.ran, 0, "fleet beat m1"), "a silent member: %v", w.ran)
 }
 
-// --silent: a member stops beating for a while, then beats again.
-func TestASilenceStopsTheBeatsForAWhile(t *testing.T) {
+// --silent: a member stops beating for a while, then beats again; the window
+// ends with the seeded facts too (whose Up keeps a member as the driver gave it).
+func TestASilence(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{"m1": `{"cards":[]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[]}`}, inbox: `{"groups":[]}`}
-	d := &Driver{Run: w.run, Facts: &scripted{}, Clock: &fakeClock{}, Out: io.Discard,
-		Config: Config{Every: time.Second, Ticks: 5, Silent: []Silence{{Member: "m1", From: time.Second, For: 2 * time.Second}}}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
-	beats := 0
-	for _, a := range w.ran {
-		if strings.Join(a, " ") == "fleet beat m1 --load 0" {
-			beats++
-		}
+	for _, c := range []struct {
+		name         string
+		facts        Facts
+		ticks, beats int
+	}{
+		{"ASilenceStopsTheBeatsForAWhile", &scripted{}, 5, 3},
+		{"ASilenceEndsWithTheSeededFacts", NewSeeded(1), 6, 4},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			w := rmIdle(`{"cards":[]}`)
+			rmTicks(t, &Driver{Run: w.run, Facts: c.facts, Clock: &fakeClock{}, Out: io.Discard,
+				Config: Config{Every: time.Second, Ticks: c.ticks, Silent: []Silence{{Member: "m1", From: time.Second, For: 2 * time.Second}}}})
+			var beats []int
+			tick := 0
+			for _, a := range w.ran {
+				if a[0] == "where" {
+					tick++
+				}
+				if strings.Join(a, " ") == "fleet beat m1 --load 0" {
+					beats = append(beats, tick)
+				}
+			}
+			require.Len(t, beats, c.beats, "m1 beat at ticks %v in %d ticks, two of them silent: %v", beats, c.ticks, w.ran)
+		})
 	}
-	require.Equal(t, 3, beats, "m1 beat %d times in five ticks, two of them silent: %v", beats, w.ran)
-}
-
-// A --silent window ends: the member beats again, with the seeded facts too
-// (whose Up keeps a member as the driver gave it).
-func TestASilenceEndsWithTheSeededFacts(t *testing.T) {
-	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{"m1": `{"cards":[]}`, "reader-a": `{"cards":[]}`, "s1": `{"cards":[]}`}, inbox: `{"groups":[]}`}
-	d := &Driver{Run: w.run, Facts: NewSeeded(1), Clock: &fakeClock{}, Out: io.Discard,
-		Config: Config{Every: time.Second, Ticks: 6, Silent: []Silence{{Member: "m1", From: time.Second, For: 2 * time.Second}}}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
-	var beats []int
-	tick := 0
-	for _, a := range w.ran {
-		if a[0] == "where" {
-			tick++
-		}
-		if strings.Join(a, " ") == "fleet beat m1 --load 0" {
-			beats = append(beats, tick)
-		}
-	}
-	require.Len(t, beats, 4, "m1 beat at ticks %v in six ticks, two of them silent: %v", beats, w.ran)
 }
 
 // A tick is one call a verb for each machine and reader (the owner's ruling
@@ -417,10 +408,7 @@ func TestEveryMachineMovesItsCardsInOneBatchATick(t *testing.T) {
 	f := NewSeeded(3)
 	f.Fail, f.Broken = 0.5, 0.5
 	var out bytes.Buffer
-	d := &Driver{Run: w.run, Facts: f, Clock: &fakeClock{}, Out: &out, Config: Config{Every: time.Second, Ticks: 1}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	rmTicks(t, &Driver{Run: w.run, Facts: f, Clock: &fakeClock{}, Out: &out, Config: Config{Every: time.Second, Ticks: 1}})
 	calls := map[string]int{}
 	finished := 0
 	for _, a := range w.ran {
