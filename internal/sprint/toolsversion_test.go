@@ -19,13 +19,23 @@ func TestNovaToolsVersionIsTheFilesTag(t *testing.T) {
 	assert.Equal(t, NovaToolsVersion, r.Tag, "%s names %s, the binary needs %s: a re-seed updates NovaToolsVersion with the file", NovaToolsVersionFile, r.Tag, NovaToolsVersion)
 }
 
-func TestNovaToolsCanaryTagRoundTrips(t *testing.T) {
-	t.Parallel()
+func TestNovaToolsVersionRoundTrips(t *testing.T) {
 	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
-	want := NovaToolsRecord{Tag: "v1.2.0-local.20261008.1", Commit: sha}
-	got, err := ParseNovaToolsVersion(FormatNovaToolsVersion(want.Tag, want.Commit))
-	require.NoError(t, err)
-	assert.Equal(t, want, got)
+	cases := []struct {
+		name string
+		tag  string
+	}{
+		{name: "a canary tag", tag: "v1.2.0-local.20261008.1"},
+		{name: "a released version", tag: "v1.1.0"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseNovaToolsVersion(FormatNovaToolsVersion(c.tag, sha))
+			require.NoError(t, err)
+			assert.Equal(t, NovaToolsRecord{Tag: c.tag, Commit: sha}, got)
+		})
+	}
 }
 
 func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
@@ -55,12 +65,9 @@ func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 	}
 }
 
-func TestNovaToolsVersionFileRoundTripsAndRefusesWhatIsNoRecord(t *testing.T) {
+func TestNovaToolsVersionFileRefusesWhatIsNoRecord(t *testing.T) {
 	t.Parallel()
 	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
-	r, err := ParseNovaToolsVersion(FormatNovaToolsVersion("v1.1.0", sha))
-	require.NoError(t, err)
-	assert.Equal(t, NovaToolsRecord{Tag: "v1.1.0", Commit: sha}, r, "round trip")
 	for _, bad := range []string{
 		"",
 		"# a comment alone\n",
