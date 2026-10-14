@@ -653,7 +653,11 @@ func classifyEnd(ran bool, report string) attemptEnd {
 // the cap mostly on harness ends (BriefBound.Harness) is not the brief's: it is left
 // for the coordinator to rework --carry, never marked a brief defect. The same-finding and
 // the lander's same-refusal bounds are the worker's and the brief's own votes, marked as
-// before.
+// before. A broken lane (AtLaneBroken: its last LaneBrokenBound attempts each ended without a
+// worker report, raised as the same judgment type) has no vote among them, below the cap or
+// across a decision: it is left for hold, rework --tier or drop, never marked
+// (tla/SprintRules.tla, Part "answers": AnLaneBound, MarkOnlyOnVotes; reversed witness
+// MCSprintRulesAnswersBrokenLaneBrokenMarks).
 func ruleBrief(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleBriefDefect
 	pr := s.Work.Placed(a.Subject)
@@ -664,6 +668,8 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 		left(a, "a brief defect since "+pr.F(FieldBriefDefect)+": brief or drop, a mind's")
 	case harnessAtCap(s, pr):
 		left(a, "a harness fault, not the brief: most attempts ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
+	case laneBrokenAt(s, pr):
+		left(a, "the lane is broken, not the brief: its last attempts all ended without a worker report, none a vote; hold the lane, rework --tier, or drop, never marked a brief defect")
 	default:
 		a.Card = pr.ID
 		a.Act, a.Why = ActMark, "the brief is wrong, not the worker: marked a brief defect and held for a mind"
@@ -676,6 +682,14 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 func harnessAtCap(s *Snapshot, pr *Card) bool {
 	bb, ok := AtBriefBound(pr, brokenFindings(s, pr), s.AttemptsCap(pr.Row))
 	return ok && bb.Harness
+}
+
+// laneBrokenAt says the primary's last LaneBrokenBound attempts each ended without a worker
+// report (AtLaneBroken, the lane-broken judgment's own test): none of them is a vote on the
+// brief, whatever the coordinator decided between them.
+func laneBrokenAt(s *Snapshot, pr *Card) bool {
+	_, broken := AtLaneBroken(s, pr, LaneBrokenBound)
+	return broken
 }
 
 // ruleBaseGate: a stream stopped on its base's red (NBaseRed), the one judgment of every stream
