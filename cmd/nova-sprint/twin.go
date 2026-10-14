@@ -68,7 +68,7 @@ var realSteps = []string{
 // to what a twin does.
 var twinSteps = []string{
 	"nova-sprint init --readers reader-m2 --members m1,m2",
-	"nova-sprint add --stream s1 --count 1 --one",
+	"nova-sprint add --stream s1 --count 1 --one --brief-file testdata/brief.txt",
 	"nova-sprint start",
 	"nova-sprint tick",
 	"nova-sprint tick",
@@ -93,7 +93,12 @@ in-memory twin of the store, loaded from the file before the verb and saved
 to it after, the file made by the first verb that writes; run one command at a
 time. Every member and reader of the twin beats at every verb, so a member
 added is up from the next tick; no machine runs between commands, so the tick
-is yours: nova-sprint tick; run, inbox --wait and where --watch are refused. A
+is yours: nova-sprint tick; run, inbox --wait and where --watch are refused.
+The twin's walkthrough gives its card a brief before the first tick deals it:
+the add carries --brief-file brief.txt, a card that passes the lint, its first
+lines from nova-swarm template --name card, its REPO: and BASE: filled in; a
+card added with no brief is dealt with none, and a worker is handed no task
+with it. A
 card's whole flow, landed for real (origin.git, a bare repository, stands for
 the forge; work is the worker's checkout and the clone land merges and pushes in):
 
