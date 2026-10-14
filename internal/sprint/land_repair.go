@@ -10,7 +10,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 )
 
 // The lander's document repairs (docs/SPEC-SPRINT.md section 7, the lander's checks): a

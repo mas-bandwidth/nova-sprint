@@ -19,7 +19,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisfn"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisfn"
 )
 
 // The roles, by the name the CLI prints.

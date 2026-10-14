@@ -7,12 +7,10 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
-// release is the nova-tools release a checkout is at: the tag NOVA-TOOLS-VERSION
-// records (docs/SPEC-SPRINT.md, "The nova-tools it runs on") and its commit.
+// release is the nova-tools release a checkout is at: its tag and commit.
 type release struct {
 	tag, commit string
 }
@@ -32,7 +30,7 @@ func checkoutRelease(from string) (release, error) {
 		return release{}, err
 	}
 	if dirty != "" {
-		return release{}, fmt.Errorf("%s has uncommitted changes (git -C %s status); seed from a clean checkout at a release tag so %s records what was published", from, from, sprint.NovaToolsVersionFile)
+		return release{}, fmt.Errorf("%s has uncommitted changes (git -C %s status); seed from a clean checkout at a release tag", from, from)
 	}
 	tags, err := gitOut(from, "tag", "--points-at", "HEAD")
 	if err != nil {
@@ -59,7 +57,7 @@ func pickRelease(commit string, tags []string, from string) (release, error) {
 		if len(short) > 12 {
 			short = short[:12]
 		}
-		return release{}, fmt.Errorf("%s is at %s, which carries no release tag vX.Y.Z; seed from a nova-tools release (git -C %s checkout <tag>) so %s records it", from, short, from, sprint.NovaToolsVersionFile)
+		return release{}, fmt.Errorf("%s is at %s, which carries no release tag vX.Y.Z; seed from a nova-tools release (git -C %s checkout <tag>)", from, short, from)
 	}
 	return release{tag: best, commit: commit}, nil
 }

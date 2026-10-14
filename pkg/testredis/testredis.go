@@ -59,7 +59,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // CIEnv is set to "1" by the CI workflows. A missing redis-server fails the

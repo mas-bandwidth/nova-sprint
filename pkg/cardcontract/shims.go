@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // shq is a value quoted for sh: inside single quotes, each single quote closed, escaped

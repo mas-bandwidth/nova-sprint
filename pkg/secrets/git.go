@@ -14,7 +14,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // storeGit is how every git against the store runs: in the store, and never in the

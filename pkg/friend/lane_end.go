@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // A lane's end is a finish (the owner, 2026-10-05: "Now let's look at friends. Are they

@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secretcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/secretcheck"
 )
 
 // THE CLASS RULE: NO SECRET REACHES AN ERROR (docs/SPEC-CI.md, `secrets-never-in-errors`),
@@ -57,7 +57,7 @@ var sprintSecretOpeners = map[string]any{
 
 // sprintSecretLeakAllowlist are the functions known to carry a secret-shaped string into
 // an error, one `<key> <reason>` per line. It only shrinks.
-const sprintSecretLeakAllowlist = sprintNovaToolsLeak + `
+const sprintSecretLeakAllowlist = `
 internal/sprint.ParseAttempts echoes the rejected value with %q (internal/sprint/brief_bound.go:83)
 internal/sprint.ParseDeadline echoes the rejected value with %q (internal/sprint/deadline.go:165)
 internal/sprint.ParseMembers echoes the rejected width with %q (internal/sprint/width.go:42)

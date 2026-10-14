@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // branchRE is a branch a step commit is resolved on: a ref name with no

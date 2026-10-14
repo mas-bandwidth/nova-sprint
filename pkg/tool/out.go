@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bounded"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/bounded"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // Status is how a verb ended: ok (exit 0), failed (it ran and said no, exit 1)

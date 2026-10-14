@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
 )
 
 // RouteReader is a store that holds the model tiers' routes and route arrays

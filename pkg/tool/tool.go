@@ -36,10 +36,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bounded"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/bounded"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // Tool is one command.

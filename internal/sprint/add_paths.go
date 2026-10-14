@@ -9,9 +9,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 )
 
 // Paths admission (docs/SPEC-CARD-CONTRACT.md, what admission verifies; docs/SPEC-SPRINT.md

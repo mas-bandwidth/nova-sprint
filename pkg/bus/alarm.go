@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
 )
 
 // The classes of a send alarm: the store refused the login, or could not be

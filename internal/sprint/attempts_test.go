@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // A child that ends 134 or 137, or that leaves no result at all at ANY exit, did not judge

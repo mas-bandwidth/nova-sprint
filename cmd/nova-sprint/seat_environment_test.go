@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

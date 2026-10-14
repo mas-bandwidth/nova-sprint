@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The daemon writes every card she holds (the finding of 2026-10-05: from about 18:59 the

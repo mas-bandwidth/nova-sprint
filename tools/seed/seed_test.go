@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
@@ -21,7 +19,6 @@ const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
 	"ratings\tapp\n" +
 	"model\tM\n" +
 	"keep\tREADME.md\n" +
-	"keep\tinternal/sprint/toolsversion.go\n" +
 	"keep\ttools/seed\n" +
 	"gomod\n"
 
@@ -97,11 +94,10 @@ func fixture(t *testing.T) (from, keep string) {
 		"tla/RUNS.tsv":                   "config\tmodule\trest\nMCM.cfg\tMCM.tla\t1\nMCN.cfg\tMCN.tla\t2\n",
 	})
 	write(t, keep, map[string]string{
-		"README.md":                       "ours\n",
-		"go.mod":                          "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n",
-		"docs/CLI.md":                     "# The app\n\nMoved.\n\n## app\n\nold\n",
-		"tools/seed/x.go":                 "package main\n",
-		"internal/sprint/toolsversion.go": "package sprint\n\nconst NovaToolsVersion = \"v1.1.0\"\nconst NovaToolsVersionFile = \"NOVA-TOOLS-VERSION\"\n",
+		"README.md":       "ours\n",
+		"go.mod":          "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n",
+		"docs/CLI.md":     "# The app\n\nMoved.\n\n## app\n\nold\n",
+		"tools/seed/x.go": "package main\n",
 	})
 	return from, keep
 }
@@ -180,31 +176,8 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	if got := read(t, out, "go.mod"); got != "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n\nrequire ex.com/dep v1.0.0\n" {
 		t.Errorf("go.mod %q", got)
 	}
-	if got, want := read(t, out, sprint.NovaToolsVersionFile), sprint.FormatNovaToolsVersion("v1.1.0", testRelease.commit); got != want {
-		t.Errorf("%s %q, want %q", sprint.NovaToolsVersionFile, got, want)
-	}
-	if got := read(t, out, "internal/sprint/toolsversion.go"); !strings.Contains(got, `NovaToolsVersion = "v1.1.0"`) {
-		t.Errorf("runtime version constant not synchronized: %s", got)
-	}
-}
-
-func TestSeedSynchronizesCanaryPinAndRuntimeConstant(t *testing.T) {
-	from, keep := fixture(t)
-	r, err := parseRecipe(testRecipe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rel := release{tag: "v1.2.0-local.20261008.1", commit: testRelease.commit}
-	out := filepath.Join(t.TempDir(), "out")
-	if _, err := run(r, rel, from, keep, out); err != nil {
-		t.Fatal(err)
-	}
-	want := sprint.FormatNovaToolsVersion(rel.tag, rel.commit)
-	if got := read(t, out, sprint.NovaToolsVersionFile); got != want {
-		t.Fatalf("pin %q, want %q", got, want)
-	}
-	if got := read(t, out, "internal/sprint/toolsversion.go"); !strings.Contains(got, `NovaToolsVersion = "`+rel.tag+`"`) {
-		t.Fatalf("runtime constant not synchronized: %s", got)
+	if exists(out, "NOVA-TOOLS-VERSION") {
+		t.Error("the seed wrote NOVA-TOOLS-VERSION; go.mod's requirement is the one source")
 	}
 }
 
@@ -215,7 +188,7 @@ func TestTheSeedRefusesWithoutAReleaseToRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "out")
-	if _, err := run(r, release{}, from, keep, out); err == nil || !strings.Contains(err.Error(), sprint.NovaToolsVersionFile) {
+	if _, err := run(r, release{}, from, keep, out); err == nil || !strings.Contains(err.Error(), "tagged release") {
 		t.Fatalf("got %v", err)
 	}
 	if exists(out, ".") {

@@ -30,7 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // sexpData is the roadmap data a merge resolves, each with the decoder kind and the page

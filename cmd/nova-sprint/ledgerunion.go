@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ci/shrinkonly"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/ci/shrinkonly"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // countedLedgers are the shrink-only ledgers whose rows carry counts lowered in place.
