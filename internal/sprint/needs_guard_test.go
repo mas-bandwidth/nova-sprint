@@ -71,7 +71,8 @@ func TestABriefEditNamingLandedNeedsLeavesTheCardReady(t *testing.T) {
 func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	w.setWidth("m1", 4)
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"}))
 	// the corrupt row: ready with a recorded need that has not landed
 	w.place(w.s.Work, "a-2", "a", Ready)

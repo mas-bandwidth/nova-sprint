@@ -87,7 +87,8 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for _, m := range widthMembers {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 64}))
+		w.setWidth(m, 64)
+		w.up(m)
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
 		w.must(Add(w.s, AddReq{Stream: st, Count: 400}))
@@ -108,15 +109,17 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 func TestTheWidthIsTheControlCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 8}))
+	w.up("m1")
+	w.setWidth("m2", 8)
+	w.up("m2")
 	a, b := w.s.Width("m1"), w.s.Width("m2")
 	require.Equal(t, DefaultWidth, a, "widths %d and %d", a, b)
 	require.Equal(t, 8, b, "widths %d and %d", a, b)
 	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2"}))
 	n := w.s.Width("m2")
 	require.Equal(t, 8, n, "an up naming no width changed it to %d", n)
-	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2", Width: 16}))
+	w.setWidth("m2", 16)
+	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2",}))
 	n = w.s.Width("m2")
 	require.Equal(t, 16, n, "width %d, want 16", n)
 	p := FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: MaxWidth + 1})

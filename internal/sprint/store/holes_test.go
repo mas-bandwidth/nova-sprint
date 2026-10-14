@@ -17,6 +17,7 @@ package store
 // wrapped to say when it plans and on what state.
 
 import (
+	"strconv"
 	"context"
 	"fmt"
 	"slices"
@@ -243,8 +244,10 @@ func holesUp(h *harness, n int) {
 	h.readersTable() // this fixture consumes standalone readers
 
 	h.t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
+	h.m.SetMachineWidth("m2", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2",}))
 	for _, st := range []string{"s1", "s2", "s3"} {
 		h.must(AddStep(sprint.AddReq{Stream: st, Count: n}))
 	}

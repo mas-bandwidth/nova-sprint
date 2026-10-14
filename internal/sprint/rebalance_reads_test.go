@@ -145,7 +145,8 @@ func TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt(t *testing.T) {
 func TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff(t *testing.T) {
 	t.Parallel()
 	w := readQueueWorld(t, 1)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: 1}))
+	w.setWidth("m3", 1)
+	w.up("m3")
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+"m3"))
 	rc := w.s.Fleet.Card(ReadCardID("s1-2", 1, "m1"))
 	rc.Fields[FieldRebalancedFrom] = "m2"

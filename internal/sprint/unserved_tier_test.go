@@ -27,8 +27,8 @@ func TestAnUnservedTierFallsToTheStrongestServedTier(t *testing.T) {
 		return &Card{ID: id, Row: "s1", Col: Ready, Score: 1, Rev: 1, Fields: f}
 	}
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.s.Work.SetRows([]string{"s1"})
 	w.s.Work.Put(frontierCard("s1-1", nil))
 	w.s.Work.Put(frontierCard("s1-2", nil))

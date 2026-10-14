@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"context"
 	"fmt"
 	"strings"
@@ -28,7 +29,8 @@ import (
 func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	t.Parallel()
 	r := newLandedRig(t)
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(2))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	// The friend is absent for the machine card's deal: a friend up takes a
 	// flash card that names no one (friend deal runs before the fleet's).
 	r.beatMachines()
@@ -139,6 +141,7 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 type landedRig struct {
 	t   *testing.T
 	st  *store.Store
+	m   *store.Mem
 	ctx context.Context
 	mu  sync.Mutex
 	now time.Time
@@ -148,7 +151,7 @@ type landedRig struct {
 func newLandedRig(t *testing.T) *landedRig {
 	t.Helper()
 	m := store.NewMem()
-	r := &landedRig{t: t, ctx: context.Background(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+	r := &landedRig{t: t, m: m, ctx: context.Background(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	r.st = &store.Store{
 		B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "friend.lander",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },

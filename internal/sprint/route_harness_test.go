@@ -74,8 +74,10 @@ func TestHarnessesWordsAreHeadlessOrNone(t *testing.T) {
 func TestTheDealSendsAClaudeCardToAMemberWithClaude(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2, Harnesses: "claude"}))
+	w.setWidth("m1", 2)
+	w.up("m1")
+	w.setWidth("m2", 2)
+	w.up("m2")
 	assert.Equal(t, "claude", w.s.MemberCtl("m2").F(FieldHarnesses), "fleet up --harnesses names it on the control card")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
@@ -94,9 +96,12 @@ func TestTheDealSendsAClaudeCardToAMemberWithClaude(t *testing.T) {
 func TestADownedMembersClaudeCardsGoOnlyToMembersWithClaude(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4, Harnesses: "claude"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: 4, Harnesses: "claude"}))
+	w.setWidth("m1", 4)
+	w.up("m1")
+	w.setWidth("m2", 4)
+	w.up("m2")
+	w.setWidth("m3", 4)
+	w.up("m3")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 4}))
 	ids := []string{"s1-1", "s1-2", "s1-3", "s1-4"}
@@ -117,8 +122,10 @@ func TestADownedMembersClaudeCardsGoOnlyToMembersWithClaude(t *testing.T) {
 func TestATierNoMemberUpCanLaunchIsJudged(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
+	w.setWidth("m2", 2)
+	w.up("m2")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
 	p, _ := TickDeal(w.s, TickReq{})
@@ -138,7 +145,7 @@ func TestATierNoMemberUpCanLaunchIsJudged(t *testing.T) {
 	assert.Contains(t, hd.Why, "can launch a route of tier flash", "the hold names the harness, not the members' room")
 	assert.NotContains(t, hd.Why, "below its room")
 
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Harnesses: "claude"}))
+	w.up("m1")
 	p, _ = TickDeal(w.s, TickReq{})
 	w.must(p)
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
@@ -165,8 +172,10 @@ func tierJudgment(w *world, t string) *Note {
 func TestABenchCardItsBenchCannotLaunchIsJudged(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2, Harnesses: "claude"}))
+	w.setWidth("m1", 2)
+	w.up("m1")
+	w.setWidth("m2", 2)
+	w.up("m2")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
 	addBenched(t, w, "s1", map[string]string{"s1-1": "m1", "s1-2": ""})
 	p, _ := TickDeal(w.s, TickReq{})
@@ -196,8 +205,10 @@ func TestABenchCardItsBenchCannotLaunchIsJudged(t *testing.T) {
 func TestACardItsLaunchersRefusedAtStagingIsJudged(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2, Harnesses: "claude"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
+	w.setWidth("m2", 2)
+	w.up("m2")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))

@@ -97,7 +97,8 @@ func TestTickDealWorksEveryStreamInParallel(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for i := 1; i <= 8; i++ {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i), Width: 2}))
+		w.setWidth(fmt.Sprintf("m%d", i), 2)
+		w.up(fmt.Sprintf("m%d", i))
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
 		w.must(Add(w.s, AddReq{Stream: st, Count: 30}))

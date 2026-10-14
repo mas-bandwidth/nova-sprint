@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"fmt"
 	"testing"
 
@@ -21,8 +22,10 @@ func TestTwoOkReadsAtTheHeadAcceptWithAG1(t *testing.T) {
 	h := newHarness(t)
 
 	// Set up members vision and superman on fleet table and readers table
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "vision", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "superman", Width: 2}))
+	h.m.SetMachineWidth("vision", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "vision",}))
+	h.m.SetMachineWidth("superman", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "superman",}))
 	require.NoError(t, h.st.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-vision", "reader-superman"}))
 	require.NoError(t, h.m.RowSet(h.ctx, h.st.Names.Table(sprint.Readers), "reader-vision", map[string]string{sprint.ReaderTiers: "pro,flash"}))
 	require.NoError(t, h.m.RowSet(h.ctx, h.st.Names.Table(sprint.Readers), "reader-superman", map[string]string{sprint.ReaderTiers: "pro,flash"}))

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -71,7 +72,8 @@ func olderBinaryClear(t *testing.T, h *harness) {
 // clear carries has members with control cards.
 func upMembers(h *harness) {
 	h.t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 3}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(3))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 }
 

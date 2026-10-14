@@ -25,8 +25,8 @@ func setNeeds(s *Snapshot, id string, needs ...string) {
 func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{
 		{ID: "s1-1", Brief: fleetBrief("flash")},
 		{ID: "n1", Brief: fleetBrief("flash")},

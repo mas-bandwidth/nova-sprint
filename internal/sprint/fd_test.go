@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -93,7 +94,8 @@ func TestOpenFilesOverTheAlarmRaiseOneJudgmentNamingTheTopHolders(t *testing.T) 
 	t.Parallel()
 	r := newAlarmRig(t)
 	meter := &fdMeter{open: 1000}
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
@@ -197,7 +199,8 @@ func TestOpenFilesShowInTheFleetTableAndTheJudgmentTakesAckAndWait(t *testing.T)
 	t.Parallel()
 	r := newAlarmRig(t)
 	meter := &fdMeter{open: 1000}
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
 	r.fdTicks(meter, 3)

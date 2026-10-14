@@ -3,6 +3,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,8 @@ func TestRedisAnOrderOnlySetNamesNoRecordsAndLeavesNoGap(t *testing.T) {
 	t.Parallel()
 	h, c := liveHarness(t)
 	for _, m := range []string{"b", "a"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 2}))
+		h.m.SetMachineWidth(m, strconv.Itoa(2))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m,}))
 	}
 	pinned, err := h.st.Pinned(h.ctx)
 	require.NoError(t, err)
@@ -61,7 +63,8 @@ func TestRedisARowHideNamesNoRecordsAndLeavesNoGap(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
 	for _, m := range []string{"b", "a"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 2}))
+		h.m.SetMachineWidth(m, strconv.Itoa(2))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m,}))
 	}
 	pinned, err := h.st.Pinned(h.ctx)
 	require.NoError(t, err)

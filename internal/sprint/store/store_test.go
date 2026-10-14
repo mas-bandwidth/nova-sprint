@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -53,6 +54,12 @@ func newHarness(t *testing.T) *harness {
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	// the harness acts as the sprint's coordinator: judgments are theirs
 	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
+	// the harness's members have a config width by default (nova-config's
+	// machine:<m> width), so a test that brings one up without naming a width
+	// still has room
+	for _, m := range h.live {
+		h.m.SetMachineWidth(m, strconv.Itoa(sprint.DefaultWidth))
+	}
 	h.beat()
 	return h
 }
@@ -163,11 +170,11 @@ func (h *harness) setupBrief(n int, brief string) {
 	// member the test brought up before keeps its width
 	width := min(max(n, sprint.DefaultWidth), sprint.MaxWidth)
 	for _, m := range []string{"m1", "m2"} {
-		w := width
 		if h.snap().Fleet.HasRow(m) {
-			w = 0
+			continue
 		}
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: w}))
+		h.m.SetMachineWidth(m, strconv.Itoa(width))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Brief: brief, Stream: "s1", Count: n}))
 	h.clean("setup")
@@ -363,6 +370,15 @@ func (r *racer) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Recei
 		r.once.Do(r.do)
 	}
 	return r.Backend.Apply(ctx, m)
+}
+
+// ConfigWidths reads the members' config widths through the wrapped backend, as
+// the real store does: a racer that wraps a Mem keeps its machine:<m> widths.
+func (r *racer) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	if wr, ok := r.Backend.(WidthReader); ok {
+		return wr.ConfigWidths(ctx, members, friends)
+	}
+	return map[string]string{}, map[string]string{}, nil
 }
 
 // Another writer between the read and the acquisition moves the fence: the
@@ -600,6 +616,14 @@ func (u unreadable) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.R
 		return ntable.Receipt{}, err
 	}
 	return ntable.Receipt{}, errors.New(`table "t-fleet" batch "x": unmarshal batch delta: json: cannot unmarshal number into Go struct field rawMemberDelta.after_score of type string`)
+}
+
+// ConfigWidths reads the members' config widths through the wrapped backend.
+func (u unreadable) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	if wr, ok := u.Backend.(WidthReader); ok {
+		return wr.ConfigWidths(ctx, members, friends)
+	}
+	return map[string]string{}, map[string]string{}, nil
 }
 
 func TestAReceiptThisBuildCannotReadIsUnknown(t *testing.T) {

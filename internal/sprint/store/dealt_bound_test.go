@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,8 @@ func TestACardWaitingInAMembersQueueIsLateOnlyPastTheDealtBound(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.live = []string{"m1"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(1))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 	h.startMachine()
 	h.machine()

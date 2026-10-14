@@ -44,7 +44,7 @@ func TestEnvFaultClassifiesAFinishReason(t *testing.T) {
 func envFaultWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Probe: EnvProbePassed}))
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 2}}))
 	return w
@@ -311,8 +311,10 @@ func TestAPassedProbeClearsOnlyTheEnvironmentHold(t *testing.T) {
 func TestALevelAfterAnEnvironmentFaultDealsNothingToThatMember(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 1}))
+	w.setWidth("m1", 1)
+	w.up("m1")
+	w.setWidth("m2", 1)
+	w.up("m2")
 	w.s.Work.SetRows([]string{"s1"})
 	// m1 works one card; m2 holds three ready cards, so a level with m1 up would move
 	// m2's newest ready card onto it (three cards vs none is a gap above one)

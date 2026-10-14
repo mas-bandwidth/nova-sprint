@@ -52,8 +52,8 @@ func setup(t *testing.T, n int) *world {
 	w := newWorld(t, "reader-a", "reader-b", "reader-c")
 	// This lifecycle rig reads through the standalone legacy readers table.
 	w.readersTable()
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: n}))
 	w.clean("setup")
 	return w
@@ -178,7 +178,7 @@ func TestFleetDownDealsAndWithdrawsWhenNoneIsUp(t *testing.T) {
 	require.Empty(t, p.Units, "deal with nobody up: %+v", p)
 	require.Len(t, p.Refused, 1, "deal with nobody up: %+v", p)
 	// Up again: the same card is dealt again.
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	require.Equal(t, "s1-1.w1", w.s.Work.Card("s1-1").F("work"), "after withdrawal the card is %s", w.s.Work.Card("s1-1").F("work"))
 	w.clean("up again")
@@ -187,7 +187,8 @@ func TestFleetDownDealsAndWithdrawsWhenNoneIsUp(t *testing.T) {
 func TestLevelMovesTheNewestCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 3}))
+	w.setWidth("m1", 3)
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 6}})) // six on m1, over its width of 3
 	p := w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 3}))

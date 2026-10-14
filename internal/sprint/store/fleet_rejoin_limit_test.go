@@ -20,9 +20,10 @@ func TestFleetRejoinAcceptsInventoryPastOneReadSet(t *testing.T) {
 		t.Run(strconv.Itoa(count)+" members", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t)
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
+			h.m.SetMachineWidth("m1", strconv.Itoa(1))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 			h.must(FleetStep(sprint.FleetReq{
-				Op: "sync", Who: "tester", Sync: []sprint.SyncMember{{Name: "m2", Width: 1}}, Machines: []string{"m2"},
+				Op: "sync", Who: "tester", Sync: []sprint.SyncMember{{Name: "m2"}}, Machines: []string{"m2"},
 			}))
 			// the cleanup keeps the inventory's members and deletes m1's row
 			dropped, err := h.st.DropMembers(h.ctx, []string{"m2"})

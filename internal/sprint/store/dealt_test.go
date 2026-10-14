@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,7 +18,8 @@ import (
 func dealtLife(t *testing.T, h *harness) {
 	t.Helper()
 	h.live = []string{"m1"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(1))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1",}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 3}))
 	d, err := h.st.Dealt(h.ctx)
 	require.NoError(t, err)

@@ -86,7 +86,7 @@ func FinishStep(r sprint.FinishReq) Step {
 	// merge table for the streams' control cards: a stream's own attempt cap is read there
 	// (sprint.AttemptsCap; TestEveryStepThatAsksTheAttemptCapLoadsTheStreamControls)
 	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "finish", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work, sprint.Merge), Mirrors: true, Prices: r.Usage != "" || r.Failed, ReportsWork: true, Bars: true,
-		Friends: true,
+		Friends: true, Widths: true,
 		Extras:  sprint.NamedExtras(sprint.Fleet, r.IDs),
 		Plan:    func(s *sprint.Snapshot) sprint.Plan { return sprint.Finish(s, r) }}
 }
@@ -99,7 +99,7 @@ func ProgressStep(r sprint.ProgressReq) Step {
 
 // AskStep deals primaries in review to readers.
 func AskStep(r sprint.AskReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "ask", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet), Readers: true, Routes: true,
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "ask", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet), Readers: true, Routes: true, Widths: true,
 		// Every read card id each reader could get at the primaries' attempts,
 		// placed or retired: a reader who already has one is not free.
 		Extras: func(s *sprint.Snapshot) map[string][]string {
@@ -147,7 +147,7 @@ func StopReturnStep(r sprint.StopReturnReq) Step {
 
 // AcceptStep is the coordinator accepting.
 func AcceptStep(r sprint.AcceptReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "accept", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet),
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "accept", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet), Widths: true,
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			return map[string][]string{sprint.Fleet: sprint.ReadCardExtras(s)}
 		},
@@ -166,7 +166,7 @@ func CoordinatorReadStep(r sprint.CoordinatorReadReq) Step {
 func ReworkStep(r sprint.ReworkReq) Step {
 	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "rework", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,
 		// the rework deals: a member under its floor or draining is given nothing (notQuiet)
-		ReadNoRoom: true,
+		ReadNoRoom: true, Widths: true,
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			return map[string][]string{sprint.Fleet: sprint.ReadCardExtras(s)}
 		},
@@ -178,7 +178,7 @@ func ReworkStep(r sprint.ReworkReq) Step {
 // table holds a friend's read card (docs/SPEC-SPRINT.md section 1, friend
 // reconcile).
 func ReturnStep(r sprint.ReturnReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "return", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge),
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "return", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Widths: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Return(s, r) }}
 }
 
@@ -186,7 +186,7 @@ func ReturnStep(r sprint.ReturnReq) Step {
 func RedoStep(r sprint.RedoReq) Step {
 	return Step{Named: len(r.Sel.IDs) > 0, Args: ArgsOf(r), Verb: "redo", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,
 		// the redo deals: a member under its floor or draining is given nothing (notQuiet)
-		ReadNoRoom: true,
+		ReadNoRoom: true, Widths: true,
 		Plan:       func(s *sprint.Snapshot) sprint.Plan { return sprint.Redo(s, r) }}
 }
 

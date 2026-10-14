@@ -50,8 +50,10 @@ func putReads(w *world, friend string, n int) {
 // (stream ahead, ready on its row and untaken), and the cards of each stream given added.
 func aheadWorld(t *testing.T, streams map[string][]string) *world {
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
+	w.setWidth("m2", 2)
+	w.up("m2")
 	var ahead []CardAdd
 	for i := range 2 * DealAhead * 2 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})
@@ -236,8 +238,10 @@ func TestAFriendReclaimsAnUntakenDealtAheadCard(t *testing.T) {
 func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
+	w.setWidth("m1", 4)
+	w.up("m1")
+	w.setWidth("m2", 4)
+	w.up("m2")
 	var ahead []CardAdd
 	for i := range 16 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})

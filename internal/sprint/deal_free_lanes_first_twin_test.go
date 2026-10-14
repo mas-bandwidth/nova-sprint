@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"context"
 	"fmt"
 	"sync"
@@ -57,7 +58,8 @@ func newDealRig(t *testing.T) *dealRig {
 
 func (r *dealRig) up(name string, width int) {
 	r.t.Helper()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name, Width: width}))
+	r.m.SetMachineWidth(name, strconv.Itoa(width))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name,}))
 	r.members = append(r.members, name)
 }
 

@@ -114,8 +114,8 @@ func TestAWithdrawnCardIsRedealtAtANewGenerationNeverToAStagingRefuser(t *testin
 	require.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "no member up withdraws the card")
 	wc = w.s.Fleet.Card("s1-1.w1")
 	wc.Fields[FieldStagingTake+itoa(wc.Int("gen"))] = ProviderTake{Member: refuser}.String()
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	wc = w.s.Fleet.Card("s1-1.w1")
 	assert.Greater(t, wc.Int("gen"), gen0, "dealt again at a new generation")
@@ -137,8 +137,8 @@ func TestAWithdrawnCardEveryUpMemberRefusedAtStagingIsRefused(t *testing.T) {
 	wc = w.s.Fleet.Card("s1-1.w1")
 	wc.Fields[FieldStagingTake+"1"] = ProviderTake{Member: "m1"}.String()
 	wc.Fields[FieldStagingTake+"2"] = ProviderTake{Member: "m2"}.String()
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})
 	require.Empty(t, p.Units, "%+v", p)
 	require.Len(t, p.Refused, 1, "%+v", p)
@@ -152,8 +152,8 @@ func TestAWithdrawnCardEveryUpMemberRefusedAtStagingIsRefused(t *testing.T) {
 func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.s.Routes = []Route{
 		{Name: "small", Tier: cardhdr.RouteFlash, Provider: "p", Model: "small", Enabled: true},
 		{Name: "next", Tier: cardhdr.RoutePro, Provider: "p", Model: "next", Enabled: true},
@@ -172,8 +172,8 @@ func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 	wc = w.s.Fleet.Card("s1-1.w1")
 	wc.Fields["redeals"] = itoa(MaxRedeals)
 	wc.Fields[FieldTakeEnded] = "t"
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	pr := w.s.Work.Card("s1-1")
 	assert.Equal(t, 2, pr.Int("attempt"), "a new attempt")
@@ -189,8 +189,8 @@ func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 func TestAWithdrawnCardAtItsRedealBoundAtItsCeilingIsRefused(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.s.Routes = []Route{
 		{Name: "small", Tier: cardhdr.RouteFlash, Provider: "p", Model: "small", Enabled: true},
 		{Name: "next", Tier: cardhdr.RoutePro, Provider: "p", Model: "next", Enabled: true},
@@ -205,8 +205,8 @@ func TestAWithdrawnCardAtItsRedealBoundAtItsCeilingIsRefused(t *testing.T) {
 	wc = w.s.Fleet.Card("s1-1.w1")
 	wc.Fields["redeals"] = itoa(MaxRedeals)
 	wc.Fields[FieldTakeEnded] = "t"
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})
 	require.Empty(t, p.Units, "%+v", p)
 	require.Len(t, p.Refused, 1, "%+v", p)

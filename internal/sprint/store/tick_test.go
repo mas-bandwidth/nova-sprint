@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"errors"
 	"fmt"
 	"strings"
@@ -282,7 +283,8 @@ func TestTheDealingKeepsEveryReadyQueueShortInScoreOrder(t *testing.T) {
 	h := newHarness(t)
 	const width = 2
 	for _, m := range []string{"m1", "m2"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: width}))
+		h.m.SetMachineWidth(m, strconv.Itoa(width))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m,}))
 	}
 	h.setup(10)
 	h.startMachine()
