@@ -159,8 +159,7 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 }
 
 // loadCheckExport reads a *sprint.Snapshot from an export file or directory (--from <export>):
-// a backup --file twin snapshot, a RESTORE dump, a card <id> --json, card --all --json
-// (one object) or card --all --ndjson (one object a line)
+// a backup --file twin snapshot, a RESTORE dump, a card <id> --json or card --all --json JSONL
 // file, or a directory holding one with optional briefs/<id>.md and trees/<repo>__<base>.txt.
 func (a *app) loadCheckExport(ctx context.Context, verbName, fromPath string, stderr io.Writer) (*sprint.Snapshot, string, ruleSet, int) {
 	info, err := os.Stat(fromPath)
