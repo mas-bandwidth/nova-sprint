@@ -207,7 +207,7 @@ func TestADoneIsEveryCardTheRowCompleted(t *testing.T) {
 	assert.Equal(t, "100.0%", m1["okpct"], "%v", m1)
 
 	// the dashboard's pull of her row says the same
-	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, "", false) }, Now: ta.a.now, Every: time.Second}
 	w := httptest.NewRecorder()
 	srv.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/friend/stella", nil))
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())

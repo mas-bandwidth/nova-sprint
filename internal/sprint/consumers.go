@@ -56,20 +56,6 @@ const (
 	consumerFirstLineBytes = 8192
 )
 
-// AddConsumer records a consumer on the primary as it happens, keyed by its stable key
-// and carrying its epoch. It writes to the card's changes (set); it is idempotent per
-// key, so a step planned again never doubles a record.
-func AddConsumer(pr *Card, set map[string]string, r ConsumerRec) {
-	key := consumerField(r)
-	if pr.F(key) != "" || set[key] != "" {
-		return
-	}
-	if set == nil {
-		set = map[string]string{}
-	}
-	set[key] = encodeConsumerRec(r)
-}
-
 func consumerField(r ConsumerRec) string {
 	return FieldConsumerPrefix + strconv.FormatUint(r.Epoch, 10) + ":" + r.Key
 }

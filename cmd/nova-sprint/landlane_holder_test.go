@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"runtime"
 	"testing"
 	"time"
@@ -107,7 +108,7 @@ func TestEachStreamsGateHoldsABenchLaneUnderItsOwnName(t *testing.T) {
 		f.mu.Lock()
 		f.began = ta.a.now().Add(-LandDeadline - time.Minute)
 		f.mu.Unlock()
-		ta.a.raiseIfStuck(ctx, "mem:0", f)
+		ta.a.raiseIfStuckTo(ctx, "mem:0", f, io.Discard)
 		f.mu.Lock()
 		judged := f.judged
 		f.mu.Unlock()

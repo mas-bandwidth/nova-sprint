@@ -271,15 +271,6 @@ var modelCache sync.Map // brief string -> modelRead
 // The machine's own path never reads it.
 var modelReads atomic.Int64
 
-// resetModelMemo empties the brief memo and its parse counter, so a test that asserts
-// on the count starts from a clean process whatever a prior test or run cached (a memo
-// is a process global; a snapshot of the memo's age would read the count of its
-// neighbours). The machine's own run never resets it.
-func resetModelMemo() {
-	modelCache.Clear()
-	modelReads.Store(0)
-}
-
 // modelOf is a card's model lines, read once per brief: every later read of the same
 // brief is the memo, so the deal, the ask and the cap deal that all resolve one card's
 // tier in a tick parse it once, not once each.

@@ -183,12 +183,6 @@ func DefaultOf(name string) (Default, bool) {
 	return Defaults[i], true
 }
 
-// defaultValue is the setting's Value; "" when it has no row.
-func defaultValue(name string) string {
-	d, _ := DefaultOf(name)
-	return d.Value
-}
-
 // clearedDefault is the value a setting absent from a cleared epoch's work table reads as
 // (epoch above 0): its row's Value, ok false when it has none or no Value. A cleared epoch
 // holds every row once its set-defaults step ran; before it (a start that landed inside the

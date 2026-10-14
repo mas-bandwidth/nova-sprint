@@ -243,22 +243,6 @@ type BaseRecord struct {
 	Base string `json:"base"`
 }
 
-// ReadBaseRecord reads <target>.base.json; ok is false when there is none.
-func ReadBaseRecord(target string) (BaseRecord, bool, error) {
-	data, err := os.ReadFile(target + ".base.json")
-	if errors.Is(err, os.ErrNotExist) {
-		return BaseRecord{}, false, nil
-	}
-	if err != nil {
-		return BaseRecord{}, false, err
-	}
-	var rec BaseRecord
-	if err := json.Unmarshal(data, &rec); err != nil {
-		return BaseRecord{}, false, fmt.Errorf("%s.base.json: %w", target, err)
-	}
-	return rec, rec.Repo != "" && rec.Base != "", nil
-}
-
 // SwitchFromBase is ServerSwitch behind the base check, the switch every verb that installs
 // the server binary makes (docs/SPEC-SPRINT.md section 14, "server-from-base-only-w-ns-bb.w1"):
 // the candidate's build commit is an ancestor of origin's opts.Base, fetched into opts.Repo, or
