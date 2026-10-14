@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,6 +53,7 @@ func newTestApp(t *testing.T) *testApp {
 	ta := &testApp{t: t, m: store.NewMem(), now: t0, live: []string{"m1", "m2"}}
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
 	ta.a = newApp(func(k string) string { return env[k] })
+	ta.a.readFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) { return nil, time.Time{}, nil }
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }
 	ta.a.sleep = func(d time.Duration) { ta.mu.Lock(); ta.now = ta.now.Add(d); ta.mu.Unlock(); ta.beat() }
 	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return ta.m, nil }

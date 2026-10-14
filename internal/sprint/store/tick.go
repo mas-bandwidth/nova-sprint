@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/redis/go-redis/v9"
 )
 
 // The machine (docs/SPEC-SPRINT.md, "The machine"): one state flag in the
@@ -1178,12 +1178,6 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if req.Friends, err = pinned.friendSeats(ctx, &first, now); err != nil {
 		return last, err
 	}
-	// each friend's session for the coordinator's pass (sprint.TickCoordinatorPass): every
-	// friend of the roster, whether or not she holds a card; a sprint with no friend reads
-	// the roster alone
-	if req.Sessions, err = pinned.FriendSessions(ctx); err != nil {
-		return last, err
-	}
 	t := &tickRun{st: st, ctx: ctx, res: res, req: req, at: at, runSeq: m.RunSeq, snap: &first, queues: map[string]int{}, twin: twin, readers: first.ReaderStates, noRoom: first.NoRoom}
 	defer func() { res.RouteTrips = t.routes.Trips }()
 	updates := st.Updates
@@ -2222,9 +2216,6 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 	// a shadow tick wakes no friend: it writes nothing and sends nothing
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
-		return out, err
-	}
-	if req.Sessions, err = ro.FriendSessions(ctx); err != nil {
 		return out, err
 	}
 	var routes RouteCache

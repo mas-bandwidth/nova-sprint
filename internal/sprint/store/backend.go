@@ -313,12 +313,6 @@ type OpRecord struct {
 	// Seat is the seat's change (store/seat.go): its commit sets the
 	// coordinator to its holder and records it as the seat's last change.
 	Seat *sprint.SeatChange `json:"seat,omitempty"`
-	// Health is a friend's health observed (store/friends.go): its commit
-	// writes it as her friend-health record.
-	Health *sprint.FriendHealthWrite `json:"health,omitempty"`
-	// HealthClear is the friends whose friend-health record its commit removes
-	// (friend health --clear; the stall ladder's release).
-	HealthClear []string `json:"health_clear,omitempty"`
 	// CloseTimers is the ids of the timers this step closes (store/timers.go):
 	// its commit deletes only these ids from the timer record, read inside
 	// the same commit, so a timer set or cancelled while the step ran is not

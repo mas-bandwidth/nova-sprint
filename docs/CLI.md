@@ -136,7 +136,6 @@ nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]
 nova-sprint friend level
-nova-sprint friend health <friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)
 nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
@@ -190,6 +189,16 @@ nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+Friend availability comes only from `nova-hook`: a missing, unproven or down
+hook reads `down`; a live, proven hook reads `held` when sprint's hold is set,
+and `up` otherwise. Down takes precedence in the display while the underlying
+sprint hold persists. `friend down` sets that hold and `friend up` clears it;
+neither supplies liveness evidence. `friend beat` reports work, queue, width
+and load for scheduling and reconciliation; it does not establish availability.
+When the hook record becomes explicitly unhooked, the tick returns the friend's
+work and review assignments to their deals, even without a work-report beat.
+See [SPEC-SPRINT.md, The tables](SPEC-SPRINT.md#1-the-tables).
 
 **`clear`** advances the epoch, then sets every working default in the new epoch (`sprint.Defaults`: read_cards on, fleet and friends on, tiers all, the bounds at their defaults, the feed alarm on; the coordinator's threshold alarms and base carried, a threshold never set at its working value), writing only what the new epoch does not hold, so no setting is absent after a clear, no alarm is turned off, and no `prop` value of the old epoch is carried; each one the old epoch held away from its default prints as `CLEAR DEFAULT <name> was <v>, now <default>` (`--json`: `defaults`). Every up fleet member has a reader row `reader-<member>`, made by `init`, by `fleet up` and by a clear when missing, up while its member is up and not held, so a cleared sprint reads with no seat action. nova-config's sprint row is never written by a clear: an unapplied `git_identity` reads as the machine identity, and `doctor` warns. See [SPEC-SPRINT.md, working defaults](SPEC-SPRINT.md#working-defaults).
 

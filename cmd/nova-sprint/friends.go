@@ -34,12 +34,7 @@ import (
 // nothing else does (docs/SPEC-FRIEND.md, "The beat comes from the daemon"); the
 // coordinator holds one with friend down and releases it with friend up. The
 // status is derived where it is shown (store.FriendRows), by
-// sprint.FriendStatus (held; up only on her session's evidence, a wake ping her
-// session answered within sprint.FriendPongWindow or a card of hers finished within
-// sprint.FriendFinishWindow; else down, her beat never counting: the owner,
-// 2026-10-05, "there is no value in things that are answered just by the daemon";
-// 2026-10-03 8:04 AM ET: "Please change 'asleep' to 'down' so we have consistency
-// across all tables") and in the fleet's order.
+// nova-hook and the sprint hold, and sorted in the fleet's order.
 
 // friendWords is how a friend's row comes about, in nova-sprint help and
 // nova-sprint help friend.
@@ -60,18 +55,11 @@ they/them when unstated). A row whose width is below 1 is refused with nothing c
 width, done (ok and failed), ok% (ok over done, pooled in the footer) and
 status, all from the friend's sprint cards — the cards dealt to the friend's fleet row
 friend.<name>, their states and their finish verdicts — never from the friend's
-inbox/outbox directories (those are only the transport of the friend's cards, below). A friend announces presence with
-nova-sprint friend beat <friend>, which the friend's nova-friend daemon runs every `+sprint.FriendBeatEvery.String()+`
-while it runs (nova-friend install; docs/SPEC-FRIEND.md), and nothing else
-beats for the friend. The beat is recorded and shown, and it never makes the friend up: the friend's
-status is up only on evidence from the friend's own session, a wake ping the friend's session
-answered (friend health --state up) within `+sprint.FriendPongWindow.String()+` or a card of the friend's
-finished within `+sprint.FriendFinishWindow.String()+`, down otherwise with the missing evidence
-named on the friend's row, and held while friend hold <friend> --reason <text> (hold
-<friend>; friend down in the old words) holds the friend whatever the friend does. friend
-unhold <friend> (unhold; friend up) releases the hold and is no evidence: a
-friend released with none
-in its window is down until the friend's session gives some. A friend down shows
+inbox/outbox directories (those are only the transport of the friend's cards, below).
+Liveness comes only from nova-hook. The dashboard shows down whenever the hook
+record is down, held only when the hook is up and sprint holds the friend, and up
+otherwise. friend beat carries work reports, never liveness. friend hold <friend> --reason <text> sets the sprint hold. friend up releases
+the sprint hold; it cannot prove the friend alive. A friend down shows
 working 0: the friend's cards stay on the friend's row and count again when the friend is up; ready
 and done are as they were. where draws the
 friends between work and fleet in its default frame, which draws no merge
@@ -125,20 +113,15 @@ named and left alone. It exits 1 when a collect or the return was refused.
 // the table lacks is refused and names friend sync; friend sync exits 3 when
 // the config cannot be read or holds no friend row (docs/SPEC-SPRINT.md section 1).
 func friendVerbWords(name string) string {
-	every, pong, finish := sprint.FriendBeatEvery.String(), sprint.FriendPongWindow.String(), sprint.FriendFinishWindow.String()
-	sync := "The name is one friend row of the friends table. friend sync copies those rows from nova-config; a name the table lacks is refused and the line names friend sync. friend sync exits 3 when the config cannot be read or holds no friend row. nova-sprint help friend says how the friends table is kept."
 	switch name {
 	case "friend beat":
-		return "friend beat records that this friend is present, and --running the cards the friend is running now, which friend take and friend down leave with the friend. --working, --queue and --width are the friend's own counts as the friend's daemon keeps them, and --load the friend's load as a percent, as fleet beat --load gives a machine's: the friend's word, carried on where --json's friends beside the table's counts, which stay the sprint's. The friend's nova-friend daemon runs it every " + every + " while it runs, and nothing else beats for the friend: no loop beside the daemon. The beat is recorded, and its age shown on the friend's row, and it never makes the friend up, whoever sends it: the friend is up only on evidence from the friend's own session, a wake ping the friend's session answered (friend health --state up) under " + pong + " old, the friend's session's answer to a check the friend's daemon asked under " + sprint.FriendProofLive.String() + " old while the friend's beats go on (--check <nonce> when the friend's daemon asks, --pong <nonce> when the friend's session answers, each with --run, the daemon's run: an answer proves only to the run that asked it, once, within " + sprint.CheckAnswerWithin.String() + " of the ask; a time, a nonce never asked or one answered already is a beat with no proof, said on the line as no_proof=, but for the old --pong <time>, which counts for " + sprint.LegacyPongGrace.String() + " after the server starts; the verb trusts its caller as the friend, so a caller who asks and answers in one beat proves the friend), or one of the friend's cards finished under " + finish + " old, and down otherwise, the friend's row naming the evidence missing. --until <RFC3339> and --reason <text> are the friend's daemon's word that the friend is down until then and why (the friend's harness at its usage limit or out of credits): while the friend's last beat says so the friend is down, whatever the friend's session's evidence, with the pair shown in why the friend is down and on the friend's report; a beat can say down, never up, and a beat without --until withdraws the word. " + sync + "\n"
+		return "Report work, live lanes, load and row configuration. This report never determines liveness; nova-hook alone does. friend sync exits 3 if config cannot be read or holds no friend row.\n"
 	case "friend down":
-		return "friend down holds the named friend, as fleet down holds a machine: held is the coordinator's decision alone, whatever the friend beats or the coordinator's daemon observes; the tick deals the friend nothing, and where counts working as 0 while the friend is held. Every card dealt to the friend that the friend has not started goes back to ready, as friend take --all-unstarted takes it, and the next tick deals it to a friend up with room (a card whose WHO line names the friend waits for the friend); a card the friend has started (a push on its branch, the friend's beat naming it running) stays with the friend and finishes, each named on a NOTE line. --reason <text> and --until <RFC3339> say why and when you expect the friend back, shown in the friend's status cell. friend up releases the hold. friend down is hold <friend> in the old words, kept for one release: run nova-sprint hold <friend> --reason <text> (the friend's cards finish; --return withdraws them), and unhold <friend>. " + sync + "\n"
+		return "hold <friend> (friend hold <friend> --reason <text>) holds the friend in sprint. --reason <text> and --until <RFC3339> describe the hold. friend sync exits 3 if config cannot be read or holds no friend row. The dashboard shows held only while nova-hook says up; down takes precedence.\n"
 	case "friend up":
-		return "friend up releases a hold that friend down set. --width sets the friend's width, the jobs the friend works at once (the deal holds the friend at twice that), as fleet up --width sets a machine's, until friend sync sets the friend's nova-config row's again. It is no evidence: a friend released with no session pong in the last " + pong + " and no card finished in the last " + finish + " is down until the friend's session gives some. friend up is unhold <friend> in the old words, kept for one release. " + sync + "\n"
-	case "friend health":
-		return "friend health is the coordinator's observation of the friend, written by the coordinator's daemon from its keepalive with the friend's: --state up (the friend's session answered a wake ping), asleep (the friend's daemon answered, the friend's session did not) or down; --seen, when the proof was seen; --generation, the seat's generation the daemon read with nova-sprint seat. The seat's holder alone writes it, at the seat's generation now: an observation from a seat that moved is refused, as is a proof not newer than the row holds, and nothing is written; the same observation again is answered as recorded (replayed=true). An observation up, under the seat's generation now, with its proof under " + pong + " old, is the friend's session's evidence and the friend is up on it (as on one of the friend's cards finished under " + finish + " old); otherwise it is none (asleep is the daemon's word, kept on the friend's row and shown as down; the table's words are up, held and down), with --reason and --until shown on the friend's row; the friend's beat never makes the friend up, and no observation holds the friend: held is the coordinator's friend down alone. --clear removes the friend's observation (the seat's holder alone; --dry-run says what stood and writes nothing): the friend's status is then the friend's session's evidence alone, one of the friend's cards finished under " + finish + " old, and FRIEND-HEALTH OK <friend> cleared=true was=<word|none> status=<up|held|down> says so; the stall ladder's release removes it the same way. " + sync + "\n"
-	default:
-		return ""
+		return "unhold <friend> releases the sprint hold. Liveness still comes from nova-hook. friend sync exits 3 if config cannot be read or holds no friend row.\n"
 	}
+	return ""
 }
 
 // friendsFn reads nova-config's friend rows (friend sync, friends clean), given
@@ -386,9 +369,6 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	width := fs.String("width", "", "the friend's width as the friend's daemon has it (the deal's is the roster's: friend up --width)")
 	load := fs.String("load", "", "the friend's load as a percent, as fleet beat --load gives a machine's")
 	active := fs.String("active", "", "the newest write under the friend's working directory and outbox, as the friend's daemon found it, RFC3339: the friend's session's last activity")
-	check := fs.String("check", "", "the nonce of the SESSION CHECK the friend's daemon just put into the friend's session: the server keeps it, so an answer naming it within "+sprint.CheckAnswerWithin.String()+" proves the friend's session")
-	pong := fs.String("pong", "", "the nonce of a check the friend's session answered: the friend's session's evidence for "+sprint.FriendProofLive.String()+" while the friend's beat is fresh, only when this daemon's run asked it (--check) within "+sprint.CheckAnswerWithin.String()+", and once; anything else, a time included, is a beat with no proof")
-	run := fs.String("run", "", "the friend's daemon's run, its generation: a check proves only when its answer names the run that asked it")
 	until := fs.String("until", "", "the friend's daemon's word that the friend is down until then, RFC3339: the friend's harness at its usage limit or out of credits")
 	reason := fs.String("reason", "", "why the friend is down until --until, as the friend's daemon read it")
 	friend, code := oneFriend(name, fs, args, stderr)
@@ -429,17 +409,6 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		}
 		rep.Active = at.UTC().Truncate(time.Second)
 	}
-	if *check != "" && !sprint.ValidID(*check) {
-		return refuse(stderr, name, "--check wants a nonce (letters, digits, _ and -), found "+oneline.Escape(*check))
-	}
-	if *run != "" && !sprint.ValidID(*run) {
-		return refuse(stderr, name, "--run wants the friend's daemon's run id (letters, digits, _ and -), found "+oneline.Escape(*run))
-	}
-	words := sprint.BeatWords{Run: *run, Check: *check, Pong: oneline.Escape(*pong)}
-	if at, err := time.Parse(time.RFC3339, *pong); err == nil && !a.serveStarted.IsZero() && a.now().Sub(a.serveStarted) < sprint.LegacyPongGrace {
-		// a daemon from before the nonces, within the server's first hour: counted as before
-		words.Pong, words.Legacy = "", at
-	}
 	for _, n := range []struct {
 		flag, text string
 		min        int
@@ -479,7 +448,7 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		}
 		liveSet = v
 	}
-	b, proof, err := st.FriendBeatLive(ctx, friend, rep, given, words, liveSet)
+	b, err := st.FriendBeatLive(ctx, friend, rep, given, liveSet)
 	if err != nil {
 		// a friend the roster lacks is a definite pre-write refusal: the store
 		// answered and nothing was written, so it is refused/no; any other error
@@ -493,25 +462,6 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		return 1
 	}
 	line, facts := "FRIEND-BEAT OK "+friend+" at="+b.At.Format(time.RFC3339), map[string]any{"friend": friend, "at": b.At}
-	if words.Check != "" {
-		line += " check=" + words.Check
-		facts["check"] = words.Check
-	}
-	switch {
-	case proof.Proved && !words.Legacy.IsZero():
-		line += " proved=legacy"
-		facts["proved"] = "legacy"
-	case proof.Proved:
-		line += " proved=" + words.Pong
-		facts["proved"] = words.Pong
-	case proof.NoProof != "":
-		line += " no_proof=" + oneline.Quote(proof.NoProof)
-		facts["no_proof"] = proof.NoProof
-	}
-	if !proof.Proof.IsZero() {
-		line += " pong=" + proof.Proof.Format(time.RFC3339)
-		facts["pong"] = proof.Proof
-	}
 	// her row as friend sync last wrote it, so her daemon reads her mode and width from its beat
 	if spec, err := st.FriendSpecOf(ctx, friend); err == nil {
 		mode := spec.Mode
@@ -573,8 +523,8 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		facts["running"] = rep.Running
 	}
 	if !rep.Until.IsZero() {
-		line += " down=true until=" + rep.Until.Format(time.RFC3339)
-		facts["down"], facts["until"], facts["reason"] = true, rep.Until, rep.Reason
+		line += " until=" + rep.Until.Format(time.RFC3339)
+		facts["until"], facts["reason"] = rep.Until, rep.Reason
 	}
 	// the machine's word, so her daemon cancels its lanes on STOPPED and starts nothing
 	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs; pkg/friend/stop.go)
@@ -659,33 +609,6 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 	return 0
 }
 
-// friendHealthClear is friend health --clear: the coordinator's observation of the friend
-// removed (store.FriendHealthClear), so her status is her session's evidence alone; with dry
-// the removal is checked and nothing is written.
-func (a *app) friendHealthClear(c common, friend string, dry bool, stdout, stderr io.Writer) int {
-	const name = "friend health"
-	st, err := a.store(c)
-	if err != nil {
-		return refuse(stderr, name, err.Error())
-	}
-	prev, had, status, err := st.FriendHealthClear(context.Background(), friend, c.actor, dry, c.op)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %s; nothing was changed\n", prog, name, oneline.Escape(err.Error()))
-		return 1
-	}
-	was := "none"
-	if had {
-		was = orDashStr(prev.State, "unreadable")
-	}
-	if dry {
-		fmt.Fprintf(stdout, "FRIEND-HEALTH DRY-RUN %s clear was=%s; nothing was changed\n", friend, was)
-		return 0
-	}
-	sayOK(stdout, c.json, name, fmt.Sprintf("FRIEND-HEALTH OK %s cleared=true was=%s status=%s", friend, was, status),
-		map[string]any{"friend": friend, "cleared": true, "was": was, "status": status})
-	return 0
-}
-
 // oneFriend is the one friend a verb names, or its refusal.
 func oneFriend(verbName string, fs flagSet, args []string, stderr io.Writer) (string, int) {
 	pos, err := parse(fs, args)
@@ -715,76 +638,6 @@ func friendClass(r config.Row) string {
 	tiers := sprint.Split(r.Fields["tiers"])
 	slices.Sort(tiers)
 	return strings.Join(slices.Compact(tiers), ",")
-}
-
-// cmdFriendHealth is the coordinator's observation of a friend (docs/SPEC-SPRINT.md
-// section 1, "A friend's health"): the state word, the time of the proof it rests on,
-// and the seat generation the daemon read the seat at, fenced by the seat in the step's
-// own read (store.FriendHealth). The same observation again is answered as recorded,
-// nothing written.
-func (a *app) cmdFriendHealth(args []string, stdout, stderr io.Writer) int {
-	const name = "friend health"
-	fs, c := a.verbSetup(name)
-	state := fs.String("state", "", "what the keepalive saw: up (the friend's session answered), asleep (the friend's daemon answered, the friend's session did not) or down")
-	seen := fs.String("seen", "", "when the proof this rests on was seen, RFC3339 (a session pong for up, a daemon pong for asleep, the judgment for down); a proof not newer than the row's, or dated after the server's clock, is refused")
-	generation := fs.Uint64("generation", 0, "the seat's generation the daemon read (nova-sprint seat); any other than the seat's now is refused")
-	queue := fs.Int("queue", 0, "what the friend's pong said the friend has queued")
-	working := fs.Int("working", 0, "what the friend's pong said the friend is working")
-	width := fs.Int("width", 0, "what the friend's pong said the friend's width is")
-	reason := fs.String("reason", "", "why the friend is not up, shown on the friend's row while the observation stands (the friend's model allowance ran out)")
-	until := fs.String("until", "", "when the daemon expects the friend back, RFC3339, shown on the friend's row")
-	dry := fs.Bool("dry-run", false, "check the observation and say what would be recorded; record nothing")
-	clearObs := fs.Bool("clear", false, "remove the friend's observation instead of recording one, so the friend's status is the friend's session's evidence alone (one of the friend's cards finished, never the friend's beat); takes no other flag but --dry-run")
-	friend, code := oneFriend(name, fs, args, stderr)
-	if code != 0 {
-		return code
-	}
-	if *clearObs {
-		if *state != "" || *seen != "" || *generation != 0 || *queue != 0 || *working != 0 || *width != 0 || *reason != "" || *until != "" {
-			return refuse(stderr, name, "--clear removes the friend's observation and takes no observation's flag (--state, --seen, --generation, --queue, --working, --width, --reason, --until)")
-		}
-		return a.friendHealthClear(*c, friend, *dry, stdout, stderr)
-	}
-	if !slices.Contains(sprint.HealthStates, *state) {
-		return refuse(stderr, name, "--state wants one of "+strings.Join(sprint.HealthStates, ", ")+", found "+orDashStr(*state, "none"))
-	}
-	at, err := time.Parse(time.RFC3339, *seen)
-	if err != nil {
-		return refuse(stderr, name, "--seen wants an RFC3339 time, the proof's")
-	}
-	if *generation == 0 {
-		return refuse(stderr, name, "--generation wants the seat's generation the daemon read (nova-sprint seat prints it)")
-	}
-	if *queue < 0 || *working < 0 || *width < 0 {
-		return refuse(stderr, name, "--queue, --working and --width are counts")
-	}
-	st, err := a.store(*c)
-	if err != nil {
-		return refuse(stderr, name, err.Error())
-	}
-	obs := sprint.FriendHealth{State: *state, Seen: at.UTC(), Generation: *generation, Queue: *queue, Working: *working, Width: *width, Reason: strings.TrimSpace(*reason)}
-	if *until != "" {
-		if obs.Until, err = time.Parse(time.RFC3339, *until); err != nil {
-			return refuse(stderr, name, "--until wants an RFC3339 time")
-		}
-		obs.Until = obs.Until.UTC()
-	}
-	if *dry {
-		fmt.Fprintf(stdout, "FRIEND-HEALTH DRY-RUN %s state=%s seen=%s generation=%d; nothing was changed\n", friend, obs.State, obs.Seen.Format(time.RFC3339), obs.Generation)
-		return 0
-	}
-	h, status, replayed, err := st.FriendHealth(context.Background(), friend, c.actor, obs, c.op)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %s; nothing was changed\n", prog, name, oneline.Escape(err.Error()))
-		return 1
-	}
-	line := fmt.Sprintf("FRIEND-HEALTH OK %s state=%s seen=%s generation=%d status=%s", friend, h.State, h.Seen.Format(time.RFC3339), h.Generation, status)
-	if replayed {
-		line += " replayed=true"
-	}
-	sayOK(stdout, c.json, name, line, map[string]any{"friend": friend, "state": h.State, "seen": h.Seen, "generation": h.Generation,
-		"queue": h.Queue, "working": h.Working, "width": h.Width, "status": status, "replayed": replayed})
-	return 0
 }
 
 // friendRoles is the friend row's roles, sorted and comma joined: reader is the read

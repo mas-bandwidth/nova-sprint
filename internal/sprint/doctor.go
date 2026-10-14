@@ -1434,11 +1434,9 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 
 // ---- friends ------------------------------------------------------------------------------
 
-// DoctorFriends is the friends group: each friend row's daemon alive on its host (her beat),
-// her session's proof, her working cards against her width and against what her beat says she
-// runs, and her hold with its reason. A friend up whose daemon beats no more is FAIL; working
-// past her width is FAIL; her report and her row disagreeing is DRIFT (work and its report are
-// one act); held or down is WARN with its reason (down is not an error when actually down).
+// DoctorFriends checks authoritative hook/hold status and work report consistency.
+// Working beyond width fails; reported running work that disagrees with cards
+// drifts. Held or hook-down warns with a remedy for the owning system.
 func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaFriends, CheckFriends
 	s := in.Snap
@@ -1463,16 +1461,12 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 			age = s.Now.Sub(b.At)
 			beat = age.Round(time.Second).String()
 		}
-		proof := "never"
-		if !f.Proof.IsZero() {
-			proof = s.Now.Sub(f.Proof).Round(time.Second).String()
-		}
-		ev := fmt.Sprintf("status=%s beat=%s proof=%s working=%d width=%d running=%d", f.Status, beat, proof, working, f.Width, len(f.Running))
+		ev := fmt.Sprintf("status=%s report_age=%s working=%d width=%d running=%d", f.Status, beat, working, f.Width, len(f.Running))
 		switch {
-		case f.Status == Held || f.Status == Down:
+		case f.Status == Down:
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "inspect nova-hook status for " + f.Name})
+		case f.Status == Held:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "nova-sprint friend up " + f.Name + " (once its cause is gone)"})
-		case !beaten || age > DoctorBeatBound*2:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": " + friendPronouns(seats, f.Name).Say("{their} daemon beats no more"), Remedy: "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f.Name + " (on the friend's host)"})
 		case f.Width > 0 && working > f.Width:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
 		case b.Friend != nil && len(f.Running) != working:
@@ -1482,7 +1476,7 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 		}
 	}
 	if len(out) == 0 || fine > 0 {
-		out = append(out, okCheck(area, check, "up", fmt.Sprintf("friends=%d beating, within width and reconciled=%d", len(seats), fine)))
+		out = append(out, okCheck(area, check, "up", fmt.Sprintf("friends=%d, within width and reconciled=%d", len(seats), fine)))
 	}
 	return out
 }

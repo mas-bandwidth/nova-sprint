@@ -85,7 +85,7 @@ func TestCheckNamesEachOrphan(t *testing.T) {
 
 	// Non-orphans:
 	// 1. Friend-row subject
-	friendNote := judgment(NFriendDeaf, FriendRow("amy"), w.s.Now, 0, FriendRow("amy"))
+	friendNote := judgment(NFriendIdle, FriendRow("amy"), w.s.Now, 0, FriendRow("amy"))
 	w.note(friendNote)
 
 	// 2. tier: subject

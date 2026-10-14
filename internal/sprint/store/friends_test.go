@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"testing"
 	"time"
 
@@ -20,7 +22,7 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.st.FriendBeat(h.ctx, "amy")
 	require.NoError(t, err)
-	_, _, _, err = h.health("amy", "tester", sprint.Up, h.now, 1)
+	h.up("amy")
 	require.NoError(t, err)
 	require.NoError(t, h.st.SetFriendHeld(h.ctx, "bob", true, "c", "", time.Time{}, 0))
 	rows, err := h.st.FriendRows(h.ctx, h.now)
@@ -30,8 +32,8 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	// is carried (view coordinator reads how stale her report is), and the evidence her
 	// status rests on, her session's pong, never her beat
 	assert.Equal(t, []FriendRow{
-		{Name: "amy", Width: 3, Status: sprint.Up, Evidence: "session pong 0s ago", Beat: h.now.UTC().Truncate(time.Second), Health: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}, ShownHealth: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}},
-		{Name: "bob", Width: 1, Status: sprint.Held, Evidence: "held"},
+		{Name: "amy", Width: 3, Status: sprint.Up, Evidence: "nova-hook proven", Beat: h.now.UTC().Truncate(time.Second)},
+		{Name: "bob", Width: 1, Status: sprint.Down, Evidence: "no hook record", SprintHeld: true},
 	}, rows)
 }
 
@@ -39,10 +41,27 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 // holder at the clock now: a friend up, as the tests that deal to her want her.
 func (h *harness) up(friend string) {
 	h.t.Helper()
-	_, err := h.st.FriendBeat(h.ctx, friend)
-	require.NoError(h.t, err)
-	_, _, _, err = h.health(friend, "tester", sprint.Up, h.now, 1)
-	require.NoError(h.t, err)
+	prev := h.st.ReadFriendHooks
+	h.st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
+		by := map[string]hook.Status{}
+		if prev != nil {
+			rows, _, err := prev(ctx, names...)
+			if err != nil {
+				return nil, time.Time{}, err
+			}
+			for _, r := range rows {
+				by[r.Name] = r
+			}
+		}
+		by[friend] = hook.Status{Name: friend, State: hook.StateProven}
+		var out []hook.Status
+		for _, n := range names {
+			if r, ok := by[n]; ok {
+				out = append(out, r)
+			}
+		}
+		return out, h.now, nil
+	}
 }
 
 // A friend's delivery mode (batch or one-shot) is respected by the store's tick dealing on

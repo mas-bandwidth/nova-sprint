@@ -69,7 +69,7 @@ func TestFriendsTiersLimitWhatFriendsTake(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.st.FriendBeat(r.ctx, "fay")
 	require.NoError(t, err)
-	_, _, _, err = r.st.FriendHealth(r.ctx, "fay", "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+	err = setFriendHook(r.st, "fay", sprint.Up)
 	require.NoError(t, err)
 	r.must(store.SetStep(sprint.SetReq{FriendsTiers: "flash", Who: "coordinator"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{{ID: "s1-1", Brief: sideCard("")}, {ID: "s1-2", Brief: sideCard(" tier: pro")}}}))
