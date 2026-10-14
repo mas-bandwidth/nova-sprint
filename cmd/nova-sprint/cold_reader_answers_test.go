@@ -84,8 +84,13 @@ func TestAVerbsHelpCarriesItsOwnExitCodes(t *testing.T) {
 	last := func(line string) string {
 		code, out, _ := ta.do(line)
 		require.Equal(t, 0, code, line)
-		lines := strings.Split(strings.TrimSpace(out), "\n")
-		return lines[len(lines)-1]
+		for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+			if strings.HasPrefix(l, "exit codes:") {
+				return l
+			}
+		}
+		t.Fatalf("%s -h prints no exit codes:\n%s", line, out)
+		return ""
 	}
 	assert.Equal(t, commonExit, last("take -h"))
 	assert.NotContains(t, last("take -h"), "fleet sync", "a worker's verb is not told of fleet sync's codes")

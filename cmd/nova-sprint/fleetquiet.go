@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	verbEffect["fleet quiet"] = "local write: sets or ends the member's quiet in the sprint's store (the deal gives it nothing until then, every worker's view carries a QUIET line); --dry-run writes nothing"
+	verbEffect["fleet quiet"] = "store write: sets or ends the member's quiet in the sprint's store (the deal gives it nothing until then, every worker's view carries a QUIET line); --dry-run writes nothing"
 }
 
 // cmdFleetQuiet is fleet quiet <member> (--for <duration> | --until <RFC3339>) --reason <text>,
