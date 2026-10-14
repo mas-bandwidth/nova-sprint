@@ -451,4 +451,3 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
 	assert.Contains(t, out, "CHECK CARDS FAILED kinds=files:1 warned=files:1")
 }
-

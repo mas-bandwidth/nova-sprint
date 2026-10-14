@@ -496,7 +496,6 @@ func readExportTree(baseDir string, cb swarm.CardBase) (sprint.AdmissionTree, bo
 	return sprint.AdmissionTree{}, false
 }
 
-
 // checkNeedsExtras loads the record of every need the placed cards name, placed or kept: a need
 // naming a dropped card is told from one naming no card.
 func checkNeedsExtras(s *sprint.Snapshot) map[string][]string {

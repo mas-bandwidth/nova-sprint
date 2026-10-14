@@ -247,4 +247,3 @@ func TestTheDashboardServerUsesCheapDashboardRead(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, ta.ok("where --json --dashboard"), string(body))
 }
-

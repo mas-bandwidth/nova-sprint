@@ -289,7 +289,6 @@ func idleGroups(s *Snapshot) []*idleGroup {
 	return list
 }
 
-
 // rank orders root kinds: a root that needs a person before one the machine will clear.
 func rank(kind string) int {
 	return slices.Index([]string{rootDropped, rootMissing, rootJudgment, rootSentinel, rootHeld, rootStopped, rootNoRoute, rootFlight, rootNext}, kind)

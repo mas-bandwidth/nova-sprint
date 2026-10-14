@@ -272,4 +272,3 @@ func TestIdleBlockersAndIdleLine(t *testing.T) {
 	assert.True(t, strings.HasPrefix(line, "idle: "))
 	assert.Equal(t, 2, strings.Count(line, "; "), "3 blockers separated by 2 semicolons")
 }
-
