@@ -4062,6 +4062,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d: the attempts one card runs between two coordinator decisions before it is the coordinator's as one judgment); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
 	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under the friend's working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
 	landingStallBound := fs.String("landing-stall-bound", "", fmt.Sprintf("how long cards may wait in review or merging without a landing before the coordinator is judged stalled: a duration, or default (%s)", sprint.LandingStallBound))
+	ciQueuedBound := fs.String("ci-queued-bound", "", fmt.Sprintf("how long a CI job may sit queued with no runner online before it is a judgment: a duration, or default (%s)", sprint.CIQueuedBound))
 	fleetWork := fs.String("fleet", "", "the fleet's work: off and the deal hands no work card to a machine (its readers still read; no fleet idle alarm), on deals again (the default)")
 	friendsWork := fs.String("friends", "", "the friends' work: off and the deal hands no work card to a friend (the friend's reads still flow; no empty-row alarm), on deals again (the default)")
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
@@ -4087,7 +4088,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" && *unserved == "" {
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *ciQueuedBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" && *unserved == "" {
 		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 		if err != nil {
 			return a.readFailed("set", err, stderr)
@@ -4095,7 +4096,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 		printSettings(stdout, s, c.json)
 		return 0
 	}
-	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
+	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound, CIQueuedBound: *ciQueuedBound,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
 		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, UnservedTierFallsTo: *unserved, ReworkPriority: *reworkPriority, Who: c.actor})
 	if *finish != "" {

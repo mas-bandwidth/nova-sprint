@@ -1160,7 +1160,13 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
+	// the tick's read of the CI jobs queued at a forge (sprint.TickCIQueued, ci_queued.go):
+	// nil when the binding sets none, and no queued-CI judgment is raised or closed.
+	var ciQueued []sprint.CIQueuedFacts
+	if st.CIQueued != nil {
+		ciQueued = st.CIQueued()
+	}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI, CIQueued: ciQueued}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap

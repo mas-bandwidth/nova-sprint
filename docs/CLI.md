@@ -94,7 +94,7 @@ nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--che
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--unserved-tier-falls-to <heavy|pro|flash|off|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--landing-stall-bound <duration|default>] [--ci-queued-bound <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--unserved-tier-falls-to <heavy|pro|flash|off|default>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 
 `set --unserved-tier-falls-to <heavy|pro|flash>` is the coordinator's one replacement for

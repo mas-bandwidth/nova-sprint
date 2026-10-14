@@ -7842,7 +7842,8 @@ row a name, a home and a value:
   fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
   (OPEN, the owner's to state), read_tier and reads default, every bound at its
   default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
-  friend_finish, friend_start_max, pegged_bound, landing_stall_bound, the friend
+  friend_finish, friend_start_max, pegged_bound, landing_stall_bound,
+  ci_queued_bound, the friend
   stall ladder, drift, low_balance_usd, identical), and alarm_ready on;
 - `carry`, a work-table property that is the coordinator's choice, carried across
   the clear: the threshold alarms alarm_review, alarm_merging and alarm_fleet (at
@@ -8435,6 +8436,21 @@ empty; a landing the tick sees only once the stall holds again still ends the ol
 first, and the stall after it is a new one. A plan that only writes the episode's stamps
 carries a unit of its own, since the store's tick passes over an empty plan. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
+
+Beside it, a CI job queued with no runner is a judgment (`sprint.TickCIQueued`,
+internal/sprint/ci_queued.go). The owner, 2026-10-13: "we need to catch these CI failures much
+much much earlier". Every rocketnet job needing a self-hosted runner sat queued for about three
+hours while the only machine carrying its labels (`self-hosted,Linux,X64,rocketnet` and
+`self-hosted,macOS,ARM64,rocketnet`) was down, and nothing alarmed. The binding reads each live
+stream's repository's queued workflow jobs and its online runners through `gh` (the app's
+`ciQueuedFn`, cmd/nova-sprint/ci_queued.go, in the same forge environment the lander asks the
+merge queue in), kept for a minute so the tick does not ask the forge every round, and passes
+them into the tick's `sprint.TickReq.CIQueued`. The bound is the sprint setting
+`--ci-queued-bound` (`ci_queued_bound`), default ten minutes (`sprint.CIQueuedBound`); each job
+queued longer is one judgment, `CI job queued with no runner`, keyed by its repository and job,
+naming the run, the job, the runs-on labels and whether a runner carrying them is online
+(`yes`, `no`, or `unknown` when the runners read was refused, as a 403 or a 404 is). The
+judgment is closed when a fact no longer names the job: the job is no longer queued.
 
 Every landing is also pushed to the coordinator as it happens (`sprint.landingPush`, the
 merge step): one happened `landed <card>` per landing line, with the card's stream, its

@@ -348,6 +348,7 @@ type SetReq struct {
 	Attempts          string   `json:",omitempty"`
 	FriendIdle        string   `json:",omitempty" prop:"friend_idle"`
 	LandingStallBound string   `json:",omitempty" prop:"landing_stall_bound"`
+	CIQueuedBound     string   `json:",omitempty" prop:"ci_queued_bound"`
 	FriendStallAfter  string   `json:",omitempty" prop:"friend_stall_after"`
 	FriendStallStep   string   `json:",omitempty" prop:"friend_stall_step"`
 	// Reason, with Streams and ReadTier, is why the read tier is set, recorded on the
@@ -535,6 +536,11 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, "--landing-stall-bound wants a duration above zero (1m, 5m), or "+ReadTierDefault+" for "+LandingStallBound.String()+"; found "+r.LandingStallBound)
 		}
 	}
+	if r.CIQueuedBound != "" && r.CIQueuedBound != ReadTierDefault {
+		if d, err := time.ParseDuration(r.CIQueuedBound); err != nil || d <= 0 {
+			why = append(why, "--ci-queued-bound wants a duration above zero (10m, 30m), or "+ReadTierDefault+" for "+CIQueuedBound.String()+"; found "+r.CIQueuedBound)
+		}
+	}
 	if r.FriendStallAfter != "" && r.FriendStallAfter != ReadTierDefault {
 		if d, err := time.ParseDuration(r.FriendStallAfter); err != nil || d <= 0 {
 			why = append(why, "--friend-stall-after wants a duration above zero (20m, 1h), or "+ReadTierDefault+" for "+FriendStallAfterDefault.String()+"; found "+r.FriendStallAfter)
@@ -580,8 +586,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.UnservedTierFallsTo == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --unserved-tier-falls-to, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.CIQueuedBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.UnservedTierFallsTo == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --unserved-tier-falls-to, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --ci-queued-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -600,6 +606,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if len(r.Streams) > 0 && r.LandingStallBound != "" {
 		why = append(why, "--landing-stall-bound is the sprint's, not a stream's: nova-sprint set --landing-stall-bound "+r.LandingStallBound)
+	}
+	if len(r.Streams) > 0 && r.CIQueuedBound != "" {
+		why = append(why, "--ci-queued-bound is the sprint's, not a stream's: nova-sprint set --ci-queued-bound "+r.CIQueuedBound)
 	}
 	if len(r.Streams) > 0 && r.FriendStallAfter != "" {
 		why = append(why, "--friend-stall-after is the sprint's, not a stream's: nova-sprint set --friend-stall-after "+r.FriendStallAfter)
@@ -742,6 +751,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropGoLanes, r.GoLanes},
 		{PropFriendIdle, r.FriendIdle},
 		{PropLandingStallBound, r.LandingStallBound},
+		{PropCIQueuedBound, r.CIQueuedBound},
 		{PropFriendStallAfter, r.FriendStallAfter},
 		{PropFriendStallStep, r.FriendStallStep},
 		{PropDriftCommits, r.DriftCommits},
@@ -786,6 +796,8 @@ func orDefault(v, name string) string {
 		return fmt.Sprintf("default (%s)", FriendIdleDefault)
 	case name == PropLandingStallBound:
 		return fmt.Sprintf("default (%s)", LandingStallBound)
+	case name == PropCIQueuedBound:
+		return fmt.Sprintf("default (%s)", CIQueuedBound)
 	case name == PropFriendStallAfter:
 		return fmt.Sprintf("default (%s)", FriendStallAfterDefault)
 	case name == PropFriendStallStep:
