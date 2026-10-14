@@ -1164,6 +1164,11 @@ func Deal(s *Snapshot, r DealReq) Plan {
 // width, width.go): the tick deals it when one has room.
 const noRoomWhy = "every up fleet member is at its room (DealAhead times its width): the tick deals it when one has room"
 
+// noPoolWhy is the refusal of a card with no BENCH line when every member up is quiet or
+// draining (notQuiet, fleet_quiet.go): the pool it could be dealt round is empty, so it waits
+// in ready and the tick deals it when one is up (docs/SPEC-SPRINT.md section 5, the deal).
+const noPoolWhy = "no fleet member can take it now: every member up is quiet or draining"
+
 func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMoves) {
 	var p Plan
 	p.on(s)
@@ -1219,11 +1224,17 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	lanes := memberLanes(s, up)
 	for _, c := range chosen {
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
-		// none other; with no member of it up it waits ready (bench_deal.go)
+		// none other; with no member of it up it waits ready (bench_deal.go). The two
+		// causes are split: a card with no BENCH line and an empty pool says so (noPoolWhy)
+		// and never reaches benchRefusal, which is for a card that has a bench.
 		bench := Bench(c)
 		members := onlyBench(up, bench)
 		if len(members) == 0 {
-			p.refuse(c.ID, benchRefusal(bench))
+			if len(bench) == 0 {
+				p.refuse(c.ID, noPoolWhy)
+			} else {
+				p.refuse(c.ID, benchRefusal(bench))
+			}
 			continue
 		}
 		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
@@ -2390,7 +2401,7 @@ func friendNext(s *Snapshot, c *Card, u *Unit, prior []Unit) {
 		return
 	}
 	SortCards(ready)
-	next := ready[0]
+	next := ready[0] // nonempty: len(ready) == 0 returns above
 	set, unset := friendTaken(s, next, name)
 	u.Changes = append(u.Changes, change(Fleet, moveEntry(next, c.Row, Working, set, unset...)))
 	u.Moved += snapshotFriendPronouns(s, name).Sprintf("; %s ready -> working ({their} next, taken now)", next.ID)
