@@ -1463,7 +1463,7 @@ func friendLiveDrift(s *Snapshot, row string, b Beat) string {
 		return ""
 	}
 	slices.Sort(unnamed)
-	return fmt.Sprintf("working cards her live set does not name past %s: %s", LiveGrace+DoctorLiveSettle, strings.Join(unnamed, ", "))
+	return fmt.Sprintf("working cards {their} live set does not name past %s: %s", LiveGrace+DoctorLiveSettle, strings.Join(unnamed, ", "))
 }
 
 // DoctorFriends is the friends group: each friend row's daemon alive on its host (her beat),
@@ -1508,7 +1508,7 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 		case f.Width > 0 && working > f.Width:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
 		case friendLiveDrift(s, row, b) != "":
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": " + friendLiveDrift(s, row, b), Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": " + friendPronouns(seats, f.Name).Say(friendLiveDrift(s, row, b)), Remedy: "nova-sprint friend reconcile " + f.Name})
 		default:
 			fine++
 		}

@@ -34,6 +34,24 @@ func TestDoctorFriendsAnUnnamedWorkingCardPastTheSettleIsDrift(t *testing.T) {
 	assert.Equal(t, "nova-sprint friend reconcile zhi", d[0].Remedy)
 }
 
+// The evidence is said in the friend's pronouns (unstated is they/them): no placeholder is left
+// in it, and a friend with a stated choice gets hers.
+func TestDoctorFriendsDriftEvidenceUsesThePronouns(t *testing.T) {
+	t.Parallel()
+	beat := Beat{Friend: &FriendReport{}, LiveKnown: true, LiveSince: t0.Add(-time.Hour), Live: []string{}}
+	in, _ := friendDriftInput(t, "zhi", 10*time.Minute, beat)
+	d := driftsOn(DoctorFriends(in))
+	require.Len(t, d, 1)
+	assert.Contains(t, d[0].Evidence, "their live set does not name", "unstated is they/them")
+	assert.NotContains(t, d[0].Evidence, "{")
+	in.Req.Friends[0].Pronouns = "she/her"
+	d = driftsOn(DoctorFriends(in))
+	require.Len(t, d, 1)
+	assert.NotContains(t, d[0].Evidence, "{")
+	assert.NotContains(t, d[0].Evidence, "their live set", "a stated choice replaces they/them")
+	assert.Contains(t, d[0].Evidence, "live set does not name")
+}
+
 // The settling window: a card unnamed for less than LiveGrace + the settle is not drifted, and a
 // beat that is no longer fresh (past BeatDeadline) is no word that a run is gone, as the tick's
 // own reconcile reads it (LiveReturns).
