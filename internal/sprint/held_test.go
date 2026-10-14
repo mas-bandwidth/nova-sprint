@@ -477,6 +477,7 @@ func TestReleasedTrunkWaitDoesNotHideUnmetDependencyStalls(t *testing.T) {
 			checker.tick = map[string]string{}
 			checker.tickStream = map[string]string{}
 			checker.memo = map[string]Hold{}
+			checker.due = 0
 			why, root, ok := checker.waits(pr)
 			require.False(t, ok, "an earlier release cannot mask %s: %s", kind, why)
 			require.NotContains(t, why, "actual merge")
