@@ -794,12 +794,12 @@ release-check-merge-queue-p90-b.w7.
 nova-card is pre-alpha: not ready for production use.
 
 ```
-nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
+nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
+nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run] [--json]
 nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
 nova-card template
-nova-card version
+nova-card version [--json]
 nova-card help [<verb>]
 ```
 
@@ -808,6 +808,14 @@ PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
 writes the cards from the source the work comes from, with the PATHS computed,
 the lint already green, and the waves already laid out, so the one thing left
 to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
+
+Every result verb takes `--json` and prints the same result as one object on
+stdout. `generate --json` carries `dir`, `cards`, `waves`, `tier`, `frontier`,
+`shared_paths`, `dry_run`, `notes` and the `manifest` rows (id, file, test,
+wave, deps); `lint --json` carries `findings`; `version --json` carries `tool`,
+`version`, `platform` and `go_version`. The text form is unchanged when `--json`
+is not given. `template` prints the card template itself, which is text rather
+than a result.
 
 The flow is three lines:
 

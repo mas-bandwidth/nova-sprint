@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -19,14 +20,47 @@ import (
 // only write a string var, and it is package-level and unexported for the same reason.
 var version string
 
-// cmdVersion prints the one line. It takes no flags and no arguments: there is no
-// --short, no --json and no --long, because a second output shape is a second thing to
-// agree about and this verb exists to end an argument rather than to start one.
+// versionJSON is the object version --json prints: the version line's four facts,
+// named (docs/CLI.md, nova-card; docs/STANDARD.md section 3, --json is the same
+// result as one object).
+type versionJSON struct {
+	Tool      string `json:"tool"`
+	Version   string `json:"version"`
+	Platform  string `json:"platform"`
+	GoVersion string `json:"go_version"`
+}
+
+// cmdVersion prints the one line, or, with --json, the same four facts as one
+// object. It takes no other flags and no arguments: a second output SHAPE is one
+// thing, agreed once by the buildinfo grammar, where a second line is a second
+// thing to agree about and this verb exists to end an argument rather than to
+// start one.
 func cmdVersion(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintf(stderr, "nova-card version REFUSED: takes no flags and no arguments, got %d; run: nova-card version -h\n", len(args))
+	jsonOut := false
+	for _, a := range args {
+		switch a {
+		case "--json", "-json":
+			jsonOut = true
+		default:
+			fmt.Fprintf(stderr, "nova-card version REFUSED: takes no flags but --json and no arguments, got %q; run: nova-card version -h\n", a)
+			return 2
+		}
+	}
+	line := buildinfo.Line("nova-card", version)
+	if !jsonOut {
+		fmt.Fprintln(stdout, line)
+		return 0
+	}
+	f, ok := buildinfo.Parse(line)
+	if !ok {
+		fmt.Fprintf(stderr, "nova-card version REFUSED: the version line does not parse: %s; run: nova-card version -h\n", line)
 		return 2
 	}
-	fmt.Fprintln(stdout, buildinfo.Line("nova-card", version))
+	b, err := json.Marshal(versionJSON{Tool: f.Tool, Version: f.Version, Platform: f.Platform, GoVersion: f.GoVersion})
+	if err != nil {
+		fmt.Fprintf(stderr, "nova-card version REFUSED: %s; run: nova-card version -h\n", err)
+		return 2
+	}
+	fmt.Fprintln(stdout, string(b))
 	return 0
 }
