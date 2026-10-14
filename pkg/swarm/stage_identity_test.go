@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
@@ -35,9 +36,7 @@ func stageTestGit(t *testing.T, dir string, args ...string) string {
 func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
-	require.NoError(t, os.Mkdir(home, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"),
-		[]byte("[user]\n\tname = Owner\n\temail = owner@example.com\n"), 0o600))
+	fsx.Write(t, filepath.Join(home, ".gitconfig"), "[user]\n\tname = Owner\n\temail = owner@example.com\n")
 	// The staging git (stageGit) reads the process environment: plant a HOME naming the
 	// owner and a different author, so the configured identity is the only thing that can
 	// make the commit the machine's.
@@ -53,14 +52,14 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 	stageTestGit(t, "", "init", "-q", "--bare", "-b", "main", bare)
 	stageTestGit(t, work, "init", "-q", "-b", "main")
 	stageTestGit(t, work, "remote", "add", "origin", bare)
-	require.NoError(t, os.WriteFile(filepath.Join(work, "base"), []byte("base\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "base"), "base\n")
 	stageTestGit(t, work, "add", "base")
 	stageTestGit(t, work, "commit", "-q", "-m", "base")
 	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
 
 	// The previous attempt's head, on its own branch, pushed so a rework can carry it.
 	stageTestGit(t, work, "switch", "-q", "-c", "feat")
-	require.NoError(t, os.WriteFile(filepath.Join(work, "carried"), []byte("carried\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "carried"), "carried\n")
 	stageTestGit(t, work, "add", "carried")
 	stageTestGit(t, work, "commit", "-q", "-m", "the work of attempt 1")
 	prev := stageTestGit(t, work, "rev-parse", "HEAD")
@@ -68,7 +67,7 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 
 	// The base branch moves on: the rework is staged at its tip.
 	stageTestGit(t, work, "switch", "-q", "main")
-	require.NoError(t, os.WriteFile(filepath.Join(work, "tip"), []byte("tip\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "tip"), "tip\n")
 	stageTestGit(t, work, "add", "tip")
 	stageTestGit(t, work, "commit", "-q", "-m", "the base moved")
 	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/base")
@@ -99,9 +98,7 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
-	require.NoError(t, os.Mkdir(home, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"),
-		[]byte("[user]\n\tname = Owner\n\temail = owner@example.com\n"), 0o600))
+	fsx.Write(t, filepath.Join(home, ".gitconfig"), "[user]\n\tname = Owner\n\temail = owner@example.com\n")
 	t.Setenv("HOME", home)
 	t.Setenv("GIT_AUTHOR_NAME", "owner")
 	t.Setenv("GIT_AUTHOR_EMAIL", "owner@example.com")
@@ -110,15 +107,13 @@ func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 
 	pool := filepath.Join(root, "pool")
 	job := filepath.Join(root, "job")
-	require.NoError(t, os.MkdirAll(pool, 0o755))
+	fsx.Write(t, filepath.Join(pool, "identity.tsv"), "owner\tname\temail\nowner\tbob\tbob@example.com\n")
 	require.NoError(t, os.MkdirAll(job, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(pool, "identity.tsv"),
-		[]byte("owner\tname\temail\nowner\tbob\tbob@example.com\n"), 0o644))
 
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.Mkdir(work, 0o755))
 	stageTestGit(t, work, "init", "-q", "-b", "main")
-	require.NoError(t, os.WriteFile(filepath.Join(work, "README"), []byte("base\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "README"), "base\n")
 	stageTestGit(t, work, "add", "README")
 	stageTestGit(t, work, "commit", "-q", "-m", "base")
 
@@ -145,9 +140,7 @@ func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 func TestStageCardReworkCarriesTheConfiguredIdentity(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
-	require.NoError(t, os.Mkdir(home, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"),
-		[]byte("[user]\n\tname = Owner\n\temail = owner@example.com\n"), 0o600))
+	fsx.Write(t, filepath.Join(home, ".gitconfig"), "[user]\n\tname = Owner\n\temail = owner@example.com\n")
 	t.Setenv("HOME", home)
 	t.Setenv("GIT_AUTHOR_NAME", "owner")
 	t.Setenv("GIT_AUTHOR_EMAIL", "owner@example.com")
@@ -160,20 +153,20 @@ func TestStageCardReworkCarriesTheConfiguredIdentity(t *testing.T) {
 	stageTestGit(t, "", "init", "-q", "--bare", "-b", "main", remote)
 	stageTestGit(t, work, "init", "-q", "-b", "main")
 	stageTestGit(t, work, "remote", "add", "origin", remote)
-	require.NoError(t, os.WriteFile(filepath.Join(work, "base"), []byte("base\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "base"), "base\n")
 	stageTestGit(t, work, "add", "base")
 	stageTestGit(t, work, "commit", "-q", "-m", "base")
 	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
 
 	stageTestGit(t, work, "switch", "-q", "-c", "feat")
-	require.NoError(t, os.WriteFile(filepath.Join(work, "carried"), []byte("carried\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "carried"), "carried\n")
 	stageTestGit(t, work, "add", "carried")
 	stageTestGit(t, work, "commit", "-q", "-m", "the work of attempt 1")
 	prev := stageTestGit(t, work, "rev-parse", "HEAD")
 	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/feat")
 
 	stageTestGit(t, work, "switch", "-q", "main")
-	require.NoError(t, os.WriteFile(filepath.Join(work, "tip"), []byte("tip\n"), 0o600))
+	fsx.Write(t, filepath.Join(work, "tip"), "tip\n")
 	stageTestGit(t, work, "add", "tip")
 	stageTestGit(t, work, "commit", "-q", "-m", "the base moved")
 	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
