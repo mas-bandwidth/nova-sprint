@@ -321,17 +321,15 @@ count a routing-only edit must not reset (docs/SPEC-SPRINT.md, the needs, the
 brief verb and the bound).
 
 - Unit, `internal/sprint/brief_edit_test.go`:
-  `TestBriefKeepsANeedRelinkedToItsTwin`,
-  `TestBriefAddsANewNeedAndKeepsADroppedOne`,
+  `TestABriefEditKeepsWhatAVerbSet` (its cases
+  `BriefKeepsANeedRelinkedToItsTwin`, `BriefAddsANewNeedAndKeepsADroppedOne`,
+  `ABriefChangingOnlyDependsKeepsARelinkedNeed`,
+  `ADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
+  `ADependsOnlyBriefTierFlagOverridesTheText`,
+  `BriefKeepsARecordedTierAgainstTheText`, `BriefTierFlagOverridesTheText`,
+  `AMetadataOnlyBriefKeepsTheBoundCount`, `ANewTaskBriefResetsTheBoundCount`),
   `TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief`,
-  `TestABriefChangingOnlyDependsKeepsARelinkedNeed`,
-  `TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
-  `TestADependsOnlyBriefTierFlagOverridesTheText`,
-  `TestBriefKeepsARecordedTierAgainstTheText`,
-  `TestBriefTierFlagOverridesTheText`,
-  `TestAMetadataOnlyBriefKeepsTheBoundCount`,
   `TestBriefTierRefusesATLAPathBelowFrontier`,
-  `TestANewTaskBriefResetsTheBoundCount`,
   `TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck`,
   `TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced`,
   `TestABriefTierFlagRefusesATLAPathBelowFrontier`.
@@ -479,18 +477,18 @@ next landing with "landing again after <d>"; every landing is pushed to the
 coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
 
 - Unit, `internal/sprint/landing_stall_test.go`:
-  `TestLandingStallIsJudgedWhenCardsWaitAndNothingLands`,
-  `TestLandingStallNamesTheRedCI`, `TestLandingStallIsReRaisedEachBound`,
+  `TestLandingStallIsRaised` (its rows
+  LandingStallIsJudgedWhenCardsWaitAndNothingLands, LandingStallNamesTheRedCI,
+  AStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall and
+  TickDeadlinesRaisesTheLandingStall), `TestLandingStallIsReRaisedEachBound`,
   `TestLandingStallClearsOnTheNextLanding`, `TestNoStallWithNothingWaiting`,
   `TestLandingStallClosesItsJudgmentWhenWaitingClears`,
   `TestLandingReadCountsCombineFleetAndLegacyConsumersOnce`,
   `TestLandingReadCountsAnActiveUnmarkedFleetRead`,
   `TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads`,
   `TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead`,
-  `TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall`,
   `TestEveryLandingIsPushedToTheCoordinator`,
   `TestMergeWritesTheLandingStallFacts`, `TestMergeWritesTheLandersLastRefusal`,
-  `TestTickDeadlinesRaisesTheLandingStall`,
   `TestLandingStallStartsBeforeTheFirstLanding`,
   `TestLandingStallSurvivesTicksShorterThanTheBound`,
   `TestLandingStallBoundIsSettable`,
