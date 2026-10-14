@@ -480,6 +480,26 @@ func (s *Snapshot) Members() []string {
 	return out
 }
 
+// friendLiveLanes is the friend's live lanes: her work cards plus her read cards, ready
+// and working on her row (rowLoad, read_cards.go) — the same cells the take gate counts
+// (takeOne's rowWorking). A read holds one of her lanes, whole, exactly as a work card
+// does, so her live lanes are what bounds her row's width (the owner, 2026-10-14: a
+// friend at live 12 of width 8 was dealt a ninth read and a work card the gate then
+// refused). The deal, the friend level and the held reason read it for her free places.
+func friendLiveLanes(s *Snapshot, name string) int {
+	work, reads := rowLoad(s, FriendRow(name))
+	return work + reads
+}
+
+// friendFreeLanes is the friend's free lanes, the one count the deal stops at and the take
+// gate refuses at: her width less her live lanes (work cards plus read cards, ready and
+// working), never below zero. It is a pure function of the counts so the deal, the read
+// ask, the friend level and the held reason all stop at the number the gate refuses at
+// (the property TestTheFriendDealCountsReadsAgainstHerWidth).
+func friendFreeLanes(width, work, reads int) int {
+	return max(width-(work+reads), 0)
+}
+
 // friendLoad is the cards a friend holds: ready and working on her row, her work cards and
 // her reads together. One width bounds her row (docs/SPEC-SPRINT.md section 1, a friend's
 // card; the owner's rule): her reads hold her lanes and her room as her work does, in
@@ -622,9 +642,21 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	for _, f := range seats {
 		if friendDealable(s, f) {
 			room, width := friendRoom(f)
-			free[f.Name] = room - friendLoad(s, f.Name)
+			work, reads := rowLoad(s, FriendRow(f.Name))
+			// the one count: her width less her live lanes (work cards plus read
+			// cards, ready and working), never below zero. Once a read holds a lane
+			// it counts against her width as a work card does, so the deal never
+			// deals a read or a work card to a friend whose live lanes are at her
+			// width (docs/SPEC-SPRINT.md section 1, a friend's card; takeOne counts
+			// the same cells). A row with no reads keeps its work queue,
+			// DealAhead times her width.
+			if s.ReadCardsOn() && reads > 0 {
+				free[f.Name] = friendFreeLanes(width, work, reads)
+			} else {
+				free[f.Name] = room - work - reads
+			}
 			// a lane is idle while no card on her row holds it, started or not
-			lanes[f.Name] = width - friendLoad(s, f.Name)
+			lanes[f.Name] = friendFreeLanes(width, work, reads)
 			seat[f.Name] = f
 			up = append(up, f.Name)
 		}
