@@ -46,7 +46,8 @@ func TestLevelTargetPicksAFreeLane(t *testing.T) {
 func TestLevelStopsWhenNoFreeLaneRemains(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 0, 2, "a", "b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "c", Width: 1}))
+	w.setWidth("c", 1)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "c"}))
 	putWorkCard(w, "newest", "a", Ready, 4, nil)
 	putWorkCard(w, "older", "a", Ready, 3, nil)
 	for _, member := range []string{"a", "b"} {

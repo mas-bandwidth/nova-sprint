@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -101,6 +102,9 @@ func TestASnapshotRestoredIsTheStoreItWas(t *testing.T) {
 		require.NoError(t, err, "%s", line)
 		fresh := store.NewMem()
 		require.NoError(t, fresh.Restore(doc), "%s", line)
+		// nova-config's widths are no part of the sprint's snapshot: the rig's
+		// nova-config stands beside the restored store as it stood beside the old
+		fresh.DefaultMachineWidth(strconv.Itoa(testWidth))
 		// a receipt's empty field maps come back from a read as empty, as from
 		// a Redis: the first restore settles them, and from there the document
 		// is what it was

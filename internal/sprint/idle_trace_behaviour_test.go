@@ -195,7 +195,7 @@ func TestTickIdleAlarmsOnceAnEpisodeAndClears(t *testing.T) {
 
 	// the fleet works at its width again: one clear note, both properties gone
 	for _, m := range []string{"m1", "m2"} {
-		w.s.MemberCtl(m).Fields[FieldWidth] = "1"
+		w.setWidth(m, 1)
 		w.s.Fleet.Put(&Card{ID: "busy-" + m, Row: m, Col: Working, Rev: 1, Fields: map[string]string{"kind": "work"}})
 	}
 	p, _ = TickIdle(w.s, r)
@@ -227,7 +227,7 @@ func TestTickIdleEndsAnEpisodeThatNeverSaidItsNote(t *testing.T) {
 	// without ever having said its note
 	w.tick(time.Minute)
 	for _, m := range []string{"m1", "m2"} {
-		w.s.MemberCtl(m).Fields[FieldWidth] = "1"
+		w.setWidth(m, 1)
 		w.s.Fleet.Put(&Card{ID: "busy-" + m, Row: m, Col: Working, Rev: 1, Fields: map[string]string{"kind": "work"}})
 	}
 	p, _ = TickIdle(w.s, r)

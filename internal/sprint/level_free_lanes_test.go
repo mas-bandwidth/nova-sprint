@@ -18,7 +18,8 @@ type memberWidth struct {
 func upWidths(t *testing.T, w *world, spec ...memberWidth) {
 	t.Helper()
 	for _, m := range spec {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m.name, Width: m.width}))
+		w.setWidth(m.name, m.width)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m.name}))
 	}
 }
 

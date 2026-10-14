@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -39,7 +40,7 @@ var conflictRouteSeconds = 600
 
 func newConflictRig(t *testing.T) *conflictRig {
 	t.Helper()
-	r := &conflictRig{t: t, m: store.NewMem(), ctx: context.Background(), now: holdT0}
+	r := &conflictRig{t: t, m: configMem(), ctx: context.Background(), now: holdT0}
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator", AnswerRules: true,
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
@@ -53,8 +54,10 @@ func newConflictRig(t *testing.T) *conflictRig {
 		{Name: "pro-a", Tier: "pro", Provider: "prov-pro-a", Model: "model-pro-a", Tokens: 1000, Deadline: conflictRouteSeconds, Enabled: true},
 	})
 	r.beat()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	r.m.SetMachineWidth("m2", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: 3, Brief: "c: the work (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)

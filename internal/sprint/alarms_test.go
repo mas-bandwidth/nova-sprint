@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,7 +33,7 @@ type alarmRig struct {
 
 func newAlarmRig(t *testing.T) *alarmRig {
 	t.Helper()
-	r := &alarmRig{t: t, ctx: context.Background(), m: store.NewMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+	r := &alarmRig{t: t, ctx: context.Background(), m: configMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "a-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
@@ -120,7 +121,8 @@ func (r *alarmRig) episodes() map[string][2]int {
 func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 	t.Parallel()
 	r := newAlarmRig(t)
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"d"}, Needs: []string{"a"}}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)

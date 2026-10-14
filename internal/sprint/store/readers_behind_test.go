@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,7 +44,8 @@ func TestAStandingReadersBehindJudgmentIsPushedOnce(t *testing.T) {
 	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {
 		require.NoError(t, h.st.SetReaderAway(h.ctx, r, true, "tester"))
 	}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 6}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(6))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2"}))
 	h.addReady("s1", 6, briefOf("flash", ""))
 	h.startMachine()
@@ -76,7 +78,8 @@ func TestAStandingReadersBehindJudgmentIsPushedOnce(t *testing.T) {
 	require.Equal(t, 16, len(h.snap().Work.Column(sprint.Review)), "the review queue moved under the judgment")
 	// the readers' own numbers move (the reader's width, 6 to 3): a material change, and
 	// the standing judgment is rewritten in place and pushed again
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 3}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(3))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
 	h.machine()
 	require.Len(t, h.openOf(sprint.NReadersBehind), 1, "still one judgment")
 	require.Equal(t, 2, h.writesOf(sprint.NReadersBehind), "the reader's width moved: rewritten in place and pushed again")
@@ -106,7 +109,8 @@ func readersBehind(h *harness, open func(string) []sprint.Open, written func(str
 	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {
 		require.NoError(t, h.st.SetReaderAway(h.ctx, r, true, "tester"))
 	}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 6}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(6))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2"}))
 	h.addReady("s1", 6, briefOf("flash", ""))
 	h.startMachine()
@@ -135,7 +139,8 @@ func readersBehind(h *harness, open func(string) []sprint.Open, written func(str
 	// the machine is narrowed to two: the reader reads its whole width, busy and not behind
 	// (a-judgment-checks-the-lane-before-it-rises.w1): the judgment closes, and the tick
 	// counts it quiet on its heartbeat
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.machine()
 	assert.Empty(t, open(sprint.NReadersBehind), "a reader reading its whole width is busy, not behind")
 	assert.Equal(t, 1, written(sprint.NReadersBehind), "written once, before the narrowing")
@@ -148,7 +153,8 @@ func readersBehind(h *harness, open func(string) []sprint.Open, written func(str
 	require.NoError(t, err)
 	assert.Contains(t, hb.Quiet, sprint.LaneQuiet{Type: sprint.NReadersBehind, Subject: sprint.SprintSubject, Why: why}, "the heartbeat counts it")
 	// widened again with the reads still waiting: a reader with room did not begin, and it rises
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 6}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(6))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.machine()
 	require.Len(t, open(sprint.NReadersBehind), 1, "room and not begun: behind again")
 	// the reader begins the rest: the readers are not behind

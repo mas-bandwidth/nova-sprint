@@ -41,8 +41,10 @@ func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 		}
 		w.s.Routes = append(w.s.Routes, Route{Name: name, Tier: tier, Provider: "p", Model: name, Enabled: true})
 	}
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 32}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 32}))
+	w.setWidth("m1", 32)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.setWidth("m2", 32)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	for i := 0; i < friends; i++ {
 		w.s.Friends = append(w.s.Friends, FriendSeat{Name: fmt.Sprintf("f%02d", i), Width: 8, Status: Up, Class: "flash,pro"})
 	}

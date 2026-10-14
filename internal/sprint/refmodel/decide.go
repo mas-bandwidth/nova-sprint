@@ -2,6 +2,7 @@ package refmodel
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -272,7 +273,22 @@ func (s Snapshot) ownCopy(now time.Time) Snapshot {
 	c := s.Clone()
 	c.needTables()
 	c.Tables.Now = now
+	if c.Tables.Widths == nil {
+		// the model's nova-config names every member at Width (state.go): the
+		// engine reads a member's width from it alone (sprint.Snapshot.Widths)
+		c.Tables.Widths = ModelWidths(c.Tables)
+	}
 	return c
+}
+
+// ModelWidths is the model's nova-config: every member of the snapshot's fleet
+// at Width, as the machine:<m> widths the engine reads (sprint.Snapshot.Widths).
+func ModelWidths(s *sprint.Snapshot) map[string]string {
+	w := map[string]string{}
+	for _, m := range s.Members() {
+		w[m] = strconv.Itoa(Width)
+	}
+	return w
 }
 
 // strangersOn is the notifications for the unknown machines that beat and were

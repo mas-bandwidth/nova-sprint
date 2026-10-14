@@ -9,10 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// init --members <name>:<width> and fleet up <m> --width <n> set a member's
-// width; where shows it in the fleet table's width column beside working, and
-// --json carries it; a width that is not one is refused before anything is
-// written.
+// A width is nova-config's alone: where shows each member's machine:<m> width
+// in the fleet table's width column beside working, and --json carries it;
+// fleet up <m> --width <n> and init --members <m>:<n> refuse, exit 2, nothing
+// written, naming nova-config machine set. (The rig's configWidths writes the
+// machine:<m> width for a line that names one; asWritten runs it as typed.)
 func TestTheWidthIsSetByInitAndFleetUpAndShown(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -28,19 +29,25 @@ func TestTheWidthIsSetByInitAndFleetUpAndShown(t *testing.T) {
 	require.Equal(t, "64", fleet["m1"]["width"], "the widths: %v", fleet)
 	require.Equal(t, "3", fleet["m2"]["width"], "the widths: %v", fleet)
 	require.Equal(t, "8", fleet["m3"]["width"], "the widths: %v", fleet)
-	// a width of 0 drains the member (fleet_drain_test.go): it is written, not refused
-	assert.Contains(t, ta.ok("fleet up m3 --width 0"), "width=0 (drains")
+	// nova-config's width 0 drains the member (fleet_drain_test.go)
+	ta.m.SetMachineWidth("m3", "0")
+	ta.ok("fleet up m3") // a step refreshes the display cells from nova-config
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))
 	require.Equal(t, "0", v.Tables["fleet"]["m3"]["width"], "the widths: %v", v.Tables["fleet"])
-	for _, line := range []string{"fleet up m4 --width -1", "fleet up m4 --width 1025", "fleet up m4 --width x"} {
-		code, _, errs := ta.do(line)
-		assert.NotEqual(t, 0, code, "%s: exit %d, %s", line, code, errs)
-		assert.Contains(t, errs, "width", "%s: exit %d, %s", line, code, errs)
+	// every width the verbs are given is refused, before anything is written
+	for _, line := range []string{"fleet up m3 --width 8", "fleet up m4 --width 0", "fleet up m4 --width 1025", "fleet up m4 --width x"} {
+		code, _, errs := ta.asWritten(line)
+		assert.Equal(t, 2, code, "%s: exit %d, %s", line, code, errs)
+		assert.Contains(t, errs, "a width is nova-config's alone", "%s: exit %d, %s", line, code, errs)
+		assert.Contains(t, errs, "nova-config machine set", "%s: exit %d, %s", line, code, errs)
 	}
+	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))
+	require.Equal(t, "0", v.Tables["fleet"]["m3"]["width"], "a refused fleet up wrote a width: %v", v.Tables["fleet"])
+	require.NotContains(t, v.Tables["fleet"], "m4", "a refused fleet up added a member: %v", v.Tables["fleet"])
 	nb := newTestApp(t)
-	code, _, errs := nb.do("init --members m1:0")
-	assert.NotEqual(t, 0, code, "init --members m1:0: exit %d, %s", code, errs)
-	assert.Contains(t, errs, "width", "init --members m1:0: exit %d, %s", code, errs)
+	code, _, errs := nb.asWritten("init --members m1:4")
+	assert.Equal(t, 2, code, "init --members m1:4: exit %d, %s", code, errs)
+	assert.Contains(t, errs, "a width is nova-config's alone", "init --members m1:4: exit %d, %s", code, errs)
 }
 
 // The fleet table's footer sums the width column of the members up, the

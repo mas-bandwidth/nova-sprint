@@ -259,7 +259,7 @@ func newChaosRig(t *testing.T) *chaosRig {
 	r.bobBus = &chaosBus{Fake: r.fake}
 	r.coord, r.session = &bus.Bus{Store: r.fake}, &bus.Bus{Store: r.fake}
 	r.harness = &fakeHarness{r: r}
-	r.mem = store.NewMem()
+	r.mem = configMem()
 	n := 0
 	r.st = &store.Store{B: r.mem, Names: sprint.Names{Prefix: "t-"}, Actor: "coord", Now: time.Now,
 		NewID: func() string { n++; return fmt.Sprint(n) }, Sleep: func(time.Duration) {}}

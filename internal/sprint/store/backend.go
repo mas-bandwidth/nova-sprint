@@ -31,6 +31,12 @@ type Backend interface {
 	ReadSet(ctx context.Context, table string, ids []string) (ntable.ReadSetResult, error)
 	// Apply applies one batch manifest atomically, or refuses it whole.
 	Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error)
+	// ConfigWidths reads the width field of each machine:<m> hash and each
+	// friend:<f>:desired hash nova-config apply wrote, by name, in one exchange;
+	// a name whose hash is missing or whose width field is empty reads "". It
+	// is the one source of a member's width (presence.go, Store.Widths): a
+	// store whose user may not read those keys fails, never falls back.
+	ConfigWidths(ctx context.Context, members, friends []string) (machine, friend map[string]string, err error)
 
 	Create(ctx context.Context, t ntable.Table) error
 	RowsAdd(ctx context.Context, table string, rows []string) error

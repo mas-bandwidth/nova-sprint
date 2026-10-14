@@ -233,7 +233,8 @@ func TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick(t *testing.T) {
 	widths := map[string]int{"m1": 1, "m2": 7, "m3": 7, "m4": 7, "m5": 7, "m6": 6, "m7": 6}
 	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"}
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: widths[m]}))
+		w.setWidth(m, widths[m])
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 		w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+m))
 	}
 	rbPlace(w, "s1-0", cardhdr.RouteFlash, "m1", Working) // m1's one lane, working
@@ -268,7 +269,8 @@ func TestTheLevelVerbRebalancesTheReadsToo(t *testing.T) {
 	w.s.Work.SetRows([]string{"s1"})
 	widths := map[string]int{"m1": 1, "m2": 7, "m3": 7, "m4": 7, "m5": 7, "m6": 6, "m7": 6}
 	for _, m := range []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: widths[m]}))
+		w.setWidth(m, widths[m])
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 		w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+m))
 	}
 	rbPlace(w, "s1-0", cardhdr.RouteFlash, "m1", Working)

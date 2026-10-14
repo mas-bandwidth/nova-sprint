@@ -14,6 +14,7 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -326,6 +327,11 @@ func newDHarness(t testing.TB) *dHarness {
 	require.NoError(t, h.st.Init(h.ctx))
 	require.NoError(t, h.m.RowsAdd(h.ctx, "d-readers", dReaders))
 	require.NoError(t, h.m.SetCoordinator(h.ctx, dCoordinator))
+	// every member's config width (nova-config's machine:<m>) matches the
+	// model's width, so the engine's deal and the model's agree
+	for _, m := range dMembers {
+		h.m.SetMachineWidth(m, strconv.Itoa(testWidth))
+	}
 	// The reference model's ask is the supported legacy readers-table flow.
 	res, err := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: dCoordinator}))
 	require.NoError(t, err)

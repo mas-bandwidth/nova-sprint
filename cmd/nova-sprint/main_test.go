@@ -46,10 +46,15 @@ type testApp struct {
 	// oldReaders marks tests that intentionally exercise the legacy readers table.
 	// The default fixture remains propertyless; these tests opt out explicitly.
 	oldReaders bool
+	// rawWidths runs the next line as written (asWritten): no width it names is
+	// moved to nova-config (configWidths)
+	rawWidths bool
 }
 
 func newTestApp(t *testing.T) *testApp {
 	ta := &testApp{t: t, m: store.NewMem(), now: t0, live: []string{"m1", "m2"}}
+	// the rig's nova-config names every machine at testWidth (configWidths)
+	ta.m.DefaultMachineWidth(strconv.Itoa(testWidth))
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
 	ta.a = newApp(func(k string) string { return env[k] })
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }
@@ -132,12 +137,106 @@ func (ta *testApp) beat() {
 func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	args := split(line)
+	args := ta.configWidths(split(line))
 	code := runInto(ta.a, ta.withEpoch(args), &out, &errb)
 	if code == 0 && ta.oldReaders && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
 		ta.readersTableOn(args)
 	}
 	return code, out.String(), errb.String()
+}
+
+// testWidth is the width the rig's nova-config names for every machine a test
+// gives no width of its own (configWidths).
+const testWidth = 64
+
+// configWidths is the rig's one width helper. A width is nova-config's alone
+// (internal/sprint/width.go): init --members <m>:<n> and fleet up <m> --width
+// <n> refuse. A test line that still names a width that way is the test
+// setting nova-config's machine:<m> width, so the rig writes it to the twin
+// store, as nova-config machine set and apply would, and runs the verb without
+// it. A machine no line names a width for reads testWidth
+// (store.Mem.DefaultMachineWidth, set by newTestApp). ta.raw runs a line as
+// written, for the tests of the refusal itself.
+func (ta *testApp) configWidths(args []string) []string {
+	if ta.rawWidths {
+		return args
+	}
+	return widthsToConfig(args, ta.m.SetMachineWidth)
+}
+
+// widthsToConfig is configWidths over any rig: each width the line names on
+// init --members <m>:<n> or fleet up <m> --width <n> is handed to set (the
+// rig's twin store's machine:<m> width, as nova-config apply writes it), and
+// the line runs without it.
+func widthsToConfig(args []string, set func(machine, width string)) []string {
+	if len(args) == 0 {
+		return args
+	}
+	switch {
+	case slices.Contains(args, "init"):
+		out := make([]string, 0, len(args))
+		for i := 0; i < len(args); i++ {
+			a, list := args[i], ""
+			switch {
+			case a == "--members" && i+1 < len(args):
+				out = append(out, a)
+				i++
+				list = args[i]
+			case strings.HasPrefix(a, "--members="):
+				out = append(out, "--members=")
+				list = strings.TrimPrefix(a, "--members=")
+			default:
+				out = append(out, a)
+				continue
+			}
+			var names []string
+			for _, x := range strings.Split(list, ",") {
+				name, w, ok := strings.Cut(x, ":")
+				if ok {
+					set(name, w)
+				}
+				names = append(names, name)
+			}
+			joined := strings.Join(names, ",")
+			if strings.HasSuffix(out[len(out)-1], "=") {
+				out[len(out)-1] += joined
+			} else {
+				out = append(out, joined)
+			}
+		}
+		return out
+	case len(args) > 1 && args[0] == "fleet" && args[1] == "up":
+		var member, width string
+		out := make([]string, 0, len(args))
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "--width" && i+1 < len(args):
+				i++
+				width = args[i]
+				continue
+			case strings.HasPrefix(a, "--width="):
+				width = strings.TrimPrefix(a, "--width=")
+				continue
+			case i >= 2 && member == "" && !strings.HasPrefix(a, "-") && (i == 2 || !strings.HasPrefix(args[i-1], "--")):
+				member = a
+			}
+			out = append(out, a)
+		}
+		if width != "" && member != "" {
+			set(member, width)
+		}
+		return out
+	}
+	return args
+}
+
+// asWritten runs a line as written: no width it names is moved to nova-config
+// (configWidths). For the tests of the width refusal itself.
+func (ta *testApp) asWritten(line string) (int, string, string) {
+	ta.rawWidths = true
+	defer func() { ta.rawWidths = false }()
+	return ta.do(line)
 }
 
 // readersTableOn opts an explicitly legacy fixture out of read cards after

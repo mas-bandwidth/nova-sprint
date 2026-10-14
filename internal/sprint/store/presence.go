@@ -8,11 +8,13 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -121,6 +123,132 @@ func (st *Store) tellStrangers(ctx context.Context) (Result, error) {
 
 // beatKey is a member's beat record.
 func beatKey(member string) string { return "beat:" + member }
+
+// machineKey is nova-config's machine row hash (machine:<m>), whose width
+// field is the one definition of a member's width (docs/SPEC-SPRINT.md
+// section 5). It is read raw, under no deployment prefix.
+func machineKey(machine string) string { return "machine:" + machine }
+
+// friendDesiredKey is nova-config's friend desired hash (friend:<f>:desired),
+// whose width field is a friend's one capacity number.
+func friendDesiredKey(friend string) string { return "friend:" + friend + ":desired" }
+
+// Widths reads the members' and friends' widths from nova-config, in one
+// exchange, as every step reads them with its snapshot (docs/SPEC-SPRINT.md
+// section 5; tla/Level.tla, Width). It refuses (never falls back) when the
+// store cannot read machine:* or friend:*: the server's Redis user needs the
+// "machines" and "friends" ACL groups (nova-tools pkg/redisacl).
+func (st *Store) Widths(ctx context.Context, members, friends []string) (machine, friend map[string]string, err error) {
+	machine, friend, err = st.B.ConfigWidths(ctx, members, friends)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the widths cannot be read from nova-config's machine:* or friend:* keys: %w; grant the Redis user the \"machines\" and \"friends\" ACL groups (nova-tools pkg/redisacl); nothing was changed", err)
+	}
+	return machine, friend, nil
+}
+
+// ConfigWidths reads the width field of each machine:<m> and
+// friend:<f>:desired hash, in one pipeline.
+func (r *Redis) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	pipe := r.C.Pipeline()
+	mh := make(map[string]interface{ Val() map[string]string }, len(members))
+	for _, m := range members {
+		mh[m] = pipe.HGetAll(ctx, machineKey(m))
+	}
+	fh := make(map[string]interface{ Val() map[string]string }, len(friends))
+	for _, f := range friends {
+		fh[f] = pipe.HGetAll(ctx, friendDesiredKey(f))
+	}
+	if err := redisconn.Exec(ctx, pipe); err != nil {
+		return nil, nil, err
+	}
+	machine, friend := make(map[string]string, len(members)), make(map[string]string, len(friends))
+	for _, m := range members {
+		machine[m] = mh[m].Val()["width"]
+	}
+	for _, f := range friends {
+		friend[f] = fh[f].Val()["width"]
+	}
+	return machine, friend, nil
+}
+
+// ConfigWidths is the widths the setters gave the twin store.
+func (m *Mem) ConfigWidths(_ context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.count("widths")
+	if err := m.fail("widths"); err != nil {
+		return nil, nil, err
+	}
+	machine, friend := make(map[string]string, len(members)), make(map[string]string, len(friends))
+	for _, n := range members {
+		w, ok := m.machineWidths[n]
+		if !ok && !m.machineGone[n] {
+			// a test rig's nova-config names every machine (DefaultMachineWidth)
+			w = m.machineWidth
+			if w == "" {
+				w = memMachineWidth
+			}
+		}
+		machine[n] = w
+	}
+	for _, n := range friends {
+		friend[n] = m.friendWidths[n]
+	}
+	return machine, friend, nil
+}
+
+// SetMachineWidth gives the twin store the width field of a machine row, as
+// nova-config apply does (machine:<m>). For tests.
+func (m *Mem) SetMachineWidth(machine, width string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.machineWidths == nil {
+		m.machineWidths = map[string]string{}
+	}
+	m.machineWidths[machine] = width
+	delete(m.machineGone, machine)
+}
+
+// DeleteMachineWidth takes a machine's row off the twin, as nova-config apply
+// would when the machine is dropped: its width reads missing, whatever
+// DefaultMachineWidth says. For tests.
+func (m *Mem) DeleteMachineWidth(machine string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.machineWidths, machine)
+	if m.machineGone == nil {
+		m.machineGone = map[string]bool{}
+	}
+	m.machineGone[machine] = true
+}
+
+// DefaultMachineWidth is the one test helper that stands a rig's twin store in
+// for a nova-config that names every machine at this width: a machine:<m>
+// hash no setter wrote (SetMachineWidth) or deleted (DeleteMachineWidth)
+// reads it. A test rig calls it once where it makes its store, so the tests
+// that bring members up keep working with the width nova-config would hold;
+// a test of one width writes that machine's hash. Nothing outside a test
+// calls it: a store that is not given one reads a missing hash as missing.
+func (m *Mem) DefaultMachineWidth(width string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.machineWidth = width
+}
+
+// memMachineWidth is DefaultMachineWidth for every twin store of this
+// package's own tests (set by their init, store_test.go); "" everywhere else.
+var memMachineWidth string
+
+// SetFriendDesiredWidth gives the twin store the width field of a friend's
+// desired hash, as nova-config apply does (friend:<f>:desired). For tests.
+func (m *Mem) SetFriendDesiredWidth(friend, width string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.friendWidths == nil {
+		m.friendWidths = map[string]string{}
+	}
+	m.friendWidths[friend] = width
+}
 
 // KeysGetter is a store that reads many records in one exchange.
 type KeysGetter interface {
@@ -329,12 +457,16 @@ func (st *Store) SyncFleet(ctx context.Context) (bool, error) {
 		}
 	}
 	now := st.now()
+	widths, _, err := st.Widths(ctx, members, nil)
+	if err != nil {
+		return false, err
+	}
 	status := map[string]string{}
 	diffs := map[string]map[string]string{}
 	for _, row := range shape.Rows {
 		m, _ := rs.Member(pinned.sid(sprint.CtlID(row.Key)))
 		ctl := &sprint.Card{Fields: m.Fields}
-		want := map[string]string{sprint.Status: dash(ctl.F("status")), sprint.Load: "", sprint.FieldWidth: sprint.WidthText(ctl)}
+		want := map[string]string{sprint.Status: dash(ctl.F("status")), sprint.Load: "", sprint.FieldWidth: strings.TrimSpace(widths[row.Key])}
 		if beats != nil {
 			b := beats[row.Key]
 			want[sprint.Status], want[sprint.Load] = sprint.FleetRowStatus(ctl, b, now), sprint.LoadText(b, now)

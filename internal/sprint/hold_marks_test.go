@@ -156,8 +156,10 @@ func markCleared(ctl *Card) bool {
 func markWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
+	w.setWidth("m1", 2)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.setWidth("m2", 2)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 4}))
 	return w
 }

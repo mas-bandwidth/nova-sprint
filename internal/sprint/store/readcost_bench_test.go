@@ -42,7 +42,9 @@ func benchSprint(b *testing.B, streams, perStream int) (*Store, *redis.Client) {
 	ctx := context.Background()
 	require.NoError(b, st.BeatReaders(ctx))
 	for _, m := range []string{"m1", "m2"} {
-		res, err := st.Run(ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 64}))
+		// nova-config's width for the member, as nova-config apply writes it
+		require.NoError(b, c.HSet(ctx, machineKey(m), "width", "64").Err())
+		res, err := st.Run(ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 		require.NoError(b, err)
 		require.Empty(b, res.Refused)
 	}

@@ -89,6 +89,13 @@ func (st *Store) loadOnce(ctx context.Context, tables []string, extras func(*spr
 	if s.SeatGeneration, err = st.seatGeneration(ctx); err != nil {
 		return nil, err
 	}
+	if s.Fleet != nil {
+		// a snapshot of the fleet carries every member's width as nova-config
+		// holds it now (Store.Widths; docs/SPEC-SPRINT.md section 5)
+		if s.Widths, _, err = st.Widths(ctx, s.Members(), nil); err != nil {
+			return nil, err
+		}
+	}
 	if extras != nil {
 		for table, want := range extras(s) {
 			t := s.T(table)

@@ -14,7 +14,7 @@ import (
 // ended by the provider, leaves the card withdrawn for the deal (one ATTEMPT
 // line on card <id>, no failed-work judgment); routes shows the pinned model as a row
 // of its own, its provider failure counted, and its --json speaks the repository's
-// lowercase field names; the member's queue carries its fleet row's width.
+// lowercase field names; the member's queue carries its nova-config width (on a twin, TwinWidth).
 func TestAPinnedCardOnTheTwinIsReadBackByCardAndRoutes(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -27,7 +27,7 @@ func TestAPinnedCardOnTheTwinIsReadBackByCardAndRoutes(t *testing.T) {
 	bad := filepath.Join(dir, "bad.md")
 	require.NoError(t, os.WriteFile(bad, []byte("s1: the work (s1) tier: pro\nmodel: nope\n\nThe task.\n"), 0o644))
 	for _, line := range []string{
-		"nova-sprint init --readers reader-a,reader-b --members m1:2",
+		"nova-sprint init --readers reader-a,reader-b --members m1",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file " + pin,
 		"nova-sprint add --stream s4 --count 1 --one",
 		"nova-sprint start",
@@ -69,5 +69,5 @@ func TestAPinnedCardOnTheTwinIsReadBackByCardAndRoutes(t *testing.T) {
 	assert.Contains(t, js, `"route":{"name":"pin:x/y","tier":"","provider":"x","model":"y"`)
 	assert.Contains(t, js, `"pinned":true`)
 	_, q, _ := run("nova-sprint queue --as m1 --json")
-	assert.Contains(t, q, `"width":2`)
+	assert.Contains(t, q, `"width":64`) // the twin's stand-in nova-config width (TwinWidth)
 }

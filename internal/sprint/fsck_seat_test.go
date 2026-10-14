@@ -25,7 +25,7 @@ import (
 func TestFsckFindsTheSeatKeyAgainstTheRecord(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	m := store.NewMem()
+	m := configMem()
 	n := 0
 	st := &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "stella",
 		Now:   func() time.Time { return time.Date(2026, 10, 5, 15, 39, 0, 0, time.UTC) },

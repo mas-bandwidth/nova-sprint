@@ -246,7 +246,7 @@ func TestCRThousandReadyThreeMembers(t *testing.T) {
 		res := h.machine()
 		ticks++
 		for _, p := range res.Parts {
-			if p.Name == "deal" && len(p.Moved) > 3*sprint.DefaultWidth {
+			if p.Name == "deal" && len(p.Moved) > 3*testWidth {
 				require.Fail(t, fmt.Sprintf("tick %d dealt %d", ticks, len(p.Moved)))
 			}
 			for _, m := range p.Moved {

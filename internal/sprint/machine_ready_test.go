@@ -29,7 +29,7 @@ type readyRig struct {
 
 func newReadyRig(t *testing.T) *readyRig {
 	t.Helper()
-	r := &readyRig{t: t, ctx: context.Background(), m: store.NewMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+	r := &readyRig{t: t, ctx: context.Background(), m: configMem(), now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "r-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },

@@ -562,6 +562,12 @@ type Snapshot struct {
 	// Friends is each friend the deal may give a friend's card to, or whose delivery
 	// mode is consulted by friendNext (FriendSeat); nil is none.
 	Friends []FriendSeat
+	// Widths is each member's width as nova-config's machine:<m> hash wrote it,
+	// read with the snapshot on every tick (store.Widths); a member the map
+	// lacks has no machine row, and its width is not in nova-config (dealt
+	// nothing, one judgment). The value is the raw width field: "0" drains,
+	// "" or a non-number is no width. nil is none read.
+	Widths map[string]string
 	// FriendTextPronouns is metadata for manual verb output only. It does not
 	// populate behavioral seats or change admission, routing or lane decisions.
 	FriendTextPronouns map[string]string `json:"-"`

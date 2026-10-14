@@ -75,7 +75,7 @@ func removeReader(h *harness, reader string) error {
 // off the table (the inventory no longer names it), then its row deleted.
 func removeMember(h *harness, gone, keep string) error {
 	h.t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "sync", Who: "tester", Sync: []sprint.SyncMember{{Name: keep, Width: 1}}, Machines: []string{keep}}))
+	h.must(FleetStep(sprint.FleetReq{Op: "sync", Who: "tester", Sync: []sprint.SyncMember{{Name: keep}}, Machines: []string{keep}}))
 	_, err := h.st.DropMembers(h.ctx, []string{keep})
 	return err
 }

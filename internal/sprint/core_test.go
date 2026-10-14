@@ -187,10 +187,12 @@ func TestFleetDownDealsAndWithdrawsWhenNoneIsUp(t *testing.T) {
 func TestLevelMovesTheNewestCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 3}))
+	w.setWidth("m1", 3)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 6}})) // six on m1, over its width of 3
-	p := w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 3}))
+	w.setWidth("m2", 3)
+	p := w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	require.Equal(t, 3, w.s.Fleet.Count("m1", Ready), "m1 holds its width: %d %d", w.s.Fleet.Count("m1", Ready), w.s.Fleet.Count("m2", Ready))
 	require.Equal(t, 3, w.s.Fleet.Count("m2", Ready), "m2 took the excess: %d %d", w.s.Fleet.Count("m1", Ready), w.s.Fleet.Count("m2", Ready))
 	for _, c := range w.s.Fleet.Cell("m2", Ready) {

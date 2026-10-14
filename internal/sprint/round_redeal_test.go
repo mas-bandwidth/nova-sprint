@@ -109,7 +109,8 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 	for _, rework := range []reworkIt{stepRework} {
 		w := newWorld(t, "reader-a")
 		for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2 (width.go)
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+			w.setWidth(m, 1)
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 		}
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
@@ -135,7 +136,8 @@ func TestTheDealSkipsAFreeLaneStagingRefuser(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+		w.setWidth(m, 1)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1

@@ -26,6 +26,10 @@ type inventory struct {
 	t    *testing.T
 	m    *config.Mem
 	fail error
+	// twin is the sprint's twin store: every machine row written here is also
+	// written to its machine:<m> width, as nova-config apply writes it (the
+	// one width the sprint reads)
+	twin *store.Mem
 }
 
 func newInventory(t *testing.T) *inventory { return &inventory{t: t, m: config.NewMem()} }
@@ -34,6 +38,9 @@ func newInventory(t *testing.T) *inventory { return &inventory{t: t, m: config.N
 // number unlike any width, so a sync that read them would be seen.
 func (i *inventory) set(name string, width int) {
 	i.t.Helper()
+	if i.twin != nil {
+		i.twin.SetMachineWidth(name, fmt.Sprint(width))
+	}
 	ctx := context.Background()
 	if _, found, _ := i.m.Get(ctx, config.KindMachine, name); found {
 		_, _, err := i.m.Update(ctx, config.KindMachine, name, map[string]string{"width": fmt.Sprint(width)}, "t")
@@ -48,6 +55,9 @@ func (i *inventory) set(name string, width int) {
 // setDefault makes a machine row with no width: the default width.
 func (i *inventory) setDefault(name string) {
 	i.t.Helper()
+	if i.twin != nil {
+		i.twin.SetMachineWidth(name, "")
+	}
 	row := config.Row{Name: name, Fields: map[string]string{"user": "u", "seat": "s", "slots": "160", "runners": "0", "width": ""}}
 	_, err := i.m.Insert(context.Background(), config.KindMachine, row, "t")
 	require.NoError(i.t, err)
@@ -55,6 +65,9 @@ func (i *inventory) setDefault(name string) {
 
 func (i *inventory) remove(name string) {
 	i.t.Helper()
+	if i.twin != nil {
+		i.twin.DeleteMachineWidth(name)
+	}
 	_, err := i.m.Delete(context.Background(), config.KindMachine, name, "t")
 	require.NoError(i.t, err)
 }
@@ -73,6 +86,7 @@ func syncApp(t *testing.T) (*testApp, *inventory) {
 	t.Helper()
 	ta := newTestApp(t)
 	inv := newInventory(t)
+	inv.twin = ta.m
 	ta.a.inventory = inv.fn()
 	ta.ok("init --readers reader-a,reader-b")
 	return ta, inv
@@ -127,7 +141,7 @@ func TestFleetSyncBringsTheInventoryUpAtItsWidths(t *testing.T) {
 	inv.set("m2", 2)
 	inv.set("m3", 0) // width 0: no member
 	out := ta.ok("fleet sync")
-	for _, want := range []string{"MOVED m1 added, held until its own probe passes (fleet up m1 --probe passed) width=4", "MOVED m2 added, held until its own probe passes (fleet up m2 --probe passed) width=2", "FLEET-SYNC OK moved=2"} {
+	for _, want := range []string{"MOVED m1 added, held until its own probe passes (fleet up m1 --probe passed)", "MOVED m2 added, held until its own probe passes (fleet up m2 --probe passed)", "FLEET-SYNC OK moved=2"} {
 		assert.Contains(t, out, want, "fleet sync lacks %q", want)
 	}
 	rows := ta.fleetRows()
@@ -165,8 +179,10 @@ func TestFleetSyncTakesTheWidthAsSet(t *testing.T) {
 	assert.Equal(t, "16", rows["m2"]["width"], "slots 160 and the coordinator machine: %v", rows)
 }
 
-// TestFleetSyncSetsAChangedWidthAndNothingElse: a width that differs is set;
-// the member's status, its cards and the deal's index are not touched.
+// TestFleetSyncSetsAChangedWidthAndNothingElse: a width changed in nova-config
+// moves nothing in the sync (no width is the sync's to write): the width column
+// shows the new width, and the member's status, its cards and the deal's index
+// are not touched.
 func TestFleetSyncSetsAChangedWidthAndNothingElse(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
@@ -187,8 +203,7 @@ func TestFleetSyncSetsAChangedWidthAndNothingElse(t *testing.T) {
 			moved = append(moved, l)
 		}
 	}
-	require.Len(t, moved, 1, "a width change moves that member alone:\n%s", out)
-	require.Equal(t, "MOVED m1 width=6 (was 4)", moved[0], "a width change moves that member alone:\n%s", out)
+	require.Empty(t, moved, "a width change moves nothing:\n%s", out)
 	after := ta.fleetRows()
 	require.Equal(t, "6", after["m1"]["width"], "widths: %v", after)
 	require.Equal(t, "4", after["m2"]["width"], "widths: %v", after)
@@ -271,7 +286,8 @@ func TestFleetSyncCheckPrintsTheDriftExitsTwoAndWritesNothing(t *testing.T) {
 	require.Empty(t, errs, "check with drift: exit %d %q", code, errs)
 	// m2 was added by the sync and is held by the probe, so width 0 leaves it
 	// held and down with nothing for the sync to write (no hold: it is held)
-	for _, want := range []string{"DRIFT width m1 has width 4 and the inventory says 5", "DRIFT add m3 is a member of the inventory and not of the fleet: add it at width 2", "FLEET-SYNC CHECK DRIFT drift=2 members=2"} {
+	// a width change is no drift: the sync writes no width (nova-config's alone)
+	for _, want := range []string{"DRIFT add m3 is a member of the inventory and not of the fleet: add it", "FLEET-SYNC CHECK DRIFT drift=1 members=2"} {
 		assert.Contains(t, out, want, "check lacks %q", want)
 	}
 	require.Equal(t, writes, ta.applies(), "--check wrote")
@@ -281,7 +297,7 @@ func TestFleetSyncCheckPrintsTheDriftExitsTwoAndWritesNothing(t *testing.T) {
 	err := jsonInto(raw, &rep)
 	require.NoError(t, err, "--json check: %v %+v", err, rep)
 	require.True(t, rep.Check, "--json check: %v %+v", err, rep)
-	require.Len(t, rep.Drift, 2, "--json check: %v %+v", err, rep)
+	require.Len(t, rep.Drift, 1, "--json check: %v %+v", err, rep)
 	require.Empty(t, rep.Moved, "--json check: %v %+v", err, rep)
 	// the sync writes exactly what the check printed, then the check is clean
 	ta.ok("fleet sync")
@@ -341,19 +357,20 @@ func TestFleetSyncLeavesTheCoordinatorsHold(t *testing.T) {
 	require.Contains(t, out, "NOTE m1", "the second sync")
 }
 
-// TestFleetSyncRefusesAWidthTheFleetCannotTake: a machine wider than the
-// fleet's maximum refuses the whole sync before anything is written.
-func TestFleetSyncRefusesAWidthTheFleetCannotTake(t *testing.T) {
+// TestFleetSyncNeverRefusesForAWidth: the sync keeps membership only and
+// writes no width (a width is nova-config's alone), so a machine row whose
+// width the deal cannot take is still a member; the deal reads its width as
+// not in nova-config and deals it nothing.
+func TestFleetSyncNeverRefusesForAWidth(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
 	inv.set("m1", 4)
 	inv.set("m2", sprint.MaxWidth+1)
-	writes := ta.applies()
-	code, _, errs := ta.do("fleet sync")
-	require.Equal(t, 1, code, "exit %d %q, writes %d -> %d", code, errs, writes, ta.applies())
-	require.Contains(t, errs, "m2: a width wants a whole number from 1 to 1024", "exit %d %q, writes %d -> %d", code, errs, writes, ta.applies())
-	require.Equal(t, writes, ta.applies(), "exit %d %q, writes %d -> %d", code, errs, writes, ta.applies())
-	require.Empty(t, ta.fleetRows(), "a refused sync added a member")
+	code, out, errs := ta.do("fleet sync")
+	require.Equal(t, 0, code, "exit %d %q %q", code, out, errs)
+	rows := ta.fleetRows()
+	require.NotNil(t, rows["m1"], "the fleet table: %v", rows)
+	require.NotNil(t, rows["m2"], "the fleet table: %v", rows)
 }
 
 // TestFleetSyncIsTheCoordinatorsAlone: another actor is refused, and
@@ -490,7 +507,7 @@ func TestFleetSyncIsAllOrNone(t *testing.T) {
 	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
 	require.NoError(t, err)
 	res, err := st.Run(context.Background(), store.FleetStep(sprint.FleetReq{Op: "sync", Who: "tester",
-		Sync: []sprint.SyncMember{{Name: "m1", Width: 4}, {Name: "m2", Width: sprint.MaxWidth + 1}}}))
+		Sync: []sprint.SyncMember{{Name: "m1", Width: 4}, {Name: "m 2", Width: 4}}}))
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Refused, "a sync with a refused member: moved %v refused %v", res.Moved, res.Refused)
 	require.Empty(t, res.Moved, "a sync with a refused member: moved %v refused %v", res.Moved, res.Refused)
@@ -518,10 +535,10 @@ func TestFleetSyncReleasesItsOwnHoldAndNotTheCoordinators(t *testing.T) {
 	code, out, _ := ta.do("fleet sync --check")
 	require.Equal(t, 2, code, "check: exit %d\n%s", code, out)
 	require.Contains(t, out, "DRIFT release m2 was held by the sync and is back in the inventory: release it", "check: exit %d\n%s", code, out)
-	require.Contains(t, out, "DRIFT width m2", "check: exit %d\n%s", code, out)
 	require.NotContains(t, out, "NOTE", "a hold the sync made is listed as the coordinator's")
 	out = ta.ok("fleet sync")
-	require.Contains(t, out, "MOVED m2 released, down until it beats, width=6 (was 4)", "sync")
+	require.Contains(t, out, "MOVED m2 released, down until it beats", "sync")
+	require.Equal(t, "6", ta.fleetRows()["m2"]["width"], "the width column shows nova-config's")
 	require.NotContains(t, out, "NOTE", "sync")
 	ta.ok("tick")
 	require.Equal(t, sprint.Up, ta.fleetRows()["m2"]["status"], "m2 did not come up when it beat")
@@ -606,15 +623,12 @@ func TestFleetSyncJSONWithARefusalKeepsTheRefusedKey(t *testing.T) {
 	var raw map[string]json.RawMessage
 	err := json.Unmarshal([]byte(out), &raw)
 	require.NoError(t, err, "exit %d %v\n%s", code, err, out)
-	require.Equal(t, 1, code, "exit %d %v\n%s", code, err, out)
+	require.Equal(t, 0, code, "a width is no refusal: exit %d %v\n%s", code, err, out)
 	var rep syncReport
 	require.NoError(t, json.Unmarshal([]byte(out), &rep))
 	_, ok := raw["refused"]
-	require.True(t, ok, "the refusal is not in the report:\n%s", out)
-	require.Len(t, rep.Refused, 1, "the refusal is not in the report:\n%s", out)
-	require.Contains(t, rep.Refused[0], "m2", "the refusal is not in the report:\n%s", out)
-	require.Empty(t, rep.Moved, "a refused sync wrote: %s", out)
-	require.Empty(t, ta.fleetRows(), "a refused sync wrote: %s", out)
+	require.True(t, ok, "the refused key is not in the report:\n%s", out)
+	require.Empty(t, rep.Refused, "a width is no refusal:\n%s", out)
 }
 
 // TestFleetSyncCheckIsUsageWhenNoOneActs: a missing actor is a usage refusal,

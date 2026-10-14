@@ -66,12 +66,22 @@ type memState struct {
 	// after its cursor: it is handed the time the wait may take and returns
 	// when it has passed (a test's clock steps by it, or appends a line). Nil
 	// waits on the wall clock for a line or the time, whichever comes first.
-	LogWait   func(d time.Duration)
-	logged    chan struct{}              // closed, and replaced, by every commit that appends to a log
-	providers map[string]sprint.Provider // applied provider declarations (routes.go)
-	routes    []sprint.Route             // the model tiers' routes (routes.go)
-	tiers     map[string][]string        // the tiers' route arrays (routes.go)
-	bars      Bars                       // the sprint row's nova-decide bars (routes.go)
+	LogWait func(d time.Duration)
+	logged  chan struct{} // closed, and replaced, by every commit that appends to a log
+	// machineWidth is the width a test rig's nova-config names for every machine
+	// whose machine:<m> hash no setter wrote or deleted (presence.go,
+	// DefaultMachineWidth); "" (never set outside a test) is none.
+	machineWidth string
+	machineGone  map[string]bool // machine:<m> hashes a test deleted (DeleteMachineWidth)
+	// machineWidths and friendWidths are nova-config's machine:<m> and
+	// friend:<f>:desired width fields a test gave the twin (SetMachineWidth,
+	// SetFriendDesiredWidth): nova-config's keys, never the sprint's records
+	machineWidths map[string]string
+	friendWidths  map[string]string
+	providers     map[string]sprint.Provider // applied provider declarations (routes.go)
+	routes        []sprint.Route             // the model tiers' routes (routes.go)
+	tiers         map[string][]string        // the tiers' route arrays (routes.go)
+	bars          Bars                       // the sprint row's nova-decide bars (routes.go)
 }
 
 // memLog is one epoch's sprint keys.

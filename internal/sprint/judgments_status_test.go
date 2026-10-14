@@ -42,14 +42,15 @@ func newTransitionRig(t *testing.T) *transitionRig {
 
 func newTransitionRigWithPronouns(t *testing.T, pronouns string) *transitionRig {
 	t.Helper()
-	r := &transitionRig{t: t, m: store.NewMem(), ctx: context.Background(), now: transitionT0, member: true}
+	r := &transitionRig{t: t, m: configMem(), ctx: context.Background(), now: transitionT0, member: true}
 	r.st = r.open()
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro", Pronouns: pronouns}})
 	require.NoError(t, err)
 	r.beat()
-	res, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	r.m.SetMachineWidth("m1", "2") // nova-config's width for m1
+	res, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	require.NoError(t, err)
 	require.Empty(t, res.Refused)
 	_, _, _, err = r.st.SetMachine(r.ctx, true)

@@ -78,7 +78,7 @@ type backRig struct {
 
 func newBackRig(t *testing.T, cards int) *backRig {
 	t.Helper()
-	m := store.NewMem()
+	m := configMem()
 	r := &backRig{t: t, mem: m, ctx: context.Background(), now: holdT0, beats: map[string]bool{"m1": true, "m2": true}, adopts: newFakeAdopter("v1.2.0")}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
@@ -91,7 +91,8 @@ func newBackRig(t *testing.T, cards int) *backRig {
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
 	r.beat()
 	for _, member := range []string{"m1", "m2"} {
-		_, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: member, Width: 2}))
+		m.SetMachineWidth(member, "2") // nova-config's width for the member
+		_, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: member}))
 		require.NoError(t, err)
 	}
 	_, err := r.st.Run(r.ctx, store.AddStep(sprint.AddReq{Stream: "s1", Count: cards}))
@@ -220,7 +221,9 @@ func TestAMachineBackFromDownAdoptsTheLatestBeforeItIsDealt(t *testing.T) {
 		assert.Equal(t, sprint.Up, ctl.F("status"), "the installed version read back is the release: m1 is up")
 		assert.Equal(t, sprint.Up, r.row("m1"), "the fleet table shows it up")
 		assert.Empty(t, ctl.F("held"), "the hold is gone")
-		assert.Equal(t, "2", ctl.F(sprint.FieldWidth), "at its row's width")
+		back, err := r.st.Load(r.ctx, store.All, nil)
+		require.NoError(t, err)
+		assert.Equal(t, 2, back.Width("m1"), "at its nova-config width")
 		assert.Equal(t, []string{"m1 is back: v1.1.0 -> v1.2.0"}, r.notes(sprint.NMemberBack), "one note naming the versions before and after")
 		r.tick(time.Second)
 		r.tick(time.Second)

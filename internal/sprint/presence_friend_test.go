@@ -35,7 +35,7 @@ var presenceT0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 
 func newPresenceRig(t *testing.T) *presenceRig {
 	t.Helper()
-	m := store.NewMem()
+	m := configMem()
 	r := &presenceRig{t: t, ctx: context.Background(), now: presenceT0}
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },

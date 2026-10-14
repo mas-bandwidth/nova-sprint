@@ -1178,6 +1178,15 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if req.Friends, err = pinned.friendSeats(ctx, &first, now); err != nil {
 		return last, err
 	}
+	// the members' widths as nova-config's machine:<m> hash writes them, read once a
+	// tick (sprint.Snapshot.Widths): the deal, the level and the check plan on this
+	// reading, so a config change applies at the next tick with no restart and no sync.
+	if machineWidths, _, err := pinned.Widths(ctx, first.Members(), nil); err != nil {
+		return last, err
+	} else {
+		req.Widths = machineWidths
+		first.Widths = machineWidths
+	}
 	// each friend's session for the coordinator's pass (sprint.TickCoordinatorPass): every
 	// friend of the roster, whether or not she holds a card; a sprint with no friend reads
 	// the roster alone
@@ -1435,6 +1444,13 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			v.Friends = t.req.Friends
 			view = &v
 		}
+		if view != nil && view.Widths == nil && t.req.Widths != nil {
+			// the members' widths are the tick's, read once: the deal, the level and
+			// the check plan on them (sprint.Snapshot.Widths)
+			v := *view
+			v.Widths = t.req.Widths
+			view = &v
+		}
 		if view != nil && view.Routes == nil && routesPart(part.Name) {
 			// a part that plans with the routes asks what it would do with them: the
 			// deal's judgment of reads whose tier no route serves (route.go,
@@ -1530,6 +1546,8 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		// the deal and the ask draw from the routes (a read card's route,
 		// route.go readRouteOf), and the check asks what the next deal does
 		step.Routes, step.RouteCache = routesPart(part.Name), &t.routes
+		// every part plans on the members' widths: the tick's one read, shared
+		step.WidthsGiven = t.req.Widths
 		// the ask, and the parts that ask what the ask does, plan with the readers' states
 		step.Readers = part.Name == "ask" || part.Name == "check" || part.Name == sprint.PartLevelReads
 		step.ReaderStates = t.readers
@@ -2024,6 +2042,9 @@ func (r readOnly) ReadSet(ctx context.Context, table string, ids []string) (ntab
 }
 func (r readOnly) Apply(context.Context, ntable.BatchManifest) (ntable.Receipt, error) {
 	return ntable.Receipt{}, ErrReadOnly
+}
+func (r readOnly) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	return r.b.ConfigWidths(ctx, members, friends)
 }
 func (r readOnly) Create(context.Context, ntable.Table) error       { return ErrReadOnly }
 func (r readOnly) RowsAdd(context.Context, string, []string) error  { return ErrReadOnly }

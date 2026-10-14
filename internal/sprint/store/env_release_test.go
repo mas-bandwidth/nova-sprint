@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -13,7 +14,8 @@ import (
 // environment, the way internal/sprint's env_fault_test.go does (tla/ProviderBudget.tla).
 func envFaultHeld(t *testing.T, h *harness) {
 	t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(1))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
 	c := h.snap().Fleet.Card(h.snap().Work.Card("s1-1").F("work"))
@@ -74,7 +76,8 @@ func TestFleetUpProbePassedReleasesAnEnvironmentHeldMember(t *testing.T) {
 func TestFleetUpProbePassedKeepsACoordinatorsHold(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(1))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
 	c := h.snap().Fleet.Card(h.snap().Work.Card("s1-1").F("work"))

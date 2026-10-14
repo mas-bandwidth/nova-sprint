@@ -186,7 +186,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 
 		// Run through standard coordinator/worker lifecycle to queue canned card in merge
 		commands := [][]string{
-			{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", redisAddr, "--actor", "boss"},
+			{"init", "--readers", "reader-a", "--members", "m1", "--redis", redisAddr, "--actor", "boss"},
 			{"add", "--stream", "selftest", "--count", "1", "--brief-file", briefPath, "--redis", redisAddr, "--actor", "boss"},
 			{"start", "--redis", redisAddr, "--actor", "boss"},
 			{"tick", "--redis", redisAddr, "--actor", "boss"},

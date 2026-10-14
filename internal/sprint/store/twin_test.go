@@ -207,7 +207,7 @@ func TestAWritingPartsExchangesArePinned(t *testing.T) {
 			got[k] = d
 		}
 	}
-	want := map[string]int{"fence": 2, "shapes": 1, "open": 1, "coord": 1, "kv": 1, "changes": 1, "readset": 1, "queue": 1, "acquire": 1, "apply": 1, "release": 1} // kv: the seat record, read with the coordinator (the seat's generation)
+	want := map[string]int{"fence": 2, "shapes": 1, "open": 1, "coord": 1, "kv": 1, "widths": 1, "changes": 1, "readset": 1, "queue": 1, "acquire": 1, "apply": 1, "release": 1} // kv: the seat record, read with the coordinator (the seat's generation); widths: nova-config's machine:<m> widths, read with every snapshot
 	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "a writing part's exchanges: %v, want %v", got, want)
 }
 

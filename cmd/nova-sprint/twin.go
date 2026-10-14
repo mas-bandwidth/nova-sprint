@@ -116,6 +116,14 @@ simulation finishes that way on purpose.
 	return b.String()
 }
 
+// TwinWidth is the width a twin's stand-in nova-config names for every
+// machine. A twin is a file for learning and tests, never a fleet, and holds
+// no nova-config: a store on Redis reads each member's width from nova-config's
+// machine:<m> hash alone (internal/sprint/width.go), and a member whose hash
+// is missing is dealt nothing. A twin stands in for a nova-config that names
+// every machine at this width, so a lap on a twin deals.
+const TwinWidth = 64
+
 // twin is one open twin file: the store and the bytes last loaded or saved,
 // so a verb that changed nothing writes nothing.
 type twin struct {
@@ -165,6 +173,8 @@ func (a *app) twinBackend(addr string) (store.Backend, error) {
 		return nil, errors.New("a twin is a file: --redis mem:<file> (a store in memory alone would be gone when this command ends); the twin is for learning and tests, not for a fleet")
 	}
 	t := &twin{path: path, mem: store.NewMem()}
+	// a twin is no fleet and has no nova-config (TwinWidth)
+	t.mem.DefaultMachineWidth(strconv.Itoa(TwinWidth))
 	doc, err := os.ReadFile(path)
 	switch {
 	case err == nil:

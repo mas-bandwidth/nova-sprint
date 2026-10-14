@@ -314,7 +314,8 @@ func TestReadyOverWhyDropsTheFiguresButKeepsTheCause(t *testing.T) {
 func TestAReadyCardBlockedOnlyOnRoomRaisesFleetUp(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
+	w.setWidth("m1", 1)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
 	// fill m1's room (DealAhead times width 1 = 2): one working, one ready behind it

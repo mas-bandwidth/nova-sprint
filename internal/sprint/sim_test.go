@@ -22,6 +22,8 @@ type world struct {
 	// order: the stores rewrite the note by its id, and so does the world
 	updates []Note
 	seq     int
+	// unset is the members whose machine:<m> width a test took away (noWidth)
+	unset map[string]bool
 }
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -38,6 +40,54 @@ func newWorld(t testing.TB, readers ...string) *world {
 func (w *world) readersTable() { w.s.Work.SetProp(PropReadCards, SwitchOff) }
 
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
+
+// DefaultWidth is the width a test world's nova-config names for every member
+// a test gives no width of its own (configWidths): a test stand-in, never the
+// engine's (a width is nova-config's alone, width.go).
+const DefaultWidth = 64
+
+// setWidth gives a member its config width as nova-config's machine:<m> hash
+// writes it, read by the deal and the level on the snapshot.
+func (w *world) setWidth(member string, width int) {
+	if w.s.Widths == nil {
+		w.s.Widths = map[string]string{}
+	}
+	w.s.Widths[member] = strconv.Itoa(width)
+}
+
+// configWidths is the world's one width helper: every member with a control
+// card whose machine:<m> width the test did not write reads DefaultWidth, as
+// a nova-config that names every machine would hold it. The world calls it
+// before every plan it applies, so a test that brings members up keeps its
+// old room; a test of one width writes it (setWidth), and one of a missing
+// width marks it (noWidth).
+func (w *world) configWidths() {
+	if w.s.Widths == nil {
+		w.s.Widths = map[string]string{}
+	}
+	for _, m := range w.s.Members() {
+		if _, ok := w.s.Widths[m]; !ok && !w.unset[m] {
+			w.s.Widths[m] = strconv.Itoa(DefaultWidth)
+		}
+	}
+}
+
+// noWidth takes a member's machine:<m> width away: its width is not in
+// nova-config.
+func (w *world) noWidth(member string) {
+	if w.unset == nil {
+		w.unset = map[string]bool{}
+	}
+	w.unset[member] = true
+	delete(w.s.Widths, member)
+}
+
+// up brings a member up at the world's default config width (a test that
+// names no width).
+func (w *world) up(member string) {
+	w.t.Helper()
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: member}))
+}
 
 // do applies a plan and fails on any refusal unless allowed. The plan is held
 // to the lifecycle first, as the store holds every plan before it applies it
@@ -96,6 +146,8 @@ func (w *world) do(p Plan) Plan {
 	for _, tb := range []*Table{w.s.Work, w.s.Readers, w.s.Merge, w.s.Fleet} {
 		tb.cells, tb.byPrimary = nil, nil
 	}
+	// the next plan reads every member's config width (configWidths)
+	w.configWidths()
 	return p
 }
 

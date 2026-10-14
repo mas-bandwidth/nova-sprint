@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,7 +22,8 @@ func TestTheReclaimLeavesACardWhoseRouteRests(t *testing.T) {
 	h.mu.Lock()
 	h.live = []string{"m1"}
 	h.mu.Unlock()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.m.SetRoutes([]sprint.Route{providerRoute("p-flash", "flash", "p")})
 	h.addReady("s1", 4, briefOf("flash", ""))
 	h.must(DealStep(sprint.DealReq{}))

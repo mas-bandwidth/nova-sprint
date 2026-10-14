@@ -22,7 +22,7 @@ import (
 
 // THE HURT (2026-10-04, 3:21 to 3:37 PM ET, the Studio): a verb under test that
 // runs "this binary" (selftest land with no --binary: os.Executable) ran THIS TEST
-// BINARY with CLI words, `init --readers reader-a --members m1:1 --redis mem:...`.
+// BINARY with CLI words, `init --readers reader-a --members m1 --redis mem:...`.
 // A Go test binary takes words it does not know as no flags at all and runs the
 // whole suite again, which reached the same verb, which ran the binary again: a
 // chain 289 processes deep, each the parent of the next, until it was killed.
@@ -154,7 +154,7 @@ func envWithout(env []string, drop []string, extra ...string) []string {
 func TestTheIncidentWordsRunTheCLIAndNeverTheSuite(t *testing.T) {
 	t.Parallel()
 	twin := "mem:" + filepath.Join(t.TempDir(), "sprint.twin")
-	words := []string{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", twin, "--actor", "boss"}
+	words := []string{"init", "--readers", "reader-a", "--members", "m1", "--redis", twin, "--actor", "boss"}
 	depthEnv := testbin.DepthEnv(reexecTool)
 	marks := []string{reexecCLIEnv, depthEnv}
 	base := envWithout(os.Environ(), marks)

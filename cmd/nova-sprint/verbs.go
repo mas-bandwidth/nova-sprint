@@ -52,7 +52,7 @@ var verbs []verb
 
 func init() {
 	verbs = []verb{
-		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
+		{"init", "[--readers <a,b,...>] [--members <m1,m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1,m2", (*app).cmdInit},
 		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>] [--plan <dir>: print the plan review's overlap table and exit 0 without admitting]", "add --stream s1 --count 100", (*app).cmdAdd},
 		{"quack", "--streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]", "quack --streams a,b --count 2 --repo https://example.com/quack.git", (*app).cmdQuack},
 		{"preflight", "--brief-dir <dir> [--repo-dir <dir>]", "preflight --brief-dir .", (*app).cmdPreflight},
@@ -346,7 +346,7 @@ example:
 
 // dayLines is the coordinator's day in five lines, the banner's example: block.
 var dayLines = []string{
-	"nova-sprint init --readers reader-a,reader-b --members m1:8",
+	"nova-sprint init --readers reader-a,reader-b --members m1",
 	"nova-sprint add --stream s1 --count 3 --brief-file brief.txt",
 	"nova-sprint start",
 	"nova-sprint inbox --wait",
@@ -425,6 +425,7 @@ one answer to each judgment (every one prints its own, filled in):
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
   STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
   a member's takes end with no model call    ack <note> --reason '<what you saw to on the member>'  (the machine's hold of it names this judgment as its cause: the tick releases the member in the step that sees it answered)
+  width not in nova-config    nova-config machine set <m> --width <n> --actor <name>, then nova-config apply; then ack <note> --reason '<the width set>'  (the deal deals the member nothing until its machine:<m> width is a whole number; a width is nova-config's alone)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
 (failed, bound, late, conflict, brief-defect, base-gate, read-broken); nova-sprint rules prints what
@@ -1174,7 +1175,7 @@ func tookSince(ctx context.Context, st *store.Store) string {
 func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("init")
 	readers := fs.String("readers", "", "the readers' rows, comma separated")
-	members := fs.String("members", "", fmt.Sprintf("fleet members to bring up, comma separated, each <name> or <name>:<width>, its width the most work cards it runs at once; it holds %d times that, ready and working (default %d)", sprint.DealAhead, sprint.DefaultWidth))
+	members := fs.String("members", "", "fleet members to bring up, comma separated, each <name>; a width is nova-config's alone (nova-config machine set <m> --width <n>)")
 	coordinator := fs.String("coordinator", "", "the sprint's coordinator, the one actor who releases sentinels (default: the actor); the seat then moves by coordinator <name>")
 	owner := fs.String("owner", "", "the sprint's owner, who may give the seat and whose name a take of it carries (coordinator --take --approved-by); set once, never changed (else "+OwnerEnv+")")
 	rules := fs.String("rules", "", "the child rules file every brief is held to: one required sentence per line, its path recorded for the sprint (default: the built-in general rules; add --rules <file> overrides it for one add)")
@@ -1292,7 +1293,7 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	for _, m := range specs {
 		// init bootstraps the fleet: each member it sets up has been probed by the
 		// machine's own setup, so fleet up's new-member probe is passed for it
-		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, m.Width, false, 0, false, "", sprint.EnvProbePassed), steps, stderr); code != 0 {
+		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, 0, false, 0, false, "", sprint.EnvProbePassed), steps, stderr); code != 0 {
 			return code
 		}
 		memberNames = append(memberNames, m.Name)
@@ -3624,7 +3625,7 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if op == "up" {
 		probe = fs.String("probe", "", "the member's own environment probe's result -- its push-credential probe and its harness check, run on the member: `passed` when it passed, else the reason it failed. fleet up refuses a member whose last environment fault is not cleared until its probe passes, and runs it before accepting width for a member the sprint does not know; a pass clears the fault")
 		harnesses = fs.String("harnesses", "", "the headless harnesses on the member's PATH, a comma list of "+strings.Join(harness.Headless, ", ")+" (none clears them): the deal draws a route that runs under one only for a member that names it; default: as it is, none for a new member")
-		width = fs.String("width", "", fmt.Sprintf("the member's width: the most work cards it runs at once; the deal holds it at %d times that, ready and working; 1 to %d (default: as it is, %d for a new member); 0 drains the member: no new deals, its untaken ready cards are levelled away, its working cards finish (fleet down deals them again elsewhere)", sprint.DealAhead, sprint.MaxWidth, sprint.DefaultWidth))
+		width = fs.String("width", "", "refused: a width is nova-config's alone (nova-config machine set <m> --width <n>, then nova-config apply)")
 		deadline = fs.String("deadline", "", fmt.Sprintf("pin the deadline every card dealt to the member gets, a duration (45m, 2700s); default takes the pin off: each card's own deadline, or %d times the member's median run wall over its last %d ok attempts, whichever is larger", sprint.DeadlineK, sprint.DeadlineSamples))
 	}
 	pos, err := parse(fs, args)
@@ -3636,11 +3637,8 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	}
 	w, drain := 0, false
 	if width != nil && *width != "" {
-		if drain = strings.TrimSpace(*width) == sprint.DrainWidth; !drain {
-			if w, err = sprint.ParseWidth(*width); err != nil {
-				return refuse(stderr, name, "--width: "+err.Error())
-			}
-		}
+		// a width is nova-config's alone: refuse, nothing written
+		return refuse(stderr, name, "a width is nova-config's alone: nova-config machine set <m> --width "+*width+" --actor <name>, then nova-config apply")
 	}
 	d, off := 0, false
 	if deadline != nil && *deadline != "" {

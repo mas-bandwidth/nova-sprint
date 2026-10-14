@@ -92,6 +92,9 @@ func (w *world) apply(p sprint.Plan) error {
 			}
 		}
 	}
+	// the model's nova-config names every member at its Width: the next plan
+	// reads it (refmodel.ModelWidths)
+	w.s.Widths = refmodel.ModelWidths(w.s)
 	return nil
 }
 

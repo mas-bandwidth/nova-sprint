@@ -21,7 +21,8 @@ func rbWorld(t *testing.T, members ...string) *world {
 	t.Helper()
 	w := newWorld(t)
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+		w.setWidth(m, 1)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
@@ -196,8 +197,10 @@ func TestRebalanceNeverMovesACardToAUnitItLeft(t *testing.T) {
 func TestTheRebalanceMovesTheExcessWorkOfAPartlyIdleUnit(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
+	w.setWidth("m1", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.setWidth("m2", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
 	w.s.Work.SetRows([]string{"s1"})
 	for i := 1; i <= 2; i++ { // m1's two lanes work, two are free: its excess is two of the four
@@ -220,7 +223,8 @@ func TestTheRebalanceMovesWorkReadsAndFixAlike(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	for _, m := range []string{"m1", "m2", "m3"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 8}))
+		w.setWidth(m, 8)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true}}
@@ -265,7 +269,8 @@ func TestTheRebalanceMovesWorkReadsAndFixAlike(t *testing.T) {
 	// attempt's worker, attemptUnit).
 	w = newWorld(t)
 	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 2}))
+		w.setWidth(m, 2)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true}}
@@ -293,9 +298,11 @@ func TestTheRebalanceRollsItsTargets(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	for _, m := range []string{"m1", "m2", "m3", "m4"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 4}))
+		w.setWidth(m, 4)
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m5", Width: 8}))
+	w.setWidth("m5", 8)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m5"}))
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
 	w.s.Work.SetRows([]string{"s1"})
 	for i := 1; i <= 8; i++ {

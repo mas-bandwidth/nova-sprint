@@ -67,8 +67,10 @@ func TestMirrorNeedEndsPastTheWindow(t *testing.T) {
 func TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "b1", Width: 4}))
+	w.setWidth("studio", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio"}))
+	w.setWidth("b1", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "b1"}))
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true}}
 
 	// add a card for a repository no member carries: add prints the MIRROR line, and the

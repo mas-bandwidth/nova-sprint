@@ -43,7 +43,8 @@ func TestFleetSyncRemovesAMemberWithNoMachineRow(t *testing.T) {
 		inv.set("m2", 6)
 		out = ta.ok("fleet sync")
 		assert.Contains(t, out, "NOTE m2 rejoins the fleet")
-		assert.Contains(t, out, "MOVED m2 released, down until it beats, width=6 (was 4)")
+		assert.Contains(t, out, "MOVED m2 released, down until it beats")
+		assert.Equal(t, "6", ta.fleetRows()["m2"]["width"], "at its nova-config width")
 		ta.ok("tick")
 		assert.Equal(t, sprint.Up, ta.fleetRows()["m2"]["status"], "m2 back up when it beats")
 		assert.Contains(t, ta.ok("fleet sync"), "nothing to do")
@@ -111,7 +112,8 @@ func TestFleetSyncRemovesAMemberWithNoMachineRow(t *testing.T) {
 		rows := ta.fleetRows()
 		require.NotNil(t, rows["m2"], "fleet up of a removed member: %v", rows)
 		assert.Equal(t, sprint.Up, rows["m2"]["status"])
-		assert.Equal(t, "4", rows["m2"]["width"])
+		// its machine row is gone: no width is in nova-config, so none is shown (the deal deals it nothing)
+		assert.Empty(t, rows["m2"]["width"])
 	})
 }
 
@@ -137,22 +139,21 @@ func TestFleetSyncRemovalDeletesTheBeat(t *testing.T) {
 	assert.NotContains(t, beats, "m2", "the removed member's beat is deleted")
 }
 
-// TestFleetSyncResolvesTheDefaultWidthFromTheBeat: a machine row with no width
-// has the default, half the cores the machine's beat reports (the owner,
-// 2026-10-02: "default is CPUs/2"); the sync writes the resolved number, which
-// the fleet table shows as a number. A default row whose machine has not beaten
-// is no member yet, and a NOTE says it joins when it beats.
-func TestFleetSyncResolvesTheDefaultWidthFromTheBeat(t *testing.T) {
+// TestFleetSyncResolvesNoWidthFromTheBeat: a machine row with no width names
+// no width in nova-config, and a width is nova-config's alone: the sync
+// resolves none from the cores its beat reports (the old CPUs/2 default is
+// gone) and writes no width; a NOTE names the remedy, nova-config machine set.
+func TestFleetSyncResolvesNoWidthFromTheBeat(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
 	inv.set("m1", 4)
 	inv.setDefault("m3")
 	out := ta.ok("fleet sync")
-	assert.Contains(t, out, "NOTE m3 has the default width")
-	assert.Nil(t, ta.fleetRows()["m3"], "no beat, no cores: m3 waits")
+	assert.Contains(t, out, "NOTE m3 names no width in nova-config")
+	assert.Contains(t, out, "nova-config machine set m3 --width <n>")
+	assert.Nil(t, ta.fleetRows()["m3"], "no width: m3 is not added")
 	ta.ok("fleet beat m3 --cores 32 --load 0")
 	out = ta.ok("fleet sync")
-	assert.Contains(t, out, "MOVED m3 added, held until its own probe passes (fleet up m3 --probe passed) width=16")
-	assert.Equal(t, "16", ta.fleetRows()["m3"]["width"], "32 cores: width 16")
-	assert.Contains(t, ta.ok("fleet sync"), "nothing to do")
+	assert.Contains(t, out, "NOTE m3 names no width in nova-config", "the cores resolve no width")
+	assert.Nil(t, ta.fleetRows()["m3"], "32 cores make no width: m3 is still not added")
 }

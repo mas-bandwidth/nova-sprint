@@ -35,8 +35,8 @@ func TestFleetUpWidthZeroDrainsAMember(t *testing.T) {
 	}
 	require.NotEmpty(t, working, "the take left no working card: %+v", q.Cards)
 
-	out := ta.ok("fleet up m1 --width 0")
-	assert.Contains(t, out, "MOVED m1 up width=0 (drains: no new deals, its working cards finish)")
+	// nova-config's width 0 drains m1 (the rig writes machine:m1, configWidths)
+	ta.ok("fleet up m1 --width 0")
 	ta.ok("tick")
 	ta.json("queue --as m1", &q)
 	// m2 is at its width (held 4, width 4): it has no free lane, so the level

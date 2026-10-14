@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ type dealRig struct {
 
 func newDealRig(t *testing.T) *dealRig {
 	t.Helper()
-	m := store.NewMem()
+	m := configMem()
 	r := &dealRig{t: t, m: m, ctx: context.Background(), now: holdT0}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
@@ -57,7 +58,8 @@ func newDealRig(t *testing.T) *dealRig {
 
 func (r *dealRig) up(name string, width int) {
 	r.t.Helper()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name, Width: width}))
+	r.m.SetMachineWidth(name, strconv.Itoa(width))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name}))
 	r.members = append(r.members, name)
 }
 

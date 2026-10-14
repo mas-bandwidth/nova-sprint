@@ -68,6 +68,8 @@ var firstCell = map[string]string{sprint.Work: sprint.Waiting, sprint.Readers: s
 func loadSample(tb testing.TB, s sample) *loaded {
 	tb.Helper()
 	l := &loaded{tb: tb, ctx: context.Background(), m: store.NewMem()}
+	// the model's nova-config names every machine at its Width (refmodel.ModelWidths)
+	l.m.DefaultMachineWidth(strconv.Itoa(refmodel.Width))
 	t := s.snap.Tables
 	n := 0
 	l.st = &store.Store{B: l.m, Names: sprint.Names{Prefix: "d-"}, Actor: t.Actor,

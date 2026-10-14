@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 type holdRig struct {
 	t   *testing.T
 	st  *store.Store
+	m   *store.Mem
 	ctx context.Context
 	mu  sync.Mutex
 	now time.Time
@@ -39,8 +41,8 @@ func friendsBrief(who string) string {
 
 func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	t.Helper()
-	m := store.NewMem()
-	r := &holdRig{t: t, ctx: context.Background(), now: holdT0}
+	m := configMem()
+	r := &holdRig{t: t, m: m, ctx: context.Background(), now: holdT0}
 	n := 0
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
@@ -56,8 +58,10 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(2))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	r.m.SetMachineWidth("m2", strconv.Itoa(2))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: s1}))
 	var cards []sprint.CardAdd
 	for i := range f1 {

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -150,7 +151,8 @@ func flashSetup(t *testing.T, h *harness, n int) {
 		require.NoError(t, h.st.SetReaderAway(h.ctx, rd, true, "tester"))
 	}
 	for _, m := range []string{"m1", "m2"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: sprint.DefaultWidth}))
+		h.m.SetMachineWidth(m, strconv.Itoa(testWidth))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: n}))
 	h.startMachine()
@@ -306,7 +308,8 @@ func TestAHoldAndAReworkDealNothingToADrainingMember(t *testing.T) {
 	h.live = []string{"m1", "m2", "m3"}
 	h.beat()
 	h.setup(6)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Width: sprint.DefaultWidth}))
+	h.m.SetMachineWidth("m3", strconv.Itoa(testWidth))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	h.startMachine()
 	h.machine()
 	s := h.snap()

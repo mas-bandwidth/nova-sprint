@@ -7,11 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSyncProblemsRefusesWhatTheFleetRefuses: a name or width fleet up would
-// refuse, and a name twice, are refused whole.
+// TestSyncProblemsRefusesWhatTheFleetRefuses: a name fleet up would refuse,
+// and a name twice, are refused whole; a width never is (the sync writes
+// none: a width is nova-config's alone).
 func TestSyncProblemsRefusesWhatTheFleetRefuses(t *testing.T) {
 	t.Parallel()
-	ps := SyncProblems([]SyncMember{{"m1", 4}, {"m2", MaxWidth}})
+	ps := SyncProblems([]SyncMember{{"m1", 4}, {"m2", MaxWidth}, {"m3", 0}})
 	require.Empty(t, ps, "a valid sync: %v", ps)
 	ps = SyncProblems(nil)
 	require.Empty(t, ps, "an empty sync holds the fleet and is valid: %v", ps)
@@ -20,8 +21,6 @@ func TestSyncProblemsRefusesWhatTheFleetRefuses(t *testing.T) {
 		say  string
 	}{
 		{[]SyncMember{{"m 1", 4}}, "a member name wants"},
-		{[]SyncMember{{"m1", 0}}, "a width wants a whole number from 1"},
-		{[]SyncMember{{"m1", MaxWidth + 1}}, "a width wants a whole number from 1"},
 		{[]SyncMember{{"m1", 1}, {"m1", 2}}, "m1 is named twice"},
 	} {
 		ps = SyncProblems(c.want)
@@ -37,8 +36,7 @@ func TestDriftSaysWhatASyncWouldWrite(t *testing.T) {
 		d   Drift
 		say string
 	}{
-		{Drift{Member: "m1", Kind: DriftAdd, To: 4}, "m1 is a member of the inventory and not of the fleet: add it at width 4"},
-		{Drift{Member: "m1", Kind: DriftWidth, From: 4, To: 6}, "m1 has width 4 and the inventory says 6"},
+		{Drift{Member: "m1", Kind: DriftAdd}, "m1 is a member of the inventory and not of the fleet: add it"},
 		{Drift{Member: "m1", Kind: DriftHold}, "m1 is a member of the fleet and not of the inventory: hold it down"},
 	} {
 		got := c.d.Line()
@@ -51,8 +49,8 @@ func TestDriftSaysWhatASyncWouldWrite(t *testing.T) {
 func syncHeld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{"m1", DefaultWidth}}, Machines: []string{"m1", "m2"}}))
 	ctl := w.s.MemberCtl("m2")
 	require.NotEmpty(t, ctl.F("held"), "m2 is not held by the sync: %v", ctl.Fields)
@@ -68,7 +66,7 @@ func syncHeld(t *testing.T) *world {
 func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
@@ -83,13 +81,13 @@ func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
 
 // TestFleetUpASyncAddedMemberNeedsItsProbe: fleet up of a member the sync added
 // is refused in the new-member words until its own probe passes; with the probe
-// passed the member comes up at the sync's width, its hold lifted, and is dealt
-// to (fleetStepPlan, steps_work.go; docs/SPEC-SPRINT.md section 5, the fleet;
+// passed the member comes up, its hold lifted, and is dealt to at its
+// nova-config width (the sync writes no width) (fleetStepPlan, steps_work.go; docs/SPEC-SPRINT.md section 5, the fleet;
 // tla/ProviderBudget.tla, NewMemberProbed).
 func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", 3}},
@@ -104,7 +102,7 @@ func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 	w.must(p)
 	require.Contains(t, w.s.UpMembers(), "m9", "the passed probe brings it up")
 	ctl := w.s.MemberCtl("m9")
-	assert.Equal(t, "3", ctl.F(FieldWidth), "at the sync's width")
+	assert.Empty(t, ctl.F(FieldWidth), "the sync writes no width: a width is nova-config's alone")
 	assert.Empty(t, ctl.F("held"), "the probe hold is lifted")
 	assert.Empty(t, ctl.F(FieldHeldBy), "the mark is cleared")
 	assert.Empty(t, ctl.F(FieldHeldReason), "the reason is cleared")
@@ -120,7 +118,7 @@ func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 func TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
 		Machines: []string{"m1", "m9"}}))
@@ -142,7 +140,7 @@ func TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark(t *testing.T) {
 func TestASecondSyncAfterAProbeAddWritesNothing(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	sync := FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
 		Machines: []string{"m1", "m9"}}
@@ -212,7 +210,7 @@ func TestTheSyncsReleaseClearsItsMark(t *testing.T) {
 func TestAHoldClearsAStaleMark(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	ctl := w.s.MemberCtl("m1")
 	w.must(Plan{Units: []Unit{{Key: CtlID("m1"), Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldHeldBy: HeldBySync}))}}}})
 	require.Equal(t, HeldBySync, w.s.MemberCtl("m1").F(FieldHeldBy), "the stale mark is not set: %v", w.s.MemberCtl("m1").Fields)
@@ -231,12 +229,12 @@ func TestAHoldClearsAStaleMark(t *testing.T) {
 func TestALiveFinishedCardKeepsAMemberWithNoMachineRow(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.up("m1")
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 	w.must(Deal(w.s, DealReq{}))
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
 	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "tests red"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m2")
 	sync := FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{"m2", DefaultWidth}}, Machines: []string{"m2"}}
 	require.Equal(t, []Drift{{Member: "m1", Kind: DriftHold}}, FleetDrift(w.s, sync.Sync, sync.Machines), "s1-1, in review, reads its failed card on m1")
 	w.must(FleetStep(w.s, sync))

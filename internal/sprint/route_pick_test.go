@@ -27,8 +27,10 @@ func TestAZeroLandingRouteGetsAFloorShareOfTheDeal(t *testing.T) {
 		{Name: "flash-b", Tier: cardhdr.RouteFlash, Provider: "q", Model: "b", Enabled: true},
 	}
 	s.Tiers = map[string][]string{cardhdr.RouteFlash: {"flash-a", "flash-b"}}
-	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 500}))
-	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 500}))
+	w.setWidth("m1", 500)
+	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.setWidth("m2", 500)
+	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 
 	seedOutcomes(s)
 
@@ -60,7 +62,8 @@ func TestAZeroLandingRouteGetsAFloorShareOfTheDeal(t *testing.T) {
 		{Name: "flash-b", Tier: cardhdr.RouteFlash, Provider: "q", Model: "b", Enabled: true},
 	}
 	s.Tiers = map[string][]string{cardhdr.RouteFlash: {"flash-a", "flash-b"}}
-	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 100}))
+	w.setWidth("m1", 100)
+	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	seedOutcomes(s)
 	s.Work.SetRows([]string{"s1"})
 	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}

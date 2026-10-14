@@ -22,7 +22,8 @@ import (
 func doctorWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-m1")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	w.setWidth("m1", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.s.Routes = []Route{{Name: "flash-oc", Tier: cardhdr.RouteFlash, Provider: "p", Model: "a", Enabled: true, Deadline: 600}}
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp}
 	w.s.GitIdentity = config.DefaultGitIdentity
@@ -251,7 +252,8 @@ func TestDoctorLanderLoopFailsARefusedHeadAcceptedAgain(t *testing.T) {
 func TestDoctorFleetRowsFailsARowWithNoMachineRecord(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "hetzner", Width: 16}))
+	w.setWidth("hetzner", 16)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "hetzner"}))
 	in := healthyInput(w)
 	cs := Doctor(in)
 	fails := failsOn(cs, CheckFleetRows)

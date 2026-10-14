@@ -53,7 +53,7 @@ func TestTheCoordinatorsVerbsRunOnTheServer(t *testing.T) {
 	var sent [][]string
 	boss := coordinatorAt(t, r, "boss", &sent)
 	for _, args := range [][]string{
-		{"init", "--readers", "reader-a,reader-b", "--members", "m1:2"},
+		{"init", "--readers", "reader-a,reader-b", "--members", "m1"},
 		{"add", "--stream", "s1", "--count", "3"},
 		{"start"},
 	} {
@@ -216,7 +216,7 @@ func TestACoordinatorWithNoStoreRunsTheSprintThroughTheServer(t *testing.T) {
 	r := newServerRig(t)
 	var sent [][]string
 	boss := coordinatorAt(t, r, "boss", &sent)
-	for _, line := range []string{"init --readers reader-a,reader-b --members m1:2", "add --stream s1 --count 2", "start", "where", "inbox", "card s1-1", "log --stream s1", "clear --confirm sprint", "where"} {
+	for _, line := range []string{"init --readers reader-a,reader-b --members m1", "add --stream s1 --count 2", "start", "where", "inbox", "card s1-1", "log --stream s1", "clear --confirm sprint", "where"} {
 		code, out, errs := boss(split(line)...)
 		require.Equal(t, 0, code, "%s\n%s%s", line, out, errs)
 		if line == "start" {
@@ -235,13 +235,13 @@ func TestTheLoopbackListenerHoldsAWorkersVerbToItsEpoch(t *testing.T) {
 	local := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{
 		{"take", "--as", "m1", "--limit", "1"},
 		{"take", "--as", "m1", "--limit", "1", "--epoch", "0", "--json"},
-		{"fleet", "up", "m1", "--width", "3", "--actor", "boss"},
+		{"fleet", "up", "m1", "--probe", "passed", "--actor", "boss"},
 	}}, true).Results
 	assert.Equal(t, 2, local[0].Code, "no epoch: %s", local[0].Stderr)
 	assert.Len(t, taken(t, local[1]), 1)
 	assert.Equal(t, 0, local[2].Code, "a coordinator's verb, from this machine: %s%s", local[2].Stdout, local[2].Stderr)
 
-	fleet := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{{"fleet", "up", "m1", "--width", "64", "--actor", "boss"}}}, false).Results
+	fleet := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{{"fleet", "up", "m1", "--probe", "passed", "--actor", "boss"}}}, false).Results
 	assert.Equal(t, 2, fleet[0].Code, "from the fleet, a coordinator's verb is not run")
 	for _, argv := range [][]string{{"run"}, {"tick"}, {"land", "--stream", "s1"}, {"play"}, {"fleet", "sync"}, {"where", "--redis", "mem:x"}, {"no-such-verb"}} {
 		res := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{argv}}, true).Results[0]
@@ -297,7 +297,7 @@ func TestTheServerNeverActsAsItsOwnEnvironment(t *testing.T) {
 	res := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{
 		{"clear", "--confirm", "sprint"},
 		{"inbox", "--read"},
-		{"fleet", "up", "m1", "--width", "3", "--actor", "boss"},
+		{"fleet", "up", "m1", "--probe", "passed", "--actor", "boss"},
 	}}, true).Results
 	require.Len(t, res, 3)
 	assert.Equal(t, 2, res[0].Code, "%s%s", res[0].Stdout, res[0].Stderr)

@@ -24,7 +24,7 @@ func TestGlobalFlagsBeforeVerb(t *testing.T) {
 	{
 		var out, errb bytes.Buffer
 		a := newApp(func(string) string { return "" })
-		code := runInto(a, []string{"--actor", "boss", "--redis", "mem:" + twinFile, "init", "--readers", "r1", "--members", "m1:64"}, &out, &errb)
+		code := runInto(a, []string{"--actor", "boss", "--redis", "mem:" + twinFile, "init", "--readers", "r1", "--members", "m1"}, &out, &errb)
 		a.close()
 		require.Equal(t, 0, code, "init stdout:\n%s\nstderr:\n%s", out.String(), errb.String())
 	}

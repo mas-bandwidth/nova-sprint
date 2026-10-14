@@ -244,8 +244,6 @@ func upWidth(t ntable.Table) int {
 		}
 		if w, err := sprint.ParseWidth(r.Texts[sprint.FieldWidth]); err == nil {
 			n += w
-		} else {
-			n += sprint.DefaultWidth
 		}
 	}
 	return n
@@ -333,7 +331,8 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	var cards []queueCard
-	width := -1 // a fleet member's width, from its row (-1: not a member, or none read; 0: it drains)
+	width := -1   // a fleet member's width, nova-config's (-1: not a member, or none read; 0: it drains)
+	widthOf := "" // the machine whose width the queue carries: the member's own, or a reader's machine's
 	add := func(table string, cs []*sprint.Card) {
 		for _, x := range cs {
 			cards = append(cards, queueCard{ID: x.ID, Table: table, Row: x.Row, Col: x.Col, Primary: x.F("primary"), Stream: x.F("stream"),
@@ -386,7 +385,8 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			var own []*sprint.Card
 			for _, x := range cs {
 				if x.Col == sprint.Ctl {
-					width = sprint.MemberWidth(x)
+					// a member: its width is nova-config's machine:<m> width, read below
+					widthOf = *as
 					continue
 				}
 				own = append(own, x)
@@ -402,7 +402,20 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 				return a.queueReadFailed("queue", err, stderr)
 			}
 			if len(ctl) > 0 {
-				width = sprint.MemberWidth(ctl[0])
+				widthOf = m
+			}
+		}
+		// the width is nova-config's alone (internal/sprint/width.go): the
+		// machine:<m> hash's width field, read now; a drain reads 0, and a
+		// width not in nova-config reads 0 too (the deal deals it nothing)
+		if widthOf != "" {
+			ws, _, err := st.Widths(ctx, []string{widthOf}, nil)
+			if err != nil {
+				return a.queueReadFailed("queue", err, stderr)
+			}
+			width = 0
+			if w, err := sprint.ParseWidth(ws[widthOf]); err == nil {
+				width = w
 			}
 		}
 		at := want.of(mine)

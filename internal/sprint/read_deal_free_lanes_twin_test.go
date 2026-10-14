@@ -71,8 +71,10 @@ func TestTheReadDealSkipsAMemberWithAQueue(t *testing.T) {
 func TestTheReadDealGivesNarrowMembersTheirTurn(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 16, "b1", "b2", "superman", "batman")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "superman", Width: 8}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "batman", Width: 4}))
+	w.setWidth("superman", 8)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "superman"}))
+	w.setWidth("batman", 4)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "batman"}))
 	for i := 1; i <= 16; i++ {
 		putReviewBy(w, "s1-"+itoa(i), "s1-"+itoa(i)+": work (s1) tier: flash\n", "w0", float64(i))
 	}

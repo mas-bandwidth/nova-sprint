@@ -56,7 +56,8 @@ func TestAddStoresTheTierLineOneNamesOrItsStreamsDefault(t *testing.T) {
 func TestAHeavyCardsFirstDealDrawsAHeavyRoute(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.setWidth("m1", 2)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "heavy-a", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "h", Enabled: true, Deadline: 600},

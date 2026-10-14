@@ -32,7 +32,7 @@ type needsRig struct {
 func newNeedsRig(t *testing.T) *needsRig {
 	t.Helper()
 	r := &needsRig{t: t, ctx: context.Background(), now: time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)}
-	m := store.NewMem()
+	m := configMem()
 	n := 0
 	r.st = &store.Store{B: m, Actor: "coordinator", Now: func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
 		NewID: func() string { r.mu.Lock(); defer r.mu.Unlock(); n++; return fmt.Sprint(n) }, Sleep: func(time.Duration) {}}

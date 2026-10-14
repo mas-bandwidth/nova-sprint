@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,16 @@ import (
 const proBrief = "tier: pro"
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+
+// testWidth is the width this package's test rigs' nova-config names for every
+// machine no test wrote a width for: every twin store these tests make reads
+// a machine:<m> hash it was not given at this width (memMachineWidth,
+// presence.go DefaultMachineWidth), so the tests that bring members up keep
+// their room. A test of one width writes that machine's hash (SetMachineWidth),
+// and one of a missing width deletes it (DeleteMachineWidth).
+const testWidth = 64
+
+func init() { memMachineWidth = strconv.Itoa(testWidth) }
 
 type harness struct {
 	t   *testing.T
@@ -161,13 +172,13 @@ func (h *harness) setupBrief(n int, brief string) {
 	// a member brought up here is as wide as the set is large: the deal holds a member to twice its
 	// width (tla/DirtyTick.tla, HoldRespected), so a verb that deals all n needs the room; a
 	// member the test brought up before keeps its width
-	width := min(max(n, sprint.DefaultWidth), sprint.MaxWidth)
+	width := min(max(n, testWidth), sprint.MaxWidth)
 	for _, m := range []string{"m1", "m2"} {
-		w := width
 		if h.snap().Fleet.HasRow(m) {
-			w = 0
+			continue
 		}
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: w}))
+		h.m.SetMachineWidth(m, strconv.Itoa(width))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Brief: brief, Stream: "s1", Count: n}))
 	h.clean("setup")

@@ -67,8 +67,9 @@ func TestStepsClearCoverRestoreShape(t *testing.T) {
 		assert.Equal(t, "m1", e.Create.Row)
 		assert.Equal(t, Ctl, e.Create.Col)
 		assert.Zero(t, e.Create.Score)
+		// a shape that still names a width restores none: a width is nova-config's alone
 		assert.Equal(t, map[string]string{
-			"kind": "member", "status": Up, "since": since, "held": since, FieldWidth: "3",
+			"kind": "member", "status": Up, "since": since, "held": since,
 		}, e.Set)
 		assert.Equal(t, "member m1 up", m1.Moved)
 

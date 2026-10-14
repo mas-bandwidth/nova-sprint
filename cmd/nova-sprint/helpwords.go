@@ -23,8 +23,8 @@ NOVA_SPRINT_ACTOR, and needs no store address or credential: every verb is sent
 to the server, the reads included (where --watch and inbox --wait draw here and
 read through it). Run where typed, on a store named there: run, tick, land,
 play, fleet sync, and any verb given its own --redis. Each
-member is a fleet row first (init --members, fleet up <name> --width <n>, or
-fleet sync) and each reader a readers row (init --readers, reader add); then on
+member is a fleet row first (init --members, fleet up <name>, or fleet sync;
+its width is nova-config's alone: nova-config machine set <name> --width <n>) and each reader a readers row (init --readers, reader add); then on
 each fleet machine, which opens no store:
   nova-swarm member --as <name> --server <address>:<port> --harness <path> --root <dir>
   nova-swarm member --as <reader> --server <address>:<port> --reader --width <n> --harness <path> --root <dir>

@@ -126,7 +126,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	w.must(Take(w.s, TakeReq{As: c1.Row, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}}))
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}}))
 	// a finish that arrived first is not redistributed
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+	w.up(m)
 	other := w.s.Fleet.Card("s1-1.w1").Row
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: other}))
 	done := w.s.Fleet.Card("s1-1.w1")
@@ -134,7 +134,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	require.Equal(t, other, done.Row, "a done card was redistributed: %+v", done)
 	require.Equal(t, "2", done.F("gen"), "a done card was redistributed: %+v", done)
 	// a level move and a withdrawal change the generation too
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: other}))
+	w.up(other)
 	for _, c := range w.s.Fleet.Column(Ready) {
 		require.GreaterOrEqual(t, c.Int("gen"), 1, "no generation on %s", c.ID)
 	}
@@ -151,7 +151,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	}
 	w.clean("withdrawn")
 	// Rule 2 is a bijection: two live cards for one working primary is caught.
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+	w.up(m)
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 1}}))
 	live := w.s.Fleet.Column(Ready)[0]
 	w.s.Fleet.Put(&Card{ID: live.F("primary") + ".w9", Row: m, Col: Ready, Score: live.Score, Rev: 1, Fields: map[string]string{"primary": live.F("primary")}})
@@ -645,7 +645,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NScoredLow: true, NRaiseReadTier: true,
 		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendDeaf: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
 		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true, NFleetFailure: true, NMemberPegged: true,
-		NHoldNoCause: true, NMemberIdleReaps: true}
+		NHoldNoCause: true, NMemberIdleReaps: true, NWidthNotInConfig: true}
 	for typ, ds := range all {
 		w := setup(t, 1)
 		n := Note{ID: "n-x.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, Decisions: ds, At: w.s.Now}
@@ -672,7 +672,7 @@ func TestTickKeptList(t *testing.T) {
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
 		NBaseCIRed, NMirrorNeed, NMemberPegged,
-		NStopMemberDown, NStopPinWaits, NFriendStalled, NNeedsGone, NHoldNoCause, NMemberIdleReaps}
+		NStopMemberDown, NStopPinWaits, NFriendStalled, NNeedsGone, NHoldNoCause, NMemberIdleReaps, NWidthNotInConfig}
 	got := []string{NRemindFailed}
 	for typ := range TickDecisions {
 		got = append(got, typ)

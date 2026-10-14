@@ -37,7 +37,7 @@ even when a server is configured; see the
 ### Verbs
 
 ```
-nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
+nova-sprint init [--readers <a,b,...>] [--members <m1,m2,...>] (a member's width is nova-config's alone: nova-config machine set <m> --width <n>) [--coordinator <name>] [--rules <file>]
 nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
 # add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]

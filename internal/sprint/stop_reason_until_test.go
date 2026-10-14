@@ -28,7 +28,7 @@ func newTwinClock(t *testing.T) *twinClock {
 	t.Helper()
 	c := &twinClock{now: stopAt}
 	n := 0
-	c.st = &store.Store{B: store.NewMem(), Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator", ByHand: true,
+	c.st = &store.Store{B: configMem(), Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator", ByHand: true,
 		Now:   func() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.now },
 		NewID: func() string { c.mu.Lock(); defer c.mu.Unlock(); n++; return fmt.Sprint(n) },
 		Sleep: func(time.Duration) {}}

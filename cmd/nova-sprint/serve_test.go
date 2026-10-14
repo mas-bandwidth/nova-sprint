@@ -66,9 +66,19 @@ func (r *serverRig) boss(line string) string {
 	r.a.serial.Lock()
 	defer r.a.serial.Unlock()
 	var out, errb bytes.Buffer
-	code := runInto(r.a, split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
+	args := widthsToConfig(split(strings.TrimPrefix(line, prog+" ")), r.setWidth)
+	code := runInto(r.a, args, &out, &errb)
 	require.Equal(r.t, 0, code, "%s\n%s%s", line, out.String(), errb.String())
 	return out.String()
+}
+
+// setWidth writes a machine's width to the rig's twin, as nova-config apply
+// writes machine:<m> (widthsToConfig).
+func (r *serverRig) setWidth(machine, width string) {
+	r.t.Helper()
+	_, err := r.a.twinBackend(r.a.serveAddr)
+	require.NoError(r.t, err)
+	r.a.twins[r.a.serveAddr].mem.SetMachineWidth(machine, width)
 }
 
 // send is a worker's delivery of a batch with no connection: the server's step.

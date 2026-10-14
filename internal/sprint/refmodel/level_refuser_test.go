@@ -65,7 +65,7 @@ func TestLevelSkipsASourceWithNoMovableCardTheEngineAndTheModelAgree(t *testing.
 	t.Parallel()
 	w := newWorld("reader-a")
 	for _, m := range []string{"over", "less", "free"} {
-		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: refmodel.Width, Who: coordinator}))
+		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Who: coordinator}))
 	}
 	score := 1.0
 	put := func(id, member, col string, refuser string) {

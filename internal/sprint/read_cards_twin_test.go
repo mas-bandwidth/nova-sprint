@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -39,7 +40,7 @@ func newReadCardsRig(t *testing.T, members ...string) *readCardsRig {
 	if len(members) == 0 {
 		members = []string{"m1", "m2", "m3"}
 	}
-	r := &readCardsRig{t: t, m: store.NewMem(), ctx: context.Background(), now: holdT0, members: members}
+	r := &readCardsRig{t: t, m: configMem(), ctx: context.Background(), now: holdT0, members: members}
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
@@ -62,7 +63,8 @@ func newReadCardsRig(t *testing.T, members ...string) *readCardsRig {
 	})
 	r.beat()
 	for _, m := range members {
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 4}))
+		r.m.SetMachineWidth(m, strconv.Itoa(4))
+		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.ReadCardsOnWord, Who: "coordinator"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)

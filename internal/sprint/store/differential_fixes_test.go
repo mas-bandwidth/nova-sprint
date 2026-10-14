@@ -213,9 +213,9 @@ func TestResumeWaitsForANeedOnlyAfterACross(t *testing.T) {
 // The reference model's redeal bound is the engine's.
 func TestTheModelsRedealBoundIsTheEngines(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, sprint.MaxRedeals, refmodel.MaxRedeals, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, sprint.DefaultWidth, sprint.DealAhead)
-	require.Equal(t, sprint.DefaultWidth, refmodel.Width, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, sprint.DefaultWidth, sprint.DealAhead)
-	require.Equal(t, sprint.DealAhead, refmodel.DealAhead, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, sprint.DefaultWidth, sprint.DealAhead)
+	require.Equal(t, sprint.MaxRedeals, refmodel.MaxRedeals, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, testWidth, sprint.DealAhead)
+	require.Equal(t, testWidth, refmodel.Width, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, testWidth, sprint.DealAhead)
+	require.Equal(t, sprint.DealAhead, refmodel.DealAhead, "the model's bounds (%d, %d, %d) are not the engine's (%d, %d, %d)", refmodel.MaxRedeals, refmodel.Width, refmodel.DealAhead, sprint.MaxRedeals, testWidth, sprint.DealAhead)
 }
 
 // The deal takes one card from each stream's front in turn (2.3 R6, the
