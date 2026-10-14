@@ -553,19 +553,6 @@ func (db *coverDB) list(key string) (*coverVal, error) {
 	return v, nil
 }
 
-func (db *coverDB) set(key string) (*coverVal, error) {
-	v := db.keys[key]
-	if v == nil {
-		v = &coverVal{kind: coverSet, set: map[string]struct{}{}}
-		db.keys[key] = v
-		return v, nil
-	}
-	if v.kind != coverSet {
-		return nil, errCoverWrongType
-	}
-	return v, nil
-}
-
 func (db *coverDB) stream(key string) (*coverVal, error) {
 	v := db.keys[key]
 	if v == nil {
