@@ -305,7 +305,7 @@ func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 	}
 	switch kind {
 	case "fixes":
-		fx, err := roadmapdoc.DecodeFixes(file, data)
+		fx, err := roadmapdoc.DecodeFixesLimits(file, data, landDataLimits)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +323,7 @@ func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 			}
 		}
 	default:
-		doc, err := roadmapdoc.Decode(file, data)
+		doc, err := roadmapdoc.DecodeLimits(file, data, landDataLimits)
 		if err != nil {
 			return nil, err
 		}

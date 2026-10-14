@@ -98,7 +98,15 @@ var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 // Decode reads one roadmap file and returns it, or every shape problem of the file
 // together in one error.
 func Decode(file string, data []byte) (*Doc, error) {
-	top, d, err := readTop(file, data, "roadmap", "a roadmap is data")
+	return DecodeLimits(file, data, Limits)
+}
+
+// DecodeLimits is Decode reading under limits: the door for a caller whose data may
+// stand past the default bound (the lander's merge, tla/LandLedgers.tla ResolveLand),
+// so it decodes the data instead of refusing it whole. Every other caller keeps
+// Limits.
+func DecodeLimits(file string, data []byte, limits worklang.Limits) (*Doc, error) {
+	top, d, err := readTop(file, data, limits, "roadmap", "a roadmap is data")
 	if err != nil {
 		return nil, err
 	}

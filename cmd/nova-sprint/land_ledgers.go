@@ -30,7 +30,7 @@ import (
 // (its first two atoms, "<kind>:<id>"), each as a canonical printed value, so a record
 // compares across the sides of a merge. An id met twice is an error.
 func evidenceEntries(file string, data []byte) (map[string]string, error) {
-	top, err := worklang.Read(file, data, roadmapdoc.Limits)
+	top, err := worklang.Read(file, data, landDataLimits)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +88,16 @@ func formString(f worklang.Form) string {
 func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
 	return entriesMerged(evidenceEntries, unionKeys[string], file, base, ours, theirs, merged)
 }
+
+// landDataLimits is the bound on a lander decode of the roadmap data (docs/fixes.sexp,
+// docs/roadmap.sexp) and the evidence ledgers: the same shape as roadmapdoc.Limits with
+// room for a repository whose data stands past 512 KiB (the schema repository's
+// docs/roadmap.sexp is 1,081,875 bytes), so the lander merges that data instead of
+// refusing the card at the tip, round after round (tla/LandLedgers.tla, ResolveLand).
+// Data past it is still refused whole, never truncated. It bounds the lander's own
+// decode only: roadmapdoc.Limits and every other caller (the generators, nova-work)
+// keep theirs.
+var landDataLimits = worklang.Limits{MaxBytes: 16 << 20, MaxNodes: 16 << 20, MaxDepth: roadmapdoc.Limits.MaxDepth}
 
 // entriesMerged holds the merged data to what the two sides did, entry by entry: an entry
 // all three share is the side's that changed it (both changing it differently is a
@@ -246,7 +256,7 @@ func unionEvidenceSexpAdd(file string, ours, theirs []byte) ([]byte, error) {
 // bytes in file order, and the footer (everything after the last entry, the closing
 // parentheses included).
 func evidenceParts(file string, data []byte) (header []byte, entries [][]byte, footer []byte, err error) {
-	top, err := worklang.Read(file, data, roadmapdoc.Limits)
+	top, err := worklang.Read(file, data, landDataLimits)
 	if err != nil {
 		return nil, nil, nil, err
 	}
