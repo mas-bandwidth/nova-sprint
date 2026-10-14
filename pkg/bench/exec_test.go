@@ -10,6 +10,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // runLineIn runs a remote line with sh, feeding stdin, as the bench's ssh
@@ -24,9 +27,7 @@ func runLineIn(t *testing.T, line string, stdin []byte) (string, int) {
 	if ee, ok := err.(*exec.ExitError); ok {
 		return out.String(), ee.ExitCode()
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return out.String(), 0
 }
 
@@ -46,13 +47,9 @@ func readTar(t *testing.T, b []byte) map[string]tarEntry {
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		body, err := io.ReadAll(tr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		m[hdr.Name] = tarEntry{hdr: *hdr, body: body}
 	}
 	return m
@@ -64,26 +61,15 @@ func TestCopyLineUnpacksIntoTheQuotedDestination(t *testing.T) {
 	var b bytes.Buffer
 	tw := tar.NewWriter(&b)
 	body := []byte("hello")
-	if err := tw.WriteHeader(&tar.Header{Name: "hello.txt", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "hello.txt", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}))
+	_, err := tw.Write(body)
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
 	out, code := runLineIn(t, CopyLine(dst), b.Bytes())
-	if code != 0 {
-		t.Fatalf("CopyLine with a space, a quote and a newline: exit %d\n%s", code, out)
-	}
+	require.Equal(t, 0, code, "CopyLine with a space, a quote and a newline:\n%s", out)
 	got, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
-	if err != nil {
-		t.Fatalf("the tree was not unpacked into the named destination: %v", err)
-	}
-	if string(got) != "hello" {
-		t.Fatalf("hello.txt = %q, want hello", got)
-	}
+	require.NoError(t, err, "the tree was not unpacked into the named destination")
+	assert.Equal(t, "hello", string(got))
 }
 
 // writeTreeTestTree is a little tree: a .git directory, a regular file, a
@@ -92,9 +78,7 @@ func writeTreeTestTree(t *testing.T) string {
 	t.Helper()
 	src := t.TempDir()
 	for _, d := range []string{filepath.Join(src, ".git", "objects"), filepath.Join(src, "sub")} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(d, 0o755))
 	}
 	files := map[string][]byte{
 		".git/HEAD": []byte("ref: refs/heads/main\n"),
@@ -102,13 +86,9 @@ func writeTreeTestTree(t *testing.T) string {
 		"sub/x.txt": []byte("x"),
 	}
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(src, name), body, 0o644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(src, name), body, 0o644))
 	}
-	if err := os.Symlink("main.go", filepath.Join(src, "link.go")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Symlink("main.go", filepath.Join(src, "link.go")))
 	return src
 }
 
@@ -116,38 +96,30 @@ func TestWriteTreeLeavesGitOutUnlessWithGit(t *testing.T) {
 	t.Parallel()
 	src := writeTreeTestTree(t)
 	var b bytes.Buffer
-	if err := WriteTree(&b, src, false); err != nil {
-		t.Fatalf("WriteTree without git: %v", err)
-	}
+	require.NoError(t, WriteTree(&b, src, false), "WriteTree without git")
 	m := readTar(t, b.Bytes())
 	for name := range m {
-		if name == ".git/" || strings.HasPrefix(name, ".git/") {
-			t.Fatalf("WriteTree without git copied %q", name)
-		}
+		assert.False(t, name == ".git/" || strings.HasPrefix(name, ".git/"), "WriteTree without git copied %q", name)
 	}
-	if got, ok := m["main.go"]; !ok || string(got.body) != "package main\n" {
-		t.Fatalf("main.go = %+v, want its body", got)
-	}
-	if got, ok := m["sub/x.txt"]; !ok || string(got.body) != "x" {
-		t.Fatalf("sub/x.txt = %+v, want its body", got)
-	}
-	if _, ok := m["sub/"]; !ok {
-		t.Fatalf("the sub directory header is missing: %v", m)
-	}
-	if got, ok := m["link.go"]; !ok || got.hdr.Typeflag != tar.TypeSymlink || got.hdr.Linkname != "main.go" {
-		t.Fatalf("link.go = %+v, want a symlink to main.go", got)
-	}
+	got, ok := m["main.go"]
+	require.True(t, ok, "main.go missing: %v", m)
+	assert.Equal(t, "package main\n", string(got.body))
+	got, ok = m["sub/x.txt"]
+	require.True(t, ok, "sub/x.txt missing: %v", m)
+	assert.Equal(t, "x", string(got.body))
+	_, ok = m["sub/"]
+	assert.True(t, ok, "the sub directory header is missing: %v", m)
+	got, ok = m["link.go"]
+	require.True(t, ok, "link.go missing: %v", m)
+	assert.Equal(t, byte(tar.TypeSymlink), got.hdr.Typeflag)
+	assert.Equal(t, "main.go", got.hdr.Linkname)
 	b.Reset()
-	if err := WriteTree(&b, src, true); err != nil {
-		t.Fatalf("WriteTree with git: %v", err)
-	}
+	require.NoError(t, WriteTree(&b, src, true), "WriteTree with git")
 	m = readTar(t, b.Bytes())
-	if _, ok := m[".git/"]; !ok {
-		t.Fatalf(".git is missing with WithGit: %v", m)
-	}
-	if _, ok := m[".git/HEAD"]; !ok {
-		t.Fatalf(".git/HEAD is missing with WithGit: %v", m)
-	}
+	_, ok = m[".git/"]
+	assert.True(t, ok, ".git is missing with WithGit: %v", m)
+	_, ok = m[".git/HEAD"]
+	assert.True(t, ok, ".git/HEAD is missing with WithGit: %v", m)
 }
 
 func TestWriteTreeRefusesSomethingThatIsNotAFileDirOrSymlink(t *testing.T) {
@@ -158,7 +130,6 @@ func TestWriteTreeRefusesSomethingThatIsNotAFileDirOrSymlink(t *testing.T) {
 	}
 	var b bytes.Buffer
 	err := WriteTree(&b, src, false)
-	if err == nil || !strings.Contains(err.Error(), "refusing to copy it") {
-		t.Fatalf("WriteTree with a fifo: %v", err)
-	}
+	require.Error(t, err, "WriteTree with a fifo")
+	assert.Contains(t, err.Error(), "refusing to copy it")
 }
