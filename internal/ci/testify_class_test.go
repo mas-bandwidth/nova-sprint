@@ -69,6 +69,62 @@ func TestTwo(t *testing.T) {
 	assert.Contains(t, strings.Join(problems, "\n"), "badpkg:assert: measured 2, row 1")
 }
 
+// TestTestsUseTestifyUpdateNeverRaises pins that the update mode is shrink-only:
+// when a package measures more than its row, NOVA_CI_UPDATE leaves the row alone
+// so the run stays red, and never writes the raised count.
+func TestTestsUseTestifyUpdateNeverRaises(t *testing.T) {
+	t.Parallel()
+	root := testifyFixtureRoot(t)
+	writeTestifyTestFile(t, root, "badpkg/badpkg_test.go", `package badpkg
+import "testing"
+func TestOne(t *testing.T) {
+	if 1 != 2 {
+		t.Fatalf("one")
+	}
+}
+func TestTwo(t *testing.T) {
+	if 2 != 3 {
+		t.Fatalf("two")
+	}
+}
+`)
+	writeTestifyLedgerFile(t, root, "internal/ci/testdata/testify/badpkg.txt", "# ceiling: 0\nbadpkg:assert 1 use require.NoError, assert.Equal, assert.Contains or assert.Empty instead of bare if-guarded t.Fatal/Error/Fail\n")
+
+	problems := testifyCheck(t, root, true)
+	require.NotEmpty(t, problems, "a package above its row must stay red after the update")
+	assert.Contains(t, strings.Join(problems, "\n"), "badpkg:assert: measured 2, row 1")
+
+	b, err := os.ReadFile(filepath.Join(root, "internal/ci/testdata/testify/badpkg.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "badpkg:assert 1 ")
+	assert.NotContains(t, string(b), "badpkg:assert 2 ")
+}
+
+// TestTestsUseTestifyUpdateSeedsCommentOnlyShards pins that the update mode
+// seeds a `# ceiling: 0` shard for a walked test package that measures no
+// guarded site, so every package named on the ledger has a shard.
+func TestTestsUseTestifyUpdateSeedsCommentOnlyShards(t *testing.T) {
+	t.Parallel()
+	root := testifyFixtureRoot(t)
+	writeTestifyTestFile(t, root, "pkg/quiet/quiet_test.go", `package quiet
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+func TestQuiet(t *testing.T) {
+	require.NoError(t, nil)
+}
+`)
+
+	problems := testifyCheck(t, root, true)
+	require.Empty(t, problems)
+
+	b, err := os.ReadFile(filepath.Join(root, "internal/ci/testdata/testify/pkg/quiet.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "# ceiling: 0\n", string(b))
+}
+
 const (
 	testifyLedgerRoot = "internal/ci/testdata/testify"
 
@@ -148,7 +204,7 @@ func testifyCheck(t *testing.T, root string, update bool) []string {
 	}
 
 	if update {
-		updateTestifyLedgers(t, root, measured)
+		updateTestifyLedgers(t, root, pkgs, measured)
 	}
 
 	rows := readTestifyLedgers(t, root)
@@ -439,38 +495,66 @@ func readTestifyLedgers(t *testing.T, root string) []testifyRow {
 	return rows
 }
 
-// updateTestifyLedgers rewrites the testify ledger shards to match the measured counts.
-// It keeps a comment-only shard for packages that already had a shard and now measure zero.
-func updateTestifyLedgers(t *testing.T, root string, measured map[string]map[testifyKind]int) {
+// updateTestifyLedgers rewrites the testify ledger shards. The update is
+// shrink-only: a row is lowered to the measured count when the package measures
+// fewer sites, and left untouched otherwise, so a package that measures more
+// than its row stays red. A row is never added to a shard that already exists,
+// so a package whose shard is comment-only stays red when it gains a site.
+//
+// A package that has no shard yet is seeded from the measured counts, and every
+// walked test package gets a shard: a package that measures no guarded site gets
+// a shard with the `# ceiling: 0` comment only.
+func updateTestifyLedgers(t *testing.T, root string, pkgs []string, measured map[string]map[testifyKind]int) {
 	t.Helper()
 	dir := filepath.Join(root, testifyLedgerRoot)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
+	existing := map[string]map[testifyKind]int{}
+	for _, r := range readTestifyLedgers(t, root) {
+		if existing[r.Pkg] == nil {
+			existing[r.Pkg] = map[testifyKind]int{}
+		}
+		existing[r.Pkg][r.Kind] = r.Count
+	}
+
 	write := map[string]bool{}
-	for pkg := range measured {
+	for _, pkg := range pkgs {
 		write[pkg] = true
 	}
-	// Keep shards that already exist so their counts can shrink to comment-only.
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".txt") {
-			return nil
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		pkg := filepath.ToSlash(strings.TrimSuffix(rel, ".txt"))
+	for pkg := range existing {
 		write[pkg] = true
-		return nil
-	})
-	require.NoError(t, err)
+	}
 
 	for pkg := range write {
-		assertCount := measured[pkg][testifyAssert]
-		envCount := measured[pkg][testifyEnv]
+		_, err := os.Stat(filepath.Join(dir, pkg+".txt"))
+		shardExists := err == nil
+
+		var assertCount, envCount int
+		for _, kind := range []testifyKind{testifyAssert, testifyEnv} {
+			mc := measured[pkg][kind]
+			ec, hasRow := existing[pkg][kind]
+			count := 0
+			switch {
+			case hasRow:
+				// Lower only: never write a count above the existing row.
+				count = ec
+				if mc < ec {
+					count = mc
+				}
+			case shardExists:
+				// A comment-only shard is never raised into a row.
+				count = 0
+			default:
+				// Seed a fresh shard from the measured count.
+				count = mc
+			}
+			if kind == testifyAssert {
+				assertCount = count
+			} else {
+				envCount = count
+			}
+		}
+
 		var lines []string
 		lines = append(lines, "# ceiling: 0")
 		if assertCount > 0 {
