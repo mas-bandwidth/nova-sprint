@@ -18,11 +18,13 @@ const releaseHoldWords = `release resolves a wait on a release: a sentinel or a 
   friend up <friend> releases a held friend
 `
 
-// exitLine is the banner's exit-code paragraph, every verb's codes at once:
+// exitLine is the banner's exit-code paragraph, the codes every verb shares:
 // `nova-sprint help` prints it whole, and a verb's -h prints that verb's own
 // line in its place (verbExits; docs/STANDARD.md section 2, "Every verb's -h
-// quotes the table, or the verb's own"; tool ledger P5, X9).
-const exitLine = "exit codes: 0 done, 1 failed or incomplete (including refused), 2 usage or a store that did not answer (fleet sync --check: there is drift), 3 fleet sync or friend sync could not read the config, or run: its binary was replaced (its supervisor starts the new one)"
+// quotes the table, or the verb's own"; tool ledger P5, X9). A verb whose code
+// can return another code (3 or more) states it in its own table, never here:
+// code 3 means different things for fleet sync, friend sync and run.
+const exitLine = "exit codes: 0 done, 1 failed or incomplete (including refused; the line names why), 2 usage or a store that did not answer; a verb with another code states it in its own -h"
 
 // verbExit is a verb's own exit codes where they are not the common three.
 var verbExit = map[string]string{
