@@ -166,8 +166,15 @@ func (s *Snapshot) ProvidersLine() string {
 }
 
 // ProvidersLine draws applied funding facts only: no balance implies funding.
-func ProvidersLine(rows []ProviderCoverage, gaps ProviderGapReport) string {
+// twin says the lines are drawn for a mem twin, which holds no config store
+// for nova-config to apply provider rows from (docs/SPEC-SPRINT.md, "The twin
+// (`mem:<file>`) holds no routes"): its empty set is expected, not a WARN. A
+// live store (twin omitted) is unchanged.
+func ProvidersLine(rows []ProviderCoverage, gaps ProviderGapReport, twin ...bool) string {
 	if len(rows) == 0 {
+		if len(twin) > 0 && twin[0] {
+			return "providers: the twin holds no provider rows (expected; a live store gets them from nova-config apply)"
+		}
 		return "providers: none applied WARN no provider rows applied (nova-config apply --kind provider)"
 	}
 	parts := []string{}
