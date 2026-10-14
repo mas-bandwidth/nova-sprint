@@ -31,7 +31,7 @@ func attemptFoundBrokenBy(w *world, id, finding string) string {
 			return rc.Row
 		}
 	}
-	w.t.Fatalf("no read of %s asked at attempt %s", id, pr.F("attempt"))
+	require.FailNowf(w.t, "no read of %s asked at attempt %s", id, pr.F("attempt"))
 	return ""
 }
 

@@ -38,7 +38,7 @@ func mustStall(t *testing.T, h HeldState, id, why string) Finding {
 			return f
 		}
 	}
-	t.Fatalf("%s is stalled (%s) and Unheld does not name it", id, hd)
+	require.FailNowf(t, "%s is stalled (%s) and Unheld does not name it", id, hd)
 	return Finding{}
 }
 
@@ -344,10 +344,7 @@ func TestAStallOffersOnlyEnabledDecisions(t *testing.T) {
 	require.NotContains(t, f.Decisions, "ask", "asked already: %v", f.Decisions)
 	require.Contains(t, f.Decisions, "ask --another", "asked already: %v", f.Decisions)
 	for _, d := range f.Decisions {
-		if d == "wait" || d == "drop" || d == "rework" || d == "ask --another" {
-			continue
-		}
-		t.Errorf("a decision not expected: %s", d)
+		assert.Contains(t, []string{"wait", "drop", "rework", "ask --another"}, d, "a decision not expected: %s", d)
 	}
 }
 

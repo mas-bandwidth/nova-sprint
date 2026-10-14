@@ -16,7 +16,7 @@ func lateAnswer(t *testing.T, w *world, wc string) RuleAnswer {
 			return a
 		}
 	}
-	t.Fatalf("no late answer on %s", wc)
+	require.FailNowf(t, "no late answer on %s", wc)
 	return RuleAnswer{}
 }
 

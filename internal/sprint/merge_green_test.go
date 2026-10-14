@@ -40,7 +40,7 @@ func TestMergeGreenKeepsTheStreamChangeWhenTheFirstCardIsRefused(t *testing.T) {
 			batch++
 			require.Equal(t, []string{"s1-2"}, n.Primaries, "the batch note lists %v, want only what landed", n.Primaries)
 		case NStreamLanded:
-			t.Fatalf("the stream is landed with s1-1 still open")
+			require.Fail(t, "the stream is landed with s1-1 still open")
 		}
 	}
 	require.Equal(t, 1, batch, "notes: started %d batch %d (was waiting %v)", started, batch, wasWaiting)
