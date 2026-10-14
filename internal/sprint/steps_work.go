@@ -1693,6 +1693,26 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		// stream turns, then work order (rank) — never the order they were dealt in
 		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
 	}
+	// a friend's take by count moves only the cards she has started (docs/SPEC-SPRINT.md
+	// section 1, a friend's card is working once she starts it): a work card she has not
+	// started stays ready, one NOTE line each, since the tick's friendUnstartedWorking would
+	// put it back ready four seconds later, and a batch-mode daemon taking by count every
+	// BatchTakeEvery made her working cell flap between full and her started count
+	// (tla/FriendReadyTake.tla, WorkingIsStarted). A take by id and a lane's take are unchanged.
+	friendByCount := ""
+	if f, ok := FriendOfRow(r.As); ok && !byID {
+		friendByCount = f
+		seat, _ := friendSeatOf(s, f)
+		var started []*Card
+		for _, c := range ready {
+			if isRead(c) || friendStarted(s, seat, c) {
+				started = append(started, c)
+				continue
+			}
+			p.Said = append(p.Said, fmt.Sprintf("%s: stays ready on %s until its friend starts it (a take by count is no start)", c.ID, r.As))
+		}
+		ready = started
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
@@ -1759,6 +1779,9 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		set, unset := takenStamps(c, s.Now), []string{"untaken_since"}
 		if friend, ok := FriendOfRow(r.As); ok {
 			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			if friendByCount != "" && !isRead(c) {
+				set, unset = friendStartSet(s, c, friend) // started by her beat: the tick leaves it working
+			}
 		}
 		if r.Lane == 0 {
 			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)
