@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
@@ -16,9 +19,7 @@ import (
 func TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash(t *testing.T) {
 	// Create a temporary directory for the test repo
 	tmpDir, err := os.MkdirTemp("", "land-clash-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	// A clone does not inherit the repository config, so each commit made in a clone
@@ -78,9 +79,7 @@ func TestAHeldReportCrossesTheStopAndIsTaken(t *testing.T) {
 
 	// Verify X alone is green
 	out, err := runGo(t, xDir, "test", "./internal/sprint/")
-	if err != nil {
-		t.Fatalf("X alone should pass: %v\n%s", err, out)
-	}
+	require.NoErrorf(t, err, "X alone should pass: %s", out)
 
 	// Create head Y: set B = 2 (from same base)
 	yDir := tmpDir + "/y"
@@ -94,9 +93,7 @@ func TestAHeldReportCrossesTheStopAndIsTaken(t *testing.T) {
 
 	// Verify Y alone is green
 	out, err = runGo(t, yDir, "test", "./internal/sprint/")
-	if err != nil {
-		t.Fatalf("Y alone should pass: %v\n%s", err, out)
-	}
+	require.NoErrorf(t, err, "Y alone should pass: %s", out)
 
 	// Merge X onto main
 	runCmd(t, tmpDir, "git", "fetch", xDir, "x:refs/remotes/x")
@@ -113,27 +110,17 @@ func TestAHeldReportCrossesTheStopAndIsTaken(t *testing.T) {
 	changedFiles := strings.Split(changed, "\n")
 	unitPkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", changedFiles)
 
-	if len(unitPkgs) != 1 || unitPkgs[0] != "..." {
-		t.Errorf("expected the whole tree in unitPkgs, got %v", unitPkgs)
-	}
+	assert.Equal(t, []string{"..."}, unitPkgs, "expected the whole tree in unitPkgs")
 
-	// Try running tests with Y's changes applied
+	// Try running tests with Y's changes applied: they must fail when both changes are
+	// present (green at base alone, red at merged).
 	out, err = runGo(t, tmpDir, "test", "./internal/sprint/")
-	if err != nil {
-		// Expected: tests fail when both changes are present
-		// Check if it's a clash (green at base alone, red at merged)
-		if !strings.Contains(out, "FAIL") {
-			t.Fatalf("expected tests to fail after merge")
-		}
-	} else {
-		t.Fatalf("expected tests to fail after merging both heads")
-	}
+	require.Error(t, err, "expected tests to fail after merging both heads")
+	assert.Contains(t, out, "FAIL", "expected tests to fail after merge")
 
 	// Verify RefusalWay maps clash
 	what := "the head " + baseSha[:12] + " of card-id clashes at the merged tip: internal/sprint TestAHeldReportCrossesTheStopAndIsTaken fail on base 12345678 + y 87654321 and pass on each alone"
-	if sprint.RefusalWay("", what) != sprint.RefusedClash {
-		t.Errorf("RefusalWay should map clash to RefusedClash, got %s", sprint.RefusalWay("", what))
-	}
+	assert.Equal(t, sprint.RefusedClash, sprint.RefusalWay("", what), "RefusalWay should map clash to RefusedClash")
 }
 
 func runCmd(t *testing.T, dir, name string, args ...string) {
@@ -142,9 +129,7 @@ func runCmd(t *testing.T, dir, name string, args ...string) {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("%s failed: %v", name, err)
-	}
+	require.NoErrorf(t, cmd.Run(), "%s failed", name)
 }
 
 func runGit(t *testing.T, dir string, args ...string) string {
@@ -152,9 +137,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git %v failed: %v", args, err)
-	}
+	require.NoErrorf(t, err, "git %v failed", args)
 	return strings.TrimSpace(string(out))
 }
 

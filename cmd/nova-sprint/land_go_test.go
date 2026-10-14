@@ -114,16 +114,16 @@ import (
 func TestTree(t *testing.T) {
 	b, err := os.ReadFile("../../NOTES.md")
 	if err != nil {
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	if strings.Contains(string(b), "BAD") {
-		t.Fatal("NOTES.md says BAD")
+		require.Fail(t, "NOTES.md says BAD")
 	}
 	if _, err := os.Stat("../../forbidden.go"); err == nil {
-		t.Fatal("forbidden.go is in the module")
+		require.Fail(t, "forbidden.go is in the module")
 	}
 	if _, err := os.Stat("../../forbidden.txt"); err == nil {
-		t.Fatal("forbidden.txt is in the module")
+		require.Fail(t, "forbidden.txt is in the module")
 	}
 }
 `,

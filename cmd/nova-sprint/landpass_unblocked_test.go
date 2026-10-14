@@ -74,19 +74,19 @@ func TestLandAnotherBaseProgressesWhileFirstBaseGateWaits(t *testing.T) {
 	select {
 	case <-blocked:
 	case <-t.Context().Done():
-		t.Fatal("first base gate never began")
+		require.FailNow(t, "first base gate never began")
 	}
 	select {
 	case <-pushed:
 		// the first push of the pass, made while s1's gate still waits: only s2 can make it
 	case <-t.Context().Done():
-		t.Fatal("green second base did not land while first base gate waited")
+		require.FailNow(t, "green second base did not land while first base gate waited")
 	}
 	close(release)
 	select {
 	case <-done:
 	case <-t.Context().Done():
-		t.Fatal("land did not finish after releasing first gate")
+		require.FailNow(t, "land did not finish after releasing first gate")
 	}
 	assert.Equal(t, 0, code, "%s%s", out, errs)
 	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s2-1": "landed/merged"}, r.places("s1-1", "s2-1"))
@@ -146,12 +146,12 @@ func TestLandFallbackGateDeadlineDoesNotBlameCard(t *testing.T) {
 	case <-fallback:
 		deadline <- time.Now()
 	case <-t.Context().Done():
-		t.Fatal("bisection gate never began")
+		require.FailNow(t, "bisection gate never began")
 	}
 	select {
 	case <-done:
 	case <-t.Context().Done():
-		t.Fatal("land did not finish after the bisection gate's deadline")
+		require.FailNow(t, "land did not finish after the bisection gate's deadline")
 	}
 	assert.Equal(t, 1, code, "%s%s", out, errs)
 	assert.Contains(t, out+errs, "gate of this batch exceeded", "timeout is a batch refusal")
@@ -232,18 +232,18 @@ func stuckBehind(t *testing.T, parallel int, sameCommit bool) {
 	select {
 	case <-holding:
 	case <-t.Context().Done():
-		t.Fatal("the holder's gate never began")
+		require.FailNow(t, "the holder's gate never began")
 	}
 	select {
 	case <-waiting:
 	case <-t.Context().Done():
-		t.Fatal("s1 never reached its wait behind s2")
+		require.FailNow(t, "s1 never reached its wait behind s2")
 	}
 	deadline <- time.Now() // s2's own bound: its gate is cancelled and the wait it held is freed
 	select {
 	case <-done:
 	case <-t.Context().Done():
-		t.Fatal("the pass did not end after the holder's bound fired")
+		require.FailNow(t, "the pass did not end after the holder's bound fired")
 	}
 	assert.Equal(t, 1, code, "s2's batch is refused for this pass: %s%s", out, errs)
 	assert.Equal(t, 1, strings.Count(out+errs, "gate of this batch exceeded"), "the holder's abandonment is the deadline refusal, no card blamed: %s%s", out, errs)
