@@ -411,7 +411,7 @@ Overdue(i) ==
 \* store too, so a live command runs with no gate and CommandSafe fails).
 Cmd ==
     /\ (twin \/ "liveexempt" \in Broken \/ Gate)
-    /\ cmdBad' = cmdBad \/ (~twin /\ ~Rule)
+    /\ cmdBad' = (cmdBad \/ (~twin /\ ~Rule))
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
                    now, live, delivered, acked, overdue, rec, ends, told, cad, busVars, twin>>
 
