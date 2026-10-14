@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/card"
@@ -47,13 +48,13 @@ the flow, three lines:
   nova-sprint where
 
 usage:
+  nova-card template
+  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
+  nova-card help [<verb>]
+  nova-card version
   nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
-  nova-card template
-  nova-card version
-  nova-card help [<verb>]
 
 generate reads the repository, the branch and the base sha from --repo-dir (its origin URL,
 its branch, its HEAD); --repo, --base and --sha each override one, and all three together
@@ -104,16 +105,69 @@ var effects = map[string]string{
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
+// refusalJSON is a refusal as a machine reads it under --json: the verb, the
+// fleet's refused status, the exit code, why and the remedy, the fields the
+// other tools' refusal objects carry (docs/STANDARD.md section 3).
+type refusalJSON struct {
+	Verb   string `json:"verb"`
+	Status string `json:"status"`
+	Exit   int    `json:"exit"`
+	Reason string `json:"reason"`
+	Remedy string `json:"remedy"`
+}
+
 // refuse is one line on stderr, `nova-card[ <verb>] REFUSED: <what>; run: nova-card help[ <verb>]`,
 // exit 2 (docs/STANDARD.md section 3).
 func refuse(stderr io.Writer, verb, what string) int {
+	return refuseWith(io.Discard, stderr, false, verb, what)
+}
+
+// refuseWith is refuse, and under --json the same refusal as one object on
+// stdout with an empty stderr, so a caller reads the refusal as data the way it
+// reads every other --json result (docs/STANDARD.md section 3). A caller for a
+// verb that takes --json passes asJSON from jsonAsked.
+func refuseWith(stdout, stderr io.Writer, asJSON bool, verb, what string) int {
 	where, door := "nova-card", "nova-card help"
 	if verb != "" {
 		where += " " + verb
 		door += " " + verb
 	}
+	if asJSON {
+		if b, err := json.Marshal(refusalJSON{Verb: verb, Status: "refused", Exit: 2, Reason: what, Remedy: door}); err == nil {
+			fmt.Fprintln(stdout, string(b))
+			return 2
+		}
+	}
 	fmt.Fprintf(stderr, "%s REFUSED: %s; run: %s\n", where, oneline.Escape(what), door)
 	return 2
+}
+
+// jsonAsked reports whether args ask for --json, read as the flag package reads
+// a boolean flag: `--json` and `-json` ask, `--json=false` does not, and a
+// `--json` after `--` is an argument, not the flag. It reads a refusal before
+// the flag set parsed, so a refusal asked for as --json is rendered as JSON
+// (docs/STANDARD.md section 3).
+func jsonAsked(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if len(a) < 2 || a[0] != '-' {
+			continue
+		}
+		name, val, inline := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if name != "json" {
+			continue
+		}
+		if !inline {
+			return true
+		}
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+		return false
+	}
+	return false
 }
 
 func run(args []string, stdout, stderr io.Writer) (code int) {
@@ -125,8 +179,18 @@ func run(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	switch args[0] {
 	case "help", "-h", "-help", "--help":
-		if args[0] == "help" && len(args) > 1 && slices.Contains(verbs, args[1]) && args[1] != "help" {
-			return run([]string{args[1], "-h"}, stdout, stderr)
+		if args[0] == "help" && len(args) > 1 && args[1] != "help" {
+			if slices.Contains(verbs, args[1]) {
+				return run([]string{args[1], "-h"}, stdout, stderr)
+			}
+			// `help <unknown>` refuses, naming the nearest verb and the list,
+			// instead of dumping the banner at exit 0 (docs/STANDARD.md
+			// section 3, refusing to guess)
+			what := fmt.Sprintf("unknown verb %q; one of %s", args[1], strings.Join(verbs, ", "))
+			if near := verbflag.Nearest(args[1], verbs); near != "" {
+				what = fmt.Sprintf("unknown verb %q; did you mean %s? one of %s", args[1], near, strings.Join(verbs, ", "))
+			}
+			return refuseWith(stdout, stderr, jsonAsked(args[1:]), "", what)
 		}
 		fmt.Fprint(stdout, usage)
 		return 0
@@ -135,12 +199,13 @@ func run(args []string, stdout, stderr io.Writer) (code int) {
 		return cmdVersion(args[1:], stdout, stderr)
 	case "template":
 		verbflag.HelpIfAsked(args[1:], "template")
+		asJSON := jsonAsked(args[1:])
 		if len(args) > 1 {
-			return refuse(stderr, "template", "takes no flags and no arguments")
+			return refuseWith(stdout, stderr, asJSON, "template", "takes no flags and no arguments")
 		}
 		text, err := swarm.Template("card")
 		if err != nil {
-			return refuse(stderr, "template", err.Error())
+			return refuseWith(stdout, stderr, asJSON, "template", err.Error())
 		}
 		fmt.Fprint(stdout, text)
 		return 0
@@ -203,11 +268,15 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&cards, "card", "a brief `file` to hold to the add's lint; repeat for more")
 	jsonOut := fs.Bool("json", false, "emit a structured JSON object with findings")
 	opts := lintFlags(fs)
+	// a refusal asked for as --json is one object on stdout (refuseWith;
+	// docs/STANDARD.md section 3)
+	asJSON := jsonAsked(args)
+	deny := func(what string) int { return refuseWith(stdout, stderr, asJSON, "lint", what) }
 	if err := verbflag.Parse(fs, args); err != nil {
-		return refuse(stderr, "lint", verbflag.Explain(fs, err))
+		return deny(verbflag.Explain(fs, err))
 	}
 	if len(cards) == 0 || fs.NArg() > 0 {
-		return refuse(stderr, "lint", "wants --card <file>, one per brief, and nothing else")
+		return deny("wants --card <file>, one per brief, and nothing else")
 	}
 	red := 0
 	var jsonFindings []lintJSONFinding
@@ -217,7 +286,7 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 	for _, file := range cards {
 		raw, err := os.ReadFile(file)
 		if err != nil {
-			return refuse(stderr, "lint", "cannot read "+file+": "+err.Error())
+			return deny("cannot read " + file + ": " + err.Error())
 		}
 		id := strings.TrimSuffix(filepath.Base(file), ".md")
 		findings := card.Lint(id, string(raw), opts())
@@ -247,7 +316,7 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 	if *jsonOut {
 		b, err := json.Marshal(lintJSONOutput{Findings: jsonFindings})
 		if err != nil {
-			return refuse(stderr, "lint", err.Error())
+			return deny(err.Error())
 		}
 		fmt.Fprintln(stdout, string(b))
 	}
@@ -276,32 +345,36 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	maxCards := fs.Int("max", 0, "write at most this many cards, in source order; 0 is all")
 	dryRun := fs.Bool("dry-run", false, "plan and lint, print the manifest and the CARDS line, and write nothing")
 	opts := lintFlags(fs)
+	// a refusal asked for as --json is one object on stdout (refuseWith;
+	// docs/STANDARD.md section 3)
+	asJSON := jsonAsked(args)
+	deny := func(what string) int { return refuseWith(stdout, stderr, asJSON, "generate", what) }
 	if err := verbflag.Parse(fs, args); err != nil {
-		return refuse(stderr, "generate", verbflag.Explain(fs, err))
+		return deny(verbflag.Explain(fs, err))
 	}
 	if fs.NArg() > 0 {
-		return refuse(stderr, "generate", fmt.Sprintf("unexpected argument %q; every input is a flag", fs.Arg(0)))
+		return deny(fmt.Sprintf("unexpected argument %q; every input is a flag", fs.Arg(0)))
 	}
 	if *out == "" {
-		return refuse(stderr, "generate", "wants --out <dir>")
+		return deny("wants --out <dir>")
 	}
 	if *tier != "" && *tier != "flash" && *tier != "pro" {
-		return refuse(stderr, "generate", fmt.Sprintf("--tier %q; want flash or pro", *tier))
+		return deny(fmt.Sprintf("--tier %q; want flash or pro", *tier))
 	}
 	// the header: from the checkout, each line overridable
 	h := cardgen.Header{Repo: *repo, Base: *base, Sha: *sha, Minutes: *minutes}
 	if *repoDir != "" {
 		if err := readCheckout(*repoDir, &h); err != nil {
-			return refuse(stderr, "generate", err.Error())
+			return deny(err.Error())
 		}
 	}
 	switch {
 	case h.Repo == "":
-		return refuse(stderr, "generate", "no repository: --repo <owner/name>, or --repo-dir a checkout whose origin names one")
+		return deny("no repository: --repo <owner/name>, or --repo-dir a checkout whose origin names one")
 	case h.Base == "":
-		return refuse(stderr, "generate", "no base branch: --base <branch>, or --repo-dir a checkout on a branch (a detached HEAD names none)")
+		return deny("no base branch: --base <branch>, or --repo-dir a checkout on a branch (a detached HEAD names none)")
 	case !shaRE.MatchString(h.Sha):
-		return refuse(stderr, "generate", fmt.Sprintf("base sha %q is not 40 hex: --sha <40hex>, or --repo-dir a checkout with a HEAD", h.Sha))
+		return deny(fmt.Sprintf("base sha %q is not 40 hex: --sha <40hex>, or --repo-dir a checkout with a HEAD", h.Sha))
 	}
 	var plan cardgen.Plan
 	var notes []string
@@ -309,32 +382,32 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	case "ledger":
 		l, ok := cardgen.Ledgers[*ledger]
 		if !ok {
-			return refuse(stderr, "generate", fmt.Sprintf("--ledger %q is not a ledger this build knows; one of %s", *ledger, strings.Join(cardgen.LedgerNames(), ", ")))
+			return deny(fmt.Sprintf("--ledger %q is not a ledger this build knows; one of %s", *ledger, strings.Join(cardgen.LedgerNames(), ", ")))
 		}
 		if *repoDir == "" {
-			return refuse(stderr, "generate", "--from ledger reads the ledger from --repo-dir <dir>, a checkout of the repository at the base")
+			return deny("--from ledger reads the ledger from --repo-dir <dir>, a checkout of the repository at the base")
 		}
 		raw, err := os.ReadFile(filepath.Join(*repoDir, filepath.FromSlash(l.File)))
 		if err != nil {
-			return refuse(stderr, "generate", "cannot read the ledger "+l.File+" in "+*repoDir+": "+err.Error())
+			return deny("cannot read the ledger " + l.File + " in " + *repoDir + ": " + err.Error())
 		}
 		rows, skipped := cardgen.ParseLedger(l, string(raw))
 		notes = append(notes, skipped...)
 		plan = cardgen.PlanLedger(l, rows, *prefix, *tier, *maxCards)
 	case "findings":
 		if *file == "" {
-			return refuse(stderr, "generate", "--from findings wants --file <tsv>")
+			return deny("--from findings wants --file <tsv>")
 		}
 		raw, err := os.ReadFile(*file)
 		if err != nil {
-			return refuse(stderr, "generate", "cannot read "+*file+": "+err.Error())
+			return deny("cannot read " + *file + ": " + err.Error())
 		}
 		findings, skipped := cardgen.ParseFindings(string(raw))
 		notes = append(notes, skipped...)
 		plan = cardgen.PlanFindings(findings, *prefix, *tier, *maxCards)
 	case "help":
 		if len(tools) == 0 {
-			return refuse(stderr, "generate", "--from help wants --tool <name>, one per tool")
+			return deny("--from help wants --tool <name>, one per tool")
 		}
 		plan = cardgen.Plan{Tier: *tier, Waves: 1}
 		if plan.Tier == "" {
@@ -352,15 +425,15 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 			plan.Cards = append(plan.Cards, cardgen.PlanHelp(tool, help, exampleTest(*repoDir, tool), *prefix, *tier))
 		}
 	case "":
-		return refuse(stderr, "generate", "wants --from ledger|findings|help")
+		return deny("wants --from ledger|findings|help")
 	default:
-		return refuse(stderr, "generate", fmt.Sprintf("--from %q; want ledger, findings or help", *from))
+		return deny(fmt.Sprintf("--from %q; want ledger, findings or help", *from))
 	}
 	if len(plan.Cards) == 0 {
-		return refuse(stderr, "generate", "the source yields no card; nothing to write")
+		return deny("the source yields no card; nothing to write")
 	}
 	if dup := cardgen.DuplicateID(plan.Cards); dup != "" {
-		return refuse(stderr, "generate", fmt.Sprintf("card %s is planned twice (a --tool named twice?); a card is its file %s.md and a second one would overwrite it", dup, dup))
+		return deny(fmt.Sprintf("card %s is planned twice (a --tool named twice?); a card is its file %s.md and a second one would overwrite it", dup, dup))
 	}
 	// render, lint, and check the paths against the checkout: nothing is written while
 	// one brief is red
@@ -412,18 +485,18 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
-		return refuse(stderr, "generate", "cannot create --out "+*out+": "+err.Error())
+		return deny("cannot create --out " + *out + ": " + err.Error())
 	}
 	if held, _ := filepath.Glob(filepath.Join(*out, "*.md")); len(held) > 0 {
-		return refuse(stderr, "generate", fmt.Sprintf("--out %s already holds %d brief(s); name an empty directory", *out, len(held)))
+		return deny(fmt.Sprintf("--out %s already holds %d brief(s); name an empty directory", *out, len(held)))
 	}
 	for i, c := range plan.Cards {
 		if err := os.WriteFile(filepath.Join(*out, c.ID+".md"), []byte(briefs[i]), 0o644); err != nil {
-			return refuse(stderr, "generate", "cannot write "+c.ID+".md: "+err.Error())
+			return deny("cannot write " + c.ID + ".md: " + err.Error())
 		}
 	}
 	if err := os.WriteFile(filepath.Join(*out, "manifest.tsv"), []byte(cardgen.Manifest(plan)), 0o644); err != nil {
-		return refuse(stderr, "generate", "cannot write manifest.tsv: "+err.Error())
+		return deny("cannot write manifest.tsv: " + err.Error())
 	}
 	for _, n := range notes {
 		fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
