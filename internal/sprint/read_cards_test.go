@@ -37,6 +37,15 @@ func dealReads(t *testing.T, w *world, seats []FriendSeat) Plan {
 	return w.part(TickDeal, TickReq{Friends: seats})
 }
 
+// eReadRows is the rows of the primary's placed read cards.
+func eReadRows(w *world, primary string) []string {
+	var out []string
+	for _, c := range readCardsOf(w, primary) {
+		out = append(out, c.Row)
+	}
+	return out
+}
+
 // readCardsOf is the placed read cards of the primary on the fleet table.
 func readCardsOf(w *world, primary string) []*Card {
 	var out []*Card
@@ -104,8 +113,7 @@ func TestMemberReaderWithAllTiersGetsAsked(t *testing.T) {
 		"reader-m3": {ReaderTiers: "flash,pro,heavy,frontier"},
 	}
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	seats := []FriendSeat{}
-	dealReads(t, w, seats)
+	dealReads(t, w, []FriendSeat{})
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 2, "two reads asked, one to each reader with all tiers")
 	for _, c := range reads {
@@ -154,8 +162,7 @@ func TestMemberReaderWithoutExplicitTiersNeedsEnabledRoute(t *testing.T) {
 	// Set up a DISABLED pro route - the reader should NOT be able to serve pro
 	w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: false}}
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	seats := []FriendSeat{}
-	dealReads(t, w, seats)
+	dealReads(t, w, []FriendSeat{})
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 0, "no reads asked when no pro route is enabled for readers without explicit tier config")
 }
@@ -195,11 +202,7 @@ func TestAReadCardIsDealtToAReaderOfItsTierAndNeverTheWorker(t *testing.T) {
 			readerSeat("zoe", 2, []string{"pro"}, []string{"builder", "reader"}),
 		}
 		dealReads(t, w, seats)
-		var rows []string
-		for _, c := range readCardsOf(w, "s1-1") {
-			rows = append(rows, c.Row)
-		}
-		require.ElementsMatch(t, []string{FriendRow("pat"), "m1"}, rows, "a reader of its tier, never a builder alone, never flash for pro, never zoe who worked it")
+		require.ElementsMatch(t, []string{FriendRow("pat"), "m1"}, eReadRows(w, "s1-1"), "a reader of its tier, never a builder alone, never flash for pro, never zoe who worked it")
 	})
 	t.Run("the worker is a member", func(t *testing.T) {
 		t.Parallel()
@@ -354,11 +357,7 @@ func TestTheWorkSwitchesStopWorkNeverReads(t *testing.T) {
 	w.s.Work.SetProp(PropFriends, "off")
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
 	dealReads(t, w, []FriendSeat{readerSeat("pat", 2, []string{"pro"}, []string{"reader"})})
-	var rows []string
-	for _, c := range readCardsOf(w, "s1-1") {
-		rows = append(rows, c.Row)
-	}
-	require.ElementsMatch(t, []string{"m2", FriendRow("pat")}, rows)
+	require.ElementsMatch(t, []string{"m2", FriendRow("pat")}, eReadRows(w, "s1-1"))
 }
 
 // TestAFriendReadsEveryTierAtOrBelowHers pins the read's tier rule on a friend (the live
@@ -376,16 +375,9 @@ func TestAFriendReadsEveryTierAtOrBelowHers(t *testing.T) {
 		readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"}),
 	}
 	dealReads(t, w, seats)
-	rows := func(id string) []string {
-		var out []string
-		for _, c := range readCardsOf(w, id) {
-			out = append(out, c.Row)
-		}
-		return out
-	}
-	require.Equal(t, []string{FriendRow("jon")}, rows("s1-1"), "heavy reads flash")
-	require.Equal(t, []string{FriendRow("jon")}, rows("s1-2"), "heavy reads pro; fred worked it")
-	require.ElementsMatch(t, []string{FriendRow("jon"), FriendRow("fred")}, rows("s1-3"), "a flash friend reads a pro card one tier below it (TestAReaderOneTierBelowMayTakeAReadCard)")
+	require.Equal(t, []string{FriendRow("jon")}, eReadRows(w, "s1-1"), "heavy reads flash")
+	require.Equal(t, []string{FriendRow("jon")}, eReadRows(w, "s1-2"), "heavy reads pro; fred worked it")
+	require.ElementsMatch(t, []string{FriendRow("jon"), FriendRow("fred")}, eReadRows(w, "s1-3"), "a flash friend reads a pro card one tier below it (TestAReaderOneTierBelowMayTakeAReadCard)")
 }
 
 // TestAReaderOneTierBelowMayTakeAReadCard pins the owner's interim read rule for read cards
@@ -410,11 +402,7 @@ func TestAReaderOneTierBelowMayTakeAReadCard(t *testing.T) {
 		}
 		fred := readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"})
 		dealReads(t, w, []FriendSeat{jon, fred})
-		var rows []string
-		for _, c := range readCardsOf(w, "s1-1") {
-			rows = append(rows, c.Row)
-		}
-		require.ElementsMatch(t, []string{FriendRow("jon"), FriendRow("fred")}, rows, "the second read goes to the flash friend")
+		require.ElementsMatch(t, []string{FriendRow("jon"), FriendRow("fred")}, eReadRows(w, "s1-1"), "the second read goes to the flash friend")
 	})
 	t.Run("its own tier, then one below, before above", func(t *testing.T) {
 		t.Parallel()
@@ -425,11 +413,7 @@ func TestAReaderOneTierBelowMayTakeAReadCard(t *testing.T) {
 			readerSeat("jon", 16, []string{"heavy"}, []string{"builder", "reader"}),
 			readerSeat("pat", 2, []string{"pro"}, []string{"reader"}),
 		})
-		var rows []string
-		for _, c := range readCardsOf(w, "s1-1") {
-			rows = append(rows, c.Row)
-		}
-		require.ElementsMatch(t, []string{FriendRow("pat"), FriendRow("fred")}, rows, "the pro reader, then the flash reader one below; never the heavy reader while they are idle")
+		require.ElementsMatch(t, []string{FriendRow("pat"), FriendRow("fred")}, eReadRows(w, "s1-1"), "the pro reader, then the flash reader one below; never the heavy reader while they are idle")
 	})
 	t.Run("two tiers below never", func(t *testing.T) {
 		t.Parallel()

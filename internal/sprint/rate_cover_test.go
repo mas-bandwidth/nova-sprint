@@ -15,92 +15,32 @@ func TestRateCoverLandingRate(t *testing.T) {
 	t.Parallel()
 	now := coverT0
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
+	mins := func(ms ...int) []time.Time {
+		var out []time.Time
+		for _, m := range ms {
+			out = append(out, ago(time.Duration(m)*time.Minute))
+		}
+		return out
+	}
 	for _, tc := range []struct {
 		name   string
 		landed []time.Time
 		total  int64
 		spans  []Span
 		first  time.Time
-		now    time.Time
 		want   float64
 	}{
-		{
-			name:   "refusal: not started, first zero",
-			landed: []time.Time{now},
-			total:  1,
-			spans:  nil,
-			first:  time.Time{},
-			now:    now,
-			want:   0,
-		},
-		{
-			name:   "refusal: now equal to first, no time advanced",
-			landed: []time.Time{now},
-			total:  1,
-			spans:  nil,
-			first:  now,
-			now:    now,
-			want:   0,
-		},
-		{
-			name: "main: window rate with enough landings in the last hour",
-			landed: []time.Time{
-				ago(50 * time.Minute),
-				ago(40 * time.Minute),
-				ago(30 * time.Minute),
-				ago(20 * time.Minute),
-				ago(10 * time.Minute),
-			},
-			total: 10,
-			spans: nil,
-			first: ago(2 * time.Hour),
-			now:   now,
-			want:  5,
-		},
-		{
-			name: "main: window rate with a stop shrinking running time",
-			landed: []time.Time{
-				ago(70 * time.Minute),
-				ago(60 * time.Minute),
-				ago(50 * time.Minute),
-				ago(40 * time.Minute),
-				ago(20 * time.Minute),
-			},
-			total: 10,
-			spans: []Span{{From: ago(30 * time.Minute), To: ago(10 * time.Minute)}},
-			first: ago(2 * time.Hour),
-			now:   now,
-			want:  5,
-		},
-		{
-			name: "main: fallback to total over all running time",
-			landed: []time.Time{
-				ago(50 * time.Minute),
-				ago(40 * time.Minute),
-				ago(30 * time.Minute),
-			},
-			total: 10,
-			spans: nil,
-			first: ago(2 * time.Hour),
-			now:   now,
-			want:  5,
-		},
-		{
-			name: "refusal: too few landings and no total over running time",
-			landed: []time.Time{
-				ago(50 * time.Minute),
-				ago(40 * time.Minute),
-			},
-			total: 0,
-			spans: nil,
-			first: ago(2 * time.Hour),
-			now:   now,
-			want:  0,
-		},
+		{"refusal: not started, first zero", []time.Time{now}, 1, nil, time.Time{}, 0},
+		{"refusal: now equal to first, no time advanced", []time.Time{now}, 1, nil, now, 0},
+		{"main: window rate with enough landings in the last hour", mins(50, 40, 30, 20, 10), 10, nil, ago(2 * time.Hour), 5},
+		{"main: window rate with a stop shrinking running time", mins(70, 60, 50, 40, 20), 10,
+			[]Span{{From: ago(30 * time.Minute), To: ago(10 * time.Minute)}}, ago(2 * time.Hour), 5},
+		{"main: fallback to total over all running time", mins(50, 40, 30), 10, nil, ago(2 * time.Hour), 5},
+		{"refusal: too few landings and no total over running time", mins(50, 40), 0, nil, ago(2 * time.Hour), 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := LandingRate(tc.landed, tc.total, tc.spans, tc.first, tc.now)
+			got := LandingRate(tc.landed, tc.total, tc.spans, tc.first, now)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -118,30 +58,16 @@ func TestRateCoverRunningStart(t *testing.T) {
 		name  string
 		spans []Span
 		first time.Time
-		now   time.Time
-		w     time.Duration
 		want  time.Time
 	}{
-		{
-			name:  "main: a stop inside the window pushes the start past the stop",
-			spans: []Span{{From: ago(30 * time.Minute), To: ago(10 * time.Minute)}},
-			first: ago(3 * time.Hour),
-			now:   now,
-			w:     time.Hour,
-			want:  ago(80 * time.Minute),
-		},
-		{
-			name:  "refusal: run less than w since first starts the window at first",
-			spans: []Span{{From: ago(time.Hour), To: ago(30 * time.Minute)}},
-			first: ago(30 * time.Minute),
-			now:   now,
-			w:     time.Hour,
-			want:  ago(30 * time.Minute),
-		},
+		{"main: a stop inside the window pushes the start past the stop",
+			[]Span{{From: ago(30 * time.Minute), To: ago(10 * time.Minute)}}, ago(3 * time.Hour), ago(80 * time.Minute)},
+		{"refusal: run less than w since first starts the window at first",
+			[]Span{{From: ago(time.Hour), To: ago(30 * time.Minute)}}, ago(30 * time.Minute), ago(30 * time.Minute)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := runningStart(tc.spans, tc.first, tc.now, tc.w)
+			got := runningStart(tc.spans, tc.first, now, time.Hour)
 			assert.Equal(t, tc.want, got)
 		})
 	}
