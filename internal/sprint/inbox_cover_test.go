@@ -7,13 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Unit tests for the pure inbox helpers of internal/sprint/inbox.go that no unit
-// test reaches yet: Stalled, StaleStream and NoteCommands. Each covers the
-// function's main path and one refusal, with no sleeps, no real time and no
-// network: the inputs are plain time values and the outputs are plain values.
-//
-// Libraries considered: only the Go standard library (testing, time) and
-// testify/assert, already in the tree.
+// Unit tests for the pure inbox helpers of internal/sprint/inbox.go: Stalled, StaleStream
+// and NoteCommands. Each covers the function's main path and one refusal; the inputs are
+// plain time values and the outputs are plain values.
 
 // TestInboxCoverStalled covers StreamClock.Stalled (inbox.go:33): a stream that
 // has not landed and whose last progress is older than stale is stalled; a
@@ -21,49 +17,22 @@ import (
 // the staleness.
 func TestInboxCoverStalled(t *testing.T) {
 	t.Parallel()
-	now := t0
 	progress := t0.Add(-2 * time.Hour)
-	tests := []struct {
+	for _, tt := range []struct {
 		name  string
 		clk   StreamClock
 		stale time.Duration
 		want  bool
 	}{
-		{
-			name:  "not landed and past the stale mark",
-			clk:   StreamClock{State: StreamWaiting, Progress: progress},
-			stale: time.Hour,
-			want:  true,
-		},
-		{
-			name:  "the stream landed: not stalled",
-			clk:   StreamClock{State: StreamLanded, Progress: progress},
-			stale: time.Hour,
-			want:  false,
-		},
-		{
-			name:  "a zero stale: not stalled",
-			clk:   StreamClock{State: StreamWaiting, Progress: progress},
-			stale: 0,
-			want:  false,
-		},
-		{
-			name:  "no progress yet: not stalled",
-			clk:   StreamClock{State: StreamWaiting},
-			stale: time.Hour,
-			want:  false,
-		},
-		{
-			name:  "progress is fresh: not stalled",
-			clk:   StreamClock{State: StreamWaiting, Progress: now.Add(-time.Minute)},
-			stale: time.Hour,
-			want:  false,
-		},
-	}
-	for _, tt := range tests {
+		{"not landed and past the stale mark", StreamClock{State: StreamWaiting, Progress: progress}, time.Hour, true},
+		{"the stream landed: not stalled", StreamClock{State: StreamLanded, Progress: progress}, time.Hour, false},
+		{"a zero stale: not stalled", StreamClock{State: StreamWaiting, Progress: progress}, 0, false},
+		{"no progress yet: not stalled", StreamClock{State: StreamWaiting}, time.Hour, false},
+		{"progress is fresh: not stalled", StreamClock{State: StreamWaiting, Progress: t0.Add(-time.Minute)}, time.Hour, false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, tt.clk.Stalled(now, tt.stale))
+			assert.Equal(t, tt.want, tt.clk.Stalled(t0, tt.stale))
 		})
 	}
 }
@@ -72,32 +41,14 @@ func TestInboxCoverStalled(t *testing.T) {
 // group id yields the card id it names; anything else is refused.
 func TestInboxCoverStaleStream(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name   string
-		id     string
-		wantID string
-		wantOk bool
+	for _, tt := range []struct {
+		name, id, wantID string
+		wantOk           bool
 	}{
-		{
-			name:   "a stale group id yields its card id",
-			id:     StaleGroupID("s1", 7),
-			wantID: "s1",
-			wantOk: true,
-		},
-		{
-			name:   "a regular note id is refused",
-			id:     "n1",
-			wantID: "",
-			wantOk: false,
-		},
-		{
-			name:   "the stale prefix alone is refused",
-			id:     "stale:",
-			wantID: "",
-			wantOk: false,
-		},
-	}
-	for _, tt := range tests {
+		{"a stale group id yields its card id", StaleGroupID("s1", 7), "s1", true},
+		{"a regular note id is refused", "n1", "", false},
+		{"the stale prefix alone is refused", "stale:", "", false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := StaleStream(tt.id)
@@ -112,31 +63,19 @@ func TestInboxCoverStaleStream(t *testing.T) {
 // a note with no decisions renders none.
 func TestInboxCoverNoteCommands(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name    string
-		note    Note
-		members []string
-		want    []Command
+	for _, tt := range []struct {
+		name string
+		note Note
+		want []Command
 	}{
-		{
-			name:    "a blocked judgment renders its ack command",
-			note:    Note{ID: "n1", Kind: Judgment, Type: NBlocked, Stream: "s1", Decisions: []string{"ack"}},
-			members: []string{"p1"},
-			want: []Command{
-				{Decision: "ack", Lines: []string{"nova-sprint ack n1 --reason " + noneText}},
-			},
-		},
-		{
-			name:    "a note with no decisions renders no commands",
-			note:    Note{ID: "n2", Kind: Judgment, Type: NBlocked},
-			members: []string{"p1"},
-			want:    nil,
-		},
-	}
-	for _, tt := range tests {
+		{"a blocked judgment renders its ack command",
+			Note{ID: "n1", Kind: Judgment, Type: NBlocked, Stream: "s1", Decisions: []string{"ack"}},
+			[]Command{{Decision: "ack", Lines: []string{"nova-sprint ack n1 --reason " + noneText}}}},
+		{"a note with no decisions renders no commands", Note{ID: "n2", Kind: Judgment, Type: NBlocked}, nil},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, NoteCommands(tt.note, tt.members))
+			assert.Equal(t, tt.want, NoteCommands(tt.note, []string{"p1"}))
 		})
 	}
 }

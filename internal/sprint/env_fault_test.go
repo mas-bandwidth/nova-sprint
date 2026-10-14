@@ -50,6 +50,24 @@ func envFaultWorld(t *testing.T) *world {
 	return w
 }
 
+// dPushRefused is a finish report of a push refused for want of a credential (EnvPush).
+const dPushRefused = "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+
+// dEnvFault takes s1-1's work card (and s1-2's, with both) on m1 and fails the first at
+// push: m1 is held by its environment fault.
+func dEnvFault(w *world, both bool) (first, next string) {
+	w.t.Helper()
+	first, next = w.s.Work.Card("s1-1").F("work"), w.s.Work.Card("s1-2").F("work")
+	ids := []string{first}
+	if both {
+		ids = append(ids, next)
+	}
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: ids}, Gens: w.gens(ids...)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first}}, Gens: w.gens(first), Failed: true, Report: dPushRefused}))
+	require.True(w.t, w.s.EnvHeld("m1"))
+	return first, next
+}
+
 // A member the sprint does not know runs its own environment probe before fleet up accepts
 // its width: no probe, or a probe that failed, refuses it and nothing is added; a passed
 // probe accepts it once (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
@@ -84,7 +102,7 @@ func TestAnEnvironmentFailureHoldsTheMemberAndReturnsTheCard(t *testing.T) {
 	attempt := w.s.Work.Card("s1-1").Int("attempt")
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
 	p := Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"})
+		Report: dPushRefused})
 	require.Len(t, p.Units, 1, "%+v", p)
 	w.must(p)
 
@@ -147,11 +165,7 @@ func TestANonEnvFaultFinishHoldsNothing(t *testing.T) {
 func TestFleetUpRefusesUntilTheProbePasses(t *testing.T) {
 	t.Parallel()
 	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
-	require.True(t, w.s.EnvHeld("m1"))
+	dEnvFault(w, false)
 
 	p := FleetStep(w.s, FleetReq{Op: "release", Member: "m1"})
 	require.Len(t, p.Refused, 1, "no probe: refused: %+v", p)
@@ -172,12 +186,7 @@ func TestFleetUpRefusesUntilTheProbePasses(t *testing.T) {
 func TestASuccessfulPushClearsTheEnvironmentFault(t *testing.T) {
 	t.Parallel()
 	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	next := w.s.Work.Card("s1-2").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
-	require.True(t, w.s.EnvHeld("m1"))
+	_, next := dEnvFault(w, true)
 	// the member's card already in flight pushes next
 	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{next}}, Gens: w.gens(next), Head: strings.Repeat("a", 40)}))
 	assert.False(t, w.s.EnvHeld("m1"), "the push cleared the fault")
@@ -191,13 +200,7 @@ func TestASuccessfulPushClearsTheEnvironmentFault(t *testing.T) {
 func TestASecondDistinctEnvironmentCauseUpdatesTheJudgment(t *testing.T) {
 	t.Parallel()
 	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	next := w.s.Work.Card("s1-2").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next)}))
-	// the first card fails at push: the member is held with the push remedy
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
-	require.True(t, w.s.EnvHeld("m1"))
+	_, next := dEnvFault(w, true) // the first card fails at push: the member is held with the push remedy
 	require.Len(t, w.openOn(MemberSubject("m1")), 1)
 	// the card already in flight fails for a different cause: the disk is full
 	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{next}}, Gens: w.gens(next), Failed: true,
@@ -228,8 +231,7 @@ func TestTwoCardsFailingTheSameEnvironmentCauseInOneStepAreOneJudgment(t *testin
 	attempt2 := w.s.Work.Card("s1-2").Int("attempt")
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next)}))
 	// both cards finish refused at push in one call: the member tells the seat once
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next), Failed: true, Report: dPushRefused}))
 
 	assert.Equal(t, Ready, w.state("s1-1"), "the first card is back in ready")
 	assert.Equal(t, Ready, w.state("s1-2"), "the second card is back in ready")
@@ -263,8 +265,7 @@ func TestAnEnvironmentFaultRecordsBesideACoordinatorsHold(t *testing.T) {
 	require.Empty(t, w.s.MemberCtl("m1").F(FieldHeldBy), "the coordinator's hold carries no mark: %v", w.s.MemberCtl("m1").Fields)
 
 	// its card fails at push: the fault is recorded, the coordinator's hold is left alone
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first}}, Gens: w.gens(first), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first}}, Gens: w.gens(first), Failed: true, Report: dPushRefused}))
 	ctl := w.s.MemberCtl("m1")
 	assert.True(t, w.s.EnvHeld("m1"), "the member is held by its environment fault")
 	assert.Equal(t, EnvPush, ctl.F(FieldEnvFault), "the fault is recorded: %v", ctl.Fields)
@@ -321,8 +322,7 @@ func TestALevelAfterAnEnvironmentFaultDealsNothingToThatMember(t *testing.T) {
 	putWorkCard(w, "s1-3", "m2", Ready, 3, nil)
 	putWorkCard(w, "s1-4", "m2", Ready, 4, nil)
 
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: w.gens("s1-1.w1"), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: w.gens("s1-1.w1"), Failed: true, Report: dPushRefused}))
 	require.True(t, w.s.EnvHeld("m1"))
 	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the member: %v", w.s.MemberCtl("m1").Fields)
 	assert.NotContains(t, w.s.UpMembers(), "m1", "a held member is not up")
@@ -342,12 +342,7 @@ func TestALevelAfterAnEnvironmentFaultDealsNothingToThatMember(t *testing.T) {
 func TestTheEnvironmentFaultsOwnClearReleasesTheMember(t *testing.T) {
 	t.Parallel()
 	w := envFaultWorld(t)
-	first := w.s.Work.Card("s1-1").F("work")
-	next := w.s.Work.Card("s1-2").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{first, next}}, Gens: w.gens(first, next)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first}}, Gens: w.gens(first), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
-	require.True(t, w.s.EnvHeld("m1"))
+	_, next := dEnvFault(w, true)
 	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"))
 
 	// the tick's presence leaves the held member alone: it is not reclassified as a down
@@ -373,11 +368,7 @@ func TestTheEnvironmentFaultsOwnClearReleasesTheMember(t *testing.T) {
 func TestTheReleasePlanUnsetsNoFieldTwice(t *testing.T) {
 	t.Parallel()
 	w := envFaultWorld(t)
-	wc := w.s.Work.Card("s1-1").F("work")
-	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
-	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
-		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
-	require.True(t, w.s.EnvHeld("m1"))
+	dEnvFault(w, false)
 
 	p := FleetStep(w.s, FleetReq{Op: "release", Member: "m1", Probe: EnvProbePassed, Fresh: true})
 	for _, u := range p.Units {
