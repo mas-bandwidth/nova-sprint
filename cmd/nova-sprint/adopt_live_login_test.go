@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

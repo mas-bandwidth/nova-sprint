@@ -14,7 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 

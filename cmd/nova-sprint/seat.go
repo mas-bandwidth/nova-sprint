@@ -19,8 +19,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/seatcred"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"; the owner,
