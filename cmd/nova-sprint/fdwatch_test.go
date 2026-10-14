@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
@@ -98,7 +99,7 @@ func TestServedBeatDoesNotMeasureTheServersFiles(t *testing.T) {
 	require.Equal(t, 1000, beats["m1"].Meter.Files.Open)
 	r.a.meter.OpenFiles = func() (int, int, error) { return 200000, 491520, nil }
 	r.a.meter.Holders = func() ([]hostload.Holder, error) {
-		t.Error("the server must not read its holders for a member")
+		assert.Fail(t, "the server must not read its holders for a member")
 		return nil, nil
 	}
 	res := r.one("fleet", "beat", "m1", "--load", "5")

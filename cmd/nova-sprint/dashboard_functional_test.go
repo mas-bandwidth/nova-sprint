@@ -132,7 +132,7 @@ func TestDashboardServesThePageOnEveryListener(t *testing.T) {
 	case code := <-done:
 		assert.Equal(t, 0, code, "%s%s", out.String(), errb.String())
 	case <-time.After(10 * time.Second):
-		t.Fatal("the dashboard did not stop at the interrupt")
+		require.FailNow(t, "the dashboard did not stop at the interrupt")
 	}
 	assert.Contains(t, out.String(), "DASHBOARD STOP interrupted")
 }

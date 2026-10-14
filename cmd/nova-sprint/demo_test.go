@@ -232,7 +232,7 @@ func TestDemoTakesNoRedis(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join(t.TempDir(), "demo")
 	stubDemo(t, root, func(context.Context, string, string) (demoServer, error) {
-		t.Error("a Redis was started")
+		assert.Fail(t, "a Redis was started")
 		return demoServer{}, fmt.Errorf("not in a unit test")
 	}, nil, nil)
 	a := newApp(func(string) string { return "" })

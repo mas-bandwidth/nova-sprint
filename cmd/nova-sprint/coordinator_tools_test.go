@@ -137,7 +137,7 @@ func TestEveryCoordinatorToolMapsToARealNovaVerb(t *testing.T) {
 		require.NoError(t, err, "%s: %v", coordinatorToolsPath, err)
 		require.GreaterOrEqual(t, len(coordinatorToolRows(string(raw))), 10, "%s maps fewer tools than the coordinator runs", coordinatorToolsPath)
 		for _, p := range checkCoordinatorTools(verbs, string(raw)) {
-			t.Errorf("%s %s", coordinatorToolsPath, p)
+			assert.Failf(t, "", "%s %s", coordinatorToolsPath, p)
 		}
 	})
 
@@ -232,7 +232,7 @@ func TestEveryCoordinatorStopgapNamesTheVerbThatReplacesIt(t *testing.T) {
 		raw, err := os.ReadFile(coordinatorToolsPath)
 		require.NoError(t, err)
 		for _, p := range checkStopgaps(verbs, string(raw)) {
-			t.Errorf("%s %s", coordinatorToolsPath, p)
+			assert.Failf(t, "", "%s %s", coordinatorToolsPath, p)
 		}
 		for _, want := range []string{"nova-swarm mirror", "--stop-floor", "nova-sprint dashboard", "nova-config loop run"} {
 			assert.Contains(t, string(raw), want, "the register no longer names %s", want)

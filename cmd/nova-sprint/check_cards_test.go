@@ -412,7 +412,7 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	offline.live = nil
 	offline.a.getenv = func(string) string { return "" }
 	offline.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
-		t.Fatal("check cards --from opened a store")
+		require.FailNow(t, "check cards --from opened a store")
 		return nil, nil
 	}
 	code, out, errs := offline.do("check cards --from " + liveCards)

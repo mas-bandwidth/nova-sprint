@@ -27,6 +27,7 @@ import (
 // 1s while the watch is still running; then it interrupts the watch and waits
 // for it to end.
 func TestWhereWatchFlushesEveryFrame(t *testing.T) {
+	t.Parallel()
 	ta := whereFixture(t)
 
 	// the interrupt is the test's, so the watch can be ended from here
@@ -66,13 +67,13 @@ func TestWhereWatchFlushesEveryFrame(t *testing.T) {
 	case line := <-frame:
 		assert.Contains(t, line, "SPRINT TABLE", "the first frame's line: %q", line)
 	case <-time.After(time.Second):
-		t.Fatal("a where --watch frame was not readable on the OS pipe within 1s while the watch ran")
+		require.FailNow(t, "a where --watch frame was not readable on the OS pipe within 1s while the watch ran")
 	}
 
 	// the watch is still running when the frame was read: it did not exit
 	select {
 	case code := <-done:
-		t.Fatalf("where --watch exited (code %d) before a frame was read", code)
+		require.FailNowf(t, "", "where --watch exited (code %d) before a frame was read", code)
 	default:
 	}
 
@@ -81,7 +82,7 @@ func TestWhereWatchFlushesEveryFrame(t *testing.T) {
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("where --watch did not end after the interrupt")
+		require.FailNow(t, "where --watch did not end after the interrupt")
 	}
 }
 
@@ -90,6 +91,7 @@ func TestWhereWatchFlushesEveryFrame(t *testing.T) {
 // buffered stdout would let the line sit in the buffer until the verb exited
 // rather than reaching a reader's pipe as it is written.
 func TestWatchWakeFlushesTheWake(t *testing.T) {
+	t.Parallel()
 	ta := whereFixture(t)
 
 	pr, pw, err := os.Pipe()
@@ -119,13 +121,13 @@ func TestWatchWakeFlushesTheWake(t *testing.T) {
 	case line := <-wake:
 		assert.Contains(t, line, "WAKE ", "the wake line: %q", line)
 	case <-time.After(time.Second):
-		t.Fatal("a watch --wake WAKE line was not readable on the OS pipe within 1s")
+		require.FailNow(t, "a watch --wake WAKE line was not readable on the OS pipe within 1s")
 	}
 
 	select {
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("watch --wake did not end after its wake")
+		require.FailNow(t, "watch --wake did not end after its wake")
 	}
 }

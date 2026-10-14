@@ -25,7 +25,7 @@ func (ta *testApp) briefOf(member, card string) string {
 			return c.Packet.Brief
 		}
 	}
-	ta.t.Fatalf("no packet of %s in %s's queue: %+v", card, member, q.Cards)
+	require.FailNowf(ta.t, "", "no packet of %s in %s's queue: %+v", card, member, q.Cards)
 	return ""
 }
 
@@ -266,7 +266,7 @@ func byStream(t *testing.T, js []inboxJudgment, stream string) inboxJudgment {
 			return j
 		}
 	}
-	t.Fatalf("no judgment for stream %q in %+v", stream, js)
+	require.FailNowf(t, "", "no judgment for stream %q in %+v", stream, js)
 	return inboxJudgment{}
 }
 

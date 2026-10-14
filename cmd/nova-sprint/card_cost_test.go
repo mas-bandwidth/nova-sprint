@@ -156,7 +156,7 @@ func (ta *testApp) workGen(member, card string) string {
 			return strconv.Itoa(c.Gen)
 		}
 	}
-	ta.t.Fatalf("%s holds no %s: %+v", member, card, q.Cards)
+	require.FailNowf(ta.t, "", "%s holds no %s: %+v", member, card, q.Cards)
 	return ""
 }
 

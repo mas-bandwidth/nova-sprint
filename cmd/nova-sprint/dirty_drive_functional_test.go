@@ -439,10 +439,10 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	case code = <-played:
 	case why := <-stalled:
 		cancel()
-		t.Fatalf("the sprint stalled: %s\nplay so far:\n%s%s", why, tail(pout.String(), 40), perr.String())
+		require.FailNowf(t, "", "the sprint stalled: %s\nplay so far:\n%s%s", why, tail(pout.String(), 40), perr.String())
 	case <-ctx.Done():
 		cancel()
-		t.Fatalf("the sprint did not land in 12 minutes\nplay so far:\n%s%s", tail(pout.String(), 40), perr.String())
+		require.FailNowf(t, "", "the sprint did not land in 12 minutes\nplay so far:\n%s%s", tail(pout.String(), 40), perr.String())
 	}
 	wall := time.Since(began)
 	// let the loop's last tick say the sprint is done, then stop it

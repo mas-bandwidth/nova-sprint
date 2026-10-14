@@ -70,7 +70,7 @@ func TestBalanceCoverLoopDoneBeforeItsFirstPollPollsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	ta.a.after = func(time.Duration) <-chan time.Time {
-		t.Error("the loop rested though its context was done before the first poll")
+		assert.Fail(t, "the loop rested though its context was done before the first poll")
 		return make(chan time.Time)
 	}
 	var out bytes.Buffer

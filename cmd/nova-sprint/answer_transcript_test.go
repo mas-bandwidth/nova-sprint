@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
@@ -39,9 +40,7 @@ func TestTheAnswerTranscriptRunsOverATwin(t *testing.T) {
 		a.close()
 		got = append(got, onboarding.Result{Code: code, Stdout: strings.ReplaceAll(out.String(), record, "./judgment.jsonl"), Stderr: errb.String()})
 	}
-	for _, p := range onboarding.CompareTranscript(steps, got, nil) {
-		t.Error(p)
-	}
+	assert.Empty(t, onboarding.CompareTranscript(steps, got, nil), "the transcript differences")
 	ds, err := os.ReadFile(record)
 	require.NoError(t, err)
 	require.Equal(t, 6, strings.Count(string(ds), "\n"), "the first pass recorded two decisions; the second applied them from the record, an applying and an applied line each")

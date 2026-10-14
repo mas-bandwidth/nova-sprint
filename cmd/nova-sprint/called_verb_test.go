@@ -1,8 +1,10 @@
 package main
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // friendFixtureDiff is the line the motivating finding added at bb01282b62: `nova-friend
@@ -25,79 +27,82 @@ func friendVerbs(tool string) []string {
 }
 
 func TestCalledVerbsKnownYesRefusesAnUnregisteredVerb(t *testing.T) {
+	t.Parallel()
 	got := calledVerbs(friendFixtureDiff, friendVerbs)
-	if len(got) != 1 {
-		t.Fatalf("calledVerbs = %+v, want one finding", got)
-	}
-	f := got[0]
-	if f.File != "fleet/seat-friend.yml" || f.Line != 2 {
-		t.Fatalf("finding = %s:%d, want fleet/seat-friend.yml:2", f.File, f.Line)
-	}
+	require.Len(t, got, 1, "calledVerbs = %+v, want one finding", got)
+	assert.Equal(t, "fleet/seat-friend.yml", got[0].File, "finding = %s:%d", got[0].File, got[0].Line)
+	assert.Equal(t, 2, got[0].Line, "finding = %s:%d", got[0].File, got[0].Line)
 	for _, want := range []string{"acceptance", "ping", "pong", "sync"} {
-		if !strings.Contains(f.Why, want) {
-			t.Fatalf("finding names not the verb and the tool's known verbs: %s", f.Why)
-		}
+		assert.Contains(t, got[0].Why, want, "finding names not the verb and the tool's known verbs: %s", got[0].Why)
 	}
 }
 
 func TestCalledVerbsKnownNoPassesARegisteredVerb(t *testing.T) {
+	t.Parallel()
 	registered := func(tool string) []string {
 		if tool == "friend" {
 			return []string{"acceptance", "ping", "pong", "sync"}
 		}
 		return nil
 	}
-	if got := calledVerbs(friendFixtureDiff, registered); len(got) != 0 {
-		t.Fatalf("calledVerbs = %+v, want none", got)
-	}
+	assert.Empty(t, calledVerbs(friendFixtureDiff, registered), "calledVerbs = %+v, want none", calledVerbs(friendFixtureDiff, registered))
 }
 
-func TestCalledVerbsIgnoresAnotherToolAndAShellBuiltIn(t *testing.T) {
-	diff := "diff --git a/fleet/seat-friend.yml b/fleet/seat-friend.yml\n" +
-		"new file mode 100644\n" +
-		"index 0000000..0000000\n" +
-		"--- /dev/null\n" +
-		"+++ b/fleet/seat-friend.yml\n" +
-		"@@ -0,0 +1,3 @@\n" +
-		"+plays:\n" +
-		"+  - nova-config apply\n" +
-		"+  - ls -la\n"
-	if got := calledVerbs(diff, friendVerbs); len(got) != 0 {
-		t.Fatalf("calledVerbs = %+v, want none (nova-config is another tool, ls a shell built-in)", got)
-	}
-}
-
-// TestCalledVerbsIgnoresAProseLineThatNamesATool pins the gate: a line that only names a
-// tool — a Go comment or an error string, a loop's note — does not run it, so a word after
-// the name is not read as a verb. The table here refuses anything but "where", so the test
-// fails if the prose line is read at all.
-func TestCalledVerbsIgnoresAProseLineThatNamesATool(t *testing.T) {
-	diff := "diff --git a/pkg/config/loop.go b/pkg/config/loop.go\n" +
-		"--- a/pkg/config/loop.go\n" +
-		"+++ b/pkg/config/loop.go\n" +
-		"@@ -1,2 +1,4 @@\n" +
-		"+// a loop row ran `nova-sprint table` for days after nova-sprint lost it\n" +
-		"+\treturn fmt.Errorf(\"nova-sprint must be run from the repo root\")\n" +
-		"+func f() {\n"
+// TestCalledVerbsIgnoresWhatDoesNotRunATool pins the gate: a line that only names a tool
+// — a Go comment, an error string, a shell built-in, a Markdown prose line whose first
+// token is a tool — does not run it, so a word after the name is not read as a verb. Each
+// table refuses anything but "where", so the test fails if the prose line is read at all.
+func TestCalledVerbsIgnoresWhatDoesNotRunATool(t *testing.T) {
+	t.Parallel()
 	only := func(tool string) []string { return []string{"where"} }
-	if got := calledVerbs(diff, only); len(got) != 0 {
-		t.Fatalf("calledVerbs = %+v, want none (both lines name a tool, neither runs it)", got)
+	cases := []struct {
+		name  string
+		diff  string
+		verbs func(string) []string
+		why   string
+	}{
+		{
+			name:  "another tool and a shell built-in",
+			verbs: friendVerbs,
+			diff: "diff --git a/fleet/seat-friend.yml b/fleet/seat-friend.yml\n" +
+				"new file mode 100644\n" +
+				"index 0000000..0000000\n" +
+				"--- /dev/null\n" +
+				"+++ b/fleet/seat-friend.yml\n" +
+				"@@ -0,0 +1,3 @@\n" +
+				"+plays:\n" +
+				"+  - nova-config apply\n" +
+				"+  - ls -la\n",
+			why: "nova-config is another tool, ls a shell built-in",
+		},
+		{
+			name:  "a prose line that names a tool",
+			verbs: only,
+			diff: "diff --git a/pkg/config/loop.go b/pkg/config/loop.go\n" +
+				"--- a/pkg/config/loop.go\n" +
+				"+++ b/pkg/config/loop.go\n" +
+				"@@ -1,2 +1,4 @@\n" +
+				"+// a loop row ran `nova-sprint table` for days after nova-sprint lost it\n" +
+				"+\treturn fmt.Errorf(\"nova-sprint must be run from the repo root\")\n" +
+				"+func f() {\n",
+			why: "both lines name a tool, neither runs it",
+		},
+		{
+			name:  "a prose line that begins with a tool",
+			verbs: only,
+			diff: "diff --git a/docs/GETTING-STARTED.md b/docs/GETTING-STARTED.md\n" +
+				"--- a/docs/GETTING-STARTED.md\n" +
+				"+++ b/docs/GETTING-STARTED.md\n" +
+				"@@ -1,2 +1,3 @@\n" +
+				"+nova-sprint is free and open source; it runs a card's checks.\n",
+			why: "the prose line names a tool, it does not run it",
+		},
 	}
-}
-
-// TestCalledVerbsIgnoresAProseLineThatBeginsWithATool pins the gate's context: a
-// Markdown prose line whose first token is a tool name (nova-sprint is free and open
-// source) does not run the tool, so the word after the name is not read as a verb. The
-// table here refuses anything but "where", so the test fails if the prose line is read.
-func TestCalledVerbsIgnoresAProseLineThatBeginsWithATool(t *testing.T) {
-	diff := "diff --git a/docs/GETTING-STARTED.md b/docs/GETTING-STARTED.md\n" +
-		"--- a/docs/GETTING-STARTED.md\n" +
-		"+++ b/docs/GETTING-STARTED.md\n" +
-		"@@ -1,2 +1,3 @@\n" +
-		"+nova-sprint is free and open source; it runs a card's checks.\n"
-	only := func(tool string) []string { return []string{"where"} }
-	if got := calledVerbs(diff, only); len(got) != 0 {
-		t.Fatalf("calledVerbs = %+v, want none (the prose line names a tool, it does not run it)", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Empty(t, calledVerbs(tc.diff, tc.verbs), "calledVerbs, want none (%s)", tc.why)
+		})
 	}
 }
 
@@ -105,6 +110,7 @@ func TestCalledVerbsIgnoresAProseLineThatBeginsWithATool(t *testing.T) {
 // code block is a doc command block, so a line inside it that runs a tool with a verb is
 // checked against the tool's table.
 func TestCalledVerbsReadsADocCommandBlock(t *testing.T) {
+	t.Parallel()
 	diff := "diff --git a/docs/CLI.md b/docs/CLI.md\n" +
 		"--- a/docs/CLI.md\n" +
 		"+++ b/docs/CLI.md\n" +
@@ -114,12 +120,9 @@ func TestCalledVerbsReadsADocCommandBlock(t *testing.T) {
 		"+```\n"
 	only := func(tool string) []string { return []string{"where"} }
 	got := calledVerbs(diff, only)
-	if len(got) != 1 {
-		t.Fatalf("calledVerbs = %+v, want one finding (the fenced block runs nova-sprint table)", got)
-	}
-	if got[0].File != "docs/CLI.md" || got[0].Line != 2 {
-		t.Fatalf("finding = %s:%d, want docs/CLI.md:2", got[0].File, got[0].Line)
-	}
+	require.Len(t, got, 1, "calledVerbs = %+v, want one finding (the fenced block runs nova-sprint table)", got)
+	assert.Equal(t, "docs/CLI.md", got[0].File, "finding = %s:%d", got[0].File, got[0].Line)
+	assert.Equal(t, 2, got[0].Line, "finding = %s:%d", got[0].File, got[0].Line)
 }
 
 // TestCalledVerbsRefusesTheMotivatingFriendCall exercises the lander's own table
@@ -127,11 +130,9 @@ func TestCalledVerbsReadsADocCommandBlock(t *testing.T) {
 // recorded head, so the motivating line is refused through the real wiring, not a
 // synthetic callback.
 func TestCalledVerbsRefusesTheMotivatingFriendCall(t *testing.T) {
+	t.Parallel()
 	got := calledVerbs(friendFixtureDiff, registeredVerbs)
-	if len(got) != 1 {
-		t.Fatalf("calledVerbs = %+v, want one finding through registeredVerbs", got)
-	}
-	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "wait-pong") {
-		t.Fatalf("finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
-	}
+	require.Len(t, got, 1, "calledVerbs = %+v, want one finding through registeredVerbs", got)
+	assert.Contains(t, got[0].Why, "acceptance", "finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
+	assert.Contains(t, got[0].Why, "wait-pong", "finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
 }

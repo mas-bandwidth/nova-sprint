@@ -243,7 +243,7 @@ func TestTheDecideLaneCannotStallTheTickOnAHangingBackend(t *testing.T) {
 		assert.Equal(t, time.Duration(0), time.Since(start), "the tick and the finish waited on nothing")
 		select {
 		case said := <-done:
-			t.Fatalf("the round ended before its wait: %q", said)
+			require.FailNowf(t, "", "the round ended before its wait: %q", said)
 		default:
 		}
 

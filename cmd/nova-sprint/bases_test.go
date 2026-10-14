@@ -76,7 +76,7 @@ func TestBasesListsEveryBaseInUseAndAddRefusesAPersonalOne(t *testing.T) {
 				return l
 			}
 		}
-		t.Errorf("no row for the base %s in:\n%s", base, out)
+		assert.Failf(t, "", "no row for the base %s in:\n%s", base, out)
 		return ""
 	}
 	mainAhead := r.git(kept, "rev-list", "--count", "refs/remotes/origin/dev..refs/remotes/origin/main")
