@@ -310,12 +310,11 @@ func TestAWaitedTickJudgmentComesBackAfterItsTime(t *testing.T) {
 	h.clean("waited")
 }
 
-// A sprint with a card in review and an empty readers table raises the "review
-// has no reader" judgment within one tick: there is no one to ask, and the card
-// is never a silent idle.
-func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
+// reviewNoReaderScene is a sprint with one card in review and the legacy
+// readers table emptied, ticked once: the state the review-has-no-reader
+// judgment is raised from.
+func (h *harness) reviewNoReaderScene(t *testing.T) {
+	t.Helper()
 	h.readersTable() // this judgment is specifically the empty legacy readers table
 	h.beat()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
@@ -327,6 +326,15 @@ func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
 	require.NoError(t, h.m.RowsDel(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	h.tick(time.Second)
 	h.machine()
+}
+
+// A sprint with a card in review and an empty readers table raises the "review
+// has no reader" judgment within one tick: there is no one to ask, and the card
+// is never a silent idle.
+func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.reviewNoReaderScene(t)
 	o := h.openOf(sprint.NReviewNoReader)
 	require.Len(t, o, 1, "review has no reader: open %d, want 1", len(o))
 	require.Contains(t, o[0].Note.What, "review has no reader for", o[0].Note.What)
@@ -339,16 +347,7 @@ func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
 func TestAReviewCardAddedAfterTheJudgmentIsNamedByIt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.readersTable() // this judgment is specifically the empty legacy readers table
-	h.beat()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
-	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
-	h.startMachine()
-	h.machine()
-	h.work("m1")
-	require.NoError(t, h.m.RowsDel(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
-	h.tick(time.Second)
-	h.machine()
+	h.reviewNoReaderScene(t)
 	o := h.openOf(sprint.NReviewNoReader)
 	require.Len(t, o, 1)
 	require.Contains(t, o[0].Note.What, "s1-1", o[0].Note.What)

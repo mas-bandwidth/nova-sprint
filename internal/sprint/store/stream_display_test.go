@@ -29,7 +29,7 @@ func TestStreamClocksCarryTheShownDisplayName(t *testing.T) {
 				return c
 			}
 		}
-		t.Fatalf("no clock for %s", stream)
+		require.Failf(t, "no clock for stream", "no clock for %s", stream)
 		return sprint.StreamClock{}
 	}
 
