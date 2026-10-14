@@ -483,6 +483,11 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText, actLine())
 		case d == "act":
 			add(d, actLine())
+		case d == SeatSilentDecision:
+			// the seat's silence is answered one way, the one its text names: read the
+			// judgments it names and answer each (docs/SPEC-SPRINT.md section 8, "A
+			// judgment that holds a card"; seat_answers.go, seatSilentRefusal)
+			add(d, cmd+"inbox")
 		case g.Type == NSprintDone:
 			switch d {
 			case "clear":
