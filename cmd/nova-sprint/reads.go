@@ -1374,8 +1374,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	for i := range clocks {
 		clocks[i].HeldCards = facts.HeldStreams[clocks[i].Stream]
 	}
-	v.Ready = readyPrimaries(shapes[0])
-	working, review, merging := pipelineCounts(shapes[0])
+	// the work table as every count shows it: a sentinel is a stop, not a card (the owner,
+	// 2026-10-14: sentinels are counted nowhere), so each cell leaves its sentinels out
+	// (lessSentinelCells); the headline's counts take them off themselves (counts)
+	work := lessSentinelCells(shapes[0], facts.Sentinels)
+	v.Ready = readyPrimaries(work)
+	working, review, merging := pipelineCounts(work)
 	v.Backup = sprint.BackupOf(int(working), int(review), int(merging))
 	v.ReadsWaiting, v.Priorities, v.StreamPriorities = facts.ReadsWaiting, facts.Priorities, facts.StreamPriorities
 	v.ReadsWindow = facts.ReadsWindow
@@ -1511,6 +1515,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	}
 	for i, t := range shapes {
 		logical := sprint.ViewOrder[i]
+		if logical == sprint.Work {
+			t = work // its cells without the sentinels, drawn and carried alike
+		}
 		if logical == sprint.Fleet {
 			// a friend's row holds her sprint cards: counted on the friends table, never a
 			// machine of the fleet table (sprint.FriendRow)
@@ -1663,8 +1670,8 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		}
 	}
 	streamLeft := map[string]int64{}
-	for _, r := range shapes[0].Rows {
-		for k, col := range shapes[0].Columns {
+	for _, r := range work.Rows {
+		for k, col := range work.Columns {
 			if col.Projection == ntable.Count && col.Name != sprint.Landed && k < len(r.Cells) {
 				streamLeft[r.Key] += r.Cells[k].Count
 			}

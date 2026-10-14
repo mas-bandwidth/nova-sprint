@@ -149,6 +149,36 @@ func liveTotals(v *whereView, facts store.WhereFacts) {
 	v.CostCheck = liveCostCheck(v.CostCheck, streams, gone)
 }
 
+// lessSentinelCells is the work table with each stream's sentinels taken off the cells of
+// the columns they are in (store.SentinelCounts.ByCol; in a record from before it, the
+// sentinels not landed off waiting, where a sentinel waits until released, and the landed
+// off landed), never below zero: a sentinel is a stop the coordinator releases, not a card,
+// and is counted nowhere (the owner, 2026-10-14). The table passed in is not changed.
+func lessSentinelCells(t ntable.Table, sent map[string]store.SentinelCounts) ntable.Table {
+	if len(sent) == 0 {
+		return t
+	}
+	rows := make([]ntable.Row, len(t.Rows))
+	for i, r := range t.Rows {
+		n, ok := sent[r.Key]
+		if ok && n.All > 0 {
+			by := n.ByCol
+			if by == nil {
+				by = map[string]int{string(sprint.Waiting): n.All - n.Landed, sprint.Landed: n.Landed}
+			}
+			r.Cells = slices.Clone(r.Cells)
+			for col, k := range by {
+				if j := t.Column(col); j >= 0 && j < len(r.Cells) && !r.Cells[j].Unread {
+					r.Cells[j].Count = max(0, r.Cells[j].Count-int64(k))
+				}
+			}
+		}
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
+}
+
 // liveLandings is the landings of the streams on the table: an archived stream's left out,
 // but for a sprint done, whose series is the epoch's. A landing with no stream (a record
 // from before it was carried) is kept.

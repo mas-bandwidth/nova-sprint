@@ -110,6 +110,10 @@ type WhereRecord struct {
 type SentinelCounts struct {
 	All    int `json:"all,omitempty"`
 	Landed int `json:"landed,omitempty"`
+	// ByCol is the sentinels by the column they are in, so where takes them off each of the
+	// work table's cells (the owner, 2026-10-14: sentinels are counted nowhere); nil in a
+	// record from before, when where takes All-Landed off waiting and Landed off landed.
+	ByCol map[string]int `json:"by_col,omitempty"`
 }
 
 // sentinelCounts is each stream's sentinels among the snapshot's work cards, in
@@ -130,6 +134,10 @@ func sentinelCounts(s *sprint.Snapshot) map[string]SentinelCounts {
 		if c.Col == sprint.Landed {
 			n.Landed++
 		}
+		if n.ByCol == nil {
+			n.ByCol = map[string]int{}
+		}
+		n.ByCol[c.Col]++
 		out[c.Row] = n
 	}
 	return out

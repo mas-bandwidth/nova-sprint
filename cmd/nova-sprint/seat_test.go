@@ -202,7 +202,8 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 	out := ta.ok("handover")
 	for _, want := range []string{
 		"HANDOVER seat=coordinator since=init\n",
-		"STREAM s1 waiting=3 ready=1 working=0 review=0 merging=0 landed=0\n",
+		// the stream line counts s1's cards, never its stop sentinel (the owner, 2026-10-14)
+		"STREAM s1 waiting=2 ready=1 working=0 review=0 merging=0 landed=0\n",
 		"SENTINEL s1-stop stream=s1 held: 2 wait behind it (s1-",
 		"MEMBER m2 held by coordinator\n",
 		"DECISION ",
