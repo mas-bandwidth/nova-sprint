@@ -78,6 +78,39 @@ func doctorFaults(r sprint.SeatCheckReport, rec store.StopsRecord, violations []
 	return faults
 }
 
+// unconfiguredServer is the doctor's advisory for a server the shell does not name. The
+// seat check (internal/sprint/seat_check.go, "The seat check") reports a server the
+// environment and the seat's login both leave unnamed as DOWN, addr=none: a missing
+// configuration, not a machine that is down. The doctor says it as an advisory and does
+// not fail on it. A configured server that does not answer is unchanged and stays DOWN
+// (docs/SPEC-SPRINT.md, "The seat check").
+const unconfiguredServer = "server: not configured in this shell (set NOVA_SPRINT_SERVER or --server)"
+
+// advisoryUnconfiguredServer returns r with its server line turned from the check's DOWN
+// addr=none verdict into an OK advisory line when no server address is configured in this
+// shell, and the advisory text ("" when a server is configured). Every other line is kept.
+// The report's own count and exit code follow its lines (docs/SPEC-SPRINT.md, "The seat
+// check"), so the DOWN the check counted for this line is taken back, as withConfigSeat
+// adds one when it appends a DOWN line (cmd/nova-sprint/seat.go): the report the doctor
+// embeds in --json and prints from Summary says OK, not a down verdict.
+func advisoryUnconfiguredServer(r sprint.SeatCheckReport) (sprint.SeatCheckReport, string) {
+	for i, l := range r.Lines {
+		if l.Up || l.Thing != sprint.SeatCheckServer || !slices.Contains(l.Facts, "addr=none") {
+			continue
+		}
+		r.Lines = slices.Clone(r.Lines)
+		r.Lines[i].Up = true
+		r.Lines[i].Facts = []string{unconfiguredServer}
+		r.Lines[i].Remedy = ""
+		r.Down--
+		if r.Down <= 0 {
+			r.Down, r.ExitCode = 0, 0
+		}
+		return r, unconfiguredServer
+	}
+	return r, ""
+}
+
 // cmdDoctor is `nova-sprint doctor`: each layer GREEN, or RED with every automatic stop that
 // holds in it, one line each with its age, effect and undo verb; then every definition-of-done
 // fault (the seat check's DOWN machinery verdicts, section 9's broken rules, the deal dry and
@@ -147,7 +180,7 @@ func (a *app) cmdDoctorParsed(c common, area, preflight string, stdout, stderr i
 		return 2
 	}
 	now := a.now()
-	machinery := a.withConfigSeat(a.seatCheck(ctx, st, c.redis))
+	machinery, serverAdvisory := advisoryUnconfiguredServer(a.withConfigSeat(a.seatCheck(ctx, st, c.redis)))
 	faults := doctorFaults(machinery, rec, check.Violations, snap, now)
 	checks, refused, err := a.doctorChecks(ctx, st, machinery.Measures, rec, area)
 	if err != nil {
@@ -251,6 +284,12 @@ func (a *app) cmdDoctorParsed(c common, area, preflight string, stdout, stderr i
 		}
 		fmt.Fprintf(stdout, "DOCTOR seat %s: %s\n", seat, oneline.Escape(rec.Seat.Line(now)))
 	}
+	// An unconfigured server is an advisory, not a down verdict: it is said whatever area
+	// was asked (only loops-redial reads the server's start, in the fleet area), so every
+	// area, friends included, hears that the shell names no server instead of a verdict.
+	if serverAdvisory != "" {
+		fmt.Fprintln(stdout, "DOCTOR advisory "+serverAdvisory)
+	}
 	for _, ch := range checks {
 		fmt.Fprintln(stdout, oneline.Escape(ch.Line()))
 	}
@@ -327,7 +366,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	case o.serverStarted == nil:
 		in.ServerHow = "not measured: no server probe configured"
 	case addr == "":
-		in.ServerHow = "no server address: NOVA_SPRINT_SERVER is not set and nova-config has no loop sprint-server-" + self
+		in.ServerHow = unconfiguredServer
 	default:
 		in.ServerStarted, in.ServerHow = o.serverStarted(ctx, addr)
 	}
