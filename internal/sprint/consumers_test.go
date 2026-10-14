@@ -13,15 +13,7 @@ func TestConsumerHistoryFollowsTheCommittedTakeAndFinish(t *testing.T) {
 	wc := &Card{ID: "p1.w1", Row: "member1", Col: Ready, Fields: map[string]string{"kind": "work", "primary": "p1", "gen": "1", "route": "sol"}}
 	s := &Snapshot{Epoch: 7, Now: time.Date(2026, 10, 11, 20, 1, 0, 0, time.UTC), Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: logCoverTable(Fleet, []string{"member1"}, wc), Readers: NewTable(Readers), Merge: NewTable(Merge)}
 	launch := Applied(s, Plan{Units: []Unit{{Key: wc.ID, Stream: "s1", Changes: []Change{change(Fleet, moveEntry(wc, wc.Row, Working, map[string]string{"taken": stamp(s.Now)}))}}}})
-	for _, u := range launch.Units {
-		for _, ch := range u.Changes {
-			if ch.Table == Work {
-				for k, v := range ch.Entry.Set {
-					pr.Fields[k] = v
-				}
-			}
-		}
-	}
+	cApplyWork(pr, launch)
 	started := ConsumersOf(pr)
 	require.Equal(t, 1, started.Attempts)
 	require.Equal(t, "member1", started.Consumers[0].Who)
@@ -30,15 +22,7 @@ func TestConsumerHistoryFollowsTheCommittedTakeAndFinish(t *testing.T) {
 	wc.Fields["taken"] = stamp(s.Now)
 	s.Now = s.Now.Add(time.Minute)
 	end := Applied(s, Plan{Units: []Unit{{Key: wc.ID, Stream: "s1", Changes: []Change{change(Fleet, moveEntry(wc, wc.Row, Finished, map[string]string{"report": "done well\nmore detail", "result": "ok"}))}}}})
-	for _, u := range end.Units {
-		for _, ch := range u.Changes {
-			if ch.Table == Work {
-				for k, v := range ch.Entry.Set {
-					pr.Fields[k] = v
-				}
-			}
-		}
-	}
+	cApplyWork(pr, end)
 	got := ConsumersOf(pr)
 	require.Equal(t, 1, got.Attempts)
 	require.Equal(t, "2026-10-11T20:02:00Z", got.Consumers[0].Ended)
@@ -55,14 +39,11 @@ func TestConsumerRecordPreservesTimestampsAndWords(t *testing.T) {
 
 func TestConsumersRecordedOnTheCardKeyedByEpoch(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
-	set := map[string]string{}
-
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Route: "r1", Model: "m1", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader1", Taken: "t2"})
-	AddConsumer(pr, set, ConsumerRec{Key: "land", Epoch: 8, Kind: "land", Taken: "t3"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
+	cAddConsumers(pr,
+		ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Route: "r1", Model: "m1", Taken: "t1"},
+		ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader1", Taken: "t2"},
+		ConsumerRec{Key: "land", Epoch: 8, Kind: "land", Taken: "t3"},
+	)
 
 	v := ConsumersOf(pr)
 	require.Equal(t, 1, v.Attempts)
@@ -77,34 +58,21 @@ func TestConsumersRecordedOnTheCardKeyedByEpoch(t *testing.T) {
 
 func TestAddConsumerIsIdempotentPerKey(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
-	set := map[string]string{}
 	rec := ConsumerRec{Key: "w1", Epoch: 1, Kind: "work", Who: "m", Taken: "t"}
-	AddConsumer(pr, set, rec)
-	AddConsumer(pr, set, rec)
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
+	cAddConsumers(pr, rec, rec)
 	require.Equal(t, 1, ConsumersOf(pr).Attempts)
 }
 
 func TestStalledIsTheNewestConsumerEndedAndNoneOut(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
-	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Taken: "t1", Ended: "e1", Outcome: "ok"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
+	cAddConsumers(pr, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "member1", Taken: "t1", Ended: "e1", Outcome: "ok"})
 	require.True(t, ConsumersOf(pr).Stalled(), "the only consumer ended: none is out")
 
-	AddConsumer(pr, set, ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
+	cAddConsumers(pr, ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2"})
 	require.False(t, ConsumersOf(pr).Stalled(), "the newest consumer is out")
 
 	k := consumerField(ConsumerRec{Key: "w2", Epoch: 8})
-	set[k] = encodeConsumerRec(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2", Ended: "e2", Outcome: "ok"})
-	pr.Fields[k] = set[k]
+	pr.Fields[k] = encodeConsumerRec(ConsumerRec{Key: "w2", Epoch: 8, Kind: "work", Who: "member1", Taken: "t2", Ended: "e2", Outcome: "ok"})
 	require.True(t, ConsumersOf(pr).Stalled(), "the newest consumer ended again: none is out")
 }
 
@@ -115,13 +83,11 @@ func TestCardWithNoConsumersIsNotStalled(t *testing.T) {
 
 func TestViewCardsCarriesConsumerCounts(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
-	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader-a", Taken: "t2"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
-	s := &Snapshot{Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
+	cAddConsumers(pr,
+		ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1"},
+		ConsumerRec{Key: "r1", Epoch: 7, Kind: "read", Who: "reader-a", Taken: "t2"},
+	)
+	s := cConsumerSnap(pr)
 	rows := CardRows(s, CardsFilter{})
 	require.Len(t, rows, 1)
 	require.Equal(t, "p1", rows[0].ID)
@@ -132,12 +98,8 @@ func TestViewCardsCarriesConsumerCounts(t *testing.T) {
 
 func TestProducerConsumerCheckNamesTheStall(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
-	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
-	s := &Snapshot{Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
+	cAddConsumers(pr, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
+	s := cConsumerSnap(pr)
 	got := CheckConsumers(s)
 	require.Len(t, got, 1)
 	require.Contains(t, got[0].Detail, "p1")
@@ -152,12 +114,8 @@ func TestProducerConsumerCheckNamesTheStall(t *testing.T) {
 // (every-producer-card-has-its-consumer-out-after-the-tick).
 func TestTheMachineNamesTheStallFromTheConsumerRecord(t *testing.T) {
 	pr := &Card{ID: "p1", Row: "s1", Col: Working, Fields: map[string]string{}}
-	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
-	s := &Snapshot{Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
+	cAddConsumers(pr, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Taken: "t1", Ended: "e1", Outcome: "ok"})
+	s := cConsumerSnap(pr)
 
 	var named bool
 	for _, q := range ConsumersOut(s) {
@@ -174,15 +132,7 @@ func TestLandingIsRecordedOnTheProducerCard(t *testing.T) {
 	plan := Applied(s, Plan{Units: []Unit{{Key: "p1", Stream: "s1", Changes: []Change{
 		change(Work, moveEntry(pr, "s1", Landed, map[string]string{"ci": "green", "landed": stamp(s.Now)})),
 	}}}})
-	for _, u := range plan.Units {
-		for _, ch := range u.Changes {
-			if ch.Table == Work {
-				for k, v := range ch.Entry.Set {
-					pr.Fields[k] = v
-				}
-			}
-		}
-	}
+	cApplyWork(pr, plan)
 	v := ConsumersOf(pr)
 	require.Equal(t, 1, v.Landings)
 	require.Len(t, v.Consumers, 1)
@@ -193,12 +143,10 @@ func TestLandingIsRecordedOnTheProducerCard(t *testing.T) {
 
 func TestConsumersBlockPrintsCountsThenNewestLast(t *testing.T) {
 	pr := &Card{ID: "c1", Fields: map[string]string{}}
-	set := map[string]string{}
-	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"})
-	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"})
-	for k, val := range set {
-		pr.Fields[k] = val
-	}
+	cAddConsumers(pr,
+		ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"},
+		ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"},
+	)
 	lines := ConsumersOf(pr).ConsumerLines()
 	require.Len(t, lines, 3)
 	require.Contains(t, lines[0], "CONSUMERS attempts=1 reads=1 landings=0")
@@ -206,4 +154,34 @@ func TestConsumersBlockPrintsCountsThenNewestLast(t *testing.T) {
 	require.Contains(t, lines[1], "kind=work")
 	require.Contains(t, lines[2], "epoch=8")
 	require.Contains(t, lines[2], "kind=read")
+}
+
+// cAddConsumers records recs on pr as one step's set would (AddConsumer), then
+// writes the set onto the card.
+func cAddConsumers(pr *Card, recs ...ConsumerRec) {
+	set := map[string]string{}
+	for _, r := range recs {
+		AddConsumer(pr, set, r)
+	}
+	for k, v := range set {
+		pr.Fields[k] = v
+	}
+}
+
+// cApplyWork writes the work-table sets of an applied plan onto pr.
+func cApplyWork(pr *Card, p Plan) {
+	for _, u := range p.Units {
+		for _, ch := range u.Changes {
+			if ch.Table == Work {
+				for k, v := range ch.Entry.Set {
+					pr.Fields[k] = v
+				}
+			}
+		}
+	}
+}
+
+// cConsumerSnap is a snapshot whose work table holds pr alone, the others empty.
+func cConsumerSnap(pr *Card) *Snapshot {
+	return &Snapshot{Work: logCoverTable(Work, []string{"s1"}, pr), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
 }
