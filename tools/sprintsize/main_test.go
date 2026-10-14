@@ -4,39 +4,31 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeBin is a nova-sprint that exits with code.
 func fakeBin(t *testing.T, code string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "nova-sprint")
-	if err := testbin.WriteExecutable(path, []byte("#!/bin/sh\nexit "+code+"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	dir := fsx.Tree(t, map[string]string{"nova-sprint": fsx.Exec("#!/bin/sh\nexit " + code + "\n")})
+	return dir + "/nova-sprint"
 }
 
 func TestSprintExistsReadsWhere(t *testing.T) {
 	t.Parallel()
-	if !sprintExists(fakeBin(t, "0"), nil) {
-		t.Fatal("where succeeded: a sprint exists")
-	}
-	if sprintExists(fakeBin(t, "1"), nil) {
-		t.Fatal("where refused: no sprint")
-	}
+	assert.True(t, sprintExists(fakeBin(t, "0"), nil), "where succeeded: a sprint exists")
+	assert.False(t, sprintExists(fakeBin(t, "1"), nil), "where refused: no sprint")
 }
 
 func TestLocalStoreAcceptsOnlyThisMachine(t *testing.T) {
 	t.Parallel()
 	for addr, want := range map[string]bool{"127.0.0.1:6401": true, "localhost:6401": true, "[::1]:6401": true, "10.0.0.5:6401": false, "127.0.0.1": false} {
-		if got := localStore(addr); got != want {
-			t.Errorf("localStore(%q) = %v, want %v", addr, got, want)
-		}
+		assert.Equalf(t, want, localStore(addr), "localStore(%q)", addr)
 	}
 }
 
@@ -53,7 +45,7 @@ func runMain(t *testing.T, args ...string) (int, string) {
 	if ee, ok := err.(*exec.ExitError); ok {
 		code = ee.ExitCode()
 	} else if err != nil {
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	return code, errb.String()
 }
@@ -72,13 +64,11 @@ func TestMainRefusesAnExistingSprintUnlessReplace(t *testing.T) {
 	t.Parallel()
 	bin := fakeBin(t, "0")
 	code, errs := runMain(t, "--bin", bin, "--redis", "127.0.0.1:1")
-	if code != 2 || !strings.Contains(errs, "a sprint already exists on 127.0.0.1:1") || !strings.Contains(errs, "--replace") {
-		t.Fatalf("an existing sprint: exit %d, %s", code, errs)
-	}
-	if code, errs := runMain(t, "--bin", bin, "--redis", "127.0.0.1:1", "--replace"); code == 2 {
-		t.Fatalf("--replace was refused: %s", errs)
-	}
-	if code, errs := runMain(t, "--bin", fakeBin(t, "1"), "--redis", "127.0.0.1:1"); code == 2 {
-		t.Fatalf("no sprint was refused: %s", errs)
-	}
+	require.Equalf(t, 2, code, "an existing sprint: %s", errs)
+	assert.Contains(t, errs, "a sprint already exists on 127.0.0.1:1")
+	assert.Contains(t, errs, "--replace")
+	code, errs = runMain(t, "--bin", bin, "--redis", "127.0.0.1:1", "--replace")
+	assert.NotEqualf(t, 2, code, "--replace was refused: %s", errs)
+	code, errs = runMain(t, "--bin", fakeBin(t, "1"), "--redis", "127.0.0.1:1")
+	assert.NotEqualf(t, 2, code, "no sprint was refused: %s", errs)
 }

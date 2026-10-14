@@ -4,6 +4,9 @@ import (
 	"regexp"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var sampleNames = []string{
@@ -27,13 +30,12 @@ func patternsFor(names []string, n int) []string {
 func matches(t *testing.T, pattern, name string) bool {
 	t.Helper()
 	ok, err := regexp.MatchString(pattern, name)
-	if err != nil {
-		t.Fatalf("pattern %q is not a valid regexp: %v", pattern, err)
-	}
+	require.NoErrorf(t, err, "pattern %q is not a valid regexp", pattern)
 	return ok
 }
 
 func TestShardsAreDisjointAndCoverTheList(t *testing.T) {
+	t.Parallel()
 	patterns := patternsFor(sampleNames, 3)
 	for _, name := range sampleNames {
 		hits := 0
@@ -42,13 +44,12 @@ func TestShardsAreDisjointAndCoverTheList(t *testing.T) {
 				hits++
 			}
 		}
-		if hits != 1 {
-			t.Errorf("name %q matched %d shards, want exactly 1", name, hits)
-		}
+		assert.Equalf(t, 1, hits, "name %q matched %d shards, want exactly 1", name, hits)
 	}
 }
 
 func TestShardPatternIndependentOfInputOrder(t *testing.T) {
+	t.Parallel()
 	ordered := shardPattern(sampleNames, 2, 3)
 	shuffled := []string{
 		"TestCherry",
@@ -59,21 +60,17 @@ func TestShardPatternIndependentOfInputOrder(t *testing.T) {
 		"TestElderberry",
 		"TestBanana",
 	}
-	if got := shardPattern(shuffled, 2, 3); got != ordered {
-		t.Errorf("shard 2/3 changed with input order: %q vs %q", got, ordered)
-	}
+	assert.Equalf(t, ordered, shardPattern(shuffled, 2, 3), "shard 2/3 changed with input order")
 }
 
 func TestNameMatchedByItsShardOnly(t *testing.T) {
+	t.Parallel()
 	patterns := patternsFor(sampleNames, 3)
 	sorted := sortedNames(sampleNames)
 	for k := 1; k <= 3; k++ {
-		own := patterns[k-1]
 		for i, name := range sorted {
 			want := i%3 == k-1
-			if got := matches(t, own, name); got != want {
-				t.Errorf("shard %d/3 %s name %q; want matching=%v", k, map[bool]string{true: "matches", false: "does not match"}[want], name, want)
-			}
+			assert.Equalf(t, want, matches(t, patterns[k-1], name), "shard %d/3 name %q", k, name)
 		}
 	}
 }
@@ -85,33 +82,31 @@ func sortedNames(names []string) []string {
 }
 
 func TestOnlyTestLinesAreNames(t *testing.T) {
-	lines := []string{
+	t.Parallel()
+	want := map[string]bool{
+		"TestAnActualTest": true,
+		"Test123":          true,
+	}
+	for _, line := range []string{
 		"TestAnActualTest",
 		"BenchmarkShouldBeDropped",
 		"ExampleShouldBeDropped",
 		"FuzzShouldBeDropped",
 		"ok  github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint",
 		"Test123",
-	}
-	want := map[string]bool{
-		"TestAnActualTest": true,
-		"Test123":          true,
-	}
-	for _, line := range lines {
-		if got := isTestName(line); got != want[line] {
-			t.Errorf("isTestName(%q) = %v, want %v", line, got, want[line])
-		}
+	} {
+		t.Run(line, func(t *testing.T) {
+			t.Parallel()
+			assert.Equalf(t, want[line], isTestName(line), "isTestName(%q)", line)
+		})
 	}
 }
 
 func TestEmptyShardMatchesNothing(t *testing.T) {
+	t.Parallel()
 	pattern := shardPattern(sampleNames, 9, 9)
-	if pattern == "" {
-		t.Fatal("empty shard pattern is blank")
-	}
+	require.NotEmpty(t, pattern, "empty shard pattern is blank")
 	for _, name := range sampleNames {
-		if matches(t, pattern, name) {
-			t.Errorf("empty shard pattern %q matched %q", pattern, name)
-		}
+		assert.Falsef(t, matches(t, pattern, name), "empty shard pattern %q matched %q", pattern, name)
 	}
 }
