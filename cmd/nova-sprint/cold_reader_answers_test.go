@@ -91,7 +91,13 @@ func TestAVerbsHelpCarriesItsOwnExitCodes(t *testing.T) {
 	assert.NotContains(t, last("take -h"), "fleet sync", "a worker's verb is not told of fleet sync's codes")
 	assert.Equal(t, verbExit["run"], last("run -h"))
 	assert.Equal(t, verbExit["fleet sync"], last("fleet sync -h"))
-	assert.Equal(t, verbExit["land"], last("help land"))
+	// help land now reaches landWords() as `help hold` reaches holdWords(), so
+	// land's own exit codes sit above the moved section, not on the last line
+	// (the short-index card, "every moved section is reachable as a topic").
+	code, out, _ := ta.do("help land")
+	require.Equal(t, 0, code, "help land")
+	assert.Contains(t, out, verbExit["land"], "help land still carries land's own exit codes")
+	assert.Contains(t, out, "Landing, the coordinator's", "help land carries the moved section")
 	assert.Contains(t, banner(), "\n"+exitLine+"\n", "nova-sprint help keeps every code at once")
 }
 

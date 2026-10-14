@@ -286,6 +286,14 @@ func verbProse(name string) string {
 		return cardHelpWords
 	case "hold", "unhold":
 		return holdWords()
+	case "land":
+		// land and twin are verbs and moved sections at once: `help land` and
+		// `help twin` must reach landWords()/twinWords() as `help hold` reaches
+		// holdWords() (the short-index card, "every moved section is reachable
+		// as a topic"; docs/CLI.md).
+		return landWords()
+	case "twin":
+		return twinWords()
 	case "fleet hold", "fleet unhold", "friend hold", "friend unhold":
 		return kindHoldWords(name)
 	case "fleet down", "reader away", "reader up":

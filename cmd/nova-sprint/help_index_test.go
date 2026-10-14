@@ -55,6 +55,19 @@ func TestBareHelpIsAShortIndexAndTheGuideIsATopic(t *testing.T) {
 		assert.Contains(t, guide, l, "the guide carries the day line %q", l)
 	}
 
+	// Every moved section is reachable as a topic by its own name: land and
+	// twin are verbs and moved sections at once, so their -h carries the
+	// section as `help hold` carries holdWords().
+	code, land, errs := do("help", "land")
+	require.Equal(t, 0, code, "help land: %s", errs)
+	assert.Contains(t, land, "Landing, the coordinator's", "help land reaches landWords()")
+	code, twin, errs := do("help", "twin")
+	require.Equal(t, 0, code, "help twin: %s", errs)
+	assert.Contains(t, twin, "trying it without a Redis", "help twin reaches twinWords()")
+	code, hold, errs := do("help", "hold")
+	require.Equal(t, 0, code, "help hold: %s", errs)
+	assert.Contains(t, hold, "the hold family, one screen", "help hold reaches holdWords()")
+
 	// An unknown topic is refused, naming the topics.
 	code, _, errs = do("help", "nosuchtopic")
 	assert.Equal(t, 2, code)
