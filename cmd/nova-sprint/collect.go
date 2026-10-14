@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -34,38 +35,33 @@ func init() {
 	verbEffect["collect"] = "store write: finishes each working card of the friends' rows that a report in any friend's outbox (or, with --dead-lanes, the friend's runner's END with no report) finishes, as the friend's row; reads the friends' working directories and writes nothing there, and reads origin's tip (one git ls-remote) for each LAND; --dry-run writes nothing and reads no tip"
 }
 
-// runnerLogCap bounds the runner log collect reads: its last runnerLogCap bytes.
-const runnerLogCap = 4 << 20
-
-// runnerLog is the log of the runner that runs the friend's cards, its last runnerLogCap
-// bytes: runner.log in her working directory dir, else beside it (a bud's runner keeps
-// <bud>/runner.log and <bud>/working, which <root>/<friend>-working links to), never root's
-// own; "" when there is none.
+// runnerLog is the log of the runner that runs the friend's cards, its last
+// friend.RunnerLogCap bytes (pkg/friend.RunnerLog): runner.log in her working directory
+// dir, else beside it (a bud's runner keeps <bud>/runner.log and <bud>/working, which
+// <root>/<friend>-working links to), never root's own; "" when there is none.
 func runnerLog(root, dir string) string {
-	paths := []string{filepath.Join(dir, "runner.log")}
 	if real, err := filepath.EvalSymlinks(dir); err == nil {
 		rootReal, _ := filepath.EvalSymlinks(root) // ignored: a root that cannot be resolved is compared as it is
-		if up := filepath.Dir(real); up != cmp.Or(rootReal, root) {
-			paths = append(paths, filepath.Join(up, "runner.log"))
+		if filepath.Dir(real) == cmp.Or(rootReal, root) {
+			// beside dir is root's own runner.log, which collect never reads: dir's alone
+			path := filepath.Join(dir, "runner.log")
+			f, err := os.Open(path)
+			if err != nil {
+				return ""
+			}
+			fi, err := f.Stat()
+			if err != nil || !fi.Mode().IsRegular() {
+				_ = f.Close()
+				return ""
+			}
+			off := max(fi.Size()-friend.RunnerLogCap, 0)
+			b := make([]byte, fi.Size()-off)
+			n, _ := f.ReadAt(b, off)
+			_ = f.Close()
+			return string(b[:n])
 		}
 	}
-	for _, p := range paths {
-		f, err := os.Open(p)
-		if err != nil {
-			continue
-		}
-		fi, err := f.Stat()
-		if err != nil || !fi.Mode().IsRegular() {
-			_ = f.Close() // ignored: only read
-			continue
-		}
-		off := max(fi.Size()-runnerLogCap, 0)
-		b := make([]byte, fi.Size()-off)
-		n, _ := f.ReadAt(b, off) // ignored: a short read is a shorter log
-		_ = f.Close()            // ignored: only read
-		return string(b[:n])
-	}
-	return ""
+	return friend.RunnerLog(dir)
 }
 
 func (a *app) cmdCollect(args []string, stdout, stderr io.Writer) int {
