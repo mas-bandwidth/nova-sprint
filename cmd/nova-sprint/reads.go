@@ -244,8 +244,6 @@ func upWidth(t ntable.Table) int {
 		}
 		if w, err := sprint.ParseWidth(r.Texts[sprint.FieldWidth]); err == nil {
 			n += w
-		} else {
-			n += sprint.DefaultWidth
 		}
 	}
 	return n
@@ -386,7 +384,9 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			var own []*sprint.Card
 			for _, x := range cs {
 				if x.Col == sprint.Ctl {
-					width = sprint.MemberWidth(x)
+					if w, err := sprint.ParseWidth(x.F(sprint.FieldWidth)); err == nil {
+						width = w
+					}
 					continue
 				}
 				own = append(own, x)
@@ -402,7 +402,9 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 				return a.queueReadFailed("queue", err, stderr)
 			}
 			if len(ctl) > 0 {
-				width = sprint.MemberWidth(ctl[0])
+				if w, err := sprint.ParseWidth(ctl[0].F(sprint.FieldWidth)); err == nil {
+					width = w
+				}
 			}
 		}
 		at := want.of(mine)

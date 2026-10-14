@@ -413,8 +413,6 @@ func (w *storeWake) look(ctx context.Context, after string) (wakeLook, error) {
 		l.Working += cell(r, string(sprint.Working))
 		if n, err := sprint.ParseWidth(cellText(r[sprint.FieldWidth])); err == nil {
 			l.Width += n
-		} else {
-			l.Width += sprint.DefaultWidth
 		}
 	}
 	for _, f := range v.Friends {

@@ -87,12 +87,6 @@ func ShapeOf(s *Snapshot) Shape {
 				}
 			}
 		}
-		if w := s.MemberCtl(m).F(FieldWidth); w != "" {
-			if sh.Width == nil {
-				sh.Width = map[string]string{}
-			}
-			sh.Width[m] = w
-		}
 	}
 	for _, rd := range sh.Readers {
 		if tiers := s.readerTiersStored(rd); strings.TrimSpace(tiers) != "" {
@@ -133,9 +127,6 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 					fields[f] = v
 				}
 			}
-		}
-		if w := sh.Width[m]; w != "" {
-			fields[FieldWidth] = w
 		}
 		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, createEntry(CtlID(m), m, Ctl, 0, fields))}, Moved: "member " + m + " " + sh.Status[m]})
 	}
