@@ -421,6 +421,7 @@ MCWhoPreferenceRebalanceStarted.cfg	MCWhoPreference.tla	action	NoStartedCardMove
 MCWhoPreferenceRebalanceTiers.cfg	MCWhoPreference.tla	invariant	RebalancedAdmitted	ignore-terminal	whopreference	required	-
 MCWhoPreferenceBrokenAnytier.cfg	MCWhoPreference.tla	invariant	DealtAdmitted	ignore-terminal	whopreference	required	-
 MCWhoPreferenceBrokenDealback.cfg	MCWhoPreference.tla	invariant	NeverBackToTheSameFriend	ignore-terminal	whopreference	required	-
+MCWhoPreferenceBrokenGivePin.cfg	MCWhoPreference.tla	invariant	OnlyToItsFriend	ignore-terminal	whopreference	required	-
 MCDirtyTickRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickHold.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickDrain.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-

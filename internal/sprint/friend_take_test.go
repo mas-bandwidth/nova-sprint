@@ -214,3 +214,98 @@ func TestFriendGiveOnATakenCardClearsTheMark(t *testing.T) {
 	assert.Contains(t, p.Units[0].Moved, "may be dealt to amy again")
 	assert.Empty(t, Check(w.s, nil))
 }
+
+// friend give hands a card the hold of a friend withdrew (no take mark) to another friend, or
+// to the same friend once she is dealable again, at once and as the deal would place it: the
+// same work card at its next generation, the attempt untouched (the owner's card: a card
+// withdrawn by a hold can be given again). Before, every give of such a card was refused as
+// "never taken back (taken from no friend)".
+func TestFriendGiveHandsACardAHoldWithdrewToAnotherFriendOrToHerAgain(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Hold: true, Reason: "held", Who: "rowan"}))
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.Equal(t, Withdrawn, wc.Col)
+	require.Empty(t, wc.F(FieldTakenFrom), "a hold writes no take mark")
+	require.Equal(t, Ready, w.s.StateOf("s1-1"))
+	gen := wc.Int("gen")
+
+	// held friend: nothing is handed
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held, Why: "held by the coordinator", Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "friend amy is not dealable now (held by the coordinator)")
+
+	// another friend, up: handed
+	p = FriendGive(w.s, FriendGiveReq{Friend: "bob", IDs: []string{"s1-1"}, Who: "rowan", Reason: "her hold took it"})
+	require.Empty(t, p.Refused)
+	assert.Contains(t, strings.Join(p.Said, "\n"), "s1-1: handed to bob")
+	w.must(p)
+	got := w.s.Fleet.Card("s1-1.w1")
+	assert.Equal(t, FriendRow("bob"), got.Row)
+	assert.Equal(t, Ready, got.Col)
+	assert.Equal(t, gen+1, got.Int("gen"), "its next generation: its own branch")
+	assert.Equal(t, Working, w.s.StateOf("s1-1"))
+	assert.Equal(t, "s1-1.w1", w.s.Primary("s1-1").F("work"))
+	assert.Equal(t, "1", w.s.Primary("s1-1").F("attempt"), "the attempt count untouched")
+	assert.Nil(t, w.s.Fleet.Card("s1-1.w2"), "no second attempt")
+	assert.Empty(t, Check(w.s, nil))
+
+	// and the other card back to the same friend once her hold is released
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-2"}, Who: "rowan"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row)
+	assert.Equal(t, Working, w.s.StateOf("s1-2"))
+	assert.Empty(t, Check(w.s, nil))
+}
+
+// A card friend take took from amy (mark taken_from her row) is handed to bob; to amy it
+// still only clears the mark. Before, the give to bob was refused "taken from friend amy".
+func TestFriendGiveHandsACardTakenFromOneFriendToAnother(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-2"}, Who: "rowan"}))
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").F(FieldTakenFrom))
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	p := FriendGive(w.s, FriendGiveReq{Friend: "bob", IDs: []string{"s1-2"}, Who: "rowan"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	got := w.s.Fleet.Card("s1-2.w1")
+	assert.Equal(t, FriendRow("bob"), got.Row)
+	assert.Empty(t, got.F(FieldTakenFrom))
+	assert.Equal(t, Working, w.s.StateOf("s1-2"))
+	assert.Empty(t, Check(w.s, nil))
+}
+
+// A card in fact dealt and not withdrawn is refused with where it is, not as "taken from no
+// friend" (the old text, which named a hold-withdrawn card the same): its primary is ready
+// here only because the test sets it so.
+func TestFriendGiveRefusesACardInFactDealtAndSaysWhereItIs(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	w.place(w.s.Work, "s1-2", "s1", Ready)
+	w.s.Friends = []FriendSeat{{Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	p := FriendGive(w.s, FriendGiveReq{Friend: "bob", IDs: []string{"s1-2"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "s1-2.w1 was never taken back from friend amy (friend.amy:ready)")
+	assert.Contains(t, p.Refused[0].Why, "friend take amy s1-2 takes it back first")
+	assert.Empty(t, p.Units)
+}
+
+// A hard pin (WHO: only friend amy) is handed to amy and to no other friend, taken back from
+// her or not (docs/SPEC-SPRINT.md, WHO preference; tla/WhoPreference.tla Give).
+func TestFriendGiveHandsAHardPinToItsFriendAlone(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("only friend amy"))
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}, {Name: "bob", Width: 2, Status: Up, Class: "flash"}}
+	p := FriendGive(w.s, FriendGiveReq{Friend: "bob", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "s1-1 is pinned to friend amy alone (WHO: only friend amy): nothing is handed to friend bob")
+	assert.Empty(t, p.Units)
+	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row)
+}

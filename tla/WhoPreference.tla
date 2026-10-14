@@ -26,13 +26,16 @@ EXTENDS Naturals, FiniteSets, TLC
 \* ignore the tier set (RebalancedAdmitted breaks); BadTier "anytier" drops the
 \* deal's tier gate (DealtAdmitted breaks); BadBack "dealback" redeals a
 \* taken-back card to the same friend (NeverBackToTheSameFriend breaks); "none"
-\* is the code's rule.
-CONSTANT BadOnly, BadRebalance, BadTier, BadBack
+\* is the code's rule; BadGive "pin" lets friend give hand a hard pin to a friend it does not
+\* name (OnlyToItsFriend breaks), "none" is the code's rule.
+CONSTANT BadOnly, BadRebalance, BadTier, BadBack, BadGive
 Cards == {"plain", "preferred", "only"}
 Friends == {"a", "b"}
 Workers == Friends \cup {"fleet"}
 Tiers == {"flash", "pro"}
-CardTier == [c \in Cards |-> IF c = "preferred" THEN "pro" ELSE "flash"]
+\* the hard pin is a pro card, so the second friend (pro alone) could take it: a give that ignored the
+\* pin would reach her (BadGive "pin")
+CardTier == [c \in Cards |-> IF c \in {"preferred", "only"} THEN "pro" ELSE "flash"]
 FriendTiers == [f \in Friends |-> IF f = "a" THEN {"flash", "pro"} ELSE {"pro"}]
 VARIABLES owner, pin, up, started, fleetTiers, left, takenBack, rebalanced, released
 vars == <<owner, pin, up, started, fleetTiers, left, takenBack, rebalanced, released>>
@@ -90,6 +93,20 @@ TakeBack(c) == /\ owner[c] \in Friends /\ c \notin started
                /\ takenBack' = [takenBack EXCEPT ![c] = @ \cup {owner[c]}]
                /\ rebalanced' = rebalanced \ {c}
                /\ UNCHANGED <<pin,up,started,fleetTiers,left,released>>
+\* friend give (internal/sprint/friend_take.go FriendGive): the seat hands a named card that is
+\* back in ready (never dealt, taken back from a friend, or withdrawn by a hold) to a friend
+\* up whose tiers hold its tier, whoever it was taken back from, and the hand clears the
+\* memory of her (takenBack): the way back to the friend it was taken from. A hard pin is
+\* handed to the friend it names alone. The model gives within her room; the code's hand
+\* does not count room (the seat's hand), a superset the model leaves out.
+Give(c,w) == /\ owner[c] = "none" /\ c \notin started
+             /\ w \in Friends /\ Room(w)
+             /\ DealAdmits(w, CardTier[c])
+             /\ (BadGive = "pin" \/ ~Hard(c) \/ w = "a")
+             /\ owner' = [owner EXCEPT ![c] = w]
+             /\ takenBack' = [takenBack EXCEPT ![c] = @ \ {w}]
+             /\ rebalanced' = rebalanced \ {c}
+             /\ UNCHANGED <<pin, up, started, fleetTiers, left, released>>
 Unpin(c) == /\ owner[c] = "none" /\ c \notin started /\ pin[c] # "none"
             /\ pin' = [pin EXCEPT ![c] = "none"]
             /\ UNCHANGED <<owner,up,started,fleetTiers,left,takenBack,rebalanced,released>>
@@ -122,6 +139,7 @@ Rebalance(c, w) ==
   /\ UNCHANGED <<pin, up, started, fleetTiers, takenBack, released>>
 Presence == /\ up' \in SUBSET Workers /\ UNCHANGED <<owner,pin,started,fleetTiers,left,takenBack,rebalanced,released>>
 Next == (\E c \in Cards, w \in Workers : Deal(c,w) \/ Rebalance(c,w))
+        \/ (\E c \in Cards, w \in Workers : Give(c,w))
         \/ (\E c \in Cards : Start(c) \/ TakeBack(c) \/ Unpin(c) \/ Release(c)) \/ Presence
 Spec == Init /\ [][Next]_vars
 OnlyToItsFriend == \A c \in Cards : pin[c] = "only" /\ c \notin released => owner[c] \in {"none","a"}

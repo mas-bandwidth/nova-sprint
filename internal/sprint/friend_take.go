@@ -286,15 +286,17 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 		seen[pr.ID] = true
 		card := WorkCardID(pr.ID, pr.Int("attempt"))
 		wc := s.Fleet.Placed(card)
-		from := "no friend"
-		if wc != nil && wc.F(FieldTakenFrom) != "" {
-			from = "friend " + strings.TrimPrefix(wc.F(FieldTakenFrom), friendRowPrefix)
-		}
 		taken := wc != nil && wc.F(FieldTakenFrom) == row
 		tier := s.DealTier(pr)
+		pinName, _ := FriendCard(pr)
 		switch {
 		case pr.Col != Ready && pr.Col != Waiting:
 			p.refuse(id, fmt.Sprintf("%s is %s, not ready or waiting", pr.ID, pr.Col))
+			continue
+		case OnlyFriend(pr) && !PinReleased(s, pr, s.Friends) && pinName != "" && pinName != r.Friend:
+			// a hard pin (WHO: only friend <name>) is hers alone: no verb of the seat's hands it
+			// to another friend (docs/SPEC-SPRINT.md, WHO preference); unpin releases it
+			p.refuse(id, snapshotFriendPronouns(s, pinName).Sprintf("%s is pinned to friend %s alone (WHO: only friend %s): nothing is handed to friend %s; give it to {them}, or nova-sprint unpin it", pr.ID, pinName, pinName, r.Friend))
 			continue
 		case taken:
 			// the undo (friend take): clear the mark, as it did; the deal fills the rest
@@ -306,12 +308,57 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 			p.Said = append(p.Said, pr.ID+": handed to "+r.Friend)
 		case pr.Col != Ready:
 			p.refuse(id, fmt.Sprintf("%s is %s, not ready: nothing is handed to friend %s", pr.ID, pr.Col, r.Friend))
-		case wc != nil:
-			p.refuse(id, fmt.Sprintf("%s was never taken back from friend %s (taken from %s)", card, r.Friend, from))
+		case wc != nil && wc.Col != Withdrawn:
+			// in fact dealt and not taken back (ready or working on a row, or finished): the
+			// refusal says where the card is, and the verb that takes it back
+			holder := wc.Row
+			if f, ok := FriendOfRow(wc.Row); ok {
+				holder = "friend " + f
+			}
+			p.refuse(id, fmt.Sprintf("%s was never taken back from %s (%s): nova-sprint friend take %s %s takes it back first", wc.ID, holder, placeOf(wc), strings.TrimPrefix(wc.Row, friendRowPrefix), pr.ID))
+		case haveSeat && !friendDealable(s, seat):
+			p.refuse(id, snapshotFriendPronouns(s, r.Friend).Sprintf("friend %s is not dealable now (%s): nothing is handed to {them}", r.Friend, orDash(seat.Why)))
 		case haveSeat && !friendTakes(s, seat, tier):
 			p.refuse(id, snapshotFriendPronouns(s, r.Friend).Sprintf("%s is a %s card, and friend %s's row does not serve tier %s ({their} tiers: %s)", pr.ID, tier, r.Friend, tier, orDash(strings.Join(friendTiers(seat), ","))))
 		case len(NamedWaits(s, pr, nil)) > 0:
 			p.refuse(id, fmt.Sprintf("%s needs %s, not landed: nothing is handed to friend %s", pr.ID, strings.Join(NamedWaits(s, pr, nil), ","), r.Friend))
+		case AtRedealBound(s, pr) != nil:
+			p.refuse(id, fmt.Sprintf("%s is at its redeal bound: a judgment decides it, nothing is handed to friend %s", pr.ID, r.Friend))
+		case wc != nil:
+			// withdrawn, by the hold of a friend (friend down), a stall, the tick, or friend take
+			// to another friend: the take-back is the card's own state, so it is handed on as
+			// the deal would place it, the same work card at its next generation on her row,
+			// brief and attempt untouched (the owner's card: a card withdrawn by a hold can be
+			// given again)
+			if !s.Fleet.HasRow(row) && !declared {
+				p.Rows = append(p.Rows, RowAdd{Fleet, row})
+				declared = true
+			}
+			u := friendRedealUnit(s, pr, wc, row, tierNowSet(pr, tier))
+			// an explicit give overrides the memory that she was left: she is not in the
+			// friends it has left once it is handed to her
+			if left := friendsLeft(wc); slices.Contains(left, r.Friend) {
+				e := &u.Changes[0].Entry
+				left = slices.DeleteFunc(slices.Clone(left), func(f string) bool { return f == r.Friend })
+				if len(left) > 0 {
+					e.Set[FieldFriendsLeft] = strings.Join(left, ",")
+				} else {
+					delete(e.Set, FieldFriendsLeft)
+					if wc.F(FieldFriendsLeft) != "" {
+						e.Unset = append(e.Unset, FieldFriendsLeft)
+					}
+				}
+			}
+			why := wc.F(FieldTakenBack)
+			if why == "" {
+				why = "withdrawn"
+			}
+			n := happened(NGivenBack, pr.Row, s.Now, pr.ID)
+			n.Who, n.What = r.Who, fmt.Sprintf("%s handed to %s (%s; was withdrawn from %s: %s)", pr.ID, r.Friend, reason, wc.Row, why)
+			u.Notes = append(u.Notes, n)
+			u.Moved += fmt.Sprintf("; %s: handed to %s", pr.ID, r.Friend)
+			p.Units = append(p.Units, u)
+			p.Said = append(p.Said, pr.ID+": handed to "+r.Friend)
 		default:
 			// never taken back and never dealt: the seat hands a named ready card to her,
 			// where the deal draws the queue head instead (docs/SPEC-SPRINT.md section 1,
