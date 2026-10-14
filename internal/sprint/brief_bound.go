@@ -171,23 +171,27 @@ type BriefBound struct {
 	Cap      int    // the cap those attempts reached (max_attempts)
 	Spent    string
 	Findings []string
-	// Harness is true when every attempt since the coordinator's last decision ended on a
-	// harness fault (no worker report: ran=false in FieldRanAttempts). Such a card reached
-	// max_attempts on the machine's retries, never on a worker's or the brief's vote: the
-	// bound is worded "harness fault, not the brief", and it is not marked a brief defect.
-	Harness bool
+	// Harness is true when the cap was reached with fewer than Cap votes on the brief: some
+	// attempt since the coordinator's last decision ended on a harness fault (classifyEnd says
+	// EndHarness: no worker report, ran=false in FieldRanAttempts). Such an attempt counts
+	// toward max_attempts as an attempt and never as a vote that the brief is wrong: the bound
+	// is worded "harness fault, not the brief", and the card is not marked a brief defect.
+	// HarnessEnds is how many of the Since attempts ended on the harness.
+	Harness     bool
+	HarnessEnds int
 }
 
 // String is the bound said in one line: what repeated and where, or the cap, the spend and
-// the findings, then the verdict. A card whose every attempt since the decision ended on a
-// harness fault is worded as the harness's, never as a vote that the brief is wrong.
+// the findings, then the verdict. A card that reached the cap with a harness end among its
+// attempts is worded as the harness's, never as a vote that the brief is wrong.
 func (b BriefBound) String() string {
 	if b.Finding != "" {
 		return fmt.Sprintf("%s has failed the same way twice (attempts %d and %d: %s); the brief is wrong, not the worker",
 			b.ID, b.Attempts[0], b.Attempts[1], b.Finding)
 	}
 	if b.Harness {
-		return fmt.Sprintf("%s: harness fault, %d attempts (max_attempts %d): the brief is not the cause", b.ID, b.Since, b.Cap)
+		return fmt.Sprintf("%s: harness fault, %d attempts (max_attempts %d; %d ended on the harness, %d on a worker's report): the brief is not the cause",
+			b.ID, b.Since, b.Cap, b.HarnessEnds, b.Since-b.HarnessEnds)
 	}
 	spent := "nothing priced"
 	if b.Spent != "" {
@@ -315,30 +319,33 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 		cap = AttemptsDefault
 	}
 	if since := AttemptsSince(c); since >= cap {
+		harness := harnessEnds(c)
 		spent := MoneyText(CardCostOf(c).Total.Charged)
 		if spent == "-" {
 			spent = ""
 		}
-		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding), Harness: allHarness(c)}, true
+		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding), Harness: harness > 0, HarnessEnds: harness}, true
 	}
 	return BriefBound{}, false
 }
 
-// allHarness says every attempt since the coordinator's last decision ended on a harness
+// harnessEnds is how many attempts since the coordinator's last decision ended on a harness
 // fault (classifyEnd says EndHarness: no worker report, ran=false in FieldRanAttempts): the
 // machine's retries, never a vote on the brief. An attempt with no record counts as having
-// run (AtLaneBroken), so it is never a harness fault. tla/SprintRules.tla, Part "answers":
-// a harness end is redealt and counts toward max_attempts as an attempt, never a vote.
-func allHarness(c *Card) bool {
+// run (AtLaneBroken), so it is never a harness end. Only WORKER and BRIEF ends are votes:
+// a card at the cap with any harness end has fewer than cap votes, so the brief-defect mark
+// and the brief-wrong wording never come from it. tla/SprintRules.tla, Part "answers": a
+// harness end is redealt and counts toward max_attempts as an attempt, never a vote.
+func harnessEnds(c *Card) int {
 	attempt, decided := c.Int("attempt"), c.Int(FieldDecidedAttempt)
 	runs := ranAttempts(c)
-	for n := decided + 1; n <= attempt; n++ {
-		r, ok := runs[n]
-		if !ok || classifyEnd(r.ran, "") != EndHarness {
-			return false
+	n := 0
+	for at := decided + 1; at <= attempt; at++ {
+		if r, ok := runs[at]; ok && classifyEnd(r.ran, "") == EndHarness {
+			n++
 		}
 	}
-	return attempt > decided
+	return n
 }
 
 // AttemptsSince is the attempts the primary has run since the coordinator last decided on

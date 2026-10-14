@@ -649,9 +649,11 @@ func classifyEnd(ran bool, report string) attemptEnd {
 
 // ruleBrief: the same finding twice, or too many attempts on one brief (the brief is wrong,
 // not the worker): the card is marked a brief defect, once, and the judgment stays, its
-// text saying so; nothing deals the card, and no rule answers it again. A card whose every
-// attempt ended on a harness fault is not the brief's: it is left for the coordinator to
-// rework --carry, never marked a brief defect.
+// text saying so; nothing deals the card, and no rule answers it again. A card at the cap
+// with a harness end among its attempts (BriefBound.Harness) is not the brief's: it is left
+// for the coordinator to rework --carry, never marked a brief defect. The same-finding and
+// the lander's same-refusal bounds are the worker's and the brief's own votes, marked as
+// before.
 func ruleBrief(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleBriefDefect
 	pr := s.Work.Placed(a.Subject)
@@ -660,12 +662,19 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 		left(a, "the card is off the table")
 	case pr.F(FieldBriefDefect) != "":
 		left(a, "a brief defect since "+pr.F(FieldBriefDefect)+": brief or drop, a mind's")
-	case allHarness(pr):
-		left(a, "a harness fault, not the brief: every attempt ended without a worker report; rework it --carry, never marked a brief defect")
+	case harnessAtCap(s, pr):
+		left(a, "a harness fault, not the brief: an attempt ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
 	default:
 		a.Card = pr.ID
 		a.Act, a.Why = ActMark, "the brief is wrong, not the worker: marked a brief defect and held for a mind"
 	}
+}
+
+// harnessAtCap says the primary is at its attempt cap with a harness end among the attempts
+// (AtBriefBound's Harness): the cap's count is kept, but it is not a vote on the brief.
+func harnessAtCap(s *Snapshot, pr *Card) bool {
+	bb, ok := AtBriefBound(pr, brokenFindings(s, pr), s.AttemptsCap(pr.Row))
+	return ok && bb.Harness
 }
 
 // ruleBaseGate: a stream stopped on its base's red (NBaseRed), the one judgment of every stream

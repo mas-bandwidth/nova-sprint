@@ -51,6 +51,44 @@ func TestAHarnessFaultNeverCountsTowardTheBriefDefectBound(t *testing.T) {
 		assert.Empty(t, p.Refused, "rework --carry accepted: %+v", p.Refused)
 	})
 
+	t.Run("one worker not-done and two harness ends in one window: harness fault, not a brief defect", func(t *testing.T) {
+		t.Parallel()
+		w := friendWorld(t, "c: the work (s1)\nREPO: mas-bandwidth/nova-tools\n\nThe task.")
+		w.s.MaxAttempts = "3" // the three attempts, no decision between them, reach the cap
+		dealWith(w)
+
+		// attempt 1 is a worker's: a result came back, not-done (a vote)
+		id1 := WorkCardID("s1-1", 1)
+		wc1 := w.s.Fleet.Card(id1)
+		require.NotNil(t, wc1, "the attempt is dealt")
+		w.must(Take(w.s, TakeReq{As: wc1.Row, Sel: Sel{IDs: []string{id1}}, Gens: gensOf(w.s, id1)}))
+		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{id1}}, Gens: gensOf(w.s, id1), Failed: true, Head: carryHead1,
+			Report: "NOT-DONE: the test wording does not match; a_test.go:12 expects the old line"}))
+		rules(w, on())
+		dealWith(w)
+
+		// attempts 2 and 3 end on the harness (a push refused, a deadline with no output)
+		takeAndFinish(t, w, WorkCardID("s1-1", 2), harnessPushRefused)
+		rules(w, on())
+		dealWith(w)
+		takeAndFinish(t, w, WorkCardID("s1-1", 3), "deadline: the take ran 601s past its deadline with no report")
+		rules(w, on())
+
+		pr := w.s.Work.Card("s1-1")
+		require.Equal(t, 3, pr.Int("attempt"), "three attempts ran")
+		bb, at := AtBriefBound(pr, "", 3)
+		require.True(t, at, "the cap is reached: every attempt counts toward max_attempts")
+		assert.Contains(t, bb.String(), "harness fault", "worded as the harness's")
+		assert.Contains(t, bb.String(), "2 ended on the harness, 1 on a worker's report", "two of the three ended on the harness: fewer than cap votes")
+		assert.NotContains(t, bb.String(), "the brief is wrong", "never a vote the brief is wrong")
+		assert.Empty(t, pr.F(FieldBriefDefect), "no brief_defect stamp")
+		for _, o := range openOf(w, NBriefWrong, "s1-1") {
+			assert.NotContains(t, o.Note.What, "the brief is wrong", "no judgment says the brief is wrong")
+		}
+		p := Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Carry: true, Fix: "the reader's named fix"})
+		assert.Empty(t, p.Refused, "rework --carry accepted: %+v", p.Refused)
+	})
+
 	t.Run("two worker not-done ends with the same finding: marked a brief defect", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, 1)
