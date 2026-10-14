@@ -64,7 +64,7 @@ func TestWhereWatchFlushesEveryFrame(t *testing.T) {
 
 	select {
 	case line := <-frame:
-		assert.Contains(t, line, "SPRINT TABLE", "the first frame's line: %q", line)
+		assert.Contains(t, line, "store mem:0", "the first frame's line: %q", line)
 	case <-time.After(time.Second):
 		t.Fatal("a where --watch frame was not readable on the OS pipe within 1s while the watch ran")
 	}

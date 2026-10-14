@@ -1,3 +1,4 @@
+store mem:0 (from NOVA_SPRINT_REDIS)
 SPRINT TABLE  coordinator coordinator
 
 0/3 0.0% -> ETA -

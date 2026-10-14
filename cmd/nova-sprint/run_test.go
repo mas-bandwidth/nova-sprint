@@ -125,14 +125,14 @@ func TestWhereHeaderReadyOrStoppedIsExactlyTheView(t *testing.T) {
 	out := ta.ok("where")
 	i := strings.Index(out, "work")
 	require.GreaterOrEqual(t, i, 0, "ready view:\n%q", out)
-	require.Equal(t, "SPRINT TABLE  coordinator coordinator\n\nREADY\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", out[:i], "ready view (never started):\n%q", out)
+	require.Equal(t, "store mem:0 (from NOVA_SPRINT_REDIS)\nSPRINT TABLE  coordinator coordinator\n\nREADY\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", out[:i], "ready view (never started):\n%q", out)
 	ta.ok("start")
 	ta.ok("stop --reason r --until 9999h")
 	now := ta.a.now()
 	out = ta.ok("where")
 	i = strings.Index(out, "work")
 	require.GreaterOrEqual(t, i, 0, "stopped view:\n%q", out)
-	require.Equal(t, "SPRINT TABLE  coordinator coordinator\n\n"+sprint.StoppedText("coordinator", "r", now.Add(9999*time.Hour), now)+"\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", out[:i], "stopped view:\n%q", out)
+	require.Equal(t, "store mem:0 (from NOVA_SPRINT_REDIS)\nSPRINT TABLE  coordinator coordinator\n\n"+sprint.StoppedText("coordinator", "r", now.Add(9999*time.Hour), now)+"\nproviders: none applied WARN no provider rows applied (nova-config apply --kind provider)\n\n", out[:i], "stopped view:\n%q", out)
 }
 
 // TestWhereDoesNotPrintTheRoutesLine pins the view going from the machine state line

@@ -177,11 +177,11 @@ func TestWhereFrameHoldsOnlyTheHeaderAndTheTables(t *testing.T) {
 	frame := ta.ok("where --all")
 	lines := strings.Split(frame, "\n")
 	// the machine RUNNING, its last tick three hours late: running, never STOPPED
-	require.Equal(t, []string{"SPRINT TABLE  coordinator coordinator", "", "0/3 0.0% -> ETA -  running (tick late 10800s)", "providers: none applied WARN no provider rows applied (nova-config apply --kind provider)", ""}, lines[:5], "the head of the frame")
-	for _, l := range lines[5:] {
+	require.Equal(t, []string{"store mem:0 (from NOVA_SPRINT_REDIS)", "SPRINT TABLE  coordinator coordinator", "", "0/3 0.0% -> ETA -  running (tick late 10800s)", "providers: none applied WARN no provider rows applied (nova-config apply --kind provider)", ""}, lines[:6], "the head of the frame")
+	for _, l := range lines[6:] {
 		assert.True(t, l == "" || strings.Contains(l, " | ") || strings.Contains(l, "-+-"), "a line that is not a table's: %q\n%s", l, frame)
 	}
-	_, below, _ := strings.Cut(frame, "\n")
+	_, below, _ := strings.Cut(frame, "SPRINT TABLE  coordinator coordinator\n")
 	for _, gone := range []string{"pending", "stalled", "REMINDERS", "friend-a", "coordinator", "since", "op-left"} {
 		assert.NotContains(t, below, gone, "the frame shows %q below its title", gone)
 	}
@@ -301,9 +301,10 @@ func TestWatchDrawsEachFrameInPlaceWithOneWrite(t *testing.T) {
 		// the line before it
 		assert.NotEmpty(t, strings.TrimSuffix(w[strings.LastIndex(w, "\n")+1:], "\x1b[K\x1b[J"), "frame %d ends in an empty line: %q", i+1, w)
 	}
-	// no frame shows a time: the view's first line is its title
+	// no frame shows a time: the frame opens with the store it read
 	assert.NotContains(t, screen.writes[1], "2030-01-02", "the head of a frame")
-	assert.Contains(t, screen.writes[1], "\x1b[HSPRINT TABLE", "the head of a frame")
+	assert.Contains(t, screen.writes[1], "\x1b[Hstore mem:0 (from NOVA_SPRINT_REDIS)", "the head of a frame")
+	assert.Contains(t, screen.writes[1], "\nSPRINT TABLE", "the head of a frame")
 }
 
 // The writer's sequences, and its one write to a frame: two frames are two

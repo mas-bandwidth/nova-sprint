@@ -1,4 +1,5 @@
-[HSPRINT TABLE  coordinator coordinator[K
+[Hstore mem:0 (from NOVA_SPRINT_REDIS)[K
+SPRINT TABLE  coordinator coordinator[K
 [K
 0/3 0.0% -> ETA -[K
 providers: none applied WARN no provider rows applied (nova-config apply --kind provider)[K

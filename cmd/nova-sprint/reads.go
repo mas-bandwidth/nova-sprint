@@ -1225,11 +1225,45 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 			return "", a.readFailed("where", err, stderr), false
 		}
 		frame += heldMembersText(holds, v.At)
+		frame += heldFriendsText(holds, v.At)
+		// the store the read chose and where the choice came from, the frame's first
+		// line: a reader with no store named sees the seat login's store, never a
+		// silent dial (docs/SPEC-SPRINT.md, "The seat's store login")
+		if line := a.whereStoreLine(r.c.redis); line != "" {
+			frame = line + "\n" + frame
+		}
 		if r.release.set {
 			return releaseFrame(v.Releases, r.release.name), 0, true
 		}
 		return frame, 0, true
 	})
+}
+
+// whereStoreLine is where's first line: the store the read chose and the source
+// that named it, `store 127.0.0.1:6380 (from --redis)`. "" when no store is
+// named (the read refuses before a frame is drawn). storeOrigin says the source.
+func (a *app) whereStoreLine(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	return "store " + addr + " (from " + storeOrigin(addr, a.getenv) + ")"
+}
+
+// storeOrigin is the source that named the store address: --redis when no
+// environment or recorded login names it; the environment variable
+// (NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR) that carries it; else the seat
+// login.
+func storeOrigin(addr string, getenv func(string) string) string {
+	for _, name := range []string{"NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR"} {
+		if v := getenv(name); v != "" && v == addr {
+			return name
+		}
+	}
+	if v := getenv(seatLoginAddr); v != "" && v == addr {
+		return "the seat login"
+	}
+	return "--redis"
 }
 
 // heldMembersText is where's lines of the fleet members held (sprint.HoldLine): each one's
@@ -1243,6 +1277,23 @@ func heldMembersText(holds []sprint.HoldView, now time.Time) string {
 		}
 		if b.Len() == 0 {
 			b.WriteString("\nheld members:\n")
+		}
+		b.WriteString("  " + sprint.HoldLine(h, now) + "\n")
+	}
+	return b.String()
+}
+
+// heldFriendsText is where's lines of the friends held (sprint.HoldLine), beside
+// heldMembersText: the status cell stays the word (up, held, down) and a held
+// friend's reason is read here, below the tables; "" when no friend is held.
+func heldFriendsText(holds []sprint.HoldView, now time.Time) string {
+	var b strings.Builder
+	for _, h := range holds {
+		if h.Kind != sprint.HoldFriend {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\nheld friends:\n")
 		}
 		b.WriteString("  " + sprint.HoldLine(h, now) + "\n")
 	}
@@ -1433,7 +1484,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if line := sprint.IdleLine(v.Blockers); line != "" {
 		b.WriteString(line + "\n")
 	}
-	b.WriteString(providersLine(v.Providers, v.ProviderGaps) + "\n")
+	b.WriteString(providersLine(v.Providers, v.ProviderGaps, st.ByHand) + "\n")
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")
 	}
@@ -1917,8 +1968,10 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 }
 
 // providersLine formats only declarations from the same structured view used
-// for JSON; a route's balance alone does not establish its funding.
-func providersLine(rows []providerView, gaps sprint.ProviderGapReport) string {
+// for JSON; a route's balance alone does not establish its funding. twin, when
+// true, says the frame is drawn for a mem twin, whose empty provider set is
+// expected, not a WARN (sprint.ProvidersLine).
+func providersLine(rows []providerView, gaps sprint.ProviderGapReport, twin ...bool) string {
 	coverage := []sprint.ProviderCoverage{}
 	for _, row := range rows {
 		if row.Funded != nil || row.Problem != "" {
@@ -1929,7 +1982,7 @@ func providersLine(rows []providerView, gaps sprint.ProviderGapReport) string {
 			coverage = append(coverage, sprint.ProviderCoverage{Provider: sprint.Provider{Name: row.Name, Billing: row.Billing, Funded: funded, Problem: row.Problem}, Tiers: row.Tiers})
 		}
 	}
-	return sprint.ProvidersLine(coverage, gaps)
+	return sprint.ProvidersLine(coverage, gaps, twin...)
 }
 
 // friendsTable is the friends table (sprint.FriendsDef) with a row per friend
@@ -3088,9 +3141,14 @@ func rowsView(s *sprint.Snapshot, gone *archivedView) []primaryRow {
 }
 
 // statusCell is a friend's status as the table shows it: the word (up, held or
-// down), and for a friend held or down with a reason, the reason and when she
-// is expected back: `down (opus rate limited, until 6:00 PM)`.
+// down), and for a friend down with a reason, the reason and when she is
+// expected back: `down (opus rate limited, until 6:00 PM)`. A held friend shows
+// the word alone: the reason is read below the tables, in where's held friends
+// block (heldFriendsText), so one long hold reason never pads every row.
 func (a *app) statusCell(f store.FriendRow, now time.Time) string {
+	if f.Status == sprint.Held {
+		return f.Status
+	}
 	// a hold's until that has passed is history, not an expectation: it is not shown
 	until := f.Until
 	if !until.IsZero() && !until.After(now) {
