@@ -624,7 +624,8 @@ beat names running is stamped started where it is. A `take --as friend.<name>`
 is her start: both forms of the verb take the card through the one move
 (`sprint.NamedLaneTake`, `takeOne` then `laneSet`), so it carries `started` and
 the tick never puts it back. The friends table's `working` is then started
-cards only.
+cards only. A friend's take by count moves only cards she has started; the rest stay
+ready.
 
 A card dealt and not started within the start bound (`friend_start_max`, a
 duration on the work table, default 20 minutes, `Snapshot.FriendStartMax`) of
