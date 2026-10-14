@@ -13,6 +13,8 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Friend AIs](#friend-ais) (20)
 - [Moved out of the sprint on 2026-10-14: sprint-v1224](#moved-out-of-the-sprint-on-2026-10-14-sprint-v1224) (2)
 - [Moved out of the sprint on 2026-10-14: testify-sprint](#moved-out-of-the-sprint-on-2026-10-14-testify-sprint) (4)
+- [Moved out of GitHub on 2026-10-14: unlanded pull requests](#moved-out-of-github-on-2026-10-14-unlanded-pull-requests) (19)
+- [Moved out of GitHub on 2026-10-14: open issues](#moved-out-of-github-on-2026-10-14-open-issues) (6)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -2349,3 +2351,249 @@ Convert the test files matching PATHS (package cmd/nova-sprint) to testify and t
 Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
 
 From: sprint card sprint-cmd-nova-sprint-part-3-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14
+
+## Moved out of GitHub on 2026-10-14: unlanded pull requests
+
+Open pull requests closed unmerged on 2026-10-14, when the roadmap became the one record of future work (Glenn, 2026-10-14). Each item names its pull request and the branch and commit it was closed at; the branch is kept, so the work resumes from it.
+
+### A friend's take by count never moves an unstarted card
+
+Take --as friend.<n> --max N must move only cards she has started; batch daemon take moved ready cards to working. Keep as an invariant for the v1.3 friend rewrite (TLA FriendReadyTake WorkingIsStarted). Refs #268 (Rowan, TLA) and attempts #269-#271.
+
+Already in the code: Work was pushed and is kept: sprint/a-friends-take-by-count-never-moves-an-unstarted-card.w3.g1.e20@b1e607ea81e539b1dc596fb7b54d8dcd2d4cf0db; rowan/friend-take-by-count-started-only@ed04f98585078288d4fd9b723f419260ffdb3ce1. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Card a-friends-take-by-count-never-moves-an-unstarted-card attempt 3 (fleet) on finished sprint/v1.2.24; conflicts; friend take is v1.3 friends work, not v1.2.x (fleet only).; Rowan's original fix for the take-by-count card on finished sprint/v1.2.24 (conflicting); v1.3 friends. Same roadmap entry as #271.
+
+From: nova-sprint PR #271 (closed unmerged 2026-10-14; branch kept at sprint/a-friends-take-by-count-never-moves-an-unstarted-card.w3.g1.e20@b1e607ea81e539b1dc596fb7b54d8dcd2d4cf0db); nova-sprint PR #268 (closed unmerged 2026-10-14; branch kept at rowan/friend-take-by-count-started-only@ed04f98585078288d4fd9b723f419260ffdb3ce1)
+
+### landed accepts a card whose head is a branch name
+
+nova-sprint landed records a hand landing with the coordinator's --sha even when the card's Head is a branch name. v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: sprint/landed-accepts-a-card-whose-head-is-a-branch-name.emma@5916194caf62bd52d4c0b234f36278fc8e48ea60. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; change (landed accepts a card whose head is a branch name) not on release/v1.2.26.
+
+From: nova-sprint PR #260 (closed unmerged 2026-10-14; branch kept at sprint/landed-accepts-a-card-whose-head-is-a-branch-name.emma@5916194caf62bd52d4c0b234f36278fc8e48ea60)
+
+### start rechecks obsolete judgments
+
+Successful START and every server startup recheck open judgments and close obsolete ones. v1.3 sprint reliability (Stella).
+
+Already in the code: Work was pushed and is kept: sprint/start-rechecks-obsolete-judgments.stella@20a2652a6032924e94487131913eb71b5869924a. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts; not on release.
+
+From: nova-sprint PR #254 (closed unmerged 2026-10-14; branch kept at sprint/start-rechecks-obsolete-judgments.stella@20a2652a6032924e94487131913eb71b5869924a)
+
+### the sprint stops when nothing funded can work
+
+When every worked tier is blocked by rests/unfunded routes the sprint stops naming tier, route, rest class and expiry. v1.3 sprint reliability (Stella; supersedes #215).
+
+Already in the code: Work was pushed and is kept: sprint/the-sprint-stops-when-nothing-funded-can-work.stella@bcb71708bf95c1203711fb8e5c98ff0f94dd0ca0. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts; not on release. Successor of #215.
+
+From: nova-sprint PR #252 (closed unmerged 2026-10-14; branch kept at sprint/the-sprint-stops-when-nothing-funded-can-work.stella@bcb71708bf95c1203711fb8e5c98ff0f94dd0ca0)
+
+### a blocked stream is not a held stream
+
+StreamClock.Held conflated every-card-waiting with a coordinator hold; where --json showed blocked streams as held. v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: sprint/a-blocked-stream-is-not-a-held-stream.aurora@abb2a1d40380babe7251a093f3658ce77ec32487. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts.
+
+From: nova-sprint PR #247 (closed unmerged 2026-10-14; branch kept at sprint/a-blocked-stream-is-not-a-held-stream.aurora@abb2a1d40380babe7251a093f3658ce77ec32487)
+
+### a failed step prints every refusal reason
+
+An empty Why prints a defect line; a failed step's status line carries why=. v1.3 sprint reliability (UX).
+
+Already in the code: Work was pushed and is kept: sprint/a-failed-step-prints-every-refusal-reason.aurora@058407a88ffe26ca62276261ca01d06f05ee6b31. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts.
+
+From: nova-sprint PR #244 (closed unmerged 2026-10-14; branch kept at sprint/a-failed-step-prints-every-refusal-reason.aurora@058407a88ffe26ca62276261ca01d06f05ee6b31)
+
+### every judgment kind has a verb that closes it
+
+Each judgment kind (no-route, landing stall, ...) has an executable closing decision. v1.3 sprint reliability. Refs #214 (Stella) and #226 (Aurora).
+
+Already in the code: Work was pushed and is kept: sprint/every-judgment-kind-has-a-verb-that-closes-it.aurora@64972a55aefd6e087654027f7d668db9a06e7cb3. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts. Later attempt of the card in #214.
+
+From: nova-sprint PR #226 (closed unmerged 2026-10-14; branch kept at sprint/every-judgment-kind-has-a-verb-that-closes-it.aurora@64972a55aefd6e087654027f7d668db9a06e7cb3)
+
+### a write that changes nothing says so
+
+A hold/set step that changed nothing prints 'nothing changed' and why, never OK. v1.3 sprint reliability (UX).
+
+Already in the code: Work was pushed and is kept: sprint/a-write-that-changes-nothing-says-so.aurora@13ff2590fd5d93e7734e82461fe9c3b8ab10566c. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.19 is in release but this head is not; conflicts with release.
+
+From: nova-sprint PR #218 (closed unmerged 2026-10-14; branch kept at sprint/a-write-that-changes-nothing-says-so.aurora@13ff2590fd5d93e7734e82461fe9c3b8ab10566c)
+
+### routes rest --answers; a second rest is OK
+
+routes rest closes named judgments in its own step; a repeat rest is a no-op OK with a truthful ack. v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: sprint/routes-rest-answers-and-a-second-rest-is-ok.aurora@0455613a8890df8d265bd184990b7d5934d039a6. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Not on release.
+
+From: nova-sprint PR #216 (closed unmerged 2026-10-14; branch kept at sprint/routes-rest-answers-and-a-second-rest-is-ok.aurora@0455613a8890df8d265bd184990b7d5934d039a6)
+
+### an unchanged judgment escalates to the owner
+
+A judgment pushed repeat_pushes times unchanged goes to the owner, not the seat forever. v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: sprint/an-unchanged-judgment-escalates-to-the-owner-not-the-seat-forever.aurora@309aafe2680b05d08511a955e2672f331e1d5b8e. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Base sprint/v1.2.20 finished; conflicts.
+
+From: nova-sprint PR #211 (closed unmerged 2026-10-14; branch kept at sprint/an-unchanged-judgment-escalates-to-the-owner-not-the-seat-forever.aurora@309aafe2680b05d08511a955e2672f331e1d5b8e)
+
+### the seat's own loops hold the coordinator's hook
+
+The seat's unattended loops (friend sync, push) hold the hook rather than a session Monitor. Fold into the v1.3 link/hook spec. Companion nova-tools #5658.
+
+Already in the code: Work was pushed and is kept: rowan/seat-loops-hold-the-hook@f88a160f2617027e75e0902ec7805165234b0d1a. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Structural draft for v1.3 (seat loops hold the hook); conflicts; v1.3 spec round 2 (nova-tools #5727) now defines the psychic link.
+
+From: nova-sprint PR #178 (closed unmerged 2026-10-14; branch kept at rowan/seat-loops-hold-the-hook@f88a160f2617027e75e0902ec7805165234b0d1a)
+
+### a Down friend's leases are recovered with fenced carry
+
+Revoke a Down friend's Ready/Working leases once, fence the generation, keep work unowned until its old head is recovered. v1.3 friend comms.
+
+Already in the code: Work was pushed and is kept: sprint/stella-down-friend-recovery@0c3ebb7b0465e734889f76cbc406c56ed84a194b. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Codex draft on main (Down-friend lease recovery with fenced carry snapshots); conflicts.
+
+From: nova-sprint PR #176 (closed unmerged 2026-10-14; branch kept at sprint/stella-down-friend-recovery@0c3ebb7b0465e734889f76cbc406c56ed84a194b)
+
+### unit tests: shrink the real-time allowlist to zero
+
+Move the remaining 20 allowlisted files off real time/sockets/services (Glenn's unit-test rule). nova-sprint, v1.3.
+
+Already in the code: Work was pushed and is kept: fix/unit-test-rule@14f9a3b2bde3a4d0066bd340f5c27f18bdd8f6ea. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Draft for v1.3 stacked on #160 (landed); conflicts.
+
+From: nova-sprint PR #161 (closed unmerged 2026-10-14; branch kept at fix/unit-test-rule@14f9a3b2bde3a4d0066bd340f5c27f18bdd8f6ea)
+
+### one member implementation the fleet runs
+
+nova-tools imports the member from nova-sprint/pkg/member so the fleet runs what the tests test. v1.3 dedup (sprint/v13-sprint-dedup).
+
+Already in the code: Work was pushed and is kept: sprint/one-member-implementation-the-fleet-runs-what-the-tests-test.w3.g1.e19@854dae338d783ac0dc845baab0b57dc333b1c364. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). One member implementation in nova-sprint/pkg/member; not on release; conflicts.
+
+From: nova-sprint PR #134 (closed unmerged 2026-10-14; branch kept at sprint/one-member-implementation-the-fleet-runs-what-the-tests-test.w3.g1.e19@854dae338d783ac0dc845baab0b57dc333b1c364)
+
+### a pinned card goes only to a worker that can serve its pin
+
+A brief pinned to a model is dealt only to a member whose routes serve it; else one judgment, not redeals. v1.3 sprint reliability (with #266 hard pins).
+
+Already in the code: Work was pushed and is kept: hand/a-pinned-card-goes-only-to-a-worker-with-its-provider@c562c5a81e6eae1f779ef108d95ffd397397129a. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). No evidence on release; v1.2.14 fix, conflicts.
+
+From: nova-sprint PR #107 (closed unmerged 2026-10-14; branch kept at hand/a-pinned-card-goes-only-to-a-worker-with-its-provider@c562c5a81e6eae1f779ef108d95ffd397397129a)
+
+### an alarm is never off
+
+set refuses off for backlog alarms and the off switch is deleted (owner order 2026-10-11). Verify against release first; if absent, v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: fix/no-off-switches@19469d059e87492795492730998210cced0557e5. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Glenn 10-11 'Delete the code that lets you do that' (alarms never off); no evidence the code removal landed. Conflicts.
+
+From: nova-sprint PR #97 (closed unmerged 2026-10-14; branch kept at fix/no-off-switches@19469d059e87492795492730998210cced0557e5)
+
+### release playbook
+
+docs/RELEASE-PLAYBOOK.md from the v1.2.10 cut/switch/rollback; refresh for v1.3 releases.
+
+Already in the code: Work was pushed and is kept: docs/release-playbook@2682876ece4e4a5baf5a26824ad08a7d72cf26bd. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Release playbook doc never merged; docs/ has no playbook.
+
+From: nova-sprint PR #90 (closed unmerged 2026-10-14; branch kept at docs/release-playbook@2682876ece4e4a5baf5a26824ad08a7d72cf26bd)
+
+### cards bounce back within a bound
+
+A dealt card or asked read not taken within its bound bounces back and pushes a judgment. v1.3 sprint reliability.
+
+Already in the code: Work was pushed and is kept: fix/v126-bounce-back-2@db56f2731f14d9dda74966f19b1aa38f23ff79eb. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Bounce-back (v1.2.6); no landing commit found on release; conflicts. Verify before writing.
+
+From: nova-sprint PR #73 (closed unmerged 2026-10-14; branch kept at fix/v126-bounce-back-2@db56f2731f14d9dda74966f19b1aa38f23ff79eb)
+
+### nova-sprint imports nova-tools packages instead of seed copies
+
+Stop carrying copies of nova-tools packages. v1.3 dedup.
+
+Already in the code: Work was pushed and is kept: rowan/split-l4-import-nova-tools@dee2ef454f859c8c41c45a45ec1157654197debf. Resume from it; do not start over.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Split L4 (import nova-tools packages); go.mod on release has no nova-tools require, so not landed.
+
+From: nova-sprint PR #31 (closed unmerged 2026-10-14; branch kept at rowan/split-l4-import-nova-tools@dee2ef454f859c8c41c45a45ec1157654197debf)
+
+## Moved out of GitHub on 2026-10-14: open issues
+
+Open issues closed on 2026-10-14, when the roadmap became the one record of future work (Glenn, 2026-10-14). Each item names its issue.
+
+### stop-return settle: partial refusals, wrapped errors, re-issued STOP
+
+Close the v1.2.6 follow-ups listed in #71. v1.3 sprint reliability.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). v1.2.6 follow-up (stop-return settle) never carded.
+
+From: nova-sprint issue #71 (closed 2026-10-14)
+
+### reads: rule 6 exemptions, failed-push landing mark, stale comments
+
+The v1.2.6 read follow-ups listed in #68. v1.3 sprint reliability.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). v1.2.6 follow-up (reads) never carded.
+
+From: nova-sprint issue #68 (closed 2026-10-14)
+
+### loop logs rotate
+
+Member/reader loop logs grow ~7 MB/50k lines a day with no rotation rule.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Operational gap, not recorded.
+
+From: nova-sprint issue #41 (closed 2026-10-14)
+
+### the member pass never waits on the queue
+
+Pushes, judgments and slot cleanup stall when the server is slow. v1.3 sprint reliability (client/server).
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Not recorded; fits client/server.
+
+From: nova-sprint issue #40 (closed 2026-10-14)
+
+### a launch's small files are retained by rule
+
+card.md, frame.json, native.log accumulate within an epoch.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Not recorded.
+
+From: nova-sprint issue #39 (closed 2026-10-14)
+
+### a pool whose loop stopped is swept
+
+A reader/member pool whose loop stopped stays on the table forever. v1.3 sprint reliability.
+
+Why it waits: Moved out of GitHub on 2026-10-14, when the roadmap became the one record of future work (Glenn). Not recorded.
+
+From: nova-sprint issue #37 (closed 2026-10-14)
