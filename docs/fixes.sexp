@@ -70,7 +70,9 @@
    (release "v1.2.16" :status "planned"
     :text "Every TLA+ model checked against the code.")
    (release "v1.2.19" :status "planned"
-    :text "Fleet fixes, including the shared clear and start machine fence."))
+    :text "Fleet fixes, including the shared clear and start machine fence.")
+   (release "v1.2.24" :status "planned" :date "2026-10-14"
+    :text "The friend deal counts a friend's reads against her width."))
   :items
    ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
      :title "Read cards are on by default"
@@ -3466,4 +3468,8 @@
     (fix "clear-and-start-share-the-machine-fence" :release "v1.2.19" :status "planned"
      :title "Clear and start share the machine fence"
      :text "Clear re-stops an intervening START under the old epoch fence before advancing; the advance verifies that owner atomically. START writes its record and view only with its pinned epoch, settled restore and live fence owner. Deterministic Mem and private Redis functional interleavings cover a start paused after its guard and a completed start before advance, including interrupted restore recovery."
-     :origin "clear-and-start-share-the-machine-fence")))
+     :origin "clear-and-start-share-the-machine-fence")
+    (fix "the-friend-deal-counts-reads-against-her-width" :release "v1.2.24" :status "planned"
+     :title "The friend deal counts reads against her width"
+     :text "The take gate counts every live lane, work and read, and refused a friend's work take at \"12 of 8\"; the deal counted her reads at half a slot (friendLoad, halfLoad) and dealt reads past her width, so a work card she should have taken waited behind them. friendLiveLanes(snapshot, friend) is now her work cards plus her read cards, ready and working (rowLoad), the same cells the take gate counts, and friendFreeLanes(width, work, reads) = max(0, width-(work+reads)) is the one count the deal stops at and the gate refuses at. Once read cards are on and the friend holds a read, friendDealPass deals her no work past her free lanes, the read ask's friend units fill the same count (readUnitsOf), and the level and the held reason read the same count where they print or use her free places. A row with no reads keeps its work queue, DealAhead times her width; the machines are untouched. TestTheFriendDealCountsReadsAgainstHerWidth (at width dealt nothing; 7 of 8 dealt exactly one; reads that finish free lanes and the next tick fills them), TestTheFriendLiveLanesCountsReads and TestTheDealStopsAtTheNumberTheGateRefusesAt (the pure-count property over widths 1 to 8 and 0 to 12 reads), red at base, green at head."
+     :origin "the-friend-deal-counts-reads-against-her-width.w1")))
