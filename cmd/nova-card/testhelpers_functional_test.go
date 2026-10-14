@@ -19,9 +19,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
 )
 

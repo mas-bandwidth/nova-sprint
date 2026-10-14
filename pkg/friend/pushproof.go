@@ -4,20 +4,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // PushRenewEvery is how often the daemon renews its friend's push proof on
-// the bus while the session stays up: well inside bus.PushFresh, so a live
-// daemon's proof never reads stale, and a dead one's does within PushFresh.
+// the bus while the session stays up: well inside the proof's freshness
+// window, so a live daemon's proof never reads stale.
 // PushWriteBudget bounds one write of it.
 const (
 	PushRenewEvery  = time.Minute
 	PushWriteBudget = 5 * time.Second
 )
 
-// PushProver records the friend's inbox push proof on the bus (bus.PushKey;
-// docs/SPEC-BUS.md, bus-requires-inbox-push-proof) from the daemon's
+// PushProver records the friend's inbox push proof on the bus
+// (docs/SPEC-BUS.md, bus-requires-inbox-push-proof) from the daemon's
 // presence, as the SessionCheck saves it: nova-bus names shows it, and send
 // and recv say it as a NOTE beside a message to or from a name without one,
 // never a refusal. The proof is the SESSION CHECK round trip: the check

@@ -19,12 +19,12 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"

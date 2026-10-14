@@ -22,9 +22,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus/bustest"
 )
 
 // shortSock is where a test's hook takes its session's lines: a directory of its own,

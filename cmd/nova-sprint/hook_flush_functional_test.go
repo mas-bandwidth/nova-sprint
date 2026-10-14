@@ -18,11 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus/bustest"
 )
 
 // TestHookFlushesAfterChallengeOnTheStore is the red test on a real store: the

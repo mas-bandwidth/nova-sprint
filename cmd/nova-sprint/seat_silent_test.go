@@ -11,7 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // tokenBus is the owner's bus as pkg/bus answers a token (pkg/bus/token.go): a send under a

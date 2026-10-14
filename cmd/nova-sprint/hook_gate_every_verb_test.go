@@ -18,7 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // The owner, 2026-10-11: "If you are not hooked in to push notifications, every verb

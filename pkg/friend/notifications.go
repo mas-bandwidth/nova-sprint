@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // Notifications use the one receiver and the bus's pending entries, never a second

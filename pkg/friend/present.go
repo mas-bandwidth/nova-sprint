@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // The present (the owner, 2026-10-06: "when somebody starts up, you need to tell them to skip to

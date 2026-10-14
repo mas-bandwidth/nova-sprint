@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // Presence is whether the friend's SESSION is alive, never its daemon
