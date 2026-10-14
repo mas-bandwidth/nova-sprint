@@ -95,7 +95,7 @@ func TestADealToANamedFriendWritesTheBriefIntoHerInbox(t *testing.T) {
 	// once she starts it the friends table counts it under working; the fleet table names no friend
 	ta.startFriend("amy", 1)
 	frame := ta.frame()
-	assert.Contains(t, tableOf(frame, sprint.Friends), "amy     |     0 |       1 |     8 |    0 | 0.0% |       0 | up")
+	assert.Contains(t, tableOf(frame, sprint.Friends), "amy     |     0 |       1 |     8 |    0 | 0.0% |       0 |       0 | up")
 	assert.NotContains(t, tableOf(frame, sprint.Fleet), "friend")
 	var w whereView
 	ta.json("where", &w)
@@ -140,7 +140,7 @@ func TestFriendSyncFinishesALandReportAndTheCardReachesReview(t *testing.T) {
 			ta.ok("read --as reader-a --ok --limit 100")
 			ta.ok("read --as reader-b --ok --limit 100")
 			ta.ok("tick")
-			assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    1 | 100.0% |       0 | up")
+			assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    1 | 100.0% |       0 |       0 | up")
 		})
 	}
 }

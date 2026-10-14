@@ -220,6 +220,8 @@ readers table; a member reader `reader-<m>` counts its member's read cards, and 
 friend reader `reader-<friend>` the friend's. The dashboard reads the same `tables`
 shape and needs no change.
 
+In `where`'s fleet and friends tables, ok% counts each finish at the finish, ok while its read is pending, failed when the worker reports failure or a reader holds it; pending is shown beside it; a bounce counts nowhere.
+
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
 that is the tier the card is stored with and dealt on: a `tier: heavy` card's first deal draws

@@ -182,7 +182,7 @@ func TestWhereFrameHoldsOnlyTheHeaderAndTheTables(t *testing.T) {
 		assert.True(t, l == "" || strings.Contains(l, " | ") || strings.Contains(l, "-+-"), "a line that is not a table's: %q\n%s", l, frame)
 	}
 	_, below, _ := strings.Cut(frame, "\n")
-	for _, gone := range []string{"pending", "stalled", "REMINDERS", "friend-a", "coordinator", "since", "op-left"} {
+	for _, gone := range []string{"pending:", "stalled", "REMINDERS", "friend-a", "coordinator", "since", "op-left"} {
 		assert.NotContains(t, below, gone, "the frame shows %q below its title", gone)
 	}
 	// the identity of a row is its first cell; the readers and merge tables are

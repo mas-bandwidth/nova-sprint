@@ -220,8 +220,15 @@ and `where` counts from it (store.DoneSince), at most the tick in flight behind,
 as where's other records are; with no record of the epoch yet it reads the
 epoch's log. It is the epoch's: a clear starts it again. A stats reset counts done from its mark: the
 completions at or after it, so a reset shows `done 0` until the next completion.
-`ok%` stays the work's measure: the row's ok over its ok and failed cells (the
-readers' verdicts on its work), so reads never move it.
+`ok%` counts every finish at the finish (the owner, 2026-10-14):
+1. ok% = finished-ok / (finished-ok + finished-failed), counted at the finish.
+2. A card waiting for its read is counted at its finish (as ok, from the
+   worker's word) and shown as pending. It is never left out of ok while it
+   counts as an attempt.
+3. A bounce is not an attempt and not a failure. A bounce is a card dealt or
+   taken and then returned unstarted: a tick-deal move from working to ready,
+   a take-back to withdrawn, a redeal, or a level.
+4. A later HOLD read turns that finish into a failure.
 
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
 <friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>

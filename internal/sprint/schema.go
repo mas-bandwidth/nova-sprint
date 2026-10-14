@@ -49,9 +49,11 @@ var AllOrder = []string{Work, Readers, Merge, Friends, Fleet}
 // FriendsDef is the friends table's shape: the fleet table's columns but load.
 // ready and working count her job cards in those states; width is her width
 // as text, summed; ok and failed (hidden) count her jobs done ok and done
-// failed, and done and ok% are the table's formulas over them, the footer
-// pooling ok% over the friends; redealt (shown) counts her cards past their
-// deadline unfinished, never a failure; status is text with no fold, and so
+// failed, and done and ok% are the table's formulas over them, ok% drawn by
+// sprint.OkCounts so a finish counts at its finish (ok% = finished-ok /
+// (finished-ok + finished-failed), a card waiting for its read ok and pending,
+// a bounce counted nowhere), the footer pooling ok% over the friends; redealt
+// (shown) counts her cards past their deadline unfinished, never a failure; status is text with no fold, and so
 // is active, how long ago her session last wrote a file (her beat's Active;
 // "-" when none was reported); tokens is her cards' usage summed (sprint.FriendTokensFromCards):
 // a text cell with a subscription friend's compact count (1.2M), or an api-billed
@@ -104,8 +106,11 @@ const (
 // members' work cards whose readers' verdicts were ok and broken, and defect (hidden)
 // those that ended on a brief defect, counted in neither. done and ok%
 // are the table's own formulas over the ok and failed cells, computed at render and
-// never written: done is sum(ok+failed), ok% (the column okpct) is
-// pct(ok/ok+failed), and the footer pools ok% over the members. ctl (hidden)
+// never written: done is sum(ok+failed), and ok% (the column okpct) is
+// pct(ok/ok+failed), drawn by sprint.OkCounts so a finish counts at its finish
+// (ok% = finished-ok / (finished-ok + finished-failed); a card waiting for its
+// read is ok and pending; a bounce counts nowhere; a later HOLD read turns the
+// finish into a failure), and the footer pools ok% over the members. ctl (hidden)
 // holds the member's control card: its status and its width (width.go), which
 // the width column shows beside working.
 const (

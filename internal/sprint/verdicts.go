@@ -5,13 +5,16 @@ import (
 	"strings"
 )
 
-// The fleet's and the friends' ok% is the readers' (docs/SPEC-SPRINT.md section 1;
-// the owner, 2026-10-04: "trust but VERIFY"; "I want to trust the ok%"; "Are they
-// actually doing the work that is shown in the friend table? Really?"). A worker's
-// finish, ok or failed, moves its work card to the member's hidden finished cell,
-// where it counts in no ok%; a reader's verdict on that attempt moves it on, to ok when
-// as many different readers as the primary needs (ReadsNeeded) read it ok, to failed
-// when a reader read it broken. Work no reader reads (a failed finish) stays finished.
+// The fleet's and the friends' ok% counts every finish at the finish
+// (docs/SPEC-SPRINT.md section 1, done and ok%; the owner, 2026-10-14): ok% =
+// finished-ok / (finished-ok + finished-failed), counted at the finish; a card
+// waiting for its read is counted at its finish as ok and shown as pending; a
+// bounce is not an attempt and not a failure; a later HOLD read turns that
+// finish into a failure. No card's state machine changes: ok% is a pure view
+// over the cells (sprint.OkCounts), drawn by where, never written here. The
+// moves below are the readers' verdicts on a work card finished by its worker:
+// a reader's verdict moves it from the hidden finished cell to ok when the
+// primary's reads (ReadsNeeded) pass, to failed when a single read is broken.
 
 // readVerdict is the readers' verdict on the work card wc, an attempt of primary pr, by the
 // accept's own rules, from the reads that stand on the attempt whichever table they are on
