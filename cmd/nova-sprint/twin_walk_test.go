@@ -42,6 +42,7 @@ func TestTwinWalkBriefsTheCardBeforeTheFirstTickAndSaysTheMemberIsUp(t *testing.
 	words := twinWords()
 	assert.Contains(t, words, "added is up from the next tick", "one sentence says the member is up at the next tick")
 	assert.NotContains(t, words, "down until it beats", "the twin walkthrough never says a member is down until it beats")
+	assert.Contains(t, words, "--brief-file "+args[i+1], "the help names the same brief file as the walkthrough's add")
 
 	// the docs/TESTS.md transcript is the one in twinWords(): command for
 	// command, the flow the help shows

@@ -95,7 +95,7 @@ time. Every member and reader of the twin beats at every verb, so a member
 added is up from the next tick; no machine runs between commands, so the tick
 is yours: nova-sprint tick; run, inbox --wait and where --watch are refused.
 The twin's walkthrough gives its card a brief before the first tick deals it:
-the add carries --brief-file brief.txt, a card that passes the lint, its first
+the add carries --brief-file testdata/brief.txt, a card that passes the lint, its first
 lines from nova-swarm template --name card, its REPO: and BASE: filled in; a
 card added with no brief is dealt with none, and a worker is handed no task
 with it. A
