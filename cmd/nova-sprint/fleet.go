@@ -106,7 +106,7 @@ it back.`) + "\n"
 // fleet level is the hand verb that levels the members' ready queues and rebalances the
 // reads and the cards off full units (rebalance.go), what the tick would move.
 func init() {
-	verbEffect["fleet level"] = "local write: levels the members' ready queues and rebalances the reads and the cards off full units (rebalance.go), what the tick would move; --dry-run writes nothing"
+	verbEffect["fleet level"] = "store write: levels the members' ready queues and rebalances the reads and the cards off full units (rebalance.go), what the tick would move; --dry-run writes nothing"
 }
 
 // fleetStep is the coordinator's fleet verb as a step: up releases a hold,

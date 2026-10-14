@@ -28,7 +28,7 @@ import (
 // the pair whose beat forms disagree.
 func init() {
 	stepDryRun["fleet beat"] = true
-	verbEffect["fleet beat"] = "local write: records the member's beat in the sprint's store; --dry-run plans the beat and prints what it would write and hands it to the doctor's member-env beat-form probe; --dry-run writes nothing (docs/SPEC-SPRINT.md, \"The doctor's refused-verb and beat-form checks\")"
+	verbEffect["fleet beat"] = "store write: records the member's beat in the sprint's store; --dry-run plans the beat and prints what it would write and hands it to the doctor's member-env beat-form probe; --dry-run writes nothing (docs/SPEC-SPRINT.md, \"The doctor's refused-verb and beat-form checks\")"
 }
 
 // BeatForm is what the member-env probe read of one member's installed beat form: Known says
