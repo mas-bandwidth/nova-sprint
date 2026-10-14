@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
+	"github.com/stretchr/testify/require"
 )
 
 // The twin: the in-process Mem backend must agree with Redis, the backend the fleet
@@ -28,23 +29,17 @@ type result struct {
 func cmpCall(t *testing.T, red, mem Backend, what string, now time.Time, rf, mf func(Backend) result) {
 	t.Helper()
 	r, m := rf(red), rf(mem)
-	if (r.err == nil) != (m.err == nil) {
-		t.Fatalf("%s at %s: err red=%v mem=%v", what, now, r.err, m.err)
-	}
+	require.Equal(t, r.err == nil, m.err == nil, "%s at %s: err red=%v mem=%v", what, now, r.err, m.err)
 	if r.err != nil {
 		return
 	}
-	if r.ok != m.ok {
-		t.Fatalf("%s at %s: ok red=%v mem=%v", what, now, r.ok, m.ok)
-	}
+	require.Equal(t, r.ok, m.ok, "%s at %s: ok red=%v mem=%v", what, now, r.ok, m.ok)
 	if !r.ok {
 		d := r.wait - m.wait
 		if d < 0 {
 			d = -d
 		}
-		if d > time.Millisecond {
-			t.Fatalf("%s at %s: wait red=%s mem=%s", what, now, r.wait, m.wait)
-		}
+		require.LessOrEqual(t, d, time.Millisecond, "%s at %s: wait red=%s mem=%s", what, now, r.wait, m.wait)
 	}
 }
 
@@ -53,12 +48,9 @@ func cmpUse(t *testing.T, red, mem Backend, what, key string, window time.Durati
 	t.Helper()
 	rc, re := red.Use(context.Background(), key, window, now)
 	mc, me := mem.Use(context.Background(), key, window, now)
-	if re != nil || me != nil {
-		t.Fatalf("%s use(%q,%s) at %s: err red=%v mem=%v", what, key, window, now, re, me)
-	}
-	if rc != mc {
-		t.Fatalf("%s use(%q,%s) at %s: red=%d mem=%d", what, key, window, now, rc, mc)
-	}
+	require.NoError(t, re, "%s use(%q,%s) at %s: err red=%v", what, key, window, now, re)
+	require.NoError(t, me, "%s use(%q,%s) at %s: err mem=%v", what, key, window, now, me)
+	require.Equal(t, rc, mc, "%s use(%q,%s) at %s: red=%d mem=%d", what, key, window, now, rc, mc)
 }
 
 type opKind int
@@ -232,26 +224,21 @@ func TestWaiterOverMemGrantedAfterRefusal(t *testing.T) {
 	mem := &Mem{}
 	key := RateKey("", "m-w1")
 	win := time.Second
-	if g, _ := mem.TakeRate(context.Background(), key, 1, win, t0, "x"); !g.OK {
-		t.Fatal("prefill refused")
-	}
+	g, _ := mem.TakeRate(context.Background(), key, 1, win, t0, "x")
+	require.True(t, g.OK, "prefill refused")
 	var lines []string
 	w := Waiter{Now: clk.Now, Sleep: clk.Sleep, Log: func(l string) { lines = append(lines, l) }, What: "rpm 1"}
 	out := w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
 		return mem.TakeRate(ctx, key, 1, win, clk.Now(), "late")
 	})
-	if !out.Granted || out.Open || out.Ended {
-		t.Fatalf("outcome %+v, want granted", out)
-	}
-	if out.Waits != 1 {
-		t.Fatalf("waits %d, want 1", out.Waits)
-	}
-	if out.Waited < win {
-		t.Fatalf("waited %s, want about one window (%s)", out.Waited, win)
-	}
-	if len(lines) < 2 || !strings.Contains(lines[0], "RATE BUDGET WAIT") || !strings.Contains(lines[len(lines)-1], "RATE BUDGET GRANTED") {
-		t.Fatalf("lines %q: want the wait visible, then the grant", lines)
-	}
+	require.True(t, out.Granted, "outcome %+v, want granted", out)
+	require.False(t, out.Open, "outcome %+v, want granted", out)
+	require.False(t, out.Ended, "outcome %+v, want granted", out)
+	require.Equal(t, 1, out.Waits, "waits %d, want 1", out.Waits)
+	require.GreaterOrEqual(t, out.Waited, win, "waited %s, want about one window (%s)", out.Waited, win)
+	require.GreaterOrEqual(t, len(lines), 2, "lines %q: want the wait visible, then the grant", lines)
+	require.Contains(t, lines[0], "RATE BUDGET WAIT")
+	require.Contains(t, lines[len(lines)-1], "RATE BUDGET GRANTED")
 }
 
 // TestWaiterOverMemEndsWhenContextEnds: the stall ends when the caller's context ends.
@@ -263,9 +250,9 @@ func TestWaiterOverMemEndsWhenContextEnds(t *testing.T) {
 		return context.Canceled
 	}}
 	out := w.Wait(ctx, func(context.Context) (Grant, error) { return Grant{Wait: time.Minute}, nil })
-	if !out.Ended || out.Granted || out.Open {
-		t.Fatalf("outcome %+v, want ended", out)
-	}
+	require.True(t, out.Ended, "outcome %+v, want ended", out)
+	require.False(t, out.Granted, "outcome %+v, want ended", out)
+	require.False(t, out.Open, "outcome %+v, want ended", out)
 }
 
 // TestWaiterOverMemOpensOnStoreError: a store error opens the budget, logging exactly one
@@ -278,18 +265,13 @@ func TestWaiterOverMemOpensOnStoreError(t *testing.T) {
 	out := w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
 		return mem.Acquire(ctx, "k", "h", 1, LeaseTTL, t0)
 	})
-	if !out.Open || out.Granted || out.Ended {
-		t.Fatalf("outcome %+v, want open", out)
-	}
-	if len(lines) != 1 {
-		t.Fatalf("lines %q, want exactly one", lines)
-	}
-	if !strings.Contains(lines[0], "RATE BUDGET OPEN") {
-		t.Fatalf("line %q not an OPEN line", lines[0])
-	}
-	if strings.ContainsAny(lines[0], "\n\r") {
-		t.Fatalf("the OPEN line holds a raw newline or CR: %q", lines[0])
-	}
+	require.True(t, out.Open, "outcome %+v, want open", out)
+	require.False(t, out.Granted, "outcome %+v, want open", out)
+	require.False(t, out.Ended, "outcome %+v, want open", out)
+	require.Len(t, lines, 1)
+	require.Contains(t, lines[0], "RATE BUDGET OPEN")
+	require.NotContains(t, lines[0], "\n")
+	require.NotContains(t, lines[0], "\r")
 }
 
 // TestWaiterOverMemLogsFirstAndEveryLogEvery: one WAIT line at the first wait, then one
@@ -319,13 +301,9 @@ func TestWaiterOverMemLogsFirstAndEveryLogEvery(t *testing.T) {
 		What:     "x",
 	}
 	w.Wait(ctx, func(context.Context) (Grant, error) { return Grant{Wait: time.Second}, nil })
-	if len(lines) < 3 {
-		t.Fatalf("lines %q, want the first wait and one per LogEvery", lines)
-	}
+	require.GreaterOrEqual(t, len(lines), 3, "lines %q, want the first wait and one per LogEvery", lines)
 	for i, l := range lines {
-		if !strings.Contains(l, "RATE BUDGET WAIT") {
-			t.Fatalf("line %d %q is not a WAIT line", i, l)
-		}
+		require.Contains(t, l, "RATE BUDGET WAIT", "line %d %q is not a WAIT line", i, l)
 	}
 }
 
@@ -334,10 +312,8 @@ func TestWaiterOverMemLogsFirstAndEveryLogEvery(t *testing.T) {
 func TestOneLineFlattensNewlinesAndCaps(t *testing.T) {
 	t.Parallel()
 	s := oneLine("a\nb\r\nc\rd")
-	if strings.ContainsAny(s, "\n\r") {
-		t.Fatalf("oneLine kept a newline or CR: %q", s)
-	}
-	if long := oneLine(strings.Repeat("x", 300)); len(long) != 200 {
-		t.Fatalf("oneLine length %d, want 200", len(long))
-	}
+	require.NotContains(t, s, "\n")
+	require.NotContains(t, s, "\r")
+	long := oneLine(strings.Repeat("x", 300))
+	require.Len(t, long, 200)
 }
