@@ -16,7 +16,8 @@ func init() {
 	verbExit["settings"] = "exit codes: 0 done, 1 failed, 2 usage or a store that did not answer"
 }
 
-// cmdSettings prints every setting with its value and its default.
+// cmdSettings prints every setting with its value and its default
+// (docs/SPEC-SPRINT.md section 11, Verbs, the settings row).
 func (a *app) cmdSettings(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("settings")
 	pos, err := parse(fs, args)
@@ -31,15 +32,19 @@ func (a *app) cmdSettings(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed("settings", err, stderr)
 	}
-	printSettings(stdout, s, c.json)
+	printSettings(stdout, "settings", s, c.json)
 	return 0
 }
 
 // printSettings is the settings lines, shared by `settings` and `set` with
 // no flags: one SETTING line a setting, then the SETTINGS OK line. --json
-// prints one object: the OK line is included as top-level fields and the
-// settings array holds every setting value (sprint-settings-json-is-one-object).
-func printSettings(stdout io.Writer, s *sprint.Snapshot, asJSON bool) {
+// prints one JSON object, the common flag's promise ("print one JSON object
+// for a program instead of the lines"): the OK line is included as top-level
+// fields, the settings array holds every setting value, and verb names the
+// verb that printed, which is the caller's own, not always "settings"
+// (sprint-settings-json-is-one-object; docs/SPEC-SPRINT.md section 11,
+// Verbs, the settings row).
+func printSettings(stdout io.Writer, verb string, s *sprint.Snapshot, asJSON bool) {
 	vals := sprint.SettingsOf(s)
 	set := 0
 	for _, v := range vals {
@@ -50,7 +55,7 @@ func printSettings(stdout io.Writer, s *sprint.Snapshot, asJSON bool) {
 	if asJSON {
 		b, _ := json.Marshal(map[string]any{
 			"ok":       true,
-			"verb":     "settings",
+			"verb":     verb,
 			"settings": vals,
 			"count":    len(vals),
 			"set":      set,

@@ -44,11 +44,11 @@ func TestSettingsJSONIsOneObject(t *testing.T) {
 	// Collect names from the JSON array.
 	var jsonNames []string
 	var byFlag []struct {
-		Flag    string `json:"flag"`
-		Prop    string `json:"prop"`
-		Value   string `json:"value"`
-		Default string `json:"default"`
-		Set     bool   `json:"set"`
+		Flag     string `json:"flag"`
+		Prop     string `json:"prop"`
+		Value    string `json:"value"`
+		Default  string `json:"default"`
+		Set      bool   `json:"set"`
 		Accessor string `json:"accessor"`
 	}
 	b, err := json.Marshal(settings)
@@ -65,4 +65,20 @@ func TestSettingsJSONIsOneObject(t *testing.T) {
 	sort.Strings(textNames)
 	sort.Strings(jsonNames)
 	assert.Equal(t, textNames, jsonNames, "settings --json array has the same flag names as the text form")
+}
+
+// TestSetJSONNamesItsOwnVerb pins the shared printer's verb field: `set`
+// with no flags prints the settings too, and under --json its one object
+// names the verb that printed it, "set", never "settings".
+func TestSetJSONNamesItsOwnVerb(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1:2")
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(ta.ok("set --json")), &got), "set --json stdout decodes as one JSON value")
+	assert.Equal(t, "set", got["verb"], "set --json names its own verb")
+	settings, ok := got["settings"].([]any)
+	require.True(t, ok, "top-level settings field is an array")
+	assert.NotEmpty(t, settings, "the settings array holds every setting")
 }
