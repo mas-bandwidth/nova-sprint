@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/must"
 )
 
 // A HOLD that proposes PATHS is the machine's to answer (docs/SPEC-SPRINT.md section 8, the
@@ -96,8 +97,7 @@ func TestAHoldWithPathsProposedCutsTheWidenedTwinByRule(t *testing.T) {
 		require.NotNil(t, twin, "the twin keeps the id with a -t suffix")
 		require.True(t, twin.Placed())
 		assert.Equal(t, "p-a", twin.F(sprint.FieldReplaces))
-		assert.Contains(t, twin.F("brief"), "PATHS: internal/a/a.go,internal/a/b.go", "PATHS widened to the proposal")
-		assert.Contains(t, twin.F("brief"), "CARRY: p-a attempt 1 head="+pathsHead, "the twin starts from the held head")
+		must.ContainsAll(t, twin.F("brief"), "PATHS: internal/a/a.go,internal/a/b.go", "CARRY: p-a attempt 1 head="+pathsHead)
 		assert.Equal(t, "p-a-t", s.Work.Card("dep").F("needs"), "twins inherit: dep needs the twin")
 		assert.Empty(t, judgmentsOn(s, "p-a"), "the held card's judgment is answered")
 		assert.Empty(t, r.open(sprint.NBlocked), "no blocked judgment for the replaced card")
@@ -109,8 +109,7 @@ func TestAHoldWithPathsProposedCutsTheWidenedTwinByRule(t *testing.T) {
 			}
 		}
 		require.Len(t, said, 1, "one answer, logged")
-		assert.Contains(t, said[0], "PATHS-PROPOSED: internal/a/b.go", "logged with the proposal")
-		assert.Contains(t, said[0], "p-a-t")
+		must.ContainsAll(t, said[0], "PATHS-PROPOSED: internal/a/b.go", "p-a-t")
 
 		for range 3 {
 			r.tick()
@@ -141,14 +140,12 @@ func TestAHoldWithPathsProposedCutsTheWidenedTwinByRule(t *testing.T) {
 		require.Len(t, js, 1, "one judgment")
 		what := js[0].Note.What
 		file := filepath.Join(dir, "p-b", "p-b-t.md")
-		assert.Contains(t, what, "internal/shared/s.go")
-		assert.Contains(t, what, "other", "names the card that shares the file")
-		assert.Contains(t, what, "nova-sprint add --stream s2 --replaces p-b --before p-b --brief-file "+file, "the complete command")
+		must.ContainsAll(t, what, "internal/shared/s.go", "other",
+			"nova-sprint add --stream s2 --replaces p-b --before p-b --brief-file "+file)
 
 		brief, err := os.ReadFile(file)
 		require.NoError(t, err, "the machine wrote the twin's brief")
-		assert.Contains(t, string(brief), "PATHS: internal/b/b.go,internal/shared/s.go")
-		assert.Contains(t, string(brief), "CARRY: p-b attempt 1 head="+pathsHead)
+		must.ContainsAll(t, string(brief), "PATHS: internal/b/b.go,internal/shared/s.go", "CARRY: p-b attempt 1 head="+pathsHead)
 		assert.Equal(t, 1, strings.Count(what, "nova-sprint add "), "the text says it once over the ticks")
 	})
 

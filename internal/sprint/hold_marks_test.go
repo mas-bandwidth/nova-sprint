@@ -296,6 +296,7 @@ func envFaultRelease(t *testing.T, w *world, member string) {
 // the mark's own release clears it (docs/SPEC-SPRINT.md section 5, the fleet;
 // section 11, hold; tla/DealFill.tla PersonHoldStays).
 func TestAHoldMarkKeepsTheMemberOffTheDeal(t *testing.T) {
+	t.Parallel()
 	for _, row := range holdMarks {
 		row := row
 		t.Run(row.name, func(t *testing.T) {
@@ -338,6 +339,7 @@ func TestAHoldMarkKeepsTheMemberOffTheDeal(t *testing.T) {
 // any hold, so it is not in this matrix (docs/SPEC-SPRINT.md section 11, hold;
 // tla/DealFill.tla PersonHoldStays).
 func TestAnotherMarksReleaseLeavesTheHold(t *testing.T) {
+	t.Parallel()
 	for _, row := range holdMarks {
 		for _, other := range holdMarks {
 			if other.name == row.name || !other.auto {
@@ -363,6 +365,7 @@ func TestAnotherMarksReleaseLeavesTheHold(t *testing.T) {
 // it and its file:line, so a new hold kind cannot ship without the table
 // checked against it (docs/SPEC-SPRINT.md section 5, the fleet).
 func TestEveryHeldByWriteNamesAMark(t *testing.T) {
+	t.Parallel()
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	known := map[string]bool{}

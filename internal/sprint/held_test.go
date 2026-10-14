@@ -38,7 +38,7 @@ func mustStall(t *testing.T, h HeldState, id, why string) Finding {
 			return f
 		}
 	}
-	t.Fatalf("%s is stalled (%s) and Unheld does not name it", id, hd)
+	require.FailNowf(t, "%s is stalled (%s) and Unheld does not name it", id, hd)
 	return Finding{}
 }
 
@@ -87,11 +87,47 @@ func TestNotHeldByAnActorOfAMemberThatIsDown(t *testing.T) {
 	require.Contains(t, f.Decisions, "drop", "the finding: %+v", f)
 }
 
-func TestHeldByTheNextTick(t *testing.T) {
+// TestHeldByTheStateAtHand checks the holder the no-stall rule names for a card
+// in each state: the next tick, an open judgment, the tick while the machine is
+// stopped, and what the card waits on.
+func TestHeldByTheStateAtHand(t *testing.T) {
 	t.Parallel()
-	w := setup(t, 1)
-	hd := mustHold(t, running(w), "s1-1", HeldByTick)
-	require.Contains(t, hd.Why, "working card=s1-1.w1", "the next tick deals it: %s", hd)
+	ready := func(t *testing.T) *world { return setup(t, 1) }
+	waitsOn := func(t *testing.T) *world {
+		w := dealt(t)
+		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}}))
+		return w
+	}
+	sentinel := func(t *testing.T) *world {
+		w := setup(t, 0)
+		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
+		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"after"}}))
+		return w
+	}
+	cases := []struct {
+		name    string
+		build   func(t *testing.T) *world
+		stopped bool
+		id, by  string
+		why     string
+	}{
+		{"the next tick deals it", ready, false, "s1-1", HeldByTick, "working card=s1-1.w1"},
+		{"an open judgment holds it", inReviewFailed, false, "s1-1", HeldByJudgment, NWorkFailed},
+		{"the tick holds it while the machine is stopped", ready, true, "s1-1", HeldByStopped, "the machine is STOPPED"},
+		{"what it waits on", waitsOn, false, "late", HeldByWaiting, "needs s1-1 (a)"},
+		{"a reached sentinel whose judgment is open", sentinel, false, "stop", HeldByJudgment, ""},
+		{"behind a reached sentinel whose judgment is open", sentinel, false, "after", HeldByWaiting, "waits behind sentinel stop (c)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := HeldState{Snap: tc.build(t).s, Running: !tc.stopped}
+			hd := mustHold(t, h, tc.id, tc.by)
+			if tc.why != "" {
+				require.Contains(t, hd.Why, tc.why, "%s: %s", tc.name, hd)
+			}
+		})
+	}
 }
 
 func TestNotHeldWhenTheTickCannotDealIt(t *testing.T) {
@@ -177,13 +213,6 @@ func TestARefuserBelowItsRoomStillStallsACardItMayTake(t *testing.T) {
 	assert.Equal(t, []string{"s1-5"}, got[0].Primaries)
 }
 
-func TestHeldByAnOpenJudgment(t *testing.T) {
-	t.Parallel()
-	w := inReviewFailed(t)
-	hd := mustHold(t, running(w), "s1-1", HeldByJudgment)
-	require.Contains(t, hd.Why, NWorkFailed, "held by the failed judgment: %s", hd)
-}
-
 func TestNotHeldWhenTheJudgmentIsGone(t *testing.T) {
 	t.Parallel()
 	w := inReviewFailed(t)
@@ -195,21 +224,6 @@ func TestNotHeldWhenTheJudgmentIsGone(t *testing.T) {
 	// own interrupt.
 	w.note(Note{Kind: Judgment, Type: NStalled, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: w.s.Now})
 	mustStall(t, running(w), "s1-1", "no judgment is open on it")
-}
-
-func TestHeldByWhatItWaitsOn(t *testing.T) {
-	t.Parallel()
-	w := dealt(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}}))
-	hd := mustHold(t, running(w), "late", HeldByWaiting)
-	require.Contains(t, hd.Why, "needs s1-1 (a)", "the chain: %s", hd)
-	// Behind a reached sentinel whose judgment is open.
-	w2 := setup(t, 0)
-	w2.must(Add(w2.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
-	w2.must(Add(w2.s, AddReq{Stream: "s1", IDs: []string{"after"}}))
-	mustHold(t, running(w2), "stop", HeldByJudgment)
-	hd = mustHold(t, running(w2), "after", HeldByWaiting)
-	require.Contains(t, hd.Why, "waits behind sentinel stop (c)", "behind the sentinel: %s", hd)
 }
 
 func TestNotHeldWhenTheChainEndsInAStall(t *testing.T) {
@@ -249,13 +263,6 @@ func TestNotHeldInACycle(t *testing.T) {
 	require.Len(t, got, 2, "the cycle's findings: %+v", got)
 	require.Equal(t, "y0", got[0].Root, "the cycle's findings: %+v", got)
 	require.Contains(t, got[1].Why, "its needs make a cycle through x", "the cycle's findings: %+v", got)
-}
-
-func TestHeldByTheTickWhileTheMachineIsStopped(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 1)
-	hd := mustHold(t, stopped(w), "s1-1", HeldByStopped)
-	require.Contains(t, hd.Why, "the machine is STOPPED", "stopped: %s", hd)
 }
 
 func TestAStallStaysAStallWhileTheMachineIsStopped(t *testing.T) {
@@ -344,10 +351,7 @@ func TestAStallOffersOnlyEnabledDecisions(t *testing.T) {
 	require.NotContains(t, f.Decisions, "ask", "asked already: %v", f.Decisions)
 	require.Contains(t, f.Decisions, "ask --another", "asked already: %v", f.Decisions)
 	for _, d := range f.Decisions {
-		if d == "wait" || d == "drop" || d == "rework" || d == "ask --another" {
-			continue
-		}
-		t.Errorf("a decision not expected: %s", d)
+		assert.Contains(t, []string{"wait", "drop", "rework", "ask --another"}, d, "a decision not expected: %s", d)
 	}
 }
 
