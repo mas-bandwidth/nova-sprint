@@ -654,6 +654,9 @@ type whereView struct {
 	// StreamCosts is each stream's cards by their briefs' tier (`tiers`, counts) and its
 	// spend by the tier each attempt and read ran on (`cost_by_tier`, money strings), from
 	// the tick's where record (sprint.TierCosts); absent before the first tick of an epoch.
+	// Tiers, StreamCosts, CostCheck, ReadSpend, Streams, Stalled, StageTimes' streams and
+	// StreamPriorities leave the archived streams out (Archived carries theirs), but for a
+	// sprint done, whose figures are the epoch's (where_live_totals.go).
 	StreamCosts map[string]sprint.TierCosts `json:"stream_costs,omitempty"`
 	// CostCheck is the tick's check that the streams' sums are every card's own total
 	// (sprint.CostCheck: ok, both sums exact, the gap); absent before the first tick of a
@@ -1455,8 +1458,14 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if line := backupLine(v.Backup, working, review, merging, v.ReadsWaiting); line != "" {
 		b.WriteString(line + "\n")
 	}
+	// the streams' costs as every total counts them: the archived streams' are under
+	// archived alone (the owner, 2026-10-14; where_live_totals.go), a sprint done the epoch's
+	liveCosts := facts.Streams
+	if !v.Done {
+		liveCosts = liveStreamCosts(facts.Streams, v.Archived)
+	}
 	// the day's read spend per route, from the same record (cost_view.go)
-	if v.ReadSpend = sprint.ReadSpendLine(facts.Streams); v.ReadSpend != "" {
+	if v.ReadSpend = sprint.ReadSpendLine(liveCosts); v.ReadSpend != "" {
 		b.WriteString(v.ReadSpend + "\n")
 	}
 	// the work table's cost column closed to the tile: the spend no card carries, the total,
@@ -1534,8 +1543,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			t = streamCostColumns(t, facts.Streams) // cost | unpriced
 			t = perLandedColumn(t, facts.Streams)   // | per landed, the last
 			for _, r := range t.Rows {
-				// an archived stream's costs stay in stream_costs, its row or not
-				if tc, ok := facts.Streams[r.Key]; ok {
+				// an archived stream's costs are under archived alone, never in stream_costs
+				// (the owner, 2026-10-14: "should not show up in totals, dashboard, costs, anywhere")
+				if tc, ok := liveCosts[r.Key]; ok {
 					if v.StreamCosts == nil {
 						v.StreamCosts = map[string]sprint.TierCosts{}
 					}
@@ -1669,6 +1679,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			v.Fix += n
 		}
 	}
+	// every per-stream list and total the record counted over the epoch, the archived
+	// streams taken out (where_live_totals.go)
+	liveTotals(&v, facts.Streams)
 
 	return v, b.String(), nil
 }
