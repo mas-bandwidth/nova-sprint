@@ -74,7 +74,11 @@ func heldPastDeadline(s *Snapshot, r TickReq) []heldBy {
 	var out []heldBy
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || !HoldsACard(n.Type) || seen[n.ID] {
+		// the pass's own judgments are never held by themselves: NSeatSilent holds a card as
+		// a kind (WaitRefused; docs/SPEC-SPRINT.md section 8, "A judgment that holds a
+		// card") but is the alarm about the judgments that hold them, raised again by the
+		// pass (coordinator_pass.go), not one more held judgment
+		if n.Kind != Judgment || !HoldsACard(n.Type) || slices.Contains(PassTypes, n.Type) || seen[n.ID] {
 			continue
 		}
 		seen[n.ID] = true

@@ -76,6 +76,11 @@ func TestNoJudgmentOffersADecisionItsVerbRefuses(t *testing.T) {
 	}
 	for _, k := range WaitRefusedKinds() {
 		ds := append(append([]string(nil), Decisions[k]...), TickDecisions[k]...)
+		if k == NSeatSilent {
+			// NSeatSilent builds its own decision in its condition (seatSilentConds), so it
+			// is not in either table: name it here, as the kind that holds the cards does
+			ds = []string{SeatSilentDecision}
+		}
 		assert.NotEmpty(t, ds, "%s takes no wait and must offer what to do instead", k)
 	}
 }
