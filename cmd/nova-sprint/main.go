@@ -697,10 +697,18 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 // registerStore is the shared flags of a verb that takes no --op, --epoch or --max
 // (answer: each verb it applies carries its decision's own op): the store, the actor
 // and --json.
+// actorUsage is --actor's help. RATING 2026-10-14: --as is the same acting name
+// on a verb that takes --actor, except where --as names a member or reader row.
+const actorUsage = "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)"
+
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
 	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
-	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)")
+	usage := actorUsage
+	if c.verb != "" && !asNamesOtherVerb(c.verb) {
+		usage = "--actor (alias --as): " + actorUsage
+	}
+	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), usage)
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
 
@@ -711,6 +719,206 @@ func firstEnv(getenv func(string) string, names ...string) string {
 		}
 	}
 	return ""
+}
+
+// asNamesOtherVerb is a verb whose --as names a member, reader or other row,
+// not who is acting (RATING 2026-10-14). Help says --actor (alias --as) only
+// where the two spellings are the acting name.
+func asNamesOtherVerb(name string) bool {
+	switch name {
+	case "take", "finish", "progress", "read", "queue", "stop-return",
+		"lane take", "lane give", "budget take", "budget renew", "budget release",
+		"view worker", "seat login", "install member":
+		return true
+	}
+	return false
+}
+
+// asNamesRow is an argument list whose --as names a row, not the acting name:
+// a worker verb, or a subcommand that registers --as for something else
+// (seat login, install member). Flags may sit between the verb's words.
+func asNamesRow(args []string) bool {
+	words := positionals(args, 2)
+	if len(words) == 0 {
+		return false
+	}
+	switch words[0] {
+	case "take", "finish", "progress", "read", "queue", "stop-return":
+		return true
+	}
+	if len(words) < 2 {
+		return false
+	}
+	switch words[0] + " " + words[1] {
+	case "lane take", "lane give", "budget take", "budget renew", "budget release", "view worker",
+		"seat login", "install member":
+		return true
+	}
+	return false
+}
+
+func positionals(args []string, limit int) []string {
+	var out []string
+	for i := 0; i < len(args) && len(out) < limit; i++ {
+		if args[i] == "--" {
+			break
+		}
+		_, _, inline, is := cutFlag(args[i])
+		if !is {
+			out = append(out, args[i])
+			continue
+		}
+		if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			i++
+		}
+	}
+	return out
+}
+
+type actingFlagSet struct {
+	actor, as, known bool
+}
+
+var actingFlagCache sync.Map
+
+func verbActingFlags(name string) actingFlagSet {
+	if v, ok := actingFlagCache.Load(name); ok {
+		return v.(actingFlagSet)
+	}
+	fs := verbFlags(name)
+	got := actingFlagSet{known: fs != nil}
+	if fs != nil {
+		got.actor = fs.Lookup("actor") != nil
+		got.as = fs.Lookup("as") != nil
+	}
+	actingFlagCache.Store(name, got)
+	return got
+}
+
+// aliasActingName accepts --as as --actor on a verb that takes --actor, and
+// the reverse where --as is the acting name (RATING 2026-10-14). Both given
+// with different values is refused, naming both. A verb whose --as names a
+// row is unchanged. An unknown flag that is one of the two spellings says
+// they are the same. Precedence stays the flag, then NOVA_SPRINT_ACTOR, then
+// the proven hook name: the alias is the flag, rewritten before the verb reads it.
+func aliasActingName(args []string) ([]string, string, string) {
+	name, n := matchedVerb(args)
+	if n == 0 || asNamesRow(args) {
+		return args, name, ""
+	}
+	if !flagPresent(args[n:], "as") && !flagPresent(args[n:], "actor") {
+		return args, name, ""
+	}
+	flags := verbActingFlags(name)
+	switch {
+	case flags.actor && !flags.as:
+		out, why := rewriteActing(args, n, "as", "actor")
+		return out, name, why
+	case flags.as && !flags.actor:
+		out, why := rewriteActing(args, n, "actor", "as")
+		return out, name, why
+	case flags.known && !flags.actor && !flags.as:
+		spelling := "--as"
+		if !flagPresent(args[n:], "as") {
+			spelling = "--actor"
+		}
+		return args, name, "unknown flag " + spelling + "; --as and --actor are the same acting name"
+	}
+	return args, name, ""
+}
+
+func matchedVerb(args []string) (string, int) {
+	name, n := "", 0
+	for _, vb := range verbs {
+		w := strings.Fields(vb.name)
+		if len(args) >= len(w) && slices.Equal(args[:len(w)], w) && len(w) > n {
+			name, n = vb.name, len(w)
+		}
+	}
+	return name, n
+}
+
+func rewriteActing(args []string, verbWords int, from, to string) ([]string, string) {
+	fromVal, fromSet, fromOK := actingValue(args[verbWords:], from)
+	toVal, toSet, toOK := actingValue(args[verbWords:], to)
+	if fromSet && toSet && fromOK && toOK && fromVal != toVal {
+		asVal, actorVal := fromVal, toVal
+		if from == "actor" {
+			asVal, actorVal = toVal, fromVal
+		}
+		return nil, "--as and --actor are the same acting name and were given different values: --as " + asVal + ", --actor " + actorVal
+	}
+	if !fromSet {
+		return args, ""
+	}
+	return renameActingFlag(args, verbWords, from, to), ""
+}
+
+func renameActingFlag(args []string, verbWords int, from, to string) []string {
+	out := append([]string(nil), args[:verbWords]...)
+	for i := verbWords; i < len(args); i++ {
+		if args[i] == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
+		n, v, inline, is := cutFlag(args[i])
+		if !is || n != from {
+			out = append(out, args[i])
+			continue
+		}
+		if inline {
+			out = append(out, "--"+to+"="+v)
+			continue
+		}
+		out = append(out, "--"+to)
+		if i+1 < len(args) {
+			i++
+			out = append(out, args[i])
+		}
+	}
+	return out
+}
+
+func flagPresent(args []string, name string) bool {
+	_, set, _ := actingValue(args, name)
+	return set
+}
+
+func actingValue(args []string, name string) (val string, set, ok bool) {
+	ok = true
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			break
+		}
+		n, v, inline, is := cutFlag(args[i])
+		if !is || n != name {
+			continue
+		}
+		set = true
+		if inline {
+			val, ok = v, true
+			continue
+		}
+		if i+1 >= len(args) {
+			ok = false
+			continue
+		}
+		i++
+		val, ok = args[i], true
+	}
+	return val, set, ok
+}
+
+func cutFlag(w string) (name, val string, inline, isFlag bool) {
+	if len(w) < 2 || w[0] != '-' || w == "--" {
+		return "", "", false, false
+	}
+	body := strings.TrimLeft(w, "-")
+	if body == "" || strings.HasPrefix(body, "-") {
+		return "", "", false, false
+	}
+	name, val, inline = strings.Cut(body, "=")
+	return name, val, inline, name != ""
 }
 
 // store is the one way a command reaches the store: pinned to the sprint's
@@ -994,6 +1202,12 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		// refusal of this run, the dispatcher's and the verb's own, is the one
 		// JSON object on stdout (docs/STANDARD.md section 3)
 		stderr = jsonRefusal{stdout: stdout, stderr: stderr}
+	}
+	// RATING 2026-10-14: --as is --actor where they name who is acting.
+	var aliasVerb, aliasWhy string
+	args, aliasVerb, aliasWhy = aliasActingName(args)
+	if aliasWhy != "" {
+		return refuse(stderr, aliasVerb, aliasWhy)
 	}
 	// every verb's answer is a refusal unless its report (report) says otherwise:
 	// refuse() and every pre-write refusal are the default, and the report sets
