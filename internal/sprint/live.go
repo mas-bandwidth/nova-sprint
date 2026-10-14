@@ -315,14 +315,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				continue
 			}
 			gen := max(c.Int("gen"), 1)
-			// absent since the latest of: its take (or its deal, for a card never taken), the
-			// first beat of this worker that carried a live set, and its last sighting
-			since := b.LiveSince
-			for _, t := range []time.Time{stampAt(c, "taken"), stampAt(c, "dealt"), b.LiveSeen[LiveKey(c.ID, gen)]} {
-				if t.After(since) {
-					since = t
-				}
-			}
+			since := liveAbsentSince(b, c)
 			if since.IsZero() || s.Now.Sub(since) <= LiveGrace {
 				continue
 			}
@@ -354,6 +347,41 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		}
 	}
 	return p
+}
+
+// liveAbsentSince is when a working card began to go unnamed by its row's live set: the
+// latest of its take (or its deal, for a card never taken), the first beat of this worker that
+// carried a live set, and its last sighting in one. Zero when none of them is known. The
+// reconcile (LiveReturns) returns the card once now is LiveGrace past it, and the doctor's
+// friends check (DoctorFriends) reads the same instant, so the two never disagree on when a
+// card is unnamed.
+func liveAbsentSince(b Beat, c *Card) time.Time {
+	since := b.LiveSince
+	for _, t := range []time.Time{stampAt(c, "taken"), stampAt(c, "dealt"), b.LiveSeen[LiveKey(c.ID, max(c.Int("gen"), 1))]} {
+		if t.After(since) {
+			since = t
+		}
+	}
+	return since
+}
+
+// LiveUnnamedFor is how long the working card has gone unnamed by the beat's live set at now,
+// and whether it counts at all: only a beat that carries a live set (LiveKnown) and is fresh
+// is a worker's word that a run is gone (LiveReturns), so any other beat, and a card the fresh
+// set names at its generation, answer false.
+func LiveUnnamedFor(b Beat, c *Card, now time.Time) (time.Duration, bool) {
+	live := liveOf(b, now)
+	if !live.known || !b.Fresh(now) {
+		return 0, false
+	}
+	if _, ok := live.names(c); ok {
+		return 0, false
+	}
+	since := liveAbsentSince(b, c)
+	if since.IsZero() {
+		return 0, false
+	}
+	return now.Sub(since), true
 }
 
 // friendStoppedReturn is the reconcile on a friend's row whose beat is past the beat bound:

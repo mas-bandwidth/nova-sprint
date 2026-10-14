@@ -1434,6 +1434,38 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 
 // ---- friends ------------------------------------------------------------------------------
 
+// DoctorLiveSettle is how long past LiveGrace a working card may stay unnamed by its friend's
+// fresh live set before the doctor calls her row drifted: the tick returns such a card itself
+// at LiveGrace (LiveReturns), so one still unnamed a settle later is a reconcile that did not
+// run.
+const DoctorLiveSettle = DoctorBeatBound
+
+// friendLiveDrift is why a friend's row and her report differ, "" when they do not or when
+// there is nothing to compare. The only report a row is reconciled against is the beat's live
+// set (Beat.Live, LiveReturns): a beat that carries none (a friend who works by hand, a
+// one-shot daemon, a worker from before v1.2.6: LiveKnown false) or is not fresh names nothing,
+// so her row is not compared and a working card is the normal state, never a drift. The count
+// of the beat's --running words (FriendReport.Running: card ids, job names or primaries) is no
+// comparison either, since a job name or a primary is not a row's card. Where the fresh live set
+// does not name a working card for LiveGrace + DoctorLiveSettle (measured as LiveReturns does,
+// from its take, the first live beat or its last sighting), the tick has not returned it.
+func friendLiveDrift(s *Snapshot, row string, b Beat) string {
+	if b.Friend == nil || !b.LiveKnown {
+		return ""
+	}
+	var unnamed []string
+	for _, c := range s.Fleet.Cell(row, Working) {
+		if d, ok := LiveUnnamedFor(b, c, s.Now); ok && d > LiveGrace+DoctorLiveSettle {
+			unnamed = append(unnamed, fmt.Sprintf("%s (%s)", LiveKey(c.ID, c.Int("gen")), d.Round(time.Second)))
+		}
+	}
+	if len(unnamed) == 0 {
+		return ""
+	}
+	slices.Sort(unnamed)
+	return fmt.Sprintf("working cards her live set does not name past %s: %s", LiveGrace+DoctorLiveSettle, strings.Join(unnamed, ", "))
+}
+
 // DoctorFriends is the friends group: each friend row's daemon alive on its host (her beat),
 // her session's proof, her working cards against her width and against what her beat says she
 // runs, and her hold with its reason. A friend up whose daemon beats no more is FAIL; working
@@ -1475,8 +1507,8 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": " + friendPronouns(seats, f.Name).Say("{their} daemon beats no more"), Remedy: "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f.Name + " (on the friend's host)"})
 		case f.Width > 0 && working > f.Width:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
-		case b.Friend != nil && len(f.Running) != working:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend reconcile " + f.Name})
+		case friendLiveDrift(s, row, b) != "":
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": " + friendLiveDrift(s, row, b), Remedy: "nova-sprint friend reconcile " + f.Name})
 		default:
 			fine++
 		}
