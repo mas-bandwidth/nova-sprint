@@ -527,9 +527,18 @@ func (a *app) hookerForget(identity string) {
 // hookHub is the server's hold of the hooks: the one subscription open for each name
 // (the seat's holder's, and each worker friend's). A new hook of a name replaces the
 // one open for it.
+//
+// Lock order (a-card-read-never-runs-the-deal, docs/SPEC-SPRINT.md section 14, The
+// server, "The tick's turn"): startMu -> the line of control (a.serial) -> mu. mu is a
+// leaf: it is held across no call that can block, never across the line, because a seat
+// verb on the line takes it (seatActs); v1.2.14..v1.2.24 held it across the line in
+// start and the server deadlocked.
 type hookHub struct {
-	mu  sync.Mutex
-	cur map[string]*hookSession
+	// startMu is start's order among the starts of this hub: the only lock held while
+	// the line is taken. seatActs and current never take it.
+	startMu sync.Mutex
+	mu      sync.Mutex
+	cur     map[string]*hookSession
 }
 
 // hookSession is one subscription on the server: its id, the seat it is for, its
@@ -756,7 +765,8 @@ func (s *hookSession) start(ctx context.Context) error {
 		return errors.New(why)
 	}
 	h := s.a.hookHub()
-	h.mu.Lock()
+	// startMu, not mu, across the line: mu is a leaf (hookHub's lock order).
+	h.startMu.Lock()
 	now := s.a.now()
 	if err := s.a.onLine(ctx, func(st *store.Store) error {
 		old, ok, err := readHook(ctx, st)
@@ -780,12 +790,14 @@ func (s *hookSession) start(ctx context.Context) error {
 		old.Proven, old.Live, old.Why, old.Unacked, old.Oldest = time.Time{}, time.Time{}, "", 0, nil
 		return writeHook(ctx, st, old)
 	}); err != nil {
-		h.mu.Unlock()
+		h.startMu.Unlock()
 		return err
 	}
+	h.mu.Lock()
 	old := h.cur[s.name]
 	h.cur[s.name] = s
 	h.mu.Unlock()
+	h.startMu.Unlock()
 	if old != nil {
 		old.replaced()
 	}
