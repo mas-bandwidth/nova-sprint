@@ -76,7 +76,7 @@ func TestAFinishPRCardStagesFromThePRHeadOnAStore(t *testing.T) {
 	t.Cleanup(a.close)
 	a.home = func() (string, error) { return home, nil }
 	a.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
-		t.Fatalf("a verb was forwarded to a sprint server at %s: %q", addr, verbs)
+		require.FailNowf(t, "", "a verb was forwarded to a sprint server at %s: %q", addr, verbs)
 		return nil, errors.New("forwarding is refused in this test")
 	}
 	do := func(line string) string {

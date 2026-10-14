@@ -411,11 +411,11 @@ func TestSyncAfterSyncIsSync(t *testing.T) {
 		for _, w := range ws {
 			switch {
 			case w.Member() && rows[w.Machine]["width"] != fmt.Sprint(w.Width):
-				t.Fatalf("round %d: %s is at width %q, the inventory says %d", round, w.Machine, rows[w.Machine]["width"], w.Width)
+				require.FailNowf(t, "", "round %d: %s is at width %q, the inventory says %d", round, w.Machine, rows[w.Machine]["width"], w.Width)
 			case w.Member() && rows[w.Machine]["status"] == sprint.Held:
-				t.Fatalf("round %d: %s is in the inventory with room and is still held", round, w.Machine)
+				require.FailNowf(t, "", "round %d: %s is in the inventory with room and is still held", round, w.Machine)
 			case !w.Member() && rows[w.Machine] != nil && rows[w.Machine]["status"] != sprint.Held:
-				t.Fatalf("round %d: %s has no room and is %q, not held", round, w.Machine, rows[w.Machine]["status"])
+				require.FailNowf(t, "", "round %d: %s has no room and is %q, not held", round, w.Machine, rows[w.Machine]["status"])
 			}
 		}
 		writes := ta.applies()

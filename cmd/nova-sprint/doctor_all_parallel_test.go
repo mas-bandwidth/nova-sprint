@@ -12,6 +12,7 @@ import (
 // The two doctors start before either result is awaited. Release them in the
 // opposite order from their display slots; text output remains stable.
 func TestRunDoctorPairStartsBothAndKeepsStableTextOrder(t *testing.T) {
+	t.Parallel()
 	started := make(chan string, 2)
 	finished := make(chan string, 2)
 	novaRelease := make(chan struct{})
@@ -37,7 +38,7 @@ func TestRunDoctorPairStartsBothAndKeepsStableTextOrder(t *testing.T) {
 	assert.ElementsMatch(t, []string{"nova-doctor", "nova-sprint"}, []string{first, second}, "both callbacks enter before either is released")
 	select {
 	case name := <-finished:
-		t.Fatalf("%s completed before the test released either callback", name)
+		require.FailNowf(t, "", "%s completed before the test released either callback", name)
 	default:
 	}
 
@@ -57,6 +58,7 @@ func TestRunDoctorPairStartsBothAndKeepsStableTextOrder(t *testing.T) {
 // A failed child does not suppress the other result. Valid child JSON is
 // decoded; malformed output is retained verbatim as that child's report.
 func TestDoctorPairJSONPreservesBothFailureReports(t *testing.T) {
+	t.Parallel()
 	pair := doctorPair{
 		novaDoctor: doctorRunResult{code: 2, stdout: "not-json\n", stderr: "nova invocation failed\n"},
 		sprint:     doctorRunResult{code: 1, stdout: `{"status":"refused"}`, stderr: "sprint refusal detail\n"},
@@ -93,6 +95,7 @@ func TestDoctorPairJSONPreservesBothFailureReports(t *testing.T) {
 }
 
 func TestDoctorHelpListsAllModeAndExistingOptions(t *testing.T) {
+	t.Parallel()
 	var stdout, stderr bytes.Buffer
 	a := newApp(func(string) string { return "" })
 	code := runInto(a, []string{"doctor", "-h"}, &stdout, &stderr)

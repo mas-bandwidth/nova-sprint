@@ -64,7 +64,7 @@ func briefLine(t *testing.T, g sprint.Group) string {
 			return strings.TrimPrefix(c.Lines[0], "nova-sprint ")
 		}
 	}
-	t.Fatalf("no brief decision in %+v", g.Commands)
+	require.FailNowf(t, "", "no brief decision in %+v", g.Commands)
 	return ""
 }
 

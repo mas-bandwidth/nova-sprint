@@ -27,7 +27,7 @@ func (ta *testApp) playToDone(from int) (int, string) {
 		ta.ok(fmt.Sprintf("play --seed %d --ticks 1 --every 1s --fail 0 --broken 0 --stuck 0 --cross 0 --batch 10 --take 20 --reads 20", round))
 		ta.coordinate()
 	}
-	ta.t.Fatalf("not done: %s", ta.ok("where"))
+	require.FailNowf(ta.t, "", "not done: %s", ta.ok("where"))
 	return 0, ""
 }
 

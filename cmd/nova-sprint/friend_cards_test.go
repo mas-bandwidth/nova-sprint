@@ -162,7 +162,7 @@ func TestAHoldReportRaisesTheWorkCameBackFailedJudgment(t *testing.T) {
 
 	// a LAND with no full sha head is failed too, saying what it lacks, and asks no tip
 	noTip := func(context.Context, string, string) (string, error) {
-		t.Fatal("a LAND with no full sha asked for a tip")
+		require.FailNow(t, "a LAND with no full sha asked for a tip")
 		return "", nil
 	}
 	r, err := friendFinish(context.Background(), "amy", sprint.Packet{Card: "c.w1", Gen: 1}, "Verdict: LAND\nHead: abc\n\nDone.\n", noTip)
@@ -182,7 +182,7 @@ func TestAReportWithNoVerdictIsFailedNeverOk(t *testing.T) {
 		"Verdict: OK\n",
 	} {
 		noTip := func(context.Context, string, string) (string, error) {
-			t.Fatalf("a report with no LAND asked for a tip: %q", report)
+			require.FailNowf(t, "", "a report with no LAND asked for a tip: %q", report)
 			return "", nil
 		}
 		r, err := friendFinish(context.Background(), "amy", sprint.Packet{Card: "c.w1", Gen: 1}, report, noTip)

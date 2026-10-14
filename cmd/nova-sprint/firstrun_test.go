@@ -50,7 +50,5 @@ func TestTheFirstRunTranscriptRunsOverATwin(t *testing.T) {
 		a.close()
 		got = append(got, onboarding.Result{Code: code, Stdout: out.String(), Stderr: errb.String()})
 	}
-	for _, p := range onboarding.CompareTranscript(steps, got, nil) {
-		t.Error(p)
-	}
+	assert.Empty(t, onboarding.CompareTranscript(steps, got, nil), "the transcript differences")
 }

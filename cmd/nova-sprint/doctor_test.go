@@ -26,20 +26,14 @@ import (
 func TestDoctorFaultsCleanStore(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
-	r := sprint.SeatCheckReport{}
-	if got := doctorFaults(r, store.StopsRecord{}, nil, nil, now); len(got) != 0 {
-		t.Fatalf("a clean store has faults: %v", got)
-	}
+	require.Empty(t, doctorFaults(sprint.SeatCheckReport{}, store.StopsRecord{}, nil, nil, now), "a clean store has faults")
 }
 
 func TestDoctorFaultsNamesSeatCheckEvidence(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	r := sprint.SeatCheckReport{Lines: []sprint.SeatCheckLine{{Thing: sprint.SeatCheckFleet, Facts: []string{"member=m1"}}}}
-	got := doctorFaults(r, store.StopsRecord{}, nil, nil, now)
-	if len(got) != 1 || got[0] != "MACHINERY fleet DOWN member=m1" {
-		t.Fatalf("seat-check fault evidence = %v", got)
-	}
+	assert.Equal(t, []string{"MACHINERY fleet DOWN member=m1"}, doctorFaults(r, store.StopsRecord{}, nil, nil, now), "seat-check fault evidence")
 }
 
 func TestDoctorFaultsNamesAStop(t *testing.T) {
@@ -48,19 +42,15 @@ func TestDoctorFaultsNamesAStop(t *testing.T) {
 	stop := sprint.Stop{Kind: sprint.StopKindMemberDown, Subject: "m3", Since: now.Add(-5 * time.Minute), What: "member m3 is down", Effect: "its width idles", Undo: "start its member loop"}
 	rec := store.StopsRecord{Stops: []sprint.Stop{stop}}
 	got := doctorFaults(sprint.SeatCheckReport{}, rec, nil, nil, now)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "STOP member-down m3 age=5m0s") || !strings.Contains(got[0], "undo: start its member loop") {
-		t.Fatalf("stop fault evidence = %v", got)
-	}
+	require.Len(t, got, 1, "stop fault evidence = %v", got)
+	require.Regexp(t, `^STOP member-down m3 age=5m0s.*undo: start its member loop`, got[0], "stop fault evidence = %v", got)
 }
 
 func TestDoctorFaultsNamesAViolation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	v := []sprint.Violation{{Rule: 2, Detail: "s1-1 is working with no live work card"}}
-	got := doctorFaults(sprint.SeatCheckReport{}, store.StopsRecord{}, v, nil, now)
-	if len(got) != 1 || got[0] != "RULE rule 2: s1-1 is working with no live work card" {
-		t.Fatalf("violation fault evidence = %v", got)
-	}
+	assert.Equal(t, []string{"RULE rule 2: s1-1 is working with no live work card"}, doctorFaults(sprint.SeatCheckReport{}, store.StopsRecord{}, v, nil, now), "violation fault evidence")
 }
 
 func TestDoctorFaultsNamesOverdueSeatEvidence(t *testing.T) {
@@ -68,9 +58,8 @@ func TestDoctorFaultsNamesOverdueSeatEvidence(t *testing.T) {
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	rec := store.StopsRecord{Seat: sprint.SeatWaits{Judgments: 1, Overdue: 1}}
 	got := doctorFaults(sprint.SeatCheckReport{}, rec, nil, nil, now)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "MACHINERY seat DOWN") {
-		t.Fatalf("overdue seat fault evidence = %v", got)
-	}
+	require.Len(t, got, 1, "overdue seat fault evidence = %v", got)
+	require.Regexp(t, `^MACHINERY seat DOWN`, got[0], "overdue seat fault evidence = %v", got)
 }
 
 // A sprint with cards waiting and nothing ready is the deal dry: a fault named with the
@@ -82,10 +71,7 @@ func TestDoctorFaultsNamesTheDealDry(t *testing.T) {
 	work.SetRows([]string{"s1"})
 	work.Put(&sprint.Card{ID: "s1-1.w1", Row: "s1", Col: sprint.Waiting})
 	snap := &sprint.Snapshot{Work: work}
-	got := doctorFaults(sprint.SeatCheckReport{}, store.StopsRecord{}, nil, snap, now)
-	if len(got) != 1 || got[0] != "MACHINERY deal DOWN ready=0 waiting=1: nothing ready to feed the fleet" {
-		t.Fatalf("deal-dry fault evidence = %v", got)
-	}
+	assert.Equal(t, []string{"MACHINERY deal DOWN ready=0 waiting=1: nothing ready to feed the fleet"}, doctorFaults(sprint.SeatCheckReport{}, store.StopsRecord{}, nil, snap, now), "deal-dry fault evidence")
 }
 
 // A dashboard serving a snapshot a second or more old is DOWN with its age, and the doctor
@@ -101,15 +87,8 @@ func TestDoctorFaultsNamesADashboardServingOldData(t *testing.T) {
 	}
 	r := sprint.JudgeSeatCheck(m, now)
 	got := doctorFaults(r, store.StopsRecord{}, nil, nil, now)
-	var dash string
-	for _, f := range got {
-		if strings.Contains(f, "dashboard DOWN") {
-			dash = f
-		}
-	}
-	if dash == "" || !strings.Contains(dash, "age=2s") {
-		t.Fatalf("dashboard-age fault evidence = %v", got)
-	}
+	require.Len(t, got, 1, "dashboard-age fault evidence = %v", got)
+	require.Regexp(t, `dashboard DOWN.*age=2s`, got[0], "dashboard-age fault evidence = %v", got)
 }
 
 // A clean sprint is GREEN and exits 0: no machinery verdict is DOWN, no stop holds, no
@@ -480,7 +459,7 @@ func TestFleetBeatDryRunWritesNothing(t *testing.T) {
 	assert.Contains(t, res.Results[0].Stdout, "FLEET-BEAT WOULD m1", "the plan is the answer: %s", res.Results[0].Stdout)
 	assert.NotContains(t, res.Results[0].Stdout, "FLEET-BEAT OK", "nothing was written: %s", res.Results[0].Stdout)
 	if as, _, why := workerVerb([]string{"fleet", "beat", "--actor", "", "m1", "--load", "0", "--dry-run"}); why != "" || as != "m1" {
-		t.Fatalf("a dry-run beat with the CLI's --actor is a beat of m1: as=%q why=%q", as, why)
+		require.FailNowf(t, "", "a dry-run beat with the CLI's --actor is a beat of m1: as=%q why=%q", as, why)
 	}
 }
 
