@@ -25,7 +25,7 @@ func TestEveryStepDryRunVerbListsTheFlagAndItsEffect(t *testing.T) {
 		code, out, errs := ta.do(v + " -h")
 		require.Equal(t, 0, code, "%s -h: %s", v, errs)
 		assert.Contains(t, out, "  --dry-run  ", "%s -h lists no --dry-run", v)
-		assert.Contains(t, out, "effect: local write: ", "%s -h states no write", v)
+		assert.Contains(t, out, "effect: store write: ", "%s -h states no write", v)
 		assert.Contains(t, out, "--dry-run writes nothing", "%s -h does not say its dry run writes nothing", v)
 	}
 }

@@ -16,7 +16,9 @@ simulation even if `NOVA_SPRINT_SERVER` or a server in the seat record is
 configured. The twin beats its declared members and readers on every command,
 but has no background tick; advance it with
 `nova-sprint tick --redis mem:sprint.twin` after each handoff. In a live sprint,
-a reader beats with `queue --as <reader>` before a tick can ask it to review.
+a reader beats with `queue --as <reader>`, which reads the worker's or the
+stream's cards and records the reader's heartbeat (clearing its draining and
+no-room), before a tick can ask it to review.
 See the [first-lap walkthrough](FIRST-LAP.md) for a local card flow.
 
 For a live sprint, the coordinator starts one server beside the Redis store.

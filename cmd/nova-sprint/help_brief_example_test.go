@@ -76,10 +76,9 @@ func TestEveryBriefExampleInTheHelpPassesTheCardLint(t *testing.T) {
 		return out.String()
 	}
 
-	// 1. Rendered help: check add and brief specifically.
+	// 1. Rendered help: check brief specifically (add's help points at the
+	// template and the linter and carries no brief example, so nothing there to lint).
 	for _, cmd := range [][]string{
-		{"help", "add"},
-		{"add", "-h"},
 		{"help", "brief"},
 		{"brief", "-h"},
 	} {
