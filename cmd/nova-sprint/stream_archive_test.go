@@ -83,7 +83,7 @@ func TestStreamArchiveTakesALandedStreamOffTheTable(t *testing.T) {
 	assert.Equal(t, before.All-2, v.All)
 	assert.Equal(t, [2]int64{2, 2}, [2]int64{v.ArchivedCards, v.ArchivedLanded})
 	assert.NotEqual(t, before.Summary, v.Summary)
-	assert.Equal(t, before.StreamCosts["s1"], v.StreamCosts["s1"], "its costs stay in stream_costs")
+	assert.NotContains(t, v.StreamCosts, "s1", "its costs are under archived alone (the owner, 2026-10-14)")
 	var all whereView
 	ta.json("where --rows --archived", &all)
 	assert.Equal(t, before.Tables["work"]["s1"], all.Tables["work"]["s1"])

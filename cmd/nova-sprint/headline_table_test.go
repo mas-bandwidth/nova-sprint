@@ -116,7 +116,7 @@ func TestTheHeadlineCountsOnlyStreamsOnTheTable(t *testing.T) {
 }
 
 // An archived stream's figures are kept, not lost: where --json's archived carries its
-// cards, its landed cards and their cost, stream_costs keeps its spend, --archived its row
+// cards, its landed cards and their cost (and stream_costs no longer), --archived its row
 // as it was, and the headline and archived_* add up to the epoch's.
 func TestArchiveKeepsTheStreamsFigures(t *testing.T) {
 	t.Parallel()
@@ -134,7 +134,9 @@ func TestArchiveKeepsTheStreamsFigures(t *testing.T) {
 	assert.Equal(t, archivedView{Streams: []string{"s1"}, Cards: 2, Landed: 2, Cost: "$3.00"}, *v.Archived)
 	assert.Equal(t, before.All, v.All+v.ArchivedCards, "the epoch's cards: the table's and the archived")
 	assert.Equal(t, before.Landed, v.Landed+v.ArchivedLanded, "the epoch's landed cards")
-	assert.Equal(t, before.StreamCosts["s1"], v.StreamCosts["s1"], "its spend stays in stream_costs")
+	// its spend is under archived alone, never in stream_costs (the owner, 2026-10-14: archived
+	// work is in no total); archived.cost above keeps it
+	assert.NotContains(t, v.StreamCosts, "s1", "its spend leaves stream_costs")
 	ta.json("where --archived", &all)
 	assert.Equal(t, before.Tables["work"]["s1"], all.Tables["work"]["s1"], "--archived carries its row as it was")
 	assert.Equal(t, v.Summary, all.Summary, "--archived changes the rows carried, not the headline")
