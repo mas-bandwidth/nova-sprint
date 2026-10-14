@@ -82,7 +82,7 @@ func (r *readsRig) until(done func() bool) {
 		}
 		r.round()
 	}
-	r.t.Fatalf("not done after fifty rounds: %v", r.gave)
+	require.Fail(r.t, fmt.Sprintf("not done after fifty rounds: %v", r.gave))
 }
 
 // judged is the ids of every judgment of the type the log holds, and the open ones.

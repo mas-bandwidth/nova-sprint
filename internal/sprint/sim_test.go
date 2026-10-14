@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,7 +109,7 @@ func (w *world) lawful(p Plan) Plan {
 	p.Refused = slices.Clone(p.Refused)
 	p = Lawful(p)
 	for _, r := range p.Refused[before:] {
-		w.t.Errorf("the store's lawful-move check refuses %s: %s", r.Key, r.Why)
+		assert.Fail(w.t, fmt.Sprintf("the store's lawful-move check refuses %s: %s", r.Key, r.Why))
 	}
 	return p
 }

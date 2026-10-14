@@ -2,16 +2,14 @@ package sprint
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/repotree"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
@@ -101,20 +99,16 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 // call it.
 func TestATierCheckIsOneFunction(t *testing.T) {
 	t.Parallel()
-	files, err := filepath.Glob("*.go")
-	require.NoError(t, err)
-	fset := token.NewFileSet()
+	q := repotree.Query{
+		Under:      []string{"internal/sprint"},
+		Ext:        ".go",
+		SkipDirs:   []string{"testdata"},
+		SkipSuffix: []string{"_test.go"},
+	}
 	calls := map[string]bool{}
 	found := 0
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(f)
-		require.NoError(t, err)
-		file, err := parser.ParseFile(fset, f, src, 0)
-		require.NoError(t, err)
-		for _, d := range file.Decls {
+	for _, pf := range repotree.Parsed(t, q) {
+		for _, d := range pf.AST.Decls {
 			fn, ok := d.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
 				continue
@@ -124,7 +118,7 @@ func TestATierCheckIsOneFunction(t *testing.T) {
 				case *ast.BasicLit:
 					if x.Kind == token.STRING && strings.Contains(x.Value, "no enabled route") {
 						found++
-						assert.Equal(t, "tierServed", fn.Name.Name, "%s: a refusal for want of a route outside the one check", fset.Position(x.Pos()))
+						assert.Equal(t, "tierServed", fn.Name.Name, "%s: a refusal for want of a route outside the one check", pf.Fset.Position(x.Pos()))
 					}
 				case *ast.CallExpr:
 					if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "tierServed" {
@@ -210,9 +204,8 @@ func TestAcceptSeesAFrontierTierAFriendServes(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Review)
 	w.s.Friends = []FriendSeat{frontierFay(Up)}
-	if _, why, byFriend := w.s.routeServed(w.s.Work.Card("s1-1"), nil, ""); !byFriend {
-		t.Fatalf("accept's own check: a frontier tier a friend up serves is served, got %s", why)
-	}
+	_, why, byFriend := w.s.routeServed(w.s.Work.Card("s1-1"), nil, "")
+	require.True(t, byFriend, "accept's own check: a frontier tier a friend up serves is served, got %s", why)
 	for _, r := range Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1"}}}).Refused {
 		assert.NotContains(t, r.Why, "frontier", "accept refuses for the reads, never the tier: %s", r.Why)
 	}
@@ -225,18 +218,16 @@ func TestAFrontierTierAFriendServesRaisesNoNoRouteJudgment(t *testing.T) {
 	w := frontierWorld(t, Ready)
 	td, _ := TickDeal(w.s, TickReq{})
 	w.do(td)
-	if _, ok := openNoRoute(w); !ok {
-		t.Fatalf("frontier with no friend: the tier's judgment is raised: %v", w.s.Open)
-	}
+	_, ok := openNoRoute(w)
+	require.True(t, ok, "frontier with no friend: the tier's judgment is raised: %v", w.s.Open)
 	// a friend up whose row lists frontier serves it, though her row has no room: the card
 	// waits ready for her, as one waits on a full provider, never a judgment
 	fay := FriendSeat{Name: "fay", Width: 0, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}
 	w.s.Friends = []FriendSeat{fay}
 	td, _ = TickDeal(w.s, TickReq{Friends: []FriendSeat{fay}})
 	w.do(td)
-	if o, ok := openNoRoute(w); ok {
-		t.Fatalf("a friend up serves frontier: no judgment, got %s", o.Note.What)
-	}
+	o, ok := openNoRoute(w)
+	require.False(t, ok, "a friend up serves frontier: no judgment, got %s", o.Note.What)
 }
 
 // (iv) The idle root for the tier (idle.go's noRoute call) is not the no-route root while
@@ -246,9 +237,8 @@ func TestIdleRootForAFrontierTierAFriendServesIsNoNoRoute(t *testing.T) {
 	w := frontierWorld(t, Ready)
 	c := w.s.Work.Card("s1-1")
 	w.s.Friends = []FriendSeat{frontierFay(Up)}
-	if _, why := w.s.noRoute(escalating(w.s, c)); why != "" {
-		t.Fatalf("idle roots a frontier tier a friend up serves nowhere near rootNoRoute: %s", why)
-	}
+	_, why := w.s.noRoute(escalating(w.s, c))
+	require.Empty(t, why, "idle roots a frontier tier a friend up serves nowhere near rootNoRoute")
 }
 
 // (v) The same friend held, down, or with a row lacking frontier: the refusal and the

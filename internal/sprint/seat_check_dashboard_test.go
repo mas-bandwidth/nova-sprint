@@ -1,9 +1,10 @@
 package sprint
 
 import (
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestSeatCheckDashboardFreshIsUp tests that a dashboard serving data under the bound is OK.
@@ -21,22 +22,16 @@ func TestSeatCheckDashboardFreshIsUp(t *testing.T) {
 			At:     now.Add(-time.Second),
 		}
 		r := JudgeSeatCheck(m, now)
-		if r.Down != 0 {
-			t.Fatalf("dashboard with 1s-old data must be up, got DOWN count=%d", r.Down)
-		}
+		require.Zero(t, r.Down, "dashboard with 1s-old data must be up")
 		text := r.Text()
 		for _, l := range r.Lines {
 			if l.Thing == SeatCheckDashboard {
-				if !l.Up {
-					t.Fatalf("dashboard line must be UP, got DOWN: %s", l.String())
-				}
-				if !strings.Contains(text, "status=200") {
-					t.Fatalf("dashboard UP line must include status=200, got: %s", l.String())
-				}
+				require.True(t, l.Up, "dashboard line must be UP: %s", l.String())
+				require.Contains(t, text, "status=200")
 				return
 			}
 		}
-		t.Fatal("dashboard line not found")
+		require.Fail(t, "dashboard line not found")
 	})
 
 	t.Run("data past bound is down", func(t *testing.T) {
@@ -50,19 +45,15 @@ func TestSeatCheckDashboardFreshIsUp(t *testing.T) {
 			At:     now.Add(-bound),
 		}
 		r := JudgeSeatCheck(m, now)
-		if r.Down == 0 {
-			t.Fatalf("dashboard with data past bound (%s) must be DOWN, got OK", bound)
-		}
+		require.NotZero(t, r.Down, "dashboard with data past bound (%s) must be DOWN", bound)
 		text := r.Text()
 		for _, l := range r.Lines {
 			if l.Thing == SeatCheckDashboard && !l.Up {
-				if !strings.Contains(text, "status=200") {
-					t.Fatalf("dashboard DOWN line must include status=200, got: %s", l.String())
-				}
+				require.Contains(t, text, "status=200")
 				return
 			}
 		}
-		t.Fatal("dashboard DOWN line not found")
+		require.Fail(t, "dashboard DOWN line not found")
 	})
 
 	t.Run("no answer is down", func(t *testing.T) {
@@ -73,8 +64,6 @@ func TestSeatCheckDashboardFreshIsUp(t *testing.T) {
 			Err:  "connection refused",
 		}
 		r := JudgeSeatCheck(m, now)
-		if r.Down == 0 {
-			t.Fatal("dashboard with no answer must be DOWN, got OK")
-		}
+		require.NotZero(t, r.Down, "dashboard with no answer must be DOWN")
 	})
 }
