@@ -24,7 +24,6 @@ bus	DIVERGED: bustest fake Tail / empty-stream vs tools' own changes
 cardcontract	DIVERGED: gateRuns and fullSha take vs tools' 8 commits
 cardcost	DIVERGED: subscription receipts and unpriced zero cost vs tools' changes
 config	DIVERGED: 14 sprint commits, 4 conflicting files (kind, redis, lines, apply)
-diffcheck	DIVERGED: a directory PATHS entry covers its files; conflicts with tools
 friend	DIVERGED: imports nova-sprint/internal/sprint; needs the coupling inverted first
 member	DIVERGED: 113 unported lines, member.go conflicts
 nsprint	DIVERGED: testutil StartRaw and capacity.lua vs tools' changes
