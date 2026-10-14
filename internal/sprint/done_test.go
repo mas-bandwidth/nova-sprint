@@ -73,6 +73,6 @@ func TestANewDoneKindIsOneEntry(t *testing.T) {
 		}
 		return []Completion{{Kind: "merge", Card: l.Card, Row: "lander", At: l.At}}
 	}})
-	cs := CompletionsOf(Line{Kind: "move", At: time.Now(), Card: "s1-1", Table: Merge, From: "s1:queued", To: "s1:merged"})
+	cs := CompletionsOf(Line{Kind: "move", At: t0, Card: "s1-1", Table: Merge, From: "s1:queued", To: "s1:merged"})
 	assert.Equal(t, 1, CountDone(cs, time.Time{}).Total("lander"))
 }

@@ -39,15 +39,9 @@ cmd/nova-sprint/snapshot_info_test.go
 cmd/nova-sprint/tick_deadline_test.go
 cmd/nova-sprint/tick_gate_test.go
 cmd/nova-sprint/where_cost_perf_test.go
-internal/sprint/deal_load_bench_test.go
-internal/sprint/done_test.go
 internal/sprint/store/machine_twoloops_test.go
 internal/sprint/store/tick_ask_test.go
 internal/sprint/store/waitlog_test.go
-internal/sprintdash/events_test.go
-internal/sprintdash/fresh_test.go
-internal/sprintdash/pageview_test.go
-internal/sprintdash/serverpy_test.go
 pkg/ratebudget/ratebudget_test.go
 pkg/ratebudget/twin_test.go
 pkg/swarm/stage_test.go

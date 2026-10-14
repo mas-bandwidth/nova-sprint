@@ -290,19 +290,17 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 	up.next = func() ([]byte, error) { return twoReleases(8), nil }
 	up.s.Tick()
 	var mu sync.Mutex
-	serve := func(h http.Handler) *httptest.Server {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	serve := func(h http.Handler) *http.Client {
+		return handlerClient(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			mu.Lock()
 			defer mu.Unlock()
 			h.ServeHTTP(w, req)
 		}))
-		t.Cleanup(ts.Close)
-		return ts
 	}
-	pull, pageTS := serve(up.s.Pull()), serve(up.s)
+	pull, page := serve(up.s.Pull()), serve(up.s)
 
 	p := newRig(t)
-	p.s.From = &Upstream{URL: pull.URL + "/api/sprint"}
+	p.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: pull}
 	p.s.Tick()
 	assert.Contains(t, p.log.String(), "the upstream dashboard answered a view that is not the page's")
 	var v map[string]json.RawMessage
@@ -311,7 +309,7 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 	assert.Equal(t, "null", string(v["data"]), "nothing of the pull view is drawn")
 
 	q := newRig(t)
-	q.s.From = &Upstream{URL: pageTS.URL + "/api/sprint"}
+	q.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: page}
 	q.s.Tick()
 	mu.Lock()
 	var theirs map[string]json.RawMessage
