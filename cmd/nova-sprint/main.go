@@ -44,6 +44,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -535,11 +536,18 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	}
 	switch {
 	case !found:
-		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return fmt.Errorf("%sthe store at %s holds no %s function library; run: nova-redis fn load --redis %s", libraryNotStore(addr), addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
+		return fmt.Errorf("%sthe store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --redis %s", libraryNotStore(addr), addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
+}
+
+// libraryNotStore is the sentence a library refusal leads with: the address may
+// not be a sprint store at all, because the bus store and the sprint store are
+// different Redis instances, and where's first line names the store in use.
+func libraryNotStore(addr string) string {
+	return "the address " + addr + " may not be a sprint store at all (the bus store and the sprint store are different Redis instances); the first line of nova-sprint where names the store in use; "
 }
 
 // libraryShadow is the adopt's pre-window check (tla/Adopt.tla, PreCheck):
@@ -555,7 +563,7 @@ func libraryShadow(ctx context.Context, c *redis.Client, addr string) (note stri
 	}
 	switch {
 	case !found:
-		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return "", fmt.Errorf("%sthe store at %s holds no %s function library; run: nova-redis fn load --redis %s", libraryNotStore(addr), addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
 		return "library differs: loaded in the window", nil
 	}
@@ -833,7 +841,7 @@ func normalizeArgs(args []string) []string {
 		arg := args[i]
 		if strings.HasPrefix(arg, "-") {
 			name := strings.TrimLeft(arg, "-")
-			if strings.Contains(name, "=") || isGlobalBoolFlag(name) {
+			if strings.Contains(name, "=") || isGlobalBoolFlag(name) || nextVerbBool(args[i+1:], name) {
 				i++
 				continue
 			}
@@ -864,6 +872,84 @@ func normalizeArgs(args []string) []string {
 		return append([]string{"help"}, postArgs...)
 	}
 	return append(append(append([]string(nil), verb...), preFlags...), postArgs...)
+}
+
+// nextVerbBool reports whether the flag name is a boolean flag of the verb the
+// words name: the truth a pre-verb flag's boolean-ness is decided from (the
+// matched verb's own flag set, flag.Value's IsBoolFlag), so `--all where` runs
+// where --all. false when the words name no verb, or the verb's flag set cannot
+// be had.
+func nextVerbBool(rest []string, name string) bool {
+	w := matchVerbAt(rest)
+	if w == 0 {
+		return false
+	}
+	fs := verbFlags(strings.Join(rest[:w], " "))
+	if fs == nil {
+		return false
+	}
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
+	}
+	b, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && b.IsBoolFlag()
+}
+
+// verbSynonyms are the natural words a reader types for a verb, and the verb
+// (or sub-verb) they stand for: the hint an unknown verb of that word is
+// answered with before the nearest-by-edit-distance one.
+var verbSynonyms = map[string]string{
+	"friends": "friend",
+	"status":  "where",
+	"judge":   "inbox",
+	"deal":    "take",
+	"waive":   "drop --waive",
+	"retire":  "reader retire",
+}
+
+// verbGroupNames are the group words a reader runs `nova-sprint help <group>`
+// for: the names an unknown verb's refusal offers beside the nearest verb
+// (verbs.go's groups: fleet, friend, reader, goal, stream, lane, merge-window).
+var verbGroupNames = []string{"fleet", "friend", "reader", "goal", "stream", "lane", "merge-window"}
+
+// verbSuggest is what an unknown verb was meant as: the natural word's verb
+// (verbSynonyms) when it is one, else the nearest verb by edit distance
+// (verbflag.Nearest, the helper that builds "did you mean"), "" when there is
+// none close.
+func verbSuggest(word string) string {
+	if s, ok := verbSynonyms[word]; ok {
+		return s
+	}
+	return verbflag.Nearest(word, verbNames())
+}
+
+// unknownVerbWhy is the unknown-verb refusal's reason: the nearest verb (or the
+// natural word's verb), the group names, and the table's names, bounded by
+// verbflag.List so one line stays readable, then the five-line day's door.
+func unknownVerbWhy(word string) string {
+	var b strings.Builder
+	b.WriteString("unknown verb " + oneline.Escape(word))
+	if s := verbSuggest(word); s != "" {
+		b.WriteString("; did you mean " + s + "?")
+	}
+	b.WriteString("; the groups are " + strings.Join(verbGroupNames, ", "))
+	b.WriteString("; available: " + verbflag.List(verbNames()))
+	b.WriteString("; run: nova-sprint help")
+	return b.String()
+}
+
+// refuseArgs is refuse (the usage refusal, exit 2) under --json: the same
+// refusal as the one JSON object the other tools write (pkg/tool: the verb, the
+// refused status, the problem and the remedy), on stdout and nothing else.
+func refuseArgs(stdout, stderr io.Writer, args []string, verb, what string) int {
+	if !slices.Contains(args, "--json") {
+		return refuse(stderr, verb, what)
+	}
+	o := tool.Refuse(what)
+	o.Verb = verb
+	o.Remedy = prog + " help"
+	return o.Render(stdout, true)
 }
 
 // run is the one entry point: the command line, and the driver, which runs
@@ -931,9 +1017,9 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		if len(args) > 1 {
 			why = "unknown verb " + oneline.Escape(args[0]+" "+args[1])
 		}
-		return refuse(stderr, args[0], why+"; its verbs are "+strings.Join(members, ", ")+"; run: nova-sprint help "+args[0])
+		return refuseArgs(stdout, stderr, args, args[0], why+"; its verbs are "+strings.Join(members, ", ")+"; run: nova-sprint help "+args[0])
 	}
-	return refuse(stderr, "", "unknown verb "+oneline.Escape(args[0])+"; available: "+strings.Join(verbNames(), ", ")+"; run: nova-sprint help")
+	return refuseArgs(stdout, stderr, args, "", unknownVerbWhy(args[0]))
 }
 
 // refuse is a usage refusal: exit 2.
