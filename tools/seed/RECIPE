@@ -49,7 +49,6 @@ literal	filepath.Join("..", "..", "fleet", "child-rules.txt")	filepath.Join(".."
 # These fail-closed edits are scoped to the selected tools machinery file only.
 literal-file	cmd/nova-sprint/machinery.go	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error); novaTools func(bin string) sprint.NovaToolsProbe
 literal-file	cmd/nova-sprint/machinery.go	st, err := a.store(*c)	if code := a.refuseNovaTools(verb, stderr); code != 0 { return code }; st, err := a.store(*c)
-literal-file	internal/sprint/secrets_in_errors_test.go	const sprintSecretLeakAllowlist = `	const sprintSecretLeakAllowlist = sprintNovaToolsLeak + `
 
 doc	docs/SPEC-ISA.md
 doc	docs/PROCESSOR.md
@@ -98,7 +97,6 @@ keep	docs/GETTING-STARTED.md
 keep	docs/README.md
 keep	docs/SPLIT-MOOT-PRS.md
 keep	docs/RELEASE-NOTES-v1.0.0.md
-keep	internal/sprint/secrets_novatools_test.go
 keep	docs/WORKING-WITH-AI-TEAMS.md
 keep	docs/ratings/README.md
 keep	internal/ci/moot_prs_test.go

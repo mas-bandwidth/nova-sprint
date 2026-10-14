@@ -33,7 +33,8 @@ func allNovaTools(v string) map[string]string {
 
 func TestSeatCheckRefusesWithoutTheRequiredNovaTools(t *testing.T) {
 	t.Parallel()
-	req := sprint.NovaToolsVersion
+	req, ok := sprint.NovaToolsRequired()
+	require.True(t, ok, "the test binary records go.mod's nova-tools requirement")
 	older := "v1.0.0"
 	newer := "v1.3.0"
 	require.Equal(t, -1, semver.Compare(older, req), "the fixture's older version is older than %s", req)

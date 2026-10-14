@@ -2,7 +2,7 @@ package sprint
 
 import (
 	"fmt"
-	"strings"
+	"runtime/debug"
 
 	"golang.org/x/mod/semver"
 
@@ -11,37 +11,49 @@ import (
 
 // The nova-tools nova-sprint runs on (docs/SPEC-SPRINT.md, "The nova-tools it runs
 // on"; the owner, 2026-10-06 08:50: "ensure that anybody installing nova-sprint does so
-// on top of the latest nova-tools"). NOVA-TOOLS-VERSION at the repository root names the
-// nova-tools release the tree was seeded from (tools/seed writes it); NovaToolsVersion
-// is the same tag compiled in, kept equal to the file by
-// TestNovaToolsVersionIsTheFilesTag, since a binary runs far from its checkout. The
+// on top of the latest nova-tools"). nova-sprint depends on nova-tools: go.mod's
+// requirement of NovaToolsModule is the one source of the version, and a binary reads it
+// back from its own build record (NovaToolsRequired), so nothing else restates it. The
 // check is pure: what each binary's --version printed in, one refusal line per binary
 // out; the lookup is the caller's.
 
-// NovaToolsVersion is the nova-tools release nova-sprint needs at least: the tag line
-// of NOVA-TOOLS-VERSION.
-const NovaToolsVersion = "v1.2.5"
-
-// NovaToolsVersionFile is the file at the repository root that records it.
-const NovaToolsVersionFile = "NOVA-TOOLS-VERSION"
-
-// NovaToolsModule is the module the nova-tools binaries install from.
+// NovaToolsModule is the module nova-sprint depends on and the nova-tools binaries
+// install from.
 const NovaToolsModule = "github.com/mas-bandwidth/nova-tools"
 
 // NovaToolsBinaries are the nova-tools commands nova-sprint calls: the friends, the
 // bus and the config store, in the order they are checked.
 var NovaToolsBinaries = []string{"nova-friend", "nova-bus", "nova-config"}
 
-// NovaToolsInstall is the command that installs bin at the release tag, never
-// @latest: the tag is the one NOVA-TOOLS-VERSION names.
-func NovaToolsInstall(bin, tag string) string {
-	return "go install " + NovaToolsModule + "/cmd/" + bin + "@" + tag
+// NovaToolsRequired is the nova-tools version this binary was built against: go.mod's
+// requirement as the build recorded it. ok is false when the build records none (a
+// binary built outside module mode), which the caller refuses.
+func NovaToolsRequired() (version string, ok bool) {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", false
+	}
+	return novaToolsIn(bi.Deps)
 }
 
-// NovaToolsInstallNote is the install command as a refusal prints it, saying that it
-// works once the release is published (a tree is seeded ahead of the cut).
-func NovaToolsInstallNote(bin, tag string) string {
-	return "install (once nova-tools " + tag + " is published): " + NovaToolsInstall(bin, tag)
+// novaToolsIn is NovaToolsModule's version among deps, the replacement's when replaced.
+func novaToolsIn(deps []*debug.Module) (string, bool) {
+	for _, d := range deps {
+		if d.Path != NovaToolsModule {
+			continue
+		}
+		if d.Replace != nil {
+			d = d.Replace
+		}
+		return d.Version, d.Version != ""
+	}
+	return "", false
+}
+
+// NovaToolsInstall is the command that installs bin at the required version, never
+// @latest.
+func NovaToolsInstall(bin, version string) string {
+	return "go install " + NovaToolsModule + "/cmd/" + bin + "@" + version
 }
 
 // NovaToolsProbe is one binary as the lookup found it: on PATH or not, and what its
@@ -53,13 +65,14 @@ type NovaToolsProbe struct {
 	Err    string
 }
 
-// NovaToolsRefusal is the one line that refuses p against the required tag, "" when
-// p passes: found, a version line naming a release at or past required. A build that
-// names no release (devel, a vcs stamp) is refused, since nothing says it is not older.
+// NovaToolsRefusal is the one line that refuses p against the required version, ""
+// when p passes: found, a version line naming a release at or past required. A build
+// that names no release (devel, a vcs stamp) is refused, since nothing says it is not
+// older.
 func NovaToolsRefusal(p NovaToolsProbe, required string) string {
-	install := NovaToolsInstallNote(p.Bin, required)
+	install := "install: " + NovaToolsInstall(p.Bin, required)
 	if !p.Found {
-		return fmt.Sprintf("%s not found on PATH; nova-tools %s required (%s); %s", p.Bin, required, NovaToolsVersionFile, install)
+		return fmt.Sprintf("%s not found on PATH; nova-tools %s required (go.mod); %s", p.Bin, required, install)
 	}
 	found := "no version line"
 	if f, ok := buildinfo.Parse(p.Output); ok {
@@ -70,7 +83,7 @@ func NovaToolsRefusal(p NovaToolsProbe, required string) string {
 	} else if p.Err != "" {
 		found = "no version line (" + p.Err + ")"
 	}
-	return fmt.Sprintf("%s %s found, older than nova-tools %s required (%s); %s", p.Bin, found, required, NovaToolsVersionFile, install)
+	return fmt.Sprintf("%s %s found, older than nova-tools %s required (go.mod); %s", p.Bin, found, required, install)
 }
 
 // NovaToolsRefusals is every refusal of probes against required, in probe order;
@@ -83,65 +96,4 @@ func NovaToolsRefusals(probes []NovaToolsProbe, required string) []string {
 		}
 	}
 	return out
-}
-
-// NovaToolsRecord is NOVA-TOOLS-VERSION read: the release tag and the commit it
-// names ("" when the file records none).
-type NovaToolsRecord struct {
-	Tag    string
-	Commit string
-}
-
-// FormatNovaToolsVersion is the file tools/seed writes for tag at commit.
-func FormatNovaToolsVersion(tag, commit string) string {
-	return "# The nova-tools release this tree was seeded from, and the least nova-sprint runs on.\n" +
-		"# Written by tools/seed; read by nova-sprint seat check (docs/SPEC-SPRINT.md).\n" +
-		"tag " + tag + "\n" +
-		"commit " + commit + "\n"
-}
-
-// ParseNovaToolsVersion reads NOVA-TOOLS-VERSION: lines `tag <vX.Y.Z>` and `commit
-// <40 hex>`, blank lines and # comments. The tag is required and is a release; the
-// commit, when present, is a full hash. Canonical prerelease tags are accepted
-// for private canaries; build metadata is not, since SemVer does not order it.
-func ParseNovaToolsVersion(data string) (NovaToolsRecord, error) {
-	var r NovaToolsRecord
-	for i, line := range strings.Split(data, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, val, _ := strings.Cut(line, " ")
-		val = strings.TrimSpace(val)
-		switch key {
-		case "tag":
-			if !semver.IsValid(val) || semver.Build(val) != "" || semver.Canonical(val) != val {
-				return r, fmt.Errorf("%s line %d: tag %q is no release tag vX.Y.Z", NovaToolsVersionFile, i+1, val)
-			}
-			r.Tag = val
-		case "commit":
-			if !fullHash(val) {
-				return r, fmt.Errorf("%s line %d: commit %q is no full 40-hex hash", NovaToolsVersionFile, i+1, val)
-			}
-			r.Commit = val
-		default:
-			return r, fmt.Errorf("%s line %d: %q is neither tag nor commit", NovaToolsVersionFile, i+1, line)
-		}
-	}
-	if r.Tag == "" {
-		return r, fmt.Errorf("%s names no tag", NovaToolsVersionFile)
-	}
-	return r, nil
-}
-
-func fullHash(s string) bool {
-	if len(s) != 40 {
-		return false
-	}
-	for _, c := range s {
-		if !strings.ContainsRune("0123456789abcdef", c) {
-			return false
-		}
-	}
-	return true
 }

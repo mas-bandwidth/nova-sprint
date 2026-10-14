@@ -50,6 +50,11 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	}
 	var log bytes.Buffer
 	srv := c.dashboardServer("", false, "", time.Second, "", &log)
+	// the read's timers are the fake clock's too: one that never fires, so each Tick
+	// waits for its read whatever the machine's load (with the real 300 ms first
+	// deadline, a read slower than that under load was left running and the next
+	// Tick skipped it: the flake this replaces)
+	srv.ReadTimer = func(time.Duration) (<-chan time.Time, func()) { return nil, func() {} }
 	second := func() {
 		mu.Lock()
 		now = now.Add(time.Second)

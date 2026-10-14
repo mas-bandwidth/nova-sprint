@@ -4,12 +4,9 @@
 // to this module, and the sprint's docs and TLA+ models come with them.
 //
 // It writes a new directory and touches nothing else; the caller commits it.
-// The nova-tools checkout is at a release tag, and the tree records it: the
-// tag and the commit go to NOVA-TOOLS-VERSION, the least nova-tools that
-// nova-sprint seat check accepts (docs/SPEC-SPRINT.md, "The nova-tools it runs
-// on"); a checkout at no release tag, or with uncommitted changes, is refused.
-// When the tag moves,
-// sprint.NovaToolsVersion moves with it (TestNovaToolsVersionIsTheFilesTag).
+// The nova-tools checkout is at a release tag; a checkout at no release tag, or
+// with uncommitted changes, is refused. The nova-tools a seeded nova-sprint needs
+// is go.mod's requirement of it (sprint.NovaToolsRequired), the one source.
 // A re-seed is this command and a three-way merge:
 //
 //	git -C ../nova-tools checkout <the release tag>
@@ -28,8 +25,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 func main() {
@@ -70,5 +65,5 @@ func main() {
 		fmt.Println("  " + p)
 	}
 	fmt.Printf("wrote %d files to %s\n", rep.files, *out)
-	fmt.Printf("recorded nova-tools %s at %s in %s\n", rel.tag, rel.commit, sprint.NovaToolsVersionFile)
+	fmt.Printf("seeded from nova-tools %s at %s\n", rel.tag, rel.commit)
 }

@@ -6,8 +6,9 @@ different models and harnesses, or a fleet of swarm workers as your team grows.
 ## Install the commands
 
 nova-sprint runs alongside [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-The sprint repository's [`NOVA-TOOLS-VERSION`](../NOVA-TOOLS-VERSION) file
-names the minimum compatible Nova Tools release. Nova Tools supplies friends
+nova-sprint depends on Nova Tools: the `github.com/mas-bandwidth/nova-tools`
+requirement in the sprint repository's [`go.mod`](../go.mod) names the minimum
+compatible Nova Tools version. Nova Tools supplies friends
 (`nova-friend`), the message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
 (`nova-config`). Installing nova-sprint alone does not install these tools.
 
@@ -28,7 +29,7 @@ Check an existing installation with `nova-friend version`, `nova-bus version`,
 `nova-swarm version`, `nova-config version` and `nova-sprint version`.
 
 These commands install the latest published versions. If you pin versions,
-install Nova Tools at the tag in `NOVA-TOOLS-VERSION` or newer. Once a
+install Nova Tools at the version `go.mod` requires or newer. Once a
 coordinator seat is configured, `nova-sprint seat check` checks the companion
 tools against that minimum. `nova-sprint version` and each tool's `version`
 command show what is on your `PATH`.

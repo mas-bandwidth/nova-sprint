@@ -16,7 +16,7 @@ import (
 // The nova-tools under the seat (docs/SPEC-SPRINT.md, "The nova-tools it runs on"):
 // before seat check measures anything it looks for each of sprint.NovaToolsBinaries on
 // PATH, runs it with --version, and refuses, exit 1 and one line per binary, when one
-// is missing or older than NOVA-TOOLS-VERSION. The judging is sprint.NovaToolsRefusal;
+// is missing or older than the nova-tools go.mod requires (sprint.NovaToolsRequired). The judging is sprint.NovaToolsRefusal;
 // this file is the lookup, which outside.novaTools replaces in a test.
 
 // novaToolsBudget bounds one binary's --version.
@@ -55,7 +55,11 @@ func (a *app) novaToolsRefusals() []string {
 	for _, bin := range sprint.NovaToolsBinaries {
 		probes = append(probes, probe(bin))
 	}
-	return sprint.NovaToolsRefusals(probes, sprint.NovaToolsVersion)
+	required, ok := sprint.NovaToolsRequired()
+	if !ok {
+		return []string{"this nova-sprint build records no " + sprint.NovaToolsModule + " requirement (built outside module mode); rebuild it with go install"}
+	}
+	return sprint.NovaToolsRefusals(probes, required)
 }
 
 // refuseNovaTools prints the refusals under verb and is 1 when there are any, 0 when

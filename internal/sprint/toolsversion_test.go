@@ -3,30 +3,54 @@ package sprint
 import (
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/modfile"
 )
 
-func TestNovaToolsVersionIsTheFilesTag(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", NovaToolsVersionFile))
+// The binary's required nova-tools is go.mod's requirement, read back from the build
+// record: one source, nothing restating it.
+func TestNovaToolsRequiredIsGoModsRequirement(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := ParseNovaToolsVersion(string(data))
+	f, err := modfile.Parse("go.mod", data, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Tag != NovaToolsVersion {
-		t.Fatalf("%s names %s, the binary needs %s: a re-seed updates NovaToolsVersion with the file", NovaToolsVersionFile, r.Tag, NovaToolsVersion)
+	want := ""
+	for _, r := range f.Require {
+		if r.Mod.Path == NovaToolsModule {
+			want = r.Mod.Version
+		}
+	}
+	if want == "" {
+		t.Fatalf("go.mod does not require %s", NovaToolsModule)
+	}
+	got, ok := NovaToolsRequired()
+	if !ok || got != want {
+		t.Fatalf("NovaToolsRequired() = %q, %v; go.mod requires %s", got, ok, want)
 	}
 }
 
-func TestNovaToolsCanaryTagRoundTrips(t *testing.T) {
-	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
-	want := NovaToolsRecord{Tag: "v1.2.0-local.20261008.1", Commit: sha}
-	got, err := ParseNovaToolsVersion(FormatNovaToolsVersion(want.Tag, want.Commit))
-	if err != nil || got != want {
-		t.Fatalf("canary round trip: %+v %v", got, err)
+func TestNovaToolsInTakesTheReplacementAndRefusesAbsence(t *testing.T) {
+	if v, ok := novaToolsIn(nil); ok || v != "" {
+		t.Errorf("no deps: %q %v", v, ok)
+	}
+	deps := []*debug.Module{{Path: "x"}, {Path: NovaToolsModule, Version: "v1.2.3"}}
+	if v, ok := novaToolsIn(deps); !ok || v != "v1.2.3" {
+		t.Errorf("plain: %q %v", v, ok)
+	}
+	deps[1].Replace = &debug.Module{Path: NovaToolsModule, Version: "v1.2.4"}
+	if v, ok := novaToolsIn(deps); !ok || v != "v1.2.4" {
+		t.Errorf("replaced: %q %v", v, ok)
+	}
+	deps[1].Replace = &debug.Module{Path: "../nova-tools"}
+	if v, ok := novaToolsIn(deps); ok {
+		t.Errorf("a directory replacement names no version: %q", v)
 	}
 }
 
@@ -37,8 +61,8 @@ func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 		p      NovaToolsProbe
 		refuse string // "" passes
 	}{
-		{"missing", NovaToolsProbe{Bin: "nova-bus"}, "nova-bus not found on PATH; nova-tools v1.1.0 required (NOVA-TOOLS-VERSION); install (once nova-tools v1.1.0 is published): go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0"},
-		{"older", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("v1.0.0")}, "nova-bus v1.0.0 found, older than nova-tools v1.1.0 required (NOVA-TOOLS-VERSION); install (once nova-tools v1.1.0 is published): go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0"},
+		{"missing", NovaToolsProbe{Bin: "nova-bus"}, "nova-bus not found on PATH; nova-tools v1.1.0 required (go.mod); install: go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0"},
+		{"older", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("v1.0.0")}, "nova-bus v1.0.0 found, older than nova-tools v1.1.0 required (go.mod); install: go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0"},
 		{"a prerelease of the tag is older", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("v1.1.0-rc.1")}, "nova-bus v1.1.0-rc.1 found"},
 		{"a pseudo-version before the tag is older", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("v1.0.1-0.20261005165330-ca8bb8cc36d5")}, "nova-bus v1.0.1-0.20261005165330-ca8bb8cc36d5 found"},
 		{"a vcs stamp names no release", NovaToolsProbe{Bin: "nova-bus", Found: true, Output: line("20261005T165330Z-ca8bb8cc36d5")}, "nova-bus 20261005T165330Z-ca8bb8cc36d5 found"},
@@ -53,28 +77,6 @@ func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 			t.Errorf("%s: refused %q", c.name, got)
 		case c.refuse != "" && !strings.HasPrefix(got, c.refuse):
 			t.Errorf("%s: got %q, want it to start %q", c.name, got, c.refuse)
-		}
-	}
-}
-
-func TestNovaToolsVersionFileRoundTripsAndRefusesWhatIsNoRecord(t *testing.T) {
-	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
-	r, err := ParseNovaToolsVersion(FormatNovaToolsVersion("v1.1.0", sha))
-	if err != nil || r != (NovaToolsRecord{Tag: "v1.1.0", Commit: sha}) {
-		t.Fatalf("round trip: %+v %v", r, err)
-	}
-	for _, bad := range []string{
-		"",
-		"# a comment alone\n",
-		"commit " + sha + "\n",
-		"tag 1.1.0\n",
-		"tag v1.1\n",
-		"tag v1.1.0+build.1\n",
-		"tag v1.1.0\ncommit 52046bd\n",
-		"tag v1.1.0\nversion v1.1.0\n",
-	} {
-		if r, err := ParseNovaToolsVersion(bad); err == nil {
-			t.Errorf("%q read as %+v", bad, r)
 		}
 	}
 }
