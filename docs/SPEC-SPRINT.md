@@ -8529,6 +8529,13 @@ waiting is the stall this prevents: the ticks run in a second or two and begin t
 apart, and a RUNNING system reads STOPPED with no stop given. `TestNoTickStepExceedsItsBound`
 holds the bound.
 
+The hook hub's mutex is a leaf: it is never held while the line of control is taken. The tick
+asks for the line under its deadline; a line not taken within it is a wedged tick, counted as a
+given-up tick that does not stop, and three in a row exit 4. The SERVE line carries tick-age, the
+time since the last tick ended, and tick=stale past twice the deadline. (v1.2.24 held the hub
+across the line in the hook's start while a seat verb on the line waited for the hub, and the
+tick waited behind both with no deadline armed: `TestTheSeatHookStartNeverHoldsTheHubAcrossTheLine`.)
+
 The tick's deadline. A tick past its deadline gives up its plan, never the process. The
 deadline is three times the median wall of the last 20 ticks (the upper of the two middle
 walls when they are even), never less than `run --tick-deadline` (`TickDeadline`, 10 s, where 0

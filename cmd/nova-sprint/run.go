@@ -685,6 +685,15 @@ const TickWedgedToExit = 3
 // row: not 0, so its supervisor starts it again.
 const exitTickDeadline = 4
 
+// lineMissed counts a tick that could not take the line of control within its
+// deadline as one more wedged tick in a row (a-card-read-never-runs-the-deal): true
+// at TickWedgedToExit, when the process is wedged and run exits exitTickDeadline. A
+// tick that takes the line and stops resets the count, as a tick that stops does.
+func lineMissed(wedged *int) bool {
+	*wedged++
+	return *wedged >= TickWedgedToExit
+}
+
 // tickDeadlineOf is the deadline of the next tick: three times the median wall
 // of the ticks in walls (the last tickWalls; with an even count, the upper of
 // the two middle walls), never less than least and never more than
@@ -945,12 +954,41 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		// one tick, or one worker's batch, at a time (serve.go); the tick takes the line at
 		// its turn, after the batch in flight, not behind every batch waiting
 		// (sprint.ControlLine; docs/SPEC-SPRINT.md section 14, The server, "The tick's turn")
-		if waited := a.serial.TickLock(); waited > store.TickEvery {
-			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
-		}
 		deadline := tickDeadlineOf(a.tickDeadline, walls)
 		if deadline > 0 && lift > deadline {
 			deadline = lift
+		}
+		// the tick asks for the line under its own deadline: a line not taken within it is
+		// a wedged tick, so a server whose line is held for ever exits for its supervisor
+		// instead of hanging (a-card-read-never-runs-the-deal; docs/SPEC-SPRINT.md section
+		// 14, The server, "The tick's deadline")
+		lineCtx, lineDone := ctx, context.CancelFunc(func() {})
+		if deadline > 0 {
+			lineCtx, lineDone = context.WithTimeout(ctx, deadline)
+		}
+		waited, lerr := a.serial.TickLockCtx(lineCtx)
+		lineDone()
+		if lerr != nil {
+			if ctx.Err() != nil {
+				return true
+			}
+			fmt.Fprintf(stdout, "%s TICK LINE the tick could not take the server's line of control within %s: %d in a row\n", a.now().Format("15:04:05"), deadline, wedged+1)
+			if lineMissed(&wedged) {
+				fmt.Fprintf(stdout, "%s TICK WEDGED %d ticks in a row could not take the server's line of control within their deadline (%s): the process is wedged and run exits %d so its supervisor starts it again; the stacks follow on stderr\n",
+					a.now().Format("15:04:05"), wedged, deadline, exitTickDeadline)
+				a.writeStacks(stacksBuffer(), stdout, stderr)
+				a.exit(exitTickDeadline)
+				return false
+			}
+			a.writeStacks(stacksBuffer(), stdout, stderr)
+			if n != 0 && i == n-1 {
+				return false
+			}
+			why = tickRetry
+			continue
+		}
+		if waited > store.TickEvery {
+			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
 		}
 		start := a.now()
 		res, over, ended, err := a.tickWithin(ctx, func(c context.Context) (store.TickResult, error) { return a.tickOf(c, st) }, deadline, began, stdout, stderr)
@@ -979,6 +1017,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		}
 		wedged = 0
 		wall := a.now().Sub(start)
+		a.tickEnded(a.now(), deadline) // the SERVE line's tick-age
 		walls = keepWall(walls, wall)
 		if wall <= a.tickDeadline {
 			lift = 0 // the store is as fast as --tick-deadline again

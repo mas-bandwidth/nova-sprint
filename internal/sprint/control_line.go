@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -128,6 +129,15 @@ func (l *ControlLine) TryLock() bool {
 
 // TickLock takes the line for a tick and says how long the tick waited for it.
 func (l *ControlLine) TickLock() time.Duration {
+	d, _ := l.TickLockCtx(context.Background()) // ignored: a background context never ends
+	return d
+}
+
+// TickLockCtx is TickLock with a bound: it returns ctx.Err() when ctx ends before the line
+// is the tick's, holding nothing, and the tick's want is cleared so no batch waits on a
+// tick that gave up (a-card-read-never-runs-the-deal, docs/SPEC-SPRINT.md section 14, The
+// server, "The tick's turn" and "The tick's deadline").
+func (l *ControlLine) TickLockCtx(ctx context.Context) (time.Duration, error) {
 	l.mu.Lock()
 	start := time.Now()
 	l.turns.tickWants = true
@@ -136,7 +146,12 @@ func (l *ControlLine) TickLock() time.Duration {
 		if l.turns.tickMay(now) {
 			l.turns.takeTick(now)
 			l.mu.Unlock()
-			return now.Sub(start)
+			return now.Sub(start), nil
+		}
+		if err := ctx.Err(); err != nil {
+			l.turns.tickWants = false
+			l.mu.Unlock()
+			return now.Sub(start), err
 		}
 		free := l.freed()
 		var due *time.Timer
@@ -149,6 +164,7 @@ func (l *ControlLine) TickLock() time.Duration {
 		select {
 		case <-free:
 		case <-at:
+		case <-ctx.Done():
 		}
 		if due != nil {
 			due.Stop()
