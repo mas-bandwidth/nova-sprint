@@ -26,26 +26,34 @@ func boundOn(t *testing.T, w *world, subject string) RuleAnswer {
 	return answerOn(t, w, TickReq{}, NBound, subject)
 }
 
-// An NBound judgment on a card no longer on the table is left for a mind:
-// "the card is off the table" (rules.go:340-343).
+// An NBound judgment on a card off the table, or not at a bound now, is left for a mind
+// (rules.go:340-343, rules.go:360-370).
 func TestRuleBoundLeavesACardOffTheTable(t *testing.T) {
 	t.Parallel()
-	w := setup(t, 1)
-	a := boundOn(t, w, "ghost")
-	require.Equal(t, RuleBound, a.Rule)
-	assert.Equal(t, ActLeft, a.Act)
-	assert.Equal(t, "the card is off the table", a.Why)
+	for _, tc := range []struct{ name, subject, why string }{
+		{"RuleBoundLeavesACardOffTheTable", "ghost", "the card is off the table"},
+		{"RuleBoundLeavesACardNotAtItsBound", "s1-1", "not at a bound now"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			a := boundOn(t, setup(t, 1), tc.subject)
+			require.Equal(t, RuleBound, a.Rule)
+			assert.Equal(t, ActLeft, a.Act)
+			assert.Equal(t, tc.why, a.Why)
+		})
+	}
 }
 
-// An NBound judgment on a card that is not at a bound now is left for a mind:
-// "not at a bound now" (rules.go:360-370).
-func TestRuleBoundLeavesACardNotAtItsBound(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 1)
-	a := boundOn(t, w, "s1-1")
-	require.Equal(t, RuleBound, a.Rule)
-	assert.Equal(t, ActLeft, a.Act)
-	assert.Equal(t, "not at a bound now", a.Why)
+// fFailedOnBudget puts s1-1 in review, failed on budget at attempt 2, with brief.
+func fFailedOnBudget(w *world, brief string) {
+	pr := w.s.Work.Card("s1-1")
+	pr.Col = Review
+	pr.Fields["brief"] = brief
+	pr.Fields["result"] = "failed"
+	pr.Fields[FieldFailure] = "budget"
+	pr.Fields["attempt"] = "2"
+	pr.Rev++
+	w.s.Work.cells, w.s.Work.byPrimary = nil, nil
 }
 
 // A failure budget exhaustion at attempt 2 raises the card a tier up, "failed
@@ -54,14 +62,7 @@ func TestRuleBoundAnswersABudgetFailureAtAttemptTwo(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
-	pr := w.s.Work.Card("s1-1")
-	pr.Col = Review
-	pr.Fields["brief"] = ruleFlashBrief
-	pr.Fields["result"] = "failed"
-	pr.Fields[FieldFailure] = "budget"
-	pr.Fields["attempt"] = "2"
-	pr.Rev++
-	w.s.Work.cells, w.s.Work.byPrimary = nil, nil
+	fFailedOnBudget(w, ruleFlashBrief)
 
 	a := boundOn(t, w, "s1-1")
 	require.Equal(t, RuleBound, a.Rule)
@@ -75,14 +76,7 @@ func TestRuleBoundAnswersABudgetFailureAtAttemptTwo(t *testing.T) {
 func TestRuleBoundSendsAHeavyCardAtItsBoundToAFriend(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	pr := w.s.Work.Card("s1-1")
-	pr.Col = Review
-	pr.Fields["brief"] = ruleHeavyBrief
-	pr.Fields["result"] = "failed"
-	pr.Fields[FieldFailure] = "budget"
-	pr.Fields["attempt"] = "2"
-	pr.Rev++
-	w.s.Work.cells, w.s.Work.byPrimary = nil, nil
+	fFailedOnBudget(w, ruleHeavyBrief)
 
 	a := boundOn(t, w, "s1-1")
 	require.Equal(t, RuleBound, a.Rule)
@@ -140,14 +134,7 @@ func TestRuleBoundOffLeavesTheJudgmentAlone(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
-	pr := w.s.Work.Card("s1-1")
-	pr.Col = Review
-	pr.Fields["brief"] = ruleFlashBrief
-	pr.Fields["result"] = "failed"
-	pr.Fields[FieldFailure] = "budget"
-	pr.Fields["attempt"] = "2"
-	pr.Rev++
-	w.s.Work.cells, w.s.Work.byPrimary = nil, nil
+	fFailedOnBudget(w, ruleFlashBrief)
 	w.s.RulesOff = []string{RuleBound}
 
 	a := boundOn(t, w, "s1-1")
