@@ -329,7 +329,7 @@ by id is unchanged, and a member names no lane with it.
 ` + streamWords() + `
 ` + laneWords() + `
 ` + goalWords() + `
-` + twinWords() + `
+	` + firstLapHook() + "\n" + twinWords() + `
 ` + landWords() + `
 ` + wordsSection() + `
 ` + exitLine + `
@@ -340,8 +340,34 @@ example:
 `)
 	for _, l := range dayLines {
 		b.WriteString("  " + l + "\n")
+		// the last live example names start with no card check; say the gate
+		// (docs/SPEC-SPRINT.md section 14, "The card check")
+		if l == "nova-sprint start" {
+			b.WriteString("    " + startCardCheckWords())
+		}
 	}
 	return b.String()
+}
+
+// startCardCheckWords is start's prerequisite on a live store, and the mem
+// twin's exemption (docs/SPEC-SPRINT.md section 14, "The card check";
+// cardCheckGate, and not on a mem twin, st.ByHand).
+func startCardCheckWords() string {
+	return "a live store needs a clean check cards record first (nova-sprint check cards); a mem twin (--redis mem:<file>) does not\n"
+}
+
+// firstLapHook is step 0 before init and add on a live store (docs/SPEC-SPRINT.md,
+// "The hook"; hookFirst in main.go). A mem twin does not need it. The quoted
+// line is the refusal hookFirst prints (sprint.HookFirst).
+func firstLapHook() string {
+	return "step 0: a live store needs nova-sprint hook proven first, or the verb refuses with \"" + sprint.HookFirst + "\"; a mem twin (--redis mem:<file>) does not\n"
+}
+
+// notStartedLine names the state word init's sprint line will say, and how to
+// leave it (docs/SPEC-SPRINT.md section 14, "READY"): READY before the first
+// start, STOPPED after a stop, never a bare word.
+func notStartedLine(m store.Machine) string {
+	return shownWord(m) + " (not started; run: nova-sprint start)\n"
 }
 
 // dayLines is the coordinator's day in five lines, the banner's example: block.
@@ -470,6 +496,14 @@ func verbExample(name string) string {
 			if line != "" {
 				fmt.Fprintf(&b, "  %s %s\n", prog, line)
 			}
+		}
+		// the first-lap gates the example alone does not say (docs/SPEC-SPRINT.md
+		// section 14, "The card check"; "The hook")
+		switch name {
+		case "start":
+			b.WriteString(startCardCheckWords())
+		case "add":
+			b.WriteString(firstLapHook())
 		}
 		return b.String()
 	}
@@ -668,6 +702,9 @@ func helpTopicNames() []string { return helpTopics() }
 func guideSection() string {
 	var b strings.Builder
 	b.WriteString(opening + "\n\n")
+	// the walkthrough's init then add is step 1; step 0 is the hook
+	// (docs/SPEC-SPRINT.md, "The hook")
+	b.WriteString(firstLapHook() + "\n")
 	b.WriteString(twinWords())
 	b.WriteString("\nthe coordinator's day, in five lines:\n")
 	for _, l := range dayLines {
@@ -1430,6 +1467,12 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 		steps = io.Discard
 	} else {
 		fmt.Fprintf(stdout, "INIT OK tables=%s view=%s readers=%s\n", strings.Join(tables, ","), st.Names.View(), dashed(strings.Join(readerRows, ",")))
+		// the sprint line that follows is the state word alone when there are no
+		// cards: say what it means, before that line, so the last line stays the
+		// word (docs/SPEC-SPRINT.md section 14, "READY")
+		if m, _, err := st.Machine(ctx); err == nil && !m.Running() {
+			fmt.Fprint(stdout, notStartedLine(m))
+		}
 	}
 	var memberNames []string
 	for _, m := range specs {
