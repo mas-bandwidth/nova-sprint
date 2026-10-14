@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmap"
+	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
 )
 
@@ -60,6 +63,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap add [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>]",
 			Example:   `roadmap add --id my-fix --release v1.2.6 --title "What the fix does" --origin "PR #12"`,
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp or docs/fixes.sexp and its page",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the entry is added and the data and its page saved; 2 could not run, nothing written (a flag, a duplicate id, a group or release not there, a shipped release, data that would not decode)",
 			Flags: func(f *tool.Flags) {
@@ -87,6 +91,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap remove [--repo <dir>] --id <id>...",
 			Example:   "roadmap remove --id my-old-fix",
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp or docs/fixes.sexp and its page",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the entries are removed and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id, a done or shipped entry, the last entry of its group or release, a shipped release)",
 			Flags: func(f *tool.Flags) {
@@ -100,6 +105,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap pull [--repo <dir>] --id <id>... (--release <v> | --group <g>)",
 			Example:   "roadmap pull --id my-item --release v1.2.6",
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp and docs/fixes.sexp and their pages",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the entries are moved and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id, a done or shipped entry, the last entry of its group or release, a group or release not there, a shipped release)",
 			Flags: func(f *tool.Flags) {
@@ -114,6 +120,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap done [--repo <dir>] --id <id>... --evidence <PR #n | commit>",
 			Example:   `roadmap done --id my-fix --evidence "PR #12"`,
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp or docs/fixes.sexp and its page",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the entries are done and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id, evidence that is no pull request or commit, an entry already done or shipped, the last item of its group, a shipped release)",
 			Flags: func(f *tool.Flags) {
@@ -128,6 +135,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap note [--repo <dir>] --id <id>... [--text <t>] [--title <t>]",
 			Example:   `roadmap note --id my-fix --text "Needs the store migration first."`,
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp or docs/fixes.sexp and its page",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the text is appended (and the title given) and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id)",
 			Flags: func(f *tool.Flags) {
@@ -148,6 +156,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 			Usage:     "roadmap render [--repo <dir>]\nroadmap render --file <data.sexp> --out <page.md> [--source <name>]",
 			Example:   "roadmap render",
 			Effect:    tool.LocalWrite + ": writes ROADMAP.md and FIXES.md, or --out",
+			DryRun:    true,
 			Detail:    roadmapDetail,
 			ExitTable: "0 the pages are written (or were already what the data renders); 2 could not run, nothing written (a flag, data that does not decode, an unwritable page)",
 			Flags: func(f *tool.Flags) {
@@ -262,6 +271,7 @@ func (g github) today() string { return g.now().Format("2006-01-02") }
 // edit loads the work record, applies one edit, and saves the data and pages;
 // a refused edit writes nothing.
 func (g github) edit(c *tool.Call, verb string, apply func(s *roadmap.Set) error) *tool.Out {
+	dry := c.DryRun()
 	s, err := roadmap.Load(c.Str("repo"), g.today())
 	if err != nil {
 		o := refuse(verb, err.Error()+"; nothing written")
@@ -271,10 +281,15 @@ func (g github) edit(c *tool.Call, verb string, apply func(s *roadmap.Set) error
 	if err := apply(s); err != nil {
 		return refuse(verb, err.Error()+"; nothing written")
 	}
-	if err := s.Save(); err != nil {
-		return refuse(verb, "save: "+err.Error())
+	if !dry {
+		if err := s.Save(); err != nil {
+			return refuse(verb, "save: "+err.Error())
+		}
 	}
 	o := tool.Done().Fact("repo", c.Str("repo"))
+	if dry {
+		o.Note("the dry run applied the edit to a copy and wrote nothing")
+	}
 	for _, f := range s.Changed() {
 		o.Item("wrote", "file", f)
 	}
@@ -357,10 +372,14 @@ func (g github) roadmapNote(c *tool.Call) *tool.Out {
 }
 
 func roadmapRender(c *tool.Call) *tool.Out {
+	dry := c.DryRun()
 	if in := c.Str("file"); in != "" {
 		source := c.Str("source")
 		if source == "" {
 			source = filepath.ToSlash(in)
+		}
+		if dry {
+			return renderFileDry(in, c.Str("out"), source)
 		}
 		kind, items, err := roadmap.RenderFile(in, c.Str("out"), source)
 		if err != nil {
@@ -368,13 +387,76 @@ func roadmapRender(c *tool.Call) *tool.Out {
 		}
 		return tool.Done().Fact("kind", kind).Fact("items", items).Fact("out", c.Str("out"))
 	}
-	changed, err := roadmap.Render(c.Str("repo"))
+	changed, err := renderChanged(c.Str("repo"), dry)
 	if err != nil {
 		return refuse("render", err.Error())
 	}
 	o := tool.Done().Fact("repo", c.Str("repo")).Fact("changed", len(changed))
+	if dry {
+		o.Note("the dry run rendered and wrote nothing")
+	}
 	for _, p := range changed {
 		o.Item("wrote", "file", p)
 	}
 	return o
+}
+
+// renderChanged is the pages the render verb would write: when dry it only
+// compares the data's pages with the files on disk; otherwise it writes them.
+func renderChanged(dir string, dry bool) ([]string, error) {
+	if !dry {
+		return roadmap.Render(dir)
+	}
+	s, err := roadmap.Load(dir, "")
+	if err != nil {
+		return nil, err
+	}
+	var changed []string
+	for _, page := range []string{roadmap.RoadmapPage, roadmap.FixesPage} {
+		want, ok := s.Pages()[page]
+		if !ok {
+			continue
+		}
+		got, err := os.ReadFile(filepath.Join(dir, page))
+		if err == nil && string(got) == want {
+			continue
+		}
+		changed = append(changed, page)
+	}
+	return changed, nil
+}
+
+// renderFileDry renders one data file held elsewhere to the page --out names,
+// without writing it: the dry run of render --file/--out.
+func renderFileDry(in, out, source string) *tool.Out {
+	raw, err := os.ReadFile(in)
+	if err != nil {
+		return refuse("render", err.Error())
+	}
+	top, err := worklang.Read(in, raw, roadmapdoc.Limits)
+	if err != nil {
+		return refuse("render", err.Error())
+	}
+	if top.Kind != worklang.List || len(top.List) == 0 || top.List[0].Kind != worklang.Symbol {
+		return refuse("render", fmt.Sprintf("%s: want one (roadmap \"v1\" ...) or (fixes \"v1\" ...) form", in))
+	}
+	kind := top.List[0].Value
+	var items int
+	switch kind {
+	case "roadmap":
+		d, err := roadmapdoc.Decode(in, raw)
+		if err != nil {
+			return refuse("render", err.Error())
+		}
+		items = len(d.Items)
+	case "fixes":
+		fx, err := roadmapdoc.DecodeFixes(in, raw)
+		if err != nil {
+			return refuse("render", err.Error())
+		}
+		items = len(fx.Items)
+	default:
+		return refuse("render", fmt.Sprintf("%s: the head form is (%s ...); nova-work renders (roadmap \"v1\" ...) and (fixes \"v1\" ...)", in, kind))
+	}
+	return tool.Done().Fact("kind", kind).Fact("items", items).Fact("out", out).Note("the dry run rendered and wrote nothing")
 }
