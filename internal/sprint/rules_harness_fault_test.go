@@ -137,4 +137,32 @@ func TestAHarnessFaultNeverCountsTowardTheBriefDefectBound(t *testing.T) {
 		rules(w, on())
 		assert.Empty(t, openOf(w, NHarnessFault, "s1-1"), "a harness end then an ok take raises nothing")
 	})
+
+	// tla/SprintRules.tla AnLaneBound, reversed witness MCSprintRulesAnswersBrokenLaneBrokenMarks:
+	// four harness ends in a row, each followed by the seat's rework (a decision), raise the
+	// lane-broken judgment with one attempt since the last decision, below the cap; red at
+	// release/v1.2.26 23997aa9, where ruleBrief marked it a brief defect on no vote.
+	t.Run("a broken lane across the seat's decisions: left, never marked a brief defect", func(t *testing.T) {
+		t.Parallel()
+		w := friendWorld(t, "c: the work (s1)\nREPO: mas-bandwidth/nova-tools\n\nThe task.")
+		w.s.MaxAttempts = "4"
+		dealWith(w)
+		for i := 1; i <= LaneBrokenBound; i++ {
+			takeAndFinish(t, w, WorkCardID("s1-1", i), harnessPushRefused)
+			if i < LaneBrokenBound {
+				w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "again"}))
+				dealWith(w)
+			}
+		}
+		pr := w.s.Work.Card("s1-1")
+		require.Equal(t, "3", pr.F(FieldDecidedAttempt), "the seat decided at attempt 3: one attempt since, below the cap")
+		open := openOf(w, NBriefWrong, "s1-1")
+		require.Len(t, open, 1, "the lane-broken judgment")
+		require.Contains(t, open[0].Note.What, "the lane is broken, not the brief")
+
+		rules(w, on())
+		pr = w.s.Work.Card("s1-1")
+		assert.Empty(t, pr.F(FieldBriefDefect), "no brief_defect stamp: no attempt of the run is a vote")
+		assert.NotContains(t, pr.F(FieldRuleAnswer), ActMark, "the brief rule never marks a broken lane")
+	})
 }

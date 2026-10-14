@@ -172,6 +172,8 @@
 \*                QuietWhileUnfunded
 \*   "harnessvotes" the brief rule marks a card at its cap a brief defect whatever ended its
 \*                attempts, harness faults included (the code before PR #273): MarkOnlyOnVotes
+\*   "lanebrokenmarks" the brief rule marks every brief judgment but the harness's cap, the
+\*                lane-broken one included (the code of PR #273): MarkOnlyOnVotes
 
 EXTENDS Integers, FiniteSets
 
@@ -200,7 +202,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
-          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, \* answers
+          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun, \* answers
           pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
@@ -215,7 +217,7 @@ lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, 
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
-anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
+anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
@@ -284,7 +286,7 @@ TypeOK ==
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
   /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
   /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
-  /\ anvotes \in Nat /\ anmarked \in BOOLEAN
+  /\ anvotes \in Nat /\ anmarked \in BOOLEAN /\ anrun \in Nat
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
   /\ eclk \in 0..MaxClock
@@ -331,7 +333,7 @@ Init ==
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE /\ andec = 0
-  /\ anvotes = 0 /\ anmarked = FALSE
+  /\ anvotes = 0 /\ anmarked = FALSE /\ anrun = 0
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
   /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aflapped = FALSE /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
@@ -784,6 +786,19 @@ AnMarks ==
   \/ AnSameBound
   \/ anvotes >= AnHarnessCount
   \/ Broken = "harnessvotes" /\ anatt - andec >= Cap
+  \/ Broken = "lanebrokenmarks" /\ ~(anatt - andec >= Cap /\ AnHarnessCount > anvotes)
+
+\* THE BROKEN LANE (bounds.go AtLaneBroken, LaneBrokenBound; steps_work.go raises it at the
+\* finish before the cap's judgment): LaneBrokenBound attempts in a row, each ended without a
+\* worker report, raise "the lane is broken, not the brief" (an NBriefWrong judgment offering
+\* hold, rework --tier, drop). AtLaneBroken reads the card's last attempts whatever the
+\* coordinator decided between them, so the run (anrun) is never reset by a decision, only by
+\* a vote. The code's LaneBrokenBound (4) equals its default cap (AttemptsDefault, 4); here the
+\* bound is one past the model's Cap, so a broken lane is reached only across a decision (the
+\* seat's rework --carry at the harness's cap, AnMindCarry), with the window since that
+\* decision below the cap: the case ruleBrief marked a brief defect on no vote (lanebrokenmarks;
+\* rules.go laneBrokenAt now leaves it, never marked).
+AnLaneBound == Cap + 1
 
 \* the brief rule marks a card at its bound a brief defect, once a window; the card stays at
 \* its bound for the mind (brief, rework, drop), whose decision opens a fresh window
@@ -791,7 +806,7 @@ AnMark ==
   /\ anst = "bound" /\ ~anmarked
   /\ AnMarks
   /\ anmarked' = TRUE
-  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes>>
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anrun>>
 
 \* the outside: a reader finds the attempt broken with finding f (a finding whose fix already
 \* stands is not read again; at the bound the read raises the brief's judgment, which the mind
@@ -802,6 +817,7 @@ AnReadBroken(f) ==
   /\ anhead' = anatt /\ anfind' = f
   /\ anst' = IF f # "empty" /\ AnAtBound(f) THEN "bound" ELSE "broken"
   /\ anvotes' = anvotes + 1  \* the worker ran and a reader read it: a vote
+  /\ anrun' = 0              \* a vote ends the run of no-report ends
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
@@ -812,7 +828,12 @@ AnWorkFails(k, ran) ==
   /\ k = "same" => anreworks > 0
   /\ k # "noreport" => ran = (k # "harness")
   /\ anhead' = anatt /\ anfail' = k
-  /\ anst' = IF anatt - andec >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
+  /\ anrun' = IF AnVotes(k, ran) THEN 0 ELSE anrun + 1
+  \* the cap, the same failure twice, or a broken lane (AtLaneBroken: the bound's judgment)
+  /\ anst' = IF \/ anatt - andec >= Cap
+                \/ k = "same" /\ Broken # "identicalrework"
+                \/ anrun' >= AnLaneBound
+             THEN "bound" ELSE "failed"
   /\ anvotes' = IF AnVotes(k, ran) THEN anvotes + 1 ELSE anvotes
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
@@ -824,6 +845,7 @@ AnDeadline ==
   /\ anhead' = anatt /\ anfail' = "harness" /\ anland' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
   \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ anrun' = anrun + 1
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's HOLD is
@@ -833,6 +855,7 @@ AnDeadlineHold ==
   /\ anhead' = anatt /\ anfail' = "hold" /\ anhold' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
   \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ anrun' = anrun + 1
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the worker's late LAND arrives. While its attempt is failed and no later
@@ -848,7 +871,7 @@ AnLateLand ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* the outside: the worker's late HOLD arrives; it finishes the attempt a late LAND does
 AnLateHold ==
@@ -861,7 +884,7 @@ AnLateHold ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* a rework with fix f ("empty": no fix): one attempt more, from the head the attempt before
 \* pushed; a later attempt started, so a late report still on its way is for the attempt the
@@ -874,7 +897,7 @@ AnRework(f) ==
   /\ anfixless' = (anfixless \/ f = "empty")
   /\ anst' = "working" /\ anfind' = None /\ anfail' = None
   /\ anland' = FALSE /\ anhold' = FALSE
-  /\ UNCHANGED <<anhead, anlost, anfixed, andec, anvotes, anmarked>>  \* a rule's rework is no decision: andec and the window's votes stand
+  /\ UNCHANGED <<anhead, anlost, anfixed, andec, anvotes, anmarked, anrun>>  \* a rule's rework is no decision: andec and the window's votes stand
 
 \* the read-broken rule: a broken read with a finding reworks the card with it
 RuleAnBroken ==
@@ -933,7 +956,7 @@ AnMind ==
      \/ anst = "bound" /\ (anfind = None \/ Broken = "answersmind")
      \/ anst = "bound" /\ andec > 0 \* a second bound after the one decision modelled: dropped
   /\ anst' = "judged"
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* the mind's rework at the bound (the seat's rework, a coordinator decision, steps_review.go
 \* Rework with no Rule): one attempt more from the head the attempt before pushed, as every
@@ -948,7 +971,21 @@ AnMindRework ==
   /\ anfind' = None /\ anfail' = None /\ anland' = FALSE /\ anhold' = FALSE
   \* the decision opens a fresh window: its votes start again, and it answers the window's mark
   /\ anvotes' = 0 /\ anmarked' = FALSE
-  /\ UNCHANGED <<anhead, anlost, anfixless, anharness, anfleet, anredealt>>
+  /\ UNCHANGED <<anhead, anlost, anfixless, anharness, anfleet, anredealt, anrun>>
+
+\* the mind's rework --carry at the harness's cap (the remedy BriefBound offers there: the cap
+\* reached mostly on harness ends, no finding to fix): a coordinator decision, a fresh window
+\* from the head the attempt before pushed. The run of no-report ends is not the window's: it
+\* stands (AtLaneBroken reads the last attempts across the decision).
+AnMindCarry ==
+  /\ anst = "bound" /\ anfind = None /\ ~AnSameBound
+  /\ anatt - andec >= Cap /\ AnHarnessCount > anvotes
+  /\ andec = 0 /\ anreworks < MaxFails
+  /\ andec' = anatt
+  /\ anatt' = anatt + 1 /\ anreworks' = anreworks + 1 /\ ancarry' = anhead
+  /\ anst' = "working" /\ anfail' = None /\ anland' = FALSE /\ anhold' = FALSE
+  /\ anvotes' = 0 /\ anmarked' = FALSE
+  /\ UNCHANGED <<anhead, anfind, anlast, anlost, anfixless, anfixed, anharness, anfleet, anredealt, anrun>>
 
 \* the outside: another card of the fleet fails the same harness-fault class, counted by
 \* TickHarnessFleet toward RuleSameFailureCards; two such cards and this one are the fleet's
@@ -958,12 +995,12 @@ AnFleetFails ==
   /\ anst = "working"
   /\ anfleet < 2
   /\ anfleet' = anfleet + 1
-  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec, anvotes, anmarked>>
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec, anvotes, anmarked, anrun>>
 
 AnNext ==
   \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold
   \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework \/ AnFleetFails
-  \/ AnMark
+  \/ AnMindCarry \/ AnMark
   \/ \E f \in AnFindings : AnReadBroken(f)
   \/ \E k \in AnFails, ran \in BOOLEAN : AnWorkFails(k, ran)
 
