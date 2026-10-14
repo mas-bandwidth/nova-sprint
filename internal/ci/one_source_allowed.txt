@@ -14,7 +14,6 @@
 # line is removed; a copy not listed fails the lint; a name not in the base's list fails
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
 bench	SPRINT-AHEAD: standalone-clone check (StandaloneLine/NotStandalone) not in tools
-cardhdr	SPRINT-AHEAD: the `TEST: ctest <name>` form (TestLine.Runner) not in tools
 cardtree	SPRINT-AHEAD: fullShaRE (one line) not in tools
 provbalance	SPRINT-AHEAD: deepseek balance endpoint and KeyEnv not in tools
 testredis	SPRINT-AHEAD: one comment line from a dead-code pass; port and delete
