@@ -3447,8 +3447,19 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 	}
 	if r.Remove && withdrew == 0 && memberKeeps(s, r.Member) == 0 {
 		// no card stays on it: its control card leaves the fleet, held by the
-		// sync so a return to the inventory releases it (fleet_sync.go)
-		head = []Change{change(Fleet, removeEntry(ctl, map[string]string{"status": Down, "since": stamp(s.Now), "held": stamp(s.Now), FieldHeldBy: r.HeldBy}))}
+		// sync so a return to the inventory releases it (fleet_sync.go). The
+		// sync's mark goes only on a member that carries no hold: a member the
+		// sync, the adopt, its environment or the coordinator already holds
+		// keeps its hold, its mark, its reason and its finish marker, so the
+		// hold's own release still finds it when the row returns
+		// (tla/DealFill.tla PersonHoldStays; docs/SPEC-SPRINT.md section 5,
+		// the fleet).
+		set := map[string]string{"status": Down, "since": stamp(s.Now)}
+		if ctl.F("held") == "" {
+			set["held"] = stamp(s.Now)
+			set[FieldHeldBy] = r.HeldBy
+		}
+		head = []Change{change(Fleet, removeEntry(ctl, set))}
 		n = statusNote(s, r, NMemberDown, "removed")
 		line = r.Member + " removed: " + r.Why + ", and no card stays on it; its row and its width leave the fleet"
 	}
