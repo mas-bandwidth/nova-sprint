@@ -93,7 +93,7 @@ func next(t *testing.T, lines <-chan string) (name, data string) {
 			data += strings.TrimPrefix(l, "data: ")
 		}
 	}
-	t.Fatal("the stream ended")
+	require.FailNow(t, "the stream ended")
 	return "", ""
 }
 

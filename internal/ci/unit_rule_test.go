@@ -518,12 +518,12 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 		}
 	}
 	if len(unlisted) > 0 {
-		t.Errorf("%d uses: a unit test (no functional build tag) uses real time, a real socket or an external service; "+
+		assert.Failf(t, "unit rule", "%d uses: a unit test (no functional build tag) uses real time, a real socket or an external service; "+
 			"move it behind //go:build functional or give it a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble):\n%s",
 			len(unlisted), strings.Join(unlisted, "\n"))
 	}
 	if len(stale) > 0 {
-		t.Errorf("these files keep the rule now: remove them from %s (it only shrinks):\n%s", unitRuleAllowedFile, strings.Join(stale, "\n"))
+		assert.Failf(t, "unit rule", "these files keep the rule now: remove them from %s (it only shrinks):\n%s", unitRuleAllowedFile, strings.Join(stale, "\n"))
 	}
 	t.Logf("unit-rule: %d files still allowed in %s", len(unitRuleBurnDown), unitRuleAllowedFile)
 }
@@ -551,7 +551,7 @@ func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 	// the base must be a commit git can read: a misspelled rev, no git or a refused
 	// repository is red, never a pass
 	if out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", base+"^{commit}").CombinedOutput(); err != nil {
-		t.Fatalf("UNIT_RULE_BASE %s is no commit git can read here (%v: %s): the allowance's shrinking is unchecked", base, err, strings.TrimSpace(string(out)))
+		require.FailNowf(t, "UNIT_RULE_BASE unreadable", "UNIT_RULE_BASE %s is no commit git can read here (%v: %s): the allowance's shrinking is unchecked", base, err, strings.TrimSpace(string(out)))
 	}
 	const path = "internal/ci/" + unitRuleAllowedFile
 	if exec.Command("git", "cat-file", "-e", base+":"+path).Run() != nil {
@@ -571,7 +571,7 @@ func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 		}
 	}
 	if len(added) > 0 {
-		t.Errorf("%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
+		assert.Failf(t, "unit rule", "%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
 			unitRuleAllowedFile, len(added), base, strings.Join(added, "\n"))
 	}
 }

@@ -93,7 +93,7 @@ func matrixLegs(t *testing.T, body string) []string {
 		open := strings.Index(trimmed, "[")
 		close := strings.Index(trimmed, "]")
 		if open < 0 || close < open {
-			t.Fatalf("matrix leg line %q is not a list", trimmed)
+			require.FailNowf(t, "matrix leg line is not a list", "matrix leg line %q is not a list", trimmed)
 		}
 		inside := trimmed[open+1 : close]
 		var legs []string
@@ -102,7 +102,7 @@ func matrixLegs(t *testing.T, body string) []string {
 		}
 		return legs
 	}
-	t.Fatal("no matrix leg line found")
+	require.FailNow(t, "no matrix leg line found")
 	return nil
 }
 
@@ -152,6 +152,6 @@ func makeRecipes(t *testing.T, makefile, target string) string {
 			return sb.String()
 		}
 	}
-	t.Fatalf("target %q not found in the Makefile", target)
+	require.FailNowf(t, "target not found in the Makefile", "target %q not found in the Makefile", target)
 	return ""
 }

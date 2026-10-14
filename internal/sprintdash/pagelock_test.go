@@ -42,9 +42,7 @@ func TestThePageIsLocked(t *testing.T) {
 	require.NoError(t, err)
 	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "SPEC-SPRINT-DASHBOARD.md"))
 	require.NoError(t, err)
-	if err := CheckPageLock(string(lock), string(spec), PageDigest(lockedFiles(t))); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, CheckPageLock(string(lock), string(spec), PageDigest(lockedFiles(t))))
 }
 
 // The lock on known cases, both ways: a page unchanged holds; a byte added, a byte removed, a
@@ -112,7 +110,7 @@ func TestThePageLockOnlyGrows(t *testing.T) {
 	// the base must be a commit git can read: a misspelled rev, no git, a refused repository
 	// or a broken fetch is red, never a pass
 	if out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", base+"^{commit}").CombinedOutput(); err != nil {
-		t.Fatalf("PAGELOCK_BASE %s is no commit git can read here (%v: %s): the lock's growth is unchecked", base, err, strings.TrimSpace(string(out)))
+		require.FailNowf(t, "PAGELOCK_BASE unreadable", "PAGELOCK_BASE %s is no commit git can read here (%v: %s): the lock's growth is unchecked", base, err, strings.TrimSpace(string(out)))
 	}
 	const path = "internal/sprintdash/pagelock.txt"
 	// a commit that holds no pagelock.txt is the one case of the lock's first
@@ -124,13 +122,9 @@ func TestThePageLockOnlyGrows(t *testing.T) {
 	require.NoError(t, err, "git show %s:%s", base, path)
 	lock, err := os.ReadFile("pagelock.txt")
 	require.NoError(t, err)
-	if err := LockGrows(string(out), string(lock)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, LockGrows(string(out), string(lock)), "the lock only grows")
 	// a comment-only change renders the same at the base and here
-	if err := CommentOnlyHolds(string(out), string(lock), filesAt(t, base), lockedFiles(t)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, CommentOnlyHolds(string(out), string(lock), filesAt(t, base), lockedFiles(t)), "a comment-only change holds")
 }
 
 // filesAt is the locked files at the git revision base, keyed as lockedFiles keys them.

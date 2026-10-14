@@ -332,7 +332,7 @@ func keyframes(t *testing.T, css string) map[string][]string {
 func braceBlock(t *testing.T, s string) (string, string) {
 	t.Helper()
 	if len(s) == 0 || s[0] != '{' {
-		t.Fatalf("braceBlock: %q does not start with {", s)
+		require.FailNowf(t, "braceBlock", "braceBlock: %q does not start with {", s)
 	}
 	depth := 0
 	for i := 0; i < len(s); i++ {
@@ -346,7 +346,7 @@ func braceBlock(t *testing.T, s string) (string, string) {
 			}
 		}
 	}
-	t.Fatalf("braceBlock: unbalanced braces in %q", s)
+	require.FailNowf(t, "braceBlock", "braceBlock: unbalanced braces in %q", s)
 	return "", ""
 }
 

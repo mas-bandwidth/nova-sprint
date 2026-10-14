@@ -471,20 +471,20 @@ func readTestifyLedgers(t *testing.T, root string) []testifyRow {
 				continue
 			}
 			fields := strings.Fields(line)
-			if len(fields) < 3 {
-				t.Fatalf("%s/%s:%d: ledger row must be `<package>:<kind> <count> <reason...>`", testifyLedgerRoot, rel, i+1)
-			}
-			nameKind := strings.SplitN(fields[0], ":", 2)
-			if len(nameKind) != 2 {
-				t.Fatalf("%s/%s:%d: ledger row %q must begin with package:kind", testifyLedgerRoot, rel, i+1, fields[0])
-			}
-			if filepath.Clean(nameKind[0]) != filepath.Clean(pkg) {
-				t.Fatalf("%s/%s:%d: row package %q does not match shard path %q", testifyLedgerRoot, rel, i+1, nameKind[0], pkg)
-			}
-			kind := testifyKind(nameKind[1])
-			if kind != testifyAssert && kind != testifyEnv {
-				t.Fatalf("%s/%s:%d: kind %q is not assert or env", testifyLedgerRoot, rel, i+1, nameKind[1])
-			}
+		if len(fields) < 3 {
+			require.FailNowf(t, "ledger row shape", "%s/%s:%d: ledger row must be `<package>:<kind> <count> <reason...>`", testifyLedgerRoot, rel, i+1)
+		}
+		nameKind := strings.SplitN(fields[0], ":", 2)
+		if len(nameKind) != 2 {
+			require.FailNowf(t, "ledger row must begin with package:kind", "%s/%s:%d: ledger row %q must begin with package:kind", testifyLedgerRoot, rel, i+1, fields[0])
+		}
+		if filepath.Clean(nameKind[0]) != filepath.Clean(pkg) {
+			require.FailNowf(t, "row package does not match shard path", "%s/%s:%d: row package %q does not match shard path %q", testifyLedgerRoot, rel, i+1, nameKind[0], pkg)
+		}
+		kind := testifyKind(nameKind[1])
+		if kind != testifyAssert && kind != testifyEnv {
+			require.FailNowf(t, "kind is not assert or env", "%s/%s:%d: kind %q is not assert or env", testifyLedgerRoot, rel, i+1, nameKind[1])
+		}
 			count, err := strconv.Atoi(fields[1])
 			require.NoError(t, err, "%s/%s:%d: count", testifyLedgerRoot, rel, i+1)
 			rows = append(rows, testifyRow{Pkg: pkg, Kind: kind, Count: count, Reason: strings.Join(fields[2:], " ")})

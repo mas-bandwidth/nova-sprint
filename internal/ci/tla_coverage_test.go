@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
@@ -89,17 +90,17 @@ func checkCurrentModule(t *testing.T, root string, src tlc.Source, machine, modu
 			if c.Debt != "-" {
 				continue
 			}
-			t.Errorf("%s: %s has no tla/RUNS.tsv record: run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
+			assert.Failf(t, "tla coverage", "%s: %s has no tla/RUNS.tsv record: run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
 			continue
 		}
 		if rec.result != "PASS" {
-			t.Errorf("%s: %s record result is %s, not PASS (owed by its model card): run make tlc TLC_GROUP=%s", machine, c.Config, rec.result, c.Group)
+			assert.Failf(t, "tla coverage", "%s: %s record result is %s, not PASS (owed by its model card): run make tlc TLC_GROUP=%s", machine, c.Config, rec.result, c.Group)
 			continue
 		}
 		sha, _, err := src.Fingerprint(c.Config)
 		require.NoError(t, err, "%s: cannot fingerprint %s", machine, c.Config)
 		if sha != rec.sha256 {
-			t.Errorf("%s: %s input_sha256 is stale (the runner changed since it was written): run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
+			assert.Failf(t, "tla coverage", "%s: %s input_sha256 is stale (the runner changed since it was written): run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
 		}
 	}
 }
