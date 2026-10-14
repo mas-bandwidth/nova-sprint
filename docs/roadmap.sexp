@@ -268,13 +268,6 @@
    :date "2026-10-10"
    :release "v1.2.14"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friends-table-presence-from-tools" :group "friends"
-   :title "Friends table reads presence owned by nova-tools"
-   :text "The sprint consumes friend presence from the friend tool instead of owning it, so the friends
-    table stays right while the sprint server is stopped or hung."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "seat-check-merge-queue-versions" :group "sprint"
    :title "Seat check for the merge queue and versions"
    :text "A check verb reports the merge queue and tool versions on the seat, carried by an open pull
@@ -778,13 +771,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "PR #5452")
-  (item "batch-friend-presence-from-engine-beat" :group "friends"
-   :title "A batch friend's presence is her engine's beat"
-   :text "A friend with no session but a beating engine must not read down. The engine's beat counts as
-    presence."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "PR #5455")
   (item "sprint-friend-redeal-and-lane-models" :group "docs"
    :title "TLA+ models for friend redeal, friend rows and live friend lanes"
    :text "The sprint models cover a card taken back from a friend and redealt, and the live friend lane
@@ -1085,13 +1071,6 @@
    :release "after v1.4"
    :origin "issue #3295; issue #3543; issue #2061; issue #2062; issue #2065; issue #2066; issue #2069; issue
     #509; card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-down-detection" :group "friends"
-   :title "Detect a friend AI that is unreachable or out of credits and route around it"
-   :text "A friend counts as down when it cannot be reached or cannot work because credits ran out. The
-    state is detected mechanically and its work is routed elsewhere."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #3185")
   (item "pitstop-state-in-store" :group "sprint"
    :title "A pit stop and its lift are one store state every friend reads"
    :text "The stop and its lift are set and cleared by a verb and held in the sprint store, so a friend
@@ -2051,13 +2030,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-status-counts-current-assignments" :group "friends"
-   :title "Scope friend status and pong counts to current assignments"
-   :text "Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts
-    do not include old records."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "PR #5486")
   (item "swarm-lint-card-validation" :group "sprint"
    :title "nova-swarm lint card validation closes its escapes"
    :text "Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated

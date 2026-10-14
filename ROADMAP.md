@@ -10,7 +10,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [The sprint system](#the-sprint-system) (208)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
-- [Friend AIs](#friend-ais) (20)
+- [Friend AIs](#friend-ais) (16)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -2132,14 +2132,6 @@ Target: v1.3
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
-### Friends table reads presence owned by nova-tools
-
-The sprint consumes friend presence from the friend tool instead of owning it, so the friends table stays right while the sprint server is stopped or hung.
-
-Target: v1.3
-
-From: card moved out of the sprint (work record, 2026-10-04)
-
 ### Any read can be served by a friend with room
 
 A read at any tier is dealt as a card to a friend of a class at or above it, and paid fleet readers are used only when no friend has room.
@@ -2188,14 +2180,6 @@ Target: v1.3
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
-### A batch friend's presence is her engine's beat
-
-A friend with no session but a beating engine must not read down. The engine's beat counts as presence.
-
-Target: v1.3
-
-From: PR #5455
-
 ### Friend health refuses a proof dated after the server clock
 
 A health proof with a time ahead of the server clock is refused, so a friend cannot be kept up by a future date. The proof order check then stays sound.
@@ -2211,14 +2195,6 @@ Lanes are started with long prose briefs and hope. A tool starts, briefs, budget
 Target: after v1.4
 
 From: issue #2064
-
-### Detect a friend AI that is unreachable or out of credits and route around it
-
-A friend counts as down when it cannot be reached or cannot work because credits ran out. The state is detected mechanically and its work is routed elsewhere.
-
-Target: v1.3
-
-From: issue #3185
 
 ### Friend lifecycle and widths run through the system: wake, take, refill, redistribute
 
@@ -2275,11 +2251,3 @@ Friend rows record which model serves each tier, so the deal and the friend agre
 Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04); PR #5387
-
-### Scope friend status and pong counts to current assignments
-
-Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts do not include old records.
-
-Target: v1.3
-
-From: PR #5486
