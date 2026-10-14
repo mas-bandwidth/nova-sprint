@@ -59,44 +59,41 @@ func offlineAppOf(t *testing.T, members string, machines []string, answers map[s
 
 var everyMachine = []string{"m1", "captain", "hulk"}
 
-func TestSeatCheckSaysAMemberOnAnOfflineHostDown(t *testing.T) {
+func TestSeatCheckReportsTheFleetByItsProbes(t *testing.T) {
 	t.Parallel()
-	ta, probed := offlineApp(t, everyMachine, map[string]hostAnswer{
-		"m1": {Answered: true}, "captain": {Offline: true}, "hulk": {Offline: true}})
-	code, out, _ := ta.do("seat check")
-	assert.Equal(t, 0, code, out)
-	assert.Contains(t, out, "MACHINERY fleet OK up=1 held=0 offline=captain,hulk down=0")
-	// the beating member is probed only as the control of the seat's own network
-	assert.Equal(t, []string{"captain", "hulk", "m1"}, *probed)
-}
-
-func TestSeatCheckSaysAMemberOnAReachableHostAFault(t *testing.T) {
-	t.Parallel()
-	ta, _ := offlineApp(t, everyMachine, map[string]hostAnswer{
-		"m1": {Answered: true}, "captain": {Answered: true}, "hulk": {Offline: true}})
-	code, out, _ := ta.do("seat check")
-	assert.Equal(t, 1, code, out)
-	assert.Contains(t, out, "MACHINERY fleet DOWN up=1 held=0 offline=hulk down=captain:never")
-}
-
-func TestSeatCheckNeverExcusesANameThatDoesNotResolve(t *testing.T) {
-	t.Parallel()
-	ta, _ := offlineApp(t, everyMachine, map[string]hostAnswer{
-		"m1": {Answered: true}, "captain": {Err: "its name does not resolve: no such host"}, "hulk": {Offline: true}})
-	code, out, _ := ta.do("seat check")
-	assert.Equal(t, 1, code, out)
-	assert.Contains(t, out, `down=captain:never host="captain: its name does not resolve: no such host"`)
-}
-
-func TestSeatCheckExcusesNoneWhenTheSeatsOwnNetworkIsUnproved(t *testing.T) {
-	t.Parallel()
-	ta, _ := offlineApp(t, everyMachine, map[string]hostAnswer{
-		"m1": {Offline: true}, "captain": {Offline: true}, "hulk": {Offline: true}})
-	code, out, _ := ta.do("seat check")
-	assert.Equal(t, 1, code, out)
-	assert.Contains(t, out, "down=captain:never,hulk:never")
-	assert.Contains(t, out, "control m1 did not answer either")
-	assert.NotContains(t, out, "offline=")
+	for _, c := range []struct {
+		name     string
+		answers  map[string]hostAnswer
+		want     int
+		contains []string
+		not      []string
+		probed   []string
+	}{
+		{"an offline host is down", map[string]hostAnswer{"m1": {Answered: true}, "captain": {Offline: true}, "hulk": {Offline: true}}, 0,
+			[]string{"MACHINERY fleet OK up=1 held=0 offline=captain,hulk down=0"}, nil, []string{"captain", "hulk", "m1"}},
+		{"a reachable host is a fault", map[string]hostAnswer{"m1": {Answered: true}, "captain": {Answered: true}, "hulk": {Offline: true}}, 1,
+			[]string{"MACHINERY fleet DOWN up=1 held=0 offline=hulk down=captain:never"}, nil, nil},
+		{"a name that does not resolve is never excused", map[string]hostAnswer{"m1": {Answered: true}, "captain": {Err: "its name does not resolve: no such host"}, "hulk": {Offline: true}}, 1,
+			[]string{`down=captain:never host="captain: its name does not resolve: no such host"`}, nil, nil},
+		{"none are excused when the seat's own network is unproved", map[string]hostAnswer{"m1": {Offline: true}, "captain": {Offline: true}, "hulk": {Offline: true}}, 1,
+			[]string{"down=captain:never,hulk:never", "control m1 did not answer either"}, []string{"offline="}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ta, probed := offlineApp(t, everyMachine, c.answers)
+			code, out, _ := ta.do("seat check")
+			assert.Equal(t, c.want, code, out)
+			for _, s := range c.contains {
+				assert.Contains(t, out, s)
+			}
+			for _, s := range c.not {
+				assert.NotContains(t, out, s)
+			}
+			if c.probed != nil {
+				assert.Equal(t, c.probed, *probed, "the beating member is probed only as the control")
+			}
+		})
+	}
 }
 
 func TestSeatCheckProbesOnlyAMemberWithAMachineRow(t *testing.T) {
