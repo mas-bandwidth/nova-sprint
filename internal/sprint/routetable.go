@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -208,7 +209,7 @@ func RouteTable(lines []Line, since time.Time) string {
 			}
 		}
 	}
-	tierOf := func(route string) string { return strings.SplitN(route, "-", 2)[0] }
+	tierOf := func(route string) string { before, _, _ := strings.Cut(route, "-"); return before }
 	firstOnTier := func(t *rtTake) bool {
 		for _, x := range byPrimary[t.primary] {
 			if x.end != "provider" && tierOf(x.u.route) == tierOf(t.u.route) && x.at.Before(t.at) {
@@ -225,16 +226,8 @@ func RouteTable(lines []Line, since time.Time) string {
 		}
 	}
 
-	names := make([]string, 0, len(routes))
-	for n := range routes {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	stormNames := make([]string, 0, len(storm))
-	for p := range storm {
-		stormNames = append(stormNames, p)
-	}
-	sort.Strings(stormNames)
+	names := slices.Sorted(maps.Keys(routes))
+	stormNames := slices.Sorted(maps.Keys(storm))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "ROUTE TABLE since %s (%d launches in the log, %d landed primaries, %d with a landed take; takes = launches that ran: ok+failed+noRes; prov = provider failures, with the %d on the storm cards %s counted once per route)\n",
@@ -249,7 +242,8 @@ func RouteTable(lines []Line, since time.Time) string {
 			continue
 		}
 		b.WriteString(rtFormat(r))
-		if t := tier[strings.SplitN(n, "-", 2)[0]]; t != nil {
+		before, _, _ := strings.Cut(n, "-")
+		if t := tier[before]; t != nil {
 			t.takes += r.takes
 			t.ok += r.ok
 			t.failed += r.failed
@@ -347,7 +341,7 @@ func rtMedian(xs []float64) float64 {
 		return 0
 	}
 	s := append([]float64(nil), xs...)
-	sort.Float64s(s)
+	slices.Sort(s)
 	return s[len(s)/2]
 }
 

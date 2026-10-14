@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -570,18 +569,18 @@ func ShortReadsBack(s *Snapshot, who string) Plan {
 func acceptedNotice(p Plan, ids []string, now time.Time, who, to string) (Note, bool) {
 	var accepted, streams []string
 	for _, u := range p.Units {
-		if !contains(ids, u.Key) {
+		if !slices.Contains(ids, u.Key) {
 			continue
 		}
 		accepted = append(accepted, u.Key)
-		if !contains(streams, u.Stream) {
+		if !slices.Contains(streams, u.Stream) {
 			streams = append(streams, u.Stream)
 		}
 	}
 	if len(accepted) == 0 {
 		return Note{}, false
 	}
-	sort.Strings(streams)
+	slices.Sort(streams)
 	stream := ""
 	if len(streams) == 1 {
 		stream = streams[0]
@@ -770,7 +769,7 @@ func dealTurns(cards []*Card, streams []string) []*Card {
 		}
 		by[c.Row] = append(by[c.Row], c)
 	}
-	sort.Strings(extra)
+	slices.Sort(extra)
 	order = append(order, extra...)
 	for _, st := range order {
 		SortCards(by[st])
@@ -1413,7 +1412,7 @@ func StagingRefusers(wc *Card) []string {
 	takes, _ := StagingTakes(wc)
 	var out []string
 	for _, t := range takes {
-		if !contains(out, t.Member) {
+		if !slices.Contains(out, t.Member) {
 			out = append(out, t.Member)
 		}
 	}
@@ -1665,7 +1664,7 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 			// a judgment's subjects are cards on the table: a need a card names
 			// that is gone is not a primary to act on, and its empty row must not
 			// overwrite the stream the card names (rule 11, a gone need)
-			if pr := s.Work.Card(w); pr != nil && pr.Placed() && !contains(c.primaries, w) {
+			if pr := s.Work.Card(w); pr != nil && pr.Placed() && !slices.Contains(c.primaries, w) {
 				c.primaries = append(c.primaries, w)
 				c.stream = pr.Row
 			}
@@ -1958,7 +1957,7 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		j := byID[o.Note.What]
-		if j == nil || !contains(j.subjects, o.Subject()) || !overdue(j.note) || quietedByTier(s, j.note) {
+		if j == nil || !slices.Contains(j.subjects, o.Subject()) || !overdue(j.note) || quietedByTier(s, j.note) {
 			p.Closes = append(p.Closes, o)
 			continue
 		}
@@ -1979,7 +1978,7 @@ func tickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 		if len(fresh) == 0 {
 			continue
 		}
-		sort.Strings(fresh)
+		slices.Sort(fresh)
 		n := j.note
 		past := fmt.Sprintf("%s of running time", DeadlineJudgment)
 		if !n.Review.IsZero() {
@@ -2062,10 +2061,10 @@ func quietedByBlocker(s *Snapshot, n Note) bool {
 	if n.Type == NNeedBlocked {
 		return true
 	}
-	if contains(NeedHoldingKinds, n.Type) {
+	if slices.Contains(NeedHoldingKinds, n.Type) {
 		cards := cardsHeldBy(n)
 		for _, b := range Blockers(s) {
-			if contains(cards, b.ID) && len(b.Dependents) > 0 {
+			if slices.Contains(cards, b.ID) && len(b.Dependents) > 0 {
 				return true
 			}
 		}
@@ -2217,7 +2216,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	var held []Open
 	held = append(held, s.Open...)
 	for _, o := range s.Acked {
-		if !o.Note.Review.IsZero() && contains(types, o.Note.Type) {
+		if !o.Note.Review.IsZero() && slices.Contains(types, o.Note.Type) {
 			// A held condition's wait (WaitStep) is based at the judgment's
 			// write when wait recorded no base, so its STOPPED time still does
 			// not count; the comparison is the tree's one (stopped.go DueNow).
@@ -2235,7 +2234,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	open := map[string]bool{}
 	judged := map[string]Note{} // the open judgment of a condition, to update in place
 	for _, o := range held {
-		if contains(types, o.Note.Type) {
+		if slices.Contains(types, o.Note.Type) {
 			k := condKey(o.Note.Type, o.Subject(), o.Note.Card, o.Note.What)
 			open[k] = true
 			if o.Note.Kind == Judgment {
@@ -2303,7 +2302,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	}
 	closing := map[string]bool{}
 	for _, o := range held {
-		if !contains(types, o.Note.Type) || holds[condKey(o.Note.Type, o.Subject(), o.Note.Card, o.Note.What)] {
+		if !slices.Contains(types, o.Note.Type) || holds[condKey(o.Note.Type, o.Subject(), o.Note.Card, o.Note.What)] {
 			continue
 		}
 		if LateStands(s, o.Note) {

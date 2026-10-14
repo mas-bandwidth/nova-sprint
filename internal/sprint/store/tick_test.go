@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -764,8 +765,8 @@ func TestACardLateAtItsRedealDoesNotBlameTheNewMember(t *testing.T) {
 	n = len(h.openOf(sprint.NWorkLate))
 	require.Equal(t, 1, n, "late at its redeal, from its first deal: %d", n)
 	for _, o := range h.openOf(sprint.NWorkLate) {
-		require.False(t, contains(o.Note.Decisions, "fleet down m1"), "late at its redeal, decisions %v", o.Note.Decisions)
-		require.True(t, contains(o.Note.Decisions, "wait"), "late at its redeal, decisions %v", o.Note.Decisions)
+		require.False(t, slices.Contains(o.Note.Decisions, "fleet down m1"), "late at its redeal, decisions %v", o.Note.Decisions)
+		require.True(t, slices.Contains(o.Note.Decisions, "wait"), "late at its redeal, decisions %v", o.Note.Decisions)
 	}
 }
 

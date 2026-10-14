@@ -57,7 +57,7 @@ func ShapeOf(s *Snapshot) Shape {
 	// (tla/ReaderTiers.tla Clear, EveryUpMemberIsAReader)
 	sh.Readers = append(sh.Readers, MemberReaderRows(s)...)
 	for _, r := range append(append([]string(nil), s.Work.Rows()...), s.Merge.Rows()...) {
-		if !contains(sh.Streams, r) {
+		if !slices.Contains(sh.Streams, r) {
 			sh.Streams = append(sh.Streams, r)
 		}
 	}
@@ -123,7 +123,7 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 			continue
 		}
 		fields := map[string]string{"kind": "member", "status": sh.Status[m], "since": now}
-		if contains(sh.Held, m) {
+		if slices.Contains(sh.Held, m) {
 			fields["held"] = now
 			if by := sh.HeldBy[m]; by != "" {
 				fields[FieldHeldBy] = by

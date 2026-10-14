@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -242,7 +241,7 @@ func planMoves(duty string, s *sprint.Snapshot, p sprint.Plan) []Move {
 		m := noteMove(duty, n)
 		m.Kind = KindUpdate
 		m.Attrs = append(m.Attrs, "id="+n.ID) // the judgment it rewrites; the card it is about stays in Card
-		sort.Strings(m.Attrs)
+		slices.Sort(m.Attrs)
 		out = append(out, m)
 	}
 	for _, r := range p.Refused {
@@ -296,7 +295,7 @@ func fieldList(set map[string]string) []string {
 	for k, v := range set {
 		out = append(out, k+"="+v)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -373,7 +372,7 @@ func noteAttrs(n sprint.Note) []string {
 	add("to", n.To)
 	add("hint", n.Hint)
 	add("who", n.Who)
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

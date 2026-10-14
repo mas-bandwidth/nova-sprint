@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -93,11 +94,7 @@ func recordRan(prev string, n int, ran bool, fault string) string {
 		}
 	}
 	out[n] = status
-	sorted := make([]int, 0, len(out))
-	for k := range out {
-		sorted = append(sorted, k)
-	}
-	sort.Ints(sorted)
+	sorted := slices.Sorted(maps.Keys(out))
 	var lines []string
 	for _, k := range sorted {
 		lines = append(lines, fmt.Sprintf("attempt %d: %s", k, out[k]))

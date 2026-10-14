@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -186,7 +187,7 @@ func (s *Snapshot) withBudgets() *Snapshot {
 	n.budgets = nil
 	var limited []string
 	for _, r := range s.Routes {
-		if r.Provider != "" && ProviderConcurrency(s, r.Provider) > 0 && !contains(limited, r.Provider) {
+		if r.Provider != "" && ProviderConcurrency(s, r.Provider) > 0 && !slices.Contains(limited, r.Provider) {
 			limited = append(limited, r.Provider)
 		}
 	}
@@ -369,11 +370,8 @@ func Limits(s *Snapshot) []LimitRow {
 			}
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind == "rpm"
-		}
-		return out[i].Target < out[j].Target
+	slices.SortStableFunc(out, func(a, b LimitRow) int {
+		return cmp.Or(cmp.Compare(b.Kind, a.Kind), cmp.Compare(a.Target, b.Target))
 	})
 	return out
 }

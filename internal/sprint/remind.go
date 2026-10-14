@@ -1,9 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -67,7 +68,7 @@ func (g Goals) Find(name string) int {
 
 // Sort keeps the people in name order.
 func (g *Goals) Sort() {
-	sort.Slice(g.People, func(i, j int) bool { return g.People[i].Name < g.People[j].Name })
+	slices.SortFunc(g.People, func(a, b Goal) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 // ValidGoalName is nil for a name that is safe in a file name and a route:

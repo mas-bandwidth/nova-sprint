@@ -6,7 +6,6 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -260,25 +259,25 @@ func Inbox(r InboxReq) []Group {
 			}
 			for _, p := range shown {
 				member(i, p)
-				if len(g.Primaries) < MaxListed && !contains(g.Primaries, p) {
+				if len(g.Primaries) < MaxListed && !slices.Contains(g.Primaries, p) {
 					g.Primaries = append(g.Primaries, p)
 				}
 			}
 		}
-		if !contains(g.Notes, n.ID) {
+		if !slices.Contains(g.Notes, n.ID) {
 			g.Notes = append(g.Notes, n.ID)
 		}
 		for _, x := range n.Needs {
-			if !contains(g.Needs, x) {
+			if !slices.Contains(g.Needs, x) {
 				g.Needs = append(g.Needs, x)
 			}
 		}
 		for _, x := range n.Suspects {
-			if !contains(g.Suspects, x) {
+			if !slices.Contains(g.Suspects, x) {
 				g.Suspects = append(g.Suspects, x)
 			}
 		}
-		if overdue && !contains(g.Decisions, "act") {
+		if overdue && !slices.Contains(g.Decisions, "act") {
 			g.Decisions = append(append([]string{}, g.Decisions...), "act")
 		}
 	}
@@ -287,8 +286,8 @@ func Inbox(r InboxReq) []Group {
 		judg[i].Waited = r.running(judg[i].Oldest)
 		judg[i].Members = slices.Sorted(maps.Keys(members[i]))
 		judg[i].Size = len(judg[i].Members)
-		sort.Strings(judg[i].Primaries)
-		sort.Strings(judg[i].Notes)
+		slices.Sort(judg[i].Primaries)
+		slices.Sort(judg[i].Notes)
 		judg[i].Commands = commands(judg[i], first[i], r.Prefix, r.OnWork)
 		judg[i].Quiet = !loud[i]
 		for _, m := range judg[i].Members {
@@ -296,14 +295,8 @@ func Inbox(r InboxReq) []Group {
 		}
 	}
 	// marked first, then the heaviest (the cards most wait on, weight.go), then the oldest
-	sort.SliceStable(judg, func(i, j int) bool {
-		if judg[i].Marked != judg[j].Marked {
-			return judg[i].Marked
-		}
-		if judg[i].Behind != judg[j].Behind {
-			return judg[i].Behind > judg[j].Behind
-		}
-		return judg[i].Oldest.Before(judg[j].Oldest)
+	slices.SortStableFunc(judg, func(a, b Group) int {
+		return cmp.Or(cmp.Compare(boolInt(b.Marked), boolInt(a.Marked)), cmp.Compare(b.Behind, a.Behind), a.Oldest.Compare(b.Oldest))
 	})
 	out := judg
 	for _, st := range r.Streams {
@@ -323,7 +316,7 @@ func Inbox(r InboxReq) []Group {
 	}
 	// a judgment quieted by wait is listed after every one that is not, for its
 	// whole period, so it does not sit at the top of every read (section 8)
-	sort.SliceStable(out, func(i, j int) bool { return !out[i].Quiet && out[j].Quiet })
+	slices.SortStableFunc(out, func(a, b Group) int { return cmp.Compare(boolInt(a.Quiet), boolInt(b.Quiet)) })
 	var rest []Group
 	at = map[string]int{}
 	restMembers := map[int]map[string]bool{}
@@ -352,7 +345,7 @@ func Inbox(r InboxReq) []Group {
 		g.Count += c
 		for _, p := range n.Primaries {
 			restMembers[i][p] = true
-			if len(g.Primaries) < MaxListed && !contains(g.Primaries, p) {
+			if len(g.Primaries) < MaxListed && !slices.Contains(g.Primaries, p) {
 				g.Primaries = append(g.Primaries, p)
 			}
 		}
@@ -479,7 +472,7 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, look()...)
 		case d == "act" && first.StreamLevel:
 			add(d, actLine())
-		case d == "act" && contains(g.Decisions, "ack"):
+		case d == "act" && slices.Contains(g.Decisions, "ack"):
 			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText, actLine())
 		case d == "act":
 			add(d, actLine())

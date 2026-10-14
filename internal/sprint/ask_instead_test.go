@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func askedWithRoute(t *testing.T) (w *world, held []string, free string) {
 	}
 	require.Len(t, held, 2)
 	for _, rd := range w.s.Readers.Rows() {
-		if !contains(held, rd) {
+		if !slices.Contains(held, rd) {
 			free = rd
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"maps"
 	"math/big"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -354,12 +353,8 @@ func CardCostOf(pr *Card) CardCostView {
 			v.Consumers = append(v.Consumers, parseConsumer(key, line))
 		}
 	}
-	sort.Slice(v.Consumers, func(i, j int) bool {
-		a, b := v.Consumers[i], v.Consumers[j]
-		if a.At != b.At {
-			return a.At < b.At
-		}
-		return a.Key < b.Key
+	slices.SortFunc(v.Consumers, func(a, b Consumer) int {
+		return cmp.Or(cmp.Compare(a.At, b.At), cmp.Compare(a.Key, b.Key))
 	})
 	v.Total = cardcost.ParseTotal(pr.F(FieldCostTotal))
 	v.Cut = pr.Int(FieldCostCut)

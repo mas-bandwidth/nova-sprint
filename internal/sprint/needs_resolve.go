@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -47,7 +48,7 @@ func needHolder(s *Snapshot, id string) *Note {
 	var held *Note
 	for i := range s.Open {
 		n := s.Open[i].Note
-		if !contains(NeedHoldingKinds, n.Type) || !contains(cardsHeldBy(n), id) {
+		if !slices.Contains(NeedHoldingKinds, n.Type) || !slices.Contains(cardsHeldBy(n), id) {
 			continue
 		}
 		if held == nil || n.At.Before(held.At) {
@@ -102,7 +103,7 @@ func UnresolvedNeeds(s *Snapshot, id string, needs []string, adding map[string]b
 	var out []UnresolvedNeed
 	seen := map[string]bool{}
 	for _, n := range needs {
-		if n == "" || seen[n] || adding[n] || contains(waived, n) {
+		if n == "" || seen[n] || adding[n] || slices.Contains(waived, n) {
 			continue
 		}
 		seen[n] = true
@@ -133,7 +134,7 @@ func UnresolvedNeeds(s *Snapshot, id string, needs []string, adding map[string]b
 	if self.Placed() && len(out) == 0 {
 		var live []string
 		for _, n := range needs {
-			if n != "" && !contains(waived, n) && !adding[n] {
+			if n != "" && !slices.Contains(waived, n) && !adding[n] {
 				live = append(live, n)
 			}
 		}
@@ -168,11 +169,7 @@ func TableUnresolved(s *Snapshot) map[string][]UnresolvedNeed {
 
 // UnresolvedIDs is the cards of TableUnresolved in id order.
 func UnresolvedIDs(m map[string][]UnresolvedNeed) []string {
-	ids := make([]string, 0, len(m))
-	for id := range m {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(m))
 	return ids
 }
 

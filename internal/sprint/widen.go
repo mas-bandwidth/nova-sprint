@@ -93,7 +93,7 @@ func WidenAdjacent(paths []string, f, text string, hold bool) string {
 	switch {
 	case strings.HasSuffix(f, "_test.go") && pkg(dir):
 		return AdjTests
-	case strings.Contains(f, "/testdata/") && pkg(strings.SplitN(f, "/testdata/", 2)[0]):
+	case strings.Contains(f, "/testdata/") && pkg(func() string { before, _, _ := strings.Cut(f, "/testdata/"); return before }()):
 		return AdjTestdata
 	case strings.HasPrefix(f, ledgerDir):
 		return AdjLedger

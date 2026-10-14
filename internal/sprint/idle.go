@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -277,14 +277,8 @@ func idleGroups(s *Snapshot) []*idleGroup {
 		}
 	}
 	list := slices.Collect(maps.Values(groups))
-	sort.SliceStable(list, func(i, j int) bool {
-		if list[i].behind != list[j].behind {
-			return list[i].behind > list[j].behind
-		}
-		if rank(list[i].kind) != rank(list[j].kind) {
-			return rank(list[i].kind) < rank(list[j].kind)
-		}
-		return list[i].say < list[j].say
+	slices.SortStableFunc(list, func(a, b *idleGroup) int {
+		return cmp.Or(cmp.Compare(b.behind, a.behind), cmp.Compare(rank(a.kind), rank(b.kind)), cmp.Compare(a.say, b.say))
 	})
 	return list
 }

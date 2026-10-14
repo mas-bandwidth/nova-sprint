@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 )
 
 // The cut sentinel releases itself (docs/roadmap.sexp, auto-sentinels-released-by-tick;
@@ -84,7 +85,7 @@ func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Not
 			}
 		}
 		for _, u := range after {
-			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != c.Row && contains(Split(pc.F("needs")), c.ID) {
+			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != c.Row && slices.Contains(Split(pc.F("needs")), c.ID) {
 				ready++ // named it from another stream
 			}
 		}

@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -134,11 +134,8 @@ func LiveStops(s *Snapshot, r TickReq) []Stop {
 	out = append(out, friendStallStops(s)...)
 	out = append(out, restStops(s)...)
 	out = append(out, streamStops(s)...)
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Subject < out[j].Subject
+	slices.SortStableFunc(out, func(a, b Stop) int {
+		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Subject, b.Subject))
 	})
 	return out
 }
@@ -328,7 +325,7 @@ func needing(s *Snapshot, id string) []string {
 			out = append(out, c.ID)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -594,7 +591,7 @@ func stopsDigest(p *Plan, s *Snapshot, r TickReq) {
 	for _, k := range slices.Sorted(maps.Keys(byKind)) {
 		counts = append(counts, fmt.Sprintf("%d %s", byKind[k], k))
 	}
-	sort.SliceStable(stops, func(i, j int) bool { return stops[i].At.Before(stops[j].At) })
+	slices.SortStableFunc(stops, func(a, b Note) int { return a.At.Compare(b.At) })
 	var oldest []string
 	for _, n := range stops[:min(len(stops), StopsDigestOldest)] {
 		undo := "see its judgment"

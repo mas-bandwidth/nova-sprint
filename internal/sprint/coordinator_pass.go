@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -242,7 +242,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 		if !ok || d <= window {
 			continue
 		}
-		sort.Strings(ids)
+		slices.Sort(ids)
 		finish := "no finish yet"
 		if !last.IsZero() {
 			lastAge, _ := r.running(s.Now, stamp(last))
@@ -315,7 +315,7 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 	var parts []string
 	for _, typ := range slices.Sorted(maps.Keys(byType)) {
 		refs := byType[typ]
-		sort.Strings(refs)
+		slices.Sort(refs)
 		parts = append(parts, fmt.Sprintf("%d %s (%s)", len(refs), typ, Preview(refs, ", ")))
 	}
 	// escalating (stops.go, BehindLevel): the level opens the text and is part of the
@@ -495,7 +495,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 		}
 	}
 	if s.Fleet == nil {
-		sort.Slice(out, func(i, j int) bool { return out[i].phrase < out[j].phrase })
+		slices.SortFunc(out, func(a, b idleWait) int { return cmp.Compare(a.phrase, b.phrase) })
 		return out
 	}
 	her := FriendRow(f.Name)
@@ -523,7 +523,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].phrase < out[j].phrase })
+	slices.SortFunc(out, func(a, b idleWait) int { return cmp.Compare(a.phrase, b.phrase) })
 	return out
 }
 
@@ -563,7 +563,7 @@ func emptyRowDecisions(name string, cards []idleWait) []string {
 			holders = append(holders, c.holder)
 		}
 	}
-	sort.Strings(holders)
+	slices.Sort(holders)
 	for _, h := range holders {
 		ds = append(ds, "friend take "+h+" --all-unstarted")
 	}
@@ -625,7 +625,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].primaries[0] < out[j].primaries[0] })
+	slices.SortFunc(out, func(a, b cond) int { return cmp.Compare(a.primaries[0], b.primaries[0]) })
 	return out
 }
 

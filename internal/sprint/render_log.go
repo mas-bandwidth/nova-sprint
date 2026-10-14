@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -290,7 +291,7 @@ func SplitCost(l Line) (Line, []string) {
 	if len(words) == 0 {
 		return l, nil
 	}
-	sort.Strings(words)
+	slices.Sort(words)
 	out := l
 	out.Set = rest
 	return out, words
@@ -317,7 +318,7 @@ func SplitConsumers(l Line) (Line, []string) {
 	if len(words) == 0 {
 		return l, nil
 	}
-	sort.Strings(words)
+	slices.Sort(words)
 	out := l
 	out.Set = rest
 	return out, words
@@ -329,7 +330,7 @@ func setWords(set map[string]string) string {
 	for k, v := range set {
 		out = append(out, k+"="+v)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return strings.Join(out, ", ")
 }
 
@@ -428,7 +429,7 @@ func Timeline(lines []Line, id string) []Line {
 			j++
 		}
 		run := out[i:j]
-		sort.SliceStable(run, func(x, y int) bool { return rank(run[x]) < rank(run[y]) })
+		slices.SortStableFunc(run, func(a, b Line) int { return cmp.Compare(rank(a), rank(b)) })
 		i = j
 	}
 	return out

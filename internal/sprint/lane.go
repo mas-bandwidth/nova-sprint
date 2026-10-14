@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -260,11 +261,7 @@ type LaneRow struct {
 // Rows is the lanes of kind at now (Expire applied), one row a machine, by machine.
 func (ls Lanes) Rows(kind string, width int, now time.Time) []LaneRow {
 	cur := ls.Expire(width, now)
-	ms := make([]string, 0, len(cur))
-	for m := range cur {
-		ms = append(ms, m)
-	}
-	slices.Sort(ms)
+	ms := slices.Sorted(maps.Keys(cur))
 	out := make([]LaneRow, 0, len(ms))
 	for _, m := range ms {
 		l := cur[m]

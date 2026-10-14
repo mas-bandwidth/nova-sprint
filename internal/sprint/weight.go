@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -57,7 +58,7 @@ func weightsOver(cards []*Card) map[string]int {
 	for _, c := range cards {
 		waived := Split(c.F("waived"))
 		for _, n := range Split(c.F("needs")) {
-			if open[n] && n != c.ID && !contains(waived, n) { // a waived need does not hold the card (unmet)
+			if open[n] && n != c.ID && !slices.Contains(waived, n) { // a waived need does not hold the card (unmet)
 				needers[n] = append(needers[n], c.ID)
 			}
 		}
@@ -84,7 +85,7 @@ func weightsOver(cards []*Card) map[string]int {
 // given (stream turns, work order).
 func byWeight(cards []*Card, w map[string]int) []*Card {
 	out := append([]*Card(nil), cards...)
-	sort.SliceStable(out, func(i, j int) bool { return w[out[i].ID] > w[out[j].ID] })
+	slices.SortStableFunc(out, func(a, b *Card) int { return cmp.Compare(w[b.ID], w[a.ID]) })
 	return out
 }
 

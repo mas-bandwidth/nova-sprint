@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -67,7 +68,7 @@ func AtLaneBroken(s *Snapshot, c *Card, n int) (laneBroken, bool) {
 		if !ok || r.ran {
 			return laneBroken{}, false
 		}
-		if r.fault != "" && !containsStr(faults, r.fault) {
+		if r.fault != "" && !slices.Contains(faults, r.fault) {
 			faults = append(faults, r.fault)
 		}
 	}
@@ -94,14 +95,4 @@ func AtLaneBroken(s *Snapshot, c *Card, n int) (laneBroken, bool) {
 		ranLines = append(ranLines, fmt.Sprintf("attempt %d: %s", i, word))
 	}
 	return laneBroken{ID: c.ID, Since: n, Lane: lane, Faults: faults, RanAttempts: strings.Join(ranLines, "; ")}, true
-}
-
-// containsStr is whether ss contains s.
-func containsStr(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

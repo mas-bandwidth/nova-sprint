@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -93,7 +93,7 @@ func heldPastDeadline(s *Snapshot, r TickReq) []heldBy {
 		}
 		out = append(out, heldBy{id: n.ID, typ: n.Type, cards: cards, age: age, note: n})
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].age > out[j].age })
+	slices.SortStableFunc(out, func(a, b heldBy) int { return cmp.Compare(b.age, a.age) })
 	return out
 }
 

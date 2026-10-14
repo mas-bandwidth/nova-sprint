@@ -157,7 +157,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				want = uniquifyNeeds(b.Needs)
 			}
 			kept[b.ID] = want
-			if !sameNeeds(Split(c.F("needs")), want) {
+			if !slices.Equal(Split(c.F("needs")), want) {
 				proposed[b.ID] = want
 			}
 			continue
@@ -167,7 +167,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			want, keptSaid[b.ID] = briefNeedsKept(s, Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
 		}
 		kept[b.ID] = want
-		if !sameNeeds(Split(c.F("needs")), want) {
+		if !slices.Equal(Split(c.F("needs")), want) {
 			proposed[b.ID] = want
 		}
 	}
@@ -319,7 +319,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		if r.KeepHead && c.Col == Review {
 			unmet := ""
 			for _, need := range want {
-				if !contains(cur, need) && s.StateOf(need) != Landed {
+				if !slices.Contains(cur, need) && s.StateOf(need) != Landed {
 					unmet = need
 					break
 				}
@@ -329,13 +329,13 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				continue
 			}
 		}
-		if !sameNeeds(cur, want) {
+		if !slices.Equal(cur, want) {
 			if why := needsCycleWith(s, c.ID, proposed); why != "" {
 				p.refuse(c.ID, why)
 				continue
 			}
 		}
-		if !sameNeeds(cur, want) {
+		if !slices.Equal(cur, want) {
 			if len(want) > 0 {
 				set["needs"] = strings.Join(want, ",")
 			} else {
@@ -356,7 +356,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			if c.Col == Working {
 				var after []string
 				for _, n := range want {
-					if !contains(cur, n) && s.StateOf(n) != Landed {
+					if !slices.Contains(cur, n) && s.StateOf(n) != Landed {
 						after = append(after, n)
 					}
 				}
@@ -572,7 +572,7 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 		}
 	}
 	cur := Split(c.F("needs"))
-	if !sameNeeds(cur, want) {
+	if !slices.Equal(cur, want) {
 		if cycleWhy := needsCycleWith(s, c.ID, proposed); cycleWhy != "" {
 			p.refuse(c.ID, cycleWhy)
 			return p
@@ -606,7 +606,7 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 			if prop, ok := proposed[cc.ID]; ok {
 				ccNeeds = prop
 			}
-			if IsSentinel(cc) || cc.Col == Landed || !contains(without(ccNeeds, Split(cc.F("waived"))), c.ID) {
+			if IsSentinel(cc) || cc.Col == Landed || !slices.Contains(without(ccNeeds, Split(cc.F("waived"))), c.ID) {
 				p.refuse(c.ID, fmt.Sprintf("CONSUMERS names %s, which does not need %s; nothing was changed", cid, c.ID))
 				return p
 			}
@@ -621,7 +621,7 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 			if prop, ok := proposed[other.ID]; ok {
 				otherNeeds = prop
 			}
-			if contains(without(otherNeeds, Split(other.F("waived"))), c.ID) && !contains(consumers, other.ID) {
+			if slices.Contains(without(otherNeeds, Split(other.F("waived"))), c.ID) && !slices.Contains(consumers, other.ID) {
 				missing = append(missing, other.ID)
 			}
 		}
@@ -635,7 +635,7 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 	var unset []string
 	u := Unit{Key: c.ID, Stream: c.Row}
 	moved := fmt.Sprintf("sentinel %s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)
-	if !sameNeeds(cur, want) {
+	if !slices.Equal(cur, want) {
 		old := c.F("needs")
 		now := strings.Join(want, ",")
 		if len(want) > 0 {
@@ -664,7 +664,7 @@ func briefSentinel(s *Snapshot, p Plan, c *Card, b BriefCard, r BriefReq, want [
 			if o.Subject() != c.ID || (o.Note.Type != NBlocked && o.Note.Type != NMissingNeed) {
 				continue
 			}
-			if len(o.Note.Needs) > 0 && slices.ContainsFunc(o.Note.Needs, func(n string) bool { return contains(want, n) }) {
+			if len(o.Note.Needs) > 0 && slices.ContainsFunc(o.Note.Needs, func(n string) bool { return slices.Contains(want, n) }) {
 				continue
 			}
 			u.Closes = append(u.Closes, o)
@@ -872,13 +872,13 @@ func briefNeedsKept(s *Snapshot, cur, want []string, relinked string) (needs, no
 	named := map[string]bool{} // the card's needs the text accounts for
 	for _, n := range want {
 		switch {
-		case nw != "" && contains(olds, n):
+		case nw != "" && slices.Contains(olds, n):
 			named[nw] = true
-			if !contains(needs, nw) {
+			if !slices.Contains(needs, nw) {
 				needs = append(needs, nw)
 			}
 			notes = append(notes, fmt.Sprintf("needs kept: %s (relinked from %s %s)", nw, n, orDash(stamp)))
-		case contains(needs, n):
+		case slices.Contains(needs, n):
 			named[n] = true
 		case keptOffTable(s, n):
 			notes = append(notes, fmt.Sprintf("needs kept: %s not added (%s, and the card's needs no longer name it)", n, placeWord(s.Work.Card(n))))
@@ -911,20 +911,6 @@ func tierBelowFrontierForTLA(id, tier, brief string) string {
 		return ""
 	}
 	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: --tier " + tier + " is below heavy and refused (the lint's tla-is-heavy-or-above rule); nothing was changed"
-}
-
-// sameNeeds says two need lists are the same, in order: the ordinary brief path
-// writes a card's needs only when they differ from the brief's (steps_edit.go).
-func sameNeeds(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // linesNotIn is the lines of a, trimmed, that b does not hold, each counted as often as b
@@ -1294,7 +1280,7 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 		var waited []string
 		cur := Split(c.F("needs"))
 		for _, n := range needs {
-			if !contains(cur, n) && s.StateOf(n) != Landed {
+			if !slices.Contains(cur, n) && s.StateOf(n) != Landed {
 				waited = append(waited, n)
 			}
 		}
@@ -1502,7 +1488,7 @@ func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string
 		}
 		var out []string
 		for _, n := range needs {
-			if !contains(waived, n) {
+			if !slices.Contains(waived, n) {
 				out = append(out, n)
 			}
 		}

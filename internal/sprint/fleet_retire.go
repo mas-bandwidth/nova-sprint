@@ -1,8 +1,8 @@
 package sprint
 
 import (
+	"maps"
 	"slices"
-	"sort"
 )
 
 // The tick's automatic retirement of a fleet row whose machine record is GONE
@@ -44,7 +44,7 @@ func AbsentMembers(s *Snapshot, machines []string) []string {
 			out = append(out, m)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -74,11 +74,7 @@ func retireAbsentPlan(s *Snapshot, machines []string, who string, rr *round, mov
 		}
 	}
 	q, widths := memberLoads(s, stay), memberWidths(s, stay)
-	names := make([]string, 0, len(absent))
-	for m := range absent {
-		names = append(names, m)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(absent))
 	for _, m := range names {
 		hold := FleetReq{Op: "hold", Member: m, Who: who, Why: "no machine row in the inventory", HeldBy: HeldBySync, Remove: true}
 		hp := downPlan(s, hold, stay, rr, moves, q, widths)

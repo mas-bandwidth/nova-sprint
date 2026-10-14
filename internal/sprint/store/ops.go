@@ -1,9 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -156,7 +157,7 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 				rep.Violations = append(rep.Violations, sprint.Violation{Rule: 1, Detail: err.Error()})
 			}
 		}
-		sort.SliceStable(rep.Violations, func(i, j int) bool { return rep.Violations[i].Rule < rep.Violations[j].Rule })
+		slices.SortStableFunc(rep.Violations, func(a, b sprint.Violation) int { return cmp.Compare(a.Rule, b.Rule) })
 		return rep, s, nil
 	}
 	return rep, nil, fmt.Errorf("the sprint kept changing through %d reads; run check again", rep.Reads)

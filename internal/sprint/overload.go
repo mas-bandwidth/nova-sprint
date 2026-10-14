@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -94,11 +95,8 @@ func MemberTimeouts(s *Snapshot, member string) []Timeout {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].At.Equal(out[j].At) {
-			return out[i].At.Before(out[j].At)
-		}
-		return out[i].Card < out[j].Card
+	slices.SortFunc(out, func(a, b Timeout) int {
+		return cmp.Or(a.At.Compare(b.At), cmp.Compare(a.Card, b.Card))
 	})
 	return out
 }

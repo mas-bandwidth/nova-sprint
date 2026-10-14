@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"time"
 )
 
@@ -79,7 +80,7 @@ func RefusedBeats(recs []RefusedVerb, now time.Time) map[string][]RefusedVerb {
 		out[r.Member] = append(out[r.Member], r)
 	}
 	for m := range out {
-		sort.SliceStable(out[m], func(i, j int) bool { return out[m][i].At.After(out[m][j].At) })
+		slices.SortStableFunc(out[m], func(a, b RefusedVerb) int { return b.At.Compare(a.At) })
 	}
 	return out
 }
@@ -97,7 +98,7 @@ func RefusedVerbGroups(recs []RefusedVerb, now time.Time) map[string]map[string]
 	}
 	for m := range out {
 		for v := range out[m] {
-			sort.SliceStable(out[m][v], func(i, j int) bool { return out[m][v][i].At.After(out[m][v][j].At) })
+			slices.SortStableFunc(out[m][v], func(a, b RefusedVerb) int { return b.At.Compare(a.At) })
 		}
 	}
 	return out
@@ -137,7 +138,7 @@ func RefusedBeatLines(recs []RefusedVerb, now time.Time) []string {
 			members = append(members, m)
 		}
 	}
-	sort.Strings(members)
+	slices.Sort(members)
 	var out []string
 	for _, m := range members {
 		out = append(out, MemberBeatFault(m, beats[m]))
@@ -150,18 +151,10 @@ func RefusedBeatLines(recs []RefusedVerb, now time.Time) []string {
 // lines are sorted by member then verb.
 func RefusedVerbLines(recs []RefusedVerb, now time.Time) []string {
 	groups := RefusedVerbGroups(recs, now)
-	members := make([]string, 0, len(groups))
-	for m := range groups {
-		members = append(members, m)
-	}
-	sort.Strings(members)
+	members := slices.Sorted(maps.Keys(groups))
 	var out []string
 	for _, m := range members {
-		verbs := make([]string, 0, len(groups[m]))
-		for v := range groups[m] {
-			verbs = append(verbs, v)
-		}
-		sort.Strings(verbs)
+		verbs := slices.Sorted(maps.Keys(groups[m]))
 		for _, v := range verbs {
 			if len(groups[m][v]) >= RefusedVerbBound {
 				out = append(out, RefusedVerbFault(m, v, groups[m][v]))

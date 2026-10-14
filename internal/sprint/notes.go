@@ -1,7 +1,7 @@
 package sprint
 
 import (
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -344,20 +344,20 @@ func MergeNotes(notes []Note) []Note {
 			out[i].Count += n.Count
 		}
 		for _, p := range n.Primaries {
-			if !contains(out[i].Primaries, p) {
+			if !slices.Contains(out[i].Primaries, p) {
 				out[i].Primaries = append(out[i].Primaries, p)
 				out[i].Count++
 			}
 		}
 		out[i].Before = max(out[i].Before, n.Before)
 		for _, x := range n.Needs {
-			if !contains(out[i].Needs, x) {
+			if !slices.Contains(out[i].Needs, x) {
 				out[i].Needs = append(out[i].Needs, x)
 			}
 		}
 	}
 	for i := range out {
-		sort.Strings(out[i].Primaries)
+		slices.Sort(out[i].Primaries)
 	}
 	return out
 }

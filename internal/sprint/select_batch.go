@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -131,15 +131,8 @@ func Selected(s *Snapshot, q Selector) (ids []string, refused []Refusal) {
 			cards = append(cards, c)
 		}
 	}
-	sort.SliceStable(cards, func(i, j int) bool {
-		a, b := cards[i], cards[j]
-		if a.Row != b.Row {
-			return a.Row < b.Row
-		}
-		if a.Score != b.Score {
-			return a.Score < b.Score
-		}
-		return a.ID < b.ID
+	slices.SortStableFunc(cards, func(a, b *Card) int {
+		return cmp.Or(cmp.Compare(a.Row, b.Row), cmp.Compare(a.Score, b.Score), cmp.Compare(a.ID, b.ID))
 	})
 	for _, c := range cards {
 		ids = append(ids, c.ID)

@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -84,11 +85,7 @@ func Blockers(s *Snapshot) []Blocker {
 		return nil
 	}
 
-	blockerIDs := make([]string, 0, len(blockerSet))
-	for id := range blockerSet {
-		blockerIDs = append(blockerIDs, id)
-	}
-	slices.Sort(blockerIDs)
+	blockerIDs := slices.Sorted(maps.Keys(blockerSet))
 
 	var blockers []Blocker
 	for _, bID := range blockerIDs {
@@ -120,7 +117,7 @@ func Blockers(s *Snapshot) []Blocker {
 				}
 				needs := Split(c.F("needs"))
 				waived := Split(c.F("waived"))
-				if contains(needs, curr) && !contains(waived, curr) {
+				if slices.Contains(needs, curr) && !slices.Contains(waived, curr) {
 					visited[c.ID] = true
 					queue = append(queue, c.ID)
 					if !IsSentinel(c) {

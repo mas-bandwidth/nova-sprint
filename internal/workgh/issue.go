@@ -3,9 +3,8 @@ package workgh
 import (
 	"context"
 	"fmt"
-	"sort"
-
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
+	"slices"
 )
 
 type login struct {
@@ -123,11 +122,11 @@ func (f *Fetcher) complete(ctx context.Context, owner, repo string, r rawIssue) 
 	for _, l := range r.Labels.Nodes {
 		is.Labels = append(is.Labels, l.Name)
 	}
-	sort.Strings(is.Labels)
+	slices.Sort(is.Labels)
 	for _, a := range r.Assignees.Nodes {
 		is.Assignees = append(is.Assignees, a.Login)
 	}
-	sort.Strings(is.Assignees)
+	slices.Sort(is.Assignees)
 	if r.Milestone != nil {
 		is.Milestone = &workfile.Milestone{Number: r.Milestone.Number, Title: r.Milestone.Title}
 	}

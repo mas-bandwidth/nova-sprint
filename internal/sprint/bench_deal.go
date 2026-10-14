@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -69,7 +70,7 @@ func BenchKnown(s *Snapshot, bench []string) []string {
 	members := s.Members()
 	var out []string
 	for _, m := range bench {
-		if !contains(members, m) {
+		if !slices.Contains(members, m) {
 			out = append(out, m)
 		}
 	}
@@ -99,7 +100,7 @@ func onlyBench(up, bench []string) []string {
 	}
 	var out []string
 	for _, m := range up {
-		if contains(bench, m) {
+		if slices.Contains(bench, m) {
 			out = append(out, m)
 		}
 	}

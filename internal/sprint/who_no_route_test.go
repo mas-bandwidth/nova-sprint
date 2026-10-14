@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -27,7 +28,7 @@ func TestAReadyCardGoesToAFriendWhenNoMachineRouteServesItsTier(t *testing.T) {
 	}
 	heldForTier := func(w *world) bool {
 		for _, n := range w.notesOf(NNoRoute) {
-			if n.Stream == TierSubject(cardhdr.RoutePro) && contains(n.Primaries, "s1-1") {
+			if n.Stream == TierSubject(cardhdr.RoutePro) && slices.Contains(n.Primaries, "s1-1") {
 				return true
 			}
 		}

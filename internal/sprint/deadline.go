@@ -1,9 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -117,7 +118,7 @@ func (m *medianMemo) of(member string, cell []*Card) (float64, int) {
 // cellMedianWall is MemberMedianWall measured over the member's done-ok cell.
 func cellMedianWall(cell []*Card) (median float64, n int) {
 	cards := append([]*Card(nil), cell...)
-	sort.SliceStable(cards, func(i, j int) bool { return cards[i].F("finished") > cards[j].F("finished") })
+	slices.SortStableFunc(cards, func(a, b *Card) int { return cmp.Compare(b.F("finished"), a.F("finished")) })
 	var walls []float64
 	for _, c := range cards {
 		if w, ok := wallSeconds(cardcost.ParseUsage(c.F(FieldUsage)).Wall); ok {

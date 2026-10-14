@@ -1,9 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -134,7 +135,7 @@ func SettingsWorking(s *Snapshot, b WorkingBars) []SettingFinding {
 			out = append(out, f)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Setting < out[j].Setting })
+	slices.SortStableFunc(out, func(a, b SettingFinding) int { return cmp.Compare(a.Setting, b.Setting) })
 	return out
 }
 
@@ -178,7 +179,7 @@ func liveCards(s *Snapshot) []*Card {
 		}
 		out = append(out, c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	slices.SortFunc(out, func(a, b *Card) int { return cmp.Compare(a.ID, b.ID) })
 	return out
 }
 
@@ -256,14 +257,7 @@ func readNeeds(s *Snapshot) map[string]int {
 	return out
 }
 
-func sortedKeys(m map[string]int) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.Sort(ks)
-	return ks
-}
+func sortedKeys(m map[string]int) []string { return slices.Sorted(maps.Keys(m)) }
 
 // readersWorking (live state, a WARN): a read tier a card of the epoch needs that no reader up serves.
 func readersWorking(s *Snapshot, _ WorkingBars) []SettingFinding {
@@ -417,11 +411,7 @@ func SetByWrite(s *Snapshot, who string, writes []PropWrite) []PropWrite {
 	if !changed {
 		return nil
 	}
-	names := make([]string, 0, len(rec))
-	for n := range rec {
-		names = append(names, n)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(rec))
 	parts := make([]string, len(names))
 	for i, n := range names {
 		parts[i] = n + "=" + rec[n]

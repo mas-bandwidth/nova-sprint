@@ -252,7 +252,7 @@ func reachedNote(s *Snapshot, c *Card, landing map[string]bool, extra int, who s
 		behind += len(Behind(s, c))
 	}
 	for _, w := range s.Work.Column(Waiting) {
-		if w.Row != c.Row && contains(Split(w.F("needs")), c.ID) {
+		if w.Row != c.Row && slices.Contains(Split(w.F("needs")), c.ID) {
 			behind++ // it names the stop from another stream
 		}
 	}
@@ -392,7 +392,7 @@ func Release(s *Snapshot, r ReleaseReq) Plan {
 			}
 		}
 		for _, u := range after {
-			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != c.Row && contains(Split(pc.F("needs")), c.ID) {
+			if pc := s.Work.Card(u.Key); !IsSentinel(pc) && pc.Row != c.Row && slices.Contains(Split(pc.F("needs")), c.ID) {
 				ready++ // named it from another stream
 			}
 		}
@@ -556,7 +556,7 @@ func SentinelSet(s *Snapshot, r SentinelSetReq) Plan {
 	waived := Split(c.F("waived"))
 	var live []string
 	for _, n := range r.Needs {
-		if !contains(waived, n) {
+		if !slices.Contains(waived, n) {
 			live = append(live, n)
 		}
 	}
@@ -588,7 +588,7 @@ func SentinelSet(s *Snapshot, r SentinelSetReq) Plan {
 		if o.Subject() != c.ID || (o.Note.Type != NBlocked && o.Note.Type != NMissingNeed) {
 			continue
 		}
-		if len(o.Note.Needs) > 0 && slices.ContainsFunc(o.Note.Needs, func(n string) bool { return contains(r.Needs, n) }) {
+		if len(o.Note.Needs) > 0 && slices.ContainsFunc(o.Note.Needs, func(n string) bool { return slices.Contains(r.Needs, n) }) {
 			continue // it still names a need the sentinel keeps
 		}
 		u.Closes = append(u.Closes, o)

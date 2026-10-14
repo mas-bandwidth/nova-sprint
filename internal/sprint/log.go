@@ -3,7 +3,7 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -81,7 +81,7 @@ func (l Line) Names() []string {
 	}
 	out := append([]string(nil), l.Note.Subjects()...)
 	for _, c := range []string{l.Note.Card, l.Note.Other} {
-		if c != "" && !contains(out, c) {
+		if c != "" && !slices.Contains(out, c) {
 			out = append(out, c)
 		}
 	}
@@ -229,7 +229,7 @@ func PlaceViolations(s *Snapshot, placed map[string]Place) []Violation {
 		}
 		gone = append(gone, fmt.Sprintf("%s is not on the table and the log last moved it to %s:%s", k, p.Row, p.Col))
 	}
-	sort.Strings(gone)
+	slices.Sort(gone)
 	for _, g := range gone {
 		out = append(out, Violation{13, g})
 	}

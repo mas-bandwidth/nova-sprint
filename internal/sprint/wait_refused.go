@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -92,12 +93,7 @@ var WaitRefusedWhenItNamesACard = map[string]string{
 
 // WaitRefusedKinds is WaitRefused's kinds in name order.
 func WaitRefusedKinds() []string {
-	var out []string
-	for k := range WaitRefused {
-		out = append(out, k)
-	}
-	slices.Sort(out)
-	return out
+	return slices.Sorted(maps.Keys(WaitRefused))
 }
 
 // WaitRefusal is why wait is refused on the judgment n: it holds a card from progressing,

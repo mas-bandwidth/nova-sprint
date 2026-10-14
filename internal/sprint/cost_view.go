@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math/big"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -462,11 +461,7 @@ func tierCostCents(byTier map[string]*big.Rat) map[string]string {
 		whole    *big.Int
 		fraction *big.Rat
 	}
-	tiers := make([]string, 0, len(byTier))
-	for tier := range byTier {
-		tiers = append(tiers, tier)
-	}
-	sort.Strings(tiers)
+	tiers := slices.Sorted(maps.Keys(byTier))
 	parts := make([]allocation, 0, len(tiers))
 	remainders := new(big.Rat)
 	for _, tier := range tiers {
@@ -480,7 +475,7 @@ func tierCostCents(byTier map[string]*big.Rat) map[string]string {
 	if !remainders.IsInt() {
 		left++
 	}
-	sort.SliceStable(parts, func(i, j int) bool { return parts[i].fraction.Cmp(parts[j].fraction) > 0 })
+	slices.SortStableFunc(parts, func(a, b allocation) int { return b.fraction.Cmp(a.fraction) })
 	out := make(map[string]string, len(parts))
 	for i, part := range parts {
 		if int64(i) < left {
@@ -601,11 +596,7 @@ func ReadSpendLine(streams map[string]TierCosts) string {
 	if len(days) == 0 {
 		return ""
 	}
-	routes := make([]string, 0, len(days))
-	for r := range days {
-		routes = append(routes, r)
-	}
-	sort.Strings(routes)
+	routes := slices.Sorted(maps.Keys(days))
 	parts := make([]string, 0, len(routes))
 	for _, r := range routes {
 		d := days[r]

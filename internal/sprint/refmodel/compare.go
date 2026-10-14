@@ -1,8 +1,9 @@
 package refmodel
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -152,16 +153,9 @@ func show(v any) string {
 }
 
 func union(a, b []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, x := range append(append([]string(nil), a...), b...) {
-		if !seen[x] {
-			seen[x] = true
-			out = append(out, x)
-		}
-	}
-	sort.Strings(out)
-	return out
+	out := slices.Concat(a, b)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func unionJ(a, b map[Judgment]bool) []Judgment {
@@ -176,6 +170,6 @@ func unionJ(a, b map[Judgment]bool) []Judgment {
 			out = append(out, j)
 		}
 	}
-	sort.Slice(out, func(i, k int) bool { return out[i].String() < out[k].String() })
+	slices.SortFunc(out, func(x, y Judgment) int { return cmp.Compare(x.String(), y.String()) })
 	return out
 }

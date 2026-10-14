@@ -1,10 +1,11 @@
 package sprint
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -121,15 +122,8 @@ func ConsumersOf(pr *Card) ConsumersView {
 			v.Consumers = append(v.Consumers, rec)
 		}
 	}
-	sort.Slice(v.Consumers, func(i, j int) bool {
-		a, b := v.Consumers[i], v.Consumers[j]
-		if a.Epoch != b.Epoch {
-			return a.Epoch < b.Epoch
-		}
-		if a.Taken != b.Taken {
-			return a.Taken < b.Taken
-		}
-		return a.Key < b.Key
+	slices.SortFunc(v.Consumers, func(a, b ConsumerRec) int {
+		return cmp.Or(cmp.Compare(a.Epoch, b.Epoch), cmp.Compare(a.Taken, b.Taken), cmp.Compare(a.Key, b.Key))
 	})
 	for _, r := range v.Consumers {
 		switch r.Kind {
@@ -299,7 +293,8 @@ func recordConsumerTransitions(s *Snapshot, p Plan) Plan {
 						words = field(FieldRefused)
 					}
 				}
-				r.FirstLine = cutText(strings.TrimSpace(strings.SplitN(words, "\n", 2)[0]), consumerFirstLineBytes)
+				before, _, _ := strings.Cut(words, "\n")
+				r.FirstLine = cutText(strings.TrimSpace(before), consumerFirstLineBytes)
 			}
 			if updates[primary] == nil {
 				updates[primary] = map[string]string{}

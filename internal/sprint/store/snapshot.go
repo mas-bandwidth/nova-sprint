@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -12,7 +13,7 @@ import (
 	"hash/crc64"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -200,7 +201,7 @@ func SnapshotFiles(dir string) ([]string, error) {
 			out = append(out, n)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 
@@ -699,7 +700,7 @@ func MemDump(m *Mem, epoch uint64) ([]DumpKey, error) {
 			return nil, err
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	slices.SortFunc(out, func(a, b DumpKey) int { return cmp.Compare(a.Key, b.Key) })
 	return out, nil
 }
 

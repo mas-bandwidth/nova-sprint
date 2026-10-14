@@ -3,7 +3,6 @@ package sprint
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -162,7 +161,7 @@ func Unheld(h HeldState, now time.Time) []Finding {
 			ids = append(ids, pr.ID)
 		}
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	for _, id := range ids {
 		hd := c.hold(id)
 		if !hd.Stalled() {

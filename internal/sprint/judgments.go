@@ -3,8 +3,9 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -512,7 +513,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	byReader := map[string]*readerOut{}
 	for _, primary := range s.Work.Column(Review) {
 		for key, at := range landingReadConsumers(s, primary.ID, false) {
-			rd := strings.SplitN(key, "|", 2)[0]
+			rd, _, _ := strings.Cut(key, "|")
 			g := byReader[rd]
 			if g == nil {
 				g = &readerOut{}
@@ -524,11 +525,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 			}
 		}
 	}
-	var readers []string
-	for rd := range byReader {
-		readers = append(readers, rd)
-	}
-	sort.Strings(readers)
+	readers := slices.Sorted(maps.Keys(byReader))
 	var rparts []string
 	for _, rd := range readers {
 		g := byReader[rd]
@@ -571,7 +568,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 		}
 		states = append(states, c.Row+":"+st)
 	}
-	sort.Strings(states)
+	slices.Sort(states)
 	mergeState := strings.Join(states, " ")
 	if mergeState == "" {
 		mergeState = "none merging"

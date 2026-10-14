@@ -1,9 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -136,7 +137,7 @@ func readersLoad(s *Snapshot) (b ReadersLag, late, full int) {
 			b.Readers = append(b.Readers, *l)
 		}
 	}
-	sort.Slice(b.Readers, func(i, j int) bool { return b.Readers[i].Reader < b.Readers[j].Reader })
+	slices.SortFunc(b.Readers, func(a, b ReaderLoad) int { return cmp.Compare(a.Reader, b.Reader) })
 	return b, late, full
 }
 

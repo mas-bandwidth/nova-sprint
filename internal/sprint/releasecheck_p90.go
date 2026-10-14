@@ -2,8 +2,9 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"math"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -38,7 +39,7 @@ func PercentileNearestRank(xs []time.Duration, q float64) (time.Duration, bool) 
 		return 0, false
 	}
 	sorted := append([]time.Duration(nil), xs...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	slices.Sort(sorted)
 	rank := int(math.Ceil(q * float64(n)))
 	if rank < 1 {
 		rank = 1
@@ -63,11 +64,7 @@ func MergeQueueP90(f ReleaseFacts) ReleaseResult {
 	bar := f.MergeP90()
 	ages, still := mergeQueueAges(f.Log(), now.Add(-window), now)
 
-	ids := make([]string, 0, len(ages))
-	for id := range ages {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(ages))
 	samples := make([]time.Duration, 0, len(ids))
 	for _, id := range ids {
 		samples = append(samples, ages[id])

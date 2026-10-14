@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -163,7 +163,7 @@ func cardRank(c *Card) int {
 // and ordering by weight within a level is owed with the model.
 func ladderOrder(cards []*Card) []*Card {
 	out := slices.Clone(cards)
-	sort.SliceStable(out, func(i, j int) bool { return cardRank(out[i]) < cardRank(out[j]) })
+	slices.SortStableFunc(out, func(a, b *Card) int { return cmp.Compare(cardRank(a), cardRank(b)) })
 	return out
 }
 
@@ -181,7 +181,7 @@ func ReadPriority(pr *Card) string { return PriorityLadder[readRank(pr)] }
 // first, stable: equals keep the order given (the ask's stream turns, work order).
 func readOrder(cards []*Card) []*Card {
 	out := slices.Clone(cards)
-	sort.SliceStable(out, func(i, j int) bool { return readRank(out[i]) < readRank(out[j]) })
+	slices.SortStableFunc(out, func(a, b *Card) int { return cmp.Compare(readRank(a), readRank(b)) })
 	return out
 }
 
@@ -203,12 +203,8 @@ func LandOrder(s *Snapshot, streams []string) []string {
 		}
 	}
 	out := slices.Clone(streams)
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if rank[a] != rank[b] {
-			return rank[a] < rank[b]
-		}
-		return weight[a] > weight[b]
+	slices.SortStableFunc(out, func(a, b string) int {
+		return cmp.Or(cmp.Compare(rank[a], rank[b]), cmp.Compare(weight[b], weight[a]))
 	})
 	return out
 }

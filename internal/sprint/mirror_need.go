@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -43,15 +44,11 @@ func mirrorNeeds(s *Snapshot) []MirrorNeed {
 	if len(repos) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(repos))
-	for r := range repos {
-		keys = append(keys, r)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(repos))
 	out := make([]MirrorNeed, 0, len(keys))
 	for _, r := range keys {
 		n := repos[r]
-		sort.Strings(n.Members)
+		slices.Sort(n.Members)
 		out = append(out, *n)
 	}
 	return out
@@ -89,7 +86,7 @@ func MirrorNotice(s *Snapshot, repos []string) []string {
 			continue
 		}
 		sorted := append([]string(nil), members...)
-		sort.Strings(sorted)
+		slices.Sort(sorted)
 		out = append(out, fmt.Sprintf("MIRROR %s needed on %s", name, strings.Join(sorted, ", ")))
 	}
 	return out

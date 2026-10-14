@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -102,7 +103,7 @@ func Recut(s *Snapshot, r RecutReq) Plan {
 	waived := Split(c.F("waived"))
 	var needs []string
 	for _, n := range append(Split(c.F("needs")), r.Needs...) {
-		if !contains(waived, n) && !contains(needs, n) {
+		if !slices.Contains(waived, n) && !slices.Contains(needs, n) {
 			needs = append(needs, n)
 		}
 	}

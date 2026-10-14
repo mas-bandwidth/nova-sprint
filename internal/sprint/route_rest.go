@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -393,11 +394,7 @@ func parseRule3(v string) map[string]RouteRest {
 // rule3Text is the provider's rule-3 rests as PropRule3Rest holds them, lines in
 // route-name order, so a later write guards on the same bytes.
 func rule3Text(m map[string]RouteRest) string {
-	names := make([]string, 0, len(m))
-	for name := range m {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(m))
 	var b strings.Builder
 	for i, name := range names {
 		if i > 0 {

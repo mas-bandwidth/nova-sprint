@@ -7,7 +7,6 @@ import (
 	"maps"
 	"runtime"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -104,7 +103,7 @@ func (st *Store) tellStrangers(ctx context.Context) (Result, error) {
 	if len(names) == 0 {
 		return res, nil
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	res, err = st.Run(ctx, Step{Verb: "tick strangers", Actor: sprint.MachineActor, Load: tables(sprint.Fleet), Plan: func(snap *sprint.Snapshot) sprint.Plan {
 		return sprint.StrangerNotes(snap, names)
 	}})
