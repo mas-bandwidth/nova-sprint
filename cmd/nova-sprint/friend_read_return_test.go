@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -85,12 +84,11 @@ func (ta *testApp) fleetCard(id string) *sprint.Card {
 	return cs[0]
 }
 
-// packetReadLine is the read verb the packet of the read prints, with --ok and no finding.
-func packetReadLine(t *testing.T, out string) string {
-	t.Helper()
-	m := regexp.MustCompile(`run: nova-sprint (read --as \S+ \(--ok \| --broken\) \S+ --epoch \d+)`).FindStringSubmatch(out)
-	require.Len(t, m, 2, "the packet prints the read verb that returns it:\n%s", out)
-	return strings.Replace(m[1], "(--ok | --broken)", "--ok", 1)
+// friendReadVerb is the read verb that returns a friend's read, run directly: the packet now
+// names only her outbox (do not also run the read verb: a second submission answers ALREADY
+// RECORDED), so the verb is no longer read back out of the packet.
+func friendReadVerb(id string) string {
+	return "read --as friend.amy --ok " + id + " --epoch 0"
 }
 
 // requireClosedOK says the friend's read is retired off her row with an ok verdict, and
@@ -107,14 +105,17 @@ func requireClosedOK(t *testing.T, ta *testApp, id string) {
 	require.NotEqual(t, sprint.Review, ta.primary("s1-1").Col, "her ok read moved the primary on")
 }
 
-// The packet of a read asked of a friend row names how it is returned: her outbox
-// report, or the read verb; the line it prints, run as printed, stores the verdict,
-// retires the read and moves the primary as a reader-row return does.
+// The packet of a read asked of a friend row names how it is returned: her outbox report
+// alone, and warns not to also run the read verb (a second submission answers ALREADY
+// RECORDED); the read verb, run directly, stores the verdict, retires the read and moves the
+// primary as a reader-row return does.
 func TestAFriendRowReadsPacketNamesTheOutboxReturn(t *testing.T) {
 	t.Parallel()
 	ta, _, id := friendReadTwin(t, false)
 	out := ta.ok("queue --as friend.amy")
 	require.Contains(t, out, "report it: write outbox/"+id+"/REPORT.md")
+	require.Contains(t, out, "do not also run nova-sprint read")
+	require.NotContains(t, out, "or run: nova-sprint read --as")
 	require.Contains(t, out, "PACKET "+id+" attempt=1 gen=1 ")
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "CARD "+id) {
@@ -122,7 +123,7 @@ func TestAFriendRowReadsPacketNamesTheOutboxReturn(t *testing.T) {
 			require.Contains(t, l, "read: --ok|--broken "+id)
 		}
 	}
-	ta.ok(packetReadLine(t, out))
+	ta.ok(friendReadVerb(id))
 	requireClosedOK(t, ta, id)
 }
 
@@ -134,7 +135,7 @@ func TestAGenZeroFriendReadIsStillReturnable(t *testing.T) {
 	ta, _, id := friendReadTwin(t, true)
 	out := ta.ok("queue --as friend.amy")
 	require.Contains(t, out, "PACKET "+id+" attempt=1 gen=1 ")
-	ta.ok(packetReadLine(t, out))
+	ta.ok(friendReadVerb(id))
 	requireClosedOK(t, ta, id)
 }
 
@@ -147,7 +148,7 @@ func TestFinishRefusesAReadWithTheOutboxRemedy(t *testing.T) {
 		require.NotEqual(t, 0, code)
 		require.Contains(t, errs, "a read, not work")
 		require.Contains(t, errs, "outbox/"+id+"/REPORT.md")
-		require.Contains(t, errs, "read --as friend.amy (--ok | --broken) "+id)
+		require.Contains(t, errs, "do not also run nova-sprint read")
 		require.True(t, ta.fleetCard(id).Placed(), "the refusal changed nothing")
 	}
 }

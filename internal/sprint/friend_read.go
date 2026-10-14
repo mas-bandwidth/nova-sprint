@@ -620,10 +620,39 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 }
 
 // FriendReadOutboxLine is how a read on a friend's row is returned: her
-// outbox report, which friend sync reads (FriendReadClose), or the read verb
-// her packet prints, which writes the same close (readCardVerb).
+// outbox report alone, which friend sync records within seconds (FriendReadClose).
+// The read verb is not offered as a second way here (a reader with no outbox
+// still runs it), so a harness whose child writes the report and whose session
+// also runs the verb does not submit the verdict twice: a second submission is
+// answered ALREADY RECORDED (readCardVerb).
 func FriendReadOutboxLine(row, id string, epoch uint64) string {
-	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync reads it); or run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync records it within seconds); do not also run nova-sprint read for this card: a second submission answers ALREADY RECORDED", id)
+}
+
+// friendReadOwnCard says the read card is name's own read: its reader field names name, or its
+// id is one of ReadCardGenIDs for the primary and attempt it carries and name. It reads only
+// what the card already carries; it adds no field.
+func friendReadOwnCard(c *Card, name string) bool {
+	if c.F("reader") == name {
+		return true
+	}
+	attempt := c.Int("attempt")
+	if attempt == 0 {
+		attempt = 1
+	}
+	return slices.Contains(ReadCardGenIDs(c.F("primary"), attempt, name), c.ID)
+}
+
+// friendReadAlreadyRecorded is the re-submit of a verdict already recorded on name's own read
+// (docs/SPEC-SPRINT.md, "A reader's second verdict"): its Said line and true, when the card is
+// retired by read with the same verdict the request carries. A re-submit on a retired read is a
+// stutter: no variable changes, and the plan carries no refusal, no unit, no note, no judgment,
+// no consumer and no window ledger entry (the read card's state machine is unchanged).
+func friendReadAlreadyRecorded(c *Card, name, verdict string) (string, bool) {
+	if c.Placed() || c.F("retired_by") != "read" || c.F("verdict") != verdict || !friendReadOwnCard(c, name) {
+		return "", false
+	}
+	return fmt.Sprintf("ALREADY RECORDED %s at %s (%s)", verdict, c.F("retired"), c.ID), true
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
@@ -655,6 +684,7 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		}
 	}
 	SortCards(all)
+	alreadyRecorded := map[string]string{}
 	chosen := pick(&p, sel, all, fieldStream, func(c *Card) string {
 		if len(r.Gens) > 0 || c.F("stopped_from_gen") != "" {
 			if why := liveGen("read", c, r.Gens); why != "" {
@@ -665,6 +695,13 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		case c.F("kind") != "read":
 			return "not a read (it is " + orDash(c.F("kind")) + "): work is reported with finish"
 		case !c.Placed():
+			if say, done := friendReadAlreadyRecorded(c, name, r.Verdict); done {
+				alreadyRecorded[c.ID] = say
+				return ""
+			}
+			if c.F("retired_by") == "read" && friendReadOwnCard(c, name) {
+				return "already recorded " + orDash(c.F("verdict")) + " at " + orDash(c.F("retired")) + "; a reader's verdict at an attempt is final, and a different one is not taken"
+			}
 			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to report"
 		case c.Row != row:
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
@@ -678,6 +715,10 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	namePrimarysReads(&p, all)
 	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	for _, c := range chosen {
+		if say, ok := alreadyRecorded[c.ID]; ok {
+			p.Said = append(p.Said, say)
+			continue
+		}
 		pr := s.Work.Card(c.F("primary"))
 		if r.Return {
 			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {
