@@ -63,17 +63,22 @@ var landLedgers = []landLedger{{
 	run:   []string{"go", "run", "./tools/agentsmap"},
 }, {
 	// the point releases' page, owned by TestFixesIsGeneratedFromTheSexp, regenerated from
-	// docs/fixes.sexp as `make roadmap` does (landsexp.go merges the data first)
+	// docs/fixes.sexp by the repository's own `make roadmap` (landsexp.go merges the data
+	// first): the make target is each repository's entry point for its generated pages,
+	// and this repo's tools/roadmap is not the only one (mas-bandwidth/schema's runs sbcl).
+	// The run that regenerates is not the transition's (tla/LandLedgers.tla ResolveLand is
+	// a step that lands or fails, not which command it runs), so this changes no transition
 	owns:  func(p string) bool { return p == "FIXES.md" },
 	roots: []string{"FIXES.md"},
 	tests: "TestFixesIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
+	run:   []string{"make", "roadmap"},
 }, {
-	// the roadmap's page, owned by TestRoadmapIsGeneratedFromTheSexp, the same way
+	// the roadmap's page, owned by TestRoadmapIsGeneratedFromTheSexp, the same way: the
+	// repository's own `make roadmap`, whatever its tools/roadmap holds
 	owns:  func(p string) bool { return p == "ROADMAP.md" },
 	roots: []string{"ROADMAP.md"},
 	tests: "TestRoadmapIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
+	run:   []string{"make", "roadmap"},
 }}
 
 // landRegenPasses bounds the update runs of one resolution: an update that writes
