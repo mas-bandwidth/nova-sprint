@@ -10,19 +10,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // checkout is the root of this repository, two directories above the package.
 func checkout(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "tla", tlc.CasesFile)); err != nil {
-		t.Fatalf("not a checkout root: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(root, "tla", tlc.CasesFile))
+	require.NoErrorf(t, err, "not a checkout root")
 	return root
 }
 
@@ -36,54 +36,37 @@ func cli(args ...string) (int, string, string) {
 // TestGroupsPrintsTheRequiredGroupsAsJSON: groups --root <this checkout> exits 0
 // and prints a JSON list holding "liveruns".
 func TestGroupsPrintsTheRequiredGroupsAsJSON(t *testing.T) {
+	t.Parallel()
 	code, out, errs := cli("groups", "--root", checkout(t))
-	if code != exitOK {
-		t.Fatalf("groups exited %d: %s", code, errs)
-	}
+	require.Equalf(t, exitOK, code, "groups exited %d: %s", code, errs)
 	var groups []string
-	if err := json.Unmarshal([]byte(out), &groups); err != nil {
-		t.Fatalf("groups did not print a JSON list: %v: %q", err, out)
-	}
-	found := false
-	for _, g := range groups {
-		if g == "liveruns" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("groups list has no liveruns: %v", groups)
-	}
+	require.NoErrorf(t, json.Unmarshal([]byte(out), &groups), "groups did not print a JSON list: %q", out)
+	assert.Contains(t, groups, "liveruns", "groups list has no liveruns")
 }
 
 // TestTheBinaryAcceptsThisTreesRunnerFiles: the binary built from this tree
 // checks the checkout's runner files and prints no "built from other runner
 // files" line.
 func TestTheBinaryAcceptsThisTreesRunnerFiles(t *testing.T) {
+	t.Parallel()
 	code, out, errs := cli("groups", "--root", checkout(t))
-	if code != exitOK {
-		t.Fatalf("groups exited %d: %s", code, errs)
-	}
-	all := out + errs
-	if strings.Contains(all, "built from other runner files") {
-		t.Fatalf("the binary refuses this tree's runner files: %s", all)
-	}
+	require.Equalf(t, exitOK, code, "groups exited %d: %s", code, errs)
+	assert.NotContains(t, out+errs, "built from other runner files", "the binary refuses this tree's runner files")
 }
 
 // TestInputsNameTheModule: inputs MCLiveRuns.cfg names tla/LiveRuns.tla.
 func TestInputsNameTheModule(t *testing.T) {
+	t.Parallel()
 	code, out, errs := cli("inputs", "--root", checkout(t), "MCLiveRuns.cfg")
-	if code != exitOK {
-		t.Fatalf("inputs exited %d: %s", code, errs)
-	}
-	if !strings.Contains(out, "tla/LiveRuns.tla") {
-		t.Fatalf("inputs did not name tla/LiveRuns.tla: %q", out)
-	}
+	require.Equalf(t, exitOK, code, "inputs exited %d: %s", code, errs)
+	assert.Contains(t, out, "tla/LiveRuns.tla", "inputs did not name tla/LiveRuns.tla")
 }
 
 // TestMergeDropsAStaleRecord pins pkg/tlc.Carry: a base record whose fingerprint
 // is not what its case reads now is dropped, never carried, and the merge writes
 // the fresh run's record instead.
 func TestMergeDropsAStaleRecord(t *testing.T) {
+	t.Parallel()
 	root, cases, src := plan(t)
 	a, b := cases[0], cases[1]
 	freshA := record(t, src, a)
@@ -92,15 +75,11 @@ func TestMergeDropsAStaleRecord(t *testing.T) {
 	staleB.InputSHA256 = strings.Repeat("0", 64)
 
 	kept, dropped, err := tlc.Carry(src, cases, []tlc.Record{staleB}, []tlc.Record{freshA})
-	if err != nil {
-		t.Fatalf("Carry: %v", err)
-	}
-	if len(kept) != 0 {
-		t.Fatalf("Carry kept a stale record: %+v", kept)
-	}
-	if len(dropped) != 1 || dropped[0].Config != b.Config || dropped[0].Why != tlc.DroppedStale {
-		t.Fatalf("Carry did not drop the stale record as DroppedStale: %+v", dropped)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, kept, "Carry kept a stale record")
+	require.Len(t, dropped, 1)
+	assert.Equal(t, b.Config, dropped[0].Config)
+	assert.Equal(t, tlc.DroppedStale, dropped[0].Why)
 
 	base := filepath.Join(root, "base.tsv")
 	runs := filepath.Join(root, "runs.tsv")
@@ -108,53 +87,36 @@ func TestMergeDropsAStaleRecord(t *testing.T) {
 	writeRecords(t, base, freshA, staleB)
 	writeRecords(t, runs, freshB)
 	code, _, errs := cli("merge", "--root", root, "--keep", base, "--out", out, runs)
-	if code != exitOK {
-		t.Fatalf("merge exited %d: %s", code, errs)
-	}
+	require.Equalf(t, exitOK, code, "merge exited %d: %s", code, errs)
 	got, err := tlc.ReadRecordsFile(out)
-	if err != nil {
-		t.Fatalf("read merged records: %v", err)
-	}
+	require.NoError(t, err)
 	byConfig := map[string]tlc.Record{}
 	for _, r := range got {
 		byConfig[r.Config] = r
 	}
-	if byConfig[a.Config].InputSHA256 != freshA.InputSHA256 {
-		t.Fatalf("merge did not carry the base's current record for %s", a.Config)
-	}
-	if byConfig[b.Config].InputSHA256 != freshB.InputSHA256 {
-		t.Fatalf("merge carried the stale record for %s", b.Config)
-	}
+	assert.Equalf(t, freshA.InputSHA256, byConfig[a.Config].InputSHA256, "merge did not carry the base's current record for %s", a.Config)
+	assert.Equalf(t, freshB.InputSHA256, byConfig[b.Config].InputSHA256, "merge carried the stale record for %s", b.Config)
 
 	// A stale base record with no fresh run for its case is dropped, not
 	// carried: the merge then has no record for the case and refuses, writing
 	// nothing.
 	only := filepath.Join(root, "only.tsv")
 	code, _, errs = cli("merge", "--root", root, "--keep", base, "--out", only)
-	if code == exitOK {
-		t.Fatalf("merge carried a stale record into a complete file: %s", errs)
-	}
-	if _, err := os.Stat(only); !os.IsNotExist(err) {
-		t.Fatalf("merge wrote a records file that carries a stale record")
-	}
+	assert.NotEqualf(t, exitOK, code, "merge carried a stale record into a complete file: %s", errs)
+	_, err = os.Stat(only)
+	assert.True(t, os.IsNotExist(err), "merge wrote a records file that carries a stale record")
 }
 
 // TestRunWithoutJavaRefusesAndStartsNothing: run with no java on PATH exits 2
-// naming java and writes no records.
+// naming java and writes no records. It cannot be parallel: it sets PATH.
 func TestRunWithoutJavaRefusesAndStartsNothing(t *testing.T) {
 	dir := t.TempDir()
-	empty := t.TempDir()
-	t.Setenv("PATH", empty)
+	t.Setenv("PATH", t.TempDir())
 	code, _, errs := cli("run", "--root", checkout(t), "--dir", dir, "--group", "liveruns")
-	if code != exitRefused {
-		t.Fatalf("run exited %d, want %d: %s", code, exitRefused, errs)
-	}
-	if !strings.Contains(errs, "java") {
-		t.Fatalf("run did not name java: %s", errs)
-	}
-	if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
-		t.Fatalf("run started when java was absent (records written)")
-	}
+	require.Equalf(t, exitRefused, code, "run exited %d: %s", code, errs)
+	assert.Contains(t, errs, "java", "run did not name java")
+	_, err := os.Stat(filepath.Join(dir, tlc.RunsFile))
+	assert.True(t, os.IsNotExist(err), "run started when java was absent (records written)")
 }
 
 // plan writes a small checkout under a temp dir: two cases and their modules.
@@ -162,26 +124,20 @@ func plan(t *testing.T) (string, []tlc.Case, tlc.Source) {
 	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, "tla")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cases := "config\tmodule\texpected\tproperty\tdeadlock\tgroup\tgate\tdebt\n" +
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	casesTSV := "config\tmodule\texpected\tproperty\tdeadlock\tgroup\tgate\tdebt\n" +
 		"MCTinyA.cfg\tMCTinyA.tla\tpass\t-\tcheck\ttiny\trequired\t-\n" +
 		"MCTinyB.cfg\tMCTinyB.tla\tpass\t-\tcheck\ttiny\trequired\t-\n"
-	writeFile(t, filepath.Join(dir, tlc.CasesFile), cases)
+	fsx.Write(t, filepath.Join(dir, tlc.CasesFile), casesTSV)
 	for _, name := range []string{"A", "B"} {
-		writeFile(t, filepath.Join(dir, "MCTiny"+name+".cfg"), "SPECIFICATION Spec\n")
-		writeFile(t, filepath.Join(dir, "MCTiny"+name+".tla"),
+		fsx.Write(t, filepath.Join(dir, "MCTiny"+name+".cfg"), "SPECIFICATION Spec\n")
+		fsx.Write(t, filepath.Join(dir, "MCTiny"+name+".tla"),
 			"---- MODULE MCTiny"+name+" ----\nVARIABLE x\nInit == x = 0\nNext == x' = x\n====\n")
 	}
 	parsed, err := tlc.LoadCases(root)
-	if err != nil {
-		t.Fatalf("LoadCases: %v", err)
-	}
+	require.NoErrorf(t, err, "LoadCases")
 	src, err := tlc.SourceAt(root)
-	if err != nil {
-		t.Fatalf("SourceAt: %v", err)
-	}
+	require.NoErrorf(t, err, "SourceAt")
 	return root, parsed, src
 }
 
@@ -189,9 +145,7 @@ func plan(t *testing.T) (string, []tlc.Case, tlc.Source) {
 func record(t *testing.T, src tlc.Source, c tlc.Case) tlc.Record {
 	t.Helper()
 	fp, files, err := src.Fingerprint(c.Config)
-	if err != nil {
-		t.Fatalf("Fingerprint: %v", err)
-	}
+	require.NoErrorf(t, err, "Fingerprint")
 	return tlc.Record{
 		Config: c.Config, Module: c.Module, InputSHA256: fp, InputFiles: files,
 		JarSHA256: strings.Repeat("a", 64), JavaVersion: "21.0.1", Host: "linux-amd64", CPUs: 2,
@@ -204,30 +158,15 @@ func record(t *testing.T, src tlc.Source, c tlc.Case) tlc.Record {
 func writeRecords(t *testing.T, path string, recs ...tlc.Record) {
 	t.Helper()
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tlc.WriteRecords(f, recs); err != nil {
-		f.Close()
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeFile(t *testing.T, path, text string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, tlc.WriteRecords(f, recs))
+	require.NoError(t, f.Close())
 }
 
 // fakeJava writes an executable `java` that answers `-version` on standard error
 // and otherwise reports a clean TLC finish on standard output.
 func fakeJava(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "java")
 	script := "#!/bin/sh\n" +
 		"if [ \"$1\" = \"-version\" ]; then\n" +
 		"  echo 'openjdk version \"21.0.1\" 2025-04-15' >&2\n" +
@@ -235,10 +174,8 @@ func fakeJava(t *testing.T) string {
 		"echo 'Model checking completed. No error has been found.'\n" +
 		"echo '1 states generated, 1 distinct states found'\n" +
 		"exit 0\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	dir := fsx.Tree(t, map[string]string{"java": fsx.Exec(script)})
+	return filepath.Join(dir, "java")
 }
 
 // TestRunVerbOverAFixtureDirectory: `run` writes RUNS.tsv for the selected
@@ -248,21 +185,13 @@ func TestRunVerbOverAFixtureDirectory(t *testing.T) {
 	root, _, _ := plan(t)
 	dir := t.TempDir()
 	jar := filepath.Join(t.TempDir(), "tlc.jar")
-	if err := os.WriteFile(jar, []byte("jar"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	fsx.Write(t, jar, "jar")
 	code, out, errs := cli("run", "--root", root, "--dir", dir, "--group", "tiny",
 		"--jar", jar, "--java", fakeJava(t))
-	if code != exitOK {
-		t.Fatalf("run exited %d: %s", code, errs)
-	}
+	require.Equalf(t, exitOK, code, "run exited %d: %s", code, errs)
 	recs, err := tlc.ReadRecordsFile(filepath.Join(dir, tlc.RunsFile))
-	if err != nil {
-		t.Fatalf("read RUNS.tsv: %v", err)
-	}
-	if len(recs) != 2 {
-		t.Fatalf("run wrote %d records, want 2: %s", len(recs), out)
-	}
+	require.NoError(t, err)
+	assert.Lenf(t, recs, 2, "run wrote %d records, want 2: %s", len(recs), out)
 }
 
 // TestInputsRefusesAConfigNotInThePlan: `inputs` with a config the plan does
@@ -271,9 +200,7 @@ func TestInputsRefusesAConfigNotInThePlan(t *testing.T) {
 	t.Parallel()
 	root, _, _ := plan(t)
 	code, _, errs := cli("inputs", "--root", root, "MCGhost.cfg")
-	if code != exitRefused {
-		t.Fatalf("inputs exited %d, want %d: %s", code, exitRefused, errs)
-	}
+	assert.Equalf(t, exitRefused, code, "inputs exited %d: %s", code, errs)
 }
 
 // TestMergeFailsWhenARecordIsMissing: `merge` exits 1 when the merged file has
@@ -286,47 +213,33 @@ func TestMergeFailsWhenARecordIsMissing(t *testing.T) {
 	writeRecords(t, runs, freshA)
 	out := filepath.Join(root, "out.tsv")
 	code, _, errs := cli("merge", "--root", root, "--out", out, runs)
-	if code != exitFailed {
-		t.Fatalf("merge exited %d, want %d: %s", code, exitFailed, errs)
-	}
-	if _, err := os.Stat(out); !os.IsNotExist(err) {
-		t.Fatalf("merge wrote a file on failure")
-	}
+	assert.Equalf(t, exitFailed, code, "merge exited %d: %s", code, errs)
+	_, err := os.Stat(out)
+	assert.True(t, os.IsNotExist(err), "merge wrote a file on failure")
 }
 
 // TestReadRunsOnAMissingFile: readRuns returns no records and no error when the
 // tree has no RUNS.tsv.
 func TestReadRunsOnAMissingFile(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	recs, err := readRuns(root)
-	if err != nil {
-		t.Fatalf("readRuns: %v", err)
-	}
-	if recs != nil {
-		t.Fatalf("readRuns on a missing file returned %+v, want nil", recs)
-	}
+	recs, err := readRuns(t.TempDir())
+	require.NoError(t, err)
+	assert.Nil(t, recs, "readRuns on a missing file returned records, want nil")
 }
 
 // TestHelpPrintsUsageAndExitsOK: `help` prints the usage and exits 0.
 func TestHelpPrintsUsageAndExitsOK(t *testing.T) {
 	t.Parallel()
 	code, out, _ := cli("help")
-	if code != exitOK {
-		t.Fatalf("help exited %d, want %d", code, exitOK)
-	}
-	if !strings.Contains(out, "usage: tlacheck <verb>") {
-		t.Fatalf("help did not print usage: %q", out)
-	}
+	assert.Equalf(t, exitOK, code, "help exited %d", code)
+	assert.Contains(t, out, "usage: tlacheck <verb>", "help did not print usage")
 }
 
 // TestRunRefusesAnUnknownVerb: an unknown verb exits 2.
 func TestRunRefusesAnUnknownVerb(t *testing.T) {
 	t.Parallel()
 	code, _, errs := cli("bogus")
-	if code != exitRefused {
-		t.Fatalf("unknown verb exited %d, want %d: %s", code, exitRefused, errs)
-	}
+	assert.Equalf(t, exitRefused, code, "unknown verb exited %d: %s", code, errs)
 }
 
 // TestGroupsStalePrintsEmptyWhenNothingIsStale: `groups --stale` over a plan
@@ -334,34 +247,28 @@ func TestRunRefusesAnUnknownVerb(t *testing.T) {
 func TestGroupsStalePrintsEmptyWhenNothingIsStale(t *testing.T) {
 	t.Parallel()
 	root, cases, src := plan(t)
-	runs := filepath.Join(root, "tla", tlc.RunsFile)
-	writeRecords(t, runs, record(t, src, cases[0]), record(t, src, cases[1]))
+	writeRecords(t, filepath.Join(root, "tla", tlc.RunsFile), record(t, src, cases[0]), record(t, src, cases[1]))
 	code, out, errs := cli("groups", "--stale", "--root", root)
-	if code != exitOK {
-		t.Fatalf("groups --stale exited %d: %s", code, errs)
-	}
-	if strings.TrimSpace(out) != "[]" {
-		t.Fatalf("groups --stale = %q, want []", out)
-	}
+	require.Equalf(t, exitOK, code, "groups --stale exited %d: %s", code, errs)
+	assert.Equalf(t, "[]", strings.TrimSpace(out), "groups --stale")
 }
 
 func TestRunRefusesInvalidParallelWidths(t *testing.T) {
+	t.Parallel()
 	root := checkout(t)
 	max := runtime.NumCPU() / 2
 	if max < 1 {
 		max = 1
 	}
 	for _, value := range []string{"0", strconv.Itoa(max + 1)} {
-		dir := t.TempDir()
-		code, _, errs := cli("run", "--root", root, "--dir", dir, "--parallel", value)
-		if code != exitRefused {
-			t.Fatalf("--parallel %s exited %d, want %d: %s", value, code, exitRefused, errs)
-		}
-		if !strings.Contains(errs, "parallel must be between") {
-			t.Fatalf("--parallel %s refusal did not explain the allowed range: %s", value, errs)
-		}
-		if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
-			t.Fatalf("--parallel %s wrote records", value)
-		}
+		t.Run("parallel="+value, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			code, _, errs := cli("run", "--root", root, "--dir", dir, "--parallel", value)
+			assert.Equalf(t, exitRefused, code, "--parallel %s exited %d: %s", value, code, errs)
+			assert.Contains(t, errs, "parallel must be between", "--parallel refusal did not explain the allowed range")
+			_, err := os.Stat(filepath.Join(dir, tlc.RunsFile))
+			assert.True(t, os.IsNotExist(err), "--parallel %s wrote records", value)
+		})
 	}
 }
