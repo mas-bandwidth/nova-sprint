@@ -4,15 +4,18 @@ Moved from nova-tools docs/TESTS.md on 2026-10-04.
 
 ## nova-sprint
 
-The first run needs no Redis. `--redis mem:<file>` loads an in-memory twin
-from a file and saves it after each command. The twin is for learning and
-tests; commands run one at a time. This transcript follows the card flow in
-`nova-sprint help`, with `NOVA_SPRINT_REDIS=mem:sprint.twin` and
-`NOVA_SPRINT_ACTOR=boss` set. It uses `finish` without `--head` and `merge`
-to record a landing without git. The help's final `tick` moves the card to
-landed, and `where` shows the sprint. Those two commands are omitted here
-because they print clock-dependent times; `cmd/nova-sprint/twin_test.go`
-runs them.
+This is a test-binary transcript, not an installed first run. The local twin's
+operation-id counter makes this transcript's IDs repeatable; the production
+CLI walkthrough is in the
+[first-lap note](FIRST-LAP.md).
+In the test binary, `--redis mem:<file>` loads an in-memory twin from a file
+and saves it after each command. Commands run one at a time. This transcript
+follows the card flow in `nova-sprint help`, with
+`NOVA_SPRINT_REDIS=mem:sprint.twin` and `NOVA_SPRINT_ACTOR=boss` set. It uses
+`finish` without `--head` and `merge` to record a landing without git. The
+help's final `tick` moves the card to landed, and `where` shows the sprint.
+Those two commands are omitted here because they print clock-dependent times;
+`cmd/nova-sprint/twin_test.go` runs them.
 
 A card's move is queued until the next tick prints `MOVED drain`. A member
 that comes up in one tick receives cards in the next.
@@ -64,6 +67,10 @@ past the two-minute bound beside the tier on CI's slower runner), so sharded acr
 top-level test runs exactly once.
 
 ### First run
+
+This is a deterministic twin transcript from the test binary. The production
+CLI's local-twin walkthrough, run on Linux from v1.2.20 source, is in the
+[first-lap note](FIRST-LAP.md).
 
 ```text
 $ nova-sprint init --readers reader-m2 --members m1,m2

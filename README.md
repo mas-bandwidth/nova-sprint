@@ -71,7 +71,7 @@ executes that plan across the available friends and swarm workers.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/streams-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="brand/explainer/streams.png">
-  <img alt="Three work streams with dependencies crossing between them. An automatic sentinel joins the API and client changes before integration checks." src="brand/explainer/streams.png">
+  <img alt="Three work streams with dependencies crossing between them. A sentinel gates integration checks until its prerequisites are ready." src="brand/explainer/streams.png">
 </picture>
 
 Here the **Backend** stream defines an API. Once that contract lands, the
@@ -79,11 +79,12 @@ API implementation and the **App** stream's client can run in parallel.
 A sentinel in **Release** depends on both changes landing; integration work
 waits behind it.
 
-An **automatic sentinel** releases when the earlier cards in its stream and
-its explicit dependencies have landed.
-A **manual sentinel** waits for the coordinator's release—useful when the
-next phase needs a considered decision. A wave is the work behind a gate.
-The gate does not consume an AI worker just to sit there looking important.
+A **sentinel** waits for earlier work in its stream and its named needs. A
+plain position-only gate waits for the coordinator's release. A sentinel with
+named needs can release itself on a tick after those needs have landed, if no
+other wait or hold remains. A dropped named need stays blocked until the
+coordinator explicitly waives it. A wave is the work behind a gate. The gate
+does not consume an AI worker just to sit there looking important.
 
 Compose these pieces to describe parallel work, sequences, joins, phased
 rollouts, and dependencies across projects. The coordinator can add work
@@ -132,7 +133,10 @@ Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
 Then go wider. Work alongside the team, or come back in the morning.
 
-**Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://69.67.149.151/)!**
+Start with the [first-lap note](docs/FIRST-LAP.md) to check your installation
+and learn the current path to a first card. For installation and a live team,
+see [getting started](docs/GETTING-STARTED.md) and the
+[coordinator's guide](docs/SPRINT-COORDINATOR.md).
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
