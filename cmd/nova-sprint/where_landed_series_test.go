@@ -144,7 +144,13 @@ func TestWhereSeriesFlagsAreWheresFlags(t *testing.T) {
 	ta := newTestApp(t)
 	code, _, plain := ta.do("where --zz")
 	require.Equal(t, 2, code)
-	code, _, withJSON := ta.do("where --json --zz")
+	code, jsonOut, withJSON := ta.do("where --json --zz")
 	require.Equal(t, 2, code)
-	assert.Equal(t, plain, withJSON)
+	// a refusal asked for as --json is the one JSON refusal object on stdout
+	// with an empty stderr, its reason the same words the text line carries
+	assert.Empty(t, withJSON, "a refusal under --json is JSON on stdout: %s", jsonOut)
+	assert.Contains(t, jsonOut, `"status":"refused"`)
+	assert.Contains(t, jsonOut, "unknown flag --zz")
+	assert.Contains(t, jsonOut, "nova-sprint help where")
+	assert.Contains(t, plain, "unknown flag --zz")
 }

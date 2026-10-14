@@ -40,12 +40,19 @@ func TestQueueNamesAnUnknownReaderAndRefusesMax(t *testing.T) {
 
 	// --max is refused: queue lists packets, not rows, and the remedy names --packets
 	const remedy = "queue lists packets, not rows: pass --packets <n> to take fewer, or --json to read them whole"
-	for _, line := range []string{"queue --as m1 --max 1", "queue --as reader-a --json --max 1"} {
+	for _, line := range []string{"queue --as m1 --max 1", "queue --as reader-a --max 1"} {
 		code, out, errs := ta.do(line)
 		assert.Equal(t, 2, code, "%s refuses --max: %s%s", line, out, errs)
-		assert.Contains(t, errs, remedy, "%s names the packet remedy", line)
 		assert.Empty(t, out, "%s is refused before the answer is written", line)
+		assert.Contains(t, errs, remedy, "%s names the packet remedy", line)
 	}
+	// the same refusal asked for as --json is the one JSON refusal object on
+	// stdout with an empty stderr, its reason the same words
+	code, out, errs := ta.do("queue --as reader-a --json --max 1")
+	assert.Equal(t, 2, code, "%s%s", out, errs)
+	assert.Empty(t, errs, "a refusal under --json is JSON on stdout: %s", out)
+	assert.Contains(t, out, `"status":"refused"`)
+	assert.Contains(t, out, "queue lists packets, not rows")
 
 	// a queue without --max still runs, with or without --json
 	for _, line := range []string{"queue --as m1", "queue --as m1 --json"} {

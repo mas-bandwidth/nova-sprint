@@ -233,10 +233,10 @@ func TestTheServerRefusesAMalformedPacketsAsk(t *testing.T) {
 
 	var out, errb strings.Builder
 	assert.Equal(t, 2, runInto(r.a, split("queue --as m1 --json --packets 1 --have ../x --redis "+r.a.serveAddr), &out, &errb), "the verb refuses it too")
-	assert.Contains(t, errb.String(), "--have is card ids")
+	assert.Contains(t, out.String(), "--have is card ids", "a refusal under --json is JSON on stdout: %s", errb.String())
 	errb.Reset()
 	assert.Equal(t, 2, runInto(r.a, split("queue --stream s1 --json --packets 1 --redis "+r.a.serveAddr), &out, &errb))
-	assert.Contains(t, errb.String(), "--packets is a worker's")
+	assert.Contains(t, out.String(), "--packets is a worker's", "a refusal under --json is JSON on stdout: %s", errb.String())
 }
 
 // TestAServerRefusesAQueueFlagItDoesNotKnowInTheWordsAMemberReads: a server from before
@@ -248,7 +248,7 @@ func TestAServerRefusesAQueueFlagItDoesNotKnowInTheWordsAMemberReads(t *testing.
 	r := newServerRig(t, twoLanes()...)
 	res := r.one("queue", "--as", "m1", "--json", "--nosuch", "8")
 	assert.Equal(t, 2, res.Code)
-	assert.Contains(t, res.Stderr, "unknown flag --nosuch", "an old server says `unknown flag --packets`")
+	assert.Contains(t, res.Stdout, "unknown flag --nosuch", "an old server says `unknown flag --packets`, as the JSON refusal under --json: %s", res.Stderr)
 }
 
 // TestEveryPacketAVerbHandsNamesItsTier: the packets take and queue hand a member name the
