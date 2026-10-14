@@ -1,0 +1,3 @@
+# ceiling: 0
+pkg/swarm:assert 8 use require.NoError, assert.Equal, assert.Contains or assert.Empty instead of bare if-guarded t.Fatal/Error/Fail
+pkg/swarm:env 15 remove t.Setenv, t.Chdir and os.Chdir (use t.TempDir or pass values explicitly)
