@@ -219,3 +219,19 @@ func TestShadowTickCustomUpdates(t *testing.T) {
 	}
 	assert.Panics(t, func() { _, _ = h.st.ShadowTick(h.ctx) })
 }
+
+func TestShadowTickNeverInvokesTheConsumerMergeWriter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.startMachine()
+	writes, observations := 0, 0
+	h.st.SentinelProof = func(context.Context, *sprint.Snapshot) []sprint.SentinelObservation { observations++; return nil }
+	h.st.ConsumerTrunk = func(context.Context, *sprint.Snapshot) []sprint.ConsumerMerge { writes++; return nil }
+	_, err := h.st.ShadowTick(h.ctx)
+	require.NoError(t, err)
+	require.Zero(t, writes, "shadow planning must not merge or push")
+	require.Zero(t, observations, "shadow planning must not clone or fetch")
+	h.machine()
+	require.Positive(t, writes, "the ordinary tick still invokes its writer")
+	require.Positive(t, observations, "the ordinary tick still invokes its observer")
+}

@@ -444,3 +444,51 @@ func TestMovesDueKeysPreserveReviewExclusions(t *testing.T) {
 	w.s.Work.Card("s1-1").Fields["result"] = "failed"
 	require.Empty(t, MoveDueKeys(w.s), "a failed review card is excluded from the stopped-machine due count")
 }
+
+func TestReleasedTrunkWaitDoesNotHideUnmetDependencyStalls(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"missing", "dropped", "cycle", "upstream"} {
+		t.Run(kind, func(t *testing.T) {
+			w := newWorld(t)
+			s := w.s
+			s.Work.SetRows([]string{"s1"})
+			s.Work.Put(&Card{ID: "stop", Row: "s1", Col: Landed, Score: 1, Fields: map[string]string{"kind": "sentinel"}})
+			pr := &Card{ID: "consumer", Row: "s1", Col: Waiting, Score: 3, Fields: map[string]string{"needs": "dependency"}}
+			s.Work.Put(pr)
+			switch kind {
+			case "dropped":
+				s.Work.Put(&Card{ID: "dependency", Fields: map[string]string{"outcome": "dropped"}})
+			case "cycle":
+				s.Work.Put(&Card{ID: "dependency", Row: "s1", Col: Waiting, Score: 2, Fields: map[string]string{"needs": "consumer"}})
+			case "upstream":
+				s.Work.Put(&Card{ID: "dependency", Row: "s1", Col: Waiting, Score: 2, Fields: map[string]string{"needs": "missing"}})
+			}
+			why, root, ok := newHeld(running(w), s.Now).waits(pr)
+			require.False(t, ok, "an earlier release cannot mask %s: %s", kind, why)
+			require.NotContains(t, why, "actual merge")
+			if kind == "upstream" {
+				require.Equal(t, "dependency", root)
+			}
+			pr.Fields["needs"] = ""
+			why, _, ok = newHeld(running(w), s.Now).waits(pr)
+			require.True(t, ok, "with unmet needs removed the actual merge is the active hold")
+			require.Contains(t, why, "actual merge")
+			pr.Col = Ready
+			why, _, ok = newHeld(running(w), s.Now).waits(pr)
+			require.True(t, ok)
+			require.Contains(t, why, "actual merge")
+		})
+	}
+}
+
+func TestReleasedTrunkWaitKeepsTheWorkingDependencyReason(t *testing.T) {
+	t.Parallel()
+	w := dealt(t)
+	producer := w.s.Work.Card("s1-1")
+	w.s.Work.Put(&Card{ID: "stop", Row: producer.Row, Col: Landed, Score: producer.Score - 1, Fields: map[string]string{"kind": "sentinel"}})
+	consumer := &Card{ID: "consumer", Row: producer.Row, Col: Waiting, Score: producer.Score + 1, Fields: map[string]string{"needs": producer.ID}}
+	w.s.Work.Put(consumer)
+	hd := mustHold(t, running(w), consumer.ID, HeldByWaiting)
+	require.Contains(t, hd.Why, producer.ID)
+	require.NotContains(t, hd.Why, "actual merge")
+}

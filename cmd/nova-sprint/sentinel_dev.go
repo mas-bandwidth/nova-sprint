@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -25,6 +26,9 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 			}
 			input := sprint.SentinelInputOf(s, c)
 			observation := sprint.SentinelObservation{Input: input}
+			if !sentinelProducersComplete(input) {
+				continue
+			}
 			for _, p := range input.Producers {
 				if p.Kind == "sentinel" || (p.Outcome == "dropped" && !p.Placed) || p.State != string(sprint.Landed) || p.Head == "" {
 					continue
@@ -37,9 +41,6 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 				if !known {
 					var why string
 					dir, why = l.clone(ctx, repo)
-					if why == "" {
-						why = l.hold(ctx, dir)
-					}
 					if why != "" {
 						dir = ""
 					}
@@ -78,8 +79,8 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 		// DealsUseKnownCallbackSnapshot: one observed target per callback.
 		observed := map[trunkTarget]string{}
 		var out []sprint.ConsumerMerge
-		for _, c := range s.Work.Cards() {
-			if (c.Col != sprint.Waiting && c.Col != sprint.Ready) || !sprint.ConsumerNeedsTrunk(s, c) {
+		for _, c := range s.Work.Column(sprint.Waiting, sprint.Ready) {
+			if (c.Col == sprint.Waiting && len(sprint.WaitsFor(s, c, nil)) != 0) || !sprint.ConsumerNeedsTrunk(s, c) {
 				continue
 			}
 			repo := swarm.ReadCardBase([]byte(c.F("brief"))).Repo
@@ -91,45 +92,24 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 			proof, known := merged[key]
 			if !known {
 				proof = sprint.ConsumerMerge{Repo: repo, Branch: key.branch, Trunk: key.trunk}
+
 				dir, why := l.clone(ctx, repo)
 				if why == "" {
-					why = l.hold(ctx, dir)
-				}
-				if why == "" {
-					why = l.ensureStreamBranch(ctx, s, dir, repo, c.Row, key.branch)
-				}
-				if why == "" {
 					trunkKey := trunkTarget{repo, key.trunk}
-					var observedKnown bool
-					proof.Observed, observedKnown = observed[trunkKey]
-					if !observedKnown {
+					var knownTip bool
+					proof.Observed, knownTip = observed[trunkKey]
+					if !knownTip {
 						proof.Observed = l.observedTrunk(ctx, dir, key.trunk)
 						observed[trunkKey] = proof.Observed
 					}
 					if proof.Observed != "" {
-						tree, w := l.worktree(ctx, dir, c.Row, key.branch)
-						if w == "" {
-							_, err := l.git(ctx, tree, "checkout", "--detach", "refs/remotes/origin/"+key.branch)
-							if err == nil {
-								_, err = l.git(ctx, tree, "merge", "--no-edit", proof.Observed)
-							}
-							if err == nil {
-								proof.Merged, err = l.git(ctx, tree, "rev-parse", "HEAD")
-							}
-							if err == nil {
-								_, err = l.git(ctx, tree, "merge-base", "--is-ancestor", proof.Observed, proof.Merged)
-								proof.ContainsObserved = err == nil
-							}
-							if err == nil {
-								_, err = l.git(ctx, tree, "push", "origin", proof.Merged+":refs/heads/"+key.branch)
-							}
-							proof.Success = err == nil
-							if err != nil {
-								_, _ = l.git(ctx, tree, "merge", "--abort")
-							}
+						branchTip, missing := l.observedRemoteTip(ctx, dir, key.branch)
+						if branchTip != "" || missing {
+							proof = l.mergeObservedConsumer(ctx, dir, c.Row, proof, branchTip, missing)
 						}
 					}
 				}
+
 				merged[key] = proof
 			}
 			proof.Epoch = s.Epoch
@@ -141,16 +121,118 @@ func (a *app) bindSentinelProtocol(st *store.Store) {
 	}
 }
 
+// All current live producers must be complete before acquiring any clone or
+// fetching. Dropped unplaced records and released named sentinel identities
+// have no worker head of their own.
+func sentinelProducersComplete(in sprint.SentinelInput) bool {
+	for _, p := range in.Producers {
+		if p.Outcome == "dropped" && !p.Placed {
+			continue
+		}
+		if p.State != string(sprint.Landed) {
+			return false
+		}
+		if p.Kind == "sentinel" {
+			continue
+		}
+		if (len(p.Head) != 40 && len(p.Head) != 64) || !shaRE.MatchString(p.Head) || swarm.ReadCardBase([]byte(p.Brief)).Repo == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func (l *lander) observedTrunk(ctx context.Context, dir, trunk string) string {
 	if trunk != "main" && trunk != "dev" {
 		return ""
 	}
-	if _, err := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", trunk, trunk)); err != nil {
-		return ""
-	}
-	tip, err := l.git(ctx, dir, "rev-parse", "--verify", "refs/remotes/origin/"+trunk+"^{commit}")
-	if err != nil {
-		return ""
-	}
+	tip, _ := l.observedRemoteTip(ctx, dir, trunk)
 	return tip
+}
+
+// Capture a freshly fetched commit while holding the existing fetch mutex.
+// These private refs never move a checkout; failed fetches return no old tip.
+func (l *lander) observedRemoteTip(ctx context.Context, dir, branch string) (tip string, missing bool) {
+	mu := l.locks().fetchLock(l.fetchKey(ctx, dir))
+	mu.Lock()
+	defer mu.Unlock()
+	ref := fmt.Sprintf("refs/nova-sentinel/%x", sha256.Sum256([]byte(branch)))
+	if _, err := l.git(ctx, dir, "fetch", "--no-tags", "origin", "+refs/heads/"+branch+":"+ref); err != nil {
+		return "", containsAny(err.Error(), notOnOrigin)
+	}
+	tip, err := l.git(ctx, dir, "rev-parse", "--verify", ref+"^{commit}")
+	if err != nil {
+		return "", false
+	}
+	return tip, false
+}
+
+// A successful no-op observes both remote tips and proves ancestry without
+// taking the checkout/land lock or pushing. Mutations reobserve the branch
+// under that lock, using this callback's one captured trunk tip throughout.
+func (l *lander) mergeObservedConsumer(ctx context.Context, dir, stream string, proof sprint.ConsumerMerge, branchTip string, missing bool) sprint.ConsumerMerge {
+	contained := func(tip string) bool {
+		if tip == "" {
+			return false
+		}
+		_, err := l.git(ctx, dir, "merge-base", "--is-ancestor", proof.Observed, tip)
+		return err == nil
+	}
+	if contained(branchTip) {
+		proof.Merged = branchTip
+		proof.ContainsObserved = true
+		proof.Success = true
+		return proof
+	}
+	if l.hold(ctx, dir) != "" {
+		return proof
+	}
+	defer l.release() // release before the callback observes another stream
+	branchTip, missing = l.observedRemoteTip(ctx, dir, proof.Branch)
+	if branchTip == "" && !missing {
+		return proof
+	}
+	if missing {
+		if _, err := l.fetched(ctx, dir, "push", "origin", proof.Observed+":refs/heads/"+proof.Branch); err != nil {
+			return proof
+		}
+		branchTip, _ = l.observedRemoteTip(ctx, dir, proof.Branch)
+		if branchTip == "" {
+			return proof
+		}
+	}
+	if contained(branchTip) {
+		proof.Merged = branchTip
+		proof.ContainsObserved = true
+		proof.Success = true
+		return proof
+	}
+	// The existing worktree recovery reads the branch's tracking ref. Updating
+	// it here is fenced by the land lock and names the freshly observed branch.
+	if _, err := l.fetched(ctx, dir, "update-ref", "refs/remotes/origin/"+proof.Branch, branchTip); err != nil {
+		return proof
+	}
+	tree, why := l.worktree(ctx, dir, stream, proof.Branch)
+	if why != "" {
+		return proof
+	}
+	_, err := l.git(ctx, tree, "checkout", "--detach", branchTip)
+	if err == nil {
+		_, err = l.git(ctx, tree, "merge", "--no-edit", proof.Observed)
+	}
+	if err == nil {
+		proof.Merged, err = l.git(ctx, tree, "rev-parse", "HEAD")
+	}
+	if err == nil {
+		_, err = l.git(ctx, tree, "merge-base", "--is-ancestor", proof.Observed, proof.Merged)
+		proof.ContainsObserved = err == nil
+	}
+	if err == nil {
+		_, err = l.git(ctx, tree, "push", "origin", proof.Merged+":refs/heads/"+proof.Branch)
+	}
+	proof.Success = err == nil
+	if err != nil {
+		_, _ = l.git(ctx, tree, "merge", "--abort")
+	}
+	return proof
 }

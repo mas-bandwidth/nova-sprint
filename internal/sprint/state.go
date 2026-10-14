@@ -85,10 +85,11 @@ type Table struct {
 	// tables, the archived streams (stream archive).
 	hidden map[string]bool
 
-	cells     map[[2]string][]*Card // built on first use; Put resets it
-	byPrimary map[string][]*Card
-	lines     map[string][]*Card // each row's cards not landed, in score order; built with cells
-	stops     map[string][]int   // each line's last sentinel at or before each place (lineStops); built with lines
+	cells           map[[2]string][]*Card // built on first use; Put resets it
+	byPrimary       map[string][]*Card
+	lines           map[string][]*Card // each row's cards not landed, in score order; built with cells
+	landedSentinels map[string][]*Card // placed released barriers, built with cells
+	stops           map[string][]int   // each line's last sentinel at or before each place (lineStops); built with lines
 	// ids are every card's id, placed or kept, in id order: built on first use
 	// (sortedIDs) and kept by Put and Drop, so Cards and WithPrefix are a walk,
 	// never a sort of the whole table for each call (a step asks of every primary).
@@ -150,7 +151,7 @@ func (t *Table) Frozen() *Table {
 	c.Texts = make(map[string]map[string]string, len(t.Texts))
 	maps.Copy(c.Texts, t.Texts)
 	c.rows = append([]string(nil), t.rows...)
-	c.cells, c.byPrimary, c.lines, c.stops = nil, nil, nil, nil
+	c.cells, c.byPrimary, c.lines, c.stops, c.landedSentinels = nil, nil, nil, nil, nil
 	c.ids = nil
 	if len(t.ids) == len(t.cards) {
 		c.ids = slices.Clone(t.ids) // the same cards: their order kept, not sorted again
@@ -219,13 +220,16 @@ func (t *Table) index() {
 	if t.cells != nil {
 		return
 	}
-	t.cells, t.byPrimary, t.lines, t.stops = map[[2]string][]*Card{}, map[string][]*Card{}, nil, nil
+	t.cells, t.byPrimary, t.lines, t.stops, t.landedSentinels = map[[2]string][]*Card{}, map[string][]*Card{}, nil, nil, map[string][]*Card{}
 	for _, c := range t.cards {
 		if !c.Placed() {
 			continue
 		}
 		k := [2]string{c.Row, c.Col}
 		t.cells[k] = append(t.cells[k], c)
+		if c.Col == Landed && IsSentinel(c) {
+			t.landedSentinels[c.Row] = append(t.landedSentinels[c.Row], c)
+		}
 		// The index finds a card by its primary field; a card without one (a
 		// control card) is no primary's, and is not indexed.
 		if p := c.Fields[PrimaryField]; p != "" {
@@ -234,6 +238,9 @@ func (t *Table) index() {
 	}
 	for _, cs := range t.cells {
 		SortCards(cs)
+	}
+	for _, stops := range t.landedSentinels {
+		SortCards(stops)
 	}
 	for _, cs := range t.byPrimary {
 		SortCards(cs)

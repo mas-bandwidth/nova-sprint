@@ -146,3 +146,16 @@ func Behind(s *Snapshot, st *Card) []*Card {
 	}
 	return out
 }
+
+// releasedBefore is only the placed landed sentinels strictly before a score.
+// The index is rebuilt with cells, so ordinary landed cards are never scanned
+// for each ready primary. Named kept barriers remain a separate Card lookup.
+func (t *Table) releasedBefore(row string, score float64) []*Card {
+	t.index()
+	mu := t.mutex()
+	mu.RLock()
+	defer mu.RUnlock()
+	stops := t.landedSentinels[row]
+	end := sort.Search(len(stops), func(i int) bool { return stops[i].Score >= score })
+	return stops[:end]
+}

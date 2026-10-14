@@ -561,13 +561,13 @@ func (c *held) judgment(pr *Card) string {
 // (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go; tla/RateBudget.tla).
 func (c *held) waits(pr *Card) (why, root string, ok bool) {
 	s := c.s
-	if (pr.Col == Waiting || pr.Col == Ready) && ConsumerNeedsTrunk(s, pr) && !ConsumerTrunkReady(s, pr) {
-		return "its stream awaits the machine's actual merge of the freshly observed recorded trunk before the next deal", "", true
-	}
 	switch pr.Col {
 	case Waiting:
 		w := WaitOf(s, pr).On
 		if len(w) == 0 {
+			if ConsumerNeedsTrunk(s, pr) && !ConsumerTrunkReady(s, pr) {
+				return "its stream awaits the machine's actual merge of the freshly observed recorded trunk before the next deal", "", true
+			}
 			if IsSentinel(pr) {
 				return "producer completion awaits freshly observed recorded trunk ancestry; the machine retries at the next tick", "", true
 			}
@@ -621,6 +621,9 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		}
 		return strings.Join(held, "; "), "", true
 	case Ready:
+		if ConsumerNeedsTrunk(s, pr) && !ConsumerTrunkReady(s, pr) {
+			return "its stream awaits the machine's actual merge of the freshly observed recorded trunk before the next deal", "", true
+		}
 		if OnlyFriend(pr) && !PinReleased(s, pr, s.Friends) {
 			// the one hard pin (WHO: only friend <name>) waits for her up below her room,
 			// DealAhead times her width (friendDealPass), whose beats and widths are the friends'

@@ -53,6 +53,19 @@ func TestSentinelProtocolFetchesActualMainAndMergesConsumer(t *testing.T) {
 	s.ConsumerMerges = st.ConsumerTrunk(context.Background(), s)
 	require.True(t, sprint.ConsumerTrunkReady(s, c))
 	require.Equal(t, next, s.ConsumerMerges[0].Observed)
+	// A remote reset cannot borrow the branch's previously cached containing tip.
+	r.git(r.worker, "push", "-q", "--force", "origin", consumerHead+":refs/heads/sprint/consumer")
+	s.ConsumerMerges = st.ConsumerTrunk(context.Background(), s)
+	require.True(t, sprint.ConsumerTrunkReady(s, c))
+	resetMerged := r.git(r.remote, "rev-parse", "refs/heads/sprint/consumer")
+	require.NotEqual(t, consumerHead, resetMerged)
+	r.git(r.remote, "merge-base", "--is-ancestor", next, resetMerged)
+	// Cached local ancestry is insufficient when a fresh remote fetch fails.
+	offline := r.remote + ".offline"
+	require.NoError(t, os.Rename(r.remote, offline))
+	s.ConsumerMerges = st.ConsumerTrunk(context.Background(), s)
+	require.False(t, sprint.ConsumerTrunkReady(s, c))
+	require.NoError(t, os.Rename(offline, r.remote))
 	r.git(r.worker, "fetch", "-q", "origin")
 	r.git(r.worker, "checkout", "-q", "-B", "consumer", "refs/remotes/origin/sprint/consumer")
 	conflictedConsumer := r.commit("README", "consumer conflict\n", "consumer conflict")

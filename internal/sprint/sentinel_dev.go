@@ -173,7 +173,7 @@ func ConsumerBarriersOf(s *Snapshot, c *Card) ConsumerBarrierInput {
 	for _, id := range Split(c.F("needs")) {
 		add(s.Work.Card(id))
 	}
-	for _, stop := range s.Work.Cell(c.Row, Landed) {
+	for _, stop := range s.Work.releasedBefore(c.Row, c.Score) {
 		if stop.Score < c.Score {
 			add(stop)
 		}
@@ -211,12 +211,7 @@ func ConsumerNeedsTrunk(s *Snapshot, c *Card) bool {
 			}
 		}
 	}
-	for _, stop := range s.Work.Cell(c.Row, Landed) {
-		if IsSentinel(stop) && stop.Score < c.Score && inState(stop, Landed) == "" {
-			return true
-		}
-	}
-	return false
+	return len(s.Work.releasedBefore(c.Row, c.Score)) > 0
 }
 
 // tla/SentinelConsumerFreshness.tla Deal and DealsUseCurrentBarrierVector:
@@ -225,9 +220,13 @@ func ConsumerTrunkReady(s *Snapshot, c *Card) bool {
 	if !ConsumerNeedsTrunk(s, c) {
 		return true
 	}
+	if len(s.ConsumerMerges) == 0 {
+		return false
+	}
 	repo := swarm.ReadCardBase([]byte(c.F("brief"))).Repo
+	barriers := ConsumerBarriersOf(s, c)
 	for _, proof := range s.ConsumerMerges {
-		if proof.Success && proof.ContainsObserved && proof.Epoch == s.Epoch && reflect.DeepEqual(proof.Card, SentinelCardOf(c)) && reflect.DeepEqual(proof.Barriers, ConsumerBarriersOf(s, c)) && repo != "" && proof.Repo == repo && proof.Branch == StreamBranch(s, c.Row) && proof.Trunk == Trunk(s, c.Row) && proof.Observed != "" && proof.Merged != "" {
+		if proof.Success && proof.ContainsObserved && proof.Epoch == s.Epoch && reflect.DeepEqual(proof.Card, SentinelCardOf(c)) && reflect.DeepEqual(proof.Barriers, barriers) && repo != "" && proof.Repo == repo && proof.Branch == StreamBranch(s, c.Row) && proof.Trunk == Trunk(s, c.Row) && proof.Observed != "" && proof.Merged != "" {
 			return true
 		}
 	}

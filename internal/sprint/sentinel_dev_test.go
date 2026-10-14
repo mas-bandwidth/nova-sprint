@@ -201,3 +201,51 @@ func TestConsumerEmptyNeedsStillRequiresItsPositionalTrunkMerge(t *testing.T) {
 	s.ConsumerMerges = []ConsumerMerge{{Barriers: ConsumerBarriersOf(s, c), Epoch: s.Epoch, Card: SentinelCardOf(c), Repo: "/fixture/repo", Branch: StreamBranch(s, c.Row), Trunk: Trunk(s, c.Row), Observed: "def", Merged: "merged", Success: true, ContainsObserved: true}}
 	require.True(t, ConsumerTrunkReady(s, c))
 }
+
+func TestReleasedSentinelIndexMatchesThePlacedLandedBarrierScan(t *testing.T) {
+	t.Parallel()
+	s := newWorld(t).s
+	s.Work.SetRows([]string{"s1", "s2"})
+	s.Work.Put(&Card{ID: "ordinary", Row: "s1", Col: Landed, Score: 0})
+	s.Work.Put(&Card{ID: "tie-a", Row: "s1", Col: Landed, Score: 1, Fields: map[string]string{"kind": "sentinel"}})
+	s.Work.Put(&Card{ID: "tie-b", Row: "s1", Col: Landed, Score: 1, Fields: map[string]string{"kind": "sentinel"}})
+	s.Work.Put(&Card{ID: "waiting", Row: "s1", Col: Waiting, Score: 0, Fields: map[string]string{"kind": "sentinel"}})
+	s.Work.Put(&Card{ID: "foreign", Row: "s2", Col: Landed, Score: -1, Fields: map[string]string{"kind": "sentinel"}})
+	check := func(table *Table) {
+		for _, score := range []float64{-1, 0, 1, 1.5, 2} {
+			var want, got []string
+			for _, card := range table.Cell("s1", Landed) {
+				if IsSentinel(card) && card.Score < score {
+					want = append(want, card.ID)
+				}
+			}
+			for _, card := range table.releasedBefore("s1", score) {
+				got = append(got, card.ID)
+			}
+			require.Equal(t, want, got, "strict score prefix %v", score)
+		}
+	}
+	check(s.Work)
+	frozen := s.Work.Frozen()
+	s.Work.Put(&Card{ID: "waiting", Row: "s1", Col: Landed, Score: .5, Fields: map[string]string{"kind": "sentinel"}})
+	check(s.Work)
+	check(frozen)
+	require.Len(t, frozen.releasedBefore("s1", 2), 2, "frozen table excludes the later release")
+	s.Work.Put(&Card{ID: "tie-a", Row: "s1", Col: Ready, Score: 1, Fields: map[string]string{"kind": "sentinel"}})
+	check(s.Work)
+	s.Work.Drop("tie-b")
+	check(s.Work)
+	s.Work.Put(&Card{ID: "waiting", Row: "s2", Col: Landed, Score: .5, Fields: map[string]string{"kind": "sentinel"}})
+	check(s.Work)
+	require.Empty(t, s.Work.releasedBefore("s1", 2), "a row move leaves no positional barrier")
+	s.Work.Put(&Card{ID: "waiting", Row: "s1", Col: Landed, Score: .5})
+	check(s.Work)
+	require.Empty(t, s.Work.releasedBefore("s1", 2), "a kind replacement leaves no positional barrier")
+	s.Work.Put(&Card{ID: "waiting", Row: "s1", Col: Landed, Score: .5, Fields: map[string]string{"kind": "sentinel"}})
+	check(s.Work)
+	require.Equal(t, []string{"waiting"}, []string{s.Work.releasedBefore("s1", 2)[0].ID})
+	c := &Card{ID: "consumer", Row: "s1", Col: Ready, Score: 0, Fields: map[string]string{"needs": "foreign"}}
+	s.Work.Put(c)
+	require.True(t, ConsumerNeedsTrunk(s, c), "a named cross-stream barrier is independent of the positional prefix")
+	require.Equal(t, "foreign", ConsumerBarriersOf(s, c).Sentinels[0].ID)
+}

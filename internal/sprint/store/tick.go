@@ -2228,14 +2228,12 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
 	// a shadow tick wakes no friend: it writes nothing and sends nothing
+	// Bound proof callbacks may clone/fetch and the consumer callback may push.
+	// A shadow invokes neither. Nonempty live cuts remain proof-pending here.
 	var sentinelProof []sprint.SentinelObservation
-	if st.SentinelProof != nil {
-		sentinelProof = st.SentinelProof(ctx, snap)
-	}
+	// ConsumerTrunk performs a real Git merge and push. A shadow has no merge
+	// evidence from that writer and must leave those consumers blocked.
 	var consumerMerges []sprint.ConsumerMerge
-	if st.ConsumerTrunk != nil {
-		consumerMerges = st.ConsumerTrunk(ctx, snap)
-	}
 	req := sprint.TickReq{ConsumerMerges: consumerMerges, SentinelObservations: sentinelProof, Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err

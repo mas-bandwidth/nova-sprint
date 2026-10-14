@@ -133,12 +133,12 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	require.NoError(t, h.st.B.SetCoordinator(h.ctx, "tester"))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}, Repo: propRepo("s1")}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Repo: propRepo("s1"), Needs: []string{"a"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}, Repo: propRepo("s1"), Brief: "fixture\nREPO: " + propRepo("s1") + "\n"}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Repo: propRepo("s1"), Brief: "fixture\nREPO: " + propRepo("s1") + "\n", Needs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"after"}, Repo: propRepo("s1")}))
-	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Repo: propRepo("s2"), Needs: []string{"b"}}))
-	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"z"}, Repo: propRepo("s2")}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"after"}, Repo: propRepo("s1"), Brief: "fixture\nREPO: " + propRepo("s1") + "\n"}))
+	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Repo: propRepo("s2"), Brief: "fixture\nREPO: " + propRepo("s2") + "\n", Needs: []string{"b"}}))
+	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"z"}, Repo: propRepo("s2"), Brief: "fixture\nREPO: " + propRepo("s2") + "\n"}))
 	// A test-local symbolic forge ledger, advanced only by the explicit publisher.
 	forge := &propRun{st: h.st, ctx: h.ctx, forgeTips: map[string]string{}, forgeHeads: map[string]map[string]bool{}, forgeMerges: map[string]sprint.ConsumerMerge{}}
 	for _, stream := range []string{"s1", "s2"} {
@@ -148,6 +148,7 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	}
 	h.st.SentinelProof = forge.forgeSentinels
 	h.st.ConsumerTrunk = forge.forgeConsumers
+	require.Contains(t, h.snap().Work.Card("a").F("brief"), "REPO: "+propRepo("s1"), "the admitted producer declares its proof repository")
 	h.clean("setup")
 	line := h.st.MachineLine(h.ctx)
 	require.Equal(t, "machine: READY", line, "a new sprint, never started, is READY (docs/SPEC-SPRINT.md section 14): %q", line)
@@ -850,7 +851,10 @@ func TestRedisTheCoordinatorsRecords(t *testing.T) {
 	h.setTimer(time.Second, "tester")
 	h.startMachine()
 	h.machine()
-	h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{IDs: []string{"producer"}}, Who: "m1"}))
+	h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{Limit: 1}, Who: "m1"}))
+	taken := h.snap().Fleet.Cell("m1", sprint.Working)
+	require.Len(t, taken, 1, "the early override producer is actually taken")
+	require.Equal(t, "producer", taken[0].F(sprint.PrimaryField))
 	h.tick(time.Second)
 	h.machine()
 	open := liveOpen(h, sprint.NTimer)
