@@ -29,8 +29,8 @@ func TestAFriendsTakeByCountNeverMovesAnUnstartedCard(t *testing.T) {
 	p := w.must(Take(w.s, TakeReq{As: stellaRow, Sel: Sel{Limit: 3}, Who: stellaRow}))
 	require.Len(t, p.Units, 1, "only the started card moves on a take by count")
 	assert.Equal(t, []string{
-		"s1-1.w1: stays ready on friend.stella's row until her start (a take by count is no start)",
-		"s1-3.w1: stays ready on friend.stella's row until her start (a take by count is no start)",
+		"s1-1.w1: stays ready on friend.stella's row until the friend's start (a take by count is no start)",
+		"s1-3.w1: stays ready on friend.stella's row until the friend's start (a take by count is no start)",
 	}, p.Said)
 
 	working := w.s.Fleet.Cell(stellaRow, Working)

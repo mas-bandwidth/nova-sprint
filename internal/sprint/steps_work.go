@@ -1722,7 +1722,7 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 				started = append(started, c)
 				continue
 			}
-			p.Said = append(p.Said, fmt.Sprintf("%s: stays ready on %s's row until her start (a take by count is no start)", c.ID, r.As))
+			p.Said = append(p.Said, fmt.Sprintf("%s: stays ready on %s's row until the friend's start (a take by count is no start)", c.ID, r.As))
 		}
 		ready = started
 	}
