@@ -66,6 +66,9 @@ type outside struct {
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
 	novaTools       func(bin string) sprint.NovaToolsProbe
+	// novaToolsRequired is the nova-tools version this executable needs: go.mod's,
+	// from its build record (sprint.NovaToolsRequired); a test's fake names its own.
+	novaToolsRequired func() (string, bool)
 	// doctorConfig reads nova-config's machine and loop rows (doctor_probe.go).
 	doctorConfig func(ctx context.Context) (doctorConfig, error)
 	// serverStarted is when the server listening at addr started, and how it was measured.

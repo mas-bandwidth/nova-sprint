@@ -1,38 +1,28 @@
 package sprint
 
 import (
-	"os"
-	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"testing"
-
-	"golang.org/x/mod/modfile"
 )
 
-// The binary's required nova-tools is go.mod's requirement, read back from the build
-// record: one source, nothing restating it.
-func TestNovaToolsRequiredIsGoModsRequirement(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
-	if err != nil {
-		t.Fatal(err)
+// NovaToolsRequiredFrom reads the dependency record it is given: the version of
+// NovaToolsModule among the deps, none when there is no record. The real executable's
+// record against go.mod is the functional tier's (TestTheBuiltExecutableRecordsGoModsNovaTools).
+func TestNovaToolsRequiredFromReadsTheInjectedRecord(t *testing.T) {
+	record := func(bi *debug.BuildInfo, ok bool) func() (*debug.BuildInfo, bool) {
+		return func() (*debug.BuildInfo, bool) { return bi, ok }
 	}
-	f, err := modfile.Parse("go.mod", data, nil)
-	if err != nil {
-		t.Fatal(err)
+	const v = "v1.2.26-0.20261014184205-74cef8c16f41"
+	got, ok := NovaToolsRequiredFrom(record(&debug.BuildInfo{Deps: []*debug.Module{{Path: "golang.org/x/mod", Version: "v0.41.0"}, {Path: NovaToolsModule, Version: v}}}, true))
+	if !ok || got != v {
+		t.Errorf("a record listing nova-tools: %q %v", got, ok)
 	}
-	want := ""
-	for _, r := range f.Require {
-		if r.Mod.Path == NovaToolsModule {
-			want = r.Mod.Version
-		}
+	if got, ok := NovaToolsRequiredFrom(record(nil, false)); ok || got != "" {
+		t.Errorf("no build record: %q %v", got, ok)
 	}
-	if want == "" {
-		t.Fatalf("go.mod does not require %s", NovaToolsModule)
-	}
-	got, ok := NovaToolsRequired()
-	if !ok || got != want {
-		t.Fatalf("NovaToolsRequired() = %q, %v; go.mod requires %s", got, ok, want)
+	if got, ok := NovaToolsRequiredFrom(record(&debug.BuildInfo{}, true)); ok || got != "" {
+		t.Errorf("a record with no deps (a test binary's may be one): %q %v", got, ok)
 	}
 }
 

@@ -55,11 +55,15 @@ func (a *app) novaToolsRefusals() []string {
 	for _, bin := range sprint.NovaToolsBinaries {
 		probes = append(probes, probe(bin))
 	}
-	required, ok := sprint.NovaToolsRequired()
+	required := a.outside.novaToolsRequired
+	if a.outside.serverAddr == nil || required == nil {
+		required = sprint.NovaToolsRequired
+	}
+	version, ok := required()
 	if !ok {
 		return []string{"this nova-sprint build records no " + sprint.NovaToolsModule + " requirement (built outside module mode); rebuild it with go install"}
 	}
-	return sprint.NovaToolsRefusals(probes, required)
+	return sprint.NovaToolsRefusals(probes, version)
 }
 
 // refuseNovaTools prints the refusals under verb and is 1 when there are any, 0 when

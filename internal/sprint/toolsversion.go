@@ -25,12 +25,21 @@ const NovaToolsModule = "github.com/mas-bandwidth/nova-tools"
 // bus and the config store, in the order they are checked.
 var NovaToolsBinaries = []string{"nova-friend", "nova-bus", "nova-config"}
 
-// NovaToolsRequired is the nova-tools version this binary was built against: go.mod's
-// requirement as the build recorded it. ok is false when the build records none (a
-// binary built outside module mode), which the caller refuses.
+// NovaToolsRequired is the nova-tools version this executable was built against:
+// go.mod's requirement as the build recorded it (debug.ReadBuildInfo). ok is false when
+// the build records none (a binary built outside module mode, or a test binary, whose
+// record need not list the main module's dependencies), which the caller refuses. The
+// real executable's record is checked against go.mod by the functional tier
+// (cmd/nova-sprint TestTheBuiltExecutableRecordsGoModsNovaTools).
 func NovaToolsRequired() (version string, ok bool) {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
+	return NovaToolsRequiredFrom(debug.ReadBuildInfo)
+}
+
+// NovaToolsRequiredFrom is NovaToolsRequired over read, a build-info reader: the
+// executable's own in NovaToolsRequired, a test's record in a unit test.
+func NovaToolsRequiredFrom(read func() (*debug.BuildInfo, bool)) (version string, ok bool) {
+	bi, ok := read()
+	if !ok || bi == nil {
 		return "", false
 	}
 	return novaToolsIn(bi.Deps)
