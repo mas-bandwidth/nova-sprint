@@ -745,15 +745,17 @@ func (m *Member) Stalled() time.Duration {
 // `fleet beat <member>`, naming the highest one-second load sample since the last beat
 // written, so the ten-second highest nova-sprint keeps over its beats (docs/SPEC-SPRINT.md,
 // the fleet) is the highest of the last ten seconds; with no sample it names none and
-// nova-sprint fleet beat measures the machine itself. A reader's is its queue, the verb that
-// is a reader's beat (docs/SPEC-SPRINT.md, the readers), its answer not read. A beat that
-// fails is the error: the next goes at the next interval.
+// nova-sprint fleet beat measures the machine itself. A reader's is `queue --as <reader>
+// --beat`, the verb that writes a reader's beat (docs/SPEC-SPRINT.md, the readers), its
+// answer not read. A beat that fails is the error: the next goes at the next interval.
 // tla/LiveRuns.tla Beat
 func (m *Member) Beat() error {
 	m.beatMu.Lock()
 	defer m.beatMu.Unlock()
-	// a reader's beat wants no packet: none for a card it may start, none for one it runs
-	args := []string{"queue", "--as", m.cfg.As, "--json", "--packets", "0"}
+	// a reader's beat is the queue's --beat (docs/SPEC-SPRINT.md section 6, the reader
+	// presence rule): the queue itself reads only and writes nothing. It wants no packet:
+	// none for a card it may start, none for one it runs.
+	args := []string{"queue", "--as", m.cfg.As, "--json", "--packets", "0", "--beat"}
 	if have := m.have.Load(); have != nil && *have != "" {
 		args = append(args, "--have", *have)
 	}
@@ -1781,10 +1783,8 @@ func (m *Member) queueArgs() []string {
 	if words := m.haveWords(); words != "" {
 		args = append(args, "--have", words)
 	}
-	if m.cfg.Reader {
-		// a reader's queue is its beat too: it carries the refusal as the beat's does
-		args = append(args, m.noRoomArgs()...)
-	}
+	// a reader's work-pass queue reads only (docs/SPEC-SPRINT.md section 6, the reader
+	// presence rule): its --no-room word is the beat's (Beat, --beat), never this queue's
 	return args
 }
 
