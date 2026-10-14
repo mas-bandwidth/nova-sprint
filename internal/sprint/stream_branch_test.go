@@ -18,9 +18,9 @@ import (
 func TestAddWritesTheStreamBranchAndTrunk(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name   string
-		base   string
-		trunk  string
+		name    string
+		base    string
+		trunk   string
 		cleared bool
 	}{
 		{name: "a dev base writes its branch and trunk", base: "dev", trunk: "dev"},
