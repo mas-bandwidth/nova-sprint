@@ -45,5 +45,3 @@ internal/sprint/store/waitlog_test.go
 pkg/ratebudget/ratebudget_test.go
 pkg/ratebudget/twin_test.go
 pkg/swarm/stage_test.go
-pkg/tlc/run_test.go
-pkg/tlc/suite_test.go

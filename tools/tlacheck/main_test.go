@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/tlc"
 )
 
 // checkout is the root of this repository, two directories above the package.

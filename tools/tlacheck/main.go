@@ -19,7 +19,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/tlc"
 )
 
 const usage = `tlacheck runs and reads the TLA+ models under tla/.

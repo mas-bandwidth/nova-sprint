@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/tlc"
 )
 
 // coverageRow is one row of tla/COVERAGE.tsv: the header is machine, code,
