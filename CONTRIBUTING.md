@@ -19,11 +19,11 @@ helps.
 | `tla` | State-machine models and their recorded runs. |
 | `assets` | Project artwork, with [provenance](docs/ASSET-PROVENANCE.md). |
 
-This repository was split from Nova Tools on 2026-10-04. It still contains
-copies of shared Nova Tools packages while public API imports replace them.
-For a fix to a shared package, check the upstream Nova Tools implementation
-first and carry the fix through both repositories as needed. Keep that
-migration detail out of the product introduction.
+This repository was split from Nova Tools on 2026-10-04, and since the v1.3
+dedupe it imports Nova Tools for every shared package instead of keeping
+copies; [`go.mod`](go.mod) is the one source of the Nova Tools version it
+requires. For a fix to a shared package, change the upstream Nova Tools
+implementation. Keep that migration detail out of the product introduction.
 
 ## Build and check a change
 
@@ -47,7 +47,7 @@ is executable: the transcripts in [TESTS.md](docs/TESTS.md) are run by command
 tests, and the [dashboard specification](docs/SPEC-SPRINT-DASHBOARD.md) is
 compared with the page by `TestDashboardPageIsTheSpec`.
 
-The [test harness guide](internal/testkit/HARNESS.md) explains shared helpers.
+The [test harness guide](https://github.com/mas-bandwidth/nova-tools/blob/main/pkg/testkit/HARNESS.md) explains shared helpers.
 The [model guide](tla/README.md) explains the TLA+ checks; a recorded model run
 is evidence about that model and revision, not a fresh test of your change.
 

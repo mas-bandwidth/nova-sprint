@@ -22,18 +22,13 @@ explaining the foundation. Send people who want to create AI friends to
 ## Mark and banner
 
 Use [the approved jogging banner](../brand/jogging/banner-cute-wave-left.png) at the
-top of the README. It is a 2171 × 724 lossless PNG: a happy white-and-blue
-friend jogging and waving, grouped with the flat Nova Sprint wordmark and
-centred as one element. Scale it as a whole. Earlier starting-blocks and
-group banners remain in the artwork archive.
+top of the README, and scale it as a whole. Its dimensions, provenance, and the
+earlier banners are recorded once in [the artwork layers](../brand/README.md#approved-jogging-banner).
 
 The individual friends illustrate the [README explainer](../README.md).
-Green cannot hear the team, Yellow sleeps, and Purple trips over the blocked
-dependency. The checklist bot coordinates, Orange meets the fleet swarm,
-Pink cycles at her own pace, and White carries work through to landing.
-Keep [Glenn's character meanings](../brand/README.md#what-the-friends-represent)
-consistent. Humour comes from real coordination difficulties, not a ranking
-of models or people.
+Keep [Glenn's character meanings](../brand/README.md#what-the-friends-represent),
+which that page states once, consistent. Humour comes from real coordination
+difficulties, not a ranking of models or people.
 
 For future art, keep recognisable robot bodies, readable expressions, and
 varied movement. Align a runner's movement with the perspective of its lane.
