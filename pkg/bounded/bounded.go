@@ -41,7 +41,7 @@ package bounded
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // Default is the ceiling every --*-max flag in this repo starts at. Twenty is a screen:

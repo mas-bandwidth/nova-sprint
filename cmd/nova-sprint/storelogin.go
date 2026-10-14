@@ -22,7 +22,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/redisauth"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 )

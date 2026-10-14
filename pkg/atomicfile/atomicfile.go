@@ -120,7 +120,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 const (

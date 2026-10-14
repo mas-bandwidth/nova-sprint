@@ -15,6 +15,11 @@
 #                            EXTEND/INSTANCE, MCM.tla rows of CASES.tsv and
 #                            RUNS.tsv and their .cfg files, README and bench
 #   keep     <path>          nova-sprint's own file or dir, taken from -keep
+#   external <import path> <version>
+#                            a nested module of nova-tools that the moved code
+#                            imports instead of copying: the import is left
+#                            pointing at nova-tools and the version is required
+#                            in the seeded go.mod
 #   gomod                    go.mod from nova-tools with the module renamed and
 #                            nova-sprint's tool lines; go.sum from nova-tools
 #
@@ -24,6 +29,10 @@
 # are import-rewritten too. Renamed packages bring Go files and their embeds.
 
 module	github.com/mas-bandwidth/nova-tools	github.com/mas-bandwidth/nova-sprint
+
+# pkg/oneline is imported from nova-tools, not copied: its files are identical,
+# so the move does not bring it back on a re-seed.
+external	github.com/mas-bandwidth/nova-tools/pkg/oneline	v0.0.0-20261014020233-83d0e15b35c3
 
 # The move is the sprint-only set of nova-sprint v1.2.3 (split layer L2, nova-tools
 # PR 5558): the three commands and the packages no kept nova-tools command imports

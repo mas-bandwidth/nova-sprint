@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/gocache"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
 )
 

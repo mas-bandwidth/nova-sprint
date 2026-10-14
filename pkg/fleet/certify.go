@@ -45,7 +45,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-sprint/pkg/log"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"golang.org/x/mod/semver"
 )
 
