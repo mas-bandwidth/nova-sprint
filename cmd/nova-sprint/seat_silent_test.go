@@ -58,7 +58,7 @@ func seatSilentRig(t *testing.T, b *tokenBus) (*testApp, *store.Store, string) {
 			return ta, st, g.ID
 		}
 	}
-	t.Fatal("no open seat-not-answering judgment")
+	require.FailNow(t, "no open seat-not-answering judgment")
 	return nil, nil, ""
 }
 

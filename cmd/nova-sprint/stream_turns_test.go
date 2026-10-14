@@ -111,7 +111,7 @@ func fairStreams(t *testing.T, count, width int) {
 			return
 		}
 	}
-	t.Fatal("not landed after 200 ticks")
+	require.FailNow(t, "not landed after 200 ticks")
 }
 
 func TestTheStreamsAreReadAndLandedTogether(t *testing.T) {

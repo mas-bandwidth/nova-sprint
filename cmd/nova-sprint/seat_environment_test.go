@@ -171,7 +171,7 @@ func TestSeatEnvironmentDoesNotOverrideExplicitBusLogin(t *testing.T) {
 	require.NoError(t, a.loadSeatEnvironment())
 	a.seatLoginOn()
 	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
-		t.Fatal("explicit bus login must not read seat credential")
+		require.FailNow(t, "explicit bus login must not read seat credential")
 		return secrets.Secret{}, nil
 	}
 	o, _, err := a.seatBusOptions(redisconn.Options{Addr: l.Redis, User: "explicit", PasswordEnv: "EXPLICIT_PASSWORD"})
@@ -221,7 +221,7 @@ func TestSeatEnvironmentExplicitStoreAuthWinsWithoutReadingFileSecret(t *testing
 	require.NoError(t, a.loadSeatEnvironment())
 	a.seatLoginOn()
 	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
-		t.Fatal("explicit process auth must not read file credential")
+		require.FailNow(t, "explicit process auth must not read file credential")
 		return secrets.Secret{}, nil
 	}
 	o, env, err := a.storeOptions(l.Redis)
@@ -358,7 +358,7 @@ func TestSeatEnvironmentExplicitBusPasswordReferenceKeepsDefaultUser(t *testing.
 	require.NoError(t, a.loadSeatEnvironment())
 	a.seatLoginOn()
 	a.loginSecret = func(secrets.Login) (secrets.Secret, error) {
-		t.Fatal("explicit bus password reference must not read the recorded secret")
+		require.FailNow(t, "explicit bus password reference must not read the recorded secret")
 		return secrets.Secret{}, nil
 	}
 	o, env, err := a.seatBusOptions(busOptions(a.getenv))

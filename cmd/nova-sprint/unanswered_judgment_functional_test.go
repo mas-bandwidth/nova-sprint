@@ -193,7 +193,7 @@ func (r *ujRig) hookIn() *hookSession {
 		case m := <-r.hook:
 			chal = m.Challenge
 		case <-time.After(10 * time.Second):
-			r.t.Fatal("no challenge on the hook")
+			require.FailNow(r.t, "no challenge on the hook")
 		}
 	}
 	b, _ := json.Marshal(hookMsg{T: "prove", Req: "p1", Challenge: chal})
@@ -213,7 +213,7 @@ func (r *ujRig) hookIn() *hookSession {
 				return nil
 			}
 		case <-time.After(10 * time.Second):
-			r.t.Fatal("the proof was not answered")
+			require.FailNow(r.t, "the proof was not answered")
 		}
 	}
 }

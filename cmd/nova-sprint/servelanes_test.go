@@ -53,7 +53,7 @@ func TestVerbAnsweredWhileLandInProgress(t *testing.T) {
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
 	r.ok("start")
 	r.a.serveAddr = "mem:0"
-	r.a.serial.waiting = func() { t.Error("a verb waited for the line while the landing ran its git") }
+	r.a.serial.waiting = func() { assert.Fail(t, "a verb waited for the line while the landing ran its git") }
 	atPush, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	r.a.beforePush = func(int) {

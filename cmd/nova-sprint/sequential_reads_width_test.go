@@ -117,7 +117,7 @@ func TestReadsTogetherAtReaderWidthTakeFourReadsPerLanding(t *testing.T) {
 			r.readAll(asked, verdict...)
 			r.boss("nova-sprint tick")
 		}
-		t.Fatalf("reads still asked after eight rounds")
+		require.FailNow(t, "reads still asked after eight rounds")
 	}
 
 	// attempt 1: each card's two reads asked together, by room; both find it broken
