@@ -11,10 +11,11 @@ import (
 )
 
 // A friend's beat itself never makes her up, and the session proof her record keeps
-// does while it is under FriendProofLive old and her beat is fresh: the proof is the
+// is an event of hers (her last-heard time) while her beat is fresh: the proof is the
 // server's time of her session's answer to a check her daemon asked (ProveBeat), so a
 // daemon that stopped beating proves nothing more (FriendEvidence; docs/SPEC-FRIEND.md,
-// "Presence is her session's evidence").
+// "Presence is her session's evidence"). A proof is up for FriendHeardUp and deaf, shown
+// up, for FriendDeafHold more.
 func TestAFriendIsUpOnTheSessionProofHerBeatCarries(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 22, 0, 0, 0, time.UTC)
@@ -25,8 +26,9 @@ func TestAFriendIsUpOnTheSessionProofHerBeatCarries(t *testing.T) {
 		want  string
 	}{
 		{"no proof carried: her beat alone", now.Add(-time.Second), time.Time{}, Down},
-		{"the proof just in its window", now.Add(-time.Second), now.Add(-FriendProofLive + time.Second), Up},
-		{"the proof at its bound", now.Add(-time.Second), now.Add(-FriendProofLive), Down},
+		{"the proof just in its window", now.Add(-time.Second), now.Add(-FriendHeardUp + time.Second), Up},
+		{"the proof at its up bound: deaf, shown up", now.Add(-time.Second), now.Add(-FriendHeardUp), Up},
+		{"the proof at its grace", now.Add(-time.Second), now.Add(-FriendHeardUp - FriendDeafHold), Down},
 		{"a proof from the future", now.Add(-time.Second), now.Add(time.Minute), Down},
 		{"a fresh proof, and her beats stopped", now.Add(-BeatDeadline - time.Second), now.Add(-BeatDeadline - 2*time.Second), Down},
 	} {
@@ -44,9 +46,10 @@ func TestAFriendIsUpOnTheSessionProofHerBeatCarries(t *testing.T) {
 	assert.Equal(t, Up, word)
 	assert.Equal(t, "session proof 3m0s ago", why)
 	_, why = FriendEvidence(FriendPresence{Beat: Beat{At: now.Add(-time.Second), Proof: now.Add(-20 * time.Minute)}}, now)
-	assert.Contains(t, why, "no session proof on the beat within 15m0s (last 20m0s ago)")
+	assert.Contains(t, why, "last heard 20m0s ago (session proof)")
 	_, why = FriendEvidence(FriendPresence{Beat: Beat{At: now.Add(-time.Minute), Proof: now.Add(-2 * time.Minute)}}, now)
-	assert.Contains(t, why, "(last 2m0s ago, beat stopped 1m0s ago)")
+	assert.Contains(t, why, "never heard", "a proof her stopped beat carries is none")
+	assert.Contains(t, why, "beat 1m0s ago is not evidence")
 	// the friend beat record keeps the proof under "pong"; the beat read from it carries it
 	var b Beat
 	require.NoError(t, json.Unmarshal([]byte(`{"at":"2026-10-05T21:59:59Z","pong":"2026-10-05T21:55:00Z"}`), &b))

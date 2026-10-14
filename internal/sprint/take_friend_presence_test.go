@@ -13,9 +13,9 @@ import (
 // 2026-10-05, a take --as friend.<f> for two friends was refused "member
 // friend.<f> is -" while where showed both up: a friend's row has no control card status
 // (only a machine's does). Her take is admitted by FriendStatus, as the snapshot's friend
-// seats carry it, and refused when she is held or has no evidence from her session in its
-// window (a beat alone is none: card presence-from-session-only), the refusal naming
-// which; a machine's take keeps its control card's rule.
+// seats carry it, and refused when she is held or has not been heard from her session within
+// its grace (a beat alone is none: card presence-from-session-only; the last-heard rule,
+// FriendPhase), the refusal naming which; a machine's take keeps its control card's rule.
 
 // readyForAmy is a world with amy dealt three cards at width 2: two working and s1-3.w1
 // ready on her row, which a take at her raised width 3 can take.
@@ -72,12 +72,12 @@ func TestATakeForAFriendUpOnHerSessionIsAdmittedWithoutAControlStatus(t *testing
 	for _, tc := range []struct {
 		name string
 		f    FriendPresence
-		want string
+		want []string
 	}{
-		{"held", FriendPresence{Held: true, Beat: Beat{At: now.Add(-time.Second)}}, "friend amy is held: held by the coordinator (friend down)"},
-		{"beating, no session evidence", FriendPresence{Beat: Beat{At: now.Add(-time.Second)}}, "friend amy is down: no session evidence: no wake ping answered within 10m0s, no session proof on the beat within 15m0s, no card finished within 30m0s; beat 1s ago is not evidence"},
-		{"observed down", FriendPresence{Beat: Beat{At: now.Add(-time.Second)}, Health: FriendHealth{State: Down, Seen: now.Add(-time.Second), Generation: 1}, Generation: 1}, "friend amy is down: no session evidence: no wake ping answered within 10m0s, no session proof on the beat within 15m0s, no card finished within 30m0s; beat 1s ago is not evidence"},
-		{"never beaten", FriendPresence{}, "friend amy is down: no session evidence: no wake ping answered within 10m0s, no session proof on the beat within 15m0s, no card finished within 30m0s"},
+		{"held", FriendPresence{Held: true, Beat: Beat{At: now.Add(-time.Second)}}, []string{"friend amy is held: held by the coordinator (friend down)"}},
+		{"beating, no session evidence", FriendPresence{Beat: Beat{At: now.Add(-time.Second)}}, []string{"friend amy is down: asleep: the friend's daemon answers and the friend's session does not; no session evidence: nothing heard from the friend within 20m0s", "never heard; beat 1s ago is not evidence"}},
+		{"observed down", FriendPresence{Beat: Beat{At: now.Add(-time.Second)}, Health: FriendHealth{State: Down, Seen: now.Add(-time.Second), Generation: 1}, Generation: 1}, []string{"friend amy is down: asleep: the friend's daemon answers and the friend's session does not; no session evidence: nothing heard from the friend within 20m0s", "never heard; beat 1s ago is not evidence"}},
+		{"never beaten", FriendPresence{}, []string{"friend amy is down: no session evidence: nothing heard from the friend within 20m0s", "never heard", "any valid event brings the friend up at once: nova-bus send or recv as the friend, nova-sprint take or finish as the friend"}},
 	} {
 		t.Run(tc.name+": refused, naming it", func(t *testing.T) {
 			t.Parallel()
@@ -86,7 +86,9 @@ func TestATakeForAFriendUpOnHerSessionIsAdmittedWithoutAControlStatus(t *testing
 			require.NotEqual(t, Up, st)
 			p := takeForAmy(w, FriendSeat{Name: "amy", Width: 3, Status: st, Why: FriendDownWhy(tc.f, now)})
 			require.Len(t, p.Refused, 1)
-			assert.Equal(t, tc.want, p.Refused[0].Why)
+			for _, want := range tc.want {
+				assert.Contains(t, p.Refused[0].Why, want)
+			}
 			assert.Empty(t, p.Units)
 			assert.Equal(t, Ready, w.s.Fleet.Card("s1-3.w1").Col)
 		})

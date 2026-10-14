@@ -341,7 +341,7 @@ func (r *chaosRig) sessionPong(ctx context.Context, nonce string) {
 
 // answered is the coordinator's observation that the friend's session
 // answered its wake ping now (friend health --state up under the first seat),
-// her session's evidence on the twin for FriendPongWindow. The caller holds mu.
+// her session's evidence on the twin for FriendHeardUp. The caller holds mu.
 func (r *chaosRig) answered(name string) error {
 	_, _, _, err := r.st.FriendHealth(r.ctx, name, "coord", sprint.FriendHealth{State: sprint.Up, Seen: time.Now(), Generation: sprint.FirstSeatGeneration}, "")
 	return err
@@ -619,8 +619,8 @@ func TestEveryFriendFailureShowsWithinItsBound(t *testing.T) {
 			// next command fails, and the status is written after the step's pause (a beat)
 			_, said := r.within(3*sprint.FriendBeatEvery, func() bool { return strings.Contains(r.lastStatus().StoreError, "WRONGPASS") }) // wall-ok: fake time in the synctest bubble
 			assert.True(t, said, "the daemon's status names the refusal at its first failed command: %q", r.lastStatus().StoreError)
-			took, down := r.within(sprint.FriendPongWindow+2*time.Second, func() bool { return r.friendStatus("bob") == sprint.Down }) // wall-ok: fake time in the synctest bubble
-			assert.True(t, down, "a daemon whose bus refuses it stops beating, and the table says down within %s: after %s it says %s", sprint.FriendPongWindow, took, r.friendStatus("bob"))
+			took, down := r.within(sprint.FriendHeardUp+sprint.FriendDeafHold+2*time.Second, func() bool { return r.friendStatus("bob") == sprint.Down }) // wall-ok: fake time in the synctest bubble
+			assert.True(t, down, "a daemon whose bus refuses it stops beating, and the table says down within %s: after %s it says %s", sprint.FriendHeardUp+sprint.FriendDeafHold, took, r.friendStatus("bob"))
 			alarms := r.openNotes("bob", "WRONGPASS")
 			o.check(len(alarms) == 1, "fr-delivery-receipts", "one alarm to the coordinator naming bob, the store and the user on the first failed send (%d failed): the twin holds %d: %v", r.bobBus.fails.Load(), len(alarms), alarms)
 			r.dealtElsewhere(&o, "fr-presence-model")

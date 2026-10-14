@@ -99,8 +99,9 @@ func TestObservedStatusIsUpOrDown(t *testing.T) {
 	t.Parallel()
 	up := obs(Up, h0, 2)
 	assert.Equal(t, Up, ObservedStatus(up, 2, h0), "the first proof is up at once")
-	assert.Equal(t, Up, ObservedStatus(up, 2, h0.Add(FriendPongWindow-time.Second)))
-	assert.Equal(t, Down, ObservedStatus(up, 2, h0.Add(FriendPongWindow)), "exactly the window is down")
+	assert.Equal(t, Up, ObservedStatus(up, 2, h0.Add(FriendHeardUp-time.Second)))
+	assert.Equal(t, Up, ObservedStatus(up, 2, h0.Add(FriendHeardUp)), "exactly the up window is deaf, shown up")
+	assert.Equal(t, Down, ObservedStatus(up, 2, h0.Add(FriendHeardUp+FriendDeafHold)), "exactly the grace is down")
 	assert.Equal(t, Down, ObservedStatus(up, 3, h0), "an old seat's proof never looks up under a new seat")
 	assert.Equal(t, Down, ObservedStatus(up, 2, h0.Add(-time.Second)), "a proof dated after now is no proof: a negative age is not under the window")
 	assert.Equal(t, Down, ObservedStatus(obs(DaemonPong, h0, 2), 2, h0), "asleep shows as down")
@@ -114,7 +115,7 @@ func TestFriendStatusHeldThenObservationThenBeat(t *testing.T) {
 	fresh := Beat{At: h0}
 	assert.Equal(t, Held, FriendStatus(FriendPresence{Held: true, Beat: fresh, Health: obs(Up, h0, 2), Generation: 2}, h0))
 	assert.Equal(t, Down, FriendStatus(FriendPresence{Beat: fresh, Health: obs(Down, h0, 2), Generation: 2}, h0), "a fresh raw beat cannot override an observed down")
-	assert.Equal(t, Down, FriendStatus(FriendPresence{Beat: fresh, Health: obs(Up, h0.Add(-FriendPongWindow), 2), Generation: 2}, h0), "no fallback to the beat once the pong is out of its window")
+	assert.Equal(t, Down, FriendStatus(FriendPresence{Beat: fresh, Health: obs(Up, h0.Add(-FriendHeardUp-FriendDeafHold), 2), Generation: 2}, h0), "no fallback to the beat once the pong is out of its grace")
 	assert.Equal(t, Up, FriendStatus(FriendPresence{Beat: fresh, Health: obs(Up, h0, 2), Generation: 2}, h0))
 	assert.Equal(t, Down, FriendStatus(FriendPresence{Beat: fresh, Generation: 2}, h0), "never observed: her beat is no evidence")
 	assert.Equal(t, Down, FriendStatus(FriendPresence{Generation: 2}, h0), "never observed, never beaten")
@@ -138,8 +139,8 @@ func TestMoveSeatTakesTheNextGeneration(t *testing.T) {
 // ObservedStatus is the friends' rule over the coordinator's observation
 // alone at now: up only when the observation's word is up (a wake ping her
 // session answered), under the current seat generation (an old seat's proof
-// never looks up under a new seat), with its proof under FriendPongWindow old
-// and not dated after now (a negative age is no proof); down otherwise,
+// never looks up under a new seat), with its proof under FriendHeardUp+FriendDeafHold
+// old (deaf is shown up) and not dated after now (a negative age is no proof); down otherwise,
 // whatever finer word the row keeps (DaemonPong, her daemon's own pong, is down).
 func ObservedStatus(h FriendHealth, generation uint64, now time.Time) string {
 	status, _ := FriendEvidence(FriendPresence{Health: h, Generation: generation}, now)

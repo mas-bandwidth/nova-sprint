@@ -42,6 +42,11 @@ func friendBeatKey(friend string) string { return "friend-beat:" + friend }
 // (sprint.FriendHealth; friend health), written by the health step's commit.
 func friendHealthKey(friend string) string { return "friend-health:" + friend }
 
+// friendHeardKey is when the friend was last heard: the latest valid event of hers the
+// server saw (Store.FriendHeard; sprint.FriendPhase). RFC3339 UTC, to the second, and
+// only ever moved forward.
+func friendHeardKey(friend string) string { return "friend-heard:" + friend }
+
 // friendEntry is a friend's entry in the roster: the coordinator's hold,
 // empty while released, and her width, how many jobs she works at once.
 type friendEntry struct {
@@ -186,6 +191,11 @@ type FriendRow struct {
 	// Proof is her session's last proof as her beat carries it (sprint.Beat.Proof: a
 	// SESSION CHECK it answered, or a bus message of its own), zero when none.
 	Proof time.Time `json:"proof,omitzero"`
+	// Heard is when she was last heard (sprint.FriendPresence.Heard), zero for never; Phase
+	// is her presence phase (sprint.FriendPhase: up, deaf, asleep, down or held), which the
+	// row never prints: Status is only up, down or held, and deaf shows as up, asleep as down.
+	Heard time.Time `json:"heard,omitzero"`
+	Phase string    `json:"-"`
 	// Reason and Until say why she is held or down and when she is expected
 	// back, when the hold or the observation said (friend down, friend health).
 	Reason string    `json:"reason,omitempty"`
@@ -290,7 +300,7 @@ func (st *Store) SyncFriends(ctx context.Context, specs []FriendSpec) (added, re
 	if len(removed) > 0 {
 		keys := make([]string, 0, len(removed))
 		for _, n := range removed {
-			keys = append(keys, st.Names.Key(friendBeatKey(n)), st.Names.Key(friendHealthKey(n)), st.Names.Key(friendFinishKey(n)))
+			keys = append(keys, st.Names.Key(friendBeatKey(n)), st.Names.Key(friendHealthKey(n)), st.Names.Key(friendFinishKey(n)), st.Names.Key(friendHeardKey(n)))
 		}
 		if _, err := st.B.DeleteKeys(ctx, keys); err != nil {
 			return added, removed, updated, err
@@ -391,7 +401,15 @@ func (st *Store) FriendBeatLive(ctx context.Context, friend string, rep sprint.F
 		return b, BeatProof{}, err
 	}
 	b.Proof = rec.Pong
-	return b, BeatProof{Proved: proved, NoProof: why, Proof: rec.Pong}, kv.SetKey(ctx, friendBeatKey(friend), string(out))
+	if err := kv.SetKey(ctx, friendBeatKey(friend), string(out)); err != nil {
+		return b, BeatProof{Proved: proved, NoProof: why, Proof: rec.Pong}, err
+	}
+	// Her beat is no event of hers, with a proof or without: a daemon beating for a dead
+	// session says an app is open (asleep, sprint.FriendPhase). The session proof the record
+	// keeps (Beat.Proof) is read where it stands, while her beat is fresh, so a daemon that
+	// stopped proves nothing more (ProveBeat; docs/SPEC-FRIEND.md), and is not copied into her
+	// heard time.
+	return b, BeatProof{Proved: proved, NoProof: why, Proof: rec.Pong}, nil
 }
 
 // SetFriendHeld holds the friend (friend down, with why and until when the
@@ -475,6 +493,9 @@ func (st *Store) friendFleet(ctx context.Context) (*sprint.Table, error) {
 	return loaded.Fleet, nil
 }
 
+// friendKeys is the records read of each friend: her beat, health, finish and heard.
+const friendKeys = 4
+
 // friendRows is FriendRows and, by name, why each friend is not up
 // (sprint.FriendDownWhy; absent while she is up): the words a take refused for her names
 // (FriendSeats).
@@ -491,9 +512,9 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		return nil, nil, err
 	}
 	names := slices.Sorted(maps.Keys(r))
-	keys := make([]string, 0, 3*len(names))
+	keys := make([]string, 0, friendKeys*len(names))
 	for _, n := range names {
-		keys = append(keys, friendBeatKey(n), friendHealthKey(n), friendFinishKey(n))
+		keys = append(keys, friendBeatKey(n), friendHealthKey(n), friendFinishKey(n), friendHeardKey(n))
 	}
 	vals, oks, err := getKeys(ctx, kv, keys)
 	if err != nil {
@@ -505,24 +526,30 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 	for i, n := range names {
 		var b sprint.Beat
 		var h sprint.FriendHealth
-		var fin time.Time
-		if 3*i+2 < len(oks) {
-			if oks[3*i] {
+		var fin, heard time.Time
+		if friendKeys*i+friendKeys-1 < len(oks) {
+			at := friendKeys * i
+			if oks[at] {
 				// ignored: an unreadable record is no beat, which the next beat replaces
-				_ = json.Unmarshal([]byte(vals[3*i]), &b)
+				_ = json.Unmarshal([]byte(vals[at]), &b)
 			}
-			if oks[3*i+1] {
+			if oks[at+1] {
 				// ignored: an unreadable record is no observation, which the next replaces
-				_ = json.Unmarshal([]byte(vals[3*i+1]), &h)
+				_ = json.Unmarshal([]byte(vals[at+1]), &h)
 			}
-			if oks[3*i+2] {
+			if oks[at+2] {
 				// ignored: an unreadable record is no finish, which the next replaces
-				fin, _ = time.Parse(time.RFC3339, vals[3*i+2])
+				fin, _ = time.Parse(time.RFC3339, vals[at+2])
+			}
+			if oks[at+3] {
+				// ignored: an unreadable record is never heard, which the next event replaces
+				heard, _ = time.Parse(time.RFC3339, vals[at+3])
 			}
 		}
-		presence := sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation, Finished: fin}
-		word, evidence := sprint.FriendEvidence(presence, now)
-		row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
+		presence := sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation, Finished: fin, Heard: heard}
+		phase, evidence := sprint.FriendPhase(presence, now)
+		word, _ := sprint.FriendEvidence(presence, now)
+		row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Phase: phase, Heard: heard, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
 		if why := sprint.FriendDownWhy(presence, now); why != "" {
 			whys[n] = why
 		}
@@ -570,7 +597,7 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 	}
 	seats := make([]sprint.FriendSeat, len(rows))
 	for i, r := range rows {
-		seats[i] = sprint.FriendSeat{Name: r.Name, Pronouns: r.Pronouns, Width: r.Width, Status: r.Status, Class: r.Class, Mode: r.Mode, Roles: sprint.Split(r.Roles), Streams: sprint.Split(r.Streams), Kinds: sprint.Split(r.Kinds), Why: whys[r.Name], Proof: r.Proof, Finished: r.Finished}
+		seats[i] = sprint.FriendSeat{Name: r.Name, Pronouns: r.Pronouns, Width: r.Width, Status: r.Status, Class: r.Class, Mode: r.Mode, Roles: sprint.Split(r.Roles), Streams: sprint.Split(r.Streams), Kinds: sprint.Split(r.Kinds), Why: whys[r.Name], Proof: r.Proof, Finished: r.Finished, Heard: r.Heard, Phase: r.Phase}
 		if r.Reason != "" && seats[i].Why != "" {
 			seats[i].Why += ": " + r.Reason
 		}
@@ -705,6 +732,9 @@ func (st *Store) FriendHealth(ctx context.Context, friend, who string, obs sprin
 	if len(res.Refused) > 0 {
 		return sprint.FriendHealth{}, "", false, errors.New(res.Refused[0].Why)
 	}
+	// Her answered wake ping is an event of hers all the same, but it is read from the observation
+	// itself, under the seat's generation (sprint.FriendPhase), and not copied into her heard time:
+	// an old seat's proof never looks up under a new seat (tla/SeatHealth.tla).
 	status, err := st.friendStatusAfter(ctx, friend, sprint.FriendPresence{Held: e.Held, Health: obs, Generation: obs.Generation})
 	return obs, status, false, err
 }
@@ -722,7 +752,11 @@ func (st *Store) friendStatusAfter(ctx context.Context, friend string, p sprint.
 	if err != nil {
 		return "", err
 	}
-	p.Beat, p.Finished = b, fin
+	heard, err := st.FriendHeardAt(ctx, friend)
+	if err != nil {
+		return "", err
+	}
+	p.Beat, p.Finished, p.Heard = b, fin, heard
 	return sprint.FriendStatus(p, st.now()), nil
 }
 

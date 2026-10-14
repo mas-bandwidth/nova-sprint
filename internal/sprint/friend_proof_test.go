@@ -497,7 +497,7 @@ func TestADaemonWaitsForItsProofInsteadOfExiting(t *testing.T) {
 // TestASlowAnswerNeverLeavesAGap: a session that takes three minutes to answer each
 // check is proved without a gap. The next check is timed from the ask, not the answer,
 // so the proof is renewed every ProveEvery whatever the answer's delay, and the
-// server's window (sprint.FriendProofLive) outlasts the cycle (the second cold read of
+// server's grace (sprint.FriendHeardUp + FriendDeafHold) outlasts the cycle (the second cold read of
 // 2026-10-06: timed from the answer, a three-minute answer read down five minutes an
 // hour).
 func TestASlowAnswerNeverLeavesAGap(t *testing.T) {
@@ -528,9 +528,10 @@ func TestASlowAnswerNeverLeavesAGap(t *testing.T) {
 // TestTheProofCycleFitsTheEvidenceWindow: the slowest answer the daemon accepts comes
 // SessionBound after the ask, the next ask ProveEvery after this one, so a session that
 // answers is never proved longer ago than ProveEvery + SessionBound, which has to be
-// under the server's window for her session's proof.
+// under the server's grace for her last-heard time: a session that answers is up, or deaf
+// and shown up for a few minutes of a slow cycle, and never down.
 func TestTheProofCycleFitsTheEvidenceWindow(t *testing.T) {
 	t.Parallel()
-	assert.Less(t, friend.ProveEvery+friend.SessionBound, sprint.FriendProofLive)
+	assert.Less(t, friend.ProveEvery+friend.SessionBound, sprint.FriendHeardUp+sprint.FriendDeafHold)
 	assert.Less(t, friend.SessionBound, sprint.CheckAnswerWithin, "the server takes every answer the daemon waits for")
 }

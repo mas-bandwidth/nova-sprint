@@ -156,10 +156,14 @@ loop row, wrapper or other shell loop beats for a friend. A friend with no
 daemon running has no beat, and reads down.
 
 When a friend's daemon stops beating for longer than the beat bound
-(`sprint.FriendBeatBound`, thirty minutes), the tick treats her as down: her
-daemon alone runs her lanes, so a session pong is no evidence she is up — she
-is down since her last beat past the bound (`sprint.FriendEvidence`, "down
-since <t>") — and every card she holds and has taken, and every read asked of
+(`sprint.FriendBeatBound`, thirty minutes), the tick treats her as down unless
+she has been heard since: her daemon alone runs her lanes, so a session pong or
+proof it carried is no evidence she is up — she is down since her last beat past
+the bound (`sprint.FriendEvidence`, "down since <t>") — but a friend who works by
+hand, sending and receiving on the bus or taking her cards, is heard
+(`sprint.FriendPhase`: up for ten minutes after any valid event of hers, deaf and
+shown up for ten more, then down) and keeps her cards. A friend who is down
+loses them: every card she holds and has taken, and every read asked of
 her, comes back to the deal with its carry head kept
 (`sprint.LiveReturns`, `sprint.FriendReturn`). A session pong from a daemon
 that has stopped beating does not keep her cards: the tick hands them back,

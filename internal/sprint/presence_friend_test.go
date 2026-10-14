@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A friend is up only on evidence from her own session (docs/SPEC-FRIEND.md,
-// "Presence is her session's evidence"): a wake ping her session answered,
-// which the coordinator writes as friend health --state up, within
-// sprint.FriendPongWindow, or a card of hers finished within
-// sprint.FriendFinishWindow. On 2026-10-04 one friend read up for four hours and
-// another read working for an hour on beats a loop sent for them while their
-// sessions took no turn; a beat, whoever sends it, is recorded and never
-// makes her up.
+// A friend is up only on a valid event of her own session (docs/SPEC-FRIEND.md,
+// "Presence is her session's evidence"; the last-heard rule, sprint.FriendPhase): a wake ping
+// her session answered, which the coordinator writes as friend health --state up, or a card of
+// hers finished, each setting the time she was last heard; she is up for
+// sprint.FriendHeardUp after it, deaf (shown up) for sprint.FriendDeafHold more, then down.
+// On 2026-10-04 one friend read up for four hours and another read working for an hour on
+// beats a loop sent for them while their sessions took no turn; a beat, whoever sends it, is
+// recorded and never makes her up.
 
 // presenceRig is the twin store (store.Mem) with an injected clock, a
 // coordinator holding the seat at its first generation, and the friend amy.
@@ -88,13 +88,14 @@ func TestFriendIsUpOnlyOnEvidenceFromHerSession(t *testing.T) {
 	r.second()
 	row := r.row()
 	assert.Equal(t, sprint.Down, row.Status, "a beat alone is no evidence")
+	assert.Equal(t, sprint.Asleep, row.Phase, "the friend's daemon answers and the friend's session does not")
 	assert.Contains(t, row.Evidence, "no session evidence")
 	assert.Contains(t, row.Evidence, "beat 0s ago is not evidence", "the row names the beat and its age")
-	r.beatFor(sprint.FriendPongWindow + time.Minute)
+	r.beatFor(sprint.FriendHeardUp + sprint.FriendDeafHold + time.Minute)
 	row = r.row()
-	assert.Equal(t, sprint.Down, row.Status, "beaten every second for eleven minutes, still down")
-	assert.Contains(t, row.Evidence, "no wake ping answered within 10m0s")
-	assert.Contains(t, row.Evidence, "no card finished within 30m0s")
+	assert.Equal(t, sprint.Down, row.Status, "beaten every second for twenty-one minutes, still down")
+	assert.Contains(t, row.Evidence, "nothing heard from the friend within 20m0s")
+	assert.Contains(t, row.Evidence, "never heard")
 
 	// her daemon's own pong is no evidence either
 	r.observe(sprint.DaemonPong)
@@ -106,18 +107,30 @@ func TestFriendIsUpOnlyOnEvidenceFromHerSession(t *testing.T) {
 	row = r.row()
 	assert.Equal(t, sprint.Up, row.Status)
 	assert.Equal(t, "session pong 0s ago", row.Evidence)
-	r.beatFor(sprint.FriendPongWindow - time.Second)
+	assert.True(t, row.Heard.IsZero(), "the answered wake is read from the observation, under the seat, and not copied into heard")
+	r.beatFor(sprint.FriendHeardUp - time.Second)
 	row = r.row()
 	assert.Equal(t, sprint.Up, row.Status, "within the window")
+	assert.Equal(t, sprint.Up, row.Phase)
 	assert.Equal(t, "session pong 9m59s ago", row.Evidence)
 	r.second()
 	row = r.row()
-	assert.Equal(t, sprint.Down, row.Status, "the window out with no other pong: down, beats or not")
-	assert.Contains(t, row.Evidence, "within 10m0s (last 10m0s ago)")
+	assert.Equal(t, sprint.Up, row.Status, "the window out with no other pong: deaf, shown up")
+	assert.Equal(t, sprint.Deaf, row.Phase)
+	assert.Contains(t, row.Evidence, "deaf: last heard 10m0s ago")
+	r.beatFor(sprint.FriendDeafHold - time.Second)
+	row = r.row()
+	assert.Equal(t, sprint.Up, row.Status, "deaf for the whole hold")
+	assert.Equal(t, sprint.Deaf, row.Phase)
+	r.second()
+	row = r.row()
+	assert.Equal(t, sprint.Down, row.Status, "the hold out with no other event: down, beats or not")
+	assert.Contains(t, row.Evidence, "nothing heard from the friend within 20m0s")
+	assert.Contains(t, row.Evidence, "last heard 20m0s ago (session pong)")
 	r.beatFor(time.Hour)
 	assert.Equal(t, sprint.Down, r.row().Status, "an hour of beats changes nothing")
 
-	// a card of hers finished: up for the finish window, then down
+	// a card of hers finished: up for the up window, deaf for the hold, then down
 	require.NoError(t, r.st.FriendFinished(r.ctx, "amy", r.st.Now()))
 	row = r.row()
 	assert.Equal(t, sprint.Up, row.Status)
@@ -125,12 +138,13 @@ func TestFriendIsUpOnlyOnEvidenceFromHerSession(t *testing.T) {
 	assert.Equal(t, r.st.Now(), row.Finished)
 	require.NoError(t, r.st.FriendFinished(r.ctx, "amy", r.st.Now().Add(-time.Hour)), "an older finish")
 	assert.Equal(t, r.st.Now(), r.row().Finished, "an older finish moves nothing")
-	r.beatFor(sprint.FriendFinishWindow - time.Second)
+	assert.Equal(t, r.st.Now(), r.row().Heard, "nor does it move her last-heard time back")
+	r.beatFor(sprint.FriendHeardUp + sprint.FriendDeafHold - time.Second)
 	assert.Equal(t, sprint.Up, r.row().Status)
 	r.second()
 	row = r.row()
 	assert.Equal(t, sprint.Down, row.Status)
-	assert.Contains(t, row.Evidence, "no card finished within 30m0s (last 30m0s ago)")
+	assert.Contains(t, row.Evidence, "last heard 20m0s ago")
 }
 
 // The rule itself, with no store: held is held whatever the evidence; a pong
@@ -139,6 +153,7 @@ func TestFriendEvidenceRule(t *testing.T) {
 	t.Parallel()
 	t0 := presenceT0
 	pong := sprint.FriendHealth{State: sprint.Up, Seen: t0, Generation: 2}
+	grace := sprint.FriendHeardUp + sprint.FriendDeafHold
 	cases := []struct {
 		name string
 		f    sprint.FriendPresence
@@ -148,17 +163,21 @@ func TestFriendEvidenceRule(t *testing.T) {
 		{"never anything", sprint.FriendPresence{Generation: 2}, t0, sprint.Down},
 		{"a fresh beat", sprint.FriendPresence{Beat: sprint.Beat{At: t0}, Generation: 2}, t0, sprint.Down},
 		{"held with a fresh pong", sprint.FriendPresence{Held: true, Health: pong, Generation: 2}, t0, sprint.Held},
-		{"a fresh pong", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(sprint.FriendPongWindow - time.Second), sprint.Up},
-		{"a pong the window old", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(sprint.FriendPongWindow), sprint.Down},
+		{"a fresh pong", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(sprint.FriendHeardUp - time.Second), sprint.Up},
+		{"a pong the up window old: deaf, shown up", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(sprint.FriendHeardUp), sprint.Up},
+		{"a pong the grace old", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(grace), sprint.Down},
 		{"a pong under an old seat", sprint.FriendPresence{Health: pong, Generation: 3}, t0, sprint.Down},
 		{"a pong from the future", sprint.FriendPresence{Health: pong, Generation: 2}, t0.Add(-time.Second), sprint.Down},
 		{"a daemon pong", sprint.FriendPresence{Health: sprint.FriendHealth{State: sprint.DaemonPong, Seen: t0, Generation: 2}, Generation: 2}, t0, sprint.Down},
-		{"a fresh finish", sprint.FriendPresence{Finished: t0, Generation: 2}, t0.Add(sprint.FriendFinishWindow - time.Second), sprint.Up},
-		{"a finish the window old", sprint.FriendPresence{Finished: t0, Generation: 2}, t0.Add(sprint.FriendFinishWindow), sprint.Down},
+		{"a fresh finish", sprint.FriendPresence{Finished: t0, Generation: 2}, t0.Add(sprint.FriendHeardUp - time.Second), sprint.Up},
+		{"a finish the up window old: deaf, shown up", sprint.FriendPresence{Finished: t0, Generation: 2}, t0.Add(sprint.FriendHeardUp), sprint.Up},
+		{"a finish the grace old", sprint.FriendPresence{Finished: t0, Generation: 2}, t0.Add(grace), sprint.Down},
+		{"heard just now", sprint.FriendPresence{Heard: t0, Generation: 2}, t0, sprint.Up},
+		{"heard the grace ago", sprint.FriendPresence{Heard: t0, Generation: 2}, t0.Add(grace), sprint.Down},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, sprint.FriendStatus(c.f, c.at), c.name)
 	}
-	assert.Equal(t, 10*time.Minute, sprint.FriendPongWindow, "the owner, 2026-10-05: within 10 minutes")
-	assert.Equal(t, 30*time.Minute, sprint.FriendFinishWindow, "the owner, 2026-10-05: within 30 minutes")
+	assert.Equal(t, 10*time.Minute, sprint.FriendHeardUp, "the owner, 2026-10-13: up for ten minutes")
+	assert.Equal(t, 10*time.Minute, sprint.FriendDeafHold, "the owner, 2026-10-13: deaf for the ten minutes before they go down")
 }

@@ -92,6 +92,7 @@ var verbEffect = map[string]string{
 	"friend take":       "local write: takes the named cards back from the friend in the sprint's store; --dry-run writes nothing",
 	"friend give":       "local write: clears the friend's take-back mark on the named cards in the sprint's store; --dry-run writes nothing",
 	"friend level":      "local write: moves queued cards between the friends' rows in the sprint's store; --dry-run writes nothing",
+	"friend heard":      "local write: records that the friend was heard at the given time, or now, in the sprint's store; --dry-run writes nothing",
 	"friend health":     "local write: records the coordinator's observation of the friend in the sprint's store, or removes it with --clear; --dry-run writes nothing",
 	"reader retire":     "local write: retires the named readers in the sprint's store; a read it is reading is taken back at the next tick and asked of a reader up with no card at that attempt, and it stays when none can take it; --dry-run writes nothing",
 	"promoted":          "local write: records the promotion in the sprint's store; --dry-run writes nothing",
@@ -270,7 +271,7 @@ func verbProse(name string) string {
 		return releaseHoldWords
 	case "sentinel set":
 		return sentinelSetWords + "\n"
-	case "friend beat", "friend down", "friend up", "friend health":
+	case "friend beat", "friend down", "friend up", "friend health", "friend heard":
 		return friendVerbWords(name)
 	case "friend take":
 		return friendTakeWords

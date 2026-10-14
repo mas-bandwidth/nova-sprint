@@ -786,6 +786,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		// live while it acts (hook.go, seatActs)
 		a.seatActs(c.actor)
 	}
+	a.noteHeard(ctx, st, c)
 	return st, nil
 }
 

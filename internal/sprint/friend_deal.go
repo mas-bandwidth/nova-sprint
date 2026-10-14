@@ -170,6 +170,12 @@ type FriendSeat struct {
 	// them as evidence of her work (FriendWorked).
 	Proof    time.Time
 	Finished time.Time
+	// Heard is when she was last heard (FriendPresence.Heard), and Phase her presence phase
+	// at the tick (FriendPhase: up, deaf, asleep, down or held); Status stays the shown word.
+	// A deaf friend is Status up and Phase deaf: dealt to, her cards kept, and the pass
+	// raises its one judgment for her (deafConds).
+	Heard time.Time
+	Phase string
 	// Answered is when her session last answered the coordinator's wake ping (her
 	// FriendHealth observation, up), zero when it has not.
 	Answered time.Time

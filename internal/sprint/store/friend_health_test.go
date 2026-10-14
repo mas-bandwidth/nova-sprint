@@ -101,10 +101,14 @@ func TestFirstProofIsUpAndTenSecondsWithoutOneIsDown(t *testing.T) {
 	assert.Equal(t, sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}, rec)
 	assert.Equal(t, sprint.Up, h.friendStatus("amy"))
 
-	h.tick(sprint.FriendPongWindow - time.Second)
+	h.tick(sprint.FriendHeardUp - time.Second)
 	assert.Equal(t, sprint.Up, h.friendStatus("amy"))
 	h.tick(time.Second)
-	assert.Equal(t, sprint.Down, h.friendStatus("amy"), "exactly ten seconds: down")
+	assert.Equal(t, sprint.Up, h.friendStatus("amy"), "exactly the up window: deaf, shown up")
+	h.tick(sprint.FriendDeafHold - time.Second)
+	assert.Equal(t, sprint.Up, h.friendStatus("amy"), "deaf for the whole hold")
+	h.tick(time.Second)
+	assert.Equal(t, sprint.Down, h.friendStatus("amy"), "the grace out: down")
 
 	_, status, _, err = h.health("amy", "tester", sprint.Up, h.now, 1)
 	require.NoError(t, err)
@@ -157,7 +161,7 @@ func TestHealthReplayOrderBeatAndHold(t *testing.T) {
 	assert.True(t, replayed, "the same proof again")
 	assert.Equal(t, seen, rec.Seen, "the row's proof, not renewed")
 	assert.Equal(t, sprint.Up, status)
-	h.tick(sprint.FriendPongWindow - 5*time.Second)
+	h.tick(sprint.FriendHeardUp + sprint.FriendDeafHold - 5*time.Second)
 	assert.Equal(t, sprint.Down, h.friendStatus("amy"), "the replay earned no second window")
 
 	_, _, _, err = h.health("amy", "tester", sprint.Down, seen.Add(-time.Second), 1)

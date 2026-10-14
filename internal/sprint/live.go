@@ -270,6 +270,13 @@ func LiveNamedAt(b Beat, id string, gen int) bool {
 	return false
 }
 
+// friendShownUp says the snapshot's seats have the friend up (FriendStatus: up, or deaf and
+// shown up); false when the snapshot carries no seats.
+func friendShownUp(s *Snapshot, f string) bool {
+	i := slices.IndexFunc(s.Friends, func(x FriendSeat) bool { return x.Name == f })
+	return i >= 0 && s.Friends[i].Status == Up
+}
+
 // LiveReturnVerb is the reconcile's step verb: the one writer's own return, which a STOP
 // debt does not refuse (it is the owner's receipt, read off its beats).
 const LiveReturnVerb = "live return"
@@ -294,7 +301,10 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		// so unlike a silent machine, whose children may still run, her dealt and
 		// taken cards and reads come back to the deal the moment she is past the beat
 		// bound (docs/SPEC-SPRINT.md section 1, a friend's health; FriendReturn).
-		if f, ok := FriendOfRow(row); ok && b.Beaten() && s.Now.Sub(b.At) > FriendBeatBound {
+		// ... unless she is up, or deaf and shown up, on a valid event of her own: a friend who
+		// works by hand after her daemon stopped keeps her cards, which come back only from
+		// down (tla/FriendHeard.tla CardsOnlyFromDown)
+		if f, ok := FriendOfRow(row); ok && b.Beaten() && s.Now.Sub(b.At) > FriendBeatBound && !friendShownUp(s, f) {
 			p = friendStoppedReturn(s, p, f, row, b)
 			continue
 		}

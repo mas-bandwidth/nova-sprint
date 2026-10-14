@@ -10,18 +10,17 @@ import (
 )
 
 // A friend's beat carries her session's answer to a check her daemon asked (friend beat
-// --check, then --pong naming it), the server takes them as a beat's flags, and the tick's
-// coordinator's pass judges her session deaf from the last proof: the judgment is in the
-// coordinator's inbox (docs/SPEC-SPRINT.md section 8, "The coordinator's pass").
+// --check, then --pong naming it), the server takes them as a beat's flags, the proof is an
+// event of hers (her last-heard time), and the tick's coordinator's pass judges her deaf
+// when FriendHeardUp has gone by with no other: the judgment is in the coordinator's inbox
+// (docs/SPEC-SPRINT.md section 8, "The coordinator's pass").
 func TestFriendBeatCarriesTheSessionPongAndTheTickJudgesADeafSession(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "friend amy", "amy")
-	back := sprint.FriendDeafAfter + time.Minute
-	ta.step(-back)
 	ta.ok("friend beat amy --check n1 --run r1")
 	out := ta.ok("friend beat amy --pong n1 --run r1")
 	assert.Contains(t, out, " proved=n1 pong=")
-	ta.step(back)
+	ta.step(sprint.FriendHeardUp + time.Minute)
 	ta.ok("friend beat amy")
 	ta.ok("tick")
 	in := ta.ok("inbox")

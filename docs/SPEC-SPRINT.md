@@ -243,13 +243,41 @@ value of the wrong shape is refused, exit 2; a friend not in the record is
 refused, exit 1; `TestFriendBeatTakesHerCountsAndLoadAsFleetBeatTakesALoad`). Her status is the friends' rule (`sprint.FriendStatus`):
 `held` while the coordinator holds her (`hold <friend> --reason <text>`,
 section 11, and `friend down`; `unhold <friend>` and `friend up` release the
-hold), whatever she beats or the coordinator observes; else `up` only on
-evidence from her own session (docs/SPEC-FRIEND.md, "Presence is her
-session's evidence"; one definition, `sprint.FriendEvidence`): a wake ping her
-session answered (`friend health --state up`, below) under `FriendPongWindow`
-(10 minutes) old, or her session's answer to a check her daemon asked, under
-`FriendProofLive` (15 minutes) old while her beat is fresh (`BeatDeadline`): her beat
-says `--check <nonce> --run <run>` when her daemon asks and `--pong <nonce>
+hold), whatever she beats or the coordinator observes; else by one last-heard time
+(`sprint.FriendPhase`, one definition, `sprint.FriendEvidence` the word and the
+evidence; the model is `tla/FriendHeard.tla`; docs/SPEC-FRIEND.md, "Presence is
+her session's evidence"; the owner, 2026-10-13: "any activity from the friend that
+proves their session is live = timeout resets ... just like in a network
+protocol, any valid packet from that client resets the timeout accum"): `up`
+while she was last heard under `FriendHeardUp` (10 minutes) ago; `deaf` for
+`FriendDeafHold` (10 minutes) more ("it's held during the 10 minutes before they
+actually go down": shown `up`, dealt to, her taken cards kept, and one judgment to
+the seat naming how she re-arms her receiver, `nova-hook status --as <f>`,
+`nova-hook hook --as <f> --role friend` and `nova-bus recv --as <f> --forever
+--exec ...`, raised when she goes deaf and closed when she is up again or down);
+`down` after that, or when she was never heard; and `asleep`, a `down` whose
+daemon answers (a fresh beat, or a daemon pong the coordinator observed under the
+seat) and whose session does not, shown `down` ("if you are asleep, you are
+down": no deal, her cards back). She reaches `down` only through `deaf`, and
+deaf lasts `FriendDeafHold` at most. Heard is the latest valid event the server
+saw of her (`friend-heard:<f>`, a monotonic max never past the store's clock,
+`Store.FriendHeard`): a `take`, `finish`, `progress`, `read`, `stop-return`, `lane
+take` or `lane give` as `friend.<f>` (recorded as the verb opens the store,
+before it runs, so the take of a friend read down is the event that brings her
+up); a card of hers finished (`friend sync`'s collect) or begun (its start
+receipt); a beat that proves her session, her session's answer to a check her
+daemon asked, below; a wake ping her session answered (`friend health --state
+up`, read under the seat's generation, so an old seat's proof never looks up
+under a new seat); a bus message sent, received or acked as her (`friend sync`
+reads the bus store's `bus2:heard:send` and `bus2:heard:recv` hashes each pass
+and records the later of the two for each friend; a store without them is no
+error); and the seat's own hand, `friend heard <friend> [--at <RFC3339>]`. A
+beat alone is never one, whoever sends it: a daemon beating for a dead session
+is `asleep`. A pong or proof a stopped daemon carried is dropped
+once her beat is `FriendBeatBound` old; a recorded heard time is not, so a friend
+who works by hand after her old daemon stopped is `up`, and the tick's stopped-beat
+return (`LiveReturns`) leaves a friend shown `up` her cards. Her beat says
+`--check <nonce> --run <run>` when her daemon asks and `--pong <nonce>
 --run <run>` when her session answers, and the answer proves only when it
 names a check that run asked, once, within `CheckAnswerWithin` (15 minutes) of
 the ask (`sprint.ProveBeat`; anything else, a bare time included, is a beat
@@ -257,14 +285,14 @@ with no proof, `no_proof=` on the beat's line, never evidence, except the old
 `--pong <time>` for `LegacyPongGrace`, an hour, after the server starts; a stopped
 beat stops the proof; the verb trusts its caller's actor, so one beat that asks
 and answers as her proves her: the nonce keeps a bare time and an answer to
-nothing asked out, never a caller who speaks as her), or a card of hers finished under `FriendFinishWindow` (30
-minutes) old; else `down` (`friend down` holds her and shows `held`, never
-`down`); a beat that says down (`--until`, `--reason`) is down with its reason
-whatever else stands. Her beat itself is recorded and never evidence, whoever
-sends it, only the session's answer it carries; `where --json` names the
-evidence and its age (`friends[].evidence`: `session pong`, `session proof`,
-`finish`). `friend up` is no evidence: a friend released with
-none in its window is `down` until her session gives some. `friend up
+nothing asked out, never a caller who speaks as her). `friend down` holds her
+and shows `held`, never `down`; a beat that says down (`--until`, `--reason`) is
+down with its reason whatever else stands. Her beat itself is recorded and never
+evidence; `where --json` names the evidence and its age (`friends[].evidence`:
+`heard`, `session pong`, `session proof`, `finish`, and `deaf: ...` or
+`asleep: ...` for the phases the status never says) and the heard time
+(`friends[].heard`). `friend up` is no evidence: a friend released and not heard
+in `FriendHeardUp` and `FriendDeafHold` is `down` until a valid event of hers. `friend up
 <friend> --width <n>` sets her width (1 to `MaxWidth`), as `fleet up --width`
 sets a machine's, until `friend sync` sets her nova-config row's again (a
 release without it leaves the width as it is;
@@ -408,16 +436,15 @@ the word, `seen`, `generation`, the counts, the reason and the until; `where
 [replayed=true]`, `--json` `{friend, state, seen, generation, queue, working,
 width, status, replayed}`.
 
-The table's word from an observation (`sprint.FriendEvidence`): `up` only when
-the observation says `up` (her session answered a wake ping), under the seat's
-generation now, with its proof under `FriendPongWindow` (10 minutes) old and
-not dated after now (a negative age is no proof); `down` otherwise, at exactly
-ten minutes, unless a card of hers finished under `FriendFinishWindow` (30
-minutes) old (docs/SPEC-FRIEND.md, "Presence is her session's evidence"),
-under any other generation (an old seat's proof never looks up under
-a new seat, and no fallback to her beat once observed), and for every finer
-word the row keeps (`asleep` is the daemon's, shown as `down`). The first
-valid observation makes her `up` at once. Her own `friend beat` stays what it
+The table's word from an observation (`sprint.FriendEvidence`): the observation
+is one event of hers when it says `up` (her session answered a wake ping) under
+the seat's generation now, and not dated after now (a negative age is no proof):
+she is `up` for `FriendHeardUp` (10 minutes) after its proof, `deaf` (shown `up`)
+for `FriendDeafHold` more, and `down` after, unless another event of hers is later
+(`sprint.FriendPhase`, the last-heard rule above); under any other generation (an
+old seat's proof never looks up under a new seat, and no fallback to her beat once
+observed) it is none, and for every finer word the row keeps (`asleep` is the
+daemon's, shown as `down`). The first valid observation makes her `up` at once. Her own `friend beat` stays what it
 is, the friend's own beat, and it decides nothing, observed or not. No observation holds a friend: `held` is `friend
 down` by the seat alone, lifted by `friend up`. The model is
 `tla/SeatHealth.tla` (six reversed witnesses); the tests
@@ -1415,17 +1442,21 @@ showed both friends up; `sprint.takeSeat`, `sprint.FriendDownWhy`). A friend's
 fleet row has no control card status: only a machine's has one, written by the
 tick's presence and by `fleet up`/`fleet down`. A take by or for a friend
 (`take --as friend.<f>`, her own or her daemon's through the server) is
-admitted by `FriendStatus`, the friends table's word: up only on evidence from
-her own session (a wake ping her session answered within `FriendPongWindow`,
-her session's answer to a check her daemon asked within `FriendProofLive` while her beats go on, or
-a card of hers finished within `FriendFinishWindow`; docs/SPEC-FRIEND.md,
-"Presence is her session's evidence"), never on her beat itself. `TakeStep` reads the friends' seats when it names a friend's row.
+admitted by `FriendStatus`, the friends table's word: up (or deaf, shown up) by
+her last-heard time, the latest valid event of her own session (a take or finish
+as her, a bus message sent or received, a wake ping her session answered, her
+session's answer to a check her daemon asked, a card of hers finished;
+`sprint.FriendPhase`; docs/SPEC-FRIEND.md, "Presence is her session's
+evidence"), never on her beat itself. The take is itself such an event, recorded
+as the verb opens the store: a friend read down takes, and is up. `TakeStep` reads the friends' seats when it names a friend's row.
 Her take is held to her width, in either mode, as a machine's is to its
 own. It is refused only when she is not up, and the refusal names why: "friend
 <f> is held: held by the coordinator (friend down)[: <reason>]", "friend <f>
 is down: her beat says down until <t>: <reason>", or "friend <f> is down: no
-session evidence: ..." naming the wake ping, the proof on her beat and the
-finish she lacks, the age of the last of each, and her beat's age as no evidence (`sprint.FriendEvidence`); a friend not on the roster is "no
+session evidence: nothing heard from the friend within 20m0s ..." naming how long since
+the last event of hers and how she comes up (any valid event: `nova-bus send` or
+`recv` as her, `nova-sprint take` or `finish` as her), and her beat's age as no
+evidence (`sprint.FriendPhase`); a friend not on the roster is "no
 friend <f> on the roster". A machine's take keeps its control card's rule
 ("member <m> is <status>"). The model is `tla/FriendPresence.tla` (`Take`,
 `TakeOnlyWhenUp`, `ReadyTakenWhileUp`, and the reversed witness `ctlstatus`,
@@ -5812,13 +5843,18 @@ session was deaf from about midnight to 8:41 AM and finished no card while his r
 hours. The tick's overdue part runs the pass (internal/sprint coordinator_pass.go,
 `TickCoordinatorPass`). The conditions the tick keeps, each a judgment:
 
-- **a friend's session is deaf** (`a friend's session is deaf`), one on each friend not
-  held whose beat record carries a session proof (the server's time of her session's
-  last answer to a check her daemon asked: `friend beat --check`, then `--pong`) older
-  than `FriendDeafAfter` of running time; it names her,
-  her pong age and the remedy: a wake note (`nova-friend ping --to <friend> --wake`),
-  then the debug steps of docs/SPEC-FRIEND.md (Presence, The harness check). A beat that
-  carries no proof judges nothing: deafness is read only from the session's own answer.
+- **a friend's session is deaf** (`a friend's session is deaf`), one on each friend in
+  the deaf phase (`sprint.FriendPhase`): last heard more than `FriendHeardUp` and less than
+  `FriendHeardUp` plus `FriendDeafHold` ago (`tla/FriendHeard.tla`). She shows and behaves
+  as `up`, so nothing else tells the coordinator her receiver stopped. It is one judgment
+  an episode, raised when she goes deaf and closed when she is up again (any valid event)
+  or down (the grace ran out); it names her last heard time and when she goes down, and the
+  steps that re-arm her receiver, each a command the tools have: `nova-hook status --as
+  <f>`, `nova-hook hook --as <f> --role friend` (`--role comms` for a friend who takes no
+  sprint work) under her Monitor, answering each HOOK CHALLENGE with its `nova-hook prove`
+  line, and the receive line under her Monitor, `nova-bus recv --as <f> --forever --exec
+  '<deliver-into-session>'` (docs/SPEC-BUS.md), and a wake note (`nova-friend ping --to
+  <friend> --wake`).
 - **a friend holds working cards and finishes none** (`a friend holds working cards and
   finishes none`), one on each friend not held holding working cards on her row when
   neither her last working-to-done finish (`finished` of her done cards, ok or failed) nor

@@ -136,6 +136,7 @@ nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]
 nova-sprint friend level
+nova-sprint friend heard <friend> [--at <RFC3339>]
 nova-sprint friend health <friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)
 nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves

@@ -133,6 +133,7 @@ func init() {
 		{"friend give", "<friend> <id>... [--reason <text>]", "friend give friend-a s1-4 --reason 'the take was the harness, not the friend's'", (*app).cmdFriendGive},
 		{"friend level", "", "friend level", (*app).cmdFriendLevel},
 		{"friend health", "<friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)", "friend health friend-a --state up --seen 2026-10-04T15:00:00Z --generation 1", (*app).cmdFriendHealth},
+		{"friend heard", "<friend> [--at <RFC3339>]", "friend heard friend-a --at 2026-10-04T15:00:00Z", (*app).cmdFriendHeard},
 		{"friend clean", "[--pg <dsn> | --file <path>] [--root <dir>] [--days <n>] [--dry-run]", "friend clean --dry-run", (*app).cmdFriendClean},
 		{"gc", "[--machine <m>] [--dry-run] [--max-age <d>]", "gc --dry-run", (*app).cmdGC},
 		{"friend reconcile", "<friend> [--root <dir>] [--dry-run]", "friend reconcile friend-a --dry-run", (*app).cmdFriendReconcile},

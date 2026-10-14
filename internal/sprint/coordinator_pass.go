@@ -16,8 +16,10 @@ import (
 // each a judgment the tick raises once an episode, raises again every PassEvery of
 // running time while it holds, and closes when it stops holding:
 //
-//   - a friend's session is deaf: her beat carries her session's last pong (friend beat
-//     --pong) and it is older than FriendDeafAfter;
+//   - a friend's session is deaf: she was last heard more than FriendHeardUp ago and less
+//     than FriendHeardUp+FriendDeafHold (FriendPhase, tla/FriendHeard.tla), so she is not
+//     receiving; the judgment names how she re-arms her receiver, and closes when she
+//     is up again (any valid event) or down (the grace ran out);
 //   - a friend is idle: she holds working cards and no work card of hers went from
 //     working to done in the friend-finish window (FriendFinishAfter; a read is not
 //     card work);
@@ -81,13 +83,6 @@ const (
 	// EmptyRowAfter is how long an up friend's row stays empty, while cards she
 	// could do wait elsewhere, before the pass tells the coordinator once.
 	EmptyRowAfter = 10 * time.Minute
-	// FriendDeafAfter is how old a friend's last session pong may be before her
-	// session is deaf: FriendProofLive, since her daemon asks her session eight minutes
-	// after its last ask and waits up to five for the answer (nova-friend's ProveEvery and
-	// SessionBound; docs/SPEC-FRIEND.md, The push proof), so a session that answers is
-	// never proved longer ago than thirteen minutes. Shorter, and a friend whose session
-	// answers slowly is judged deaf and cleared again every cycle.
-	FriendDeafAfter = FriendProofLive
 	// FriendFinishDefault is the friend-finish window when the coordinator set none.
 	FriendFinishDefault = 30 * time.Minute
 	// PropFriendFinish is the work table's property: the friend-finish window, a
@@ -172,25 +167,36 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	return p, due
 }
 
-// deafConds is one condition for each friend not held whose beat carries a session pong
-// older than FriendDeafAfter, in running time: the nova-friend daemon's beat carries
-// her session's last proof (--pong), so a lapsed proof is told to the coordinator once,
-// as this judgment, with the remedy (docs/SPEC-SPRINT.md, "The coordinator's pass").
+// deafConds is one condition for each friend in the deaf phase (FriendPhase): last heard
+// more than FriendHeardUp ago and not yet FriendHeardUp+FriendDeafHold. She shows and
+// behaves as up, so nothing else tells the coordinator that her receiver has stopped; the
+// condition is one judgment an episode (condKey: type and subject), raised when she goes
+// deaf and closed by notify when she is up again or down, which a status judgment then
+// says. Its text is the same for the whole episode (her last heard time and the time
+// she goes down, no age), and names the re-arm steps of her receiver, each a command
+// the tools have: nova-hook status and nova-hook hook (docs/SPEC-HOOK.md), and the
+// receive line nova-bus recv --forever --exec (docs/SPEC-BUS.md).
+// tla/FriendHeard.tla DeafJudged.
 func deafConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
-	for _, f := range slices.Sorted(maps.Keys(r.Sessions)) {
-		ss := r.Sessions[f]
-		if ss.Held || ss.Pong.IsZero() {
+	seats := slices.SortedFunc(slices.Values(r.Friends), func(a, b FriendSeat) int { return strings.Compare(a.Name, b.Name) })
+	for _, seat := range seats {
+		if seat.Phase != Deaf {
 			continue
 		}
-		age, ok := r.running(s.Now, stamp(ss.Pong))
-		if !ok || age <= FriendDeafAfter {
-			continue
+		f := seat.Name
+		down := seat.Heard.Add(FriendHeardUp + FriendDeafHold)
+		coord := "<coordinator>"
+		if s != nil && s.Coordinator != "" {
+			coord = s.Coordinator
 		}
+		wake := "nova-friend ping --as " + coord + " --to " + f + " --wake"
 		out = append(out, cond{typ: NFriendDeaf, primaries: []string{FriendRow(f)},
-			what: friendPronouns(r.Friends, f).Sprintf("friend %s: {their} session's last pong was %s ago (at %s), past %s; wake {them}: nova-friend ping --as <coordinator> --to %s --wake, then the debug steps of docs/SPEC-FRIEND.md (Presence, The harness check)",
-				f, age.Round(time.Second), stamp(ss.Pong), FriendDeafAfter, f),
-			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "debug: docs/SPEC-FRIEND.md, The harness check", "friend down " + f + " --reason deaf", "ack", "wait"}})
+			what: friendPronouns(r.Friends, f).Sprintf("friend %s is deaf: last heard at %s, nothing valid since, so {their} receiver is not running; the friend still shows up, is dealt to and keeps {their} cards, and goes down at %s without a valid event. "+
+				"Re-arm {their} receiver, on {their} machine: nova-hook status --as %s; if the bus push is not proven, nova-hook hook --as %s --role friend (--role comms when {they} take no sprint work) under {their} Monitor, answering each HOOK CHALLENGE with the nova-hook prove line it prints; "+
+				"then the receive line under {their} Monitor: nova-bus recv --as %s --forever --exec '<deliver-into-session>' (docs/SPEC-BUS.md, recv --forever; nova-friend's help names the harness's deliver command). Any message sent or received as the friend, a take or a finish brings {them} up at once. Wake {them} now: %s",
+				f, stamp(seat.Heard), stamp(down), f, f, f, wake),
+			decisions: []string{wake, "nova-hook status --as " + f, "debug: docs/SPEC-HOOK.md, docs/SPEC-FRIEND.md", "friend down " + f + " --reason deaf", "ack", "wait"}})
 	}
 	return out
 }

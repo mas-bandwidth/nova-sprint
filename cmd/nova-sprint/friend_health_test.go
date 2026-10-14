@@ -87,7 +87,7 @@ func TestFriendHealthIsTheSeatsAndFencedByItsGeneration(t *testing.T) {
 	assert.Equal(t, 1, code, errs)
 	assert.Contains(t, errs, "after the server's clock", "a proof dated after the server's clock is refused")
 
-	ta.a.sleep(sprint.FriendPongWindow + time.Second)
+	ta.a.sleep(sprint.FriendHeardUp + sprint.FriendDeafHold + time.Second)
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "ten seconds without a newer proof")
 	ta.ok("friend beat amy")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "her own beat never makes an observed friend up again")
@@ -252,7 +252,7 @@ func TestFriendHealthClearLeavesHerOnHerSessionsEvidenceAlone(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
 	ta.ok("friend sync --root " + t.TempDir())
 	ta.ok("friend health amy --state up --seen " + ta.now.UTC().Format(time.RFC3339) + " --generation 1")
-	ta.a.sleep(sprint.FriendPongWindow + time.Second)
+	ta.a.sleep(sprint.FriendHeardUp + sprint.FriendDeafHold + time.Second)
 	ta.ok("friend beat amy")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "observed: her own beat never brings her up")
 

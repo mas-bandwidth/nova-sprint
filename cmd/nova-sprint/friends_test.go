@@ -309,7 +309,8 @@ func (ta *testApp) beatUp(friend string) {
 }
 
 // A friend is up only on her session's evidence: a wake ping her session answered under
-// sprint.FriendPongWindow old (or a card of hers finished); a beat is never evidence; held
+// sprint.FriendHeardUp old, deaf and shown up for sprint.FriendDeafHold more (or a card of hers
+// finished, or any other valid event of hers); a beat is never evidence; held
 // while friend down holds her whatever she does, and friend up releases the hold without
 // counting as evidence. The rows go up, then held, then down, each by name
 // (store.FleetOrder).
@@ -330,7 +331,7 @@ func TestAFriendsStatusIsTheFriendsRuleOverHerSessionsEvidenceAndHerHold(t *test
 	assert.Equal(t, []string{"amy", "zed", "cat", "bob"}, rowsOf(tableOf(ta.frame(), sprint.Friends)), "up, then held, then down, each by name")
 
 	// every pong was at t: up at the window less a second, down at the window and a second
-	ta.a.sleep(sprint.FriendPongWindow - time.Second)
+	ta.a.sleep(sprint.FriendHeardUp + sprint.FriendDeafHold - time.Second)
 	ta.pong("zed")
 	assert.Equal(t, map[string]string{"amy": "up", "bob": "down", "cat": "held", "zed": "up"}, ta.friendStatus(), "within the window: still up")
 	ta.a.sleep(2 * time.Second)
@@ -372,8 +373,8 @@ func TestADownFriendShowsNoneWorking(t *testing.T) {
 	}
 	assert.Equal(t, map[string]string{"status": "up", "ready": "0", "working": "1", "done": "0"}, cells(), "t: her session answered, one working")
 	assert.Equal(t, "1", footer())
-	ta.a.sleep(sprint.FriendPongWindow + time.Second)
-	assert.Equal(t, map[string]string{"status": "down", "ready": "0", "working": "0", "done": "0"}, cells(), "past the window with no pong: down, none working")
+	ta.a.sleep(sprint.FriendHeardUp + sprint.FriendDeafHold + time.Second)
+	assert.Equal(t, map[string]string{"status": "down", "ready": "0", "working": "0", "done": "0"}, cells(), "past the grace with no pong: down, none working")
 	assert.Equal(t, "0", footer(), "the footer sums the rows as shown")
 	ta.beatUp("amy")
 	assert.Equal(t, map[string]string{"status": "up", "ready": "0", "working": "1", "done": "0"}, cells(), "her session answers, working again")

@@ -30,8 +30,8 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	// is carried (view coordinator reads how stale her report is), and the evidence her
 	// status rests on, her session's pong, never her beat
 	assert.Equal(t, []FriendRow{
-		{Name: "amy", Width: 3, Status: sprint.Up, Evidence: "session pong 0s ago", Beat: h.now.UTC().Truncate(time.Second), Health: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}, ShownHealth: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}},
-		{Name: "bob", Width: 1, Status: sprint.Held, Evidence: "held"},
+		{Name: "amy", Width: 3, Status: sprint.Up, Phase: sprint.Up, Evidence: "session pong 0s ago", Beat: h.now.UTC().Truncate(time.Second), Health: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}, ShownHealth: &sprint.FriendHealth{State: sprint.Up, Seen: h.now, Generation: 1}},
+		{Name: "bob", Width: 1, Status: sprint.Held, Phase: sprint.Held, Evidence: "held"},
 	}, rows)
 }
 

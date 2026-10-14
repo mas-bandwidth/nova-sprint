@@ -558,10 +558,76 @@ func (st *Store) FriendFinished(ctx context.Context, friend string, at time.Time
 		return err
 	}
 	at = at.UTC().Truncate(time.Second)
+	// a finish is an event of hers (FriendHeard), whether or not it is the newest finish
+	// the record holds
+	_ = st.heardAt(ctx, kv, friend, at, st.now()) // ignored: the finish record below is the finish's own, and the next event writes it
 	if prev, err := st.FriendFinishedAt(ctx, friend); err != nil || !at.After(prev) {
 		return err
 	}
 	return kv.SetKey(ctx, friendFinishKey(friend), at.Format(time.RFC3339))
+}
+
+// FriendHeard records that the friend was heard at: a valid event of hers the server saw (a
+// take, a finish, a session proof, an answered wake ping, a bus message sent or received by
+// her, the coordinator's friend heard), the one last-heard time of her presence
+// (sprint.FriendPhase; tla/FriendHeard.tla Event). It only moves forward: an older time
+// than the record's writes nothing (monotonic max), and a time after the store's clock is
+// the store's clock now, so a skewed clock never renews her past now. A friend the roster
+// lacks is refused (a NoFriendError) and nothing is written. It answers the time the
+// record holds after.
+func (st *Store) FriendHeard(ctx context.Context, friend string, at time.Time) (time.Time, error) {
+	r, kv, err := st.roster(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if kv == nil {
+		return time.Time{}, nil // a store that keeps no records has no friend
+	}
+	if _, ok := r[friend]; !ok {
+		return time.Time{}, noFriend(r, friend)
+	}
+	now := st.now().UTC().Truncate(time.Second)
+	if err := st.heardAt(ctx, kv, friend, at, now); err != nil {
+		return time.Time{}, err
+	}
+	return st.FriendHeardAt(ctx, friend)
+}
+
+// heardAt writes the friend's heard record to at (to the second, no later than now) unless it
+// already holds that or later: FriendHeard's write, for a caller that has read the roster.
+func (st *Store) heardAt(ctx context.Context, kv KV, friend string, at, now time.Time) error {
+	at, now = at.UTC().Truncate(time.Second), now.UTC().Truncate(time.Second)
+	if at.After(now) {
+		at = now
+	}
+	if at.IsZero() {
+		return nil
+	}
+	if raw, ok, err := kv.GetKey(ctx, friendHeardKey(friend)); err != nil {
+		return err
+	} else if ok {
+		// ignored: an unreadable record is never heard, which this event replaces
+		if prev, _ := time.Parse(time.RFC3339, raw); !at.After(prev) {
+			return nil
+		}
+	}
+	return kv.SetKey(ctx, friendHeardKey(friend), at.Format(time.RFC3339))
+}
+
+// FriendHeardAt is when the friend was last heard, zero when never or the record cannot be
+// read.
+func (st *Store) FriendHeardAt(ctx context.Context, friend string) (time.Time, error) {
+	kv, err := st.rootKV()
+	if err != nil {
+		return time.Time{}, err
+	}
+	raw, ok, err := kv.GetKey(ctx, friendHeardKey(friend))
+	if err != nil || !ok {
+		return time.Time{}, err
+	}
+	// ignored: an unreadable record is never heard, which the next event replaces
+	at, _ := time.Parse(time.RFC3339, raw)
+	return at, nil
 }
 
 // FriendFinishedAt is when a card of the friend's last finished, zero when

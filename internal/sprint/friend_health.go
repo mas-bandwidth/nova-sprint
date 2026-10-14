@@ -138,12 +138,15 @@ type FriendHealthWrite struct {
 
 // FriendPresence is everything the friends' rule reads of one friend: the
 // coordinator's hold, her own beat (shown, never evidence), the coordinator's
-// observation of her, the seat's generation now, and when a card of hers last
-// finished (working to done), zero for never.
+// observation of her, the seat's generation now, when a card of hers last
+// finished (working to done), zero for never, and when she was last heard: the
+// latest valid event of hers the server saw (FriendPhase; Store.FriendHeard), zero
+// for never.
 type FriendPresence struct {
 	Held       bool
 	Beat       Beat
 	Health     FriendHealth
 	Generation uint64
 	Finished   time.Time
+	Heard      time.Time
 }
