@@ -10,7 +10,7 @@ import (
 	"golang.org/x/text/width"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // RenderOpts is what Render is told beyond the table.

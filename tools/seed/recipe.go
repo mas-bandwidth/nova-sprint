@@ -18,7 +18,15 @@ type recipe struct {
 	ratings        []string
 	model          []string
 	keep           []string
+	external       []externalModule
 	gomod          bool
+}
+
+// externalModule is a nested module of the source repository that a moved
+// package now imports instead of copying: its import path is left pointing at
+// the source module and its requirement is written into the seeded go.mod.
+type externalModule struct {
+	path, version string
 }
 
 type section struct {
@@ -89,6 +97,11 @@ func parseRecipe(text string) (*recipe, error) {
 				return nil, bad()
 			}
 			r.ratings = append(r.ratings, f[1:]...)
+		case "external":
+			if len(f) != 3 || f[1] == "" || f[2] == "" {
+				return nil, bad()
+			}
+			r.external = append(r.external, externalModule{path: f[1], version: f[2]})
 		case "gomod":
 			if len(f) != 1 {
 				return nil, bad()
@@ -102,4 +115,15 @@ func parseRecipe(text string) (*recipe, error) {
 		return nil, fmt.Errorf("recipe: no module line")
 	}
 	return r, nil
+}
+
+// externalPath reports whether import path p names a nested module that a
+// moved package imports from the source repository rather than copying.
+func (r *recipe) externalPath(p string) bool {
+	for _, e := range r.external {
+		if e.path == p {
+			return true
+		}
+	}
+	return false
 }

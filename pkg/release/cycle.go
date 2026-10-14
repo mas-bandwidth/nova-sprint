@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/bounded"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 

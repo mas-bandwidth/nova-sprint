@@ -39,7 +39,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // Unknown is what a build with no stamp and no vcs information reports. It is the same

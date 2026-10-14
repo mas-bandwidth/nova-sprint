@@ -1,4 +1,4 @@
-package oneline
+package oneline_test
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	oneline "github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,10 +40,10 @@ func TestEscapeMakesOneLineAndPassesPrintableTextThrough(t *testing.T) {
 		{`back\slash`, `back\slash`},
 		{"key=value two words", "key=value two words"},
 	} {
-		assert.Equal(t, tc.want, Escape(tc.in), "%q", tc.in)
+		assert.Equal(t, tc.want, oneline.Escape(tc.in), "%q", tc.in)
 	}
-	assert.Equal(t, Escape("\n"), Escape(`\x0a`), "not injective: a stored newline and the four characters print the same")
-	assert.Equal(t, Escape("a\nb"), Escape(Escape("a\nb")), "Escape changes nothing it already rendered")
+	assert.Equal(t, oneline.Escape("\n"), oneline.Escape(`\x0a`), "not injective: a stored newline and the four characters print the same")
+	assert.Equal(t, oneline.Escape("a\nb"), oneline.Escape(oneline.Escape("a\nb")), "Escape changes nothing it already rendered")
 }
 
 // Field is Escape and then every whitespace character and every "=" as well, so a field's
@@ -66,7 +67,7 @@ func TestFieldIsOneTokenHoldingNoEquals(t *testing.T) {
 		{"caf\u00e9", "caf\u00e9"},
 		{"x lockdown=clear quarantines=0", `x\x20lockdown\x3dclear\x20quarantines\x3d0`},
 	} {
-		got := Field(tc.in)
+		got := oneline.Field(tc.in)
 		assert.Equal(t, tc.want, got, "%q", tc.in)
 		assert.Len(t, strings.Fields(got), min(len(got), 1), "one token")
 		assert.NotContains(t, got, "=")
@@ -76,23 +77,23 @@ func TestFieldIsOneTokenHoldingNoEquals(t *testing.T) {
 // Quote is a Go string literal: one line, pasteable, and injective where Escape is not.
 func TestQuoteIsOneLineAndInjective(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, `"a b"`, Quote("a b"))
-	assert.Equal(t, `""`, Quote(""))
-	assert.Equal(t, `"a\nb"`, Quote("a\nb"))
-	assert.Equal(t, `"\u2028"`, Quote("\u2028"))
-	assert.Equal(t, `"say \"hi\""`, Quote(`say "hi"`))
-	assert.NotEqual(t, Quote("\n"), Quote(`\n`), "injective: a backslash is escaped too")
+	assert.Equal(t, `"a b"`, oneline.Quote("a b"))
+	assert.Equal(t, `""`, oneline.Quote(""))
+	assert.Equal(t, `"a\nb"`, oneline.Quote("a\nb"))
+	assert.Equal(t, `"\u2028"`, oneline.Quote("\u2028"))
+	assert.Equal(t, `"say \"hi\""`, oneline.Quote(`say "hi"`))
+	assert.NotEqual(t, oneline.Quote("\n"), oneline.Quote(`\n`), "injective: a backslash is escaped too")
 	for _, s := range []string{"a\nb", "\u2028", "\u202e", "\xff"} {
-		assert.NotContains(t, Quote(s), "\n")
+		assert.NotContains(t, oneline.Quote(s), "\n")
 	}
 }
 
 // Err renders an error's text through Escape; nil keeps fmt's own spelling.
 func TestErrEscapesTheTextAndSpellsNilAsFmtDoes(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "<nil>", Err(nil))
-	assert.Equal(t, `open a\x0ab: no`, Err(errors.New("open a\nb: no")))
-	assert.Equal(t, "plain", Err(errors.New("plain")))
+	assert.Equal(t, "<nil>", oneline.Err(nil))
+	assert.Equal(t, `open a\x0ab: no`, oneline.Err(errors.New("open a\nb: no")))
+	assert.Equal(t, "plain", oneline.Err(errors.New("plain")))
 }
 
 // Cap cuts a tail to about n bytes and marks the cut with `...+<dropped>B`; it cuts on a
@@ -122,7 +123,7 @@ func TestCapCutsOnARuneBoundaryAndSaysHowMuchItDropped(t *testing.T) {
 		{"ab", math.MinInt, "a...+1B"},
 		{strings.Repeat("x", 1000), 100, strings.Repeat("x", 91) + "...+909B"},
 	} {
-		got := Cap(tc.in, tc.n)
+		got := oneline.Cap(tc.in, tc.n)
 		assert.Equal(t, tc.want, got, "Cap(%q, %d)", tc.in, tc.n)
 		assert.True(t, got != "" || tc.in == "", "never nothing from something")
 		if got != tc.in {
@@ -131,10 +132,10 @@ func TestCapCutsOnARuneBoundaryAndSaysHowMuchItDropped(t *testing.T) {
 			assert.Equal(t, len(tc.in)-len(kept), dropped(t, got), "the mark says what was dropped")
 		}
 	}
-	assert.Equal(t, 500, TailBytes)
-	long := strings.Repeat("y", TailBytes+1)
-	assert.Equal(t, Cap(long, TailBytes), Escape(Cap(long, TailBytes)), "a capped value is one token through Escape and Field")
-	assert.Equal(t, Cap(long, TailBytes), Field(Cap(long, TailBytes)))
+	assert.Equal(t, 500, oneline.TailBytes)
+	long := strings.Repeat("y", oneline.TailBytes+1)
+	assert.Equal(t, oneline.Cap(long, oneline.TailBytes), oneline.Escape(oneline.Cap(long, oneline.TailBytes)), "a capped value is one token through Escape and Field")
+	assert.Equal(t, oneline.Cap(long, oneline.TailBytes), oneline.Field(oneline.Cap(long, oneline.TailBytes)))
 }
 
 // dropped reads the byte count off a cut tail's mark.
@@ -164,14 +165,14 @@ func TestHasRemedyKnowsTheHouseForms(t *testing.T) {
 		"set `x` first", "Pick -f", "install the 2 packages",
 		"retry with --force", "try `x`", "see -h", "wants using --json",
 	} {
-		assert.True(t, HasRemedy(yes), "%q", yes)
+		assert.True(t, oneline.HasRemedy(yes), "%q", yes)
 	}
 	for _, no := range []string{
 		"", "see above", "no help available", "retry later", "want more", "help",
 		"something went wrong", "set X=Y", "use the force", "runaway", "the flag",
 		"nova-x helps", "nova-x helper",
 	} {
-		assert.False(t, HasRemedy(no), "%q", no)
+		assert.False(t, oneline.HasRemedy(no), "%q", no)
 	}
 }
 
@@ -179,11 +180,11 @@ func TestHasRemedyKnowsTheHouseForms(t *testing.T) {
 // carries its own as it is; either way it escapes once.
 func TestWithRemedyAddsANextStepOnlyWhereNoneIs(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "bad thing; run: nova-x fix", WithRemedy("bad thing", "nova-x fix"))
-	assert.Equal(t, "bad thing; run: nova-y fix", WithRemedy("bad thing; run: nova-y fix", "nova-x fix"))
-	assert.Equal(t, `bad\x0athing; run: nova-x fix`, WithRemedy("bad\nthing", "nova-x fix"))
-	assert.Equal(t, `bad\x0athing; see --help`, WithRemedy("bad\nthing; see --help", "nova-x fix"))
-	assert.Equal(t, `a\x0ab; run: x`, WithRemedy(Err(errors.New("a\nb")), "x"), "WithRemedy(Err(err), next) escapes once")
+	assert.Equal(t, "bad thing; run: nova-x fix", oneline.WithRemedy("bad thing", "nova-x fix"))
+	assert.Equal(t, "bad thing; run: nova-y fix", oneline.WithRemedy("bad thing; run: nova-y fix", "nova-x fix"))
+	assert.Equal(t, `bad\x0athing; run: nova-x fix`, oneline.WithRemedy("bad\nthing", "nova-x fix"))
+	assert.Equal(t, `bad\x0athing; see --help`, oneline.WithRemedy("bad\nthing; see --help", "nova-x fix"))
+	assert.Equal(t, `a\x0ab; run: x`, oneline.WithRemedy(oneline.Err(errors.New("a\nb")), "x"), "WithRemedy(Err(err), next) escapes once")
 }
 
 // ShellWord prints a value made only of shell-safe characters as it is, and single-quotes
@@ -205,6 +206,6 @@ func TestShellWordQuotesWhatAShellWouldRead(t *testing.T) {
 		{"caf\u00e9", "'caf\u00e9'"},
 		{"\\", "'\\'"},
 	} {
-		assert.Equal(t, tc.want, ShellWord(tc.in), "%q", tc.in)
+		assert.Equal(t, tc.want, oneline.ShellWord(tc.in), "%q", tc.in)
 	}
 }

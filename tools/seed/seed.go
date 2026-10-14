@@ -250,6 +250,12 @@ func (s *seeder) rewrite(src []byte, moved bool) ([]byte, []string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		if s.r.externalPath(p) {
+			// A nested module of the source repository that the moved code
+			// imports instead of copying: leave the path alone and do not
+			// walk its package.
+			continue
+		}
 		if p == s.r.fromMod {
 			return nil, nil, fmt.Errorf("imports the root of %s", p)
 		}
@@ -623,6 +629,18 @@ func (s *seeder) goMod(keep string) error {
 	text := b.String()
 	for strings.Contains(text, "\n\n\n") {
 		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+	// Nested source modules a moved package imports instead of copying keep
+	// their requirement here (the source repository's go.mod does not carry
+	// requirements on its own submodules).
+	if len(s.r.external) > 0 {
+		var req strings.Builder
+		req.WriteString("\nrequire (\n")
+		for _, e := range s.r.external {
+			req.WriteString("\t" + e.path + " " + e.version + "\n")
+		}
+		req.WriteString(")\n")
+		text += req.String()
 	}
 	s.files["go.mod"] = file{[]byte(text), mode}
 	return s.take("go.sum")

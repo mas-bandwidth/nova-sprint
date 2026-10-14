@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // SpendGapOver is the share of the provider's own figure a gap must pass to refuse.

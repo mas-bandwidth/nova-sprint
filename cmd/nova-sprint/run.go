@@ -24,7 +24,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/binstamp"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 

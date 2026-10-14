@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // held and sentinels are reads (docs/SPEC-SPRINT.md section 11): each changes

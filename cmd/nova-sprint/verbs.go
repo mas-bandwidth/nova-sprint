@@ -36,7 +36,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
