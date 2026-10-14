@@ -30,7 +30,7 @@ import (
 // friends table by default."): the page is that page, byte for byte (pageview.go).
 const (
 	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
-	pageAppSHA256   = "a7a796ff5fc208fe9f8882a7aa698ea7da46a0d158bc3bcb0eb618af543ed3a9"
+	pageAppSHA256   = "8d434f01b26c318e31e3df3a810bb52c8d6c8a3d2cf062f93da7d05fac09d554"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"

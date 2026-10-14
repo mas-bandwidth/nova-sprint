@@ -513,7 +513,6 @@ function renderFriends(d) {
 function sideWord(work, tiers) {
   var w = "";
   if (String(work || "on") === "off") w += " · off";
-  if (tiers && tiers !== "all") w += " · tiers " + (Array.isArray(tiers) ? tiers.join(", ") : String(tiers));
   return w;
 }
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
