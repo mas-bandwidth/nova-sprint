@@ -726,8 +726,9 @@ command again finishes it), or when `--source` holds no
 | 1 | failed or incomplete (including refused; `start` while every provider is out of credit) |
 | 2 | usage, or a store that did not answer (`fleet sync --check`: there is drift) |
 | 3 | unreadable config (`fleet sync`, `friend sync`, `friend clean`, `collect`), missing friend rows (`friend sync`, `friend clean`, `collect`), a replaced binary (`run`, `dashboard`), or a store that answered no store check (`brief check`) |
+| 4 | three wedged ticks in a row (`run`) |
 
-Code 3 means different things per verb, so it is never printed on the shared
+Code 3 and 4 mean different things per verb, so they are never printed on the shared
 banner line; each verb's `-h` carries its own exit table, and a verb that can
 return another code states it there (docs/STANDARD.md section 2).
 
