@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"net"
-"os"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -201,4 +201,3 @@ func dashboardReplacedCode(t *testing.T) int {
 	require.Equal(t, exitReplaced, code, "%s%s", out.String(), errb.String())
 	return exitReplaced
 }
-
