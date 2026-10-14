@@ -54,13 +54,16 @@ func TestCalledVerbsKnownNoPassesARegisteredVerb(t *testing.T) {
 // table refuses anything but "where", so the test fails if the prose line is read at all.
 func TestCalledVerbsIgnoresWhatDoesNotRunATool(t *testing.T) {
 	t.Parallel()
+	only := func(tool string) []string { return []string{"where"} }
 	cases := []struct {
-		name string
-		diff string
-		why  string
+		name  string
+		diff  string
+		verbs func(string) []string
+		why   string
 	}{
 		{
-			name: "another tool and a shell built-in",
+			name:  "another tool and a shell built-in",
+			verbs: friendVerbs,
 			diff: "diff --git a/fleet/seat-friend.yml b/fleet/seat-friend.yml\n" +
 				"new file mode 100644\n" +
 				"index 0000000..0000000\n" +
@@ -73,7 +76,8 @@ func TestCalledVerbsIgnoresWhatDoesNotRunATool(t *testing.T) {
 			why: "nova-config is another tool, ls a shell built-in",
 		},
 		{
-			name: "a prose line that names a tool",
+			name:  "a prose line that names a tool",
+			verbs: only,
 			diff: "diff --git a/pkg/config/loop.go b/pkg/config/loop.go\n" +
 				"--- a/pkg/config/loop.go\n" +
 				"+++ b/pkg/config/loop.go\n" +
@@ -84,7 +88,8 @@ func TestCalledVerbsIgnoresWhatDoesNotRunATool(t *testing.T) {
 			why: "both lines name a tool, neither runs it",
 		},
 		{
-			name: "a prose line that begins with a tool",
+			name:  "a prose line that begins with a tool",
+			verbs: only,
 			diff: "diff --git a/docs/GETTING-STARTED.md b/docs/GETTING-STARTED.md\n" +
 				"--- a/docs/GETTING-STARTED.md\n" +
 				"+++ b/docs/GETTING-STARTED.md\n" +
@@ -96,8 +101,7 @@ func TestCalledVerbsIgnoresWhatDoesNotRunATool(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			only := func(tool string) []string { return []string{"where"} }
-			assert.Empty(t, calledVerbs(tc.diff, only), "calledVerbs, want none (%s)", tc.why)
+			assert.Empty(t, calledVerbs(tc.diff, tc.verbs), "calledVerbs, want none (%s)", tc.why)
 		})
 	}
 }
