@@ -56,9 +56,9 @@ func TestAFriendsTakeByCountNeverMovesAnUnstartedCard(t *testing.T) {
 // A fleet member's take by count is unchanged: it moves every ready card up to its width.
 func TestAMembersTakeByCountStillMovesEveryReadyCard(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, 3)
-	w.must(Deal(w.s, DealReq{}))
-	m := w.s.Members()[0]
+	w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"), fleetBrief("flash"))
+	dealWith(w)
+	m := "m1"
 	ready := len(w.s.Fleet.Cell(m, Ready))
 	require.Positive(t, ready, "the deal placed ready cards on %s", m)
 	p := Take(w.s, TakeReq{Sel: Sel{Limit: -1}, As: m})
