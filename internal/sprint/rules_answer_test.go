@@ -155,6 +155,65 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 	})
 }
 
+// failedPreference is a WHO: friend preference in review with who, a failed attempt 3 whose
+// last work card sits on row, and the report the attempt came back with: the fixture the
+// failed rule's friend test reads.
+func failedPreference(s *Snapshot, who, row string) {
+	addTestStream(s, "s1", "Stream One")
+	s.Work.Put(&Card{ID: "s1-1", Row: "s1", Col: Review, Fields: map[string]string{
+		"brief":   "KIND: primary\nWHO: friend\nPATHS: a.go\n",
+		"who":     who,
+		"attempt": "3",
+		"result":  "failed",
+		"work":    "s1-1.w3",
+		"failure": "verdict",
+	}})
+	s.Fleet.Put(&Card{ID: "s1-1.w3", Row: row, Col: DoneFailed, Fields: map[string]string{
+		"kind":    "work",
+		"primary": "s1-1",
+		"attempt": "3",
+		"member":  row,
+		"report":  "verdict not-done",
+	}})
+}
+
+// TestAFriendPreferenceCardFailedOnTheFleetIsReworkedByRule pins the failed rule's answer to
+// a WHO: friend card whose failed attempt ran on the fleet (rules.go, failedOnFriend;
+// tla/SprintRules.tla FailedWithAFindingNeverParked): it is fleet work, reworked with its
+// report as the fix, never parked on the seat. The same preference whose attempt ran on a
+// friend's row, and a hard pin on the fleet, stay the friend's.
+func TestAFriendPreferenceCardFailedOnTheFleetIsReworkedByRule(t *testing.T) {
+	t.Parallel()
+
+	answer := func(t *testing.T, who, row string) *RuleAnswer {
+		t.Helper()
+		s := emptyFixture()
+		failedPreference(s, who, row)
+		a := &RuleAnswer{Subject: "s1-1"}
+		ruleFailed(s, a)
+		return a
+	}
+
+	t.Run("a preference that ran on the fleet is reworked with its report", func(t *testing.T) {
+		t.Parallel()
+		a := answer(t, WhoFriend, "pro-glm53-opencode")
+		assert.Equal(t, ActRework, a.Act, a.Why)
+		assert.NotContains(t, a.Why, "a friend's card: this work needs a mind")
+	})
+	t.Run("a preference that ran on a friend's row stays the friend's", func(t *testing.T) {
+		t.Parallel()
+		a := answer(t, WhoFriend, FriendRow("amy"))
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "a friend's card: this work needs a mind")
+	})
+	t.Run("a hard pin that ran on the fleet stays the friend's", func(t *testing.T) {
+		t.Parallel()
+		a := answer(t, "only."+FriendRow("amy"), "pro-glm53-opencode")
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "a friend's card: this work needs a mind")
+	})
+}
+
 func TestFinishAcceptsAReportForAnAttemptTheDeadlineFailed(t *testing.T) {
 	t.Parallel()
 	t.Run("a late LAND records the head but the attempt stays failed", func(t *testing.T) {
