@@ -216,3 +216,35 @@ func (p *ProtocolInput) clone() *ProtocolInput {
 	}
 	return out
 }
+
+// The early override can cross only waits that have landed, dropped or actually
+// entered flight. A queued Ready worker is not a taken Working worker.
+func (s State) releaseWaits(id string) []string {
+	p := s.Primaries[id]
+	waits := s.PositionWaits(id)
+	for _, q := range p.Needs {
+		if !s.InWork(q, Landed) && !contains(p.Waived, q) {
+			waits = addSorted(waits, q)
+		}
+	}
+	return waits
+}
+
+func (s State) releaseUnderWay(id string) bool {
+	for _, q := range s.releaseWaits(id) {
+		p, ok := s.Primaries[q]
+		if !ok {
+			return false
+		}
+		switch p.State {
+		case Landed, Off, Review, Merging:
+		case Working:
+			if s.Work[WC(q, p.Attempt)].Place != FWorking {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}

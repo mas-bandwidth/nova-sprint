@@ -1441,6 +1441,7 @@ func TestPropForgeDoesNotInventConsumerMergeBeforePublication(t *testing.T) {
 	r.act(pAct{K: "sentinel", A: 1})
 	r.act(pAct{K: "add", A: 0, N: []int{0}})
 	r.act(pAct{K: "tick"})
+	r.act(pAct{K: "tick"}) // pump the automatic release before inspecting its consumer barrier
 	s := r.snap()
 	if !assert.NotNil(t, s) {
 		return

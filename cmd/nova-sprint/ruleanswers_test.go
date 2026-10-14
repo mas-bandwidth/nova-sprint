@@ -45,7 +45,7 @@ func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	// so no drop-blocked root is made here (the store test of the alarm pins
 	// it); the cards need an ordinary held primary
 	ta.ok("add --stream s1 root other")
-	ta.ok("add --stream s2 gate --held")
+	ta.ok("add --stream s2 gate --held --one")
 	ta.ok("add --stream s2 a b --needs gate")
 	ta.ok("start")
 	ta.ok("tick --idle-alarm")
@@ -55,7 +55,7 @@ func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	ta.ok("tick --idle-alarm")
 	inbox := ta.ok("inbox")
 	assert.Contains(t, inbox, "the fleet is idle")
-	assert.Contains(t, inbox, "2 behind gate (held)")
+	assert.Contains(t, inbox, "3 behind gate (held)")
 	ta.ok("tick --idle-alarm")
 	assert.Equal(t, 1, strings.Count(ta.ok("inbox"), "the fleet is idle"), "once an episode")
 }

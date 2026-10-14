@@ -58,13 +58,15 @@ func TestModelConsumerRejectsNewBarrierAndChangedCard(t *testing.T) {
 func TestModelEarlyReleaseDoesNotInventConsumerMerge(t *testing.T) {
 	t.Parallel()
 	s := New(nil, nil, "lead")
-	s.Primaries["p"] = Primary{Stream: "s", Kind: KindPrimary, State: Working, Score: 1}
+	s.Primaries["p"] = Primary{Stream: "s", Kind: KindPrimary, State: Working, Score: 1, Attempt: 1}
+	s.Work[WC("p", 1)] = WorkCard{Primary: "p", Attempt: 1, Place: FWorking}
 	s.Primaries["stop"] = Primary{Stream: "s", Kind: KindSentinel, State: Waiting, Score: 2}
 	s.Primaries["c"] = Primary{Stream: "s", Kind: KindPrimary, State: Waiting, Score: 3}
 	n, err := Release(s, []string{"stop"}, "lead")
 	require.NoError(t, err)
 	require.Equal(t, Landed, n.Primaries["stop"].State)
 	require.True(t, n.Primaries["stop"].ReleasedEarly)
+	require.Equal(t, []string{"p"}, n.Primaries["stop"].Waived, "the taken in-flight wait is recorded as an explicit override")
 	require.Equal(t, Waiting, n.Primaries["c"].State)
 }
 
@@ -97,4 +99,16 @@ func TestModelProtocolCloneOwnsOutsideFactArraysAndMaps(t *testing.T) {
 	require.Equal(t, "p", s.protocol.Producers["stop"].Scope.Cards["stop"].Needs[0])
 	require.Equal(t, 1, s.protocol.Producers["stop"].IncludedHeads["p"])
 	require.Equal(t, ProtocolTarget{"sprint/s", "dev"}, s.protocol.Producers["stop"].Scope.Targets["s"])
+}
+
+func TestModelEarlyReleaseRefusesReadyAndUntakenWaits(t *testing.T) {
+	t.Parallel()
+	for _, state := range []string{Ready, Waiting, Working} {
+		s := New(nil, nil, "lead")
+		s.Primaries["p"] = Primary{Stream: "s", Kind: KindPrimary, State: state, Score: 1, Attempt: 1}
+		s.Primaries["stop"] = Primary{Stream: "s", Kind: KindSentinel, State: Waiting, Score: 2}
+		unchanged, err := Release(s, []string{"stop"}, "lead")
+		require.Error(t, err)
+		require.Equal(t, s, unchanged)
+	}
 }

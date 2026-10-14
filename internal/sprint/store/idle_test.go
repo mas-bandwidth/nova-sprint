@@ -65,7 +65,7 @@ func TestTheIdleAlarmNamesTheRootsOnceAnEpisode(t *testing.T) {
 	assert.Equal(t, h.st.Actor, n.To, "addressed to the coordinator")
 	assert.True(t, strings.HasPrefix(n.What, "fleet 0/"), n.What)
 	assert.Contains(t, n.What, "10 behind 3 drop-blocked judgments (oldest 6m0s)")
-	assert.Contains(t, n.What, "2 behind gate (held)")
+	assert.Contains(t, n.What, "3 behind gate (held)", "the ordinary held root and its two dependants")
 	for i := 0; i < 3; i++ {
 		h.tick(time.Minute)
 		h.machine()

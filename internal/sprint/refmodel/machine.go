@@ -318,7 +318,7 @@ func Release(s State, ids []string, who string) (State, error) {
 	}
 	for _, id := range ids {
 		p, ok := s.Primaries[id]
-		if !ok || p.Kind != KindSentinel || p.State != Waiting {
+		if !ok || p.Kind != KindSentinel || p.State != Waiting || !s.releaseUnderWay(id) {
 			return s, refuse("%s is not a reached sentinel, nor one with nothing before it", id)
 		}
 	}
@@ -328,7 +328,11 @@ func Release(s State, ids []string, who string) (State, error) {
 		x := n.Streams[st]
 		x.State = n.streamAfter(st, x.State, []string{id}, nil)
 		n.Streams[st] = x
-		n.setPrimary(id, func(x *Primary) { x.State = Landed; x.ReleasedEarly = true })
+		n.setPrimary(id, func(x *Primary) {
+			x.State = Landed
+			x.ReleasedEarly = true
+			x.Waived = addSorted(x.Waived, s.releaseWaits(id)...)
+		})
 		n.closeOn(id)
 	}
 	n.resolveAll()

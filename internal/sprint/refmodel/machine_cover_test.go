@@ -670,8 +670,8 @@ func TestMachineCoverRelease(t *testing.T) {
 		"a primary is not a sentinel": {
 			s: reached(), ids: []string{"p1"}, who: "coord", wantErr: "not a reached sentinel",
 		},
-		"the coordinator can explicitly release before completion": {
-			s: notReachedBefore(), ids: []string{"e1"}, who: "coord", landed: true,
+		"an unstarted predecessor cannot be early-released": {
+			s: notReachedBefore(), ids: []string{"e1"}, who: "coord", wantErr: "not a reached sentinel",
 		},
 		"a landed sentinel is refused": {
 			s: func() State {
