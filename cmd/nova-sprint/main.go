@@ -220,6 +220,10 @@ type app struct {
 	// outcome without reading the printed words (serve.go).
 	outcome string
 	changed string
+	// jsonMode says the command line asked for --json: a usage refusal
+	// (refuseCommand) is then one JSON object on stdout instead of the text
+	// line on stderr.
+	jsonMode bool
 	// lanes is the server's lanes beside the line (servelanes.go), made at the first
 	// batch under lanesMu; served is what its batches cost since its last SERVE line, said
 	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
@@ -535,9 +539,9 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	}
 	switch {
 	case !found:
-		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return fmt.Errorf("the address %s may not be a sprint store at all (the bus store and the sprint store are different Redis instances): what is loaded there holds no %s function library; run: nova-redis fn load --redis %s; the first line of nova-sprint where names the store in use", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
+		return fmt.Errorf("the store at %s may not be a sprint store at all (the bus store and the sprint store are different Redis instances): it holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --redis %s; the first line of nova-sprint where names the store in use", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
 }
@@ -555,7 +559,7 @@ func libraryShadow(ctx context.Context, c *redis.Client, addr string) (note stri
 	}
 	switch {
 	case !found:
-		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return "", fmt.Errorf("the address %s may not be a sprint store at all (the bus store and the sprint store are different Redis instances): what is loaded there holds no %s function library; run: nova-redis fn load --redis %s; the first line of nova-sprint where names the store in use", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
 		return "library differs: loaded in the window", nil
 	}
@@ -789,14 +793,67 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	return st, nil
 }
 
-// isGlobalBoolFlag reports whether the flag name is a known boolean flag that does not take an argument.
+// isGlobalBoolFlag reports whether the flag name is a boolean flag that does not
+// take an argument, so a flag placed before the verb is not taken as value-taking
+// and does not swallow the verb. Boolean-ness is read the way the matched verb's
+// flag set reads it (flag.Value IsBoolFlag): a flag whose syntax occurrence
+// carries no <value> placeholder is boolean.
 func isGlobalBoolFlag(name string) bool {
+	if globalBoolSet()[name] {
+		return true
+	}
 	switch name {
 	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
 		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
 		return true
 	default:
 		return false
+	}
+}
+
+var globalBoolOnce sync.Once
+var globalBoolFlags map[string]bool
+
+func globalBoolSet() map[string]bool {
+	globalBoolOnce.Do(func() {
+		m := map[string]bool{}
+		for _, v := range verbs {
+			scanSyntaxFlags(m, v.syntax)
+		}
+		globalBoolFlags = m
+	})
+	return globalBoolFlags
+}
+
+// scanSyntaxFlags adds the boolean flags of one verb's syntax: a --name whose
+// occurrence is not followed by a <value> placeholder (a value-taking flag is
+// `[--name <value>]` or `[--name=<value>]`). A `[--name=false]` inline boolean
+// is still boolean.
+func scanSyntaxFlags(m map[string]bool, s string) {
+	for i := 0; i < len(s); {
+		j := strings.Index(s[i:], "--")
+		if j < 0 {
+			return
+		}
+		j += i
+		k := j + 2
+		for k < len(s) && ((s[k] >= 'a' && s[k] <= 'z') || (s[k] >= '0' && s[k] <= '9') || s[k] == '-') {
+			k++
+		}
+		if name := s[j+2 : k]; name != "" {
+			p := k
+			for p < len(s) && s[p] == ' ' {
+				p++
+			}
+			value := p < len(s) && s[p] == '<'
+			if !value && p+1 < len(s) && s[p] == '=' && s[p+1] == '<' {
+				value = true
+			}
+			if !value {
+				m[name] = true
+			}
+		}
+		i = k
 	}
 }
 
@@ -870,6 +927,7 @@ func normalizeArgs(args []string) []string {
 // every verb it plays through it with an argument list.
 func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	args = normalizeArgs(args)
+	a.jsonMode = slices.Contains(args, "--json")
 	// every verb's answer is a refusal unless its report (report) says otherwise:
 	// refuse() and every pre-write refusal are the default, and the report sets
 	// the outcome where it is known (serve.go reads it after the run).
@@ -884,7 +942,7 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	if len(args) == 0 {
-		return refuse(stderr, "", "no verb; available: "+strings.Join(verbNames(), ", ")+"; run: nova-sprint help")
+		return a.refuseCommand(stdout, stderr, "", "no verb; available: "+strings.Join(verbNames(), ", "), "nova-sprint help")
 	}
 	if args[0] == "help" || verbflag.IsHelp(args[0]) {
 		return helpCommand(args[1:], stdout, stderr)
@@ -931,9 +989,69 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		if len(args) > 1 {
 			why = "unknown verb " + oneline.Escape(args[0]+" "+args[1])
 		}
-		return refuse(stderr, args[0], why+"; its verbs are "+strings.Join(members, ", ")+"; run: nova-sprint help "+args[0])
+		return a.refuseCommand(stdout, stderr, args[0], why+"; its verbs are "+strings.Join(members, ", "), "nova-sprint help "+args[0])
 	}
-	return refuse(stderr, "", "unknown verb "+oneline.Escape(args[0])+"; available: "+strings.Join(verbNames(), ", ")+"; run: nova-sprint help")
+	why := "unknown verb " + oneline.Escape(args[0])
+	if hint := suggestVerb(args[0]); hint != "" {
+		why += "; " + hint
+	}
+	why += "; available: " + strings.Join(verbNames(), ", ")
+	return a.refuseCommand(stdout, stderr, "", why, "nova-sprint help")
+}
+
+// refuseCommand is a usage refusal from the dispatcher: the text line on stderr
+// (refuse), or under --json the one JSON refusal object on stdout — ok false,
+// the verb, the problem and the remedy — and nothing else, exit 2 (the JSON
+// refusal shape of pkg/tool and docs/CLI.md; the verbs' JSON refusals carry the
+// same keys, lane.go sayLaneRefused). The text form keeps the exact wording of
+// refuse, including its remedy.
+func (a *app) refuseCommand(stdout, stderr io.Writer, verb, what, remedy string) int {
+	if a.jsonMode {
+		o := map[string]any{
+			"verb": verb, "status": "refused", "ok": false, "exit": 2,
+			"reason": what, "remedy": remedy,
+		}
+		b, _ := json.Marshal(o)
+		fmt.Fprintln(stdout, string(b))
+		return 2
+	}
+	full := what
+	if !strings.Contains(full, "; run: ") {
+		switch {
+		case remedy != "":
+			full += "; run: " + remedy
+		case verb != "":
+			full += "; run: nova-sprint " + verb + " -h"
+		default:
+			full += "; run: nova-sprint help"
+		}
+	}
+	return refuse(stderr, verb, full)
+}
+
+// verbSynonyms is a hint for the natural word a reader types for a verb, where
+// the edit distance to a verb name is far: the word and what it means.
+var verbSynonyms = map[string]string{
+	"friends": "friend",
+	"status":  "where",
+	"judge":   "inbox",
+	"deal":    "take",
+	"waive":   "drop --waive",
+	"retire":  "reader retire",
+}
+
+// suggestVerb is the hint an unknown verb's refusal carries: the nearest verb
+// by edit distance (verbflag.Nearest, the code that builds "did you mean")
+// and a synonym hint for a natural word.
+func suggestVerb(got string) string {
+	var hints []string
+	if best := verbflag.Nearest(got, verbNames()); best != "" {
+		hints = append(hints, "did you mean "+best+"?")
+	}
+	if syn, ok := verbSynonyms[got]; ok {
+		hints = append(hints, got+" means "+syn)
+	}
+	return strings.Join(hints, "; ")
 }
 
 // refuse is a usage refusal: exit 2.
