@@ -202,7 +202,7 @@ func init() {
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
 		{"stats", "[--routes [--since <10m|RFC3339>]]", "stats", (*app).cmdStats},
 		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
-		{"settings", "[--json]", "settings", (*app).cmdSettings},
+		{"settings", "[--json]", "settings --json", (*app).cmdSettings},
 		{"reads", "--review [--stream <s>] [--json]", "reads --review", (*app).cmdReads},
 		{"doctor", "[--all] [--area <group>] [--preflight <candidate>] [--json]", "doctor --area routes", (*app).cmdDoctor},
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},

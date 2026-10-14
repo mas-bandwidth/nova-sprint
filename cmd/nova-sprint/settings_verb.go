@@ -37,7 +37,8 @@ func (a *app) cmdSettings(args []string, stdout, stderr io.Writer) int {
 
 // printSettings is the settings lines, shared by `settings` and `set` with
 // no flags: one SETTING line a setting, then the SETTINGS OK line. --json
-// is one object a line, the OK line last.
+// prints one object: the OK line is included as top-level fields and the
+// settings array holds every setting value (sprint-settings-json-is-one-object).
 func printSettings(stdout io.Writer, s *sprint.Snapshot, asJSON bool) {
 	vals := sprint.SettingsOf(s)
 	set := 0
@@ -45,21 +46,25 @@ func printSettings(stdout io.Writer, s *sprint.Snapshot, asJSON bool) {
 		if v.Set {
 			set++
 		}
-		if asJSON {
-			b, _ := json.Marshal(v)
-			fmt.Fprintln(stdout, string(b))
-			continue
-		}
+	}
+	if asJSON {
+		b, _ := json.Marshal(map[string]any{
+			"ok":       true,
+			"verb":     "settings",
+			"settings": vals,
+			"count":    len(vals),
+			"set":      set,
+			"epoch":    s.Epoch,
+		})
+		fmt.Fprintln(stdout, string(b))
+		return
+	}
+	for _, v := range vals {
 		yn := "no"
 		if v.Set {
 			yn = "yes"
 		}
 		fmt.Fprintf(stdout, "SETTING %s value=%s default=%s set=%s\n", v.Flag, orDash(v.Value), orDash(v.Default), yn)
-	}
-	if asJSON {
-		b, _ := json.Marshal(map[string]any{"count": len(vals), "set": set, "epoch": s.Epoch})
-		fmt.Fprintf(stdout, "SETTINGS OK %s\n", b)
-		return
 	}
 	fmt.Fprintf(stdout, "SETTINGS OK count=%d set=%d epoch=%d\n", len(vals), set, s.Epoch)
 }
