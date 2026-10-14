@@ -1374,11 +1374,6 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	for i := range clocks {
 		clocks[i].HeldCards = facts.HeldStreams[clocks[i].Stream]
 	}
-	if facts.SeriesCounted {
-		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings)
-		series := sprint.LandedSeriesOfLandings(facts.Series, now)
-		v.LandedSeries = &series
-	}
 	v.Ready = readyPrimaries(shapes[0])
 	working, review, merging := pipelineCounts(shapes[0])
 	v.Backup = sprint.BackupOf(int(working), int(review), int(merging))
@@ -1404,6 +1399,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if v.Done = sprintDone(shapes[0]); v.Done {
 		// a sprint done: the headline is the epoch's, as the done line counts it
 		v.Landed, v.All = v.Landed+v.ArchivedLanded, v.All+v.ArchivedCards
+	}
+	if facts.SeriesCounted {
+		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings), an
+		// archived stream's left out but for a sprint done (where_live_totals.go)
+		series := sprint.LandedSeriesOfLandings(liveLandings(facts.Series, v.Archived, v.Done), now)
+		v.LandedSeries = &series
 	}
 	if m := facts.Reset; m != nil {
 		done := v.Done
@@ -1497,6 +1498,13 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if facts.Reset != nil {
 		doneSince = facts.Reset.At
 	}
+	// an archived stream's completions are in no row's done, but for a sprint done
+	// (where_live_totals.go; the owner, 2026-10-14)
+	var archivedFleet []sprint.ArchivedFleetCard
+	if !v.Done && facts.ArchivedCounted {
+		facts.Done.Done = sprint.LiveCompletions(facts.Done.Done, facts.ArchivedPrimaries)
+		archivedFleet = facts.ArchivedFleet
+	}
 	done, err := st.DoneOf(ctx, facts, doneSince)
 	if err != nil {
 		return whereView{}, "", err
@@ -1507,8 +1515,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			// a friend's row holds her sprint cards: counted on the friends table, never a
 			// machine of the fleet table (sprint.FriendRow)
 			// ok% counts from the stats reset's mark (sprint.ResetMark.FleetSince), done the
-			// cards each row completed since it
-			t, friendCards = splitFriendRows(facts.Reset.FleetSince(t))
+			// cards each row completed since it; an archived stream's ok and failed cards
+			// finished since the mark are taken off too (lessArchivedDone)
+			t, friendCards = splitFriendRows(lessArchivedDone(facts.Reset.FleetSince(t), archivedFleet, doneSince))
 			t = doneColumn(t, done, func(key string) string { return key })
 		}
 		if logical == sprint.Readers {
@@ -1681,7 +1690,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	}
 	// every per-stream list and total the record counted over the epoch, the archived
 	// streams taken out (where_live_totals.go)
-	liveTotals(&v, facts.Streams)
+	liveTotals(&v, facts)
 
 	return v, b.String(), nil
 }

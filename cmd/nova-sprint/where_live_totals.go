@@ -4,9 +4,12 @@ import (
 	"maps"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Archived work is in no total (the owner, 2026-10-14: "archived cards and work streams
@@ -103,11 +106,23 @@ func mustRat(s string) *big.Rat {
 // liveTotals takes the archived streams out of every per-stream list and total of the
 // view that the where record counted over the epoch: the stream clocks and the stalled
 // streams, the stage times by stream, the streams' default levels, the cards by tier and
-// the cost check. stream_costs and read_spend are built from liveStreamCosts already.
-func liveTotals(v *whereView, streams map[string]sprint.TierCosts) {
+// the cost check. stream_costs and read_spend are built from liveStreamCosts already, and
+// the rows' done and ok% and the landed series leave them out where they are counted
+// (sprint.LiveCompletions, lessArchivedDone, liveLandings).
+func liveTotals(v *whereView, facts store.WhereFacts) {
+	streams := facts.Streams
 	gone := v.Archived
 	if gone == nil || v.Done {
 		return
+	}
+	if facts.ArchivedCounted {
+		// the stage times the tick counted without the archived streams, overall and by
+		// stream (sprint.CycleTimesExcept); a record from before is filtered by stream below
+		v.StageTimes = nil
+		if len(facts.LiveStageTimes.All) > 0 {
+			st := facts.LiveStageTimes
+			v.StageTimes = &st
+		}
 	}
 	v.Streams = slices.DeleteFunc(slices.Clone(v.Streams), func(c sprint.StreamClock) bool { return gone.has(c.Stream) })
 	if v.Streams == nil {
@@ -132,4 +147,53 @@ func liveTotals(v *whereView, streams map[string]sprint.TierCosts) {
 	}
 	v.Tiers = liveTiers(v.Tiers, streams, gone)
 	v.CostCheck = liveCostCheck(v.CostCheck, streams, gone)
+}
+
+// liveLandings is the landings of the streams on the table: an archived stream's left out,
+// but for a sprint done, whose series is the epoch's. A landing with no stream (a record
+// from before it was carried) is kept.
+func liveLandings(ls []sprint.Landing, gone *archivedView, done bool) []sprint.Landing {
+	if gone == nil || done {
+		return ls
+	}
+	return slices.DeleteFunc(slices.Clone(ls), func(l sprint.Landing) bool { return l.Stream != "" && gone.has(l.Stream) })
+}
+
+// lessArchivedDone is the fleet table with each row's ok and failed cells less its archived
+// streams' work cards there (sprint.ArchivedFleetCards) finished after since (every one when
+// since is zero), never below zero: the cells as FleetSince left them count from the stats
+// reset's mark, so only the archived cards since it are in them. The rows' done (ok+failed)
+// and ok% formulas then count the streams on the table.
+func lessArchivedDone(t ntable.Table, cards []sprint.ArchivedFleetCard, since time.Time) ntable.Table {
+	if len(cards) == 0 {
+		return t
+	}
+	less := map[string]map[string]int64{}
+	for _, c := range cards {
+		if !since.IsZero() && (c.At == 0 || !time.Unix(c.At, 0).After(since)) {
+			continue
+		}
+		if less[c.Row] == nil {
+			less[c.Row] = map[string]int64{}
+		}
+		less[c.Row][c.Col]++
+	}
+	if len(less) == 0 {
+		return t
+	}
+	cols := map[string]int{sprint.DoneOK: t.Column(sprint.DoneOK), sprint.DoneFailed: t.Column(sprint.DoneFailed)}
+	rows := make([]ntable.Row, len(t.Rows))
+	for i, r := range t.Rows {
+		if by := less[r.Key]; by != nil {
+			r.Cells = slices.Clone(r.Cells)
+			for col, n := range by {
+				if j := cols[col]; j >= 0 && j < len(r.Cells) && !r.Cells[j].Unread {
+					r.Cells[j].Count = max(0, r.Cells[j].Count-n)
+				}
+			}
+		}
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
 }
