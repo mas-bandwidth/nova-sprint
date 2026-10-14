@@ -27,6 +27,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/hook"
 )
 
 // ujRig is a sprint on a real store (a redis-server of its own, the function library
@@ -62,6 +63,9 @@ func newUJRig(t *testing.T) *ujRig {
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_REDIS": r.addr, "NOVA_SPRINT_ACTOR": ujSeat, "HOME": home, "XDG_CONFIG_HOME": home}
 	r.a = newApp(func(k string) string { return env[k] })
+	// The hook and sprint records share only this rig's private Redis connection.
+	// No hook record means down; the independently stored sprint hold still applies.
+	r.a.readFriendHooks = (hook.Store{C: admin}).Read
 	t.Cleanup(r.a.close)
 	r.a.now = func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now }
 	r.a.sleep = func(time.Duration) {}
