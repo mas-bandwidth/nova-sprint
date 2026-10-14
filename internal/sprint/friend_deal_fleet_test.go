@@ -260,8 +260,10 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 
 	// a friend as wide as the fleet takes at most half of each machine's queue in a tick
 	w2 := newWorld(t, "reader-a", "reader-b")
-	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
-	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
+	w2.setWidth("m1", 4)
+	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w2.setWidth("m2", 4)
+	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w2.must(Add(w2.s, AddReq{Stream: "ahead", Cards: ahead}))
 	dealWith(w2)
 	wide := FriendSeat{Name: "fay", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}}

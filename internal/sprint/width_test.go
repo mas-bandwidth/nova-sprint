@@ -125,12 +125,15 @@ func TestTheWidthIsTheControlCards(t *testing.T) {
 	p := FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: MaxWidth + 1})
 	require.Len(t, p.Refused, 1, "a width past MaxWidth: %+v", p)
 	require.Empty(t, p.Units, "a width past MaxWidth: %+v", p)
+	// a width is nova-config's alone: init --members m:n refuses every width
 	specs, err := ParseMembers("m1:64,m2,m3:2")
+	require.Error(t, err, "ParseMembers takes a width: %v", err)
+	specs, err = ParseMembers("m1,m2,m3")
 	require.NoError(t, err, "ParseMembers: %+v %v", specs, err)
 	require.Len(t, specs, 3, "ParseMembers: %+v %v", specs, err)
-	require.Equal(t, MemberSpec{"m1", 64}, specs[0], "ParseMembers: %+v %v", specs, err)
+	require.Equal(t, MemberSpec{"m1", 0}, specs[0], "ParseMembers: %+v %v", specs, err)
 	require.Equal(t, MemberSpec{"m2", 0}, specs[1], "ParseMembers: %+v %v", specs, err)
-	require.Equal(t, MemberSpec{"m3", 2}, specs[2], "ParseMembers: %+v %v", specs, err)
+	require.Equal(t, MemberSpec{"m3", 0}, specs[2], "ParseMembers: %+v %v", specs, err)
 	for _, bad := range []string{"m1:0", "m1:x", "m1:1025", "m.1:4"} {
 		_, err = ParseMembers(bad)
 		assert.Error(t, err, "ParseMembers(%q) was taken", bad)

@@ -190,7 +190,8 @@ func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 	// m1 and m2 at width 1, m3 at width 2: lanes of 1, 1 and 2, rooms (DealAhead
 	// times the width) of 2, 2 and 4
 	for i, m := range []string{"m1", "m2", "m3"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: []int{1, 1, 2}[i]}))
+		w.setWidth(m, []int{1, 1, 2}[i])
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 8}))
 	deal := func(id string) string {

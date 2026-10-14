@@ -56,16 +56,17 @@ func envFaultWorld(t *testing.T) *world {
 func TestFleetUpRefusesANewMemberUntilItsProbePasses(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	p := FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Width: 1})
+	w.setWidth("m9", 1)
+	p := FleetStep(w.s, FleetReq{Op: "up", Member: "m9"})
 	require.Len(t, p.Refused, 1, "a new member with no probe is refused: %+v", p)
 	assert.Contains(t, p.Refused[0].Why, "probe")
 	assert.False(t, w.s.Fleet.HasRow("m9"), "nothing is added for a refused member")
 
-	p = FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Width: 1, Probe: "no push credential"})
+	p = FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Probe: "no push credential"})
 	require.Len(t, p.Refused, 1, "a failed probe refuses: %+v", p)
 	assert.Contains(t, p.Refused[0].Why, "no push credential")
 
-	p = FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Width: 1, Probe: EnvProbePassed})
+	p = FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Probe: EnvProbePassed})
 	require.Empty(t, p.Refused, "%+v", p)
 	w.must(p)
 	assert.True(t, w.s.Fleet.HasRow("m9"), "the passed probe accepts the member")
