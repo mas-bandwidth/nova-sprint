@@ -119,6 +119,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 the owner: "This is the one I look at! http://69.67.149.151"
 - 2026-10-14 the owner: "You will port the existing python dashboard to golang." (the page files this ask first brought over digest, with pageview.go as it then stood, to 88fc6fba1cc8af3b6aa5bcc9d7d964781dd43d0c96149506b81b322982b6429b: page/index.html and page/app.js byte-identical to the Python live page, dashboard/live/; the same PR's server.py tile-slot port of pageview.go is held by the next lock line, digest c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830)
 - 2026-10-14 21:16Z the owner: "Remove the tiers list here: never asked for this." (digest 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98)
+- 2026-10-14 the owner: "remove the /events and /landings.json requests"
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
