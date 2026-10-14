@@ -53,3 +53,46 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	w.part(TickFriendRedealFn, TickReq{})
 	assert.Equal(t, Redealt, w.s.Fleet.Card("s1-4.w1").Col, "past three and a half it is redealt")
 }
+
+func TestReadTierRule(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	finished(w, "s1-1", false)
+	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	note := Note{Kind: Judgment, Type: NRaiseReadTier, Stream: "s1", Tier: "pro", What: "two broken reads"}
+
+	// rule turned off or missing stream control card returns ok=false
+	w.s.RulesOff = []string{RuleReadTier}
+	u, q, ok := ReadTierRule(w.s, note)
+	assert.False(t, ok)
+	assert.Nil(t, u)
+	assert.Empty(t, q.Why)
+	w.s.RulesOff = nil
+
+	_, _, ok = ReadTierRule(w.s, Note{Stream: "no-stream", Tier: "pro"})
+	assert.False(t, ok)
+
+	// no disagreement yet -> kept at its tier (raise == nil, ok == true)
+	u, q, ok = ReadTierRule(w.s, note)
+	require.True(t, ok)
+	assert.Nil(t, u)
+	assert.Contains(t, q.Why, "kept at its tier")
+
+	// one reader says ok, another says broken with a finding -> raises stream read tier and closes open NRaiseReadTier
+	reads := readsAt(w.s, w.s.Work.Card("s1-1"), 1)
+	require.Len(t, reads, 2)
+	w.must(Read(w.s, ReadReq{Usage: "input=100 output=10", As: reads[0].Row, Verdict: "ok", Sel: Sel{IDs: []string{reads[0].ID}}}))
+	w.must(Read(w.s, ReadReq{Usage: "input=100 output=10", As: reads[1].Row, Verdict: "broken", Finding: "real bug in a.go:10", Sel: Sel{IDs: []string{reads[1].ID}}}))
+
+	openRaise := judgment(NRaiseReadTier, "s1", w.s.Now, 0)
+	openRaise.StreamLevel = true
+	w.note(openRaise)
+
+	u, q, ok = ReadTierRule(w.s, note)
+	require.True(t, ok)
+	require.NotNil(t, u)
+	assert.Contains(t, q.Why, "two substantive findings disagree on s1-1 attempt 1")
+	assert.Len(t, u.Closes, 1)
+	w.must(Plan{Units: []Unit{*u}})
+	assert.Equal(t, "pro", w.s.StreamCtl("s1").F(FieldReadTier))
+}

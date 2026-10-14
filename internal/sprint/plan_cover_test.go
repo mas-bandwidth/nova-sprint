@@ -210,3 +210,96 @@ func TestPlanCoverPlanRows(t *testing.T) {
 		})
 	}
 }
+
+func TestPlanCoverAddMarked(t *testing.T) {
+	t.Parallel()
+	t.Run("founds a new stream on protected branches and stamps its control card", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		p := AddMarked(w.s, AddReq{
+			Stream: "s-prot",
+			Cards: []CardAdd{
+				{ID: "s-prot-1", Brief: "s-prot-1: first\nREPO: mas-bandwidth/nova-sprint\nBASE: main\n\ndo it", Repo: "mas-bandwidth/nova-sprint", Base: "main"},
+				{ID: "s-prot-2", Brief: "s-prot-2: second\nREPO: mas-bandwidth/nova-tools\nBASE: dev\n\ndo it", Repo: "mas-bandwidth/nova-tools", Base: "dev"},
+				{ID: "s-prot-3", Brief: "s-prot-3: third\nREPO: mas-bandwidth/nova-sprint\nBASE: sprint/v1\n\ndo it", Repo: "mas-bandwidth/nova-sprint", Base: "sprint/v1"},
+			},
+		}, "mas-bandwidth/nova-sprint,mas-bandwidth/nova-tools")
+		w.must(p)
+		ctl := w.s.Merge.Card(CtlID("s-prot"))
+		require.NotNil(t, ctl)
+		assert.Equal(t, "mas-bandwidth/nova-sprint,mas-bandwidth/nova-tools", ctl.F(FieldLandProtected))
+		assert.Equal(t, "dev,main,sprint/v1", ctl.F(FieldBase))
+		assert.True(t, markCoversRepository(LandProtectedAny, ""))
+		assert.True(t, markCoversRepository("mas-bandwidth/nova-sprint", "https://github.com/mas-bandwidth/nova-sprint.git"))
+		assert.False(t, markCoversRepository("mas-bandwidth/nova-sprint", ""))
+	})
+
+	t.Run("refuses default or malformed mark, existing stream, underlying add refusal, and uncovered repo", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		// underlying Add refusal (empty stream)
+		p := AddMarked(w.s, AddReq{}, "any")
+		require.NotEmpty(t, p.Refused)
+
+		// mark == "default"
+		p = AddMarked(w.s, AddReq{
+			Stream: "s1",
+			IDs:    []string{"s1-1"},
+			Brief:  "s1-1: first\nREPO: mas-bandwidth/nova-sprint\nBASE: main\n\ndo it",
+			Repo:   "mas-bandwidth/nova-sprint",
+			Base:   "main",
+		}, ReadTierDefault)
+		require.Len(t, p.Refused, 1)
+		assert.Contains(t, p.Refused[0].Why, "--land-protected wants repositories")
+
+		// malformed repository name in mark
+		p = AddMarked(w.s, AddReq{
+			Stream: "s1",
+			IDs:    []string{"s1-1"},
+			Brief:  "s1-1: first\nREPO: mas-bandwidth/nova-sprint\nBASE: main\n\ndo it",
+			Repo:   "mas-bandwidth/nova-sprint",
+			Base:   "main",
+		}, "not-a-repo")
+		require.Len(t, p.Refused, 1)
+		assert.Contains(t, p.Refused[0].Why, "owner/name")
+
+		// uncovered named repo on single card
+		p = AddMarked(w.s, AddReq{
+			Stream: "s1",
+			IDs:    []string{"s1-1"},
+			Brief:  "s1-1: first\nREPO: mas-bandwidth/other\nBASE: main\n\ndo it",
+			Repo:   "mas-bandwidth/other",
+			Base:   "main",
+		}, "mas-bandwidth/nova-sprint")
+		require.Len(t, p.Refused, 1)
+		assert.Contains(t, p.Refused[0].Why, "does not mark repository mas-bandwidth/other")
+
+		// uncovered empty repo on card in Cards slice
+		p = AddMarked(w.s, AddReq{
+			Stream: "s1",
+			Cards: []CardAdd{
+				{ID: "s1-1", Brief: "s1-1: no repo\nBASE: dev\n\ndo it", Base: "dev"},
+			},
+		}, "mas-bandwidth/nova-sprint")
+		require.Len(t, p.Refused, 1)
+		assert.Contains(t, p.Refused[0].Why, "its repository (the brief names no REPO: line)")
+
+		// existing stream refused by markNewStream
+		w.must(Add(w.s, AddReq{
+			Stream: "s1",
+			IDs:    []string{"s1-1"},
+			Brief:  "s1-1: first\nREPO: mas-bandwidth/nova-sprint\nBASE: sprint/v1\n\ndo it",
+			Repo:   "mas-bandwidth/nova-sprint",
+			Base:   "sprint/v1",
+		}))
+		p = AddMarked(w.s, AddReq{
+			Stream: "s1",
+			IDs:    []string{"s1-2"},
+			Brief:  "s1-2: second\nREPO: mas-bandwidth/nova-sprint\nBASE: main\n\ndo it",
+			Repo:   "mas-bandwidth/nova-sprint",
+			Base:   "main",
+		}, "any")
+		require.Len(t, p.Refused, 1)
+		assert.Equal(t, "--land-protected marks a new stream only", p.Refused[0].Why)
+	})
+}

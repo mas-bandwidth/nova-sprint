@@ -29,7 +29,7 @@ func TestABriefIsDealtOnItsTier(t *testing.T) {
 			t.Parallel()
 			w := newWorld(t)
 			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-			w.s.Routes = c.routes
+			w.s.Routes = append([]Route(nil), c.routes...)
 			w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: " + c.tier + "\n\nThe task."}}}))
 			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 			wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))

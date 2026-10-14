@@ -196,6 +196,53 @@ func TestAMechanicalJudgmentIsAnsweredByItsRule(t *testing.T) {
 		assert.Empty(t, openOf(w, NWorkLate, "s1-1"), "no late judgment")
 	})
 
+	t.Run("friend-take rule: an open late judgment on a friend's card checks seat, start, pin, col, and takes back when unstarted", func(t *testing.T) {
+		t.Parallel()
+		w, bob := friendDealt(t)
+		amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"}
+		n := judgment(NWorkLate, "s1", w.s.Now, 0, "s1-1")
+		n.Card = "s1-1.w1"
+		w.note(n)
+
+		// 1) no seat for amy in TickReq.Friends -> ActLeft
+		a := answerOn(t, w, on(bob), NWorkLate, "s1-1")
+		assert.Equal(t, RuleFriendTake, a.Rule)
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "holds no seat of friend amy")
+
+		// 2) friendStarted (amy's seat names s1-1.w1 in Running) -> ActLeft
+		amyRunning := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}}
+		a = answerOn(t, w, on(amyRunning, bob), NWorkLate, "s1-1")
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "friend amy has started it")
+
+		// 3) primary pinned to amy alone or carrying brief_defect -> ActLeft
+		pr := w.s.Work.Card("s1-1")
+		pr.Fields[FieldBriefDefect] = "missing header"
+		a = answerOn(t, w, on(amy, bob), NWorkLate, "s1-1")
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "pinned to friend amy alone, or a brief defect")
+		delete(pr.Fields, FieldBriefDefect)
+
+		// 4) wc not in Ready or Working -> ActLeft
+		wc := w.s.Fleet.Card("s1-1.w1")
+		wc.Col = Redealt
+		a = answerOn(t, w, on(amy, bob), NWorkLate, "s1-1")
+		assert.Equal(t, ActLeft, a.Act)
+		assert.Contains(t, a.Why, "not on friend amy's row ready or working")
+		wc.Col = Ready
+
+		// 5) unstarted and unpinned on amy's row -> ActTake, and TickRuleTake takes it back to Ready
+		a = answerOn(t, w, on(amy, bob), NWorkLate, "s1-1")
+		assert.Equal(t, ActTake, a.Act)
+		assert.Equal(t, "amy", a.from)
+		rules(w, on(amy, bob))
+		assert.Equal(t, Ready, w.s.Work.Card("s1-1").Col)
+		assert.Contains(t, w.s.Fleet.Card("s1-1.w1").F(FieldRuleAnswer), RuleFriendTake+": "+ActTake)
+		assert.Empty(t, openOf(w, NWorkLate, "s1-1"))
+		assert.Len(t, logged(w, RuleFriendTake), 1)
+	})
+
 	t.Run("read-late: a late read is asked of another reader, once an attempt", func(t *testing.T) {
 		t.Parallel()
 		w := readLate(t) // its two reads asked together, both late
