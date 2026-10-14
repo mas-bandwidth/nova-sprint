@@ -401,3 +401,9 @@ Every TLA+ model checked against the code.
 Fleet fixes, including the shared clear and start machine fence.
 
 - **Clear and start share the machine fence** (planned). Clear re-stops an intervening START under the old epoch fence before advancing; the advance verifies that owner atomically. START writes its record and view only with its pinned epoch, settled restore and live fence owner. Deterministic Mem and private Redis functional interleavings cover a start paused after its guard and a completed start before advance, including interrupted restore recovery. From: clear-and-start-share-the-machine-fence.
+
+## v1.3 (planned)
+
+The friends release: friend work dogfooded, and each friend defect found becomes a point-release card.
+
+- **A pinned card taken back is given again when her friend has room** (planned). A hard-pinned work card taken back from its friend (friend take: its work card withdrawn, FieldTakenFrom naming her) waited for the seat's nova-sprint friend give even while she was up with a free lane. The tick's friend deal (internal/sprint/friend_deal.go, friendDealPass) now treats a withdrawn work card of a hard-pinned primary whose FieldTakenFrom names the pinned friend like a ready card of hers: when she is up with a free lane below her room (DealAhead times her width) and her tiers hold its tier, the tick gives it back to her in the same tick, the same step nova-sprint friend give takes, with one happened note ("pinned card X given again to a friend: she is up with room"); no new verb. While she is down, held, has no room or every lane is busy, no judgment is raised for the wait (held.go keeps its description), and a pin released past its bound is dealt as today. TestAPinnedCardTakenBackIsGivenAgainWhenHerFriendHasRoom (internal/sprint/friend_pinned_regive_test.go) pins the six cases, red at BASE and green at head. From: this card (a-pinned-card-taken-back-is-given-again-when-her-friend-has-room.w1).

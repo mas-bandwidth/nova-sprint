@@ -81,11 +81,14 @@ func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 	assert.Equal(t, 1, w.s.Fleet.Count(amy, Working)+w.s.Fleet.Count(amy, Ready))
 	assert.Empty(t, Check(w.s, nil))
 
-	// a card that names her, taken from her, waits: the deal never gives it back to her
+	// a card that names her, taken from her, is given back while she has a free lane
+	// (a-pinned-card-taken-back-is-given-again-when-her-friend-has-room.w1): her one free
+	// lane takes the oldest, and the rest wait for a lane
 	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
-	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col)
-	assert.Equal(t, Ready, w.s.StateOf("s1-1"))
-	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "given back on her row, taken into her free lane")
+	assert.Equal(t, Working, w.s.StateOf("s1-1"))
+	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col, "her free lane took s1-1, not s1-3")
+	hd := Holder(running(w), w.s.Now, "s1-3")
 	assert.Equal(t, HeldByWaiting, hd.By)
 	assert.Contains(t, hd.Why, "waits for only friend amy")
 }

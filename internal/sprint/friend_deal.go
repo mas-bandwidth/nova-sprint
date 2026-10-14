@@ -128,6 +128,12 @@ func ReworkPinned(c *Card) bool {
 // to that friend, never to a machine or to another friend.
 const friendCardWhy = "a friend's card (its brief says WHO: only friend, or a WHO: friend <name> card come back by a rework): the tick deals it to that friend up with room, never to a machine"
 
+// NGivenAgain is the happened note of a hard-pinned card taken back from its friend given
+// back to her by the tick, the same step nova-sprint friend give takes, when she is up with
+// a free lane below her room (friendDealPass): the seat is told the wait ended by itself, no
+// judgment.
+const NGivenAgain = "a pinned card given again to a friend"
+
 // FriendSeat is one friend as the tick deals to her: her name, her width (the jobs she
 // works at once, her friends row's), her status (FriendStatus: up, held or down), her
 // class (the tiers her nova-config row says she can do, sorted and comma joined), her
@@ -685,11 +691,26 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if !pinnedCard {
 			name = ""
 		}
+		// a hard pin whose friend has been not up past its bound is a preference (PinReleased)
+		hard := OnlyFriend(c) && !PinReleased(s, c, seats)
+		// a hard-pinned card taken back from its friend (FieldTakenFrom names her) is given
+		// back to her by the tick, the same step nova-sprint friend give takes, when she is up
+		// with a free lane below her room and her tiers hold its tier: the pin overrides the
+		// take-back mark while she can take it (held.go, the Ready case's OnlyFriend branch:
+		// "give it back"). While she is down, held, has no room, or every lane is busy, no
+		// judgment is raised for the wait; held.go keeps its description.
+		from := ""
+		if wc != nil {
+			from, _ = FriendOfRow(wc.F(FieldTakenFrom))
+		}
+		giveAgain := hard && pinnedCard && wc != nil && from == pinned && free[name] > 0 && lanes[name] > 0 &&
+			friendTakes(s, seat[name], tier) && friendRestrictionAllows(seat[name], c)
+		if giveAgain {
+			left = slices.DeleteFunc(left, func(f string) bool { return f == pinned })
+		}
 		if name != "" && (free[name] <= 0 || slices.Contains(left, name) || !friendTakes(s, seat[name], tier) || !friendRestrictionAllows(seat[name], c)) {
 			name = "" // the friend it names is not up with room, it has left her, not her tier, or outside her restriction
 		}
-		// a hard pin whose friend has been not up past its bound is a preference (PinReleased)
-		hard := OnlyFriend(c) && !PinReleased(s, c, seats)
 		if name == "" && !hard {
 			var may []string
 			for _, f := range up {
@@ -754,6 +775,11 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 				placedID = wc.ID
 			}
 			u.Notes = append(u.Notes, pinIgnoredNote(s, c, placedID, pinned, pinSkipWhy(s, seats, pinned, leftAtPin, tier, free), row, Ready))
+		}
+		if giveAgain {
+			n := happened(NGivenAgain, c.Row, s.Now, c.ID)
+			n.Who, n.What = MachineActor, fmt.Sprintf("pinned card %s given again to a friend: she is up with room", c.ID)
+			u.Notes = append(u.Notes, n)
 		}
 		p.Units = append(p.Units, u)
 	}
