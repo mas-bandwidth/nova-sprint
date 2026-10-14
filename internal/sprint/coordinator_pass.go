@@ -42,7 +42,6 @@ import (
 
 // The pass's judgment types and its push.
 const (
-	NFriendDeaf        = "a friend's session is deaf"
 	NFriendIdle        = "a friend holds working cards and finishes none"
 	NCoordinatorBehind = "judgments wait on the coordinator past their deadline"
 	// NFriendEmpty is an up friend whose row has been empty for EmptyRowAfter while
@@ -64,7 +63,7 @@ const (
 // PassTypes are the pass's judgment types: its own and the automatic stops it keeps
 // (StopTypes, stops.go). NFriendRowEmpty is the empty-row clock, not a judgment, and stays
 // off this list.
-var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NSeatSilent}, StopTypes...)
+var PassTypes = append([]string{NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NSeatSilent}, StopTypes...)
 
 // The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
 // acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
@@ -81,27 +80,12 @@ const (
 	// EmptyRowAfter is how long an up friend's row stays empty, while cards she
 	// could do wait elsewhere, before the pass tells the coordinator once.
 	EmptyRowAfter = 10 * time.Minute
-	// FriendDeafAfter is how old a friend's last session pong may be before her
-	// session is deaf: FriendProofLive, since her daemon asks her session eight minutes
-	// after its last ask and waits up to five for the answer (nova-friend's ProveEvery and
-	// SessionBound; docs/SPEC-FRIEND.md, The push proof), so a session that answers is
-	// never proved longer ago than thirteen minutes. Shorter, and a friend whose session
-	// answers slowly is judged deaf and cleared again every cycle.
-	FriendDeafAfter = FriendProofLive
 	// FriendFinishDefault is the friend-finish window when the coordinator set none.
 	FriendFinishDefault = 30 * time.Minute
 	// PropFriendFinish is the work table's property: the friend-finish window, a
 	// duration (nova-sprint set --friend-finish).
 	PropFriendFinish = "friend_finish"
 )
-
-// FriendSession is what the tick knows of a friend's session beside the tables: her
-// session's last pong as her last beat carries it (zero: her beat carries none), and
-// whether the coordinator holds her (friend down).
-type FriendSession struct {
-	Pong time.Time
-	Held bool
-}
 
 // FriendFinishAfter is the friend-finish window: the sprint's setting, else
 // FriendFinishDefault.
@@ -158,7 +142,7 @@ func WithFriendFinish(p Plan, s *Snapshot, v string) Plan {
 // conditions raised, raised again and closed (the comment above).
 func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
-	conds := append(append(deafConds(s, r), idleConds(s, r)...), behindConds(s, r)...)
+	conds := append(idleConds(s, r), behindConds(s, r)...)
 	conds = append(conds, emptyConds(&p, s, r)...)
 	conds = append(conds, pinConds(s, r)...)
 	// the judgments that hold a card, past their deadline: the seat is not answering
@@ -170,29 +154,6 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	reraise(&p, s, conds, r)
 	stopsDigest(&p, s, r)
 	return p, due
-}
-
-// deafConds is one condition for each friend not held whose beat carries a session pong
-// older than FriendDeafAfter, in running time: the nova-friend daemon's beat carries
-// her session's last proof (--pong), so a lapsed proof is told to the coordinator once,
-// as this judgment, with the remedy (docs/SPEC-SPRINT.md, "The coordinator's pass").
-func deafConds(s *Snapshot, r TickReq) []cond {
-	var out []cond
-	for _, f := range slices.Sorted(maps.Keys(r.Sessions)) {
-		ss := r.Sessions[f]
-		if ss.Held || ss.Pong.IsZero() {
-			continue
-		}
-		age, ok := r.running(s.Now, stamp(ss.Pong))
-		if !ok || age <= FriendDeafAfter {
-			continue
-		}
-		out = append(out, cond{typ: NFriendDeaf, primaries: []string{FriendRow(f)},
-			what: friendPronouns(r.Friends, f).Sprintf("friend %s: {their} session's last pong was %s ago (at %s), past %s; wake {them}: nova-friend ping --as <coordinator> --to %s --wake, then the debug steps of docs/SPEC-FRIEND.md (Presence, The harness check)",
-				f, age.Round(time.Second), stamp(ss.Pong), FriendDeafAfter, f),
-			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "debug: docs/SPEC-FRIEND.md, The harness check", "friend down " + f + " --reason deaf", "ack", "wait"}})
-	}
-	return out
 }
 
 // idleConds is one condition for each friend not held holding working cards whose last
@@ -207,7 +168,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, row := range s.Fleet.Rows() {
 		f, ok := FriendOfRow(row)
-		if !ok || r.Sessions[f].Held || s.MemberCtl(row).F("status") == Held {
+		if !ok || friendHeld(r.Friends, f) || s.MemberCtl(row).F("status") == Held {
 			continue
 		}
 		working := s.Fleet.Cell(row, Working)
@@ -443,7 +404,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	for _, name := range names {
 		f := seats[name]
 		row := FriendRow(name)
-		up := f.Status == Up && !r.Sessions[name].Held && s.MemberCtl(row).F("status") != Held && !s.FriendsOff()
+		up := f.Status == Up && !f.Held && s.MemberCtl(row).F("status") != Held && !s.FriendsOff()
 		var cards []idleWait
 		if up && friendLoad(s, name) == 0 {
 			cards = cardsWaitingFor(s, f, seats)
@@ -686,4 +647,13 @@ func pinIgnoredNote(s *Snapshot, primary *Card, cardID, pinned, why, row, col st
 	return Note{Kind: Judgment, Type: NPinIgnored, Stream: primary.Row, Primaries: []string{primary.ID}, Count: 1,
 		Card: cardID, What: pinIgnoredWhat(cardID, pinned, why, row, col), Who: MachineActor, At: s.Now, Marked: true,
 		Decisions: pinIgnoredDecisions(pinned, holder, cardID)}
+}
+
+func friendHeld(friends []FriendSeat, name string) bool {
+	for _, f := range friends {
+		if f.Name == name {
+			return f.Held || f.Status == Held
+		}
+	}
+	return false
 }

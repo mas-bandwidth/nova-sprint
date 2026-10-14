@@ -129,7 +129,7 @@ func ReworkPinned(c *Card) bool {
 const friendCardWhy = "a friend's card (its brief says WHO: only friend, or a WHO: friend <name> card come back by a rework): the tick deals it to that friend up with room, never to a machine"
 
 // FriendSeat is one friend as the tick deals to her: her name, her width (the jobs she
-// works at once, her friends row's), her status (FriendStatus: up, held or down), her
+// works at once, her friends row's), her status (nova-hook plus sprint hold: up, held or down), her
 // class (the tiers her nova-config row says she can do, sorted and comma joined), her
 // delivery mode (Mode: batch or one-shot, default batch), her tiers (config.friends
 // tiers: flash, frontier, pro; when given, the deal and the level read them before her
@@ -156,37 +156,23 @@ type FriendSeat struct {
 	Streams []string
 	Kinds   []string
 	Running []string
-	// Why is why her Status is not up, as FriendDownWhy says it (held, or the session
-	// evidence she lacks), "" while she is up: the words a take refused for her names.
+	// Why explains the hook refusal or sprint hold while she is not up.
 	Why string
 	// Active is the newest write under her working directory as her daemon's last beat
 	// found it (FriendReport.Active), zero when it said none: a friend who wrote within the
 	// start bound is at work, and the tick moves none of her cards for want of a start
 	// (friendUnstartedLevel).
 	Active time.Time
-	// Proof is her session's last proof as her beat carries it (Beat.Proof: a SESSION CHECK
-	// it answered, or a bus message of its own), and Finished the store's record of her
-	// last finish, working to done; each zero when there is none. The stall ladder reads
-	// them as evidence of her work (FriendWorked).
-	Proof    time.Time
-	Finished time.Time
-	// Answered is when her session last answered the coordinator's wake ping (her
-	// FriendHealth observation, up), zero when it has not.
-	Answered time.Time
 	// ReadsFirst is the room her reads take before any work card in this deal (reads are a
 	// card priority, reads_priority.go friendReadsFirst): set by the tick's deal on the
 	// seats it deals work to, never read from her row; zero leaves her room as it is.
 	ReadsFirst int
-	// Beat, Evidence, DaemonOnly and Current are what the status transitions read
-	// (StatusTransitions, judgments_status.go): her last beat (zero when she never beat),
-	// what her status rests on (FriendEvidence), whether she is down while the coordinator's
-	// last observation is her daemon's pong alone (DaemonPong: her daemon answers, her
-	// session does not), and the build the server runs, which her daemon's
-	// (Beat.Friend.Build) is compared with.
-	Beat       Beat
-	Evidence   string
-	DaemonOnly bool
-	Current    string
+	// Work report, hook explanation and current build for transition reporting.
+	Beat     Beat
+	Evidence string
+	Current  string
+	Held     bool // Sprint hold, even when nova-hook says down.
+	Unhooked bool // nova-hook explicitly unhooked this friend; work may be returned.
 }
 
 // FieldFriendsLeft is the friends a friend's work card has left, comma joined: each the
@@ -207,7 +193,7 @@ func friendTiers(f FriendSeat) []string {
 }
 
 // friendDealable says the deal may fill the friend's row (docs/SPEC-SPRINT.md section 1, a
-// friend's card): her status is up by the friends' rule (FriendStatus: her session's
+// friend's card): her status is up by the friends' rule (nova-hook: her session's
 // evidence, never a beat alone; not held, not down), the coordinator's row of
 // her (her fleet control card) says neither down nor held, and the stall ladder has not
 // marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a

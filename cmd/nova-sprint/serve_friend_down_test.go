@@ -1,8 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"testing"
 	"time"
 
@@ -30,9 +31,9 @@ func TestTheServerTakesAFriendsDownBeat(t *testing.T) {
 	res := r.one("friend", "beat", "amy", "--until", until, "--reason", "harness limit: You've hit your usage limit", "--active", active)
 	require.Equal(t, 0, res.Code, res.Stderr)
 	assert.Contains(t, res.Stdout, "FRIEND-BEAT OK amy")
-	assert.Contains(t, res.Stdout, " down=true until="+until)
+	assert.Contains(t, res.Stdout, " until="+until)
 	f := r.friendRow("amy")
-	assert.Equal(t, "down", f.Status, "a fresh beat that says down is down")
+	assert.Equal(t, "up", f.Status, "a work report cannot change hook liveness")
 	require.NotNil(t, f.Report)
 	assert.Equal(t, until, f.Report.Until.Format(time.RFC3339))
 	assert.Equal(t, "harness limit: You've hit your usage limit", f.Report.Reason)
@@ -59,10 +60,19 @@ func TestTheServerTakesAFriendsDownBeat(t *testing.T) {
 // server's line: friend health --state up at the clock now, by the seat's holder at its
 // generation.
 func (r *serverRig) pong(friend string) {
-	r.t.Helper()
-	var s seatJSON
-	require.NoError(r.t, json.Unmarshal([]byte(r.boss("nova-sprint seat --json")), &s))
-	r.boss(fmt.Sprintf("nova-sprint friend health %s --state up --seen %s --generation %d --actor %s", friend, r.a.now().UTC().Format(time.RFC3339), s.Generation, s.Holder))
+	prev := r.a.readFriendHooks
+	r.a.readFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
+		rows, at, err := prev(ctx, names...)
+		if err != nil {
+			return nil, at, err
+		}
+		for _, n := range names {
+			if n == friend {
+				rows = append(rows, hook.Status{Name: friend, State: hook.StateProven})
+			}
+		}
+		return rows, at, nil
+	}
 }
 
 // friendRow is the named friend's row as where --json gives it, read on the server's line.

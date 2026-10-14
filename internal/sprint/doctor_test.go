@@ -336,8 +336,7 @@ func TestDoctorFriendsFailsADaemonThatBeatsNoMore(t *testing.T) {
 	in.FriendBeats = map[string]Beat{"emma": {At: w.s.Now.Add(-10 * time.Minute)}}
 	cs := DoctorFriends(in)
 	fails := failsOn(cs, CheckFriends)
-	require.Len(t, fails, 1, lines(cs))
-	assert.Equal(t, "emma", fails[0].Subject)
+	require.Empty(t, fails, "a stale work report is not liveness evidence")
 	assert.Contains(t, lines(cs), "DOCTOR WARN friends stella status=held")
 	assert.Contains(t, lines(cs), "out of Codex usage")
 }

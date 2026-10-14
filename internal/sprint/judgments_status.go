@@ -385,8 +385,7 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 		head = fmt.Sprintf("friend %s's daemon started again at %s (its start before: %s); status %s at %s, transition %d",
 			f, stamp(next.Started), stamp(prev.Started), row.word, at, next.N)
 	}
-	coord := coordinatorName(s)
-	wake := "nova-friend ping --as " + coord + " --to " + f + " --wake"
+	wake := "nova-hook hook --as " + f + " --role friend"
 	restart := "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f
 	switch row.word {
 	case Up:
@@ -396,9 +395,6 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 		return head + ": the coordinator's hold (" + orDash(row.friend.Why) + "); " + p.Say("{their} started cards finish, the rest went back to ready") + "; release: nova-sprint unhold " + f, true
 	}
 	what := head + ": " + orDash(row.friend.Evidence)
-	if row.friend.DaemonOnly {
-		what += "; " + p.Say("{their} daemon answers and {their} session does not")
-	}
 	what += "; " + lastBeat(row.beat, s.Now) + "; " + p.Say("wake {them}: ") + wake + "; " + p.Say("if {their} daemon is gone, on {their} machine: ") + restart + "; " + p.Say("or hold {them}: ") + "nova-sprint hold " + f + " --reason <text>"
 	return what, false
 }
@@ -436,12 +432,10 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 		text += "; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f
 	}
 	step(text, match == BuildSame)
-	// 2. check: what her daemon reported of itself, and her session's evidence. No beat word
-	// reports a harness check yet, so the step is the coordinator's: nova-friend check.
+	// 2. check the same authoritative hook record the dashboard reads.
 	present := !rep.Present.IsZero() && !rep.Started.IsZero() && !rep.Present.Before(rep.Started)
-	text = p.Sprintf("check: daemon %s, %s, presence %s; run: nova-friend check %s and read its CHECK DAEMON, CHECK HARNESS and presence lines",
-		beatWord(seat.Beat, s.Now), daemonWord(rep), orDash(seat.Evidence), f)
-	step(text, false)
+	text = "check nova-hook: " + orDash(seat.Evidence)
+	step(text, seat.Status == Up || seat.Status == Held)
 	// 3. snap to present: the note the daemon sent on its start
 	if present {
 		text = p.Say("snap to present: {their} daemon sent the present on its start at ") + stamp(rep.Present)
@@ -450,7 +444,7 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 	}
 	step(text, present)
 	// 4. into the sprint: not held, the server's evidence, a take within TakeWithin
-	held := seat.Status == Held
+	held := seat.Held || seat.Status == Held
 	take := lastTake(s, f)
 	took := !take.IsZero() && s.Now.Sub(take) <= TakeWithin && !take.After(s.Now)
 	text = "into the sprint: "
@@ -463,7 +457,7 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 	if took {
 		text += ", a take at " + stamp(take)
 	} else {
-		text += fmt.Sprintf(", no take within %s; run: nova-sprint where, and %s", TakeWithin, "nova-friend ping --as "+coordinatorName(s)+" --to "+f+" --wake")
+		text += fmt.Sprintf(", no take within %s; run: nova-sprint where, and %s", TakeWithin, "nova-hook hook --as "+f+" --role friend")
 	}
 	step(text, !held && took)
 	return strings.Join(parts, "; "), all
@@ -517,25 +511,6 @@ func lastBeat(b Beat, now time.Time) string {
 		text += fmt.Sprintf(", %d beat windows of %s missed", k, BeatDeadline)
 	}
 	return text + ")"
-}
-
-func beatWord(b Beat, now time.Time) string {
-	if !b.Beaten() {
-		return "never beat"
-	}
-	if b.Fresh(now) {
-		return "beating (" + ago(now.Sub(b.At)) + ")"
-	}
-	return "silent since " + stamp(b.At)
-}
-
-// daemonWord is what her daemon reported of its own start: when, and that it has beat since,
-// and that no harness check is reported (no beat word carries one yet).
-func daemonWord(rep FriendReport) string {
-	if rep.Started.IsZero() {
-		return "daemon reported no start; no harness check reported"
-	}
-	return "daemon started at " + stamp(rep.Started) + " and has beat since; no harness check reported"
 }
 
 // presentSend is the nova-bus line that sends her the present by hand.
