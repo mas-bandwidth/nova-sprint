@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math/big"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -476,7 +475,7 @@ func tierCostCents(byTier map[string]*big.Rat) map[string]string {
 	if !remainders.IsInt() {
 		left++
 	}
-	sort.SliceStable(parts, func(i, j int) bool { return parts[i].fraction.Cmp(parts[j].fraction) > 0 })
+	slices.SortStableFunc(parts, func(a, b allocation) int { return b.fraction.Cmp(a.fraction) })
 	out := make(map[string]string, len(parts))
 	for i, part := range parts {
 		if int64(i) < left {

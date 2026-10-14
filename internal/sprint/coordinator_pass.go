@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -495,7 +495,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 		}
 	}
 	if s.Fleet == nil {
-		sort.Slice(out, func(i, j int) bool { return out[i].phrase < out[j].phrase })
+		slices.SortFunc(out, func(a, b idleWait) int { return cmp.Compare(a.phrase, b.phrase) })
 		return out
 	}
 	her := FriendRow(f.Name)
@@ -523,7 +523,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].phrase < out[j].phrase })
+	slices.SortFunc(out, func(a, b idleWait) int { return cmp.Compare(a.phrase, b.phrase) })
 	return out
 }
 
@@ -625,7 +625,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].primaries[0] < out[j].primaries[0] })
+	slices.SortFunc(out, func(a, b cond) int { return cmp.Compare(a.primaries[0], b.primaries[0]) })
 	return out
 }
 

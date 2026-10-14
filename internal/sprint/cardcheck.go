@@ -1,13 +1,13 @@
 package sprint
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"maps"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -301,8 +301,8 @@ func CardBasesToRead(s *Snapshot, streams []string) []swarm.CardBase {
 		keys = append(keys, k)
 		bases[k] = swarm.ReadCardBase([]byte(card.F("brief")))
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].Repo < keys[j].Repo || keys[i].Repo == keys[j].Repo && keys[i].Base < keys[j].Base
+	slices.SortFunc(keys, func(a, b CardTreeKey) int {
+		return cmp.Or(cmp.Compare(a.Repo, b.Repo), cmp.Compare(a.Base, b.Base))
 	})
 	out := make([]swarm.CardBase, len(keys))
 	for i, k := range keys {

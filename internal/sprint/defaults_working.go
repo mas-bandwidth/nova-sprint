@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -134,7 +134,7 @@ func SettingsWorking(s *Snapshot, b WorkingBars) []SettingFinding {
 			out = append(out, f)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Setting < out[j].Setting })
+	slices.SortStableFunc(out, func(a, b SettingFinding) int { return cmp.Compare(a.Setting, b.Setting) })
 	return out
 }
 
@@ -178,7 +178,7 @@ func liveCards(s *Snapshot) []*Card {
 		}
 		out = append(out, c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	slices.SortFunc(out, func(a, b *Card) int { return cmp.Compare(a.ID, b.ID) })
 	return out
 }
 

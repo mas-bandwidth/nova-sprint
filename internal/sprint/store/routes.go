@@ -1,11 +1,11 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -49,7 +49,7 @@ func (st *Store) priceRoutes(ctx context.Context) ([]sprint.Route, error) {
 	if err := receiptRouteBillings(rs); err != nil {
 		return nil, err
 	}
-	sort.Slice(rs, func(i, j int) bool { return rs[i].Name < rs[j].Name })
+	slices.SortFunc(rs, func(a, b sprint.Route) int { return cmp.Compare(a.Name, b.Name) })
 	return append([]sprint.Route{}, rs...), nil
 }
 
@@ -289,7 +289,7 @@ func (st *Store) routesTrips(ctx context.Context) (RouteSet, int64, error) {
 	if err := receiptRouteBillings(set.Routes); err != nil {
 		return RouteSet{}, trips, err
 	}
-	sort.Slice(set.Routes, func(i, j int) bool { return set.Routes[i].Name < set.Routes[j].Name })
+	slices.SortFunc(set.Routes, func(a, b sprint.Route) int { return cmp.Compare(a.Name, b.Name) })
 	return set, trips, nil
 }
 

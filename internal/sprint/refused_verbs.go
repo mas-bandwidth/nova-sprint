@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"time"
 )
 
@@ -81,7 +80,7 @@ func RefusedBeats(recs []RefusedVerb, now time.Time) map[string][]RefusedVerb {
 		out[r.Member] = append(out[r.Member], r)
 	}
 	for m := range out {
-		sort.SliceStable(out[m], func(i, j int) bool { return out[m][i].At.After(out[m][j].At) })
+		slices.SortStableFunc(out[m], func(a, b RefusedVerb) int { return b.At.Compare(a.At) })
 	}
 	return out
 }
@@ -99,7 +98,7 @@ func RefusedVerbGroups(recs []RefusedVerb, now time.Time) map[string]map[string]
 	}
 	for m := range out {
 		for v := range out[m] {
-			sort.SliceStable(out[m][v], func(i, j int) bool { return out[m][v][i].At.After(out[m][v][j].At) })
+			slices.SortStableFunc(out[m][v], func(a, b RefusedVerb) int { return b.At.Compare(a.At) })
 		}
 	}
 	return out

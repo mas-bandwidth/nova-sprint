@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -370,11 +370,8 @@ func Limits(s *Snapshot) []LimitRow {
 			}
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind == "rpm"
-		}
-		return out[i].Target < out[j].Target
+	slices.SortStableFunc(out, func(a, b LimitRow) int {
+		return cmp.Or(cmp.Compare(b.Kind, a.Kind), cmp.Compare(a.Target, b.Target))
 	})
 	return out
 }

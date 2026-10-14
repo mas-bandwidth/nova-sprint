@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -458,11 +458,8 @@ func (t *Table) Of(p string) []*Card {
 
 // SortCards orders cards by score, then by id: work order.
 func SortCards(cs []*Card) {
-	sort.Slice(cs, func(i, j int) bool {
-		if cs[i].Score != cs[j].Score {
-			return cs[i].Score < cs[j].Score
-		}
-		return cs[i].ID < cs[j].ID
+	slices.SortFunc(cs, func(a, b *Card) int {
+		return cmp.Or(cmp.Compare(a.Score, b.Score), cmp.Compare(a.ID, b.ID))
 	})
 }
 

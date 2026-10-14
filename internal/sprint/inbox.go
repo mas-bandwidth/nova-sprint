@@ -6,7 +6,6 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -296,14 +295,8 @@ func Inbox(r InboxReq) []Group {
 		}
 	}
 	// marked first, then the heaviest (the cards most wait on, weight.go), then the oldest
-	sort.SliceStable(judg, func(i, j int) bool {
-		if judg[i].Marked != judg[j].Marked {
-			return judg[i].Marked
-		}
-		if judg[i].Behind != judg[j].Behind {
-			return judg[i].Behind > judg[j].Behind
-		}
-		return judg[i].Oldest.Before(judg[j].Oldest)
+	slices.SortStableFunc(judg, func(a, b Group) int {
+		return cmp.Or(cmp.Compare(boolInt(b.Marked), boolInt(a.Marked)), cmp.Compare(b.Behind, a.Behind), a.Oldest.Compare(b.Oldest))
 	})
 	out := judg
 	for _, st := range r.Streams {
@@ -323,7 +316,7 @@ func Inbox(r InboxReq) []Group {
 	}
 	// a judgment quieted by wait is listed after every one that is not, for its
 	// whole period, so it does not sit at the top of every read (section 8)
-	sort.SliceStable(out, func(i, j int) bool { return !out[i].Quiet && out[j].Quiet })
+	slices.SortStableFunc(out, func(a, b Group) int { return cmp.Compare(boolInt(a.Quiet), boolInt(b.Quiet)) })
 	var rest []Group
 	at = map[string]int{}
 	restMembers := map[int]map[string]bool{}

@@ -512,7 +512,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	byReader := map[string]*readerOut{}
 	for _, primary := range s.Work.Column(Review) {
 		for key, at := range landingReadConsumers(s, primary.ID, false) {
-			rd := strings.SplitN(key, "|", 2)[0]
+			rd, _, _ := strings.Cut(key, "|")
 			g := byReader[rd]
 			if g == nil {
 				g = &readerOut{}

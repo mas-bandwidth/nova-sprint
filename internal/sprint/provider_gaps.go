@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -66,24 +67,21 @@ func (s *Snapshot) providerTiers() []string {
 	for t := range seen {
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		rank := func(t string) int {
-			switch t {
-			case "flash":
-				return 0
-			case "pro":
-				return 1
-			case "heavy":
-				return 2
-			case "frontier":
-				return 3
-			}
-			return 4
+	rank := func(t string) int {
+		switch t {
+		case "flash":
+			return 0
+		case "pro":
+			return 1
+		case "heavy":
+			return 2
+		case "frontier":
+			return 3
 		}
-		if rank(out[i]) != rank(out[j]) {
-			return rank(out[i]) < rank(out[j])
-		}
-		return out[i] < out[j]
+		return 4
+	}
+	slices.SortFunc(out, func(a, b string) int {
+		return cmp.Or(cmp.Compare(rank(a), rank(b)), cmp.Compare(a, b))
 	})
 	return out
 }
@@ -120,7 +118,7 @@ func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string)
 			routes = append(routes, RouteGap{Route: r.Name, Provider: r.Provider, Tier: r.Tier})
 		}
 	}
-	sort.Slice(routes, func(i, j int) bool { return routes[i].Route < routes[j].Route })
+	slices.SortFunc(routes, func(a, b RouteGap) int { return cmp.Compare(a.Route, b.Route) })
 	return routes, tiers
 }
 
@@ -155,7 +153,7 @@ func (s *Snapshot) ProviderCoverages() []ProviderCoverage {
 		}
 		out = append(out, row)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b ProviderCoverage) int { return cmp.Compare(a.Name, b.Name) })
 	return out
 }
 
@@ -213,6 +211,6 @@ func (s *Snapshot) ProviderProblems() []ProviderProblem {
 			out = append(out, ProviderProblem{Name: name, Problem: p.Problem})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b ProviderProblem) int { return cmp.Compare(a.Name, b.Name) })
 	return out
 }

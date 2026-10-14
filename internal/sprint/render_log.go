@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -429,7 +429,7 @@ func Timeline(lines []Line, id string) []Line {
 			j++
 		}
 		run := out[i:j]
-		sort.SliceStable(run, func(x, y int) bool { return rank(run[x]) < rank(run[y]) })
+		slices.SortStableFunc(run, func(a, b Line) int { return cmp.Compare(rank(a), rank(b)) })
 		i = j
 	}
 	return out

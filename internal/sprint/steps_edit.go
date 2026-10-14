@@ -913,9 +913,6 @@ func tierBelowFrontierForTLA(id, tier, brief string) string {
 	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: --tier " + tier + " is below heavy and refused (the lint's tla-is-heavy-or-above rule); nothing was changed"
 }
 
-// sameNeeds says two need lists are the same, in order: the ordinary brief path
-// writes a card's needs only when they differ from the brief's (steps_edit.go).
-
 // linesNotIn is the lines of a, trimmed, that b does not hold, each counted as often as b
 // holds it; no blank line.
 func linesNotIn(a, b string) []string {

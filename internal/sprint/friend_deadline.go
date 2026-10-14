@@ -1,10 +1,10 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -26,7 +26,7 @@ func FriendMedianWall(s *Snapshot, name string) (median float64, n int) {
 		return 0, 0
 	}
 	cards := append([]*Card(nil), okAttempts(s, FriendRow(name))...)
-	sort.SliceStable(cards, func(i, j int) bool { return cards[i].F("finished") > cards[j].F("finished") })
+	slices.SortStableFunc(cards, func(a, b *Card) int { return cmp.Compare(b.F("finished"), a.F("finished")) })
 	var walls []float64
 	for _, c := range cards {
 		if w, ok := wallSeconds(RunWall(c)); ok {

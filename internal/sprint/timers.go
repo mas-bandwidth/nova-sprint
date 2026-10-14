@@ -1,8 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -55,11 +56,8 @@ func (t Timers) Find(id string) int {
 
 // Sort keeps the timers in due order, then in id order.
 func (t *Timers) Sort() {
-	sort.Slice(t.Open, func(i, j int) bool {
-		if !t.Open[i].Due.Equal(t.Open[j].Due) {
-			return t.Open[i].Due.Before(t.Open[j].Due)
-		}
-		return t.Open[i].ID < t.Open[j].ID
+	slices.SortFunc(t.Open, func(a, b Timer) int {
+		return cmp.Or(a.Due.Compare(b.Due), cmp.Compare(a.ID, b.ID))
 	})
 }
 

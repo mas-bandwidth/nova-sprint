@@ -1,13 +1,13 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1335,11 +1335,8 @@ func (m *Mem) OpenNotes(context.Context) ([]sprint.Open, error) {
 }
 
 func sortOpen(out []sprint.Open) {
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].Note.At.Equal(out[j].Note.At) {
-			return out[i].Note.At.Before(out[j].Note.At)
-		}
-		return out[i].Key < out[j].Key
+	slices.SortFunc(out, func(a, b sprint.Open) int {
+		return cmp.Or(a.Note.At.Compare(b.Note.At), cmp.Compare(a.Key, b.Key))
 	})
 }
 

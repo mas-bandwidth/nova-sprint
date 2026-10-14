@@ -1,12 +1,13 @@
 package workgh
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
@@ -135,7 +136,7 @@ func (f *Fetcher) Repos(ctx context.Context, org string) ([]RepoMeta, error) {
 		}
 		after = d.Organization.Repositories.PageInfo.EndCursor
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b RepoMeta) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
@@ -234,7 +235,7 @@ func (f *Fetcher) Issues(ctx context.Context, meta RepoMeta) (workfile.Repo, err
 		}
 		after = d.Repository.Issues.PageInfo.EndCursor
 	}
-	sort.Slice(out.Issues, func(i, j int) bool { return out.Issues[i].Number < out.Issues[j].Number })
+	slices.SortFunc(out.Issues, func(a, b workfile.Issue) int { return cmp.Compare(a.Number, b.Number) })
 	for i := 1; i < len(out.Issues); i++ {
 		if out.Issues[i].Number == out.Issues[i-1].Number {
 			return out, fmt.Errorf("workgh: %s: issue %d came twice (the repository changed while it was read); run again", meta.Name, out.Issues[i].Number)

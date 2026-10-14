@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -85,7 +85,7 @@ func weightsOver(cards []*Card) map[string]int {
 // given (stream turns, work order).
 func byWeight(cards []*Card, w map[string]int) []*Card {
 	out := append([]*Card(nil), cards...)
-	sort.SliceStable(out, func(i, j int) bool { return w[out[i].ID] > w[out[j].ID] })
+	slices.SortStableFunc(out, func(a, b *Card) int { return cmp.Compare(w[b.ID], w[a.ID]) })
 	return out
 }
 

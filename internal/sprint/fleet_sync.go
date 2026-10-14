@@ -1,9 +1,9 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -141,7 +141,7 @@ func FleetDrift(s *Snapshot, want []SyncMember, machines []string) []Drift {
 			out = append(out, Drift{Member: name, Kind: DriftHold})
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Member < out[j].Member })
+	slices.SortStableFunc(out, func(a, b Drift) int { return cmp.Compare(a.Member, b.Member) })
 	return out
 }
 

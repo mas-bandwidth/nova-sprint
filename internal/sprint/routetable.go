@@ -209,7 +209,7 @@ func RouteTable(lines []Line, since time.Time) string {
 			}
 		}
 	}
-	tierOf := func(route string) string { return strings.SplitN(route, "-", 2)[0] }
+	tierOf := func(route string) string { before, _, _ := strings.Cut(route, "-"); return before }
 	firstOnTier := func(t *rtTake) bool {
 		for _, x := range byPrimary[t.primary] {
 			if x.end != "provider" && tierOf(x.u.route) == tierOf(t.u.route) && x.at.Before(t.at) {
@@ -242,7 +242,8 @@ func RouteTable(lines []Line, since time.Time) string {
 			continue
 		}
 		b.WriteString(rtFormat(r))
-		if t := tier[strings.SplitN(n, "-", 2)[0]]; t != nil {
+		before, _, _ := strings.Cut(n, "-")
+		if t := tier[before]; t != nil {
 			t.takes += r.takes
 			t.ok += r.ok
 			t.failed += r.failed

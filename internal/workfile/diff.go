@@ -1,11 +1,11 @@
 package workfile
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -68,17 +68,13 @@ func Diff(got, want *Tree, scope []string) []Difference {
 			out = append(out, Difference{Kind: "EXTRA", Path: "repos/" + name, Field: "repo", Got: strconv.Itoa(len(g.Issues)) + "-issues"})
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Path != out[j].Path {
-			return out[i].Path < out[j].Path
-		}
-		if out[i].Field != out[j].Field {
-			return out[i].Field < out[j].Field
-		}
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Want+"\x00"+out[i].Got < out[j].Want+"\x00"+out[j].Got
+	slices.SortStableFunc(out, func(a, b Difference) int {
+		return cmp.Or(
+			cmp.Compare(a.Path, b.Path),
+			cmp.Compare(a.Field, b.Field),
+			cmp.Compare(a.Kind, b.Kind),
+			cmp.Compare(a.Want+"\x00"+a.Got, b.Want+"\x00"+b.Got),
+		)
 	})
 	return out
 }

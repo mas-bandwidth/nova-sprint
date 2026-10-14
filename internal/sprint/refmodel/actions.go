@@ -1,9 +1,9 @@
 package refmodel
 
 import (
+	"cmp"
 	"maps"
 	"slices"
-	"sort"
 )
 
 // The line numbers cited are tla/SprintTables.tla at 4bf919875, on the
@@ -1095,8 +1095,8 @@ func FleetDown(s State, m string, dest map[string]string) (State, error) {
 			cs = append(cs, id)
 		}
 	}
-	sort.SliceStable(cs, func(i, j int) bool {
-		return n.Primaries[n.Work[cs[i]].Primary].Score < n.Primaries[n.Work[cs[j]].Primary].Score
+	slices.SortStableFunc(cs, func(a, b string) int {
+		return cmp.Compare(n.Primaries[n.Work[a].Primary].Score, n.Primaries[n.Work[b].Primary].Score)
 	})
 	others := n.Up()
 	for _, id := range cs {
@@ -1230,8 +1230,8 @@ func (n State) levelMove(moved map[string]string) (string, string) {
 			}
 		}
 		// newest first: by the primary's score, the first id of equals first
-		sort.SliceStable(ids, func(i, j int) bool {
-			return n.Primaries[n.Work[ids[i]].Primary].Score > n.Primaries[n.Work[ids[j]].Primary].Score
+		slices.SortStableFunc(ids, func(a, b string) int {
+			return cmp.Compare(n.Primaries[n.Work[b].Primary].Score, n.Primaries[n.Work[a].Primary].Score)
 		})
 		return ids
 	}
@@ -1316,12 +1316,8 @@ func (n *State) levelReads() {
 				asked = append(asked, id)
 			}
 		}
-		sort.SliceStable(asked, func(i, j int) bool {
-			a, b := n.Primaries[n.Reads[asked[i]].Primary].Score, n.Primaries[n.Reads[asked[j]].Primary].Score
-			if a != b {
-				return a < b
-			}
-			return asked[i] < asked[j]
+		slices.SortStableFunc(asked, func(a, b string) int {
+			return cmp.Or(cmp.Compare(n.Primaries[n.Reads[a].Primary].Score, n.Primaries[n.Reads[b].Primary].Score), cmp.Compare(a, b))
 		})
 		moved := false
 		for i := len(asked) - 1; i >= 0 && !moved; i-- {

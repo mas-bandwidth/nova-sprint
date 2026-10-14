@@ -5,7 +5,6 @@ import (
 	"maps"
 	"math"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -40,7 +39,7 @@ func PercentileNearestRank(xs []time.Duration, q float64) (time.Duration, bool) 
 		return 0, false
 	}
 	sorted := append([]time.Duration(nil), xs...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	slices.Sort(sorted)
 	rank := int(math.Ceil(q * float64(n)))
 	if rank < 1 {
 		rank = 1

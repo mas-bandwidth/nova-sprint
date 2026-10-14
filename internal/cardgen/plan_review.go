@@ -2,9 +2,9 @@
 package cardgen
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -66,9 +66,7 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 			}
 		}
 	}
-	sort.SliceStable(order, func(i, j int) bool {
-		return pathRank[order[i].path] < pathRank[order[j].path]
-	})
+	slices.SortStableFunc(order, func(a, b pathKey) int { return cmp.Compare(pathRank[a.path], pathRank[b.path]) })
 	var rows []SharedPathRow
 	for _, key := range order {
 		ids := append([]string(nil), byPath[key]...)

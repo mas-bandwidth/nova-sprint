@@ -27,6 +27,7 @@
 package refmodel
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
@@ -354,10 +355,10 @@ func (s State) Clone() State {
 	c := s
 	c.Primaries = make(map[string]Primary, len(s.Primaries))
 	for k, v := range s.Primaries {
-		v.Needs = append([]string(nil), v.Needs...)
-		v.Waived = append([]string(nil), v.Waived...)
-		v.Pair = append([]string(nil), v.Pair...)
-		v.RefusedWays = append([]string(nil), v.RefusedWays...)
+		v.Needs = slices.Clone(v.Needs)
+		v.Waived = slices.Clone(v.Waived)
+		v.Pair = slices.Clone(v.Pair)
+		v.RefusedWays = slices.Clone(v.RefusedWays)
 		c.Primaries[k] = v
 	}
 	c.Work = make(map[string]WorkCard, len(s.Work))
@@ -370,16 +371,10 @@ func (s State) Clone() State {
 	maps.Copy(c.Streams, s.Streams)
 	c.Members = make(map[string]string, len(s.Members))
 	maps.Copy(c.Members, s.Members)
-	c.Order = append([]string(nil), s.Order...)
-	c.Readers = append([]string(nil), s.Readers...)
-	c.Open = make(map[Judgment]bool, len(s.Open))
-	for k := range s.Open {
-		c.Open[k] = true
-	}
-	c.Acked = make(map[Judgment]bool, len(s.Acked))
-	for k := range s.Acked {
-		c.Acked[k] = true
-	}
+	c.Order = slices.Clone(s.Order)
+	c.Readers = slices.Clone(s.Readers)
+	c.Open = maps.Clone(s.Open)
+	c.Acked = maps.Clone(s.Acked)
 	if s.Reserved != nil {
 		c.Reserved = maps.Clone(s.Reserved)
 	}
@@ -883,12 +878,8 @@ func (s State) StreamOrder(stream string) []string {
 }
 
 func (s State) sortByScore(ids []string) {
-	sort.Slice(ids, func(i, j int) bool {
-		a, b := s.Primaries[ids[i]], s.Primaries[ids[j]]
-		if a.Score != b.Score {
-			return a.Score < b.Score
-		}
-		return ids[i] < ids[j]
+	slices.SortFunc(ids, func(a, b string) int {
+		return cmp.Or(cmp.Compare(s.Primaries[a].Score, s.Primaries[b].Score), cmp.Compare(a, b))
 	})
 }
 

@@ -3,7 +3,7 @@ package sprint
 import (
 	"fmt"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -204,7 +204,7 @@ func NoStuckFriend(f ReleaseFacts) ReleaseResult {
 		return ReleaseResult{Name: CheckNoStuckFriend, OK: true,
 			Evidence: fmt.Sprintf("no friend was stuck since %s (%d friend cards read from the log)", stamp(from), cards)}
 	}
-	sort.SliceStable(hits, func(i, j int) bool { return hits[i].from.Before(hits[j].from) })
+	slices.SortStableFunc(hits, func(a, b lateSpan) int { return a.from.Compare(b.from) })
 	var told []string
 	for i, s := range hits {
 		if i == 3 {

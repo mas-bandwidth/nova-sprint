@@ -1863,18 +1863,18 @@ func (st *Store) apply(ctx context.Context, op OpRecord, extra ...*applyContext)
 				// re-apply the remaining plan so work cards are still dealt.
 				var refusedMember string
 				for _, e := range man.Members {
-					plainID := strings.SplitN(e.ID, "~", 2)[0]
+					plainID, _, _ := strings.Cut(e.ID, "~")
 					if (e.Create != nil || (e.Expect != nil && e.Expect.Absent)) && (strings.Contains(err.Error(), e.ID) || strings.Contains(err.Error(), plainID)) {
 						refusedMember = e.ID
 						break
 					}
 				}
 				if refusedMember != "" {
-					plainRefused := strings.SplitN(refusedMember, "~", 2)[0]
+					plainRefused, _, _ := strings.Cut(refusedMember, "~")
 					droppedIdx := -1
 					for idx, u := range actx.plan.Units {
 						for _, ch := range u.Changes {
-							plainID := strings.SplitN(ch.Entry.ID, "~", 2)[0]
+							plainID, _, _ := strings.Cut(ch.Entry.ID, "~")
 							if plainID == plainRefused || ch.Entry.ID == refusedMember {
 								isRead := ch.Table == sprint.Fleet && (ch.Entry.Set["kind"] == "read" || ch.Entry.Set[sprint.FieldReadCard] == "1")
 								if isRead {

@@ -1,11 +1,11 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"path"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -506,7 +506,7 @@ func friendLoad(s *Snapshot, name string) int {
 // the order the cards happened to be dealt in.
 func friendDealtOrder(cards []*Card, streamOf func(*Card) string, rankOf func(*Card) int, r *round) []*Card {
 	out := streamTurnsBy(cards, streamOf, r)
-	sort.SliceStable(out, func(i, j int) bool { return rankOf(out[i]) < rankOf(out[j]) })
+	slices.SortStableFunc(out, func(a, b *Card) int { return cmp.Compare(rankOf(a), rankOf(b)) })
 	return out
 }
 
