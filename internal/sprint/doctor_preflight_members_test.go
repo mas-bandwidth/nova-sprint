@@ -30,7 +30,7 @@ func memberRowOf(t *testing.T, checks []DoctorCheck, member string) DoctorCheck 
 			return c
 		}
 	}
-	t.Fatalf("no members row for %s: %+v", member, checks)
+	assert.FailNowf(t, "no members row", "%s: %+v", member, checks)
 	return DoctorCheck{}
 }
 

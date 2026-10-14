@@ -54,9 +54,7 @@ func TestReadCardDealUsesAPersistedRoundRobinCursor(t *testing.T) {
 	for _, m := range []string{"m1", "m2", "m3", "m4"} {
 		assert.Equal(t, 10, counts[m], "40 reads land ten apiece: %v", counts)
 	}
-	if got := len(first.Props); got == 0 {
-		t.Fatal("the deal did not persist its read cursor")
-	}
+	assert.NotEmpty(t, first.Props, "the deal did not persist its read cursor")
 	w.s.Routes = append(w.s.Routes, Route{Name: "pro-a", Tier: "pro", Provider: "p", Model: "pr", Enabled: true})
 	w.s.Work.Put(&Card{ID: "s1-pro", Row: "s1", Col: Review, Score: 40.5, Rev: 1,
 		Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief("pro"), FieldTierNow: "pro"}})
@@ -80,14 +78,15 @@ func TestReadCardDealUsesAPersistedRoundRobinCursor(t *testing.T) {
 		Fields: map[string]string{"kind": "work", "primary": id, "attempt": "1", "member": "worker"}})
 	second, _ := readCardsAsk(w.s, nil, routeIndexesOf(w.s))
 	w.must(second)
+	found := false
 	for _, u := range second.Units {
 		for _, change := range u.Changes {
 			if change.Entry.Create != nil && change.Entry.ID == ReadCardID(id, 1, "m1") {
-				return
+				found = true
 			}
 		}
 	}
-	t.Fatalf("the 41st read did not wrap to m1 after m4; got %+v", second.Units)
+	assert.True(t, found, "the 41st read did not wrap to m1 after m4; got %+v", second.Units)
 }
 
 // TestReadDealCursorPersistsAcrossADeal pins docs/SPEC-SPRINT.md section 1: the read
@@ -120,14 +119,15 @@ func TestReadDealCursorPersistsAcrossADeal(t *testing.T) {
 		Fields: map[string]string{"kind": "work", "primary": id, "attempt": "1", "member": "worker"}})
 	next, _ := readCardsAsk(w.s, nil, routeIndexesOf(w.s))
 	w.must(next)
+	resumed := false
 	for _, u := range next.Units {
 		for _, ch := range u.Changes {
 			if ch.Entry.Create != nil && ch.Entry.ID == ReadCardID(id, 1, "m4") {
-				return
+				resumed = true
 			}
 		}
 	}
-	t.Fatalf("the deal did not resume after m3: %+v", next.Units)
+	assert.True(t, resumed, "the deal did not resume after m3: %+v", next.Units)
 }
 
 // TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging pins docs/SPEC-SPRINT.md
@@ -148,12 +148,13 @@ func TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging(t *testing.T) {
 			FieldStagingTake + "1": ProviderTake{Member: "m1"}.String()}})
 	p, _ := readCardsAsk(w.s, nil, routeIndexesOf(w.s))
 	w.must(p)
+	dealt := false
 	for _, u := range p.Units {
 		for _, ch := range u.Changes {
 			if ch.Entry.Create != nil && ch.Entry.ID == ReadCardID("s1-1", 1, "m2") {
-				return
+				dealt = true
 			}
 		}
 	}
-	t.Fatalf("the read was not dealt to m2 after m1 refused it at staging: %+v", p.Units)
+	assert.True(t, dealt, "the read was not dealt to m2 after m1 refused it at staging: %+v", p.Units)
 }

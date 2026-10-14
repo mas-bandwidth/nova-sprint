@@ -652,13 +652,17 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 		w.s.Open = append(w.s.Open, Open{Key: OpenKey(n.ID, "s1-1"), Note: n})
 		p := w.do(Ack(w.s, AckReq{Notes: []string{n.ID}, Reason: "seen"}))
 		assert.Equal(t, ackable[typ], contains(ds, "ack") || contains(ds, "keep"), "%s: its decisions %v and the ack rule disagree (keep is an ack by another name, readtier.go)", typ, ds)
-		switch {
-		case ackable[typ] && (len(p.Refused) != 0 || len(p.Units) != 1):
-			t.Errorf("%s lists ack and the ack was refused: %+v", typ, p.Refused)
-		case !ackable[typ] && (len(p.Refused) != 1 || len(p.Units) != 0 || !strings.Contains(p.Refused[0].Why, "ack does not answer")):
-			t.Errorf("%s does not list ack and the ack was not refused: %+v", typ, p)
-		case !ackable[typ] && TickKept(typ) && WaitRefusal(n) == "" && !strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"):
-			t.Errorf("%s is kept by the tick and its refusal names no wait: %s", typ, p.Refused[0].Why)
+		if ackable[typ] {
+			assert.Empty(t, p.Refused, "%s lists ack and the ack was refused: %+v", typ, p.Refused)
+			assert.Len(t, p.Units, 1, "%s lists ack and the ack produced no unit: %+v", typ, p)
+			continue
+		}
+		require.Len(t, p.Refused, 1, "%s does not list ack and the ack was not refused: %+v", typ, p)
+		assert.Empty(t, p.Units, "%s does not list ack and the ack was not refused: %+v", typ, p)
+		assert.Contains(t, p.Refused[0].Why, "ack does not answer", "%s does not list ack and the ack was not refused: %+v", typ, p)
+		if TickKept(typ) {
+			assert.True(t, WaitRefusal(n) != "" || strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"),
+				"%s is kept by the tick and its refusal names no wait: %s", typ, p.Refused[0].Why)
 		}
 	}
 }
