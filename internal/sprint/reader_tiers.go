@@ -9,9 +9,9 @@ import (
 )
 
 // ReaderTiers is the readers table's text column: the tiers that reader reads.
-// An empty cell is the default: a fleet reader reads flash alone while the store holds
-// routes (fleetReadsFlashOnly; the owner, 2026-10-06, "I'm ok with flash readers on fleet
-// but not pro"), and a friend's or a bud's reader, which brings its own model, every tier.
+// An empty cell is the default: every tier a route serves, for a fleet reader
+// and for a friend's or a bud's reader alike (the flash-only rule went with
+// a-cleared-sprint-reads-with-no-seat-action; readerServesTier).
 // The ask counts a reader only for a primary whose read tier (readTierOf) it serves.
 const ReaderTiers = "tiers"
 
@@ -26,7 +26,7 @@ const ReaderTiersDefault = "default"
 var readerTierOrder = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy, cardhdr.RouteFrontier}
 
 // ReaderTiersShown is the word a view prints for a stored tiers cell: default for an
-// empty one (flash on a fleet reader, every tier on a friend's), the list else.
+// empty one (every tier a route serves), the list else.
 func ReaderTiersShown(stored string) string {
 	if strings.TrimSpace(stored) == "" {
 		return ReaderTiersDefault
@@ -56,7 +56,7 @@ func ParseReaderTiers(raw string) (string, error) {
 		seen[p] = true
 	}
 	if len(bad) > 0 {
-		return "", fmt.Errorf("--tiers wants %s, comma separated, each once (or all for every tier, or default: flash on a fleet reader, every tier on a friend's); refused %s", cardhdr.RouteList, strings.Join(bad, ","))
+		return "", fmt.Errorf("--tiers wants %s, comma separated, each once (or all for every tier, or default: every tier a route serves); refused %s", cardhdr.RouteList, strings.Join(bad, ","))
 	}
 	var kept []string
 	for _, t := range readerTierOrder {

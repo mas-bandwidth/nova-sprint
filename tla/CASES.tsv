@@ -540,7 +540,9 @@ MCDoneRecordBrokenNoDedup.cfg	MCDoneRecord.tla	invariant	NoDoubleCount	ignore-te
 MCDoneRecordBrokenKeepEpoch.cfg	MCDoneRecord.tla	invariant	ClearStartsAgain	ignore-terminal	donerecord	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
-MCReaderTiersBrokenEmptyReadsAll.cfg	MCReaderTiers.tla	invariant	NoReadOutsideTier	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenEmptyFlashOnly.cfg	MCReaderTiers.tla	invariant	EmptyCellReadsEveryServedTier	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenClearDrops.cfg	MCReaderTiers.tla	invariant	EveryUpMemberIsAReader	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenClearOff.cfg	MCReaderTiers.tla	invariant	ReadCardsStaysOn	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
@@ -712,3 +714,6 @@ MCNeedsBlockedBrokenNoBlocker.cfg	MCNeedsBlocked.tla	invariant	BlockedDependents
 MCNeedsBlockedBrokenDeferStrands.cfg	MCNeedsBlocked.tla	invariant	NoStrandingDrop	ignore-terminal	needsblocked	required	-
 MCClearDefaultsStartAdvance.cfg	MCClearDefaults.tla	pass	-	ignore-terminal	cleardefaults	required	-
 MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunningWhileRestorePending	ignore-terminal	cleardefaults	required	-
+MCHookCache.cfg	MCHookCache.tla	pass	-	ignore-terminal	hookcache	required	-
+MCHookCacheBrokenNoGenGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
+MCHookCacheBrokenNoRefillGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-

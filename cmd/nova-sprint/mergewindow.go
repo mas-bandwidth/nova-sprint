@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -110,7 +111,50 @@ func (k *keptQueue) HoldsGroup(ctx context.Context, repo, branch string) (bool, 
 // through gh as the caller's gh is authenticated there: one GraphQL query, its entries
 // counted (a queued or checking group is an entry), in the caller's environment. A
 // repository on any other host, or a path, has no such queue and is never asked.
-type ghMergeQueue struct{ host string }
+type ghMergeQueue struct {
+	host string
+	env  func() []string
+}
+
+func (a *app) forgeIdentityDefault() string {
+	if v := a.getenv("GH_CONFIG_DIR"); v != "" {
+		return v
+	}
+	if a.seatEnvironment != nil {
+		return a.seatEnvironment.ForgeIdentity
+	}
+	return ""
+}
+
+// forgeCommandEnv selects authentication for this seat-owned gh child only.
+// Process configuration wins, then the scoped child environment, then the seat.
+// Git and check commands retain their original environment.
+func (a *app) forgeCommandEnv(env []string) []string {
+	if env == nil {
+		env = os.Environ()
+	}
+	identity := a.getenv("GH_CONFIG_DIR")
+	if identity == "" {
+		for _, kv := range env {
+			if value, ok := strings.CutPrefix(kv, "GH_CONFIG_DIR="); ok {
+				identity = value
+			}
+		}
+	}
+	if identity == "" {
+		identity = a.forgeIdentityDefault()
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
+			out = append(out, kv)
+		}
+	}
+	if identity != "" {
+		out = append(out, "GH_CONFIG_DIR="+identity)
+	}
+	return out
+}
 
 // githubHost is the forge the server's lander asks: GitHub's own.
 const githubHost = "github.com"
@@ -127,6 +171,9 @@ func (g ghMergeQueue) HoldsGroup(ctx context.Context, repo, branch string) (bool
 	cmd, cancel := subproc.Command(ctx, subproc.GH, "gh", "api", "graphql", "--hostname", g.host, "-f", "query="+mergeQueueQuery,
 		"-f", "owner="+owner, "-f", "name="+name, "-f", "branch="+branch, "--jq", ".data.repository.mergeQueue.entries.totalCount // 0")
 	defer cancel()
+	if g.env != nil {
+		cmd.Env = g.env()
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError

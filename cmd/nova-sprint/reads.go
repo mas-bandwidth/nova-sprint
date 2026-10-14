@@ -1365,6 +1365,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		v.SeatWaits, v.Stops = seatWaitsOf(facts.Stops, now), facts.Stops.Stops
 	}
 	v.Held = int64(facts.Held)
+	// each stream clock's held cards, beside its stored state and never in
+	// its place (a-waiting-stream-is-never-shown-held): the tick counted
+	// them into the where record, so where reads no card for them.
+	for i := range clocks {
+		clocks[i].HeldCards = facts.HeldStreams[clocks[i].Stream]
+	}
 	if facts.SeriesCounted {
 		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings)
 		series := sprint.LandedSeriesOfLandings(facts.Series, now)

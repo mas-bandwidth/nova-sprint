@@ -31,6 +31,13 @@ type StreamClock struct {
 	// coordinator holds it (hold <stream>, hold.go), the reason in Reason.
 	Held   bool   `json:",omitempty"`
 	Reason string `json:",omitempty"`
+	// HeldCards is the stream's held cards: its waiting primaries no tick
+	// moves on its own (sprint.HeldBackByStream, counted by the tick into
+	// the where record), beside the stream's stored State and never in its
+	// place (a-waiting-stream-is-never-shown-held). A card hold is not a
+	// stream hold: State (through StreamStateText) still reads held only
+	// for a coordinator hold of the stream itself.
+	HeldCards int `json:"held_cards,omitempty"`
 	// Quiet is the time wait set on the stream's stale judgment (FieldStaleReview):
 	// not shown stale before it.
 	Quiet time.Time `json:",omitzero"`

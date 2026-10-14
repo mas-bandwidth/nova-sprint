@@ -199,9 +199,10 @@ func (a *app) forwarded(args []string, stdout, stderr io.Writer) (code int, sent
 }
 
 // ask sends the server one verb (its words, then what follows them) as this caller:
-// who acts is this caller's alone, said even when it is no one (the server never acts
-// as its own environment names), before the caller's own words so a --actor it gave
-// wins; each file it names is absolute.
+// a nonempty environment actor is put before the caller's words so an explicit
+// --actor wins. With neither source naming one, the server may derive the actor from
+// its own proven coordinator hook; its environment is never inherited. Each file it
+// names is absolute.
 func (a *app) ask(ctx context.Context, addr string, verb, rest []string) (sprintwire.Result, error) {
 	send := a.forward
 	if send == nil {
@@ -209,7 +210,11 @@ func (a *app) ask(ctx context.Context, addr string, verb, rest []string) (sprint
 			return sprintwire.Client{Addr: addr}.Do(ctx, verbs...)
 		}
 	}
-	argv := absolutePaths(slices.Concat(verb, []string{"--actor", a.getenv("NOVA_SPRINT_ACTOR")}, rest))
+	identity := []string(nil)
+	if actor := a.getenv("NOVA_SPRINT_ACTOR"); actor != "" {
+		identity = []string{"--actor", actor}
+	}
+	argv := absolutePaths(slices.Concat(verb, identity, rest))
 	res, err := send(ctx, addr, argv)
 	if err != nil {
 		return sprintwire.Result{}, err

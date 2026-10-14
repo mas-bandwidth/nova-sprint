@@ -92,7 +92,7 @@ func TestAddRefusesACycle(t *testing.T) {
 	p := Add(w.s, AddReq{Stream: "s9", IDs: []string{"x"}, Needs: []string{"b"}})
 	require.Empty(t, p.Units, "a cycle of three: %+v", p)
 	require.Len(t, p.Refused, 1, "a cycle of three: %+v", p)
-	require.Equal(t, "the needs would make a cycle: x needs b needs c needs x; nothing is written", p.Refused[0].Why, "a cycle of three: %+v", p)
+	require.Equal(t, "the needs would make a cycle: x -needs-> b -needs-> c -needs-> x; nothing is written", p.Refused[0].Why, "a cycle of three: %+v", p)
 	p = Add(w.s, AddReq{Stream: "s9", IDs: []string{"y", "z"}, Needs: []string{"z"}})
 	require.Empty(t, p.Units, "a need of itself: %+v", p)
 	require.Len(t, p.Refused, 2, "a need of itself: %+v", p)
