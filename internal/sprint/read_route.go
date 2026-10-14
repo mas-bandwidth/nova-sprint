@@ -50,7 +50,7 @@ func (s *Snapshot) heldFriendReader(reader string) bool {
 	}
 	for _, f := range s.Friends {
 		if f.Name == name {
-			return f.Status == Held
+			return f.Held || f.Status == Held
 		}
 	}
 	if s.Fleet == nil || !s.Fleet.HasRow(FriendRow(name)) {

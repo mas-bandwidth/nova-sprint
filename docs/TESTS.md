@@ -1153,19 +1153,14 @@ and its `/tmp` fallback is denied. The test named for #110's gate is therefore
 assertion a loaded bench turns red by starving its `git` call of a process.
 
 
-## A friend who stops beating is down and her cards come back
+## Friend status and unhook reconciliation
 
-`TestAFriendWhoStopsBeatingIsDownAndHerCardsComeBack`
-(`internal/sprint/friend_stops_beating_test.go`) starts a friend with a work
-card working and two frontier reads working on her fleet row, then stops her
-beat past the beat bound (`sprint.FriendBeatBound`). It pins the presence rule:
-with her session's pong fresh, `sprint.FriendEvidence` still says down, "down
-since <t>", because a friend is up only while her daemon beats within the beat
-bound; a session pong alone never makes her up. It pins that the coordinator's
-`return` (`sprint.Return`) works on her read, retiring it off her row. And it
-pins the tick's reconcile (`sprint.LiveReturns`,
-`LiveReturns.friendStoppedReturn`) hands both back to the deal: her work card
-is retired off her row by `sprint.FriendReturn` and its primary is ready again
-with its carry head kept, and her second read returns to the read deal
-(`readLostUnit`). A stopped beat, not just a stopped session, means her cards
-come back.
+`TestFriendHookStatus` covers hook down, sprint held and up, with down taking
+precedence over a hold. `TestFriendRowsUseHookAndHoldWithoutReportInference`
+checks that work reports and limits never replace the hook record.
+
+Explicit nova-hook unhook returns work and reads without waiting for a work
+report. `TestStoppedReconcileReadsHookWithoutAnyLiveReport` covers the STOPPED
+binding; `TestExplicitUnhookReturnsWorkWithoutABeatAndKeepsStopReceipt` and
+`TestUnhookedReadRetirementSettlesStoppedDebt` verify that both returns retain
+the paired generation receipt so START sees no remaining owner debt.

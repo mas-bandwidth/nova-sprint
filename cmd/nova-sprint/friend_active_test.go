@@ -53,7 +53,7 @@ func TestAFriendHoldingCardsWhoseSessionWritesNothingIsAnAlarm(t *testing.T) {
 
 	ta.ok(beatActive(ta, "amy", 3*24*time.Hour))
 	_, ok = item(ta.coordView(""), "f:amy")
-	assert.False(t, ok, "her walk reads 3d, and her session answered a moment ago: no alarm")
+	assert.True(t, ok, "hook liveness cannot freshen stale work activity")
 
 	// past a shorter setting with no evidence since her answer, it is the alarm
 	ta.ok("set --friend-idle 5m")
@@ -64,7 +64,7 @@ func TestAFriendHoldingCardsWhoseSessionWritesNothingIsAnAlarm(t *testing.T) {
 	require.True(t, ok, "6m with no evidence while a card is dealt to her")
 	assert.Equal(t, itemFriend, f.T)
 	assert.Equal(t, "friend idle", f.W)
-	assert.Contains(t, f.S, "a daemon that answers and no evidence of work for 6m")
+	assert.Contains(t, f.S, "is up on nova-hook with no evidence of work for 31m")
 	assert.Contains(t, f.S, "holds 0 ready, 1 working")
 
 	// a longer setting takes it off, the shorter puts it back
