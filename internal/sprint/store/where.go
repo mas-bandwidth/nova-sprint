@@ -93,6 +93,15 @@ type WhereRecord struct {
 	// store, 695,000 log lines decoded a call).
 	Series        []sprint.Landing `json:"series,omitempty"`
 	SeriesCounted bool             `json:"series_counted,omitempty"`
+	// Archived work is in no total (the owner, 2026-10-14; sprint/archived_totals.go):
+	// ArchivedPrimaries is the archived streams' cards, whose completions where leaves out of
+	// the rows' done; ArchivedFleet their work cards in the fleet rows' ok and failed cells,
+	// which where takes off the rows' ok%; LiveStageTimes the stage times without them.
+	// ArchivedCounted says this record counted them: one from before is counted again once.
+	ArchivedPrimaries []string                   `json:"archived_primaries,omitempty"`
+	ArchivedFleet     []sprint.ArchivedFleetCard `json:"archived_fleet,omitempty"`
+	LiveStageTimes    sprint.StageTimes          `json:"live_stage_times,omitzero"`
+	ArchivedCounted   bool                       `json:"archived_counted,omitempty"`
 }
 
 // SentinelCounts is one stream's sentinel primaries: All, every sentinel the
@@ -101,6 +110,10 @@ type WhereRecord struct {
 type SentinelCounts struct {
 	All    int `json:"all,omitempty"`
 	Landed int `json:"landed,omitempty"`
+	// ByCol is the sentinels by the column they are in, so where takes them off each of the
+	// work table's cells (the owner, 2026-10-14: sentinels are counted nowhere); nil in a
+	// record from before, when where takes All-Landed off waiting and Landed off landed.
+	ByCol map[string]int `json:"by_col,omitempty"`
 }
 
 // sentinelCounts is each stream's sentinels among the snapshot's work cards, in
@@ -121,6 +134,10 @@ func sentinelCounts(s *sprint.Snapshot) map[string]SentinelCounts {
 		if c.Col == sprint.Landed {
 			n.Landed++
 		}
+		if n.ByCol == nil {
+			n.ByCol = map[string]int{}
+		}
+		n.ByCol[c.Col]++
 		out[c.Row] = n
 	}
 	return out
@@ -250,8 +267,9 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	}
 	stats := st.statsRecordOf(vals[1], oks[1]) // permissive: an unreadable one is no tidy
 	stamp := stats.statsStamp(st.epoch)
-	// a record from before the series was counted is counted again once, tables still or not
-	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted {
+	// a record from before the series, or the archived streams' figures, were counted is
+	// counted again once, tables still or not
+	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted {
 		return nil
 	}
 	tw := st.twin()
@@ -266,8 +284,14 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	if err != nil {
 		return err
 	}
-	r := whereOf(snap, m, st.now())
+	now := st.now()
+	r := whereOf(snap, m, now)
 	r.Stats = stamp
+	// the archived streams, off the work table's shape (the twin carries no row hide): what
+	// where takes off the rows' done and ok% and the stage times (WhereRecord.ArchivedCounted)
+	archived := ArchivedOfShape(shapes[0])
+	r.ArchivedPrimaries, r.ArchivedFleet = sprint.ArchivedPrimaries(snap, archived), sprint.ArchivedFleetCards(snap, archived)
+	r.LiveStageTimes, r.ArchivedCounted = sprint.CycleTimesExcept(snap, now, archived), true
 	r.Streams = st.streamsSince(snap, r.Streams, stats)
 	// the work table's cost cells, from the figures just counted (the tile's), the tick the
 	// figure changes; a write that alone moved the table since the count (its revision one
@@ -463,6 +487,12 @@ type WhereFacts struct {
 	// Done is the epoch's done record (done.go), read in the same exchange; its Cursor is
 	// empty when there is none of the epoch yet (DoneOf then reads the log).
 	Done DoneRecord
+	// ArchivedPrimaries, ArchivedFleet and LiveStageTimes are the record's (WhereRecord) when
+	// ArchivedCounted: what where takes off the rows' done and ok% and the stage times.
+	ArchivedPrimaries []string
+	ArchivedFleet     []sprint.ArchivedFleetCard
+	LiveStageTimes    sprint.StageTimes
+	ArchivedCounted   bool
 }
 
 // StoreLine is where's store line, "store: rtt p50=<ms>ms p99=<ms>ms", or
@@ -545,6 +575,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.FixStates = r.FixStates
 			f.Blockers = r.Blockers
 			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
+			f.ArchivedPrimaries, f.ArchivedFleet, f.LiveStageTimes, f.ArchivedCounted = r.ArchivedPrimaries, r.ArchivedFleet, r.LiveStageTimes, r.ArchivedCounted
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}
