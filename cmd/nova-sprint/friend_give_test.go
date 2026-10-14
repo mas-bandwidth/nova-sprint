@@ -51,13 +51,24 @@ func TestFriendGiveLetsTheDealDealACardTakenFromHerToHerAgain(t *testing.T) {
 	givenAndDealt(t, ta)
 }
 
-func TestAPinnedCardTakenFromItsFriendIsDealtToNoOneUntilGivenBack(t *testing.T) {
+func TestAPinnedCardTakenFromItsFriendIsGivenBackWhenSheHasRoom(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "only friend amy", "amy", "bob")
 	ta.ok("fleet down m1")
 	ta.ok("fleet down m2")
 	ta.a.tip = func(context.Context, string, string) (string, error) { return "", nil }
-	givenAndDealt(t, ta) // bob up with room all along: the pin admits only her
+	ta.ok("tick")
+	var c cardView
+	ta.json("card s1-1", &c)
+	require.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "the pin admits only her")
+
+	ta.ok("friend take amy s1-1 --reason 'her harness was down'")
+	ta.ok("tick")
+	ta.json("card s1-1", &c)
+	require.Len(t, c.Work, 1)
+	assert.NotEqual(t, sprint.Withdrawn, c.Work[0].Col, "given back in the tick, not left withdrawn")
+	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "back on her row: bob up with room all along, the pin admits only her")
+	ta.clean()
 }
 
 func TestFriendGiveRefusesACardNeverTakenFromHer(t *testing.T) {
