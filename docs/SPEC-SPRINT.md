@@ -8992,6 +8992,41 @@ server, member and friend (`TestSeatPlayAdoptsInOrderAndRefusesEachHalfMove`: th
 member stopped before the migration, a refusal after it restarting the old server on the old
 binaries and library).
 
+#### The release-window sentinel: a seat verb says when a release window is open
+
+The adopt's window (above) stops the server and every member for a bounded time, and during it
+the coordinator saw `connection refused` on every verb with no sign that it was planned, and
+children could not tell a planned outage from a failure. So the seat play writes one JSON file
+when the window opens and removes it when the window ends or is rolled back: path
+`${NOVA_RELEASE_WINDOW_FILE:-$HOME/.nova/release-window.json}`; shape
+`{"open":true,"reason":"adopt v1.2.24","opened":"2026-10-14T03:00:00Z","until":"2026-10-14T03:30:00Z","back_in_s":300}`.
+`until` is the play's own upper bound. The file is advice for a human or an agent reading a
+refusal; no verb's behaviour, exit code or write depends on it. The contract is in both
+repositories in the same words; the play's half is the card
+the-seat-play-writes-the-release-window-sentinel in the nova-tools stream tools-v1224.
+
+A verb that fails to reach the store (a refused dial, a timeout, "the store did not answer": the
+exit-2 path of `storeCtx` and `openConn`) reads the sentinel once, after the failure, never
+before and never on success (`ReadReleaseWindow`, `cmd/nova-sprint/release_window.go`): the state
+is `none` (no file, or `open` false), `open` (the file parses, `open` is true, now is before
+`until`), `stale` (now is not before `until`) or `unreadable` (a directory, malformed JSON, an
+unparsable `until`). The two wordings:
+
+- **open** — the refusal line is prefixed in place, not replaced: `RELEASE WINDOW OPEN: adopt
+  v1.2.24; the server is expected back in about 240 s (until 03:30:00Z); this is planned, not a
+  failure; retry then. ` followed by the original refusal, unchanged. With `--json` the same facts
+  go in a `release_window` object beside the refusal. The exit code does not change.
+- **stale** — one added note, `release window file is stale (until 03:30:00Z passed): the outage
+  may be a failure; run: nova-sprint where`, the refusal otherwise unchanged. This is the safety
+  property: an expired sentinel never says planned.
+
+`none` or `unreadable` adds nothing, and no error is printed for the file itself; a verb that
+reaches the store never reads the file, and no verb ever writes it. `tla/ReleaseWindow.tla`
+models the sentinel's life (play opens, play closes, play crashes, time passes) and the verb's
+reading, with the invariants `StaleNeverPlanned` (a refusal after `until` is never worded
+planned) and `PlannedOnlyInsideWindow`, and the broken configuration
+`MCReleaseWindowBrokenStaleOpen` whose counterexample is a reader that ignores `until`.
+
 #### store-latency-row-r.w2: where shows the store round trip the server measures
 
 The store latency was measured by hand with redis-cli (20 pings, then 500 on one connection) on

@@ -326,6 +326,11 @@ type app struct {
 	// pre-window shadow tick: its store open tolerates a library the window's
 	// fn load will replace (libraryCheck, tla/Adopt.tla PreCheck).
 	shadow bool
+	// readReleaseWindowFn, when set (a test), is the sentinel's reader in place
+	// of ReadReleaseWindow (release_window.go): a test counts the reads with no
+	// file and no clock. nil is ReadReleaseWindow of the path releaseWindowFile
+	// names.
+	readReleaseWindowFn func(path string, now time.Time) (ReleaseWindow, releaseWindowState)
 }
 
 // controlLine is the server's one line of control (app.serial): a tick of the run
@@ -478,7 +483,13 @@ func (a *app) openConn(ctx context.Context, addr string) (*redisconn.Conn, error
 	if err != nil {
 		return nil, err
 	}
-	return openWith(ctx, o, getenv)
+	conn, err := openWith(ctx, o, getenv)
+	if err != nil {
+		// the store did not answer: read the release-window sentinel once,
+		// after the failure (release_window.go, storeOpenErr).
+		return nil, a.storeOpenErr(err, false)
+	}
+	return conn, nil
 }
 
 // openWith dials with the options, the password read through getenv, bounded to 10 s.
@@ -735,7 +746,10 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	names := sprint.Names{}
 	b, err := a.backend(ctx, c.redis, names)
 	if err != nil {
-		return nil, err
+		// the store did not answer: read the release-window sentinel once,
+		// after the failure, so the refusal says whether it is the planned
+		// window (release_window.go, storeOpenErr).
+		return nil, a.storeOpenErr(err, c.json)
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
@@ -965,8 +979,13 @@ func argErr(words string, err error, found ...string) string {
 
 // refuse prints the one refusal line, `nova-sprint[ <verb>] REFUSED: <what>;
 // run: <remedy>` (docs/STANDARD.md section 3, point 1), and is a usage refusal:
-// exit 2.
+// exit 2. A store-open failure wrapped with a release-window note
+// (releaseWindowError, release_window.go) splits the note off and prints it in
+// place of nothing, the refusal unchanged: the open prefix on the same line
+// before it, the stale note on a line of its own, and, with --json, the
+// `release_window` object beside it.
 func refuse(stderr io.Writer, verb, what string) int {
+	note, jsonLine, what := splitReleaseWindow(what)
 	where := prog
 	if verb != "" {
 		where += " " + verb
@@ -974,8 +993,25 @@ func refuse(stderr io.Writer, verb, what string) int {
 	if !strings.Contains(what, "; run: ") {
 		what += "; run: nova-sprint " + strings.TrimSpace(verb+" -h")
 	}
+	if note != "" {
+		fmt.Fprint(stderr, note)
+	}
 	fmt.Fprintf(stderr, "%s REFUSED: %s\n", where, oneline.Escape(what))
+	if jsonLine != "" {
+		fmt.Fprint(stderr, jsonLine)
+	}
 	return 2
+}
+
+// splitReleaseWindow is refuse's split of a releaseWindowError's Error: the
+// note, the --json object line, and the original refusal, or the whole string
+// as the refusal when the error carried no note.
+func splitReleaseWindow(what string) (note, jsonLine, refusal string) {
+	parts := strings.SplitN(what, releaseWindowSep, 3)
+	if len(parts) == 3 {
+		return parts[0], parts[1], parts[2]
+	}
+	return "", "", what
 }
 
 // storeAt is the store, reading an earlier epoch as it was when at is 0 or
