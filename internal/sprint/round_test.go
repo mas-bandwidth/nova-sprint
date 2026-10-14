@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,8 +21,15 @@ import (
 func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
+	if width == 0 {
+		width = DefaultWidth // the world's default, as before: tests that name none use 64
+	}
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+		if w.s.Widths == nil {
+			w.s.Widths = map[string]string{}
+		}
+		w.s.Widths[m] = strconv.Itoa(width)
 	}
 	if primaries > 0 {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: primaries}))

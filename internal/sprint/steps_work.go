@@ -2981,6 +2981,14 @@ type FleetReq struct {
 // it down; release clears the hold, adding a member it does not know, and
 // brings it up when its beat is fresh.
 func FleetStep(s *Snapshot, r FleetReq) Plan {
+	if w, ok := r.width(); ok {
+		// a width is nova-config's alone: no verb writes one (width.go). Refuse
+		// before anything is written.
+		_ = w
+		var p Plan
+		p.refuse(r.Member, "a width is nova-config's alone: nova-config machine set "+r.Member+" --width <n> --actor <name>, then nova-config apply")
+		return p
+	}
 	// every card the step places on a member (a down member's cards dealt
 	// again, the levelling) goes round the fleet from the deal's rolling index
 	// and moves it (round.go), written with the step
@@ -3126,9 +3134,6 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 				line = r.Member + " added, down until it beats"
 			}
 			fields := map[string]string{"kind": "member", "status": status, "since": stamp(s.Now)}
-			if w, ok := r.width(); ok {
-				fields[FieldWidth] = w
-			}
 			if r.Deadline > 0 {
 				fields[FieldMemberDeadline] = itoa(r.Deadline)
 			}
@@ -3147,9 +3152,6 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			if comeUp && ctl.F("status") != Up && !(envCleared && ctl.F(FieldHeldBy) != HeldByEnv) {
 				set["status"], set["since"] = Up, stamp(s.Now)
 				n = statusNote(s, r, NMemberUp, "up")
-			}
-			if w, ok := r.width(); ok && ctl.F(FieldWidth) != w {
-				set[FieldWidth] = w
 			}
 			if r.Deadline > 0 && ctl.F(FieldMemberDeadline) != itoa(r.Deadline) {
 				set[FieldMemberDeadline] = itoa(r.Deadline)
@@ -3193,12 +3195,6 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			}
 			if len(set) > 0 || len(unset) > 0 {
 				head = append(head, change(Fleet, setEntry(ctl, set, unset...)))
-			}
-		}
-		if w, ok := r.width(); ok && (ctl == nil || ctl.F(FieldWidth) != w) {
-			line += " width=" + w
-			if r.Drain {
-				line += " (drains: no new deals, its working cards finish)"
 			}
 		}
 		if r.Deadline > 0 && (ctl == nil || ctl.F(FieldMemberDeadline) != itoa(r.Deadline)) {

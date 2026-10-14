@@ -1174,7 +1174,7 @@ func tookSince(ctx context.Context, st *store.Store) string {
 func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("init")
 	readers := fs.String("readers", "", "the readers' rows, comma separated")
-	members := fs.String("members", "", fmt.Sprintf("fleet members to bring up, comma separated, each <name> or <name>:<width>, its width the most work cards it runs at once; it holds %d times that, ready and working (default %d)", sprint.DealAhead, sprint.DefaultWidth))
+	members := fs.String("members", "", "fleet members to bring up, comma separated, each <name>; a width is nova-config's alone (nova-config machine set <m> --width <n>)")
 	coordinator := fs.String("coordinator", "", "the sprint's coordinator, the one actor who releases sentinels (default: the actor); the seat then moves by coordinator <name>")
 	owner := fs.String("owner", "", "the sprint's owner, who may give the seat and whose name a take of it carries (coordinator --take --approved-by); set once, never changed (else "+OwnerEnv+")")
 	rules := fs.String("rules", "", "the child rules file every brief is held to: one required sentence per line, its path recorded for the sprint (default: the built-in general rules; add --rules <file> overrides it for one add)")
@@ -1292,7 +1292,7 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	for _, m := range specs {
 		// init bootstraps the fleet: each member it sets up has been probed by the
 		// machine's own setup, so fleet up's new-member probe is passed for it
-		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, m.Width, false, 0, false, "", sprint.EnvProbePassed), steps, stderr); code != 0 {
+		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, 0, false, 0, false, "", sprint.EnvProbePassed), steps, stderr); code != 0 {
 			return code
 		}
 		memberNames = append(memberNames, m.Name)
@@ -3624,7 +3624,7 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if op == "up" {
 		probe = fs.String("probe", "", "the member's own environment probe's result -- its push-credential probe and its harness check, run on the member: `passed` when it passed, else the reason it failed. fleet up refuses a member whose last environment fault is not cleared until its probe passes, and runs it before accepting width for a member the sprint does not know; a pass clears the fault")
 		harnesses = fs.String("harnesses", "", "the headless harnesses on the member's PATH, a comma list of "+strings.Join(harness.Headless, ", ")+" (none clears them): the deal draws a route that runs under one only for a member that names it; default: as it is, none for a new member")
-		width = fs.String("width", "", fmt.Sprintf("the member's width: the most work cards it runs at once; the deal holds it at %d times that, ready and working; 1 to %d (default: as it is, %d for a new member); 0 drains the member: no new deals, its untaken ready cards are levelled away, its working cards finish (fleet down deals them again elsewhere)", sprint.DealAhead, sprint.MaxWidth, sprint.DefaultWidth))
+		width = fs.String("width", "", fmt.Sprintf("refused: a width is nova-config's alone (nova-config machine set <m> --width <n>)"))
 		deadline = fs.String("deadline", "", fmt.Sprintf("pin the deadline every card dealt to the member gets, a duration (45m, 2700s); default takes the pin off: each card's own deadline, or %d times the member's median run wall over its last %d ok attempts, whichever is larger", sprint.DeadlineK, sprint.DeadlineSamples))
 	}
 	pos, err := parse(fs, args)
@@ -3636,11 +3636,8 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	}
 	w, drain := 0, false
 	if width != nil && *width != "" {
-		if drain = strings.TrimSpace(*width) == sprint.DrainWidth; !drain {
-			if w, err = sprint.ParseWidth(*width); err != nil {
-				return refuse(stderr, name, "--width: "+err.Error())
-			}
-		}
+		// a width is nova-config's alone: refuse, nothing written
+		return refuse(stderr, name, "a width is nova-config's alone: nova-config machine set <m> --width "+*width+" --actor <name>, then nova-config apply")
 	}
 	d, off := 0, false
 	if deadline != nil && *deadline != "" {

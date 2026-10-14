@@ -47,10 +47,11 @@ const (
 	HeldBySync  = "sync"
 )
 
-// The kinds of drift between the fleet table and the inventory.
+// The kinds of drift between the fleet table and the inventory. A width is
+// nova-config's alone (width.go): the sync keeps membership only, and never
+// writes a width.
 const (
 	DriftAdd     = "add"     // the inventory names a member the table has no control card for
-	DriftWidth   = "width"   // a member's width differs
 	DriftHold    = "hold"    // the table has a member the inventory no longer names
 	DriftRelease = "release" // a member the sync held is back in the inventory with room
 	DriftRemove  = "remove"  // a member with no machine row on which no card stays
@@ -61,7 +62,8 @@ const (
 type Drift struct {
 	Member string
 	Kind   string
-	// From and To are a width change's widths; To is the width of an add.
+	// From and To are a width change's widths; a sync writes no width, so
+	// they are always 0.
 	From, To int
 }
 
@@ -69,9 +71,7 @@ type Drift struct {
 func (d Drift) Line() string {
 	switch d.Kind {
 	case DriftAdd:
-		return fmt.Sprintf("%s is a member of the inventory and not of the fleet: add it at width %d", d.Member, d.To)
-	case DriftWidth:
-		return fmt.Sprintf("%s has width %d and the inventory says %d", d.Member, d.From, d.To)
+		return fmt.Sprintf("%s is a member of the inventory and not of the fleet: add it", d.Member)
 	case DriftRelease:
 		return fmt.Sprintf("%s was held by the sync and is back in the inventory: release it", d.Member)
 	case DriftRemove:
@@ -120,9 +120,6 @@ func FleetDrift(s *Snapshot, want []SyncMember, machines []string) []Drift {
 		}
 		if ctl.F("held") != "" && ctl.F(FieldHeldBy) == HeldBySync {
 			out = append(out, Drift{Member: name, Kind: DriftRelease})
-		}
-		if MemberWidth(ctl) != w {
-			out = append(out, Drift{Member: name, Kind: DriftWidth, From: MemberWidth(ctl), To: w})
 		}
 	}
 	for _, name := range s.Members() {
@@ -205,10 +202,6 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		refused[pr.Key] = true
 	}
 	drift := FleetDrift(s, r.Sync, r.Machines)
-	newWidth := map[string]int{}
-	for _, m := range r.Sync {
-		newWidth[m.Name] = m.Width
-	}
 	holding := map[string]bool{}
 	byMember := map[string][]Drift{}
 	var order []string
@@ -228,7 +221,6 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 	for _, m := range order {
 		ds := byMember[m]
 		if ds[0].Kind == DriftAdd {
-			d := ds[0]
 			if !s.Fleet.HasRow(m) {
 				p.Rows = append(p.Rows, RowAdd{Fleet, m})
 			}
@@ -238,12 +230,12 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// lifts the hold (docs/SPEC-SPRINT.md section 5, the fleet;
 			// tla/ProviderBudget.tla, NewMemberProbed)
 			by := HeldByProbe
-			fields := map[string]string{"kind": "member", "status": Down, "since": stamp(s.Now), FieldWidth: itoa(d.To),
+			fields := map[string]string{"kind": "member", "status": Down, "since": stamp(s.Now),
 				FieldHeld: stamp(s.Now), FieldHeldBy: by,
 				FieldHeldReason: "its own probe has not passed: " + EnvProbeLine(m)}
 			p.Units = append(p.Units, Unit{Key: CtlID(m),
 				Changes: []Change{change(Fleet, createEntry(CtlID(m), m, Ctl, 0, fields))},
-				Moved:   fmt.Sprintf("%s added, held until its own probe passes (%s) width=%d", m, EnvProbeLine(m), d.To)})
+				Moved:   fmt.Sprintf("%s added, held until its own probe passes (%s)", m, EnvProbeLine(m))})
 			continue
 		}
 		set := map[string]string{}
@@ -254,9 +246,6 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			case DriftRelease:
 				unset = append(unset, "held", FieldHeldBy)
 				said = append(said, "released, down until it beats")
-			case DriftWidth:
-				set[FieldWidth] = itoa(d.To)
-				said = append(said, fmt.Sprintf("width=%d (was %d)", d.To, d.From))
 			}
 		}
 		p.Units = append(p.Units, Unit{Key: CtlID(m),
@@ -270,11 +259,6 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		}
 	}
 	q, widths := memberLoads(s, stay), memberWidths(s, stay)
-	for m := range widths {
-		if w, ok := newWidth[m]; ok && !refused[m] {
-			widths[m] = w
-		}
-	}
 	for _, d := range drift {
 		if d.Kind != DriftHold && d.Kind != DriftRemove || refused[d.Member] || s.MemberCtl(d.Member) == nil {
 			// a row with no control card has nothing to plan: the verb deletes it

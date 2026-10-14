@@ -73,7 +73,7 @@ func TakeStep(r sprint.TakeReq) Step {
 	if r.Lane != 0 {
 		load = tables(sprint.Fleet, sprint.Readers) // a reader's lanes hold its reads (lane_hold.go)
 	}
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: load, Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: load, Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true, Widths: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Take(s, r) }}
 }
 
@@ -330,6 +330,7 @@ func FleetStep(r sprint.FleetReq) Step {
 	return Step{Named: r.Op == "sync", Args: ArgsOf(r), Verb: "fleet " + r.Op, Load: tables(sprint.Fleet, sprint.Work), Mirrors: true,
 		// up, down, hold and level deal and level: a member under its floor is given nothing
 		ReadNoRoom: true,
+		Widths:     true,
 		Plan:       func(s *sprint.Snapshot) sprint.Plan { return sprint.FleetStep(s, r) }}
 }
 

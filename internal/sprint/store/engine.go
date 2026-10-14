@@ -239,6 +239,16 @@ type Step struct {
 	// Friends says the step consults the friends roster (finish, for friendNext
 	// delivery mode): it plans with the friend seats (sprint.Snapshot.Friends).
 	Friends bool
+	// Widths says the step deals or levels (or asks what the next deal does): it
+	// plans with every member's and friend's width as nova-config's machine:<m>
+	// and friend:<f>:desired write it, read with its snapshot (store.Widths,
+	// sprint.Snapshot.Widths). A store that cannot read those keys refuses the
+	// step (never a fallback).
+	Widths bool
+	// WidthsGiven, when Widths is set, is the widths the tick read once (its
+	// machine:<m> widths): the step plans on that reading instead of reading
+	// the store again. nil: read with the snapshot.
+	WidthsGiven map[string]string
 	// FriendText loads only pronoun metadata; unlike Friends it changes no
 	// behavioral seat lookup, keeping manual verb routing and admission intact.
 	FriendText bool
@@ -715,6 +725,18 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return res, err
 			}
 			snap.Friends = seats
+		}
+		if step.Widths {
+			if step.WidthsGiven != nil {
+				snap.Widths = step.WidthsGiven
+			} else {
+				members := snap.Members()
+				machine, _, err := st.Widths(ctx, members, nil)
+				if err != nil {
+					return res, err
+				}
+				snap.Widths = machine
+			}
 		}
 		if step.FriendText && !step.Friends {
 			specs, err := st.FriendSpecs(ctx)

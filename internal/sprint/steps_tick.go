@@ -193,6 +193,9 @@ var TickDecisions = map[string][]string{
 	// the machine held a member for its takes that end with no model call: the
 	// judgment is the hold's cause, answered or waited (hold_cause.go idleReapConds)
 	NMemberIdleReaps: {"ack", "wait"},
+	// a member whose machine:<m> width is missing, empty or not a whole number:
+	// the deal deals it nothing until the width is in nova-config (width.go)
+	NWidthNotInConfig: {"ack", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -214,6 +217,11 @@ type TickReq struct {
 	// levels them after its deal (FriendLevel). nil is none: every card is the fleet's
 	// but a hard pin, which waits ready, and no friend is levelled.
 	Friends []FriendSeat
+	// Widths is each member's width as nova-config's machine:<m> hash writes it,
+	// read by the binding with every tick (sprint.Snapshot.Widths): the deal, the
+	// level and the check plan on it. nil is none read, and every member reads 0
+	// (dealt nothing, one judgment per member and episode).
+	Widths map[string]string
 	// AnswerRules says the tick answers the mechanical judgments by rule (rules.go; run
 	// --answer-rules); false leaves every judgment to the coordinator.
 	AnswerRules bool
@@ -846,6 +854,11 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		n.Friends = r.Friends // the friends a tier is served by (tierServed)
 		s = &n
 	}
+	if s.Widths == nil && len(r.Widths) > 0 {
+		n := *s
+		n.Widths = r.Widths // the members' widths the binding read (Snapshot.Widths)
+		s = &n
+	}
 	// reads before work (reads are a card priority): while read cards are on, this deal
 	// deals the read cards first, and its work in the room they leave (read_cards.go)
 	s, reads := s.withReadCards(r.Friends)
@@ -1057,6 +1070,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	conds = append(conds, holdNoCauseConds(s, r)...)
 	// the machine's idle-reap hold, its judgment raised again when a wait runs out (hold_cause.go)
 	conds = append(conds, idleReapConds(s)...)
+	// a member whose width is not in nova-config: dealt nothing, one judgment (width.go)
+	conds = append(conds, widthNotInConfigConds(s)...)
 	// one deal order for friends and machines, by the ladder: a low card fills only a lane no
 	// other card ready can (ladderOrder, priority.go)
 	ready = ladderOrder(dealOrder(s, ready))
@@ -1174,7 +1189,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps, NWidthNotInConfig}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
@@ -2097,6 +2112,7 @@ func condKey(typ, subject, card, what string) string {
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled, NMemberIdleReaps,
+		NWidthNotInConfig,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged:
 		what = ""
