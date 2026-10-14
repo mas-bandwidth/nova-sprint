@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
 )
 
@@ -122,7 +121,7 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 		return d, nil
 	}
 	// one wrapping (<kind> ...) form; a file of one bare (:id ...) form is read as a sequence
-	if top, err := worklang.Read(file, data, roadmapdoc.Limits); err == nil && top.Kind == worklang.List && len(top.List) > 0 && top.List[0].Kind == worklang.Symbol {
+	if top, err := worklang.Read(file, data, landDataLimits); err == nil && top.Kind == worklang.List && len(top.List) > 0 && top.List[0].Kind == worklang.Symbol {
 		for i := 1; i < len(top.List); i++ {
 			kw := top.List[i]
 			if kw.Kind != worklang.Keyword || i+1 >= len(top.List) {
@@ -144,7 +143,7 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 	}
 	// a bare sequence of forms: read as one list, the offsets taken back to the file's
 	wrapped := append(append([]byte("(\n"), data...), []byte("\n)")...)
-	top, err := worklang.Read(file, wrapped, roadmapdoc.Limits)
+	top, err := worklang.Read(file, wrapped, landDataLimits)
 	if err != nil {
 		return d, err
 	}
