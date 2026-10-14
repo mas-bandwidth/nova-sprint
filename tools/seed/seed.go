@@ -643,7 +643,34 @@ func (s *seeder) goMod(keep string) error {
 		text += req.String()
 	}
 	s.files["go.mod"] = file{[]byte(text), mode}
-	return s.take("go.sum")
+	if err := s.take("go.sum"); err != nil {
+		return err
+	}
+	// The source repository's go.sum never carries requirements on its own
+	// nested modules (a module does not require itself), so copying it verbatim
+	// would drop the external modules' go.sum lines and the re-seeded tree
+	// would not build under -mod=readonly. Preserve those lines from
+	// nova-sprint's own go.sum, where they already sit.
+	if len(s.r.external) > 0 {
+		own, _, err := readFile(filepath.Join(keep, "go.sum"))
+		if err != nil {
+			return nil
+		}
+		var ext strings.Builder
+		for _, l := range strings.SplitAfter(string(own), "\n") {
+			for _, e := range s.r.external {
+				if strings.HasPrefix(l, e.path+" ") {
+					ext.WriteString(l)
+				}
+			}
+		}
+		if ext.Len() > 0 {
+			f := s.files["go.sum"]
+			f.data = append(f.data, []byte(ext.String())...)
+			s.files["go.sum"] = f
+		}
+	}
+	return nil
 }
 
 func toolLines(gomod string) []string {

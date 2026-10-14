@@ -100,6 +100,7 @@ func fixture(t *testing.T) (from, keep string) {
 	write(t, keep, map[string]string{
 		"README.md":                       "ours\n",
 		"go.mod":                          "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n",
+		"go.sum":                          "ex.com/dep v1.0.0 h1:x\nex.com/tools/pkg/oneline v0.1.0 h1:oneline\n",
 		"docs/CLI.md":                     "# The app\n\nMoved.\n\n## app\n\nold\n",
 		"tools/seed/x.go":                 "package main\n",
 		"internal/sprint/toolsversion.go": "package sprint\n\nconst NovaToolsVersion = \"v1.1.0\"\nconst NovaToolsVersionFile = \"NOVA-TOOLS-VERSION\"\n",
@@ -186,6 +187,9 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	}
 	if got := read(t, out, "go.mod"); got != "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n\nrequire ex.com/dep v1.0.0\n\nrequire (\n\tex.com/tools/pkg/oneline v0.1.0\n)\n" {
 		t.Errorf("go.mod %q", got)
+	}
+	if got := read(t, out, "go.sum"); got != "ex.com/dep v1.0.0 h1:x\nex.com/tools/pkg/oneline v0.1.0 h1:oneline\n" {
+		t.Errorf("go.sum %q", got)
 	}
 	if got, want := read(t, out, sprint.NovaToolsVersionFile), sprint.FormatNovaToolsVersion("v1.1.0", testRelease.commit); got != want {
 		t.Errorf("%s %q, want %q", sprint.NovaToolsVersionFile, got, want)
