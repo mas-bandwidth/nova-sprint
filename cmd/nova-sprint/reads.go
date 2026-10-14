@@ -286,8 +286,9 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	col := fs.String("col", "", "with --stream: waiting lists the stream's waiting primaries, each with what it still waits for")
 	packets := fs.String("packets", "", "with --as: the packets the worker wants, so the answer carries only those (every other card is listed with its id, column, attempt and gen, and the answer's epoch, with no packet): the first n cards it may start (asked, ready) and every in-flight card (reading, working), each not named by --have; without it every card carries its packet")
 	have := fs.String("have", "", "with --packets: the cards, comma separated, the worker wants no packet for (it runs them, or will not start them yet)")
-	noRoom := fs.String("no-room", "", "with --as a reader: its word that it starts no read, and why (its free disk under its floor); while its beat is fresh the ask asks it none; a queue without it clears it")
-	draining := fs.Bool("draining", false, "with --as a reader: its word that it drains (its binary was replaced: it begins no read and stops when its reads end); while its beat is fresh the ask asks it none and the tick returns the reads asked of it and not begun; a queue without it clears it")
+	beat := fs.Bool("beat", false, "with --as a reader: write its heartbeat, its word of presence (docs/SPEC-SPRINT.md section 6); a queue without it reads only and writes nothing")
+	noRoom := fs.String("no-room", "", "with --as a reader --beat: its word that it starts no read, and why (its free disk under its floor); while its beat is fresh the ask asks it none; a beat without it clears it")
+	draining := fs.Bool("draining", false, "with --as a reader --beat: its word that it drains (its binary was replaced: it begins no read and stops when its reads end); while its beat is fresh the ask asks it none and the tick returns the reads asked of it and not begun; a beat without it clears it")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "queue", err.Error())
@@ -305,10 +306,15 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	if *col != "" && (*col != sprint.Waiting || *stream == "") {
 		return refuse(stderr, "queue", "--col takes waiting, with --stream <s>")
 	}
+	if *beat && *as == "" {
+		return refuse(stderr, "queue", "--beat is a reader's beat: it takes --as <reader>")
+	}
+	if !*beat && (*noRoom != "" || *draining) {
+		return refuse(stderr, "queue", "--no-room and --draining are the beat's words: give --beat with them")
+	}
 	if *as != "" {
 		// queue --as is a worker's verb (coordinator.go): its actor is the reader or
-		// member it names, as take's is, whatever --actor says (a reader's queue is its
-		// beat, so the record names it)
+		// member it names, as take's is, whatever --actor says
 		c.orActor(*as)
 	} else {
 		// queue --stream is a read: it writes nothing and needs no actor
@@ -325,11 +331,27 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	epoch := st.PinnedEpoch()
 	isReader := false
 	if *as != "" {
-		// the reader's own queue is its beat (docs/SPEC-SPRINT.md section 6):
-		// a name that is no reader's row writes none, and the answer says so
-		// (reader), for the reader loop to say whose verb makes the row
-		if isReader, err = st.ReaderBeatDraining(ctx, *as, oneline.Field(*noRoom), *draining); err != nil {
+		// queue --as reads only (docs/SPEC-SPRINT.md section 6, the reader
+		// presence rule): whether --as names a reader's row is read here, never
+		// written; a name that is no reader's row, or a retired reader, answers
+		// reader: false, for the reader loop to say whose verb makes the row.
+		// The beat, the heartbeat and the clearing of its draining and no-room
+		// word, is --beat's alone.
+		rows, err := st.ReaderRows(ctx)
+		if err != nil {
 			return a.queueReadFailed("queue", err, stderr)
+		}
+		if slices.Contains(rows, *as) {
+			states, err := st.ReaderStates(ctx, []string{*as}, st.Now())
+			if err != nil {
+				return a.queueReadFailed("queue", err, stderr)
+			}
+			isReader = states[*as] != sprint.ReaderRetired
+		}
+		if *beat {
+			if _, err = st.ReaderBeatDraining(ctx, *as, oneline.Field(*noRoom), *draining); err != nil {
+				return a.queueReadFailed("queue", err, stderr)
+			}
 		}
 	}
 	var cards []queueCard
@@ -420,11 +442,11 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	}
 	// the queue is the worker's answer: it ran and its answer is the table's, so
 	// its outcome is accepted. It changed the tables only when it wrote the
-	// reader's own beat (queue --as <reader>): a fleet member's queue, and a
-	// stream's queue, write nothing.
+	// reader's own beat (queue --as <reader> --beat): a plain queue, a fleet
+	// member's queue, and a stream's queue, write nothing.
 	a.outcome = "accepted"
 	a.changed = "no"
-	if *as != "" && isReader {
+	if *as != "" && isReader && *beat {
 		a.changed = "yes"
 	}
 	if c.json {
