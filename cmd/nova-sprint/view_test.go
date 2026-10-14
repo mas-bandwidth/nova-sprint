@@ -58,8 +58,11 @@ func TestTheCoordinatorViewNamesAnIdleFleetAndItsRelease(t *testing.T) {
 	trunkHead := r.commit("trunk.txt", "trunk\n", "new trunk")
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	ta := r.testApp
-	brief := writeBrief(t, "view fixture\nREPO: "+r.remote+"\nBASE: main\n")
+	brief := writeBrief(t, "view fixture\nREPO: "+r.remote+"\nBASE: sprint/s1\n")
 	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
+	// This stored stream explicitly records main as its trunk; the actual
+	// consumer branch remains sprint/s1, distinct from the protected trunk.
+	ta.seed(nil, map[string]map[string]string{"s1": {sprint.FieldTrunk: "main", sprint.FieldStreamBranch: "sprint/s1"}}, nil)
 	ta.ok("add --stream s1 --sentinel s1-stop")
 	ta.ok("add --stream s1 --count 2 --brief-file " + brief)
 	ta.ok("start")
