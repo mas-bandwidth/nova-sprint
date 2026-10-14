@@ -2400,13 +2400,21 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		}
 		opened = &g
 	}
+	// --max bounds the listing by kind, each budget its own, the newest or
+	// most-overdue first as the store lists them; --open prints only its group
+	// (docs/SPEC-SPRINT.md section 11).
+	display := v.Groups
+	if opened != nil {
+		display = []sprint.Group{*opened}
+	}
+	listedGroups, moreJudgments, moreHappened := inboxDisplay(display, c.max)
 	if *read && v.Last != "" {
 		if err := st.B.SetCursor(ctx, v.Last); err != nil {
 			return a.readFailed("inbox", err, stderr)
 		}
 	}
 	if c.json {
-		groups := v.Groups
+		groups := listedGroups
 		if groups == nil {
 			groups = []sprint.Group{}
 		}
@@ -2442,13 +2450,56 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		} else {
 			other++
 		}
+	}
+	for _, g := range listedGroups {
 		fmt.Fprint(stdout, groupText(g, now, opened != nil && g.ID == opened.ID))
+	}
+	if moreJudgments > 0 {
+		inboxMore(stdout, "judgments", c.max, c.max+moreJudgments)
+	}
+	if moreHappened > 0 {
+		inboxMore(stdout, "happened", c.max, c.max+moreHappened)
 	}
 	fmt.Fprintf(stdout, "INBOX OK judgments=%d happened=%d cursor=%s\n", judg, other, dashed(v.Cursor))
 	if line := st.MachineLine(ctx); line != "" {
 		fmt.Fprintln(stdout, line)
 	}
 	return 0
+}
+
+// inboxDisplay bounds an inbox's groups for --max: the judgments and the
+// happened groups each get their own budget (default 20, 0 is all), the newest
+// or most-overdue first as the store lists them, and each cut list carries a
+// MORE line naming how many are older (docs/SPEC-SPRINT.md section 11).
+func inboxDisplay(groups []sprint.Group, max int) (shown []sprint.Group, moreJudgments, moreHappened int) {
+	if max <= 0 {
+		return groups, 0, 0
+	}
+	shown = make([]sprint.Group, 0, len(groups))
+	judgments, happened := 0, 0
+	for _, g := range groups {
+		if g.Kind == sprint.Judgment {
+			if judgments == max {
+				moreJudgments++
+				continue
+			}
+			judgments++
+		} else {
+			if happened == max {
+				moreHappened++
+				continue
+			}
+			happened++
+		}
+		shown = append(shown, g)
+	}
+	return shown, moreJudgments, moreHappened
+}
+
+// inboxMore is the bounded-listing MORE line for an inbox list, the shape
+// listed prints for other verbs, naming the rows older than the shown ones.
+func inboxMore(w io.Writer, kind string, shown, total int) {
+	fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d older=%d run: nova-sprint inbox ... --max 0\n", kind, shown, total, total-shown)
 }
 
 // inboxJudgment is one open judgment as a program acts on it: what it is,
@@ -2728,11 +2779,21 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		if texts == nil {
 			texts = []storyText{}
 		}
+		// --max bounds the history rows the same way as the lines: the newest
+		// --max timeline events, cost records and consumers, the brief and the
+		// card's fields whole (docs/SPEC-SPRINT.md section 11).
+		cost := sprint.CardCostOf(v.Primary)
+		consumers := sprint.ConsumersOf(v.Primary)
+		if c.max > 0 {
+			events = newest(events, c.max)
+			cost.Consumers = newest(cost.Consumers, c.max)
+			consumers.Consumers = newest(consumers.Consumers, c.max)
+		}
 		_, ceiling := sprint.CardTiers(v.Primary)
 		shown := sprint.CardTierShown(v.Primary)
 		level, source := sprint.CardPriority(v.Primary)
 		b, _ := json.Marshal(cardView{Primary: v.Primary, Column: v.Primary.Col, Tier: shown, Ceiling: ceiling, Grade: v.Primary.F(sprint.FieldGrade), Who: v.Primary.F(sprint.FieldWho), Priority: level, PrioritySource: source, Work: v.Work, Reads: v.Reads, Merge: v.Merge, Open: v.Open, Needs: v.Needs, NeededBy: v.NeededBy, Held: held,
-			Cost: sprint.CardCostOf(v.Primary), Consumers: sprint.ConsumersOf(v.Primary), Timeline: events, Texts: texts})
+			Cost: cost, Consumers: consumers, Timeline: events, Texts: texts})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -2742,21 +2803,26 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 			place = linePlace(v.Primary, v.Column)
 		}
 		a.printStory(stdout, v, events, texts, held, place)
+		var attempts []string
 		for _, w := range v.Work {
-			for _, line := range sprint.AttemptLines(w) {
-				fmt.Fprintln(stdout, oneline.Escape(line))
-			}
+			attempts = append(attempts, sprint.AttemptLines(w)...)
 		}
+		cardRows(stdout, "ATTEMPT", attempts, c.max, id)
 		if len(v.Work) > 0 {
 			fmt.Fprintln(stdout, sprint.NextLine(v.Work))
 		}
-		// what it cost: a line per consumer that ended, and the totals
-		for _, line := range sprint.CardCostOf(v.Primary).CostLines() {
+		// what it cost: the newest consumers, then the totals, which are whole
+		cost, costTotals := splitCardRows(sprint.CardCostOf(v.Primary).CostLines(), costTotal)
+		cardRows(stdout, "COST", cost, c.max, id)
+		for _, line := range costTotals {
 			fmt.Fprintln(stdout, oneline.Escape(line))
 		}
-		// the consumer history: the counts, then one line per consumer, newest last
-		for _, line := range sprint.ConsumersOf(v.Primary).ConsumerLines() {
-			fmt.Fprintln(stdout, oneline.Escape(line))
+		// the consumer history: the counts, which are whole, then the newest
+		// consumers and a MORE line for the older
+		consumerLines := sprint.ConsumersOf(v.Primary).ConsumerLines()
+		if len(consumerLines) > 0 {
+			fmt.Fprintln(stdout, oneline.Escape(consumerLines[0]))
+			cardRows(stdout, "CONSUMER", consumerLines[1:], c.max, id)
 		}
 		epoch := uint64(0)
 		if pinned, err := st.Pinned(ctx); err == nil {
@@ -2812,6 +2878,54 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "CARD OK id=%s epoch=%d work_cards=%d read_cards=%d open=%d%s%s\n", oneline.Escape(id), epoch, len(v.Work), len(v.Reads), len(v.Open), whoWord(v.Primary), priorityWord(v.Primary))
 	return 0
+}
+
+// cardRows prints a card's history rows, oldest first and newest last: the
+// newest --max of them, then a MORE line naming how many are older; --max 0
+// prints every row (docs/SPEC-SPRINT.md section 11).
+func cardRows(w io.Writer, kind string, rows []string, max int, id string) {
+	if len(rows) == 0 {
+		return
+	}
+	if max > 0 && len(rows) > max {
+		older := len(rows) - max
+		for _, l := range rows[older:] {
+			fmt.Fprintln(w, oneline.Escape(l))
+		}
+		fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d older=%d run: nova-sprint card %s --max 0\n", strings.ToLower(kind), max, len(rows), older, oneline.Escape(id))
+		return
+	}
+	for _, l := range rows {
+		fmt.Fprintln(w, oneline.Escape(l))
+	}
+}
+
+// splitCardRows splits a card's rows into the per-consumer list and the summary
+// rows that stay whole whatever --max (a COST TOTAL or CARRIED line).
+func splitCardRows(rows []string, whole func(string) bool) (list, summary []string) {
+	for _, l := range rows {
+		if whole(l) {
+			summary = append(summary, l)
+			continue
+		}
+		list = append(list, l)
+	}
+	return list, summary
+}
+
+// costTotal says a COST line is the card's total or a carried amount, always
+// printed whole.
+func costTotal(line string) bool {
+	return strings.HasPrefix(line, "COST TOTAL") || strings.HasPrefix(line, "COST CARRIED")
+}
+
+// newest is the last max rows of a list in oldest-first order, what a bounded
+// history keeps; max at or below zero is every row.
+func newest[T any](rows []T, max int) []T {
+	if max > 0 && len(rows) > max {
+		return rows[len(rows)-max:]
+	}
+	return rows
 }
 
 // cardLine is one card as card --all --json prints it: its id, stream, column
