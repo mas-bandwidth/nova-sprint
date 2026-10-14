@@ -188,7 +188,7 @@ func stripComments(s string) string {
 // mergeByForm is a shared s-expression ledger merged form by form: base (nil when the base
 // does not hold the file), the tip's side (ours) and the card's (theirs). It is the tip's
 // text with the card's changes, additions and removals applied, or why the sides do not
-// merge.
+// merge (tla/LandLedgers.tla, ResolveLand).
 func mergeByForm(file string, base, ours, theirs []byte) ([]byte, error) {
 	var docs [3]formDoc
 	var forms [3]map[string]keyedForm
@@ -210,7 +210,7 @@ func mergeByForm(file string, base, ours, theirs []byte) ([]byte, error) {
 	drop := map[string]bool{}      // a tip key the card removed
 	var added []string             // card keys the tip lacks, in the card's order
 	want := map[string]string{}    // key -> canonical text the merged file must hold
-	keys := unionKeysForms(b, o, t)
+	keys := unionKeys(b, o, t)
 	for _, k := range keys {
 		bv, inB := b[k]
 		ov, inO := o[k]
@@ -343,7 +343,7 @@ func mergeByForm(file string, base, ours, theirs []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the merged data does not read: %s", oneLineErr(err))
 	}
-	for _, k := range unionKeysForms(got, toForms(want)) {
+	for _, k := range unionKeys(got, toForms(want)) {
 		g, inG := got[k]
 		w, inW := want[k]
 		switch {
@@ -444,21 +444,8 @@ func trimList(k string) string {
 	return k
 }
 
-// unionKeysForms is the keys of the maps, sorted, each once.
-func unionKeysForms(ms ...map[string]keyedForm) []string {
-	var out []string
-	for _, m := range ms {
-		for k := range m {
-			if !slices.Contains(out, k) {
-				out = append(out, k)
-			}
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// toForms is a want map as forms, for unionKeysForms.
+// toForms is a want map as forms, so unionKeys can take it with the read-back forms
+// (tla/LandLedgers.tla, ResolveLand).
 func toForms(m map[string]string) map[string]keyedForm {
 	out := make(map[string]keyedForm, len(m))
 	for k, v := range m {

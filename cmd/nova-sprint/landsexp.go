@@ -121,9 +121,12 @@ func sexpUnionNote(data []string) string {
 // sexpKept is what a merge of the data keeps, as its note and commit say.
 const sexpKept = "each side's additions and removals kept"
 
-// unionSexp is the roadmap data at a merge (the file's comment above): base, the tip's side
-// (ours) and the card's (theirs) merged, or why they do not merge.
-func unionSexp(kind, file string, base, ours, theirs []byte) ([]byte, error) {
+// unionSexpOf merges a shared s-expression ledger at a content conflict: base, the tip's
+// side (ours) and the card's (theirs). parse is the evidence type: it reads one side into
+// records keyed by id, and the merged bytes must be exactly what the two sides did. The
+// lander resolves the ledgers and lands the merge once that check passes
+// (tla/LandLedgers.tla, ResolveLand).
+func unionSexpOf[V comparable](file string, base, ours, theirs []byte, parse func(file string, data []byte) (map[string]V, error)) ([]byte, error) {
 	var bodies [3][]string
 	var closers [3]int
 	var tail string
@@ -154,10 +157,19 @@ func unionSexp(kind, file string, base, ours, theirs []byte) ([]byte, error) {
 	}
 	lines = tidyBlanks(bodies[0], lines)
 	out := []byte(strings.Join(lines, "\n") + strings.Repeat(")", closers[0]-1) + tail)
-	if err := sexpEntriesMerged(kind, file, base, ours, theirs, out); err != nil {
+	if err := entriesMerged(parse, unionKeys[V], file, base, ours, theirs, out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// unionSexp is the roadmap data at a merge (the file's comment above): base, the tip's side
+// (ours) and the card's (theirs) merged by unionSexpOf, held to the roadmap decode, or why
+// they do not merge (tla/LandLedgers.tla, ResolveLand).
+func unionSexp(kind, file string, base, ours, theirs []byte) ([]byte, error) {
+	return unionSexpOf(file, base, ours, theirs, func(file string, data []byte) (map[string]any, error) {
+		return sexpEntries(kind, file, data)
+	})
 }
 
 // splitClosers is s without its trailing whitespace and the run of closing parentheses
