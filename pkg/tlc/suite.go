@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-tools/pkg/safepath"
 )
 
 // Bounds of a run. A bounded run is the only kind a required case can be

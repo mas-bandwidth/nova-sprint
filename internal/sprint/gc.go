@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-tools/pkg/safepath"
 	"github.com/mas-bandwidth/nova-tools/pkg/gocache"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
