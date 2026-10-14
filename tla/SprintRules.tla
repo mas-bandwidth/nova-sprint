@@ -758,9 +758,15 @@ AnAtBound(f) == (f # "empty" /\ f = anlast) \/ anatt - andec >= Cap
 \* ruleBrief and harnessAtCap). Every attempt counts toward the cap (anatt - andec), but only a
 \* worker's or the brief's end is a vote that the brief is wrong (anvotes, since andec): a
 \* broken read, a HOLD or any other failure the worker reported. A harness end (EndHarness:
-\* the worker never ran and reported nothing; here a harness fault, a failure with no report,
-\* and both deadline ends) is an attempt and never a vote.
-AnHarnessEnds == {"harness", "noreport"}
+\* the worker never ran, ran=false in FieldRanAttempts; here a harness fault and both deadline
+\* ends) is an attempt and never a vote. harnessEnds keys on ran alone, so a failure with no
+\* report is split as the code splits it: its worker ran (a vote) or did not (no vote).
+\* AnVotes(k, ran) is whether the attempt's end k is a vote: a harness fault never ran, a
+\* no-report end is ran's, every other end (a HOLD, another failure, the same failure) ran.
+AnVotes(k, ran) ==
+  CASE k = "harness" -> FALSE
+    [] k = "noreport" -> ran
+    [] OTHER -> TRUE
 
 \* the brief's own bounds, votes by themselves: the same finding as the attempt before (the
 \* same-finding-twice bound) or the same failure twice (AtIdenticalFailure, and the lander's
@@ -799,13 +805,15 @@ AnReadBroken(f) ==
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
-\* the brief's judgment instead)
-AnWorkFails(k) ==
+\* the brief's judgment instead); ran is whether its worker ran (FieldRanAttempts), free only
+\* for a no-report end
+AnWorkFails(k, ran) ==
   /\ anst = "working"
   /\ k = "same" => anreworks > 0
+  /\ k # "noreport" => ran = (k # "harness")
   /\ anhead' = anatt /\ anfail' = k
   /\ anst' = IF anatt - andec >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
-  /\ anvotes' = IF k \in AnHarnessEnds THEN anvotes ELSE anvotes + 1
+  /\ anvotes' = IF AnVotes(k, ran) THEN anvotes + 1 ELSE anvotes
   /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
@@ -957,7 +965,7 @@ AnNext ==
   \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework \/ AnFleetFails
   \/ AnMark
   \/ \E f \in AnFindings : AnReadBroken(f)
-  \/ \E k \in AnFails : AnWorkFails(k)
+  \/ \E k \in AnFails, ran \in BOOLEAN : AnWorkFails(k, ran)
 
 \* The answers never pass the attempt bound: Cap attempts since the coordinator's last decision.
 AnswerAttemptsBounded == anatt - andec <= Cap
