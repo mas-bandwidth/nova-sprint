@@ -82,7 +82,7 @@ func friendLevel(s *Snapshot, r FriendLevelReq, dealt, dealtWorking map[string]i
 	for _, f := range seats {
 		room[f.Name], width[f.Name] = friendRoom(f)
 		row := FriendRow(f.Name)
-		held[f.Name] = friendLoad(s, f.Name) + dealt[f.Name]
+		held[f.Name] = friendLiveLanes(s, f.Name) + dealt[f.Name]
 		var unstarted []*Card
 		for _, c := range s.Fleet.Cell(row, Ready) {
 			if (dealtWorking[f.Name] > 0 && unitPromoted(r.Taken, c.ID)) || r.Moved[c.ID] || isRead(c) {
