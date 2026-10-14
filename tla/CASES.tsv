@@ -717,3 +717,4 @@ MCClearDefaultsBrokenStartAdvance.cfg	MCClearDefaults.tla	invariant	NeverRunning
 MCHookCache.cfg	MCHookCache.tla	pass	-	ignore-terminal	hookcache	required	-
 MCHookCacheBrokenNoGenGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
 MCHookCacheBrokenNoRefillGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
+MCFriendReadyTakeBrokenUnstartedTake.cfg	MCFriendReadyTake.tla	invariant	WorkingIsStarted	ignore-terminal	friendreadytake	required	-

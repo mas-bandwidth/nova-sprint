@@ -591,7 +591,7 @@ dealt to no other friend and no machine (`TestAReworkKeepsTheWhoPin`); a take-ba
 (`friend take`) counts neither, so a preference taken back from her is still offered on.
 
 **A friend's card is working once she starts it** (the owner, 2026-10-05: "They
-are not working unless work turns from working to done."; the friends table had
+are not working unless work turns from working to done."; a friend's take by count moves only cards she has started; the rest stay ready; the friends table had
 shown a friend working 8 of 8 for half an hour while she had started none, and
 the deadline clock running on cards nobody had begun). The deal places a
 friend's card `ready` on her row whatever her lanes, with no `taken` stamp and

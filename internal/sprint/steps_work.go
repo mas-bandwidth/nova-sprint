@@ -1556,6 +1556,7 @@ func Take(s *Snapshot, r TakeReq) Plan {
 		one := takeOne(s, q)
 		p.Units = append(p.Units, one.Units...)
 		p.Refused = append(p.Refused, one.Refused...)
+		p.Said = append(p.Said, one.Said...)
 	}
 	return p
 }
@@ -1693,6 +1694,30 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		// stream turns, then work order (rank) — never the order they were dealt in
 		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
 	}
+	// A friend's take by count never moves an unstarted card (docs/SPEC-SPRINT.md
+	// section 1, a friend's card is working once she starts it; tla/FriendReadyTake.tla
+	// Take, WorkingIsStarted): on her row, a take by count (no lane, not by id) moves
+	// only a card she has started by the tick's own read (friendStarted), stamped as
+	// her start below (friendStartSet), so the tick leaves it working; every other
+	// ready card stays ready, named once on a NOTE line (Said), with no unit. Fleet
+	// rows, a lane's take and a take by id are unchanged. The width and budget
+	// guards below still apply to the started cards.
+	friendByCount := false
+	if friend, ok := FriendOfRow(r.As); ok && !byID && r.Lane == 0 {
+		friendByCount = true
+		if i := slices.IndexFunc(s.Friends, func(x FriendSeat) bool { return x.Name == friend }); i >= 0 {
+			seat := s.Friends[i]
+			var started []*Card
+			for _, c := range ready {
+				if friendStarted(s, seat, c) {
+					started = append(started, c)
+				} else {
+					p.Said = append(p.Said, fmt.Sprintf("%s: stays ready on %s's row until her start (a take by count is no start)", c.ID, r.As))
+				}
+			}
+			ready = started
+		}
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
@@ -1758,7 +1783,11 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	for _, c := range chosen {
 		set, unset := takenStamps(c, s.Now), []string{"untaken_since"}
 		if friend, ok := FriendOfRow(r.As); ok {
-			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			if friendByCount {
+				set, unset = friendStartSet(s, c, friend) // her start, as friendStartUnits stamps it
+			} else {
+				set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			}
 		}
 		if r.Lane == 0 {
 			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)
