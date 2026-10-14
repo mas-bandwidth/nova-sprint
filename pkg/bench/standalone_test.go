@@ -3,104 +3,67 @@ package bench
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/fsx"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// runLine runs a remote line with sh, as the bench's ssh shell does.
-func runLine(t *testing.T, line string) (string, int) {
-	t.Helper()
-	var out bytes.Buffer
-	cmd := exec.Command("sh", "-c", line)
-	cmd.Stdout, cmd.Stderr = &out, &out
-	err := cmd.Run()
-	if ee, ok := err.(*exec.ExitError); ok {
-		return out.String(), ee.ExitCode()
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out.String(), 0
-}
-
 func TestStandaloneLineAcceptsACloneDirectory(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "repo")
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if out, code := runLine(t, StandaloneLine(dir)); code != 0 {
-		t.Fatalf("a tree with a .git directory: exit %d\n%s", code, out)
-	}
+	t.Parallel()
+	dir := fsx.Tree(t, map[string]string{".git/objects/keep": ""})
+	out, code := runLineIn(t, StandaloneLine(dir), nil)
+	assert.Equal(t, 0, code, "a tree with a .git directory:\n%s", out)
 }
 
 func TestStandaloneLineRefusesAWorktreePointerAtAPathTheHostLacks(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "repo")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
 	gone := "/Volumes/nova/ai/rowan/working/clone/.git/worktrees/x"
-	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+gone+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, code := runLine(t, StandaloneLine(dir))
-	if code != NotStandalone {
-		t.Fatalf("exit %d, want %d\n%s", code, NotStandalone, out)
-	}
+	dir := fsx.Tree(t, map[string]string{".git": "gitdir: " + gone + "\n"})
+	out, code := runLineIn(t, StandaloneLine(dir), nil)
+	require.Equal(t, NotStandalone, code, "refusal exit:\n%s", out)
 	for _, want := range []string{"is not standalone", gone, "does not exist on this host", "clone made on the bench"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("the refusal does not say %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
 func TestStandaloneLineRefusesAWorktreePointerAtAPathThatExists(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, "repo")
 	other := filepath.Join(root, "mirror", "worktrees", "x")
-	for _, d := range []string{dir, other} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+other+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, code := runLine(t, StandaloneLine(dir))
-	if code != NotStandalone || strings.Contains(out, "does not exist") {
-		t.Fatalf("a worktree pointer at an existing path: exit %d\n%s", code, out)
-	}
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	fsx.Write(t, filepath.Join(dir, ".git"), "gitdir: "+other+"\n")
+	out, code := runLineIn(t, StandaloneLine(dir), nil)
+	require.Equal(t, NotStandalone, code, "a worktree pointer at an existing path:\n%s", out)
+	assert.NotContains(t, out, "does not exist")
 }
 
 func TestStandaloneLineRefusesATreeWithNoGit(t *testing.T) {
-	dir := t.TempDir()
-	out, code := runLine(t, StandaloneLine(dir))
-	if code != NotStandalone || !strings.Contains(out, "has no .git directory") {
-		t.Fatalf("exit %d\n%s", code, out)
-	}
+	t.Parallel()
+	out, code := runLineIn(t, StandaloneLine(t.TempDir()), nil)
+	require.Equal(t, NotStandalone, code, "exit:\n%s", out)
+	assert.Contains(t, out, "has no .git directory")
 }
 
 func TestStageLineEndsWithTheStandaloneCheck(t *testing.T) {
+	t.Parallel()
 	s := MirrorStage{Mirror: "nova-bench/mirror/x.git", Remote: "https://example.invalid/x.git", Ref: GateRef("s", strings.Repeat("a", 40)), Sha: strings.Repeat("a", 40)}
 	line := StageLine(s, "nova-bench/runs/r/repo")
-	if !strings.HasSuffix(line, StandaloneLine("nova-bench/runs/r/repo")+"; }") {
-		t.Fatalf("the stage line does not end with the standalone check:\n%s", line)
-	}
+	assert.True(t, strings.HasSuffix(line, StandaloneLine("nova-bench/runs/r/repo")+"; }"),
+		"the stage line does not end with the standalone check:\n%s", line)
 }
 
 func TestWriteTreeRefusesAWorktreeGitFileWithGit(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /Volumes/nova/x/.git/worktrees/y\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	dir := fsx.Tree(t, map[string]string{".git": "gitdir: /Volumes/nova/x/.git/worktrees/y\n"})
 	var b bytes.Buffer
 	err := WriteTree(&b, dir, true)
-	if err == nil || !strings.Contains(err.Error(), "clone made on the bench") {
-		t.Fatalf("WriteTree with git of a worktree: %v", err)
-	}
+	require.Error(t, err, "WriteTree with git of a worktree")
+	assert.Contains(t, err.Error(), "clone made on the bench")
 	b.Reset()
-	if err := WriteTree(&b, dir, false); err != nil {
-		t.Fatalf("a worktree's .git left out is fine: %v", err)
-	}
+	require.NoError(t, WriteTree(&b, dir, false), "a worktree's .git left out is fine")
 }

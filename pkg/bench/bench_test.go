@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // benchCall is one call a run made through a fakeTransport.
@@ -96,53 +99,38 @@ func TestRunMakesCopiesRunsAndRemovesInOrder(t *testing.T) {
 	ft := &fakeTransport{shell: answerRun(0, 0, 0)}
 	o := runOptions(t, argv...)
 	res, err := Run(context.Background(), ft, o)
-	if err != nil {
-		t.Fatalf("a run that answers: %v", err)
-	}
-	if res.Host != "bench1" || res.RunDir != testRunDir {
-		t.Fatalf("run on %q in %q, want bench1 in %q", res.Host, res.RunDir, testRunDir)
-	}
-	if res.Code != 0 || !res.Removed || res.RemoveErr != nil {
-		t.Fatalf("code=%d removed=%v removeErr=%v, want 0, true, nil", res.Code, res.Removed, res.RemoveErr)
-	}
-	if res.Stage.Via != "tar" || res.Stage.Err != nil {
-		t.Fatalf("stage=%+v, want a tar stage with no error", res.Stage)
-	}
+	require.NoError(t, err, "a run that answers")
+	assert.Equal(t, "bench1", res.Host)
+	assert.Equal(t, testRunDir, res.RunDir)
+	assert.Equal(t, 0, res.Code)
+	assert.True(t, res.Removed)
+	assert.NoError(t, res.RemoveErr)
+	assert.Equal(t, "tar", res.Stage.Via)
+	assert.Nil(t, res.Stage.Err)
 	got := ft.snapshot()
-	if len(got) != 4 {
-		t.Fatalf("%d transport calls, want 4 (make, copy, exec, remove): %+v", len(got), got)
-	}
-	if got[0].op != "shell" || got[0].line != MakeLine(DefaultRoot) {
-		t.Fatalf("call 0 = %+v, want the make line %q", got[0], MakeLine(DefaultRoot))
-	}
-	if got[1].op != "copy" || got[1].src != o.Dir || got[1].dst != testRunDir+"/repo" || got[1].withGit {
-		t.Fatalf("call 1 = %+v, want the copy of %q into %q without .git", got[1], o.Dir, testRunDir+"/repo")
-	}
-	if got[2].op != "shell" || got[2].line != ExecLine(testRunDir, DefaultCache, argv) {
-		t.Fatalf("call 2 = %+v, want the exec line %q", got[2], ExecLine(testRunDir, DefaultCache, argv))
-	}
-	if got[3].op != "shell" || got[3].line != RemoveLine(testRunDir) {
-		t.Fatalf("call 3 = %+v, want the remove line %q", got[3], RemoveLine(testRunDir))
-	}
+	require.Len(t, got, 4, "make, copy, exec, remove")
+	assert.Equal(t, "shell", got[0].op)
+	assert.Equal(t, MakeLine(DefaultRoot), got[0].line)
+	assert.Equal(t, "copy", got[1].op)
+	assert.Equal(t, o.Dir, got[1].src)
+	assert.Equal(t, testRunDir+"/repo", got[1].dst)
+	assert.False(t, got[1].withGit)
+	assert.Equal(t, "shell", got[2].op)
+	assert.Equal(t, ExecLine(testRunDir, DefaultCache, argv), got[2].line)
+	assert.Equal(t, "shell", got[3].op)
+	assert.Equal(t, RemoveLine(testRunDir), got[3].line)
 }
 
 func TestRunRemovesTheRunDirectoryWhenTheCommandFails(t *testing.T) {
 	t.Parallel()
 	ft := &fakeTransport{shell: answerRun(0, 7, 0)}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err != nil {
-		t.Fatalf("a command that ran and failed is not a run error: %v", err)
-	}
-	if res.Code != 7 {
-		t.Fatalf("code %d, want the command's exit 7", res.Code)
-	}
-	if !res.Removed || res.RemoveErr != nil {
-		t.Fatalf("removed=%v removeErr=%v, want the directory removed", res.Removed, res.RemoveErr)
-	}
+	require.NoError(t, err, "a command that ran and failed is not a run error")
+	assert.Equal(t, 7, res.Code, "the command's exit")
+	assert.True(t, res.Removed)
+	assert.NoError(t, res.RemoveErr)
 	last := ft.snapshot()
-	if last[len(last)-1].line != RemoveLine(testRunDir) {
-		t.Fatalf("the last call %+v is not the remove of the run directory", last[len(last)-1])
-	}
+	assert.Equal(t, RemoveLine(testRunDir), last[len(last)-1].line, "the last call is the remove of the run directory")
 }
 
 func TestRunRemovesTheRunDirectoryWhenStagingFails(t *testing.T) {
@@ -154,16 +142,12 @@ func TestRunRemovesTheRunDirectoryWhenStagingFails(t *testing.T) {
 		},
 	}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err == nil || res.Stage.Err == nil {
-		t.Fatalf("a stage that refused: err=%v stage=%+v", err, res.Stage)
-	}
-	if !res.Removed {
-		t.Fatalf("the run directory was left behind after a failed stage")
-	}
+	assert.Error(t, err, "a stage that refused")
+	assert.NotNil(t, res.Stage.Err)
+	assert.True(t, res.Removed, "the run directory was left behind after a failed stage")
 	for _, c := range ft.snapshot() {
-		if c.op == "shell" && strings.Contains(c.line, "nice -n ") {
-			t.Fatalf("the command ran although the stage refused: %q", c.line)
-		}
+		assert.False(t, c.op == "shell" && strings.Contains(c.line, "nice -n "),
+			"the command ran although the stage refused: %q", c.line)
 	}
 }
 
@@ -184,16 +168,11 @@ func TestRunRemovesTheRunDirectoryWhenTheContextIsCancelledMidRun(t *testing.T) 
 		}
 	}}
 	res, err := Run(ctx, ft, runOptions(t))
-	if err == nil {
-		t.Fatalf("a cancelled run is an error")
-	}
-	if !res.Removed || res.RemoveErr != nil {
-		t.Fatalf("removed=%v removeErr=%v, want the directory removed even though the run was cancelled", res.Removed, res.RemoveErr)
-	}
+	assert.Error(t, err, "a cancelled run is an error")
+	assert.True(t, res.Removed)
+	assert.NoError(t, res.RemoveErr)
 	last := ft.snapshot()
-	if last[len(last)-1].line != RemoveLine(testRunDir) {
-		t.Fatalf("the last call %+v is not the remove of the run directory", last[len(last)-1])
-	}
+	assert.Equal(t, RemoveLine(testRunDir), last[len(last)-1].line, "the last call is the remove of the run directory")
 }
 
 func TestRunRemovesTheRunDirectoryWhenTheExecTransportErrors(t *testing.T) {
@@ -210,30 +189,21 @@ func TestRunRemovesTheRunDirectoryWhenTheExecTransportErrors(t *testing.T) {
 		}
 	}}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err == nil || !strings.Contains(err.Error(), "starting the command") {
-		t.Fatalf("a transport that could not start the command: %v", err)
-	}
-	if !res.Removed || res.RemoveErr != nil {
-		t.Fatalf("removed=%v removeErr=%v, want the directory removed anyway", res.Removed, res.RemoveErr)
-	}
+	require.Error(t, err, "a transport that could not start the command")
+	assert.Contains(t, err.Error(), "starting the command")
+	assert.True(t, res.Removed)
+	assert.NoError(t, res.RemoveErr)
 }
 
 func TestRunReportsARemoveFailureWithoutLosingTheExitCode(t *testing.T) {
 	t.Parallel()
 	ft := &fakeTransport{shell: answerRun(0, 7, 1)}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err != nil {
-		t.Fatalf("a failed remove is reported in Result, not as a run error: %v", err)
-	}
-	if res.Code != 7 {
-		t.Fatalf("code %d, want the command's exit 7 kept although remove failed", res.Code)
-	}
-	if res.Removed || res.RemoveErr == nil {
-		t.Fatalf("removed=%v removeErr=%v, want the remove failure reported", res.Removed, res.RemoveErr)
-	}
-	if !strings.Contains(res.RemoveErr.Error(), "rm exit 1") {
-		t.Fatalf("removeErr %q does not name the rm exit", res.RemoveErr)
-	}
+	require.NoError(t, err, "a failed remove is reported in Result, not as a run error")
+	assert.Equal(t, 7, res.Code, "the command's exit kept although remove failed")
+	assert.False(t, res.Removed)
+	require.Error(t, res.RemoveErr)
+	assert.Contains(t, res.RemoveErr.Error(), "rm exit 1")
 }
 
 func TestRunFallsBackWhenAHostDoesNotAnswer(t *testing.T) {
@@ -256,15 +226,10 @@ func TestRunFallsBackWhenAHostDoesNotAnswer(t *testing.T) {
 	o.Hosts = []string{"dead", "bench1"}
 	o.Notes = &notes
 	res, err := Run(context.Background(), ft, o)
-	if err != nil {
-		t.Fatalf("the fallback answered: %v", err)
-	}
-	if res.Host != "bench1" {
-		t.Fatalf("the run was on %q, want the fallback bench1", res.Host)
-	}
-	if !strings.Contains(notes.String(), "CI BENCH PASSED host=dead") || !strings.Contains(notes.String(), "next=bench1") {
-		t.Fatalf("the notes do not say the first host was passed over: %q", notes.String())
-	}
+	require.NoError(t, err, "the fallback answered")
+	assert.Equal(t, "bench1", res.Host, "the fallback bench")
+	assert.Contains(t, notes.String(), "CI BENCH PASSED host=dead")
+	assert.Contains(t, notes.String(), "next=bench1")
 }
 
 func TestRunDoesNotFallBackWhenAHostAnswersAndRefuses(t *testing.T) {
@@ -279,13 +244,10 @@ func TestRunDoesNotFallBackWhenAHostAnswersAndRefuses(t *testing.T) {
 	o := runOptions(t)
 	o.Hosts = []string{"refuser", "bench1"}
 	_, err := Run(context.Background(), ft, o)
-	if err == nil || !strings.Contains(err.Error(), "making the run directory") {
-		t.Fatalf("a host that answered and refused is the end of the run: %v", err)
-	}
+	require.Error(t, err, "a host that answered and refused is the end of the run")
+	assert.Contains(t, err.Error(), "making the run directory")
 	for _, c := range ft.snapshot() {
-		if c.host == "bench1" {
-			t.Fatalf("the run fell back to bench1 after a refusal: %+v", c)
-		}
+		assert.NotEqual(t, "bench1", c.host, "the run fell back after a refusal: %+v", c)
 	}
 }
 
@@ -299,23 +261,16 @@ func TestRunReturnsErrNoBenchWhenNoHostAnswers(t *testing.T) {
 	o.Hosts = []string{"dead1", "dead2"}
 	o.Notes = &notes
 	_, err := Run(context.Background(), ft, o)
-	if !errors.Is(err, ErrNoBench) {
-		t.Fatalf("err %v, want it to wrap ErrNoBench", err)
-	}
-	if !strings.Contains(notes.String(), "next=dead2") {
-		t.Fatalf("the notes do not name the next host: %q", notes.String())
-	}
+	assert.ErrorIs(t, err, ErrNoBench)
+	assert.Contains(t, notes.String(), "next=dead2")
 }
 
 func TestRunValidatesBeforeItReachesTheTransport(t *testing.T) {
 	t.Parallel()
 	ft := &fakeTransport{}
-	if _, err := Run(context.Background(), ft, Options{}); err == nil {
-		t.Fatalf("an empty Options passed validation")
-	}
-	if len(ft.snapshot()) != 0 {
-		t.Fatalf("the transport was reached before validation: %+v", ft.snapshot())
-	}
+	_, err := Run(context.Background(), ft, Options{})
+	assert.Error(t, err, "an empty Options passed validation")
+	assert.Empty(t, ft.snapshot(), "the transport was reached before validation")
 }
 
 func TestValidateRefusesEachMissingOrMalformedField(t *testing.T) {
@@ -338,9 +293,8 @@ func TestValidateRefusesEachMissingOrMalformedField(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := tc.o.Validate()
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Validate() = %v, want it to contain %q", err, tc.want)
-			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
 }
@@ -349,60 +303,40 @@ func TestValidateRefusesAStageInsteadOfTheLocalTree(t *testing.T) {
 	t.Parallel()
 	o := Options{Hosts: []string{"b"}, Stage: &MirrorStage{}, Argv: []string{"true"}}
 	err := o.Validate()
-	if err == nil || strings.Contains(err.Error(), "no local tree named") {
-		t.Fatalf("a stage in place of Dir: %v", err)
-	}
-	if !strings.Contains(err.Error(), "mirror") {
-		t.Fatalf("the stage's own refusal is not in %v", err)
-	}
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "no local tree named", "a stage in place of Dir")
+	assert.Contains(t, err.Error(), "mirror", "the stage's own refusal")
 }
 
 func TestValidateFillsTheDefaultsAndTrimsTheRoot(t *testing.T) {
 	t.Parallel()
 	o := Options{Hosts: []string{"b"}, Root: "nova-bench/runs/", Dir: "/tmp/x", Argv: []string{"true"}}
-	if err := o.Validate(); err != nil {
-		t.Fatalf("defaults: %v", err)
-	}
-	if o.Root != "nova-bench/runs" {
-		t.Fatalf("root %q, want the trailing slash trimmed", o.Root)
-	}
-	if o.Cache != DefaultCache {
-		t.Fatalf("cache %q, want the default %q", o.Cache, DefaultCache)
-	}
+	require.NoError(t, o.Validate(), "defaults")
+	assert.Equal(t, "nova-bench/runs", o.Root, "the trailing slash trimmed")
+	assert.Equal(t, DefaultCache, o.Cache)
 	empty := Options{Hosts: []string{"b"}, Dir: "/tmp/x", Argv: []string{"true"}}
-	if err := empty.Validate(); err != nil {
-		t.Fatalf("empty root and cache: %v", err)
-	}
-	if empty.Root != DefaultRoot || empty.Cache != DefaultCache {
-		t.Fatalf("root=%q cache=%q, want the defaults", empty.Root, empty.Cache)
-	}
+	require.NoError(t, empty.Validate(), "empty root and cache")
+	assert.Equal(t, DefaultRoot, empty.Root)
+	assert.Equal(t, DefaultCache, empty.Cache)
 }
 
 func TestCheckHostRefusesNamesSSHWouldReadAsMoreThanAHost(t *testing.T) {
 	t.Parallel()
 	for _, h := range []string{"", "-oProxyCommand=x", "h;rm", "h x", "h\nx", "h`x`", "$h"} {
-		if err := CheckHost(h); err == nil {
-			t.Fatalf("CheckHost(%q) accepted a host ssh would misread", h)
-		}
+		assert.Error(t, CheckHost(h), "CheckHost(%q) accepted a host ssh would misread", h)
 	}
 	for _, h := range []string{"hetzner2", "b1", "user@host", "host.example", "A1", "h-ost"} {
-		if err := CheckHost(h); err != nil {
-			t.Fatalf("CheckHost(%q) refused a plain host: %v", h, err)
-		}
+		assert.NoError(t, CheckHost(h), "CheckHost(%q) refused a plain host", h)
 	}
 }
 
 func TestCheckPathRefusesAPathTheRemoteShellWouldReadDifferently(t *testing.T) {
 	t.Parallel()
 	for _, p := range []string{"", ".", "/", "..", "../x", "a/../b", "~/x", "a b", "a'b", "a\nb", "a`b`", "$x"} {
-		if err := CheckPath("root", p); err == nil {
-			t.Fatalf("CheckPath(%q) accepted a path the remote shell would misread", p)
-		}
+		assert.Error(t, CheckPath("root", p), "CheckPath(%q) accepted a path the remote shell would misread", p)
 	}
 	for _, p := range []string{"nova-bench/runs", "/home/nova/x", "a/b-c_d/e", "x.git"} {
-		if err := CheckPath("root", p); err != nil {
-			t.Fatalf("CheckPath(%q) refused a plain path: %v", p, err)
-		}
+		assert.NoError(t, CheckPath("root", p), "CheckPath(%q) refused a plain path", p)
 	}
 }
 
@@ -410,15 +344,15 @@ func TestMakeRunDirAcceptsAFreshRunDirectoryUnderTheRoot(t *testing.T) {
 	t.Parallel()
 	ft := &fakeTransport{shell: func(c context.Context, host, line string, stdout, stderr io.Writer) (int, error) {
 		if line != MakeLine(DefaultRoot) {
-			t.Fatalf("makeRunDir ran %q, want the make line", line)
+			assert.Failf(t, "makeRunDir ran the wrong line", "ran %q, want the make line", line)
 		}
 		io.WriteString(stdout, testRunDir+"\n")
 		return 0, nil
 	}}
 	dir, answered, err := makeRunDir(context.Background(), ft, "bench1", DefaultRoot)
-	if err != nil || !answered || dir != testRunDir {
-		t.Fatalf("dir=%q answered=%v err=%v, want %q, true, nil", dir, answered, err, testRunDir)
-	}
+	require.NoError(t, err)
+	assert.True(t, answered)
+	assert.Equal(t, testRunDir, dir)
 }
 
 func TestMakeRunDirTreatsANoAnswerAsNotAnswered(t *testing.T) {
@@ -428,12 +362,11 @@ func TestMakeRunDirTreatsANoAnswerAsNotAnswered(t *testing.T) {
 		return NoAnswer, nil
 	}}
 	dir, answered, err := makeRunDir(context.Background(), ft, "bench1", DefaultRoot)
-	if answered || dir != "" || err == nil {
-		t.Fatalf("dir=%q answered=%v err=%v, want not answered with the ssh refusal", dir, answered, err)
-	}
-	if !strings.Contains(err.Error(), "ssh exit 255") || !strings.Contains(err.Error(), "Connection refused") {
-		t.Fatalf("the no-answer error does not name the ssh exit and its stderr: %v", err)
-	}
+	assert.False(t, answered)
+	assert.Empty(t, dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ssh exit 255")
+	assert.Contains(t, err.Error(), "Connection refused")
 }
 
 func TestMakeRunDirReportsARefusedMakeStepAsAnswered(t *testing.T) {
@@ -443,12 +376,10 @@ func TestMakeRunDirReportsARefusedMakeStepAsAnswered(t *testing.T) {
 		return 1, nil
 	}}
 	_, answered, err := makeRunDir(context.Background(), ft, "bench1", DefaultRoot)
-	if !answered || err == nil {
-		t.Fatalf("answered=%v err=%v, want an answering host that refused", answered, err)
-	}
-	if !strings.Contains(err.Error(), "making the run directory under") || !strings.Contains(err.Error(), "Permission denied") {
-		t.Fatalf("the refusal does not name the step and its stderr: %v", err)
-	}
+	assert.True(t, answered, "an answering host that refused")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "making the run directory under")
+	assert.Contains(t, err.Error(), "Permission denied")
 }
 
 func TestMakeRunDirRefusesOutputThatIsNotARunDirectory(t *testing.T) {
@@ -462,12 +393,10 @@ func TestMakeRunDirRefusesOutputThatIsNotARunDirectory(t *testing.T) {
 				return 0, nil
 			}}
 			dir, answered, err := makeRunDir(context.Background(), ft, "bench1", DefaultRoot)
-			if !answered || dir != "" || err == nil {
-				t.Fatalf("mktemp output %q: dir=%q answered=%v err=%v", out, dir, answered, err)
-			}
-			if !strings.Contains(err.Error(), "not a run directory") {
-				t.Fatalf("the refusal of %q does not say so: %v", out, err)
-			}
+			assert.True(t, answered)
+			assert.Empty(t, dir)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "not a run directory")
 		})
 	}
 }
@@ -478,51 +407,36 @@ func TestMakeRunDirReportsATransportThatCannotStart(t *testing.T) {
 		return -1, errors.New("exec: ssh: executable file not found")
 	}}
 	_, answered, err := makeRunDir(context.Background(), ft, "bench1", DefaultRoot)
-	if answered || err == nil {
-		t.Fatalf("answered=%v err=%v, want a transport that could not start", answered, err)
-	}
+	assert.False(t, answered)
+	assert.Error(t, err, "a transport that could not start")
 }
 
 func TestMakeLineMakesUnderARootTheShellReadsVerbatim(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join(t.TempDir(), "a b'c\nd")
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	out, code := runLine(t, MakeLine(root))
-	if code != 0 {
-		t.Fatalf("MakeLine with a space, a quote and a newline: exit %d\n%s", code, out)
-	}
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	out, code := runLineIn(t, MakeLine(root), nil)
+	require.Equal(t, 0, code, "MakeLine with a space, a quote and a newline:\n%s", out)
 	dir := strings.TrimSpace(out)
-	if !strings.HasPrefix(dir, root+"/run.") {
-		t.Fatalf("mktemp made %q, not a run directory under %q", dir, root)
-	}
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		t.Fatalf("mktemp printed %q but it is not a directory: %v", dir, err)
-	}
+	assert.True(t, strings.HasPrefix(dir, root+"/run."), "mktemp made %q, not a run directory under %q", dir, root)
+	fi, err := os.Stat(dir)
+	require.NoError(t, err, "mktemp printed %q but it is not a directory", dir)
+	assert.True(t, fi.IsDir())
 }
 
 func TestRemoveLineRemovesExactlyTheQuotedPath(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
 	p := filepath.Join(base, "x y'z\nw")
-	if err := os.MkdirAll(p, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(p, 0o755))
 	keep := filepath.Join(base, "keep")
-	if err := os.MkdirAll(keep, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	out, code := runLine(t, RemoveLine(p))
-	if code != 0 {
-		t.Fatalf("RemoveLine with a space, a quote and a newline: exit %d\n%s", code, out)
-	}
-	if _, err := os.Stat(p); !os.IsNotExist(err) {
-		t.Fatalf("the path with a space, a quote and a newline is not removed: %v", err)
-	}
-	if _, err := os.Stat(keep); err != nil {
-		t.Fatalf("RemoveLine removed a sibling: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(keep, 0o755))
+	out, code := runLineIn(t, RemoveLine(p), nil)
+	require.Equal(t, 0, code, "RemoveLine with a space, a quote and a newline:\n%s", out)
+	_, err := os.Stat(p)
+	assert.True(t, os.IsNotExist(err), "the path with a space, a quote and a newline is not removed: %v", err)
+	_, err = os.Stat(keep)
+	assert.NoError(t, err, "RemoveLine removed a sibling")
 }
 
 func TestExecLineRunsInTheQuotedDirectory(t *testing.T) {
@@ -530,44 +444,29 @@ func TestExecLineRunsInTheQuotedDirectory(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "x y'z\nw")
 	repo := filepath.Join(dir, "repo")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "marker"), []byte("here"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, code := runLine(t, ExecLine(dir, "/cache", []string{"cat", "marker"}))
-	if code != 0 {
-		t.Fatalf("ExecLine with a space, a quote and a newline: exit %d\n%s", code, out)
-	}
-	if out != "here" {
-		t.Fatalf("the command did not run in the named repo: %q", out)
-	}
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "marker"), []byte("here"), 0o644))
+	out, code := runLineIn(t, ExecLine(dir, "/cache", []string{"cat", "marker"}), nil)
+	require.Equal(t, 0, code, "ExecLine with a space, a quote and a newline:\n%s", out)
+	assert.Equal(t, "here", out, "the command did not run in the named repo")
 }
 
 func TestExecLineQuotesTheCache(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
 	dir := filepath.Join(base, "work")
-	if err := os.MkdirAll(filepath.Join(dir, "repo"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "repo"), 0o755))
 	cache := filepath.Join(base, "c he'q\nche")
-	out, code := runLine(t, ExecLine(dir, cache, []string{"sh", "-c", `printf '%s' "$GOCACHE"`}))
-	if code != 0 {
-		t.Fatalf("ExecLine with a cache holding a space, a quote and a newline: exit %d\n%s", code, out)
-	}
-	if out != cache {
-		t.Fatalf("GOCACHE was %q, want %q", out, cache)
-	}
+	out, code := runLineIn(t, ExecLine(dir, cache, []string{"sh", "-c", `printf '%s' "$GOCACHE"`}), nil)
+	require.Equal(t, 0, code, "ExecLine with a cache holding a space, a quote and a newline:\n%s", out)
+	assert.Equal(t, cache, out)
 }
 
 func TestExecLineAnchorsARelativeCacheAtHome(t *testing.T) {
 	t.Parallel()
 	line := ExecLine("dir", "nova-bench/cache/go-build", []string{"true"})
-	if !strings.Contains(line, `GOCACHE="$HOME"/`+Quote("nova-bench/cache/go-build")) {
-		t.Fatalf("a relative cache is not anchored at the login's home:\n%s", line)
-	}
+	assert.Contains(t, line, `GOCACHE="$HOME"/`+Quote("nova-bench/cache/go-build"),
+		"a relative cache is not anchored at the login's home:\n%s", line)
 }
 
 func TestQuoteRoundTripsThroughSh(t *testing.T) {
@@ -576,10 +475,9 @@ func TestQuoteRoundTripsThroughSh(t *testing.T) {
 		s := s
 		t.Run(s, func(t *testing.T) {
 			t.Parallel()
-			out, code := runLine(t, "printf '%s' "+Quote(s))
-			if code != 0 || out != s {
-				t.Fatalf("Quote(%q) through sh: exit %d out %q", s, code, out)
-			}
+			out, code := runLineIn(t, "printf '%s' "+Quote(s), nil)
+			assert.Equal(t, 0, code, "Quote(%q) through sh: exit %d out %q", s, code, out)
+			assert.Equal(t, s, out)
 		})
 	}
 }
@@ -601,22 +499,15 @@ func TestRunStagesFromTheBenchMirrorInPlaceOfTheCopy(t *testing.T) {
 	var staged []Stage
 	o.Staged = func(s Stage) { staged = append(staged, s) }
 	res, err := Run(context.Background(), ft, o)
-	if err != nil {
-		t.Fatalf("a mirror stage that answered: %v", err)
-	}
-	if res.Stage.Via != "mirror" || res.Stage.Err != nil {
-		t.Fatalf("stage=%+v, want a mirror stage with no error", res.Stage)
-	}
-	if want := int64(len(StageLine(*o.Stage, testRunDir+"/repo"))); res.Stage.Bytes != want {
-		t.Fatalf("stage bytes %d, want the line's %d", res.Stage.Bytes, want)
-	}
-	if len(staged) != 1 || staged[0].Via != "mirror" {
-		t.Fatalf("the run told Staged %+v, want the mirror stage once", staged)
-	}
+	require.NoError(t, err, "a mirror stage that answered")
+	assert.Equal(t, "mirror", res.Stage.Via)
+	assert.Nil(t, res.Stage.Err)
+	assert.Equal(t, int64(len(StageLine(*o.Stage, testRunDir+"/repo"))), res.Stage.Bytes, "the line's bytes")
+	require.Len(t, staged, 1, "the run told Staged the mirror stage once")
+	assert.Equal(t, "mirror", staged[0].Via)
 	got := ft.snapshot()
-	if len(got) < 2 || got[1].line != StageLine(*o.Stage, testRunDir+"/repo") {
-		t.Fatalf("the stage call %+v is not the mirror's line", got)
-	}
+	require.GreaterOrEqual(t, len(got), 2)
+	assert.Equal(t, StageLine(*o.Stage, testRunDir+"/repo"), got[1].line, "the stage call is the mirror's line")
 }
 
 func TestRunRemovesTheRunDirectoryWhenTheMirrorStageRefuses(t *testing.T) {
@@ -624,18 +515,11 @@ func TestRunRemovesTheRunDirectoryWhenTheMirrorStageRefuses(t *testing.T) {
 	ft := &fakeTransport{shell: answerRun(NoMirror, 0, 0)}
 	o := Options{Hosts: []string{"bench1"}, Stage: testMirrorStage(), Argv: []string{"true"}}
 	res, err := Run(context.Background(), ft, o)
-	if err == nil || res.Stage.Err == nil {
-		t.Fatalf("a mirror stage that refused: err=%v stage=%+v", err, res.Stage)
-	}
-	if res.Stage.Err.Code != NoMirror {
-		t.Fatalf("stage refusal code %d, want %d", res.Stage.Err.Code, NoMirror)
-	}
-	if line := res.Stage.Line(); !strings.Contains(line, "copy refused") {
-		t.Fatalf("the stage line %q does not say the copy was refused", line)
-	}
-	if !res.Removed {
-		t.Fatalf("the run directory was left behind after a refused mirror stage")
-	}
+	assert.Error(t, err, "a mirror stage that refused")
+	require.NotNil(t, res.Stage.Err)
+	assert.Equal(t, NoMirror, res.Stage.Err.Code)
+	assert.Contains(t, res.Stage.Line(), "copy refused")
+	assert.True(t, res.Removed, "the run directory was left behind after a refused mirror stage")
 }
 
 func TestRunReportsARemoveTransportError(t *testing.T) {
@@ -652,12 +536,9 @@ func TestRunReportsARemoveTransportError(t *testing.T) {
 		}
 	}}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err != nil {
-		t.Fatalf("a remove transport error is reported in Result, not as a run error: %v", err)
-	}
-	if res.Removed || res.RemoveErr == nil {
-		t.Fatalf("removed=%v removeErr=%v, want the remove error reported", res.Removed, res.RemoveErr)
-	}
+	require.NoError(t, err, "a remove transport error is reported in Result, not as a run error")
+	assert.False(t, res.Removed)
+	assert.Error(t, res.RemoveErr, "the remove error reported")
 }
 
 // sizedFake is a Transport whose copy says how many bytes crossed the wire.
@@ -675,12 +556,9 @@ func TestRunReportsTheByteCountOfASizedCopy(t *testing.T) {
 	t.Parallel()
 	ft := &sizedFake{fakeTransport: fakeTransport{shell: answerRun(0, 0, 0)}, n: 4096}
 	res, err := Run(context.Background(), ft, runOptions(t))
-	if err != nil {
-		t.Fatalf("a sized copy that answered: %v", err)
-	}
-	if res.Stage.Bytes != 4096 || res.Stage.Via != "tar" {
-		t.Fatalf("stage=%+v, want 4096 bytes over tar", res.Stage)
-	}
+	require.NoError(t, err, "a sized copy that answered")
+	assert.Equal(t, int64(4096), res.Stage.Bytes)
+	assert.Equal(t, "tar", res.Stage.Via)
 }
 
 func TestLastLineTakesTheLastNonBlankLine(t *testing.T) {
@@ -695,8 +573,6 @@ func TestLastLineTakesTheLastNonBlankLine(t *testing.T) {
 		{"a\nb\r\n", "b"},
 	}
 	for _, tc := range cases {
-		if got := lastLine(tc.in); got != tc.want {
-			t.Fatalf("lastLine(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, lastLine(tc.in), "lastLine(%q)", tc.in)
 	}
 }
