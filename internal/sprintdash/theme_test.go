@@ -14,10 +14,10 @@ func TestPageHasNoThemeToggleAndStaysDark(t *testing.T) {
 	html := string(file("index.html"))
 	app := string(file("app.js"))
 	assert.NotContains(t, html, `id="theme"`, "index.html has a theme toggle button")
-	assert.NotContains(t, html, `id="theme"`, "unused light CSS never exposes a theme switch")
 	assert.Contains(t, html, `<html lang="en" data-theme="dark">`, "the html element stays dark")
 	assert.NotContains(t, app, "sprint-theme", "app.js still stores a theme")
 	assert.NotContains(t, app, `$("theme")`, "app.js still binds the toggle button")
+	assert.NotContains(t, app, "syncThemeButton", "app.js must not carry syncThemeButton")
 	assert.Contains(t, html, `removeItem("sprint-theme")`, "the inline script clears a stored theme")
 	assert.NotContains(t, html, `getItem("sprint-theme")`, "panel folds may persist, but theme never restores")
 }

@@ -100,9 +100,7 @@ func countingGitHub() (github, *atomic.Int64) {
 func TestTheToolMeetsTheStandard(t *testing.T) {
 	t.Parallel()
 	// .Problems() is the class test's marker (docs/SPEC-CI.md tool-standard).
-	// The method is not on this tree, so the banner's what line is what this
-	// test holds.
-	assert.NotEmpty(t, workTool(realGitHub()).What)
+	assert.Empty(t, workTool(realGitHub()).Problems())
 }
 
 // TestVerifyDefaultMaxBytesIsAMemoryBoundNotJustAByteBound pins the verify
