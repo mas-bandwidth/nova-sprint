@@ -9,7 +9,7 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional functional-gate release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate release-accept help map roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -20,6 +20,7 @@ help:
 	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint (its rest leg)"
 	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
+	@echo "make map        regenerate AGENTS.md from the tree"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
@@ -80,6 +81,9 @@ functional-gate-shard:
 # two. NOVA_SPRINT_BIN names the build the canary runs; unset, this tree's is built.
 release-accept:
 	GO=$(GO) NOVA_SPRINT_BIN=$(NOVA_SPRINT_BIN) sh tools/release-accept.sh
+
+map:
+	$(GO) run ./tools/agentsmap
 
 roadmap:
 	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
