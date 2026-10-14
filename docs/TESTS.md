@@ -479,18 +479,18 @@ next landing with "landing again after <d>"; every landing is pushed to the
 coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
 
 - Unit, `internal/sprint/landing_stall_test.go`:
-  `TestLandingStallIsJudgedWhenCardsWaitAndNothingLands`,
-  `TestLandingStallNamesTheRedCI`, `TestLandingStallIsReRaisedEachBound`,
+  `TestLandingStallIsRaised` (its rows
+  LandingStallIsJudgedWhenCardsWaitAndNothingLands, LandingStallNamesTheRedCI,
+  AStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall and
+  TickDeadlinesRaisesTheLandingStall), `TestLandingStallIsReRaisedEachBound`,
   `TestLandingStallClearsOnTheNextLanding`, `TestNoStallWithNothingWaiting`,
   `TestLandingStallClosesItsJudgmentWhenWaitingClears`,
   `TestLandingReadCountsCombineFleetAndLegacyConsumersOnce`,
   `TestLandingReadCountsAnActiveUnmarkedFleetRead`,
   `TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads`,
   `TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead`,
-  `TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall`,
   `TestEveryLandingIsPushedToTheCoordinator`,
   `TestMergeWritesTheLandingStallFacts`, `TestMergeWritesTheLandersLastRefusal`,
-  `TestTickDeadlinesRaisesTheLandingStall`,
   `TestLandingStallStartsBeforeTheFirstLanding`,
   `TestLandingStallSurvivesTicksShorterThanTheBound`,
   `TestLandingStallBoundIsSettable`,

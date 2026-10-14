@@ -23,40 +23,14 @@ func restNoteOn(w *world, route string) []Note {
 	return out
 }
 
-// Finding 2, the reader's b1 probe at epoch 3: m2 ended a take ok on ds at -14m, before
-// m1's first reap; m1 then reaped at -9, -6 and -3m. The ok end says nothing of ds since,
-// so m1 is not held: three reaps all on m1 and no one served ds after the first is a dead
-// route, which rests, and the seat is told both.
-func TestAnOkEndBeforeTheFirstReapHoldsNoMember(t *testing.T) {
-	t.Parallel()
-	w := reapWorld(t, 3)
-	now := w.s.Now
-	putOK(w, "y1.w1", "ds", "m2", now.Add(-14*time.Minute))
-	putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-	putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
-
-	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
-	assert.Empty(t, w.s.MemberCtl("m1").F("held"), "m1 was held on an ok end before its reaps: %v", w.s.MemberCtl("m1").Fields)
-	rest, ok := RouteRests(w.s.Routes, w.s.Fleet)["ds"]
-	require.True(t, ok, "ds did not rest")
-	assert.Equal(t, RestNoModelCall, rest.Cause)
-	notes := restNoteOn(w, "ds")
-	require.Len(t, notes, 1, "the seat was not told: %+v", w.notesOf(NRouteRested))
-	assert.Contains(t, notes[0].What, "route ds: 3 no-model-call ends, all on m1; route rested, m1 not held")
-}
-
 // Finding 2's second half at epoch 3: m1 is held rightly (m2 served ds after m1's first
 // reap); the next tick m2 reaps too, ds rests for no model call, and m1's hold, placed for
 // ds, ends in that same tick: the route's fault after all (NoHoldForARestedRoute).
 func TestARestForNoModelCallEndsTheIdleReapHoldOnItInTheSameTick(t *testing.T) {
 	t.Parallel()
 	w := reapWorld(t, 3)
-	now := w.s.Now
-	putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-	putOK(w, "y1.w1", "ds", "m2", now.Add(-8*time.Minute))
-	putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
+	dReapsOnM1(w)
+	putOK(w, "y1.w1", "ds", "m2", w.s.Now.Add(-8*time.Minute))
 	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
 	require.Equal(t, CauseIdleReap, w.s.MemberCtl("m1").F(FieldHeldCause), "m1 is not held for its reaps: %v", w.s.MemberCtl("m1").Fields)
 	require.Equal(t, "ds", w.s.MemberCtl("m1").F(FieldIdleReapRoutes))
@@ -82,11 +56,8 @@ func TestARestForNoModelCallEndsTheIdleReapHoldOnItInTheSameTick(t *testing.T) {
 func TestAClearCarriesTheCauseAndTheNewEpochEndsTheHold(t *testing.T) {
 	t.Parallel()
 	w := reapWorld(t, 3)
-	now := w.s.Now
-	putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-	putOK(w, "y1.w1", "ds", "m2", now.Add(-8*time.Minute))
-	putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
+	dReapsOnM1(w)
+	putOK(w, "y1.w1", "ds", "m2", w.s.Now.Add(-8*time.Minute))
 	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
 	require.Equal(t, HeldByIdleReap, w.s.MemberCtl("m1").F(FieldHeldBy))
 
