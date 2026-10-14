@@ -24,7 +24,7 @@ func init() {
 	verbClasses["budget take"] = classWorker
 	verbClasses["budget release"] = classWorker
 	verbClasses["budget renew"] = classWorker
-	verbEffect["routes limit"] = "store write: sets a model's requests-per-minute budget (--rpm, on a route: its model) or a provider's concurrency budget (--concurrent, on a provider or a route: its provider) in the sprint's store, 0 clearing it; every member, reader and lane takes it before each model request, and the deal falls back past a full provider; --dry-run writes nothing"
+	verbEffect["routes limit"] = "local write: sets a model's requests-per-minute budget (--rpm, on a route: its model) or a provider's concurrency budget (--concurrent, on a provider or a route: its provider) in the sprint's store, 0 clearing it; every member, reader and lane takes it before each model request, and the deal falls back past a full provider; --dry-run writes nothing"
 	verbEffect["budget take"] = "local write: takes one grant of the model's global requests-per-minute window and one of its provider's concurrency slots for the holder, or says how long to wait; writes no table (a worker's, before each model request)"
 	verbEffect["budget renew"] = "local write: renews the holder's concurrency slot of the model's provider while its request runs; takes no rpm grant; writes no table (a worker's, every LeaseTTL/3 of a long request)"
 	verbEffect["budget release"] = "local write: frees the holder's concurrency slot of the model's provider; writes no table (a worker's, when a model request ends)"

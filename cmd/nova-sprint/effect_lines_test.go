@@ -17,7 +17,7 @@ func TestEveryVerbHasAnAccurateEffectLineAndAddHelpPointsAtTheTemplate(t *testin
 
 	classes := []string{"inspection: ", "local write: ", "store write: ", "delivery: "}
 	for _, v := range verbs {
-		e, ok := verbEffect[v.name]
+		e, ok := effectLine(v.name)
 		require.True(t, ok, "%s has no effect line", v.name)
 		known := false
 		for _, c := range classes {
@@ -29,9 +29,13 @@ func TestEveryVerbHasAnAccurateEffectLineAndAddHelpPointsAtTheTemplate(t *testin
 		assert.True(t, known, "%s effect %q does not start with a class word", v.name, e)
 	}
 
-	assert.Contains(t, verbEffect["needs"], "set", "needs effect names its write form")
-	assert.Contains(t, verbEffect["seat"], "repair", "seat effect names its write form")
-	assert.Contains(t, verbEffect["seat"], "push", "seat effect names its write form")
+	assert.Contains(t, effectLine0("needs"), "set", "needs effect names its write form")
+	assert.Contains(t, effectLine0("seat"), "repair", "seat effect names its write form")
+	assert.Contains(t, effectLine0("seat"), "push", "seat effect names its write form")
+	// a store-mutating verb whose line is set in its own file still reads as the
+	// standard's store write class, through effectLine
+	assert.True(t, strings.HasPrefix(effectLine0("routes rest"), "store write: "), "routes rest is a store write")
+	assert.True(t, strings.HasPrefix(effectLine0("adopt"), "local write: "), "adopt reads as a class word too")
 
 	a := newApp(func(string) string { return "" })
 	var out, errb bytes.Buffer
@@ -51,4 +55,10 @@ func TestEveryVerbHasAnAccurateEffectLineAndAddHelpPointsAtTheTemplate(t *testin
 	require.Equal(t, 0, code, "help brief: %s", errb.String())
 	assert.Contains(t, out.String(), "RESULT:", "help brief prints the brief template")
 	assert.Contains(t, out.String(), "STEP 6.", "help brief prints the whole brief template")
+}
+
+// effectLine0 is effectLine's line alone, for the assertions that read one verb.
+func effectLine0(name string) string {
+	e, _ := effectLine(name)
+	return e
 }

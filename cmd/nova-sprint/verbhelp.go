@@ -196,6 +196,35 @@ var verbEffect = map[string]string{
 	"watch":            "local write: watches the sprint and wakes the machine; with --state writes the state file, writes nothing to the store",
 }
 
+// effectRewrites are the effect lines whose own file states them in another
+// word than the four effect classes name (docs/STANDARD.md section 2): adopt's
+// play says "local and remote writes through ansible-playbook" and fleet level
+// does not name the store it levels. Read through effectLine, never verbEffect
+// directly, so one verb's help keeps one class word wherever its line is set.
+var effectRewrites = map[string]string{
+	"adopt":       "local write: writes the version, the tools and the units on the target machines through ansible-playbook; the tools play builds the version if missing and runs the new build's checks on the seat (shadow tick, nova-friend install --dry-run) before anything changes; then, in a window, it stops the seat's old server and member (bootout, seen gone in ps), migrates the configuration store as its owning role (nova-config migrate --window, refusing while any other nova session holds the database), loads the function library, installs the tools and bootstraps every stopped or stale nova launchd agent, points the dashboard links at the installed nova-sprint and reinstalls each stale friend daemon with nova-friend install; a refusal in the window puts the tools and library of before back and restarts the old agents (the migration is never undone); --dry-run runs the play with --check and writes nothing",
+	"fleet level": "store write: levels the members' ready queues and rebalances the reads and the cards off full units (rebalance.go), what the tick would move; --dry-run writes nothing",
+}
+
+// effectLine is name's effect line as its -h prints it. A verb whose effect is
+// set in another file is read through here: a write the line places in the
+// sprint's store is the store write class the standard names
+// (docs/STANDARD.md section 2), so the 32 store-mutating verbs read alike
+// whether their line sits in this file or in the verb's own.
+func effectLine(name string) (string, bool) {
+	e, ok := verbEffect[name]
+	if !ok {
+		return "", false
+	}
+	if fixed, ok := effectRewrites[name]; ok {
+		return fixed, true
+	}
+	if strings.HasPrefix(e, "local write:") && strings.Contains(e, "in the sprint's store") {
+		return "store write:" + strings.TrimPrefix(e, "local write:"), true
+	}
+	return e, true
+}
+
 // commonExit is the codes of every other verb.
 const commonExit = "exit codes: 0 done, 1 failed or incomplete (including refused; the line names why), 2 usage or a store that did not answer"
 
@@ -229,7 +258,7 @@ func recoverHelp(out io.Writer, code *int) {
 	verbflag.Print(&b, prog, strings.Replace(banner(), exitLine, verbExits(name), 1), h.FS)
 	*code = 0
 	text := verbflag.Insert(concreteUsage(b.String(), name, h.FS), verbExample(name))
-	if e, ok := verbEffect[name]; ok {
+	if e, ok := effectLine(name); ok {
 		text += "effect: " + e + "\n"
 	}
 	if extra := verbProse(name); extra != "" {
