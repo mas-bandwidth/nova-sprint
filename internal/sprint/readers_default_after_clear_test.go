@@ -64,9 +64,6 @@ func defaultsFailures(s *Snapshot) []string {
 			out = append(out, "friends_tiers leaves out "+tier)
 		}
 	}
-	if got := s.UnservedTierFallsTo(); got != "" {
-		out = append(out, "unserved_tier_falls_to reads "+got)
-	}
 	for _, d := range []struct {
 		name      string
 		got, want time.Duration
@@ -188,7 +185,7 @@ func TestEverySettingHoldsItsWorkingDefaultFreshAndAfterAClear(t *testing.T) {
 	}
 	for prop, v := range map[string]string{PropDriftCommits: "999", PropDriftHours: "999", PropGoLanes: "9", PropLowBalanceUsd: "999",
 		PropIdentical: "999", PropReadTier: "heavy", PropReadsNeeded: "3", PropReworkPriority: ReworkKeep,
-		PropUnservedTierFallsTo: "flash", PropFleetTiers: "frontier", PropFriendsTiers: "frontier"} {
+		PropFleetTiers: "frontier", PropFriendsTiers: "frontier"} {
 		away[prop] = v
 	}
 	old.Work.SetProps(away)

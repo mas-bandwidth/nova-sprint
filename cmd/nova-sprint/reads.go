@@ -2648,7 +2648,7 @@ type cardView struct {
 	// Column is the live table placement, as linePlace reads it, never the
 	// legacy place:work field (docs/SPEC-SPRINT.md section 11).
 	Column  string `json:"column"`
-	Tier    string `json:"tier"`            // the tier it is on, "(falls to <t>)" on a fallback (sprint.CardTierShown)
+	Tier    string `json:"tier"`            // the tier it is on (sprint.CardTierShown)
 	Ceiling string `json:"ceiling"`         // the highest the machine escalates it to
 	Grade   string `json:"grade,omitempty"` // nova-decide's grade, as the card holds it (sprint.FieldGrade)
 	// Who is the worker its brief's WHO line names (sprint.FieldWho): friend for any
@@ -2775,8 +2775,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		if pinned, err := st.Pinned(ctx); err == nil {
 			epoch = pinned.PinnedEpoch()
 		}
-		// the tier it is on and its ceiling: flash first, pro on escalation; a card with a
-		// fallback tier shows its own brief tier and where it falls (unserved_tier.go)
+		// the tier it is on and its ceiling: flash first, pro on escalation
 		_, ceiling := sprint.CardTiers(v.Primary)
 		shown := sprint.CardTierShown(v.Primary)
 		// and its grade, nova-decide's convergence grade before its first deal (decide.go)
@@ -3087,8 +3086,7 @@ type primaryRow struct {
 	State  string            `json:"state"`
 	Score  float64           `json:"score"`
 	Fields map[string]string `json:"fields"`
-	// TierShown is the tier the card shows: its own brief tier with "(falls to <t>)" when
-	// the sprint gave it a fallback tier, else the tier it is on (unserved_tier.go).
+	// TierShown is the tier the card shows: the tier it is on.
 	TierShown string `json:"tier_shown,omitempty"`
 }
 

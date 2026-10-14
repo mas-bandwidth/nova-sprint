@@ -14,9 +14,6 @@ func DealtTier(c, primary *Card) string {
 		return t
 	}
 	if primary != nil {
-		if fb := primary.F(FieldFallbackTier); fb != "" && primary.F(FieldTier) == "" {
-			return fb // the fallback tier the deal drew (unserved_tier.go)
-		}
 		if now, _ := CardTiers(primary); now != "" {
 			return now
 		}

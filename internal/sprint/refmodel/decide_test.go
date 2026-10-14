@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // brief is a move as one short line: what it does to which card or judgment,
@@ -631,7 +630,7 @@ func TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder(t *testing.T) {
 	for _, p := range sprint.TickParts {
 		assert.True(t, names[p.Name], "the tick's part %s is no duty: Decide would leave it out", p.Name)
 	}
-	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyUnservedFallback, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
+	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
 		refmodel.DutyStrangers, refmodel.DutyPresence, refmodel.DutyFriendStall, refmodel.DutyVerdicts, refmodel.DutyFriendRedeal, refmodel.DutyCheck, refmodel.DutyDeadlines, refmodel.DutyOverdue, refmodel.DutyDone, refmodel.DutyRemind}
 	var got []string
 	for _, d := range refmodel.Duties {
@@ -677,15 +676,4 @@ func TestASnapshotThatLacksATableIsRefusedInWords(t *testing.T) {
 	if got := refmodel.Decide(snap, later(0)); len(got) != 0 {
 		assert.Failf(t, "assertion failed", "a STOPPED machine decides nothing, whatever it holds:%s", show(got))
 	}
-}
-
-func TestUnservedFallbackMovesReturnsSomething(t *testing.T) {
-	t.Parallel()
-	w := sprintOf(t, "m1")
-	w.s.Routes = []sprint.Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
-	w.must(t, sprint.Set(w.s, sprint.SetReq{UnservedTierFallsTo: cardhdr.RouteHeavy, Who: coordinator}))
-	w.add(t, "s1", 1) // a ready pro primary whose tier no route serves
-	snap := w.snapshot(w.fresh())
-	moves := refmodel.UnservedFallbackMoves(snap, later(0))
-	assert.NotEmpty(t, moves, "a ready primary whose tier no route serves falls to the strongest served tier at or below the setting")
 }

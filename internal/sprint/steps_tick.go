@@ -318,7 +318,7 @@ const PartDrain = "drain"
 // none is ("the tick doesn't end until all dirty bits are cleared"). The
 // model is tla/DirtyTick.tla.
 var TickTables = []TableUpdate{
-	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartUnservedFallback, TickUnservedFallback}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
+	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
 	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},

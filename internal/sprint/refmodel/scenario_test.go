@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded, anUnservedTierFallsBack} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -340,26 +340,5 @@ func aWaitingPrimaryWhoseNeedLanded(k *walk) []sample {
 	c.Col = sprint.Landed
 	c.Rev++
 	k.s.Work.Put(c)
-	return append(out, k.sample())
-}
-
-// anUnservedTierFallsBack serves flash alone, so a ready pro primary's tier is
-// unserved, and the setting heavy gives it a fallback (flash): a snapshot with the
-// card ready and unserved (the fallback part sets the tier), and another after the
-// fallback is set and pro is served again (the part clears it).
-func anUnservedTierFallsBack(k *walk) []sample {
-	k.s.Routes = []sprint.Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
-	if !k.try(sprint.Set(k.s, sprint.SetReq{UnservedTierFallsTo: cardhdr.RouteHeavy, Who: coordinator})) {
-		return nil
-	}
-	id := k.addTo(k.streams[0])
-	if id == "" || k.s.StateOf(id) != sprint.Ready {
-		return nil
-	}
-	out := []sample{k.sample()}
-	if !k.runPart(sprint.PartUnservedFallback) {
-		return out
-	}
-	k.s.Routes = append(k.s.Routes, sprint.Route{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true})
 	return append(out, k.sample())
 }
