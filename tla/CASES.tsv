@@ -319,6 +319,7 @@ MCSprintRulesAnswersBrokenIdenticalRework.cfg	MCSprintRules.tla	invariant	Identi
 MCSprintRulesAnswersBrokenHarnessRedeal.cfg	MCSprintRules.tla	invariant	HarnessFaultBounded	ignore-terminal	sprintrules	required	-
 MCSprintRulesAnswersBrokenGroupRedeal.cfg	MCSprintRules.tla	invariant	HarnessFleetHeld	ignore-terminal	sprintrules	required	-
 MCSprintRulesAnswersBrokenDeadlineFree.cfg	MCSprintRules.tla	invariant	NoAttemptPastCapWithoutDecision	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenHarnessVotes.cfg	MCSprintRules.tla	invariant	MarkOnlyOnVotes	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodes.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodesBrokenPinForever.cfg	MCSprintRules.tla	invariant	PinWaitBounded	ignore-terminal	sprintrules	required	-
 MCSprintRulesEpisodesBrokenPinSilent.cfg	MCSprintRules.tla	invariant	AwayIsJudged	ignore-terminal	sprintrules	required	-

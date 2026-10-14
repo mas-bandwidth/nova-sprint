@@ -170,6 +170,8 @@
 \*   "newtoken"   the alert sends a fresh bus token each retry: NoSecondMessage
 \*   "noquiet"    the tick raises a card or stream judgment while the tier rests:
 \*                QuietWhileUnfunded
+\*   "harnessvotes" the brief rule marks a card at its cap a brief defect whatever ended its
+\*                attempts, harness faults included (the code before PR #273): MarkOnlyOnVotes
 
 EXTENDS Integers, FiniteSets
 
@@ -198,7 +200,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
-          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, \* answers
+          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, \* answers
           pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
@@ -213,7 +215,7 @@ lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, 
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
-anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
@@ -282,6 +284,7 @@ TypeOK ==
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
   /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
   /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
+  /\ anvotes \in Nat /\ anmarked \in BOOLEAN
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
   /\ eclk \in 0..MaxClock
@@ -328,6 +331,7 @@ Init ==
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE /\ andec = 0
+  /\ anvotes = 0 /\ anmarked = FALSE
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
   /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aflapped = FALSE /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
@@ -749,6 +753,46 @@ ReadAnswered == (rdst \in {"broken", "bound"}) ~> (rdst \notin {"broken", "bound
 \* Cap attempts since the coordinator's last decision (andec: the attempt at that decision)
 AnAtBound(f) == (f # "empty" /\ f = anlast) \/ anatt - andec >= Cap
 
+\* THE VOTES (PR #273, v1.2.26: "a harness fault never counts toward the brief-defect bound";
+\* internal/sprint brief_bound.go harnessEnds and AtBriefBound's Harness, rules.go classifyEnd,
+\* ruleBrief and harnessAtCap). Every attempt counts toward the cap (anatt - andec), but only a
+\* worker's or the brief's end is a vote that the brief is wrong (anvotes, since andec): a
+\* broken read, a HOLD or any other failure the worker reported. A harness end (EndHarness:
+\* the worker never ran, ran=false in FieldRanAttempts; here a harness fault and both deadline
+\* ends) is an attempt and never a vote. harnessEnds keys on ran alone, so a failure with no
+\* report is split as the code splits it: its worker ran (a vote) or did not (no vote).
+\* AnVotes(k, ran) is whether the attempt's end k is a vote: a harness fault never ran, a
+\* no-report end is ran's, every other end (a HOLD, another failure, the same failure) ran.
+AnVotes(k, ran) ==
+  CASE k = "harness" -> FALSE
+    [] k = "noreport" -> ran
+    [] OTHER -> TRUE
+
+\* the brief's own bounds, votes by themselves: the same finding as the attempt before (the
+\* same-finding-twice bound) or the same failure twice (AtIdenticalFailure, and the lander's
+\* same refusal way twice)
+AnSameBound == (anfind \notin {None, "empty"} /\ anfind = anlast) \/ anfail = "same"
+
+\* the window's ends that were the harness's: every attempt since the decision less the votes
+AnHarnessCount == (anatt - andec) - anvotes
+
+\* ruleBrief marks the card a brief defect at its bound unless the cap was reached mostly on
+\* harness ends (harnessAtCap: harness > since - harness, worded "harness fault ... the brief
+\* is not the cause", offered rework --carry or drop, never marked); the harnessvotes defect is
+\* the code before PR #273, which marked on the cap alone
+AnMarks ==
+  \/ AnSameBound
+  \/ anvotes >= AnHarnessCount
+  \/ Broken = "harnessvotes" /\ anatt - andec >= Cap
+
+\* the brief rule marks a card at its bound a brief defect, once a window; the card stays at
+\* its bound for the mind (brief, rework, drop), whose decision opens a fresh window
+AnMark ==
+  /\ anst = "bound" /\ ~anmarked
+  /\ AnMarks
+  /\ anmarked' = TRUE
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes>>
+
 \* the outside: a reader finds the attempt broken with finding f (a finding whose fix already
 \* stands is not read again; at the bound the read raises the brief's judgment, which the mind
 \* then reworks); the attempt pushed its head
@@ -757,16 +801,20 @@ AnReadBroken(f) ==
   /\ f \notin anfixed
   /\ anhead' = anatt /\ anfind' = f
   /\ anst' = IF f # "empty" /\ AnAtBound(f) THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ anvotes' = anvotes + 1  \* the worker ran and a reader read it: a vote
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
-\* the brief's judgment instead)
-AnWorkFails(k) ==
+\* the brief's judgment instead); ran is whether its worker ran (FieldRanAttempts), free only
+\* for a no-report end
+AnWorkFails(k, ran) ==
   /\ anst = "working"
   /\ k = "same" => anreworks > 0
+  /\ k # "noreport" => ran = (k # "harness")
   /\ anhead' = anatt /\ anfail' = k
   /\ anst' = IF anatt - andec >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ anvotes' = IF AnVotes(k, ran) THEN anvotes + 1 ELSE anvotes
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
 \* still on its way; its attempt counts toward the cap as any other (the deadlinefree defect
@@ -775,7 +823,8 @@ AnDeadline ==
   /\ anst = "working" /\ ~anland
   /\ anhead' = anatt /\ anfail' = "harness" /\ anland' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's HOLD is
 \* still on its way
@@ -783,7 +832,8 @@ AnDeadlineHold ==
   /\ anst = "working" /\ ~anhold
   /\ anhead' = anatt /\ anfail' = "hold" /\ anhold' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt, andec>>
+  \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the worker's late LAND arrives. While its attempt is failed and no later
 \* attempt has started, finish takes it: the attempt is done. Once a later attempt has
@@ -798,7 +848,7 @@ AnLateLand ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the worker's late HOLD arrives; it finishes the attempt a late LAND does
 AnLateHold ==
@@ -811,7 +861,7 @@ AnLateHold ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* a rework with fix f ("empty": no fix): one attempt more, from the head the attempt before
 \* pushed; a later attempt started, so a late report still on its way is for the attempt the
@@ -824,7 +874,7 @@ AnRework(f) ==
   /\ anfixless' = (anfixless \/ f = "empty")
   /\ anst' = "working" /\ anfind' = None /\ anfail' = None
   /\ anland' = FALSE /\ anhold' = FALSE
-  /\ UNCHANGED <<anhead, anlost, anfixed, andec>>  \* a rule's rework is no decision: andec stands
+  /\ UNCHANGED <<anhead, anlost, anfixed, andec, anvotes, anmarked>>  \* a rule's rework is no decision: andec and the window's votes stand
 
 \* the read-broken rule: a broken read with a finding reworks the card with it
 RuleAnBroken ==
@@ -883,7 +933,7 @@ AnMind ==
      \/ anst = "bound" /\ (anfind = None \/ Broken = "answersmind")
      \/ anst = "bound" /\ andec > 0 \* a second bound after the one decision modelled: dropped
   /\ anst' = "judged"
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the mind's rework at the bound (the seat's rework, a coordinator decision, steps_review.go
 \* Rework with no Rule): one attempt more from the head the attempt before pushed, as every
@@ -896,6 +946,8 @@ AnMindRework ==
   /\ anatt' = anatt + 1 /\ anreworks' = anreworks + 1 /\ ancarry' = anhead
   /\ anst' = "working" /\ anfixed' = anfixed \cup {anfind} /\ anlast' = anfind
   /\ anfind' = None /\ anfail' = None /\ anland' = FALSE /\ anhold' = FALSE
+  \* the decision opens a fresh window: its votes start again, and it answers the window's mark
+  /\ anvotes' = 0 /\ anmarked' = FALSE
   /\ UNCHANGED <<anhead, anlost, anfixless, anharness, anfleet, anredealt>>
 
 \* the outside: another card of the fleet fails the same harness-fault class, counted by
@@ -906,13 +958,14 @@ AnFleetFails ==
   /\ anst = "working"
   /\ anfleet < 2
   /\ anfleet' = anfleet + 1
-  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec>>
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec, anvotes, anmarked>>
 
 AnNext ==
   \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold
   \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework \/ AnFleetFails
+  \/ AnMark
   \/ \E f \in AnFindings : AnReadBroken(f)
-  \/ \E k \in AnFails : AnWorkFails(k)
+  \/ \E k \in AnFails, ran \in BOOLEAN : AnWorkFails(k, ran)
 
 \* The answers never pass the attempt bound: Cap attempts since the coordinator's last decision.
 AnswerAttemptsBounded == anatt - andec <= Cap
@@ -963,6 +1016,16 @@ HarnessFaultBounded == anharness <= 1
 \* redealt; the groupredeal defect redeals it (harness_fault.go ruleHarness; rules.go
 \* TickHarnessFleet).
 HarnessFleetHeld == ~anredealt
+
+\* A harness fault never votes the brief wrong (PR #273): a card is marked a brief defect only
+\* on its own bound (the same finding or failure twice) or when the worker's and the brief's
+\* ends since the last decision are at least the harness's. The harnessvotes defect marks on
+\* the cap alone, and TLC's counterexample is the base behaviour: harness ends to the cap,
+\* marked with no vote among them.
+MarkOnlyOnVotes == anmarked => (AnSameBound \/ anvotes >= AnHarnessCount)
+
+\* The window's votes never exceed its attempts.
+VotesWithinWindow == anvotes <= anatt - andec
 
 \* The reversed witness: a mind still answers a card past the bound or with nothing to take as
 \* a fix (MCSprintRulesAnswersReachMindJudges: TLC reaches "judged" and so breaks it). "judged"
