@@ -28,7 +28,7 @@ func TestRedoHelpSaysConflictsOnlyAndPointsToRework(t *testing.T) {
 	var reworkOut, reworkErr bytes.Buffer
 	code = runInto(a, []string{"help", "rework"}, &reworkOut, &reworkErr)
 	require.Equal(t, 0, code, "help rework: %s", reworkErr.String())
-	assert.Contains(t, reworkOut.String(), "effect: local write:")
+	assert.Contains(t, reworkOut.String(), "effect: store write:")
 
 	// 3. redo of a card in review is refused naming nova-sprint rework.
 	ta := newTestApp(t)
