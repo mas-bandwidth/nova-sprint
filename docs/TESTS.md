@@ -321,17 +321,15 @@ count a routing-only edit must not reset (docs/SPEC-SPRINT.md, the needs, the
 brief verb and the bound).
 
 - Unit, `internal/sprint/brief_edit_test.go`:
-  `TestBriefKeepsANeedRelinkedToItsTwin`,
-  `TestBriefAddsANewNeedAndKeepsADroppedOne`,
+  `TestABriefEditKeepsWhatAVerbSet` (its cases
+  `BriefKeepsANeedRelinkedToItsTwin`, `BriefAddsANewNeedAndKeepsADroppedOne`,
+  `ABriefChangingOnlyDependsKeepsARelinkedNeed`,
+  `ADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
+  `ADependsOnlyBriefTierFlagOverridesTheText`,
+  `BriefKeepsARecordedTierAgainstTheText`, `BriefTierFlagOverridesTheText`,
+  `AMetadataOnlyBriefKeepsTheBoundCount`, `ANewTaskBriefResetsTheBoundCount`),
   `TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief`,
-  `TestABriefChangingOnlyDependsKeepsARelinkedNeed`,
-  `TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
-  `TestADependsOnlyBriefTierFlagOverridesTheText`,
-  `TestBriefKeepsARecordedTierAgainstTheText`,
-  `TestBriefTierFlagOverridesTheText`,
-  `TestAMetadataOnlyBriefKeepsTheBoundCount`,
   `TestBriefTierRefusesATLAPathBelowFrontier`,
-  `TestANewTaskBriefResetsTheBoundCount`,
   `TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck`,
   `TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced`,
   `TestABriefTierFlagRefusesATLAPathBelowFrontier`.
