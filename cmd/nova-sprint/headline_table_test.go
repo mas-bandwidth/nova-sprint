@@ -31,7 +31,7 @@ func (ta *testApp) workFooter() map[string]string {
 			return out
 		}
 	}
-	ta.t.Fatal("the work table has no footer")
+	require.FailNow(ta.t, "the work table has no footer")
 	return nil
 }
 

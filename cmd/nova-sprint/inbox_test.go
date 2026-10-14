@@ -28,7 +28,7 @@ func (ta *testApp) group(typ, stream string) sprint.Group {
 			return g
 		}
 	}
-	ta.t.Fatalf("no group %s %s in %+v", typ, stream, ta.inboxGroups())
+	require.FailNowf(ta.t, "no group %s %s in %+v", typ, stream, ta.inboxGroups())
 	return sprint.Group{}
 }
 
@@ -306,7 +306,7 @@ JUDGMENT N3   stream stopped: stream branch red  alias=j3  stream=s1  size=3  wa
 			}
 			return
 		}
-		t.Fatalf("no decision %q in %+v", decision, g.Commands)
+		require.FailNowf(t, "no decision %q in %+v", decision, g.Commands)
 	}
 	run(gs[0], "rework with a fix")
 	run(gs[1], "rework with the finding")

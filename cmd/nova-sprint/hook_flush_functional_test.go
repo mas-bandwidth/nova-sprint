@@ -71,7 +71,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	a.busOpen = busOpen
 	a.home = func() (string, error) { return home, nil }
 	a.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
-		t.Fatalf("fixture command was forwarded to server %s: %q", server, verbs)
+		require.FailNowf(t, "fixture command was forwarded to server %s: %q", server, verbs)
 		return nil, errors.New("forwarding is refused in this test")
 	}
 	var out, errs strings.Builder
@@ -111,12 +111,12 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	case line := <-challenge:
 		assert.Contains(t, line, "nova-sprint hook --prove ")
 	case <-time.After(time.Second):
-		t.Fatal("HOOK CHALLENGE was not readable on the OS pipe within 1s on a real store")
+		require.FailNow(t, "HOOK CHALLENGE was not readable on the OS pipe within 1s on a real store")
 	}
 
 	select {
 	case code := <-done:
-		t.Fatalf("the hook exited (code %d) before the challenge was read", code)
+		require.FailNowf(t, "the hook exited (code %d) before the challenge was read", code)
 	default:
 	}
 
@@ -127,6 +127,6 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("the hook did not end after unhook")
+		require.FailNow(t, "the hook did not end after unhook")
 	}
 }

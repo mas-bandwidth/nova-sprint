@@ -82,7 +82,7 @@ func (c *reconnectHTTPHook) next(t *testing.T, typ string) hookMsg {
 		}
 		return m
 	case <-time.After(5 * time.Second):
-		t.Fatalf("HTTP hook did not send %s", typ)
+		require.FailNowf(t, "HTTP hook did not send %s", typ)
 		return hookMsg{}
 	}
 }
@@ -122,7 +122,7 @@ func (c *reconnectHTTPHook) send(t *testing.T, m hookMsg) hookMsg {
 			require.NotEmpty(t, got.T, "unexpected empty HTTP hook line while waiting for %s", m.T)
 			c.pending = append(c.pending, got)
 		case <-deadline:
-			t.Fatalf("HTTP hook did not answer %s", m.T)
+			require.FailNowf(t, "HTTP hook did not answer %s", m.T)
 			return hookMsg{}
 		}
 	}
@@ -146,7 +146,7 @@ func (c *reconnectHTTPHook) requireNoFrame(t *testing.T, d time.Duration) {
 				c.pending = c.pending[1:]
 				continue
 			}
-			t.Fatalf("unexpected queued HTTP hook frame: %+v", m)
+			require.FailNowf(t, "unexpected queued HTTP hook frame: %+v", m)
 		}
 		select {
 		case m, ok := <-c.lines:
@@ -156,7 +156,7 @@ func (c *reconnectHTTPHook) requireNoFrame(t *testing.T, d time.Duration) {
 			if skipWarning(m) {
 				continue
 			}
-			t.Fatalf("unexpected HTTP hook frame: %+v", m)
+			require.FailNowf(t, "unexpected HTTP hook frame: %+v", m)
 		case <-deadline:
 			return
 		}
@@ -188,7 +188,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	app.now = clock
 	app.home = func() (string, error) { return home, nil }
 	app.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
-		t.Fatalf("fixture command was forwarded to ambient seat %s: %q", server, verbs)
+		require.FailNowf(t, "fixture command was forwarded to ambient seat %s: %q", server, verbs)
 		return nil, errors.New("forwarding is refused in this test")
 	}
 	t.Cleanup(app.close)
@@ -285,7 +285,7 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	app2.now = clock
 	app2.home = func() (string, error) { return home, nil }
 	app2.forward = func(_ context.Context, server string, verbs ...[]string) ([]sprintwire.Result, error) {
-		t.Fatalf("reconnected fixture command was forwarded to ambient seat %s: %q", server, verbs)
+		require.FailNowf(t, "reconnected fixture command was forwarded to ambient seat %s: %q", server, verbs)
 		return nil, errors.New("forwarding is refused in this test")
 	}
 	t.Cleanup(app2.close)

@@ -237,7 +237,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 				}
 			}
 		}
-		t.Fatalf("no session token on PUSH %d", id)
+		require.FailNowf(t, "no session token on PUSH %d", id)
 		return ""
 	}
 

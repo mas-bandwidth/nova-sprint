@@ -179,7 +179,7 @@ func TestTheGcLoopEndsWhenItsContextIsCancelled(t *testing.T) {
 		select {
 		case <-done:
 		default:
-			t.Fatal("the cancelled loop did not return")
+			require.FailNow(t, "the cancelled loop did not return")
 		}
 
 		time.Sleep(3 * gcLoopEvery)

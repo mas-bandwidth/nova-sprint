@@ -269,9 +269,11 @@ func TestEveryCoordinatorRuleNamesVerbsThatExist(t *testing.T) {
 		require.NoError(t, err, "%s: %v", coordinatorRunbookPath, err)
 		rules, _ := coordRules(string(raw))
 		require.GreaterOrEqual(t, len(rules), 90, "%s carries fewer rules than the coordinator follows", coordinatorRunbookPath)
+		var problems []string
 		for _, p := range checkCoordRules(verbs, string(raw)) {
-			t.Errorf("%s %s", coordinatorRunbookPath, p)
+			problems = append(problems, coordinatorRunbookPath+" "+p)
 		}
+		assert.Empty(t, problems)
 	})
 
 	t.Run("the witnesses", func(t *testing.T) {

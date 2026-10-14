@@ -84,6 +84,6 @@ func TestReadOkDoneAndTheWakeOnTheStore(t *testing.T) {
 		assert.NotContains(t, w.out, "no tick end", "inbox --wait: exit %d\n%s%s", w.code, w.out, w.err)
 		assert.Contains(t, w.out, "the sprint is done", "inbox --wait: exit %d\n%s%s", w.code, w.out, w.err)
 	case <-time.After(60 * time.Second):
-		t.Fatal("inbox --wait did not wake on the tick end")
+		require.FailNow(t, "inbox --wait did not wake on the tick end")
 	}
 }

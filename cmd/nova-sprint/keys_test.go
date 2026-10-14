@@ -72,7 +72,7 @@ func TestRunReadsNamedKeysInProcessNeverFromTheEnvironment(t *testing.T) {
 
 	quiet := newApp(func(string) string { return "" })
 	require.NoError(t, quiet.holdNamedUnitKeysFrom("", func(secrets.UnitKeyLogin) (map[string]secrets.Secret, error) {
-		t.Fatal("an empty setting read the seat")
+		require.FailNow(t, "an empty setting read the seat")
 		return nil, nil
 	}))
 	for n, was := range before {

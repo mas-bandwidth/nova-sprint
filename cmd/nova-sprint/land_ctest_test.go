@@ -58,7 +58,7 @@ func TestACtestCardLandsOnItsOwnTest(t *testing.T) {
 	bare := t.TempDir()
 	b.mu.Lock()
 	b.gateBench = func(context.Context, string, string, [][]string, bool) (string, int, error) {
-		t.Fatal("the no-gate clone must run no gate")
+		require.FailNow(t, "the no-gate clone must run no gate")
 		return "", 0, nil
 	}
 	b.mu.Unlock()

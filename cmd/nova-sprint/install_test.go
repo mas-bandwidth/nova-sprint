@@ -143,7 +143,7 @@ func TestInstallRefusesAKindItDoesNotOwnAndAStoreTheUnitCannotLogInTo(t *testing
 	a.goos = "linux"
 	a.home = func() (string, error) { return home, nil }
 	a.executable = func() (string, error) { return "/opt/nova/bin/nova-sprint", nil }
-	a.seatLoad = func(string, string, string) error { t.Fatal("a refused install loads a unit"); return nil }
+	a.seatLoad = func(string, string, string) error { require.FailNow(t, "a refused install loads a unit"); return nil }
 	for _, tc := range []struct {
 		verb func(*app, []string, io.Writer, io.Writer) int
 		args []string
