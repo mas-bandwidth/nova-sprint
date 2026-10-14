@@ -937,7 +937,7 @@ func (c *cardCheck) sentinelConsumers() []CardFinding {
 			if !w.Placed() || w.Col == Landed || IsSentinel(w) {
 				continue
 			}
-			if slices.Contains(Split(w.F("needs")), card.ID) {
+			if slices.Contains(Split(w.F("needs")), card.ID) && !slices.Contains(Split(w.F("waived")), card.ID) {
 				allConsumers = append(allConsumers, w.ID)
 			}
 		}
