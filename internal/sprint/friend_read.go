@@ -576,6 +576,13 @@ func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card strin
 	return nil
 }
 
+// friendReadOwn says a read card is this reader's: its id names her, the plain
+// identity or any generation (a-readers-second-verdict-answers-already-recorded).
+func friendReadOwn(c *Card, name string) bool {
+	_, _, idReader, ok := ParseReadCard(c.ID)
+	return ok && idReader == name
+}
+
 // friendReadCloseUnit is the one close of a friend's read card on her fleet row,
 // whether her outbox report (FriendReadClose) or the read verb (readCardVerb)
 // carried the verdict: the card retired with its verdict, a broken verdict's
@@ -623,7 +630,7 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 // outbox report, which friend sync reads (FriendReadClose), or the read verb
 // her packet prints, which writes the same close (readCardVerb).
 func FriendReadOutboxLine(row, id string, epoch uint64) string {
-	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync reads it); or run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync records it within seconds); do not also run nova-sprint read for this card: a second submission answers ALREADY RECORDED. A reader with no outbox uses the read verb: run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
@@ -665,6 +672,18 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		case c.F("kind") != "read":
 			return "not a read (it is " + orDash(c.F("kind")) + "): work is reported with finish"
 		case !c.Placed():
+			// A read retired by its reader's own verdict (retired_by read) may be
+			// re-submitted: the same verdict is answered ALREADY RECORDED, no
+			// refusal and no unit (the loop, below); a different verdict is a
+			// refusal, honest that the first is final (a-readers-second-verdict-
+			// answers-already-recorded, SPEC-SPRINT). Every other retired_by keeps
+			// the nothing-to-report answer.
+			if c.F("retired_by") == "read" && friendReadOwn(c, name) {
+				if c.F("verdict") == r.Verdict {
+					return ""
+				}
+				return "already recorded " + c.F("verdict") + " at " + orDash(c.F("retired")) + "; a reader's verdict at an attempt is final, and a different one is not taken"
+			}
 			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to report"
 		case c.Row != row:
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
@@ -679,6 +698,13 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	for _, c := range chosen {
 		pr := s.Work.Card(c.F("primary"))
+		if !c.Placed() && c.F("retired_by") == "read" && friendReadOwn(c, name) && c.F("verdict") == r.Verdict {
+			// the verdict is already recorded: a stutter, no write (no note, no
+			// judgment, no consumer, no window ledger entry), answered ALREADY
+			// RECORDED (a-readers-second-verdict-answers-already-recorded, SPEC-SPRINT)
+			p.Said = append(p.Said, fmt.Sprintf("ALREADY RECORDED %s at %s (%s)", c.F("verdict"), c.F("retired"), c.ID))
+			continue
+		}
 		if r.Return {
 			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {
 				// the member's child ended on its environment: no verdict, and its reader is

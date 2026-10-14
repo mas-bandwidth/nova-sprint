@@ -870,6 +870,7 @@ read on her row has no `--begin` and no `--return`. `queue --as friend.<name>`
 names a read with that verb, never `finish`, and `finish` of a read is refused
 with the outbox form as its remedy (`TestFriendSyncClosesAFriendRowReadFromItsOutboxReport`,
 `TestAFriendRowReadsPacketNamesTheOutboxReturn`, `TestFinishRefusesAReadWithTheOutboxRemedy`).
+A reader who reports a verdict already recorded for its read is answered ALREADY RECORDED, exit 0; a different verdict is refused.
 Her retired read still stands for the tick: the tick reads it with the
 primaries in review (`tickExtras`), and accept guards it at its revision alone,
 a place being a placed card's. The readers table gains no friend
