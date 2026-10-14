@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/testkit/must"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,9 +46,8 @@ func TestAckOfBrokenReadsIsRefused(t *testing.T) {
 	// open per card and cause: the second broken read writes no second
 	require.Len(t, nids, 1, "open %v", nids)
 	r := p.do("ack", AckStep(sprint.AckReq{Notes: nids, Reason: "looked"}))
-	if len(r.Moved) != 0 || len(r.Refused) != 1 || !strings.Contains(r.Refused[0].Why, "nova-sprint rework s1-1") {
-		assert.Fail(t, fmt.Sprintf("ack of the broken reads: %+v", r))
-	}
+	why := must.SoleRefusal(t, r.Moved, r.Refused)
+	must.ContainsAll(t, why.Why, "nova-sprint rework s1-1")
 	o := p.openOn("s1-1")
 	assert.Len(t, o, 1, "after the refused ack: %v", o)
 }
@@ -285,9 +285,8 @@ func TestTheEngineHoldsEveryPlanToTheLifecycle(t *testing.T) {
 		assert.Fail(t, fmt.Sprintf("Lawful let review -> landed through: %+v", r))
 	}
 	r = p.do("not through Lawful", Step{Verb: "mutant", Load: All, Plan: illegal})
-	if len(r.Moved) != 0 || len(r.Refused) != 1 || p.state("s1-1") != sprint.Review {
-		assert.Fail(t, fmt.Sprintf("the engine applied a plan that skips Lawful: moved=%v refused=%v state=%s", r.Moved, r.Refused, p.state("s1-1")))
-	}
+	must.SoleRefusal(t, r.Moved, r.Refused)
+	assert.Equal(t, sprint.Review, p.state("s1-1"), "the engine applied a plan that skips Lawful")
 	create := func(s *sprint.Snapshot) sprint.Plan {
 		e := ntable.BatchMemberEntry{ID: "zz", Expect: &ntable.MemberExpect{Absent: true}, Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Merging, Score: 9}}
 		return sprint.Plan{Units: []sprint.Unit{{Key: "zz", Stream: "s1", Changes: []sprint.Change{{Table: sprint.Work, Entry: e}}}}}
