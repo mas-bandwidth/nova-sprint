@@ -2,7 +2,7 @@ package member
 
 import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
 )
 
 // treeFinishWith is a tree card's result read step by step (docs/SPEC-SPRINT.md, a card is a
