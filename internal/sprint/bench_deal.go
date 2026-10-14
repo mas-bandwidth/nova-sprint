@@ -2,6 +2,8 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -147,4 +149,162 @@ func benchRefusal(bench []string) string {
 // (docs/SPEC-SPRINT.md section 5, a card's BENCH line).
 func benchRoom(bench []string) string {
 	return "every member of its bench " + Preview(bench, ", ") + " is at its room (DealAhead times its width): the tick deals it when one has room"
+}
+
+// benchDrop is a member of a bench the order dropped (benchOrder), with why: it
+// starts no card (no room: its word), or it is overloaded.
+type benchDrop struct {
+	Member string
+	Why    string
+}
+
+// benchOrder is the order the deal deals a card whose brief names a bench
+// (docs/SPEC-SPRINT.md section 5, a card's BENCH line; the owner, 2026-10-13:
+// "distribute CI and bench jobs across the fleet, vs. one machine"): members is
+// the up members of the bench the notQuiet pool left, and the card goes to the
+// least-loaded member of it that has room. A member whose fresh beat says it
+// starts no card (Snapshot.NoRoom) and an overloaded one (Overloaded) are
+// dropped; the rest are sorted by beat load ascending (memberBeatLoad: the load
+// cell its presence beat writes on its control card, LoadText), then by work
+// cards held ascending (memberLoads), then by name. A card with no BENCH line
+// keeps the round order it has today; this is never applied to one.
+func benchOrder(s *Snapshot, members []string) []string {
+	q := memberLoads(s, members)
+	var out []string
+	for _, m := range members {
+		if s.NoRoom[m] != "" {
+			continue
+		}
+		if _, ol := Overloaded(s, m); ol {
+			continue
+		}
+		out = append(out, m)
+	}
+	slices.SortStableFunc(out, func(a, b string) int {
+		if la, lb := memberBeatLoad(s, a), memberBeatLoad(s, b); la != lb {
+			if la < lb {
+				return -1
+			}
+			return 1
+		}
+		if qa, qb := q[a], q[b]; qa != qb {
+			return qa - qb
+		}
+		return strings.Compare(a, b)
+	})
+	return out
+}
+
+// memberBeatLoad is a fleet member's beat load, the percent of all its cores,
+// as the load cell on its control card reads it (LoadText, written by the
+// presence beat each tick; store/presence.go SyncFleet): the number before the
+// percent sign, 0 for no cell, an unreadable cell or one no fresh beat wrote.
+// The bench order (benchOrder) sorts by it, least loaded first.
+func memberBeatLoad(s *Snapshot, m string) float64 {
+	cell := ""
+	if c := s.MemberCtl(m); c != nil {
+		cell = c.F(Load)
+	}
+	pct, _, _ := strings.Cut(cell, "%")
+	load, err := strconv.ParseFloat(strings.TrimSpace(pct), 64)
+	if err != nil {
+		return 0
+	}
+	return load
+}
+
+// benchDropped is each member of members the bench order drops (benchOrder), with
+// its reason: no room (its word), or overloaded.
+func benchDropped(s *Snapshot, members []string) []benchDrop {
+	var out []benchDrop
+	for _, m := range members {
+		switch {
+		case s.NoRoom[m] != "":
+			out = append(out, benchDrop{m, "no room: " + s.NoRoom[m]})
+		default:
+			if _, ol := Overloaded(s, m); ol {
+				out = append(out, benchDrop{m, "overloaded"})
+			}
+		}
+	}
+	return out
+}
+
+// benchNoRoom is the refusal of a card whose bench is up and every member of it
+// the order dropped (benchOrder) for room or overload: the tick deals it when one
+// has room, and it is never dealt off its bench.
+func benchNoRoom(bench []string, dropped []benchDrop) string {
+	var who []string
+	for _, d := range dropped {
+		who = append(who, d.Member+" ("+d.Why+")")
+	}
+	return "every member of its bench " + Preview(bench, ", ") + " starts no card (" + strings.Join(who, "; ") + "): the tick deals it when one has room"
+}
+
+// benchPool is the pool a card whose brief names a bench is dealt from, and the
+// refusal when the pool is empty: the up members of its bench the notQuiet pool
+// left (up, the quiet and no-room members already out of it), ordered by the
+// bench order (benchOrder). A bench whose every member is up but starts no card
+// (its no-room word, or overloaded) refuses with benchNoRoom, naming each member
+// and its reason, never "waits for its bench"; a bench with no member up refuses
+// with benchRefusal. upAll is the members up before the quiet filter: the dropped
+// pool, so a member the quiet held back is named too. A card with no BENCH line
+// keeps the round pool it has today (onlyBench, never ordered), and an empty pool
+// of it refuses with noPoolWhy (steps_work.go, the deal).
+func benchPool(s *Snapshot, up, upAll, bench []string) (members []string, why string) {
+	members = onlyBench(up, bench)
+	if len(bench) == 0 {
+		return members, noPoolWhy
+	}
+	if len(members) == 0 {
+		if dropped := benchDropped(s, onlyBench(upAll, bench)); len(dropped) > 0 {
+			return nil, benchNoRoom(bench, dropped)
+		}
+		return nil, benchRefusal(bench)
+	}
+	ordered := benchOrder(s, members)
+	if len(ordered) == 0 {
+		return nil, benchNoRoom(bench, benchDropped(s, members))
+	}
+	return ordered, ""
+}
+
+// benchNext is the member a card the deal places on the fleet goes to: for a card
+// with a bench, the first of ms -- the launchers of the ordered pool -- that holds
+// fewer cards (q) than a lane (lanes, its width), else fewer than its room (widths,
+// DealAhead times its width), in the bench order's order, no wrap from the round
+// index (round.nextFree's two scans without the wrap, firstFreeOrdered then
+// firstOpenOrdered). A card with no BENCH line keeps the round's wrap (rr.nextFree).
+func benchNext(bench, ms []string, rr *round, q, lanes, widths map[string]int) string {
+	if len(bench) == 0 {
+		return rr.nextFree(ms, q, lanes, widths, "")
+	}
+	if m := firstFreeOrdered(ms, q, lanes); m != "" {
+		return m
+	}
+	return firstOpenOrdered(ms, q, widths)
+}
+
+// firstFreeOrdered is the first of ms holding fewer cards than a lane (its
+// width), in ms order: the bench order's first with a free lane, as nextLane
+// finds it without wrapping from the round index.
+func firstFreeOrdered(ms []string, q, lanes map[string]int) string {
+	for _, m := range ms {
+		if q[m] < lanes[m] {
+			return m
+		}
+	}
+	return ""
+}
+
+// firstOpenOrdered is the first of ms holding fewer cards than its room
+// (DealAhead times its width), in ms order: nextFree's second scan over the
+// bench order.
+func firstOpenOrdered(ms []string, q, room map[string]int) string {
+	for _, m := range ms {
+		if q[m] < room[m] {
+			return m
+		}
+	}
+	return ""
 }

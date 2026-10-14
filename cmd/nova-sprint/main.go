@@ -793,7 +793,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 func isGlobalBoolFlag(name string) bool {
 	switch name {
 	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
-		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
+		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who", "drop-bench":
 		return true
 	default:
 		return false

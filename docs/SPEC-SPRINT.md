@@ -3328,9 +3328,12 @@ order the cards were dealt in, so a card brought to the front of its stream by
   `bench` is the line's names, written with its brief by `add` and `brief`. A
   card with no BENCH line is dealt round the fleet as every card before it was.
   Every placement of its work cards honours the line: the deal, a redeal, an
-  escalation and a rework draw from the members of its bench that are up alone
-  (`round.nextFree` over them, free lanes first then its room DealAhead times
-  its width as any member's),
+  escalation and a rework draw from the members of its bench that are up
+  alone, the least-loaded first (`sprint.benchOrder` sorts them by their
+  beat's load, then by the work cards they hold, then by name; a member whose
+  fresh beat says it starts no card, or that is overloaded, is dropped;
+  `round.nextFree` over the ordered pool, free lanes first then its room
+  DealAhead times its width as any member's),
   a member going down or held withdraws its bench's card instead of dealing it
   to another member, and the level never moves it off the bench it was dealt to
   (the members its line does not name are avoided as a member that refused it at
@@ -3338,7 +3341,22 @@ order the cards were dealt in, so a card brought to the front of its stream by
   in `ready`: the tick's deal passes it by, no judgment is written, and the
   no-stall rule holds it as waiting for its bench, the line `nova-sprint card
   <id>` prints (`sprint.BenchOfBrief` and `sprint.Bench`, `bench_deal.go`;
-  `TestDealHonoursACardsBenchLine`).
+  `TestDealHonoursACardsBenchLine`). A bench whose every member is up but
+  starts no card (under its disk floor, or overloaded) waits with the
+  reasons, never "waits for its bench" (`sprint.benchOrder` and
+  `sprint.benchNoRoom`, `bench_deal.go`;
+  `TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom`).
+- A member's disk floor: a fleet member under 15% free on its bench root (the
+  root its job directories live under) starts no card (pkg/member
+  `DiskRoom`); the floor is the member's `--disk-floor-pct <n>` flag, default
+  15, 0 off, wired into its `Config.Room` beside the existing room (composed:
+  refuse when either refuses). The refusal is the member's no-room word, carried
+  by its beat and read by the deal, which passes the member by while it is set
+  (tla/NoRoom.tla, WordIsThisTicks).
+- Bench order: a BENCH card is dealt to the least-loaded of its named members
+  that has room (not NoRoom, not Overloaded); `benchOrder` drops those and
+  sorts the rest by beat Load asc, then cards held asc, then name (section 5's
+  BENCH line; `internal/sprint/bench_deal.go`; `TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom`).
 - Every rolling index (the fleet's `deal_index`, the readers' `ask_index`, the
   work table's `stream_index`, `stream_index_ask` and `stream_index_accept`) is
   a counter: a uint64 from 0 that goes up by one with every placement and by
