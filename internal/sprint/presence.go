@@ -362,9 +362,10 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 // A friend therefore reaches down only through deaf, and deaf lasts FriendDeafHold at most
 // (tla/FriendHeard.tla: UpToDownPassesDeaf, DeafNeverLongerThanBound). Her beat is no event: a daemon beating
 // for a dead session proves an app is open (asleep, then), and it is the beat alone that a
-// pong or proof she carried is dropped for once the daemon has stopped beating
-// FriendBeatBound ago, since her daemon alone runs her lanes; a recorded Heard is not
-// dropped with it, so a friend who works by hand after her old daemon stopped is up.
+// proof or finish she carried is dropped for once the daemon has stopped beating
+// FriendBeatBound ago, since her daemon alone runs her lanes; a recorded Heard and her answer
+// to the seat's wake ping are not dropped with it, so a friend who works by hand after her old
+// daemon stopped is up.
 func FriendPhase(f FriendPresence, now time.Time) (string, string) {
 	if f.Held {
 		return Held, "held"
@@ -411,8 +412,9 @@ const cameUp = "any valid event brings the friend up at once: nova-bus send or r
 
 // lastHeard is the latest event of the friend at or before now, with the word her row
 // says it in. A time after now is no evidence (a proof from the future renews nothing).
-// With stopped set (her daemon stopped beating FriendBeatBound ago) the pong, proof and
-// finish a daemon-run friend carried are dropped; her recorded Heard is kept. A tie is
+// With stopped set (her daemon stopped beating FriendBeatBound ago) the proof and finish a
+// daemon-run friend carried are dropped; her recorded Heard and her answer to the seat's wake
+// ping (under the seat's generation) are kept. A tie is
 // worded by the more specific event: pong, proof, finish, then heard.
 func lastHeard(f FriendPresence, now time.Time, stopped bool) (time.Time, string) {
 	var at time.Time
@@ -422,10 +424,12 @@ func lastHeard(f FriendPresence, now time.Time, stopped bool) (time.Time, string
 			at, word = t, w
 		}
 	}
+	// her answer to the seat's wake ping is the seat's observation of her session, fenced by the
+	// seat's generation, and never her daemon's word: it counts whatever her old daemon did
+	if f.Health.State == Up && f.Health.Generation == f.Generation {
+		take(f.Health.Seen, "session pong")
+	}
 	if !stopped {
-		if f.Health.State == Up && f.Health.Generation == f.Generation {
-			take(f.Health.Seen, "session pong")
-		}
 		if f.Beat.Fresh(now) {
 			take(f.Beat.Proof, "session proof")
 		}

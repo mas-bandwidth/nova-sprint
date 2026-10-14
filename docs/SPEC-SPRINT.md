@@ -273,9 +273,10 @@ reads the bus store's `bus2:heard:send` and `bus2:heard:recv` hashes each pass
 and records the later of the two for each friend; a store without them is no
 error); and the seat's own hand, `friend heard <friend> [--at <RFC3339>]`. A
 beat alone is never one, whoever sends it: a daemon beating for a dead session
-is `asleep`. A pong or proof a stopped daemon carried is dropped
-once her beat is `FriendBeatBound` old; a recorded heard time is not, so a friend
-who works by hand after her old daemon stopped is `up`, and the tick's stopped-beat
+is `asleep`. A proof or finish a stopped daemon carried is dropped
+once her beat is `FriendBeatBound` old; a recorded heard time and her answer to the
+seat's wake ping (under the seat's generation) are not, so a friend who works by hand
+after her old daemon stopped is `up`, and the tick's stopped-beat
 return (`LiveReturns`) leaves a friend shown `up` her cards. Her beat says
 `--check <nonce> --run <run>` when her daemon asks and `--pong <nonce>
 --run <run>` when her session answers, and the answer proves only when it

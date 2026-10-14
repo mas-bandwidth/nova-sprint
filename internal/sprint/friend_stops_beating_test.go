@@ -36,19 +36,23 @@ func TestAFriendWhoStopsBeatingIsDownAndHerCardsComeBack(t *testing.T) {
 	require.Equal(t, Working, w.s.Fleet.Card(rid).Col)
 	require.Equal(t, Working, w.s.Fleet.Card(rid2).Col)
 
-	// her daemon stops beating past the beat bound; her session's pong is fresh
+	// her daemon stops beating past the beat bound
 	now := w.s.Now
 	beat := Beat{At: now.Add(-(FriendBeatBound + time.Second))}
 
-	// presence: she is down since that beat, whatever her session's pong says
+	// presence: she is down since that beat when nothing of hers has been heard within the grace
 	fp := FriendPresence{
 		Beat:       beat,
-		Health:     FriendHealth{State: Up, Seen: now.Add(-time.Minute), Generation: 2},
+		Health:     FriendHealth{State: Up, Seen: now.Add(-FriendHeardUp - FriendDeafHold - time.Minute), Generation: 2},
 		Generation: 2,
 	}
 	status, why := FriendEvidence(fp, now)
-	require.Equal(t, Down, status, "a pong alone is no evidence her daemon beats, %s", why)
+	require.Equal(t, Down, status, "a pong past the grace is no evidence, %s", why)
 	require.Contains(t, why, "down since", "the row names where her down began")
+	// her answer to the seat's wake ping a minute ago is hers, whatever her old daemon did
+	fp.Health.Seen = now.Add(-time.Minute)
+	status, why = FriendEvidence(fp, now)
+	require.Equal(t, Up, status, "an answered wake ping brings her up, %s", why)
 
 	// the coordinator's return works on her read
 	p := Return(w.s, ReturnReq{Sel: Sel{IDs: []string{rid}}, Reason: "she stopped beating", Who: "coordinator"})

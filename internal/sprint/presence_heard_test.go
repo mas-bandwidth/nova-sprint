@@ -184,9 +184,10 @@ func TestAHoldAndABeatThatSaysDownWinOverHerLastHeard(t *testing.T) {
 	assert.Contains(t, evidence, "usage limit")
 }
 
-// The beat's staleness is the old daemon's: it drops a pong, proof or finish a stopped daemon carried,
-// as before, and it never drops a valid event of her own (a friend who works by hand after her old
-// daemon stopped is up).
+// The beat's staleness is the old daemon's: it drops the proof or finish a stopped daemon carried, as
+// before, and it never drops a valid event of her own (a friend who works by hand after her old daemon
+// stopped is up), her answer to the seat's wake ping included: the pong is the seat's observation of
+// her session, under the seat's generation, not her daemon's word (the cold read of PR 267).
 func TestAStaleBeatDoesNotOverrideAFreshHeard(t *testing.T) {
 	t.Parallel()
 	now := heardT0
@@ -194,9 +195,17 @@ func TestAStaleBeatDoesNotOverrideAFreshHeard(t *testing.T) {
 	pong := FriendHealth{State: Up, Seen: now.Add(-time.Minute), Generation: 2}
 
 	phase, evidence := FriendPhase(FriendPresence{Beat: stale, Health: pong, Generation: 2}, now)
-	assert.Equal(t, Down, phase, "a pong a stopped daemon carried is no evidence")
+	assert.Equal(t, Up, phase, "her answer to the seat's wake ping is hers, whatever her old daemon did")
+	assert.Equal(t, "session pong 1m0s ago", evidence)
+	phase, evidence = FriendPhase(FriendPresence{Beat: stale, Health: pong, Generation: 3}, now)
+	assert.Equal(t, Down, phase, "a pong under an old seat is none")
 	assert.Contains(t, evidence, "daemon stopped beating")
 	assert.Contains(t, evidence, "down since")
+	old := pong
+	old.Seen = now.Add(-FriendHeardUp - FriendDeafHold - time.Minute)
+	phase, evidence = FriendPhase(FriendPresence{Beat: stale, Health: old, Generation: 2}, now)
+	assert.Equal(t, Down, phase, "a pong past the grace")
+	assert.Contains(t, evidence, "daemon stopped beating")
 	phase, _ = FriendPhase(FriendPresence{Beat: stale, Finished: now.Add(-time.Minute)}, now)
 	assert.Equal(t, Down, phase, "nor is a finish")
 
