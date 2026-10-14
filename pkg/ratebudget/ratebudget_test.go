@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var t0 = time.Date(2026, 10, 11, 1, 30, 0, 0, time.UTC)
@@ -55,23 +56,18 @@ func TestTwoMembersShareOneWindowNeverOverTenAMinute(t *testing.T) {
 		now := t0.Add(time.Duration(tick) * 500 * time.Millisecond)
 		for i, m := range members {
 			g, err := m.TakeRate(ctx, key, 10, Window, now, ID(fmt.Sprintf("m%d", i)))
-			if err != nil {
-				t.Fatalf("take at %s: %v", now, err)
-			}
+			require.NoError(t, err, "take at %s", now)
 			if g.OK {
 				granted = append(granted, now)
-			} else if g.Wait <= 0 {
-				t.Fatalf("a refused take at %s names no wait", now)
+			} else {
+				require.Positive(t, g.Wait, "a refused take at %s names no wait", now)
 			}
 		}
 	}
-	if most := overWindow(granted, Minute); most > 10 {
-		t.Fatalf("%d grants in one minute across two members, budget 10", most)
-	}
+	most := overWindow(granted, Minute)
+	require.LessOrEqual(t, most, 10, "%d grants in one minute across two members, budget 10", most)
 	// five minutes at a window of 62 s: at least four full windows' worth
-	if len(granted) < 40 {
-		t.Fatalf("only %d grants in five minutes: the budget was not used", len(granted))
-	}
+	require.GreaterOrEqual(t, len(granted), 40, "only %d grants in five minutes: the budget was not used", len(granted))
 }
 
 // Many callers race for the last grants at the same instant through their own clients:
@@ -91,8 +87,7 @@ func TestRacingCallersTakeExactlyTheBudget(t *testing.T) {
 			m := Redis{C: client(t, addr)}
 			for range 20 {
 				g, err := m.TakeRate(context.Background(), key, 10, Window, t0, ID(fmt.Sprint(i)))
-				if err != nil {
-					t.Errorf("take: %v", err)
+				if !assert.NoError(t, err, "take") {
 					return
 				}
 				if g.OK {
@@ -108,9 +103,7 @@ func TestRacingCallersTakeExactlyTheBudget(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if ok != 10 {
-		t.Fatalf("%d grants at one instant, budget 10", ok)
-	}
+	require.Equal(t, 10, ok, "%d grants at one instant, budget 10", ok)
 }
 
 // A concurrency budget of 2 with three lanes: the third waits, and takes the slot the
@@ -122,26 +115,25 @@ func TestConcurrencyTwoThirdLaneWaits(t *testing.T) {
 	key := LeaseKey("", "deepseek")
 	ctx := context.Background()
 	for _, lane := range []string{"a", "b"} {
-		if g, err := b.Acquire(ctx, key, lane, 2, LeaseTTL, t0); err != nil || !g.OK {
-			t.Fatalf("lane %s: %+v %v", lane, g, err)
-		}
+		g, err := b.Acquire(ctx, key, lane, 2, LeaseTTL, t0)
+		require.NoError(t, err, "lane %s", lane)
+		require.True(t, g.OK, "lane %s refused: %+v", lane, g)
 	}
 	g, err := b.Acquire(ctx, key, "c", 2, LeaseTTL, t0)
-	if err != nil || g.OK || g.Wait <= 0 || g.Wait > MaxPoll {
-		t.Fatalf("lane c with two in flight: %+v %v, want a wait of at most %s", g, err, MaxPoll)
-	}
-	if n, _ := b.Use(ctx, key, 0, t0); n != 2 {
-		t.Fatalf("in flight %d, want 2", n)
-	}
-	if g, _ := b.Acquire(ctx, key, "a", 2, LeaseTTL, t0.Add(time.Second)); !g.OK {
-		t.Fatalf("a holder renewing its own slot waited: %+v", g)
-	}
-	if err := b.Release(ctx, key, "a"); err != nil {
-		t.Fatal(err)
-	}
-	if g, err := b.Acquire(ctx, key, "c", 2, LeaseTTL, t0.Add(2*time.Second)); err != nil || !g.OK {
-		t.Fatalf("lane c after a released: %+v %v", g, err)
-	}
+	require.NoError(t, err)
+	require.False(t, g.OK, "lane c with two in flight was granted: %+v", g)
+	require.Positive(t, g.Wait, "lane c names no wait")
+	require.LessOrEqual(t, g.Wait, MaxPoll, "lane c wait %s, want at most %s", g.Wait, MaxPoll)
+	n, err := b.Use(ctx, key, 0, t0)
+	require.NoError(t, err)
+	require.Equal(t, 2, n, "in flight %d, want 2", n)
+	g, err = b.Acquire(ctx, key, "a", 2, LeaseTTL, t0.Add(time.Second))
+	require.NoError(t, err)
+	require.True(t, g.OK, "a holder renewing its own slot waited: %+v", g)
+	require.NoError(t, b.Release(ctx, key, "a"))
+	g, err = b.Acquire(ctx, key, "c", 2, LeaseTTL, t0.Add(2*time.Second))
+	require.NoError(t, err)
+	require.True(t, g.OK, "lane c after a released: %+v", g)
 }
 
 // A holder that crashes never releases: its slot is reclaimed when its lease expires, so
@@ -152,15 +144,15 @@ func TestCrashedHoldersLeaseIsReclaimed(t *testing.T) {
 	b := Redis{C: client(t, addr)}
 	key := LeaseKey("", "deepseek")
 	ctx := context.Background()
-	if g, _ := b.Acquire(ctx, key, "crashed", 1, LeaseTTL, t0); !g.OK {
-		t.Fatal("first holder refused")
-	}
-	if g, _ := b.Acquire(ctx, key, "next", 1, LeaseTTL, t0.Add(LeaseTTL-time.Second)); g.OK {
-		t.Fatal("a live lease was taken over")
-	}
-	if g, err := b.Acquire(ctx, key, "next", 1, LeaseTTL, t0.Add(LeaseTTL+time.Millisecond)); err != nil || !g.OK {
-		t.Fatalf("the crashed holder's slot was not reclaimed at its expiry: %+v %v", g, err)
-	}
+	g, err := b.Acquire(ctx, key, "crashed", 1, LeaseTTL, t0)
+	require.NoError(t, err)
+	require.True(t, g.OK, "first holder refused")
+	g, err = b.Acquire(ctx, key, "next", 1, LeaseTTL, t0.Add(LeaseTTL-time.Second))
+	require.NoError(t, err)
+	require.False(t, g.OK, "a live lease was taken over")
+	g, err = b.Acquire(ctx, key, "next", 1, LeaseTTL, t0.Add(LeaseTTL+time.Millisecond))
+	require.NoError(t, err)
+	require.True(t, g.OK, "the crashed holder's slot was not reclaimed at its expiry: %+v", g)
 }
 
 // The store is down: the waiter proceeds as if unlimited, logs one line, and returns no
@@ -178,18 +170,16 @@ func TestStoreDownProceedsUnlimited(t *testing.T) {
 	out := w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
 		return b.TakeRate(ctx, RateKey("", "inception/mercury-3"), 10, Window, time.Now(), ID("m"))
 	})
-	if !out.Open || out.Granted || out.Ended {
-		t.Fatalf("outcome %+v, want open", out)
-	}
-	if len(lines) != 1 || !strings.Contains(lines[0], "RATE BUDGET OPEN") {
-		t.Fatalf("lines %q, want one OPEN line", lines)
-	}
+	require.True(t, out.Open, "outcome %+v, want open", out)
+	require.False(t, out.Granted, "outcome %+v, want open", out)
+	require.False(t, out.Ended, "outcome %+v, want open", out)
+	require.Len(t, lines, 1)
+	require.Contains(t, lines[0], "RATE BUDGET OPEN")
 	mem := &Mem{Fail: errors.New("store gone")}
-	if out := w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
+	out = w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
 		return mem.Acquire(ctx, "k", "h", 1, LeaseTTL, t0)
-	}); !out.Open {
-		t.Fatalf("a failing lease store did not open: %+v", out)
-	}
+	})
+	require.True(t, out.Open, "a failing lease store did not open: %+v", out)
 }
 
 // fakeClock is a waiter's clock that a sleep advances.
@@ -217,24 +207,22 @@ func TestStalledCallerIsEventuallyGranted(t *testing.T) {
 	mem := &Mem{}
 	key := RateKey("", "inception/mercury-3")
 	for range 10 {
-		if g, _ := mem.TakeRate(context.Background(), key, 10, Window, clk.Now(), "x"); !g.OK {
-			t.Fatal("budget refused below 10")
-		}
+		g, _ := mem.TakeRate(context.Background(), key, 10, Window, clk.Now(), "x")
+		require.True(t, g.OK, "budget refused below 10")
 	}
 	var lines []string
 	w := Waiter{Now: clk.Now, Sleep: clk.Sleep, Log: func(l string) { lines = append(lines, l) }, What: "rpm 10"}
 	out := w.Wait(context.Background(), func(ctx context.Context) (Grant, error) {
 		return mem.TakeRate(ctx, key, 10, Window, clk.Now(), "late")
 	})
-	if !out.Granted || out.Open || out.Ended {
-		t.Fatalf("outcome %+v, want granted", out)
-	}
-	if out.Waited < Window-time.Second || out.Waited > Window+MaxPoll {
-		t.Fatalf("waited %s, want about one window (%s)", out.Waited, Window)
-	}
-	if len(lines) < 2 || !strings.Contains(lines[0], "RATE BUDGET WAIT") || !strings.Contains(lines[len(lines)-1], "RATE BUDGET GRANTED") {
-		t.Fatalf("lines %q: want the wait visible, then the grant", lines)
-	}
+	require.True(t, out.Granted, "outcome %+v, want granted", out)
+	require.False(t, out.Open, "outcome %+v, want granted", out)
+	require.False(t, out.Ended, "outcome %+v, want granted", out)
+	require.GreaterOrEqual(t, out.Waited, Window-time.Second, "waited %s, want about one window (%s)", out.Waited, Window)
+	require.LessOrEqual(t, out.Waited, Window+MaxPoll, "waited %s, want about one window (%s)", out.Waited, Window)
+	require.GreaterOrEqual(t, len(lines), 2, "lines %q: want the wait visible, then the grant", lines)
+	require.Contains(t, lines[0], "RATE BUDGET WAIT")
+	require.Contains(t, lines[len(lines)-1], "RATE BUDGET GRANTED")
 }
 
 // A stall is bounded only by the caller's context (the card's deadline): its end ends the
@@ -252,9 +240,9 @@ func TestStallEndsWithTheCardsDeadline(t *testing.T) {
 		return nil
 	}}
 	out := w.Wait(ctx, func(context.Context) (Grant, error) { return Grant{Wait: time.Minute}, nil })
-	if !out.Ended || out.Granted || out.Open {
-		t.Fatalf("outcome %+v, want ended", out)
-	}
+	require.True(t, out.Ended, "outcome %+v, want ended", out)
+	require.False(t, out.Granted, "outcome %+v, want ended", out)
+	require.False(t, out.Open, "outcome %+v, want ended", out)
 }
 
 // The in-process backend keeps the same window: never more than n in any span.
@@ -268,7 +256,6 @@ func TestMemWindowNeverOver(t *testing.T) {
 			granted = append(granted, now)
 		}
 	}
-	if most := overWindow(granted, Minute); most > 10 {
-		t.Fatalf("%d in one minute", most)
-	}
+	most := overWindow(granted, Minute)
+	require.LessOrEqual(t, most, 10, "%d in one minute", most)
 }

@@ -3,7 +3,6 @@ package swarm
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,9 +19,7 @@ func TestLintHeaderStrandedAcceptsAKeyInTheHeader(t *testing.T) {
 		"PATHS: internal/x.go\n" +
 		"\n" +
 		"Fix c1.\n")
-	if got := LintHeaderStranded(raw); len(got) != 0 {
-		t.Fatalf("a key in the header drew %+v; want no finding", got)
-	}
+	require.Empty(t, LintHeaderStranded(raw), "a key in the header should draw no finding")
 }
 
 // A header key written below the first prose line is one finding naming the key and
@@ -36,18 +33,10 @@ func TestLintHeaderStrandedNamesAKeyBelowTheProse(t *testing.T) {
 		"Fix c1.\n" +
 		"DEPENDS-ON: -\n")
 	got := LintHeaderStranded(raw)
-	if len(got) != 1 {
-		t.Fatalf("a stranded DEPENDS-ON drew %+v; want one finding", got)
-	}
-	if got[0].Line != 6 {
-		t.Fatalf("stranded DEPENDS-ON line=%d; want 6", got[0].Line)
-	}
-	if !strings.Contains(got[0].Excerpt, "DEPENDS-ON") {
-		t.Fatalf("excerpt %q does not name the key", got[0].Excerpt)
-	}
-	if !strings.Contains(got[0].Excerpt, "6") {
-		t.Fatalf("excerpt %q does not name the line", got[0].Excerpt)
-	}
+	require.Len(t, got, 1, "a stranded DEPENDS-ON drew %+v; want one finding", got)
+	require.Equal(t, 6, got[0].Line, "stranded DEPENDS-ON line=%d; want 6", got[0].Line)
+	require.Contains(t, got[0].Excerpt, "DEPENDS-ON", "excerpt %q does not name the key", got[0].Excerpt)
+	require.Contains(t, got[0].Excerpt, "6", "excerpt %q does not name the line", got[0].Excerpt)
 }
 
 // A sentence that merely mentions a key mid-line is not a `KEY: value` line and draws
@@ -59,9 +48,7 @@ func TestLintHeaderStrandedIgnoresAMentionMidLine(t *testing.T) {
 		"PATHS: internal/x.go\n" +
 		"\n" +
 		"Fix c1: read DEPENDS-ON: for the chain, not this sentence.\n")
-	if got := LintHeaderStranded(raw); len(got) != 0 {
-		t.Fatalf("a mid-line mention drew %+v; want no finding", got)
-	}
+	require.Empty(t, LintHeaderStranded(raw), "a mid-line mention should draw no finding")
 }
 
 // CardHeaderValue reads one key of the typed block: the first of two lines with the same
@@ -196,12 +183,8 @@ func TestLintHeaderStrandedNamesEveryStrandedHeaderKey(t *testing.T) {
 			"Fix c1.\n" +
 			key + ": x\n")
 		got := LintHeaderStranded(raw)
-		if len(got) != 1 {
-			t.Fatalf("%s below the prose drew %+v; want one finding", key, got)
-		}
-		if !strings.Contains(got[0].Excerpt, key+": on line 6") {
-			t.Fatalf("%s: excerpt %q does not name the key and its line", key, got[0].Excerpt)
-		}
+		require.Len(t, got, 1, "%s below the prose drew %+v; want one finding", key, got)
+		require.Contains(t, got[0].Excerpt, key+": on line 6", "%s: excerpt %q does not name the key and its line", key, got[0].Excerpt)
 	}
 }
 
