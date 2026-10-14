@@ -3,7 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"

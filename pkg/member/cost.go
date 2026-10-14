@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // A RUN'S COST IS RECORDED WHATEVER ITS END (docs/SPEC-SPRINT.md, "What a card cost"). A

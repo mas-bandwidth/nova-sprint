@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/text/width"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
