@@ -10,8 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/pronouns"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	toolsfriend "github.com/mas-bandwidth/nova-tools/pkg/friend"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
@@ -43,7 +43,7 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	if err != nil {
 		return nil, err
 	}
-	pro, _ := pronouns.ParsePronouns(spec.Pronouns)
+	pro, _ := toolsfriend.ParsePronouns(spec.Pronouns)
 	var running []string
 	if b.Friend != nil {
 		running = b.Friend.Running

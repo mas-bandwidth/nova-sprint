@@ -1,24 +1,24 @@
 package friend
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/pkg/pronouns"
+	toolsfriend "github.com/mas-bandwidth/nova-tools/pkg/friend"
 	"strings"
 	"sync/atomic"
 )
 
-type Pronouns = pronouns.Pronouns
+type Pronouns = toolsfriend.Pronouns
 
 const (
-	SheHer          = pronouns.SheHer
-	HeHim           = pronouns.HeHim
-	TheyThem        = pronouns.TheyThem
-	DefaultPronouns = pronouns.DefaultPronouns
+	SheHer          = toolsfriend.SheHer
+	HeHim           = toolsfriend.HeHim
+	TheyThem        = toolsfriend.TheyThem
+	DefaultPronouns = toolsfriend.DefaultPronouns
 )
 
-var AllPronouns = pronouns.AllPronouns
+var AllPronouns = toolsfriend.AllPronouns
 
-func ParsePronouns(s string) (Pronouns, bool) { return pronouns.ParsePronouns(s) }
-func PronounList() string                     { return pronouns.PronounList() }
+func ParsePronouns(s string) (Pronouns, bool) { return toolsfriend.ParsePronouns(s) }
+func PronounList() string                     { return toolsfriend.PronounList() }
 
 // RowPronouns reads the friend row's pronouns off the beat's answer
 // (row_pronouns=she/her, beside row_mode and row_width); ok is false when the
