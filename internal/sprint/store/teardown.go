@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -242,7 +241,7 @@ func (r *Redis) RecordIDs(ctx context.Context, table string) ([]string, error) {
 			}
 		}
 		if len(msgs) < recordIDsPage {
-			sort.Strings(out)
+			slices.Sort(out)
 			return out, nil
 		}
 		start = "(" + msgs[len(msgs)-1].ID
@@ -551,7 +550,7 @@ func (m *Mem) Keys(names sprint.Names) []string {
 	for s := range m.kv {
 		keys = append(keys, names.Key(s))
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }
 

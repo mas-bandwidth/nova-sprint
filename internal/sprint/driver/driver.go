@@ -19,7 +19,6 @@ import (
 	"io"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -531,7 +530,7 @@ func (d *Driver) tick(tick int, c Config, w where) {
 	for _, s := range w.Streams {
 		streams = append(streams, s.Stream)
 	}
-	sort.Strings(streams)
+	slices.Sort(streams)
 	queued := func(s string) []string {
 		var out []string
 		var q queue

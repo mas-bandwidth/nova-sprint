@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -528,7 +528,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	for rd := range byReader {
 		readers = append(readers, rd)
 	}
-	sort.Strings(readers)
+	slices.Sort(readers)
 	var rparts []string
 	for _, rd := range readers {
 		g := byReader[rd]
@@ -571,7 +571,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 		}
 		states = append(states, c.Row+":"+st)
 	}
-	sort.Strings(states)
+	slices.Sort(states)
 	mergeState := strings.Join(states, " ")
 	if mergeState == "" {
 		mergeState = "none merging"

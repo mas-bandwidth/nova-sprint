@@ -3,7 +3,8 @@ package sprint
 import (
 	"cmp"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -106,11 +107,7 @@ func DoctorPreflight(in PreflightInput) []DoctorCheck {
 // is refused while its link is flapping; a member not measured stays a WARN there; and a fleet
 // whose links are all steady or quiet is one OK row.
 func preflightLinkRows(probes map[string]MemberProbe) []DoctorCheck {
-	names := make([]string, 0, len(probes))
-	for m := range probes {
-		names = append(names, m)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(probes))
 	var out []DoctorCheck
 	flapping := false
 	for _, m := range names {
@@ -285,11 +282,7 @@ func PreflightMembers(s *Snapshot, probes map[string]MemberProbe) []PreflightMem
 	if len(probes) == 0 {
 		return nil // no probe is no member measured: the check stays the WARN that says so
 	}
-	names := make([]string, 0, len(probes))
-	for m := range probes {
-		names = append(names, m)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(probes))
 	out := make([]PreflightMember, 0, len(names))
 	for _, m := range names {
 		pm := PreflightMember{Probe: probes[m]}

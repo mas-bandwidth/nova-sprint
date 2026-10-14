@@ -3,7 +3,6 @@ package sprint
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -228,7 +227,7 @@ func RetireStreams(s *Snapshot, streams []string, why string) Plan {
 	said := map[string]bool{}
 	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
 		st := NamedStream(o.Note)
-		if st == "" || !contains(streams, st) {
+		if st == "" || !slices.Contains(streams, st) {
 			continue
 		}
 		p.Closes = append(p.Closes, o)
@@ -263,14 +262,14 @@ const PartRetire = "retire gone streams"
 func TickRetireGone(s *Snapshot, r TickReq) (Plan, int) {
 	var gone []string
 	for _, o := range append(append([]Open(nil), s.Open...), s.Acked...) {
-		if st := NamedStream(o.Note); st != "" && !contains(gone, st) && StreamGone(s, st) {
+		if st := NamedStream(o.Note); st != "" && !slices.Contains(gone, st) && StreamGone(s, st) {
 			gone = append(gone, st)
 		}
 	}
 	if len(gone) == 0 {
 		return Plan{}, 0
 	}
-	sort.Strings(gone)
+	slices.Sort(gone)
 	p := RetireStreams(s, gone, WhyGone)
 	for i := range p.Notes {
 		p.Notes[i].Who = r.who()

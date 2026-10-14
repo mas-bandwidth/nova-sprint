@@ -417,7 +417,7 @@ func (m *Mem) CellIDs(_ context.Context, shapes []ntable.Table) (map[string][]st
 				out[s.Name] = append(out[s.Name], id)
 			}
 		}
-		sort.Strings(out[s.Name])
+		slices.Sort(out[s.Name])
 	}
 	return out, nil
 }

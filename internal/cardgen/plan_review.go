@@ -3,6 +3,7 @@ package cardgen
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -54,13 +55,13 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 				pathRank[p] = len(pathRank)
 			}
 			key := pathKey{repo, p}
-			if !containsString(byPath[key], c.ID) {
+			if !slices.Contains(byPath[key], c.ID) {
 				if len(byPath[key]) == 0 {
 					order = append(order, key)
 				}
 				byPath[key] = append(byPath[key], c.ID)
 			}
-			if repo == "" && !containsString(unknown[p], c.ID) {
+			if repo == "" && !slices.Contains(unknown[p], c.ID) {
 				unknown[p] = append(unknown[p], c.ID)
 			}
 		}
@@ -75,7 +76,7 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 			// Keep plan order when an unresolved card preceded the known repository.
 			ids = nil
 			for _, c := range cards {
-				if (containsString(byPath[key], c.ID) || containsString(unknown[key.path], c.ID)) && !containsString(ids, c.ID) {
+				if (slices.Contains(byPath[key], c.ID) || slices.Contains(unknown[key.path], c.ID)) && !slices.Contains(ids, c.ID) {
 					ids = append(ids, c.ID)
 				}
 			}
@@ -224,14 +225,4 @@ func headerPaths(brief, key string) []string {
 		}
 	}
 	return out
-}
-
-// containsString says xs contains s.
-func containsString(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }

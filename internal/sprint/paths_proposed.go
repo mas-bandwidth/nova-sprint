@@ -310,7 +310,7 @@ func TwinCommand(s *Snapshot, pr *Card, p PathsProposal) string {
 	waived := Split(pr.F("waived"))
 	var needs []string
 	for _, n := range Split(pr.F("needs")) {
-		if !contains(waived, n) {
+		if !slices.Contains(waived, n) {
 			needs = append(needs, n)
 		}
 	}

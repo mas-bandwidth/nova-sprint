@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -60,7 +61,7 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		// was raised for holds none, and the ack is recorded as the card's move
 		// (outlived, judgments_retire.go).
 		moved := ""
-		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
+		if !slices.Contains(n.Decisions, "ack") && !slices.Contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
 			ev, ok := outlived(s, n, entries)
 			if !ok {
 				p.refuse(id, notAckable(n, entries))
@@ -198,7 +199,7 @@ func waive(s *Snapshot, id, who string, judgments []Note) (Change, []Note) {
 			needs = missingNeeds(s, waits)
 		}
 		for _, need := range needs {
-			if (len(n.Needs) == 0 || contains(n.Needs, need)) && !contains(gone, need) {
+			if (len(n.Needs) == 0 || slices.Contains(n.Needs, need)) && !slices.Contains(gone, need) {
 				gone = append(gone, need)
 			}
 		}

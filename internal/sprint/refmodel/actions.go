@@ -1,6 +1,7 @@
 package refmodel
 
 import (
+	"maps"
 	"slices"
 	"sort"
 )
@@ -84,7 +85,7 @@ func Add(s State, a AddArgs, scores map[string]float64) (State, error) {
 		if err := s.checkScore(a, id, sc); err != nil {
 			return s, err
 		}
-		if k := indexOf(a.IDs, id); k > 0 && !(scores[a.IDs[k-1]] < sc) {
+		if k := slices.Index(a.IDs, id); k > 0 && !(scores[a.IDs[k-1]] < sc) {
 			return s, badChoice("%s has score %v, not after %s of the same add at %v", id, sc, a.IDs[k-1], scores[a.IDs[k-1]])
 		}
 		needs := addSorted(nil, a.Needs...)
@@ -158,15 +159,6 @@ func (s State) checkScore(a AddArgs, id string, sc float64) error {
 		}
 	}
 	return nil
-}
-
-func indexOf(xs []string, x string) int {
-	for i, y := range xs {
-		if y == x {
-			return i
-		}
-	}
-	return -1
 }
 
 // placeSentinel is the spec's section 16 for a sentinel just admitted. It
@@ -1175,7 +1167,7 @@ func (s State) level(moves map[string]string) (State, error) {
 				want[id] = to
 			}
 		}
-		if !sameMap(want, moves) {
+		if !maps.Equal(want, moves) {
 			return s, badChoice("level moves %v, not round the fleet: the round (past %q) moves %v", moves, s.DealLast, want)
 		}
 	}
@@ -1390,18 +1382,6 @@ func (s State) nextReader(set []string) string {
 		}
 	}
 	return ""
-}
-
-func sameMap(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }
 
 // ------------------------------------------------------------------ ci, ack

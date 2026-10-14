@@ -7,7 +7,6 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -187,7 +186,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		line := streamLine(s, r.Stream)
 		producer := -1
 		for i, c := range line {
-			if contains(r.Needs, c.ID) {
+			if slices.Contains(r.Needs, c.ID) {
 				producer = i
 			}
 		}
@@ -380,21 +379,21 @@ func Add(s *Snapshot, r AddReq) Plan {
 			repos, bases = Split(ctl.F(FieldRepo)), Split(ctl.F(FieldBase))
 		}
 		for _, a := range in {
-			if a.repo != "" && !contains(repos, a.repo) {
+			if a.repo != "" && !slices.Contains(repos, a.repo) {
 				repos = append(repos, a.repo)
 			}
-			if a.base != "" && !contains(bases, a.base) {
+			if a.base != "" && !slices.Contains(bases, a.base) {
 				bases = append(bases, a.base)
 			}
 		}
 		if len(repos) > 0 || len(bases) > 0 {
 			set := map[string]string{}
 			if len(repos) > 0 {
-				sort.Strings(repos)
+				slices.Sort(repos)
 				set[FieldRepo] = strings.Join(repos, ",")
 			}
 			if len(bases) > 0 {
-				sort.Strings(bases)
+				slices.Sort(bases)
 				set[FieldBase] = strings.Join(bases, ",")
 			}
 			if ctl == nil {
@@ -538,7 +537,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		edges[id] = Split(s.Work.Card(id).F("needs"))
 		changed = append(changed, id)
 	}
-	sort.Strings(changed)
+	slices.Sort(changed)
 	waits := map[string]bool{}
 	for _, id := range pulled {
 		waits[id] = true
@@ -804,10 +803,10 @@ func SentinelBlocks(s *Snapshot, c *Card) []string {
 		out = append(out, x.ID)
 	}
 	for _, x := range s.Work.Cards() {
-		if x.Row == c.Row || x.Col == string(Landed) || contains(out, x.ID) {
+		if x.Row == c.Row || x.Col == string(Landed) || slices.Contains(out, x.ID) {
 			continue
 		}
-		if contains(Split(x.F("needs")), c.ID) {
+		if slices.Contains(Split(x.F("needs")), c.ID) {
 			out = append(out, x.ID)
 		}
 	}
@@ -819,7 +818,7 @@ func SentinelBlocks(s *Snapshot, c *Card) []string {
 func WaitsFor(s *Snapshot, c *Card, landing map[string]bool) []string {
 	out := NamedWaits(s, c, landing)
 	for _, n := range PositionWaits(s, c, landing) {
-		if !contains(out, n) {
+		if !slices.Contains(out, n) {
 			out = append(out, n)
 		}
 	}
@@ -832,7 +831,7 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	var out []string
 	waived := Split(c.F("waived"))
 	for _, n := range Split(c.F("needs")) {
-		if s.StateOf(n) != Landed && !landing[n] && !contains(waived, n) {
+		if s.StateOf(n) != Landed && !landing[n] && !slices.Contains(waived, n) {
 			out = append(out, n)
 		}
 	}
@@ -847,7 +846,7 @@ func waitsAfterOpen(s *Snapshot, c *Card) []string {
 	var out []string
 	waived := Split(c.F("waived"))
 	for _, n := range Split(c.F(FieldWaitsAfter)) {
-		if s.StateOf(n) != Landed && !contains(waived, n) {
+		if s.StateOf(n) != Landed && !slices.Contains(waived, n) {
 			out = append(out, n)
 		}
 	}
@@ -921,7 +920,7 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 	c := s.Work.Card(id)
 	named := Split(c.F("needs"))
 	for _, n := range PositionWaits(s, c, nil) {
-		if !contains(named, n) {
+		if !slices.Contains(named, n) {
 			named = append(named, n)
 		}
 	}
@@ -932,20 +931,20 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 		} else if nc != nil {
 			st = "off the table (" + orDash(nc.F("outcome")) + ")"
 		}
-		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n)}
+		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: slices.Contains(Split(c.F("waived")), n)}
 		if ns.Waived {
 			ns.WaivedBy, ns.WaivedAt = c.F("waived_by"), c.F("waived_at")
 		}
 		needs = append(needs, ns)
 	}
 	for _, o := range s.Work.Column(States...) {
-		if contains(Split(o.F("needs")), id) {
+		if slices.Contains(Split(o.F("needs")), id) {
 			neededBy = append(neededBy, o.ID)
 		}
 	}
 	if c.Placed() && IsSentinel(c) {
 		for _, b := range Behind(s, c) {
-			if !contains(neededBy, b.ID) {
+			if !slices.Contains(neededBy, b.ID) {
 				neededBy = append(neededBy, b.ID)
 			}
 		}
@@ -1865,7 +1864,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if (!c.Placed() || c.Col != Working) && !late {
 			return "not working (it is " + placeWord(c) + ")"
 		}
-		if len(members) > 0 && !contains(members, c.Row) {
+		if len(members) > 0 && !slices.Contains(members, c.Row) {
 			return "dealt to " + c.Row + ", not " + r.As
 		}
 		if why := laneRefusal(c, r.As, r.Lane); why != "" {
@@ -2512,7 +2511,7 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	set["withdrawn"] = stamp(s.Now)
 	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndStaging), ":")), MaxProviderErrorBytes)
 	var notes []Note
-	if !contains(StagingRefusers(c), c.Row) {
+	if !slices.Contains(StagingRefusers(c), c.Row) {
 		set[FieldStagingTake+itoa(c.Int("gen"))] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Usage: r.Usage, Error: line}.String()
 		n := happened(NStagingRefused, pr.Row, s.Now, pr.ID)
@@ -3626,31 +3625,22 @@ func nextGen(c *Card, member string, now time.Time) map[string]string {
 func without(xs, out []string) []string {
 	var keep []string
 	for _, x := range xs {
-		if !contains(out, x) {
+		if !slices.Contains(out, x) {
 			keep = append(keep, x)
 		}
 	}
 	return keep
 }
 
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
-}
-
 // orderLike orders names by the rows' order, a name with no row last.
 func orderLike(rows, names []string, extra string) []string {
 	var out []string
 	for _, r := range rows {
-		if contains(names, r) {
+		if slices.Contains(names, r) {
 			out = append(out, r)
 		}
 	}
-	if !contains(out, extra) && contains(names, extra) {
+	if !slices.Contains(out, extra) && slices.Contains(names, extra) {
 		out = append(out, extra)
 	}
 	return out
@@ -3681,7 +3671,7 @@ func takeTurns(cards []*Card, offset int) []*Card {
 		}
 		by[st] = append(by[st], c)
 	}
-	sort.Strings(streams)
+	slices.Sort(streams)
 	if n := len(streams); n > 0 && offset > 0 {
 		streams = append(append([]string(nil), streams[offset%n:]...), streams[:offset%n]...)
 	}

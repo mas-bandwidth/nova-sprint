@@ -163,7 +163,7 @@ func (r *round) pickByRoom(k int, free []string, room map[string]readerRoom) []s
 		for i := 0; i < n; i++ {
 			j := (at + i) % n
 			x := order[j]
-			if contains(out, x) || room[x].free <= 0 {
+			if slices.Contains(out, x) || room[x].free <= 0 {
 				continue
 			}
 			if pick < 0 || room[x].share() > room[order[pick]].share() {
@@ -186,12 +186,12 @@ func (r *round) inIndexOrder(names []string) []string {
 	var out []string
 	n := len(r.order)
 	for i := 0; i < n; i++ {
-		if x := r.order[(r.start()+i)%n]; contains(names, x) && !contains(out, x) {
+		if x := r.order[(r.start()+i)%n]; slices.Contains(names, x) && !slices.Contains(out, x) {
 			out = append(out, x)
 		}
 	}
 	for _, x := range names {
-		if !contains(out, x) {
+		if !slices.Contains(out, x) {
 			out = append(out, x)
 		}
 	}
@@ -210,7 +210,7 @@ func (r *round) levelToRoom(up []string, room map[string]readerRoom, from string
 	to := ""
 	for i := 0; i < len(r.order); i++ {
 		x := r.order[(r.start()+i)%len(r.order)]
-		if !contains(up, x) || contains(avoid, x) || room[x].free < 1 || room[x].after(1).share() < room[from].after(-1).share() {
+		if !slices.Contains(up, x) || slices.Contains(avoid, x) || room[x].free < 1 || room[x].after(1).share() < room[from].after(-1).share() {
 			continue
 		}
 		if to == "" || room[x].share() > room[to].share() {
@@ -310,7 +310,7 @@ func (r *round) nextLane(up []string, q, lanes map[string]int, avoid []string) s
 		isUp[x] = true
 	}
 	return r.scan(func(x string) bool {
-		return isUp[x] && q[x] < lanes[x] && !contains(avoid, x)
+		return isUp[x] && q[x] < lanes[x] && !slices.Contains(avoid, x)
 	})
 }
 
@@ -340,7 +340,7 @@ func (r *round) levelTo(up []string, n, held, widths map[string]int, from string
 func dealRoundWith(s *Snapshot, extra ...string) *round {
 	names := s.Members()
 	for _, x := range extra {
-		if x != "" && !contains(names, x) {
+		if x != "" && !slices.Contains(names, x) {
 			names = append(names, x)
 		}
 	}

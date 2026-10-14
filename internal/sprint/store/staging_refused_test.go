@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -164,7 +165,7 @@ func TestTheLevelNeverMovesACardBackOntoItsRefuser(t *testing.T) {
 		for m, n := range per {
 			assert.LessOrEqual(t, n, 1, "%s: %s refused it %d times", c.ID, m, n)
 		}
-		if contains(sprint.StagingRefusers(c), "m1") {
+		if slices.Contains(sprint.StagingRefusers(c), "m1") {
 			assert.NotEqual(t, "m1", c.Row, "%s is back on its refuser m1", c.ID)
 		}
 	}

@@ -2,7 +2,7 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -169,8 +169,8 @@ func StreamReposAndBases(s *Snapshot, stream string) (repos, bases []string) {
 			}
 		}
 	}
-	sort.Strings(repos)
-	sort.Strings(bases)
+	slices.Sort(repos)
+	slices.Sort(bases)
 	return repos, bases
 }
 
@@ -263,7 +263,7 @@ func StreamsOf(s *Snapshot, r StreamsReq) StreamsView {
 		}
 		v.Streams = append(v.Streams, row)
 	}
-	sort.Strings(v.Mixed)
+	slices.Sort(v.Mixed)
 	return v
 }
 

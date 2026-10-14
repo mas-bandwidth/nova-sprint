@@ -260,25 +260,25 @@ func Inbox(r InboxReq) []Group {
 			}
 			for _, p := range shown {
 				member(i, p)
-				if len(g.Primaries) < MaxListed && !contains(g.Primaries, p) {
+				if len(g.Primaries) < MaxListed && !slices.Contains(g.Primaries, p) {
 					g.Primaries = append(g.Primaries, p)
 				}
 			}
 		}
-		if !contains(g.Notes, n.ID) {
+		if !slices.Contains(g.Notes, n.ID) {
 			g.Notes = append(g.Notes, n.ID)
 		}
 		for _, x := range n.Needs {
-			if !contains(g.Needs, x) {
+			if !slices.Contains(g.Needs, x) {
 				g.Needs = append(g.Needs, x)
 			}
 		}
 		for _, x := range n.Suspects {
-			if !contains(g.Suspects, x) {
+			if !slices.Contains(g.Suspects, x) {
 				g.Suspects = append(g.Suspects, x)
 			}
 		}
-		if overdue && !contains(g.Decisions, "act") {
+		if overdue && !slices.Contains(g.Decisions, "act") {
 			g.Decisions = append(append([]string{}, g.Decisions...), "act")
 		}
 	}
@@ -287,8 +287,8 @@ func Inbox(r InboxReq) []Group {
 		judg[i].Waited = r.running(judg[i].Oldest)
 		judg[i].Members = slices.Sorted(maps.Keys(members[i]))
 		judg[i].Size = len(judg[i].Members)
-		sort.Strings(judg[i].Primaries)
-		sort.Strings(judg[i].Notes)
+		slices.Sort(judg[i].Primaries)
+		slices.Sort(judg[i].Notes)
 		judg[i].Commands = commands(judg[i], first[i], r.Prefix, r.OnWork)
 		judg[i].Quiet = !loud[i]
 		for _, m := range judg[i].Members {
@@ -352,7 +352,7 @@ func Inbox(r InboxReq) []Group {
 		g.Count += c
 		for _, p := range n.Primaries {
 			restMembers[i][p] = true
-			if len(g.Primaries) < MaxListed && !contains(g.Primaries, p) {
+			if len(g.Primaries) < MaxListed && !slices.Contains(g.Primaries, p) {
 				g.Primaries = append(g.Primaries, p)
 			}
 		}
@@ -479,7 +479,7 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, look()...)
 		case d == "act" && first.StreamLevel:
 			add(d, actLine())
-		case d == "act" && contains(g.Decisions, "ack"):
+		case d == "act" && slices.Contains(g.Decisions, "ack"):
 			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText, actLine())
 		case d == "act":
 			add(d, actLine())

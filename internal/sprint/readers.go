@@ -5,7 +5,6 @@ import (
 	"maps"
 	"math"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -96,7 +95,7 @@ func readersText(s *Snapshot) string {
 		}
 		out = append(out, r+" "+st)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return strings.Join(out, ", ")
 }
 
@@ -705,7 +704,7 @@ const FieldFinderRead = "finder"
 // room chooses. The second reader stays fresh: only the first read is the finder's.
 func finderFirst(c *Card, attempt int, free []string, room map[string]readerRoom) string {
 	rd := c.F(FieldFindingReader)
-	if rd == "" || c.Int(FieldFindingAttempt) != attempt-1 || !contains(free, rd) || room[rd].free <= 0 {
+	if rd == "" || c.Int(FieldFindingAttempt) != attempt-1 || !slices.Contains(free, rd) || room[rd].free <= 0 {
 		return ""
 	}
 	return rd

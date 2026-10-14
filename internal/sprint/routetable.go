@@ -2,7 +2,8 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -225,16 +226,8 @@ func RouteTable(lines []Line, since time.Time) string {
 		}
 	}
 
-	names := make([]string, 0, len(routes))
-	for n := range routes {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	stormNames := make([]string, 0, len(storm))
-	for p := range storm {
-		stormNames = append(stormNames, p)
-	}
-	sort.Strings(stormNames)
+	names := slices.Sorted(maps.Keys(routes))
+	stormNames := slices.Sorted(maps.Keys(storm))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "ROUTE TABLE since %s (%d launches in the log, %d landed primaries, %d with a landed take; takes = launches that ran: ok+failed+noRes; prov = provider failures, with the %d on the storm cards %s counted once per route)\n",
@@ -347,7 +340,7 @@ func rtMedian(xs []float64) float64 {
 		return 0
 	}
 	s := append([]float64(nil), xs...)
-	sort.Float64s(s)
+	slices.Sort(s)
 	return s[len(s)/2]
 }
 

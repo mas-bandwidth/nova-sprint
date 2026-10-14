@@ -10,7 +10,6 @@ import (
 	"maps"
 	"math"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1556,7 +1555,7 @@ func mergeEntries(a, b ntable.BatchMemberEntry) (ntable.BatchMemberEntry, string
 	}
 	out.Unset = append([]string(nil), a.Unset...)
 	for _, k := range b.Unset {
-		if !contains(out.Unset, k) {
+		if !slices.Contains(out.Unset, k) {
 			out.Unset = append(out.Unset, k)
 		}
 	}
@@ -1784,7 +1783,7 @@ func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprin
 	}
 	for i, nid := range order {
 		d := *byNote[nid]
-		sort.Strings(d.Primaries)
+		slices.Sort(d.Primaries)
 		d.ID = fmt.Sprintf("%s.d%d", id, i+1)
 		op.Decided = append(op.Decided, d)
 	}
@@ -2549,7 +2548,7 @@ func (st *Store) withSkips(op OpRecord, skips []Skip) OpRecord {
 			prims = append(prims, k.Primary)
 		}
 	}
-	sort.Strings(prims)
+	slices.Sort(prims)
 	n := sprint.Note{ID: op.ID + ".skip", Kind: sprint.Judgment, Type: NRepairSkipped, Primaries: prims, Count: len(prims),
 		What: fmt.Sprintf("repair of %s (%s) skipped %d entries the store refused as recorded: %s", op.ID, op.Verb, len(skips), strings.Join(lines, "; ")),
 		Who:  st.Actor, At: st.now(), Decisions: append([]string(nil), RepairSkippedDecisions...)}

@@ -1,6 +1,7 @@
 package refmodel
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,8 +60,8 @@ func TestActionsCoverCheckScore(t *testing.T) {
 // and a name that is not there.
 func TestActionsCoverIndexOf(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, 1, indexOf([]string{"a", "b"}, "b"))
-	assert.Equal(t, -1, indexOf([]string{"a", "b"}, "z"))
+	assert.Equal(t, 1, slices.Index([]string{"a", "b"}, "b"))
+	assert.Equal(t, -1, slices.Index([]string{"a", "b"}, "z"))
 }
 
 // TestActionsCoverPlaceSentinel covers placeSentinel (actions.go): a ready

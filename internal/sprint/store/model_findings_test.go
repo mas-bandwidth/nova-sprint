@@ -5,6 +5,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -280,14 +281,14 @@ func TestAStalledJudgmentIsNeverAckable(t *testing.T) {
 	skip := h.openOf(sprint.NRepairSkipped)
 	h.must(Step{Verb: "persisted", Plan: func(*sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: skip} }})
 	for _, f := range sprint.Unheld(sprint.HeldState{Snap: h.snap(), Running: true}, h.now) {
-		require.False(t, contains(f.Decisions, "ack"), "a stall's decisions: %v", f.Decisions)
+		require.False(t, slices.Contains(f.Decisions, "ack"), "a stall's decisions: %v", f.Decisions)
 		_ = f // a stall that names a card holds it: the inbox offers no wait on it (wait_refused.go)
 	}
 	h.startMachine()
 	h.machine()
 	stalled := h.openOf(sprint.NStalled)
 	require.Len(t, stalled, 1, "the stalled judgment: %+v", stalled)
-	require.False(t, contains(stalled[0].Note.Decisions, "ack"), "the stalled judgment: %+v", stalled)
+	require.False(t, slices.Contains(stalled[0].Note.Decisions, "ack"), "the stalled judgment: %+v", stalled)
 	res := h.run(AckStep(sprint.AckReq{Notes: []string{stalled[0].Note.ID}, Reason: "looked"}))
 	require.Len(t, res.Refused, 1, "an ack of stalled: %+v", res)
 	require.Contains(t, res.Refused[0].Why, "ack does not answer", "an ack of stalled: %+v", res)

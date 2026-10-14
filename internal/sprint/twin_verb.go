@@ -201,7 +201,7 @@ func twinOf(s *Snapshot, r TwinReq, c *Card, nw string) Plan {
 	waived := Split(c.F("waived"))
 	var needs []string
 	for _, n := range append(Split(c.F("needs")), r.Needs...) {
-		if !contains(waived, n) && !contains(needs, n) {
+		if !slices.Contains(waived, n) && !slices.Contains(needs, n) {
 			needs = append(needs, n)
 		}
 	}
@@ -250,7 +250,7 @@ func twinOf(s *Snapshot, r TwinReq, c *Card, nw string) Plan {
 			continue
 		}
 		for _, o := range s.Open {
-			if o.Subject() == c.ID || (o.Note.StreamLevel && (o.Note.Card == c.ID || contains(o.Note.Primaries, c.ID))) {
+			if o.Subject() == c.ID || (o.Note.StreamLevel && (o.Note.Card == c.ID || slices.Contains(o.Note.Primaries, c.ID))) {
 				if !answeredIn(u.Notes, o.Note.ID) {
 					u.Notes = append(u.Notes, decided(o, said, r.Who, s.Now, c.ID))
 				}

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,12 +43,12 @@ func (h *harness) a2Named(id string) []string {
 	v := h.a2Inbox()
 	var out []string
 	for _, g := range v.Groups {
-		if contains(g.Primaries, id) || contains(g.Members, id) {
+		if slices.Contains(g.Primaries, id) || slices.Contains(g.Members, id) {
 			out = append(out, fmt.Sprintf("group %s %s %q", g.ID, g.Kind, g.Type))
 		}
 	}
 	for _, o := range v.Open {
-		if o.Subject() == id || contains(o.Note.Primaries, id) {
+		if o.Subject() == id || slices.Contains(o.Note.Primaries, id) {
 			out = append(out, "open "+o.Note.Type)
 		}
 	}
@@ -94,7 +95,7 @@ func (h *harness) a2Ack(typ string) {
 	h.t.Helper()
 	var ids []string
 	for _, o := range h.a2Open(typ) {
-		if !contains(ids, o.Note.ID) {
+		if !slices.Contains(ids, o.Note.ID) {
 			ids = append(ids, o.Note.ID)
 		}
 	}
@@ -109,7 +110,7 @@ func (h *harness) a2AckRefused(typ string) {
 	h.t.Helper()
 	var ids []string
 	for _, o := range h.a2Open(typ) {
-		if !contains(ids, o.Note.ID) {
+		if !slices.Contains(ids, o.Note.ID) {
 			ids = append(ids, o.Note.ID)
 		}
 	}
@@ -306,8 +307,8 @@ func TestAudit2ClosedRepairSkipNamesAStoredIDAfterAClear(t *testing.T) {
 	for _, o := range h.a2Open(sprint.NRepairSkipped) {
 		subjects = append(subjects, o.Subject())
 	}
-	require.True(t, contains(subjects, "s1-1"), "skip judgment subjects %v", subjects)
-	require.False(t, contains(subjects, "s1-1~1"), "skip judgment subjects %v", subjects)
+	require.True(t, slices.Contains(subjects, "s1-1"), "skip judgment subjects %v", subjects)
+	require.False(t, slices.Contains(subjects, "s1-1~1"), "skip judgment subjects %v", subjects)
 	noStoredIDs(t, h.a2Inbox())
 	h.must(DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Reason: "gone"}))
 	n := len(h.a2Open(sprint.NRepairSkipped))

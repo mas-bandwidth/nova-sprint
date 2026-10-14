@@ -557,7 +557,7 @@ func preferFirst(arr []string, served func(string) (Route, bool), skip []string,
 	take := func(wantFirst bool) (Route, uint64, bool) {
 		for i := uint64(0); i < n; i++ {
 			cur, ok := served(arr[(at+i)%n])
-			if !ok || hold && contains(skip, cur.Name) {
+			if !ok || hold && slices.Contains(skip, cur.Name) {
 				continue
 			}
 			if cur.First != wantFirst {
@@ -733,7 +733,7 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 	fresh := false
 	for _, name := range arr {
 		_, isServed := served(name)
-		fresh = fresh || isServed && !contains(drawn, name)
+		fresh = fresh || isServed && !slices.Contains(drawn, name)
 	}
 	var at uint64
 	if drawing {
@@ -759,7 +759,7 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 		fresh = false
 		for _, name := range arr {
 			_, isServed := soft(name)
-			fresh = fresh || isServed && !contains(drawn, name)
+			fresh = fresh || isServed && !slices.Contains(drawn, name)
 		}
 		r, steps, ok = preferFirstWeighted(arr, soft, drawn, fresh, at)
 	}
@@ -1144,7 +1144,7 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	other := false
 	for _, name := range arr {
 		_, ok := routeByName(served, name)
-		other = other || ok && !contains(skip, name)
+		other = other || ok && !slices.Contains(skip, name)
 	}
 	at := ri[tier].r.count
 	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, skip, other, at)

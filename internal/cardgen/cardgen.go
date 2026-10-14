@@ -10,10 +10,10 @@ package cardgen
 
 import (
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -168,11 +168,7 @@ var Ledgers = map[string]Ledger{
 
 // LedgerNames is every ledger name, sorted, for the help and a refusal.
 func LedgerNames() []string {
-	names := make([]string, 0, len(Ledgers))
-	for n := range Ledgers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(Ledgers))
 	return names
 }
 
