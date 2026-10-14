@@ -256,7 +256,7 @@ func (a *app) friendFinishStep(ctx context.Context, st *store.Store, name string
 	if !evidence {
 		return "", nil
 	}
-	// her row reads up on it for sprint.FriendFinishWindow (docs/SPEC-FRIEND.md, "Presence is
+	// it is an event of hers, her last-heard time (sprint.FriendPhase; docs/SPEC-FRIEND.md, "Presence is
 	// her session's evidence"); a record not written costs her that, never the finish
 	if err := st.FriendFinished(ctx, name, a.now()); err != nil {
 		say(fmt.Sprintf("COLLECT %s NOTE the finish is not recorded as the friend's evidence: %s", p.Card, oneline.Escape(err.Error())))

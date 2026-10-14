@@ -28,7 +28,7 @@ import (
 //   (5) Friend marked down with reason "stalled", released to up by the tick itself at her
 //       first activity after it. The release clears the stall props and removes the
 //       coordinator's observation of her (Plan.HealthClear), writing none: an observation
-//       written by the tick would stand for FriendPongWindow and read as evidence her
+//       written by the tick would stand for FriendHeardUp and read as evidence her
 //       session never gave (ObservedStatus); with it
 //       removed her status is her session's evidence alone (FriendStatus).
 //

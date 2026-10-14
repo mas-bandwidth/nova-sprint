@@ -550,7 +550,7 @@ func friendFinishKey(friend string) string { return "friend-finish:" + friend }
 
 // FriendFinished records that a card of the friend's finished at, working to
 // done, from a report her session wrote (friend sync's collect): her row reads
-// up on it for sprint.FriendFinishWindow. An older finish than the record's
+// up on it for sprint.FriendHeardUp, and the finish is an event of hers (FriendHeard). An older finish than the record's
 // writes nothing, and a beat never writes it.
 func (st *Store) FriendFinished(ctx context.Context, friend string, at time.Time) error {
 	kv, err := st.rootKV()
