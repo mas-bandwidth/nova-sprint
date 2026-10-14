@@ -171,14 +171,28 @@ type BriefBound struct {
 	Cap      int    // the cap those attempts reached (max_attempts)
 	Spent    string
 	Findings []string
+	// Harness is true when the cap was reached mostly on the harness: more of the attempts
+	// since the coordinator's last decision ended on a harness fault (classifyEnd says
+	// EndHarness: no worker report, ran=false in FieldRanAttempts) than on a worker's or the
+	// brief's end. A harness end counts toward max_attempts as an attempt and never as a vote
+	// that the brief is wrong, so such a cap is worded "harness fault, not the brief", and the
+	// card is not marked a brief defect. HarnessEnds is how many of the Since attempts ended
+	// on the harness.
+	Harness     bool
+	HarnessEnds int
 }
 
 // String is the bound said in one line: what repeated and where, or the cap, the spend and
-// the findings, then the verdict.
+// the findings, then the verdict. A card that reached the cap mostly on harness ends is
+// worded as the harness's, never as a vote that the brief is wrong.
 func (b BriefBound) String() string {
 	if b.Finding != "" {
 		return fmt.Sprintf("%s has failed the same way twice (attempts %d and %d: %s); the brief is wrong, not the worker",
 			b.ID, b.Attempts[0], b.Attempts[1], b.Finding)
+	}
+	if b.Harness {
+		return fmt.Sprintf("%s: harness fault, %d attempts (max_attempts %d; %d ended on the harness, %d on a worker's report): the brief is not the cause",
+			b.ID, b.Since, b.Cap, b.HarnessEnds, b.Since-b.HarnessEnds)
 	}
 	spent := "nothing priced"
 	if b.Spent != "" {
@@ -199,6 +213,9 @@ func (b BriefBound) String() string {
 func (b BriefBound) Remedy() string {
 	if b.Finding != "" {
 		return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
+	}
+	if b.Harness {
+		return "run: nova-sprint rework " + b.ID + " --carry --fix <text> (carry on from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
 	}
 	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), nova-sprint rework " + b.ID + " --fix <text> --tier <a higher tier> (re-tier), nova-sprint rework " + b.ID + " --carry --fix <text>, or nova-sprint drop " + b.ID + " --reason '<why>'"
 }
@@ -303,13 +320,33 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 		cap = AttemptsDefault
 	}
 	if since := AttemptsSince(c); since >= cap {
+		harness := harnessEnds(c)
 		spent := MoneyText(CardCostOf(c).Total.Charged)
 		if spent == "-" {
 			spent = ""
 		}
-		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding)}, true
+		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding), Harness: harness > since-harness, HarnessEnds: harness}, true
 	}
 	return BriefBound{}, false
+}
+
+// harnessEnds is how many attempts since the coordinator's last decision ended on a harness
+// fault (classifyEnd says EndHarness: no worker report, ran=false in FieldRanAttempts): the
+// machine's retries, never a vote on the brief. An attempt with no record counts as having
+// run (AtLaneBroken), so it is never a harness end. Only WORKER and BRIEF ends are votes:
+// a card that reached the cap with more harness ends than votes is the harness's, and the
+// brief-defect mark and the brief-wrong wording never come from it. tla/SprintRules.tla, Part "answers": a
+// harness end is redealt and counts toward max_attempts as an attempt, never a vote.
+func harnessEnds(c *Card) int {
+	attempt, decided := c.Int("attempt"), c.Int(FieldDecidedAttempt)
+	runs := ranAttempts(c)
+	n := 0
+	for at := decided + 1; at <= attempt; at++ {
+		if r, ok := runs[at]; ok && classifyEnd(r.ran, "") == EndHarness {
+			n++
+		}
+	}
+	return n
 }
 
 // AttemptsSince is the attempts the primary has run since the coordinator last decided on

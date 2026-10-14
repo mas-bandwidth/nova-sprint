@@ -617,9 +617,43 @@ func redoFix(pr *Card) string {
 	return cutText(RuleConflictFix+"; the lander refused attempt "+pr.F(FieldRuleRedo)+": "+pr.F(FieldRuleRefusal), MaxCardTextBytes)
 }
 
+// attemptEnd is how one attempt ended, classified once: EndHarness (the machine's, never a
+// vote on the brief), EndWorker (a result came back: a vote), or EndBrief (a HOLD naming the
+// brief, or the lander's same refusal way twice: the brief's own vote). The kinds already
+// exist as the end kinds on the card (the member's ends in pkg/cardhdr, the failure classes
+// in failure.go); none is added. tla/SprintRules.tla, Part "answers": only a worker's or the
+// brief's end counts toward the brief-defect mark and the brief-wrong wording of the bound
+// judgment; a harness end is redealt (the failed rule's redeal, once per class) and counts
+// toward max_attempts only as an attempt, never as a vote.
+type attemptEnd string
+
+const (
+	EndHarness attemptEnd = "harness" // no worker report: an idle reap, a no-result take, a push or staging refusal, a deadline with no output
+	EndWorker  attemptEnd = "worker"  // a result came back: not-done, failed, test red
+	EndBrief   attemptEnd = "brief"   // a HOLD naming the brief, or the lander's same refusal way twice
+)
+
+// classifyEnd is one attempt's end, classified once, from its attempt record's ran field
+// (FieldRanAttempts) and the report of its failed work: a take whose worker never ran and
+// reported nothing is EndHarness; a report that names the brief is EndBrief; any other is
+// EndWorker.
+func classifyEnd(ran bool, report string) attemptEnd {
+	if !ran {
+		return EndHarness
+	}
+	if BriefDefectOf(report) != "" {
+		return EndBrief
+	}
+	return EndWorker
+}
+
 // ruleBrief: the same finding twice, or too many attempts on one brief (the brief is wrong,
 // not the worker): the card is marked a brief defect, once, and the judgment stays, its
-// text saying so; nothing deals the card, and no rule answers it again.
+// text saying so; nothing deals the card, and no rule answers it again. A card that reached
+// the cap mostly on harness ends (BriefBound.Harness) is not the brief's: it is left
+// for the coordinator to rework --carry, never marked a brief defect. The same-finding and
+// the lander's same-refusal bounds are the worker's and the brief's own votes, marked as
+// before.
 func ruleBrief(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleBriefDefect
 	pr := s.Work.Placed(a.Subject)
@@ -628,10 +662,20 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 		left(a, "the card is off the table")
 	case pr.F(FieldBriefDefect) != "":
 		left(a, "a brief defect since "+pr.F(FieldBriefDefect)+": brief or drop, a mind's")
+	case harnessAtCap(s, pr):
+		left(a, "a harness fault, not the brief: most attempts ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
 	default:
 		a.Card = pr.ID
 		a.Act, a.Why = ActMark, "the brief is wrong, not the worker: marked a brief defect and held for a mind"
 	}
+}
+
+// harnessAtCap says the primary is at its attempt cap with more harness ends than worker or
+// brief ends among the attempts (AtBriefBound's Harness): the cap's count is kept, but the
+// harness's attempts are not votes on the brief.
+func harnessAtCap(s *Snapshot, pr *Card) bool {
+	bb, ok := AtBriefBound(pr, brokenFindings(s, pr), s.AttemptsCap(pr.Row))
+	return ok && bb.Harness
 }
 
 // ruleBaseGate: a stream stopped on its base's red (NBaseRed), the one judgment of every stream
