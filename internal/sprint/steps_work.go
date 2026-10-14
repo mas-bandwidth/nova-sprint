@@ -1219,37 +1219,23 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	// a quiet member is dealt nothing until its quiet ends (fleet_quiet.go;
 	// docs/SPEC-SPRINT.md section 5, fleet-quiet-machine-b.w7)
 	quiet := quietWhy(s, up)
-	upAll := up // the members up before the quiet and no-room filter, for a bench card's pool
+	// upAll is the members up before the quiet filter, for a bench card's dropped pool:
+	// its refusal names the members its beat holds back, never "waits for its bench"
+	upAll := up
 	up = notQuiet(s, up)
 	q, widths := memberLoads(s, up), memberWidths(s, up)
 	lanes := memberLanes(s, up)
 	for _, c := range chosen {
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
-		// none other; with no member of it up it waits ready (bench_deal.go). The two
-		// causes are split: a card with no BENCH line and an empty pool says so (noPoolWhy)
-		// and never reaches benchRefusal, which is for a card that has a bench. A bench
-		// whose every member is up but starts no card (its no-room word, or overloaded) is
-		// the same refusal, with the reason, never "waits for its bench".
+		// none other, the least-loaded with room first (benchPool, bench_deal.go): with
+		// none up, or none with room, it waits ready, and benchPool says why -- a card
+		// with no BENCH line and an empty pool says noPoolWhy alone.
+		// The member the card goes to is the first of the ordered pool with room.
 		bench := Bench(c)
-		members := onlyBench(up, bench)
+		members, wait := benchPool(s, up, upAll, bench)
 		if len(members) == 0 {
-			if len(bench) == 0 {
-				p.refuse(c.ID, noPoolWhy)
-			} else if dropped := benchDropped(s, onlyBench(upAll, bench)); len(dropped) > 0 {
-				p.refuse(c.ID, benchNoRoom(bench, dropped))
-			} else {
-				p.refuse(c.ID, benchRefusal(bench))
-			}
+			p.refuse(c.ID, wait)
 			continue
-		}
-		if len(bench) > 0 {
-			// the bench's least-loaded member with room goes first (bench_deal.go)
-			ordered := benchOrder(s, members)
-			if len(ordered) == 0 {
-				p.refuse(c.ID, benchNoRoom(bench, benchDropped(s, members)))
-				continue
-			}
-			members = ordered
 		}
 		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
 		// to a member whose facts satisfy every need, and a card no member up satisfies is
@@ -1283,18 +1269,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
-			if len(bench) > 0 {
-				// the bench order's first with a free lane, then with room: the ordered
-				// slice, no wrap from the round index (bench_deal.go)
-				if m := firstFreeOrdered(ms, q, lanes); m != "" {
-					return m, roomWhy
-				}
-				if m := firstOpenOrdered(ms, q, widths); m != "" {
-					return m, roomWhy
-				}
-				return "", roomWhy
-			}
-			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
+			return benchNext(bench, ms, rr, q, lanes, widths), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 			if AtEnvExitBound(s, c) != nil {

@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -169,6 +170,22 @@ func TestDealRefusesAnEmptyPoolWithoutPanicking(t *testing.T) {
 	})
 }
 
+// putBeatLoads writes each member's beat load (the percent of all its cores)
+// onto its fleet control card's load cell, as the presence beat's SyncFleet
+// writes it (LoadText): the world's in-memory stand-in for the beat the store
+// reads, which the bench order (benchOrder) sorts by.
+func putBeatLoads(w *world, loads map[string]float64) {
+	w.t.Helper()
+	for m, pct := range loads {
+		ctl := w.s.MemberCtl(m)
+		require.NotNil(w.t, ctl, "no fleet ctl card for %s", m)
+		if ctl.Fields == nil {
+			ctl.Fields = map[string]string{}
+		}
+		ctl.Fields[Load] = fmt.Sprintf("%.1f%%", pct)
+	}
+}
+
 // TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom is the bench order
 // (benchOrder): a card whose brief names a bench is dealt to the least-loaded
 // member of it that has room, never off its bench, and a card with no BENCH
@@ -178,7 +195,7 @@ func TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom(t *testing.T) {
 	t.Run("the least-loaded member of the bench takes it", func(t *testing.T) {
 		t.Parallel()
 		w := fleetWorld(t, 0, 2, "a", "b", "c")
-		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		putBeatLoads(w, map[string]float64{"a": 90, "b": 10, "c": 50})
 		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
 		p := w.do(Deal(w.s, DealReq{}))
 		require.Empty(t, p.Refused)
@@ -188,7 +205,7 @@ func TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom(t *testing.T) {
 	t.Run("a member whose fresh beat says no room is passed by", func(t *testing.T) {
 		t.Parallel()
 		w := fleetWorld(t, 0, 2, "a", "b", "c")
-		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		putBeatLoads(w, map[string]float64{"a": 90, "b": 10, "c": 50})
 		w.s.NoRoom = map[string]string{"b": "disk under the floor"}
 		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
 		p := w.do(Deal(w.s, DealReq{}))
@@ -199,7 +216,7 @@ func TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom(t *testing.T) {
 	t.Run("every member of the bench at no room waits with why", func(t *testing.T) {
 		t.Parallel()
 		w := fleetWorld(t, 0, 2, "a", "b", "c")
-		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		putBeatLoads(w, map[string]float64{"a": 90, "b": 10, "c": 50})
 		w.s.NoRoom = map[string]string{"a": "disk under the floor", "b": "disk under the floor", "c": "disk under the floor"}
 		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
 		p := w.do(Deal(w.s, DealReq{}))
@@ -214,7 +231,7 @@ func TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom(t *testing.T) {
 	t.Run("a card with no BENCH line keeps the round order", func(t *testing.T) {
 		t.Parallel()
 		w := fleetWorld(t, 0, 2, "a", "b", "c")
-		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		putBeatLoads(w, map[string]float64{"a": 90, "b": 10, "c": 50})
 		addBenched(t, w, "s1", map[string]string{"s1-1": ""})
 		p := w.do(Deal(w.s, DealReq{}))
 		require.Empty(t, p.Refused)

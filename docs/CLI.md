@@ -112,16 +112,16 @@ nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
 nova-sprint hold <name>... --reason <text> [--return]
 
- A member that is up keeps taken cards and finishes them, including with `--return`; that
- flag hands back only its dealt, untaken cards. A member that is down also returns its dead
- working cards. `fleet down <member>` follows the same rule.
+A member that is up keeps taken cards and finishes them, including with `--return`; that
+flag hands back only its dealt, untaken cards. A member that is down also returns its dead
+working cards. `fleet down <member>` follows the same rule.
 
- A member's disk floor: a fleet member under 15% free on its bench root (the root its
+A member's disk floor: a fleet member under 15% free on its bench root (the root its
  job directories live under, `install member --root`) starts no card
  (pkg/member `DiskRoom`); the floor is the member's `--disk-floor-pct <n>` flag, default
- 15, 0 off, wired into its `Config.Room` beside the existing room (composed: refuse when
- either refuses). The refusal is the member's no-room word, carried by its beat (`fleet
- beat --no-room`) and read by the deal, which passes the member by.
+15, 0 off, wired into its `Config.Room` beside the existing room (composed: refuse when
+either refuses). The refusal is the member's no-room word, carried by its beat (`fleet
+beat --no-room`) and read by the deal, which passes the member by.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level

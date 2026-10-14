@@ -3327,24 +3327,25 @@ order the cards were dealt in, so a card brought to the front of its stream by
   with the members there are (exit 2, nothing written); the primary's field
   `bench` is the line's names, written with its brief by `add` and `brief`. A
   card with no BENCH line is dealt round the fleet as every card before it was.
-   Every placement of its work cards honours the line: the deal, a redeal, an
-   escalation and a rework draw from the members of its bench that are up alone,
-   the least-loaded first (`sprint.benchOrder` sorts them by their beat's load,
-   then by the work cards they hold, then by name; a member whose fresh beat says
-   it starts no card, or that is overloaded, is dropped; `round.nextFree` over
-   the ordered pool, free lanes first then its room DealAhead times its width as
-   any member's),
-   a member going down or held withdraws its bench's card instead of dealing it
-   to another member, and the level never moves it off the bench it was dealt to
-   (the members its line does not name are avoided as a member that refused it at
-   staging is). While no member of its bench is up (down, or held) the card waits
-   in `ready`: the tick's deal passes it by, no judgment is written, and the
-   no-stall rule holds it as waiting for its bench, the line `nova-sprint card
-   <id>` prints. A bench whose every member is up but starts no card (under its
-   disk floor, or overloaded) waits with the reasons, never "waits for its
-   bench" (`sprint.BenchOfBrief`, `sprint.Bench`, `sprint.benchOrder`,
-    `sprint.benchNoRoom`, `bench_deal.go`; `TestDealHonoursACardsBenchLine`,
-    `TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom`).
+  Every placement of its work cards honours the line: the deal, a redeal, an
+  escalation and a rework draw from the members of its bench that are up
+  alone, the least-loaded first (`sprint.benchOrder` sorts them by their
+  beat's load, then by the work cards they hold, then by name; a member whose
+  fresh beat says it starts no card, or that is overloaded, is dropped;
+  `round.nextFree` over the ordered pool, free lanes first then its room
+  DealAhead times its width as any member's),
+  a member going down or held withdraws its bench's card instead of dealing it
+  to another member, and the level never moves it off the bench it was dealt to
+  (the members its line does not name are avoided as a member that refused it at
+  staging is). While no member of its bench is up (down, or held) the card waits
+  in `ready`: the tick's deal passes it by, no judgment is written, and the
+  no-stall rule holds it as waiting for its bench, the line `nova-sprint card
+  <id>` prints (`sprint.BenchOfBrief` and `sprint.Bench`, `bench_deal.go`;
+  `TestDealHonoursACardsBenchLine`). A bench whose every member is up but
+  starts no card (under its disk floor, or overloaded) waits with the
+  reasons, never "waits for its bench" (`sprint.benchOrder` and
+  `sprint.benchNoRoom`, `bench_deal.go`;
+  `TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom`).
 - A member's disk floor: a fleet member under 15% free on its bench root (the
   root its job directories live under) starts no card (pkg/member
   `DiskRoom`); the floor is the member's `--disk-floor-pct <n>` flag, default

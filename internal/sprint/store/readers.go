@@ -254,8 +254,7 @@ func (st *Store) readerStatesInto(ctx context.Context, s *sprint.Snapshot) error
 }
 
 // memberNoRoomInto adds to into every fleet member of s whose fresh beat says it starts no
-// card, with its word (sprint.NoRoomNow), and fills s.Loads with each member's beat load
-// (the bench order, benchOrder): a store that keeps no beats adds none.
+// card, with its word (sprint.NoRoomNow); a store that keeps no beats adds none.
 func (st *Store) memberNoRoomInto(ctx context.Context, s *sprint.Snapshot, into map[string]string) error {
 	if s.Fleet == nil {
 		return nil
@@ -267,36 +266,10 @@ func (st *Store) memberNoRoomInto(ctx context.Context, s *sprint.Snapshot, into 
 	if err != nil {
 		return err
 	}
-	if s.Loads == nil {
-		s.Loads = map[string]float64{}
-	}
 	for m, b := range beats {
-		s.Loads[m] = b.Load
 		if why := sprint.NoRoomNow(b, s.Now); why != "" {
 			into[m] = why
 		}
-	}
-	return nil
-}
-
-// memberLoadsInto fills s.Loads with each fleet member's beat load (Beat.Load), the bench
-// order's measure (benchOrder); a store that keeps no beats adds none.
-func (st *Store) memberLoadsInto(ctx context.Context, s *sprint.Snapshot) error {
-	if s.Fleet == nil {
-		return nil
-	}
-	if _, err := st.rootKV(); err != nil {
-		return nil
-	}
-	beats, err := st.Beats(ctx, s.Members())
-	if err != nil {
-		return err
-	}
-	if s.Loads == nil {
-		s.Loads = map[string]float64{}
-	}
-	for m, b := range beats {
-		s.Loads[m] = b.Load
 	}
 	return nil
 }
