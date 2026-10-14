@@ -907,15 +907,10 @@ func (a *app) writeCycle(w io.Writer, line string) {
 	fmt.Fprintf(w, "%s %s\n", at, oneline.Escape(line))
 }
 
-// raiseIfStuck writes one judgment when a landing with cards queued has run past
-// LandDeadline. The line is tried, not waited on, so the beat is never stuck
-// behind the landing. A write that does not land is tried again next cycle.
-func (a *app) raiseIfStuck(ctx context.Context, addr string, f *landFlight) {
-	a.raiseIfStuckTo(ctx, addr, f, io.Discard)
-}
-
-// raiseIfStuckTo is raiseIfStuck saying, once, as LAND JUDGMENT NOT WRITTEN, a
-// stuck judgment the store did not take.
+// raiseIfStuckTo says, once, as LAND JUDGMENT NOT WRITTEN, a stuck judgment the
+// store did not take (when a landing with cards queued has run past LandDeadline).
+// The line is tried, not waited on, so the beat is never stuck behind the landing.
+// A write that does not land is tried again next cycle.
 func (a *app) raiseIfStuckTo(ctx context.Context, addr string, f *landFlight, w io.Writer) {
 	f.mu.Lock()
 	if f.judged || f.queued == 0 || a.now().Sub(f.began) < LandDeadline {

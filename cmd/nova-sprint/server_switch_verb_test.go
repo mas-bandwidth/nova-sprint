@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,7 +137,12 @@ func TestServerSwitchVerbRefusesACandidateOffTheBase(t *testing.T) {
 	require.Equal(t, 0, code, errs)
 	assert.Contains(t, out, "BASE OK binary="+tip+" commit="+b.tip+" base=origin/main tip="+b.tip)
 	assert.Contains(t, out, "SERVER SWITCH OK")
-	rec, ok, err := sprint.ReadBaseRecord(target)
+	var rec sprint.BaseRecord
+	data, err := os.ReadFile(target + ".base.json")
+	if err == nil {
+		json.Unmarshal(data, &rec)
+	}
+	ok := err == nil && rec.Repo != "" && rec.Base != ""
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, sprint.BaseRecord{Repo: b.repo, Base: "main"}, rec)

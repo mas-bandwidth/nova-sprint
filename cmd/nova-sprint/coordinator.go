@@ -77,18 +77,6 @@ func needsActor(c common) string {
 	return "--actor <name> is required (or NOVA_SPRINT_ACTOR): who acts is recorded with every change; nothing was changed"
 }
 
-// coordinatorOnly is why the actor may not run the verb: "" is may. The first
-// init names the coordinator (--coordinator, else the actor); every later
-// coordinator verb, init included, is that actor's alone. A store with no
-// coordinator takes init and teardown only. Every command run as the
-// coordinator, and every worker verb a worker friend runs, waits for its caller's two
-// pushes live and proven (hookedIn; hook.go): the first init, on a store with no
-// coordinator, only names the seat.
-func (a *app) coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
-	why, _, err := a.coordinatorGate(ctx, st, c)
-	return why, err
-}
-
 // hookGateError is the hook gate's refusal as an error: the command was refused for want
 // of the seat's live, proven hook (or for an unacknowledged push) before it read or wrote
 // anything. It is a type so a caller that must tell it from a failure finds it with

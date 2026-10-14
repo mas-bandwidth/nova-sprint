@@ -2348,13 +2348,6 @@ func unlandedNeeding(s *Snapshot, id string, dropping map[string]bool) []string 
 	return out
 }
 
-// waitingNeeding is the waiting primaries that name id and are not dropping:
-// the dependants a drop without cascade refuses, read from every waiting
-// card's needs field (docs/SPEC-SPRINT.md section 11).
-func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
-	return unlandedNeeding(s, id, dropping)
-}
-
 // goneNamedNeeds is a primary's named needs that name a card that is absent or
 // off the table: the needs rule (b) forbids on an unlanded card. A need the
 // coordinator waived is not counted (it is not owed any more).

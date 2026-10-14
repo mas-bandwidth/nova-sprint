@@ -2,7 +2,6 @@ package sprint
 
 import (
 	"fmt"
-	"strings"
 
 	"golang.org/x/mod/semver"
 
@@ -98,50 +97,4 @@ func FormatNovaToolsVersion(tag, commit string) string {
 		"# Written by tools/seed; read by nova-sprint seat check (docs/SPEC-SPRINT.md).\n" +
 		"tag " + tag + "\n" +
 		"commit " + commit + "\n"
-}
-
-// ParseNovaToolsVersion reads NOVA-TOOLS-VERSION: lines `tag <vX.Y.Z>` and `commit
-// <40 hex>`, blank lines and # comments. The tag is required and is a release; the
-// commit, when present, is a full hash. Canonical prerelease tags are accepted
-// for private canaries; build metadata is not, since SemVer does not order it.
-func ParseNovaToolsVersion(data string) (NovaToolsRecord, error) {
-	var r NovaToolsRecord
-	for i, line := range strings.Split(data, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, val, _ := strings.Cut(line, " ")
-		val = strings.TrimSpace(val)
-		switch key {
-		case "tag":
-			if !semver.IsValid(val) || semver.Build(val) != "" || semver.Canonical(val) != val {
-				return r, fmt.Errorf("%s line %d: tag %q is no release tag vX.Y.Z", NovaToolsVersionFile, i+1, val)
-			}
-			r.Tag = val
-		case "commit":
-			if !fullHash(val) {
-				return r, fmt.Errorf("%s line %d: commit %q is no full 40-hex hash", NovaToolsVersionFile, i+1, val)
-			}
-			r.Commit = val
-		default:
-			return r, fmt.Errorf("%s line %d: %q is neither tag nor commit", NovaToolsVersionFile, i+1, line)
-		}
-	}
-	if r.Tag == "" {
-		return r, fmt.Errorf("%s names no tag", NovaToolsVersionFile)
-	}
-	return r, nil
-}
-
-func fullHash(s string) bool {
-	if len(s) != 40 {
-		return false
-	}
-	for _, c := range s {
-		if !strings.ContainsRune("0123456789abcdef", c) {
-			return false
-		}
-	}
-	return true
 }

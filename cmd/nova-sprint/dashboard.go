@@ -169,13 +169,6 @@ func dashboardUpstream(pull string) (string, error) {
 	return u.String(), nil
 }
 
-// whereJSON reads the sprint as `nova-sprint where --json --cards --rows --archived` does, in this
-// process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
-// store; --redis is handed on when the dashboard was given it, as where would have been.
-func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
-	return a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, addr, given)
-}
-
 // whereJSONForDashboard reads the sprint as `nova-sprint where --json --dashboard` does, in this
 // process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
 // store; --redis is handed on when the dashboard was given it, as where would have been.

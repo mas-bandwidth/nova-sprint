@@ -307,7 +307,7 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 		default:
 			continue
 		}
-		why, err := ta.a.coordinatorOnly(ctx, st, common{verb: v, actor: name})
+		why, _, err := ta.a.coordinatorGate(ctx, st, common{verb: v, actor: name})
 		require.NoError(t, err, v)
 		if hookExempt[v] {
 			assert.Empty(t, why, v)
