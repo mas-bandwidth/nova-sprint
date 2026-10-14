@@ -33,6 +33,5 @@ redisacl	DIVERGED: routes/providers keys vs tools' own edit
 safepath	DIVERGED: twin-function fold conflicts with tools' own edit
 seatcred	DIVERGED: ErrNoProfileRow not in tools
 secrets	DIVERGED: ParseNameLine and sops remedies vs tools' changes
-sprintwire	DIVERGED: two sprint commits not in tools
 swarm	DIVERGED: 459 unported lines and dashboardask.go; last to merge
 tool	DIVERGED: GroupNotes and group examples in help not in tools
