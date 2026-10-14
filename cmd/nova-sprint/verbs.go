@@ -513,10 +513,26 @@ func sourceCommitExtra() string {
 	return "commit=" + revision
 }
 
+// helpCommand routes help: bare help (or --help) is the short index (helpIndex,
+// docs/CLI.md, docs/STANDARD.md section 2), `help --all` prints the whole
+// manual byte for byte (banner), `help --json` is the index as one JSON object,
+// a verb is its own -h, a group is its verbs and its words, and a topic is a
+// moved section (guide, words, machine, server). An unknown word is refused,
+// naming the topics.
 func helpCommand(path []string, stdout, stderr io.Writer) int {
 	if len(path) == 0 {
-		fmt.Fprint(stdout, banner())
+		fmt.Fprint(stdout, helpIndex())
 		return 0
+	}
+	if len(path) == 1 {
+		switch path[0] {
+		case "--all":
+			fmt.Fprint(stdout, banner())
+			return 0
+		case "--json":
+			fmt.Fprint(stdout, helpIndexJSON())
+			return 0
+		}
 	}
 	name := strings.Join(path, " ")
 	// a verb named whole is the exact one even when the word also opens a group
@@ -529,6 +545,20 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 			}()
 			return code
 		}
+	}
+	// a topic is a section that moved out of the bare help (the short-index
+	// card): the guide's walkthrough and the day, the glossary, and the two
+	// flexible sections the banner alone did not have a group for.
+	switch name {
+	case "guide":
+		fmt.Fprint(stdout, guideSection())
+		return 0
+	case "words":
+		fmt.Fprint(stdout, wordsSection())
+		return 0
+	case "machine":
+		fmt.Fprint(stdout, machineWords())
+		return 0
 	}
 	if len(groupVerbs(name)) > 0 {
 		fmt.Fprintln(stdout, "usage:")
@@ -555,10 +585,123 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		if name == "lane" {
 			fmt.Fprint(stdout, "\n"+laneWords())
 		}
+		if name == "server" {
+			fmt.Fprint(stdout, "\n"+serverWords())
+		}
 		fmt.Fprintf(stdout, "\nnova-sprint help %s <verb> (or nova-sprint %s <verb> -h) prints a verb's flags, examples and exit codes.\n", name, name)
 		return 0
 	}
-	return refuse(stderr, "help", "unknown verb "+oneline.Escape(name)+"; run: nova-sprint help")
+	return refuse(stderr, "help", "unknown topic "+oneline.Escape(name)+"; topics are "+strings.Join(helpTopicNames(), ", ")+"; run: nova-sprint help")
+}
+
+// helpIndex is the bare help: the short index (docs/CLI.md, docs/STANDARD.md
+// section 2; the short-index card). It is at most 70 lines: one purpose line,
+// the coordinator's day in five lines first, the verb groups each one line of
+// names, the topics, the --json rule, the exit codes and where the rest is.
+// `nova-sprint help --all` prints the whole manual, byte for byte as it was.
+func helpIndex() string {
+	var b strings.Builder
+	b.WriteString("nova-sprint: a sprint of work cards, dealt to a fleet of workers and read before they land\n\n")
+	b.WriteString("the coordinator's day, in five lines:\n")
+	for _, l := range dayLines {
+		b.WriteString("  " + l + "\n")
+	}
+	b.WriteString("\nverbs:\n")
+	for _, g := range helpVerbGroups() {
+		b.WriteString("  " + g + "\n")
+	}
+	b.WriteString("\ntopics: " + strings.Join(helpTopicNames(), ", ") + "\n")
+	b.WriteString("--json: every verb takes --json, written after the verb: nova-sprint where --json\n\n")
+	b.WriteString(exitLine + "\n\n")
+	b.WriteString("run: nova-sprint help <verb|topic> (or --all for the whole manual)\n")
+	return b.String()
+}
+
+// helpVerbGroups is the bare help's verb groups, one line per group (the
+// short-index card): the group words the banner's opening already names
+// (fleet, friend, reader, goal, stream, lane, merge-window), then the verbs
+// that stand alone, chunked so the whole list stays a handful of lines.
+func helpVerbGroups() []string {
+	groupWords := []string{"fleet", "friend", "reader", "goal", "stream", "lane", "merge-window"}
+	inGroup := map[string]bool{}
+	var out []string
+	for _, w := range groupWords {
+		var names []string
+		for _, n := range groupVerbs(w) {
+			inGroup[n] = true
+			names = append(names, strings.TrimPrefix(n, w+" "))
+		}
+		if len(names) > 0 {
+			out = append(out, "nova-sprint "+w+": "+strings.Join(names, " "))
+		}
+	}
+	var rest []string
+	for _, v := range verbs {
+		if !inGroup[v.name] {
+			rest = append(rest, v.name)
+		}
+	}
+	// play leads the standalone verbs so the index names it plainly, as the
+	// banner's example does
+	rest = slices.DeleteFunc(rest, func(n string) bool { return n == "play" })
+	rest = slices.Insert(rest, 0, "play")
+	const perLine = 14
+	for i := 0; i < len(rest); i += perLine {
+		end := min(i+perLine, len(rest))
+		out = append(out, "nova-sprint "+strings.Join(rest[i:end], " "))
+	}
+	return out
+}
+
+// helpTopics is the sections reachable as `nova-sprint help <topic>`: the
+// guide, the glossary, the machine and server sections, and the group sections
+// (which the group branch already carries).
+func helpTopics() []string {
+	return []string{"guide", "words", "machine", "server", "fleet", "friend", "reader", "goal", "stream", "lane", "merge-window", "land", "twin", "hold"}
+}
+
+// helpTopicNames is the topics for the index line and the refusal.
+func helpTopicNames() []string { return helpTopics() }
+
+// guideSection is `nova-sprint help guide`: the walkthrough (twinWords, the
+// card's flow on a twin) and the coordinator's day (the short-index card).
+func guideSection() string {
+	var b strings.Builder
+	b.WriteString(opening + "\n\n")
+	b.WriteString(twinWords())
+	b.WriteString("\nthe coordinator's day, in five lines:\n")
+	for _, l := range dayLines {
+		b.WriteString("  " + l + "\n")
+	}
+	return b.String()
+}
+
+// helpIndexJSON is the bare help's index as one JSON object, what
+// `nova-sprint help --json` and `--help --json` print (the short-index card).
+func helpIndexJSON() string {
+	type index struct {
+		Purpose string   `json:"purpose"`
+		Day     []string `json:"day"`
+		Groups  []string `json:"groups"`
+		Topics  []string `json:"topics"`
+		JSON    string   `json:"json"`
+		Exit    string   `json:"exit"`
+		Run     string   `json:"run"`
+	}
+	v := index{
+		Purpose: "nova-sprint: a sprint of work cards, dealt to a fleet of workers and read before they land",
+		Day:     dayLines,
+		Groups:  helpVerbGroups(),
+		Topics:  helpTopics(),
+		JSON:    "every verb takes --json, written after the verb: nova-sprint where --json",
+		Exit:    exitLine,
+		Run:     "nova-sprint help <verb|topic> (or --all for the whole manual)",
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "{}\n"
+	}
+	return string(raw) + "\n"
 }
 
 // parse is the verb's flags anywhere among its words; words after -- are

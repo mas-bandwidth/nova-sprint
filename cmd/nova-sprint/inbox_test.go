@@ -451,7 +451,7 @@ func TestAStoppedStreamsCommandsRunAndAnswerIt(t *testing.T) {
 func TestHelpShowsTheWorkedExample(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	for _, line := range []string{"help", "help inbox", "inbox -h"} {
+	for _, line := range []string{"help --all", "help inbox", "inbox -h"} {
 		out := ta.ok(line)
 		require.Equal(t, 1, strings.Count(out, "reading the inbox and answering a judgment:"), "%s drops or repeats the walkthrough", line)
 		for _, want := range []string{"reading the inbox and answering a judgment:", "$ nova-sprint inbox",
