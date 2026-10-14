@@ -60,7 +60,7 @@ func init() {
 		{"release", "(<sentinel or held card>... | <selector> [--dry-run]) --reason <text> [--answers <note>]", "release s1-stop --reason 'the layer is green and read'", (*app).cmdReleaseSel},
 		{"resolve", "[<id>...] [--stream <s>] [--max <n>]", "resolve", (*app).cmdResolve},
 		{"start", "", "start", (*app).cmdMachineStart},
-		{"stop", "--reason <text> --until <time or duration>", "stop --reason 'the bench is rebooting' --until 30m", (*app).cmdMachineStop},
+		{"stop", "--reason <text> [--until <time or duration>]", "stop --reason 'the bench is rebooting' --until 30m", (*app).cmdMachineStop},
 		{"stop-return", "--as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]", "stop-return --as friend-a s1-1.w1@1 --epoch 15 --reason 'owned process stopped'", (*app).cmdStopReturn},
 		{"run", "[--answer-rules=false] [--idle-alarm=false] [--listen <address:port>] [--land] [--decide <dir>]", "run", (*app).cmdRunGC},
 		{"tick", "[--answer-rules] [--idle-alarm] [--shadow]", "tick", (*app).cmdTick},
@@ -70,11 +70,11 @@ func init() {
 		{"goal show", "[<name>]", "goal show friend-a", (*app).cmdGoalShow},
 		{"goal drop", "<name>", "goal drop friend-a", (*app).cmdGoalDrop},
 		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] [--lane <n>]", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
-		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
+		{"finish", "--as <member> <card>@<gen>... --epoch <n> [--branch <branch>] (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
 		{"progress", "--as <worker> <card>[@<gen>]... --epoch <n> [--lane <n>]", "progress --as m1 s1-1.w1@1 --epoch 0", (*app).cmdProgress},
 		{"ask", "[<id>... | --group <id> [--expect <n>]] [--stream <s>] [--max <n>] [--another] [--answers <note>]", "ask", (*app).cmdAsk},
 		{"queue", "--as <reader|member> | --stream <s>", "queue --as reader-a", (*app).cmdQueue},
-		{"read", "--as <reader> (--begin | --ok | --broken) [<card>[@<gen>]...] --epoch <n> [--max <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]", "read --as reader-a --ok --max 5 --epoch 0", (*app).cmdRead},
+		{"read", "--as <reader> (--begin | --ok | --broken) [<card>[@<gen>]...] --epoch <n> [--max <n>] [--finding <text>] [--usage <raw usage report>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <raw usage report>]", "read --as reader-a --ok --max 5 --epoch 0", (*app).cmdRead},
 		{"accept", "(<id>... [--heavy --evidence <path> --reason <text>] | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]", "accept --read-ok", (*app).cmdAccept},
 		{"rework", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--tier <tier>] [--answers <note>] [--one]", "rework s1-4 --fix 'handle the empty case'", (*app).cmdReworkSel},
 		{"return", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]", "return s1-7 --reason 'suspect of the red batch'", (*app).cmdReturnSel},
@@ -478,6 +478,9 @@ var verbExamples = map[string][]string{
 	},
 	"priority": {
 		"priority --ids-file raise.txt --critical --reason 'next point release'",
+	},
+	"read": {
+		"read --as reader-a --ok s1-1.r1.reader-a --usage 'tokens_in=1200 tokens_out=340 cost=$0.02' --epoch 0",
 	},
 	"fsck seat": {},
 }
@@ -2733,6 +2736,18 @@ func cardGens(words []string) ([]string, map[string]int, error) {
 	return ids, gens, nil
 }
 
+// queueCmd is the command that mints a worker's cards and their generations:
+// queue --as <the --as given> --json, its gen field the @<gen> and its epoch=
+// field the --epoch a take, finish, read or progress wants (docs/SPEC-SPRINT.md
+// section 2, queue --as; docs/STANDARD.md section 3, a refusal names the next
+// command). A blank --as keeps the placeholder.
+func queueCmd(as string) string {
+	if as == "" {
+		return "nova-sprint queue --as <member> --json"
+	}
+	return "nova-sprint queue --as " + as + " --json"
+}
+
 func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("take")
 	as := fs.String("as", "", "the fleet member taking its cards; several, comma separated, each take from their own ready queue in one step")
@@ -2755,7 +2770,7 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "take", "a member's take by id names no lane: take --as <member> <card>@<gen>; a lane is a friend's")
 	}
 	if *as == "" || len(gens) != len(ids) {
-		return refuse(stderr, "take", "wants --as <member>, and every card named as <card>@<gen>, the generation from queue --as <member>")
+		return refuse(stderr, "take", "wants --as <member>, and every card named as <card>@<gen>, the generation from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	c.orActor(*as)
 	st, err := a.store(*c)
@@ -2926,7 +2941,13 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "finish", err.Error())
 	}
 	if *as == "" || len(ids) == 0 || len(gens) != len(ids) {
-		return refuse(stderr, "finish", "wants --as <member> and every card as <card>@<gen>, the generation the worker holds")
+		return refuse(stderr, "finish", "wants --as <member> and every card as <card>@<gen>, the generation the worker holds, from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
+	}
+	// a --head is the commit land merges: refused here, before the card moves,
+	// when it is not 7 to 40 hex digits, as land would refuse it later (its
+	// flag help and land's own check; docs/SPEC-SPRINT.md section 2, finish)
+	if *head != "" && (!shaRE.MatchString(*head) || len(*head) > 40) {
+		return refuse(stderr, "finish", "--head wants a commit id, 7 to 40 hex digits; "+*head+" is not one")
 	}
 	c.orActor(*as)
 	st, err := a.store(*c)
@@ -2964,7 +2985,7 @@ func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "progress", err.Error())
 	}
 	if *as == "" || len(ids) == 0 {
-		return refuse(stderr, "progress", "wants --as <worker> and the cards it holds, each as <card> or <card>@<gen>")
+		return refuse(stderr, "progress", "wants --as <worker> and the cards it holds, each as <card> or <card>@<gen>, from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	c.orActor(*as)
 	st, err := a.store(*c)
@@ -3023,7 +3044,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if *as == "" || n != 1 {
-		return refuse(stderr, "read", "wants --as <reader> and one of --begin, --ok, --broken, --return <card> --reason <text>")
+		return refuse(stderr, "read", "wants --as <reader> and one of --begin, --ok, --broken, --return <card> --reason <text>, the card from "+queueCmd(*as)+" (its epoch= field is the --epoch)")
 	}
 	// Attribution is never a finding (docs/SPEC-SPRINT.md, reader-ignores-attribution):
 	// a broken read whose every sentence is about the trailer, the By: line or the
