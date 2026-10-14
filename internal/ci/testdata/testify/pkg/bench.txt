@@ -1,0 +1,2 @@
+# ceiling: 0
+pkg/bench:assert 124 use require.NoError, assert.Equal, assert.Contains or assert.Empty instead of bare if-guarded t.Fatal/Error/Fail
