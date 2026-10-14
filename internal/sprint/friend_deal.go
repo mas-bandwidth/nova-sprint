@@ -213,14 +213,15 @@ func friendTiers(f FriendSeat) []string {
 // marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a
 // friend whose row read down, her lanes paused and her daemon beating, was dealt 18 cards
 // twice; a row that cannot work is filled by no deal. While the friends' work is off
-// (FriendsOff, nova-sprint set --friends off) no friend's row is. A friend whose roles do
+// (FriendsOff, nova-sprint set --friends off) no friend's row is, nor while the friend deal
+// is off (FriendDealOff, nova-sprint set --friend-deal off: no friend is room). A friend whose roles do
 // not name builder (RoleBuilder) is dealt no work card: a reader-only row reads and builds
 // nothing (the dogfood of 2026-10-10 evening, a reader-only friend was dealt 16 work cards
 // once it came up). A friend whose dealt cards were returned to the pool for not taking
 // (PropFriendDealtNoMore) is dealt no more until she takes one (friendDealtReturn;
 // tla/FriendDealtReturn.tla DealtNoMoreHolds).
 func friendDealable(s *Snapshot, f FriendSeat) bool {
-	return !s.FriendsOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder) && !friendDealtNoMore(s, f.Name)
+	return !s.FriendsOff() && !s.FriendDealOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder) && !friendDealtNoMore(s, f.Name)
 }
 
 // PropFriendDealtNoMore is the fleet property marking a friend whose dealt cards were not

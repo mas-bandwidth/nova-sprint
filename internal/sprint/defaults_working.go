@@ -78,6 +78,7 @@ var workingChecks = map[string]workingCheck{
 	PropReadCards:           {Check: readCardsWorking, BySet: true},
 	PropFleet:               {Check: sidesWorking(PropFleet), BySet: true},
 	PropFriends:             {Check: sidesWorking(PropFriends), BySet: true},
+	PropFriendDeal:          {BySet: true},
 	PropFleetTiers:          {Check: tiersWorking(PropFleetTiers), BySet: true},
 	PropFriendsTiers:        {Check: tiersWorking(PropFriendsTiers), BySet: true},
 	PropReadsNeeded:         {Check: readsNeededWorking, BySet: true},

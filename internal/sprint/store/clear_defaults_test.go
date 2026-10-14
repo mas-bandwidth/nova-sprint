@@ -19,7 +19,7 @@ import (
 // each away from its working default (sprint.Defaults); awayProps the rest, written by the
 // table's own write (the With* wrappers' and the unflagged settings).
 var awayFromDefault = sprint.SetReq{Who: "tester",
-	ReadCards: sprint.SwitchOff, Fleet: sprint.SwitchOff, Friends: sprint.SwitchOff,
+	ReadCards: sprint.SwitchOff, Fleet: sprint.SwitchOff, Friends: sprint.SwitchOff, FriendDeal: sprint.SwitchOff,
 	FleetTiers: "flash", FriendsTiers: "pro", ReworkPriority: sprint.ReworkKeep,
 	UnservedTierFallsTo: "pro", ReadTier: "heavy", Reads: "3", DealtMax: "7h", GoLanes: "3",
 	FriendIdle: "9m", LandingStallBound: "9m", FriendStallAfter: "9m", FriendStallStep: "9m",

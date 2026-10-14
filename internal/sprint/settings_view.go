@@ -79,6 +79,12 @@ func SettingsRows() []SettingRow {
 		}),
 		settingRow("friend-finish", PropFriendFinish, "Snapshot.FriendFinishAfter", func(s *Snapshot) string { return s.FriendFinishAfter().String() }),
 		settingRow("friend-idle", PropFriendIdle, "Snapshot.FriendIdleAfter", func(s *Snapshot) string { return s.FriendIdleAfter().String() }),
+		settingRow("friend-deal", PropFriendDeal, "Snapshot.FriendDealOff", func(s *Snapshot) string {
+			if s == nil || s.Work == nil {
+				return SwitchOn
+			}
+			return SwitchWord(s.Work.Props(), PropFriendDeal)
+		}),
 		settingRow("friends", PropFriends, "Snapshot.FriendsOff", func(s *Snapshot) string {
 			if s == nil {
 				return SwitchOn

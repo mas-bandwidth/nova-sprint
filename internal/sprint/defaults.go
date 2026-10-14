@@ -77,6 +77,7 @@ var Defaults = []Default{
 	{Name: PropReadCards, Home: HomeProp, Value: ReadCardsOnWord, Why: "reads are dealt as read cards (the owner, 2026-10-13: \"default is TRUE\")"},
 	{Name: PropFleet, Home: HomeProp, Value: SwitchOn, Why: "the fleet takes work (the owner, 2026-10-06: \"default enabled\")"},
 	{Name: PropFriends, Home: HomeProp, Value: SwitchOn, Why: "the friends take work (the owner, 2026-10-06: \"default enabled\")"},
+	{Name: PropFriendDeal, Home: HomeProp, Value: SwitchOn, Why: "the deal deals to friends (v1.2.27 item 8: off is the owner's switch)"},
 	{Name: PropFleetTiers, Home: HomeProp, Value: TiersAll, Why: "the fleet may take every tier"},
 	{Name: PropFriendsTiers, Home: HomeProp, Value: TiersAll, Why: "the friends may take every tier"},
 	{Name: PropReworkPriority, Home: HomeProp, Value: PriorityFix, Why: "a next attempt is dealt at fix priority"},
