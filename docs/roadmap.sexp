@@ -39,7 +39,11 @@
    :title "Docs, models and the repository"
    :text "Documentation suites, the TLA+ ledger, and the models.")
   (group "friends" :title "Friend AIs"
-   :text "Friend AIs, their lanes, harnesses and the way the sprint deals to them."))
+   :text "Friend AIs, their lanes, harnesses and the way the sprint deals to them.")
+  (group "export-sprint-v1224" :title "Moved out of the sprint on 2026-10-14: sprint-v1224"
+   :text "The open cards of sprint stream sprint-v1224, moved out of the stopped sprint on 2026-10-14, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch and any pushed work to resume from.")
+  (group "export-testify-sprint" :title "Moved out of the sprint on 2026-10-14: testify-sprint"
+   :text "The open cards of sprint stream testify-sprint, moved out of the stopped sprint on 2026-10-14, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch and any pushed work to resume from."))
 
  :items
  (
@@ -2097,4 +2101,51 @@
    :text "An append-only log of the coordinator's decisions, which the system reads before it raises a judgment, so a question already settled is not asked again."
    :why "New capability."
    :release "v1.3"
-   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "a-seat-verb-says-when-a-release-window-is-open" :group "export-sprint-v1224" :area "nova-sprint"
+   :title "A seat verb says when a release window is open, and when the server is back (v1.2.24)"
+   :text "NEW cmd/nova-sprint/release_window.go: ReadReleaseWindow(path string, now time.Time) (ReleaseWindow, state) with state one of none, open, stale, unreadable."
+   :exists "Work was pushed: head cefb23fd6064d9dffefd2f679117f0117977e8cc on branch sprint/a-seat-verb-says-when-a-release-window-is-open.emma (attempt 3). Resume from it; do not start over."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card a-seat-verb-says-when-a-release-window-is-open (stream sprint-v1224, column review, tier heavy, base sprint/v1.2.24), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "a-seat-verb-says-when-a-release-window-is-open" :sprint-stream "sprint-v1224" :sprint-column "review" :tier "heavy" :sprint-base "sprint/v1.2.24" :needs "" :pushed-head "cefb23fd6064d9dffefd2f679117f0117977e8cc" :pushed-branch "sprint/a-seat-verb-says-when-a-release-window-is-open.emma"))
+  (item "a-card-past-its-bound-with-progress-is-carried-by-the-machine" :group "export-sprint-v1224" :area "nova-sprint"
+   :title "A card past its bound with progress is carried by the machine (v1.2.24)"
+   :text "A second bound on the same card (the carry did not converge) is the seat's, as today. No progress, no named fix, a brief-defect mark, or a card pinned to a friend: unchanged (the seat). The machine never answers a bound judgment that holds a HOLD naming the brief."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card a-card-past-its-bound-with-progress-is-carried-by-the-machine (stream sprint-v1224, column waiting, tier heavy, base sprint/v1.2.24), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "a-card-past-its-bound-with-progress-is-carried-by-the-machine" :sprint-stream "sprint-v1224" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v1.2.24" :needs "a-harness-fault-never-counts-toward-the-brief-defect-bound" :pushed-head "" :pushed-branch ""))
+  (item "sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify" :group "export-testify-sprint" :area "nova-sprint"
+   :title "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they..."
+   :text "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures."
+   :exists "Work was pushed: head 34dda9d1a4063f6f99ca9c95ddeb3d83b8cffc96 on branch sprint/sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify" :sprint-stream "testify-sprint" :sprint-column "ready" :tier "pro" :sprint-base "sprint/testify-sprint" :needs "sprint-testkit-must-wraps-the-repeated-assert-shapes,sprint-testkit-verb-runs-a-tool-and-checks-code-and-streams,sprint-testkit-fsx-sets-up-files-for-a-test,sprint-testkit-repotree-walks-the-tree-once-for-every-class-test,sprint-testkit-onboardtest-checks-the-onboarding-standard-for-a-tool,testify-ledger-counts-bare-asserts-per-package-and-only-falls" :pushed-head "34dda9d1a4063f6f99ca9c95ddeb3d83b8cffc96" :pushed-branch "sprint/sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify.w2.g1.e20"))
+  (item "sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify" :group "export-testify-sprint" :area "nova-sprint"
+   :title "Convert the test files matching PATHS (packages pkg/ratebudget, internal/ci, pkg/swarm, internal/sprintdash) to testify and table-driven tests on the mini-modules, delete the copied helpers, and..."
+   :text "Convert the test files matching PATHS (packages pkg/ratebudget, internal/ci, pkg/swarm, internal/sprintdash) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change."
+   :exists "Work was pushed: head 93107bfbe49d9760335d94b7be3f9391e838c23c on branch sprint/sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify" :sprint-stream "testify-sprint" :sprint-column "ready" :tier "pro" :sprint-base "sprint/testify-sprint" :needs "sprint-testkit-must-wraps-the-repeated-assert-shapes,sprint-testkit-verb-runs-a-tool-and-checks-code-and-streams,sprint-testkit-fsx-sets-up-files-for-a-test,sprint-testkit-repotree-walks-the-tree-once-for-every-class-test,sprint-testkit-onboardtest-checks-the-onboarding-standard-for-a-tool,testify-ledger-counts-bare-asserts-per-package-and-only-falls" :pushed-head "93107bfbe49d9760335d94b7be3f9391e838c23c" :pushed-branch "sprint/sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify.w2.g1.e20"))
+  (item "sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify" :group "export-testify-sprint" :area "nova-sprint"
+   :title "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they..."
+   :text "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures."
+   :exists "Work was pushed: head 9fdbbec5c01869ec52118af0a870b1fd94f636c1 on branch sprint/sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify" :sprint-stream "testify-sprint" :sprint-column "ready" :tier "pro" :sprint-base "sprint/testify-sprint" :needs "sprint-testkit-must-wraps-the-repeated-assert-shapes,sprint-testkit-verb-runs-a-tool-and-checks-code-and-streams,sprint-testkit-fsx-sets-up-files-for-a-test,sprint-testkit-repotree-walks-the-tree-once-for-every-class-test,sprint-testkit-onboardtest-checks-the-onboarding-standard-for-a-tool,testify-ledger-counts-bare-asserts-per-package-and-only-falls" :pushed-head "9fdbbec5c01869ec52118af0a870b1fd94f636c1" :pushed-branch "sprint/sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify.w2.g1.e20"))
+  (item "sprint-cmd-nova-sprint-part-3-tests-are-tables-on-testify" :group "export-testify-sprint" :area "nova-sprint"
+   :title "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they..."
+   :text "Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures."
+   :why "Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work."
+   :date "2026-10-14"
+   :origin "sprint card sprint-cmd-nova-sprint-part-3-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14"
+   :kept (:sprint-card "sprint-cmd-nova-sprint-part-3-tests-are-tables-on-testify" :sprint-stream "testify-sprint" :sprint-column "ready" :tier "pro" :sprint-base "sprint/testify-sprint" :needs "sprint-testkit-must-wraps-the-repeated-assert-shapes,sprint-testkit-verb-runs-a-tool-and-checks-code-and-streams,sprint-testkit-fsx-sets-up-files-for-a-test,sprint-testkit-repotree-walks-the-tree-once-for-every-class-test,sprint-testkit-onboardtest-checks-the-onboarding-standard-for-a-tool,testify-ledger-counts-bare-asserts-per-package-and-only-falls" :pushed-head "" :pushed-branch ""))
+))

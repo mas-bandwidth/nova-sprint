@@ -11,6 +11,8 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
+- [Moved out of the sprint on 2026-10-14: sprint-v1224](#moved-out-of-the-sprint-on-2026-10-14-sprint-v1224) (2)
+- [Moved out of the sprint on 2026-10-14: testify-sprint](#moved-out-of-the-sprint-on-2026-10-14-testify-sprint) (4)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -2283,3 +2285,67 @@ Queue sync writes a versioned snapshot of the friend's current Ready and Working
 Target: v1.3
 
 From: PR #5486
+
+## Moved out of the sprint on 2026-10-14: sprint-v1224
+
+The open cards of sprint stream sprint-v1224, moved out of the stopped sprint on 2026-10-14, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch and any pushed work to resume from.
+
+### A seat verb says when a release window is open, and when the server is back (v1.2.24)
+
+NEW cmd/nova-sprint/release_window.go: ReadReleaseWindow(path string, now time.Time) (ReleaseWindow, state) with state one of none, open, stale, unreadable.
+
+Already in the code: Work was pushed: head cefb23fd6064d9dffefd2f679117f0117977e8cc on branch sprint/a-seat-verb-says-when-a-release-window-is-open.emma (attempt 3). Resume from it; do not start over.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card a-seat-verb-says-when-a-release-window-is-open (stream sprint-v1224, column review, tier heavy, base sprint/v1.2.24), moved out of the sprint 2026-10-14
+
+### A card past its bound with progress is carried by the machine (v1.2.24)
+
+A second bound on the same card (the carry did not converge) is the seat's, as today. No progress, no named fix, a brief-defect mark, or a card pinned to a friend: unchanged (the seat). The machine never answers a bound judgment that holds a HOLD naming the brief.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card a-card-past-its-bound-with-progress-is-carried-by-the-machine (stream sprint-v1224, column waiting, tier heavy, base sprint/v1.2.24), moved out of the sprint 2026-10-14
+
+## Moved out of the sprint on 2026-10-14: testify-sprint
+
+The open cards of sprint stream testify-sprint, moved out of the stopped sprint on 2026-10-14, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch and any pushed work to resume from.
+
+### Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they...
+
+Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures.
+
+Already in the code: Work was pushed: head 34dda9d1a4063f6f99ca9c95ddeb3d83b8cffc96 on branch sprint/sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card sprint-cmd-nova-sprint-part-2-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14
+
+### Convert the test files matching PATHS (packages pkg/ratebudget, internal/ci, pkg/swarm, internal/sprintdash) to testify and table-driven tests on the mini-modules, delete the copied helpers, and...
+
+Convert the test files matching PATHS (packages pkg/ratebudget, internal/ci, pkg/swarm, internal/sprintdash) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change.
+
+Already in the code: Work was pushed: head 93107bfbe49d9760335d94b7be3f9391e838c23c on branch sprint/sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card sprint-ratebudget-ci-swarm-and-dashboard-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14
+
+### Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they...
+
+Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures.
+
+Already in the code: Work was pushed: head 9fdbbec5c01869ec52118af0a870b1fd94f636c1 on branch sprint/sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify.w2.g1.e20 (attempt 2). Resume from it; do not start over.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card sprint-cmd-nova-sprint-part-4-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14
+
+### Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they...
+
+Convert the test files matching PATHS (package cmd/nova-sprint) to testify and table-driven tests on the mini-modules, delete the copied helpers, and apply the advanced testify features where they save lines. Only the files matching PATHS change. cmd/nova-sprint is split by file-name range over four cards of this stream; shared helpers used outside this card's range keep their names and signatures.
+
+Why it waits: Moved out of the stopped sprint on 2026-10-14: neither rocketnet nor v1.3 work.
+
+From: sprint card sprint-cmd-nova-sprint-part-3-tests-are-tables-on-testify (stream testify-sprint, column ready, tier pro, base sprint/testify-sprint), moved out of the sprint 2026-10-14
