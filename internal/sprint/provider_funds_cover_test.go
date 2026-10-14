@@ -60,38 +60,14 @@ func TestProviderFundsCoverPropBalance(t *testing.T) {
 func TestProviderFundsCoverValue(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name    string
-		b       ProviderBalance
-		want    string
-		known   bool
-		balance float64
-		hasUsed bool
-		used    float64
-		spend   float64
-		note    string
+		name string
+		b    ProviderBalance
+		want string
 	}{
-		{
-			name:    "main: a known balance with used",
-			b:       ProviderBalance{Provider: "p", Known: true, Balance: 100, At: coverT0, SpendHour: 10.5, HasUsed: true, Used: 50, Note: "a poll note"},
-			want:    "100 2030-01-02T03:00:00Z 10.5 50 a poll note",
-			known:   true,
-			balance: 100,
-			hasUsed: true,
-			used:    50,
-			spend:   10.5,
-			note:    "a poll note",
-		},
-		{
-			name:    "refusal: an unknown balance",
-			b:       ProviderBalance{Provider: "p", Known: false, Balance: 0, At: coverT0, SpendHour: 0, HasUsed: false, Used: 0, Note: "no balance endpoint"},
-			want:    "unknown 2030-01-02T03:00:00Z 0 - no balance endpoint",
-			known:   false,
-			balance: 0,
-			hasUsed: false,
-			used:    0,
-			spend:   0,
-			note:    "no balance endpoint",
-		},
+		{"main: a known balance with used", ProviderBalance{Provider: "p", Known: true, Balance: 100, At: coverT0, SpendHour: 10.5, HasUsed: true, Used: 50, Note: "a poll note"},
+			"100 2030-01-02T03:00:00Z 10.5 50 a poll note"},
+		{"refusal: an unknown balance", ProviderBalance{Provider: "p", Known: false, Balance: 0, At: coverT0, SpendHour: 0, HasUsed: false, Used: 0, Note: "no balance endpoint"},
+			"unknown 2030-01-02T03:00:00Z 0 - no balance endpoint"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -99,12 +75,12 @@ func TestProviderFundsCoverValue(t *testing.T) {
 			f.SetProp(PropProviderBalance("p"), tc.b.value())
 			got := ProviderBalances(f)["p"]
 			assert.Equal(t, tc.want, tc.b.value())
-			assert.Equal(t, tc.known, got.Known, "known reads back")
-			assert.InDelta(t, tc.balance, got.Balance, 1e-9)
-			assert.Equal(t, tc.hasUsed, got.HasUsed, "hasUsed reads back")
-			assert.InDelta(t, tc.used, got.Used, 1e-9)
-			assert.InDelta(t, tc.spend, got.SpendHour, 1e-9)
-			assert.Equal(t, tc.note, got.Note, "note reads back")
+			assert.Equal(t, tc.b.Known, got.Known, "known reads back")
+			assert.InDelta(t, tc.b.Balance, got.Balance, 1e-9)
+			assert.Equal(t, tc.b.HasUsed, got.HasUsed, "hasUsed reads back")
+			assert.InDelta(t, tc.b.Used, got.Used, 1e-9)
+			assert.InDelta(t, tc.b.SpendHour, got.SpendHour, 1e-9)
+			assert.Equal(t, tc.b.Note, got.Note, "note reads back")
 		})
 	}
 }
@@ -118,26 +94,10 @@ func TestProviderFundsCoverSaid(t *testing.T) {
 		b    ProviderBalance
 		want string
 	}{
-		{
-			name: "main: a known balance",
-			b:    ProviderBalance{Provider: "p", Known: true, Balance: 100, At: coverT0},
-			want: "$100.00 at 2030-01-02T03:00:00Z",
-		},
-		{
-			name: "main: a rounded-up negative balance",
-			b:    ProviderBalance{Provider: "p", Known: true, Balance: -0.51, At: coverT0},
-			want: "-$0.51 at 2030-01-02T03:00:00Z",
-		},
-		{
-			name: "refusal: not polled yet",
-			b:    ProviderBalance{Provider: "p", Known: false, At: time.Time{}},
-			want: "unknown: not polled yet",
-		},
-		{
-			name: "refusal: an unknown balance",
-			b:    ProviderBalance{Provider: "p", Known: false, At: coverT0, Note: "no balance endpoint"},
-			want: "unknown: no balance endpoint",
-		},
+		{"main: a known balance", ProviderBalance{Provider: "p", Known: true, Balance: 100, At: coverT0}, "$100.00 at 2030-01-02T03:00:00Z"},
+		{"main: a rounded-up negative balance", ProviderBalance{Provider: "p", Known: true, Balance: -0.51, At: coverT0}, "-$0.51 at 2030-01-02T03:00:00Z"},
+		{"refusal: not polled yet", ProviderBalance{Provider: "p", Known: false, At: time.Time{}}, "unknown: not polled yet"},
+		{"refusal: an unknown balance", ProviderBalance{Provider: "p", Known: false, At: coverT0, Note: "no balance endpoint"}, "unknown: no balance endpoint"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -157,39 +117,21 @@ func TestProviderFundsCoverOutOfCredit(t *testing.T) {
 	}
 	credit := coverRestValue(RestCredit, "c1")
 	for _, tc := range []struct {
-		name      string
-		props     map[string]string
-		more      map[string]string
-		routes    []Route
-		wantEmpty bool
-		contains  string
+		name     string
+		props    map[string]string
+		contains string // "" is no words
 	}{
-		{
-			name:     "main: every provider is out of credit",
-			props:    map[string]string{PropProviderRest("p"): credit},
-			routes:   routes,
-			contains: FundsCause + " (p)",
-		},
-		{
-			name:      "refusal: the coordinator's rest of a provider with money",
-			props:     map[string]string{PropProviderRest("p"): coverRestValue(RestCoordinator)},
-			routes:    routes,
-			wantEmpty: true,
-		},
-		{
-			name:      "refusal: an enabled route with no rest",
-			props:     nil,
-			routes:    routes,
-			wantEmpty: true,
-		},
+		{"main: every provider is out of credit", map[string]string{PropProviderRest("p"): credit}, FundsCause + " (p)"},
+		{"refusal: the coordinator's rest of a provider with money", map[string]string{PropProviderRest("p"): coverRestValue(RestCoordinator)}, ""},
+		{"refusal: an enabled route with no rest", nil, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f := NewTable(Fleet)
 			f.SetProps(tc.props)
-			s := &Snapshot{Now: coverT0, Fleet: f, Routes: tc.routes}
+			s := &Snapshot{Now: coverT0, Fleet: f, Routes: routes}
 			got := s.OutOfCredit()
-			if tc.wantEmpty {
+			if tc.contains == "" {
 				assert.Empty(t, got)
 				return
 			}
@@ -215,24 +157,12 @@ func TestProviderFundsCoverFunded(t *testing.T) {
 		wantRefused string
 		was         string
 	}{
-		{
-			name:  "main: the provider funded",
-			props: map[string]string{PropProviderRest("p"): openCredit},
-			req:   FundedReq{Provider: "p", Reason: "paid $100 in the console", Who: Coordinator},
-			was:   openCredit,
-		},
-		{
-			name:        "refusal: no reason given",
-			props:       map[string]string{PropProviderRest("p"): openCredit},
-			req:         FundedReq{Provider: "p", Reason: "", Who: Coordinator},
-			wantRefused: "funded wants --reason: the payment made, in a few words",
-		},
-		{
-			name:        "refusal: the provider does not rest for its funds",
-			props:       nil,
-			req:         FundedReq{Provider: "p", Reason: "paid", Who: Coordinator},
-			wantRefused: "provider p does not rest for its funds",
-		},
+		{"main: the provider funded", map[string]string{PropProviderRest("p"): openCredit},
+			FundedReq{Provider: "p", Reason: "paid $100 in the console", Who: Coordinator}, "", openCredit},
+		{"refusal: no reason given", map[string]string{PropProviderRest("p"): openCredit},
+			FundedReq{Provider: "p", Reason: "", Who: Coordinator}, "funded wants --reason: the payment made, in a few words", ""},
+		{"refusal: the provider does not rest for its funds", nil,
+			FundedReq{Provider: "p", Reason: "paid", Who: Coordinator}, "provider p does not rest for its funds", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
