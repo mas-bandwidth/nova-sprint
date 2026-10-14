@@ -23,6 +23,7 @@ const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
 	"keep\tREADME.md\n" +
 	"keep\tinternal/sprint/toolsversion.go\n" +
 	"keep\ttools/seed\n" +
+	"external\tex.com/tools/pkg/oneline\tv0.1.0\n" +
 	"gomod\n"
 
 var testRelease = release{tag: "v1.1.0", commit: "0123456789abcdef0123456789abcdef01234567"}
@@ -59,7 +60,7 @@ func fixture(t *testing.T) (from, keep string) {
 	write(t, from, map[string]string{
 		"go.mod":                         "module ex.com/tools\n\ngo 1.26\n\ntool (\n\tex.com/lint\n)\n\nrequire ex.com/dep v1.0.0\n",
 		"go.sum":                         "ex.com/dep v1.0.0 h1:x\n",
-		"cmd/app/main.go":                "package main\n\nimport (\n\t\"fmt\"\n\n\t\"ex.com/tools/internal/b\"\n\t\"ex.com/tools/fleet\"\n)\n\nfunc main() { fmt.Println(b.B, fleet.F) }\n",
+		"cmd/app/main.go":                "package main\n\nimport (\n\t\"fmt\"\n\n\t\"ex.com/tools/pkg/oneline\"\n\t\"ex.com/tools/internal/b\"\n\t\"ex.com/tools/fleet\"\n)\n\nfunc main() { fmt.Println(oneline.Escape(\"x\"), b.B, fleet.F) }\n",
 		"cmd/app/outside.go":             "package main\n\nimport sprint \"ex.com/tools/internal/b\"\n\ntype outside struct {\n\tmachineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)\n}\n",
 		"cmd/app/seat.go":                "package main\n\nimport \"ex.com/tools/internal/b\"\n\nvar _ = b.B\n\nfunc (a *app) runSeatCheckVerb(verb string, args []string, stdout, stderr io.Writer) int {\n\tst, err := a.store(*c)\n\treturn 0\n}\n",
 		"cmd/app/unrelated.go":           "package main\n\nfunc unrelated() {\n\tst, err := a.store(*c)\n\t_ = st\n\t_ = err\n}\n",
@@ -132,6 +133,12 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	if !strings.Contains(main, "\t\"ex.com/sprint/internal/b\"\n\t\"ex.com/sprint/internal/fleetrules\"\n") {
 		t.Errorf("imports not rewritten and sorted:\n%s", main)
 	}
+	if !strings.Contains(main, "\"ex.com/tools/pkg/oneline\"") {
+		t.Errorf("external import not left pointing at the source module:\n%s", main)
+	}
+	if strings.Contains(main, "ex.com/sprint/pkg/oneline") {
+		t.Errorf("external import rewritten to the destination module:\n%s", main)
+	}
 	test := read(t, out, "cmd/app/main_test.go")
 	if !strings.Contains(test, "\"ex.com/sprint/internal/t\"") || !strings.Contains(test, "\"../../internal/fleetrules/rules.txt\"") {
 		t.Errorf("test file:\n%s", test)
@@ -177,7 +184,7 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	if got := read(t, out, "tla/RUNS.tsv"); got != "config\tmodule\trest\nMCM.cfg\tMCM.tla\t1\n" {
 		t.Errorf("RUNS %q", got)
 	}
-	if got := read(t, out, "go.mod"); got != "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n\nrequire ex.com/dep v1.0.0\n" {
+	if got := read(t, out, "go.mod"); got != "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n\nrequire ex.com/dep v1.0.0\n\nrequire (\n\tex.com/tools/pkg/oneline v0.1.0\n)\n" {
 		t.Errorf("go.mod %q", got)
 	}
 	if got, want := read(t, out, sprint.NovaToolsVersionFile), sprint.FormatNovaToolsVersion("v1.1.0", testRelease.commit); got != want {
