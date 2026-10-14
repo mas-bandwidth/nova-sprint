@@ -182,7 +182,7 @@ func TestFetchesOfOneCloneSerializeAndTwoClonesGoSideBySide(t *testing.T) {
 	select {
 	case <-got:
 	case <-time.After(time.Second):
-		t.Fatal("two clones' fetches did not run side by side")
+		require.FailNow(t, "two clones' fetches did not run side by side")
 	}
 	b.Unlock()
 	a.Unlock()
@@ -198,14 +198,14 @@ func TestFetchesOfOneCloneSerializeAndTwoClonesGoSideBySide(t *testing.T) {
 	}()
 	select {
 	case <-held:
-		t.Fatal("a second fetch of one clone entered while the first held the lock")
+		require.FailNow(t, "a second fetch of one clone entered while the first held the lock")
 	case <-time.After(200 * time.Millisecond):
 	}
 	c1.Unlock()
 	select {
 	case <-held:
 	case <-time.After(time.Second):
-		t.Fatal("the second fetch of one clone never got the lock")
+		require.FailNow(t, "the second fetch of one clone never got the lock")
 	}
 	c2.Unlock()
 }
@@ -240,14 +240,14 @@ func TestAWorktreeFetchTakesItsClonesLock(t *testing.T) {
 	select {
 	case <-got:
 		mu.Unlock()
-		t.Fatal("a fetch from the worktree ran while its clone's fetch lock was held")
+		require.FailNow(t, "a fetch from the worktree ran while its clone's fetch lock was held")
 	case <-time.After(200 * time.Millisecond):
 	}
 	mu.Unlock()
 	select {
 	case <-got:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the worktree's fetch never took its clone's lock")
+		require.FailNow(t, "the worktree's fetch never took its clone's lock")
 	}
 }
 
@@ -283,14 +283,14 @@ func TestTwoBasesOfOneRepoShareTheClonesCreationLock(t *testing.T) {
 	select {
 	case <-done:
 		mu.Unlock()
-		t.Fatal("a second lane's clone ran on the clone in progress: it took a different lock")
+		require.FailNow(t, "a second lane's clone ran on the clone in progress: it took a different lock")
 	case <-time.After(200 * time.Millisecond):
 	}
 	mu.Unlock()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the second lane's clone never took its clone's creation lock")
+		require.FailNow(t, "the second lane's clone never took its clone's creation lock")
 	}
 	r.clean()
 }

@@ -157,13 +157,13 @@ func (hh *heldHook) next(prefix string) string {
 		select {
 		case l, ok := <-hh.lines:
 			if !ok {
-				hh.t.Fatalf("the hook ended, wanting a line %q", prefix)
+				require.Failf(hh.t, "hook ended", "the hook ended, wanting a line %q", prefix)
 			}
 			if strings.HasPrefix(l, prefix) {
 				return l
 			}
 		case <-deadline:
-			hh.t.Fatalf("no line %q", prefix)
+			require.Failf(hh.t, "no line", "no line %q", prefix)
 		}
 	}
 }
@@ -174,7 +174,7 @@ func (hh *heldHook) ended() int {
 	case code := <-hh.done:
 		return code
 	case <-time.After(20 * time.Second):
-		hh.t.Fatal("the hook did not end")
+		require.Fail(hh.t, "the hook did not end")
 	}
 	return -1
 }
@@ -411,7 +411,7 @@ func warningAnswer(t *testing.T, text string) []string {
 		require.Equal(t, "nova-sprint", words[0], l)
 		return words[1:]
 	}
-	t.Fatalf("the warning names no answer: %s", text)
+	require.Failf(t, "warning", "the warning names no answer: %s", text)
 	return nil
 }
 

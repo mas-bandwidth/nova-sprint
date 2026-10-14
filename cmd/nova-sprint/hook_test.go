@@ -200,7 +200,7 @@ func (c *hookClient) next(t string) hookMsg {
 			require.Equal(c.t, t, m.T, "%+v", m)
 			return m
 		case <-time.After(10 * time.Second):
-			c.t.Fatalf("no %s line", t)
+			require.Failf(c.t, "no line", "no %s line", t)
 		}
 		return hookMsg{}
 	}
@@ -211,7 +211,7 @@ func (c *hookClient) quiet(why string) {
 	c.t.Helper()
 	select {
 	case m := <-c.lines:
-		c.t.Fatalf("%s: %+v", why, m)
+		require.Failf(c.t, "quiet", "%s: %+v", why, m)
 	case <-time.After(200 * time.Millisecond):
 	}
 }
@@ -277,13 +277,13 @@ func (ta *testApp) waitHookWhere(state string, want func(sprint.HookRecord) bool
 		}
 		v, _ := hookSyncs.Load(ta)
 		if v == nil {
-			ta.t.Fatal("no hook sync point installed")
+			require.Fail(ta.t, "no hook sync point installed")
 		}
 		select {
 		case <-v.(*hookSync).writes:
 		case <-time.After(10 * time.Second):
 			rec, _ := ta.hookRecord()
-			ta.t.Fatalf("%s: %+v", label, rec)
+			require.Failf(ta.t, "hook wait", "%s: %+v", label, rec)
 		}
 	}
 }
@@ -569,7 +569,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 				return sc.Text()
 			}
 		}
-		t.Fatalf("no line %q", prefix)
+		require.Failf(t, "no line", "no line %q", prefix)
 		return ""
 	}
 	assert.Contains(t, nextLine("HOOK CONNECTED"), "name="+name)
@@ -605,7 +605,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	case code := <-done:
 		assert.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("the hook did not end after unhook")
+		require.Fail(t, "the hook did not end after unhook")
 	}
 	code, _, errs = run("add --stream s2 --count 1 --one")
 	assert.Equal(t, 1, code)
@@ -1236,7 +1236,7 @@ func TestHookTakeoverWriteFailureLeavesOldSessionLive(t *testing.T) {
 	case _, open := <-second.lines:
 		require.False(t, open, "failed replacement start closes its own connection without a hello")
 	case <-time.After(time.Second):
-		t.Fatal("failed replacement start left its connection open")
+		require.Fail(t, "failed replacement start left its connection open")
 	}
 	current := ta.hookSession()
 	require.NotNil(t, current)
@@ -1327,7 +1327,7 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	s.look(context.Background())
 	select {
 	case m := <-c.lines:
-		t.Fatalf("a push was delivered though its record write failed: %+v", m)
+		require.Failf(t, "push", "a push was delivered though its record write failed: %+v", m)
 	case <-time.After(200 * time.Millisecond):
 	}
 	rec, _ := ta.hookRecord()
@@ -1346,7 +1346,7 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	s.look(context.Background()) // nothing new: nothing pushed twice
 	select {
 	case m := <-c.lines:
-		t.Fatalf("the push was delivered twice: %+v", m)
+		require.Failf(t, "push", "the push was delivered twice: %+v", m)
 	case <-time.After(200 * time.Millisecond):
 	}
 
@@ -1408,13 +1408,13 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 	case line := <-challenge:
 		assert.Contains(t, line, "nova-sprint hook --prove ")
 	case <-time.After(time.Second):
-		t.Fatal("HOOK CHALLENGE was not readable on the OS pipe within 1s while the hook ran")
+		require.Fail(t, "HOOK CHALLENGE was not readable on the OS pipe within 1s while the hook ran")
 	}
 
 	// the hook is still running when the challenge was read: it did not exit
 	select {
 	case code := <-done:
-		t.Fatalf("the hook exited (code %d) before the challenge was read", code)
+		require.Failf(t, "hook exited", "the hook exited (code %d) before the challenge was read", code)
 	default:
 	}
 
@@ -1426,7 +1426,7 @@ func TestHookFlushesAfterChallenge(t *testing.T) {
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("the hook did not end after unhook")
+		require.Fail(t, "the hook did not end after unhook")
 	}
 }
 
@@ -1473,13 +1473,13 @@ func TestHookPrintsChallengeOnStoreWithNoBusStream(t *testing.T) {
 	case line := <-challenge:
 		assert.Contains(t, line, "nova-sprint hook --prove ")
 	case <-time.After(time.Second):
-		t.Fatal("HOOK CHALLENGE was not printed on a store with no bus stream")
+		require.Fail(t, "HOOK CHALLENGE was not printed on a store with no bus stream")
 	}
 
 	// the hook is still running when the challenge was read
 	select {
 	case code := <-done:
-		t.Fatalf("the hook exited (code %d) before the challenge was read", code)
+		require.Failf(t, "hook exited", "the hook exited (code %d) before the challenge was read", code)
 	default:
 	}
 
@@ -1494,6 +1494,6 @@ func TestHookPrintsChallengeOnStoreWithNoBusStream(t *testing.T) {
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("the hook did not end after unhook")
+		require.Fail(t, "the hook did not end after unhook")
 	}
 }

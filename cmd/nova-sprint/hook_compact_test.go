@@ -127,7 +127,7 @@ waitPush:
 				break waitPush
 			}
 			if strings.Contains(l, "ready to merge") {
-				t.Fatalf("a HAPPENED push was printed on the compact stream: %q", l)
+				require.Failf(t, "compact push", "a HAPPENED push was printed on the compact stream: %q", l)
 			}
 			if strings.HasPrefix(l, "PUSH ") && strings.Contains(l, "JUDGMENT") {
 				pushed = l
@@ -170,7 +170,7 @@ waitPush:
 	select {
 	case l := <-lines:
 		if strings.HasPrefix(l, "OVERDUE ") {
-			t.Fatalf("an answered judgment was named again: %q", l)
+			require.Failf(t, "compact judgment", "an answered judgment was named again: %q", l)
 		}
 	case <-time.After(3 * time.Second):
 	}
@@ -178,7 +178,7 @@ waitPush:
 	// the hook is still running; end it cleanly.
 	select {
 	case code := <-done:
-		t.Fatalf("the compact hook exited (code %d) while it held the seat", code)
+		require.Failf(t, "compact hook exited", "the compact hook exited (code %d) while it held the seat", code)
 	default:
 	}
 	var uout, uerrs bytes.Buffer
@@ -187,7 +187,7 @@ waitPush:
 	case code := <-done:
 		require.Equal(t, 0, code)
 	case <-time.After(10 * time.Second):
-		t.Fatal("the compact hook did not end after unhook")
+		require.Fail(t, "the compact hook did not end after unhook")
 	}
 }
 
