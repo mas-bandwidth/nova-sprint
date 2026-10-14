@@ -1700,7 +1700,7 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// BatchTakeEvery made her working cell flap between full and her started count
 	// (tla/FriendReadyTake.tla, WorkingIsStarted). A take by id and a lane's take are unchanged.
 	friendByCount := ""
-	if f, ok := FriendOfRow(r.As); ok && !byID {
+	if f, ok := FriendOfRow(r.As); ok && !byID && r.Lane == 0 {
 		friendByCount = f
 		seat, _ := friendSeatOf(s, f)
 		var started []*Card

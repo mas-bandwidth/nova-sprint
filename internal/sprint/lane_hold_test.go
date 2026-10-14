@@ -45,13 +45,15 @@ func TestALanesTakeIsHerStartAndTheTickKeepsItWorking(t *testing.T) {
 	assert.Equal(t, Working, held.Col, "still working after the tick: never put back ready as unstarted")
 	assert.Equal(t, "1", held.F(FieldLane))
 
-	t.Run("the take before lanes: a bare take by count is put back ready by the tick", func(t *testing.T) {
+	t.Run("a bare take by count of an unstarted card moves nothing, so the tick has nothing to put back", func(t *testing.T) {
 		t.Parallel()
 		w := laneWorld(t)
-		w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{Limit: 1}, Who: FriendRow("amy")}))
-		require.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Working), 1)
+		p := w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{Limit: 1}, Who: FriendRow("amy")}))
+		require.Empty(t, p.Units, "a take by count is no start (2026-10-14: the take-then-return flap)")
+		require.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working))
 		dealWith(w, amyLanes)
-		assert.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working), "the fault: taken, then ready again a tick later")
+		assert.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working), "still ready: never taken and returned")
+		assert.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Ready), 3)
 	})
 }
 
@@ -88,7 +90,9 @@ func TestALanesTakeAnswersWhatItHolds(t *testing.T) {
 func TestALaneIsGivenAWorkingCardNoLaneHolds(t *testing.T) {
 	t.Parallel()
 	w := laneWorld(t)
-	w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{Limit: 1}, Who: FriendRow("amy")}))
+	// her start read by friend sync (FriendStart) moves a card working with no lane on it
+	first := w.s.Fleet.Cell(FriendRow("amy"), Ready)[0].ID
+	w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{first}, Gens: gensOf(w.s, first)}))
 	orphan := w.s.Fleet.Cell(FriendRow("amy"), Working)[0]
 	require.Empty(t, orphan.F(FieldLane))
 	p := w.must(laneTake(w, 2))
