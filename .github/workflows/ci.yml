@@ -72,6 +72,9 @@ jobs:
           # the one-source allowance (internal/ci/one_source_allowed.txt: pkg/ copies of nova-tools
           # not yet merged) only shrinks against the same base
           UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestTheOneSourceAllowanceOnlyShrinks' ./internal/ci/
+          # the uncovered-functions ledger (internal/ci/testdata/uncovered_functions_allowlist.txt)
+          # only shrinks against the same base, and changed live code in the PR's packages must be executed by tests
+          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestUncoveredFunctionsLedgerOnlyShrinks|TestChangedLiveCodeIsExecutedByTests' ./internal/ci/
 
   # functional is the functional tier, run per pull request and push to main on
   # ubuntu-latest: redis-server is installed as the store the tests spawn their
