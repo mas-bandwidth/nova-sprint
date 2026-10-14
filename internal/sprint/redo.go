@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -335,11 +336,7 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 		p.Units = append(p.Units, u)
 	}
 
-	sortedStreams := make([]string, 0, len(streams))
-	for st := range streams {
-		sortedStreams = append(sortedStreams, st)
-	}
-	slices.Sort(sortedStreams)
+	sortedStreams := slices.Sorted(maps.Keys(streams))
 
 	for _, stream := range sortedStreams {
 		ctl := s.StreamCtl(stream)

@@ -3,6 +3,7 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -524,11 +525,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 			}
 		}
 	}
-	var readers []string
-	for rd := range byReader {
-		readers = append(readers, rd)
-	}
-	slices.Sort(readers)
+	readers := slices.Sorted(maps.Keys(byReader))
 	var rparts []string
 	for _, rd := range readers {
 		g := byReader[rd]

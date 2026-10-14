@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"maps"
 	"slices"
 	"strings"
 )
@@ -63,10 +64,5 @@ func retierTakeBacks(s *Snapshot, seats []FriendSeat, who string, started map[st
 
 // joinSorted is the keys of set, sorted and comma joined.
 func joinSorted(set map[string]bool) string {
-	var out []string
-	for k := range set {
-		out = append(out, k)
-	}
-	slices.Sort(out)
-	return strings.Join(out, ",")
+	return strings.Join(slices.Sorted(maps.Keys(set)), ",")
 }

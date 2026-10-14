@@ -154,11 +154,7 @@ func RefusedVerbLines(recs []RefusedVerb, now time.Time) []string {
 	members := slices.Sorted(maps.Keys(groups))
 	var out []string
 	for _, m := range members {
-		verbs := make([]string, 0, len(groups[m]))
-		for v := range groups[m] {
-			verbs = append(verbs, v)
-		}
-		slices.Sort(verbs)
+		verbs := slices.Sorted(maps.Keys(groups[m]))
 		for _, v := range verbs {
 			if len(groups[m][v]) >= RefusedVerbBound {
 				out = append(out, RefusedVerbFault(m, v, groups[m][v]))

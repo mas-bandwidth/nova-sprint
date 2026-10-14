@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -47,11 +48,7 @@ var PageLockFiles = []string{"pageview.go"}
 // PageDigest is the digest of the locked files: each name with its content's sha256, in
 // name order, so a file added, removed or changed changes it.
 func PageDigest(files map[string][]byte) string {
-	names := make([]string, 0, len(files))
-	for n := range files {
-		names = append(names, n)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(files))
 	h := sha256.New()
 	for _, n := range names {
 		sum := sha256.Sum256(files[n])
