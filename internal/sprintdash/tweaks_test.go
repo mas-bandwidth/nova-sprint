@@ -389,7 +389,7 @@ function createDOMStub() {
       },
       set textContent(val) { this._text = val; this.children = []; },
       querySelector(sel) { return createElement('div'); },
-      querySelectorAll(sel) { return []; },
+      querySelectorAll(sel) { return []; }, getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; },
       remove() { if (this.parentNode) this.parentNode.removeChild(this); },
       cloneNode(deep) { return createElement(tag, id); },
       scrollWidth: 50,
@@ -406,7 +406,7 @@ function createDOMStub() {
   }
 
   const context = {
-    window: { addEventListener() {} },
+    window: { addEventListener() {}, matchMedia: () => ({ matches: false }) },
     document: {
       getElementById: getEl,
       createElement: createElement,

@@ -74,6 +74,7 @@ class Node {
   all() { return this.children.flatMap(c => [c, ...c.all()]); }
   querySelector(sel) { const cl = sel.split('.').filter(Boolean); return this.all().find(n => cl.every(c => n._classes.includes(c))) || null; }
   querySelectorAll() { return []; }
+  getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; }
 }
 const doc = { root: new Node('html'), byId: new Map(), activeElement: null, _l: {}, documentElement: {} };
 doc.body = doc.root.appendChild(new Node('body'));
@@ -93,7 +94,7 @@ doc.dispatch = (t, ev) => (doc._l[t] || []).forEach(f => f(ev));
 
 let timer = null, nextBody = null;
 const context = {
-  window: { addEventListener() {} }, document: doc, getComputedStyle: () => ({ fontSize: '16px' }), location: { search: '' },
+  window: { addEventListener() {}, matchMedia: () => ({ matches: false }) }, document: doc, getComputedStyle: () => ({ fontSize: '16px' }), location: { search: '' },
   fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve(nextBody) }),
   setInterval: f => { timer = f; }, console, Intl, Math, Date, String, Number, parseInt, parseFloat, isNaN, Array, Object, RegExp, Map, Set, JSON,
 };

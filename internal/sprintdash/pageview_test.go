@@ -29,8 +29,8 @@ import (
 // shown by default, the owner's ask of 2026-10-13: "Please fix the sprint dashboard so it shows the
 // friends table by default."): the page is that page, byte for byte (pageview.go).
 const (
-	pageIndexSHA256 = "a36dea2bdf66cc14816810ec798bd26ee3dbb8fe23cdc24c8244d1647d1e8ef1"
-	pageAppSHA256   = "fdfc41212e5a78628e07b2513da40487f312313b66428e2e400b6c9835b83a90"
+	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
+	pageAppSHA256   = "8d434f01b26c318e31e3df3a810bb52c8d6c8a3d2cf062f93da7d05fac09d554"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
@@ -68,9 +68,9 @@ func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 
 	assert.Equal(t, app, get(t, r.s, "/app.js").Body.Bytes(), "/app.js is the live app.js, byte for byte")
 	const v = "?v=X"
-	// server.py index_page, the logo branch, its version written v: the live page's robot tile inline
-	// as a data PNG (the live page's logo, liveLogoData), the build in place of its version
-	slot := `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
+	// server.py index_page, its tile branch, its version written v: the tile img in the slot,
+	// the build in place of its version (the live page's inline data-PNG logo is in index.html itself)
+	slot := `<img id="logo" class="logo-tile" src="/logo-tile-192.png` + v + `" srcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x" alt="">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
 	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()
