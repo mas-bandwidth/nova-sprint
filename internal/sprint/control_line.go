@@ -150,6 +150,11 @@ func (l *ControlLine) TickLockCtx(ctx context.Context) (time.Duration, error) {
 		}
 		if err := ctx.Err(); err != nil {
 			l.turns.tickWants = false
+			// a batch held back by the tick's want is woken now, not at the next release
+			if l.free != nil {
+				close(l.free)
+				l.free = nil
+			}
 			l.mu.Unlock()
 			return now.Sub(start), err
 		}
