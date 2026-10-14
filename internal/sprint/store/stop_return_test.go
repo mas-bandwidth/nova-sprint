@@ -388,11 +388,6 @@ func TestDoneStopWithoutActiveChildrenHasNoDebt(t *testing.T) {
 	assert.True(t, running.Running())
 }
 
-// TestMovedReturnedCardDoesNotSettleStopDebt is replaced in v1.2.6 by live_test.go's
-// TestStartReadsTheReceiptNotTheRow: start reads the return receipt the card carries, not
-// the row it is on, so a returned card a hold moved since is settled (the hold of
-// 2026-10-10 that froze friend.zhi's row), and a card moved with no receipt is not.
-
 func TestClearCannotEraseUnreturnedStopDebt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
