@@ -1,0 +1,13 @@
+RESULT: twin-help-brief sha=0011223344ab tier: flash
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+
+THE TASK. The no-Redis walkthrough in `nova-sprint help` deals its card with no brief, so a worker following it is handed no task with the card: give the card its brief before the first tick, in cmd/nova-sprint/twin.go and docs/TESTS.md, so the walkthrough teaches the right order.
+Libraries considered: none; this card changes only help text and docs.
