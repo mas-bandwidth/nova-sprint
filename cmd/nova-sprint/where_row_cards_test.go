@@ -50,10 +50,11 @@ func TestTheDashboardRowsSayHowManyAreReads(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1 --report done --head " + landHead)
 	ta.ok("fleet down m1") // its two dealt ahead go back, to be dealt to fred
 	ta.beatUp("fred")
-	for range 3 { // the withdrawn two dealt to fred, and the read of s1-1, each taken
+	for range 3 { // the withdrawn two dealt to fred, and the read of s1-1, each started and taken
 		ta.ok("tick")
-		ta.ok("take --as " + sprint.FriendRow("fred") + " --limit 10")
 	}
+	ta.ok("friend beat fred --running s1-1,s1-2,s1-3")
+	ta.ok("take --as " + sprint.FriendRow("fred") + " --limit 10")
 	ta.ok("stop --reason test --until 90m") // a STOPPED tick deals nothing and counts the record
 	ta.ok("tick")                           // a take moves the fleet table alone: the record follows it
 	var v whereView
