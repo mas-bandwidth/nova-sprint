@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"context"
 	"os"
 	"path/filepath"
@@ -52,7 +53,11 @@ func TestTheDashboardRowsSayHowManyAreReads(t *testing.T) {
 	ta.beatUp("fred")
 	for range 3 { // the withdrawn two dealt to fred, and the read of s1-1, each taken
 		ta.ok("tick")
-		ta.ok("take --as " + sprint.FriendRow("fred") + " --limit 10")
+		// each by a lane's take, her start: a bare take by count moves no unstarted card
+		// (docs/SPEC-SPRINT.md section 1; tla/FriendReadyTake.tla WorkingIsStarted)
+		for lane := 1; lane <= 3; lane++ {
+			ta.ok("take --as " + sprint.FriendRow("fred") + " --lane " + strconv.Itoa(lane))
+		}
 	}
 	ta.ok("stop --reason test --until 90m") // a STOPPED tick deals nothing and counts the record
 	ta.ok("tick")                           // a take moves the fleet table alone: the record follows it
