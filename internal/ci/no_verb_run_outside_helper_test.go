@@ -262,17 +262,6 @@ func receiverIsApp(info *types.Info, x ast.Expr) bool {
 	return obj.Name() == "app" && obj.Pkg() != nil && obj.Pkg().Name() == "main"
 }
 
-// firstLiteral is the string value of the first string literal in the call's
-// arguments, searching the argument tree, "" when there is none.
-func firstLiteral(args []ast.Expr) string {
-	for _, a := range args {
-		if s := literalValue(a); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
 // literalValue is the string value of an expression: a string literal itself, a
 // composite literal as its first element's value, or a concatenation's first
 // part.
