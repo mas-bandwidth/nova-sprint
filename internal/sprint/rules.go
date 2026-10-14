@@ -278,7 +278,8 @@ func mindCard(pr *Card) string {
 }
 
 // mindOther is mindCard's reasons other than a friend's card: a brief defect, a model the
-// brief pins; "" when none.
+// brief pins; "" when none. A failure the failed rule reads as fleet work (failedForFriend
+// says no) climbs the ladder on these grounds alone, its WHO: friend preference kept.
 func mindOther(pr *Card) string {
 	if pr.F(FieldBriefDefect) != "" {
 		return "a brief defect: its brief needs a mind"
@@ -290,10 +291,7 @@ func mindOther(pr *Card) string {
 }
 
 // failedOnFriend says the attempt that failed ran on a friend's row: the last work card's
-// member is a friend's (friend_deal.go, IsFriendRow). A WHO: friend preference the deal gave
-// to a fleet member, or that `up` made a friend's card, is fleet work when its attempt ran on
-// the fleet: it is answered by the failed rule and never parked on the seat
-// (tla/SprintRules.tla FailedWithAFindingNeverParked).
+// member is a friend's (friend_deal.go, IsFriendRow).
 func failedOnFriend(s *Snapshot, pr *Card) bool {
 	wc := s.Fleet.Card(pr.F("work"))
 	if wc == nil {
@@ -302,9 +300,25 @@ func failedOnFriend(s *Snapshot, pr *Card) bool {
 	return wc != nil && IsFriendRow(wc.Row)
 }
 
-// mindForFailure is mindCard for a failed attempt: a card whose failed attempt ran on the
-// fleet and which is no hard pin keeps its WHO: friend preference but is read as fleet work,
-// so only the other reasons it may need a mind stand.
+// failedForFriend says a failure is a friend's, so the seat answers it: the card names a
+// friend (FriendCard) and is either hers alone (OnlyFriend, a hard pin) or the attempt that
+// failed ran on her row. A WHO: friend preference the deal gave to a fleet member because no
+// friend was up, or that `up` made a friend's card, is fleet work when its attempt ran on the
+// fleet: the failed rule answers it with its report as the fix and never parks it on the seat
+// (tla/SprintRules.tla FailedWithAFindingNeverParked), and its who stands, so it still
+// prefers a friend when one is up. A card no WHO names is the fleet's whoever ran it: a
+// friend with room is dealt the fleet's cards too (friendDealPass), and her failure of one
+// is fleet work.
+func failedForFriend(s *Snapshot, pr *Card) bool {
+	if _, friend := FriendCard(pr); !friend {
+		return false
+	}
+	return OnlyFriend(pr) || failedOnFriend(s, pr)
+}
+
+// mindForFailure is mindCard for a failure failedForFriend read: a friend's failure keeps
+// every reason a card needs a mind, a fleet one only the others (mindOther), its WHO: friend
+// preference kept for the next deal.
 func mindForFailure(pr *Card, friend bool) string {
 	if friend {
 		return mindCard(pr)
@@ -318,14 +332,17 @@ func mindForFailure(pr *Card, friend bool) string {
 // tier (the rework's own fix, the report); the RuleAttemptCap-th goes a tier up; past
 // heavy, a friend's card. A failure the fleet shares (sameFailure) or a brief with no ladder
 // (a pinned model, the frontier tier) is reworked on its tier with its report, never left to
-// the seat below the brief's bound (wait_refused.go).
+// the seat below the brief's bound (wait_refused.go). Only a friend's own failure is left to
+// the seat: a card that names a friend and is a hard pin, or whose failed attempt ran on her
+// row (failedForFriend); a WHO: friend preference whose attempt ran on the fleet climbs this
+// ladder, its who kept for the next deal.
 // tla/SprintRules.tla, Part "rules": RuleFailed
 func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleFailed
 	pr := s.Work.Placed(a.Subject)
 	friend := false
 	if pr != nil {
-		friend = OnlyFriend(pr) || failedOnFriend(s, pr)
+		friend = failedForFriend(s, pr)
 	}
 	switch {
 	case pr == nil || pr.Col != Review || pr.F("result") != "failed":
@@ -337,7 +354,9 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		left(a, mindForFailure(pr, friend))
 		return
 	case friend:
-		left(a, mindCard(pr)) // a friend's failure outside the harness classes: her work needs a mind
+		// A friend's failure outside the harness classes: her work needs a mind. friend says
+		// the card names a friend, so mindCard names this reason: never an empty why.
+		left(a, mindCard(pr))
 		return
 	case holdsFor(s, pr) != "":
 		ruleHoldNeed(s, a, pr, holdsFor(s, pr))
