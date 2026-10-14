@@ -81,7 +81,7 @@ func cardStory(t *testing.T, out string) map[string]json.RawMessage {
 // and its hold share that read, store.CardHeld), never a second time for the hold;
 // and it tells the same story, with the same needs and hold, as the whole log
 // tells; a release after the tick is in the story from the tail. Every card is readable in one call:
-// card --all --json prints each, one JSON object a line.
+// card --all --ndjson prints each, one JSON object a line.
 func TestCardReadTouchesOnlyItsOwnLogAndRows(t *testing.T) {
 	t.Parallel()
 	ta := bigSprint(t)
@@ -119,7 +119,7 @@ func TestCardReadTouchesOnlyItsOwnLogAndRows(t *testing.T) {
 
 	// every card in one call, one object a line
 	var all []cardLine
-	for _, line := range strings.Split(strings.TrimSpace(ta.ok("card --all --json")), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(ta.ok("card --all --ndjson")), "\n") {
 		var c cardLine
 		require.NoError(t, json.Unmarshal([]byte(line), &c), line)
 		all = append(all, c)
@@ -140,7 +140,7 @@ func TestCardReadTouchesOnlyItsOwnLogAndRows(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, behind)
-	stream := strings.Split(strings.TrimSpace(ta.ok("card --stream w1 --json")), "\n")
+	stream := strings.Split(strings.TrimSpace(ta.ok("card --stream w1 --ndjson")), "\n")
 	assert.Len(t, stream, 500, "one stream's cards: its sentinel and its 499")
 
 	indexed := len(log) // the ticks indexed it all
