@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ import (
 // (FriendReadClose).
 func ReadCardBrief(name, job string, p Packet, start string, deadline time.Time) string {
 	repo, base := briefLine(p.Brief, "REPO:"), briefLine(p.Brief, "BASE:")
-	base = firstNonEmpty(p.WorkBase, base)
+	base = cmp.Or(p.WorkBase, base)
 	var b strings.Builder
 	fmt.Fprintf(&b, "STATUS: nova-sprint read card %s, epoch %d: a READ of attempt %d of %s; change nothing, commit nothing, push nothing; when done, write outbox/%s/REPORT.md whose first line is Verdict: LAND or Verdict: HOLD\n", p.Card, p.Epoch, p.Attempt, p.Primary, job)
 	fmt.Fprintf(&b, "WHO: friend %s\n", name)
@@ -52,7 +53,7 @@ func ReadCardBrief(name, job string, p Packet, start string, deadline time.Time)
 		clone = "git clone https://github.com/" + repo + ".git repo"
 	}
 	fmt.Fprintf(&b, "1. %s && cd repo && git fetch origin %s && git checkout --detach %s; check that git rev-parse HEAD prints %s. If that head cannot be had, write Verdict: HOLD and say so.\n", clone, orDash(p.WorkBranch), orDash(p.Head), orDash(p.Head))
-	diff := "git diff $(git merge-base " + orDash(p.Head) + " origin/" + firstNonEmpty(base, "HEAD") + ")..." + orDash(p.Head)
+	diff := "git diff $(git merge-base " + orDash(p.Head) + " origin/" + cmp.Or(base, "HEAD") + ")..." + orDash(p.Head)
 	if start != "" {
 		diff = "git diff " + start + ".." + orDash(p.Head)
 	}
@@ -83,16 +84,6 @@ func briefLine(brief, key string) string {
 			if f := strings.Fields(v); len(f) > 0 {
 				return f[0]
 			}
-		}
-	}
-	return ""
-}
-
-// firstNonEmpty is the first of the words that is not empty.
-func firstNonEmpty(words ...string) string {
-	for _, w := range words {
-		if w != "" {
-			return w
 		}
 	}
 	return ""

@@ -53,7 +53,7 @@ func dependentOlds(c *Card, olds []string) []string {
 	waived := Split(c.F("waived"))
 	var out []string
 	for _, n := range Split(c.F("needs")) {
-		if contains(olds, n) && !contains(waived, n) && !contains(out, n) {
+		if slices.Contains(olds, n) && !slices.Contains(waived, n) && !slices.Contains(out, n) {
 			out = append(out, n)
 		}
 	}
@@ -64,10 +64,10 @@ func dependentOlds(c *Card, olds []string) []string {
 func relinkedNeeds(needs, olds []string, nw string) []string {
 	var out []string
 	for _, n := range needs {
-		if contains(olds, n) {
+		if slices.Contains(olds, n) {
 			n = nw
 		}
-		if !contains(out, n) {
+		if !slices.Contains(out, n) {
 			out = append(out, n)
 		}
 	}
@@ -95,7 +95,7 @@ func relinked(s *Snapshot, olds []string, nw string, adding *Card, who, reason s
 		waived := Split(d.F("waived"))
 		needs := relinkedNeeds(Split(d.F("needs")), dependentOlds(d, olds), nw)
 		for _, n := range needs {
-			if !contains(waived, n) {
+			if !slices.Contains(waived, n) {
 				live = append(live, n)
 			}
 		}
@@ -121,7 +121,7 @@ func relinked(s *Snapshot, olds []string, nw string, adding *Card, who, reason s
 			if o.Subject() != d.ID || (o.Note.Type != NBlocked && o.Note.Type != NMissingNeed) {
 				continue
 			}
-			answered := len(o.Note.Needs) > 0 && !slices.ContainsFunc(o.Note.Needs, func(n string) bool { return !contains(gone, n) })
+			answered := len(o.Note.Needs) > 0 && !slices.ContainsFunc(o.Note.Needs, func(n string) bool { return !slices.Contains(gone, n) })
 			if len(o.Note.Needs) == 0 {
 				// a judgment that names none names every need of its kind: answered when the
 				// dependent has none left once relinked

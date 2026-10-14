@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -148,12 +149,12 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	subject := map[string]Open{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
+		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || slices.Contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		cards := []string{o.Subject()}
 		if n.StreamLevel {
-			if !contains(retiresWithCards, n.Type) || len(n.Primaries) == 0 {
+			if !slices.Contains(retiresWithCards, n.Type) || len(n.Primaries) == 0 {
 				continue
 			}
 			cards = n.Primaries
@@ -280,7 +281,7 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 	seen := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
+		if n.Kind != Judgment || n.SprintLevel || slices.Contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		if seen[n.ID] {
@@ -292,7 +293,7 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 		if n.StreamLevel {
 			// A stream-level judgment that retires with cards (e.g. NNoRoute, NStarving on tier:frontier)
 			// whose cards have no record once loaded.
-			if contains(retiresWithCards, n.Type) && len(n.Primaries) > 0 {
+			if slices.Contains(retiresWithCards, n.Type) && len(n.Primaries) > 0 {
 				allAbsent := true
 				target := ""
 				for _, pid := range n.Primaries {

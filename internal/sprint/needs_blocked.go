@@ -120,7 +120,7 @@ func Blockers(s *Snapshot) []Blocker {
 				}
 				needs := Split(c.F("needs"))
 				waived := Split(c.F("waived"))
-				if contains(needs, curr) && !contains(waived, curr) {
+				if slices.Contains(needs, curr) && !slices.Contains(waived, curr) {
 					visited[c.ID] = true
 					queue = append(queue, c.ID)
 					if !IsSentinel(c) {

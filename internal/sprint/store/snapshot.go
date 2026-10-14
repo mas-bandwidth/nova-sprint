@@ -12,6 +12,7 @@ import (
 	"hash/crc64"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,7 +201,7 @@ func SnapshotFiles(dir string) ([]string, error) {
 			out = append(out, n)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 

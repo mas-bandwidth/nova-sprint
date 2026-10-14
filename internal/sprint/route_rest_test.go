@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -135,7 +136,7 @@ func TestARetiredRuleRestsNoRoute(t *testing.T) {
 			for _, route := range routes[1:] { // a take reads its provider's rest; a route's own is the tick's
 				c := &Card{ID: "x", Fields: map[string]string{FieldRoute: route.Name, FieldModel: route.Provider + "/m"}}
 				_, rests := cardRest(s, c)
-				assert.Equal(t, contains(tc.resting, route.Name), rests, "a take on %s reads the same rest", route.Name)
+				assert.Equal(t, slices.Contains(tc.resting, route.Name), rests, "a take on %s reads the same rest", route.Name)
 			}
 		})
 	}

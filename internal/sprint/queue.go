@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
@@ -206,7 +205,7 @@ func Drain(s *Snapshot, q []QueuedChange, who string) Plan {
 		for _, r := range p.Refused {
 			ids = append(ids, r.Key)
 		}
-		sort.Strings(ids)
+		slices.Sort(ids)
 		n := judgment(NInvariant, "", s.Now, 0, ids...)
 		n.Who, n.What = who, p.Refused[0].Why
 		if len(p.Refused) > 1 {
@@ -259,7 +258,7 @@ func composeQueued(a, b ntable.BatchMemberEntry) (ntable.BatchMemberEntry, strin
 		unset := append([]string(nil), a.Unset...)
 		for _, k := range b.Unset {
 			delete(set, k)
-			if !contains(unset, k) {
+			if !slices.Contains(unset, k) {
 				unset = append(unset, k)
 			}
 		}

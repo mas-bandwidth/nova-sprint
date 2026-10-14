@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -71,7 +72,7 @@ func (st *Store) ReaderBeat(ctx context.Context, reader, noRoom string) (bool, e
 // (sprint.DrainingFrom): a beat without it clears it.
 func (st *Store) ReaderBeatDraining(ctx context.Context, reader, noRoom string, draining bool) (bool, error) {
 	rows, err := st.ReaderRows(ctx)
-	if err != nil || !contains(rows, reader) {
+	if err != nil || !slices.Contains(rows, reader) {
 		return false, err
 	}
 	// a retired reader is no reader: its beat writes none, and its loop is told so
@@ -155,7 +156,7 @@ func (st *Store) setReaderHold(ctx context.Context, reader string, hold readerHo
 	if err != nil {
 		return err
 	}
-	if !contains(rows, reader) {
+	if !slices.Contains(rows, reader) {
 		return fmt.Errorf("no reader %s on the readers table; run: nova-sprint reader add %s", reader, reader)
 	}
 	if hold.Away {

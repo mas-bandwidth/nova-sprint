@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -473,7 +474,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		// the batch by name: every named card queued here, in the queue's order
 		batch = nil
 		for _, c := range queued {
-			if contains(r.Cards, c.ID) {
+			if slices.Contains(r.Cards, c.ID) {
 				batch = append(batch, c)
 			}
 		}
@@ -506,7 +507,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	// A card named by a fact is a card of the batch: the first n queued, or the
 	// cards the batch names.
 	notInBatch := func(id string) bool {
-		if contains(ids, id) {
+		if slices.Contains(ids, id) {
 			return false
 		}
 		listed := strings.Join(ids, ", ")
@@ -601,7 +602,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		p.Units = append(p.Units, u)
 	case r.Red:
 		for _, x := range r.Suspects {
-			if !contains(ids, x) {
+			if !slices.Contains(ids, x) {
 				p.refuse(x, "a suspect is a card of the batch; the batch of "+itoa(len(ids))+" is "+span(ids)+"; list it: nova-sprint queue --stream "+r.Stream+" --max "+itoa(len(ids)))
 			}
 		}

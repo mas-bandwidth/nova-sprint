@@ -2,6 +2,7 @@ package refmodel
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -160,7 +161,7 @@ func union(a, b []string) []string {
 			out = append(out, x)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

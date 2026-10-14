@@ -295,20 +295,11 @@ func (st *Store) cardOf(ctx context.Context, id string, held bool) (CardInfo, er
 	}
 	open, _ = sprint.SplitOpen(open)
 	for _, o := range open {
-		if o.Subject() == id || contains(o.Note.Primaries, id) {
+		if o.Subject() == id || slices.Contains(o.Note.Primaries, id) {
 			v.Open = append(v.Open, o)
 		}
 	}
 	return v, nil
-}
-
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
 }
 
 // Records reads the named records of a table by identity, placed or kept, in one read

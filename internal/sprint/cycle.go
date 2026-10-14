@@ -2,7 +2,7 @@ package sprint
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -105,7 +105,7 @@ func (g *needGraph) needs(id string) (named, place []string) {
 		// writer (needs set, a brief, sentinel set, a twin's relink, add)
 		waived := Split(c.F("waived"))
 		for _, n := range Split(c.F("needs")) {
-			if !contains(waived, n) {
+			if !slices.Contains(waived, n) {
 				named = append(named, n)
 			}
 		}
@@ -280,7 +280,7 @@ func (g *needGraph) shorten(path []string) []string {
 func (g *needGraph) sentinelsIn(loop []string) []string {
 	var out []string
 	for _, id := range loop[:len(loop)-1] {
-		if IsSentinel(g.card(id)) && !contains(out, id) {
+		if IsSentinel(g.card(id)) && !slices.Contains(out, id) {
 			out = append(out, id)
 		}
 	}
@@ -297,7 +297,7 @@ func (g *needGraph) tellLoop(loop []string) string {
 	b.WriteString(loop[0])
 	for i := 0; i+1 < len(loop); i++ {
 		named, _ := g.needs(loop[i])
-		if contains(named, loop[i+1]) {
+		if slices.Contains(named, loop[i+1]) {
 			b.WriteString(" -needs-> ")
 		} else {
 			b.WriteString(" -line-> ")
@@ -336,7 +336,7 @@ func Cycles(s *Snapshot) []CycleFound {
 	for _, c := range s.Work.Column(Waiting) {
 		roots = append(roots, c.ID)
 	}
-	sort.Strings(roots)
+	slices.Sort(roots)
 	g := newNeedGraph(s, nil, nil, nil)
 	c := g.components(roots)
 	firsts := map[int]string{}

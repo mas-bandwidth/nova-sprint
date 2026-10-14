@@ -251,7 +251,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		if placed, oks, _ := friendReadLive(s, c); len(placed)+len(oks) > 0 {
 			for _, rc := range append(placed, oks...) {
 				rd := rc.F("reader")
-				if rd == "" || contains(all, rd) {
+				if rd == "" || slices.Contains(all, rd) {
 					continue
 				}
 				all = append(all, rd)
@@ -602,10 +602,10 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			}
 			return "retired at " + c.F("retired") + " by " + orDash(c.F("retired_by")) + ": the primary was sent back; its next attempt is read on a new card"
 		}
-		if !c.Placed() || !contains(readers, c.Row) {
+		if !c.Placed() || !slices.Contains(readers, c.Row) {
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
 		}
-		if !contains(from, c.Col) {
+		if !slices.Contains(from, c.Col) {
 			return "not " + strings.Join(from, " or ") + " (it is " + c.Col + ")"
 		}
 		if why := laneRefusal(c, c.Row, r.Lane); why != "" {
@@ -1000,13 +1000,13 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	for _, o := range before {
 		if !st.closing[o.Note.ID] {
 			open[o.Note.Type] = true
-			offers = offers || contains(o.Note.Decisions, "accept")
+			offers = offers || slices.Contains(o.Note.Decisions, "accept")
 		}
 	}
 	for _, n := range st.writes {
-		if n.Kind == Judgment && contains(n.Primaries, pr.ID) {
+		if n.Kind == Judgment && slices.Contains(n.Primaries, pr.ID) {
 			open[n.Type] = true
-			offers = offers || contains(n.Decisions, "accept")
+			offers = offers || slices.Contains(n.Decisions, "accept")
 		}
 	}
 	var typ, why string
@@ -1059,7 +1059,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	default:
 		typ, why = NReadsExhausted, fmt.Sprintf("no read is outstanding and %s not said ok at %s", readersWord(ReadsNeededIn(s, pr)), orDash(pr.F("head")))
 	}
-	if contains(st.acked, typ) {
+	if slices.Contains(st.acked, typ) {
 		return Note{}, false
 	}
 	if typ == NReadyToAccept {
@@ -1355,7 +1355,7 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 func unitStreams(p Plan) []string {
 	var out []string
 	for _, u := range p.Units {
-		if u.Stream != "" && !contains(out, u.Stream) {
+		if u.Stream != "" && !slices.Contains(out, u.Stream) {
 			out = append(out, u.Stream)
 		}
 	}
@@ -1855,7 +1855,7 @@ func brokenFindings(s *Snapshot, c *Card) string {
 		// primary's head is about work the card moved past, and a later read
 		// at the head stands in its place. A read that pins no head is not one
 		// pinned to an older one, and holds as it did.
-		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && (rc.F("head") == "" || rc.F("head") == c.F("head")) && rc.F("finding") != "" && !contains(found, rc.F("finding")) {
+		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && (rc.F("head") == "" || rc.F("head") == c.F("head")) && rc.F("finding") != "" && !slices.Contains(found, rc.F("finding")) {
 			found = append(found, rc.F("finding"))
 		}
 	}
@@ -1863,7 +1863,7 @@ func brokenFindings(s *Snapshot, c *Card) string {
 	if s.Fleet != nil {
 		_, _, fbr := friendReadLive(s, c)
 		for _, rc := range fbr {
-			if rc.F("finding") != "" && !contains(found, rc.F("finding")) {
+			if rc.F("finding") != "" && !slices.Contains(found, rc.F("finding")) {
 				found = append(found, rc.F("finding"))
 			}
 		}
@@ -2340,7 +2340,7 @@ func unlandedNeeding(s *Snapshot, id string, dropping map[string]bool) []string 
 			if dropping[c.ID] {
 				continue
 			}
-			if contains(Split(c.F("needs")), id) {
+			if slices.Contains(Split(c.F("needs")), id) {
 				out = append(out, c.ID)
 			}
 		}
@@ -2355,7 +2355,7 @@ func goneNamedNeeds(s *Snapshot, c *Card) []string {
 	waived := Split(c.F("waived"))
 	var out []string
 	for _, n := range Split(c.F("needs")) {
-		if contains(waived, n) {
+		if slices.Contains(waived, n) {
 			continue
 		}
 		if s.Work.Placed(n) == nil {
@@ -2368,7 +2368,7 @@ func goneNamedNeeds(s *Snapshot, c *Card) []string {
 // stillGone says any of the needs a judgment named is still gone.
 func stillGone(gone, named []string) bool {
 	for _, n := range named {
-		if contains(gone, n) {
+		if slices.Contains(gone, n) {
 			return true
 		}
 	}
@@ -2592,7 +2592,7 @@ func Drop(s *Snapshot, r DropReq) Plan {
 					continue
 				}
 				if r.Relink != "" {
-					if !contains(next, r.Relink) {
+					if !slices.Contains(next, r.Relink) {
 						next = append(next, r.Relink)
 					}
 				} else if r.Waive {
@@ -2666,7 +2666,7 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		for _, u := range p.Units {
 			if u.Stream == st && dropping[u.Key] {
 				k++
-				if !contains(off, u.Key) {
+				if !slices.Contains(off, u.Key) {
 					off = append(off, u.Key)
 				}
 			}
@@ -2728,7 +2728,7 @@ func Rank(s *Snapshot, r RankReq) Plan {
 		u.Changes = append(u.Changes, change(Work, scoreEntry(c, score)))
 		answerListed(&u, s.Open, r.Answers, "rank", c.Row, "ranked "+c.ID+" "+fmtScore(score), r.Who, s.Now, c.ID)
 		for _, o := range s.Open { // a cross stop names the card of another stream: rank answers it there
-			if o.Note.StreamLevel && contains(o.Note.Primaries, c.ID) && o.Note.Stream != c.Row {
+			if o.Note.StreamLevel && slices.Contains(o.Note.Primaries, c.ID) && o.Note.Stream != c.Row {
 				answerListed(&u, s.Open, r.Answers, "rank", o.Note.Stream, "ranked "+c.ID+" "+fmtScore(score), r.Who, s.Now, c.ID)
 			}
 		}

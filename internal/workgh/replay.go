@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -23,7 +23,7 @@ func Replay(dir string) (Query, error) {
 	if len(names) == 0 {
 		return nil, fmt.Errorf("workgh: no call-*.json under %s", dir)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	type rec struct {
 		Vars  map[string]any  `json:"vars"`
 		Reply json.RawMessage `json:"reply"`

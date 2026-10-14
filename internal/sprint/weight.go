@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -57,7 +58,7 @@ func weightsOver(cards []*Card) map[string]int {
 	for _, c := range cards {
 		waived := Split(c.F("waived"))
 		for _, n := range Split(c.F("needs")) {
-			if open[n] && n != c.ID && !contains(waived, n) { // a waived need does not hold the card (unmet)
+			if open[n] && n != c.ID && !slices.Contains(waived, n) { // a waived need does not hold the card (unmet)
 				needers[n] = append(needers[n], c.ID)
 			}
 		}

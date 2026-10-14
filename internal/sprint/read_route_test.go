@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -42,7 +43,7 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 	}
 	held := func(w *world) bool {
 		for _, n := range w.notesOf(NNoRoute) {
-			if n.Stream == TierSubject(cardhdr.RoutePro) && contains(n.Primaries, "s1-1") {
+			if n.Stream == TierSubject(cardhdr.RoutePro) && slices.Contains(n.Primaries, "s1-1") {
 				return true
 			}
 		}
@@ -143,7 +144,7 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	assert.True(t, w.s.refusedNoRoute(pr))
 	var held []Note
 	for _, n := range w.notesOf(NNoRoute) {
-		if n.Stream == TierSubject(cardhdr.RoutePro) && contains(n.Primaries, "s1-1") { // heavy is read on pro (the interim rule)
+		if n.Stream == TierSubject(cardhdr.RoutePro) && slices.Contains(n.Primaries, "s1-1") { // heavy is read on pro (the interim rule)
 			held = append(held, n)
 		}
 	}

@@ -328,7 +328,7 @@ func needing(s *Snapshot, id string) []string {
 			out = append(out, c.ID)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,7 +126,9 @@ func wedgeLevelTo(r *round, up []string, n, held, widths map[string]int, from st
 	if total < 0 && total%len(up) != 0 {
 		mean--
 	}
-	open := func(x string) bool { return contains(up, x) && held[x] < widths[x] && !contains(avoid, x) }
+	open := func(x string) bool {
+		return slices.Contains(up, x) && held[x] < widths[x] && !slices.Contains(avoid, x)
+	}
 	to := r.scan(func(x string) bool { return open(x) && n[x] < mean })
 	if to == "" {
 		to = r.scan(func(x string) bool { return open(x) && n[x] <= mean })

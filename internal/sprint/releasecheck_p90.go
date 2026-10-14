@@ -2,7 +2,9 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -63,11 +65,7 @@ func MergeQueueP90(f ReleaseFacts) ReleaseResult {
 	bar := f.MergeP90()
 	ages, still := mergeQueueAges(f.Log(), now.Add(-window), now)
 
-	ids := make([]string, 0, len(ages))
-	for id := range ages {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(ages))
 	samples := make([]time.Duration, 0, len(ids))
 	for _, id := range ids {
 		samples = append(samples, ages[id])

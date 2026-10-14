@@ -611,7 +611,7 @@ func (s State) streamOrder(extra ...string) []string {
 			names = append(names, st)
 		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -753,7 +753,7 @@ func (s State) OutOf(p string) []string {
 			out = append(out, id)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -766,7 +766,7 @@ func (s State) LiveReadsOf(p string) []string {
 			out = append(out, id)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -908,7 +908,7 @@ func (s State) streamTurns(ids []string, last string) []string {
 			names = append(names, st)
 		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	at := roundFrom(names, last)
 	var streams []string
 	for i := range names {
@@ -954,7 +954,7 @@ func addSorted(xs []string, add ...string) []string {
 			out = append(out, a)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -982,11 +982,7 @@ var stopTypes = []string{JConflict, JRed, JCross, JRejected}
 
 // Keys lists a map's keys, sorted.
 func Keys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }
 

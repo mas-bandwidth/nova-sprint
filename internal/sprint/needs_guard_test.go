@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -86,7 +87,7 @@ func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 	tp, _ := TickCheck(w.s, TickReq{})
 	found := false
 	for _, n := range tp.Notes {
-		if n.Type == NInvariant && contains(n.Primaries, "a-2") && strings.Contains(n.What, "a-1") {
+		if n.Type == NInvariant && slices.Contains(n.Primaries, "a-2") && strings.Contains(n.What, "a-1") {
 			found = true
 		}
 	}

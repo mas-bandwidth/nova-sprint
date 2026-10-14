@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -222,10 +221,10 @@ func AddMarked(s *Snapshot, r AddReq, mark string) Plan {
 func liftProtectedBases(r AddReq) (AddReq, []string) {
 	var lifted []string
 	lift := func(base string) string {
-		if !contains(ProtectedBranches, base) {
+		if !slices.Contains(ProtectedBranches, base) {
 			return base
 		}
-		if !contains(lifted, base) {
+		if !slices.Contains(lifted, base) {
 			lifted = append(lifted, base)
 		}
 		return ""
@@ -265,11 +264,11 @@ func markNewStream(p *Plan, stream, mark string, bases []string) string {
 			if len(bases) > 0 {
 				all := Split(e.Set[FieldBase])
 				for _, b := range bases {
-					if !contains(all, b) {
+					if !slices.Contains(all, b) {
 						all = append(all, b)
 					}
 				}
-				sort.Strings(all)
+				slices.Sort(all)
 				e.Set[FieldBase] = strings.Join(all, ",")
 			}
 			return ""
@@ -290,7 +289,7 @@ func markRefusals(s *Snapshot, rs []AddReq, mark string) []Refusal {
 			if len(r.Cards) > 0 && i < len(r.Cards) {
 				base, repo = r.Cards[i].Base, r.Cards[i].Repo
 			}
-			if !contains(ProtectedBranches, base) || markCoversRepository(mark, repo) {
+			if !slices.Contains(ProtectedBranches, base) || markCoversRepository(mark, repo) {
 				continue
 			}
 			at := "repository " + repo
@@ -415,7 +414,7 @@ func closesFor(open []Open, types []string, subject string) []Open {
 		if o.Subject() != subject || o.Note.StreamLevel {
 			continue
 		}
-		if len(types) == 0 || contains(types, o.Note.Type) {
+		if len(types) == 0 || slices.Contains(types, o.Note.Type) {
 			out = append(out, o)
 		}
 	}
@@ -552,7 +551,7 @@ func Lists(n Note, verb string) bool {
 // judgment stays open while its stream is stopped, and the answer is kept.
 func answerListed(u *Unit, open []Open, answers []string, verb, stream, what, who string, now time.Time, primary string) {
 	for _, o := range open {
-		if o.Note.StreamLevel && o.Note.Stream == stream && contains(answers, o.Note.ID) && Lists(o.Note, verb) && !answeredIn(u.Notes, o.Note.ID) {
+		if o.Note.StreamLevel && o.Note.Stream == stream && slices.Contains(answers, o.Note.ID) && Lists(o.Note, verb) && !answeredIn(u.Notes, o.Note.ID) {
 			u.Notes = append(u.Notes, decided(o, what, who, now, primary))
 		}
 	}
@@ -695,7 +694,7 @@ func PlanRows(p Plan) map[string][]string {
 		}
 	}
 	for t := range out {
-		sort.Strings(out[t])
+		slices.Sort(out[t])
 	}
 	return out
 }

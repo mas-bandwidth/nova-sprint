@@ -187,7 +187,7 @@ func HeldInInventory(s *Snapshot, want []SyncMember) []string {
 			out = append(out, m.Name)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

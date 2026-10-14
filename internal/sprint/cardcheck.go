@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -171,7 +172,7 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 			c.streams = append(c.streams, card.Row)
 		}
 	}
-	sort.Strings(c.streams)
+	slices.Sort(c.streams)
 	var out []CardFinding
 	out = append(out, c.needs()...)
 	out = append(out, c.files()...)
@@ -518,11 +519,7 @@ func (c *cardCheck) pathWords(path []string) string {
 }
 
 func checkFilesSorted(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }
 
@@ -541,7 +538,7 @@ func (c *cardCheck) reaches(from, to string) bool {
 		card := c.s.Work.Card(id)
 		waived := Split(card.F("waived"))
 		for _, n := range Split(card.F("needs")) {
-			if contains(waived, n) {
+			if slices.Contains(waived, n) {
 				continue
 			}
 			if n == to {
@@ -569,7 +566,7 @@ func (c *cardCheck) sameFile() []CardFinding {
 				continue
 			}
 			for _, p := range pathsOf(card.F("brief")) {
-				if everyCardWrites(p) || contains(named[p], card.ID) {
+				if everyCardWrites(p) || slices.Contains(named[p], card.ID) {
 					continue
 				}
 				if len(named[p]) == 0 {
@@ -578,7 +575,7 @@ func (c *cardCheck) sameFile() []CardFinding {
 				named[p] = append(named[p], card.ID)
 			}
 		}
-		sort.Strings(order)
+		slices.Sort(order)
 		for _, p := range order {
 			ids := named[p]
 			for i, a := range ids {

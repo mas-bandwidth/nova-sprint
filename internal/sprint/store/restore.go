@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -261,7 +261,7 @@ func readTableState(ctx context.Context, b Backend, names sprint.Names, logical 
 	if !ok {
 		return fmt.Errorf("table %s: %d record(s) of an older epoch, and this store cannot read a record as it holds it", logical, len(older))
 	}
-	sort.Strings(older)
+	slices.Sort(older)
 	for _, id := range older {
 		raw, found, err := rr.RecordRaw(ctx, stored, names.RecordKey(logical, id), id)
 		if err != nil {
@@ -337,7 +337,7 @@ func (s SprintState) Diff(restored SprintState) []string {
 			out = append(out, part)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -360,7 +360,7 @@ func (s SprintState) DiffLive(restored SprintState) []string {
 			out = append(out, part)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

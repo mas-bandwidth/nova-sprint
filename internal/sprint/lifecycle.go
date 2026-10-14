@@ -201,7 +201,7 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 		}
 		var open []string
 		for _, n := range needs {
-			if contains(waived, n) || landing[n] || pre != nil && pre.StateOf(n) == Landed {
+			if slices.Contains(waived, n) || landing[n] || pre != nil && pre.StateOf(n) == Landed {
 				continue
 			}
 			open = append(open, n)
@@ -291,7 +291,7 @@ func needsOpen(e ntable.BatchMemberEntry, pre *Snapshot) bool {
 	}
 	waived = append(waived, Split(e.Set["waived"])...)
 	for _, n := range needs {
-		if !contains(waived, n) && pre.StateOf(n) != Landed {
+		if !slices.Contains(waived, n) && pre.StateOf(n) != Landed {
 			return true
 		}
 	}
@@ -312,7 +312,7 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 	}
 	waived := Split(pc.F("waived"))
 	for _, n := range Split(pc.F("needs")) {
-		if !contains(waived, n) && pre.StateOf(n) != Landed {
+		if !slices.Contains(waived, n) && pre.StateOf(n) != Landed {
 			return true
 		}
 	}

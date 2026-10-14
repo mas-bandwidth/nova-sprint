@@ -3,7 +3,6 @@ package refmodel
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -258,6 +257,6 @@ func sorted(xs []string) []string {
 		return nil
 	}
 	out := append([]string(nil), xs...)
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }

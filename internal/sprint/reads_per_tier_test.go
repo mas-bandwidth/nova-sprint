@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -189,9 +190,9 @@ func readersWith(w *world, up, away []string) {
 	w.s.ReaderStates = map[string]string{}
 	for _, r := range w.s.Readers.Rows() {
 		switch {
-		case contains(up, r):
+		case slices.Contains(up, r):
 			w.s.ReaderStates[r] = ReaderUp
-		case contains(away, r):
+		case slices.Contains(away, r):
 			w.s.ReaderStates[r] = ReaderAway
 		default:
 			w.s.ReaderStates[r] = ReaderDown

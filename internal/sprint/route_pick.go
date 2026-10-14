@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -179,7 +180,7 @@ func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip [
 		equal, have := true, false
 		for i := uint64(0); i < n; i++ {
 			cur, ok := served(arr[(at+i)%n])
-			if !ok || hold && contains(skip, cur.Name) {
+			if !ok || hold && slices.Contains(skip, cur.Name) {
 				continue
 			}
 			if cur.First != wantFirst {
@@ -206,7 +207,7 @@ func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip [
 		var lastIdx uint64
 		for i := uint64(0); i < n; i++ {
 			cur, ok := served(arr[(at+i)%n])
-			if !ok || hold && contains(skip, cur.Name) {
+			if !ok || hold && slices.Contains(skip, cur.Name) {
 				continue
 			}
 			if cur.First != wantFirst {

@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -186,7 +187,7 @@ func (s *Snapshot) withBudgets() *Snapshot {
 	n.budgets = nil
 	var limited []string
 	for _, r := range s.Routes {
-		if r.Provider != "" && ProviderConcurrency(s, r.Provider) > 0 && !contains(limited, r.Provider) {
+		if r.Provider != "" && ProviderConcurrency(s, r.Provider) > 0 && !slices.Contains(limited, r.Provider) {
 			limited = append(limited, r.Provider)
 		}
 	}

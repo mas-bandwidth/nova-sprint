@@ -651,7 +651,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 		n := Note{ID: "n-x.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, Decisions: ds, At: w.s.Now}
 		w.s.Open = append(w.s.Open, Open{Key: OpenKey(n.ID, "s1-1"), Note: n})
 		p := w.do(Ack(w.s, AckReq{Notes: []string{n.ID}, Reason: "seen"}))
-		assert.Equal(t, ackable[typ], contains(ds, "ack") || contains(ds, "keep"), "%s: its decisions %v and the ack rule disagree (keep is an ack by another name, readtier.go)", typ, ds)
+		assert.Equal(t, ackable[typ], slices.Contains(ds, "ack") || slices.Contains(ds, "keep"), "%s: its decisions %v and the ack rule disagree (keep is an ack by another name, readtier.go)", typ, ds)
 		switch {
 		case ackable[typ] && (len(p.Refused) != 0 || len(p.Units) != 1):
 			t.Errorf("%s lists ack and the ack was refused: %+v", typ, p.Refused)
