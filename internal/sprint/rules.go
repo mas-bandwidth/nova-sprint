@@ -649,8 +649,8 @@ func classifyEnd(ran bool, report string) attemptEnd {
 
 // ruleBrief: the same finding twice, or too many attempts on one brief (the brief is wrong,
 // not the worker): the card is marked a brief defect, once, and the judgment stays, its
-// text saying so; nothing deals the card, and no rule answers it again. A card at the cap
-// with a harness end among its attempts (BriefBound.Harness) is not the brief's: it is left
+// text saying so; nothing deals the card, and no rule answers it again. A card that reached
+// the cap mostly on harness ends (BriefBound.Harness) is not the brief's: it is left
 // for the coordinator to rework --carry, never marked a brief defect. The same-finding and
 // the lander's same-refusal bounds are the worker's and the brief's own votes, marked as
 // before.
@@ -663,15 +663,16 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 	case pr.F(FieldBriefDefect) != "":
 		left(a, "a brief defect since "+pr.F(FieldBriefDefect)+": brief or drop, a mind's")
 	case harnessAtCap(s, pr):
-		left(a, "a harness fault, not the brief: an attempt ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
+		left(a, "a harness fault, not the brief: most attempts ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
 	default:
 		a.Card = pr.ID
 		a.Act, a.Why = ActMark, "the brief is wrong, not the worker: marked a brief defect and held for a mind"
 	}
 }
 
-// harnessAtCap says the primary is at its attempt cap with a harness end among the attempts
-// (AtBriefBound's Harness): the cap's count is kept, but it is not a vote on the brief.
+// harnessAtCap says the primary is at its attempt cap with more harness ends than worker or
+// brief ends among the attempts (AtBriefBound's Harness): the cap's count is kept, but the
+// harness's attempts are not votes on the brief.
 func harnessAtCap(s *Snapshot, pr *Card) bool {
 	bb, ok := AtBriefBound(pr, brokenFindings(s, pr), s.AttemptsCap(pr.Row))
 	return ok && bb.Harness

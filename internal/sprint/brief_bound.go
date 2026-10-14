@@ -171,19 +171,20 @@ type BriefBound struct {
 	Cap      int    // the cap those attempts reached (max_attempts)
 	Spent    string
 	Findings []string
-	// Harness is true when the cap was reached with fewer than Cap votes on the brief: some
-	// attempt since the coordinator's last decision ended on a harness fault (classifyEnd says
-	// EndHarness: no worker report, ran=false in FieldRanAttempts). Such an attempt counts
-	// toward max_attempts as an attempt and never as a vote that the brief is wrong: the bound
-	// is worded "harness fault, not the brief", and the card is not marked a brief defect.
-	// HarnessEnds is how many of the Since attempts ended on the harness.
+	// Harness is true when the cap was reached mostly on the harness: more of the attempts
+	// since the coordinator's last decision ended on a harness fault (classifyEnd says
+	// EndHarness: no worker report, ran=false in FieldRanAttempts) than on a worker's or the
+	// brief's end. A harness end counts toward max_attempts as an attempt and never as a vote
+	// that the brief is wrong, so such a cap is worded "harness fault, not the brief", and the
+	// card is not marked a brief defect. HarnessEnds is how many of the Since attempts ended
+	// on the harness.
 	Harness     bool
 	HarnessEnds int
 }
 
 // String is the bound said in one line: what repeated and where, or the cap, the spend and
-// the findings, then the verdict. A card that reached the cap with a harness end among its
-// attempts is worded as the harness's, never as a vote that the brief is wrong.
+// the findings, then the verdict. A card that reached the cap mostly on harness ends is
+// worded as the harness's, never as a vote that the brief is wrong.
 func (b BriefBound) String() string {
 	if b.Finding != "" {
 		return fmt.Sprintf("%s has failed the same way twice (attempts %d and %d: %s); the brief is wrong, not the worker",
@@ -324,7 +325,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 		if spent == "-" {
 			spent = ""
 		}
-		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding), Harness: harness > 0, HarnessEnds: harness}, true
+		return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, finding), Harness: harness > since-harness, HarnessEnds: harness}, true
 	}
 	return BriefBound{}, false
 }
@@ -333,8 +334,8 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 // fault (classifyEnd says EndHarness: no worker report, ran=false in FieldRanAttempts): the
 // machine's retries, never a vote on the brief. An attempt with no record counts as having
 // run (AtLaneBroken), so it is never a harness end. Only WORKER and BRIEF ends are votes:
-// a card at the cap with any harness end has fewer than cap votes, so the brief-defect mark
-// and the brief-wrong wording never come from it. tla/SprintRules.tla, Part "answers": a
+// a card that reached the cap with more harness ends than votes is the harness's, and the
+// brief-defect mark and the brief-wrong wording never come from it. tla/SprintRules.tla, Part "answers": a
 // harness end is redealt and counts toward max_attempts as an attempt, never a vote.
 func harnessEnds(c *Card) int {
 	attempt, decided := c.Int("attempt"), c.Int(FieldDecidedAttempt)
