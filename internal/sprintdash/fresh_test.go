@@ -100,16 +100,15 @@ func TestThePullerServesTheUpstreamsCopy(t *testing.T) {
 		up.s.Tick()
 	}
 	var mu sync.Mutex // the upstream's clock and script, moved here and read by its handler
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	upstream := handlerClient(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		up.s.ServeHTTP(w, req)
 	}))
-	t.Cleanup(ts.Close)
 
 	p := newRig(t)
 	p.now = up.now.Add(300 * time.Millisecond)
-	p.s.From = &Upstream{URL: ts.URL + "/api/sprint"}
+	p.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: upstream}
 	p.s.Tick()
 	assert.Zero(t, p.reads, "a puller never reads the sprint")
 	mu.Lock()
@@ -138,10 +137,8 @@ func TestThePullerServesTheUpstreamsCopy(t *testing.T) {
 	assert.Equal(t, theirs["data"], p.api()["data"])
 
 	// an upstream that does not answer as a dashboard
-	bad := httptest.NewServer(http.NotFoundHandler())
-	t.Cleanup(bad.Close)
 	q := newRig(t)
-	q.s.From = &Upstream{URL: bad.URL + "/api/sprint"}
+	q.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: handlerClient(http.NotFoundHandler())}
 	q.s.Tick()
 	assert.Contains(t, q.log.String(), "the upstream dashboard answered 404 Not Found")
 	var v snapshot

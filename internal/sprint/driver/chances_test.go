@@ -267,11 +267,7 @@ func (f *ticked) Up(tick int, members []string, up map[string]bool) map[string]b
 // machine is down on the odd ticks and back on the even ones.
 func TestAMachineThatIsDownTakesNoWorkAndOneThatComesBackTakesWorkAgain(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{
-		"m1":       `{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`,
-		"reader-a": `{"cards":[]}`,
-		"s1":       `{"cards":[]}`,
-	}, inbox: `{"groups":[]}`}
+	w := rmIdle(`{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`)
 	f := &ticked{Seeded: NewSeeded(1)}
 	f.Use(Chances{Down: 1, Up: 1}, time.Second)
 	takes, beats := map[int]int{}, map[int]int{}
@@ -285,10 +281,7 @@ func TestAMachineThatIsDownTakesNoWorkAndOneThatComesBackTakesWorkAgain(t *testi
 		return w.run(args, stdout, stderr)
 	}
 	var out bytes.Buffer
-	d := &Driver{Run: run, Facts: f, Clock: &fakeClock{}, Out: &out, Config: Config{Every: time.Second, Ticks: 6}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	rmTicks(t, &Driver{Run: run, Facts: f, Clock: &fakeClock{}, Out: &out, Config: Config{Every: time.Second, Ticks: 6}})
 	for tick := 1; tick <= 6; tick++ {
 		want := tick % 2 // 1 if the machine is up this tick
 		want = 1 - want
@@ -304,11 +297,7 @@ func TestAMachineThatIsDownTakesNoWorkAndOneThatComesBackTakesWorkAgain(t *testi
 // takes work again when it is released.
 func TestAMachineHeldDownTakesNoWorkAndTakesWorkAgainWhenReleased(t *testing.T) {
 	t.Parallel()
-	w := &world{where: []string{busy}, queue: map[string]string{
-		"m1":       `{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`,
-		"reader-a": `{"cards":[]}`,
-		"s1":       `{"cards":[]}`,
-	}, inbox: `{"groups":[]}`}
+	w := rmIdle(`{"cards":[{"id":"s1-4.w1","col":"ready","gen":2}]}`)
 	f := &ticked{Seeded: NewSeeded(1)}
 	f.Use(Chances{Down: 1, Up: 1}, time.Second)
 	takes := map[int]int{}
@@ -328,10 +317,7 @@ func TestAMachineHeldDownTakesNoWorkAndTakesWorkAgainWhenReleased(t *testing.T) 
 		}
 		return w.run(args, stdout, stderr)
 	}
-	d := &Driver{Run: run, Facts: f, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 4, Hold: true}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	rmTicks(t, &Driver{Run: run, Facts: f, Clock: &fakeClock{}, Out: io.Discard, Config: Config{Every: time.Second, Ticks: 4, Hold: true}})
 	for tick := 1; tick <= 4; tick++ {
 		want := 1 - tick%2
 		assert.Equal(t, want, takes[tick], "tick %d: %d takes, want %d", tick, takes[tick], want)
@@ -365,10 +351,7 @@ func play(t *testing.T, seed uint64, ticks int) (ran, out string) {
 	c, err := Set(true, nil)
 	require.NoError(t, err)
 	f.Use(c, time.Second)
-	d := &Driver{Run: w.run, Facts: f, Clock: &fakeClock{now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}, Out: &text, Config: Config{Every: time.Second, Ticks: ticks}}
-	why, err := d.Loop()
-	require.NoError(t, err, "%s %v", why, err)
-	require.Equal(t, "ticks", why, "%s %v", why, err)
+	rmTicks(t, &Driver{Run: w.run, Facts: f, Clock: &fakeClock{now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}, Out: &text, Config: Config{Every: time.Second, Ticks: ticks}})
 	var lines []string
 	for _, a := range w.ran {
 		lines = append(lines, strings.Join(a, " "))

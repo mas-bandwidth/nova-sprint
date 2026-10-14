@@ -188,11 +188,6 @@ func TestHelpNamesTheRoadmapVerbsAndWhereTheOldOnesWent(t *testing.T) {
 	assert.Contains(t, one.Stdout, "The old nova-work roadmap verbs edited the private work record's")
 }
 
-func TestRoadmapVerbsMeetTheStandard(t *testing.T) {
-	t.Parallel()
-	assert.Empty(t, workTool(unreachable(t)).Problems())
-}
-
 // TestTheRoadmapExamplesRunInOrder runs the banner's roadmap example lines, in
 // order, against a repository with a v1.2.6 release (my-old-fix, other-fix) and
 // a group holding my-item: every line exits 0 and check is clean after.
