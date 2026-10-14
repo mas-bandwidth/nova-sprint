@@ -232,6 +232,11 @@ type Step struct {
 	// the deal, the level and the ask pass them by. nil: read with the readers'
 	// states when the step reads those, else none.
 	NoRoom map[string]string
+	// Loads is each fleet member's last beat's load (Beat.Load), read once with
+	// NoRoom by the tick (memberNoRoomInto sets it); tick parts receive it so
+	// benchOrder sees it without a per-part Beats read (fixes the extra read
+	// that made TestATicksPartsTripsArePinned red).
+	Loads map[string]float64
 	// ReadNoRoom says the step deals or levels outside the tick (fleet up, down,
 	// hold, level): with no NoRoom given it reads the members' words itself
 	// (tla/NoRoom.tla, FleetDeal: NeverDealtUnderFloor).
@@ -696,6 +701,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		snap.Answered = answered
 		if step.NoRoom != nil {
 			snap.NoRoom = step.NoRoom
+			if step.Loads != nil {
+				snap.Loads = maps.Clone(step.Loads)
+			} else if err := st.memberLoadsInto(ctx, snap); err != nil {
+				return res, err
+			}
 		} else if step.ReadNoRoom {
 			snap.NoRoom = map[string]string{}
 			if err := st.memberNoRoomInto(ctx, snap, snap.NoRoom); err != nil {

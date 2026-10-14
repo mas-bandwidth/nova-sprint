@@ -1219,6 +1219,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	// a quiet member is dealt nothing until its quiet ends (fleet_quiet.go;
 	// docs/SPEC-SPRINT.md section 5, fleet-quiet-machine-b.w7)
 	quiet := quietWhy(s, up)
+	upAll := up // the members up before the quiet and no-room filter, for a bench card's pool
 	up = notQuiet(s, up)
 	q, widths := memberLoads(s, up), memberWidths(s, up)
 	lanes := memberLanes(s, up)
@@ -1226,16 +1227,29 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
 		// none other; with no member of it up it waits ready (bench_deal.go). The two
 		// causes are split: a card with no BENCH line and an empty pool says so (noPoolWhy)
-		// and never reaches benchRefusal, which is for a card that has a bench.
+		// and never reaches benchRefusal, which is for a card that has a bench. A bench
+		// whose every member is up but starts no card (its no-room word, or overloaded) is
+		// the same refusal, with the reason, never "waits for its bench".
 		bench := Bench(c)
 		members := onlyBench(up, bench)
 		if len(members) == 0 {
 			if len(bench) == 0 {
 				p.refuse(c.ID, noPoolWhy)
+			} else if dropped := benchDropped(s, onlyBench(upAll, bench)); len(dropped) > 0 {
+				p.refuse(c.ID, benchNoRoom(bench, dropped))
 			} else {
 				p.refuse(c.ID, benchRefusal(bench))
 			}
 			continue
+		}
+		if len(bench) > 0 {
+			// the bench's least-loaded member with room goes first (bench_deal.go)
+			ordered := benchOrder(s, members)
+			if len(ordered) == 0 {
+				p.refuse(c.ID, benchNoRoom(bench, benchDropped(s, members)))
+				continue
+			}
+			members = ordered
 		}
 		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
 		// to a member whose facts satisfy every need, and a card no member up satisfies is
@@ -1268,6 +1282,17 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				}
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
+			}
+			if len(bench) > 0 {
+				// the bench order's first with a free lane, then with room: the ordered
+				// slice, no wrap from the round index (bench_deal.go)
+				if m := firstFreeOrdered(ms, q, lanes); m != "" {
+					return m, roomWhy
+				}
+				if m := firstOpenOrdered(ms, q, widths); m != "" {
+					return m, roomWhy
+				}
+				return "", roomWhy
 			}
 			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}

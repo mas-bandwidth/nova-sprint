@@ -81,10 +81,10 @@ nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run])
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
-nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
-# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --drop-bench | --tier <t>)... [--dry-run]
+# A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS). --drop-who takes every WHO line out (the card names no friend); --drop-bench takes every BENCH line out (the card is dealt round the fleet pool like any with no bench).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
-nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
+nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who | --drop-bench)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
 nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] [--carry <branch|sha>] [--answers <judgment>] [--dry-run]
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
@@ -112,9 +112,16 @@ nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
 nova-sprint hold <name>... --reason <text> [--return]
 
-A member that is up keeps taken cards and finishes them, including with `--return`; that
-flag hands back only its dealt, untaken cards. A member that is down also returns its dead
-working cards. `fleet down <member>` follows the same rule.
+ A member that is up keeps taken cards and finishes them, including with `--return`; that
+ flag hands back only its dealt, untaken cards. A member that is down also returns its dead
+ working cards. `fleet down <member>` follows the same rule.
+
+ A member's disk floor: a fleet member under 15% free on its bench root (the root its
+ job directories live under, `install member --root`) starts no card
+ (pkg/member `DiskRoom`); the floor is the member's `--disk-floor-pct <n>` flag, default
+ 15, 0 off, wired into its `Config.Room` beside the existing room (composed: refuse when
+ either refuses). The refusal is the member's no-room word, carried by its beat (`fleet
+ beat --no-room`) and read by the deal, which passes the member by.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level

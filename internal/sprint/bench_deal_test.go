@@ -168,3 +168,85 @@ func TestDealRefusesAnEmptyPoolWithoutPanicking(t *testing.T) {
 		assert.Contains(t, p.Refused[0].Why, "waits for its bench m2")
 	})
 }
+
+// TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom is the bench order
+// (benchOrder): a card whose brief names a bench is dealt to the least-loaded
+// member of it that has room, never off its bench, and a card with no BENCH
+// line keeps the round order it has today.
+func TestABenchCardGoesToTheLeastLoadedMemberWithHeadroom(t *testing.T) {
+	t.Parallel()
+	t.Run("the least-loaded member of the bench takes it", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 2, "a", "b", "c")
+		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
+		p := w.do(Deal(w.s, DealReq{}))
+		require.Empty(t, p.Refused)
+		assert.Equal(t, Working, w.s.StateOf("s1-1"))
+		assert.Equal(t, "b", benchRow(w.s, "s1-1"), "the least-loaded member b (load 10) takes it")
+	})
+	t.Run("a member whose fresh beat says no room is passed by", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 2, "a", "b", "c")
+		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		w.s.NoRoom = map[string]string{"b": "disk under the floor"}
+		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
+		p := w.do(Deal(w.s, DealReq{}))
+		require.Empty(t, p.Refused)
+		assert.Equal(t, Working, w.s.StateOf("s1-1"))
+		assert.Equal(t, "c", benchRow(w.s, "s1-1"), "b has no room: the least-loaded with room, c, takes it")
+	})
+	t.Run("every member of the bench at no room waits with why", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 2, "a", "b", "c")
+		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		w.s.NoRoom = map[string]string{"a": "disk under the floor", "b": "disk under the floor", "c": "disk under the floor"}
+		addBenched(t, w, "s1", map[string]string{"s1-1": "a, b, c"})
+		p := w.do(Deal(w.s, DealReq{}))
+		require.Len(t, p.Refused, 1)
+		assert.Equal(t, "s1-1", p.Refused[0].Key)
+		for _, m := range []string{"a", "b", "c"} {
+			assert.Contains(t, p.Refused[0].Why, m)
+		}
+		assert.Contains(t, p.Refused[0].Why, "no room")
+		assert.Equal(t, Ready, w.s.StateOf("s1-1"), "it waits in ready, never dealt off its bench")
+	})
+	t.Run("a card with no BENCH line keeps the round order", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 2, "a", "b", "c")
+		w.s.Loads = map[string]float64{"a": 90, "b": 10, "c": 50}
+		addBenched(t, w, "s1", map[string]string{"s1-1": ""})
+		p := w.do(Deal(w.s, DealReq{}))
+		require.Empty(t, p.Refused)
+		assert.Equal(t, Working, w.s.StateOf("s1-1"))
+		assert.Equal(t, "a", benchRow(w.s, "s1-1"), "the round order at BASE gives the card to a")
+	})
+}
+
+// TestDropBenchTakesTheBenchLineOut is BriefEdit.DropBench: the header BENCH
+// line is taken out, the body (a line that starts with "BENCH:" included) is
+// untouched, and a card rewritten from the new brief has no bench.
+func TestDropBenchTakesTheBenchLineOut(t *testing.T) {
+	t.Parallel()
+	t.Run("Apply takes the header BENCH line out and leaves the body", func(t *testing.T) {
+		t.Parallel()
+		brief := "c: a card\nREPO: mas-bandwidth/nova-tools\nBENCH: a, b\n\nThe task.\nBENCH: a body line"
+		out := (BriefEdit{DropBench: true}).Apply(brief)
+		assert.NotContains(t, out, "BENCH: a, b")
+		assert.Contains(t, out, "REPO: mas-bandwidth/nova-tools")
+		assert.Contains(t, out, "The task.")
+		assert.Contains(t, out, "BENCH: a body line", "a body line that starts with BENCH: is untouched")
+	})
+	t.Run("a card rewritten from the new brief has no bench", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 0, "m1", "m2")
+		addBenched(t, w, "s1", map[string]string{"s1-1": "m1"})
+		c := w.s.Work.Placed("s1-1")
+		newBrief := (BriefEdit{DropBench: true}).Apply(c.F("brief"))
+		require.NotEqual(t, c.F("brief"), newBrief)
+		p := w.do(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "s1-1", Brief: newBrief, Rules: c.F(FieldRules)}}}))
+		require.Empty(t, p.Refused)
+		rewritten := w.s.Work.Placed("s1-1")
+		assert.Nil(t, Bench(rewritten), "the rewritten card has no bench")
+	})
+}

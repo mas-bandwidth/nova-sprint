@@ -559,6 +559,10 @@ type Snapshot struct {
 	// its word why (Beat.NoRoom: its disk under its floor): the deal gives it no card
 	// (notQuiet) and the ask asks it no read (readerRooms). nil is none read.
 	NoRoom map[string]string
+	// Loads is each fleet member's last beat's load (Beat.Load), read with NoRoom: the
+	// bench order (benchOrder, bench_deal.go) sorts a card's bench by it, least loaded
+	// first. nil is none read, and every member's load is 0.
+	Loads map[string]float64
 	// Friends is each friend the deal may give a friend's card to, or whose delivery
 	// mode is consulted by friendNext (FriendSeat); nil is none.
 	Friends []FriendSeat

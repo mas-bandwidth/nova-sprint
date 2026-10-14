@@ -167,17 +167,18 @@ func NoneSelected(q Selector) string {
 // BriefEdit is a brief transform (nova-sprint brief and recut by selector): instead of a
 // whole new brief, each selected card's own brief changed by rule.
 type BriefEdit struct {
-	SetBase string `json:",omitempty"` // the BASE: line names this branch
-	DropWho bool   `json:",omitempty"` // the WHO: line is taken out: no friend is named
+	SetBase   string `json:",omitempty"` // the BASE: line names this branch
+	DropWho   bool   `json:",omitempty"` // the WHO: line is taken out: no friend is named
+	DropBench bool   `json:",omitempty"` // the BENCH: line is taken out: dealt round the fleet's pool
 }
 
 // Given says the transform changes anything.
-func (e BriefEdit) Given() bool { return e.SetBase != "" || e.DropWho }
+func (e BriefEdit) Given() bool { return e.SetBase != "" || e.DropWho || e.DropBench }
 
 // Apply is brief with the transform made on its header block (the key: value lines under
-// line 1, as cardhdr.ReadWho reads them): every WHO line taken out with DropWho, and with
-// SetBase every BASE line's value replaced, or one BASE line put under line 1 when the
-// header has none.
+// line 1, as cardhdr.ReadWho reads them): every WHO line taken out with DropWho, every
+// BENCH line taken out with DropBench, and with SetBase every BASE line's value replaced,
+// or one BASE line put under line 1 when the header has none.
 func (e BriefEdit) Apply(brief string) string {
 	lines := strings.Split(brief, "\n")
 	out := []string{lines[0]}
@@ -188,6 +189,9 @@ func (e BriefEdit) Apply(brief string) string {
 			header = false
 		}
 		if header && e.DropWho && strings.EqualFold(k, "who") {
+			continue
+		}
+		if header && e.DropBench && strings.EqualFold(k, "bench") {
 			continue
 		}
 		if header && e.SetBase != "" && k == "BASE" {
