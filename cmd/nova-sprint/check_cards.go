@@ -10,7 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -438,11 +438,7 @@ func parseCardExport(b []byte, baseDir string, now time.Time) (*sprint.Snapshot,
 			rowSet[c.Row] = true
 		}
 	}
-	rows := make([]string, 0, len(rowSet))
-	for r := range rowSet {
-		rows = append(rows, r)
-	}
-	sort.Strings(rows)
+	rows := slices.Sorted(maps.Keys(rowSet))
 	snap.Work.SetRows(rows)
 	snap.Merge.SetRows(rows)
 	for _, c := range workCards {

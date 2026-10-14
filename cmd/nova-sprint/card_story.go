@@ -425,9 +425,8 @@ func (a *app) nowLines(v store.CardInfo, held *sprint.Hold) []string {
 				s += ", waived"
 			}
 			if rel := p.F(sprint.FieldRelinked); rel != "" {
-				parts := strings.SplitN(rel, " -> ", 2)
-				if len(parts) == 2 {
-					f := strings.Fields(parts[1])
+				if _, after, ok := strings.Cut(rel, " -> "); ok {
+					f := strings.Fields(after)
 					if len(f) > 0 && f[0] == n.ID {
 						s += ", relinked: " + rel
 					}

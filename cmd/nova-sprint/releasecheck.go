@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,7 +69,7 @@ func (a *app) cmdReleaseCheck(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "release check", argErr("takes no words ", err, pos...))
 	}
 	for _, n := range names {
-		if !slicesHas(sprint.ReleaseCheckNames(), n) {
+		if !slices.Contains(sprint.ReleaseCheckNames(), n) {
 			return refuse(stderr, "release check", fmt.Sprintf("no release check named %s; the checks are %s", oneline.Escape(n), strings.Join(sprint.ReleaseCheckNames(), ", ")))
 		}
 	}
@@ -122,13 +123,4 @@ func (a *app) cmdReleaseCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, rep.Summary)
 	return rep.ExitCode()
-}
-
-func slicesHas(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
 }

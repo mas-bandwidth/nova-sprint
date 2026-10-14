@@ -1,12 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -207,7 +208,7 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
 		}
 	}
-	sort.Slice(want, func(i, j int) bool { return want[i].Name < want[j].Name })
+	slices.SortFunc(want, func(a, b sprint.SyncMember) int { return cmp.Compare(a.Name, b.Name) })
 	if problems := sprint.SyncProblems(want); len(problems) > 0 {
 		if c.json {
 			rep := syncReport{Verb: name, Check: *check, Members: len(want), Drift: []syncDrift{}, Held: []string{}, Holding: []string{}, Waiting: waiting, Moved: []string{}, Refused: []string{}}

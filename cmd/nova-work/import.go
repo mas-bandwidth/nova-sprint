@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -256,7 +256,7 @@ func scope(ctx context.Context, f *workgh.Fetcher, org string, named []string) (
 		}
 		out = append(out, m)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b workgh.RepoMeta) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
