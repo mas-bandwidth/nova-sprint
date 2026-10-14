@@ -20,6 +20,7 @@ func refusedAt(now time.Time, ago time.Duration, verb, member, argv, why string)
 // FAIL naming the count, the last refusal and what it sent; one with fewer, or none, is no
 // fault.
 func TestRefusedBeatsNameTheMemberAtThree(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
 	recs := []RefusedVerb{
 		refusedAt(now, time.Minute, RefusedBeatVerb, "batman", "fleet beat batman", "a beat wants --load"),
@@ -38,6 +39,7 @@ func TestRefusedBeatsNameTheMemberAtThree(t *testing.T) {
 // The refused-verbs check groups every verb, not only beat: N >= 10 of one verb word in the
 // window is one FAIL, and a pair under the bound is no line.
 func TestRefusedVerbLinesGroupEveryVerbAtTen(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
 	var recs []RefusedVerb
 	for i := range 10 {
@@ -53,6 +55,7 @@ func TestRefusedVerbLinesGroupEveryVerbAtTen(t *testing.T) {
 
 // The window is exactly RefusedWindow: a record a window old is out, one just inside is in.
 func TestRefusedWindowIsExactlyTenMinutes(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
 	recs := []RefusedVerb{
 		refusedAt(now, RefusedWindow, "queue", "m1", "queue", "old edge"),
@@ -66,6 +69,7 @@ func TestRefusedWindowIsExactlyTenMinutes(t *testing.T) {
 // The record is keyed by epoch and bounded by the window: PruneRefused keeps the recent
 // window and drops the rest, so the server's record stays bounded as it appends.
 func TestRefusedRecordPrunesToTheWindow(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
 	rec := RefusedRecord{Epoch: 7, Verbs: []RefusedVerb{
 		refusedAt(now, time.Minute, RefusedBeatVerb, "batman", "fleet beat batman", "kept"),

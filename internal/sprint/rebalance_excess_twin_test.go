@@ -222,6 +222,7 @@ func TestAClearedSprintRunsTheRebalanceEveryTick(t *testing.T) {
 // and 22 ready reads, so its excess exists from the first tick, and reads are admitted beside
 // work each tick, so the invariant is checked where it can actually be violated, never trivially.
 func TestNTicksKeepNoQueuedCardWhileALaneIsFree(t *testing.T) {
+	t.Parallel()
 	r := newDealRig(t)
 	r.up("hetzner2", 16)
 	r.up("b3", 16)
