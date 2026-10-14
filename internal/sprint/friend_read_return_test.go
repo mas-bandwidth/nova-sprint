@@ -121,7 +121,8 @@ func TestFinishRefusesAReadWithTheOutboxRemedy(t *testing.T) {
 		why := p.Refused[0].Why
 		require.Contains(t, why, "a read, not work")
 		require.Contains(t, why, "outbox/"+id+"/REPORT.md")
-		require.Contains(t, why, "read --as friend.amy (--ok | --broken) "+id)
+		require.Contains(t, why, "do not also run nova-sprint read")
+		require.NotContains(t, why, "or run: nova-sprint read")
 		require.NotContains(t, why, "generation")
 	}
 }

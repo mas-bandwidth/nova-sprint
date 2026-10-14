@@ -619,11 +619,56 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: rc.ID + " retired " + verdict, Notes: notes}
 }
 
-// FriendReadOutboxLine is how a read on a friend's row is returned: her
-// outbox report, which friend sync reads (FriendReadClose), or the read verb
-// her packet prints, which writes the same close (readCardVerb).
+// FriendReadOutboxLine is the one way a friend returns a read: write
+// outbox/<id>/REPORT.md. Friend sync records it within seconds. A second
+// nova-sprint read is not that way (card
+// a-readers-second-verdict-answers-already-recorded; docs/SPEC-SPRINT.md, a
+// friend's read). row and epoch stay in the signature; packet and finish pass
+// them, and the line no longer names the verb. The verb stays for a reader
+// with no outbox.
 func FriendReadOutboxLine(row, id string, epoch uint64) string {
-	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync reads it); or run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change; friend sync records it within seconds; do not also run nova-sprint read for this card: a second submission answers ALREADY RECORDED", id)
+}
+
+// alreadyRecordedRead is a second verdict on a read this reader already closed
+// (retired_by read). The same verdict is a stutter: one Said line, no unit
+// (card a-readers-second-verdict-answers-already-recorded; docs/SPEC-SPRINT.md,
+// a friend's read). A different verdict is refused. Any other retired_by is
+// not this case. No state variable changes on the stutter; tla/ReadCards.tla
+// Close is already enabled only while the card is working and a child runs.
+func alreadyRecordedRead(c *Card, r ReadReq, name, row string) (same bool, line string) {
+	if c == nil || c.Placed() || r.Return || r.Begin || c.F("retired_by") != "read" || !readClosedByThisReader(c, name, row) {
+		return false, ""
+	}
+	recorded := c.F("verdict")
+	if recorded == "" {
+		return false, ""
+	}
+	at := orDash(c.F("retired"))
+	if recorded == r.Verdict {
+		return true, fmt.Sprintf("ALREADY RECORDED %s at %s (%s)", recorded, at, c.ID)
+	}
+	return false, fmt.Sprintf("already recorded %s at %s; a reader's verdict at an attempt is final, and a different one is not taken", recorded, at)
+}
+
+// readClosedByThisReader says the read card is this reader's own: its id is one
+// of ReadCardGenIDs for the primary, the attempt and this reader's name, or the
+// row it still carries, or the reader field a retired card keeps. No field is added.
+func readClosedByThisReader(c *Card, name, row string) bool {
+	if c == nil || name == "" {
+		return false
+	}
+	if primary := c.F("primary"); primary != "" {
+		attempt := readAttempt(c)
+		base := ReadCardID(primary, attempt, name)
+		if g := readGenOf(c.ID, base); g >= 0 && slices.Contains(ReadCardGenIDs(primary, attempt, name, g), c.ID) {
+			return true
+		}
+	}
+	if row != "" && c.Row == row {
+		return true
+	}
+	return c.F("reader") == name
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
@@ -665,6 +710,13 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		case c.F("kind") != "read":
 			return "not a read (it is " + orDash(c.F("kind")) + "): work is reported with finish"
 		case !c.Placed():
+			// a second submission of this reader's own verdict writes nothing
+			// (alreadyRecordedRead); every other retired_by stays as it was
+			if same, line := alreadyRecordedRead(c, r, name, row); same {
+				return ""
+			} else if line != "" {
+				return line
+			}
 			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to report"
 		case c.Row != row:
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
@@ -678,6 +730,10 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	namePrimarysReads(&p, all)
 	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	for _, c := range chosen {
+		if same, line := alreadyRecordedRead(c, r, name, row); same {
+			p.Said = append(p.Said, line)
+			continue
+		}
 		pr := s.Work.Card(c.F("primary"))
 		if r.Return {
 			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {

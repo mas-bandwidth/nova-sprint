@@ -64,6 +64,7 @@ nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit 
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
 nova-sprint queue --as <reader|member> | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
+# A reader who reports a verdict already recorded for its read is answered ALREADY RECORDED, exit 0; a different verdict is refused.
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
 # reader serves is read one tier down: the read card's tier names the strongest tier with an
@@ -151,6 +152,7 @@ nova-sprint ack <note>... --reason <text>
 nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]
 nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--deadline <duration>] [--stale <duration>]
 nova-sprint card <id> [--brief | --fields] [--json] [--at-epoch <n>]
+# a read card id is answered with the primary it reads
 nova-sprint card (--all | --stream <s>) --json [--at-epoch <n>]
 nova-sprint card base <id> <branch> [--repo-dir <clone>]
 nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]

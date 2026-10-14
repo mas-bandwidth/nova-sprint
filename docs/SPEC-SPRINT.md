@@ -4245,7 +4245,7 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
 - **The close.** `Verdict: LAND` (or `read --ok`) retires the card with verdict ok, `Verdict:
   HOLD` with a line naming a file, a line or a rule (or `read --broken` with its finding) retires
   it broken and raises the read-broken judgment, exactly as a readers-table read does; the usage
-  the verb carries is kept on the card. Two different readers' oks at the head make a pro card
+  the verb carries is kept on the card. A reader who reports a verdict already recorded for its read is answered ALREADY RECORDED, exit 0; a different verdict is refused. Two different readers' oks at the head make a pro card
   acceptable, and the tick accepts it (`TestAReadCardsVerdictClosesTheRead`).
 - **Replaced.** A read card handed back (`read --return`), or taken and not closed within
   `ReadCardDeadline` (an hour on the sprint's clock from its take; a friend's read dealt
