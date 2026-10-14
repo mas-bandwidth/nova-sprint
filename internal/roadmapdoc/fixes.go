@@ -56,14 +56,7 @@ var fixStatuses = map[string]bool{"shipped": true, "in-progress": true, "planned
 // DecodeFixes reads one fixes file and returns it, or every shape problem of the
 // file together in one error.
 func DecodeFixes(file string, data []byte) (*Fixes, error) {
-	return DecodeFixesLimits(file, data, Limits)
-}
-
-// DecodeFixesLimits is DecodeFixes reading under limits, for a caller whose data
-// may stand past the default bound (the lander's merge, tla/LandLedgers.tla
-// ResolveLand). Every other caller keeps Limits.
-func DecodeFixesLimits(file string, data []byte, limits worklang.Limits) (*Fixes, error) {
-	top, d, err := readTop(file, data, limits, "fixes", "the fixes file is data")
+	top, d, err := readTop(file, data, "fixes", "the fixes file is data")
 	if err != nil {
 		return nil, err
 	}
@@ -76,10 +69,10 @@ func DecodeFixesLimits(file string, data []byte, limits worklang.Limits) (*Fixes
 
 // readTop reads one sexp file and returns its top form and a decoder ready to
 // fill it; it is the shared door of Decode and DecodeFixes, which use the same
-// refusal rewording and problem collection, differing only in the limits they
-// admit, the kind they name and the word for what the file is.
-func readTop(file string, data []byte, limits worklang.Limits, kind, substitute string) (worklang.Form, *decoder, error) {
-	top, err := worklang.Read(file, data, limits)
+// limits, refusal rewording and problem collection, differing only in the kind
+// they name and the word for what the file is.
+func readTop(file string, data []byte, kind, substitute string) (worklang.Form, *decoder, error) {
+	top, err := worklang.Read(file, data, Limits)
 	if err != nil {
 		var r *worklang.Refusal
 		if errors.As(err, &r) {
