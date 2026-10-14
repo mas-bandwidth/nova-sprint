@@ -69,7 +69,8 @@ func TestAFriendsTakeByCountNeverMovesAnUnstartedCard(t *testing.T) {
 
 	// (3) The same take by count --max 3 on a fleet member's row still moves all three (no regression).
 	wm := newWorld(t, "reader-a")
-	wm.must(FleetStep(wm.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	wm.setWidth("m1", 4)
+	wm.must(FleetStep(wm.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	wm.must(Add(wm.s, AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	pDeal, _ := TickDeal(wm.s, TickReq{})
 	wm.must(pDeal)

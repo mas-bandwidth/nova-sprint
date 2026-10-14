@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -245,6 +246,8 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
 	h.readersTable()
 	h.beat()
+	// the new twin has no machine:<m> yet (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	h.m.SetMachineWidth("m1", strconv.Itoa(sprint.DefaultWidth))
 	// one reader up: a pro card needs two, so fewer than two are up
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))

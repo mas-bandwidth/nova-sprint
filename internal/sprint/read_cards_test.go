@@ -18,7 +18,8 @@ func readCardsWorld(t *testing.T, width int, members ...string) *world {
 	}
 	w := newWorld(t, readers...)
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
+		w.setWidth(m, width)
+		w.up(m)
 	}
 	w.s.Work.SetProp(PropReadCards, ReadCardsOnWord)
 	return w
@@ -264,7 +265,8 @@ func TestAReadCostsHalfASlot(t *testing.T) {
 		for i := 1; i <= 3; i++ {
 			w.s.Work.Put(&Card{ID: "s2-" + itoa(i), Row: "s2", Col: Ready, Score: float64(10 + i), Rev: 1, Fields: map[string]string{"kind": "primary", "stream": "s2", "brief": "s2: work (s2)\n"}})
 		}
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 0}))
+		w.setWidth("m1", 0)
+		w.up("m1")
 		dealReads(t, w, nil)
 		work, reads := rowLoad(w.s, "m2")
 		require.Equal(t, 1, reads)

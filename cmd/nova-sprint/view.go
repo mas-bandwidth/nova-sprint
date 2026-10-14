@@ -322,6 +322,9 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 	if err != nil {
 		return v, err
 	}
+	// idle weight is nova-config's width, read with the view
+	// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	st.AttachConfigWidths(ctx, s)
 	in, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
 	if err != nil {
 		return v, err

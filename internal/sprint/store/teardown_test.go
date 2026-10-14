@@ -50,14 +50,29 @@ func TestTeardownLeavesTheKeysAsBeforeInit(t *testing.T) {
 	}
 	_, err = h.st.Teardown(h.ctx)
 	require.NoError(t, err)
-	if after := m.Keys(h.st.Names); !slices.Equal(after, before) {
+	// machine:<m> is nova-config's, not the sprint's, so teardown leaves it
+	if after := dropConfigKeys(m.Keys(h.st.Names)); !slices.Equal(after, dropConfigKeys(before)) {
 		require.Fail(t, fmt.Sprintf("after teardown:\n%s\nbefore init:\n%s", strings.Join(after, "\n"), strings.Join(before, "\n")))
 	}
 	work()
 	_, err = h.st.Teardown(h.ctx)
 	require.NoError(t, err)
-	after := m.Keys(h.st.Names)
-	require.True(t, slices.Equal(after, before), "after the second teardown: %v", after)
+	after := dropConfigKeys(m.Keys(h.st.Names))
+	require.True(t, slices.Equal(after, dropConfigKeys(before)), "after the second teardown: %v", after)
+}
+
+// dropConfigKeys leaves out nova-config's machine:<m> and friend:<f>:desired
+// keys. The twin names them under the sprint prefix in Keys; teardown does
+// not delete them (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+func dropConfigKeys(keys []string) []string {
+	var out []string
+	for _, k := range keys {
+		if strings.Contains(k, ":machine:") || strings.Contains(k, ":desired") {
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
 }
 
 // The keys teardown deletes are named exactly from the prefix, the table

@@ -31,22 +31,25 @@ func TestFriendUpWidthSetsHerWidthAsFleetUpWidthSetsAMembers(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
 	ta.ok("friend sync")
 	assert.Equal(t, "8", friendWidth(ta, "amy"))
-	out := ta.ok("friend up amy --width 3")
-	assert.Contains(t, out, "FRIEND-UP OK amy held=false width=3")
-	assert.Equal(t, "3", friendWidth(ta, "amy"))
+	code, _, errs := ta.do("friend up amy --width 3")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errs, "nova-config")
+	assert.Equal(t, "8", friendWidth(ta, "amy"), "friend up --width writes nothing")
+	ta.m.SetFriendDesiredWidth("amy", "3")
+	assert.Equal(t, "3", friendWidth(ta, "amy"), "friend:<f>:desired is the width where shows")
 	ta.ok("friend down amy")
 	ta.ok("friend up amy")
-	assert.Equal(t, "3", friendWidth(ta, "amy"), "a release without --width leaves it as it is")
+	assert.Equal(t, "3", friendWidth(ta, "amy"), "a release without --width leaves the desired width")
 
-	code, _, errs := ta.do("friend up amy --width 0")
+	code, _, errs = ta.do("friend up amy --width 0")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--width: a width wants a whole number from 1 to")
+	assert.Contains(t, errs, "nova-config")
 	code, _, _ = ta.do("friend down amy --width 3")
 	assert.Equal(t, 2, code, "friend down takes no width")
 
-	// friend sync sets her nova-config row's again, as fleet sync sets a member's
+	// friend sync does not clear the desired hash
 	ta.ok("friend sync")
-	assert.Equal(t, "8", friendWidth(ta, "amy"))
+	assert.Equal(t, "3", friendWidth(ta, "amy"))
 }
 
 // whereFriends is where --json's friends, by name.
@@ -80,6 +83,9 @@ func TestFriendBeatTakesHerCountsAndLoadAsFleetBeatTakesALoad(t *testing.T) {
 	assert.Equal(t, []string{"s1-1.w1", "s1-2.w1"}, f.Report.Running)
 	assert.Equal(t, 40.0, f.Load)
 	assert.Equal(t, 8, f.Width, "her width is the roster's, not her word")
+	ta.m.SetFriendDesiredWidth("amy", "2")
+	beat := ta.ok("friend beat amy --working 1")
+	assert.Contains(t, beat, "row_width=2")
 	assert.Equal(t, sprint.Up, f.Status, "on her session's pong, never on the beat")
 
 	// a beat with none reports none: the last one's counts are not kept
@@ -106,17 +112,18 @@ func TestFriendBeatTakesHerCountsAndLoadAsFleetBeatTakesALoad(t *testing.T) {
 func TestFriendLevelMovesAQueuedCardAndTheQueueFilesFollow(t *testing.T) {
 	t.Parallel()
 	ta, root := takeApp(t, 4, nil, "amy", "bob")
-	ta.ok("friend up amy --width 1")
-	ta.ok("friend up bob --width 1")
+	ta.m.SetFriendDesiredWidth("amy", "1")
+	ta.m.SetFriendDesiredWidth("bob", "1")
+	ta.ok("friend up amy")
+	ta.ok("friend up bob")
 	ta.ok("friend down bob")
 	ta.ok("tick") // amy alone: s1-1 and s1-2 ready, and she starts s1-1
 	ta.startFriend("amy", 1)
 	ta.ok("friend sync --root " + root)
 	require.Equal(t, "queued", queueStates(t, root, "amy")["s1-2.w1"])
 	ta.ok("friend up bob")
-	// friend sync set her width back to the config's 8; at 1 her lane is her started card's,
-	// and s1-2.w1 waits behind it (an unstarted card in a free lane of hers is hers to start)
-	ta.ok("friend up amy --width 1")
+	// the desired width stays 1 across friend sync
+	ta.ok("friend up amy")
 	ta.beatUp("bob")
 
 	assert.Contains(t, ta.dry("friend level --dry-run"), "FRIEND-LEVEL DRY-RUN up=amy,bob; nothing was changed")
@@ -210,8 +217,9 @@ func TestStatsTimesAFriendsRunFromHerReport(t *testing.T) {
 func TestAFriendsNextCardsDeadlineFollowsHerRunWall(t *testing.T) {
 	t.Parallel()
 	ta, root := takeApp(t, 3, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy")
-	ta.ok("friend up amy --width 1")
-	ta.ok("tick") // s1-1 and s1-2 ready, s1-3 waits (friend sync sets her width back to 8); she starts s1-1
+	ta.m.SetFriendDesiredWidth("amy", "1")
+	ta.ok("friend up amy")
+	ta.ok("tick") // s1-1 and s1-2 ready, s1-3 waits; she starts s1-1
 	ta.startFriend("amy", 1)
 	ta.ok("friend sync --root " + root)
 	taken := ta.a.now()

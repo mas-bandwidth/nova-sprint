@@ -233,6 +233,27 @@ func (e *NoFriendError) Error() string {
 	return fmt.Sprintf("no friend %s on the friends table (friends: %s): its row is nova-config's friend row; run: nova-sprint friend sync", e.Friend, strings.Join(names, ","))
 }
 
+// FriendConfigWidth is the width the deal and a beat's row_width read
+// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width). raw is the width
+// field of friend:<f>:desired. A desired width wins, including 0 (the drain)
+// and a non-numeric field (dealt nothing). An empty desired field keeps the
+// roster's copy, so a roster written before nova-config's desired hash
+// existed still deals.
+func FriendConfigWidth(roster int, raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return roster
+	}
+	if raw == sprint.DrainWidth {
+		return 0
+	}
+	n, err := sprint.ParseWidth(raw)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // IsNoFriend says err is, or wraps, a NoFriendError.
 func IsNoFriend(err error) bool {
 	var n *NoFriendError
@@ -491,6 +512,10 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		return nil, nil, err
 	}
 	names := slices.Sorted(maps.Keys(r))
+	_, friendW, err := st.Widths(ctx, nil, names)
+	if err != nil {
+		return nil, nil, err
+	}
 	keys := make([]string, 0, 3*len(names))
 	for _, n := range names {
 		keys = append(keys, friendBeatKey(n), friendHealthKey(n), friendFinishKey(n))
@@ -522,7 +547,7 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		}
 		presence := sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation, Finished: fin}
 		word, evidence := sprint.FriendEvidence(presence, now)
-		row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
+		row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: FriendConfigWidth(r[n].Width, friendW[n]), Status: word, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
 		if why := sprint.FriendDownWhy(presence, now); why != "" {
 			whys[n] = why
 		}

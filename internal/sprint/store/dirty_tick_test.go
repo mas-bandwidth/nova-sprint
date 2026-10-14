@@ -404,6 +404,8 @@ func TestADealHeldBackByTheQueueMovesNoIndex(t *testing.T) {
 		h.live = append(h.live, "m3")
 		h.mu.Unlock()
 		h.beat()
+		// m3 is past the harness's two live members (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+		h.m.SetMachineWidth("m3", strconv.Itoa(sprint.DefaultWidth))
 		for _, m := range []string{"m1", "m2", "m3"} {
 			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 		}

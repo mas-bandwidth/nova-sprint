@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -53,8 +54,10 @@ func newConflictRig(t *testing.T) *conflictRig {
 		{Name: "pro-a", Tier: "pro", Provider: "prov-pro-a", Model: "model-pro-a", Tokens: 1000, Deadline: conflictRouteSeconds, Enabled: true},
 	})
 	r.beat()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	r.m.SetMachineWidth("m2", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: 3, Brief: "c: the work (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
@@ -230,7 +233,10 @@ func TestAConflictingHeadIsRedoneOnTheTipAndItsStreamKeepsLanding(t *testing.T) 
 // dealStep cuts and deals work cards by hand, the step the tick's deal replaced
 // (sprint.TickDeal): a test that needs exact queues deals with it.
 func dealStep(r sprint.DealReq) store.Step {
-	return store.Step{Args: store.ArgsOf(r), Verb: "deal", Load: []string{sprint.Work, sprint.Fleet, sprint.Merge}, Mirrors: true, Routes: true,
+	// Widths: the deal reads machine:<m> on this step (docs/SPEC-SPRINT.md
+	// section 5; tla/Level.tla Width). A hand deal with no read deals at
+	// width 0 and refuses every card.
+	return store.Step{Args: store.ArgsOf(r), Verb: "deal", Load: []string{sprint.Work, sprint.Fleet, sprint.Merge}, Mirrors: true, Routes: true, Widths: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Deal(s, r) }}
 }
 

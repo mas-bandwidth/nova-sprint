@@ -56,7 +56,8 @@ func seqFleet(h *harness, width int) {
 	h.mu.Unlock()
 	h.beat()
 	for _, m := range widthMembers {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: width}))
+		h.m.SetMachineWidth(m, strconv.Itoa(width))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.startMachine()
 	// every member up before the first card, the presence changes applied

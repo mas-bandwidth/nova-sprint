@@ -65,8 +65,36 @@ type loaded struct {
 // kept card is a record with no place.
 var firstCell = map[string]string{sprint.Work: sprint.Waiting, sprint.Readers: sprint.Asked, sprint.Merge: sprint.Queued, sprint.Fleet: sprint.Ready}
 
+// fillConfigWidths gives every member a config width when the sample names
+// none, so the reference and the store still deal. An explicit width,
+// including 0, is kept. A control card that still names one is that width;
+// otherwise the old default (docs/SPEC-SPRINT.md section 5; tla/Level.tla
+// Width). This is the harness, not the deal: a missing width in production
+// deals nothing.
+func fillConfigWidths(s *sprint.Snapshot) {
+	if s == nil {
+		return
+	}
+	if s.Widths == nil {
+		s.Widths = map[string]string{}
+	}
+	for _, m := range s.Members() {
+		if _, ok := s.Widths[m]; ok {
+			continue
+		}
+		if ctl := s.MemberCtl(m); ctl != nil {
+			if w := strings.TrimSpace(ctl.F(sprint.FieldWidth)); w != "" {
+				s.Widths[m] = w
+				continue
+			}
+		}
+		s.Widths[m] = strconv.Itoa(sprint.DefaultWidth)
+	}
+}
+
 func loadSample(tb testing.TB, s sample) *loaded {
 	tb.Helper()
+	fillConfigWidths(s.snap.Tables)
 	l := &loaded{tb: tb, ctx: context.Background(), m: store.NewMem()}
 	t := s.snap.Tables
 	n := 0
@@ -113,6 +141,9 @@ func loadSample(tb testing.TB, s sample) *loaded {
 		l.m.SetRoutes(t.Routes)
 	}
 	l.judgments(t)
+	for m, w := range t.Widths {
+		l.m.SetMachineWidth(m, w)
+	}
 	_, l.inbox, _ = l.m.Tails(l.ctx)
 	return l
 }
@@ -213,6 +244,7 @@ func TestTheStoreWritesWhatTheReferenceDecides(t *testing.T) {
 		if !s.snap.Running {
 			continue
 		}
+		fillConfigWidths(s.snap.Tables)
 		decided := byDuty(refmodel.Decide(s.snap, s.now))
 		matters := appliedMatters(s)
 		for _, part := range sprint.TickParts {

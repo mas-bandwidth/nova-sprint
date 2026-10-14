@@ -65,6 +65,9 @@ func TestTheTickGateHoldsUnderLoad(t *testing.T) {
 	require.NoError(t, err)
 	snap, err := st.Load(context.Background(), store.All, nil)
 	require.NoError(t, err)
+	machine, _, err := st.Widths(context.Background(), members, nil)
+	require.NoError(t, err)
+	snap.Widths = machine
 
 	fresh := gateSnapshot(snap, members, 0)
 	aged := gateSnapshot(snap, members, gateHistory)

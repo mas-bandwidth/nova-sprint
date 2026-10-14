@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -181,7 +182,8 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 func TestTheWhereRecordLeavesSentinelsOutOfItsLandings(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: proBrief}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true}))
 	h.startMachine()

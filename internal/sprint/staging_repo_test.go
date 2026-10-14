@@ -54,8 +54,10 @@ func nsPrimary(id string) *Card {
 func TestAMemberThatRefusedARepoAtStagingIsNotDealtIt(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "b1", Width: 4}))
+	w.setWidth("studio", 4)
+	w.up("studio")
+	w.setWidth("b1", 4)
+	w.up("b1")
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true, Deadline: 600}}
 	w.must(Add(w.s, AddReq{Stream: "ns", Count: 4, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"}))
 	w.must(Add(w.s, AddReq{Stream: "nt", Count: 2, Repo: "https://github.com/mas-bandwidth/nova-tools", Brief: "tier: flash\n"}))
@@ -115,7 +117,8 @@ func TestAMirrorRefusalEndsPastTheWindowOrAfterAnOk(t *testing.T) {
 func TestANoLauncherJudgmentNamesTheMirrorRefusal(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
+	w.setWidth("studio", 4)
+	w.up("studio")
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true, Deadline: 600}}
 	w.must(Add(w.s, AddReq{Stream: "ns", Count: 1, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"}))
 	w.s.Fleet.Put(&Card{ID: "ns-0.w1", Row: "studio", Col: Withdrawn, Fields: map[string]string{

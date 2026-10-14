@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -132,12 +133,262 @@ func (ta *testApp) beat() {
 func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	args := split(line)
+	args := applyConfigWidthArgs(ta.a, split(line))
 	code := runInto(ta.a, ta.withEpoch(args), &out, &errb)
 	if code == 0 && ta.oldReaders && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
 		ta.readersTableOn(args)
 	}
 	return code, out.String(), errb.String()
+}
+
+// applyConfigWidthArgs turns a test's old width flags into nova-config widths
+// on the twin the verb opens (docs/SPEC-SPRINT.md section 5; tla/Level.tla
+// Width). fleet up --width and init --members m:n are refused by the verb.
+// A whole width is written to machine:<m> and the flag is dropped, so the
+// verb runs. A width that is not one is left for the verb to refuse. Help
+// is left alone.
+func applyConfigWidthArgs(a *app, args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	for _, x := range args {
+		if x == "-h" || x == "--help" || x == "help" {
+			return args
+		}
+	}
+	verb := configVerb(args)
+	if len(verb) == 0 {
+		return args
+	}
+	var rewritten []string
+	switch verb[0] {
+	case "fleet", "init":
+	default:
+		return args
+	}
+	// a real redis is never opened from the shim: seat login and any verb
+	// aimed at a host must dial only when the verb itself does.
+	addr := redisArg(args)
+	if addr == "" && a != nil {
+		addr = a.getenv("NOVA_SPRINT_REDIS")
+	}
+	if addr != "" && addr != "mem" && !strings.HasPrefix(addr, "mem:") {
+		return args
+	}
+	m := configMemAt(a, addr)
+	switch verb[0] {
+	case "fleet":
+		rewritten = shimFleetUpWidth(m, verb)
+	default:
+		rewritten = shimInitMembers(m, verb)
+	}
+	head := args[:len(args)-len(verb)]
+	return append(append([]string{}, head...), rewritten...)
+}
+
+func configMem(a *app) *store.Mem {
+	return configMemAt(a, a.getenv("NOVA_SPRINT_REDIS"))
+}
+
+// configMemAt is the twin the verb opens at addr, including a test wrapper
+// that embeds *store.Mem (a hook's store). nova-config's width is written
+// there (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+func configMemAt(a *app, addr string) *store.Mem {
+	if addr == "" {
+		addr = a.getenv("NOVA_SPRINT_REDIS")
+	}
+	if addr == "" || a.backend == nil {
+		return nil
+	}
+	b, err := a.backend(context.Background(), addr, sprint.Names{})
+	if err != nil || b == nil {
+		return nil
+	}
+	if m, ok := b.(*store.Mem); ok {
+		return m
+	}
+	v := reflect.ValueOf(b)
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	f := v.FieldByName("Mem")
+	if f.IsValid() && f.CanInterface() {
+		if m, ok := f.Interface().(*store.Mem); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+// redisArg is --redis on the command line, when the twin is not in the environment.
+func redisArg(args []string) string {
+	for i, x := range args {
+		if x == "--redis" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(x, "--redis=") {
+			return strings.TrimPrefix(x, "--redis=")
+		}
+	}
+	return ""
+}
+
+// configVerb is the command from its verb, past global flags placed before it.
+func configVerb(args []string) []string {
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			return args[i:]
+		}
+		name := strings.TrimLeft(a, "-")
+		if strings.Contains(a, "=") {
+			i++
+			continue
+		}
+		switch name {
+		case "json", "dry-run", "help", "h", "check", "v", "version":
+			i++
+		default:
+			i += 2
+		}
+	}
+	return nil
+}
+
+func wholeWidth(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "0" || text == sprint.DrainWidth {
+		return "0", true
+	}
+	n, err := sprint.ParseWidth(text)
+	if err != nil {
+		return "", false
+	}
+	return strconv.Itoa(n), true
+}
+
+func shimFleetUpWidth(m *store.Mem, args []string) []string {
+	if len(args) < 2 || args[1] != "up" {
+		return args
+	}
+	width, has := "", false
+	member := ""
+	out := []string{args[0], args[1]}
+	for i := 2; i < len(args); i++ {
+		switch {
+		case args[i] == "--width" && i+1 < len(args):
+			has, width = true, args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--width="):
+			has, width = true, strings.TrimPrefix(args[i], "--width=")
+		case args[i] == "--probe" || args[i] == "--deadline" || args[i] == "--harnesses" || args[i] == "--actor" || args[i] == "--redis" || args[i] == "--epoch" || args[i] == "--max" || args[i] == "--op":
+			out = append(out, args[i])
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				out = append(out, args[i])
+			}
+		default:
+			if member == "" && !strings.HasPrefix(args[i], "-") {
+				member = args[i]
+			}
+			out = append(out, args[i])
+		}
+	}
+	if !has {
+		// a test that brings a member up and names no width gets the width the
+		// control card used to imply (DefaultWidth), and only when nova-config
+		// has none yet (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+		if member == "" || m == nil {
+			return args
+		}
+		got, _, err := m.ConfigWidths(context.Background(), []string{member}, nil)
+		if err != nil || strings.TrimSpace(got[member]) != "" {
+			return args
+		}
+		m.SetMachineWidth(member, strconv.Itoa(sprint.DefaultWidth))
+		return args
+	}
+	w, ok := wholeWidth(width)
+	if !ok || member == "" || m == nil {
+		return args
+	}
+	m.SetMachineWidth(member, w)
+	return out
+}
+
+func shimInitMembers(m *store.Mem, args []string) []string {
+	idx, inline := -1, false
+	raw := ""
+	for i := 1; i < len(args); i++ {
+		switch {
+		case args[i] == "--members" && i+1 < len(args):
+			idx, raw = i, args[i+1]
+		case strings.HasPrefix(args[i], "--members="):
+			idx, inline, raw = i, true, strings.TrimPrefix(args[i], "--members=")
+		}
+	}
+	if idx < 0 {
+		return args
+	}
+	type one struct {
+		name, width string
+		bare        bool
+	}
+	var spec []one
+	for _, x := range strings.Split(raw, ",") {
+		x = strings.TrimSpace(x)
+		if x == "" {
+			continue
+		}
+		name, w, has := strings.Cut(x, ":")
+		if !sprint.ValidID(name) {
+			return args
+		}
+		if !has {
+			// a bare name keeps a width nova-config already holds. Only an
+			// empty one is filled, and only so a test that used to rely on
+			// the control card still deals (docs/SPEC-SPRINT.md section 5).
+			fill := strconv.Itoa(sprint.DefaultWidth)
+			if m != nil {
+				got, _, err := m.ConfigWidths(context.Background(), []string{name}, nil)
+				if err == nil && strings.TrimSpace(got[name]) != "" {
+					fill = ""
+				}
+			}
+			spec = append(spec, one{name: name, width: fill, bare: true})
+			continue
+		}
+		got, ok := wholeWidth(w)
+		if !ok || got == "0" {
+			return args
+		}
+		spec = append(spec, one{name: name, width: got})
+	}
+	if len(spec) == 0 || m == nil {
+		return args
+	}
+	names := make([]string, len(spec))
+	for i, s := range spec {
+		if s.width != "" {
+			m.SetMachineWidth(s.name, s.width)
+		}
+		names[i] = s.name
+	}
+	joined := strings.Join(names, ",")
+	out := append([]string(nil), args...)
+	if inline {
+		out[idx] = "--members=" + joined
+	} else {
+		out[idx+1] = joined
+	}
+	return out
 }
 
 // readersTableOn opts an explicitly legacy fixture out of read cards after
@@ -641,6 +892,9 @@ func (ta *testApp) dry(line string) string {
 // dealStep cuts and deals work cards by hand, the step the tick's deal replaced
 // (sprint.TickDeal): a test that needs exact queues deals with it.
 func dealStep(r sprint.DealReq) store.Step {
-	return store.Step{Args: store.ArgsOf(r), Verb: "deal", Load: []string{sprint.Work, sprint.Fleet, sprint.Merge}, Mirrors: true, Routes: true,
+	// Widths: the deal reads machine:<m> on this step (docs/SPEC-SPRINT.md
+	// section 5; tla/Level.tla Width). A hand deal with no read deals at
+	// width 0 and refuses every card.
+	return store.Step{Args: store.ArgsOf(r), Verb: "deal", Load: []string{sprint.Work, sprint.Fleet, sprint.Merge}, Mirrors: true, Routes: true, Widths: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Deal(s, r) }}
 }

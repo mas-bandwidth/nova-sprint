@@ -226,6 +226,15 @@ func (st *Store) cardOf(ctx context.Context, id string, held bool) (CardInfo, er
 	if err != nil {
 		return v, err
 	}
+	// the hold says what the next tick would do, and that tick reads
+	// nova-config's width (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	if len(tables) > 1 {
+		if members := s.Members(); len(members) > 0 {
+			if machine, _, werr := st.Widths(ctx, members, nil); werr == nil {
+				s.Widths = machine
+			}
+		}
+	}
 	v.Needs, v.NeededBy = sprint.NeedsOf(s, id)
 	v.Column = s.Work.Column(sprint.States...)
 	if len(tables) > 1 {

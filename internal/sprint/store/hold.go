@@ -23,7 +23,9 @@ func HoldStep(r sprint.HoldReq) Step {
 	// the roster or the beats read for it
 	args := r
 	args.Friends, args.Alive = nil, nil
-	return Step{Named: true, Args: ArgsOf(args), Verb: verb, Load: tables(sprint.Fleet, sprint.Work, sprint.Merge, sprint.Readers), Mirrors: true, Readers: true,
+	// a hold redeals by nova-config's width, read with the step (docs/SPEC-SPRINT.md
+	// section 5; tla/Level.tla Width). A room of 0 would leave the cards where they are.
+	return Step{Named: true, Args: ArgsOf(args), Verb: verb, Load: tables(sprint.Fleet, sprint.Work, sprint.Merge, sprint.Readers), Mirrors: true, Readers: true, Widths: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.HoldNames(s, r) }}
 }
 

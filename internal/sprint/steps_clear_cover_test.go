@@ -68,8 +68,8 @@ func TestStepsClearCoverRestoreShape(t *testing.T) {
 		assert.Equal(t, Ctl, e.Create.Col)
 		assert.Zero(t, e.Create.Score)
 		assert.Equal(t, map[string]string{
-			"kind": "member", "status": Up, "since": since, "held": since, FieldWidth: "3",
-		}, e.Set)
+			"kind": "member", "status": Up, "since": since, "held": since,
+		}, e.Set, "a clear carries no width")
 		assert.Equal(t, "member m1 up", m1.Moved)
 
 		m2 := p.Units[3]

@@ -28,8 +28,8 @@ func TestTheWidthIsSetByInitAndFleetUpAndShown(t *testing.T) {
 	require.Equal(t, "64", fleet["m1"]["width"], "the widths: %v", fleet)
 	require.Equal(t, "3", fleet["m2"]["width"], "the widths: %v", fleet)
 	require.Equal(t, "8", fleet["m3"]["width"], "the widths: %v", fleet)
-	// a width of 0 drains the member (fleet_drain_test.go): it is written, not refused
-	assert.Contains(t, ta.ok("fleet up m3 --width 0"), "width=0 (drains")
+	// a width of 0 drains the member (fleet_drain_test.go): nova-config writes it
+	ta.ok("fleet up m3 --width 0")
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))
 	require.Equal(t, "0", v.Tables["fleet"]["m3"]["width"], "the widths: %v", v.Tables["fleet"])
 	for _, line := range []string{"fleet up m4 --width -1", "fleet up m4 --width 1025", "fleet up m4 --width x"} {

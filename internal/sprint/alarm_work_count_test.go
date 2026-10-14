@@ -11,7 +11,8 @@ func TestTheFleetAlarmIgnoresReadsCrossingTheThreshold(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
 	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 4}))
+		w.setWidth(m, 4)
+		w.up(m)
 	}
 	w.s.Work.SetProp(PropAlarmFleet, "50")
 	w.s.Work.Put(&Card{ID: "s1-wait", Row: "s1", Col: Waiting, Rev: 1, Fields: map[string]string{"kind": "primary"}})
@@ -47,7 +48,8 @@ func TestTheIdleFleetCountsWorkNotReads(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
 	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 4}))
+		w.setWidth(m, 4)
+		w.up(m)
 	}
 	w.s.Fleet.Put(&Card{ID: "work.w1", Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "work"}})
 	working, width := FleetWorking(w.s)

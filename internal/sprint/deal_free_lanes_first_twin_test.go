@@ -3,6 +3,7 @@ package sprint_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -57,7 +58,8 @@ func newDealRig(t *testing.T) *dealRig {
 
 func (r *dealRig) up(name string, width int) {
 	r.t.Helper()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name, Width: width}))
+	r.m.SetMachineWidth(name, strconv.Itoa(width))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: name}))
 	r.members = append(r.members, name)
 }
 
@@ -125,6 +127,11 @@ func (r *dealRig) snap() *sprint.Snapshot {
 	r.t.Helper()
 	s, err := r.st.Load(r.ctx, store.All, nil)
 	require.NoError(r.t, err)
+	// the rebalance and the deal read machine:<m> (docs/SPEC-SPRINT.md section 5;
+	// tla/Level.tla Width). Load keeps the tables; the twin's width comes with them.
+	if w, _, werr := r.m.ConfigWidths(r.ctx, s.Members(), nil); werr == nil {
+		s.Widths = w
+	}
 	return s
 }
 

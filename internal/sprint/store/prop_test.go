@@ -20,6 +20,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -346,6 +347,11 @@ func (r *propRun) act(a pAct) {
 	switch a.K {
 	case "up", "down":
 		op := map[string]string{"up": "release", "down": "hold"}[a.K] // the verbs: fleet down holds, fleet up releases
+		if op == "release" {
+			// the deal reads machine:<m>, which fleet up does not write
+			// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width)
+			r.m.SetMachineWidth(member, strconv.Itoa(sprint.DefaultWidth))
+		}
 		r.run("nova-sprint fleet "+a.K+" "+member, FleetStep(sprint.FleetReq{Op: op, Member: member, Who: "coord", Fresh: true}))
 	case "start", "stop":
 		r.say("nova-sprint %s", a.K)
@@ -804,6 +810,7 @@ func (r *propRun) decide(v InboxView, g sprint.Group, choice int, progress bool)
 		s := r.snap()
 		for _, m := range r.cfg.members {
 			if s != nil && s.MemberCtl(m).F("status") != sprint.Up {
+				r.m.SetMachineWidth(m, strconv.Itoa(sprint.DefaultWidth))
 				r.run("nova-sprint fleet up "+m, FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "coord", Fresh: true, Probe: sprint.EnvProbePassed}))
 				break
 			}
@@ -993,6 +1000,11 @@ func (r *propRun) check(i int, a pAct) *propFail {
 			return fail("error", "queue: %v", err)
 		}
 		fs = sprint.WithQueue(fs, q)
+		// the check plans on the same machine:<m> width the tick read
+		// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width)
+		if w, _, werr := r.m.ConfigWidths(r.ctx, fs.Members(), nil); werr == nil {
+			fs.Widths = w
+		}
 		req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween}
 		for _, part := range sprint.TickParts {
 			if slices.ContainsFunc(sprint.TickStart, func(x sprint.TickPartDef) bool { return x.Name == part.Name }) {

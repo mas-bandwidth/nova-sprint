@@ -57,7 +57,7 @@ func TestARemovedMemberRejoinedBeforeTheDeleteKeepsItsRowAndCards(t *testing.T) 
 		// fleet up m2, as another coordinator command between the read and the delete
 		_, err := raw.RejoinMembers(ctx, []string{"m2"})
 		require.NoError(t, err)
-		_, err = raw.Run(ctx, store.FleetStep(sprint.FleetReq{Op: "release", Member: "m2", Fresh: true, Who: "tester"}))
+		_, err = raw.Run(ctx, store.FleetStep(sprint.FleetReq{Op: "release", Member: "m2", Fresh: true, Who: "tester", Probe: sprint.EnvProbePassed}))
 		require.NoError(t, err)
 		_, err = raw.Run(ctx, store.FleetStep(sprint.FleetReq{Op: "hold", Member: "m1", Who: "tester"}))
 		require.NoError(t, err)

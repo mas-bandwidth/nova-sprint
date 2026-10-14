@@ -1094,12 +1094,13 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 	var want []SyncMember
 	for _, m := range in.Machines {
 		machines = append(machines, m.Name)
-		w := m.Width
 		if m.Default {
-			w = WidthOfCores(in.Req.Beats[m.Name].Cores)
+			// its width is not in nova-config: the deal deals it nothing
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m.Name, Status: DoctorDrift, Evidence: "width not in nova-config: the machine row names no width", Remedy: WidthRemedy(m.Name)})
+			continue
 		}
-		if w > 0 {
-			want = append(want, SyncMember{Name: m.Name, Width: w})
+		if m.Width > 0 {
+			want = append(want, SyncMember{Name: m.Name, Width: m.Width})
 		}
 	}
 	slices.SortFunc(want, func(a, b SyncMember) int { return strings.Compare(a.Name, b.Name) })

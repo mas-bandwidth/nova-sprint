@@ -2,6 +2,7 @@ package sprint_test
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,9 +20,12 @@ func TestHoldReturnLeavesTakenCardsWithTheirWorker(t *testing.T) {
 
 	// Work 30 pro primaries on m2/m3 while m1 drains. Once they finish,
 	// m1 receives one actual read card for each primary at review.
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Drain: true, Who: "coordinator"}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 40, Who: "coordinator"}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Width: 40, Who: "coordinator"}))
+	r.m.SetMachineWidth("m1", sprint.DrainWidth)
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: "coordinator"}))
+	r.m.SetMachineWidth("m2", strconv.Itoa(40))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Who: "coordinator"}))
+	r.m.SetMachineWidth("m3", strconv.Itoa(40))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Who: "coordinator"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: 30, Brief: proBrief}))
 	r.tick()
 	r.tick()
@@ -42,11 +46,14 @@ func TestHoldReturnLeavesTakenCardsWithTheirWorker(t *testing.T) {
 		r.must(store.TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 		r.must(store.FinishStep(sprint.FinishReq{As: member, Head: fmt.Sprintf("%040d", 1), Branch: "sprint/reads", Report: "done", Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 	}
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 40, Who: "coordinator"}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(40))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: "coordinator"}))
 	r.tick()
 	// m1 now has one read card for each of the 30 reviewed primaries.
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Drain: true, Who: "coordinator"}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Drain: true, Who: "coordinator"}))
+	r.m.SetMachineWidth("m2", sprint.DrainWidth)
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Who: "coordinator"}))
+	r.m.SetMachineWidth("m3", sprint.DrainWidth)
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Who: "coordinator"}))
 	r.tick()
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: 6, Brief: proBrief}))
 	r.tick()
@@ -164,7 +171,8 @@ func TestHoldReturnOnADownMemberStillRedealsItsWorkingCards(t *testing.T) {
 	r.tick()
 	taken := r.takeOne("m1")
 	gen := r.snap().Fleet.Card(taken).Int("gen")
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Width: 2, Who: "coordinator"}))
+	r.m.SetMachineWidth("m3", strconv.Itoa(2))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Who: "coordinator"}))
 	// The beat has genuinely lapsed before the coordinator marks the member
 	// down; Finish keeps the dead run present for the following hold --return.
 	r.mu.Lock()

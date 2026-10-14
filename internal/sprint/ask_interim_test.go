@@ -184,8 +184,8 @@ func TestAHeavyCardIsReadOnPro(t *testing.T) {
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	w := newWorld(t, "reader-m1", "reader-m2")
 	w.readersTable() // explicit legacy reader-table fixture
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	johnny := FriendSeat{Name: "johnny", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteHeavy}}
 	w.s.Friends = []FriendSeat{johnny}
 	w.s.Routes = []Route{

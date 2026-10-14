@@ -108,7 +108,7 @@ func TestEveryRouteFullTheCardWaitsReadyThenIsDealt(t *testing.T) {
 func TestConcurrencyTwoTheThirdTakeWaits(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 3)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3"}))
+	w.up("m3")
 	proMercury(w)
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 3}}))
 	byMember := map[string]string{}

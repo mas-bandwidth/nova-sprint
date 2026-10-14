@@ -77,7 +77,8 @@ func TestAHighPrimarysReadIsAskedAndDealtFirst(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-m1")
 		w.readersTable() // this case observes the standalone reader row
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
+		w.setWidth("m1", 1)
+		w.up("m1")
 		putReview(w, "s1-1", "s1-1: older (s1) tier: flash\n", 1, 1, "h1")
 		w.s.Work.Card("s1-1").Fields[FieldFinishedAt] = stamp(t0.Add(-60 * 60e9))
 		w.s.Work.Put(&Card{ID: "s1-2", Row: "s1", Col: Review, Score: 2, Rev: 1, Fields: map[string]string{

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -80,6 +81,16 @@ func (r *holeRec) RowsAdd(ctx context.Context, table string, rows []string) erro
 }
 
 func (r *holeRec) set(cur string) { r.mu.Lock(); r.cur = cur; r.mu.Unlock() }
+
+// ConfigWidths reads machine:<m> through the wrapped store. The embed's name
+// is unexported, so a walk cannot see it (docs/SPEC-SPRINT.md section 5;
+// tla/Level.tla Width).
+func (r *holeRec) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	if wr, ok := r.holeBackend.(WidthReader); ok {
+		return wr.ConfigWidths(ctx, members, friends)
+	}
+	return nil, nil, fmt.Errorf("the store cannot read nova-config's machine:* or friend:* widths; grant the Redis user the \"machines\" and \"friends\" ACL groups (nova-tools pkg/redisacl)")
+}
 
 // take is the writes noted so far, and forgets them.
 func (r *holeRec) take() []holeWrite {
@@ -243,8 +254,10 @@ func holesUp(h *harness, n int) {
 	h.readersTable() // this fixture consumes standalone readers
 
 	h.t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.m.SetMachineWidth("m2", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	for _, st := range []string{"s1", "s2", "s3"} {
 		h.must(AddStep(sprint.AddReq{Stream: st, Count: n}))
 	}

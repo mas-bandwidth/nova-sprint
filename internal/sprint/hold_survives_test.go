@@ -126,7 +126,7 @@ func TestNoUnsetterTouchesACoordinatorsHold(t *testing.T) {
 		run  func(t *testing.T, w *world)
 	}{
 		{
-			name: "the passed probe", site: "steps_work.go:3222",
+			name: "the passed probe", site: "steps_work.go:3224",
 			run: func(t *testing.T, w *world) {
 				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 				holdSurvives(t, w.s.MemberCtl("m1"))
@@ -151,7 +151,7 @@ func TestNoUnsetterTouchesACoordinatorsHold(t *testing.T) {
 			},
 		},
 		{
-			name: "the sync's drift release", site: "fleet_sync.go:255",
+			name: "the sync's drift release", site: "fleet_sync.go:247",
 			run: func(t *testing.T, w *world) {
 				w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 					Sync: []SyncMember{{"m1", DefaultWidth}}, Machines: []string{"m1"}}))

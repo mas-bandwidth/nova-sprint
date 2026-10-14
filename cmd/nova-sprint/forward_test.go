@@ -35,7 +35,13 @@ func clientOf(t *testing.T, r *serverRig, actor string, sent *[][]string) (*app,
 	c.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
 		assert.Equal(t, "127.0.0.1:6390", addr)
 		*sent = append(*sent, verbs...)
-		return r.a.serveFrom(sprintwire.Request{Verbs: verbs}, true).Results, nil
+		// the server's twin holds nova-config's width; the client names no store
+		// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width)
+		run := make([][]string, len(verbs))
+		for i, v := range verbs {
+			run[i] = applyConfigWidthArgs(r.a, v)
+		}
+		return r.a.serveFrom(sprintwire.Request{Verbs: run}, true).Results, nil
 	}
 	return c, func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
@@ -235,7 +241,7 @@ func TestTheLoopbackListenerHoldsAWorkersVerbToItsEpoch(t *testing.T) {
 	local := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{
 		{"take", "--as", "m1", "--limit", "1"},
 		{"take", "--as", "m1", "--limit", "1", "--epoch", "0", "--json"},
-		{"fleet", "up", "m1", "--width", "3", "--actor", "boss"},
+		{"fleet", "up", "m1", "--actor", "boss"},
 	}}, true).Results
 	assert.Equal(t, 2, local[0].Code, "no epoch: %s", local[0].Stderr)
 	assert.Len(t, taken(t, local[1]), 1)
@@ -297,7 +303,7 @@ func TestTheServerNeverActsAsItsOwnEnvironment(t *testing.T) {
 	res := r.a.serveFrom(sprintwire.Request{Verbs: [][]string{
 		{"clear", "--confirm", "sprint"},
 		{"inbox", "--read"},
-		{"fleet", "up", "m1", "--width", "3", "--actor", "boss"},
+		{"fleet", "up", "m1", "--actor", "boss"},
 	}}, true).Results
 	require.Len(t, res, 3)
 	assert.Equal(t, 2, res[0].Code, "%s%s", res[0].Stdout, res[0].Stderr)

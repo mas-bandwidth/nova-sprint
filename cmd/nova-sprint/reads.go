@@ -26,6 +26,40 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
+// queueConfigWidth is the width a worker's queue answers with: the width
+// field of machine:<m> (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+// A reader-<m> uses m. ok is false when the width is missing or not a number,
+// and when as names no machine. Width 0 is the drain and ok is true.
+func queueConfigWidth(ctx context.Context, st *store.Store, as string, isReader bool) (int, bool) {
+	member := as
+	if isReader {
+		m, ok := sprint.ReaderMachine(as)
+		if !ok {
+			return 0, false
+		}
+		member = m
+	}
+	if member == "" {
+		return 0, false
+	}
+	machine, _, err := st.Widths(ctx, []string{member}, nil)
+	if err != nil {
+		return 0, false
+	}
+	raw := strings.TrimSpace(machine[member])
+	if raw == "" {
+		return 0, false
+	}
+	if raw == sprint.DrainWidth {
+		return 0, true
+	}
+	n, err := sprint.ParseWidth(raw)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 // The read verbs: queue, where, inbox, card, check. Each has --json, one
 // object for a program; the driver reads the sprint through them.
 
@@ -244,8 +278,6 @@ func upWidth(t ntable.Table) int {
 		}
 		if w, err := sprint.ParseWidth(r.Texts[sprint.FieldWidth]); err == nil {
 			n += w
-		} else {
-			n += sprint.DefaultWidth
 		}
 	}
 	return n
@@ -373,11 +405,18 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	} else {
+		// the worker's width is nova-config's, read with the queue
+		// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width): machine:<m>
+		// for a member, and the same hash for reader-<m>. A missing width
+		// stays unset. Width 0 is the drain.
+		if n, ok := queueConfigWidth(ctx, st, *as, isReader); ok {
+			width = n
+		}
 		var mine []*sprint.Card
 		for _, t := range []struct{ table, a, b string }{{sprint.Readers, sprint.Asked, sprint.Reading}, {sprint.Fleet, sprint.Ready, sprint.Working}} {
 			cols := []string{t.a, t.b}
 			if t.table == sprint.Fleet {
-				cols = append(cols, sprint.Ctl) // the member's control card: its width, read with its cards
+				cols = append(cols, sprint.Ctl) // the control card is not a card the worker runs
 			}
 			cs, err := st.ReadCells(ctx, t.table, *as, cols...)
 			if err != nil {
@@ -386,24 +425,12 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			var own []*sprint.Card
 			for _, x := range cs {
 				if x.Col == sprint.Ctl {
-					width = sprint.MemberWidth(x)
 					continue
 				}
 				own = append(own, x)
 			}
 			add(t.table, own)
 			mine = append(mine, own...)
-		}
-		// a reader runs at its machine's width: reader-<m>'s is m's fleet row's
-		// (sprint.ReaderMachine), read here as the member's own is above
-		if m, ok := sprint.ReaderMachine(*as); isReader && ok {
-			ctl, err := st.ReadCells(ctx, sprint.Fleet, m, sprint.Ctl)
-			if err != nil {
-				return a.queueReadFailed("queue", err, stderr)
-			}
-			if len(ctl) > 0 {
-				width = sprint.MemberWidth(ctl[0])
-			}
 		}
 		at := want.of(mine)
 		need := make([]*sprint.Card, len(at))

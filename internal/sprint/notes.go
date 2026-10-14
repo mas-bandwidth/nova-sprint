@@ -167,6 +167,9 @@ var Decisions = map[string][]string{
 	// the machine held a member for its takes that end with no model call: the
 	// judgment is the hold's cause, so answering it ends the hold (hold_cause.go)
 	NMemberIdleReaps: {"ack", "wait"},
+	// a member whose machine:<m> width is missing, empty or not a whole number:
+	// the deal deals it nothing until the width is in nova-config (width.go)
+	NWidthNotInConfig: {"ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

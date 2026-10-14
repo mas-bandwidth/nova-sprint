@@ -518,8 +518,12 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		if mode == "" {
 			mode = config.DefaultFriendMode
 		}
-		line += fmt.Sprintf(" row_mode=%s row_width=%d", mode, spec.Width)
-		facts["row_mode"], facts["row_width"] = mode, spec.Width
+		rowWidth := spec.Width
+		if _, fw, werr := st.Widths(ctx, nil, []string{friend}); werr == nil {
+			rowWidth = store.FriendConfigWidth(spec.Width, fw[friend])
+		}
+		line += fmt.Sprintf(" row_mode=%s row_width=%d", mode, rowWidth)
+		facts["row_mode"], facts["row_width"] = mode, rowWidth
 		pronouns := spec.Pronouns
 		if pronouns == "" {
 			pronouns = config.DefaultFriendPronouns
@@ -608,10 +612,9 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 	}
 	w := 0
 	if width != nil && *width != "" {
-		var err error
-		if w, err = sprint.ParseWidth(*width); err != nil {
-			return refuse(stderr, name, "--width: "+err.Error())
-		}
+		// a width is nova-config's alone (docs/SPEC-SPRINT.md section 5;
+		// tla/Level.tla Width): friend up writes nothing
+		return refuse(stderr, name, "a width is nova-config's alone: nova-config friend set "+friend+" --width "+*width)
 	}
 	var why string
 	var back time.Time

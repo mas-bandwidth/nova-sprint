@@ -45,24 +45,24 @@ func TestWidthCoverWidthTextRendersTheControlCardsWidth(t *testing.T) {
 			want: strconv.Itoa(DefaultWidth),
 		},
 		{
-			name: "refusal: a control card naming no width keeps the default",
+			name: "a control card naming no width renders nothing",
 			ctl:  widthCoverCtl("m3", ""),
-			want: strconv.Itoa(DefaultWidth),
+			want: "",
 		},
 		{
-			name: "refusal: a width past MaxWidth keeps the default",
+			name: "a width past MaxWidth is rendered as written",
 			ctl:  widthCoverCtl("m4", strconv.Itoa(MaxWidth+1)),
-			want: strconv.Itoa(DefaultWidth),
+			want: strconv.Itoa(MaxWidth + 1),
 		},
 		{
-			name: "refusal: a width that is not a whole number keeps the default",
+			name: "a width that is not a whole number is rendered as written",
 			ctl:  widthCoverCtl("m5", "wide"),
-			want: strconv.Itoa(DefaultWidth),
+			want: "wide",
 		},
 		{
-			name: "refusal: a member with no control card at all keeps the default",
+			name: "a member with no control card renders nothing",
 			ctl:  nil,
-			want: strconv.Itoa(DefaultWidth),
+			want: "",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

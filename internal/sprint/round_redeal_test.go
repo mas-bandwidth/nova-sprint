@@ -109,7 +109,8 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 	for _, rework := range []reworkIt{stepRework} {
 		w := newWorld(t, "reader-a")
 		for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2 (width.go)
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+			w.setWidth(m, 1)
+			w.up(m)
 		}
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
@@ -135,7 +136,8 @@ func TestTheDealSkipsAFreeLaneStagingRefuser(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+		w.setWidth(m, 1)
+		w.up(m)
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
@@ -147,8 +149,8 @@ func TestTheDealSkipsAFreeLaneStagingRefuser(t *testing.T) {
 	// m1 refused it at staging: the card must never go back to m1
 	wc = w.s.Fleet.Card("s1-1.w1")
 	wc.Fields[FieldStagingTake+itoa(wc.Int("gen"))] = ProviderTake{Member: "m1"}.String()
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	w.up("m1")
+	w.up("m2")
 	// m2 at its lane (full, but with room), m1 with a free lane: the redeal skips
 	// m1 in the lane scan (it refused) and goes to m2's room
 	putWorkCard(w, "x1", "m2", Ready, 100, nil)
@@ -177,7 +179,7 @@ func TestADownMembersCardsGoRoundTheFleet(t *testing.T) {
 	// fleet down (the verb, and presence's down)
 	w := newWorld(t, "reader-a")
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+		w.up(m)
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
 	for i := 1; i <= 6; i++ {
@@ -242,7 +244,7 @@ func TestTheLevelGoesRoundTheFleet(t *testing.T) {
 	// fleet level (the verb and T4)
 	w := newWorld(t, "reader-a")
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+		w.up(m)
 	}
 	for _, m := range members[1:] {
 		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: m}))

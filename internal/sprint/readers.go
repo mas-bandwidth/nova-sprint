@@ -856,11 +856,10 @@ func (s *Snapshot) ReaderWidth(reader string) int {
 	if !ok || s.Fleet == nil {
 		return math.MaxInt
 	}
-	ctl := s.MemberCtl(m)
-	if ctl == nil {
+	if s.WidthMissing(m) {
 		return math.MaxInt
 	}
-	return MemberWidth(ctl)
+	return s.Width(m)
 }
 
 // readerLoad is a reader's reads asked and reading together.

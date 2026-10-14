@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,6 +29,10 @@ func fourMembers(t *testing.T) *harness {
 	h.live = append(h.live, "m3", "m4")
 	h.mu.Unlock()
 	h.beat()
+	// m3 and m4 are past the harness's two live members (docs/SPEC-SPRINT.md
+	// section 5; tla/Level.tla Width).
+	h.m.SetMachineWidth("m3", strconv.Itoa(sprint.MaxWidth))
+	h.m.SetMachineWidth("m4", strconv.Itoa(sprint.MaxWidth))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m4"}))
 	return h

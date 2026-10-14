@@ -45,7 +45,8 @@ func TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain(t *testing.T) {
 	t.Parallel()
 	w := idleSaid(t)
 	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Drain: true, Who: "coordinator"}))
+		w.setWidth(m, 0) // nova-config width 0 drains (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width)
+		w.up(m)
 	}
 	working, width := FleetWorking(w.s)
 	require.Equal(t, 0, width, "every member drains: no width up")
@@ -65,8 +66,10 @@ func TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain(t *testing.T) {
 func TestAnIdleEpisodeEndedByWorkSaysWorkingAgain(t *testing.T) {
 	t.Parallel()
 	w := idleSaid(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1, Who: "coordinator"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 1, Who: "coordinator"}))
+	w.setWidth("m1", 1)
+	w.up("m1")
+	w.setWidth("m2", 1)
+	w.up("m2")
 	w.s.Fleet.Put(&Card{ID: WorkCardID("idle-a", 1), Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "primary"}})
 	working, width := FleetWorking(w.s)
 	require.Equal(t, 1, working, "one card works")
@@ -140,8 +143,10 @@ func TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick(t *testing.T) {
 	assert.True(t, strings.HasPrefix(n.What, "fleet 0/128"), n.What)
 
 	// the fleet works at half its width: the episode recovers, with its one clear note
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1, Who: "coordinator"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 1, Who: "coordinator"}))
+	w.setWidth("m1", 1)
+	w.up("m1")
+	w.setWidth("m2", 1)
+	w.up("m2")
 	id := WorkCardID("idle-a", 1)
 	w.s.Fleet.Put(&Card{ID: id, Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "primary"}})
 	ticks(perWindow, func(int) int { return 1 }, "the fleet works: no new alarm, the old one stays")

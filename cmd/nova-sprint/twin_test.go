@@ -163,6 +163,12 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 			recordSeatLogin(t, ta.a, "127.0.0.1:6381")
 		}
 		code, out, errs := ta.do(line)
+		// fleet up --width and friend up --width parse, then refuse: a width is
+		// nova-config's alone (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+		// That refusal is exit 2 and is not a usage error.
+		if code == 2 && strings.Contains(errs, "a width is nova-config's alone") {
+			continue
+		}
 		assert.NotEqual(t, 2, code, "%s: exit 2, the usage refusal\n%s%s", line, out, errs)
 	}
 }

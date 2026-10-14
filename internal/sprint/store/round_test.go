@@ -2,6 +2,7 @@ package store
 
 import (
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -16,6 +17,7 @@ func TestTheRollingIndexesSurviveAStopAndAStart(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(6)
+	h.m.SetMachineWidth("m3", strconv.Itoa(sprint.DefaultWidth))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	st := h.st
 	deal := func(id string) string {

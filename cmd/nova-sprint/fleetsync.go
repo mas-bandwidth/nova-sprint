@@ -170,35 +170,20 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s %s: the config holds no machine row, and syncing to none would hold every member down; is this the fleet's config? run: nova-config machine list; nothing was changed\n", prog, name)
 		return exitCannotRead
 	}
-	// a row with no width has the default, half the cores its machine's beat
-	// reports (sprint.WidthOfCores); the sync writes the number it resolves
-	var defaults []string
-	for _, w := range ws {
-		if w.Default {
-			defaults = append(defaults, w.Machine)
-		}
-	}
-	beats := map[string]sprint.Beat{}
-	if len(defaults) > 0 {
-		if beats, err = st.Beats(ctx, defaults); err != nil {
-			fmt.Fprintf(stderr, "%s %s: the beats of the machines with the default width cannot be read: %s; nothing was changed; run: %s %s --check\n", prog, name, oneline.Escape(err.Error()), prog, name)
-			return exitCannotRead
-		}
-	}
+	// a row with no width names no width in nova-config: the deal deals it
+	// nothing, and the sync writes no width for it (a width is nova-config's
+	// alone).
 	var want []sprint.SyncMember
 	var machines, names []string
 	waiting := []string{}
 	for _, w := range ws {
 		machines = append(machines, w.Machine)
-		width := w.Width
 		if w.Default {
-			if width = sprint.WidthOfCores(beats[w.Machine].Cores); width == 0 {
-				waiting = append(waiting, fmt.Sprintf("%s has the default width, half its cores, and no beat has reported its cores yet; it joins the fleet at the sync after it beats (nova-sprint fleet beat %s on the machine)", w.Machine, w.Machine))
-				continue
-			}
+			waiting = append(waiting, fmt.Sprintf("%s names no width in nova-config: the deal deals it nothing; run: %s", w.Machine, sprint.WidthRemedy(w.Machine)))
+			continue
 		}
 		if w.Member() {
-			want = append(want, sprint.SyncMember{Name: w.Machine, Width: width})
+			want = append(want, sprint.SyncMember{Name: w.Machine, Width: w.Width})
 			names = append(names, w.Machine)
 		}
 	}
@@ -261,6 +246,15 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		return a.syncCheck(c.json, rep, drift, stdout)
 	}
 	if len(drift) == 0 {
+		// membership matches. The width column still follows nova-config, which
+		// a tick would read next: refresh it now, and write nothing else
+		// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+		if !*check {
+			if _, err := st.SyncFleet(ctx); err != nil {
+				fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.WithRemedy(oneline.Escape(err.Error()), prog+" "+name))
+				return 2
+			}
+		}
 		// the beat records a cleanup cut short still owes, whose rows are gone
 		if err := st.FinishDrops(ctx); err != nil {
 			fmt.Fprintf(stderr, "%s %s: the fleet table matches the inventory; deleting the beat records of members removed before: %s\n", prog, name, oneline.WithRemedy(oneline.Escape(err.Error()), prog+" "+name))

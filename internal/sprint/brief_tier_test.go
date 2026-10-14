@@ -13,7 +13,8 @@ import (
 func TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
@@ -31,7 +32,8 @@ func TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro(t *testing.T) {
 func TestAProBriefIsNeverDealtToFlash(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
@@ -71,7 +73,8 @@ func TestACardBriefWithNoResultLineTierIsRefusedByLint(t *testing.T) {
 func TestABriefEditThatChangesTierChangesThePin(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.setWidth("m1", 2)
+	w.up("m1")
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},

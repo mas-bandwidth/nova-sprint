@@ -682,6 +682,10 @@ func tickExtras(s *sprint.Snapshot) map[string][]string {
 func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *uint64, guard func(*sprint.Snapshot) string, due *int) Step {
 	step := Step{Verb: "tick " + name, Actor: sprint.MachineActor, Load: All, Extras: tickExtras, Epoch: epoch,
 		Mirrors: mirrors(name),
+		// the deal, the level, the rebalance and the ask plan on the members'
+		// config widths (Snapshot.Widths); the tick's own run overrides with its
+		// one read (WidthsGiven)
+		Widths: widthsPart(name),
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			if guard != nil {
 				if why := guard(s); why != "" {
@@ -1178,6 +1182,15 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if req.Friends, err = pinned.friendSeats(ctx, &first, now); err != nil {
 		return last, err
 	}
+	// the members' widths as nova-config's machine:<m> hash writes them, read once a
+	// tick (sprint.Snapshot.Widths): the deal, the level and the check plan on this
+	// reading, so a config change applies at the next tick with no restart and no sync.
+	if machineWidths, _, err := pinned.Widths(ctx, first.Members(), nil); err != nil {
+		return last, err
+	} else {
+		req.Widths = machineWidths
+		first.Widths = machineWidths
+	}
 	// each friend's session for the coordinator's pass (sprint.TickCoordinatorPass): every
 	// friend of the roster, whether or not she holds a card; a sprint with no friend reads
 	// the roster alone
@@ -1344,6 +1357,14 @@ func routesPart(name string) bool {
 	return name == "deal" || name == sprint.PartRebalance || name == "ask" || name == "check" || name == sprint.PartLevelReads || sprint.IsRulePart(name)
 }
 
+// widthsPart says every tick part plans on the tick's one read of machine:<m>
+// width (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width). The presence part
+// redeals a down member's cards by that width; a part that did not see it
+// withdrew them. The name is unused: every part reads the same widths.
+func widthsPart(name string) bool {
+	return name != ""
+}
+
 // MaxSettle bounds the updates a tick makes past its first pass while the
 // readers', merge's and fleet's updates write each other's tables: a tick
 // past it fails, naming the tables still written, so it never spins. Only
@@ -1433,6 +1454,13 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			// them, and the check asks what the ask does (sprint.enoughReadersUp)
 			v := *view
 			v.Friends = t.req.Friends
+			view = &v
+		}
+		if view != nil && view.Widths == nil && t.req.Widths != nil {
+			// the members' widths are the tick's, read once: the deal, the level and
+			// the check plan on them (sprint.Snapshot.Widths)
+			v := *view
+			v.Widths = t.req.Widths
 			view = &v
 		}
 		if view != nil && view.Routes == nil && routesPart(part.Name) {
@@ -1530,6 +1558,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		// the deal and the ask draw from the routes (a read card's route,
 		// route.go readRouteOf), and the check asks what the next deal does
 		step.Routes, step.RouteCache = routesPart(part.Name), &t.routes
+		// the deal, the level, the rebalance and the ask draw on the members' widths,
+		// and the check asks what the next deal does: the tick's one read, shared
+		step.Widths, step.WidthsGiven = widthsPart(part.Name), t.req.Widths
 		// the ask, and the parts that ask what the ask does, plan with the readers' states
 		step.Readers = part.Name == "ask" || part.Name == "check" || part.Name == sprint.PartLevelReads
 		step.ReaderStates = t.readers

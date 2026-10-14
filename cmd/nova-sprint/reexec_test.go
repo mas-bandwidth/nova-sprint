@@ -154,7 +154,7 @@ func envWithout(env []string, drop []string, extra ...string) []string {
 func TestTheIncidentWordsRunTheCLIAndNeverTheSuite(t *testing.T) {
 	t.Parallel()
 	twin := "mem:" + filepath.Join(t.TempDir(), "sprint.twin")
-	words := []string{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", twin, "--actor", "boss"}
+	words := []string{"init", "--readers", "reader-a", "--members", "m1", "--redis", twin, "--actor", "boss"}
 	depthEnv := testbin.DepthEnv(reexecTool)
 	marks := []string{reexecCLIEnv, depthEnv}
 	base := envWithout(os.Environ(), marks)

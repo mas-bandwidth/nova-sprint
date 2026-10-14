@@ -217,6 +217,15 @@ func (st *Store) Held(ctx context.Context, id string) (sprint.Hold, error) {
 	if err != nil {
 		return sprint.Hold{}, err
 	}
+	// what the next tick would do is read from nova-config's width, the same
+	// read the tick plans on (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	if members := s.Members(); len(members) > 0 {
+		machine, _, werr := st.Widths(ctx, members, nil)
+		if werr != nil {
+			return sprint.Hold{}, werr
+		}
+		s.Widths = machine
+	}
 	h, err := st.heldState(ctx, s, nil)
 	if err != nil {
 		return sprint.Hold{}, err

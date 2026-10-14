@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ func crSprint(t *testing.T, seed uint64) *crWorld {
 	h := newHarness(t)
 	h.readersTable() // explicit legacy reader-table fixture
 	w := &crWorld{h: h, rng: rand.New(rand.NewPCG(seed, 7)), crossAge: map[string]int{}, readyToAccept: map[string]int{}}
+	// m3 is not one of the harness's two live members, so its nova-config width
+	// is set here (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	h.m.SetMachineWidth("m3", strconv.Itoa(sprint.DefaultWidth))
 	for _, m := range crMembers {
 		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}

@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -121,6 +124,184 @@ func (st *Store) tellStrangers(ctx context.Context) (Result, error) {
 
 // beatKey is a member's beat record.
 func beatKey(member string) string { return "beat:" + member }
+
+// machineKey is nova-config's machine row hash (machine:<m>), whose width
+// field is the one definition of a member's width (docs/SPEC-SPRINT.md
+// section 5). It is read raw, under no deployment prefix.
+func machineKey(machine string) string { return "machine:" + machine }
+
+// friendDesiredKey is nova-config's friend desired hash (friend:<f>:desired),
+// whose width field is a friend's one capacity number.
+func friendDesiredKey(friend string) string { return "friend:" + friend + ":desired" }
+
+// WidthReader is a store that holds nova-config's machine:<m> and
+// friend:<f>:desired width fields, read with the snapshot on every tick. A
+// store that is not one, or whose Redis user may not read those keys, refuses
+// the tick loudly (never a fallback): the user needs the "machines" and
+// "friends" ACL groups (nova-tools pkg/redisacl).
+type WidthReader interface {
+	// ConfigWidths returns the width field of each machine:<m> hash and each
+	// friend:<f>:desired hash, by name; a name whose hash is missing or whose
+	// width field is empty reads "". One exchange.
+	ConfigWidths(ctx context.Context, members, friends []string) (machine, friend map[string]string, err error)
+}
+
+// Widths reads the members' and friends' widths from nova-config, in one
+// exchange, as a step that deals or levels reads them with its snapshot. It
+// refuses (never falls back) when the store cannot read machine:* or
+// friend:*.
+func (st *Store) Widths(ctx context.Context, members, friends []string) (machine, friend map[string]string, err error) {
+	wr, ok := widthReaderOf(st.B)
+	if !ok {
+		return nil, nil, fmt.Errorf("the store cannot read nova-config's machine:* or friend:* widths; grant the Redis user the \"machines\" and \"friends\" ACL groups (nova-tools pkg/redisacl)")
+	}
+	return wr.ConfigWidths(ctx, members, friends)
+}
+
+// AttachConfigWidths copies nova-config's machine widths onto a snapshot a
+// display reads (take, view). A tick already does this with its own step.
+// A store that cannot read machine:* leaves the snapshot as it was, and the
+// caller says the width is missing rather than inventing one
+// (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+func (st *Store) AttachConfigWidths(ctx context.Context, s *sprint.Snapshot) {
+	if st == nil || s == nil {
+		return
+	}
+	members := s.Members()
+	if len(members) == 0 {
+		return
+	}
+	machine, _, err := st.Widths(ctx, members, nil)
+	if err != nil {
+		return
+	}
+	if s.Widths == nil {
+		s.Widths = map[string]string{}
+	}
+	for m, w := range machine {
+		s.Widths[m] = w
+	}
+}
+
+// widthReaderOf is the backend when it reads nova-config widths, or the store
+// a wrapper embeds when the wrapper itself does not. A tick on a wrapped twin
+// still reads machine:<m> (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+// A backend that is not a reader, and does not embed one, refuses.
+func widthReaderOf(b Backend) (WidthReader, bool) {
+	if b == nil {
+		return nil, false
+	}
+	if wr, ok := b.(WidthReader); ok {
+		return wr, true
+	}
+	return walkWidthReader(reflect.ValueOf(b), 0)
+}
+
+func walkWidthReader(v reflect.Value, depth int) (WidthReader, bool) {
+	if depth > 6 || !v.IsValid() {
+		return nil, false
+	}
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return nil, false
+		}
+	}
+	// an unexported field can be walked but not interfaced
+	if v.CanInterface() {
+		if wr, ok := v.Interface().(WidthReader); ok {
+			return wr, true
+		}
+	}
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		return walkWidthReader(v.Elem(), depth+1)
+	case reflect.Struct:
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			if !t.Field(i).Anonymous {
+				continue
+			}
+			if wr, ok := walkWidthReader(v.Field(i), depth+1); ok {
+				return wr, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// ConfigWidths reads the width field of each machine:<m> and
+// friend:<f>:desired hash, in one pipeline.
+func (r *Redis) ConfigWidths(ctx context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	pipe := r.C.Pipeline()
+	mh := make(map[string]interface{ Val() map[string]string }, len(members))
+	for _, m := range members {
+		mh[m] = pipe.HGetAll(ctx, machineKey(m))
+	}
+	fh := make(map[string]interface{ Val() map[string]string }, len(friends))
+	for _, f := range friends {
+		fh[f] = pipe.HGetAll(ctx, friendDesiredKey(f))
+	}
+	if err := redisconn.Exec(ctx, pipe); err != nil {
+		return nil, nil, err
+	}
+	machine, friend := make(map[string]string, len(members)), make(map[string]string, len(friends))
+	for _, m := range members {
+		machine[m] = mh[m].Val()["width"]
+	}
+	for _, f := range friends {
+		friend[f] = fh[f].Val()["width"]
+	}
+	return machine, friend, nil
+}
+
+// ConfigWidths is the widths the setters gave the twin store.
+func (m *Mem) ConfigWidths(_ context.Context, members, friends []string) (map[string]string, map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.count("widths")
+	if err := m.fail("widths"); err != nil {
+		return nil, nil, err
+	}
+	machine, friend := make(map[string]string, len(members)), make(map[string]string, len(friends))
+	for _, n := range members {
+		machine[n] = m.kv[machineKey(n)]
+	}
+	for _, n := range friends {
+		friend[n] = m.kv[friendDesiredKey(n)]
+	}
+	return machine, friend, nil
+}
+
+// SetMachineWidth gives the twin store the width field of a machine row, as
+// nova-config apply does (machine:<m>). For tests.
+func (m *Mem) SetMachineWidth(machine, width string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.kv == nil {
+		m.kv = map[string]string{}
+	}
+	m.kv[machineKey(machine)] = width
+}
+
+// DeleteMachineWidth takes a machine's row off the twin, as nova-config apply
+// would when the machine is dropped. For tests.
+func (m *Mem) DeleteMachineWidth(machine string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.kv, machineKey(machine))
+}
+
+// SetFriendDesiredWidth gives the twin store the width field of a friend's
+// desired hash, as nova-config apply does (friend:<f>:desired). For tests.
+func (m *Mem) SetFriendDesiredWidth(friend, width string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.kv == nil {
+		m.kv = map[string]string{}
+	}
+	m.kv[friendDesiredKey(friend)] = width
+}
 
 // KeysGetter is a store that reads many records in one exchange.
 type KeysGetter interface {
@@ -329,12 +510,16 @@ func (st *Store) SyncFleet(ctx context.Context) (bool, error) {
 		}
 	}
 	now := st.now()
+	widths, _, err := st.Widths(ctx, members, nil)
+	if err != nil {
+		return false, err
+	}
 	status := map[string]string{}
 	diffs := map[string]map[string]string{}
 	for _, row := range shape.Rows {
 		m, _ := rs.Member(pinned.sid(sprint.CtlID(row.Key)))
 		ctl := &sprint.Card{Fields: m.Fields}
-		want := map[string]string{sprint.Status: dash(ctl.F("status")), sprint.Load: "", sprint.FieldWidth: sprint.WidthText(ctl)}
+		want := map[string]string{sprint.Status: dash(ctl.F("status")), sprint.Load: "", sprint.FieldWidth: strings.TrimSpace(widths[row.Key])}
 		if beats != nil {
 			b := beats[row.Key]
 			want[sprint.Status], want[sprint.Load] = sprint.FleetRowStatus(ctl, b, now), sprint.LoadText(b, now)

@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +286,8 @@ func TestCROneReaderThenTwo(t *testing.T) {
 	require.NoError(t, h.st.Init(h.ctx))
 	h.readersTable() // this probe adds standalone legacy readers
 	h.beat()
+	// this probe builds its own twin (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	h.m.SetMachineWidth("m1", strconv.Itoa(sprint.DefaultWidth))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	h.startMachine()

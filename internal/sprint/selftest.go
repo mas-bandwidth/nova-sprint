@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -186,7 +187,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 
 		// Run through standard coordinator/worker lifecycle to queue canned card in merge
 		commands := [][]string{
-			{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", redisAddr, "--actor", "boss"},
+			{"init", "--readers", "reader-a", "--members", "m1", "--redis", redisAddr, "--actor", "boss"},
 			{"add", "--stream", "selftest", "--count", "1", "--brief-file", briefPath, "--redis", redisAddr, "--actor", "boss"},
 			{"start", "--redis", redisAddr, "--actor", "boss"},
 			{"tick", "--redis", redisAddr, "--actor", "boss"},
@@ -201,10 +202,20 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 			{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "main", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
 		}
 
-		for _, argv := range commands {
+		for i, argv := range commands {
 			out, err := runBin(argv...)
 			if err != nil {
 				return fmt.Errorf("selftest land: command %v failed: %s: %w", argv, out, err)
+			}
+			// init writes no width. The twin's machine row is nova-config's
+			// width, so the deal has a room (docs/SPEC-SPRINT.md section 5;
+			// tla/Level.tla Width).
+			if i == 0 {
+				if _, statErr := os.Stat(twinFile); statErr == nil {
+					if err := seedTwinMachineWidth(twinFile, "m1", "1"); err != nil {
+						return fmt.Errorf("selftest land: %w", err)
+					}
+				}
 			}
 		}
 	}
@@ -219,4 +230,35 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 	}
 
 	return nil
+}
+
+// seedTwinMachineWidth writes machine:<member>'s width into a twin snapshot's
+// kv, the field nova-config apply writes. The sprint package does not import
+// the store. A missing kv is created. Other fields are left as they were.
+func seedTwinMachineWidth(path, member, width string) error {
+	doc, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(doc, &raw); err != nil {
+		return fmt.Errorf("twin %s: %w", path, err)
+	}
+	kv := map[string]string{}
+	if k, ok := raw["kv"]; ok && len(k) > 0 && string(k) != "null" {
+		if err := json.Unmarshal(k, &kv); err != nil {
+			return fmt.Errorf("twin %s kv: %w", path, err)
+		}
+	}
+	kv["machine:"+member] = width
+	b, err := json.Marshal(kv)
+	if err != nil {
+		return err
+	}
+	raw["kv"] = b
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
 }

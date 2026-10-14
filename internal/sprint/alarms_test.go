@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -122,7 +123,8 @@ func (r *alarmRig) episodes() map[string][2]int {
 func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 	t.Parallel()
 	r := newAlarmRig(t)
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.m.SetMachineWidth("m1", strconv.Itoa(4))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"d"}, Needs: []string{"a"}}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)

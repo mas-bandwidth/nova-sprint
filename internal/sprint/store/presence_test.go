@@ -363,7 +363,7 @@ func TestAnUnknownMachineBeatingIsToldOnce(t *testing.T) {
 	require.Equal(t, 1, told, "told %d times", told)
 	_, err := h.st.Teardown(h.ctx)
 	require.NoError(t, err)
-	keys := h.m.Keys(h.st.Names)
+	keys := dropConfigKeys(h.m.Keys(h.st.Names))
 	require.Empty(t, keys, "teardown left %v", keys)
 }
 

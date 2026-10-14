@@ -290,7 +290,7 @@ func TestTeardownAfterClearsLeavesNoKey(t *testing.T) {
 	}
 	_, err := h.st.Teardown(h.ctx)
 	require.NoError(t, err)
-	if after := m.Keys(h.st.Names); !slices.Equal(after, before) {
+	if after := dropConfigKeys(m.Keys(h.st.Names)); !slices.Equal(after, dropConfigKeys(before)) {
 		require.Fail(t, fmt.Sprintf("after teardown:\n%s\nbefore init:\n%s", strings.Join(after, "\n"), strings.Join(before, "\n")))
 	}
 }

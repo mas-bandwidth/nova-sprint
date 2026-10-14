@@ -92,6 +92,20 @@ func (w *world) apply(p sprint.Plan) error {
 			}
 		}
 	}
+	// A member this plan brought up with no config width takes the model's
+	// width. The deal reads Snapshot.Widths (docs/SPEC-SPRINT.md section 5;
+	// tla/Level.tla Width). An explicit width, including 0, is left as it is.
+	for _, m := range w.s.Members() {
+		if w.s.Widths != nil {
+			if _, ok := w.s.Widths[m]; ok {
+				continue
+			}
+		}
+		if w.s.Widths == nil {
+			w.s.Widths = map[string]string{}
+		}
+		w.s.Widths[m] = strconv.Itoa(refmodel.Width)
+	}
 	return nil
 }
 

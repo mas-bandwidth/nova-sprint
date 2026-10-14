@@ -63,6 +63,14 @@ func (r *explainedRig) must(step store.Step) {
 	require.Empty(r.t, res.Refused, "%s refused", step.Verb)
 }
 
+// upAt brings a member up at a config width (docs/SPEC-SPRINT.md section 5;
+// tla/Level.tla Width). The fleet verb writes no width.
+func (r *explainedRig) upAt(member string, width int) {
+	r.t.Helper()
+	r.m.SetMachineWidth(member, fmt.Sprint(width))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: member}))
+}
+
 // beat beats the readers and the members named at the clock's time.
 func (r *explainedRig) beat(members ...string) {
 	r.t.Helper()
@@ -134,7 +142,7 @@ func (r *explainedRig) finish(m, id string) {
 // condition. m1 up width 4, a dealt and taken, finished.
 func reviewCard(t *testing.T, r *explainedRig) {
 	t.Helper()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.upAt("m1", 4)
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
@@ -151,7 +159,7 @@ func TestAnAlarmExplainedByAnOpenCauseIsNotRaised(t *testing.T) {
 	t.Run("review quiet while a merge window is open and raised after it ends", func(t *testing.T) {
 		t.Parallel()
 		r := newExplainedRig(t)
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+		r.upAt("m1", 4)
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 		_, _, _, err := r.st.SetMachine(r.ctx, true)
 		require.NoError(t, err)
@@ -211,7 +219,7 @@ func TestAnAlarmExplainedByAnOpenCauseIsNotRaised(t *testing.T) {
 	t.Run("ready quiet while a waiting card waits on a placed need", func(t *testing.T) {
 		t.Parallel()
 		r := newExplainedRig(t)
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+		r.upAt("m1", 4)
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
 		_, _, _, err := r.st.SetMachine(r.ctx, true)
@@ -229,7 +237,7 @@ func TestAnAlarmExplainedByAnOpenCauseIsNotRaised(t *testing.T) {
 	t.Run("ready quiet while a card is admitted held", func(t *testing.T) {
 		t.Parallel()
 		r := newExplainedRig(t)
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+		r.upAt("m1", 4)
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
 		_, _, _, err := r.st.SetMachine(r.ctx, true)
 		require.NoError(t, err)
@@ -245,9 +253,9 @@ func TestAnAlarmExplainedByAnOpenCauseIsNotRaised(t *testing.T) {
 	t.Run("fleet quiet while every non-working member is held or down judged, and raised when one is not", func(t *testing.T) {
 		t.Parallel()
 		r := newExplainedRig(t)
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 4}))
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Width: 4}))
+		r.upAt("m1", 4)
+		r.upAt("m2", 4)
+		r.upAt("m3", 4)
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b", "c", "d", "e", "f"}}))
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"g"}, Needs: []string{"a"}}))
 		_, _, _, err := r.st.SetMachine(r.ctx, true)

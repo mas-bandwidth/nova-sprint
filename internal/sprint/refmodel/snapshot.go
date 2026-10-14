@@ -99,6 +99,9 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 		RulesOff: slices.Clone(s.RulesOff), GitIdentity: s.GitIdentity, GitIdentityUnapplied: s.GitIdentityUnapplied, MaxAttempts: s.MaxAttempts,
 		ReaderStates: maps.Clone(s.ReaderStates), NoRoom: maps.Clone(s.NoRoom),
 		Friends: cloneFriends(s.Friends), FriendTextPronouns: maps.Clone(s.FriendTextPronouns), Running: s.Running,
+		// Widths is the config width the deal reads (docs/SPEC-SPRINT.md section 5;
+		// tla/Level.tla Width). A clone that dropped it would deal from no width.
+		Widths: maps.Clone(s.Widths),
 	}
 	for tier, routes := range c.Tiers {
 		c.Tiers[tier] = slices.Clone(routes)

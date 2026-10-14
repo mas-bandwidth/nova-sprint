@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -111,6 +112,8 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 	h2.st.B = h2.m
 	require.NoError(t, h2.st.Init(h2.ctx))
 	require.NoError(t, h2.m.SetCoordinator(h2.ctx, h2.st.Actor))
+	// the new twin has no machine:<m> yet (docs/SPEC-SPRINT.md section 5; tla/Level.tla Width).
+	h2.m.SetMachineWidth("m1", strconv.Itoa(sprint.DefaultWidth))
 	h2.readersTable()
 	require.NoError(t, h2.m.RowsAdd(h2.ctx, "t-readers", []string{"reader-a"}))
 	h2.beat()
@@ -137,10 +140,12 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 func TestTheTickLevelsUnevenQueues(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 3}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(3))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 5}))
-	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 5}}))                                        // five on m1, dealt by hand: over its width of 3
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 3})) // up levels the excess: m1 keeps its width, m2 takes 2
+	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 5}})) // five on m1, dealt by hand: over its width of 3
+	h.m.SetMachineWidth("m2", strconv.Itoa(3))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"})) // up levels the excess: m1 keeps its width, m2 takes 2
 	// a member's queue grows by hand past the other's by more than one
 	s := h.snap()
 	c := s.Fleet.Cell("m2", sprint.Ready)[0]

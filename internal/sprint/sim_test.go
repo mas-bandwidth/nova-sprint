@@ -39,6 +39,28 @@ func (w *world) readersTable() { w.s.Work.SetProp(PropReadCards, SwitchOff) }
 
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 
+// setWidth gives a member its config width as nova-config's machine:<m> hash
+// writes it, read by the deal and the level on the snapshot.
+func (w *world) setWidth(member string, width int) {
+	if w.s.Widths == nil {
+		w.s.Widths = map[string]string{}
+	}
+	w.s.Widths[member] = strconv.Itoa(width)
+}
+
+// up brings a member up. A width already on the snapshot stays (a test that
+// called setWidth, including width 0). A world that names none gives the
+// member the width the sprint's old default held (sprint.DefaultWidth), so a
+// test that never names a width still deals (docs/SPEC-SPRINT.md section 5;
+// tla/Level.tla Width).
+func (w *world) up(member string) {
+	w.t.Helper()
+	if w.s.Widths == nil || w.s.Widths[member] == "" {
+		w.setWidth(member, DefaultWidth)
+	}
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: member}))
+}
+
 // do applies a plan and fails on any refusal unless allowed. The plan is held
 // to the lifecycle first, as the store holds every plan before it applies it
 // (store/engine.go, sprint.Applied): a unit the store's lawful-move check

@@ -200,6 +200,18 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 		}
 		var o, errb bytes.Buffer
 		code = ia.run(args, &o, &errb)
+		// init names members and writes no width. The throwaway twin gets
+		// one so the deal has a room (docs/SPEC-SPRINT.md section 5;
+		// tla/Level.tla Width).
+		if code == 0 && len(args) > 0 && args[0] == "init" {
+			if b, berr := ia.twinBackend(twin); berr == nil {
+				if m, ok := b.(*store.Mem); ok {
+					m.SetMachineWidth("m1", "1")
+					// run already saved the twin, before this width was written
+					_ = ia.saveTwins()
+				}
+			}
+		}
 		ia.close()
 		return code, o.String(), errb.String()
 	}

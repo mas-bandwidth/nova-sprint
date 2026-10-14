@@ -46,6 +46,9 @@ func ringFleet(h *harness) {
 
 	h.t.Helper()
 	for _, m := range ringMembers {
+		// nova-config's machine:<m> width, which the deal reads (docs/SPEC-SPRINT.md
+		// section 5; tla/Level.tla Width). A release writes no width.
+		h.m.SetMachineWidth(m, strconv.Itoa(sprint.DefaultWidth))
 		h.must(FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "tester", Probe: sprint.EnvProbePassed}))
 	}
 	h.mu.Lock()

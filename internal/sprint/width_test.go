@@ -87,7 +87,8 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for _, m := range widthMembers {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 64}))
+		w.setWidth(m, 64)
+		w.up(m)
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
 		w.must(Add(w.s, AddReq{Stream: st, Count: 400}))
@@ -108,32 +109,37 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 func TestTheWidthIsTheControlCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 8}))
+	w.up("m1")
+	w.setWidth("m2", 8)
+	w.up("m2")
 	a, b := w.s.Width("m1"), w.s.Width("m2")
 	require.Equal(t, DefaultWidth, a, "widths %d and %d", a, b)
 	require.Equal(t, 8, b, "widths %d and %d", a, b)
 	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2"}))
 	n := w.s.Width("m2")
 	require.Equal(t, 8, n, "an up naming no width changed it to %d", n)
-	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2", Width: 16}))
+	w.setWidth("m2", 16)
+	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2"}))
 	n = w.s.Width("m2")
 	require.Equal(t, 16, n, "width %d, want 16", n)
 	p := FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: MaxWidth + 1})
 	require.Len(t, p.Refused, 1, "a width past MaxWidth: %+v", p)
 	require.Empty(t, p.Units, "a width past MaxWidth: %+v", p)
+	// a width is nova-config's alone: init --members m:n refuses every width
 	specs, err := ParseMembers("m1:64,m2,m3:2")
+	require.Error(t, err, "ParseMembers takes a width: %v", err)
+	specs, err = ParseMembers("m1,m2,m3")
 	require.NoError(t, err, "ParseMembers: %+v %v", specs, err)
 	require.Len(t, specs, 3, "ParseMembers: %+v %v", specs, err)
-	require.Equal(t, MemberSpec{"m1", 64}, specs[0], "ParseMembers: %+v %v", specs, err)
+	require.Equal(t, MemberSpec{"m1", 0}, specs[0], "ParseMembers: %+v %v", specs, err)
 	require.Equal(t, MemberSpec{"m2", 0}, specs[1], "ParseMembers: %+v %v", specs, err)
-	require.Equal(t, MemberSpec{"m3", 2}, specs[2], "ParseMembers: %+v %v", specs, err)
+	require.Equal(t, MemberSpec{"m3", 0}, specs[2], "ParseMembers: %+v %v", specs, err)
 	for _, bad := range []string{"m1:0", "m1:x", "m1:1025", "m.1:4"} {
 		_, err = ParseMembers(bad)
 		assert.Error(t, err, "ParseMembers(%q) was taken", bad)
 	}
-	// a clear keeps the width with the member
+	// a clear carries no width: the shape names none, whatever the config holds
 	sh := ShapeOf(w.s)
-	require.Equal(t, "16", sh.Width["m2"], "the shape's widths: %v", sh.Width)
+	require.Empty(t, sh.Width["m2"], "the shape's widths: %v", sh.Width)
 	require.Empty(t, sh.Width["m1"], "the shape's widths: %v", sh.Width)
 }

@@ -188,6 +188,7 @@ func recordCleanCardCheck(a *app, addr string) error {
 // direct-run scan (internal/ci/no_verb_run_outside_helper_test.go) sees no verb
 // run anywhere else.
 func runInto(a *app, argv []string, out, errb io.Writer) int {
+	argv = applyConfigWidthArgs(a, argv)
 	if a.forward == nil && !slices.Contains(argv, "--redis") {
 		if addr, _ := a.namedServer(); addr != "" {
 			restore := scrubForTest(a, namesMachineEnv(a))

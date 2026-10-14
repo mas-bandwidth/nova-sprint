@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -21,7 +22,8 @@ func TestACreateOfAnExistingRecordIsRefusedAtOnce(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, epoch, h.snap().Epoch)
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+			h.m.SetMachineWidth("m1", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 			h.must(AddStep(sprint.AddReq{Brief: "job tier: pro\n\nWork.", Stream: "s1", Count: 1}))
 
 			// Attempt a step that tries to create s1-1 which already exists, expecting absent.
@@ -72,8 +74,10 @@ func TestARetiredG1NeverBlocksTheDeal(t *testing.T) {
 			h.startMachine()
 			require.Equal(t, epoch, h.snap().Epoch)
 			// Bring up m1 and m2 with reader rows
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+			h.m.SetMachineWidth("m1", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+			h.m.SetMachineWidth("m2", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 			// Put reader rows for m1 and m2 so they can read pro cards
 			pinnedRds, err := h.st.pin(h.ctx)
 			require.NoError(t, err)
@@ -189,8 +193,10 @@ func TestAReaderPastTheWindowIsSkippedNotRefused(t *testing.T) {
 			h.startMachine()
 			require.Equal(t, epoch, h.snap().Epoch)
 			// Bring up m1 as worker, m2 as reader
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+			h.m.SetMachineWidth("m1", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+			h.m.SetMachineWidth("m2", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 			pinnedRds, err := h.st.pin(h.ctx)
 			require.NoError(t, err)
 			require.NoError(t, pinnedRds.B.RowsAdd(h.ctx, pinnedRds.Names.Table(sprint.Readers), []string{"reader-m2"}))
@@ -271,8 +277,10 @@ func TestADealDropsRefusedReadCreateWhenTableRefuses(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	// Bring up m1 and m2 so their rows exist in fleet
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+	h.m.SetMachineWidth("m1", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.m.SetMachineWidth("m2", strconv.Itoa(2))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 
 	// Seed a retired read card in the table at epoch 0:
 	readID := "s1-1.r1.m2.g1"
@@ -382,8 +390,10 @@ func TestADealDropsRefusedReadCreateAtNonzeroEpoch(t *testing.T) {
 			require.Equal(t, epoch, h.snap().Epoch)
 
 			// Bring up m1 and m2 so their rows exist in fleet at the advanced epoch
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
+			h.m.SetMachineWidth("m1", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+			h.m.SetMachineWidth("m2", strconv.Itoa(2))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 
 			// Seed a retired read card in the table at the advanced epoch (stored ID has ~<epoch>):
 			readID := "s1-1.r1.m2.g1"
