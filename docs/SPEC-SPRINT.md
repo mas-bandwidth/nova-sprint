@@ -3470,22 +3470,13 @@ no fleet member, and an `--end` with no quiet in force are refused, nothing writ
 rule is `internal/sprint/fleet_quiet.go`; the twin test is
 `TestFleetQuietDealsNothingAndTellsWorkersUntilItEnds`.
 
-### An unserved tier falls to the strongest served tier
+### A card waits for its own tier
 
-The setting `set --unserved-tier-falls-to <heavy|pro|flash|off|default>` is the
-coordinator's one replacement for pinning cards by hand when their brief tier is unserved
-(`off`, the default, is today's behaviour). While it is set, a tick part before the deal
-(`internal/sprint/unserved_tier.go`, `TickUnservedFallback`) walks every unlanded primary
-whose brief tier no route serves and no up friend serves (the one tier check, `tierServed`,
-read through `tierHasServer`) and records a fallback tier on it: the strongest served tier
-at or below the setting, written as a field of its own (`FieldFallbackTier`, never the
-brief's line 1 and never a pin the seat made), with a timeline note naming the unserved
-tier and the reason. The deal and `DealtTier` read the fallback tier, so the card runs
-where something can take it. When the brief tier is served again (a route or an up friend
-serves it) the next tick clears the fallback on every card not yet taken, so they go back
-to their own tier; a taken card keeps its run. A card the seat pinned (`tier --set`,
-`brief --tier`) is never changed. `card` and `where --json --rows` show
-`tier=<brief> (falls to <t>)`.
+A card waits for its own tier: no cross-tier dealing. The unserved-tier fallback
+(`set --unserved-tier-falls-to`, `TickUnservedFallback`) is retired (Glenn, 2026-10-14:
+"Remove it."): the setting, its tick part and the deal's fallback are gone, so a card
+whose brief tier no route and no up friend serves stays ready for that tier until it
+is served. `card` and `where --json --rows` show the tier it is on.
 
 ## 6. The readers
 
@@ -7700,8 +7691,7 @@ in the new epoch that need to be set"). `sprint.Defaults`
 row a name, a home and a value:
 
 - `prop`, a work-table property, epoch keyed: read_cards on, fleet and friends on,
-  fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
-  (OPEN, the owner's to state), read_tier and reads default, every bound at its
+  fleet and friends tiers all, rework_priority fix, read_tier and reads default, every bound at its
   default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
   friend_finish, friend_start_max, pegged_bound, landing_stall_bound, drift,
   low_balance_usd, identical), and alarm_ready on;
