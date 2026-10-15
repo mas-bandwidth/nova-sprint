@@ -17,7 +17,6 @@ cmd/nova-sprint/fleet_back_test.go
 cmd/nova-sprint/flush_stream_test.go
 cmd/nova-sprint/friend_start_test.go
 cmd/nova-sprint/friendcards_cover_test.go
-cmd/nova-sprint/friendcards_verb_test.go
 cmd/nova-sprint/friendclean_test.go
 cmd/nova-sprint/land_beat_test.go
 cmd/nova-sprint/land_class_test.go

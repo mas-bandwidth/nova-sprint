@@ -14,18 +14,6 @@ import (
 	"time"
 )
 
-// AliveEvery is how often the daemon asks the adapter whether its harness is
-// alive (SPEC-FRIEND.md, the harness check): the session's last turn for a
-// headless harness, the app in the process table for one with no headless
-// route; an advisory fact for the status, never presence.
-const AliveEvery = 30 * time.Second
-
-// What the status says of the harness (Status.HarnessSeen): seen running, or
-// not seen; HarnessUnknown when the adapter cannot tell. A harness run from
-// its command line (dsh headless, codex exec, opencode run, gemini) is read by
-// its session's last turn, never by an app: not seen is never down.
-const HarnessNotSeen = "not-seen"
-
 // Liveness is an adapter's answer about its harness: Known false when the
 // adapter cannot tell (its friend relies on the session check alone), else
 // Running; Why says what was read, and Rule which rule read it: RuleSession
@@ -44,14 +32,6 @@ const (
 	RuleSession = "session"
 	RuleApp     = "app"
 )
-
-// Aliver is an adapter that can say whether its harness is alive, by the
-// cheapest true signal it has: for a harness with a headless program, the
-// session's own last turn (SessionTurns); for one with none, its app in the
-// process table.
-type Aliver interface {
-	Alive(ctx context.Context) Liveness
-}
 
 func running(why string) Liveness    { return Liveness{Known: true, Running: true, Why: why} }
 func notRunning(why string) Liveness { return Liveness{Known: true, Why: why} }
@@ -112,15 +92,6 @@ func (s *SessionTurns) TurnUnderWay() (bool, time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running > 0, s.began
-}
-
-// sessionTurner is an adapter that keeps a SessionTurns.
-type sessionTurner interface{ sessionTurns() *SessionTurns }
-
-func (s *SessionTurns) clock(now func() time.Time) {
-	s.mu.Lock()
-	s.now = now
-	s.mu.Unlock()
 }
 
 // saw records a turn into session that ended with exit and err; a Deferred
@@ -282,15 +253,10 @@ func headlessAlive(t *SessionTurns, harness string, look func(string) (string, e
 	return l
 }
 
-func (c *Codex) sessionTurns() *SessionTurns  { return &c.turns }
-func (d *DSH) sessionTurns() *SessionTurns    { return &d.turns }
-func (g *Gemini) sessionTurns() *SessionTurns { return &g.turns }
-
 // The headless adapters' own turn records (TurnRecord): each turn a one-shot
 // process into the session.
 func (d *DSH) TurnUnderWay() (bool, time.Time)    { return d.turns.TurnUnderWay() }
 func (g *Gemini) TurnUnderWay() (bool, time.Time) { return g.turns.TurnUnderWay() }
-func (o *OpenCode) sessionTurns() *SessionTurns   { return &o.turns }
 
 // Alive: the session's last turn (codex exec resume, codex queue); the
 // ChatGPT app is not read.
