@@ -58,8 +58,10 @@ working figure; and `landed`, `all` and the summary's x/y and ETA are counted ov
 alone, never the sentinels (the owner, 2026-10-11: "sentinel cards should not be counted when we
 are estimating time remaining, or cards per-hour"), the rows and the archived streams' rows of
 the work and merge tables then taken out. `throughput` and
-`throughputMinutes` are counted as the reference server counts them: samples of the page copy's
-`landed` alone, started again when it falls (an archive). A puller serves its upstream's copy and
+`throughputMinutes` are the landing log's last hour when the copy carries `landedSeries.lastHour`
+(its `friends` plus `fleet`, cards an hour, 60 minutes, no warm-up); only a copy with none (an
+older server) falls back to the reference server's samples of the page copy's `landed` alone,
+started again when it falls (an archive). A puller serves its upstream's copy and
 throughput as they came, and an upstream that answers any other view is a failed read. The pull listeners' `/api/sprint` keeps its own view (the release switch and
 the fix marks) for the workers that read it. `internal/sprintdash/pageview.go` is this paragraph;
 `TestThePageIsTheLivePage*` hold it.
@@ -120,6 +122,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 the owner: "You will port the existing python dashboard to golang." (the page files this ask first brought over digest, with pageview.go as it then stood, to 88fc6fba1cc8af3b6aa5bcc9d7d964781dd43d0c96149506b81b322982b6429b: page/index.html and page/app.js byte-identical to the Python live page, dashboard/live/; the same PR's server.py tile-slot port of pageview.go is held by the next lock line, digest c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830)
 - 2026-10-14 21:16Z the owner: "Remove the tiers list here: never asked for this." (digest 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98)
 - 2026-10-14 the owner: "remove the /events and /landings.json requests"
+- 2026-10-15 the owner: "throughput seems to be broken."
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -294,7 +297,7 @@ from the owner edits one line here and nothing else moves.
    regular text color." "or if you want, green.").
 3. COST: total to the cent; sub-line "$0.24 per card" (never "per landed card").
 4. IN FLIGHT: n; sub-line "14 working · 9 verify" on one line (verify counts review, fix and merging together, one global state; the tooltip gives the review, fix and merging counts).
-5. THROUGHPUT: cards landed per hour over the last 60 min; "—" until ten minutes of samples; sub-line "cards / hour".
+5. THROUGHPUT: cards landed per hour over the last 60 min, the landing log's last hour (`landedSeries.lastHour`'s friends plus fleet); "—" only for a copy with no landedSeries; sub-line "cards / hour".
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
 
