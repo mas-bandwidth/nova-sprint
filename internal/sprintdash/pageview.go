@@ -316,6 +316,13 @@ func (s *Server) pageRecord(body []byte, up *snapshot, end time.Time) {
 		s.pageRate.rate, s.pageRate.minutes = up.Throughput, up.ThroughputMinutes
 		return
 	}
+	// a copy that carries landedSeries.lastHour is the landing log's last hour, the figure at
+	// once, no warm-up (docs/SPEC-SPRINT-DASHBOARD.md); only a copy with none keeps the samples
+	if f, fl, ok := landedSeriesLastHour(body); ok {
+		rate := float64(f + fl)
+		s.pageRate.rate, s.pageRate.minutes = &rate, 60
+		return
+	}
 	var v struct {
 		Landed json.RawMessage `json:"landed"`
 	}
