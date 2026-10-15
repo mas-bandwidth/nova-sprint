@@ -30,7 +30,7 @@ import (
 // on the record and shown on the judgment ("flapped n times since <t>"). A row has at most
 // one open status judgment: a further transition replaces its text in place (the same id and
 // alias) and tells the seat it changed (NStatusChanged, a happened note to the coordinator,
-// which the push loop delivers); an answered one is closed and a new one raised. So a friend
+// which the server sends the coordinator on the bus); an answered one is closed and a new one raised. So a friend
 // flipping every minute is one push, and one more for each change that outlasts the dwell.
 // The record is the fleet table's one property PropStatusSeen, written in the same
 // operation as the judgment: a restart reads it back and replays none, and the first sight of
@@ -284,6 +284,7 @@ func StatusTransitions(s *Snapshot, r TickReq) Plan {
 			// seat told it changed
 			n := judgment.Note
 			n.What, n.At, n.Who = what, s.Now, r.who()
+			n.CoordinatorDelivery = nil // each counted transition is a new episode
 			p.Updates = append(p.Updates, n)
 			for _, o := range onRow[row.row] {
 				if o.Note.ID != n.ID {
@@ -478,7 +479,7 @@ func flappingText(s *Snapshot, row statusRow, rec statusSeen) string {
 	} else {
 		f := row.name
 		what = snapshotFriendPronouns(s, f).Sprintf("friend %s's status is flapping at %s: status %s keeps changing for less than %s, so no transition counts; on %s; %s; "+
-			"wake {them}: nova-friend ping --as %s --to %s --wake; or hold {them}: nova-sprint hold %s --reason <text>",
+			"wake {them}: nova-friend reach --as %s --to %s; or hold {them}: nova-sprint hold %s --reason <text>",
 			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), coordinatorName(s), f, f)
 	}
 	return withFlaps(what, rec)

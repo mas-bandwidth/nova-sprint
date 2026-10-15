@@ -131,7 +131,7 @@ func TestCalledVerbsRefusesTheMotivatingFriendCall(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("calledVerbs = %+v, want one finding through registeredVerbs", got)
 	}
-	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "wait-pong") {
+	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "reach") {
 		t.Fatalf("finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
 	}
 }

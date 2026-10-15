@@ -3,13 +3,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,68 +19,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
-// hookInOverdue hooks a session into the app as the coordinator and proves
-// it. Look is 0, so nothing is pushed until the test steps the clock and runs
-// the session's look itself; the lines the session sends come back on the
-// returned channel.
-func hookInOverdue(t *testing.T, a *app) (chan hookMsg, *hookSession) {
-	t.Helper()
-	server, client := net.Pipe()
-	lines := make(chan hookMsg, 256)
-	go func() {
-		sc := bufio.NewScanner(client)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
-			var m hookMsg
-			if json.Unmarshal(sc.Bytes(), &m) == nil {
-				lines <- m
-			}
-		}
-		close(lines)
-	}()
-	go a.hookRun(context.Background(), "coordinator", server, 0)
-	t.Cleanup(func() { _ = client.Close() })
-	var chal string
-	for chal == "" {
-		select {
-		case m := <-lines:
-			chal = m.Challenge
-		case <-time.After(10 * time.Second):
-			t.Fatal("no challenge on the hook")
-		}
-	}
-	b, _ := json.Marshal(hookMsg{T: "prove", Req: "p1", Challenge: chal})
-	_, err := client.Write(append(b, '\n'))
-	require.NoError(t, err)
-	for {
-		select {
-		case m := <-lines:
-			if m.Req == "p1" {
-				require.Equal(t, "ok", m.T, m.Why)
-				h := a.hookHub()
-				h.mu.Lock()
-				var sess *hookSession
-				for _, v := range h.cur {
-					sess = v
-					break
-				}
-				h.mu.Unlock()
-				require.NotNil(t, sess, "the proven session is the hub's")
-				return lines, sess
-			}
-		case <-time.After(10 * time.Second):
-			t.Fatal("the proof was not answered")
-		}
-	}
-}
-
 // An overdue card-holding judgment offers no wait on a real store: the inbox's printed
-// commands and the hook's push both render from sprint.commands (cmd/nova-sprint/reads.go
+// commands and the server's message to the seat both render from sprint.commands (cmd/nova-sprint/reads.go
 // groupText), so one fix covers them. A failed work judgment holds its card; past its
 // deadline the act line names the action WaitRefused gives for the kind, never a wait.
 func TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore(t *testing.T) {
@@ -93,7 +37,8 @@ func TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore(t *testing.T) {
 	require.NoError(t, fn.Load(context.Background(), c))
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
-		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
+		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		busRedisEnv: "bus.test:6379"} // Identity resolution only; the bus recorder below never dials it.
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
 	a.home = func() (string, error) { return home, nil }
@@ -145,28 +90,30 @@ func TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore(t *testing.T) {
 	assert.NotContains(t, out, "nova-sprint wait", "the overdue card-holding inbox offers no wait:\n%s", out)
 	assert.Contains(t, out, sprint.WaitRefused[sprint.NWorkFailed], "the act line names the action WaitRefused gives:\n%s", out)
 
-	// the hook's rendering of the same overdue group offers no wait either: hook in as the
-	// coordinator, step past the judgment's deadline, and read the push
-	lines, sess := hookInOverdue(t, a)
+	// the server's message to the seat renders the same overdue group with no wait either:
+	// step past the judgment's deadline and run one look of the coordinator push
 	var mu sync.Mutex
+	var sent []bus.Message
+	a.bus = func(_ context.Context, m bus.Message, _ func(string)) error {
+		mu.Lock()
+		defer mu.Unlock()
+		sent = append(sent, m)
+		return nil
+	}
 	now := time.Now().UTC()
 	a.now = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
 	mu.Lock()
 	now = now.Add(defaultDeadline + 2*time.Minute)
 	mu.Unlock()
-	sess.look(context.Background())
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case m := <-lines:
-			if m.T != "push" || m.What != gid {
-				continue
-			}
-			assert.NotContains(t, m.Text, "nova-sprint wait", "the hook push offers no wait for %s:\n%s", gid, m.Text)
-			assert.Contains(t, m.Text, sprint.WaitRefused[sprint.NWorkFailed], "the hook push names the action WaitRefused gives:\n%s", m.Text)
+	a.coordinatorPass(context.Background())
+	mu.Lock()
+	defer mu.Unlock()
+	for _, m := range sent {
+		if len(m.To) == 1 && m.To[0] == "coordinator" && strings.Contains(m.Body, gid) {
+			assert.NotContains(t, m.Body, "nova-sprint wait", "the message offers no wait for %s:\n%s", gid, m.Body)
+			assert.Contains(t, m.Body, sprint.WaitRefused[sprint.NWorkFailed], "the message names the action WaitRefused gives:\n%s", m.Body)
 			return
-		case <-deadline:
-			t.Fatalf("the overdue group %s was not pushed on the hook", gid)
 		}
 	}
+	t.Fatalf("the overdue group %s was not sent to the seat: %+v", gid, sent)
 }

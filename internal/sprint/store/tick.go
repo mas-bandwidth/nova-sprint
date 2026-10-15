@@ -703,7 +703,7 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 
 // mirrors says the part's step brings the display cells up to date after it.
 func mirrors(name string) bool {
-	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartFriendStall
+	return name == "presence" || name == "deal" || name == "level" || name == "resume"
 }
 
 // unchangedNotWritten is the plan of a part with the writes that change no
@@ -1160,7 +1160,7 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -1456,11 +1456,8 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				continue
 			}
 			if !drain {
-				// a plan made to see whether the part has work wakes no one
-				probe := t.req
-				probe.WakeFriend = nil
-				p, due := part.Fn(view, probe)
-				p = t.laneChecked(view, probe, part.Name, p)
+				p, due := part.Fn(view, t.req)
+				p = t.laneChecked(view, t.req, part.Name, p)
 				if p.Empty() && due == 0 {
 					// a part that brings the display cells up to date after
 					// it leaves them to the tick's end (tickRun.display)
@@ -1474,11 +1471,6 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		var done *sprint.Note
 		stop := "" // the deal's: every provider out of credit (sprint.FundsCause)
 		var planned sprint.Plan
-		// the stall ladder's wakes of the plan last made (sprint.TickFriendStall): kept,
-		// never sent, as the part plans, and sent once its step commits (tickRun.wake;
-		// tla/StallLadder.tla, NoWakeWithoutRung): a plan made again after a commit lost
-		// to another writer wakes her once, not once a plan
-		var wakes []stallWake
 		fn := func(s *sprint.Snapshot, r sprint.TickReq) (sprint.Plan, int) {
 			if drain {
 				planned = sprint.Drain(s, s.Queue, sprint.MachineActor)
@@ -1493,15 +1485,8 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				sprint.SetRouteShares(s.Routes, t.snap.Fleet)
 				t.routeSharesSet = true
 			}
-			wakes = nil
 			if s.Friends == nil {
 				s.Friends = r.Friends
-			}
-			if r.WakeFriend != nil {
-				r.WakeFriend = func(friend string, rung int, d time.Duration) error {
-					wakes = append(wakes, stallWake{friend, rung, d})
-					return nil
-				}
 			}
 			p, d := part.Fn(s, r)
 			// a judgment checks the lane before it rises (sprint.LaneChecked)
@@ -1609,9 +1594,6 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		case !r.Lost && len(r.Moved) > 0:
 			t.res.addRows(sprint.PlanRows(planned))
 		}
-		if !r.Lost {
-			t.wake(wakes)
-		}
 		// Each table this part wrote, other than its own and the work table,
 		// holds what it wrote in its queue until its update runs.
 		for _, x := range All {
@@ -1660,28 +1642,6 @@ func (t *tickRun) laneChecked(s *sprint.Snapshot, r sprint.TickReq, part string,
 		}
 	}
 	return p
-}
-
-// stallWake is one wake of the friend stall ladder a part's plan made (rung 1 or 2).
-type stallWake struct {
-	friend string
-	rung   int
-	idle   time.Duration
-}
-
-// wake sends the stall ladder's wakes of a part's plan, its step committed
-// (Store.WakeFriend; tla/StallLadder.tla, WokenAtEveryWakeRung): each once, a send
-// that fails said on the tick's result and never failing the tick, as the rung it
-// climbed is written and stands.
-func (t *tickRun) wake(ws []stallWake) {
-	if t.st.WakeFriend == nil {
-		return
-	}
-	for _, w := range ws {
-		if err := t.st.WakeFriend(w.friend, w.rung, w.idle); err != nil {
-			t.res.Said = append(t.res.Said, fmt.Sprintf("the stall wake %d of friend %s was not sent: %v", w.rung, w.friend, err))
-		}
-	}
 }
 
 // end is what the tick returns when an update or a part ended it early.
@@ -2213,7 +2173,7 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 	if err != nil {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
-	// a shadow tick wakes no friend: it writes nothing and sends nothing
+	// a shadow tick writes nothing and sends nothing
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err

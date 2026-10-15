@@ -231,7 +231,7 @@ func TickRuleTake(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		taken[a.Card] = true
 		said := RuleSaid(RuleFriendTake, a.Act+": "+a.Why)
-		q := FriendTake(s, FriendTakeReq{Friend: a.from, IDs: []string{a.Card}, Reason: said, Who: r.who()})
+		q := FriendTake(s, FriendTakeReq{Friend: a.from, IDs: []string{a.Card}, Reason: said, Who: r.who(), Working: true})
 		if len(q.Refused) > 0 || len(q.Units) == 0 {
 			continue // refused: the judgment stays
 		}
