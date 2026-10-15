@@ -143,6 +143,13 @@ the owner's number or word (a width, a route, a release order) goes to the owner
 
 Notes on the rows:
 
+A stream stop and resume arrive separately as `STREAM STOPPED` and `STREAM RESUMED`
+blocker messages. They wake the coordinator through the committed log; the
+five-second look remains the fallback for a quiet log or failed send. The friends
+who own queued or stuck cards receive the same subjects as status messages. The
+stop message is a notice: answer the existing stop judgment as before. A resume
+notice names its new state, who resumed it, and the `--did` explanation.
+
 - Conflict. The stream is stopped until `resume`. A fix text names the cause and the way out: "Your head does
   not merge onto the sprint branch's tip: a file you touched changed after your base. Start again from the
   current tip, redo only the lines your card lists, and lower a ledger's ceiling from its value at the tip by
