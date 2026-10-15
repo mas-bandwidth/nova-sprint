@@ -217,7 +217,7 @@ func friendBrief(name string) string {
 // status is the hook record's, and the retired stall ladder no longer climbs on silence),
 // and the deal runs again over her row.
 func aFriendGoesQuiet(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "fia", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
+	k.friends = []sprint.FriendSeat{{Name: "fia", Width: 3, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
 	for i := range 2 {
 		id := fmt.Sprintf("p%d", k.next)
 		k.next++
@@ -244,7 +244,7 @@ func aFriendGoesQuiet(k *walk) []sample {
 // cap with a frontier friend up with room: the cap's default answer has a card to give
 // her, and no machine could take it.
 func aCardPastItsCap(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "gus", Width: 2, Status: sprint.Up, Class: cardhdr.RouteFrontier}}
+	k.friends = []sprint.FriendSeat{{Name: "gus", Width: 2, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier}}
 	id := k.addTo(k.streams[0]) // the stream is made by its first card
 	if id == "" || !k.try(sprint.Set(k.s, sprint.SetReq{Streams: []string{k.streams[0]}, Attempts: "1", Who: coordinator})) {
 		return nil
@@ -265,7 +265,7 @@ func aCardPastItsCap(k *walk) []sample {
 // her lane works, the other card waits behind it, and the members' lanes are idle beside
 // it: the rebalance's case (sprint.Rebalance; the walks give no friend).
 func aQueuedCardOnAFullFriend(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, WorkerLive: true, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
 	for range 2 {
 		if k.addTo(k.streams[0]) == "" {
 			return nil
@@ -293,7 +293,7 @@ func aQueuedCardOnAFullFriend(k *walk) []sample {
 // friend-redeal part moves it into her redealt column, never a failure (sprint.TickFriendRedeal;
 // the walks give no friend).
 func aFriendCardPastItsDeadlineRedealt(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "fee", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
+	k.friends = []sprint.FriendSeat{{Name: "fee", Width: 3, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
 	id := fmt.Sprintf("p%d", k.next)
 	k.next++
 	if !k.try(sprint.Add(k.s, sprint.AddReq{Brief: friendBrief("fee"), Stream: k.streams[0], IDs: []string{id}, Who: coordinator})) {
