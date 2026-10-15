@@ -1736,7 +1736,7 @@ From: Glenn, 2026-10-15 ~21:30Z
 
 ### The deal prefers the cheapest row, and the fleet is overflow
 
-The deal hands a work card to the cheapest able row first (a friend row whose cost is a subscription, such as Rowan's row on the Max plan, already paid), and to a fleet machine only when no such row has width free, since fleet routes spend API credit per card. A setting names the order (set --deal-order friends,fleet), replacing today's all-or-nothing set --fleet on|off. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"
+The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"; ~22:00Z: "Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row." Also a sprint card of the same id.
 
 Why it waits: Cost: the subscription rows are already paid; the fleet spends API credit per card.
 
