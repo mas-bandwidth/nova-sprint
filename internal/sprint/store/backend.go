@@ -322,6 +322,8 @@ type OpRecord struct {
 	// commit writes it, so the timers it raised are closed in the same step
 	// as their judgment.
 	Timers *sprint.Timers `json:"timers,omitempty"`
+	// Grants commits the server-owned record with its log, replay receipt and judgments.
+	Grants *sprint.Grants `json:"grants,omitempty"`
 }
 
 // Tables is the stored table names of the record's manifests, in order.

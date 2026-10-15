@@ -799,6 +799,14 @@ func released(op OpRecord, commit bool, held string, recorded bool) bool {
 }
 
 func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) error {
+	// The grant record and its receipt/log/judgment share Release's EXEC.
+	if op.Grants != nil {
+		rec, err := json.Marshal(op.Grants)
+		if err != nil {
+			return err
+		}
+		p.Set(ctx, r.Names.Key(keyGrants), string(rec), 0)
+	}
 	if op.Drain > 0 {
 		p.LTrim(ctx, r.key(keyQueue), int64(op.Drain), -1)
 	}

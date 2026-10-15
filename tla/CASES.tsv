@@ -717,3 +717,7 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCBenchGrant.cfg	MCBenchGrant.tla	pass	-	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenAckBeforeSend.cfg	MCBenchGrant.tla	temporal	EveryExpiryIsToldOrJudged	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenFreshToken.cfg	MCBenchGrant.tla	invariant	NeverDeliveredTwice	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenRunningOnly.cfg	MCBenchGrant.tla	temporal	EveryExpiryIsToldOrJudged	ignore-terminal	benchgrant	required	-

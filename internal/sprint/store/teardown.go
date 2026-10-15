@@ -23,7 +23,7 @@ var sprintKeys = []string{keyFence, keyGen, keyInbox, keyLog, keyNotes, keyOpen,
 
 // machineKeys are the machine's records, the people's goals and the timers: one for the
 // whole sprint, under its prefix, never per epoch, so a clear keeps them.
-var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, keyRetiredPushers, keyRetiredSeatHook, keyStats, keyStops, keyDoneRecord}
+var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyGrants, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, keyRetiredPushers, keyRetiredSeatHook, keyStats, keyStops, keyDoneRecord}
 
 // The retired seat hook's and seat push's records (v1.3.6: the coordinator hooks in with
 // nova-hook, and its judgments go over the bus). Nothing writes them now; teardown still

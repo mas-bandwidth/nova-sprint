@@ -9180,8 +9180,7 @@ timer is raised once and never before its due time (`sprint.TimerNotes`,
 `store.timers`, `tla/Timer.tla`). A timer the tick raised is off the record, so
 there is none to cancel.
 
-A timer counts running time, not wall time, as every deadline of this tree
-does: the time the system was STOPPED between the timer's write and now is not
+A timer counts running time, not wall time, as the reminder deadlines do: the time the system was STOPPED between the timer's write and now is not
 counted, so a timer set before a stop is raised that much later, and a stopped
 system raises nothing. The test is the tree's one clock comparison,
 `sprint.DueNow(now, due, set, stopped)`: the running time from `set` to `now`
@@ -9192,7 +9191,7 @@ the coordinator pass both read, `Note.Review` based at `Note.ReviewSet`), the
 wait on a condition the tick keeps (`notify`, based at the judgment's write
 when wait recorded no base), the inbox (`InboxReq.due`) and the unheld checks (`held.overdueUnmarked`) all call it,
 and a later external `wait` operand (`after <time>`) calls the same function:
-there is no second clock comparison in the tree.
+bench-grant wall-clock expiry is the explicit exception below.
 
 The judgment reaches its actor by the routes the tree has and adds none. A
 timer for the coordinator reaches the coordinator's wake with no new path: the
@@ -9202,6 +9201,56 @@ raised it wakes it. A timer for a friend reaches that friend by the same push:
 a group addressed to someone is sent to that name on the bus (`coordFresh`,
 cmd/nova-sprint/coordinator_push.go), the group carrying the note's addressee
 (`sprint.Group.To`).
+
+### Bench grants
+
+Bench grants belong to the sprint server. `grant add --bench <b> --to <name>
+--for <duration>`, `grant extend <id> --for <duration>` and `grant end <id>`
+are coordinator verbs, protected by the coordinator and hook gates. The existing
+loopback argv listener serves them; a fleet batch cannot invoke them. `grant list`
+is a read; its JSON includes every grant field. A worker binary holds no grant
+state. `--op` replays the original result for identical arguments without another
+mutation; reuse for other arguments conflicts, and an older-epoch operation is
+refused after a clear, as for other coordinator verbs.
+
+The global grant record survives clear and teardown removes it. It assigns
+monotonic `g<n>` identifiers, and records bench, grantee, acting coordinator,
+granted/deadline/ended times, first owed expiry, last change, frozen delivery and
+receipt-unknown status. Names use `sprint.ValidID`; the grantee must be a fleet
+member or friend row. Durations range from one minute to thirty days. Add and
+extend set the deadline to **server now plus duration**. An early extend or end
+owes no notice at the old deadline; one at or after it keeps that first deadline
+in `owed`. Each grant has one first-expiry obligation: later edits, including
+after Sent or Judged, do not rearm it. A new grant is a new obligation.
+
+Unlike running-time reminders, bench grants use server wall time. On every
+existing run-loop wake, RUNNING or STOPPED, the server prepares due deliveries on
+its existing bounded line, before the running-only tick parts. Every record
+change atomically commits one log line, waking that same loop. There is no second
+waiter, goroutine, or polling schedule. The grant record, operation replay receipt,
+log and any receipt-unknown judgment share the existing fenced store commit and
+its crash recovery journal (`tla/BenchGrant.tla`).
+
+Preparation freezes `CoordinatorDelivery.From` as the server bus login (or the
+seat holder when unauthenticated), `To` as grantee and current seat holder,
+deduplicated, and token `bench-grant.<id>.<owed Unix seconds>`. RetryBefore is
+preparation time plus `bus.DefaultTokenLife` (24 hours). Off the line, the server
+sends kind `status` with subject `BENCH GRANT EXPIRED <bench> grantee=<name>
+deadline=<RFC3339>`, then marks Sent on the line. The bus Redis may differ from
+the sprint Redis: sending and marking are separate transactions. A lost response
+leaves the same sender, recipients, payload and token pending for the next wake.
+At or after RetryBefore the server never starts another send; it atomically marks
+Judged and raises one coordinator judgment saying the grant's receipt is unknown.
+
+Sent/Judged grants and grants ended without an unresolved obligation may prune
+seven days (`bus.DefaultTokenCleanup`) after their **last change**. Unresolved
+owed or pending obligations survive an arbitrarily long restart; an old pending
+one is judged first, never resent, and that mutation starts its retention period.
+A token is automatically retried for less than 24 hours and the bus retains its
+deduplication receipt for seven days. No exactly-once claim extends beyond that
+retention window or an arbitrarily suspended in-flight send. The model counts
+physical copies per grant/expiry recipient across tokens; its fresh-token witness
+therefore detects duplication even when each individual bus token is deduplicated.
 
 #### Cannot ask episodes (v1.2.17)
 

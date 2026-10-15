@@ -989,7 +989,15 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
 		}
 		start := a.now()
-		res, over, ended, err := a.tickWithin(ctx, func(c context.Context) (store.TickResult, error) { return a.tickOf(c, st) }, deadline, began, stdout, stderr)
+		// Grant preparation shares the tick's existing bounded line and wake,
+		// before the RUNNING-only parts (tla/BenchGrant.tla Wake).
+		var grants []sprint.Grant
+		var grantLogin string
+		var grantErr error
+		res, over, ended, err := a.tickWithin(ctx, func(c context.Context) (store.TickResult, error) {
+			grants, grantLogin, grantErr = a.prepareGrantDeliveries(c, st)
+			return a.tickOf(c, st)
+		}, deadline, began, stdout, stderr)
 		if over {
 			// a tick past its deadline gives up its plan, never the process: the
 			// line is held until the tick given up has stopped, then the loop goes on
@@ -1046,6 +1054,14 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			}
 		}
 		a.serial.Unlock()
+		// Sending never holds the server's line. A receipt failure leaves the
+		// frozen token pending for the next existing wake.
+		if grantErr == nil {
+			grantErr = a.sendGrantDeliveries(ctx, st, grants, grantLogin)
+		}
+		if grantErr != nil {
+			fmt.Fprintf(stderr, "%s grant expiry: %s\n", prog, oneline.Escape(grantErr.Error()))
+		}
 		if err == nil {
 			// the seat not answering goes to the owner on the bus, as well as to the seat's
 			// hook, at its raise and at each raise again (seat_silent.go)
