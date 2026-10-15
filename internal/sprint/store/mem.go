@@ -1111,6 +1111,17 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 		return nil
 	}
 	if commit {
+		// Validate before any mutation; all grant effects share this mutex.
+		if op.Grants != nil {
+			rec, err := json.Marshal(op.Grants)
+			if err != nil {
+				return err
+			}
+			if m.kv == nil {
+				m.kv = map[string]string{}
+			}
+			m.kv[keyGrants] = string(rec)
+		}
 		if op.Drain > 0 {
 			l.queue = append([]sprint.QueuedChange(nil), l.queue[min(op.Drain, len(l.queue)):]...)
 		}

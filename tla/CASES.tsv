@@ -706,3 +706,7 @@ MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestore
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
+MCBenchGrant.cfg	MCBenchGrant.tla	pass	-	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenAckBeforeSend.cfg	MCBenchGrant.tla	temporal	EveryExpiryIsToldOrJudged	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenFreshToken.cfg	MCBenchGrant.tla	invariant	NeverDeliveredTwice	ignore-terminal	benchgrant	required	-
+MCBenchGrantBrokenRunningOnly.cfg	MCBenchGrant.tla	temporal	EveryExpiryIsToldOrJudged	ignore-terminal	benchgrant	required	-

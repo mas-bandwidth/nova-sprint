@@ -67,6 +67,9 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 	ta.ok("add --stream s1 --count 2")
 	ta.ok("add --stream s1 --sentinel s1-stop")
 	lines := map[string]string{
+		"grant add":         "grant add --bench b1 --to m1 --for 1m",
+		"grant extend":      "grant extend g1 --for 1m",
+		"grant end":         "grant end g1",
 		"add":               "add --stream s1 --count 1 --one",
 		"quack":             "quack --streams q --count 1 --repo https://example.com/quack.git",
 		"release":           "release s1-stop --reason r",

@@ -22,6 +22,25 @@ review. A deterministic test-binary transcript is in
 even when a server is configured; see the
 [environment reference](ENVIRONMENT.md) for connection precedence.
 
+### Bench grants
+
+```text
+nova-sprint grant add --bench <bench> --to <member-or-friend> --for <duration> [--op <id>]
+nova-sprint grant extend <id> --for <duration> [--op <id>]
+nova-sprint grant end <id> [--op <id>]
+nova-sprint grant list [--json]
+```
+
+Add, extend and end are coordinator operations served through the loopback
+listener with the existing hook gate. List is a read and JSON carries all fields.
+Durations are 1m through 720h, measured from server now. Expiry is pushed on the
+server's next existing wake even while STOPPED. A late extend or end retains the
+first owed notice; later edits never rearm that grant. Lost replies retry the same
+frozen bus token for 24 hours, then become one receipt-unknown judgment. Terminal
+records prune seven days after their last change; unresolved notices survive a
+clear or restart. See the Bench grants section of SPEC-SPRINT.md for the explicit
+bus retention bound.
+
 ### Landed series
 
 `where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the `where` frame.
