@@ -180,4 +180,3 @@ func TestAStoreWithNoRouteEscalatesNothing(t *testing.T) {
 	assert.Empty(t, pr.F(sprint.FieldTierNow))
 	assert.Len(t, h.openOf(sprint.NBound), 1, "the bound's judgment")
 }
-
