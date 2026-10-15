@@ -60,7 +60,7 @@ func TestAddRefusesTwoCardsNamingOneFileInPaths(t *testing.T) {
 	writeHeaderBrief(t, dir, "q2", "-", "internal/q2.go internal/x.go")
 	code, out, errs := ta.do("add --stream s --brief-dir " + dir)
 	require.Equal(t, 2, code, "shared PATHS: %s%s", out, errs)
-	assert.Contains(t, errs, "internal/x.go is named in PATHS by q1 and q2, and neither needs the other")
+	assert.Contains(t, errs, "internal/x.go is named in PATHS by q1 and q2, and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 	assert.NotContains(t, out, "MOVED", "nothing written")
 	chained := t.TempDir()
 	writeHeaderBrief(t, chained, "r1", "-", "internal/y.go")
@@ -91,12 +91,12 @@ func TestAddRefusesASharedPathNonLedgerBothBriefsDeclare(t *testing.T) {
 	write(dir, "l2", "docs/ledger.md, internal/l2.go", "docs/ledger.md")
 	code, _, errs := ta.do("add --stream s --brief-dir " + dir)
 	require.Equal(t, 2, code, "a SHARED: line does not admit a non-ledger path")
-	assert.Contains(t, errs, "docs/ledger.md is named in PATHS by l1 and l2, and neither needs the other")
+	assert.Contains(t, errs, "docs/ledger.md is named in PATHS by l1 and l2, and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 
 	half := t.TempDir()
 	write(half, "h1", "docs/ledger.md internal/x.go", "docs/ledger.md")
 	write(half, "h2", "docs/ledger.md internal/x.go", "-")
 	code, _, errs = ta.do("add --stream t --brief-dir " + half)
 	require.Equal(t, 2, code)
-	assert.Contains(t, errs, "docs/ledger.md is named in PATHS by h1 and h2, and neither needs the other")
+	assert.Contains(t, errs, "docs/ledger.md is named in PATHS by h1 and h2, and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 }

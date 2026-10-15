@@ -9503,3 +9503,33 @@ happened note when the windowed rate returns to at or over the target. `where` s
 the same on the work rows and the top-level view (`TestFirstTimeLandRateCountsOnlyAttemptOneWithNoRework`,
 `TestFirstTimeLandRateJudgedUnderTargetOnce`, `TestWhereShowsFirstTimeLandRateAndTarget`).
 
+### Soft dependencies (`LAND-AFTER:` and `needs set --land-after`)
+
+A **soft dependency** of card B on card A (`LAND-AFTER: <a,b>` in the brief's typed
+header block, or `nova-sprint needs set <id> --land-after <a,b>`) says that **work
+runs in parallel, and the lander lands the two in order**:
+
+- **When to write which**:
+  - Write a **need** (`DEPENDS-ON: <id>`, `--needs <id>`) when B uses something A
+    produces (types, packages, schema, or behavior that must be in the base tree
+    before B can be staged and built). A need gates the deal: B waits in `waiting`
+    until A has landed.
+  - Write a **soft dependency** (`LAND-AFTER: <id>`, `--land-after <id>`) when A
+    and B only touch the same files and landing order matters to whoever lands
+    them. Both cards are placed in `ready` and dealt, worked and read in parallel
+    (`UnresolvedNeeds` and every ready check ignore soft dependencies).
+  - Write **nothing** when the lander's rework at the base tip is cheap and either
+    landing order is fine.
+- **Storage and view**: Stored on the primary's `land_after` field (comma-separated
+  card IDs), read through `sprint.SoftDepsOf` and `sprint.LandOrderBlocked`
+  (`internal/sprint/soft_deps.go`). No table column is added (`internal/sprint/TABLES.lock`).
+  `nova-sprint card <id>` prints `soft: <ids>` on its own line when set.
+- **Landing order and conflict**: When both A and B are queued to merge, `MergeSoftOrder`
+  places A ahead of B even if B was queued earlier or has a higher score. When B is
+  queued and A has not yet landed, B stays queued and is passed over in this pass with
+  the reason `soft dependency on <A> not landed` while independent queued cards in the
+  stream still land. When B conflicts at the base tip after A lands, B takes the
+  ordinary refused-head rework at the base tip and then lands after A. If A is dropped
+  or replaced (`drop`, `relink`, `replace`), B's soft dependency on A is released or
+  re-pointed so B never waits on a card off the table (`tla/SoftDependency.tla`:
+  `SoftLandsInOrder`, `SoftNeverBlocksDeal`, `BothLand`, `DropReleasesOrRelinks`).
