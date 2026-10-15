@@ -840,21 +840,6 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	return out
 }
 
-// waitsAfterOpen is the needs a working card gained while it was dealt
-// (FieldWaitsAfter) that have not landed and were not waived: the card's current
-// attempt is legal until it ends, and the finish sends the card to waiting for
-// them (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace).
-func waitsAfterOpen(s *Snapshot, c *Card) []string {
-	var out []string
-	waived := Split(c.F("waived"))
-	for _, n := range Split(c.F(FieldWaitsAfter)) {
-		if s.StateOf(n) != Landed && !contains(waived, n) {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
 // NeedState is one need of a primary as it stands: the need's place as its
 // column, and whether it was waived.
 type NeedState struct {
@@ -1858,7 +1843,91 @@ type FinishReq struct {
 // by selection without --as is refused outright. As may name several
 // members, comma separated: every card named is on one of them, each
 // finished as its own member's, in the one plan.
-func Finish(s *Snapshot, r FinishReq) Plan { return Lawful(finishPlan(s, r)) }
+func Finish(s *Snapshot, r FinishReq) Plan {
+	p := finishPlan(s, r)
+	before := len(p.Refused)
+	p = Lawful(p)
+	return countRefusedFinishes(s, r, p, before)
+}
+
+// finishWaits is the needs a finish sends the card to waiting for: the open named
+// needs (NamedNeedsOpen, the lifecycle's own predicate over the needs field) among
+// those the card gained while it was dealt or working (FieldWaitsAfter, the rule-11
+// marker). A marker naming a need the needs field does not is no wait, so the
+// finish never asks the lifecycle for a move it refuses. An open need the card was
+// dealt with, never marked, is the needs-stop path's (stoppedOnNeeds, which judges
+// it past its cap); the finish leaves it there as before.
+func finishWaits(s *Snapshot, pr *Card) []string {
+	marked := Split(pr.F(FieldWaitsAfter))
+	var out []string
+	for _, n := range NamedNeedsOpen(s, pr) {
+		if contains(marked, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// FinishRefusalBound is how many finishes of one attempt the lifecycle may refuse
+// before the next one raises the NFinishRefused judgment: a refused finish writes
+// nothing, so the member sends the same one again, and without a bound it does so
+// without end (91 times on one card, 2026-10-15).
+const FinishRefusalBound = 5
+
+// FieldFinishRefusals counts, on the attempt's work card, the finishes the lifecycle
+// refused. A redeal is a new work card, so the count resets with the attempt.
+const FieldFinishRefusals = "finish_refusals"
+
+// countRefusedFinishes adds, for each finish the lifecycle refused (the refusals
+// of p after index before) on a working work card, a unit of its own that counts
+// the refusal on the work card (the refused unit writes nothing), and at the
+// refusal that passes FinishRefusalBound raises one NFinishRefused judgment naming
+// the card, the attempt, the head offered and the refusal's words. It is raised
+// at the one count that passes the bound, so a later refusal counts and raises
+// nothing, and an answered judgment is never raised again for the attempt (the
+// once-key of card and attempt). tla/SprintTables.tla FinishRefused,
+// FinishRefusalsBounded; reversed witness "finishloop".
+func countRefusedFinishes(s *Snapshot, r FinishReq, p Plan, before int) Plan {
+	if before > len(p.Refused) {
+		return p
+	}
+	for _, rf := range p.Refused[before:] {
+		c := s.Fleet.Card(rf.Key)
+		if c == nil || !c.Placed() || c.Col != Working || c.F("kind") == "read" {
+			continue
+		}
+		pr := s.Work.Placed(c.F("primary"))
+		if pr == nil || pr.Col != Working {
+			continue
+		}
+		n := c.Int(FieldFinishRefusals) + 1
+		u := Unit{Key: c.ID, Stream: pr.Row,
+			Changes: []Change{change(Fleet, setEntry(c, map[string]string{FieldFinishRefusals: itoa(n)}))}}
+		if n == FinishRefusalBound+1 && !finishRefusedOpen(s, pr.ID, pr.Int("attempt")) {
+			head := r.Head
+			if head == "" {
+				head = c.ID
+			}
+			note := Note{Kind: Judgment, Type: NFinishRefused, Stream: pr.Row, Primaries: []string{pr.ID}, Count: 1, At: s.Now, Who: r.Who, Marked: true,
+				Card: c.ID, Attempt: pr.Int("attempt"), Decisions: append([]string(nil), Decisions[NFinishRefused]...),
+				What: fmt.Sprintf("the finish of %s at attempt %d, head %s, was refused %d times: %s", c.ID, pr.Int("attempt"), head, n, rf.Why)}
+			u.Notes = append(u.Notes, note)
+		}
+		p.Tally = append(p.Tally, u)
+	}
+	return p
+}
+
+// finishRefusedOpen says an open NFinishRefused judgment already names the
+// primary at the attempt.
+func finishRefusedOpen(s *Snapshot, id string, attempt int) bool {
+	for _, o := range s.Open {
+		if o.Note.Type == NFinishRefused && o.Subject() == id && o.Note.Attempt == attempt {
+			return true
+		}
+	}
+	return false
+}
 
 func finishPlan(s *Snapshot, r FinishReq) Plan {
 	if err := cardcost.ValidateUsage(r.Usage); err != nil {
@@ -2207,7 +2276,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// the attempt was dealt before the need was recorded, so it is legal until now
 		// (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace). If the
 		// need has landed by the finish, the card goes on to review as any finish.
-		after := waitsAfterOpen(s, pr)
+		// the needs field decides, the record the lifecycle judges working -> waiting by
+		// (NamedNeedsOpen; tla/SprintTables.tla FinishTarget, FinishAgreesWithLifecycle):
+		// the needs the card gained while working that are still open in it
+		after := finishWaits(s, pr)
 		// the primary's ran record, this attempt added (recordRan, judgments.go): the brief
 		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
 		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)

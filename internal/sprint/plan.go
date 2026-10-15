@@ -67,6 +67,11 @@ type Plan struct {
 	Places  []PlaceAgain
 	Units   []Unit
 	Refused []Refusal
+	// Tally are units written whatever the step's refusals: a named step that
+	// refuses one of its cards writes nothing else (all or none), but the count
+	// of a refused finish (steps_work.go countRefusedFinishes) is the one write a
+	// refusal makes, so a finish sent again without end is seen.
+	Tally []Unit
 	// Notes the step writes with no unit (a fleet member going down with no
 	// cards to deal); they are written with the first unit, or alone.
 	Notes []Note

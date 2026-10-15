@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -413,7 +414,14 @@ func (a *app) nowLines(v store.CardInfo, held *sprint.Hold) []string {
 	// the state a card that gained a need while working is in: its current attempt
 	// is legal until it ends, then it waits for the need (docs/SPEC-SPRINT.md
 	// section 9, rule 11; sprint.FieldWaitsAfter)
-	if after := p.F(sprint.FieldWaitsAfter); after != "" {
+	// held inside the needs field, the card's one record (sprint.NamedNeedsOpen)
+	var kept []string
+	for _, n := range sprint.Split(p.F(sprint.FieldWaitsAfter)) {
+		if slices.Contains(sprint.Split(p.F("needs")), n) {
+			kept = append(kept, n)
+		}
+	}
+	if after := strings.Join(kept, ","); after != "" {
 		out = append(out, "working, waits for "+after+" after this attempt")
 	}
 	if len(v.Needs) > sprint.PreviewLen {

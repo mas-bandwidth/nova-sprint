@@ -389,17 +389,9 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			// moves the card to waiting when this attempt ends (docs/SPEC-SPRINT.md
 			// section 9, rule 11; steps_work.go finishPlan). The card names the
 			// state it is in, so brief and rule 11 agree (FieldWaitsAfter).
-			if c.Col == Working {
-				var after []string
-				for _, n := range want {
-					if !contains(cur, n) && s.StateOf(n) != Landed {
-						after = append(after, n)
-					}
-				}
-				if len(after) > 0 {
-					set[FieldWaitsAfter] = strings.Join(after, ",")
-				}
-			}
+			// tla/SprintTables.tla WaitsAfterWithinNeeds: the marker is rewritten in the
+			// same unit as the needs, inside them (keepWaitsInNeeds)
+			keepWaitsInNeeds(s, c, want, set, &unset)
 		}
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
@@ -1551,20 +1543,10 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	// the need applies from its next deal, and the finish moves it to waiting
 	// (docs/SPEC-SPRINT.md section 9, rule 11; steps_work.go finishPlan). The card
 	// names the state it is in (FieldWaitsAfter), so brief and rule 11 agree.
-	after := ""
-	if c.Col == string(Working) {
-		var waited []string
-		cur := Split(c.F("needs"))
-		for _, n := range needs {
-			if !contains(cur, n) && s.StateOf(n) != Landed {
-				waited = append(waited, n)
-			}
-		}
-		if len(waited) > 0 {
-			after = strings.Join(waited, ",")
-			set[FieldWaitsAfter] = after
-		}
-	}
+	// tla/SprintTables.tla WaitsAfterWithinNeeds: the marker is rewritten with the
+	// needs, inside them (keepWaitsInNeeds); it is empty, and unset, when the
+	// write drops every need the card gained while working
+	after := keepWaitsInNeeds(s, c, needs, set, &unset)
 	moved := fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)
 	if after != "" {
 		moved += "; working, waits for " + after + " after this attempt"
@@ -1575,6 +1557,34 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
 		Moved: moved})
 	return p
+}
+
+// keepWaitsInNeeds writes the rule-11 marker (FieldWaitsAfter) of a needs write in
+// the same unit as the needs: a working card's marker is its old marker plus the
+// needs the write gains that have not landed, intersected with the new needs, and is
+// unset when that is empty; a card that is not working keeps none. It returns the
+// marker written, "" when it is unset, and so the status line's words.
+// tla/SprintTables.tla Follow and WaitsAfterWithinNeeds (reversed witness
+// "staleafter": the write left the marker as it was).
+func keepWaitsInNeeds(s *Snapshot, c *Card, newNeeds []string, set map[string]string, unset *[]string) string {
+	var out []string
+	if c.Col == Working {
+		cur, old := Split(c.F("needs")), Split(c.F(FieldWaitsAfter))
+		for _, n := range newNeeds {
+			if contains(old, n) || (!contains(cur, n) && s.StateOf(n) != Landed) {
+				out = append(out, n)
+			}
+		}
+	}
+	after := strings.Join(out, ",")
+	switch {
+	case after != "":
+		set[FieldWaitsAfter] = after
+	case c.F(FieldWaitsAfter) != "":
+		delete(set, FieldWaitsAfter)
+		*unset = append(*unset, FieldWaitsAfter)
+	}
+	return after
 }
 
 // NeedsSetReq re-points one primary's needs (nova-sprint needs set).
@@ -1693,6 +1703,7 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	} else {
 		unset = append(unset, "needs")
 	}
+	keepWaitsInNeeds(s, c, wants, set, &unset)
 	u := Unit{Key: c.ID, Stream: c.Row}
 	if to != c.Col {
 		u.Changes = []Change{change(Work, moveEntry(c, c.Row, to, set, unset...))}

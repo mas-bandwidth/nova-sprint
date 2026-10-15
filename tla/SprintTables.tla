@@ -31,7 +31,10 @@
 \*   Resolve        waiting -> ready    resolve, the tick's resolve, a waiting
 \*                                      card's release of its hold (releaseHeld)
 \*   Start          ready   -> working  the deal and redeal, machines and friends
-\*   Finish         working -> review   finish
+\*   Finish         working -> review | waiting | ready   finish: waiting when
+\*                                      a named need is open (the needs
+\*                                      record, the lifecycle's own
+\*                                      predicate), review otherwise
 \*   Withdraw       working -> ready    the work card withdrawn: route rests,
 \*                                      take ended, staging refused, rate
 \*                                      limited, lane cap, friend return,
@@ -195,6 +198,13 @@
 \*                  to waiting (WorkingToWaitingOnlyOnNeeds).
 \*   "finishunmet"  a finish drops the needs guard: a taken card given a need
 \*                  not landed finishes to review with it (Rule11).
+\*   "staleafter"   a needs write leaves waitsAfter as it was and the finish
+\*                  reads it, not the needs: the go-table case (deal, gain a
+\*                  need, needs set --clear, finish) sends the card to waiting
+\*                  for a need it no longer names, which the lifecycle refuses
+\*                  (WaitsAfterWithinNeeds, FinishAgreesWithLifecycle).
+\*   "finishloop"   a refused finish is neither counted nor judged, so it is
+\*                  sent again without end (FinishRefusalsBounded).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -269,12 +279,12 @@ IsSentinel(c) == c \in Sentinels
 \* The plan flags of the step just taken (lifecycle.go Plan): releasing lands a sentinel,
 \* inserting moves a primary ready -> waiting, removing takes a landed primary
 \* off the table. Each is a nondeterministic choice of the plan the step runs.
-Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN, decisionPark : BOOLEAN, decisionRelease : BOOLEAN]
+Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN, decisionPark : BOOLEAN, decisionRelease : BOOLEAN, finishing : BOOLEAN]
 
 \* An ordinary step's plan: no flag. Release, the add that inserts a sentinel and
 \* the remove set their own flag on the step they take (flags', read by the
 \* rules), so a flag is the plan of that step and never a state carried on.
-NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE, decisionPark |-> FALSE, decisionRelease |-> FALSE]
+NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE, decisionPark |-> FALSE, decisionRelease |-> FALSE, finishing |-> FALSE]
 
 \* A red CI observation on a primary: none or an open red (refmodel Primary.CI
 \* and the ci judgment; a green observation and an ack both close the red, and
@@ -286,6 +296,10 @@ CIVals == {"", "red"}
 \* their last write, the work table.
 Verbs == {"start", "finish", "fleetdown", "drop"}
 
+\* FinishBound is FinishRefusalBound (internal/sprint, 5) at the model's size: a
+\* finish refused more than this many times on one attempt raises one judgment.
+FinishBound == 1
+
 VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
 
 GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits>>
@@ -294,7 +308,16 @@ vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, operatio
 
 VARIABLES parkState, parkSaved, parkBound, parkCause, parkHead, parkReads, parkEvent
 parkingVars == <<parkState,parkSaved,parkBound,parkCause,parkHead,parkReads,parkEvent>>
-allTableVars == <<vars,parkingVars>>
+
+\* The needs record's views (steps_edit.go FieldWaitsAfter, steps_work.go
+\* FieldFinishRefusals): waitsAfter[c] is the needs c gained while working, held
+\* inside needs[c] (the rule-11 marker; WaitsAfterWithinNeeds); finishTries[c]
+\* is the finishes of c's attempt the lifecycle refused (a ghost count, always
+\* kept), finishRefusals[c] is the counter the code records on the work card,
+\* and finishJudged[c] the NFinishRefused judgments raised for the attempt.
+VARIABLES waitsAfter, finishTries, finishRefusals, finishJudged
+finishVars == <<waitsAfter, finishTries, finishRefusals, finishJudged>>
+allTableVars == <<vars,parkingVars,finishVars>>
 
 TypeOK ==
   /\ briefGeneration \in [Card -> 0..1]
@@ -318,6 +341,10 @@ TypeOK ==
   /\ pending \in Verbs \cup {""}
   /\ ci \in [Card -> CIVals]
   /\ pendstate \in [Card -> Cells]
+  /\ waitsAfter \in [Card -> SUBSET Card]
+  /\ finishTries \in [Card -> 0..(FinishBound + 1)]
+  /\ finishRefusals \in [Card -> 0..(FinishBound + 1)]
+  /\ finishJudged \in [Card -> 0..2]
 
 \* Up: the members up now (refmodel State.Up).
 Up == {m \in Member : members[m] = "up"}
@@ -444,6 +471,10 @@ Init == TableInit
         /\ parkState = "none" /\ parkSaved = "" /\ parkBound = TRUE
         /\ parkCause = FALSE /\ parkHead = headGeneration[ParkCard]
         /\ parkReads = rplace[ParkCard] /\ parkEvent = "init"
+        /\ waitsAfter = [c \in Card |-> {}]
+        /\ finishTries = [c \in Card |-> 0]
+        /\ finishRefusals = [c \in Card |-> 0]
+        /\ finishJudged = [c \in Card |-> 0]
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
 \* step carries no plan flag. The deferred write tracks the work table.
@@ -536,25 +567,44 @@ Take ==
     /\ pending' = pending
     /\ flags' = NoFlags
 
-\* Finish (refmodel Finish): working -> review; the work card finishes in its
-\* member's working cell. A finish of a card whose named needs have not landed
-\* is a coordination failure (needs_stop.go), taken whatever the worker
-\* reports: it goes to waiting, not review (NeedsWithdraw), so Rule11 holds. The
-\* reversed witness "finishunmet" drops the guard and lets a taken card given a
-\* need not landed reach review with it.
+\* GenerationTarget: where a finish with no named need open leaves the card: review,
+\* or ready when the brief generation moved (finishPlan's AttemptPredatesBrief).
+GenerationTarget(c) ==
+  IF Broken = "oldheadreviewed" \/ attemptGeneration[c] = briefGeneration[c] \/ keptHead[c]
+  THEN "review" ELSE "ready"
+
+\* WaitsOpen: waitsAfter[c] names a need that has not landed and was not waived.
+WaitsOpen(c) == \E n \in waitsAfter[c] : n \notin everLanded /\ n \notin waived[c]
+
+\* FinishTarget (steps_work.go finishPlan): the finish ends where the needs record
+\* says, by the predicate lifecycle.go judges working -> waiting by
+\* (namedNeedsOpen = ~NeedsMet): waiting with a named need open, GenerationTarget
+\* otherwise. The reversed witness "staleafter" reads waitsAfter, the second
+\* record finishPlan read before this card; "finishunmet" drops the waiting
+\* branch and lets a card given a need not landed finish with it.
+FinishTarget(c) ==
+  IF Broken = "finishunmet" THEN GenerationTarget(c)
+  ELSE IF (IF Broken = "staleafter" THEN WaitsOpen(c) ELSE ~NeedsMet(c)) THEN "waiting"
+  ELSE GenerationTarget(c)
+
+\* Finish (refmodel Finish): the working card finishes in its member's working
+\* cell and its primary goes where its needs say (FinishTarget): a finish of a
+\* card whose named needs have not landed is a coordination failure
+\* (needs_stop.go), taken whatever the worker reports, so it goes to waiting, not
+\* review, and Rule11 holds. Every finish is one the lifecycle accepts
+\* (FinishAgreesWithLifecycle).
 Finish ==
   \E c \in Card :
     /\ FenceOK
     /\ state[c] = "working"
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
-    /\ Broken = "finishunmet" \/ NeedsMet(c)
-    /\ state' = [state EXCEPT ![c] = IF Broken = "oldheadreviewed" \/ attemptGeneration[c] = briefGeneration[c] \/ keptHead[c] THEN "review" ELSE "ready"]
+    /\ state' = [state EXCEPT ![c] = FinishTarget(c)]
     /\ wplace' = [wplace EXCEPT ![c] = IF state'[c] = "review" THEN "finished" ELSE "withdrawn"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pendstate' = IF Free THEN state' ELSE pendstate
     /\ pending' = pending
-    /\ flags' = NoFlags
+    /\ flags' = [NoFlags EXCEPT !.finishing = TRUE]
 
 \* Withdraw: working -> ready, the work card withdrawn with its attempt
 \* unchanged, for every cause but fleet down (withdrawUnit and the route rest,
@@ -1144,7 +1194,7 @@ CrashFinish ==
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
     /\ state' = state
-    /\ pendstate' = [state EXCEPT ![c] = IF attemptGeneration[c] = briefGeneration[c] \/ keptHead[c] THEN "review" ELSE "ready"]
+    /\ pendstate' = [state EXCEPT ![c] = FinishTarget(c)]
     /\ wplace' = [wplace EXCEPT ![c] = IF pendstate'[c] = "review" THEN "finished" ELSE "withdrawn"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pending' = "finish"
@@ -1330,15 +1380,55 @@ DecisionReleaseStep ==
   /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits,
        needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
        scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
-Next == \/ ((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ ParkFence /\ UNCHANGED parkingVars
-        \/ DecisionParkStep \/ DecisionReleaseStep
+\* Follow: the needs record's views follow every step that is not a refused finish.
+\* waitsAfter[c] (steps_edit.go NeedsSet, briefDepends, the brief path; the
+\* rule-11 marker) is, for a card working before and after the step, its old
+\* marker plus the needs the step gained, intersected with the new needs: held
+\* inside the needs record at every write (WaitsAfterWithinNeeds); a step that
+\* ends the attempt spends it. The reversed witness "staleafter" leaves it as
+\* it was (no intersection). The refusal counts reset with the attempt: a card
+\* that changes state, member or is dealt anew starts a clean count.
+Fresh(c) == state'[c] # state[c] \/ wmember'[c] # wmember[c] \/ (wplace'[c] = "ready" /\ wplace[c] # "ready")
+
+Follow ==
+  /\ waitsAfter' = [c \in Card |->
+       IF ~(state[c] = "working" /\ state'[c] = "working") THEN {}
+       ELSE IF Broken = "staleafter" THEN waitsAfter[c] \cup (needs'[c] \ needs[c])
+       ELSE (waitsAfter[c] \cup (needs'[c] \ needs[c])) \cap needs'[c]]
+  /\ finishTries' = [c \in Card |-> IF Fresh(c) THEN 0 ELSE finishTries[c]]
+  /\ finishRefusals' = [c \in Card |-> IF Fresh(c) THEN 0 ELSE finishRefusals[c]]
+  /\ finishJudged' = [c \in Card |-> IF Fresh(c) THEN 0 ELSE finishJudged[c]]
+
+\* FinishRefused (steps_work.go Finish, FieldFinishRefusals, NFinishRefused): a
+\* finish of a working card the lifecycle refuses changes no card but is counted,
+\* and the refusal past FinishBound raises one judgment for the attempt, never a
+\* second. The reversed witness "finishloop" neither counts nor judges, so the
+\* same finish is refused without end. Modelled in the one-primary instances
+\* (as DecisionParkStep is) to keep the three-card instances at their size.
+FinishRefused ==
+  /\ Cardinality(Card) = 1
+  /\ \E c \in Card :
+    /\ FenceOK
+    /\ state[c] = "working"
+    /\ wplace[c] = "working"
+    /\ members[wmember[c]] = "up"
+    /\ finishTries[c] <= FinishBound
+    /\ finishTries' = [finishTries EXCEPT ![c] = @ + 1]
+    /\ finishRefusals' = IF Broken = "finishloop" THEN finishRefusals ELSE [finishRefusals EXCEPT ![c] = @ + 1]
+    /\ finishJudged' = IF Broken = "finishloop" \/ finishRefusals'[c] <= FinishBound \/ finishJudged[c] >= 1
+                       THEN finishJudged ELSE [finishJudged EXCEPT ![c] = @ + 1]
+    /\ UNCHANGED <<waitsAfter, vars, parkingVars>>
+
+Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ ParkFence /\ UNCHANGED parkingVars /\ Follow)
+        \/ ((DecisionParkStep \/ DecisionReleaseStep) /\ Follow)
+        \/ FinishRefused
 
 NoOldBriefHeadInReview ==
   \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
 
 CrashNext ==
   \/ Next
-  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep /\ ParkFence /\ UNCHANGED parkingVars
+  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep /\ ParkFence /\ UNCHANGED parkingVars /\ Follow
 
 Spec == Init /\ [][Next]_allTableVars
 CrashSpec == Init /\ [][CrashNext]_allTableVars
@@ -1355,6 +1445,31 @@ NoNeedCycle == \A c \in Card : c \notin UNION {ReachN(n) : n \in needs[c]}
 Rule11 ==
   \A c \in Card \ Sentinels :
     state[c] \in {"review", "merging", "landed"} => NeedsMet(c)
+
+\* WaitsAfterWithinNeeds (steps_edit.go NeedsSet, briefDepends; check.go): the
+\* rule-11 marker of the needs a card gained while working is held inside its
+\* needs record at every write, so no second record can name a need the first
+\* does not. Reversed witness "staleafter".
+WaitsAfterWithinNeeds == \A c \in Card : waitsAfter[c] \subseteq needs[c]
+
+\* FinishAgreesWithLifecycle (steps_work.go finishPlan; lifecycle.go
+\* WorkingToWaitingOnlyOnNeeds and Rule11): a finish ends in waiting only when
+\* the card's named needs have not landed, and in review or ready only when they
+\* have, so the lifecycle accepts every finish the plan builds and none is
+\* refused for the needs. Reversed witnesses "staleafter" and "finishunmet".
+FinishAgreesWithLifecycle ==
+  [][flags'.finishing =>
+     \A c \in Card :
+       /\ state[c] = "working" /\ state'[c] = "waiting" => ~NeedsMet(c)
+       /\ state[c] = "working" /\ state'[c] \in {"review", "ready"} => NeedsMet(c)]_allTableVars
+
+\* FinishRefusalsBounded (FinishRefusalBound, NFinishRefused): a finish refused past
+\* the bound has raised its one judgment, and never two for one attempt. Reversed
+\* witness "finishloop".
+FinishRefusalsBounded ==
+  \A c \in Card :
+    /\ finishTries[c] > FinishBound => finishJudged[c] = 1
+    /\ finishJudged[c] <= 1
 
 \* NoCardLostOrTwice: a card that leaves the table (a drop or a remove) never
 \* comes back; its record is kept, unplaced, no card is admitted twice, and no

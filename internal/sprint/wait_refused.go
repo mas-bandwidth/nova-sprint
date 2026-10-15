@@ -61,6 +61,8 @@ var WaitRefused = map[string]string{
 	// a harness fault repeated: the second identical one on a card, or on many cards, holds
 	// the card until the cause is mended and it is rebriefed or dropped (harness_fault.go)
 	NHarnessFault: "mend the cause (the toolchain, a route or a provider), then rebrief it, or drop it",
+	// a finish refused past its bound: the same finish is being sent again
+	NFinishRefused: "look at the card and mend what the refusal names, or drop it",
 }
 
 // WaitAllowedOnACard is the kinds a rework discharges on its primary (ReworkResolves) that

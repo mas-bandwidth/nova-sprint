@@ -303,6 +303,9 @@ type Result struct {
 	Moved   []string         `json:"moved"`
 	Refused []sprint.Refusal `json:"refused"`
 	Notes   int              `json:"notes"`
+	// Raised is the id and type of each judgment the step raised
+	// ("<id> <type>"), so a caller can name it.
+	Raised []string `json:"raised,omitempty"`
 	// Said is what the step tells beside its moves (sprint.Plan.Said): a NOTE line each.
 	Said     []string `json:"said,omitempty"`
 	Attempts int      `json:"attempts"`
@@ -757,9 +760,18 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return refuseWhole(res, plan, why)
 			}
 		}
+		tally := plan.Tally
+		plan.Tally = nil
 		if step.Named && len(plan.Refused) > 0 && len(plan.Units)+len(plan.Notes)+len(plan.Closes)+len(plan.Rows) > 0 {
-			return allOrNone(res, plan), nil
+			ar := allOrNone(res, plan)
+			if len(tally) == 0 {
+				return ar, nil
+			}
+			// all or none, but for the refusal counts: they alone are written
+			plan.Refused = ar.Refused
+			plan.Units, plan.Notes, plan.Closes, plan.Rows = nil, nil, nil, nil
 		}
+		plan.Units = append(plan.Units, tally...)
 		actor := st.Actor
 		if step.Actor != "" {
 			actor = step.Actor
@@ -865,6 +877,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		res.Op = op.ID
 		res.Notes = len(op.Notes) + len(op.Decided)
+		for _, n := range op.Notes {
+			if n.Kind == sprint.Judgment {
+				res.Raised = append(res.Raised, n.ID+" "+n.Type)
+			}
+		}
 		body, _ := json.Marshal(res)
 		op.Result = string(body)
 		if n := recordSize(op); n > MaxOpRecord {

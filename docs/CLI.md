@@ -65,6 +65,7 @@ nova-sprint goal show [<name>]
 nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
+# finish ends where the card's needs field says (review, or waiting for a need not landed); a finish the lifecycle refuses is counted on the work card, and the sixth refusal of an attempt raises one judgment, its id printed as JUDGMENT raised <id> <type>
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room

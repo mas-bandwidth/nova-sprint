@@ -392,6 +392,7 @@ one answer to each judgment (every one prints its own, filled in):
   ready to accept             accept --group <id> --expect <n> --answers <notes>
   work came back failed       rework --group <id> --expect <n> --answers <notes>  (each fix is the work's report; --fix for all; a harness fault or a HOLD with findings is reworked by rule failed, a friend's card too, so only failed work past its bound or with no report comes here; no wait parks it)
   the same harness fault      brief <id> --brief-file '<the re-cut brief>' (its next attempt, from its last pushed head), or drop <id> --reason '<why>'  (the second identical harness fault on one card, or the fleet's on many: one grouped judgment; the card waits and is never redealt)
+  a finish is refused again and again   card <primary> (the judgment names the refusal), mend what it names so the worker's next finish is accepted, or drop <id> --reason '<why>'  (a finish the lifecycle refused more than 5 times on one attempt: one judgment for the card and attempt)
   a friend's report needs a read  card <primary>, then ack <note> --reason '<what the report says>'
   the fleet's failure           mend its cause (the toolchain, a member, a route, a provider), then ack <note> --reason '<what was mended>'  (one judgment for a failure many cards share; the cards rework themselves meanwhile)
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
@@ -879,7 +880,24 @@ func (a *app) runStep(verbName string, c common, st *store.Store, step store.Ste
 			c.says = res.Said
 		} // the planner's per-card no-op answers still hold
 	}
+	// a judgment the step raised is named by its id, even when the step refused its
+	// card (a finish refused past its bound raises one)
+	for _, j := range finishRefusedRaised(res.Raised) {
+		c.says = append(c.says, "JUDGMENT raised "+j)
+	}
 	return a.report(ctx, verbName, c, st, res, err, stdout, stderr)
+}
+
+// finishRefusedRaised is the judgments a step raised for a finish refused past its
+// bound ("<id> <type>"): the ones a finish names by id (sprint.NFinishRefused).
+func finishRefusedRaised(raised []string) []string {
+	var out []string
+	for _, j := range raised {
+		if strings.HasSuffix(j, " "+sprint.NFinishRefused) {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 func token(verbName string) string {
