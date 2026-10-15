@@ -646,8 +646,10 @@ fetched once a call, read with git and no go command. The tokens are `paths-at-b
 `paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-heavy-or-above` and
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
-`PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
-exit 2, nothing written. A `TEST:` line is accepted in its Go form
+ `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
+ exit 2, nothing written. Each refusal at the base is recorded in the server's refused-verb
+ record under the verb, the card id and the rule tokens it drew in Why, so a later review
+ counts refusals per rule from the record; an accepted add records nothing. A `TEST:` line is accepted in its Go form
 (`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
 C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
 rather than in `*.go`; preflight's TEST check does the same, and the brief check accepts a

@@ -6479,7 +6479,11 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   (the path member-env already uses), and a pair whose beat forms disagree is one
   `DOCTOR FAIL member-env <m> beat form: the installed nova-sprint <version> sends a beat the server at <version> refuses: <text>`. A version pair whose beat forms disagree is a doctor FAIL
   at adopt time: an adopt of a build whose beat the server refuses is refused by the same check.
-  `fleet beat --dry-run` plans and writes nothing (cmd/nova-sprint).
+      `fleet beat --dry-run` plans and writes nothing (cmd/nova-sprint). An add or brief lint
+    refusal at the base (cmd/nova-sprint/addlint.go: the brief checks at the base) is
+    recorded in the same server- refused-verb record under the verb (`add`), the card id and the
+    rule tokens it drew (paths-cover-named, test-named and so on) in Why, so a later review
+    counts refusals per rule from the record; an accepted add records nothing.
 - **`doctor --preflight <candidate build>`** (the owner, 2026-10-11: "Also consider sprint doctor
   in this process") is the release gate's frame, run before any server switch or adopt. It runs
   the candidate's `version` and its `tick --shadow --json` against the store this doctor reads,
