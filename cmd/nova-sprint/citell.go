@@ -30,6 +30,8 @@ const (
 type ciReceiptReader interface {
 	BlockRead(context.Context, string, string, time.Duration, int) ([]bus.Entry, error)
 	Range(context.Context, string, string, string, int) ([]bus.Entry, error)
+	// End is the id of the stream's newest entry, or "0-0" for an empty stream.
+	End(context.Context, string) (string, error)
 }
 
 // ciRedis adapts the existing go-redis universal client, without a second
@@ -49,6 +51,16 @@ func (r ciRedis) BlockRead(ctx context.Context, stream, after string, block time
 		out = append(out, ciEntries(batch.Stream, batch.Messages)...)
 	}
 	return out, nil
+}
+func (r ciRedis) End(ctx context.Context, stream string) (string, error) {
+	rows, err := r.XRevRangeN(ctx, stream, "+", "-", 1).Result()
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "0-0", nil
+	}
+	return rows[0].ID, nil
 }
 func (r ciRedis) Range(ctx context.Context, stream, from, to string, count int) ([]bus.Entry, error) {
 	rows, err := r.XRangeN(ctx, stream, from, to, int64(count)).Result()
@@ -92,7 +104,19 @@ func newCITell(a *app, kv store.KV, reader ciReceiptReader) (*ciTell, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ciTell{a: a, kv: kv, reader: reader, cursor: cmp.Or(cursor, "0-0"), sweepAt: a.now().Add(ciReceiptSweep)}, nil
+	if cursor == "" {
+		// The first start has no history to tell: begin at the stream's current end,
+		// never at 0-0, which would replay every past CI event to the coordinator.
+		end, err := reader.End(context.Background(), ciReceiptStream)
+		if err != nil {
+			return nil, err
+		}
+		if err := kv.SetKey(context.Background(), ciReceiptCursor, end); err != nil {
+			return nil, err
+		}
+		cursor = end
+	}
+	return &ciTell{a: a, kv: kv, reader: reader, cursor: cursor, sweepAt: a.now().Add(ciReceiptSweep)}, nil
 }
 
 // ciTellLoop uses the sprint's existing authenticated Redis client. Only the

@@ -39,6 +39,14 @@ func (f *ciStream) Range(ctx context.Context, stream, from, to string, count int
 	return f.Fake.Range(ctx, stream, from, to, count)
 }
 
+func (f *ciStream) End(ctx context.Context, stream string) (string, error) {
+	rows, err := f.Fake.Range(ctx, stream, "-", "+", 1<<20)
+	if err != nil || len(rows) == 0 {
+		return "0-0", err
+	}
+	return rows[len(rows)-1].Entry, nil
+}
+
 // ciFixture keeps the real store and bus rules, replacing only transport and time.
 func ciFixture(t *testing.T) (*testApp, *ciStream, *bustest.Fake) {
 	t.Helper()
@@ -150,8 +158,9 @@ func TestCIReceiptFailedWritesNeverSkipOrDuplicate(t *testing.T) {
 			t.Parallel()
 			ta, stream, transport := ciFixture(t)
 			kv := &ciFailWrite{KV: ta.m, fail: tc.fail}
-			tell, err := newCITell(ta.a, kv, stream)
+			tell, err := newCITell(ta.a, ta.m, stream) // the first start writes its cursor; the faults count from the first event
 			require.NoError(t, err)
+			tell.kv = kv
 			ctx := context.Background()
 			require.NoError(t, stream.AddAll(ctx, []string{ciReceiptStream}, ciRow()))
 			require.ErrorContains(t, tell.step(ctx), "durable write lost")
@@ -306,4 +315,23 @@ func TestCIReceiptDurableOnceKeyOutlivesBusToken(t *testing.T) {
 			assert.Equal(t, 1, transport.Len(bus.StreamOf("ada")))
 		})
 	}
+}
+
+// TestACITellFirstStartBeginsAtTheStreamEnd pins the v1.3.17 fix: no stored cursor
+// means the stream's current end, so past CI events are never replayed.
+func TestACITellFirstStartBeginsAtTheStreamEnd(t *testing.T) {
+	t.Parallel()
+	ta, stream, transport := ciFixture(t)
+	ctx := context.Background()
+	require.NoError(t, stream.AddAll(ctx, []string{ciReceiptStream}, ciRow()))
+	tell, err := newCITell(ta.a, ta.m, stream)
+	require.NoError(t, err)
+	end, err := stream.End(ctx, ciReceiptStream)
+	require.NoError(t, err)
+	assert.Equal(t, end, tell.cursor)
+	assert.NotEqual(t, "0-0", tell.cursor)
+	stream.drop = false
+	ta.step(ciReceiptSweep + time.Second)
+	require.NoError(t, tell.step(ctx))
+	assert.Zero(t, transport.Len(bus.StreamOf("coordinator")), "history before the first start is never told")
 }

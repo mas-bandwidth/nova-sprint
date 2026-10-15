@@ -1,0 +1,38 @@
+// store.schema: the sprint store's done record (internal/sprint/store/done.go,
+// DoneRecord; tla/DoneRecord.tla) as a FIXED table: the sprint server is its only
+// writer and its only reader, and the server is upgraded first, which is the fixed
+// table's contract (schema docs/SPEC-TABLES.md section 21: a newer reader reads an
+// older image, an older reader refuses a newer one as layout_newer).
+package donewire
+
+// Completion is sprint.Completion: one card a row completed.
+fixed table Completion
+{
+    // sprint.DoneKinds names: "work", "fix", "read" today (4 bytes); 16 leaves
+    // room for a registered kind (done_test.go registers "merge").
+    kind string(16)
+    // sprint.ValidCardID: at most 4 dot-joined ValidID words of MaxIDLen (128)
+    // bytes each, so 4*128 + 3 = 515.
+    card string(515)
+    // a fleet row: a member name (ValidID, 128) or a friend row "friend." + a
+    // ValidID name (sprint.FriendRow), so 7 + 128 = 135.
+    row  string(135)
+    // the log line's time, Unix nanoseconds UTC; 0 is the zero time.
+    at   int64
+}
+
+// DoneRecord is one page of store.DoneRecord: the epoch, the stream id of the last
+// log line read, the page count of the record (1 for a single-page record at
+// keyDoneRecord; pages > 1 adds keyDoneRecord:1 .. keyDoneRecord:<pages-1>), and up
+// to 95 compacted completions on this page (8 + 45 + 4 + 95 * 686 + 4 = 65231 bytes
+// under the fixed form's 65536-byte body ceiling).
+fixed table DoneRecord
+{
+    epoch  uint64
+    // a Redis stream id "<ms>-<seq>", two uint64 in decimal: 20 + 1 + 20 = 41.
+    cursor string(41)
+    done   [..95]Completion
+    // the total number of pages in this record (at least 1 when written).
+    pages  uint32
+    wrote  int64
+}

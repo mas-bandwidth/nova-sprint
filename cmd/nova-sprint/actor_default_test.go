@@ -125,7 +125,7 @@ func TestCoordinatorActorDefaultNeedsTheRecordProven(t *testing.T) {
 		{"another-name", func(t *testing.T, rig *hooktest.Rig, name string) { rig.Hook(t, name+"-forged", hook.Coordinator) }},
 		{"no-answer", func(t *testing.T, rig *hooktest.Rig, name string) {
 			rig.Hook(t, name, hook.Coordinator)
-			require.NoError(t, rig.Client.HSet(context.Background(), hook.RecordKey(name), "answered_at", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli()).Err())
+			require.NoError(t, rig.Client.HSet(context.Background(), hook.RecordKey(name), "answered_at", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli(), "armed", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli()).Err())
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

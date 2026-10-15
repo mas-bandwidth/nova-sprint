@@ -202,8 +202,8 @@ func TestTheGateReadsTheNovaHookRecord(t *testing.T) {
 	require.NoError(t, err)
 	ta.lined(func() { ta.ok("where") })
 
-	// two heartbeat intervals with no answer from the session: down, whatever the pushes say
-	require.NoError(t, rig.Client.HSet(ctx, hook.RecordKey(name), "answered_at", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli()).Err())
+	// a session silent past the heartbeat bound (no answer, no send, hooked long ago): down, whatever the pushes say
+	require.NoError(t, rig.Client.HSet(ctx, hook.RecordKey(name), "answered_at", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli(), "armed", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli()).Err())
 	ta.refusedFirst("where", sprint.HookFirst+": "+name+" is not hooked in: "+hook.NoAnswerReason)
 
 	// another actor than the holder is not the coordinator's gate's to judge
