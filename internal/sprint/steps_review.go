@@ -1424,7 +1424,10 @@ type ReworkReq struct {
 	// opens the next attempt staged from that head: the brief is otherwise kept (docs/
 	// SPEC-SPRINT.md, rework --carry). A card with no pushed head refuses the whole step, by
 	// name, and nothing is written. It answers a bound judgment and a brief-defect judgment
-	// whose named cause is coordination (BriefDefectCoordination) once the needs have landed.
+	// whose named cause is coordination (BriefDefectCoordination) once the needs have landed,
+	// and the conflict bound (IsConflictBound: the landing refused the head twice only for a
+	// merge conflict with the advanced base; tla/Land.tla, THE BOUND, ConflictBoundCarries),
+	// whether or not the brief-defect rule marked it.
 	Carry bool `json:",omitempty"`
 	// Tier, when set, is the tier every later deal of the card draws its route from
 	// (route.go, cardTier): written on the primary as FieldTier, over its brief's line 1.
