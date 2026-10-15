@@ -20,7 +20,7 @@ it is. These are routine, and the dispatcher runs them:
   `nova-sprint finish --as <member> <card>@<gen> --epoch <n> --head <commit>`.
 - Apply a scope widening that arrives with an exact file list (its report's
   PATHS-PROPOSED line): `nova-sprint brief <id> --widen`.
-- Relay: `nova-bus send --as <me> --to <name> --subject <s> --body <text>`.
+- Relay: `nova-bus send --as <coordinator> --to <name> --subject <s> --body <text>`.
 
 These are judgment, and go to the coordinator: a new ruling, a HOLD, a red
 base with no known cause, anything touching privacy or security, and a card
@@ -28,18 +28,21 @@ stuck by count (step 7).
 
 ## 2. Run a dispatcher
 
-The dispatcher is a separate session on a cheaper model or a lower effort. It
-runs the loop above and sends the coordinator only judgment.
+The dispatcher is part of the coordinator, not a separate name: a second
+session on a cheaper model or a lower effort that runs the loop above and
+sends the coordinator only judgment.
 
 - The coordinator keeps the conversation with the owner, the rulings, and the
   coordinator hook (`nova-hook hook --as <coordinator> --role coordinator`).
-  Only the session holding a hook answers its challenges; the dispatcher never
-  runs `nova-hook prove`.
-- The dispatcher talks to the coordinator over the bus
-  (`nova-bus send --as <dispatcher> --to <coordinator> ...`, `nova-bus recv --as <dispatcher>`)
-  and hears the judgments through the push loop, `nova-sprint inbox --wait --push <dir>`.
-  Check your build first: in nova-tools v1.3/comms every `nova-bus` verb refuses a
-  name that is not hooked in (`TestEveryVerbRefusesUntilHooked`).
+  The dispatcher holds no hook of its own and never answers challenges: it
+  never runs `nova-hook prove`. Only the coordinator's session does.
+- The dispatcher sends on the bus under the coordinator's own name,
+  `nova-bus send --as <coordinator> --to <coordinator> --subject <s> --body <text>`.
+  Every `nova-bus` verb refuses a name that is not hooked in
+  (`TestEveryVerbRefusesUntilHooked` in nova-tools), so it reuses the name the
+  coordinator's hook keeps proven rather than a name of its own.
+- The dispatcher hears the judgments through the push loop,
+  `nova-sprint inbox --wait --push <dir>`.
 - A coordinator verb runs only while the judgments have a way to the seat
   (the gate in `cmd/nova-sprint/coordinator_hook.go`), so the dispatcher's
   routine steps stop when the coordinator's hook is gone. That is intended:
