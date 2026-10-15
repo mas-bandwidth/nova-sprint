@@ -2355,4 +2355,12 @@
    :text "Resume after the rocketnet milestone. THE TASK. The sprint has `set --fleet-tiers` (the tiers the fleet as a whole may be dealt) but no matching setting for the friends as a whole. Add Source: Glenn, 2026-10-15 ~21:58Z: \"we should be able to configure tiers allowed for friends (as a whole) and fleet (as a whole). Default Heads: none."
    :date "2026-10-15"
    :release "after the rocketnet milestone"
-   :kept (:sprint-card "friend-tiers-and-fleet-tiers-default-all" :sprint-stream "v15-features" :sprint-column "ready" :tier "" :sprint-base "v1.5" :needs "" :pushed-head "" :pushed-branch ""))))
+   :kept (:sprint-card "friend-tiers-and-fleet-tiers-default-all" :sprint-stream "v15-features" :sprint-column "ready" :tier "" :sprint-base "v1.5" :needs "" :pushed-head "" :pushed-branch ""))
+  (item "archived-streams-leave-the-all-cards-view" :group "sprint" :area "nova-sprint"
+   :title "Archived streams leave the all-cards view"
+   :text "The dashboard's CARDS BY STATE strip and the all-cards view count only cards of streams on the board; archiving or removing a stream removes its landed cards from those views (today the strip still shows 28 landed from archived streams). Source: Glenn 2026-10-15 ~22:15Z: \"This is a bug for v1.5. When landed cards and/or work streams are removed, the landed cards they contained should be removed from the ALL CARDS view.\""
+   :why "Kind: bug."
+   :date "2026-10-15"
+   :release "v1.5"
+   :origin "Glenn, 2026-10-15 ~22:15Z"
+   :kept (:kind "bug"))))

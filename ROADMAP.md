@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (210)
+- [The sprint system](#the-sprint-system) (211)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
@@ -1744,6 +1744,16 @@ Why it waits: Cost: the subscription rows are already paid; the fleet spends API
 Target: after the rocketnet milestone
 
 From: Glenn, 2026-10-15 ~21:50Z
+
+### Archived streams leave the all-cards view
+
+The dashboard's CARDS BY STATE strip and the all-cards view count only cards of streams on the board; archiving or removing a stream removes its landed cards from those views (today the strip still shows 28 landed from archived streams). Source: Glenn 2026-10-15 ~22:15Z: "This is a bug for v1.5. When landed cards and/or work streams are removed, the landed cards they contained should be removed from the ALL CARDS view."
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: Glenn, 2026-10-15 ~22:15Z
 
 ## Setup, release and operations
 
