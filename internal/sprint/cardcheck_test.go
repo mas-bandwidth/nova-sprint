@@ -312,7 +312,10 @@ func TestCardCheckSamePathInDifferentReposIsNoFinding(t *testing.T) {
 	files := findingsOfKind(got, CheckFiles)
 	require.Len(t, files, 1, "%+v", got)
 	assert.Contains(t, files[0].Finding, path+" is written by streams s1 and s2")
-	assert.Empty(t, files[0].Serialized, "unordered writers in one repository still refuse")
+	assert.Equal(t, SeverityWarn, files[0].Severity)
+	assert.False(t, files[0].Refuses())
+	assert.Equal(t, overlapWarn, files[0].Serialized)
+	assert.Empty(t, RefusingFindings(got), "a shared file is a warning and the check would exit 0")
 
 	s = cardCheckFixture()
 	putCheckCard(s, "a4", "s1", "robotgamedevelopers/delta", path)
@@ -325,6 +328,15 @@ func TestCardCheckSamePathInDifferentReposIsNoFinding(t *testing.T) {
 	got = findingsOfKind(CheckCards(s, cardCheckIn()), CheckFiles)
 	require.Len(t, got, 1, "%+v", got)
 	assert.Contains(t, got[0].Finding, path+" is written by streams s1 and s2")
+	assert.Equal(t, SeverityWarn, got[0].Severity)
+
+	s = cardCheckFixture()
+	s.Merge.Put(&Card{ID: CtlID("s2"), Row: "s2", Col: Ctl, Fields: map[string]string{"kind": "stream", FieldDisplay: "The second stream", FieldStreamBranch: "dev"}})
+	gotAll := CheckCards(s, cardCheckIn())
+	bases := findingsOfKind(gotAll, CheckBases)
+	require.Len(t, bases, 1, "%+v", gotAll)
+	assert.True(t, bases[0].Refuses(), bases[0].Line())
+	assert.NotEmpty(t, RefusingFindings(gotAll), "a bad base still fails the check")
 }
 
 func TestCardCheckMarkdownDoesNotOrderWriters(t *testing.T) {

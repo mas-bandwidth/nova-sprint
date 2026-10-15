@@ -7858,11 +7858,11 @@ file or directory of `card <id> --json`, `card --all --json` with optional `brie
 the verb reads from the lander's clone as add's PATHS admission does): **needs** (every need of
 an open card names a card of this epoch, not dropped; no self-need; no cycle, `needsCycle`; a
 waived need is none), **files** (per stream, the union of its open cards' PATHS expanded at their
-base; a file of one repository two streams write names both, the same path in another repository
-is none, a path ending in .md is none, a ledger or a file every card may write,
-`cardgen.AlwaysInPaths`, is none), **same-file** (two open cards of a stream naming one PATHS
-file with no need between them, either way, at any depth: add's `sharedPaths` rule over the
-stored cards; a path ending in .md is none), **bases** (each stream on its own branch, never the trunk and never another
+base, keyed by the card's repository; a file of one repository two streams write is a warning
+and never a failure and orders nothing, the same path in another repository is none, a path
+ending in .md is none, a ledger or a file every card may write, `cardgen.AlwaysInPaths`, is
+none), **same-file** (two open cards of a stream naming one PATHS file with no need between
+them is a warning and never a failure and orders nothing; a path ending in .md is none), **bases** (each stream on its own branch, never the trunk and never another
 stream's, the promotion stream aside; a need across two streams on different branches unless
 the needed card is the producer stream's sentinel), **names** (each stream's display name set,
 not its id, not a hyphenated id), **stale-fix** (a primary at priority fix with no attempt this
