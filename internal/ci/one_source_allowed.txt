@@ -16,7 +16,6 @@
 bench	SPRINT-AHEAD: standalone-clone check (StandaloneLine/NotStandalone) not in tools
 cardhdr	SPRINT-AHEAD: the `TEST: ctest <name>` form (TestLine.Runner) not in tools
 cardtree	SPRINT-AHEAD: fullShaRE (one line) not in tools
-provbalance	SPRINT-AHEAD: deepseek balance endpoint and KeyEnv not in tools
 testredis	SPRINT-AHEAD: one comment line from a dead-code pass; port and delete
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
 units	SPRINT-AHEAD: one lander (landArg, server must name --land) not in tools
