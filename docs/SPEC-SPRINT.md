@@ -596,8 +596,18 @@ last beat naming it running (`friend beat --running`, by its work card id, its
 job or its primary), or finished (in review or later, no longer on her row's
 ready or working). A card not dealt to her is refused naming where it is. The
 refusals are one line each and, with ids named, all or none.
-`--all-unstarted` takes every card of hers she has not started and says each
-one she keeps on a NOTE line. A working card taken frees her lane: her oldest
+`--all-unstarted` takes ONLY the cards dealt to her and not taken: ready in
+her queue with no take recorded (`taken`, `first_taken`), no progress, no
+report, no carried head, and not started. It never takes a working card (on
+2026-10-14 it withdrew two friends' working cards mid-flight), and says each
+one she keeps on a NOTE line. A card named that is in flight (working, or with
+a take, progress, report or carried head recorded) is refused unless
+`--working` is given; with it the card is withdrawn mid-flight and one
+`WARNING` line counts the working cards withdrawn. `--working` is for named
+cards only, never with `--all-unstarted`. `--dry-run` lists each card that
+would move (`WOULD`), each kept and each refused, and writes nothing. The
+machine's named take-backs (the late rule, the re-tier) and the stall ladder's
+rung 4 take working cards as before. A working card taken frees her lane: her oldest
 ready card not taken goes into working in the same unit, as her finish takes
 it. The friends' deal places the same work card again (`friendRedealUnit`): to
 the friend up with room its WHO line allows, never the friend it was taken
@@ -6730,7 +6740,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | friend clean | the retention rule of the friends' working directories (docs/FRIENDS.md; ideas#833), run nightly from a loop row on the machine that holds them, never by the server and never on the store: `friend clean [--pg <dsn>] [--root <dir>] [--days <n>] [--dry-run]`. For each friend row of nova-config (as `friend sync` reads them; the coordinator is one), `<root>/<friend>-working` (`--root`, else HOME); a friend with no directory there is said and skipped. A job is `inbox/<job>/` or `jobs/<job>/`, done when `outbox/<job>/REPORT.md` is a regular file, its age that file's. Inside a done job at least `--days` old (default 3) a clone (a directory holding `.git`) is removed when `git status --porcelain` is empty, it holds no stash and no commit of `HEAD` or a local branch is missing from every remote-tracking ref (`git log HEAD --branches --not --remotes`, no network); build output (`node_modules`, `target`, `gocache`, `gocache-*`, `.gocache`, `go-build`, `wt-*`) that is no clone is removed. A clone that fails the check, or whose git fails, is dirty: listed each run, `FRIENDS-CLEAN DIRTY friend= path= age=<d>d why=`, and removed once its job is 14 days old whatever its state, its line saying `dirty=<why>`. Nothing else is touched: the brief and any text of the job, `outbox/`, every file outside `inbox/` and `jobs/`; a link is never followed; a job under `jobs/` that is itself a clone is one target, one under `inbox/` is never removed (a NOTE). Every removal is `safepath.RemoveUnderRoots` under the job's directory. The friend's one build cache, `<friend>-working/.cache/go-build`, is held under 20 GiB by the member's trim (`internal/gocache`). `--dry-run` says `WOULD-REMOVE` in place of `REMOVED` with the bytes and removes nothing. Lines `FRIENDS-CLEAN REMOVED\|WOULD-REMOVE friend= path= bytes= age=<d>d kind=clone\|build[ dirty=<why>]`, `FRIENDS-CLEAN CACHE ...`, `FRIENDS-CLEAN FRIEND <f> dir= jobs= done= freed= listed=` (or `absent`), `FRIENDS-CLEAN FAILED friend= path=: <why>`, and last `FRIENDS-CLEAN OK freed=<bytes> listed=<n>` (a dry run adds `dry-run: nothing was removed`), or `FRIENDS-CLEAN INCOMPLETE ... failed=<n>`, exit 1; a config that cannot be read or holds no friend row, exit 3, nothing removed; `--json` one object with the lines |
 | friend beat | a friend's beat, `friend beat <friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>] [--active <RFC3339>]`, run by its own machinery every second; through the sprint's server it is `friend beat <friend>` and its report's flags, each once with its value, and nothing more |
 | friend down, friend up | `hold <friend>` and `unhold <friend>` in the old words, for one release: hold a friend (status `held`, whatever she beats or the coordinator observes; every card dealt to her goes back to ready, started or not, a started one with a push carrying its pushed head; `--reason <text>` and `--until <RFC3339>` shown in her status cell) and release the hold (no evidence: `down` until her session answers a wake ping or she finishes a card; `--width <n>` sets her width) |
-| friend take | take back cards dealt to a friend that she has not started (`<id>...` or `--all-unstarted`), each back to ready for the friends' deal |
+| friend take | take back cards dealt to a friend and not taken (`<id>...`, or `--all-unstarted`, which never takes a working card; a named working card wants `--working`), each back to ready for the friends' deal |
 | friend level | even the ready queues of the friends up, idle lanes first and by the card's tier, as fleet level evens the members'; the tick runs it too (friend-deal-idle-lanes-first.w1) |
 | seat | the seat as the daemons read it every second: `SEAT holder= epoch= generation=`, `--json`; three keys, no table (section 1, a friend's health) |
 | lane take | `lane take go --machine <m> --as <worker> [--wait <duration>]`: a worker's take of one of the machine's Go lanes (section 18); exit 0 granted, exit 1 queued with its place and the next command; --wait asks again every 5 s until granted or the wait is over; through the sprint's server it is `lane take <kind> --machine <m> --as <worker>` and nothing more |

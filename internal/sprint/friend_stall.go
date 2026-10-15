@@ -241,6 +241,10 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 						Reason:  "stalled",
 						Who:     r.who(),
 						Started: started,
+						// the ladder's rung 4 keeps its modelled take (tla/StallLadder.tla):
+						// a working card with no progress, report or running beat goes back;
+						// the seat's --all-unstarted never takes a working card
+						Working: true,
 					})
 					p.Units = append(p.Units, takePlan.Units...)
 					p.Refused = append(p.Refused, takePlan.Refused...)
