@@ -175,25 +175,17 @@ func (a *app) briefBaseAt(ctx context.Context, l *lander, cb swarm.CardBase) swa
 // record (the doctor's refused-verb checks read the same record). It is best effort; nothing
 // of the refusal's answer depends on it.
 func (a *app) recordLintRefusal(st *store.Store, verb string, cards []string, tokens []string) {
-	if st == nil || len(tokens) == 0 {
+	if st == nil {
 		return
 	}
-	seen := map[string]bool{}
-	var uniq []string
-	for _, t := range tokens {
-		if t != "" && !seen[t] {
-			seen[t] = true
-			uniq = append(uniq, t)
-		}
-	}
-	if len(uniq) == 0 {
+	why := sprint.LintRefusalWhy(tokens)
+	if why == "" {
 		return
 	}
-	slices.Sort(uniq)
 	_ = st.RecordRefused(context.Background(), sprint.RefusedVerb{
 		At:   a.now(),
 		Verb: verb,
 		Card: strings.Join(cards, ","),
-		Why:  fmt.Sprintf("lint refused token=%s", strings.Join(uniq, ", token=")),
+		Why:  why,
 	})
 }

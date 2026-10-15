@@ -14,8 +14,8 @@ import (
 
 // The sprint-21 review could not measure what the lints cost: a refusal at add or brief
 // left no trace in the store, so whether name-in-prose or the TEST-format rule churned was
-// unknown. These tests pin that every add or brief lint refusal is written into the
-// server's refused-verb record with the verb, the card id and the rule tokens it drew
+// unknown. These tests pin that every add or brief lint refusal at the base is written into
+// the server's refused-verb record with the verb, the card id and the rule tokens it drew
 // (paths-cover-named, test-named and so on) in Why, so a later review counts refusals per
 // rule from the record (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form
 // checks"); an accepted add records nothing.
@@ -29,9 +29,9 @@ func readRefused(t *testing.T, st *store.Store) []sprint.RefusedVerb {
 }
 
 // TestAddAndBriefLintRefusalsAreRecorded: an add whose card brief draws the brief lints at
-// its base (paths-cover-named and its kind) refuses and writes one refused-verb record
-// naming the verb, the card id and the rule tokens it drew; an accepted add records
-// nothing.
+// its base refuses and writes one refused-verb record naming the verb, the card id and the
+// rule tokens it drew; the replay of the same checks under brief check records under its
+// own verb; an accepted add records nothing.
 func TestAddAndBriefLintRefusalsAreRecorded(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
@@ -53,15 +53,19 @@ func TestAddAndBriefLintRefusalsAreRecorded(t *testing.T) {
 	assert.Contains(t, r.Why, "paths-cover-named", "the record carries the rule tokens it drew: %s", r.Why)
 	assert.Contains(t, r.Why, "token=", "the record's Why names the rule tokens: %s", r.Why)
 
-	// a card lint refusal at add records it too
+	// the replayed refusal is recorded: the same checks under brief check refuse again and
+	// write a second record under the brief verb
 	stderr.Reset()
-	cardBrief := "RESULT: c sha=0123456789ab tier: pro\nPATHS: internal/x/*.go\nTEST: internal/other TestY\n\nTHE TASK. Fix x."
-	code = ta.a.holdCardChecks("add", st, &stderr, briefCheck{id: "c", brief: cardBrief})
+	code = ta.a.holdBriefBase("brief check", st, false, &stderr, briefCheck{id: "c", brief: brief})
 	require.Equal(t, 2, code, stderr.String())
 	recs = readRefused(t, st)
-	require.Len(t, recs, 2, "the card lint refusal records a second verb: %v", recs)
-	assert.Equal(t, "add", recs[1].Verb, "the card lint record names the verb")
-	assert.Contains(t, recs[1].Why, "test-outside-paths", "the card lint record carries its rule token: %s", recs[1].Why)
+	require.Len(t, recs, 2, "the replayed refusal records a second verb: %v", recs)
+	assert.Equal(t, "brief check", recs[1].Verb, "the replayed record names the brief verb")
+	assert.Equal(t, "c", recs[1].Card, "the replayed record names the card id")
+
+	// the record counts refusals per rule: both refusals drew paths-cover-named
+	counts := sprint.CountRefusedLintTokens(recs)
+	assert.Equal(t, 2, counts["paths-cover-named"], "two refusals drew paths-cover-named: %v", counts)
 
 	// an accepted add records nothing
 	stderr.Reset()

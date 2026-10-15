@@ -6480,7 +6480,7 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   `DOCTOR FAIL member-env <m> beat form: the installed nova-sprint <version> sends a beat the server at <version> refuses: <text>`. A version pair whose beat forms disagree is a doctor FAIL
   at adopt time: an adopt of a build whose beat the server refuses is refused by the same check.
       `fleet beat --dry-run` plans and writes nothing (cmd/nova-sprint). An add or brief lint
-    refusal (cmd/nova-sprint/addlint.go: the card checks and the brief checks at the base) is
+    refusal at the base (cmd/nova-sprint/addlint.go: the brief checks at the base) is
     recorded in the same server- refused-verb record under the verb (`add`), the card id and the
     rule tokens it drew (paths-cover-named, test-named and so on) in Why, so a later review
     counts refusals per rule from the record; an accepted add records nothing.
