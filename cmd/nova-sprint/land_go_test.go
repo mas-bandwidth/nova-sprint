@@ -172,6 +172,7 @@ func TestLandGatesEveryTipOfTheBatchBranch(t *testing.T) {
 			}
 			r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 			r.git(r.worker, "fetch", "-q", "origin")
+			seedKnownLanderBase(r, "main")
 			r.ok("add --stream s1 --count 2")
 			heads := map[string]string{"s1-1": r.card("s1-1", tc.first), "s1-2": r.card("s1-2", tc.second)}
 			r.queued(heads, "s1-1", "s1-2")
@@ -215,6 +216,7 @@ func TestTheLanderLandsTheBaseFixFirst(t *testing.T) {
 	r.files("the base's change", map[string]string{"bad.go": vetRed})
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	r.git(r.worker, "fetch", "-q", "origin")
+	seedKnownLanderBase(r, "main")
 	r.ok("add --stream s1 --count 2")
 	heads := map[string]string{"s1-1": r.card("s1-1", map[string]string{"ok.go": "package main\n\nfunc ok() {}\n"}),
 		"s1-2": r.card("s1-2", map[string]string{"bad.go": "package main\n\nfunc bad() {}\n"})}

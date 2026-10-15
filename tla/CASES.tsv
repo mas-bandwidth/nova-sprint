@@ -705,3 +705,5 @@ MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHas
 MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
+MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLandingOnUnjudgedTip	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
