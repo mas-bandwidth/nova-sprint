@@ -13,9 +13,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/hook/hooktest"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // actorDefaultRig is a sprint whose coordinator name is hooked in and proven as the
