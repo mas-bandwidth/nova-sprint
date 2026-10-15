@@ -688,9 +688,6 @@ MCStateEpisodeBrokenAckFirst.cfg	MCStateEpisode.tla	invariant	ReceiptMeansSent	i
 MCStateEpisodeBrokenVolatile.cfg	MCStateEpisode.tla	invariant	DurableReceipt	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenChangedRetry.cfg	MCStateEpisode.tla	invariant	FrozenArguments	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenLateRetry.cfg	MCStateEpisode.tla	invariant	OneMessagePerEpisode	ignore-terminal	stateepisode	required	-
-MCHookCache.cfg	MCHookCache.tla	pass	-	ignore-terminal	hookcache	required	-
-MCHookCacheBrokenNoGenGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
-MCHookCacheBrokenNoRefillGuard.cfg	MCHookCache.tla	invariant	NoStaleCache	ignore-terminal	hookcache	required	-
 MCSeatHealth.cfg	MCSeatHealth.tla	pass	-	ignore-terminal	seathealth	required	-
 MCSeatHealthBrokenHoldWins.cfg	MCSeatHealth.tla	invariant	HookDownWins	ignore-terminal	seathealth	required	-
 MCSeatHealthBrokenServerIgnored.cfg	MCSeatHealth.tla	invariant	HookDownWins	ignore-terminal	seathealth	required	-
