@@ -22,11 +22,16 @@ fixed table Completion
 }
 
 // DoneRecord is one page of store.DoneRecord: the epoch, the stream id of the last
-// log line read, and up to 95 compacted completions on this page.
+// log line read, the page count of the record (1 for a single-page record at
+// keyDoneRecord; pages > 1 adds keyDoneRecord:1 .. keyDoneRecord:<pages-1>), and up
+// to 95 compacted completions on this page (8 + 45 + 4 + 95 * 686 + 4 = 65231 bytes
+// under the fixed form's 65536-byte body ceiling).
 fixed table DoneRecord
 {
     epoch  uint64
     // a Redis stream id "<ms>-<seq>", two uint64 in decimal: 20 + 1 + 20 = 41.
     cursor string(41)
     done   [..95]Completion
+    // the total number of pages in this record (at least 1 when written).
+    pages  uint32
 }
