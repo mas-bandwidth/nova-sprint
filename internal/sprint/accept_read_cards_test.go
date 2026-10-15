@@ -9,63 +9,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOkReadCardsCountNotMachines(t *testing.T) {
-	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
-	s := &Snapshot{
-		Now:     now,
-		Work:    NewTable(Work),
-		Fleet:   NewTable(Fleet),
-		Readers: NewTable(Readers),
-		Merge:   NewTable(Merge),
-	}
+// cReadSnap is an empty snapshot at now with the stream s1 on the work and merge
+// tables (its stream control card working when ctl) and fleet as the fleet's rows.
+func cReadSnap(now time.Time, ctl bool, fleet ...string) *Snapshot {
+	s := &Snapshot{Now: now, Work: NewTable(Work), Fleet: NewTable(Fleet), Readers: NewTable(Readers), Merge: NewTable(Merge)}
 	s.Work.SetRows([]string{"s1"})
 	s.Merge.SetRows([]string{"s1"})
-	s.Merge.Put(&Card{ID: CtlID("s1"), Row: "s1", Col: StreamWorking, Fields: map[string]string{"state": StreamWorking}})
-	s.Fleet.SetRows([]string{"m1"})
+	if ctl {
+		s.Merge.Put(&Card{ID: CtlID("s1"), Row: "s1", Col: StreamWorking, Fields: map[string]string{"state": StreamWorking}})
+	}
+	s.Fleet.SetRows(fleet)
+	return s
+}
 
+// cReviewPrimary is the primary p in review at attempt 4 at head, a pro card
+// (it needs 2 reads).
+func cReviewPrimary(head string) *Card {
+	return &Card{ID: "p", Row: "s1", Col: Review, Fields: map[string]string{
+		"kind": "primary", "stream": "s1", "tier": "pro", "attempt": "4", "head": head}}
+}
+
+// cReadOf is p's attempt-4 read card id by reader at head, its verdict and
+// retired_by set when given.
+func cReadOf(id, reader, head, verdict, retiredBy string) *Card {
+	f := map[string]string{"kind": "read", "primary": "p", "attempt": "4", "reader": reader, "head": head}
+	if verdict != "" {
+		f["verdict"] = verdict
+	}
+	if retiredBy != "" {
+		f["retired_by"] = retiredBy
+	}
+	return &Card{ID: id, Fields: f}
+}
+
+var cReadNow = time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+
+func TestOkReadCardsCountNotMachines(t *testing.T) {
+	t.Parallel()
+	s := cReadSnap(cReadNow, true, "m1")
 	head := "fa6d1991"
-	pr := &Card{
-		ID:  "p",
-		Row: "s1",
-		Col: Review,
-		Fields: map[string]string{
-			"kind":    "primary",
-			"stream":  "s1",
-			"tier":    "pro", // needs 2 reads
-			"attempt": "4",
-			"head":    head,
-		},
-	}
+	pr := cReviewPrimary(head)
 	s.Work.Put(pr)
-
 	// Two ok read cards of one reader (m1) at the head: p.r4.m1 ok, p.r4.m1.g1 ok
-	rc1 := &Card{
-		ID: "p.r4.m1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	rc2 := &Card{
-		ID: "p.r4.m1.g1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	s.Fleet.Put(rc1)
-	s.Fleet.Put(rc2)
+	s.Fleet.Put(cReadOf("p.r4.m1", "m1", head, "ok", "read"))
+	s.Fleet.Put(cReadOf("p.r4.m1.g1", "m1", head, "ok", "read"))
 
 	// Distinct read cards count, not machines: need 2, have 2 ok cards
 	assert.True(t, acceptable(s, pr), "two ok cards of one reader at the head should be acceptable")
@@ -82,89 +69,16 @@ func TestOkReadCardsCountNotMachines(t *testing.T) {
 
 func TestTheRefusalNamesEveryRead(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
-	s := &Snapshot{
-		Now:     now,
-		Work:    NewTable(Work),
-		Fleet:   NewTable(Fleet),
-		Readers: NewTable(Readers),
-		Merge:   NewTable(Merge),
-	}
-	s.Work.SetRows([]string{"s1"})
-	s.Merge.SetRows([]string{"s1"})
-	s.Fleet.SetRows([]string{"m1", "m2", "m3", "m4"})
-
+	s := cReadSnap(cReadNow, false, "m1", "m2", "m3", "m4")
 	head := "h2"
-	pr := &Card{
-		ID:  "p",
-		Row: "s1",
-		Col: Review,
-		Fields: map[string]string{
-			"kind":    "primary",
-			"stream":  "s1",
-			"tier":    "pro", // needs 2 reads
-			"attempt": "4",
-			"head":    head,
-		},
-	}
-	s.Work.Put(pr)
-
+	s.Work.Put(cReviewPrimary(head))
 	// need 2, one ok at H, one ok at an older head, one retired with no verdict, one placed open:
-	// 1. p.r4.m1: ok at H
-	rc1 := &Card{
-		ID: "p.r4.m1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	// 2. p.r4.m2: ok at an older head (h1)
-	rc2 := &Card{
-		ID: "p.r4.m2",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m2",
-			"head":       "h1",
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	// 3. p.r4.m3: retired with no verdict
-	rc3 := &Card{
-		ID: "p.r4.m3",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m3",
-			"head":       head,
-			"retired_by": "environment",
-		},
-	}
-	// 4. p.r4.m4: placed, still open
-	rc4 := &Card{
-		ID:  "p.r4.m4",
-		Row: "m4",
-		Col: Working,
-		Fields: map[string]string{
-			"kind":    "read",
-			"primary": "p",
-			"attempt": "4",
-			"reader":  "m4",
-			"head":    head,
-		},
-	}
-	s.Fleet.Put(rc1)
-	s.Fleet.Put(rc2)
-	s.Fleet.Put(rc3)
-	s.Fleet.Put(rc4)
+	s.Fleet.Put(cReadOf("p.r4.m1", "m1", head, "ok", "read"))      // 1. ok at H
+	s.Fleet.Put(cReadOf("p.r4.m2", "m2", "h1", "ok", "read"))      // 2. ok at an older head (h1)
+	s.Fleet.Put(cReadOf("p.r4.m3", "m3", head, "", "environment")) // 3. retired with no verdict
+	open := cReadOf("p.r4.m4", "m4", head, "", "")                 // 4. placed, still open
+	open.Row, open.Col = "m4", Working
+	s.Fleet.Put(open)
 
 	plan := Accept(s, AcceptReq{Sel: Sel{IDs: []string{"p"}}})
 	require.Len(t, plan.Refused, 1, "Accept should refuse card needing 2 reads with only 1 ok at head")
@@ -179,73 +93,14 @@ func TestTheRefusalNamesEveryRead(t *testing.T) {
 
 func TestABrokenReadAtTheHeadStillOutweighs(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
-	s := &Snapshot{
-		Now:     now,
-		Work:    NewTable(Work),
-		Fleet:   NewTable(Fleet),
-		Readers: NewTable(Readers),
-		Merge:   NewTable(Merge),
-	}
-	s.Work.SetRows([]string{"s1"})
-	s.Merge.SetRows([]string{"s1"})
-	s.Fleet.SetRows([]string{"m1", "m2", "m3"})
-
+	s := cReadSnap(cReadNow, false, "m1", "m2", "m3")
 	head := "h2"
-	pr := &Card{
-		ID:  "p",
-		Row: "s1",
-		Col: Review,
-		Fields: map[string]string{
-			"kind":    "primary",
-			"stream":  "s1",
-			"tier":    "pro", // needs 2 reads
-			"attempt": "4",
-			"head":    head,
-		},
-	}
+	pr := cReviewPrimary(head)
 	s.Work.Put(pr)
-
 	// two ok cards and one broken at H
-	rc1 := &Card{
-		ID: "p.r4.m1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	rc2 := &Card{
-		ID: "p.r4.m2",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m2",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	rc3 := &Card{
-		ID: "p.r4.m3",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m3",
-			"head":       head,
-			"verdict":    "broken",
-			"retired_by": "read",
-		},
-	}
-	s.Fleet.Put(rc1)
-	s.Fleet.Put(rc2)
-	s.Fleet.Put(rc3)
+	s.Fleet.Put(cReadOf("p.r4.m1", "m1", head, "ok", "read"))
+	s.Fleet.Put(cReadOf("p.r4.m2", "m2", head, "ok", "read"))
+	s.Fleet.Put(cReadOf("p.r4.m3", "m3", head, "broken", "read"))
 
 	assert.False(t, acceptable(s, pr), "broken read at head outweighs ok reads")
 
@@ -268,46 +123,9 @@ func TestMergingCardDoesNotBounceWithTwoReadsFromOneReader(t *testing.T) {
 	w.s.Fleet.SetRows([]string{"m1"})
 
 	head := "fa6d1991"
-	pr := &Card{
-		ID:  "p",
-		Row: "s1",
-		Col: Review,
-		Fields: map[string]string{
-			"kind":    "primary",
-			"stream":  "s1",
-			"tier":    "pro", // needs 2 reads
-			"attempt": "4",
-			"head":    head,
-		},
-	}
-	w.s.Work.Put(pr)
-
-	rc1 := &Card{
-		ID: "p.r4.m1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	rc2 := &Card{
-		ID: "p.r4.m1.g1",
-		Fields: map[string]string{
-			"kind":       "read",
-			"primary":    "p",
-			"attempt":    "4",
-			"reader":     "m1",
-			"head":       head,
-			"verdict":    "ok",
-			"retired_by": "read",
-		},
-	}
-	w.s.Fleet.Put(rc1)
-	w.s.Fleet.Put(rc2)
+	w.s.Work.Put(cReviewPrimary(head))
+	w.s.Fleet.Put(cReadOf("p.r4.m1", "m1", head, "ok", "read"))
+	w.s.Fleet.Put(cReadOf("p.r4.m1.g1", "m1", head, "ok", "read"))
 
 	w.must(Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"p"}}}))
 
@@ -317,17 +135,7 @@ func TestMergingCardDoesNotBounceWithTwoReadsFromOneReader(t *testing.T) {
 
 	// In a fresh snapshot for a merging card, retired read cards are not loaded
 	// (ReadCardExtras only loads read cards for cards in Review).
-	s2 := &Snapshot{
-		Now:     w.s.Now,
-		Work:    NewTable(Work),
-		Fleet:   NewTable(Fleet),
-		Readers: NewTable(Readers),
-		Merge:   NewTable(Merge),
-	}
-	s2.Work.SetRows([]string{"s1"})
-	s2.Merge.SetRows([]string{"s1"})
-	s2.Merge.Put(&Card{ID: CtlID("s1"), Row: "s1", Col: StreamWorking, Fields: map[string]string{"state": StreamWorking}})
-	s2.Fleet.SetRows([]string{"m1"})
+	s2 := cReadSnap(w.s.Now, true, "m1")
 	s2.Work.Put(mergingCard)
 
 	require.Nil(t, s2.Fleet.Card("p.r4.m1"))

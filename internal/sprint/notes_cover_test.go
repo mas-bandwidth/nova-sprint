@@ -30,34 +30,14 @@ func TestNotesCoverSplitOpen(t *testing.T) {
 		judgments []string
 		acked     []string
 	}{
-		{
-			name: "judgment and acknowledged split into their halves",
-			all: []Open{
-				{Key: "n1|a", Note: Note{Kind: Judgment}},
-				{Key: "n2|b", Note: Note{Kind: Acknowledged}},
-				{Key: "n3|c", Note: Note{Kind: Judgment}},
-			},
-			judgments: []string{"n1|a", "n3|c"},
-			acked:     []string{"n2|b"},
-		},
-		{
-			name: "no acknowledged note: everything stays a judgment",
-			all: []Open{
-				{Key: "n1|a", Note: Note{Kind: Happened}},
-				{Key: "n2|b", Note: Note{Kind: Judgment}},
-			},
-			judgments: []string{"n1|a", "n2|b"},
-		},
-		{
-			name: "only acknowledged notes: judgments half is empty",
-			all: []Open{
-				{Key: "n1|a", Note: Note{Kind: Acknowledged}},
-			},
-			acked: []string{"n1|a"},
-		},
-		{
-			name: "empty open set: both halves empty",
-		},
+		{"judgment and acknowledged split into their halves", []Open{
+			{Key: "n1|a", Note: Note{Kind: Judgment}}, {Key: "n2|b", Note: Note{Kind: Acknowledged}}, {Key: "n3|c", Note: Note{Kind: Judgment}},
+		}, []string{"n1|a", "n3|c"}, []string{"n2|b"}},
+		{"no acknowledged note: everything stays a judgment", []Open{
+			{Key: "n1|a", Note: Note{Kind: Happened}}, {Key: "n2|b", Note: Note{Kind: Judgment}},
+		}, []string{"n1|a", "n2|b"}, nil},
+		{"only acknowledged notes: judgments half is empty", []Open{{Key: "n1|a", Note: Note{Kind: Acknowledged}}}, nil, []string{"n1|a"}},
+		{"empty open set: both halves empty", nil, nil, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,26 +56,10 @@ func TestNotesCoverTickEndCounts(t *testing.T) {
 		note  Note
 		count bool
 	}{
-		{
-			name:  "a judgment is an item for the coordinator",
-			note:  Note{Kind: Judgment, Type: NCIRed},
-			count: true,
-		},
-		{
-			name:  "a happened note addressed to someone is an item",
-			note:  Note{Kind: Happened, Type: NSprintDone, To: "coordinator"},
-			count: true,
-		},
-		{
-			name:  "the tick-end note itself is never counted",
-			note:  Note{Kind: Happened, Type: NTickEnd, To: "coordinator"},
-			count: false,
-		},
-		{
-			name:  "a happened note with no addressee is not counted",
-			note:  Note{Kind: Happened, Type: NBatchLanded},
-			count: false,
-		},
+		{"a judgment is an item for the coordinator", Note{Kind: Judgment, Type: NCIRed}, true},
+		{"a happened note addressed to someone is an item", Note{Kind: Happened, Type: NSprintDone, To: "coordinator"}, true},
+		{"the tick-end note itself is never counted", Note{Kind: Happened, Type: NTickEnd, To: "coordinator"}, false},
+		{"a happened note with no addressee is not counted", Note{Kind: Happened, Type: NBatchLanded}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -115,21 +79,9 @@ func TestNotesCoverDue(t *testing.T) {
 		note Note
 		want time.Time
 	}{
-		{
-			name: "no review time: the time plus the deadline",
-			note: Note{At: at},
-			want: at.Add(deadline),
-		},
-		{
-			name: "a review time set: due then, not at the deadline",
-			note: Note{At: at, Review: review, ReviewSet: at},
-			want: review,
-		},
-		{
-			name: "the sprint is done: no due time",
-			note: Note{Type: NSprintDone, At: at, Review: review},
-			want: time.Time{},
-		},
+		{"no review time: the time plus the deadline", Note{At: at}, at.Add(deadline)},
+		{"a review time set: due then, not at the deadline", Note{At: at, Review: review, ReviewSet: at}, review},
+		{"the sprint is done: no due time", Note{Type: NSprintDone, At: at, Review: review}, time.Time{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,29 +102,9 @@ func TestNotesCoverBound(t *testing.T) {
 		note Note
 		want []string
 	}{
-		{
-			name: "over the bound: the list is cut and the count keeps the total",
-			note: func() Note {
-				n := Note{Count: len(all)}
-				n.Primaries = all
-				return n
-			}(),
-			want: all[:MaxListed],
-		},
-		{
-			name: "at the bound: the list is kept whole",
-			note: func() Note {
-				n := Note{Count: MaxListed}
-				n.Primaries = all[:MaxListed]
-				return n
-			}(),
-			want: all[:MaxListed],
-		},
-		{
-			name: "under the bound and empty: nothing changes",
-			note: Note{Count: 2, Primaries: []string{"a", "b"}},
-			want: []string{"a", "b"},
-		},
+		{"over the bound: the list is cut and the count keeps the total", Note{Count: len(all), Primaries: all}, all[:MaxListed]},
+		{"at the bound: the list is kept whole", Note{Count: MaxListed, Primaries: all[:MaxListed]}, all[:MaxListed]},
+		{"under the bound and empty: nothing changes", Note{Count: 2, Primaries: []string{"a", "b"}}, []string{"a", "b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

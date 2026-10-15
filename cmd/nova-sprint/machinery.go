@@ -510,15 +510,15 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 		}
 	}
 
-	// 12. the hook: the holder's hook record, the server's word (hook.go)
+	// 12. the hook: the holder's nova-hook record (coordinator_hook.go)
 	if holder, err := st.B.Coordinator(ctx); err != nil {
 		m.Errs[sprint.SeatCheckHook] = err.Error()
 	} else if holder != "" && hookArmed(holder) {
-		rec, ok, err := readHook(ctx, st)
+		hs, err := a.hookStatus(ctx, holder)
 		if err != nil {
 			m.Errs[sprint.SeatCheckHook] = err.Error()
 		}
-		m.Hook = sprint.HookM{Measured: true, Holder: holder, Record: rec, Recorded: ok}
+		m.Hook = sprint.HookM{Measured: true, Holder: holder, Status: hs}
 	}
 
 	return sprint.JudgeSeatCheck(m, now)

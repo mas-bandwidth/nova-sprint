@@ -70,13 +70,13 @@ func mnQueue(t *testing.T, r *ujRig, id string) {
 	require.NoError(t, err)
 }
 
-// mnPush is whether the hook's stream has carried a judgment naming both ids.
-func mnPush(t *testing.T, r *ujRig, s *hookSession, ids ...string) bool {
+// mnPush is whether the server's coordinator push sent the seat a judgment naming both ids.
+func mnPush(t *testing.T, r *ujRig, ids ...string) bool {
 	t.Helper()
-	for _, p := range r.pushes(s) {
+	for _, p := range r.pushes() {
 		hit := true
 		for _, id := range ids {
-			hit = hit && strings.Contains(p.Text, id)
+			hit = hit && strings.Contains(p.Body, id)
 		}
 		if hit {
 			return true
@@ -98,7 +98,6 @@ func TestEveryStateAlertsTheCoordinatorOfAGoneNeed(t *testing.T) {
 			r.beat()
 			r.do("fleet up m1 --width 4")
 			r.beat()
-			s := r.hookIn()
 			r.do("start")
 			r.do("add --stream s1 --count 1 --one")              // s1-1, the need
 			r.do("add --stream s2 --count 1 --one --needs s1-1") // s2-1, the dependent
@@ -109,7 +108,7 @@ func TestEveryStateAlertsTheCoordinatorOfAGoneNeed(t *testing.T) {
 			// one second of running time: the run loop's needs check
 			_, err := r.store().Tick(r.ctx)
 			require.NoError(t, err)
-			assert.True(t, mnPush(t, r, s, "s2-1", "s1-1"),
+			assert.True(t, mnPush(t, r, "s2-1", "s1-1"),
 				"the coordinator is told of the gone need on %s", st)
 		})
 	}
@@ -125,7 +124,6 @@ func TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt(t *testing.T) {
 	r.beat()
 	r.do("fleet up m1 --width 4")
 	r.beat()
-	s := r.hookIn()
 	r.do("start")
 	r.do("add --stream s1 --count 1 --one")              // s1-1, the need
 	r.do("add --stream s2 --count 1 --one --needs s1-1") // s2-1, the dependent
@@ -135,7 +133,7 @@ func TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt(t *testing.T) {
 	// the first raise, within one second of running time
 	_, err := r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.True(t, mnPush(t, r, s, "s2-1", "s1-1"), "the first judgment names the card and the missing need")
+	require.True(t, mnPush(t, r, "s2-1", "s1-1"), "the first judgment names the card and the missing need")
 
 	openBlocked := func() int {
 		v, err := r.store().Inbox(r.ctx, defaultDeadline, defaultStale, 10000)

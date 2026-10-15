@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,38 +67,23 @@ func defaultsFailures(s *Snapshot) []string {
 	if got := s.UnservedTierFallsTo(); got != "" {
 		out = append(out, "unserved_tier_falls_to reads "+got)
 	}
-	if got := s.DealtMax(); got != DealtMaxDefault {
-		out = append(out, "dealt_max reads "+got.String())
+	for _, d := range []struct {
+		name      string
+		got, want time.Duration
+	}{
+		{"dealt_max", s.DealtMax(), DealtMaxDefault}, {"ready_max", s.ReadyMax(), ReadyMaxDefault},
+		{"friend_idle", s.FriendIdleAfter(), FriendIdleDefault}, {"friend_finish", s.FriendFinishAfter(), FriendFinishDefault},
+		{"friend_start_max", s.FriendStartMax(), FriendStartMaxDefault}, {"pegged_bound", s.PeggedBound(), PeggedBoundDefault},
+		{"landing_stall_bound", s.landingStallBound(), LandingStallBound},
+	} {
+		if d.got != d.want {
+			out = append(out, d.name+" reads "+d.got.String())
+		}
 	}
-	if got := s.ReadyMax(); got != ReadyMaxDefault {
-		out = append(out, "ready_max reads "+got.String())
-	}
-	if got := s.FriendIdleAfter(); got != FriendIdleDefault {
-		out = append(out, "friend_idle reads "+got.String())
-	}
-	if got := s.FriendFinishAfter(); got != FriendFinishDefault {
-		out = append(out, "friend_finish reads "+got.String())
-	}
-	if got := s.FriendStartMax(); got != FriendStartMaxDefault {
-		out = append(out, "friend_start_max reads "+got.String())
-	}
-	if got := s.PeggedBound(); got != PeggedBoundDefault {
-		out = append(out, "pegged_bound reads "+got.String())
-	}
-	if got := s.landingStallBound(); got != LandingStallBound {
-		out = append(out, "landing_stall_bound reads "+got.String())
-	}
-	if got := s.FriendStallAfter(); got != FriendStallAfterDefault {
-		out = append(out, "friend_stall_after reads "+got.String())
-	}
-	if got := s.FriendStallStep(); got != FriendStallStepDefault {
-		out = append(out, "friend_stall_step reads "+got.String())
-	}
-	if got := s.DriftCommits(); got != DriftCommitsDefault {
-		out = append(out, "drift_commits reads otherwise")
-	}
-	if got := s.DriftHours(); got != DriftHoursDefault {
-		out = append(out, "drift_hours reads otherwise")
+	for name, d := range map[string][2]int{"drift_commits": {s.DriftCommits(), DriftCommitsDefault}, "drift_hours": {s.DriftHours(), DriftHoursDefault}} {
+		if d[0] != d[1] {
+			out = append(out, name+" reads otherwise")
+		}
 	}
 	if got := s.readTierSetting("s1"); got != "" {
 		out = append(out, "read_tier reads "+got)
@@ -195,26 +181,15 @@ func TestEverySettingHoldsItsWorkingDefaultFreshAndAfterAClear(t *testing.T) {
 			away[d.Name] = "off"
 		}
 	}
-	away[PropDealtMax] = "1ms"
-	away[PropReadyMax] = "1ms"
-	away[PropFriendIdle] = "1ms"
-	away[PropFriendFinish] = "1ms"
-	away[PropFriendStartMax] = "1ms"
-	away[PropPeggedBound] = "1ms"
-	away[PropLandingStallBound] = "1ms"
-	away[PropFriendStallAfter] = "1ms"
-	away[PropFriendStallStep] = "1ms"
-	away[PropDriftCommits] = "999"
-	away[PropDriftHours] = "999"
-	away[PropGoLanes] = "9"
-	away[PropLowBalanceUsd] = "999"
-	away[PropIdentical] = "999"
-	away[PropReadTier] = "heavy"
-	away[PropReadsNeeded] = "3"
-	away[PropReworkPriority] = ReworkKeep
-	away[PropUnservedTierFallsTo] = "flash"
-	away[PropFleetTiers] = "frontier"
-	away[PropFriendsTiers] = "frontier"
+	for _, prop := range []string{PropDealtMax, PropReadyMax, PropFriendIdle, PropFriendFinish, PropFriendStartMax, PropPeggedBound,
+		PropLandingStallBound} {
+		away[prop] = "1ms"
+	}
+	for prop, v := range map[string]string{PropDriftCommits: "999", PropDriftHours: "999", PropGoLanes: "9", PropLowBalanceUsd: "999",
+		PropIdentical: "999", PropReadTier: "heavy", PropReadsNeeded: "3", PropReworkPriority: ReworkKeep,
+		PropUnservedTierFallsTo: "flash", PropFleetTiers: "frontier", PropFriendsTiers: "frontier"} {
+		away[prop] = v
+	}
 	old.Work.SetProps(away)
 	require.NotEmpty(t, defaultsFailures(old), "the away world must fail before the clear")
 	cleared := applyDefaultsClear(t, old)

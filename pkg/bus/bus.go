@@ -96,10 +96,14 @@ const (
 	KindStatus  = "status"
 	KindRequest = "request"
 	KindBlocker = "blocker"
+	// KindJudgment is a decision raised for a reader to answer, as nova-tools' bus names
+	// it: the sprint's judgment that a member or a friend changed state goes to the
+	// coordinator as one (cmd/nova-sprint/coordinator_push.go).
+	KindJudgment = "judgment"
 )
 
 // Kinds is every kind, in the order the help lists them.
-var Kinds = []string{KindReport, KindAck, KindStatus, KindRequest, KindBlocker}
+var Kinds = []string{KindReport, KindAck, KindStatus, KindRequest, KindBlocker, KindJudgment}
 
 // CheckKinds says why ks are no kinds, "" when each is one.
 func CheckKinds(ks ...string) string {

@@ -231,8 +231,8 @@
        tier; a brief with no tier on its RESULT line is refused by the card checks' tier-line finding with a
        remedy; brief --tier still changes it later, with --reason as today. This is the behaviour hand-landed
        as a-tier-on-line-one-is-the-tier-the-card-is-dealt-on (main a33bf857); this card adds the regression
-       tests that hold it: TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro and
-       TestAProBriefIsNeverDealtToFlash (a heavy brief is pinned heavy and never dealt to a flash or pro
+       tests that hold it: TestABriefIsDealtOnItsTier/AHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro
+       and TestABriefIsDealtOnItsTier/AProBriefIsNeverDealtToFlash (a heavy brief is pinned heavy and never dealt to a flash or pro
        route; a pro brief is never dealt to flash), TestACardBriefWithNoResultLineTierIsRefusedByLint (a
        brief with no RESULT-line tier is refused by the lint) and TestABriefEditThatChangesTierChangesThePin
        (a brief edit that changes the declared tier changes the pin) in internal/sprint/brief_tier_test.go,
