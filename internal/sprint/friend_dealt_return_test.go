@@ -20,8 +20,8 @@ func TestAFriendWhoNeverTakesReturnsHerCardsToThePool(t *testing.T) {
 	}
 	w := friendWorld(t, briefs...)
 	w.s.Work.SetProp(PropDealtMax, "90s")
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"})
 
 	// friends first: the two friends who never take hold all eight cards, the machines none
 	dealWith(w, amy, bob)
@@ -38,7 +38,7 @@ func TestAFriendWhoNeverTakesReturnsHerCardsToThePool(t *testing.T) {
 	// again, never on the row it was returned from
 	w.tick(2 * time.Minute)
 	dealWith(w, amy, bob) // the return
-	for _, f := range []FriendSeat{amy, bob} {
+	for _, f := range workerSeatFixtures([]FriendSeat{amy, bob}) {
 		require.True(t, friendDealable(w.s, f), "%s is up, so dealable: the return wrote no state of hers", f.Name)
 	}
 	dealWith(w, amy, bob) // the deal
@@ -59,7 +59,7 @@ func TestAFriendWhoTakesAWorkingCardIsNotMarkedInTheSameTick(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"))
 	w.s.Work.SetProp(PropDealtMax, "90s")
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 	dealWith(w, amy)
 	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
 	require.NotNil(t, w.s.Fleet.Card("s1-2.w1"), "s1-2 is dealt to amy")
@@ -81,7 +81,7 @@ func TestAFriendWhoTakesAWorkingCardIsNotMarkedInTheSameTick(t *testing.T) {
 
 // friendSeat is a bare amy seat, up with flash and pro, no running job.
 func friendSeat() FriendSeat {
-	return FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+	return workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 }
 
 // A friend who has taken a card has none returned in the same tick that another of her
@@ -102,7 +102,7 @@ func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 				w.s.Work.SetProp(PropDealtMax, "90s")
 				dealWith(w, friendSeat())
 				// her beat names s1-1 running: the tick's start moves it ready -> working
-				dealWith(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}})
+				dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}}))
 				require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "s1-1 is working")
 				require.Equal(t, "1", w.s.Fleet.Card("s1-1.w1").F(FieldStarted), "she started s1-1")
 
@@ -135,7 +135,7 @@ func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 				dealWith(w, friendSeat())
 				// she takes s1-1 and finishes it: her finish's next moves s1-2 to working
 				// with no start of hers
-				dealWith(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}})
+				dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}}))
 				w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
 				require.Equal(t, Working, w.s.Fleet.Card("s1-2.w1").Col, "her next, s1-2, is working")
 				require.Empty(t, w.s.Fleet.Card("s1-2.w1").F(FieldStarted), "no start of hers yet")
@@ -155,7 +155,7 @@ func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 				w.s.Work.SetProp(PropDealtMax, "90s")
 				dealWith(w, friendSeat())
 				// she starts s1-1 and it carries progress
-				dealWith(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}})
+				dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}}))
 				w.must(Progress(w.s, ProgressReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: map[string]int{"s1-1.w1": 1}}))
 				// the hold takes her cards back, and the tick redeals them: s1-1 comes back
 				// ready carrying its progress stamp, beside the untaken s1-2
@@ -177,7 +177,7 @@ func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 				w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"))
 				w.s.Work.SetProp(PropDealtMax, "90s")
 				// her beat names a job that is none of these cards
-				amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"some-other-job"}}
+				amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"some-other-job"}})
 				dealWith(w, amy)
 
 				w.tick(2 * time.Minute)

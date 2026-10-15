@@ -12,7 +12,7 @@ import (
 // holds every plan (Applied, Lawful) before it is applied: a unit the lifecycle refuses fails.
 func lawfulDeal(w *world, seats ...FriendSeat) Plan {
 	w.t.Helper()
-	p, _ := TickDeal(w.s, TickReq{Friends: seats})
+	p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 	q := p
 	q.on(w.s)
 	require.Empty(w.t, Lawful(q).Refused, "every move of the deal is a row of the lifecycle")
@@ -82,7 +82,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	t.Run("a friend, the needs still not landed", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		dealStarted(w, amy)
 		row := FriendRow("amy")
 		require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "the fixture: she took it")
@@ -116,7 +116,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	t.Run("when the need lands the next deal cuts the next attempt", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"), fleetBrief("flash"))
-		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		w.s.Work.Card("s1-2").Col = Review
 		dealStarted(w, amy)
 		row := FriendRow("amy")
@@ -126,7 +126,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 			Report: "friend amy " + strings.ReplaceAll(hold, "n1", "s1-2")}))
 		notTheWorkers(t, w, row, "s1-1.w1", "s1-1", "s1-2")
 		w.s.Work.Card("s1-2").Col = Landed
-		p, _ := TickResolve(w.s, TickReq{Friends: []FriendSeat{amy}})
+		p, _ := TickResolve(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})})
 		w.must(p)
 		lawfulDeal(w, amy)
 		assert.Equal(t, "2", dealtAttempt(w, "s1-1"), "an attempt number is spent, never a redeal or a failure")
@@ -136,7 +136,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	t.Run("a hold naming a need that has landed is judged as any other", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"), fleetBrief("flash"))
-		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		dealStarted(w, amy)
 		row := FriendRow("amy")
 		// the need has landed by the finish; the report says it had not (a stale base): the
@@ -153,7 +153,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	t.Run("a failure that names no unlanded need is still the worker's", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		row := FriendRow("amy")
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "friend amy FAIL: the test TestX fails"}))
 		assert.Empty(t, w.notesOf(NNeedsUnlanded))
@@ -163,7 +163,7 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	t.Run("past the cap a stop on unlanded needs is judged", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		dealStarted(w, amy)
 		row := FriendRow("amy")
 		// the primary was already returned MaxNeedsReturns times for its needs
@@ -241,8 +241,8 @@ func TestATakenCardFinishingOkWithAnUnlandedNeedWaits(t *testing.T) {
 func TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	w.s.Friends = []FriendSeat{amy}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	w.s.Friends = workerSeatFixtures([]FriendSeat{amy})
 	// s1-2 is in review; s1-1 is dealt first, then names s1-2 as its need
 	w.s.Work.Card("s1-2").Col = Review
 	dealWith(w, amy)
@@ -255,7 +255,7 @@ func TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand(t *testing.T) {
 
 	// the need lands: the next tick readies and deals it
 	w.s.Work.Card("s1-2").Col = Landed
-	p, _ := TickResolve(w.s, TickReq{Friends: []FriendSeat{amy}})
+	p, _ := TickResolve(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})})
 	w.must(p)
 	lawfulDeal(w, amy)
 	require.NotEmpty(t, dealtAttempt(w, "s1-1"), "s1-1 is dealt once its need landed: %s", w.s.StateOf("s1-1"))

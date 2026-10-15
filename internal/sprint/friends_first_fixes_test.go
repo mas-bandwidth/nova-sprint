@@ -14,15 +14,15 @@ import (
 func TestTheLevelMovesUnpinnedCardsToAnIdleFriend(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, "c: no WHO\n\nThe task.", friendBrief("friend amy"), friendBrief("only friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
-	dealStarted(w, amy, FriendSeat{Name: "bob", Width: 1, Status: Held, Tiers: []string{cardhdr.RouteFlash}})
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
+	dealStarted(w, amy, workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Held, Tiers: []string{cardhdr.RouteFlash}}))
 	require.Equal(t, 1, w.s.Fleet.Count(FriendRow("amy"), Working))
 	require.Equal(t, 1, w.s.Fleet.Count(FriendRow("amy"), Ready), "room 2: one working, one ready behind")
 	ready := w.s.Fleet.Cell(FriendRow("amy"), Ready)[0]
 	require.False(t, OnlyFriend(w.s.Primary(ready.F("primary"))), "the ready card behind her is not the hard pin")
 
 	// bob comes up idle: the tick's level moves amy's unpinned ready card to him
-	dealStarted(w, amy, FriendSeat{Name: "bob", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
+	dealStarted(w, amy, workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}))
 	moved := w.s.Fleet.Card(ready.ID)
 	assert.Equal(t, FriendRow("bob"), moved.Row, "an unpinned card is levelled to the idle friend")
 	assert.Equal(t, Working, moved.Col)
@@ -75,8 +75,8 @@ func TestACardWithTwoProviderFailuresGoesToAFriendNotAnUnfundedRoute(t *testing.
 			require.Nil(t, AtRedealBound(w.s, w.s.Primary("s1-1")), "below its ceiling: escalated, not judged")
 
 			dealStarted(w,
-				FriendSeat{Name: "bob", Width: 4, Status: Up, Tiers: []string{cardhdr.RouteFlash}},
-				FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}})
+				workerSeatFixture(FriendSeat{Name: "bob", Width: 4, Status: Up, Tiers: []string{cardhdr.RouteFlash}}),
+				workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}))
 			next := w.s.Fleet.Card("s1-1.w2")
 			require.NotNil(t, next, "a new attempt")
 			assert.Equal(t, FriendRow("amy"), next.Row, "the friend with the escalated tier, pro")
@@ -94,9 +94,9 @@ func TestACardWithTwoProviderFailuresGoesToAFriendNotAnUnfundedRoute(t *testing.
 func TestAFrontierCardGoesOnlyToAFriendWithFrontier(t *testing.T) {
 	t.Parallel()
 	brief := func(who string) string { return "c: work tier: frontier\nWHO: " + who + "\n\nThe task." }
-	amy := FriendSeat{Name: "amy", Width: 4, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}
-	dan := FriendSeat{Name: "dan", Width: 8, Status: Up}
-	cat := FriendSeat{Name: "cat", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}})
+	dan := workerSeatFixture(FriendSeat{Name: "dan", Width: 8, Status: Up})
+	cat := workerSeatFixture(FriendSeat{Name: "cat", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFrontier}})
 
 	w := friendWorld(t, brief("friend amy"), brief("friend"))
 	dealStarted(w, amy, dan, cat)

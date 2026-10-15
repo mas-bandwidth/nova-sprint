@@ -161,6 +161,7 @@ type FriendRow struct {
 	Evidence   string    `json:"evidence,omitempty"`
 	SprintHeld bool      `json:"-"`
 	Unhooked   bool      `json:"-"`
+	WorkerLive bool      `json:"-"`
 	// Reason and Until say why she is held or down and when she is expected
 	// back, from the sprint hold or nova-hook reason.
 	Reason string    `json:"reason,omitempty"`
@@ -464,7 +465,7 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		if r[n].Session == sprint.FriendOneShot {
 			mb := members[n]
 			word := sprint.PresenceStatus(r[n].Held, mb, now)
-			row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Class: r[n].Class, Mode: r[n].Mode, Session: sprint.FriendOneShot, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: mb.Load, Beat: mb.At, SprintHeld: r[n].Held}
+			row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, WorkerLive: sprint.PresenceStatus(false, mb, now) == sprint.Up, Class: r[n].Class, Mode: r[n].Mode, Session: sprint.FriendOneShot, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: mb.Load, Beat: mb.At, SprintHeld: r[n].Held}
 			switch word {
 			case sprint.Up:
 				row.Evidence = "member beat"
@@ -511,6 +512,8 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		if word == sprint.Up {
 			row.Evidence = "nova-hook proven"
 		}
+		// A proven coordinator/comms record is up too, but carries no worker role.
+		row.WorkerLive = h.Name == n && h.Gate(hook.Want{Name: n, Need: hook.PushesOf(hook.Friend), Roles: []hook.Role{hook.Friend}, Role: hook.Friend}) == nil
 		rows[n], status[n] = row, word
 	}
 	out := make([]FriendRow, 0, len(names))
@@ -577,6 +580,7 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 		seats[i].Beat = sprint.Beat{At: r.Beat, Friend: r.Report, Load: r.Load}
 		seats[i].Evidence, seats[i].Current = r.Evidence, currentBuild
 		seats[i].Unhooked = r.Unhooked
+		seats[i].WorkerLive = r.WorkerLive
 		seats[i].Held = r.SprintHeld
 		seats[i].Session = r.Session
 	}

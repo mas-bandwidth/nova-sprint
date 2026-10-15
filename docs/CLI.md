@@ -62,7 +62,7 @@ nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | 
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
-nova-sprint queue --as <reader|member> | --stream <s>
+nova-sprint queue --as <reader|member> [--wait <duration> --after <cursor>] | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
@@ -129,7 +129,7 @@ nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
 nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
-nova-sprint friend give <friend> <id>... [--reason <text>]
+nova-sprint friend give <friend> <id>... [--reason <text>]   # hands a ready card to her at its next attempt, from no friend too: its current work card Done (a brief-replaced bounce) or absent; refused when that work card is live (Ready or Working on a row), a hard pin names another friend (nova-sprint unpin), or her tiers, restriction or the card's needs refuse it; a friend not up is no refusal, the card waits on her row
  nova-sprint friend level
  nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config, writes JOB.md naming the finish command; refuses a card not on her row or a friend with no git_identity
  nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
@@ -183,6 +183,13 @@ nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+A stream stop and `resume` each push a separate blocker message to the coordinator
+and a status message to each affected card owner. The resume notice includes the
+new state, actor and `--did` explanation. Delivery wakes on the committed sprint
+log, with the existing five-second quiet-log retry backstop; the stop judgment
+still requires its ordinary answer.
+
 
 Friend availability comes only from `nova-hook`: a missing, unproven or down
 hook reads `down`; a live, proven hook reads `held` when sprint's hold is set,
@@ -326,6 +333,28 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
 <group>` (fleet, friend, reader, goal, stream) prints one group's.
+
+### Worker queue waits
+
+Read `nova-sprint queue --as <worker> --json`, save its `cursor`, then repeat
+`nova-sprint queue --as <worker> --wait 10m --after <cursor> --json` with each
+returned cursor. The request wakes as soon as the sprint log changes, or at the
+deadline, and returns the current queue. A timeout does not consume or clear its
+cards. Plain output adds `CURSOR <id>`; `0-0` is an empty stream. The cursor is
+sampled before the queue read, so a concurrent deal remains visible to this read
+or the next wait. Through the server, send each wait in its own request.
+
+Keep the worker's existing heartbeat and timer sweep at their existing cadence
+as a backstop; a waiting reader queue records its reader beat when the queue is
+read, not throughout the wait. The nova-tools worker loops move to this interface
+separately. The server also checks its durable log every 15 seconds during a
+quiet wait, recovering a lost wake or an epoch change.
+
+`inbox --wait` also blocks through the server, with the existing 15-second
+backstop. Its transport is `log --wait-tick <duration> --after <notes-cursor> --json`: zero duration samples the initial cursor; subsequent calls return
+`cursor` and `woke`. This cursor belongs to the notes stream and cannot be used
+as a queue cursor. The transport takes no log filters or historical epoch and
+is served only on the coordinator listener.
 
 ### A card's priority
 
@@ -646,8 +675,10 @@ fetched once a call, read with git and no go command. The tokens are `paths-at-b
 `paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-heavy-or-above` and
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
-`PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
-exit 2, nothing written. A `TEST:` line is accepted in its Go form
+ `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
+ exit 2, nothing written. Each refusal at the base is recorded in the server's refused-verb
+ record under the verb, the card id and the rule tokens it drew in Why, so a later review
+ counts refusals per rule from the record; an accepted add records nothing. A `TEST:` line is accepted in its Go form
 (`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
 C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
 rather than in `*.go`; preflight's TEST check does the same, and the brief check accepts a

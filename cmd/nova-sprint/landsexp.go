@@ -293,9 +293,9 @@ func tidyBlanks(base, lines []string) []string {
 // value: the file's own title and text ("top:title", "top:text"), and for fixes "release:<id>"
 // and "fix:<id>", for the roadmap "group:<id>", "scheduled:<id>", "done:<id>" and "item:<id>".
 // An id met twice is an error. It reads under landDataLimits (land_ledgers.go), the lander's
-// own bound (tla/LandLedgers.tla, ResolveLand), so data past roadmapdoc.Limits still merges
+// own bound (tla/LandLedgers.tla, ResolveLand), so data past roadmap.Limits still merges
 // instead of bouncing back at the tip; it keeps the decode inside the lander and leaves the
-// shared roadmapdoc bound to its other callers.
+// shared nova-tools pkg/roadmap bound to its other callers.
 func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 	d, err := readFormDoc(file, data)
 	if err != nil {

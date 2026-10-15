@@ -90,6 +90,16 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{1, fmt.Sprintf("read card %s is on reader %s's row and names reader %s", c.ID, c.Row, orDash(c.F("reader")))})
 		}
 	}
+	// A coordinator hook or mere presence cannot service a dealt work card.
+	liveWorkers := map[string]bool{}
+	for _, f := range s.Friends {
+		liveWorkers[FriendRow(f.Name)] = friendWorkerLive(s, f)
+	}
+	for _, c := range s.Fleet.Column(Ready, Working) {
+		if c.F("kind") != "read" && IsFriendRow(c.Row) && !liveWorkers[c.Row] {
+			out = append(out, Violation{1, fmt.Sprintf("work card %s is dealt to row %s with no live worker", c.ID, c.Row)})
+		}
+	}
 	// 2. Primaries working = primaries of work cards in fleet ready + working.
 	working, dealt := primarySet{}, primarySet{}
 	for _, c := range s.Work.Column(Working) {

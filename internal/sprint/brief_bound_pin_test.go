@@ -29,7 +29,7 @@ func TestACappedCardPinnedToAFriendStillRaisesTheJudgment(t *testing.T) {
 	require.Equal(t, Ready, w.s.Primary("p1").Col, "the lane cap readies the card on another tier")
 	require.True(t, OnlyFriend(w.s.Primary("p1")))
 	for range 3 {
-		p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{{Name: "bob", Status: Up, Width: 2, Class: "flash,pro"}}})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{{Name: "bob", Status: Up, Width: 2, Class: "flash,pro"}})})
 		w.must(p)
 	}
 	assert.Nil(t, w.s.Fleet.Card("p1.w5"), "no fifth attempt")

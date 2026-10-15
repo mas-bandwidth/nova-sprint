@@ -366,6 +366,9 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 			Changes: []Change{change(Merge, setEntry(ctl, set, "cause", "card", "other"))},
 			Moved:   fmt.Sprintf("stream %s stopped -> %s", stream, state),
 		}
+		// CoordinatorPush.tla CommitTransition: redo also resumes the stream,
+		// in this same unit, independently of the stop judgment it closes.
+		u.Notes = append(u.Notes, streamTransition(s, stream, NStreamResumed, state, "", r.Who, RedoFixText))
 		if len(otherStuck) > 0 {
 			u.Moved += fmt.Sprintf("; %d stuck -> queued", len(otherStuck))
 		}

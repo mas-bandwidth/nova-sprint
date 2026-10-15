@@ -44,6 +44,10 @@ type Packet struct {
 	// layer 1); both empty when no earlier attempt pushed: the base is staged.
 	BaseHead    string `json:"base_head,omitempty"`
 	BaseAttempt int    `json:"base_attempt,omitempty"`
+	// NeedHeads describes each primary need, populated by the store's pinned
+	// record reads. Only work packets carry it; the worker can refuse a tree
+	// that lacks a recorded landed head before starting the child.
+	NeedHeads []NeedHead `json:"need_heads,omitempty"`
 	// A work card's route (route.go): the route drawn ("pin" for a pinned card),
 	// the model id the member launches with (provider/model), its token budget
 	// (a count or unmetered) and its deadline in seconds; empty when the store
@@ -85,6 +89,33 @@ type Packet struct {
 	// no read_deadline, read_cards.go): its card id at every epoch, the path it was delivered
 	// at and is closed from; "" for a read card, whose job is a card's.
 	ReadJob string `json:"read_job,omitempty"`
+}
+
+// NeedHead is a need's state and recorded landed commit. State uses NeedWord's
+// vocabulary; Head is empty without a full head and matching landing records.
+type NeedHead struct {
+	ID    string `json:"id"`
+	State string `json:"state"`
+	Head  string `json:"head,omitempty"`
+}
+
+// NeedHeadOf reads the existing landing evidence, never a queued working head.
+// landedRefusals validates the primary's head against the landing pin; MergeStep
+// retains that head on the primary and moves the merge record to Merged with a
+// timestamp. The merge record itself stores no head. Both records must agree
+// that the need landed before its full primary head can ride in a work packet.
+func NeedHeadOf(id string, primary, merge *Card) NeedHead {
+	state := "not on the table"
+	if primary.Placed() {
+		state = primary.Col
+	} else if primary != nil {
+		state = "off the table (" + orDash(primary.F("outcome")) + ")"
+	}
+	n := NeedHead{ID: id, State: NeedWord(state)}
+	if primary.Placed() && primary.Col == Landed && merge.Placed() && merge.Col == Merged && typedrec.IsFullSha(primary.F("head")) {
+		n.Head = primary.F("head")
+	}
+	return n
 }
 
 // FieldRules is a primary's rules by reference (nova-tools#5174 rule 6): the base name of the

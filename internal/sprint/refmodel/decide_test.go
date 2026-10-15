@@ -241,6 +241,7 @@ func TestResumeGoesOnWhenTheCardAStreamNeededLanded(t *testing.T) {
 	expect(t, got,
 		"set merge ctl-s1 did=the card it needed landed,since=2030-01-02T03:04:05Z,state=merging",
 		"move merge s1-1 s1:stuck>s1:queued",
+		"notice stream resumed []",
 		"notice stream resumed: the card it needed landed [s1-1]",
 		"close stream stopped: needs a card of another stream first [stream:s1]")
 }
