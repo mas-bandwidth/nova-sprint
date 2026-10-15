@@ -172,7 +172,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 const roadmapDetail = `A repository's work record is two files of data and the two pages they render:
 docs/roadmap.sexp -> ROADMAP.md (groups of items: work after the release
 ladder) and docs/fixes.sexp -> FIXES.md (point releases and their fixes). The
-shapes are internal/roadmapdoc's. Every writing verb edits the data, decodes it
+shapes are nova-tools pkg/roadmap's. Every writing verb edits the data, decodes it
 again, and writes the data and its page together; nothing is written when any
 check fails, and every byte it does not change (comments, spacing, the other
 records) is kept. Nothing reaches GitHub: commit the batch of edits as one.

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 )
 
 // testRoadmapSexp is a smallest roadmap that decodes: one group and one item, so a
@@ -63,7 +63,7 @@ func TestDeferWritesWaitingCardsToTheRoadmapAndDropsThem(t *testing.T) {
 
 	raw, err := os.ReadFile(filepath.Join(dir, "docs", "roadmap.sexp"))
 	require.NoError(t, err)
-	doc, err := roadmapdoc.Decode("docs/roadmap.sexp", raw)
+	doc, err := roadmap.Decode("docs/roadmap.sexp", raw)
 	require.NoError(t, err, "the defer wrote a roadmap that does not decode")
 	require.Len(t, doc.Items, 3, "the existing item plus x2 and x3")
 	var titles []string

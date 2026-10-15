@@ -2,6 +2,7 @@ package refmodel
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
@@ -373,6 +374,10 @@ func noteAttrs(n sprint.Note) []string {
 	add("to", n.To)
 	add("hint", n.Hint)
 	add("who", n.Who)
+	if n.StreamTransition != nil {
+		value, _ := json.Marshal(n.StreamTransition)
+		add("stream_transition", string(value))
+	}
 	sort.Strings(out)
 	return out
 }
