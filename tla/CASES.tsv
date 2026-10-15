@@ -515,6 +515,7 @@ MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	requi
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
 MCJudgmentRetire.cfg	MCJudgmentRetire.tla	pass	-	ignore-terminal	judgment-retire	required	-
 MCJudgmentRetireBrokenAbsentStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterTick	ignore-terminal	judgment-retire	required	-
+MCJudgmentRetireBrokenFriendStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterTick	ignore-terminal	judgment-retire	required	-
 MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsLive.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-

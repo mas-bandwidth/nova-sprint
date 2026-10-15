@@ -66,6 +66,78 @@ func offTable(s *Snapshot, id string) string {
 	return id + " off the table (" + orDash(c.F("outcome")) + ")"
 }
 
+// friendSubject reports whether a judgment or subject names a friend, and
+// returns the friend's bare name.
+func friendSubject(s *Snapshot, n Note, sub string) (string, bool) {
+	trimmed := strings.TrimPrefix(sub, "stream:")
+	trimmed = strings.TrimPrefix(trimmed, "member:")
+	if f, ok := FriendOfRow(trimmed); ok {
+		return f, true
+	}
+	if f, ok := FriendOfRow(strings.TrimPrefix(n.Stream, "member:")); ok {
+		return f, true
+	}
+	if sub == "" || sub == SprintSubject || strings.ContainsAny(sub, ":@/") {
+		return "", false
+	}
+	if s != nil && s.Work != nil && s.Work.Card(sub) != nil {
+		return "", false
+	}
+	if s != nil {
+		for _, seat := range s.Friends {
+			if seat.Name == sub {
+				return sub, true
+			}
+		}
+		if s.Fleet != nil && s.Fleet.HasRow(FriendRow(sub)) {
+			return sub, true
+		}
+	}
+	if strings.HasPrefix(n.Type, "a friend ") || strings.HasPrefix(n.Type, "an up friend ") || strings.HasPrefix(n.What, "friend "+sub+" ") {
+		return sub, true
+	}
+	return "", false
+}
+
+// friendOnTable reports whether friend is currently on the friends table.
+func friendOnTable(s *Snapshot, n Note, sub, friend string) bool {
+	if s == nil || s.FriendsOff() || friend == "" {
+		return false
+	}
+	for _, seat := range s.Friends {
+		if seat.Name == friend {
+			return true
+		}
+	}
+	if s.Friends != nil {
+		return false
+	}
+	trimmed := strings.TrimPrefix(sub, "stream:")
+	trimmed = strings.TrimPrefix(trimmed, "member:")
+	if IsFriendRow(trimmed) {
+		if s.Fleet != nil && s.Fleet.HasRow(FriendRow(friend)) {
+			return true
+		}
+		if n.What == "" && IsFriendRow(n.Stream) {
+			return true
+		}
+	}
+	return false
+}
+
+// friendOffTable is the event a friend left the friends table by; "" while the
+// friend is on the friends table or when the subject is not a friend.
+func friendOffTable(s *Snapshot, n Note, sub string) string {
+	f, ok := friendSubject(s, n, sub)
+	if !ok || friendOnTable(s, n, sub, f) {
+		return ""
+	}
+	if sub != f {
+		return fmt.Sprintf("friend %s (%s) is not on the friends table", f, sub)
+	}
+	return fmt.Sprintf("friend %s is not on the friends table", f)
+}
+
 // movedOn is the event a judgment's card moved past it by: "<id> moved to attempt
 // <m> (was <n>)", or "<id> was re-briefed" for a judgment about the brief itself;
 // "" while the card is still the one the judgment was raised for, the judgment
@@ -118,6 +190,9 @@ func outlived(s *Snapshot, n Note, entries []Open) (string, bool) {
 	for _, o := range entries {
 		e := offTable(s, o.Subject())
 		if e == "" {
+			e = friendOffTable(s, n, o.Subject())
+		}
+		if e == "" {
 			e = movedOn(s, n, o.Subject())
 		}
 		if e == "" {
@@ -162,6 +237,9 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 		didMove := false
 		for _, id := range cards {
 			e := offTable(s, id)
+			if e == "" {
+				e = friendOffTable(s, n, id)
+			}
 			if e == "" {
 				if e = movedOn(s, n, id); e == "" {
 					es = nil
@@ -212,8 +290,40 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 		if e := offTable(s, o.Target); e != "" {
 			what = RetiredPrefix + e
 		}
+		if e := friendOffTable(s, o.Open.Note, o.Target); e != "" {
+			what = RetiredPrefix + e
+		}
 		d := decided(o.Open, what, MachineActor, s.Now)
 		p.Notes = append(p.Notes, d)
+	}
+	if len(p.Closes) > 0 {
+		retiredIDs := map[string]bool{}
+		for _, c := range p.Closes {
+			if c.Note.ID != "" {
+				retiredIDs[c.Note.ID] = true
+			}
+		}
+		isRetiredRule8 := func(n Note) bool {
+			if n.Kind != Judgment || n.Type != NInvariant || !strings.HasPrefix(n.What, "rule 8: judgment ") {
+				return false
+			}
+			rest := strings.TrimPrefix(n.What, "rule 8: judgment ")
+			id, _, ok := strings.Cut(rest, " ")
+			return ok && retiredIDs[id]
+		}
+		kept := p.Notes[:0]
+		for _, n := range p.Notes {
+			if !isRetiredRule8(n) {
+				kept = append(kept, n)
+			}
+		}
+		p.Notes = kept
+		for _, o := range s.Open {
+			if !closing[o.Key] && isRetiredRule8(o.Note) {
+				closing[o.Key] = true
+				p.Closes = append(p.Closes, o)
+			}
+		}
 	}
 }
 
@@ -238,7 +348,13 @@ func isNonCardSubject(s *Snapshot, sub string) bool {
 	if strings.Contains(sub, "@") || strings.Contains(sub, "/") {
 		return true
 	}
-	if IsFriendRow(sub) || strings.HasPrefix(sub, "friend.") || strings.HasPrefix(sub, friendRowPrefix) || strings.HasPrefix(sub, "stream:friend") {
+	if f, ok := FriendOfRow(strings.TrimPrefix(strings.TrimPrefix(sub, "stream:"), "member:")); ok {
+		return friendOnTable(s, Note{}, sub, f)
+	}
+	if strings.HasPrefix(sub, "stream:friend") {
+		return true
+	}
+	if s != nil && (s.Work == nil || s.Work.Card(sub) == nil) && friendOnTable(s, Note{}, sub, sub) {
 		return true
 	}
 	if strings.HasPrefix(sub, "timer:") || strings.HasPrefix(sub, "stream:timer:") {
@@ -287,6 +403,13 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 			continue
 		}
 		sub := o.Subject()
+		if f, ok := friendSubject(s, n, sub); ok {
+			if !friendOnTable(s, n, sub, f) {
+				seen[n.ID] = true
+				out = append(out, Orphan{ID: n.ID, Type: n.Type, Target: sub, Open: o, Absent: true})
+			}
+			continue
+		}
 
 		// Stream-level judgments:
 		if n.StreamLevel {
