@@ -16,7 +16,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `SprintTables` | The card lifecycle: six states, waiting ready working review merging landed, and the moves between them, with the fleet side, the reads and the merge and return. |
 | [DirtyTick](README-DirtyTick.md) | How a tick drains queues and moves work between tables. |
 | `DirtyTickRead` | Reader handoffs within the tick. |
-| `ReadsByRoom`, `ReaderTiers`, `ReadCards` | Where a read is asked, on which tier, and how a read card is loaded. |
+| `ReadsByRoom`, `ReaderTiers`, `ReadCards`, `AskReadIDs` | Where a read is asked, on which tier, how a read card is loaded, and why AskStep must include ended Fleet read-card records when minting a replacement ID. |
 | `RouteIndex`, `RouteRest` | Route selection, its counters, and resting a route. |
 | `NoRoom` | A member's no-room word (the disk floor) and its drain (its binary replaced), the deal and fleet verbs that give such a member nothing, the return of what a draining member was dealt and has not taken, and the ask that asks a held or draining machine's reader nothing. |
 | `RetireAbsent` | The tick retires a fleet row whose machine record is gone from the inventory (a rename), drains it while it still holds cards, and retires nothing on a failed config read. |
