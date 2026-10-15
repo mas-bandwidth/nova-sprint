@@ -60,7 +60,9 @@ func TestCoordinatorPushFoldThirtyMinutesAndSetChanges(t *testing.T) {
 		require.Empty(t, warnings(), "unchanged minute %d must stay quiet", minute)
 	}
 	ta.step(time.Minute)
-	require.Len(t, warnings(), 1, "exactly 30m since success permits one repeat")
+	repeat := warnings()
+	require.Len(t, repeat, 1, "exactly 30m since success permits one repeat")
+	assert.Equal(t, "WARNING 2 judgment(s) waiting on the coordinator 10s or longer: j1 j2\n", repeat[0].Body, "the unchanged set repeats only its summary line")
 	require.Empty(t, warnings(), "a second look at the same instant stays quiet")
 	ta.step(time.Second)
 	closeNote("fold-b")
