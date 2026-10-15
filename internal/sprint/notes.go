@@ -203,8 +203,12 @@ type CoordinatorDelivery struct {
 
 // Note is one notification.
 type Note struct {
-	ID                  string               `json:"id"`
-	CoordinatorDelivery *CoordinatorDelivery `json:"coordinator_delivery,omitempty"`
+	ID                     string               `json:"id"`
+	SafeDefault            string               `json:"safe_default,omitempty"`
+	DecisionDelivery       *DecisionDelivery    `json:"decision_delivery,omitempty"`
+	DefaultCoordinatorTold bool                 `json:"default_coordinator_told,omitempty"`
+	DefaultOwnerTold       bool                 `json:"default_owner_told,omitempty"`
+	CoordinatorDelivery    *CoordinatorDelivery `json:"coordinator_delivery,omitempty"`
 	// Alias is a judgment's or an acknowledgement's alias, j<n>, its place among
 	// the epoch's in the order written: the store's commit numbers it (inbox.go,
 	// Alias); "" on a happened or decided note.
@@ -381,6 +385,9 @@ func boolWord(b bool) string {
 
 // Bound cuts the listed primaries to MaxListed; Count keeps the total.
 func (n Note) Bound() Note {
+	if n.Kind == Judgment {
+		n.SafeDefault = SafeDecisionDefault(n.Type)
+	}
 	if len(n.Primaries) > MaxListed {
 		n.Primaries = append([]string(nil), n.Primaries[:MaxListed]...)
 	}

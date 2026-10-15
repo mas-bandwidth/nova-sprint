@@ -426,10 +426,10 @@ func TestMovesDueCountsAsks(t *testing.T) {
 	t.Parallel()
 	w := dealt(t)
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
-	n := MovesDue(w.s)
+	n := len(MoveDueKeys(w.s))
 	require.Equal(t, 1, n, "a primary in review never asked: %d moves due", n)
 	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	n = MovesDue(w.s)
+	n = len(MoveDueKeys(w.s))
 	require.Equal(t, 0, n, "asked: %d moves due", n)
 }
 
@@ -443,4 +443,18 @@ func TestMovesDueKeysPreserveReviewExclusions(t *testing.T) {
 	w.s.Readers = readers
 	w.s.Work.Card("s1-1").Fields["result"] = "failed"
 	require.Empty(t, MoveDueKeys(w.s), "a failed review card is excluded from the stopped-machine due count")
+}
+
+func TestHeldServerDefaultNamesJudgment(t *testing.T) {
+	w := setup(t, 1)
+	c := w.s.Work.Card("s1-1")
+	c.Fields[FieldHeld] = stamp(w.s.Now)
+	c.Fields["held_by"] = ServerDefaultActor
+	c.Fields["held_judgment"] = "j-bound"
+	c.Fields["held_reason"] = "budget bound"
+	c.Col = Waiting
+	w.s.Work.Put(c)
+	h := Holder(running(w), w.s.Now, c.ID)
+	require.Contains(t, h.Why, "server-default")
+	require.Contains(t, h.Why, "j-bound")
 }

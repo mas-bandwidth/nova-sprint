@@ -588,7 +588,7 @@ func readCardsTakeBack(s *Snapshot) map[string][]Change {
 		by := ""
 		pr := s.Work.Placed(c.F("primary"))
 		switch {
-		case pr == nil || pr.Col != Review || readAttempt(pr) != c.Int("attempt"):
+		case pr == nil || pr.Col != Review && !DecisionParkedReview(pr) || readAttempt(pr) != c.Int("attempt"):
 			by = RetiredByPrimary
 		case c.F(FieldReadCard) != "" && c.Col == Working && !readStart(c).IsZero() && !s.Now.Before(readStart(c).Add(ReadCardDeadline)):
 			by = RetiredByLate

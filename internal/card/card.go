@@ -195,7 +195,168 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 			add(GateHostCheck, i+1, "this STEP tells the worker to ssh to a named host or run the gate on a named host, which the sprint forbids; "+GateHostRemedy)
 		}
 	}
+	// The toolchain-gate-needs rule, beside the gate-host rule: a need the brief states in
+	// prose is a need the deal cannot see, so a TOOLCHAIN line (or a THE TASK or STEP
+	// sentence saying the work must run on) naming an OS, an ISA or a toolchain wants a
+	// GATE-NEEDS line carrying the matching fact (internal/sprint GateHostPool).
+	gate := toolchainGateFacts(brief)
+	for i, line := range strings.Split(brief, "\n") {
+		if missing := toolchainMissing(id, line, gate); len(missing) > 0 {
+			add(ToolchainGateCheck, i+1, "this line says the work needs "+strings.Join(missing, ", ")+" and no GATE-NEEDS line carries it, so the deal cannot match a member that has it; "+GateHostRemedy)
+		}
+	}
 	return out
+}
+
+// ToolchainGateCheck is the check name of the toolchain-gate-needs lint finding: a brief
+// whose TOOLCHAIN line, or a THE TASK or STEP sentence saying the work must run on,
+// names an OS, an ISA or a toolchain without a GATE-NEEDS line carrying the matching
+// fact. Its remedy is GateHostRemedy.
+const ToolchainGateCheck = "toolchain-gate-needs"
+
+// toolchainTerms map the words a brief names a need by to the gate fact that carries it
+// (internal/sprint FieldFacts): the OS, the ISA and the toolchain. A term is a word of its
+// own: a hyphen beside it makes it part of a name (a card id like spike-batch-ops-neon).
+var toolchainTerms = []struct {
+	re   *regexp.Regexp
+	fact string
+}{
+	{toolchainTerm(`linux`), "linux"},
+	{toolchainTerm(`darwin`), "darwin"},
+	{toolchainTerm(`avx2`), "avx2"},
+	{toolchainTerm(`avx512\w*`), "avx512f"},
+	{toolchainTerm(`neon|arm64|aarch64|apple silicon`), "arm64"},
+	{toolchainTerm(`dotnet|\.net`), "dotnet"},
+}
+
+// toolchainTerm is the regexp of the alternatives alt as words of their own.
+func toolchainTerm(alt string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^\w.-])(` + alt + `)($|[^\w-])`)
+}
+
+// toolchainImplies are the facts a gate fact carries beside itself: an avx512f member
+// runs avx2 code.
+var toolchainImplies = map[string][]string{"avx512f": {"avx2"}}
+
+// toolchainRunOnRE is a THE TASK or STEP sentence saying where the work runs, in the
+// present or the imperative: "must run on", "runs on", "built on", "measured on"; a
+// past "ran on" is history, not a need.
+var toolchainRunOnRE = regexp.MustCompile(`\b(runs?|built|measured|benched)\s+on\s`)
+
+// toolchainOrRE splits a need into its alternatives: a brief that offers "a Linux bench
+// ... or an Apple silicon bench" is satisfied by either.
+var toolchainOrRE = regexp.MustCompile(`\s+or\s+`)
+
+// toolchainGateFacts is the brief's GATE-NEEDS line, lowercased, with the facts each one
+// implies.
+func toolchainGateFacts(brief string) map[string]bool {
+	facts := map[string]bool{}
+	for line := range strings.SplitSeq(brief, "\n") {
+		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
+			for _, f := range strings.FieldsFunc(strings.ToLower(v), func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+				facts[f] = true
+				for _, g := range toolchainImplies[f] {
+					facts[g] = true
+				}
+			}
+			break
+		}
+	}
+	return facts
+}
+
+// toolchainMissing is the needs a brief line names that gate does not carry: on a
+// TOOLCHAIN line (TOOLCHAIN: or the TOOLCHAIN. section) the whole value, on a THE TASK or STEP line the words after each "run
+// on" up to the sentence's end. The text is split into alternatives on "or"; the line
+// passes when one alternative naming a need is covered whole, or none names one. The
+// card's own id, quoted spans and path tokens are no need.
+func toolchainMissing(id, line string, gate map[string]bool) []string {
+	trimmed := strings.TrimSpace(line)
+	var spans []string
+	switch {
+	case strings.HasPrefix(trimmed, "TOOLCHAIN:"), strings.HasPrefix(trimmed, "TOOLCHAIN."):
+		spans = []string{trimmed[len("TOOLCHAIN:"):]}
+	case strings.HasPrefix(trimmed, "THE TASK"), strings.HasPrefix(trimmed, "STEP"):
+		low := strings.ToLower(unquoted(trimmed))
+		for _, m := range toolchainRunOnRE.FindAllStringIndex(low, -1) {
+			rest := low[m[1]:]
+			if end := sentenceEnd(rest); end >= 0 {
+				rest = rest[:end]
+			}
+			spans = append(spans, rest)
+		}
+	default:
+		return nil
+	}
+	seen := map[string]bool{}
+	var missing []string
+	for _, span := range spans {
+		scan := strings.ToLower(tokenExemptPaths(unquoted(span)))
+		if id != "" {
+			// the card's own id as a token of its own (spike-batch-ops-neon names no need),
+			// never its letters inside another word
+			scan = regexp.MustCompile(`(^|[^\w-])`+regexp.QuoteMeta(strings.ToLower(id))+`($|[^\w-])`).ReplaceAllString(scan, "$1 $2")
+		}
+		covered, named := false, false
+		var short []string
+		for _, alt := range toolchainOrRE.Split(scan, -1) {
+			needs := toolchainNeeds(alt)
+			if len(needs) == 0 {
+				continue
+			}
+			named = true
+			var lack []string
+			for _, n := range needs {
+				if !gate[n] {
+					lack = append(lack, n)
+				}
+			}
+			if len(lack) == 0 {
+				covered = true
+				break
+			}
+			short = append(short, lack...)
+		}
+		if !named || covered {
+			continue
+		}
+		for _, n := range short {
+			if !seen[n] {
+				seen[n] = true
+				missing = append(missing, n)
+			}
+		}
+	}
+	return missing
+}
+
+// toolchainNeeds is the gate facts a lowercased span names, in the order of
+// toolchainTerms, each once.
+func toolchainNeeds(s string) []string {
+	var out []string
+	for _, t := range toolchainTerms {
+		if t.re.MatchString(s) {
+			out = append(out, t.fact)
+		}
+	}
+	return out
+}
+
+// sentenceEnd is the index where the sentence s starts in ends: a ';', ':', '(' or ')',
+// or a '.' followed by a blank or the end (so ".NET" is a word, not an end); -1 when s
+// is one sentence to its end.
+func sentenceEnd(s string) int {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case ';', ':', '(', ')':
+			return i
+		case '.':
+			if i+1 == len(s) || s[i+1] == ' ' {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // GateHostCheck is the check name of the gate-host lint finding, and GateHostRemedy its
@@ -209,7 +370,7 @@ const (
 
 // Remedy returns the one-line remedy for a check token drawn by card lint.
 func Remedy(check string) string {
-	if check == GateHostCheck {
+	if check == GateHostCheck || check == ToolchainGateCheck {
 		return GateHostRemedy
 	}
 	if r, ok := cardtree.Remedies[check]; ok && r != "" {
