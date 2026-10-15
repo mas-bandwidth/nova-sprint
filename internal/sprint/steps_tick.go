@@ -2342,17 +2342,13 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	return due
 }
 
-// MovesDue is how many moves the tick would make on the snapshot's work and
-// fleet: primaries ready to deal, work cards withdrawn, waiting primaries
-// whose needs have all landed (a sentinel is the coordinator's release),
-// primaries in review to ask (as TickAsk picks them), and primaries in review
-// with the ok reads they need that nothing holds (the pump accepts them,
-// TickAccept): a STOPPED machine with any of these says so to the seat.
-func MovesDue(s *Snapshot) int {
-	return len(MoveDueKeys(s))
-}
-
-// MoveDueKeys is the stable identity of every move counted by MovesDue. The
+// MoveDueKeys is the stable identity of every move the tick would make on the
+// snapshot's work and fleet: primaries ready to deal, work cards withdrawn,
+// waiting primaries whose needs have all landed (a sentinel is the
+// coordinator's release), primaries in review to ask (as TickAsk picks them),
+// and primaries in review with the ok reads they need that nothing holds (the
+// pump accepts them, TickAccept): a STOPPED machine with any of these says so
+// to the seat, and len is how many moves are due. The
 // stopped-machine judgment uses these keys so a later due set with the same
 // count is still a new notification episode.
 func MoveDueKeys(s *Snapshot) []string {
