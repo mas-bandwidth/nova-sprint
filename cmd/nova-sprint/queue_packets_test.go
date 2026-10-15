@@ -164,7 +164,21 @@ func TestAQueueAskingForPacketsCarriesOnlyThose(t *testing.T) {
 	plain := r.one("queue", "--as", "r", "--json")
 	all := r.one("queue", "--as", "r", "--json", "--packets", "1024")
 	require.Equal(t, 0, plain.Code, plain.Stderr)
-	assert.Equal(t, all.Stdout, plain.Stdout)
+	// Each read has its own log cursor (a reader beat can commit between
+	// these calls). Every other byte of the JSON payload must still agree.
+	payload := func(raw string) string {
+		var value map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal([]byte(raw), &value))
+		var cursor string
+		require.NoError(t, json.Unmarshal(value["cursor"], &cursor))
+		require.NotEmpty(t, cursor)
+		require.True(t, validWaitCursor(cursor))
+		delete(value, "cursor")
+		out, err := json.Marshal(value)
+		require.NoError(t, err)
+		return string(out)
+	}
+	assert.Equal(t, payload(all.Stdout), payload(plain.Stdout))
 }
 
 // TestAMembersQueueCarriesNoPacketForACardItRuns: a member's ready cards come with their
