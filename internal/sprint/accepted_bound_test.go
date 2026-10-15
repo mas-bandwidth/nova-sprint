@@ -149,19 +149,21 @@ func TestAnAcceptIsADecisionWhoeverAccepts(t *testing.T) {
 
 // The same refusal twice on the same brief is still judged a brief defect (tla/Land.tla
 // SameRefusalHalts; sprint.AtBriefBound): a repeated refusal indicates the brief is wrong,
-// not the worker, and halts the loop.
+// not the worker, and halts the loop. The refusal is the tree gate's: a merge conflict with
+// the advanced base twice is the base's bound (merge_conflict_carry_test.go, tla/Land.tla,
+// THE BOUND, ConflictBoundCarries).
 func TestTheSameRefusalTwiceIsStillABriefDefect(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
 	why := func(head string) string {
-		return "the head " + head + " of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go"
+		return "the head " + head + " of s1-1 fails the tree gate: go vet ./...: exit status 1"
 	}
 	r.toMergingAt("s1-1", refusedHeads[0])
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(refusedHeads[0]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(refusedHeads[0])}))
 	require.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col, "first refusal reworks it")
 
 	r.toMergingAt("s1-1", refusedHeads[1])
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(refusedHeads[1]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(refusedHeads[1])}))
 
 	pr := r.snap().Work.Card("s1-1")
 	require.Equal(t, sprint.Review, pr.Col, "second refusal with same finding is at brief bound: review")

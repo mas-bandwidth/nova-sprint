@@ -32,6 +32,12 @@ even when a server is configured; see the
 
 ### Server version
 
+The server also pushes completed CI receipts from `ev:github` to the coordinator
+and the identified card owner as `CI <conclusion> <repo>@<sha12> pr=<number> run=<id> card=<card or ->`. Delivery is event driven, with a ten-minute recovery
+sweep; retries retain the same message and once-key. Unmatched receipts go to the
+seat alone. See [CI receipt notifications](SPEC-SPRINT.md#ci-receipt-notifications)
+for routing, restart and hook-display limits.
+
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
 
 ### Verbs
@@ -62,7 +68,7 @@ nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | 
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
-nova-sprint queue --as <reader|member> | --stream <s>
+nova-sprint queue --as <reader|member> [--wait <duration> --after <cursor>] | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
 # as one of the reads the card needs; refused for the card's own worker. A card at a tier no
@@ -82,7 +88,7 @@ nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
 nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] [--replace-in-flight] | --dir <dir> [--rules <file>] [--keep-head] [--replace-in-flight] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] [--replace-in-flight] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--replace-in-flight] [--dry-run]
-# While working, only additions or changes to whole CARRY:, RESUME: or ROUTE NOTE: lines preserve the in-flight binding automatically. Other brief edits require --replace-in-flight, naming the working attempt on refusal. Metadata changes through flags are not operational notes.
+# While working, only additions or changes to whole CARRY:, RESUME: or ROUTE NOTE: lines or scope-only widening edits (entries added to PATHS, NEW or SHARED, or START entries marked (read) added) preserve the in-flight binding automatically without --replace-in-flight. On a review card a scope-only edit writes the brief in place and leaves the card in review with its head and reads. Other brief edits require --replace-in-flight, naming the working attempt on refusal. Metadata changes through flags are not operational notes.
 # A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
@@ -333,6 +339,28 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
 <group>` (fleet, friend, reader, goal, stream) prints one group's.
+
+### Worker queue waits
+
+Read `nova-sprint queue --as <worker> --json`, save its `cursor`, then repeat
+`nova-sprint queue --as <worker> --wait 10m --after <cursor> --json` with each
+returned cursor. The request wakes as soon as the sprint log changes, or at the
+deadline, and returns the current queue. A timeout does not consume or clear its
+cards. Plain output adds `CURSOR <id>`; `0-0` is an empty stream. The cursor is
+sampled before the queue read, so a concurrent deal remains visible to this read
+or the next wait. Through the server, send each wait in its own request.
+
+Keep the worker's existing heartbeat and timer sweep at their existing cadence
+as a backstop; a waiting reader queue records its reader beat when the queue is
+read, not throughout the wait. The nova-tools worker loops move to this interface
+separately. The server also checks its durable log every 15 seconds during a
+quiet wait, recovering a lost wake or an epoch change.
+
+`inbox --wait` also blocks through the server, with the existing 15-second
+backstop. Its transport is `log --wait-tick <duration> --after <notes-cursor> --json`: zero duration samples the initial cursor; subsequent calls return
+`cursor` and `woke`. This cursor belongs to the notes stream and cannot be used
+as a queue cursor. The transport takes no log filters or historical epoch and
+is served only on the coordinator listener.
 
 ### A card's priority
 

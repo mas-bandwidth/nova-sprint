@@ -279,6 +279,9 @@ var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sy
 // its caller waits for the answer: a caller gone (ctx done) before the line is taken has
 // its verbs from there on not run, each answered exit 2 saying so, and nothing changed.
 func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) sprintwire.Response {
+	if out, handled := a.serveLongPoll(ctx, req, local); handled {
+		return out
+	}
 	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
 	lanes := a.lanesFor(ctx)
 	begun := a.now()
@@ -380,18 +383,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())
-		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
-			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
-				// ignored: a best-effort lease renewal on reader beat; next beat will renew
-				_, _ = st.Run(ctx, store.Step{
-					Verb: "lease",
-					Load: []string{sprint.Readers},
-					Plan: func(s *sprint.Snapshot) sprint.Plan {
-						return sprint.RenewReaderLeases(s, as)
-					},
-				})
-			}
-		}
+
 	}
 	return out
 }
@@ -597,6 +589,17 @@ func (a *app) serveHTTP(w http.ResponseWriter, r *http.Request, local bool) {
 		http.Error(w, fmt.Sprintf("a batch is at most %d verbs, found %d", sprintwire.MaxVerbs, len(req.Verbs)), http.StatusBadRequest)
 		return
 	}
+	if len(req.Verbs) == 1 {
+		if d, wait := longPollDuration(readVerb(req.Verbs[0])); wait && d+sprintwire.Timeout > 5*time.Minute {
+			// A bounded extension for this request only, not an unbounded
+			// server-wide timeout. In-memory transports need no socket deadline.
+			err := http.NewResponseController(w).SetWriteDeadline(a.now().Add(d + sprintwire.Timeout))
+			if err != nil && !errors.Is(err, http.ErrNotSupported) {
+				http.Error(w, "cannot set long-poll write deadline: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	// THE ANSWER IS COMPRESSED FOR A CLIENT THAT TAKES IT. A worker's queue carries each of
 	// its cards' briefs, every pass: 46 to 93 KB an answer on a sprint of 1000 cards, and a
@@ -680,6 +683,8 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 	// the coordinator's push: its judgments to its name on the bus, and its sprint push
 	// held in its nova-hook record (coordinator_push.go)
 	go a.coordPushLoop(context.Background())
+	// CIReceiptTell.tla: event-driven CI receipt delivery with a ten-minute sweep.
+	go a.ciTellLoop(context.Background())
 	for at, h := range lns {
 		ln, err := net.Listen("tcp", at)
 		if err != nil {
@@ -866,4 +871,145 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		out = gz
 	}
 	_, _ = out.Write(stdout.Bytes()) // ignored: a reader that has gone reads no answer
+}
+
+// longPollDuration is a syntactically parsed blocking request. Ordinary reads
+// keep their transport deadline; only these requests reserve a longer one.
+func longPollDuration(v verbArgs) (time.Duration, bool) {
+	if v.err != nil || v.help {
+		return 0, false
+	}
+	name := ""
+	if v.name == "queue" && v.given("wait") {
+		name = "wait"
+	}
+	if v.name == "log" && v.given("wait-tick") {
+		name = "wait-tick"
+	}
+	if name == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(v.fs.Lookup(name).Value.String())
+	return d, err == nil && d >= 0 && d <= time.Duration(1<<63-1)-sprintwire.Timeout
+}
+
+// serveLongPoll never owns either server line while blocking. A single wait
+// is a whole request; mixing one into a serial write batch would hold the tick
+// that must wake it. The ordinary queue read/reader beat retains its existing
+// writer lock after the wait (QueueWait.tla Wait, Wake, Read).
+func (a *app) serveLongPoll(ctx context.Context, req sprintwire.Request, local bool) (sprintwire.Response, bool) {
+	// Refusal records retain the ordinary server serialization, never the wait.
+	record := func(argv []string, as string, result sprintwire.Result) {
+		a.serial.Lock()
+		defer a.serial.Unlock()
+		a.logRefused(argv, as, result.Code, result.Stderr)
+	}
+	for _, argv := range req.Verbs {
+		if len(argv) == 0 || (argv[0] != "queue" && argv[0] != "log") {
+			continue
+		}
+		v := readVerb(argv)
+		d, wait := longPollDuration(v)
+		if !wait {
+			continue
+		}
+		refuseWait := func(why string) (sprintwire.Response, bool) {
+			out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
+			for i := range out.Results {
+				out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s; nothing was changed\n", prog, why), Outcome: "refused", Changed: "no"}
+				record(req.Verbs[i], "", out.Results[i])
+			}
+			return out, true
+		}
+		if len(req.Verbs) != 1 {
+			return refuseWait("a long-poll is one verb in its own request")
+		}
+		pos, err := parse(v.fs, argv[v.words:])
+		if err != nil || len(pos) > 0 {
+			return refuseWait(argErr("takes no words ", err, pos...))
+		}
+		as, gateActor := "", ""
+		if v.name == "queue" {
+			var why string
+			as, _, why = workerVerb(argv)
+			if why == "" {
+				gateActor = as
+			} else {
+				if !local {
+					return refuseWait(why)
+				}
+				if why = v.unserved(); why != "" {
+					return refuseWait(why)
+				}
+				// The loopback forwarding CLI can put its actor before --as.
+				// Preserve normal serveCtx identity parsing on this listener.
+				as = v.fs.Lookup("as").Value.String()
+			}
+			if why = queueWaitFlags(v, as, d, v.fs.Lookup("after").Value.String()); why != "" {
+				return refuseWait(why)
+			}
+		} else {
+			if !local {
+				return refuseWait("tick-note waits are served on the coordinator listener")
+			}
+			if why := v.unserved(); why != "" {
+				return refuseWait(why)
+			}
+			if why := tickWaitFlags(v); why != "" {
+				return refuseWait(why)
+			}
+		}
+		lanes := a.lanesFor(ctx)
+		if lanes == nil {
+			return refuseWait("long-poll needs the concurrent store backend, not a twin file")
+		}
+		// Keep the ordinary pre-verb hook gate. Its app owns its transient
+		// state; blocked requests must not race the writer app's outcomes or
+		// connection maps. A coordinator's read inherits no process actor.
+		reader := newApp(a.getenv)
+		reader.now, reader.sleep, reader.serveAddr = a.now, a.sleep, a.serveAddr
+		reader.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return lanes.b, nil }
+		reader.readFriendHooks = a.readFriendHooks
+		reader.hk, reader.hookStoreFn, reader.busOpen = a.hk, a.hookStoreFn, a.busOpen
+		callerArgs := argv
+		if local && gateActor == "" {
+			callerArgs, _, _ = reader.defaultHookActor(argv, a.serveAddr, true)
+		}
+		gateArgs := slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr, "--actor", gateActor}, callerArgs[v.words:])
+		var gateErr bytes.Buffer
+		if code, refused := reader.hookFirst(gateArgs, &gateErr); refused {
+			result := sprintwire.Result{Code: code, Stderr: gateErr.String(), Outcome: "refused", Changed: "no"}
+			record(argv, as, result)
+			return sprintwire.Response{Results: []sprintwire.Result{result}}, true
+		}
+		if ctx.Err() != nil {
+			return sprintwire.Response{Results: []sprintwire.Result{goneResult(argv)}}, true
+		}
+		st := &store.Store{B: lanes.b, Names: sprint.Names{}, Actor: as, Now: a.now, Sleep: a.sleep}
+		after := v.fs.Lookup("after").Value.String()
+		err = nil
+		if v.name == "queue" {
+			err = a.waitQueue(ctx, st, d, after)
+			if err == nil {
+				// cmdQueue captures a fresh cursor before its cell reads. Do
+				// not substitute a later log tail into the returned snapshot.
+				plain := slices.Concat(argv[:v.words], without(v.fs, argv[v.words:], "wait", "after"))
+				return a.serveCtx(ctx, sprintwire.Request{Verbs: [][]string{plain}}, local), true
+			}
+		} else {
+			var cursor string
+			var woke bool
+			cursor, woke, err = waitTickAnswer(ctx, st, after, d)
+			if err == nil {
+				out, _ := json.Marshal(map[string]any{"cursor": cursor, "woke": woke})
+				return sprintwire.Response{Results: []sprintwire.Result{{Code: 0, Stdout: string(out) + "\n", Outcome: "accepted", Changed: "no"}}}, true
+			}
+		}
+		var stderr bytes.Buffer
+		code := (&app{}).queueReadFailed(v.name, err, &stderr)
+		result := sprintwire.Result{Code: code, Stderr: stderr.String(), Outcome: "unknown", Changed: "no"}
+		record(argv, as, result)
+		return sprintwire.Response{Results: []sprintwire.Result{result}}, true
+	}
+	return sprintwire.Response{}, false
 }

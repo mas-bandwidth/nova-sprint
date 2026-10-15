@@ -31,7 +31,7 @@ func openOverloads(w *world, seats ...FriendSeat) []Note {
 func TestOverloadAlarmCoversFriends(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"))
-	up := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash,pro"}
+	up := workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash,pro"})
 	dealStarted(w, up)
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1", "s1-4.w1"} {
 		require.Equal(t, FriendRow("amy"), w.s.Fleet.Card(id).Row)
@@ -52,8 +52,8 @@ func TestOverloadAlarmCoversFriends(t *testing.T) {
 	assert.Len(t, MemberTimeouts(w.s, FriendRow("amy")), 3, "counted from her finishes on her row")
 
 	// the same numbers as a machine's: a held or down friend raises none, as a member not up
-	assert.Empty(t, openOverloads(w, FriendSeat{Name: "amy", Width: 4, Status: Held, Class: "flash,pro"}))
-	assert.Empty(t, openOverloads(w, FriendSeat{Name: "amy", Width: 4, Status: Down, Class: "flash,pro"}))
+	assert.Empty(t, openOverloads(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Held, Class: "flash,pro"})))
+	assert.Empty(t, openOverloads(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Down, Class: "flash,pro"})))
 
 	open := openOverloads(w, up)
 	require.Len(t, open, 1, "three timeouts within the window")
