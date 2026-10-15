@@ -42,9 +42,10 @@ func (s *Snapshot) FriendStartMax() time.Duration {
 }
 
 // FieldStarted is the generation of a friend's work card she has started, set by her start
-// receipt (friendStartSet) and by nothing else: a card working on her row whose
-// FieldStarted is not its generation was moved there by no start of hers (her finish's
-// next, a take-back's next, a take), and the tick puts it back ready (friendUnstartedWorking).
+// receipt (friendStartSet: her beat, friend sync, or her own take, by lane or not) and by
+// nothing else: a card working on her row whose FieldStarted is not its generation was moved
+// there by no start of hers (her finish's next, a take-back's next), and the tick puts it
+// back ready (friendUnstartedWorking).
 const FieldStarted = "started"
 
 // startedNow says the friend's work card carries her start at its generation (FieldStarted).
@@ -92,8 +93,8 @@ func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started ma
 // friendUnstartedWorking is the tick's check that working on a friend's row means started
 // (docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it): a work card
 // working on her row with no start of hers at its generation (startedNow) was moved there by
-// her finish's next or a take-back's next (friendNext, FriendTake) or a take, none of which
-// is her start. One she has started by the tick's own read (friendStarted: her beat names it
+// her finish's next or a take-back's next (friendNext, FriendTake), neither of which is her
+// start (her own take is: takeOne, laneSet). One she has started by the tick's own read (friendStarted: her beat names it
 // running, or its progress stamp) is stamped started now, its deadline from now; any other
 // goes back ready on her row, untaken, its deadline unset and its start bound from now
 // (untaken_since), one line each, and friend sync's start receipt (FriendStart) or her beat

@@ -44,7 +44,7 @@ const (
 	NUnknownMachine = "an unknown machine is beating"
 	NStagingRefused = "a member refused a card at staging"        // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route"     // dealt again on one that serves
-	NFriendReturned = "a friend's card returned to ready"         // by friend reconcile: no report, and her queue says done or does not hold it
+	NFriendReturned = "a friend's card returned to ready"         // by the live pass: her run is gone
 	NFriendRedealt  = "a friend's card redealt past its deadline" // by friend redeal: work card redealt, primary back to ready
 	// A card dealt to a member that drains, or a read asked of a reader that drains or whose
 	// machine is held or drains, and not taken, returned for the deal or the ask to give to
@@ -382,7 +382,7 @@ func (n Note) Bound() Note {
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
 
-// NoteTypeText is a human label for the four historical friend note identifiers.
+// NoteTypeText is a human label for the historical friend note identifiers.
 // Note.Type itself remains unchanged so stored judgments and API consumers keep
 // matching their existing identifiers, release ages and acknowledgments.
 func NoteTypeText(typ string) string {
@@ -391,9 +391,10 @@ func NoteTypeText(typ string) string {
 		return "a card pinned to one friend waits while the friend is not up"
 	case NFriendNotWoken:
 		return "a friend was not told of a card"
-	case NFriendDisagrees:
+	// the retired QUEUE.json reconcile's notes, still in stored history (friend_return.go)
+	case "a friend's row disagrees with her QUEUE.json":
 		return "a friend's row disagrees with the friend's QUEUE.json"
-	case NFriendAgrees:
+	case "a friend's row agrees with her QUEUE.json again":
 		return "a friend's row agrees with the friend's QUEUE.json again"
 	default:
 		return typ

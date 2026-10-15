@@ -103,10 +103,9 @@ var verbEffect = map[string]string{
 	"server switch":     "local write: runs <binary> tick --shadow against the store first (read-only, under --tick-deadline) and refuses the swap, nothing changed, when it exits non-zero, panics or misses the deadline; then switches the server binary on disk, keeping the previous binary, the shadow's plan size and time at <target>.shadow.json, and rolling back on land failure in the window; --dry-run runs the shadow tick only and switches and writes nothing",
 	"merge-window open": "local write: the merge window, the merge table's properties in the sprint's store; land pauses while it is open; --dry-run checks --for and --reason and writes nothing",
 	// a store write, the collect's tip read and its directory reads said
-	"friend reconcile": "store write: finishes each card the friend reported on and returns each the friend abandoned, in the sprint's store; reads the friend's inbox/QUEUE.json and outbox, writes nothing in the friend's directory, and reads origin's tip (one git ls-remote) for each LAND it collects; --dry-run writes nothing and reads no tip",
-	"lane list":        "inspection: lists every machine's lanes and holders, writes nothing",
-	"lane take":        "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
-	"lane give":        "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
+	"lane list": "inspection: lists every machine's lanes and holders, writes nothing",
+	"lane take": "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
+	"lane give": "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
 	// the verbs whose one write is their store step, planned and not committed by --dry-run (stepdry.go)
 	"accept":   "local write: moves the eligible primaries in review into the merge queue, or records the coordinator's heavy read on each named primary, in the sprint's store; --dry-run writes nothing",
 	"ack":      "local write: closes the named notifications, nothing to be done, with the reason, in the sprint's store; --dry-run writes nothing",
