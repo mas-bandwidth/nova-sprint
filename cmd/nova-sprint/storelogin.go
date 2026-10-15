@@ -20,10 +20,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/redisauth"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/seatcred"
 	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 )
 
@@ -38,24 +40,20 @@ const seatLoginAddr = "nova-sprint seat login"
 // it, so no child of this process can inherit it.
 const seatLoginPassword = "NOVA_SPRINT_SEAT_LOGIN_PASSWORD"
 
-// storeLogin is the record seat login writes: the store's address and ACL user, and
-// where the user's password is in nova-secrets. It holds no secret and cannot.
-type storeLogin struct {
-	Redis  string `json:"redis"`
-	User   string `json:"user"`
-	Store  string `json:"store"`
-	As     string `json:"as"`
-	Key    string `json:"key"`
-	Sops   string `json:"sops"`
-	Secret string `json:"secret"`
-}
+// storeLogin is the record seat login writes, the store's address and ACL user, and
+// where the user's password is in nova-secrets. It is the seat record's own login
+// type (nova-tools pkg/seatcred.SeatLogin), so this command holds no second
+// definition to drift from it. It holds no secret and cannot.
+type storeLogin = seatcred.SeatLogin
 
-func (l storeLogin) secrets() secrets.Login {
+// seatLoginSecrets is the login's secret reference: store, seat, key, sops and the
+// secret's name.
+func seatLoginSecrets(l seatcred.SeatLogin) secrets.Login {
 	return secrets.Login{Store: l.Store, As: l.As, Key: l.Key, Sops: l.Sops, Name: l.Secret}
 }
 
-// line is the login on one line, every field a fact and none a secret.
-func (l storeLogin) line() string {
+// seatLoginLine is the login on one line, every field a fact and none a secret.
+func seatLoginLine(l seatcred.SeatLogin) string {
 	return fmt.Sprintf("redis=%s user=%s store=%s as=%s key=%s sops=%s secret=%s", oneline.Field(l.Redis), oneline.Field(l.User),
 		oneline.Field(l.Store), oneline.Field(l.As), oneline.Field(l.Key), oneline.Field(l.Sops), oneline.Field(l.Secret))
 }
@@ -122,7 +120,7 @@ func (a *app) recordedLogin() (storeLogin, bool, error) {
 	if l.Redis == "" || l.User == "" {
 		return storeLogin{}, false, fmt.Errorf("the seat login %s names no redis or no user%s", path, remedy)
 	}
-	if m := l.secrets().Missing(); m != "" {
+	if m := seatLoginSecrets(l).Missing(); m != "" {
 		return storeLogin{}, false, fmt.Errorf("the seat login %s names no %s%s", path, m, remedy)
 	}
 	return l, true, nil
@@ -132,7 +130,7 @@ func (a *app) recordedLogin() (storeLogin, bool, error) {
 // set, else nova-secrets' own (secrets.ReadLogin). Its refusal names the setting and the
 // remedy; it is never an empty password.
 func (a *app) readLoginSecret(path string, l storeLogin) (secrets.Secret, error) {
-	s, err := a.secretReader()(l.secrets())
+	s, err := a.secretReader()(seatLoginSecrets(l))
 	if err != nil {
 		return secrets.Secret{}, fmt.Errorf("the seat login %s (user %s at %s) reads its password from %s in seat %s of %s, and it does not resolve: %v; run: nova-sprint seat login --check, then nova-sprint seat login again or nova-sprint seat logout",
 			path, l.User, l.Redis, l.Secret, l.As, l.Store, err)
@@ -232,7 +230,7 @@ func (a *app) cmdSeatLogin(args []string, stdout, stderr io.Writer) int {
 			missing = append(missing, f.flag)
 		}
 	}
-	if m := l.secrets().Missing(); m != "" {
+	if m := seatLoginSecrets(l).Missing(); m != "" {
 		missing = append(missing, m)
 	}
 	if len(missing) > 0 {
@@ -249,14 +247,14 @@ func (a *app) cmdSeatLogin(args []string, stdout, stderr io.Writer) int {
 			*p = abs // recorded whole, so a verb run from any directory reads the same files
 		}
 	}
-	if _, err := a.secretReader()(l.secrets()); err != nil {
+	if _, err := a.secretReader()(seatLoginSecrets(l)); err != nil {
 		return refuse(stderr, verb, "nothing was recorded: the password of "+l.User+" does not resolve from "+l.Secret+": "+err.Error()+"; run: nova-sprint seat login again with the store, seat, key and secret that hold it")
 	}
 	b, _ := json.MarshalIndent(l, "", "  ") // ignored: a struct of strings always encodes
-	if err := writePrivate(path, append(b, '\n')); err != nil {
+	if err := writePrivateFile(path, append(b, '\n')); err != nil {
 		return refuse(stderr, verb, "the seat login was not recorded: "+err.Error())
 	}
-	fmt.Fprintf(stdout, "SEAT LOGIN RECORDED file=%s %s resolves=yes\n", oneline.Field(path), l.line())
+	fmt.Fprintf(stdout, "SEAT LOGIN RECORDED file=%s %s resolves=yes\n", oneline.Field(path), seatLoginLine(l))
 	return 0
 }
 
@@ -276,7 +274,7 @@ func (a *app) seatLoginCheck(path string, stdout, stderr io.Writer) int {
 	if !ok {
 		return refuse(stderr, "seat login", noSeatLogin(path))
 	}
-	line := fmt.Sprintf("SEAT LOGIN file=%s %s", oneline.Field(path), l.line())
+	line := fmt.Sprintf("SEAT LOGIN file=%s %s", oneline.Field(path), seatLoginLine(l))
 	if u := a.getenv(redisauth.UserEnv); u != "" {
 		line += " wins=env:" + redisauth.UserEnv // the environment's login is used in its place
 	}
@@ -382,28 +380,12 @@ password.
 `
 }
 
-// writePrivate writes b to path for its user alone (0600, its directory 0700), whole or
-// not at all: a temporary file beside it, renamed over it.
-func writePrivate(path string, b []byte) error {
+// writePrivateFile writes b to path for its user alone (0600, its directory 0700),
+// whole or not at all: the directory first, then nova-tools pkg/atomicfile's atomic
+// temporary-file-and-rename, the same write nova-up uses for the seat record.
+func writePrivateFile(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".login-*.json")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer func() { _ = os.Remove(tmp) }() // ignored: gone after the rename; a failed write leaves nothing behind
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close() // ignored: the chmod's error is the one returned
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		_ = f.Close() // ignored: the write's error is the one returned
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, b, 0o600, atomicfile.ExactMode())
 }
