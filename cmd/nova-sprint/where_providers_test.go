@@ -81,7 +81,7 @@ func TestWhereNamesMalformedProviderOnceWithoutCallingItUnfunded(t *testing.T) {
 	assert.Contains(t, text, providersLine(v.Providers, v.ProviderGaps)+"\n")
 }
 
-func TestStartRefusesChangedProviderFundingAfterCleanCheck(t *testing.T) {
+func TestStartWarnsOnChangedProviderFundingAfterCleanCheck(t *testing.T) {
 	t.Parallel()
 	ta := gateOn(t)
 	ta.m.SetRoutes([]sprint.Route{{Name: "r", Tier: "heavy", Provider: "p", Enabled: true}})
@@ -90,10 +90,11 @@ func TestStartRefusesChangedProviderFundingAfterCleanCheck(t *testing.T) {
 	ta.ok("check cards")
 	ta.m.SetProviders(map[string]sprint.Provider{"p": {Name: "p", Billing: "plan", Funded: false}})
 	code, out, errs := ta.do("start")
-	assert.Equal(t, 1, code, out+errs)
+	assert.Equal(t, 0, code, out+errs)
 	assert.Contains(t, errs, "CHECK routes tier:heavy holds no route of a funded provider")
-	assert.Contains(t, errs, "nothing was written")
-	assert.False(t, ta.machineRunning())
+	assert.Contains(t, errs, "WARN 1 provider finding(s); the machine starts anyway")
+	assert.True(t, ta.machineRunning())
+	ta.ok("stop --reason 'funded again below' --until 30m")
 	ta.m.SetProviders(map[string]sprint.Provider{"p": {Name: "p", Billing: "plan", Funded: true}})
 	ta.ok("check cards")
 	ta.ok("start")

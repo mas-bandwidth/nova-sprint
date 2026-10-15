@@ -106,8 +106,8 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		if code := a.startNeedsGate(ctx, st, stderr); code != 0 {
 			return code
 		}
-		// a clean card check of this epoch that matches the cards now, or refused, nothing
-		// written (start-refuses-until-a-clean-check; check_cards.go startCardCheckGate)
+		// the card check is reported as WARN lines and never gates the start
+		// (start-warns-never-gates; check_cards.go startCardCheckGate returns 0)
 		if code := a.startCardCheckGate(ctx, st, stderr); code != 0 {
 			return code
 		}
