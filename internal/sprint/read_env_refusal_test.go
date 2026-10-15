@@ -9,7 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // TestAReadEnvironmentRefusalIsNotARedo replays the environment-return shapes
@@ -75,6 +75,8 @@ func TestAReadEnvironmentRefusalIsNotARedo(t *testing.T) {
 			require.Len(t, reads, 1, "asked again")
 			assert.Equal(t, tc.attempt, reads[0].Int("attempt"))
 			assert.Equal(t, tc.head, reads[0].F("head"))
+			assert.Equal(t, sprint.RetiredByEnvironment, r.rec(read).F("retired_by"), "the read is the environment's return, not a read of the reader's own")
+			assert.NotEmpty(t, pr.F(sprint.FieldEnvExitReads), "the primary records the environment end")
 			t.Logf("attempt=%d head=%s work-gen=%s redeals=%s next-read=%s retired-by=%s", pr.Int("attempt"), pr.F("head"), r.rec(work).F("gen"), r.rec(work).F("redeals"), reads[0].ID, r.rec(read).F("retired_by"))
 
 			// Exhaust the available readers and any environment re-asks. The
@@ -93,10 +95,14 @@ func TestAReadEnvironmentRefusalIsNotARedo(t *testing.T) {
 			var judgments []string
 			for _, open := range r.snap().Open {
 				if open.Note.Type == sprint.NCannotAsk || open.Note.Type == sprint.NBound {
-					judgments = append(judgments, open.Note.What)
+					judgments = append(judgments, open.Note.Type+": "+open.Note.What)
 				}
 			}
-			assert.NotEmpty(t, judgments, "exhaustion is judged, not silently stuck")
+			// the bound raises ONE judgment and it names the environment (tla/DirtyTick.tla,
+			// EnvJudgedAtCap), never a redo and never a plain "cannot ask"
+			require.Len(t, judgments, 1, "one judgment: %v", judgments)
+			assert.Contains(t, judgments[0], "ended on the environment")
+			assert.Contains(t, judgments[0], "not redone")
 			t.Logf("after %d returns: attempt=%d work-gen=%s redeals=%s judgments=%v", returns, r.snap().Work.Card(id).Int("attempt"), r.rec(work).F("gen"), r.rec(work).F("redeals"), judgments)
 		})
 	}

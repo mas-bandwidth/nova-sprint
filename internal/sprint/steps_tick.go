@@ -1616,7 +1616,7 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 // for want of a reader, and five stranded cards are one judgment, not five
 // (the night of 2026-10-03: five cards, five readers, five judgments).
 func cannotAskCond(s *Snapshot, refused []Refusal) []cond {
-	var all, fresh []string
+	var all, fresh, envs []string
 	stream, why := "", ""
 	for _, x := range refused {
 		pr := s.Work.Placed(x.Key)
@@ -1631,11 +1631,14 @@ func cannotAskCond(s *Snapshot, refused []Refusal) []cond {
 			stream, why = pr.Row, x.Why
 		}
 		fresh = append(fresh, pr.ID)
+		if e := readEnvSpentWhat(pr); e != "" {
+			envs = append(envs, e)
+		}
 	}
 	if len(all) == 0 {
 		return nil
 	}
-	return []cond{{typ: NCannotAsk, stream: stream, primaries: all, what: NoEligibleReader + strings.Join(fresh, ", ") + ": " + why}}
+	return []cond{{typ: NCannotAsk, stream: stream, primaries: all, what: NoEligibleReader + strings.Join(fresh, ", ") + ": " + why + strings.Join(envs, "")}}
 }
 
 // T6. TickCheck holds the state to what is always true (section 9): each
@@ -2504,4 +2507,24 @@ func TickDone(s *Snapshot, r TickReq) (Plan, int) {
 	n.Who, n.To, n.Hint = r.who(), s.Coordinator, DoneHint
 	n.What = DoneWhat(landed, dropped, s.Now, r.Started)
 	return Plan{Notes: []Note{n}}, 0
+}
+
+// readEnvSpentWhat names the environment in a "cannot ask" judgment whose readers were spent by
+// their environment (tla/DirtyTick.tla, READ ENVIRONMENT, EnvJudgedAtCap): the primary's reads
+// of its attempt ended on the environment (env_exit_reads, FieldEnvExitReads) at least
+// EnvReadCap times, so no reader is left because the environment refused them, not because the
+// work was read and found wanting. The work is not redone; the remedy is the environment's.
+// "" when the attempt has fewer such ends.
+func readEnvSpentWhat(pr *Card) string {
+	key := itoa(readAttempt(pr)) + ":"
+	var ends []string
+	for _, e := range Split(pr.F(FieldEnvExitReads)) {
+		if rest, ok := strings.CutPrefix(e, key); ok {
+			ends = append(ends, rest)
+		}
+	}
+	if len(ends) < EnvReadCap {
+		return ""
+	}
+	return fmt.Sprintf("; %s: its reads of attempt %s ended on the environment %d times (%s): the work is not at fault and is not redone; fix the environment, then ask again", pr.ID, key[:len(key)-1], len(ends), strings.Join(ends, ", "))
 }

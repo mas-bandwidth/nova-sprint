@@ -7493,6 +7493,27 @@ exit and its harness output on the finish (`finish --failed --exit <n> --harness
   and the one that reaches `EnvReadCap` (3) retires the read as a return of the reader's own
   (`returned`, which spends it, so the read is dealt to that reader no more) and raises one
   bound judgment on the primary: `<read card>: <reader>'s read of attempt <n> ended on the environment 3 times (the cap is 3) and is not dealt to <reader> again: exits ...`.
+- A read's environment REFUSAL is the same class at ANY exit, 0 included (`sprint.ReadEnvRefusal`,
+  `sprint.ReadEnvEnd`, internal/sprint/brief_bound.go: the one classifier of a read's
+  environment): a return whose reason names a wall or sandbox refusal (`the wall refused a write
+  outside the job`, pkg/swarm/wall.go `WallRefused`: on 2026-10-15 reader space returned
+  port-79fc559-restitution-stage-and-iterations-api.r14 `no verdict (ran=false verdict="ok")`
+  on a green gate), a staging refusal (`staging refused: head <sha> is in neither the mirror nor
+  origin`, the readers' returns of 2026-10-14 from 22:37Z), or a pin that no longer matches (the read card's
+  head is not the primary's head). Such a read says nothing about the work. It is asked again on
+  the SAME head at the SAME attempt, of another reader when one is free, else the same one, and
+  it spends no re-ask (`FieldReasked`), no redeal, no attempt and no reader, and never moves a
+  work card to a new generation or counts toward the brief's bounds: the environment return has
+  its own bound. Its run's consumer record ends `environment refusal=<wall|staging|stale-pin>`
+  (not an `environment exit=<n>`: the doctor's child-exit rate counts 134/137 only), and the
+  primary's `env_exit_reads` records `<attempt>:<reader>=<kind>`. The one that reaches
+  `EnvReadCap` (3) of a read identity, hard exits and refusals counted together, retires the
+  read as the reader's own return and raises ONE bound judgment naming the environment (`ended
+  on the environment 3 times (the cap is 3) ... exits wall, wall, wall`), never a redo and never
+  a plain `cannot ask`. A friend's row is no member's environment and is judged as before.
+  tla/DirtyTick.tla holds it (READ ENVIRONMENT: `envret`, the invariant `EnvJudgedAtCap`, the
+  action property `EnvNeverRedoes`; the reversed witness `MCDirtyTickBrokenEnvRedo` treats the
+  return as the work's harness end and violates it).
 - Only a 134 or 137 spends nothing (`HardEnvExit`). A no-result whose finish carries an
   attempt decision over its bar is routed by the decision (`finishKind`), never as an
   environment exit.

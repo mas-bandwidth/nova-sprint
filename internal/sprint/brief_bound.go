@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -496,4 +497,62 @@ func ReviewBreaker(c *Card, reader, finding string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// A READ'S ENVIRONMENT IS NOT THE WORK'S (tla/DirtyTick.tla, READ ENVIRONMENT,
+// EnvNeverRedoes; docs/SPEC-SPRINT.md, "An environment exit"). A read that ends
+// with no verdict because the reader's own environment refused it (its wall or
+// sandbox refused a write, staging could not fetch the head, its brief's pin is
+// no longer the card's head, or its child died 134 or 137) says nothing about
+// the work: it is asked again on the same head at the same attempt, spends no
+// redeal, no attempt and no work generation, and counts toward no bound of the
+// brief (a run of them is the read identity's own bound, EnvReadCap, one
+// judgment naming the environment). ReadEnvRefusal is the ONE classifier of it;
+// the read's return (steps_review.go Read, friend_read.go) is its only caller,
+// and nothing here, in the deal or in the brief's bounds, takes a read's
+// environment return for a reason to move a work card to a new generation.
+
+// The kinds of a read's environment refusal (ReadEnvRefusal), and the ended word
+// of one that is not an exit code.
+const (
+	EnvRefusalWall     = "wall"
+	EnvRefusalStaging  = "staging"
+	EnvRefusalStalePin = "stale-pin"
+	envRefusalWord     = "environment refusal="
+)
+
+var (
+	envWallRe    = regexp.MustCompile(`(?i)\bwall refused\b|\bsandbox refused\b|refused a write outside the job|\bOperation not permitted\b[^\n]*/`)
+	envStagingRe = regexp.MustCompile(`(?i)\bstaging refused\b|\brefused at staging\b|is in neither the mirror`)
+	envPinRe     = regexp.MustCompile(`(?i)\bpin no longer matches\b|\bbrief pin\b[^\n]*\b(stale|no longer)\b`)
+)
+
+// ReadEnvRefusal says a read's return is its environment's: the kind (EnvRefusalWall,
+// EnvRefusalStaging, EnvRefusalStalePin) and true when the reason names a wall or sandbox
+// refusal, a staging refusal, or a pin that no longer matches, or when readHead (the head the
+// read card pins, "" when it pins none) differs from cardHead (the primary's); "", false
+// otherwise. A child's exit 134 or 137 is the other half (HardEnvExit); it is not repeated here.
+func ReadEnvRefusal(reason, readHead, cardHead string) (kind string, ok bool) {
+	switch {
+	case envWallRe.MatchString(reason):
+		return EnvRefusalWall, true
+	case envStagingRe.MatchString(reason):
+		return EnvRefusalStaging, true
+	case envPinRe.MatchString(reason), readHead != "" && cardHead != "" && readHead != cardHead:
+		return EnvRefusalStalePin, true
+	}
+	return "", false
+}
+
+// ReadEnvEnd is a read return's environment class: the ended word and the code the read
+// identity's count keeps (a hard exit's number, or a refusal's kind), true when the return is
+// the environment's (a hard exit with no result, or ReadEnvRefusal).
+func ReadEnvEnd(reason string, exit int, readHead, cardHead string) (ended, code string, ok bool) {
+	if e, env := EnvExit(reason, exit); env && HardEnvExit(exit) {
+		return e, itoa(exit), true
+	}
+	if kind, refused := ReadEnvRefusal(reason, readHead, cardHead); refused {
+		return envRefusalWord + kind, kind, true
+	}
+	return "", "", false
 }
