@@ -15,7 +15,6 @@
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
 bus	DIVERGED: bustest fake Tail / empty-stream vs tools' own changes
-cardcost	DIVERGED: subscription receipts and unpriced zero cost vs tools' changes
 config	DIVERGED: 14 sprint commits, 4 conflicting files (kind, redis, lines, apply)
 friend	DIVERGED: imports nova-sprint/internal/sprint; needs the coupling inverted first
 ntable	DIVERGED: Clear / ns_table_clear and ChangesKey not in tools
