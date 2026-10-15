@@ -382,6 +382,13 @@ func (n Note) Bound() Note {
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
 
+// The retired QUEUE.json reconcile's notes (friend_return.go): no step raises them any more,
+// and their persisted identifiers keep their historical bytes for the history that holds them.
+const (
+	NFriendDisagrees = "a friend's row disagrees with her QUEUE.json"
+	NFriendAgrees    = "a friend's row agrees with her QUEUE.json again"
+)
+
 // NoteTypeText is a human label for the historical friend note identifiers.
 // Note.Type itself remains unchanged so stored judgments and API consumers keep
 // matching their existing identifiers, release ages and acknowledgments.
@@ -391,10 +398,9 @@ func NoteTypeText(typ string) string {
 		return "a card pinned to one friend waits while the friend is not up"
 	case NFriendNotWoken:
 		return "a friend was not told of a card"
-	// the retired QUEUE.json reconcile's notes, still in stored history (friend_return.go)
-	case "a friend's row disagrees with her QUEUE.json":
+	case NFriendDisagrees:
 		return "a friend's row disagrees with the friend's QUEUE.json"
-	case "a friend's row agrees with her QUEUE.json again":
+	case NFriendAgrees:
 		return "a friend's row agrees with the friend's QUEUE.json again"
 	default:
 		return typ

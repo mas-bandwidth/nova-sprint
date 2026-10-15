@@ -1620,7 +1620,7 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 		if slices.ContainsFunc(s.Friends, func(x FriendSeat) bool { return x.Name == as }) {
 			// a friend's bare name is no row: her lanes take under her row, one lane a card
 			// (the coordinator's ask of 2026-10-14: a bare take bounced, a lane's held)
-			return 0, "no fleet member " + as + ": " + as + " is a friend; her lanes take as take --as " + FriendRow(as) + " --lane <n>, n from 1 to her width"
+			return 0, "no fleet member " + as + ": " + as + " is a friend; the friend's lanes take as take --as " + FriendRow(as) + " --lane <n>, n from 1 to the friend's width"
 		}
 		return 0, "no fleet member " + as
 	}
