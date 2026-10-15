@@ -1,0 +1,6 @@
+# one-source-retired.txt: the nova-tools copies nova-sprint has retired and must
+# not come back, read by internal/ci TestNoRetiredOneSourceCopyReturns. One
+# repository-relative path a line; a line beginning with # is a comment. When a
+# copy is deleted the turn its sprint behaviour lands in nova-tools, its path goes
+# here so the copy cannot silently return.
+tools/tlacheck

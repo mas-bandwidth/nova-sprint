@@ -26,7 +26,7 @@ help:
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
 	@echo "make tlc-groups  print the groups with a case that has no current record"
-	@echo "make tlc-test    go test ./tools/tlacheck/ (the runner's own tests)"
+	@echo "make tlc-test    run nova-tools' tlacheck groups (the runner's tests live in nova-tools)"
 
 build:
 	$(GO) build ./...
@@ -128,14 +128,14 @@ tlc-require:
 	@test -n "$(TLC_GROUP)" || { echo "make tlc needs TLC_GROUP (the group to run)" >&2; exit 2; }
 
 tlc: tlc-require
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",)
+	$(GO) tool tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",)
 
 tlc-full: tlc-require
 	@test "$(origin TLC_BUDGET)" = "command line" -o "$(origin TLC_BUDGET)" = "environment" || { echo "make tlc-full needs an explicit TLC_BUDGET (a manual run is unbounded by default)" >&2; exit 2; }
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",) --manual
+	$(GO) tool tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",) --manual
 
 tlc-groups:
-	$(GO) run ./tools/tlacheck groups --root . --stale
+	$(GO) tool tlacheck groups --root . --stale
 
 tlc-test:
-	$(NO_AUTO_MAINTENANCE) $(GO) test -count=1 ./tools/tlacheck/
+	$(NO_AUTO_MAINTENANCE) $(GO) tool tlacheck groups --root .
