@@ -46,6 +46,6 @@ func TestBriefFileOverTheBoundIsRefused(t *testing.T) {
 	exactFile := filepath.Join(t.TempDir(), "exact.md")
 	exactText := briefText[:store.MaxBriefBytes]
 	require.NoError(t, os.WriteFile(exactFile, []byte(exactText), 0o600))
-	code, out, errs = ta.do("brief s1-1 --brief-file " + exactFile)
+	code, out, errs = ta.do("brief s1-1 --replace-in-flight --brief-file " + exactFile)
 	require.Equal(t, 0, code, "brief --brief-file with exact bound should succeed, out=%q errs=%q", out, errs)
 }

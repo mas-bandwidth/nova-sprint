@@ -58,6 +58,9 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 			fmt.Fprintln(stdout, "FRIEND-SYNC STOP the binary this loop runs was replaced; its supervisor starts the new one")
 			return exitReplaced
 		}
+		// Capture before the snapshot: a deal committed during this pass must
+		// remain after the cursor (FriendSyncWake.Wake precedes Pass).
+		waitStore, cursor := a.friendSyncCursor(ctx, c)
 		var out, errs bytes.Buffer
 		code, changed := 1, false
 		if pc, why := a.friendSyncActor(ctx, c); why != "" {
@@ -103,27 +106,37 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 			}
 			failing, failed, since = "", 0, time.Time{}
 		}
-		a.friendSyncWait(ctx, c, every, after)
+		a.friendSyncWait(ctx, waitStore, cursor, every, after)
 	}
 }
 
-// friendSyncWait blocks on the sprint log from the last line seen for at most
-// every (store.WaitLog; tla/FriendSyncWake.tla, Wake and Sweep), so a deal
-// committed by a tick wakes the loop on its log line while --every stays as the
-// quiet-log backstop sweep. A store that cannot be opened falls back to the
-// --every timer.
-func (a *app) friendSyncWait(ctx context.Context, c common, every time.Duration, after func(time.Duration) <-chan time.Time) {
+// friendSyncCursor captures the current epoch and log tail before a pass reads
+// its snapshot. Failure uses the bounded backstop, never a tail read after Pass.
+func (a *app) friendSyncCursor(ctx context.Context, c common) (*store.Store, string) {
 	read := c
 	read.verb = "where"
 	st, err := a.storeCtx(ctx, read)
 	if err != nil {
+		return nil, ""
+	}
+	cursor, err := st.LogTail(ctx)
+	if err != nil {
+		return nil, ""
+	}
+	return st, cursor
+}
+
+// friendSyncWait waits from the cursor captured before the pass, for at most
+// every (FriendSyncWake.Wake and Sweep). The same pinned epoch is used for both
+// tail and wait. A store that cannot be read falls back to the --every timer.
+func (a *app) friendSyncWait(ctx context.Context, st *store.Store, cursor string, every time.Duration, after func(time.Duration) <-chan time.Time) {
+	if st == nil {
 		select {
 		case <-ctx.Done():
 		case <-after(every):
 		}
 		return
 	}
-	cursor, _ := st.LogTail(ctx)
 	if a.after != nil {
 		if m, ok := st.B.(*store.Mem); ok {
 			prev := m.LogWait

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 )
 
 // TestDealIsToldOnCommitNotOnFriendSync pins tla/FriendSyncWake.tla
@@ -174,4 +174,66 @@ func TestDealIsToldOnCommitNotOnFriendSync(t *testing.T) {
 		assert.Equal(t, bus.KindStatus, byTo["ada"].Kind)
 		assert.Equal(t, bus.KindStatus, byTo["coordinator"].Kind, "the seat's own row is told with kind=status")
 	})
+}
+
+// A commit after the pass snapshot must not be hidden by a later tail read.
+func TestFriendSyncDealBetweenPassAndWait(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "ada", "coordinator")
+	_, _, err := cfg.Update(context.Background(), config.KindFriend, "coordinator", map[string]string{"mode": config.FriendModeOneShot}, "t")
+	require.NoError(t, err)
+	ta.a.tip = tipIs(t, landHead)
+	root := t.TempDir()
+	briefs := t.TempDir()
+	for _, id := range []string{"s1-1", "s1-2"} {
+		require.NoError(t, os.WriteFile(filepath.Join(briefs, id+".md"), []byte(passingBrief(id+": racing deal\nREPO: mas-bandwidth/nova-tools\nWHO: only friend "+map[string]string{"s1-1": "ada", "s1-2": "coordinator"}[id])), 0o644))
+	}
+	ta.ok("friend sync --root " + root)
+	ta.beatUp("ada")
+	ta.beatUp("coordinator")
+	ta.ok("add --stream s1 --one --brief-file " + filepath.Join(briefs, "s1-1.md"))
+	ta.ok("start")
+	ta.ok("tick")
+	var sent []bus.Message
+	ta.a.bus = func(_ context.Context, m bus.Message, _ func(string)) error {
+		sent = append(sent, m)
+		return nil
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	ta.a.notify = func(context.Context) (context.Context, context.CancelFunc) { return ctx, func() {} }
+	began := ta.a.now()
+	out := &friendSyncRaceWriter{commit: func() {
+		ta.ok("add --stream s1 --one --brief-file " + filepath.Join(briefs, "s1-2.md"))
+		ta.ok("tick")
+	}}
+	ta.a.after = func(d time.Duration) <-chan time.Time {
+		assert.Equal(t, 15*time.Second, d)
+		assert.Len(t, sent, 2, "the racing deal must be delivered before the backstop fires")
+		_, err := os.Stat(filepath.Join(root, "coordinator-working", "inbox", "s1-2.w1", "BRIEF.md"))
+		assert.NoError(t, err, "racing deal inbox exists before the quiet-log wait")
+		stop()
+		ch := make(chan time.Time, 1)
+		ch <- ta.a.now()
+		return ch
+	}
+	var errs bytes.Buffer
+	require.Equal(t, 0, runInto(ta.a, []string{"friend", "sync", "--every", "15s", "--root", root}, out, &errs), errs.String())
+	assert.True(t, out.committed, "commit must occur after the first pass output")
+	assert.Equal(t, began, ta.a.now(), "no clock advance may hide a missed wake")
+}
+
+type friendSyncRaceWriter struct {
+	bytes.Buffer
+	commit    func()
+	committed bool
+}
+
+func (w *friendSyncRaceWriter) Write(p []byte) (int, error) {
+	n, err := w.Buffer.Write(p)
+	if !w.committed {
+		w.committed = true
+		w.commit()
+	}
+	return n, err
 }
