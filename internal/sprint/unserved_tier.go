@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // docs/SPEC-SPRINT.md section 5, "An unserved tier falls to the strongest served tier".

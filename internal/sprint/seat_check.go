@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/hook"
 )
 
 // The seat check (docs/SPEC-SPRINT.md, "The seat check"; the owner, 2026-10-04 1:52 PM:
@@ -155,15 +157,6 @@ type VersionsM struct {
 	Measured bool              `json:"measured,omitempty"`
 	Dev      string            `json:"dev,omitempty"`
 	Machines []MachineVersionM `json:"machines,omitempty"`
-}
-
-// HookM is the seat's hook (hook.go): the holder and the hook record, as read;
-// Measured false is a check that did not read it, which says no line.
-type HookM struct {
-	Measured bool       `json:"measured,omitempty"`
-	Holder   string     `json:"holder,omitempty"`
-	Record   HookRecord `json:"record,omitzero"`
-	Recorded bool       `json:"recorded,omitempty"`
 }
 
 // SeatCheckMeasures is everything the probes measured, in one struct so a
@@ -607,18 +600,21 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 		}
 	}
 
-	// 12. the hook: DOWN with its line while the seat has no live, proven hook or a push
-	// waits past its bound unacknowledged (HookGate)
+	// 12. the hook: DOWN with its line while the coordinator's nova-hook record does not
+	// let a coordinator command run (CoordinatorGate)
 	if h := m.Hook; h.Measured && !failed(SeatCheckHook) {
-		state := "none"
-		if h.Recorded {
-			state = h.Record.State
+		facts := []string{"holder=" + orDash(h.Holder), "state=" + orDash(h.Status.State)}
+		if h.Status.Role != "" {
+			facts = append(facts, "role="+string(h.Status.Role))
 		}
-		facts := []string{"holder=" + orDash(h.Holder), "state=" + state, fmt.Sprintf("unacked=%d", h.Record.Unacked)}
-		if why := HookGate(h.Record, h.Recorded, h.Holder, now); why != "" {
-			add(SeatCheckLine{Thing: SeatCheckHook, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: "nova-sprint hook"})
+		if why := CoordinatorGate(h.Holder, h.Status); why != "" {
+			add(SeatCheckLine{Thing: SeatCheckHook, Facts: append(facts, "why="+quoteSeatCheck(why)), Remedy: hook.HookCommand(orDash(h.Holder), hook.Coordinator)})
 		} else {
-			add(SeatCheckLine{Thing: SeatCheckHook, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(h.Record.Proven))+" ago")})
+			answered := "-"
+			if !h.Status.AnswerAt.IsZero() {
+				answered = formatAge(now.Sub(h.Status.AnswerAt)) + " ago"
+			}
+			add(SeatCheckLine{Thing: SeatCheckHook, Up: true, Facts: append(facts, "answered="+answered)})
 		}
 	}
 

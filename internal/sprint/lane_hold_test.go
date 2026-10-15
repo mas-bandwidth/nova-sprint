@@ -45,13 +45,13 @@ func TestALanesTakeIsHerStartAndTheTickKeepsItWorking(t *testing.T) {
 	assert.Equal(t, Working, held.Col, "still working after the tick: never put back ready as unstarted")
 	assert.Equal(t, "1", held.F(FieldLane))
 
-	t.Run("the take before lanes: a bare take by count is put back ready by the tick", func(t *testing.T) {
+	t.Run("a take by count with no lane is her start too: the tick keeps it working", func(t *testing.T) {
 		t.Parallel()
 		w := laneWorld(t)
 		w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{Limit: 1}, Who: FriendRow("amy")}))
 		require.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Working), 1)
 		dealWith(w, amyLanes)
-		assert.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working), "the fault: taken, then ready again a tick later")
+		assert.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Working), 1, "the fault of 2026-10-14 20:30 EDT was taken, then ready again a tick later")
 	})
 }
 
@@ -241,4 +241,15 @@ func TestAStopReturnNamesTheLane(t *testing.T) {
 	assert.Contains(t, p.Refused[0].Why, "held by lane 1 of friend.amy, not lane 2")
 	p = StopReturn(w.s, StopReturnReq{As: FriendRow("amy"), IDs: []string{c.ID}, Gens: map[string]int{c.ID: max(c.Int("gen"), 1)}, Reason: "stopped", Lane: 1})
 	require.Len(t, p.Units, 1, "%+v", p.Refused)
+}
+
+// A take under a friend's bare name (take --as amy) is refused with the lane form, never
+// taken under a row no lane binds (the coordinator's report of 2026-10-14 20:30 EDT).
+func TestATakeUnderAFriendsBareNameIsRefusedWithTheLaneForm(t *testing.T) {
+	t.Parallel()
+	w := laneWorld(t)
+	p := Take(w.s, TakeReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: "amy", Gens: map[string]int{"s1-1.w1": 1}, Who: "amy"})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "take --as friend.amy --lane <n>")
+	assert.Empty(t, p.Units)
 }

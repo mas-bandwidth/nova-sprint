@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/provbalance"
+	"github.com/mas-bandwidth/nova-tools/pkg/provbalance"
 )
 
 // THE BALANCE POLL (nova-tools#5199; the owner, 2026-10-03: "provider out of funds should

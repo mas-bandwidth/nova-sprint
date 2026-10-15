@@ -38,7 +38,7 @@ type Snapshot struct {
 	Untold []string
 	// Friends is the friends' seats as the roster has them (name, width, status,
 	// class): whom the deal gives a friend's card. nil is none
-	// read, and no friend is dealt a card; the friend stall reads her fleet row.
+	// read, and no friend is dealt a card.
 	Friends []sprint.FriendSeat
 }
 

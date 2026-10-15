@@ -17,7 +17,7 @@ import (
 // TestNoTestSignalsItsOwnProcess is the guard for the hook that lost its socket on CI
 // (2026-10-12, v1.2.16): TestTheInterruptOfTheCommandIsSIGINTAndSIGTERM sent a real
 // SIGINT and SIGTERM to its own process, the test binary, and every command of every
-// test running beside it that listens for an interrupt (a held `nova-sprint hook`,
+// test running beside it that listens for an interrupt (a held `nova-hook hook`,
 // `where --watch`) ended at it. TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs and
 // TestHookCompactPrintsOnlyWhatTheSeatActsOn then found their hook gone, its socket
 // removed, while their seat still acted. A test that wants a real signal sends it to a
