@@ -43,6 +43,9 @@ import (
 //	base-is-live          BASE is a sprint base origin holds, never a temporary or deleted one
 //	tier-set              line 1 names a tier, never `-`
 //	tla-is-heavy-or-above a card whose PATHS covers tla/ is tier heavy or frontier
+//	spike-paths-research  a KIND: spike or tracer brief names in PATHS and NEW only paths
+//	                      under the research roots (ResearchRoots); its code travels as
+//	                      perf/experiments/<id>/experiment.patch, never as source
 //	who-serves-tier       the friend WHO names (or, for any friend, some friend) serves the tier
 //
 // NO EVIDENCE IS NOT NEGATIVE EVIDENCE, as the base checks have it: a check that needs the
@@ -67,8 +70,9 @@ var BriefBaseRemedies = map[string]string{
 	"tier-set":              "line 1 names the card's tier, `tier: flash|pro|heavy|frontier`; a card with no tier, or `-`, was dealt to friends who could not serve it",
 	"tla-is-heavy-or-above": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
 	// tla-is-frontier is the rule's old token, kept as an alias for one release.
-	"tla-is-frontier": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
-	"who-serves-tier": "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
+	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
+	"spike-paths-research": "a spike or tracer is never the product: what it keeps is what it taught, not its code, so its KIND: spike or tracer brief names in PATHS: and NEW: only paths under docs/research/, rnd/, perf/, benchmark/experiments/ or benchmark/findings/; deliver the code as a patch file (NEW: perf/experiments/<id>/experiment.patch beside perf/findings/<id>.md and perf/experiments/<id>/raw.txt) and edit no source file, or cut the production change as its own card with another KIND",
+	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
 }
 
 // PathsReadRemedy is the correction for read-only metadata written in PATHS.
@@ -148,6 +152,11 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 			}
 			add("pr-carry", line, "this card finishes an open pull request and its brief carries no CARRY: line, so its slot stages from the base and not from the PR's head; add `CARRY: head=<the PR's full head sha> branch=<the PR branch>` to the brief's header (the line brief --widen writes, less the attempt), then add the brief again")
 		}
+	}
+	// 10b. spike-paths-research, run before the PATHS: return: a spike may name its files on
+	// NEW: alone (the fixed3d spikes do), and production code on NEW: is refused all the same.
+	if line, outside := spikeOutsideResearch(h); len(outside) > 0 {
+		add("spike-paths-research", line, fmt.Sprintf("KIND %s names %s outside the research roots (%s); a spike's code travels as perf/experiments/<id>/experiment.patch", strings.TrimSpace(h["KIND"].value), quoteDepends(outside), strings.Join(ResearchRoots, ", ")))
 	}
 	pathsF := h["PATHS"]
 	if !pathsF.found {
@@ -417,6 +426,8 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		add("tla-is-heavy-or-above", 1, fmt.Sprintf("PATHS covers tla/, a TLA+ model, and line 1 names tier %s, below heavy", orElse(model.Tier, "-")))
 	}
 
+	// 10b. spike-paths-research runs above, before the PATHS: return (spikeOutsideResearch).
+
 	// 11. who-serves-tier.
 	if w, why := cardhdr.ReadWho(string(raw)); why == "" && w.Friend && model.Tier != "" && model.Tier != "-" {
 		switch {
@@ -451,6 +462,53 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		fix = append(fix, tierLine(firstLine(raw), cardhdr.RouteHeavy))
 	}
 	return out, fix
+}
+
+// ResearchRoots are the directories a KIND: spike or tracer brief may name in PATHS: and NEW:
+// (spike-paths-research). Glenn's tracer-bullet rule: a tracer is never the product; what is
+// kept is what it taught, not its code. In sprint 21 two schema tracers named production
+// packages and one landed; the fixed3d spikes named only perf/ and shipped their code as an
+// experiment.patch.
+var ResearchRoots = []string{"docs/research/", "rnd/", "perf/", "benchmark/experiments/", "benchmark/findings/"}
+
+// spikeKind says a KIND: value is a spike or a tracer, in any case.
+func spikeKind(kind string) bool {
+	k := strings.ToLower(strings.TrimSpace(kind))
+	return k == "spike" || k == "tracer"
+}
+
+// underResearchRoot says the PATHS or NEW entry e lies under one of ResearchRoots.
+func underResearchRoot(e string) bool {
+	e = cleanEntry(e)
+	return slices.ContainsFunc(ResearchRoots, func(r string) bool {
+		return strings.HasPrefix(e, r) || e == strings.TrimSuffix(r, "/")
+	})
+}
+
+// spikeOutsideResearch is, for a KIND: spike or tracer brief, every PATHS and NEW entry
+// outside ResearchRoots (as written), with the line of the first header that names one; nil
+// for any other brief.
+func spikeOutsideResearch(h map[string]headerField) (int, []string) {
+	if !spikeKind(h["KIND"].value) {
+		return 0, nil
+	}
+	var outside []string
+	line := 0
+	for _, key := range []string{"PATHS", "NEW"} {
+		f := h[key]
+		if !f.found {
+			continue
+		}
+		for _, e := range headerList(f.value) {
+			if !underResearchRoot(e) {
+				outside = append(outside, e)
+				if line == 0 {
+					line = f.line
+				}
+			}
+		}
+	}
+	return line, outside
 }
 
 // BriefRemedy is what a brief token wants: BriefBaseRemedies, else CardBaseRemedies.
