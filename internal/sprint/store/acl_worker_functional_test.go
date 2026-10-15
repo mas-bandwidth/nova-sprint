@@ -15,7 +15,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisacl"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 )
 
 // A worker's steps run as the fleet's member user, under the ACL internal/redisacl
