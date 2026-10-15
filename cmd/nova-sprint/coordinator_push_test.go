@@ -119,7 +119,7 @@ func TestTheServerHoldsTheSprintPushWhileItsSendsGo(t *testing.T) {
 // for judgement should alert you via warning [...] once it has been in this state for 10
 // seconds or longer." "These must be push notifications."): a judgment open 9 s, nothing;
 // at 10 s one warning naming it and the command that answers it; a second later nothing
-// (the same set waits its minute, sprint.JudgmentWarnEvery); a minute later, again as one
+// (the same set waits 30m, sprint.ReminderEvery); 30m later, again as one
 // line; answered with the command it names, none.
 func TestAWaitingJudgmentIsWarnedOnTheBus(t *testing.T) {
 	t.Parallel()
@@ -139,9 +139,9 @@ func TestAWaitingJudgmentIsWarnedOnTheBus(t *testing.T) {
 	assert.Contains(t, w[0].Body, "WARNING 1 judgment(s) waiting on the coordinator 10s or longer")
 	assert.Contains(t, w[0].Body, "waited=10s")
 	ta.step(time.Second)
-	assert.Empty(t, ta.pass(name), "the same set a second later: it waits its minute")
+	assert.Empty(t, ta.pass(name), "the same set a second later: it waits 30m")
 
-	// the machine ticks through the minute (else it reads silent, a judgment of its own)
+	// the machine ticks through the interval (else it reads silent, a judgment of its own)
 	ta.lined(func() { ta.step(sprint.JudgmentWarnEvery - time.Second); ta.ok("tick") })
 	w2 := ta.pass(name)
 	require.Len(t, w2, 1)
