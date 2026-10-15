@@ -33,34 +33,38 @@ type carried struct {
 // note gains that is not here fails the test that reads the type, so a new
 // field is a decision about what a move carries.
 var noteCarry = map[string]carried{
-	"ID":                  {"left out", "the store gives every note its own id"},
-	"Kind":                {"kind", ""},
-	"Type":                {"type", ""},
-	"Stream":              {"stream", ""},
-	"Primaries":           {"subjects", ""},
-	"Count":               {"attr", ""},
-	"What":                {"words", ""},
-	"Who":                 {"attr", ""},
-	"Attempt":             {"attr", ""},
-	"Before":              {"attr", ""},
-	"At":                  {"left out", "the time a note is written at is the time Decide is given"},
-	"Decisions":           {"decisions", ""},
-	"Marked":              {"attr", ""},
-	"Answers":             {"attr", ""},
-	"Alias":               {"left out", "the store numbers a judgment as its commit writes it (sprint.Alias)"},
-	"Suspects":            {"attr", ""},
-	"Card":                {"card", ""},
-	"Other":               {"attr", ""},
-	"Tier":                {"attr", ""},
-	"OtherStream":         {"attr", ""},
-	"StreamLevel":         {"attr", ""},
-	"SprintLevel":         {"attr", ""},
-	"Needs":               {"attr", ""},
-	"Review":              {"attr", ""},
-	"ReviewSet":           {"attr", ""},
-	"To":                  {"attr", ""},
-	"Hint":                {"attr", ""},
-	"CoordinatorDelivery": {"left out", "the coordinator push freezes and marks the note's bus message after the note is written (store.CoordinatorDeliveries), and a decision never sets it"},
+	"SafeDefault":            {"left out", "derived by Note.Bound from the judgment kind, not an independent decision"},
+	"DecisionDelivery":       {"left out", "the server transport lane persists its frozen payload and receipt independently of a work decision"},
+	"DefaultCoordinatorTold": {"left out", "the transport receipt marks this after a default report is written"},
+	"DefaultOwnerTold":       {"left out", "the owner transport receipt marks this after a default report is written"},
+	"ID":                     {"left out", "the store gives every note its own id"},
+	"Kind":                   {"kind", ""},
+	"Type":                   {"type", ""},
+	"Stream":                 {"stream", ""},
+	"Primaries":              {"subjects", ""},
+	"Count":                  {"attr", ""},
+	"What":                   {"words", ""},
+	"Who":                    {"attr", ""},
+	"Attempt":                {"attr", ""},
+	"Before":                 {"attr", ""},
+	"At":                     {"left out", "the time a note is written at is the time Decide is given"},
+	"Decisions":              {"decisions", ""},
+	"Marked":                 {"attr", ""},
+	"Answers":                {"attr", ""},
+	"Alias":                  {"left out", "the store numbers a judgment as its commit writes it (sprint.Alias)"},
+	"Suspects":               {"attr", ""},
+	"Card":                   {"card", ""},
+	"Other":                  {"attr", ""},
+	"Tier":                   {"attr", ""},
+	"OtherStream":            {"attr", ""},
+	"StreamLevel":            {"attr", ""},
+	"SprintLevel":            {"attr", ""},
+	"Needs":                  {"attr", ""},
+	"Review":                 {"attr", ""},
+	"ReviewSet":              {"attr", ""},
+	"To":                     {"attr", ""},
+	"Hint":                   {"attr", ""},
+	"CoordinatorDelivery":    {"left out", "the coordinator push freezes and marks the note's bus message after the note is written (store.CoordinatorDeliveries), and a decision never sets it"},
 }
 
 func TestEveryFieldOfANoteIsCarriedOrLeftOutInWords(t *testing.T) {
@@ -249,6 +253,8 @@ func filled(kind string) sprint.Note {
 			v.Field(i).Set(reflect.ValueOf([]string{"b-" + name, "a-" + name}))
 		case time.Time:
 			v.Field(i).Set(reflect.ValueOf(t0.Add(time.Duration(i+1) * time.Minute)))
+		case *sprint.DecisionDelivery:
+			v.Field(i).Set(reflect.ValueOf(&sprint.DecisionDelivery{Lane: "owner", To: "owner", From: "coord", Set: "judgment-id", Body: "frozen", Token: "token", PreparedAt: t0, RetryBefore: t0.Add(time.Hour), SentAt: t0, Fault: "history", Reports: []string{"report"}, UnknownReceipts: 1}))
 		case *sprint.CoordinatorDelivery:
 			// the frozen bus message of the note's episode (coordinator_push.go): delivery
 			// bookkeeping, set so the move is shown to hold the note with it present

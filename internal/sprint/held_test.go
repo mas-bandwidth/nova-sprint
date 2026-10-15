@@ -444,3 +444,17 @@ func TestMovesDueKeysPreserveReviewExclusions(t *testing.T) {
 	w.s.Work.Card("s1-1").Fields["result"] = "failed"
 	require.Empty(t, MoveDueKeys(w.s), "a failed review card is excluded from the stopped-machine due count")
 }
+
+func TestHeldServerDefaultNamesJudgment(t *testing.T) {
+	w := setup(t, 1)
+	c := w.s.Work.Card("s1-1")
+	c.Fields[FieldHeld] = stamp(w.s.Now)
+	c.Fields["held_by"] = ServerDefaultActor
+	c.Fields["held_judgment"] = "j-bound"
+	c.Fields["held_reason"] = "budget bound"
+	c.Col = Waiting
+	w.s.Work.Put(c)
+	h := Holder(running(w), w.s.Now, c.ID)
+	require.Contains(t, h.Why, "server-default")
+	require.Contains(t, h.Why, "j-bound")
+}

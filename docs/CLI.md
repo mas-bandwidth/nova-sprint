@@ -1024,3 +1024,16 @@ eligible reader, ask names the reader reason and remedy. `rework`, `drop` and
 A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
+
+`nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n`. A delivery fault means an escalation still
+needs a successful bus receipt; it is not proof that the coordinator or owner saw
+anything. The server folds overdue decisions to the coordinator once per changed
+set and to the configured owner at most every 30 minutes while unchanged. Failed
+or ambiguous sends retry, including a renewed token after expiry. Safe defaults
+and the terminal sprint-done exemption are listed in SPEC-SPRINT.md, "Decisions owed".
+
+Server-default parked cards remain in DECISIONS OWED and folded escalation until
+released, even after their audit report is older than one hour. Their hold reason
+names server-default and the original judgment. Oldest decision age excludes
+STOPPED time. The owner lane sends at most once every 30 minutes after a successful
+receipt, including when the set changes; pending failed deliveries retain retries.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,6 +143,7 @@ func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 // coordinatorPass is one look: read, then deliver, warn, tell a late tick and hold the
 // sprint push.
 func (a *app) coordinatorPass(ctx context.Context) {
+	a.decisionPass(ctx)
 	l, err := a.readCoordLook(ctx)
 	if err != nil {
 		a.serveSay("COORDINATOR PUSH: the inbox could not be read, tried again at the next look: %s", oneline.Escape(err.Error()))
@@ -403,6 +405,13 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 		notes[o.Note.ID] = o.Note
 	}
 	for _, g := range l.groups {
+		if g.Kind == sprint.Judgment && len(g.Notes) > 0 && !g.Due.IsZero() && !now.Before(g.Due) {
+			continue
+		}
+		// The deadline lane replaces the old duplicate overdue reminders.
+		if g.Type == sprint.NOverdue || g.Type == sprint.NSeatSilent || g.Type == sprint.NCoordinatorBehind || g.Type == sprint.NRaisedAgain && strings.Contains(g.What, "still holds") {
+			continue
+		}
 		if !forCoordinator(g) || g.Type == sprint.NStatusChanged && (strings.Contains(g.What, " is down ") || strings.Contains(g.What, " is held ")) {
 			continue
 		}
@@ -575,4 +584,217 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 		}
 	}
 	return groups
+}
+
+// decisionPass is the deadline escalation lane. It reuses init --owner (or
+// NOVA_SPRINT_OWNER) and the owner's existing bus path. The frozen payload/token,
+// success receipt and fault are durable, unlike the pre-deadline reminder memory.
+// tla/DecisionsOwed.tla NoSilentPile means an outstanding delivery obligation,
+// not human sight; transport liveness assumes eventual successful sends.
+func (a *app) decisionPass(ctx context.Context) {
+	login, loginErr := a.coordinatorBusLogin()
+	for _, lane := range []string{"coordinator", "owner"} {
+		var job sprint.Note
+		var epoch uint64
+		err := a.onLine(ctx, func(st *store.Store) error {
+			es, err := st.EpochNow(ctx)
+			if err != nil {
+				return err
+			}
+			epoch = es.N
+			to, err := st.B.Coordinator(ctx)
+			sender := cmp.Or(login, to, "nova-sprint")
+			if loginErr != nil {
+				sender = ""
+			}
+			if lane == "owner" {
+				to, err = a.owner(ctx, st)
+			}
+			if err != nil {
+				return err
+			}
+			machine, _, err := st.Machine(ctx)
+			if err != nil {
+				return err
+			}
+			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work}, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+				var p sprint.Plan
+				all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
+				set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, machine.StoppedBetween)
+				var old *sprint.Note
+				var oldOpen []sprint.Open
+				for _, o := range s.Acked {
+					if o.Note.Type == sprint.NDecisionDelivery && o.Note.DecisionDelivery != nil && o.Note.DecisionDelivery.Lane == lane {
+						n := o.Note
+						old = &n
+						oldOpen = append(oldOpen, o)
+					}
+				}
+				if old != nil {
+					d := old.DecisionDelivery
+					// A failed send keeps its exact payload, even if the open set changes.
+					if d.SentAt.IsZero() {
+						if d.To != to || loginErr == nil && coordinatorSenderRefusal(d.From, login) != "" {
+							transferred := *d
+							transferred.To = to
+							transferred.From = sender
+							transferred.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+"recipient="+to+s.Now.UTC().Format(time.RFC3339Nano))))
+							transferred.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
+							transferred.UnknownReceipts++
+							transferred.Fault = "earlier recipient receipt unknown; frozen obligation transferred to current recipient"
+							old.DecisionDelivery = &transferred
+							d = &transferred
+							old.What = transferred.Fault + "; judgment IDs=" + strings.ReplaceAll(d.Set, "\x00", ",")
+							p.Updates = []sprint.Note{*old}
+						}
+						if d.From == "" && loginErr == nil {
+							resolved := *d
+							resolved.From = sender
+							old.DecisionDelivery = &resolved
+							d = &resolved
+							p.Updates = []sprint.Note{*old}
+						}
+						if !s.Now.Before(d.RetryBefore) {
+							renewed := *d
+							renewed.UnknownReceipts++
+							renewed.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+s.Now.UTC().Format(time.RFC3339Nano))))
+							renewed.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
+							renewed.Fault = "receipt unknown after token expiry; retrying with renewed token (duplicate identifiable by judgment IDs)"
+							old.DecisionDelivery = &renewed
+							old.What = renewed.Fault + "; judgment IDs=" + strings.ReplaceAll(renewed.Set, "\x00", ",")
+							p.Updates = []sprint.Note{*old}
+						}
+						job = *old
+						return p
+					}
+					// Owner cadence is global to the lane, including changed/empty sets
+					// and recipient changes. Keep the receipt until the window ends.
+					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute {
+						return p
+					}
+					if set == "" {
+						if d.UnknownReceipts > 0 {
+							history := *old
+							history.ID = ""
+							history.Alias = ""
+							history.Type = "decision escalation receipt history"
+							p.Notes = append(p.Notes, history)
+						}
+						p.Closes = oldOpen
+						return p
+					}
+					if lane == "coordinator" && d.To == to && d.Set == set {
+						return p
+					}
+				}
+				if set == "" {
+					return p
+				}
+				token := fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(st.Names.Prefix+strconv.FormatUint(epoch, 10)+lane+to+set+s.Now.UTC().Format(time.RFC3339Nano))))
+				d := &sprint.DecisionDelivery{Lane: lane, To: to, From: sender, Set: set, Body: body, Reports: reports, Token: token, PreparedAt: s.Now, RetryBefore: s.Now.Add(bus.DefaultTokenLife)}
+				n := sprint.Note{Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true, Who: sprint.MachineActor, At: s.Now, DecisionDelivery: d}
+				if old != nil {
+					if old.DecisionDelivery.UnknownReceipts > 0 {
+						history := *old
+						history.ID = ""
+						history.Alias = ""
+						history.Type = "decision escalation receipt history"
+						p.Notes = append(p.Notes, history)
+					}
+					n.ID, n.Alias = old.ID, old.Alias
+					p.Updates = append(p.Updates, n)
+				} else {
+					p.Notes = append(p.Notes, n)
+				}
+				return p
+			}})
+			if err != nil {
+				return err
+			}
+			all, err := st.B.OpenNotes(ctx)
+			if err != nil {
+				return err
+			}
+			for _, o := range all {
+				if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == lane && d.SentAt.IsZero() {
+					job = o.Note
+					break
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			a.serveSay("DECISIONS OWED: prepare %s failed: %s", lane, err)
+			continue
+		}
+		if job.DecisionDelivery == nil {
+			continue
+		}
+		d := *job.DecisionDelivery
+		fault := ""
+		switch {
+		case d.To == "":
+			fault = "no " + lane + " channel is configured"
+		case loginErr != nil:
+			fault = "sender identity unresolved: " + loginErr.Error()
+		case coordinatorSenderRefusal(d.From, login) != "":
+			fault = coordinatorSenderRefusal(d.From, login)
+		case !a.now().Before(d.RetryBefore):
+			fault = "delivery receipt unknown: retry token expired; renewal due next look"
+		default:
+			if d.From == "" {
+				d.From = login
+			}
+			if err := a.bus(ctx, bus.Message{From: d.From, To: []string{d.To}, Kind: bus.KindBlocker, Subject: "nova-sprint: decisions owed", Body: d.Body, Token: d.Token}, func(s string) { a.serveSay("%s", s) }); err != nil {
+				fault = err.Error()
+			}
+		}
+		err = a.onLine(ctx, func(st *store.Store) error {
+			_, err := st.Run(ctx, store.Step{Verb: "decision escalation receipt", Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+				var p sprint.Plan
+				for _, o := range s.Acked {
+					n := o.Note
+					if n.ID != job.ID || n.DecisionDelivery == nil || n.DecisionDelivery.Token != d.Token {
+						continue
+					}
+					next := *n.DecisionDelivery
+					next.Fault = fault
+					if fault == "" {
+						next.SentAt = s.Now
+						if next.UnknownReceipts > 0 {
+							next.Fault = fmt.Sprintf("%d earlier receipt(s) unknown; latest renewed notice accepted; duplicate identifiable by judgment IDs", next.UnknownReceipts)
+						}
+					}
+					if next.Fault == n.DecisionDelivery.Fault && next.SentAt.Equal(n.DecisionDelivery.SentAt) {
+						return p
+					}
+					n.DecisionDelivery = &next
+					n.What = next.Fault + "; judgment IDs=" + strings.ReplaceAll(next.Set, "\x00", ",")
+					p.Updates = append(p.Updates, n)
+					if fault == "" {
+						for _, r := range s.Acked {
+							if slices.Contains(d.Reports, r.Note.ID) {
+								report := r.Note
+								if lane == "owner" {
+									report.DefaultOwnerTold = true
+								} else {
+									report.DefaultCoordinatorTold = true
+								}
+								p.Updates = append(p.Updates, report)
+							}
+						}
+					}
+					break
+				}
+				return p
+			}})
+			return err
+		})
+		if err != nil {
+			a.serveSay("DECISIONS OWED: receipt %s failed: %s", lane, err)
+		}
+		if fault != "" {
+			a.serveSay("DECISIONS OWED: %s delivery pending: %s", lane, fault)
+		}
+	}
 }

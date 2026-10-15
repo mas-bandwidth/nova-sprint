@@ -30,4 +30,11 @@ MCMemberReader == [m \in MCMember |-> IF m = "m1" THEN "r1" ELSE "r2"]
 \* c1, and c1 gains a need on c3 (a cycle while c3 still needs c1; a need not
 \* landed while c3 has not landed; landed once it has).
 MCRewrites == {<<c3, {}>>, <<c1, {c3}>>}
+MCOneCard == {c1}
+MCNoSentinels == {}
+MCOneNeeds == [c \in {c1} |-> {}]
+MCOneScore == [c \in {c1} |-> 1]
+MCOneInit == [c \in {c1} |-> "ready"]
+MCOneStream == [c \in {c1} |-> "s1"]
+MCNoRewrites == {}
 =============================================================================
