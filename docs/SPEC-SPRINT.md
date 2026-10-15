@@ -323,6 +323,14 @@ serves her: `friend beat <name>` and a lane's take (`take --lane`, a take by id 
 lane) for her row are refused, naming the member that serves it
 (`TestAOneShotFriendIsDealtAndFinishesThroughTheMemberPath`,
 `TestTheFriendLanePathIsRefusedForAOneShot`; nova-tools tla/FriendLane.tla, OneShot).
+No friend-lane machinery touches her row in the tick either: her member's working
+card is never bounced for want of a friend start, her dealt cards are never
+returned for not taking nor marked dealt-no-more, and the friends' level never
+moves a card to or from her row (the fleet's level levels her member's row);
+friend sync writes her no inbox brief, queue file or bus wake and enrols her as
+no bus name (`TestAOneShotFriendsCardStaysWorkingAcrossTicks`,
+`TestFriendSyncDeliversNothingToAOneShot`; tla/FriendDealtReturn.tla,
+OneShotWorkingStays, witness MCFriendDealtReturnBrokenBounce).
 
 **A friend's card** (the owner, 2026-10-03: "Could we try expressing the work
 left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing

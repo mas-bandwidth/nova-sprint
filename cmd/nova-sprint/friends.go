@@ -252,6 +252,9 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	// added can be written to before any card is dealt her (docs/FRIENDS.md)
 	names := make([]string, 0, len(specs))
 	for _, s := range specs {
+		if s.Session == sprint.FriendOneShot {
+			continue // a one-shot is no bus name: a send to her is refused, never queued (her work travels in the card brief)
+		}
 		names = append(names, s.Name)
 	}
 	enrolled, err := a.busEnroll(ctx, names...)
@@ -262,6 +265,9 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 		say("FRIEND-SYNC NOTE: the friend rows' names could not all be put on the bus store's roster (" + oneline.Escape(err.Error()) + ")")
 	}
 	for _, s := range specs {
+		if s.Session == sprint.FriendOneShot {
+			continue // no inbox, queue file, wake or start receipt is a one-shot's: her member reads the brief from the server
+		}
 		// her starts first, so a card she began is working before its report is read
 		if err := a.friendStartsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say); err != nil {
 			fmt.Fprint(stderr, friend.Pronouns(s.Pronouns).Sprintf("%s %s: the sprint cards of %s cannot be read for {their} starts: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error())))

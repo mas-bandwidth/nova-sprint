@@ -822,8 +822,8 @@ func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time
 	bound := s.DealtMax()
 	marked := map[string]bool{}
 	for _, f := range seats {
-		if f.Status != Up {
-			continue
+		if f.Status != Up || f.Session == FriendOneShot {
+			continue // a one-shot's dealt cards wait for her member's take: no dealt bound, no dealt-no-more mark
 		}
 		row := FriendRow(f.Name)
 		if friendHasTaken(s, f) {
