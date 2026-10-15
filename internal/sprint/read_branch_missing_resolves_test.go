@@ -113,6 +113,24 @@ func TestAMissingReadBranchJudgmentHasAVerbThatResolvesIt(t *testing.T) {
 		require.NotContains(t, another.Refused[0].Why, "not asked yet")
 	})
 
+	t.Run("ask --another names the judgment when no read of the attempt is visible", func(t *testing.T) {
+		t.Parallel()
+		// the live refusal "not asked yet at attempt 2" (j16495): askedAtAttempt found no read
+		// card of the attempt, which the judgment, not an unasked card, explains
+		w, _, j := missingAttempt2World(t)
+		for _, rc := range w.s.Fleet.WithPrefix("s1-1.r2.") {
+			w.s.Fleet.Drop(rc.ID)
+		}
+		require.False(t, askedAtAttempt(w.s, w.s.Work.Card("s1-1")), "the fixture: no read of the attempt is visible")
+		plain := Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}, Who: coord(w)})
+		another := Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}, Another: true, Who: coord(w)})
+		require.Len(t, another.Refused, 1)
+		require.Len(t, plain.Refused, 1)
+		require.NotContains(t, another.Refused[0].Why, "not asked yet", "the live refusal of ask --another")
+		require.Contains(t, another.Refused[0].Why, "judgment "+j.Note.ID)
+		require.Equal(t, plain.Refused[0].Why, another.Refused[0].Why, "AskRefusalsAgree")
+	})
+
 	t.Run("the no-stall decisions offer only verbs the ask state accepts", func(t *testing.T) {
 		t.Parallel()
 		w, _, _ := missingAttempt2World(t)
