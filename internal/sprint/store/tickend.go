@@ -119,3 +119,69 @@ func (st *Store) WaitTickEnd(ctx context.Context, after string, d time.Duration)
 		}
 	}
 }
+
+// InboxWaiter is a backend that can block on its inbox and say where it woke.
+type InboxWaiter interface {
+	// WaitInbox blocks until the inbox holds a note after the stream id
+	// after ("" is before every note), or for at most d. It returns the
+	// inbox's last stream id as it woke (the cursor for the next wait: every
+	// note up to it was committed before the wait returned), and whether a
+	// note woke it. It is one exchange with the store.
+	WaitInbox(ctx context.Context, after string, d time.Duration) (tail string, woke bool, err error)
+}
+
+// WaitInbox blocks on the inbox until a note after the stream id after is
+// there, or for at most d, and returns the cursor for the next wait and
+// whether a note woke it: answer --every's wait between passes, a new
+// judgment ending it at once and a quiet inbox at d, the backstop. A backend
+// that cannot block waits d by the store's clock, says it was not woken, and
+// returns the inbox's tail as it is after the wait.
+func (st *Store) WaitInbox(ctx context.Context, after string, d time.Duration) (string, bool, error) {
+	if w, ok := st.B.(InboxWaiter); ok {
+		return w.WaitInbox(ctx, after, d)
+	}
+	st.sleep(d)
+	tail, err := st.InboxTail(ctx)
+	if err != nil {
+		return after, false, err
+	}
+	return tail, false, nil
+}
+
+// InboxTail is the last stream id of the pinned epoch's inbox ("" when it is
+// empty): where a wait that has seen every note so far starts.
+func (st *Store) InboxTail(ctx context.Context) (string, error) {
+	_, in, err := st.B.Tails(ctx)
+	return in, err
+}
+
+// WaitInbox is XREAD BLOCK on the inbox from after, one note, pipelined with
+// a read of the inbox's last id: one round trip. The last id is read after
+// the XREAD returns, so every note up to it was committed before the next
+// pass reads the inbox, and the cursor never skips a note that pass does not
+// see.
+func (r *Redis) WaitInbox(ctx context.Context, after string, d time.Duration) (string, bool, error) {
+	start := after
+	if start == "" {
+		start = "0-0"
+	}
+	// BLOCK 0 is for ever: the least wait is a millisecond
+	d = max(d, time.Millisecond)
+	p := r.C.Pipeline()
+	xr := p.XRead(ctx, &redis.XReadArgs{Streams: []string{r.key(keyInbox), start}, Count: 1, Block: d})
+	tail := p.XRevRangeN(ctx, r.key(keyInbox), "+", "-", 1)
+	if _, err := p.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return after, false, err
+	}
+	woke := false
+	if streams, err := xr.Result(); err == nil {
+		for _, s := range streams {
+			woke = woke || len(s.Messages) > 0
+		}
+	}
+	last := after
+	if ms, err := tail.Result(); err == nil && len(ms) > 0 {
+		last = ms[0].ID
+	}
+	return last, woke, nil
+}

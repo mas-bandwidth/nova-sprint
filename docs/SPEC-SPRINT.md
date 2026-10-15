@@ -5531,7 +5531,8 @@ The mechanisms: a **blocking read** waits in the store until the thing arrives (
 | coordinator inbox push, on the store | sprint to the coordinator's inbox, the store opened in process | blocking read | WaitNotes on the notes stream until a tick-end, at most waitLook (15 s); a backend that cannot block (the test store) is read every 100 ms | - |
 | coordinator push into the session | the inbox into the coordinator's session | delivery into a session | each new judgment, one turn; the proof that the seat reads is the hook ("The hook") | - |
 | watch --wake | sprint and bus to the coordinator | timer poll | a look every 20 s (--every) | card watch-wake-retires-into-the-push-loop |
-| answer pass | sprint to the coordinator seat's rule answers | timer poll | --every | card answer-runs-on-the-tick-end |
+| answer pass, on the store | sprint to the coordinator seat's rule answers, the store opened in process | blocking read | WaitInbox on the inbox stream from the last note seen, a new note ending the wait at once; at most --every (60 s), the backstop sweep; a backend that cannot block waits --every by the store's clock | - |
+| answer pass, through the server | sprint to the coordinator seat's rule answers | timer poll | --every | the server runs no wait; card answer-runs-on-the-tick-end |
 | lane take wait | sprint to the AI asking for a lane | timer poll | the take asked every LaneAskEvery (5 s) | card lane-grant-is-a-bus-message |
 | friend sync | the friends table to this machine's friend daemons | timer poll | --every (the unit's) | card friend-sync-on-row-change |
 | sprint server tick | the store's log to the sprint server | blocking read | WaitLog on the log until a line comes, at most one tick per TickEvery (1 s); a failed tick backs off | - |
