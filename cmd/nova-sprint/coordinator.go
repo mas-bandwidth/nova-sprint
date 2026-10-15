@@ -24,7 +24,7 @@ import (
 //
 // Every class but read, machine and worker wants an actor. A coordinator or
 // seat verb without --actor or NOVA_SPRINT_ACTOR may use the coordinator's name
-// only after both of that name's hooks are proven live.
+// only while that name's nova-hook record is proven as the coordinator.
 const (
 	classCoordinator = "coordinator"
 	classWorker      = "worker"
@@ -53,7 +53,7 @@ var verbClasses = map[string]string{
 	"tick": classMachine, "run": classMachine, "friend clean": classMachine, "seat install": classMachine, "seat uninstall": classMachine, "selftest land": classMachine, "server switch": classMachine,
 
 	"inbox": classRead, "card": classRead, "log": classRead, "check": classRead, "where": classRead, "watch": classRead, "dashboard": classRead, "routes": classRead, "rules": classRead, "stats": classRead, "bases": classRead,
-	"goal show": classRead, "handover": classRead, "seat": classRead, "seat push": classRead, "hook": classRead, "unhook": classRead, "lane list": classRead, "fsck seat": classRead, "doctor": classRead,
+	"goal show": classRead, "handover": classRead, "seat": classRead, "lane list": classRead, "fsck seat": classRead, "doctor": classRead,
 
 	"coordinator": classSeat,
 }
@@ -81,17 +81,16 @@ func needsActor(c common) string {
 // init names the coordinator (--coordinator, else the actor); every later
 // coordinator verb, init included, is that actor's alone. A store with no
 // coordinator takes init and teardown only. Every command run as the
-// coordinator, and every worker verb a worker friend runs, waits for its caller's two
-// pushes live and proven (hookedIn; hook.go): the first init, on a store with no
-// coordinator, only names the seat.
+// coordinator waits for its nova-hook record proven as the coordinator (hookedIn;
+// coordinator_hook.go): the first init, on a store with no coordinator, only names the
+// seat.
 func (a *app) coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
 	why, _, err := a.coordinatorGate(ctx, st, c)
 	return why, err
 }
 
 // hookGateError is the hook gate's refusal as an error: the command was refused for want
-// of the seat's live, proven hook (or for an unacknowledged push) before it read or wrote
-// anything. It is a type so a caller that must tell it from a failure finds it with
+// of the coordinator's nova-hook record proven before it read or wrote anything. It is a type so a caller that must tell it from a failure finds it with
 // errors.As, never by its words (the land loop: a land the gate refused is a wait for the
 // seat, not a land fault, and never rolls a switch back; docs/SPEC-SPRINT.md section 14,
 // tla/ServerSwitch.tla LandHookRefused).

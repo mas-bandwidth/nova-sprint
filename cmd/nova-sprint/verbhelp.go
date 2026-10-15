@@ -73,8 +73,8 @@ var verbEffect = map[string]string{
 	"queue":             "inspection: reads a worker's or a stream's cards, writes nothing",
 	"handover":          "inspection: reads the store, writes nothing",
 	"seat check":        "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"seat install":      "local write: writes the push loop's unit (inbox --wait --push seat) into --dir and loads it with launchctl (macOS) or systemctl --user (Linux); --dry-run prints it and writes nothing",
-	"seat uninstall":    "local write: unloads the push loop's unit and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
+	"seat install":      "local write: records the seat on this machine (the sprint's server it uses, and the nova-config seat profile) beside the store login; --dry-run prints what it would write and writes nothing",
+	"seat uninstall":    "local write: unloads the retired push loop's unit, where an older build installed it, and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
 	"needs":             "inspection: reads the waiting cards, writes nothing",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
@@ -126,13 +126,6 @@ var verbEffect = map[string]string{
 
 	// stop-return (the base's #5499) writes through one store step too; its --dry-run is stepdry.go's
 	"stop-return": "local write: returns the named stopped cards to the owner row that acknowledges the cancellation, keeping their placement and attempt, in the sprint's store; --dry-run writes nothing",
-
-	// seat push (the base's #5477) writes the seat's push target; its --dry-run is its own
-	"seat push": "store write: with --harness and --target, records the seat's push target (harness, target, session, adapter) in the sprint's store; with neither, prints the record and writes nothing; --dry-run checks the same and writes nothing",
-
-	// the hook (hook.go): the server records it; this process writes nothing
-	"hook":   "server subscription: holds the seat's hook on the sprint's server, which records it in the sprint's store and streams every judgment and push until the hook ends; --prove and --ack carry the session's answer over the running hook's connection; this process writes nothing",
-	"unhook": "server subscription: ends the running hook over its connection; the server records the seat away in the sprint's store and tells the owner; this process writes nothing",
 
 	// verbs that read and write nothing
 	"goal show": "inspection: reads the goals in the sprint's store, writes nothing",

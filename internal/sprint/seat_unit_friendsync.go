@@ -13,7 +13,7 @@ import (
 // friend sync install (docs/SPEC-SPRINT.md, "The friend sync loop as a service"; the
 // owner, 2026-10-05: "We need to get away from these one shot shell scripts"): the
 // friend sync loop, friend sync --every <d>, as a service of the coordinator's
-// machine, the way seat install runs the push loop (seatinstall.go): a launchd agent
+// machine, by the installer every unit shares (seatinstall.go): a launchd agent
 // on macOS and a systemd user unit on Linux, kept alive and started again at login,
 // in place of a zsh while-loop typed by hand. The loop takes its actor from the seat
 // each pass, so the unit names none. Its installer is SeatInstaller with its own file.
@@ -117,7 +117,7 @@ func systemdUnit(description string, args []string, env [][2]string) string {
 
 // InstallFriendSync writes the friend sync loop's unit into the installer's directory
 // (whole, beside it first, then renamed into place) unless the file there is already
-// this text, and loads it either way, as Install does the push loop's.
+// this text, and loads it either way.
 func (in SeatInstaller) InstallFriendSync(u FriendSyncUnit) (SeatResult, error) {
 	text, err := u.Text()
 	if err != nil {

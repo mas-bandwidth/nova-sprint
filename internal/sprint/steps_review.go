@@ -3,13 +3,14 @@ package sprint
 import (
 	"cmp"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"

@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 )
 
@@ -188,8 +189,6 @@ const (
 	DoctorBeatBound = 60 * time.Second
 	// DoctorRedialGrace is how long after the server starts a loop has to dial it again.
 	DoctorRedialGrace = 60 * time.Second
-	// DoctorPushBound is how old the push loop's last proof may be.
-	DoctorPushBound = 15 * time.Minute
 	// DoctorFinishWindow is the window the finish failures are counted in.
 	DoctorFinishWindow = time.Hour
 	// DoctorStrandedBound is how long a card may sit in review with nothing open on it and no read live.
@@ -1176,8 +1175,8 @@ func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 
 // ---- 9. seat ------------------------------------------------------------------------------
 
-// DoctorSeat is check 9: the seat's hook live and proven within DoctorPushBound, and the
-// judgments past their deadline.
+// DoctorSeat is check 9: the coordinator's nova-hook record lets a coordinator command run
+// (CoordinatorGate), and the judgments past their deadline.
 func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaSeat, CheckSeat
 	now := time.Now()
@@ -1186,16 +1185,16 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	}
 	switch p := in.Hook; {
 	case !p.Measured:
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the hook is not armed: no holder's hook record", Remedy: "nova-sprint hook"})
-	case !HookLive(p.Record, p.Recorded, p.Holder, now):
-		age := "never"
-		if !p.Record.Proven.IsZero() {
-			age = now.Sub(p.Record.Proven).Round(time.Second).String() + " ago"
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the coordinator's nova-hook record was not read: no holder, or the gate is not armed", Remedy: "nova-hook status --as <holder>"})
+	case CoordinatorGate(p.Holder, p.Status) != "":
+		answered := "never"
+		if !p.Status.AnswerAt.IsZero() {
+			answered = now.Sub(p.Status.AnswerAt).Round(time.Second).String() + " ago"
 		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorFail,
-			Evidence: fmt.Sprintf("holder=%s proven=%s bound=%s %s", p.Holder, age, DoctorPushBound, cutText(HookGate(p.Record, p.Recorded, p.Holder, now), 200)), Remedy: "nova-sprint hook"})
+			Evidence: fmt.Sprintf("holder=%s %s answered=%s %s", p.Holder, p.Status.Words(), answered, cutText(CoordinatorGate(p.Holder, p.Status), 200)), Remedy: hook.HookCommand(p.Holder, hook.Coordinator)})
 	default:
-		out = append(out, okCheck(area, check, "hook", fmt.Sprintf("holder=%s proven=%s ago", p.Holder, now.Sub(p.Record.Proven).Round(time.Second))))
+		out = append(out, okCheck(area, check, "hook", fmt.Sprintf("holder=%s %s", p.Holder, p.Status.Words())))
 	}
 	if in.Seat.Overdue > 0 {
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "judgments", Status: DoctorFail, Evidence: fmt.Sprintf("open=%d overdue=%d %s", in.Seat.Judgments, in.Seat.Overdue, in.Seat.Line(now)), Remedy: "nova-sprint inbox"})

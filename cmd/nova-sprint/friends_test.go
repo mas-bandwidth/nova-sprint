@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/mas-bandwidth/nova-tools/hook"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/hook"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
