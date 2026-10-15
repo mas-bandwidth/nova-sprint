@@ -205,6 +205,14 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 			add(ToolchainGateCheck, i+1, "this line says the work needs "+strings.Join(missing, ", ")+" and no GATE-NEEDS line carries it, so the deal cannot match a member that has it; "+GateHostRemedy)
 		}
 	}
+	// The open-decision rule (the owner-decision rule, docs/SPEC-SPRINT.md): a brief
+	// whose THE TASK leaves an owner decision open -- decision owed, UNSETTLED, an OPEN
+	// QUESTION, a decision required or awaited -- is refused unless
+	// it carries an OWNER RULING: line or its KIND is decision or research, so a worker
+	// is never handed a card that still needs an owner to decide.
+	if line := openDecisionLine(brief); line != 0 {
+		add(OpenDecisionCheck, line, "this brief leaves an owner decision open for the worker to pick; "+OpenDecisionRemedy)
+	}
 	return out
 }
 
@@ -368,10 +376,21 @@ const (
 	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
 )
 
+// OpenDecisionCheck is the check name of the open-decision lint finding, and
+// OpenDecisionRemedy its remedy (docs/SPEC-SPRINT.md, the owner-decision rule): a brief
+// that leaves an owner decision to the worker is refused until the owner settles it.
+const (
+	OpenDecisionCheck  = "open-decision"
+	OpenDecisionRemedy = "settle it first: an OWNER RULING: line quoting the decision, or a KIND: decision card the work card needs"
+)
+
 // Remedy returns the one-line remedy for a check token drawn by card lint.
 func Remedy(check string) string {
 	if check == GateHostCheck || check == ToolchainGateCheck {
 		return GateHostRemedy
+	}
+	if check == OpenDecisionCheck {
+		return OpenDecisionRemedy
 	}
 	if r, ok := cardtree.Remedies[check]; ok && r != "" {
 		return r
@@ -466,6 +485,52 @@ func hostLike(tok string, names []string) bool {
 		return false
 	}
 	return strings.ContainsAny(tok, "0123456789-")
+}
+
+// openDecisionRE is an open-decision marker: the literal phrase a brief uses to leave an
+// owner decision open ("decision owed", "decision required", "unsettled", "open
+// question", "awaiting the ... decision"). The word list stays short and literal, so a
+// brief that reports a decision already made passes, and a numbered list of steps
+// ("(1) ... (2) ...") is no open decision on its own.
+var openDecisionRE = regexp.MustCompile(`(?i)\b(?:decision owed|decision required|unsettled|open question|awaiting the [a-z0-9 -]*decision)\b`)
+
+// openDecisionLine returns the 1-based line of the first open-decision marker in brief,
+// 0 when there is none. A brief that carries an OWNER RULING: line, or whose KIND is
+// decision or research, has settled the decision and is not refused.
+func openDecisionLine(brief string) int {
+	if hasHeaderLine(brief, "OWNER RULING") {
+		return 0
+	}
+	switch strings.ToLower(strings.TrimSpace(kindOf(brief))) {
+	case "decision", "research":
+		return 0
+	}
+	for i, line := range strings.Split(brief, "\n") {
+		if openDecisionRE.MatchString(line) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// kindOf is the value of the brief's KIND: line, "" when it has none.
+func kindOf(brief string) string {
+	for _, line := range strings.Split(brief, "\n") {
+		if v, ok := strings.CutPrefix(line, "KIND:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// hasHeaderLine says the brief carries a KEY: line.
+func hasHeaderLine(brief, key string) bool {
+	for _, line := range strings.Split(brief, "\n") {
+		if strings.HasPrefix(line, key+":") {
+			return true
+		}
+	}
+	return false
 }
 
 // byRE is a By: trailer named in a line and the word after it, past any <, backquote,

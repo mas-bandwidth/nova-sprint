@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/harness"
@@ -235,13 +235,6 @@ const (
 	// tier down: the card's tier no reader serves, so the read falls to the strongest
 	// tier at or below it a reader up serves ("read at heavy: no frontier reader").
 	FieldReadFallbackNote = "read_fallback_note"
-	// FieldFallbackTier is the primary's fallback tier: the sprint's unserved-tier-falls-to
-	// setting gave a card whose brief tier no route serves and no up friend serves the
-	// strongest served tier at or below the setting (unserved_tier.go). It is a field of its
-	// own, never the brief's line 1 and never a pin the seat made (FieldTier); the deal draws
-	// its route from it and DealtTier names it, and the tick clears it when the brief tier is
-	// served again and the card is not yet taken.
-	FieldFallbackTier = "fallback_tier"
 )
 
 // modelRead is the memo of one brief's model lines (cardhdr.ReadModel): the model
@@ -681,7 +674,7 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 
 // routeTier is routeOf's and routeServed's shared opening: the tier a deal of c draws
 // from, and the cases that end before the draw — a brief whose model lines do not read, a
-// fallback tier, and a tier the fleet's set leaves out (tierServed); a frontier card is
+// a tier the fleet's set leaves out (tierServed); a frontier card is
 // none of them and goes on to the draw like every tier. done says one of
 // those settled the answer (the returned tier, why and byFriend are it, with no set); else
 // the caller goes on to the pin, a store with no route, or the draw. m is the card's
@@ -698,16 +691,6 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		// a card admitted before the lint read its lines: judged under the tier it
 		// names (an unknown word too), else flash's
 		return tier, "its brief's model lines: " + bad, false, true, m
-	}
-	if fb := fallbackTier(c, m); fb != "" {
-		// the sprint's unserved-tier-falls-to setting gave the card a fallback tier
-		// (unserved_tier.go): the deal draws from it, never the unserved brief tier
-		tier = fb
-		if !s.FleetTakes(tier) {
-			up, why := s.tierServed(tier, nil)
-			return tier, why, len(up) > 0, true, m
-		}
-		return tier, "", false, false, m
 	}
 	// no tier ends here by its name: a frontier card is drawn from its routes as a heavy
 	// card is (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes); with none drawable and no
@@ -931,24 +914,16 @@ func drawTier(c *Card, m cardhdr.Model) string {
 	if pinnedTier(c, m) {
 		return ceilingTier(c, m)
 	}
-	if fb := fallbackTier(c, m); fb != "" {
-		return fb
-	}
 	return c.F(FieldTierNow)
 }
 
 // pinnedTier says the primary c climbs no ladder: the coordinator pinned its tier
-// (FieldTier, rework --tier), its brief pins a model, or it is a frontier card
-// (unless the sprint gave it a fallback tier, unserved_tier.go: a fallback is no pin
-// and the card is dealt on it).
+// (FieldTier, rework --tier), its brief pins a model, or it is a frontier card.
 func pinnedTier(c *Card, m cardhdr.Model) bool {
 	if m.Pin != "" || c.F(FieldTier) != "" {
 		return true
 	}
-	if m.Tier == cardhdr.RouteFrontier {
-		return c.F(FieldFallbackTier) == ""
-	}
-	return false
+	return m.Tier == cardhdr.RouteFrontier
 }
 
 // ceilingTier is the highest tier the machine escalates the primary c to: the tier the
@@ -971,6 +946,16 @@ func ceilingTier(c *Card, m cardhdr.Model) string {
 func CardTiers(c *Card) (now, ceiling string) {
 	m, _ := modelOf(c)
 	return cardTier(c, m), ceilingTier(c, m)
+}
+
+// CardTierShown is the tier the card and where views print for the primary c: the tier
+// it is on. A card waits for its own tier: no cross-tier dealing.
+func CardTierShown(c *Card) string {
+	if c == nil {
+		return ""
+	}
+	now, _ := CardTiers(c)
+	return now
 }
 
 // cardTierOf is the tier the primary c is on (cardTier).

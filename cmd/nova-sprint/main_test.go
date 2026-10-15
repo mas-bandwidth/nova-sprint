@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

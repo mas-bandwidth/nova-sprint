@@ -12,7 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // awayFromDefault is a value of every property the coordinator sets with a SetReq field,
@@ -21,7 +21,7 @@ import (
 var awayFromDefault = sprint.SetReq{Who: "tester",
 	ReadCards: sprint.SwitchOff, Fleet: sprint.SwitchOff, Friends: sprint.SwitchOff,
 	FleetTiers: "flash", FriendsTiers: "pro", ReworkPriority: sprint.ReworkKeep,
-	UnservedTierFallsTo: "pro", ReadTier: "heavy", Reads: "3", DealtMax: "7h", GoLanes: "3",
+	ReadTier: "heavy", Reads: "3", DealtMax: "7h", GoLanes: "3",
 	FriendIdle: "9m", LandingStallBound: "9m",
 	DriftCommits: "99", DriftHours: "99", AlarmReview: "3", AlarmMerging: "3", AlarmFleet: "70", AlarmReady: sprint.SwitchOff}
 
@@ -92,7 +92,6 @@ func TestAClearSetsEveryWorkingDefaultInTheNewEpoch(t *testing.T) {
 	assert.False(t, s.FriendsOff())
 	assert.True(t, s.FleetTakes("heavy"))
 	assert.True(t, s.FriendsTake("heavy"))
-	assert.Equal(t, "", s.UnservedTierFallsTo())
 	assert.Equal(t, sprint.DealtMaxDefault, s.DealtMax())
 	assert.Equal(t, sprint.ReadyMaxDefault, s.ReadyMax())
 	assert.Equal(t, sprint.FriendIdleDefault, s.FriendIdleAfter())

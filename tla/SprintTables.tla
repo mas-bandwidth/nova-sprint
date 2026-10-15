@@ -286,11 +286,11 @@ CIVals == {"", "red"}
 \* their last write, the work table.
 Verbs == {"start", "finish", "fleetdown", "drop"}
 
-VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
+VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate
 
-GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead>>
+GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits>>
 
-vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
+vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
 
 VARIABLES parkState, parkSaved, parkBound, parkCause, parkHead, parkReads, parkEvent
 parkingVars == <<parkState,parkSaved,parkBound,parkCause,parkHead,parkReads,parkEvent>>
@@ -301,6 +301,7 @@ TypeOK ==
   /\ attemptGeneration \in [Card -> 0..1]
   /\ headGeneration \in [Card -> 0..1]
   /\ keptHead \in [Card -> BOOLEAN]
+  /\ operationalEdits \subseteq Card
   /\ state \in [Card -> Cells]
   /\ needs \in [Card -> SUBSET Card]
   /\ waived \in [Card -> SUBSET Card]
@@ -419,6 +420,7 @@ TableInit ==
   /\ attemptGeneration = [c \in Card |-> 0]
   /\ headGeneration = [c \in Card |-> 0]
   /\ keptHead = [c \in Card |-> FALSE]
+  /\ operationalEdits = {}
   /\ state = InitOf
   /\ \A c \in Sentinels : state[c] = "waiting"
   /\ needs = NeedsOf
@@ -1226,17 +1228,39 @@ Brief ==
     /\ briefGeneration[c] = 0
     /\ briefGeneration' = [briefGeneration EXCEPT ![c] = 1]
     /\ keptHead' = keptHead
+    /\ operationalEdits' = {}
     /\ state' = state
     /\ wplace' = wplace
     /\ rplace' = rplace
     /\ pendstate' = state'
     /\ UNCHANGED <<attemptGeneration, headGeneration, needs, waived, everLanded, flags, members, wmember, mg, sstream, scause, ranked, pending, ci>>
 
+\* An operational note changes neither the task nor head provenance. The one-step
+\* event marker makes the edit observable without recording irrelevant history; the mutant reproduces the old blanket bounce.
+OperationalEdit ==
+  \E c \in Flash :
+    /\ Free
+    /\ state[c] = "working"
+    /\ briefGeneration[c] = attemptGeneration[c]
+    /\ briefGeneration[c] = 0
+    /\ c \notin operationalEdits
+    /\ operationalEdits' = operationalEdits \cup {c}
+    /\ briefGeneration' = IF Broken = "operationalbounce"
+         THEN [briefGeneration EXCEPT ![c] = 1] ELSE briefGeneration
+    /\ UNCHANGED <<attemptGeneration, headGeneration, keptHead, state, needs,
+         waived, everLanded, flags, members, wplace, wmember, rplace, mg,
+         sstream, scause, ranked, pending, ci, pendstate>>
+
+OperationalEditPreservesHead ==
+  [][\A c \in operationalEdits' \ operationalEdits :
+       briefGeneration'[c] = briefGeneration[c]]_allTableVars
+
 \* Attempt/head provenance follows the same lifecycle step; metadata never
 \* changes a legacy action's enabledness.
 GenerationStep ==
   /\ attemptGeneration' = [c \in Card |-> IF state'[c] = "working" /\ state[c] # "working" THEN briefGeneration[c] ELSE attemptGeneration[c]]
   /\ headGeneration' = [c \in Card |-> IF state'[c] = "review" /\ state[c] = "working" THEN attemptGeneration[c] ELSE headGeneration[c]]
+  /\ operationalEdits' = {}
   /\ UNCHANGED <<briefGeneration, keptHead>>
 
 \* A parked card is fenced against lifecycle/provenance edits until release.
@@ -1261,7 +1285,7 @@ DecisionParkStep ==
   /\ parkSaved' = state[ParkCard] /\ parkState' = "held"
   /\ parkCause' = (Broken # "parkwithoutcause") /\ parkEvent' = "park"
   /\ parkHead' = headGeneration[ParkCard] /\ parkReads' = rplace[ParkCard]
-  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead,
+  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits,
        needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
        scause, ranked, pending, ci, parkBound>>
 DecisionReleaseStep ==
@@ -1272,10 +1296,10 @@ DecisionReleaseStep ==
   /\ pendstate' = state'
   /\ flags' = [NoFlags EXCEPT !.decisionRelease = TRUE]
   /\ parkState' = "released" /\ parkEvent' = "release"
-  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead,
+  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits,
        needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
        scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
-Next == \/ ((LegacyNext /\ GenerationStep) \/ Brief) /\ ParkFence /\ UNCHANGED parkingVars
+Next == \/ ((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ ParkFence /\ UNCHANGED parkingVars
         \/ DecisionParkStep \/ DecisionReleaseStep
 
 NoOldBriefHeadInReview ==

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

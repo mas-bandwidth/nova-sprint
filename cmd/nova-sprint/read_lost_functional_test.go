@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 )
 
 // Ghost reads, end to end (v1.2.14 BLOCKER, a-member-hands-back-a-read-it-is-not-running): a
@@ -182,6 +182,12 @@ func TestAMemberProcessKilledOrRestartedLeavesNoGhostRead(t *testing.T) {
 	for _, rc := range all {
 		require.Equal(t, sprint.RetiredByLost, rc.F("retired_by"), "%s: taken back lost, spending no one", rc.ID)
 	}
+	// the draining process beats --draining (nova-tools pkg/member), and nothing is dealt to a
+	// draining member (tla/NoRoom.tla); its replacement, the rollout's next binary, does not
+	// drain, and its first beat and pass let the deal reach m2 again
+	d := memberProc(ta, run)
+	require.NoError(t, d.Beat())
+	pass(d)
 	// the deal cut each read again at its next generation, to m2 (the one reader not the
 	// worker: the lost read spent nothing of it)
 	var q struct {
