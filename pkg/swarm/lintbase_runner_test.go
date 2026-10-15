@@ -69,6 +69,11 @@ func TestTestAbsentAtBaseForEveryRunner(t *testing.T) {
 	newCase, _ := LintBrief(runnerCard(sha, "make test/delta_test.cpp SomeNewCase"), bb)
 	assert.Empty(t, findingsWith(newCase, "donewhen-test-name"), "%+v", newCase)
 
+	missingTarget, _ := LintBrief(runnerCard(sha, "make test/nonexistent.cpp SomeNewCase"), bb)
+	missTarget := findingsWith(missingTarget, "donewhen-test-name")
+	require.Len(t, missTarget, 1)
+	assert.Contains(t, missTarget[0].Excerpt, "target must exist")
+
 	missing, _ := LintBrief(runnerCard(sha, "make test/delta_test.cpp SomeNewCase"), BriefBase{})
 	miss := findingsWith(missing, "donewhen-test-name")
 	require.Len(t, miss, 1)
@@ -100,4 +105,9 @@ func TestLintCardBaseReadsRunnerFormDoneWhen(t *testing.T) {
 
 	absent := LintCardBase(card("make test/delta_test.cpp SomeNewCase"), bc)
 	assert.Empty(t, findingsWith(absent, "donewhen-test-name"), "%+v", absent)
+
+	missingTarget := LintCardBase(card("make test/nonexistent.cpp SomeNewCase"), bc)
+	missTarget := findingsWith(missingTarget, "donewhen-test-name")
+	require.Len(t, missTarget, 1)
+	assert.Contains(t, missTarget[0].Excerpt, "target must exist")
 }

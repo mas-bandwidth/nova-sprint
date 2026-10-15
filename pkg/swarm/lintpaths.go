@@ -262,6 +262,20 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 					checked = true
 				}
 			}
+			if !checked && dt.runner == "make" && len(dt.scope) > 0 {
+				missingTarget := ""
+				for _, sc := range dt.scope {
+					sc = strings.TrimPrefix(sc, "./")
+					if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":"+sc); err != nil {
+						missingTarget = sc
+						break
+					}
+				}
+				if missingTarget != "" {
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: make %s %s names target/file %s, and %s holds no such file at the base; the target must exist", dt.scope[0], dt.name, missingTarget, at()))
+					checked = true
+				}
+			}
 			if !checked {
 				present, err := testDefinedAt(bb.Repo, bb.Sha, dt)
 				switch {

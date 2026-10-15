@@ -223,6 +223,20 @@ func LintCardBase(raw []byte, bc BaseCheck) []CardHeaderFinding {
 			}
 			var present []string
 			for _, tn := range tests {
+				if tn.runner == "make" && len(tn.scope) > 0 {
+					missingTarget := ""
+					for _, sc := range tn.scope {
+						sc = strings.TrimPrefix(sc, "./")
+						if _, err := baseGit(bc.Repo, "cat-file", "-e", "--end-of-options", full+":"+sc); err != nil {
+							missingTarget = sc
+							break
+						}
+					}
+					if missingTarget != "" {
+						add("donewhen-test-name", dwLine, fmt.Sprintf("DONE-WHEN make %s %s names target/file %s, and base-sha %s holds no such file at the base; the target must exist", tn.scope[0], tn.name, missingTarget, short12(full)))
+						return out
+					}
+				}
 				at, err := testDefinedAt(bc.Repo, full, tn)
 				if err != nil {
 					add("donewhen-test-name", dwLine, fmt.Sprintf("MISSING: could not search the tree at %s for %s: %v", short12(full), tn.name, err))
