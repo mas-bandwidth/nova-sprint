@@ -376,7 +376,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 			worker := attemptUnit(s, pr.ID, attempt)
 			cards := idx[pr.ID]
 			gone := Split(wc.F(FieldRebalancedFrom))
-			tier := friendReadTier(s, pr)
+			tier := s.readTierOf(pr)
 			cursor, ok := readRounds[tier]
 			if !ok {
 				cursor = readDealRound(s, tier, ruses)
@@ -432,7 +432,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 			fields["reader"] = best.name
 			fields[FieldRebalancedFrom] = strings.Join(append(Split(wc.F(FieldRebalancedFrom)), g.row), ",")
 			if best.friend {
-				fields[FieldTier] = friendReadTier(s, pr)
+				fields[FieldTier] = s.readTierOf(pr)
 				if !s.Fleet.HasRow(best.row) {
 					p.Rows = append(p.Rows, RowAdd{Fleet, best.row})
 				}

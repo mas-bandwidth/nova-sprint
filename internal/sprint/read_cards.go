@@ -410,9 +410,9 @@ func ReadCardExtras(s *Snapshot) []string {
 // card of the attempt and closed none (readSpent; readCardsAskFull checks room separately,
 // docs/SPEC-SPRINT.md section 1, the read-card deal).
 //
-// A unit one tier below the read's tier may read it too, by the interim rule (the owner,
-// 2026-10-06 7:11 PM ET "let flash read pro", 7:41 PM "let pro do it"), never two below;
-// the deal orders the units that may by tier distance (readTierDistance).
+// A unit reads at the read's tier or above, never below it (readTierOf; the owner,
+// 2026-10-16: "It is completely undefined that a card should run at the wrong tier"); the
+// deal orders the units that may by tier distance (readTierDistance), the nearest first.
 func mayReadCard(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, cards []*Card) bool {
 	return readRefusal(s, u, pr, attempt, worker, cards) == ""
 }
@@ -441,13 +441,13 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 	}
 	if u.friend {
 		// a friend reads her tier or any below it, as her reads always did: a heavy friend
-		// reads a flash and a pro card (friendAtOrAbove)
-		t := friendReadTier(s, pr)
+		// reads a flash, a pro and a heavy card, never a frontier one (friendAtOrAbove)
+		t := s.readTierOf(pr)
 		if !s.FriendsTake(t) {
 			return "friends' set" // the friends' tiers leave the read out (set --friends-tiers)
 		}
-		if b := tierBelow(t); friendAtOrAbove(s, u.seat, t) || b != "" && friendAtOrAbove(s, u.seat, b) {
-			return "" // inside the set: b too (friendAtOrAbove)
+		if friendAtOrAbove(s, u.seat, t) {
+			return ""
 		}
 		return "friend tier"
 	}
@@ -459,59 +459,40 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 			return "reader row"
 		}
 	}
-	t := s.readTierDrawn(pr)
+	t := s.readTierOf(pr)
 	if !s.FleetTakes(t) {
 		return "fleet set" // the fleet's tiers leave the read out (set --fleet-tiers)
 	}
-	if b := tierBelow(t); s.readerServesTier(rd, t) || b != "" && s.FleetTakes(b) && s.readerServesTier(rd, b) {
-		return "" // inside the set: b too
+	if s.readerServesTier(rd, t) {
+		return ""
 	}
 	return "reader tier"
 }
 
-// readTierDistance is how far below or above the read's tier the unit reads, the cheaper
-// first, measured against the tier before readTierOf lowers it (friendReadTier) for every
-// unit: 0 at the read's own tier, 1 one tier below (mayReadCard's interim rule), 1+k at k
-// tiers above, and after every tier above, len(capLadder)+k at k tiers below, as a member
-// reads a card whose route tier readTierOf lowered (a frontier or heavy card is drawn on
-// pro). A friend reads at the nearest of her tiers (friendTiers); a member at the tier its
-// read is drawn on, readTierOf's or the one below it when its reader row serves only that.
+// readTierDistance is how far above the read's tier (readTierOf) the unit reads, the
+// cheaper first: 0 at the read's own tier, k at k tiers above; a unit that reads only below
+// it is past every distance (readRefusal refuses it: a card is never read below its tier).
+// A friend reads at the nearest of her tiers at or above it (friendTiers); a member at the
+// read's tier, the tier of the route its read is drawn on (readRouteOf).
 func readTierDistance(s *Snapshot, u readUnit, pr *Card) int {
-	want := slices.Index(capLadder, friendReadTier(s, pr))
+	want := slices.Index(capLadder, s.readTierOf(pr))
 	gap := func(at int) int {
-		switch {
-		case want < 0 || at < 0:
+		if want < 0 || at < want {
 			return 2*len(capLadder) + 1
-		case at == want:
-			return 0
-		case at == want-1:
-			return 1
-		case at > want:
-			return 1 + at - want
 		}
-		return len(capLadder) + want - at
+		return at - want
 	}
 	if !u.friend {
-		e := s.readTierDrawn(pr)
-		if !s.readerServesTier(ReaderPrefix+u.name, e) {
-			e = tierBelow(e)
+		if !s.readerServesTier(ReaderPrefix+u.name, s.readTierOf(pr)) {
+			return gap(-1)
 		}
-		return gap(slices.Index(capLadder, e))
+		return 0
 	}
 	best := gap(-1)
 	for _, x := range friendTiers(u.seat) {
 		best = min(best, gap(slices.Index(capLadder, x)))
 	}
 	return best
-}
-
-// tierBelow is the tier one below t on the ladder (flash, pro, heavy, frontier), "" for
-// flash or a word off the ladder.
-func tierBelow(t string) string {
-	if i := slices.Index(capLadder, t); i > 0 {
-		return capLadder[i-1]
-	}
-	return ""
 }
 
 // readCardsStanding is the primary's reads that stand at its attempt, both tables: the
@@ -613,7 +594,7 @@ const NoReaderMayRead = "no reader up may read it"
 // different unit that may read it (mayReadCard) with half a slot free, the cheapest first:
 // a unit with an idle lane before every unit with none (a read waits in a ready queue only
 // when every reader that may take it is busy), then by tier distance (readTierDistance: the
-// read's own tier, one tier below, then the tiers above, nearest first), then the persisted
+// read's own tier, then the tiers above, nearest first; never one below), then the persisted
 // ring cursor (read_deal_index_<tier>, docs/SPEC-SPRINT.md section 1, the read-card deal)
 // round every unit with a free lane, a full or ineligible reader skipped; friends and
 // members alike. A free lane counts the unit's queue (readUnit.idle: ready and working),
@@ -736,7 +717,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 				}
 			}
 		}
-		tier := friendReadTier(view, pr)
+		tier := view.readTierOf(pr)
 		cursor, ok := readRounds[tier]
 		if !ok {
 			cursor = readDealRound(view, tier, units)
@@ -808,7 +789,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 						refused = append(refused, un.name+"="+r)
 					}
 				}
-				*why = append(*why, pr.ID+" tier="+friendReadTier(view, pr)+" wants="+itoa(want)+" waits: "+waits[pr.ID]+"; refused: "+strings.Join(refused, ", "))
+				*why = append(*why, pr.ID+" tier="+view.readTierOf(pr)+" wants="+itoa(want)+" waits: "+waits[pr.ID]+"; refused: "+strings.Join(refused, ", "))
 			}
 		}
 		if len(picked) == 0 {
@@ -846,7 +827,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 			if un.friend {
 				// a friend's read is hers on her row, working once she has a lane free, as
 				// her reads were (askOneFriend); she brings her own model
-				fields[FieldTier] = friendReadTier(view, pr)
+				fields[FieldTier] = view.readTierOf(pr)
 				if un.idle >= 0 {
 					col = Working
 				}
@@ -858,7 +839,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 				if ri != nil {
 					maps.Copy(fields, view.readRouteOf(ri, pr, nil))
 				} else {
-					fields[FieldTier] = view.readTierDrawn(pr)
+					fields[FieldTier] = view.readTierOf(pr)
 				}
 				// the first read of a flash card's attempt is a decide read, as the readers'
 				// ask places it (decideFields)
@@ -1136,7 +1117,7 @@ func frontierRoomCondsOfWaits(s *Snapshot, waits map[string]string, full map[str
 	var judged, causes []string
 	for _, id := range slices.Sorted(maps.Keys(waits)) {
 		pr := s.Work.Placed(id)
-		if pr == nil || friendReadTier(s, pr) != cardhdr.RouteFrontier || strings.HasPrefix(waits[id], NoReaderMayRead) {
+		if pr == nil || s.readTierOf(pr) != cardhdr.RouteFrontier || strings.HasPrefix(waits[id], NoReaderMayRead) {
 			continue
 		}
 		why := "fewer units may read it than it wants"

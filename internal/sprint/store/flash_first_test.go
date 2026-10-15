@@ -9,12 +9,11 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// Flash first on every card (the owner, 2026-10-02, cost rule 1 of nova-tools#5174:
-// "Flash first on every card; pro only on escalation"; route.go, tierLadder): the tier
-// a brief's line 1 names is the card's ceiling, its first deal is on flash, and a card
-// that reaches its bound below its ceiling is escalated by the machine and dealt a new
-// attempt on the next tier, no judgment raised; at its ceiling the bound's judgment is
-// the coordinator's as before. On the mem twin, injected clock, no socket.
+// A card is dealt on its tier (route.go, tierLadder; the owner, 2026-10-16: a card is
+// never worked or read below its tier): the tier a brief's line 1 names is its first deal's
+// and its ceiling, and at its bound the judgment is the coordinator's. Flash first (the
+// owner, 2026-10-02) and the escalation below a card's tier that carried it are gone. On
+// the mem twin, injected clock, no socket.
 
 // setPrimary writes fields onto a primary as a step that wrote them would leave it, on
 // the store's own backend (the mem twin, or Redis in the functional tier). It guards on
@@ -89,41 +88,12 @@ func TestABriefThatSaysProStartsOnPro(t *testing.T) {
 	}
 }
 
-// onFlashBelowPro admits a pro card dealt on flash below its ceiling, as a card dealt
-// before line 1 became the starting tier was: the escalation ladder still carries it.
+// onFlashBelowPro admits a pro card that carries a flash tier on its primary, as a card
+// dealt before line 1 became the starting tier did: it is on pro all the same (cardTier).
 func (h *harness) onFlashBelowPro(stream string) {
 	h.t.Helper()
 	h.addReady(stream, 1, briefOf("pro", ""))
 	h.setPrimary(stream+"-1", map[string]string{sprint.FieldTierNow: "flash"})
-}
-
-// After its bound on flash a pro card is escalated by the machine: the attempt at its
-// bound is retired, a new attempt is dealt on pro and told why, the primary records the
-// tier, and no judgment is raised.
-func TestAProCardAfterItsFlashBoundIsRedealtOnPro(t *testing.T) {
-	t.Parallel()
-	h := flashAndPro(t)
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	h.boundOut("s1-1")
-	pr := h.snap().Work.Card("s1-1")
-	require.Equal(t, 2, pr.Int("attempt"), "a new attempt")
-	assert.Equal(t, "pro", pr.F(sprint.FieldTierNow), "the primary records the tier it escalated to")
-	assert.Empty(t, pr.F(sprint.FieldTier), "the machine's escalation is no coordinator's pin")
-	cards := h.workCards()
-	assert.NotContains(t, cards, "s1-1.w1", "the attempt at its bound is retired")
-	w2 := cards["s1-1.w2"]
-	require.NotNil(t, w2)
-	assert.Equal(t, "pro", tierOfRoute(w2.F(sprint.FieldRoute)), "dealt on %s", w2.F(sprint.FieldRoute))
-	assert.Equal(t, "pro", w2.F(sprint.FieldTier))
-	assert.Contains(t, w2.F("why"), "escalated from flash to pro: attempt 1 reached its bound on flash")
-	assert.Zero(t, w2.Int("redeals"), "the new attempt starts its own bound")
-	assert.Empty(t, h.openOf(sprint.NBound), "no judgment below the ceiling")
-	assert.Zero(t, h.notesOf(sprint.NBound))
-	now, ceiling := sprint.CardTiers(pr)
-	assert.Equal(t, []string{"pro", "pro"}, []string{now, ceiling})
-	h.clean("escalated to pro")
 }
 
 // At its ceiling the bound is the coordinator's: a pro card that reaches its bound on
@@ -172,71 +142,27 @@ func TestAtTheProBoundTheJudgmentIsRaised(t *testing.T) {
 	})
 }
 
-// The cost history lists each attempt's tier: every take's record on the primary names
-// the tier its route was drawn from, flash for the first attempt's takes and pro for the
-// escalated attempt's, and `card` prints it on each COST line.
-func TestTheCostHistoryListsTheTiers(t *testing.T) {
-	t.Parallel()
-	h := flashAndPro(t)
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	h.boundOut("s1-1")
-	h.failTake("s1-1.w2", providerLine)
-	h.machine()
-	v := sprint.CardCostOf(h.snap().Work.Card("s1-1"))
-	tiers := map[int][]string{}
-	for _, c := range v.Consumers {
-		require.Equal(t, "work", c.Kind)
-		tiers[c.Attempt] = append(tiers[c.Attempt], c.Tier)
-		assert.Equal(t, tierOfRoute(c.Route), c.Tier, "%s ran on %s", c.Key, c.Route)
-	}
-	assert.Equal(t, []string{"flash", "flash", "flash", "flash"}, tiers[1], "attempt 1's four takes on flash")
-	assert.Equal(t, []string{"pro"}, tiers[2], "attempt 2's take on pro")
-	lines := v.CostLines()
-	assert.Contains(t, lines[0], " tier=flash ")
-	assert.Contains(t, lines[len(lines)-2], " tier=pro ")
-}
-
-// A pro card at its flash bound in a store whose pro tier no route serves waits under
-// that tier's judgment, never refused in silence tick after tick.
-func TestAnEscalationNoRouteServesIsJudgedUnderItsTier(t *testing.T) {
-	t.Parallel()
-	h := routeHarness(t, route("flash-a", "flash"))
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	h.boundOut("s1-1")
-	open := h.a2Open(sprint.NNoRoute)
-	require.Len(t, open, 1)
-	assert.Equal(t, sprint.StreamSubject(sprint.TierSubject("pro")), open[0].Subject())
-	assert.Empty(t, h.openOf(sprint.NBound))
-	h.m.SetRoutes([]sprint.Route{route("flash-a", "flash"), route("pro-a", "pro")})
-	h.machine()
-	assert.Equal(t, "pro-a", h.workCards()["s1-1.w2"].F(sprint.FieldRoute), "a pro route deals the escalation")
-	assert.Empty(t, h.a2Open(sprint.NNoRoute))
-}
-
-// The reads follow the tier the work is on (route.go, readTierOf through cardTier): a pro
-// card's first attempt, on flash, is read once on a flash route (cost rule 4).
-func TestAProCardsFlashAttemptIsReadOnFlash(t *testing.T) {
+// A pro card is never worked or read below its tier (the owner, 2026-10-16): one that
+// carries a flash tier on its primary from before line 1 became its start is dealt on pro
+// and read twice on pro routes, never on flash.
+func TestAProCardWithAStaleFlashTierIsWorkedAndReadOnPro(t *testing.T) {
 	t.Parallel()
 	h := flashAndPro(t)
 	require.NoError(t, h.st.BeatReaders(h.ctx))
 	h.onFlashBelowPro("s1")
 	h.startMachine()
 	h.machine()
-	require.Equal(t, "flash", h.workCards()["s1-1.w1"].F(sprint.FieldTier))
+	require.Equal(t, "pro", h.workCards()["s1-1.w1"].F(sprint.FieldTier), "dealt on pro, never flash")
 	h.work("m1")
 	h.work("m2")
 	h.machine()
 	reads := h.snap().Readers.Of("s1-1")
-	require.Len(t, reads, 1, "a card on flash is read once (cost rule 4, readers.go ReadsNeeded)")
+	require.Len(t, reads, 2, "a pro card is read twice")
 	for _, rc := range reads {
-		assert.Equal(t, "flash", tierOfRoute(rc.F(sprint.FieldRoute)), "%s read on %s", rc.ID, rc.F(sprint.FieldRoute))
-		assert.Equal(t, "flash", rc.F(sprint.FieldTier))
+		assert.Equal(t, "pro", tierOfRoute(rc.F(sprint.FieldRoute)), "%s read on %s", rc.ID, rc.F(sprint.FieldRoute))
+		assert.Equal(t, "pro", rc.F(sprint.FieldTier))
 	}
-	h.clean("a flash attempt read on flash")
+	h.clean("a pro card read on pro")
 }
 
 // A store with no route escalates nothing (NextTier): its member runs its own model
@@ -255,101 +181,3 @@ func TestAStoreWithNoRouteEscalatesNothing(t *testing.T) {
 	assert.Len(t, h.openOf(sprint.NBound), 1, "the bound's judgment")
 }
 
-// The second identical failure across attempts below the ceiling escalates (rules 1 and 2
-// of nova-tools#5174): a pro card whose second flash attempt fails the way its first did
-// raises no judgment; the finish writes tier_now and the why on the primary and sends it
-// back to ready, as a rework with no member up does, and the tick deals its next attempt
-// on pro. Pro counts its own failures: its first failure is failed work, and its second
-// identical one, at the ceiling, is the bound's judgment.
-func TestASecondIdenticalFailedAttemptBelowTheCeilingEscalates(t *testing.T) {
-	t.Parallel()
-	h := flashAndPro(t)
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	rework := func() {
-		h.t.Helper()
-		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "make them pass", Who: "tester"}))
-		h.machine()
-	}
-	h.failTake("s1-1.w1", "verdict not-done; tests red in x")
-	assert.Equal(t, 1, h.notesOf(sprint.NWorkFailed), "the first is failed work")
-	rework()
-	require.Equal(t, "flash", h.workCards()["s1-1.w2"].F(sprint.FieldTier))
-	h.failTake("s1-1.w2", "verdict not-done; tests red in y")
-	pr := h.snap().Work.Card("s1-1")
-	assert.Equal(t, sprint.Ready, pr.Col, "back to ready, as a rework with no member up leaves it")
-	assert.Equal(t, "pro", pr.F(sprint.FieldTierNow))
-	assert.Contains(t, pr.F("why"), "escalated from flash to pro: attempts 1 and 2 failed the same way (verdict not-done; tests red in)")
-	assert.Empty(t, h.openOf(sprint.NBound), "no judgment below the ceiling")
-	assert.Equal(t, 1, h.notesOf(sprint.NWorkFailed), "and no failed-work one")
-	h.machine()
-	w3 := h.workCards()["s1-1.w3"]
-	require.NotNil(t, w3, "the tick deals the next attempt")
-	assert.Equal(t, "pro", tierOfRoute(w3.F(sprint.FieldRoute)), "on pro: %s", w3.F(sprint.FieldRoute))
-	assert.Contains(t, w3.F("why"), "escalated from flash to pro")
-	h.clean("escalated by the failed finish")
-
-	h.failTake("s1-1.w3", "verdict not-done; tests red in z")
-	assert.Equal(t, 2, h.notesOf(sprint.NWorkFailed), "pro's first failure is failed work")
-	assert.Empty(t, h.openOf(sprint.NBound))
-	rework()
-	h.failTake("s1-1.w4", "verdict not-done; tests red in w")
-	h.machine()
-	open := h.openOf(sprint.NBound)
-	require.Len(t, open, 1, "at the ceiling the second identical failure is the bound's judgment")
-	assert.Contains(t, open[0].Note.What, "attempts 3 and 4 failed the same way")
-}
-
-// The second identical failure inside one attempt below the ceiling escalates through the
-// deal (redealBound counts the two identical ends), and the new attempt's why names the
-// class, not a redeal count.
-func TestASecondIdenticalTakeBelowTheCeilingEscalatesNamingTheClass(t *testing.T) {
-	t.Parallel()
-	h := flashAndPro(t)
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	h.failTake("s1-1.w1", noResultLine)
-	h.machine()
-	h.failTake("s1-1.w1", noResultLine)
-	h.machine()
-	h.machine()
-	w2 := h.workCards()["s1-1.w2"]
-	require.NotNil(t, w2, "escalated: a new attempt")
-	assert.Equal(t, "pro", tierOfRoute(w2.F(sprint.FieldRoute)))
-	assert.Contains(t, w2.F("why"), "escalated from flash to pro: attempt 1 reached its bound on flash (its last two takes ended the same way: no result)")
-	assert.NotContains(t, w2.F("why"), "redealt")
-	assert.Empty(t, h.openOf(sprint.NBound))
-	h.clean("escalated at the second identical take")
-}
-
-// A failed finish that reports no usage (a run that ended before its harness counted, a
-// member with nothing to say) reads the routes all the same: the second identical failed
-// attempt below the ceiling escalates in the finish, never a judgment for want of a usage
-// line. Before the fix the finish read the routes only to price a usage, NextTier found no
-// route, and the bound's judgment was raised in place of the escalation.
-func TestASecondIdenticalFailureWithNoUsageStillEscalates(t *testing.T) {
-	t.Parallel()
-	h := flashAndPro(t)
-	h.onFlashBelowPro("s1")
-	h.startMachine()
-	h.machine()
-	failBare := func(card, report string) {
-		h.t.Helper()
-		wc := h.snap().Fleet.Card(card)
-		require.NotNil(t, wc)
-		gens := map[string]int{wc.ID: wc.Int("gen")}
-		h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: gens, Who: wc.Row}))
-		h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: gens, Failed: true, Report: report, Who: wc.Row}))
-	}
-	failBare("s1-1.w1", "verdict not-done; tests red in x")
-	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "make them pass", Who: "tester"}))
-	h.machine()
-	failBare("s1-1.w2", "verdict not-done; tests red in y")
-	pr := h.snap().Work.Card("s1-1")
-	assert.Equal(t, sprint.Ready, pr.Col, "escalated, not held for a judgment")
-	assert.Equal(t, "pro", pr.F(sprint.FieldTierNow))
-	assert.Empty(t, h.openOf(sprint.NBound), "no judgment below the ceiling")
-	h.clean("escalated with no usage")
-}

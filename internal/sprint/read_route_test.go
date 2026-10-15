@@ -15,9 +15,8 @@ import (
 // the snapshot seats) brings its own model: it is asked the read with no route, its verdict's
 // usage line names the model and harness the read card records, and the tier's no-route
 // judgment is not raised. A fleet reader still draws a route: with none of the tier it
-// is asked nothing, and with no other reader up the judgment is raised as before. Under the
-// interim rule (the owner, 2026-10-06 7:41 PM ET: "let pro do it") a heavy read collapses to
-// pro: here no pro route is enabled either, so the same holds of the tier pro.
+// is asked nothing, and with no other reader up the judgment is raised as before. A heavy
+// card is read at heavy, never lower (the owner, 2026-10-16).
 func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 	t.Parallel()
 	const head = "0123456789abcdef0123456789abcdef01234567"
@@ -37,12 +36,12 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 		for _, rd := range up {
 			w.s.ReaderStates[rd] = ReaderUp
 		}
-		require.Equal(t, cardhdr.RoutePro, w.s.readTierOf(w.s.Work.Card("s1-1")), "a heavy read collapses to pro (the interim rule)")
+		require.Equal(t, cardhdr.RouteHeavy, w.s.readTierOf(w.s.Work.Card("s1-1")), "a heavy card is read at heavy")
 		return w
 	}
 	held := func(w *world) bool {
 		for _, n := range w.notesOf(NNoRoute) {
-			if n.Stream == TierSubject(cardhdr.RoutePro) && contains(n.Primaries, "s1-1") {
+			if n.Stream == TierSubject(cardhdr.RouteHeavy) && contains(n.Primaries, "s1-1") {
 				return true
 			}
 		}
@@ -63,7 +62,7 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 	assert.ElementsMatch(t, []string{"reader-amy", "reader-bob"}, readerNames(reads), "the friend readers, never the fleet reader with no heavy route")
 	for _, rc := range reads {
 		assert.Equal(t, "", rc.F(FieldRoute), "a friend brings her model: no route is drawn")
-		assert.Equal(t, cardhdr.RoutePro, rc.F(FieldTier), "read on pro (the interim rule)")
+		assert.Equal(t, cardhdr.RouteHeavy, rc.F(FieldTier), "read at heavy")
 	}
 	first := reads[0]
 	assert.False(t, held(w), "a reader up serves heavy: no no-route judgment")
@@ -143,7 +142,7 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	assert.True(t, w.s.refusedNoRoute(pr))
 	var held []Note
 	for _, n := range w.notesOf(NNoRoute) {
-		if n.Stream == TierSubject(cardhdr.RoutePro) && contains(n.Primaries, "s1-1") { // heavy is read on pro (the interim rule)
+		if n.Stream == TierSubject(cardhdr.RouteHeavy) && contains(n.Primaries, "s1-1") { // heavy is read at heavy
 			held = append(held, n)
 		}
 	}

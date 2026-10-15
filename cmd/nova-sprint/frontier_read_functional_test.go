@@ -8,16 +8,14 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts is the
-// test of a-frontier-card-can-be-read-and-accepted: a frontier card finished by
-// a friend is read one tier down at heavy, asked of two fleet readers (no
-// frontier reader is up), and the coordinator's own read (`read --as
-// <coordinator> --ok <card>`) counts as one of the two reads the card needs.
+// TestAFrontierCardIsNeverReadAtHeavyByFleetReaders: a frontier card finished in review is
+// read at frontier, never one tier down (the owner, 2026-10-16: a card is never read below
+// its tier): two fleet readers that read heavy alone are asked nothing, and the card waits
+// in review for a frontier reader.
 //
 // The store is private and named explicitly with --redis; the environment names
-// no store (scrubbed env). It fails at the base: no read is asked at heavy and
-// the coordinator has no read verb.
-func TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts(t *testing.T) {
+// no store (scrubbed env). It fails at the base, where the read was asked at heavy.
+func TestAFrontierCardIsNeverReadAtHeavyByFleetReaders(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	// two fleet readers that read heavy and no other tier; the store named on the line
@@ -30,29 +28,14 @@ func TestAFrontierCardIsReadAtHeavyOfTwoFleetReadersAndACoordinatorReadCounts(t 
 	ta.deal(1)
 	ta.ok("take --redis mem:0 --as m1 --limit 1")
 	ta.ok("finish --redis mem:0 --as m1 s1-1.w1@1 --report 'the work is done'")
-	ta.ok("ask --redis mem:0 --limit 100")
+	ta.raw("ask --redis mem:0 --limit 100") // no reader may read it: the ask refuses, and asks nothing
 
-	a, b := ta.askedOf("reader-a"), ta.askedOf("reader-b")
-	require.NotEmpty(t, a, "reader-a is asked the frontier card's read one tier down at heavy")
-	require.NotEmpty(t, b, "reader-b is asked the frontier card's read one tier down at heavy")
-	var readView cardView
-	ta.json("card --redis mem:0 s1-1", &readView)
-	tierOf := map[string]string{}
-	noteOf := map[string]string{}
-	for _, rc := range readView.Reads {
-		tierOf[rc.F("reader")] = rc.F(sprint.FieldTier)
-		noteOf[rc.F("reader")] = rc.F(sprint.FieldReadFallbackNote)
-	}
-	require.Equal(t, "heavy", tierOf["reader-a"], "the frontier card is read one tier down at heavy, no frontier reader")
-	require.Equal(t, "heavy", tierOf["reader-b"], "the frontier card is read one tier down at heavy, no frontier reader")
-	require.Equal(t, "read at heavy: no frontier reader", noteOf["reader-a"], "the read card says why it is drawn one tier down")
-	require.Equal(t, "read at heavy: no frontier reader", noteOf["reader-b"], "the read card says why it is drawn one tier down")
-
-	// the coordinator's own read counts as one of the two
-	ta.ok("read --redis mem:0 --as coordinator --ok s1-1 --finding 'read at heavy: no frontier reader'")
-	ta.ok("read --redis mem:0 --as reader-a --ok --limit 1")
-	ta.ok("accept --redis mem:0 --read-ok")
+	require.Empty(t, ta.askedOf("reader-a"), "reader-a reads heavy only: never asked a frontier read")
+	require.Empty(t, ta.askedOf("reader-b"), "reader-b reads heavy only: never asked a frontier read")
 	var c cardView
 	ta.json("card --redis mem:0 s1-1", &c)
-	require.Equal(t, sprint.Merging, c.Column, "one reader's ok and the coordinator's read are the two the card needed")
+	for _, rc := range c.Reads {
+		require.NotEqual(t, "heavy", rc.F(sprint.FieldTier), "no read of the frontier card at heavy")
+	}
+	require.Equal(t, sprint.Review, c.Column, "the card waits in review for a frontier reader")
 }
