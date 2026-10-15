@@ -75,7 +75,7 @@ func TestADealToABudIsDeliveredOnTheBus(t *testing.T) {
 	m := e.Message()
 	assert.Equal(t, "coordinator", m.From)
 	assert.Equal(t, []string{"bud-a"}, m.To)
-	assert.Equal(t, "cards dealt: 1 (s1-1.w1)", m.Subject)
+	assert.Equal(t, "card s1-1.w1 dealt: FRIEND-CARD DELIVERED friend=bud-a card=s1-1.w1 job=s1-1.w1 branch=sprint/s1-1.w1.g1.e0", m.Subject, "a friend row is one-shot now (batch is retired in nova-tools): one message per card")
 
 	// a name the roster already holds is not added again, and no name is no name
 	added, err := (&bus.Bus{Store: store}).Enroll(context.Background(), "bud-a", "bob")
