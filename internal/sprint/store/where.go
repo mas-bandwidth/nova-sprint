@@ -271,7 +271,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	stamp := stats.statsStamp(st.epoch)
 	// a record from before the series, or the archived streams' figures, were counted is
 	// counted again once, tables still or not
-	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted {
+	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
 		return nil
 	}
 	tw := st.twin()

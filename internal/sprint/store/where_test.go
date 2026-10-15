@@ -436,4 +436,9 @@ func TestWhereRecordCarriesDefaultHeldCards(t *testing.T) {
 	facts, cached = h.whereFacts(st)
 	require.False(t, cached, "pre-upgrade records must not hide parked cards")
 	require.Len(t, facts.DecisionHolds, 1)
+	h.machine()
+	migrated, ok := h.whereRecord()
+	require.True(t, ok)
+	require.True(t, migrated.DecisionHoldsCounted, "idle tick upgrades the old record even when card revisions stand still")
+	require.Len(t, migrated.DecisionHolds, 1)
 }
