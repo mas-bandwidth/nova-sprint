@@ -22,8 +22,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/testredis"
 )
 
 // The server under the load of 2026-10-04 2:13 PM, on a scratch Redis made far (each

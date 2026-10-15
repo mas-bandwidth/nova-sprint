@@ -1,7 +1,7 @@
 package store
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisacl"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
