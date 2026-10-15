@@ -131,12 +131,6 @@ func SettingsRows() []SettingRow {
 			return ReadTierDefault
 		}),
 		settingRow("rework-priority", PropReworkPriority, "Snapshot (PropReworkPriority)", propOrDefault(PropReworkPriority)),
-		settingRow("unserved-tier-falls-to", PropUnservedTierFallsTo, "Snapshot.UnservedTierFallsTo", func(s *Snapshot) string {
-			if t := s.UnservedTierFallsTo(); t != "" {
-				return t
-			}
-			return SwitchOff
-		}),
 	}
 	slices.SortFunc(rows, func(a, b SettingRow) int { return strings.Compare(a.Flag, b.Flag) })
 	return rows
