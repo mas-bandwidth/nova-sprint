@@ -68,6 +68,7 @@ nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | 
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
+# ask <card> [--answers <j>] on a card whose "a read's branch is not on origin" judgment is open asks origin: a branch of the work holding the head asks the read again and closes it; none is refused in one line naming the judgment, rework with a fix and drop (ask --another gives the same reason; tla/ReadBranchMissing.tla)
 nova-sprint queue --as <reader|member> [--wait <duration> --after <cursor>] | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it

@@ -731,3 +731,5 @@ MCCIReceiptTell.cfg	MCCIReceiptTell.tla	pass	-	ignore-terminal	cireceipttell	req
 MCCIReceiptTellBrokenCursorFirst.cfg	MCCIReceiptTell.tla	temporal	EveryReceiptIsPushed	ignore-terminal	cireceipttell	required	-
 MCSprintTablesBrokenScopeBounce.cfg	MCSprintTables.tla	action	ScopeWidenPreservesHead	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenScopeRedeal.cfg	MCSprintTables.tla	action	ScopeWidenKeepsReview	ignore-terminal	sprinttables	required	-
+MCReadBranchMissing.cfg	MCReadBranchMissing.tla	pass	-	ignore-terminal	readbranchmissing	required	-
+MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	OfferedDecisionResolves	ignore-terminal	readbranchmissing	required	-

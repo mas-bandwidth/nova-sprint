@@ -34,23 +34,90 @@ const ReaskedMissingBranch = "re-asked: the read named a branch not on origin"
 // NReadBranchMissing is the judgment of a read whose branch origin does not hold when no
 // branch of the work on origin holds its head either: written at the first such close, on the
 // primary, naming the read card and the branch. While it is open at the primary's attempt the
-// primary wants no read (ReadsWanted, readCardsWanted): the seat pushes the branch and acks it
-// (the tick asks the read again), or reworks or drops the card.
+// primary wants no read (ReadsWanted, readCardsWanted): the seat pushes the branch and asks the
+// card (ask re-asks the read and closes this once a branch on origin holds the head) or acks it
+// (the tick asks the read again), or reworks or drops the card; every verb the decisions name
+// resolves it (tla/ReadBranchMissing.tla, OfferedDecisionResolves; TestEveryDecisionResolvesItsJudgment).
 const NReadBranchMissing = "a read's branch is not on origin"
 
-// readBranchMissingOpen says an NReadBranchMissing judgment is open on the primary at its
-// attempt: it is asked no read until the judgment closes.
-func readBranchMissingOpen(s *Snapshot, pr *Card) bool {
+// openReadBranchMissing is the NReadBranchMissing judgment open on the primary at its attempt,
+// if any.
+func openReadBranchMissing(s *Snapshot, pr *Card) (Open, bool) {
 	if s == nil || pr == nil {
-		return false
+		return Open{}, false
 	}
 	attempt := readAttempt(pr)
 	for _, o := range closesFor(s.Open, []string{NReadBranchMissing}, pr.ID) {
 		if o.Note.Attempt == 0 || o.Note.Attempt == attempt {
-			return true
+			return o, true
 		}
 	}
-	return false
+	return Open{}, false
+}
+
+// readBranchMissingOpen says an NReadBranchMissing judgment is open on the primary at its
+// attempt: it is asked no read until the judgment closes.
+func readBranchMissingOpen(s *Snapshot, pr *Card) bool {
+	_, ok := openReadBranchMissing(s, pr)
+	return ok
+}
+
+// BranchCheck is what the ask asks origin of a primary with the judgment open: the brief
+// (it names the repository), the branch its read is handed (ReadBranch, the branch that was
+// not on origin) and the head the work finished at. The verb lists origin's branches and
+// returns the branch that holds the head in AskReq.Holds, "" when none does.
+type BranchCheck struct {
+	Primary, Brief, Branch, Head string
+}
+
+// ReadBranchChecks is a BranchCheck for each primary in review with the judgment open at its
+// attempt: the ask decides from what origin holds now, never from a stale answer
+// (tla/ReadBranchMissing.tla, Ask).
+func ReadBranchChecks(s *Snapshot) []BranchCheck {
+	var out []BranchCheck
+	if s == nil || s.Work == nil {
+		return out
+	}
+	for _, pr := range s.Work.Column(Review) {
+		if !readBranchMissingOpen(s, pr) {
+			continue
+		}
+		branch, _, head := attemptEnds(s, pr.ID, readAttempt(pr))
+		out = append(out, BranchCheck{Primary: pr.ID, Brief: pr.F("brief"), Branch: branch, Head: head})
+	}
+	return out
+}
+
+// askStateAt is the one reason the ask does not ask the primary now, "" when it asks
+// (tla/ReadBranchMissing.tla, AskReason and AskRefusalsAgree): plain ask and ask --another
+// both refuse from it, so they never give contradicting reasons. holds is the branch on
+// origin that holds the primary's head, when the judgment is open and origin was asked
+// (AskReq.Holds). The judgment holds the primary's reads: while it is open and no branch
+// holds the head the reason is the judgment, named, with the verbs that resolve it; when a
+// branch holds the head the plain ask re-asks the read and closes the judgment, and
+// --another, which adds a reader to a read already out, says to ask first.
+func askStateAt(s *Snapshot, c *Card, another bool, holds string) string {
+	if o, ok := openReadBranchMissing(s, c); ok {
+		j := cmp.Or(o.Note.Alias, o.Note.ID)
+		switch {
+		case holds == "":
+			return "its read's branch is not on origin (judgment " + j + ") and no branch of the work on origin holds its head: rework it with a fix (rework " + c.ID + " --answers " + j + "), or drop it; ask re-asks the read once a branch on origin holds the head"
+		case another:
+			return "its read's branch is on origin now, on " + holds + " (judgment " + j + "): ask " + c.ID + " asks the read again and closes the judgment; --another adds a reader to a read already out"
+		}
+		return ""
+	}
+	asked := askedAtAttempt(s, c)
+	if another && !asked {
+		return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
+	}
+	if !another && ReadsWanted(s, c) == 0 {
+		if len(liveReadsAt(s, c, c.Int("attempt"))) < ReadsNeededIn(s, c) {
+			return "asked already: its reads are out, or one found it broken"
+		}
+		return "asked already"
+	}
+	return ""
 }
 
 // MissingBranch is the server's finding on one read's branch at its close: the branch the
@@ -117,7 +184,7 @@ func missingBranchUnit(s *Snapshot, table string, c, pr *Card, m MissingBranch, 
 		// the seat is told at once and the primary waits on the judgment (readBranchMissingOpen)
 		j := judgment(NReadBranchMissing, pr.Row, s.Now, 0, pr.ID)
 		j.Who, j.Attempt, j.Card = cmp.Or(who, reader), c.Int("attempt"), c.ID
-		j.What = fmt.Sprintf("%s's read %s of %s names branch %s, which origin does not hold, and no branch of its work on origin holds its head %s; it is not asked again until the branch is on origin: push it and ack this, or rework, or drop",
+		j.What = fmt.Sprintf("%s's read %s of %s names branch %s, which origin does not hold, and no branch of its work on origin holds its head %s; it is not asked again until the branch is on origin: push it and ask the card or ack this, or rework with a fix, or drop",
 			reader, c.ID, pr.ID, orDash(branch), orDash(head))
 		notes = append(notes, j)
 	}

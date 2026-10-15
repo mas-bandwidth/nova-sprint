@@ -36,7 +36,7 @@ var WaitRefused = map[string]string{
 	NBriefDefect: "re-cut its brief, or drop it",
 	// a read that cannot be asked, a base or a read branch gone: the card waits on it
 	NMissingBase:       "rebase the card, or drop it",
-	NReadBranchMissing: "rework it with a fix, drop it, or ack it once its branch is on origin",
+	NReadBranchMissing: "ask it once a branch on origin holds its head, rework it with a fix, drop it, or ack it once its branch is on origin",
 	// a card the deal cannot place, or whose merge base is gone
 	NNoRoute:   "add a route, look at the card, or drop it",
 	NReadyOver: "look at the card and give the deal what it lacks, or drop it",

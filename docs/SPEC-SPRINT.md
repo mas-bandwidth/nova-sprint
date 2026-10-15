@@ -4015,10 +4015,20 @@ reached. Each such verdict sent its card to rework, a new attempt and two new re
   When the server found a branch that holds the head, the primary records it and the ask asks
   the read again on it. When no branch of the work on origin holds the head, a read asked again
   could only find the same: the seat is told at once, one judgment on the primary, "a read's
-  branch is not on origin", naming the read card and the branch (decisions: ack, once the
-  branch is on origin; rework with a fix; drop), and while it is open at the primary's attempt
-  the primary is asked no read (`ReadsWanted`, the read cards' ask); the ack lets the tick ask
-  it again. One happened note, "a read named a branch not on origin", says `re-asked: the read
+  branch is not on origin", naming the read card and the branch (decisions: ask, ack, rework
+  with a fix, drop), and while it is open at the primary's attempt the primary is asked no read
+  (`ReadsWanted`, the read cards' ask). Every verb the decisions name resolves it
+  (`tla/ReadBranchMissing.tla`, `OfferedDecisionResolves`; `TestEveryDecisionResolvesItsJudgment`
+  holds the whole decisions table to it): `rework <card> --answers <j>` closes it (it is among
+  `ReworkResolves`); `ask <card>` asks origin, and when a branch of the work on origin now holds
+  the head asks the read again on that branch (recorded on the primary) and closes the judgment
+  in the same step, and when none does is refused in one line naming the judgment and the verbs
+  that resolve it (rework with a fix, drop); `ack` lets the tick ask it again; `drop` ends the
+  card. The ask's reasons come from one state (`askStateAt`), so `ask` and `ask --another` never
+  give contradicting refusals (`AskRefusalsAgree`): `--another` adds a reader to a read already
+  out and is refused while the judgment is open, and the no-stall decisions of a card held by it
+  offer only rework and drop (`TestAMissingReadBranchJudgmentHasAVerbThatResolvesIt`,
+  `TestAMissingReadBranchOnAStore`). One happened note, "a read named a branch not on origin", says `re-asked: the read
   named a branch not on origin (<branch>); asked again on <branch>, which holds <head>` (or
   that no branch of the work on origin holds it and it is not asked again until it does). A
   friend's report closes the read card her packet names, the read asked again included, never
@@ -5295,7 +5305,7 @@ the tick would make, no other open judgment on it).
 | a friend's report needs a read | read the report (inspect the card, then acknowledge) | no |
 | a brief defect | re-cut the brief (drop, then add the re-cut card), drop | no |
 | a reader found it broken | rework (with the finding), ask --another, drop | no |
-| a read's branch is not on origin (a broken read's branch origin does not hold, and no branch of the work on origin holds its head: section 6; the primary is asked no read while it is open) | ack (the branch is on origin now: the tick asks the read again), rework with a fix, drop | yes |
+| a read's branch is not on origin (a broken read's branch origin does not hold, and no branch of the work on origin holds its head: section 6; the primary is asked no read while it is open) | ask (a branch on origin holds the head now: the read is asked again and this closes; refused naming this judgment while none does), ack (the branch is on origin now: the tick asks the read again), rework with a fix, drop | yes |
 | a card has reached its bound: the brief is wrong, not the worker | brief (a waiting card; else drop and add again), drop | no |
 | stream stopped: conflict on a card | resume (resolved), rework, drop | no |
 | stream stopped: stream branch red | return the suspect and resume, rework the suspect | no |
