@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
+	"github.com/mas-bandwidth/nova-tools/pkg/testredis"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
