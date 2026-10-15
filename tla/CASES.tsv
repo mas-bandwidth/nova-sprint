@@ -438,6 +438,7 @@ MCLandPassSlow.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
 MCLandPassBrokenInOrder.cfg	MCLandPass.tla	temporal	NoHeadOfLine	ignore-terminal	landpass	required	-
 MCLandPassBrokenLandPastBlame.cfg	MCLandPass.tla	invariant	NoHeadPastItsBlame	ignore-terminal	landpass	required	-
 MCLandPassBrokenUnblamedStops.cfg	MCLandPass.tla	action	UnblamedRefusalQueues	ignore-terminal	landpass	required	-
+MCLandPassBrokenEmptyCarried.cfg	MCLandPass.tla	invariant	CarriedHeadJudgedFromBase	ignore-terminal	landpass	required	-
 MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
@@ -705,5 +706,6 @@ MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHas
 MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
+MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
 MCStagingRepoWindow.cfg	MCStagingRepoWindow.tla	pass	-	ignore-terminal	stagingrepowindow	required	-
 MCStagingRepoWindowBrokenCardOnly.cfg	MCStagingRepoWindow.tla	invariant	NoBarredRepositoryDealt	ignore-terminal	stagingrepowindow	required	-

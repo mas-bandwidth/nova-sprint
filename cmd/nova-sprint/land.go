@@ -2295,12 +2295,14 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	for _, f := range calledVerbs(diff, registeredVerbs) {
 		why = append(why, f.String()+" (E6)")
 	}
-	// The attempt's start: an earlier attempt's pushed head when the card has one,
-	// else where this head left the base. A git error (an unknown sha) leaves the diff
-	// unjudged, so this check skips and the other checks stand (docs/SPEC-SPRINT.md
-	// section 7, the lander's checks). git diff --quiet exits 0 when no file changed.
+	// The attempt's start: an earlier attempt's pushed head when the card has one and
+	// this head moved from it, else where this head left the base (a carried head equal
+	// to start is judged from the base, as a first attempt is). A git error (an unknown
+	// sha) leaves the diff unjudged, so this check skips and the other checks stand
+	// (docs/SPEC-SPRINT.md section 7, the lander's checks). git diff --quiet exits 0
+	// when no file changed.
 	start := c.start
-	if start == "" {
+	if start == "" || start == c.head {
 		if s, err := l.git(ctx, dir, "merge-base", "refs/remotes/origin/"+c.base, c.head); err == nil && s != "" {
 			start = s
 		} else if s, err := l.git(ctx, dir, "merge-base", before, c.head); err == nil && s != "" {

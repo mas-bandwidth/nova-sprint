@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -192,20 +194,63 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 
 // measureDeadCode returns, per package, the sorted names of functions dead under
 // every tag set for at least one GOOS.
+//
+// The GOOS-by-tag-set runs are independent, so they run at once, bounded by
+// deadCodeParallel: serially they took longer than the functional tier's
+// two-minute package bound. The result is exactly the serial cascade's: there,
+// tag set i ran over the roots the sets before it kept. Each parallel run starts
+// from every root; when the cascade carries every root into set i, or the
+// run's final, successful call was over exactly the roots the cascade carries,
+// the cascade's call is that same command, and otherwise the set is run again,
+// in order, over the cascade's roots.
 func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string][]string {
 	t.Helper()
 	bin := deadcodeBinary(t, ctx, root)
-	union := map[string]bool{}
-	for _, goos := range deadCodeGOOS {
+
+	type deadRun struct {
+		dead map[string]bool
+		kept []deadCodeRoot
+		err  error
+	}
+	allRoots := make([][]deadCodeRoot, len(deadCodeGOOS))
+	for g, goos := range deadCodeGOOS {
 		roots, err := deadCodeRoots(ctx, root, goos)
 		require.NoError(t, err)
-		all := roots
+		allRoots[g] = roots
+	}
+	runs := make([][]deadRun, len(deadCodeGOOS))
+	sem := make(chan struct{}, deadCodeParallel())
+	var wg sync.WaitGroup
+	for g, goos := range deadCodeGOOS {
+		runs[g] = make([]deadRun, len(deadCodeTagSets))
+		for i, tags := range deadCodeTagSets {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, allRoots[g])
+				runs[g][i] = deadRun{dead, kept, err}
+			}()
+		}
+	}
+	wg.Wait()
+
+	union := map[string]bool{}
+	for g, goos := range deadCodeGOOS {
+		all := allRoots[g]
+		roots := all
 		var every map[string]bool
-		for _, tags := range deadCodeTagSets {
-			dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, roots)
-			require.NoError(t, err)
-			roots = kept
-			every = intersectDead(every, dead)
+		for i, tags := range deadCodeTagSets {
+			r := runs[g][i]
+			require.NoError(t, r.err)
+			if !sameRoots(r.kept, roots) && !sameRoots(roots, all) {
+				dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, roots)
+				require.NoError(t, err)
+				r = deadRun{dead: dead, kept: kept}
+			}
+			roots = r.kept
+			every = intersectDead(every, r.dead)
 		}
 		unjudged, err := skippedReach(ctx, root, goos, all, roots)
 		require.NoError(t, err)
@@ -225,6 +270,26 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 		sort.Strings(names)
 	}
 	return byPkg
+}
+
+// deadCodeParallel bounds the deadcode runs in flight. Each run loads and
+// analyses the whole program, so the bound is the machine's cores, and two at
+// the least so a small runner still overlaps one run's loading with another's
+// analysis.
+func deadCodeParallel() int {
+	return max(2, runtime.NumCPU())
+}
+
+func sameRoots(a, b []deadCodeRoot) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // skippedReach returns the packages (module-relative) reached, tests included,

@@ -19,13 +19,18 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 		w.must(Take(w.s, TakeReq{As: c.Row, Sel: Sel{IDs: []string{c.ID}}, Gens: gensOf(w.s, c.ID)}))
 		return w
 	}
+	replace := func(id, text string) BriefReq {
+		r := briefOne(id, text)
+		r.ReplaceInFlight = true
+		return r
+	}
 	finish := func(w *world) {
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Head: head, Report: "implemented the earlier task"}))
 	}
 	t.Run("working replaced", func(t *testing.T) {
 		t.Parallel()
 		w := started(t)
-		w.must(Brief(w.s, briefOne("s1-1", "a different task")))
+		w.must(Brief(w.s, replace("s1-1", "a different task")))
 		finish(w)
 		c := w.s.Work.Card("s1-1")
 		require.Equal(t, Ready, c.Col)
@@ -38,7 +43,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 		t.Parallel()
 		w := started(t)
 		finish(w)
-		w.must(Brief(w.s, briefOne("s1-1", "a different task")))
+		w.must(Brief(w.s, replace("s1-1", "a different task")))
 		assert.Equal(t, Ready, w.state("s1-1"))
 		assert.Empty(t, w.s.Work.Card("s1-1").F("head"))
 		assert.Empty(t, BaseOf(w.s.Fleet.Of("s1-1")).Head)
@@ -54,7 +59,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 	t.Run("working explicitly kept", func(t *testing.T) {
 		t.Parallel()
 		w := started(t)
-		req := briefOne("s1-1", "a different task")
+		req := replace("s1-1", "a different task")
 		req.KeepHead = true
 		p := w.must(Brief(w.s, req))
 		assert.Contains(t, strings.Join(p.Said, "\n"), "head kept: eligible for review (--keep-head)")
@@ -69,7 +74,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 		w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 		reads := len(w.s.Readers.Of("s1-1"))
 		require.NotZero(t, reads)
-		req := briefOne("s1-1", "a different task")
+		req := replace("s1-1", "a different task")
 		req.KeepHead = true
 		w.must(Brief(w.s, req))
 		assert.Equal(t, Review, w.state("s1-1"))
@@ -83,7 +88,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 	t.Run("fresh attempt after replacement", func(t *testing.T) {
 		t.Parallel()
 		w := started(t)
-		w.must(Brief(w.s, briefOne("s1-1", "a different task")))
+		w.must(Brief(w.s, replace("s1-1", "a different task")))
 		finish(w)
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 		wc := w.s.Fleet.Card("s1-1.w2")
@@ -104,7 +109,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 		before := c.F(FieldBriefAttempt)
 		brief := strings.Replace(c.F("brief"), "tier: pro", "tier: heavy", 1)
 		require.NotEqual(t, c.F("brief"), brief)
-		w.must(Brief(w.s, briefOne("s1-1", brief)))
+		w.must(Brief(w.s, replace("s1-1", brief)))
 		assert.Equal(t, before, w.s.Work.Card("s1-1").F(FieldBriefAttempt))
 		finish(w)
 		assert.Equal(t, Ready, w.state("s1-1"))
@@ -114,7 +119,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 	t.Run("explicit carry remains a coordinator choice", func(t *testing.T) {
 		t.Parallel()
 		w := started(t)
-		w.must(Brief(w.s, briefOne("s1-1", "a different task\nCARRY: s1-1 attempt 1 head="+head)))
+		w.must(Brief(w.s, replace("s1-1", "a different task\nCARRY: s1-1 attempt 1 head="+head)))
 		finish(w)
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 		wc := w.s.Fleet.Card("s1-1.w2")
@@ -129,7 +134,7 @@ func TestANewBriefBouncesAnOldHeadToRework(t *testing.T) {
 		w := started(t)
 		finish(w)
 		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"need"}, Brief: proBrief}))
-		req := briefOne("s1-1", "a different task")
+		req := replace("s1-1", "a different task")
 		req.KeepHead = true
 		req.Cards[0].Needs = []string{"need"}
 		p := Brief(w.s, req)

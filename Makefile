@@ -9,7 +9,7 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional functional-gate release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-shard release-accept help roadmap schemawire-check tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -17,10 +17,12 @@ help:
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
 	@echo "make functional  go test -tags functional -count=1 ./... (needs redis-server on PATH)"
 	@echo "make functional-gate  the tier as CI runs it: NOVA_CI=1 and a 2-minute bound per package"
-	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint (its rest leg)"
+	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint and TestDeadCode (its rest leg)"
+	@echo "make functional-gate-deadcode  TestDeadCode alone (its deadcode leg)"
 	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
+	@echo "make schemawire-check  go generate every pkg/*wire package, then git diff --exit-code -- pkg schemas (schemas/README.md)"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
 	@echo "make tlc-groups  print the groups with a case that has no current record"
@@ -59,11 +61,22 @@ functional-gate:
 
 # functional-gate-rest runs the tier without ./cmd/nova-sprint, which the
 # functional job's matrix runs sharded across three legs
-# (.github/workflows/ci.yml).
+# (.github/workflows/ci.yml), and without TestDeadCode, which its deadcode leg
+# runs alone.
 FUNCTIONAL_REST := $(filter-out %/cmd/nova-sprint,$(shell $(GO) list ./...))
 
+# the dead code rule (internal/ci/dead_code_test.go) runs alone, in its own leg,
+# under the same two-minute bound: its 18 deadcode runs each load and analyse
+# the whole program, and beside the rest leg's sibling packages on a four-core
+# runner they were still running at 2m0s (runs 38751459368, 38754975433), where
+# alone on four cores they take 45-50 s
+DEAD_CODE_TEST := ^TestDeadCode$$
+
 functional-gate-rest:
-	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s $(FUNCTIONAL_REST)
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s -skip '$(DEAD_CODE_TEST)' $(FUNCTIONAL_REST)
+
+functional-gate-deadcode:
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -tags functional -count=1 -timeout 120s -run '$(DEAD_CODE_TEST)' ./internal/ci/
 
 # functional-gate-shard runs one shard of ./cmd/nova-sprint's functional package:
 # SHARD names the shard (1..SHARDS) and SHARDS the number of them; both are
@@ -84,6 +97,29 @@ release-accept:
 roadmap:
 	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
 	$(GO) run ./tools/roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
+
+# schemawire-check is the one check of the generated wire packages
+# (schemas/README.md): a definition in schemas/<area>/ generates pkg/<area>wire/,
+# whose hand-written generate.go pins the schema compiler by its go:generate
+# line. The check regenerates every generated package, then refuses any
+# difference from what is committed under pkg/ and schemas/, and any generated
+# file left uncommitted. It is the generated files' only check: internal/ci's
+# line linters skip a file with Go's generated header. With no generated package
+# it says so and passes. A cold module cache fetches the pinned compiler once.
+schemawire-check:
+	@set -e; found=; \
+	for g in pkg/*wire/generate.go; do \
+		test -f "$$g" || continue; \
+		found=1; \
+		d=$${g%/generate.go}; \
+		echo "go generate ./$$d"; \
+		$(GO) generate "./$$d"; \
+	done; \
+	if [ -z "$$found" ]; then echo "schemawire-check: no generated pkg/*wire package yet (none holds a generate.go); nothing to regenerate"; exit 0; fi; \
+	git diff --exit-code -- pkg schemas || { echo "schemawire-check: the generated files differ from the committed ones; commit the output of go generate, never a hand edit (schemas/README.md)" >&2; exit 1; }; \
+	untracked=$$(git ls-files --others --exclude-standard -- pkg schemas); \
+	if [ -n "$$untracked" ]; then echo "schemawire-check: generated files are not committed: $$untracked; commit them (schemas/README.md)" >&2; exit 1; fi; \
+	echo "schemawire-check: OK"
 
 # tlc-require refuses (exit 2) unless TLC_JAR, TLC_OUT and TLC_GROUP are named.
 tlc-require:

@@ -102,7 +102,7 @@ TestDropGroupRefusesANeededCard
 TestDropWithRelinkRepointsTheNeed
 TestNeedsSetOnAMergingCardWithAGoneNeed
 '
-PKGS='./cmd/nova-sprint/ ./internal/sprint/ ./internal/sprint/store/ ./pkg/member/'
+PKGS='./cmd/nova-sprint/ ./internal/sprint/ ./internal/sprint/store/ github.com/mas-bandwidth/nova-tools/pkg/member'
 
 want=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | wc -l | tr -d ' ')
 run="^($(printf '%s\n' $NAMES | sed '/^$/d' | paste -sd '|' -))\$"

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmap"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 // roadmapVerbs edit and read a repository's own work record, docs/roadmap.sexp

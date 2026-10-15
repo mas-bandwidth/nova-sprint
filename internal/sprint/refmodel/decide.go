@@ -9,35 +9,34 @@ import (
 
 // The duties of today's tick, by name, in the order the machine runs them: the
 // parts of sprint.TickParts in their order (the start's level and level reads,
-// then the four tables' updates: the work pump's resolve, unserved fallback, deal, rebalance and accept, the
+// then the four tables' updates: the work pump's resolve, deal, rebalance and accept, the
 // readers' ask, the merge's resume, the fleet's presence; then the end), the unknown machines it tells of
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
 const (
-	DutyLive             = "live"              // a working card its row's live set has not named for the grace goes back ready (v1.2.6)
-	DutyStrangers        = "strangers"         // tell of a machine that beats and is no member
-	DutyPresence         = "presence"          // a member's status follows its beats
-	DutyVerdicts         = "verdicts"          // a finished work card's readers' verdict moves it to ok or failed
-	DutyFriendRedeal     = "friend-redeal"     // a friend's card past its deadline unfinished is redealt
-	DutyResolve          = "resolve"           // waiting primaries whose needs landed go ready; sentinels are reached
-	DutyResume           = "resume"            // a stream stopped on another's card goes on when it landed
-	DutyUnservedFallback = "unserved fallback" // a ready primary whose tier nothing serves falls to the strongest served tier at or below the setting
-	DutyDeal             = "deal"              // ready primaries are dealt to the members up
-	DutyRebalance        = "rebalance"         // a card queued behind lanes that all work goes to an idle lane of either side
-	DutyLevel            = "level"             // the members' backlogs are evened, at the tick's start
-	DutyLevelReads       = "level reads"       // the readers' loads are evened, at the tick's start
-	DutyAccept           = "accept"            // primaries in review with two ok reads are accepted and queued to merge
-	DutyAsk              = "ask"               // primaries in review are asked the reads they want, one at a time
-	DutyCheck            = "check"             // a broken rule and a stall are judgments
-	DutyDeadlines        = "deadlines"         // a late card or stream is a judgment
-	DutyOverdue          = "overdue"           // a judgment past its due time is marked
-	DutyDone             = "done"              // the sprint done is said to the coordinator, and the machine stops
-	DutyRemind           = "remind"            // each person due is pushed their goal
+	DutyLive         = "live"          // a working card its row's live set has not named for the grace goes back ready (v1.2.6)
+	DutyStrangers    = "strangers"     // tell of a machine that beats and is no member
+	DutyPresence     = "presence"      // a member's status follows its beats
+	DutyVerdicts     = "verdicts"      // a finished work card's readers' verdict moves it to ok or failed
+	DutyFriendRedeal = "friend-redeal" // a friend's card past its deadline unfinished is redealt
+	DutyResolve      = "resolve"       // waiting primaries whose needs landed go ready; sentinels are reached
+	DutyResume       = "resume"        // a stream stopped on another's card goes on when it landed
+	DutyDeal         = "deal"          // ready primaries are dealt to the members up
+	DutyRebalance    = "rebalance"     // a card queued behind lanes that all work goes to an idle lane of either side
+	DutyLevel        = "level"         // the members' backlogs are evened, at the tick's start
+	DutyLevelReads   = "level reads"   // the readers' loads are evened, at the tick's start
+	DutyAccept       = "accept"        // primaries in review with two ok reads are accepted and queued to merge
+	DutyAsk          = "ask"           // primaries in review are asked the reads they want, one at a time
+	DutyCheck        = "check"         // a broken rule and a stall are judgments
+	DutyDeadlines    = "deadlines"     // a late card or stream is a judgment
+	DutyOverdue      = "overdue"       // a judgment past its due time is marked
+	DutyDone         = "done"          // the sprint done is said to the coordinator, and the machine stops
+	DutyRemind       = "remind"        // each person due is pushed their goal
 )
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyUnservedFallback, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -54,7 +53,6 @@ var Duties = []Duty{
 	{DutyLevel, LevelMoves},
 	{DutyLevelReads, LevelReadsMoves},
 	{DutyResolve, ResolveMoves},
-	{DutyUnservedFallback, UnservedFallbackMoves},
 	{DutyDeal, DealMoves},
 	{DutyRebalance, RebalanceMoves},
 	{DutyAccept, AcceptMoves},
@@ -138,14 +136,6 @@ func RebalanceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, D
 // a card at its cap is the coordinator's and is dealt to no one (sprint.AtAttemptCap, the
 // deal's refusal and the tick's judgment).
 
-// UnservedFallbackMoves is the fallback the setting calls for: a ready primary whose
-// brief tier no route and no up friend serves is given the strongest served tier at or
-// below the setting, and a card not yet taken whose brief tier is served again has its
-// fallback cleared (sprint.TickUnservedFallback).
-func UnservedFallbackMoves(s Snapshot, now time.Time) []Move {
-	return oneDuty(s, now, DutyUnservedFallback)
-}
-
 // VerdictMoves is a finished work card's readers' verdict moving it to its ok
 // or failed cell (sprint.TickVerdicts).
 func VerdictMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyVerdicts) }
@@ -219,7 +209,6 @@ func decisions() []dutyOn {
 		{DutyLevel, partOn(DutyLevel)},
 		{DutyLevelReads, partOn(DutyLevelReads)},
 		{DutyResolve, partOn(DutyResolve)},
-		{DutyUnservedFallback, partOn(DutyUnservedFallback)},
 		{DutyDeal, partOn(DutyDeal)},
 		{DutyRebalance, partOn(DutyRebalance)},
 		{DutyAccept, partOn(DutyAccept)},
