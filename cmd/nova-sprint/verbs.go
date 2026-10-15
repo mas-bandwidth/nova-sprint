@@ -29,7 +29,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
@@ -41,6 +40,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
@@ -2110,6 +2110,14 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	// a key the card would carry and never have read (swarm.LintHeaderStranded;
 	// docs/SPEC-SPRINT.md section 2, the card header)
 	findings = append(findings, swarm.LintHeaderStranded([]byte(brief))...)
+	if strings.Contains(brief, "\nLAND-AFTER:") {
+		for _, f := range swarm.LintHeaderStranded([]byte(strings.ReplaceAll(brief, "\nLAND-AFTER:", "\nDEPENDS-ON:"))) {
+			if strings.HasPrefix(f.Excerpt, "DEPENDS-ON: ") && !strings.HasPrefix(strings.Split(brief, "\n")[f.Line-1], "DEPENDS-ON:") {
+				f.Excerpt = "LAND-AFTER:" + strings.TrimPrefix(f.Excerpt, "DEPENDS-ON:")
+				findings = append(findings, f)
+			}
+		}
+	}
 	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
 	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
 	return "", findings
