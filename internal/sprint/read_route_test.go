@@ -26,7 +26,7 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 		w.readersTable() // explicit legacy reader-table fixture
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 		// amy and bob are friends: the tick hands the snapshot their seats
-		w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up}, {Name: "bob", Width: 1, Status: Up}}
+		w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up}, {Name: "bob", Width: 1, Status: Up}})
 		w.s.Routes = []Route{
 			{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 			{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "q", Enabled: false},
@@ -52,7 +52,7 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 		w.t.Helper()
 		p, _ := TickAsk(w.s, TickReq{})
 		w.must(p)
-		p, _ = TickDeal(w.s, TickReq{})
+		p, _ = tickDealFixture(w.s, TickReq{})
 		w.must(p)
 	}
 
@@ -112,7 +112,7 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 		w.t.Helper()
 		p, _ := TickAsk(w.s, TickReq{})
 		w.must(p)
-		p, _ = TickDeal(w.s, TickReq{})
+		p, _ = tickDealFixture(w.s, TickReq{})
 		w.must(p)
 	}
 
@@ -163,7 +163,7 @@ func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
 	w := newWorld(t, "reader-m1", "reader-amy")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	// amy is a friend: the tick hands the snapshot her seat, held
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Held}})
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-amy": ReaderUp}
 
 	assert.False(t, w.s.ownModelReader("reader-amy"), "a held friend's reader brings no model")
@@ -173,7 +173,7 @@ func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
 
 	// unheld, the same reader brings her model and serves her tiers: the rule is the
 	// hold's, not her name's
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up}})
 	assert.True(t, w.s.ownModelReader("reader-amy"), "a friend up's reader brings her own model")
 	assert.True(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "and serves her tier")
 }
@@ -187,7 +187,7 @@ func holdingFriend(t *testing.T) (*world, *Card) {
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	w := newWorld(t, "reader-m1", ReaderPrefix+"amy")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}})
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, ReaderPrefix + "amy": ReaderUp}
 	putReview(w, "s1-1", "s1-1: a flash card\n\nThe task.", 1, 1, head)
 	rc := putRead(w, "s1-1", 1, ReaderPrefix+"amy", Asked)
@@ -211,7 +211,7 @@ func TestAHeldFriendTakesBackHerReaderReads(t *testing.T) {
 
 	// the store writes her hold: the next tick hands the snapshot her seat held. A held
 	// friend and her reader row are one member, so she brings no model and serves no tier.
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Held, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}})
 	assert.False(t, w.s.ownModelReader(ReaderPrefix+"amy"), "a held friend's reader brings no model")
 	assert.False(t, w.s.readerServesTier(ReaderPrefix+"amy", cardhdr.RouteFlash), "a held friend's reader serves no tier")
 

@@ -46,7 +46,7 @@ func TestAnUnservedTierFallsToTheStrongestServedTier(t *testing.T) {
 		t.Helper()
 		p, _ := TickUnservedFallback(w.s, TickReq{Friends: seats})
 		w.must(p)
-		q, _ := TickDeal(w.s, TickReq{Friends: seats})
+		q, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 		w.must(q)
 	}
 
@@ -75,7 +75,7 @@ func TestAnUnservedTierFallsToTheStrongestServedTier(t *testing.T) {
 
 	// phase 2: a friend up serving frontier comes up, so the brief tier is served again: the
 	// next tick clears the fallback on the untaken cards and they go back to frontier
-	tick([]FriendSeat{frontierFay(Up)})
+	tick(workerSeatFixtures([]FriendSeat{frontierFay(Up)}))
 	for _, id := range []string{"s1-1", "s1-2"} {
 		c := w.s.Work.Card(id)
 		assert.Empty(t, c.F(FieldFallbackTier), "%s's fallback is cleared", id)

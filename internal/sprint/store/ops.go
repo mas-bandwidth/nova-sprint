@@ -85,6 +85,10 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 		if err != nil {
 			return rep, nil, err
 		}
+		s.Friends, err = st.FriendSeats(ctx, s.Now)
+		if err != nil {
+			return rep, nil, err
+		}
 		// where the log and the inbox's stream end, read between the two
 		// fence reads: of the same state; each is read up to there after
 		logTail, inboxTail, err := st.B.Tails(ctx)

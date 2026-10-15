@@ -17,7 +17,7 @@ func TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
 	amy := FriendRow("amy")
-	seat := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash,pro,heavy,frontier"}
+	seat := workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash,pro,heavy,frontier"})
 	dealStarted(w, seat)
 	require.Equal(t, 4, w.s.Fleet.Count(amy, Working))
 	counts := func() [4]int {

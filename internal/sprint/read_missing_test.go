@@ -15,7 +15,7 @@ func friendReadWorld(t *testing.T) (*world, []FriendSeat, *Card) {
 	t.Helper()
 	w := readCardsWorld(t, 4, "m1")
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
-	seats := []FriendSeat{readerSeat("amy", 2, []string{"flash"}, []string{"reader"})}
+	seats := workerSeatFixtures([]FriendSeat{readerSeat("amy", 2, []string{"flash"}, []string{"reader"})})
 	dealReads(t, w, seats)
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 1, "the fixture: one read, amy's")

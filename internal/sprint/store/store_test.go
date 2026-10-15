@@ -117,6 +117,9 @@ func (h *harness) clean(when string) {
 func (h *harness) snap() *sprint.Snapshot {
 	h.t.Helper()
 	s := h.table()
+	var err error
+	s.Friends, err = h.st.FriendSeats(h.ctx, s.Now)
+	require.NoError(h.t, err)
 	pinned, err := h.st.pin(h.ctx)
 	require.NoError(h.t, err)
 	q, err := pinned.B.QueueRead(h.ctx)
