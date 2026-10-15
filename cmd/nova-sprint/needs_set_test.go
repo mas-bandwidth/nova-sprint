@@ -18,7 +18,7 @@ func needsSetWorld(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "one"))
+	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "the first card\none adds the Frobnicate verb"))
 	return ta
 }
 
@@ -27,7 +27,7 @@ func landedNeedWorld(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "one"))
+	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "the first card\none adds the Frobnicate verb"))
 	ta.ok("start")
 	ta.landStream("a", []string{""}, []string{""}, []string{""})
 	require.Equal(t, sprint.Landed, ta.primary("a-1").Col, "a-1 landed")
@@ -42,7 +42,7 @@ func TestNeedsSetMovesAReadyCardToWaiting(t *testing.T) {
 	ta.ok("add --stream a a-2 --one --brief-file " + writeBrief(t, "two"))
 	require.Equal(t, sprint.Ready, ta.primary("a-2").Col, "a-2 starts ready")
 
-	out := ta.ok("needs set a-2 --needs a-1")
+	out := ta.ok("needs set a-2 --needs 'a-1 (uses: Frobnicate)'")
 	assert.Contains(t, out, "a-2", "the move names the card")
 	assert.Contains(t, out, "waiting", "the move is printed")
 
@@ -62,7 +62,7 @@ func TestNeedsSetMovesAWaitingCardToReady(t *testing.T) {
 	ta.ok("add --stream a a-2 --one --brief-file " + writeBrief(t, "two") + " --needs a-9")
 	require.Equal(t, sprint.Waiting, ta.primary("a-2").Col, "a-2 waits on a-9")
 
-	ta.ok("needs set a-2 --needs a-1")
+	ta.ok("needs set a-2 --needs 'a-1 (uses: Frobnicate)'")
 	c := ta.primary("a-2")
 	assert.Equal(t, sprint.Ready, c.Col, "a waiting card whose needs have landed is ready")
 	assert.Equal(t, "a-1", c.F("needs"), "the landed need is recorded")
@@ -85,22 +85,23 @@ func TestNeedsSetClearEmptiesAndMovesToReady(t *testing.T) {
 	ta.clean()
 }
 
-// (iv) a need naming a card not on the table is refused, exit 1, nothing
-// written, naming it. And the verb is the coordinator's alone.
+// (iv) a need naming a card not on the table is refused, exit 2 (the DEPENDS-ON
+// grammar's depends-unknown finding), nothing written, naming it. And the verb is the coordinator's alone.
 func TestNeedsSetRefusesANeedNotOnTheTable(t *testing.T) {
 	t.Parallel()
 	ta := needsSetWorld(t)
 	ta.ok("add --stream a a-2 --one --brief-file " + writeBrief(t, "two"))
 	before := ta.applies()
 
-	code, out, errs := ta.do("needs set a-2 --needs nosuch")
-	assert.Equal(t, 1, code, "a need not on the table is refused: %q", errs)
+	code, out, errs := ta.do("needs set a-2 --needs 'nosuch (uses: Frobnicate)'")
+	assert.Equal(t, 2, code, "a need not on the table is refused before the step, as a finding of the DEPENDS-ON grammar: %q", errs)
+	assert.Contains(t, errs, "check=depends-unknown", "the finding is depends-unknown")
 	assert.NotContains(t, out, "MOVED", "nothing moved")
 	assert.Contains(t, errs, "nosuch", "the refusal names the need")
 	assert.Equal(t, before, ta.applies(), "a refused needs set wrote")
 	assert.Equal(t, "", ta.primary("a-2").F("needs"), "nothing was written")
 
-	code, _, errs = ta.do("needs set a-2 --needs a-1 --actor intruder")
+	code, _, errs = ta.do("needs set a-2 --needs 'a-1 (uses: Frobnicate)' --actor intruder")
 	assert.Equal(t, 1, code, "needs set by another actor: %q", errs)
 	assert.Contains(t, errs, "the coordinator's alone", "needs set is the coordinator's: %q", errs)
 	assert.Equal(t, before, ta.applies(), "an intruder's needs set wrote")
@@ -118,7 +119,7 @@ func TestNeedsSetOnADealtCardKeepsItsAttempt(t *testing.T) {
 	require.Equal(t, sprint.Working, before.Col, "a-2 was dealt")
 	require.Equal(t, "1", before.F("attempt"))
 
-	ta.ok("needs set a-2 --needs a-1")
+	ta.ok("needs set a-2 --needs 'a-1 (uses: Frobnicate)'")
 	c := ta.primary("a-2")
 	assert.Equal(t, sprint.Working, c.Col, "a working card stays where it is")
 	assert.Equal(t, "1", c.F("attempt"), "it keeps its attempt")
@@ -137,7 +138,7 @@ func TestNeedsSetOnACardWithAnAttemptUsesItsColumn(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "one"))
+	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "the first card\none adds the Frobnicate verb"))
 	ta.ok("add --stream a a-2 --one --brief-file " + writeBrief(t, "two"))
 	ta.deal(2)
 	ta.ok("take --as m1 a-2.w1@1")
@@ -147,7 +148,7 @@ func TestNeedsSetOnACardWithAnAttemptUsesItsColumn(t *testing.T) {
 	require.Equal(t, sprint.Ready, pr.Col, "a reviewed card returns to ready in place")
 	require.Equal(t, "1", pr.F("attempt"), "it keeps its attempt")
 
-	ta.ok("needs set a-2 --needs a-1")
+	ta.ok("needs set a-2 --needs 'a-1 (uses: Frobnicate)'")
 	c := ta.primary("a-2")
 	assert.Equal(t, sprint.Waiting, c.Col, "a ready card that gains a need not landed waits")
 	assert.Equal(t, "a-1", c.F("needs"), "the verb recorded the needs")
@@ -166,7 +167,7 @@ func TestNeedsSetRefusesALandedOrDroppedCard(t *testing.T) {
 	t.Parallel()
 	ta := landedNeedWorld(t)
 	before := ta.applies()
-	code, _, errs := ta.do("needs set a-1 --needs a-9")
+	code, _, errs := ta.do("needs set a-1 --needs 'a-9 (uses: Frobnicate)'")
 	assert.Equal(t, 1, code, "a landed card is refused: %q", errs)
 	assert.Contains(t, errs, "a-1", "the refusal names the card")
 	assert.Equal(t, before, ta.applies(), "a refused landed set wrote")
@@ -174,7 +175,7 @@ func TestNeedsSetRefusesALandedOrDroppedCard(t *testing.T) {
 	ta.ok("add --stream a a-9 --one --brief-file " + writeBrief(t, "nine"))
 	ta.ok("drop a-9 --reason 'gone'")
 	before = ta.applies()
-	code, _, errs = ta.do("needs set a-9 --needs a-1")
+	code, _, errs = ta.do("needs set a-9 --needs 'a-1 (uses: Frobnicate)'")
 	assert.Equal(t, 1, code, "a dropped card is refused: %q", errs)
 	assert.Contains(t, errs, "a-9", "the refusal names the card")
 	assert.Equal(t, before, ta.applies(), "a refused dropped set wrote")
@@ -194,10 +195,10 @@ func TestNeedsSetRewritesTheBriefsDependsOnLine(t *testing.T) {
 	ta.ok("add --stream a a-2 --one --brief-file " + path)
 
 	before := ta.primary("a-2").F("brief")
-	ta.ok("needs set a-2 --needs a-1")
+	ta.ok("needs set a-2 --needs 'a-1 (uses: Frobnicate)'")
 	after := ta.primary("a-2").F("brief")
 
-	assert.Contains(t, after, "DEPENDS-ON: a-1", "the brief's DEPENDS-ON line matches the card")
+	assert.Contains(t, after, "DEPENDS-ON: a-1 (uses: Frobnicate)\n", "the brief's DEPENDS-ON line matches the card, the reason whole")
 	assert.NotContains(t, after, "a-0", "the old need is gone from the brief")
 	assert.Equal(t, stripDepends(before), stripDepends(after), "no other line changed")
 	ta.clean()

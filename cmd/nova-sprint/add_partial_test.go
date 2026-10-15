@@ -23,7 +23,7 @@ func TestAddPartialHoldsWhatFailsAndWhatNeedsIt(t *testing.T) {
 	writeNeedsBrief(t, dir, "b1", "Fix b1.", "")
 	writeBriefFile(t, dir, "b2", passingBrief("RESULT: b2 sha=0123456789ab tier: pro\nPRIORITY: medium\nTHE TASK. Fix b2."))
 	writeNeedsBrief(t, dir, "b3", "Fix b3.", "")
-	writeBriefFile(t, dir, "b4", passingBrief("RESULT: b4 sha=000000000000 tier: pro\nDEPENDS-ON: b2\n\nFix b4."))
+	writeBriefFile(t, dir, "b4", passingBrief("RESULT: b4 sha=000000000000 tier: pro\nDEPENDS-ON: b2 (uses: Fix)\n\nFix b4."))
 	writeNeedsBrief(t, dir, "b5", "Fix b5.", "")
 	code, out, errs := ta.do("add --stream s1 --brief-dir " + dir + " --partial")
 	require.Equal(t, 1, code, "exit %d\n%s%s", code, out, errs)

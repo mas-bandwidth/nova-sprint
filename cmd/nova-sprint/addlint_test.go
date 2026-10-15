@@ -93,7 +93,7 @@ func TestAddRunsTheBriefChecksAtTheBase(t *testing.T) {
 	write(many, "m1", brief("sprint/s1", "internal/x/*.go,internal/x/testdata/**", "TestNew"))
 	// m2 chains m1 so the shared internal/x path is admitted by the needs edge;
 	// its testdata miss is then what the lint catches
-	write(many, "m2", brief("sprint/s1", "internal/x/*.go", "TestNew")+"\nNeeds: m1\n")
+	write(many, "m2", brief("sprint/s1", "internal/x/*.go", "TestNew")+"\nNeeds: m1 (uses: internal/x/new.go)\n")
 	code, out, errs = ta.do("add --stream s2 --brief-dir " + many)
 	assert.Equal(t, 2, code, "%s%s", out, errs)
 	assert.Contains(t, errs, "LINT FIX card=m2 PATHS: internal/x/*.go,internal/x/testdata/**\n")
@@ -101,7 +101,7 @@ func TestAddRunsTheBriefChecksAtTheBase(t *testing.T) {
 	assert.False(t, ta.placed("m1") || ta.placed("m2"), "one red brief refuses the whole call")
 
 	// the corrected line applied, the cards are admitted; m2 waits on m1
-	write(many, "m2", brief("sprint/s1", "internal/x/*.go,internal/x/testdata/**", "TestNew")+"\nNeeds: m1\n")
+	write(many, "m2", brief("sprint/s1", "internal/x/*.go,internal/x/testdata/**", "TestNew")+"\nNeeds: m1 (uses: internal/x/new.go)\n")
 	ok := ta.ok("add --stream s2 --brief-dir " + many)
 	assert.Contains(t, ok, "MOVED m1 -> ready stream=s2")
 	assert.Contains(t, ok, "MOVED m2 -> waiting stream=s2")

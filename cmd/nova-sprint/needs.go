@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/bench"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
@@ -87,7 +88,7 @@ func (a *app) cmdNeeds(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("needs")
 	stream := fs.String("stream", "", "the waiting cards of one stream (default: every stream)")
 	roots := fs.Bool("roots", false, "print only the roots and the width lines")
-	needs := fs.String("needs", "", "with set: the card's needs, comma separated, in place of the ones it has; each a primary on the table")
+	needs := fs.String("needs", "", "with set: the card's needs in place of the ones it has, DEPENDS-ON entries comma separated outside parentheses; each `<id> (uses: <thing>[, ...])` or `<id> (overlap: <file>; why: <reason>)`, the id a primary on the table (docs/SPEC-CARD-CONTRACT.md, The DEPENDS-ON grammar)")
 	clear := fs.Bool("clear", false, "with set: empty the card's needs")
 	answers := fs.String("answers", "", "with set: the judgments it answers, comma separated")
 	pos, err := parse(fs, args)
@@ -424,7 +425,23 @@ func (a *app) cmdNeedsSet(fs flagSet, c *common, rest []string, needs string, cl
 	if err != nil {
 		return refuse(stderr, "needs set", err.Error())
 	}
-	r := sprint.NeedsSetReq{ID: rest[0], Needs: sprint.Split(needs), Clear: clear, Answers: answers(answersNote), Who: c.actor}
+	// --needs takes the DEPENDS-ON grammar (docs/SPEC-CARD-CONTRACT.md section 2): each entry
+	// `<id> (uses: ...)` or `<id> (overlap: ...; why: ...)`, cut at commas outside parentheses;
+	// the card records the ids alone and its brief's needs line shows the entries whole. --clear
+	// is never held.
+	r := sprint.NeedsSetReq{ID: rest[0], Clear: clear, Answers: answers(answersNote), Who: c.actor}
+	if !clear {
+		r.Entries = swarm.SplitDependsOn(needs)
+		for _, e := range r.Entries {
+			r.Needs = append(r.Needs, swarm.DependsOnEntryID(e))
+		}
+		if code := a.holdNeedsSet(st, r, stderr); code != 0 {
+			return code
+		}
+		if n := swarm.DependsOverlapCountOf(needs); n > 0 {
+			c.says = append(c.says, fmt.Sprintf("OVERLAP NEEDS %d", n))
+		}
+	}
 	return a.runStep("needs set", *c, st, needsSetStep(r), stdout, stderr)
 }
 
@@ -436,4 +453,52 @@ func needsSetStep(r sprint.NeedsSetReq) store.Step {
 			return map[string][]string{sprint.Work: append([]string{r.ID}, r.Needs...)}
 		},
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSetLive(s, r) }}
+}
+
+// holdNeedsSet holds the entries needs set is given to the DEPENDS-ON grammar: the card's brief
+// with its needs line replaced by them is linted as a brief edit would be (swarm.LintDependsOn),
+// the needed briefs read from the table, so a bare id, a uses the needed card does not produce,
+// an overlap without its why or a file the two cards do not both name, and rank words in the
+// card's own text naming a need are each a finding. One red entry refuses the whole call, exit 2,
+// nothing written. A card the table does not hold is left to the step's refusal.
+func (a *app) holdNeedsSet(st *store.Store, r sprint.NeedsSetReq, stderr io.Writer) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work}, func(*sprint.Snapshot) map[string][]string {
+		return map[string][]string{sprint.Work: append([]string{r.ID}, r.Needs...)}
+	})
+	if err != nil {
+		return a.readFailed("needs set", err, stderr)
+	}
+	host := s.Work.Placed(r.ID)
+	if host == nil || host.Col == sprint.Merging || host.Col == sprint.Landed {
+		return 0 // the step refuses a card that is no primary, merging or landed, and says why
+	}
+	who := r.Who
+	if who == "" {
+		who = s.Actor
+	}
+	if sprint.NotCoordinator(s.Coordinator, who, "needs set") != "" {
+		return 0 // the verb is the coordinator's alone: the step refuses anyone else first
+	}
+	if len(r.Entries) == 0 {
+		return 0
+	}
+	// the text the card would carry: its needs line replaced, or, for a card with none, a
+	// DEPENDS-ON: line under the contract line (a card with no brief is judged on that line alone)
+	brief := host.F("brief")
+	text := sprint.SetBriefNeeds(brief, r.Entries)
+	if _, _, _, has := swarm.DependsOnLine([]byte(brief)); !has {
+		first, rest, _ := strings.Cut(brief, "\n")
+		if brief == "" {
+			first = "RESULT: " + r.ID
+		}
+		text = first + "\nDEPENDS-ON: " + strings.Join(r.Entries, ", ") + "\n" + rest
+	}
+	red := dependsFindings(s, []briefCheck{{id: r.ID, brief: text}})
+	if len(red) == 0 {
+		return 0
+	}
+	for _, f := range red {
+		fmt.Fprintln(stderr, oneline.Escape(f.String()))
+	}
+	return refuse(stderr, "needs set", fmt.Sprintf("%d DEPENDS-ON finding(s), the first %s: %s; nothing was written, every finding is a LINT DRIFT line above", len(red), red[0].Check, red[0].Excerpt))
 }

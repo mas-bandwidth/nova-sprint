@@ -224,7 +224,7 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 		{"a move", "move n1 --stream s3", "n1 changed: stream (a move)"},
 		{"a brief edit", "brief n1 --brief-file " + n1b, "n1 changed: brief"},
 		{"a priority change", "priority n1 --high --reason 'next up'", "n1 changed: priority"},
-		{"a needs edit", "needs set n1 --needs c1", "n1 changed: needs"},
+		{"a needs edit", "needs set n1 --needs 'c1 (uses: internal/c1.go)'", "n1 changed: needs"},
 	} {
 		ta.ok(c.change)
 		code, out, errs = ta.do("start")

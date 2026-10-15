@@ -34,9 +34,9 @@ func TestAddBriefDirLandsCardsInFileOrderWithTheirNeeds(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	dir := t.TempDir()
-	writeNeedsBrief(t, dir, "a", "Fix a.", "b")
-	writeNeedsBrief(t, dir, "b", "Fix b.", "c")
-	writeNeedsBrief(t, dir, "c", "Fix c.", "")
+	writeNeedsBrief(t, dir, "a", "Fix a.", "b (uses: BFrob)")
+	writeNeedsBrief(t, dir, "b", "Fix b.\nIt adds the BFrob verb.", "c (uses: CFrob)")
+	writeNeedsBrief(t, dir, "c", "Fix c.\nIt adds the CFrob verb.", "")
 	out := ta.ok("add --stream s1 --brief-dir " + dir)
 	require.Contains(t, out, "ADD OK stream=s1 cards=3 before=- moved=3")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -87,19 +87,19 @@ func TestAddBriefDirOneBadBriefRefusesAll(t *testing.T) {
 }
 
 // A Needs naming an id that is no primary on the table and no card of the call
-// refuses, naming the file and the id, and writes nothing.
+// refuses, naming the card and the id (the finding depends-unknown), and writes nothing.
 func TestAddBriefDirNeedsUnknownIDRefuses(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	dir := t.TempDir()
 	writeNeedsBrief(t, dir, "a", "Fix a.", "")
-	bad := writeNeedsBrief(t, dir, "b", "Fix b.", "ghost")
+	writeNeedsBrief(t, dir, "b", "Fix b.", "ghost (uses: Fix)")
 	writeNeedsBrief(t, dir, "c", "Fix c.", "")
 	code, out, errs := ta.do("add --stream s1 --brief-dir " + dir)
-	require.Equal(t, 1, code)
+	require.Equal(t, 2, code)
 	require.NotContains(t, out, "MOVED")
-	require.Contains(t, errs, bad)
+	require.Contains(t, errs, "card=b check=depends-unknown")
 	require.Contains(t, errs, "ghost")
 }
 
@@ -251,9 +251,9 @@ func TestAddBriefDirNeedsNamedTwiceIsStoredOnce(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream s1 x --one")
 	dir := t.TempDir()
-	writeNeedsBrief(t, dir, "a", "Fix a.", "x")
+	ta.ok("add --stream s1 x --one --brief-file " + writeNeedsBrief(t, t.TempDir(), "x", "Fix x.\nIt adds the XFrob verb.", ""))
+	writeNeedsBrief(t, dir, "a", "Fix a.", "x (uses: XFrob)")
 	ta.ok("add --stream s2 --brief-dir " + dir + " --needs x")
 	require.Equal(t, 1, strings.Count(ta.ok("card --fields a"), "NEEDS x"))
 }

@@ -1690,6 +1690,16 @@ written. `add` and `brief` both print the finding as `LINT DRIFT brief <file>: s
 its `DEPENDS-ON:` here was dealt before its dependencies landed (the owner, 2026-10-11, on
 epoch 17).
 
+**The DEPENDS-ON grammar.** A need blocks the deal, so each `DEPENDS-ON:` (or `Needs:`) entry names
+what it consumes from the needed card: `<id> (uses: <path|symbol|flag|model>[, ...])`, or
+`<id> (overlap: <file>; why: <reason>)` for an overlap kept because a conflict would cost a TLC
+rerun or a full redo, or the line is `none` or `-`; entries are separated by commas outside
+parentheses, and rank words ("best after", "independent", "not blocked") are no reason. `add`,
+`brief`, `brief check` and `needs set` refuse an entry that does not (`LINT DRIFT ... check=depends-uses`,
+exit 2, nothing written), and print `OVERLAP NEEDS <n>` for the overlaps they keep. The grammar is
+written once, in [SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), "The DEPENDS-ON grammar"; the card
+records the ids alone (`swarm.DependsOnIDs`), and a card already on the table keeps its needs.
+
 **Rules by reference** (the owner, 2026-10-02: "Rules by reference: the member injects
 fleet/child-rules.txt once; the card does not carry it; a per-repo rules file for second
 repos."; nova-tools#5174 rule 6). A brief is the card's own text; the primary's field `rules`
