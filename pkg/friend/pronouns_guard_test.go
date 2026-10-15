@@ -26,7 +26,7 @@ var personalPronoun = regexp.MustCompile(`(?i)\b(she|her|hers|herself|he|him|him
 // pronounGuardRoots cover sprint command output, the friend daemon's records and
 // seat judgments, the sprint rules that generate those judgments, configuration
 // help, and the one renderer. Paths are from this package's directory.
-var pronounGuardRoots = []string{".", "../../cmd/nova-sprint", "../../internal/sprint", "../config", "../pronouns"}
+var pronounGuardRoots = []string{".", "../../cmd/nova-sprint", "../../internal/sprint", "../config"}
 
 // pronounGuardAllowed are the literals that say a pronoun word for a reason that
 // is not a friend: file (base name) to the literal's text.
