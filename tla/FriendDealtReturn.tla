@@ -13,6 +13,15 @@ EXTENDS Naturals, FiniteSets, TLC
 \* progress (friendStarted) and Run is a job named on her beat (f.Running), each
 \* of which counts as taken (friendHasTaken) and clears the mark. Return leaves
 \* alone a friend who has taken, and it runs only for a friend who is up (up).
+\* A one-shot friend (session one-shot) is a member lane with an identity
+\* prompt: her row ("o") is dealt as a friend's row is, but her member takes by
+\* count (MemberTake: ready into mworking, no friend start receipt), finishes
+\* from working (MemberFinish, into mdone), and no friend-lane step touches
+\* her: Return, Start, Progress and Run name live friends alone, and her
+\* working cards are never bounced for want of a friend start
+\* (friendUnstartedWorking skips her seat). BadOneShot = "bounce" treats her
+\* as needing a friend start: the tick bounces her member's working card back
+\* to ready (the reversed witness OneShotWorkingStays).
 \* BadGate = "deal" breaks the gate (the reversed witness DealtNoMoreHolds);
 \* BadReturn = "mark" breaks the return's leave-alone wholesale (the tick marks a
 \* friend dealt no more even though a card she started is working on her row),
@@ -24,21 +33,22 @@ EXTENDS Naturals, FiniteSets, TLC
 \* The friendUnstartedLevel defect (a stale card moved onto a marked friend with
 \* no friendDealable check, internal/sprint/friend_start.go:249) is not modelled:
 \* it is the v1.2.14 candidate and its fix card brings the model.
-CONSTANT BadGate, BadReturn
+CONSTANT BadGate, BadReturn, BadOneShot
 
 DealtMax == 1
 
 Cards == {"c1", "c2", "c3", "c4"}
 Friends == {"a", "b"}
-Workers == Friends \cup {"fleet"}
+OneShots == {"o"}
+Workers == Friends \cup OneShots \cup {"fleet"}
 
 \* c4 is the one hard-pinned card (WHO: only friend a; pinnedTo, friend_deal.go:96):
 \* the deal hands it to a alone, and the return never hands it back.
 PinnedTo(c) == IF c = "c4" THEN "a" ELSE "none"
 Pinned(c) == PinnedTo(c) \in Friends
 
-VARIABLES owner, started, progress, dealtNoMore, age, running, up
-vars == <<owner, started, progress, dealtNoMore, age, running, up>>
+VARIABLES owner, started, progress, dealtNoMore, age, running, up, mworking, mdone
+vars == <<owner, started, progress, dealtNoMore, age, running, up, mworking, mdone>>
 
 Init == /\ owner = [c \in Cards |-> "none"]
         /\ started = {}
@@ -47,6 +57,8 @@ Init == /\ owner = [c \in Cards |-> "none"]
         /\ age = [c \in Cards |-> 0]
         /\ running = {}
         /\ up = Friends
+        /\ mworking = {}
+        /\ mdone = {}
 
 Held(w) == {c \in Cards : owner[c] = w}
 Room(w) == Cardinality(Held(w)) < 2            \* DealAhead (two) times a width of one
@@ -67,14 +79,14 @@ Deal(c, w) == /\ owner[c] = "none"
               /\ (w \in Friends => (Dealable(w) \/ BadGate = "deal"))
               /\ owner' = [owner EXCEPT ![c] = w]
               /\ age' = [age EXCEPT ![c] = 0]
-              /\ UNCHANGED <<started, progress, dealtNoMore, running, up>>
+              /\ UNCHANGED <<started, progress, dealtNoMore, running, up, mworking, mdone>>
 
 \* a friend's take of a card: it is working once she starts it, and her start
 \* clears the dealt-no-more mark (until she stops taking again).
 Start(c) == /\ owner[c] \in Friends /\ c \notin started /\ c \notin progress
             /\ started' = started \cup {c}
             /\ dealtNoMore' = dealtNoMore \ {owner[c]}
-            /\ UNCHANGED <<owner, progress, age, running, up>>
+            /\ UNCHANGED <<owner, progress, age, running, up, mworking, mdone>>
 
 \* a ready card carrying her progress is started (friendStarted): the tick's
 \* friendStartUnits promotes it to working this same tick, and her start clears
@@ -82,30 +94,30 @@ Start(c) == /\ owner[c] \in Friends /\ c \notin started /\ c \notin progress
 Progress(c) == /\ owner[c] \in Friends /\ c \notin started /\ c \notin progress
                /\ progress' = progress \cup {c}
                /\ dealtNoMore' = dealtNoMore \ {owner[c]}
-               /\ UNCHANGED <<owner, started, age, running, up>>
+               /\ UNCHANGED <<owner, started, age, running, up, mworking, mdone>>
 
 \* a job named on her beat (f.Running) counts as taken, and clears the mark as a
 \* take does.
 Run(f) == /\ f \in Friends /\ f \notin running
           /\ running' = running \cup {f}
           /\ dealtNoMore' = dealtNoMore \ {f}
-          /\ UNCHANGED <<owner, started, progress, age, up>>
+          /\ UNCHANGED <<owner, started, progress, age, up, mworking, mdone>>
 
 StopRun(f) == /\ f \in Friends /\ f \in running
               /\ running' = running \ {f}
-              /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, up>>
+              /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, up, mworking, mdone>>
 
 Up(f) == /\ f \in Friends /\ f \notin up
           /\ up' = up \cup {f}
-          /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running>>
+          /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running, mworking, mdone>>
 
 Down(f) == /\ f \in Friends /\ f \in up
             /\ up' = up \ {f}
-            /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running>>
+            /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running, mworking, mdone>>
 
 \* the tick ages each card a friend holds toward the dealt bound.
 Age == /\ age' = [c \in Cards |-> IF owner[c] \in Friends /\ age[c] <= DealtMax THEN age[c] + 1 ELSE age[c]]
-       /\ UNCHANGED <<owner, started, progress, dealtNoMore, running, up>>
+       /\ UNCHANGED <<owner, started, progress, dealtNoMore, running, up, mworking, mdone>>
 
 \* the cards the return hands back: ready on her row (not started, not carrying
 \* progress), past the dealt bound, and not her hard pin — unless the broken
@@ -131,9 +143,29 @@ Return(f) == /\ f \in Friends
              /\ Returnable(f) /= {}
              /\ dealtNoMore' = dealtNoMore \cup {f}
              /\ owner' = [c \in Cards |-> IF c \in Returnable(f) THEN "none" ELSE owner[c]]
-             /\ UNCHANGED <<started, progress, age, running, up>>
+             /\ UNCHANGED <<started, progress, age, running, up, mworking, mdone>>
+
+\* a one-shot's member takes a card dealt to her row by count, as any fleet
+\* member does: it is working from the take, with no friend start.
+MemberTake(c) == /\ owner[c] \in OneShots /\ c \notin mworking /\ c \notin mdone
+                 /\ mworking' = mworking \cup {c}
+                 /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running, up, mdone>>
+
+\* her member finishes from working: the card is done on her row, credited to
+\* her (the server's claim).
+MemberFinish(c) == /\ c \in mworking
+                   /\ mdone' = mdone \cup {c}
+                   /\ mworking' = mworking \ {c}
+                   /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running, up>>
+
+\* the broken tick: a one-shot treated as needing a friend start has her
+\* member's working card bounced back to ready, again and again.
+Bounce(c) == /\ BadOneShot = "bounce" /\ c \in mworking
+             /\ mworking' = mworking \ {c}
+             /\ UNCHANGED <<owner, started, progress, dealtNoMore, age, running, up, mdone>>
 
 Next == \/ \E c \in Cards, w \in Workers : Deal(c, w)
+        \/ \E c \in Cards : MemberTake(c) \/ MemberFinish(c) \/ Bounce(c)
         \/ \E c \in Cards : Start(c) \/ Progress(c)
         \/ \E f \in Friends : Return(f) \/ Run(f) \/ StopRun(f) \/ Up(f) \/ Down(f)
         \/ Age
@@ -152,7 +184,13 @@ TakenNeverMarked == \A f \in Friends : f \in dealtNoMore => ~Taken(f)
 \* a hard-pinned card is never returned to the pool.
 PinnedNeverReturned == [][\A c \in Cards : owner[c] \in Friends /\ owner'[c] = "none" => ~Pinned(c)]_vars
 
+\* a one-shot's working card stays working until her member finishes it: no
+\* tick step bounces it for want of a friend start.
+OneShotWorkingStays == [][\A c \in Cards : c \in mworking => c \in mworking' \/ c \in mdone']_vars
+
 TypeOK == /\ owner \in [Cards -> Workers \cup {"none"}]
+          /\ mworking \subseteq Cards
+          /\ mdone \subseteq Cards
           /\ started \subseteq Cards
           /\ progress \subseteq Cards
           /\ dealtNoMore \subseteq Friends

@@ -1541,6 +1541,13 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
+	if friend, ok := FriendOfRow(r.As); ok && (r.Lane != 0 || r.LaneByID) && s.FriendIsOneShot(friend) {
+		// a one-shot friend's row is worked by a member, by count, never by a friend lane
+		// (FriendOneShot): a lane's take for it is refused, naming the member that serves it
+		var p Plan
+		p.refuse("take", OneShotLaneRefusal(friend))
+		return p
+	}
 	if r.LaneByID {
 		return NamedLaneTake(s, r)
 	}
