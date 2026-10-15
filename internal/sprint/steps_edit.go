@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // The coordinator's edits of primaries: brief replaces a primary's brief in place, on a
@@ -53,7 +53,7 @@ const FieldWaitsAfter = "waits_after"
 const FieldBriefKeepHead = "brief_keep_head"
 
 // FieldHeadBriefAttempt tracks head provenance separately from the task bound:
-// even a routing-only replacement supersedes an in-flight brief.
+// semantic replacement supersedes an in-flight brief; operational notes do not.
 const FieldHeadBriefAttempt = "head_brief_attempt"
 
 // AttemptPredatesBrief is the shared eligibility rule for finish and card checks.
@@ -98,6 +98,8 @@ type BriefReq struct {
 	NeedsFromBrief bool
 	// KeepHead lets the current attempt or held review head survive this edit.
 	KeepHead bool
+	// ReplaceInFlight authorizes a semantic replacement while an attempt is working.
+	ReplaceInFlight bool
 	// Reason is why a re-tier names (nova-sprint tier --set <t> --reason): recorded
 	// with the tier, for the log.
 	Reason string
@@ -111,7 +113,7 @@ type BriefReq struct {
 
 // Brief replaces primaries' briefs in place (nova-sprint brief; docs/SPEC-SPRINT.md,
 // the brief verb): each a primary waiting, ready or in review, on a RUNNING machine
-// as on a STOPPED one; a card merging or landed keeps its brief; a working card takes one for its next attempt. A running
+// as on a STOPPED one; a card merging or landed keeps its brief; a working card requires ReplaceInFlight for semantic changes; operational notes preserve its binding. A running
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
 // card keeps its id, stream and score; its needs follow the new brief's
@@ -177,8 +179,24 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			continue
 		}
 		c := s.Work.Placed(b.ID)
-		// a DEPENDS-ON line alone is taken in any state, the machine running or the card dealt
-		if c != nil && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
+		if c != nil && !IsSentinel(c) && c.Col == Working {
+			// tla/SprintTables.tla OperationalEdit: only operational text changes;
+			// preserve provenance, task/decision bounds, needs and all held evidence.
+			if operationalBriefOnly(c.F("brief"), b.Brief) && b.Rules == c.F(FieldRules) &&
+				(r.Tier == "" || r.Tier == c.F(FieldTier)) && sameNeeds(Split(c.F("needs")), kept[b.ID]) {
+				seen[b.ID] = true
+				said := fmt.Sprintf("brief edited in place by %s at attempt %d: %s; operational edit preserves in-flight head", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
+				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": b.Brief, "why": cutText(said, MaxCardTextBytes)}))}, Moved: said})
+				continue
+			}
+			if !r.ReplaceInFlight {
+				p.refuse(b.ID, fmt.Sprintf("%s is working attempt %d: changing more than CARRY, RESUME or ROUTE NOTE requires --replace-in-flight; nothing was changed", b.ID, c.Int("attempt")))
+				continue
+			}
+		}
+		// Outside working, a DEPENDS-ON-only edit retains its existing needs path.
+		// Working replacements must also invalidate the old head below.
+		if c != nil && c.Col != Working && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
 			seen[b.ID] = true
 			// the needs rule holds on this path too (docs/SPEC-SPRINT.md, the needs):
 			// the text's DEPENDS-ON is the admission-time list, so a need the relink
@@ -790,6 +808,42 @@ func briefChange(old, brief string) string {
 		out = append(out, "+ "+cutText(l, 160))
 	}
 	return cutText(strings.Join(out, " | "), 1024)
+}
+
+// operationalBriefOnly compares all non-operational lines byte for byte and in
+// order. A note is a whole, column-zero header, never a paragraph/continuation.
+// Removing a note is deliberately not the add/change exception.
+func operationalBriefOnly(old, brief string) bool {
+	strip := func(text string) (string, map[string]int) {
+		var body []string
+		counts := make(map[string]int)
+		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+			key := ""
+			for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
+				if strings.HasPrefix(line, candidate) {
+					key = candidate
+					break
+				}
+			}
+			if key == "" {
+				body = append(body, line)
+			} else {
+				counts[key]++
+			}
+		}
+		return strings.Join(body, "\n"), counts
+	}
+	a, ac := strip(old)
+	b, bc := strip(brief)
+	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") || a != b {
+		return false
+	}
+	for key, count := range ac {
+		if bc[key] < count {
+			return false
+		}
+	}
+	return true
 }
 
 // sameLines says two briefs hold the same lines, trimmed, blank lines left out, in any

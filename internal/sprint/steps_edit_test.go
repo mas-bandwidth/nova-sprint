@@ -131,12 +131,14 @@ func TestBriefRefusesAMergingOrLandedCard(t *testing.T) {
 		assert.Empty(t, p.Units, tc.name)
 		assert.Contains(t, p.Refused[0].Why, "a-1 is "+tc.col+": a card "+tc.col+" keeps its brief", tc.name)
 	}
-	// A working card accepts a brief in place for its next attempt.
+	// A working card accepts an explicitly authorized replacement for its next attempt.
 	w := editWorld(t)
 	w.place(w.s.Work, "a-1", "a", Working)
 	w.s.Work.Placed("a-1").Fields["attempt"] = "1"
 	w.s.Running = true
-	p := Brief(w.s, briefOne("a-1", "new"))
+	req := briefOne("a-1", "new")
+	req.ReplaceInFlight = true
+	p := Brief(w.s, req)
 	require.Empty(t, p.Refused, "working")
 	require.Len(t, p.Units, 1, "working")
 	assert.Contains(t, p.Units[0].Moved, "a-1 brief edited in place", "working")

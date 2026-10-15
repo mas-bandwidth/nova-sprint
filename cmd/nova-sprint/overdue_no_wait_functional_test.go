@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"

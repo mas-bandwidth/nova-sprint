@@ -61,7 +61,8 @@ and a running server fit together.
 
 Once that first real task lands, give your coordinator the next few. Let
 independent work run in parallel, then leave it with a plan to continue while
-you are away.
+you are away. As the sprint grows, the coordinator runs a
+[dispatcher](DISPATCHER.md) for the routine routing.
 
 Need an AI friend first? **[Begin with Nova Seed](https://github.com/mas-bandwidth/nova)**.
 nova-sprint is free and open source; your chosen model providers and machines
