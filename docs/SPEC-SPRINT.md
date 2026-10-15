@@ -7959,10 +7959,10 @@ is start's, and its read and the RUNNING write are two steps, not one: a value w
 them is not seen by that start. While RUNNING, a fresh server record that lands nothing raises
 the judgment `machine:landsnothing` ("the server lands nothing").
 
-**The card check** (v1.2.17, start-refuses-until-a-clean-check; the owner, 2026-10-13: "OK so
+**The card check** (v1.2.17, start-refuses-until-a-clean-check, reversed in v1.4.1 to start-warns-never-gates; the owner, 2026-10-13: "OK so
 all the card checks we do now, should be a new verb 'nova-sprint check'", "if you start a
 sprint before checking, then it will fail and tell you to check."; tla/MachineReady.tla Check,
-CardChange, StartRefusedCheck, StartOnlyChecked, CleanRecordHasNoDefect). The night of
+CardChange, StartUnchecked, StartOnlyChecked, StartNeverGatedByCheck, CleanRecordHasNoDefect). The night of
 2026-10-13 the seat ran the pre-start card checks by hand before the schema sprint could start.
 `nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]`, a coordinator verb beside `check` (the
 store's invariants, unchanged), reads the epoch's work table (every card not dropped, and the
@@ -8001,18 +8001,22 @@ the machine's record and keyed by epoch as it is: one of another epoch reads as 
 leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
 stream, tier, priority, needs and the sha256 of its brief) with one digest over them. A failed
 run overwrites a clean one; a `--stream` check's record names its streams and never opens the
-start. **The gate**: `start` from READY or STOPPED reads the record before the machine changes,
-beside the out-of-credit refusal, and refuses, exit 1, nothing written, one line: with no record
-for the epoch, `run nova-sprint check cards first: no check record for epoch <n>`; with a failed
-record, `run nova-sprint check cards: the last check found <kinds>`; with a clean record whose
-digest is not the cards' now, `run nova-sprint check cards: the cards changed since the check
-(<first card added, removed or changed, and which field>)`. The digest is recomputed from the
-live table, so an admit, a move, a brief, needs, priority or tier change voids the record with no
-hook in those verbs. A start on a RUNNING machine changes nothing. There is no waiver: no flag,
-variable or setting skips the gate; `newApp` sets it on, and only the test rigs whose bare
-starts run on briefless `--count` cards keep it off. A mem twin (`--redis mem:<file>`, for
-learning and tests, never a fleet's) is not gated, so the help's walkthrough and the
-first-run transcript run as written; `check cards` runs on a twin as anywhere. `selftest` adds its card with a minimal
+start. **The report** (v1.4.1; Glenn, 2026-10-15: a check reports, it never gates infrastructure): `start`
+from READY or STOPPED reads the record before the machine changes, beside the out-of-credit
+refusal, and starts the machine whatever it says (exit 0). When the record is not a clean full check of the cards now it
+prints one `WARN` line on stderr and the machine starts anyway: with no record for the epoch,
+`start: WARN run nova-sprint check cards first: no check record for epoch <n>; the machine starts anyway`; with a
+failed record, `... check cards: the last check found <kinds>`; with a `--stream` record,
+`... the last check covered stream(s) <s> only`; with a clean record whose digest is not the cards' now, `... the cards changed since the check
+(<first card added, removed or changed, and which field>)`; and with a clean record, one `CHECK` line a provider
+finding of the routes (the funded-provider facts) and a `WARN <n> provider finding(s)` line. A clean check that matches the
+cards prints no `WARN`. The digest is recomputed from the
+live table, so an admit, a move, a brief, needs, priority or tier change makes the record stale with no
+hook in those verbs. A start on a RUNNING machine changes nothing and reads nothing. No flag,
+variable or setting is needed to start: the check is advice, never a gate. A mem twin (`--redis mem:<file>`, for
+learning and tests, never a fleet's) prints no report, so the help's walkthrough and the
+first-run transcript run as written; `check cards` runs on a twin as anywhere. This is the card check's
+record alone: the live unresolved-needs refusal (section 9, rule 11) and the settings gate are separate rules, unchanged here. `selftest` adds its card with a minimal
 brief that lints clean, names its stream, and runs `check cards` before its `start`.
 
 **One lander** (v1.2.17; tla/OneLander.tla AtMostOneLander, ServerIsTheLander). The server

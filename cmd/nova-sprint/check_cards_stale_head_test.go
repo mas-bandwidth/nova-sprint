@@ -28,7 +28,7 @@ func seedDrained(ta *testApp, cards []ntable.BatchMemberEntry) {
 	require.Empty(ta.t, res.Refused)
 }
 
-func TestStartRefusesOnAStaleHeadUntilItIsReworked(t *testing.T) {
+func TestStartWarnsOnAStaleHeadUntilItIsReworked(t *testing.T) {
 	t.Parallel()
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	ta := gateOn(t)
@@ -52,11 +52,12 @@ func TestStartRefusesOnAStaleHeadUntilItIsReworked(t *testing.T) {
 	assert.Equal(t, []string{"stale-head stale"}, checkLines(out))
 	assert.Contains(t, out, "CHECK stale-head stale head "+head+" of attempt 1 was made under an earlier brief remedy=nova-sprint rework stale --fix 'brief replaced'")
 
-	// start refuses naming the kind
+	// start warns naming the kind, and starts
 	code, _, errs := ta.do("start")
-	require.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "the last check found stale-head:1")
-	assert.False(t, ta.machineRunning())
+	require.Equal(t, 0, code, errs)
+	assert.Contains(t, errs, "WARN run nova-sprint check cards: the last check found stale-head:1")
+	assert.True(t, ta.machineRunning())
+	ta.ok("stop --reason 'rework follows' --until 30m")
 
 	// after rework <card> --fix 'brief replaced' the check is clean
 	ta.ok("rework stale --fix 'brief replaced'")
