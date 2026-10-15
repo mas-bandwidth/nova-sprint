@@ -2233,6 +2233,7 @@
    :why "Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap."
    :date "2026-10-15"
    :origin "sprint card adoption-is-measured (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15"
+   :release "v1.5"
    :kept (:sprint-card "adoption-is-measured" :sprint-stream "v13-blockers" :sprint-column "ready" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "" :pushed-branch ""))
   (item "release-gates-are-card-receipts" :group "export-v13-blockers" :area "nova-sprint"
    :title "release-gates-are-card-receipts"
@@ -2240,6 +2241,7 @@
    :why "Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap."
    :date "2026-10-15"
    :origin "sprint card release-gates-are-card-receipts (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15"
+   :release "v1.5"
    :kept (:sprint-card "release-gates-are-card-receipts" :sprint-stream "v13-blockers" :sprint-column "waiting" :tier "" :sprint-base "v1.3/comms" :needs "every-merge-builds-the-release" :pushed-head "" :pushed-branch ""))
   (item "release-drill-under-five-minutes" :group "export-v13-blockers" :area "nova-sprint"
    :title "release-drill-under-five-minutes"
@@ -2247,6 +2249,7 @@
    :why "Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap."
    :date "2026-10-15"
    :origin "sprint card release-drill-under-five-minutes (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15"
+   :release "v1.5"
    :kept (:sprint-card "release-drill-under-five-minutes" :sprint-stream "v13-blockers" :sprint-column "waiting" :tier "" :sprint-base "v1.3/comms" :needs "every-merge-builds-the-release,release-gates-are-card-receipts,release-push-deploy,adoption-is-measured" :pushed-head "" :pushed-branch ""))
   (item "a-member-hold-releases-itself-at-its-time" :group "export-v15-features" :area "nova-sprint"
    :title "a-member-hold-releases-itself-at-its-time"

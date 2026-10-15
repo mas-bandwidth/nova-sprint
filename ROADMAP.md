@@ -2519,6 +2519,8 @@ RESULT: adoption-is-measured sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sp
 
 Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
 
+Target: v1.5
+
 From: sprint card adoption-is-measured (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15
 
 ### release-gates-are-card-receipts
@@ -2527,6 +2529,8 @@ RESULT: release-gates-are-card-receipts sha=<sha12> tier: frontier REPO: mas-ban
 
 Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
 
+Target: v1.5
+
 From: sprint card release-gates-are-card-receipts (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
 
 ### release-drill-under-five-minutes
@@ -2534,6 +2538,8 @@ From: sprint card release-gates-are-card-receipts (stream v13-blockers, column w
 RESULT: release-drill-under-five-minutes sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: acceptance PRIORITY: blocker STREAM: v13-blockers WHO: friend STOP: one real release drill has run from the last landing on the stable line to 100% fleet adoption through the new pipeline, every step's time recorded by `nova-sprint release drill` in docs/RELEASE-DRILLS.md, and DONE-WHEN holds; or Source: The owner, 2026-10-15: no more than 5 minutes from the last landing to a release adopted across the fleet, ideally 1 minute to deploy across the fleet; today it takes 30 to 45 minutes. The fifth card of the fast release pipeline: a real drill from landing to fleet adoption, timings recorded; done at 5 minutes or less end to end and 60 seconds or less for the deploy step. Work audited 2026-10-15. No pushed head.
 
 Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+Target: v1.5
 
 From: sprint card release-drill-under-five-minutes (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
 
