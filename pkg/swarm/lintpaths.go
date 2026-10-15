@@ -43,6 +43,8 @@ import (
 //	base-is-live          BASE is a sprint base origin holds, never a temporary or deleted one
 //	tier-set              line 1 names a tier, never `-`
 //	tla-is-heavy-or-above a card whose PATHS covers tla/ is tier heavy or frontier
+//	model-gate-named      a card whose PATHS or NEW reaches a .tla or .cfg under tla/ names a
+//	                      STEP that runs `make tlc` or `tlacheck` and a GATE-NEEDS line with tla
 //	spike-paths-research  a KIND: spike or tracer brief names in PATHS and NEW only paths
 //	                      under the research roots (ResearchRoots); its code travels as
 //	                      perf/experiments/<id>/experiment.patch, never as source
@@ -74,10 +76,18 @@ var BriefBaseRemedies = map[string]string{
 	"tla-is-heavy-or-above": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
 	// tla-is-frontier is the rule's old token, kept as an alias for one release.
 	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
+	"model-gate-named":     ModelGateRemedy,
 	"spike-paths-research": "a spike or tracer is never the product: what it keeps is what it taught, not its code, so its KIND: spike or tracer brief names in PATHS: and NEW: only paths under docs/research/, rnd/, perf/, benchmark/experiments/ or benchmark/findings/; deliver the code as a patch file (NEW: perf/experiments/<id>/experiment.patch beside perf/findings/<id>.md and perf/experiments/<id>/raw.txt) and edit no source file, or cut the production change as its own card with another KIND",
 	"paths-cover-registry": "a C or C++ suite builds and runs only the test sources its registry names (a Makefile listing them, test/main.c running each suite, a CMakeLists.txt adding each file), so a card adding a test source changes the registry too: name each registry the finding names on PATHS:; apply the corrected PATHS: line add printed",
 	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
 }
+
+// ModelGate is the sentence internal/cardgen appends to a model card's STEP 4 gate so the
+// worker runs the model and merges tla/RUNS.tsv before committing.
+const ModelGate = "The PATHS reach tla/, so the gate also runs the model: on a Linux TLC bench (java, the pinned jar at /opt/tla/tla2tools.jar; never a working machine), for each group g that `go run ./tools/tlacheck groups --root . --stale` lists (the groups of the cases your edit touched), run `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g`, then `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv $JOB/scratch/tlc-*/RUNS.tsv`, until the groups command prints []; commit tla/RUNS.tsv with the change, never a row written by hand. The lander refuses a head that edits tla/*.tla or tla/*.cfg without a current RUNS.tsv row for each case it touches, naming the case."
+
+// ModelGateRemedy is what model-gate-named wants when PATHS or NEW reaches a .tla or .cfg under tla/.
+const ModelGateRemedy = "when PATHS: or NEW: reaches a .tla or .cfg under tla/, some STEP must run `make tlc` or `tlacheck` and a `GATE-NEEDS:` line must name `tla` (e.g., `GATE-NEEDS: linux, tla`): \"" + ModelGate + "\""
 
 // PathsReadRemedy is the correction for read-only metadata written in PATHS.
 const PathsReadRemedy = "move the read-only file to START with (read) and keep only files the card writes in PATHS"
@@ -430,6 +440,11 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		add("tla-is-heavy-or-above", 1, fmt.Sprintf("PATHS covers tla/, a TLA+ model, and line 1 names tier %s, below heavy", orElse(model.Tier, "-")))
 	}
 
+	// 10a. model-gate-named.
+	if line, why := modelGateMissing(raw, h); why != "" {
+		add("model-gate-named", line, why)
+	}
+
 	// 10b. spike-paths-research runs above, before the PATHS: return (spikeOutsideResearch).
 
 	// 10c. paths-cover-registry.
@@ -486,6 +501,103 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		fix = append(fix, tierLine(firstLine(raw), cardhdr.RouteHeavy))
 	}
 	return out, fix
+}
+
+// modelStepToolRE matches the model runner a STEP names (`make tlc` or `tlacheck`).
+var modelStepToolRE = regexp.MustCompile(`\bmake\s+(?:-\S+\s+)*tlc\b|\btlacheck\b`)
+
+// reachesModelFile says the PATHS or NEW entry e reaches a .tla or .cfg under tla/.
+func reachesModelFile(e string) bool {
+	e = cleanEntry(e)
+	if diffcheck.Covers(e, "tla/M.tla") || diffcheck.Covers(e, "tla/MCM.cfg") ||
+		hygiene.MatchGlob(e, "tla/M.tla") || hygiene.MatchGlob(e, "tla/MCM.cfg") {
+		return true
+	}
+	return strings.HasPrefix(e, "tla/") && (path.Ext(e) == ".tla" || path.Ext(e) == ".cfg")
+}
+
+// modelTouchLine is the line of the first PATHS or NEW header whose entries reach a .tla or
+// .cfg under tla/; 0 when neither does.
+func modelTouchLine(h map[string]headerField) int {
+	for _, key := range []string{"PATHS", "NEW"} {
+		f := h[key]
+		if !f.found {
+			continue
+		}
+		if slices.ContainsFunc(headerList(f.value), reachesModelFile) {
+			return f.line
+		}
+	}
+	return 0
+}
+
+// stepRunsModel says the brief has at least one STEP line (steps > 0) and whether some STEP
+// paragraph runs `make tlc` or `tlacheck`.
+func stepRunsModel(raw []byte) (steps int, runs bool) {
+	in := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "STEP ") || strings.HasPrefix(t, "STEP\t") || strings.HasPrefix(t, "STEP:") || strings.HasPrefix(t, "STEP."):
+			steps++
+			in = true
+		case t == "" || taskHeadRE.MatchString(t):
+			in = false
+		}
+		if in && modelStepToolRE.MatchString(t) {
+			runs = true
+		}
+	}
+	return steps, runs
+}
+
+// gateNeedsTLA says a GATE-NEEDS header line names tla.
+func gateNeedsTLA(raw []byte, h map[string]headerField) bool {
+	if slices.ContainsFunc(headerList(h["GATE-NEEDS"].value), func(n string) bool {
+		return strings.EqualFold(n, "tla")
+	}) {
+		return true
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
+			if slices.ContainsFunc(headerList(v), func(n string) bool { return strings.EqualFold(n, "tla") }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// modelGateMissing returns the line and refusal for model-gate-named when PATHS or NEW reaches
+// a .tla or .cfg under tla/ and the brief omits either a STEP running `make tlc` or `tlacheck`
+// or a GATE-NEEDS line naming `tla`. A header-only stub with no STEP lines and no REPO, BASE,
+// STOP, GATE-NEEDS or NEW header is not a stepped brief and is not held here.
+func modelGateMissing(raw []byte, h map[string]headerField) (int, string) {
+	line := modelTouchLine(h)
+	if line == 0 {
+		return 0, ""
+	}
+	steps, hasTool := stepRunsModel(raw)
+	if steps == 0 && !h["REPO"].found && !h["BASE"].found && !h["STOP"].found && !h["GATE-NEEDS"].found && !h["NEW"].found {
+		return 0, ""
+	}
+	hasGateNeeds := gateNeedsTLA(raw, h)
+	if !hasGateNeeds && hasTool && !h["REPO"].found && !h["BASE"].found && !h["GATE-NEEDS"].found {
+		if _, task := taskParagraph(raw); task == "" && strings.Contains(string(raw), "on a Linux bench, then: /tmp/tlacheck merge") {
+			hasGateNeeds = true
+		}
+	}
+	if hasTool && hasGateNeeds {
+		return 0, ""
+	}
+	var miss []string
+	if !hasTool {
+		miss = append(miss, "no STEP runs `make tlc` or `tlacheck`")
+	}
+	if !hasGateNeeds {
+		miss = append(miss, "no GATE-NEEDS line names `tla`")
+	}
+	return line, fmt.Sprintf("PATHS or NEW reaches a .tla or .cfg under tla/, and %s; %s", strings.Join(miss, " and "), ModelGateRemedy)
 }
 
 // ResearchRoots are the directories a KIND: spike or tracer brief may name in PATHS: and NEW:
