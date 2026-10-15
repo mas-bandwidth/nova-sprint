@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // The card lint reads no text inside a fenced code block: a fenced block is a program or
@@ -15,8 +15,11 @@ import (
 // example — is admitted, and the parent-path rule reads no walk there either. The same
 // lines outside a fence are still read, so the rules keep their teeth.
 //
-// This pins the fix of swarm-lint-card-false-refusals: the child scan (lintchild.go) and
-// the parent-path rule (lintparent.go) both skipped the fence before this card.
+// This pins the fix of swarm-lint-card-false-refusals for the child scan (lintchild.go).
+// The parent-path rule is nova-tools' (pkg/swarm lintparent.go), which reads a walk inside
+// a fence as a walk: a card's commands live in fences, so `cd ../scratch` in a fenced
+// block is still a finding. That is a superseded sprint hunk, taken from nova-tools when
+// nova-sprint's copy of pkg/swarm was deleted.
 func TestCardLintReadsNoTextInsideAFencedBlock(t *testing.T) {
 	t.Parallel()
 	rules := append(append([]swarm.ChildRule{}, swarm.DefaultChildRules...),
@@ -34,8 +37,8 @@ func TestCardLintReadsNoTextInsideAFencedBlock(t *testing.T) {
 		assert.Falsef(t, strings.HasPrefix(f.Check, "step-"),
 			"the fenced block drew %s on line %d: %s", f.Check, f.Line, f.Excerpt)
 	}
-	assert.Empty(t, swarm.CardParentPaths(strings.Split(fenced, "\n")),
-		"a parent path inside a fenced block is not a walk")
+	assert.Equal(t, []int{6}, swarm.CardParentPaths(strings.Split(fenced, "\n")),
+		"a `cd ../scratch` inside a fenced command block is still a walk (nova-tools' rule)")
 
 	unfenced := "STEP 3. Run go test ./internal/x\n" +
 		"STEP 4. Run the gate, then rm -rf /tmp/cache\n" +

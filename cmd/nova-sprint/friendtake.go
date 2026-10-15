@@ -10,9 +10,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	toolsfriend "github.com/mas-bandwidth/nova-tools/pkg/friend"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // A friend's cards taken back (docs/SPEC-SPRINT.md section 1, a friend's card taken back;
