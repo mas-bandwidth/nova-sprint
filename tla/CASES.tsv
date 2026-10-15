@@ -438,6 +438,7 @@ MCLandPassSlow.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
 MCLandPassBrokenInOrder.cfg	MCLandPass.tla	temporal	NoHeadOfLine	ignore-terminal	landpass	required	-
 MCLandPassBrokenLandPastBlame.cfg	MCLandPass.tla	invariant	NoHeadPastItsBlame	ignore-terminal	landpass	required	-
 MCLandPassBrokenUnblamedStops.cfg	MCLandPass.tla	action	UnblamedRefusalQueues	ignore-terminal	landpass	required	-
+MCLandPassBrokenEmptyCarried.cfg	MCLandPass.tla	invariant	CarriedHeadJudgedFromBase	ignore-terminal	landpass	required	-
 MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
@@ -456,6 +457,7 @@ MCLoadCacheBrokenAhead.cfg	MCLoadCache.tla	invariant	LoadIsSnapshot	ignore-termi
 MCLoadCacheBrokenNoMark.cfg	MCLoadCache.tla	invariant	LoadIsSnapshot	ignore-terminal	loadcache	required	-
 MCLoadCacheBrokenNoEpochKey.cfg	MCLoadCache.tla	invariant	LoadIsOfItsEpoch	ignore-terminal	loadcache	required	-
 MCRouteRest.cfg	MCRouteRest.tla	pass	-	ignore-terminal	routerest	required	-
+MCRouteRestBrokenSilentProvider.cfg	MCRouteRest.tla	temporal	SilentProviderEventuallyRests	ignore-terminal	routerest	required	-
 MCRouteRestBrokenNoResult.cfg	MCRouteRest.tla	action	RestOnlyByProviderOrCoordinator	ignore-terminal	routerest	required	-
 MCRouteRestBrokenBalance.cfg	MCRouteRest.tla	action	RestOnlyByProviderOrCoordinator	ignore-terminal	routerest	required	-
 MCRouteRestBrokenSilent.cfg	MCRouteRest.tla	temporal	LowIsRaised	ignore-terminal	routerest	required	-
@@ -515,6 +517,7 @@ MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	requi
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
 MCJudgmentRetire.cfg	MCJudgmentRetire.tla	pass	-	ignore-terminal	judgment-retire	required	-
 MCJudgmentRetireBrokenAbsentStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterTick	ignore-terminal	judgment-retire	required	-
+MCJudgmentRetireBrokenFriendStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterTick	ignore-terminal	judgment-retire	required	-
 MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsLive.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
@@ -707,3 +710,10 @@ MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnO
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
 MCQueueWait.cfg	MCQueueWait.tla	pass	-	check	queuewait	required	-
 MCQueueWaitBrokenCursorSkips.cfg	MCQueueWait.tla	invariant	CursorNeverSkips	check	queuewait	required	-
+MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
+MCStageNeeds.cfg	MCStageNeeds.tla	pass	-	check	stageneeds	required	-
+MCStageNeedsBrokenStaleTip.cfg	MCStageNeeds.tla	invariant	NoChildWithoutLandedNeeds	check	stageneeds	required	-
+MCFriendGive.cfg	MCFriendGive.tla	pass	-	ignore-terminal	friendgive	required	-
+MCFriendGiveBrokenDoneIsDealt.cfg	MCFriendGive.tla	invariant	GiveReachesABouncedCard	ignore-terminal	friendgive	required	-
+MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLandingOnUnjudgedTip	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-

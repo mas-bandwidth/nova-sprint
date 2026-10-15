@@ -127,9 +127,62 @@ CONSTANTS Every, MaxClock, Broken, Kind
 VARIABLES holds, seen, open, acked, first, again, clk, written, pushes,
           marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
           quiet, sawQuiet
-vars == <<holds, seen, open, acked, first, again, clk, written, pushes,
+episodeVars == <<holds, seen, open, acked, first, again, clk, written, pushes,
           marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
           quiet, sawQuiet>>
+
+\* The pre-landing outside-push gate. Tip numbers stand for immutable commits;
+\* only a successful lander push records landedTip. An ancestor relationship alone
+\* never certifies an outside descendant. The gate is judged at the exact tip.
+\* -1 is an absent record after startup/upgrade; even its first red is signalled.
+VARIABLES baseTip, landedTip, judgedTip, baseRed, outsideOpen, triedUngated,
+          triedRed
+outsideVars == <<baseTip, landedTip, judgedTip, baseRed, outsideOpen,
+                triedUngated, triedRed>>
+vars == <<episodeVars, outsideVars>>
+OutsideInit ==
+  /\ baseTip = 0
+  /\ landedTip \in (IF Kind = "outside" /\ Broken = "none" THEN {-1, 0} ELSE {0})
+  /\ judgedTip = landedTip
+  /\ baseRed \in (IF landedTip = -1 THEN BOOLEAN ELSE {FALSE})
+  /\ outsideOpen = FALSE
+  /\ triedUngated = FALSE /\ triedRed = FALSE
+
+OutsidePush ==
+  /\ baseTip < 2
+  /\ baseTip' = baseTip + 1
+  /\ baseRed' \in (IF Broken = "outsidepush" THEN {TRUE} ELSE BOOLEAN)
+  /\ UNCHANGED <<landedTip, judgedTip, outsideOpen, triedUngated, triedRed>>
+
+OutsideGate ==
+  /\ judgedTip # baseTip
+  /\ judgedTip' = baseTip
+  /\ outsideOpen' = baseRed
+  /\ UNCHANGED <<baseTip, landedTip, baseRed, triedUngated, triedRed>>
+
+OutsideLand ==
+  /\ Broken = "outsidepush" \/ (judgedTip = baseTip /\ ~baseRed)
+  /\ triedUngated' = (triedUngated \/ judgedTip # baseTip)
+  /\ triedRed' = (triedRed \/ baseRed)
+  /\ UNCHANGED <<baseTip, landedTip, judgedTip, baseRed, outsideOpen>>
+
+\* A gated successful lander push supplies the next certified tip. This action
+\* cannot bless an arbitrary descendant; OutsidePush never changes landedTip.
+LanderPush ==
+  /\ judgedTip = baseTip /\ ~baseRed /\ baseTip < 2
+  /\ baseTip' = baseTip + 1
+  /\ landedTip' = baseTip + 1
+  /\ judgedTip' = baseTip + 1
+  /\ UNCHANGED <<baseRed, outsideOpen, triedUngated, triedRed>>
+
+OutsideTypeOK ==
+  /\ baseTip \in 0..2 /\ landedTip \in -1..2 /\ judgedTip \in -1..2
+  /\ baseRed \in BOOLEAN /\ outsideOpen \in BOOLEAN
+  /\ triedUngated \in BOOLEAN /\ triedRed \in BOOLEAN
+NoLandingOnUnjudgedTip == ~triedUngated
+NoLandingOnRedTip == ~triedRed
+KnownLanderTipJudged == landedTip = baseTip => judgedTip = baseTip
+OutsideRedSignalled == (judgedTip = baseTip /\ baseRed) => outsideOpen
 
 \* The escalation step: three windows (the code: BehindEscalateEvery, three PassEvery).
 EscEvery == 3 * Every
@@ -160,6 +213,7 @@ TypeOK ==
   /\ sawQuiet \in BOOLEAN
 
 Init ==
+  /\ OutsideInit
   /\ holds = FALSE /\ seen = FALSE /\ open = FALSE /\ acked = FALSE
   /\ first = -1 /\ again = 0 /\ clk = 0 /\ written = 0 /\ pushes = 0
   /\ marks = {} /\ newLate = 0 /\ lastPush = -1 /\ tickPushes = 0
@@ -361,7 +415,12 @@ Unquiet ==
                  marks, newLate, lastPush, tickPushes, watchAt, streak, dealt,
                  stoppedAt, lvl, unknown, sawUnknown, review, sawQuiet>>
 
-Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet
+Next ==
+  IF Kind = "outside"
+    THEN (OutsidePush \/ OutsideGate \/ OutsideLand \/ LanderPush)
+         /\ UNCHANGED episodeVars
+    ELSE (Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet)
+         /\ UNCHANGED outsideVars
 
 Spec == Init /\ [][Next]_vars
 

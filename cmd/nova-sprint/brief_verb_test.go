@@ -123,7 +123,7 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 	// a working card takes its brief for the next attempt: the call that names one writes BRIEF OK
 	writeNeedsBrief(t, dir, "a-1", "the new work", "")
 	writeNeedsBrief(t, dir, "a-2", "the newest second", "")
-	out = ta.ok("brief --dir " + dir)
+	out = ta.ok("brief --replace-in-flight --dir " + dir)
 	assert.Contains(t, out, "BRIEF OK moved=3 refused=0")
 	assert.Contains(t, out, "a-1 brief edited in place")
 	assert.Contains(t, out, "a-2 brief replaced")
@@ -143,7 +143,7 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 // brief on a working card is accepted (the owner, 2026-10-10: "what else is manual that
 // should be automatic from the machine"): the new brief is stored in the primary, and the
 // next attempt's packet carries it.
-func TestBriefOnAWorkingCardIsAccepted(t *testing.T) {
+func TestBriefOnAWorkingCardRequiresExplicitReplacement(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
@@ -152,7 +152,11 @@ func TestBriefOnAWorkingCardIsAccepted(t *testing.T) {
 	assert.Equal(t, sprint.Working, ta.primary("a-1").Col, "a-1 is working")
 
 	good := writeBrief(t, "the new work")
-	out := ta.ok("brief a-1 --brief-file " + good)
+	code, _, errs := ta.do("brief a-1 --brief-file " + good)
+	require.Equal(t, 1, code)
+	assert.Contains(t, errs, "working attempt 1")
+	assert.Contains(t, errs, "--replace-in-flight")
+	out := ta.ok("brief a-1 --replace-in-flight --brief-file " + good)
 	assert.Contains(t, out, "a-1 brief edited in place")
 	assert.Equal(t, strings.TrimSuffix(passingBrief("the new work"), "\n"), ta.primary("a-1").F("brief"))
 	assert.Equal(t, sprint.Working, ta.primary("a-1").Col)

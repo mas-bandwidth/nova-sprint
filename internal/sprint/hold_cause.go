@@ -356,10 +356,11 @@ func durationWords(d time.Duration) string {
 
 // NoModelCall says a take ended with no result and no model call, by its member's word:
 // its child wrote no result and its usage reported no token (none at all, or zero of every
-// class). The sprint sees only what the member reported, so a child killed after it did
-// call the model, whose harness reported no token, counts here too.
+// class), except a proved silent provider request (silentProvider), which counts
+// toward RestProvider instead. The sprint sees only what the member reported, so a
+// child killed after it did call the model, whose harness reported no token, counts here too.
 func NoModelCall(t ProviderTake) bool {
-	if !IsNoResult(strings.TrimSpace(t.Error)) {
+	if silentProvider(t) || !IsNoResult(strings.TrimSpace(t.Error)) {
 		return false
 	}
 	u := cardcost.ParseUsage(t.Usage)

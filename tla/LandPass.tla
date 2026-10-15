@@ -680,6 +680,36 @@ NoHeadPastItsBlame ==
     LET p == pushes[i] IN
       p.how = "prefix" => Landed(p.s) \cap {h \in Heads : h >= blame[p.s]} = {}
 
+BugEmptyCarried == Broken = "emptycarried"
+
+\* checkCard's empty-commit diff (cmd/nova-sprint/land.go): on a first attempt
+\* (start = "first") or a carried head equal to start (start = "carried"), the
+\* diff is read from merge-base(origin/base, head) (baseDiff); when start # head
+\* (start = "advanced"), it is read from start (stepDiff). With emptycarried, a
+\* carried head equal to start is diffed against start (itself, {}) instead of
+\* the merge-base.
+EmptyCheckDiff(start, baseDiff, stepDiff) ==
+  IF start = "first" \/ (start = "carried" /\ ~BugEmptyCarried)
+  THEN baseDiff
+  ELSE IF start = "carried"
+  THEN {}
+  ELSE stepDiff
+
+EmptyCommitRefused(start, baseDiff, stepDiff) ==
+  EmptyCheckDiff(start, baseDiff, stepDiff) = {}
+
+\* When a stream merges a batch (phase[s] # "queued"), a carried head that changes
+\* the base (Touches[s] # {}) is not refused as an empty commit, while a head that
+\* changes nothing from the base ({}) is still refused whether first or carried,
+\* and an advanced head is still judged from its start.
+CarriedHeadJudgedFromBase ==
+  \A s \in Streams :
+    phase[s] # "queued" =>
+      /\ (Touches[s] # {} => ~EmptyCommitRefused("carried", Touches[s], {}))
+      /\ EmptyCommitRefused("carried", {}, {})
+      /\ EmptyCommitRefused("first", {}, {})
+      /\ EmptyCommitRefused("advanced", Touches[s], {})
+
 RefusalTouchesNoOtherStream ==
   [][\A s \in Streams : Refuse(s) => batchBase' = batchBase /\ \A t \in Streams \ {s} : phase'[t] = phase[t] /\ cut'[t] = cut[t]]_vars
 

@@ -32,19 +32,19 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
@@ -1051,7 +1051,7 @@ func versionCommand(args []string, build string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, versionLine())
 		return 0
 	}
-	fx, err := roadmapdoc.DecodeFixes("fixes.sexp", docs.FixesSexp)
+	fx, err := roadmap.DecodeFixes("fixes.sexp", docs.FixesSexp)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s version: the compiled fixes ledger does not decode: %s\n", prog, err)
 		return 1
@@ -1067,7 +1067,7 @@ func versionCommand(args []string, build string, stdout, stderr io.Writer) int {
 // a release at or below build (semantic version order), or, when build is not a
 // release (a dev build: devel, a vcs stamp), the fixes of the shipped releases
 // alone (docs/SPEC-SPRINT.md section 11, the version verb).
-func versionCarried(build string, fx *roadmapdoc.Fixes) map[string]bool {
+func versionCarried(build string, fx *roadmap.Fixes) map[string]bool {
 	shipped := map[string]bool{}
 	for _, r := range fx.Releases {
 		if r.Status == "shipped" {
@@ -1093,14 +1093,14 @@ func versionCarried(build string, fx *roadmapdoc.Fixes) map[string]bool {
 // the one line saying the unreleased fixes of its tree are not listed
 // (docs/SPEC-SPRINT.md section 11, the version verb). With jsonOut it prints
 // {version, fixes:[{release,id,title}]} instead.
-func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool, jsonOut bool, stdout, stderr io.Writer) int {
+func versionFeatures(build string, fx *roadmap.Fixes, carried map[string]bool, jsonOut bool, stdout, stderr io.Writer) int {
 	index := map[string]int{}
 	for i, f := range fx.Items {
 		if _, ok := index[f.ID]; !ok {
 			index[f.ID] = i
 		}
 	}
-	var items []roadmapdoc.Fix
+	var items []roadmap.Fix
 	for _, f := range fx.Items {
 		if carried[f.ID] {
 			items = append(items, f)
@@ -1141,8 +1141,8 @@ func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool
 // section 11, the version verb): exit 0 when it does; exit 1, naming the
 // release, when the ledger names the fix in a later release or does not name it
 // at all.
-func versionHas(id, build string, fx *roadmapdoc.Fixes, carried map[string]bool, stdout, stderr io.Writer) int {
-	var found *roadmapdoc.Fix
+func versionHas(id, build string, fx *roadmap.Fixes, carried map[string]bool, stdout, stderr io.Writer) int {
+	var found *roadmap.Fix
 	for i := range fx.Items {
 		if fx.Items[i].ID == id {
 			found = &fx.Items[i]

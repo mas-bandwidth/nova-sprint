@@ -81,7 +81,8 @@ nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run])
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
-nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] | --dir <dir> [--rules <file>] [--keep-head] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] [--replace-in-flight] | --dir <dir> [--rules <file>] [--keep-head] [--replace-in-flight] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] [--replace-in-flight] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--replace-in-flight] [--dry-run]
+# While working, only additions or changes to whole CARRY:, RESUME: or ROUTE NOTE: lines preserve the in-flight binding automatically. Other brief edits require --replace-in-flight, naming the working attempt on refusal. Metadata changes through flags are not operational notes.
 # A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
@@ -128,9 +129,10 @@ nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
 nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
-nova-sprint friend give <friend> <id>... [--reason <text>]
-nova-sprint friend level
-nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
+nova-sprint friend give <friend> <id>... [--reason <text>]   # hands a ready card to her at its next attempt, from no friend too: its current work card Done (a brief-replaced bounce) or absent; refused when that work card is live (Ready or Working on a row), a hard pin names another friend (nova-sprint unpin), or her tiers, restriction or the card's needs refuse it; a friend not up is no refusal, the card waits on her row
+ nova-sprint friend level
+ nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config, writes JOB.md naming the finish command; refuses a card not on her row or a friend with no git_identity
+ nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
 nova-sprint reader up <reader>...   # a bare member name is prefixed too
@@ -142,6 +144,7 @@ nova-sprint ci <id>... (--red | --green) --epoch <n> [--head <h>] [--run <id>] [
 nova-sprint wait <note> (--for <duration> | --until <RFC3339>)
 nova-sprint ack <note>... --reason <text>
 nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]
+# answer --every <d> is the coordinator seat's loop (60s): between passes it blocks on the inbox stream from the last note it has seen (XREAD BLOCK on the inbox), so a judgment committed there ends the wait and the next pass runs at once; a quiet inbox runs a pass at --every, the backstop that catches a lost push. The cursor is the inbox's tail as the wait woke, read before the pass, so a note committed during a pass ends the next wait at once and none is skipped. A backend that cannot block, a twin, and a loop through the sprint's server (NOVA_SPRINT_SERVER) wait --every on the clock between passes, as before
 nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--deadline <duration>] [--stale <duration>]
 nova-sprint card <id> [--brief | --fields] [--json] [--at-epoch <n>]
 nova-sprint card (--all | --stream <s>) --json [--at-epoch <n>]
@@ -666,8 +669,10 @@ fetched once a call, read with git and no go command. The tokens are `paths-at-b
 `paths-cover-ledgers`, `paths-cover-docs`, `base-is-live`, `tier-set`, `tla-is-heavy-or-above` and
 `who-serves-tier`; each finding is a `LINT DRIFT card=<id> check=<token> line=<n>: <excerpt>
 remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line>` line (the
-`PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
-exit 2, nothing written. A `TEST:` line is accepted in its Go form
+ `PATHS:`, `NEW:` or `SHARED:` line, or line 1, with every addition applied), then one refusal,
+ exit 2, nothing written. Each refusal at the base is recorded in the server's refused-verb
+ record under the verb, the card id and the rule tokens it drew in Why, so a later review
+ counts refusals per rule from the record; an accepted add records nothing. A `TEST:` line is accepted in its Go form
 (`[-tags <tags>] <package> <TestName>`) or its ctest form (`ctest <TestName>`, for a
 C++/CMake repository), and a ctest test is searched in `CMakeLists.txt` and `*.cmake`
 rather than in `*.go`; preflight's TEST check does the same, and the brief check accepts a
