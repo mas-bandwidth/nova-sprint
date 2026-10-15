@@ -8,7 +8,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (211)
-- [Setup, release and operations](#setup-release-and-operations) (27)
+- [Setup, release and operations](#setup-release-and-operations) (32)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
@@ -1974,6 +1974,56 @@ The playbook replicates the SQLite record continuously, and a restore from the r
 Target: after v1.4
 
 From: issue #2555
+
+### The adopt step store does not report a false half move
+
+On every non-seat host the adopt prints "REFUSED step=store, a half move" even when the install worked. The step must report what it did. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### The adopt friends step installs freddy with width and model
+
+On mini-m5-1 the friends step refuses the freddy install because nova-friend install needs --width and --model, which the play does not pass. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### The adopt window stops the sprint server reliably
+
+The studio adopt window does not always stop the sprint server within 180 s. The stop must drain readers and succeed, or say why. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### Adopt warns when a --limit host is not in the inventory
+
+adopt --limit <host> silently does nothing for a host missing from nova-inventory. It must warn, naming the host. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### nova-sprint live agrees with nova-hook status
+
+nova-sprint live refused while nova-hook status showed proven (seen 2026-10-15 ~20:5xZ). Pull request 416 (v1.3.17, the hook gate accepts a silent proven name) may have fixed it: verified 2026-10-15 on v1.3.18, live reports OK while status is proven. Close unless it recurs; kept as a regression check. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
 
 ## Docs, models and the repository
 
