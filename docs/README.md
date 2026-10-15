@@ -19,6 +19,7 @@ through review and landing.
 | How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-from-waiting-to-landed) |
 | What are cards, streams, dependencies, and sentinels? | [Workflow glossary](sprint/GLOSSARY.md), then [the sprint contract](SPEC-SPRINT.md) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |
+| How do I coordinate at low cost? | [dispatcher](DISPATCHER.md) |
 | How do commands connect to a store or server? | [Environment reference](ENVIRONMENT.md) |
 | What is the exact command? | [Command reference](CLI.md) |
 | How do I open the dashboard? | [Dashboard guide and specification](SPEC-SPRINT-DASHBOARD.md#serving-and-publishing) |

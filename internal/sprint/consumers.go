@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // The consumer history is the producer card's record of every consumer the machine

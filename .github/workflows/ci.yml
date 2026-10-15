@@ -77,6 +77,8 @@ jobs:
   # ubuntu-latest: redis-server is installed as the store the tests spawn their
   # own throwaway servers from, a missing redis-server fails closed under
   # NOVA_CI=1, and each package is bounded at two minutes by make functional-gate.
+  # The deadcode leg runs TestDeadCode alone (Makefile, DEAD_CODE_TEST): beside the
+  # rest leg's packages it did not finish inside the two minutes.
   functional:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -86,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: [rest, "1/3", "2/3", "3/3"]
+        leg: [rest, deadcode, "1/3", "2/3", "3/3"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -98,6 +100,7 @@ jobs:
         run: |
           case "${{ matrix.leg }}" in
             rest) make functional-gate-rest ;;
+            deadcode) make functional-gate-deadcode ;;
             1/3) make functional-gate-shard SHARD=1 SHARDS=3 ;;
             2/3) make functional-gate-shard SHARD=2 SHARDS=3 ;;
             3/3) make functional-gate-shard SHARD=3 SHARDS=3 ;;

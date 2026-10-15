@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // A COORDINATOR'S HOLD ENDS WHEN ITS CAUSE ENDS (the owner, 2026-10-13: "I am frustrated
