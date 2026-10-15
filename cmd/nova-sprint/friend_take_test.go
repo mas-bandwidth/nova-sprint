@@ -207,7 +207,7 @@ func TestFriendTakeAllUnstartedTakesOnlyTheCardsDealtAndNotTaken(t *testing.T) {
 	}
 	for id := range working {
 		assert.NotContains(t, dry, "WOULD "+id)
-		assert.Contains(t, dry, "NOTE friend amy keeps "+id+": it is working on her row")
+		assert.Contains(t, dry, "NOTE friend amy keeps "+id+": it is working on the friend's row")
 	}
 
 	out := ta.ok("friend take amy --all-unstarted --reason rebalance")
@@ -228,7 +228,7 @@ func TestFriendTakeAllUnstartedTakesOnlyTheCardsDealtAndNotTaken(t *testing.T) {
 	}
 	code, _, errs = ta.do("friend take amy " + one)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "is in flight with friend amy: it is working on her row; withdrawing it mid-flight wants --working")
+	assert.Contains(t, errs, "is in flight with friend amy: it is working on the friend's row; withdrawing it mid-flight wants --working")
 	out = ta.ok("friend take amy " + one + " --working")
 	assert.Contains(t, out, "NOTE WARNING: withdraws 1 working card(s) from friend amy mid-flight: "+one)
 	assert.Contains(t, out, one+" withdrawn")

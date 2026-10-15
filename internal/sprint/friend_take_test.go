@@ -80,7 +80,7 @@ func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 	assert.Equal(t, Working, w.s.Fleet.Card("s1-2.w1").Col, "the started one stays with her")
 	assert.Equal(t, 2, w.s.Fleet.Count(amy, Working)+w.s.Fleet.Count(amy, Ready))
 	said := strings.Join(p.Said, "\n")
-	assert.Contains(t, said, "friend amy keeps s1-1.w1: it is working on her row")
+	assert.Contains(t, said, "friend amy keeps s1-1.w1: it is working on the friend's row")
 	assert.Contains(t, said, "friend amy keeps s1-2.w1: her beat names it running")
 	assert.NotContains(t, said, "WARNING", "no working card withdrawn")
 	assert.Empty(t, Check(w.s, nil))

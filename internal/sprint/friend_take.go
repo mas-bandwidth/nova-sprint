@@ -99,7 +99,7 @@ type FriendTakeReq struct {
 func FriendCardInFlight(c *Card) string {
 	switch {
 	case c.Col == Working:
-		return "it is working on her row"
+		return "it is working on the friend's row"
 	case c.F("taken") != "" || c.F("first_taken") != "":
 		return "a take is recorded on it"
 	case c.F(FieldProgress) != "":

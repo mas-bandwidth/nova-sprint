@@ -57,7 +57,7 @@ func TestAllUnstartedSelectsOnlyTheCardsDealtAndNotTaken(t *testing.T) {
 	}
 	said := strings.Join(p.Said, "\n")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
-		assert.Contains(t, said, "friend amy keeps "+id+": it is working on her row")
+		assert.Contains(t, said, "friend amy keeps "+id+": it is working on the friend's row")
 	}
 	assert.NotContains(t, said, "WARNING")
 	assert.Contains(t, said, "marked=2")
@@ -88,7 +88,7 @@ func TestAWorkingCardNamedWithoutWorkingIsRefused(t *testing.T) {
 	p := FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-2"}, Who: "rowan"})
 	require.Len(t, p.Refused, 1)
 	assert.Equal(t, "s1-2", p.Refused[0].Key)
-	assert.Equal(t, "s1-2.w1 is in flight with friend amy: it is working on her row; withdrawing it mid-flight wants --working", p.Refused[0].Why)
+	assert.Equal(t, "s1-2.w1 is in flight with friend amy: it is working on the friend's row; withdrawing it mid-flight wants --working", p.Refused[0].Why)
 	assert.Empty(t, p.Units)
 
 	// a ready card named, not taken, needs no --working
