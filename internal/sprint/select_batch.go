@@ -466,10 +466,11 @@ func RecutSel(s *Snapshot, r RecutSelReq) Plan {
 // BriefSelReq is brief by selector: every selected card's own brief with Edit made, and
 // with Tier re-tiered, in one step.
 type BriefSelReq struct {
-	Sel  Selector
-	Tier string    `json:",omitempty"`
-	Edit BriefEdit `json:",omitempty"`
-	Who  string
+	Sel             Selector
+	Tier            string    `json:",omitempty"`
+	Edit            BriefEdit `json:",omitempty"`
+	Who             string
+	ReplaceInFlight bool `json:",omitempty"`
 }
 
 // BriefSel is brief by selector (docs/SPEC-SPRINT.md, "One selector, one step"): each
@@ -500,7 +501,7 @@ func BriefSel(s *Snapshot, r BriefSelReq) Plan {
 					}
 					return p
 				}
-				return Brief(cur, BriefReq{Cards: []BriefCard{{ID: id, Brief: brief, Rules: c.F(FieldRules)}}, Who: r.Who})
+				return Brief(cur, BriefReq{Cards: []BriefCard{{ID: id, Brief: brief, Rules: c.F(FieldRules)}}, Who: r.Who, ReplaceInFlight: r.ReplaceInFlight})
 			})
 		}
 		if r.Tier != "" {
