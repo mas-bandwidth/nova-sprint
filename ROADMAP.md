@@ -14,6 +14,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
+- [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -2468,3 +2469,55 @@ Why it waits: Scoped out of the sprint by Glenn 2026-10-15 ("anything in v1.5 th
 Target: v1.7
 
 From: sprint card a-member-hold-releases-itself-at-its-time (stream v15-features, column working, tier , base v1.5), moved out of the sprint 2026-10-15
+
+## Moved out of the sprint on 2026-10-15: target v1.5
+
+Cards that were merging when Glenn moved the rest into v1.5 (2026-10-15); one item per card with its pushed heads and any head not on origin.
+
+### sprint-config-from-nova-tools
+
+RESULT: sprint-config-from-nova-tools sha=<sha12> tier: heavy CARRY: sprint-config-from-nova-tools attempt 5 Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 64766041b9f9 (stella; origin sprint/sprint-config-from-nova-tools.w1.g4.e21); 902376d7e973 (rowan; origin sprint/sprint-config-from-nova-tools.w2.g1.e21); ca143cc02b6f (rowan; origin sprint/sprint-config-from-nova-tools.w4.g1.e21); b457e417fa2e (rowan; origin sprint/sprint-config-from-nova-tools.w6.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### sprint-swarm-from-nova-tools
+
+RESULT: sprint-swarm-from-nova-tools sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: Glenn, 2026-10-15 13:16Z: card Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 6ccfc0d2bbc7 (rowan; origin sprint/sprint-swarm-from-nova-tools.w1.g1.e21); 7184b6c61e9a (emma; origin sprint/sprint-swarm-from-nova-tools.w2.g1.e21); 65a79bfdbb58 (emma; origin sprint/sprint-swarm-from-nova-tools.w3.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### sprint-seat-environment-from-seatcred
+
+RESULT: sprint-seat-environment-from-seatcred sha=<sha12> tier: pro CARRY: sprint-seat-environment-from-seatcred attempt 3 Source: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, findings F6 and Heads: 8886ebfec6b8 (vision; origin sprint/sprint-seat-environment-from-seatcred.w2.g1.e21); b7e150bfbab2 (hetzner1; origin sprint/sprint-seat-environment-from-seatcred.w4.g2.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### a-need-names-what-it-consumes
+
+RESULT: a-need-names-what-it-consumes sha=<sha12> tier: frontier CARRY: a-need-names-what-it-consumes attempt 2 Source: Glenn ~15:02Z 2026-10-15: "How can we remember and enforce not putting toooooo restrictive dependencies on cards in future? I love the rigor, but we don't really need things Heads: 1f8c2fbf29f7 (rowan; origin sprint/a-need-names-what-it-consumes.w2.g1.e21); 60e5fc07a7d0 (emma; origin sprint/a-need-names-what-it-consumes.w3.g2.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### lander-checks-docs-against-the-candidate-verbs
+
+RESULT: lander-checks-docs-against-the-candidate-verbs sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the lander's Source: the coordinator, 2026-10-15: the card bench-grants-owned-by-the-sprint-server adds the verb `nova-sprint grant` and documents it; the installed lander (v1.3.14) reads the Heads: a42017f5fbfb (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w1.g1.e21); 784ff63034e8 (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w2.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### an-ended-read-record-never-blocks-ask
+
+RESULT: an-ended-read-record-never-blocks-ask sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: `nova-sprint ask` Source: the coordinator, epoch 21 (2026-10-15): `ask` refused with code=MEMBEREXISTS: `member "virtualgo-research-a.r1.batman~21": member identity already exists: expected absent, Heads: a70d422b59eb (rowan; origin sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
