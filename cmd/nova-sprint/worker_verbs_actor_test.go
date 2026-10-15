@@ -41,8 +41,10 @@ func TestEveryWorkerVerbRunsAsItsWorkerWithNoActor(t *testing.T) {
 		"stop-return": {line: "stop-return --as m1 --reason r s1-1.w1@1", actor: "m1", setup: heldByM1},
 		"fleet beat":  {line: "fleet beat m1", actor: "m1"},
 		"friend beat": {line: "friend beat friend-a", actor: "friend-a"},
-		"lane take":   {line: "lane take go --machine bench --as m1", actor: "m1"},
-		"lane give":   {line: "lane give go --machine bench --as m1", actor: "m1"},
+		// friend stage is refused (the card is not dealt) before it clones: it names the friend with --as friend.<name>
+		"friend stage": {line: "friend stage s1-1.w1@1 --as friend.friend-a", actor: "friend-a"},
+		"lane take":    {line: "lane take go --machine bench --as m1", actor: "m1"},
+		"lane give":    {line: "lane give go --machine bench --as m1", actor: "m1"},
 		// remind is any actor's (coordinator.go:47): its --for defaults to the
 		// caller's --actor (remind.go:82), so it is run with --actor <member> and
 		// without one is refused by the actor line; checked in its own test below.

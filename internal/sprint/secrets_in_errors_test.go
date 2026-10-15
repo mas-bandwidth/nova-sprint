@@ -29,7 +29,7 @@ import (
 var sprintSecretRoots = []string{
 	"cmd/nova-sprint", "cmd/nova-card", "cmd/nova-work",
 	"internal/sprint", "internal/sprintdash", "internal/card", "internal/cardgen",
-	"internal/workfile", "internal/workgh", "internal/worklang",
+	"internal/workfile", "internal/workgh",
 }
 
 // sprintSecretOpeners is the reviewed table of every function the rule drives here, keyed

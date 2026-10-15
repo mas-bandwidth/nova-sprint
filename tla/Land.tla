@@ -236,6 +236,8 @@
 \*     (SameRefusalHalts fails, MCLandBound).
 \*   "capaccepted" judges a refused merging card at the attempt cap
 \*     (AcceptedNeverCapJudged fails).
+\*   "conflictwrong" marks a conflict-only bound the brief's defect and offers
+\*     no carry (ConflictBoundCarries fails, MCLandBoundConflictCarry).
 \*
 \* THE BOUND (WaysOn; off in every instance but MCLandBound, where the
 \* definitions below are replaced). sprint.landRefused answers a refusal of
@@ -252,8 +254,8 @@
 \*   cleared   the card's head no longer fails: chosen at each new attempt,
 \*             TRUE only when regneed is empty or the PATHS meet it (meeting it
 \*             is necessary, not sufficient)
-\* A refusal of way "other" (a conflict of its own, the checks, the tree gate)
-\* is reworked with the way as its finding; one of way "paths" (files outside
+\* A refusal of way "other" (a merge conflict with the advanced base, the
+\* checks, the tree gate) is reworked with the way as its finding; one of way "paths" (files outside
 \* PATHS, E12) goes to the widen rule, which widens the brief in place by the
 \* files named (the brief replaced, so bat moves: the brief reset), or, when
 \* a file is not adjacent, to the conflict rule's redo inside PATHS (no
@@ -268,6 +270,17 @@
 \* comes back by Redeal (its next attempt worked, read and accepted), the
 \* machine's own step under fairness, so the loop is the design's to bound
 \* and not the outside's event count.
+\*
+\* A refusal of way "other" is a merge conflict with the advanced base or not (isconf,
+\* allconf: every refusal since the brief changed was one; a "paths" refusal is not). The way stays one
+\* class for the same-finding test, as before (the model halts a little earlier than
+\* the code, which compares the whole finding), so MaxAttempts is unchanged.
+\* A bound whose two same refusals were both conflicts is a conflict bound
+\* (cbound): the base moved under a correct head, so the judgment offers
+\* rework --carry first and never says the brief is wrong (carryoff, wrongmark;
+\* ConflictBoundCarries). Every other bound (paths, checks, gate, the cap)
+\* keeps the brief-wrong mark. The carry itself (review to ready from the last
+\* head, the bound reset) is the rework verb's, held by the engine's tests.
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. With
@@ -303,7 +316,8 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, widens, paths, regneed, cleared, twice,
+          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
+          cbound, carryoff, wrongmark,
           capJudged
 
 reads == <<oks, need, reread, markneed>>
@@ -312,13 +326,14 @@ store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, ma
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
-bound == <<bat, prevw, prevat, widens, paths, regneed, cleared, twice>>
+bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, widens, paths, regneed, cleared, twice,
+          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
+          cbound, carryoff, wrongmark,
           capJudged>>
 
 Heads == Cards \X (1..(MaxAttempts + 2))
@@ -391,6 +406,8 @@ TypeOK ==
   /\ repairback \in BOOLEAN
   /\ bat \in [Cards -> Nat] /\ prevat \in [Cards -> Nat]
   /\ prevw \in [Cards -> SUBSET {"paths", "other"}]
+  /\ allconf \in [Cards -> BOOLEAN]
+  /\ cbound \subseteq Cards /\ carryoff \subseteq Cards /\ wrongmark \subseteq Cards
   /\ widens \in [Cards -> Nat]
   /\ paths \in [Cards -> SUBSET Files] /\ regneed \in [Cards -> SUBSET Files]
   /\ cleared \in [Cards -> BOOLEAN] /\ twice \in BOOLEAN
@@ -406,9 +423,10 @@ Init ==
   /\ markneed = [h \in Heads |-> 0]
   /\ rhead = [c \in Cards |-> 0] /\ offer = {}
   /\ repairback = FALSE
-  /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> {}] /\ prevat = [c \in Cards |-> 0]
+  /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> {}] /\ prevat = [c \in Cards |-> 0] /\ allconf = [c \in Cards |-> TRUE]
   /\ widens = [c \in Cards |-> 0] /\ paths = [c \in Cards |-> {}]
   /\ regneed \in [Cards -> SUBSET Files] /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
+  /\ cbound = {} /\ carryoff = {} /\ wrongmark = {}
 
 \* ---- the lander (land.go) ----
 
@@ -541,22 +559,34 @@ NextAttempt(c, cl) ==
 \* the files F outside PATHS for "paths"), the brief's bound first for both
 \* ways, then the rework ("other"), the widen in place or the redo ("paths").
 RefuseWays(c) ==
-  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]) :
+  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]), isconf \in BOOLEAN :
     /\ (w = "paths") = (F # {})
+    /\ (w = "paths") => ~isconf
     /\ LET same == w \in prevw[c]
            capped == att[c] - bat[c] >= Cap
            spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
            atBound == (capped /\ Broken = "capaccepted") \/ spent \/ (same /\ Broken # "nosamefinding")
+           \* a conflict-only bound: the same refusal twice, and both a merge conflict with the
+           \* advanced base (sprint.AtBriefBound's Conflict; the head is right, the base moved)
+           conflictOnly == isconf /\ same /\ allconf[c] /\ Broken # "nosamefinding"
+           carries == conflictOnly /\ Broken # "conflictwrong"
        IN IF atBound
           THEN /\ review' = review \cup {c}
+               \* the card's latest bound, and what its judgment said
+               /\ cbound' = IF conflictOnly THEN cbound \cup {c} ELSE cbound \ {c}
+               /\ carryoff' = IF carries THEN carryoff \cup {c} ELSE carryoff \ {c}
+               /\ wrongmark' = IF carries THEN wrongmark \ {c} ELSE wrongmark \cup {c}
                /\ capJudged' = (capJudged \/ (capped /\ ~spent /\ ~(same /\ Broken # "nosamefinding")))
-               /\ UNCHANGED <<att, ready, carried>> /\ UNCHANGED bound
+               /\ UNCHANGED <<att, ready, carried>>
+               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice>>
           ELSE /\ capJudged' = capJudged
+               /\ UNCHANGED <<cbound, carryoff, wrongmark>>
                /\ twice' = (twice \/ same)
                /\ UNCHANGED regneed
                /\ IF w = "other"
                   THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                          /\ NextAttempt(c, cl)
+                         /\ allconf' = [allconf EXCEPT ![c] = @ /\ isconf]
                          /\ prevw' = [prevw EXCEPT ![c] = @ \cup {w}] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
                          /\ UNCHANGED <<bat, widens, paths>>
                   ELSE \E widen \in BOOLEAN :
@@ -569,11 +599,13 @@ RefuseWays(c) ==
                                    /\ widens' = [widens EXCEPT ![c] = @ + 1]
                                    /\ bat' = [bat EXCEPT ![c] = att[c]]
                                    /\ prevw' = [prevw EXCEPT ![c] = {}]
+                                   /\ allconf' = [allconf EXCEPT ![c] = TRUE]
                                    /\ UNCHANGED prevat
                          ELSE \* a file not adjacent: the conflict rule's redo inside PATHS
                               \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                                    /\ NextAttempt(c, cl)
                                    /\ prevw' = [prevw EXCEPT ![c] = @ \cup {w}] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
+                                   /\ allconf' = [allconf EXCEPT ![c] = FALSE]
                                    /\ UNCHANGED <<bat, widens, paths>>
 
 \* Refuse: the conflict fact of the refused card, one store step fenced to the
@@ -826,6 +858,12 @@ AttemptsBounded == \A c \in Cards : att[c] <= MaxAttempts
 
 \* The same refusal at two attempts of one brief is never reworked again.
 SameRefusalHalts == ~twice
+
+\* A bound whose two same refusals were both a merge conflict with the advanced base offers
+\* rework --carry and never marks the brief wrong or a brief defect (sprint.BriefBound
+\* Conflict, its Remedy, its String; the brief-defect rule's mark is the brief's alone).
+\* Broken "conflictwrong" marks it wrong and offers no carry (MCLandBoundBrokenConflictIsBriefDefect).
+ConflictBoundCarries == cbound \subseteq carryoff /\ cbound \cap wrongmark = {}
 
 \* A card whose head never clears never lands.
 NeverRightNeverLands == \A c \in Cards : Current(c) \in landed => cleared[c]

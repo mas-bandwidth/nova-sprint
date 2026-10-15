@@ -36,16 +36,24 @@
 \* an unbounded wall clock. open abstracts the warning-eligible judgment ID set;
 \* fresh key delivery and warning delivery remain distinct sends. Resetting the
 \* server/holder scopes its in-memory warning receipt, just as coordinatorPass.
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS Keys, Names, Broken
 
 ReminderEvery == 30
 VARIABLES open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed,
           warned, warnAge, sameSetResent, missedChange
+\* A bounded stream episode commits stop then resume as distinct durable log notes.
+\* The blocker channel holds event IDs, one ID per independently sent bus line;
+\* closing the stop judgment cannot remove its committed notice. The per-stream
+\* told mark is separate from ordinary inbox group keys.
+VARIABLES committed, streamTold, blockerLines, logWake, lookOvertook
+streamVars == <<committed, streamTold, blockerLines, logWake, lookOvertook>>
 reminderVars == <<warned, warnAge, sameSetResent, missedChange>>
-vars == <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed,
+legacyVars == <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed,
           warned, warnAge, sameSetResent, missedChange>>
+
+vars == <<legacyVars, streamVars>>
 
 TypeOK ==
   /\ open \subseteq Keys /\ told \subseteq Keys /\ sent \subseteq (Names \X Keys)
@@ -54,6 +62,9 @@ TypeOK ==
   /\ up \in BOOLEAN /\ busUp \in BOOLEAN /\ failed \in BOOLEAN
   /\ warned \subseteq Keys /\ warnAge \in 0..ReminderEvery
   /\ sameSetResent \in BOOLEAN /\ missedChange \in BOOLEAN
+  /\ committed \in 0..2 /\ streamTold \subseteq 1..committed
+  /\ blockerLines \in {<<>>, <<1>>, <<2>>, <<1, 2>>}
+  /\ logWake \in BOOLEAN /\ lookOvertook \in BOOLEAN
 
 Init ==
   /\ open = {} /\ told = {} /\ sent = {}
@@ -61,6 +72,8 @@ Init ==
   /\ lease = FALSE /\ proof = FALSE /\ up = TRUE /\ busUp = TRUE /\ failed = FALSE
   /\ warned = {} /\ warnAge = ReminderEvery
   /\ sameSetResent = FALSE /\ missedChange = FALSE
+  /\ committed = 0 /\ streamTold = {} /\ blockerLines = <<>>
+  /\ logWake = FALSE /\ lookOvertook = FALSE
 
 \* ---- the outside ----
 
@@ -100,7 +113,7 @@ Start == ~up /\ up' = TRUE /\ UNCHANGED <<reminderVars, open, told, sent, holder
 Fresh == open \ told
 WarningDue == open # {} /\ (open # warned \/ warnAge = ReminderEvery \/ Broken = "resendsame")
 
-Look ==
+LegacyLook ==
   /\ up
   /\ LET fresh == Fresh
          goes == fresh # {} /\ busUp
@@ -147,13 +160,51 @@ Minute == /\ warnAge < ReminderEvery /\ warnAge' = warnAge + 1
           /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease,
                          proof, up, busUp, failed, warned, sameSetResent, missedChange>>
 
-Next ==
+\* Stop/resume IDs are immutable, even if both commits precede a pass. A
+\* failed transport leaves the marks pending; the quiet-log Look retries.
+StreamPending == (1..committed) \ streamTold
+StreamSend ==
+  LET fresh == IF Broken = "resumesilent" THEN StreamPending \ {2} ELSE StreamPending
+      goes == IF up /\ busUp THEN fresh ELSE {}
+  IN /\ streamTold' = streamTold \cup goes
+     /\ blockerLines' = blockerLines \o SelectSeq(<<1, 2>>, LAMBDA e: e \in goes)
+
+CommitTransition ==
+  /\ committed < 2 /\ committed' = committed + 1
+  /\ logWake' = TRUE
+  /\ UNCHANGED <<legacyVars, streamTold, blockerLines, lookOvertook>>
+
+LogPush ==
+  /\ up /\ logWake /\ Broken # "lookonly"
+  /\ StreamSend /\ logWake' = FALSE
+  /\ UNCHANGED <<legacyVars, committed, lookOvertook>>
+
+\* Lost wake models a dropped transport wake, not deletion of its durable note.
+LoseWake == logWake /\ logWake' = FALSE
+            /\ UNCHANGED <<legacyVars, committed, streamTold, blockerLines, lookOvertook>>
+
+Look ==
+  /\ (~logWake \/ Broken = "lookonly")
+  /\ LegacyLook /\ StreamSend
+  /\ lookOvertook' = (lookOvertook \/ (logWake /\ StreamPending # {}))
+  /\ UNCHANGED <<committed, logWake>>
+
+LegacyNext ==
   \/ \E k \in Keys : Raise(k) \/ Close(k)
-  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Look \/ Recover \/ Minute
+  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Recover \/ Minute
   \/ \E n \in Names : Follow(n)
+Next == \/ (LegacyNext /\ UNCHANGED streamVars)
+        \/ Look \/ CommitTransition \/ LogPush \/ LoseWake
 
 Spec == Init /\ [][Next]_vars
-LiveSpec == Spec /\ WF_vars(Look)
+LiveSpec == Spec /\ WF_vars(Look) /\ WF_vars(LogPush)
+
+\* No timer pass overtakes an enabled log wake. Fairness and eventual healthy
+\* transport provide delivery; the latency invariant is independent of time.
+PushedWithinOneEvent == ~lookOvertook
+EveryStopAndResumeIsPushed ==
+  <>[](up /\ busUp) => (\A e \in 1..2 : [](e <= committed => <>(e \in streamTold)))
+SeparateBlockerLines == streamTold = {blockerLines[i] : i \in 1..Len(blockerLines)}
 
 \* ---- what it keeps ----
 

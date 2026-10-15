@@ -2,11 +2,11 @@ package store
 
 import (
 	"context"
-	"github.com/mas-bandwidth/nova-tools/hook"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +32,7 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	// is carried (view coordinator reads how stale her report is), and the evidence her
 	// status rests on, her session's pong, never her beat
 	assert.Equal(t, []FriendRow{
-		{Name: "amy", Width: 3, Status: sprint.Up, Evidence: "nova-hook proven", Beat: h.now.UTC().Truncate(time.Second)},
+		{Name: "amy", Width: 3, Status: sprint.Up, WorkerLive: true, Evidence: "nova-hook proven", Beat: h.now.UTC().Truncate(time.Second)},
 		{Name: "bob", Width: 1, Status: sprint.Down, Evidence: "no hook record", SprintHeld: true},
 	}, rows)
 }
@@ -53,7 +53,7 @@ func (h *harness) up(friend string) {
 				by[r.Name] = r
 			}
 		}
-		by[friend] = hook.Status{Name: friend, State: hook.StateProven}
+		by[friend] = hook.Status{Name: friend, Role: hook.Friend, State: hook.StateProven}
 		var out []hook.Status
 		for _, n := range names {
 			if r, ok := by[n]; ok {
@@ -181,4 +181,96 @@ func TestTwinStoreConfigSyncToOneShotKeepsEachLaneRefreshing(t *testing.T) {
 	assert.Equal(t, 2, snap.Fleet.Count(amyRow, sprint.Working), "the next freed lane took s1-4")
 	assert.Equal(t, 0, snap.Fleet.Count(amyRow, sprint.Ready))
 	assert.Equal(t, sprint.Working, snap.Fleet.Card("s1-4.w1").Col)
+}
+
+// Status Up is a presence fact shared by friend, coordinator and comms hooks.
+// Only a healthy proven worker-role record makes the seat eligible for work.
+func TestFriendSeatsCarryProvenWorkerEvidence(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		hook hook.Status
+		live bool
+	}{
+		{"worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateProven}, true},
+		{"coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateProven}, false},
+		{"comms", hook.Status{Name: "amy", Role: hook.Comms, State: hook.StateProven}, false},
+		{"unknown role", hook.Status{Name: "amy", State: hook.StateProven}, false},
+		{"unproven worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateLive}, false},
+		{"unhealthy worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateProven, Down: hook.NoAnswerReason}, false},
+		{"missing", hook.Status{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{{Name: "amy", Width: 1}})
+			require.NoError(t, err)
+			h.st.ReadFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) {
+				return []hook.Status{tc.hook}, h.now, nil
+			}
+			seats, err := h.st.FriendSeats(h.ctx, h.now)
+			require.NoError(t, err)
+			require.Len(t, seats, 1)
+			assert.Equal(t, tc.live, seats[0].WorkerLive)
+		})
+	}
+}
+
+func TestCheckLoadsWorkerEvidenceForDealtFriendCards(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{{Name: "amy", Width: 1, Class: "flash"}})
+	require.NoError(t, err)
+	h.up("amy")
+	h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{{ID: "s1-1", Brief: "c: worker evidence\nREPO: mas-bandwidth/nova-tools\nWHO: only friend amy\n\nThe task."}}}))
+	h.startMachine()
+	h.machine()
+	require.NotNil(t, h.snap().Fleet.Placed("s1-1.w1"))
+	rep, snap, err := h.st.Check(h.ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, snap.Friends, 1)
+	require.True(t, snap.Friends[0].WorkerLive)
+	for _, v := range rep.Violations {
+		require.NotContains(t, v.Detail, "no live worker")
+	}
+	h.st.ReadFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) {
+		return []hook.Status{{Name: "amy", Role: hook.Comms, State: hook.StateProven}}, h.now, nil
+	}
+	rep, _, err = h.st.Check(h.ctx, 1)
+	require.NoError(t, err)
+	var details []string
+	for _, v := range rep.Violations {
+		details = append(details, v.Detail)
+	}
+	assert.Contains(t, details, "work card s1-1.w1 is dealt to row friend.amy with no live worker")
+}
+
+// workerSeats constructs a coherent fake roster and worker hook for legacy
+// tick fixtures that previously supplied only an Up seat to the core.
+func (h *harness) workerSeats(seats []sprint.FriendSeat) []sprint.FriendSeat {
+	h.t.Helper()
+	specs, err := h.st.FriendSpecs(h.ctx)
+	require.NoError(h.t, err)
+	for i := range seats {
+		f := &seats[i]
+		found := false
+		for j := range specs {
+			if specs[j].Name == f.Name {
+				specs[j].Width, specs[j].Class = f.Width, f.Class
+				found = true
+				break
+			}
+		}
+		if !found {
+			specs = append(specs, FriendSpec{Name: f.Name, Width: f.Width, Class: f.Class})
+		}
+		f.WorkerLive = f.Status == sprint.Up
+	}
+	_, _, _, err = h.st.SyncFriends(h.ctx, specs)
+	require.NoError(h.t, err)
+	for _, f := range seats {
+		if f.WorkerLive {
+			h.up(f.Name)
+		}
+	}
+	return seats
 }

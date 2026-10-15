@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"regexp"
 	"slices"
@@ -204,4 +205,46 @@ func clearBasePassed(u *Unit, ctl *Card) {
 			e.Unset = append(e.Unset, unsetPresent(ctl, []string{FieldBaseGatePassed, FieldBaseGatePassedStop})...)
 		}
 	}
+}
+
+// BaseLandedKey stores the last tip actually pushed by the lander, per repository
+// and branch. A Git ancestor is not evidence that a descendant was lander-produced.
+func BaseLandedKey(repo, base string) string {
+	return fmt.Sprintf("base_landed.%x", sha256.Sum256([]byte(repo+"\x00"+base)))
+}
+
+// BaseMovedOutside compares the tip with durable lander provenance. An absent
+// record is unknown provenance and receives the same first-red protection.
+func BaseMovedOutside(s *Snapshot, repo, base, tip string) bool {
+	last, _ := s.Work.Prop(BaseLandedKey(repo, base))
+	return last == "" || tip == "" || last != tip
+}
+
+// RecordBaseLanding adds the pushed tip to the successful merge report, in the
+// same guarded transaction. Failed reports do not certify a new base tip.
+func RecordBaseLanding(s *Snapshot, r MergeReq, repo, base, tip string) Plan {
+	p := MergeStep(s, r)
+	if len(p.Refused) != 0 || repo == "" || base == "" || tip == "" {
+		return p
+	}
+	landed := false
+	for _, u := range p.Units {
+		if strings.Contains(u.Moved, " merging -> landed") {
+			landed = true
+		}
+	}
+	if !landed {
+		return p
+	}
+	key := BaseLandedKey(repo, base)
+	was, had := s.Work.Prop(key)
+	p.Props = append(p.Props, PropWrite{Table: Work, Name: key, Value: tip, Was: was, WasAbsent: !had})
+	return p
+}
+
+// OutsideBaseRed opens the existing base-red episode on the first red tree gate
+// of a tip moved outside the lander. No card is attempted or counted as refused.
+func OutsideBaseRed(s *Snapshot, r BaseGreenReq, why string) Plan {
+	return LandBaseRefused(s, MergeReq{Stream: r.Stream, Base: r.Base, Who: r.Who,
+		BaseRed: fmt.Sprintf("outside commit %s on %s: %s", r.Sha, r.Base, why)})
 }

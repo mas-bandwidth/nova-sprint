@@ -20,7 +20,7 @@ func takeWorld(t *testing.T) *world {
 	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}, FriendSeat{Name: "bob", Width: 1, Status: Down})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}), workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Down}))
 	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
 	require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col)
 	return w
@@ -72,7 +72,7 @@ func TestATakeOfACardDealtToAnotherFriendIsRefused(t *testing.T) {
 func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"}))
 	p := w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Started: map[string]string{"s1-2.w1": "her beat names it running"}}))
 	amy := FriendRow("amy")
 	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col, "dealt and not taken: taken back")
@@ -86,7 +86,7 @@ func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 	assert.Empty(t, Check(w.s, nil))
 
 	// a card that names her, taken from her, waits: the deal never gives it back to her
-	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"}))
 	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col)
 	assert.Equal(t, Ready, w.s.StateOf("s1-3"))
 	hd := Holder(running(w), w.s.Now, "s1-3")
@@ -97,7 +97,7 @@ func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 func TestTheHoldOfAFriendWithdrawsEveryCardStartedOrNot(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}))
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Hold: true, Started: map[string]string{"s1-1.w1": "a push on its branch"}}))
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
 		wc := w.s.Fleet.Card(id)
@@ -106,7 +106,7 @@ func TestTheHoldOfAFriendWithdrawsEveryCardStartedOrNot(t *testing.T) {
 		assert.Empty(t, wc.F(FieldTakenFrom), "the hold does not keep her from it")
 	}
 	// held: nothing is dealt to her
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Held})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Held}))
 	assert.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working), "a held friend works nothing")
 	assert.Empty(t, Check(w.s, nil))
 }
@@ -116,11 +116,11 @@ func TestATakenCardIsDealtAgainToAnotherFriend(t *testing.T) {
 	w := takeWorld(t)
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-2"}, Reason: "bob is back"}))
 	// amy has room again, and bob is down: it waits, never back to amy
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}, FriendSeat{Name: "bob", Width: 1, Status: Down})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}), workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Down}))
 	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-2.w1").Col)
 	mustHold(t, running(w), "s1-2", HeldByJudgment)
 
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}, FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}), workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"}))
 	wc := w.s.Fleet.Card("s1-2.w1")
 	assert.Equal(t, FriendRow("bob"), wc.Row, "dealt to the other friend")
 	assert.Equal(t, Working, wc.Col)
@@ -163,7 +163,7 @@ func TestTakeAllUnstartedSaysTheMarkItWrites(t *testing.T) {
 func TestFriendGiveHandsANamedReadyCardToTheFriend(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend"))
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}})
 	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"})
 	require.Empty(t, p.Refused, "a ready card is a hand")
 	require.Len(t, p.Units, 1)
@@ -188,7 +188,7 @@ func TestFriendGiveRefusesWhatItCannotHand(t *testing.T) {
 	assert.Contains(t, p.Refused[0].Why, "not ready or waiting", "a working card is not a hand")
 
 	w2 := friendWorld(t, friendBrief("friend"))
-	w2.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Tiers: []string{"pro"}}}
+	w2.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Tiers: []string{"pro"}}})
 	p = FriendGive(w2.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "does not serve tier", "her row's tiers gate the hand")
@@ -196,7 +196,7 @@ func TestFriendGiveRefusesWhatItCannotHand(t *testing.T) {
 
 	// a ready card whose stored need has not landed: refused, naming the need
 	w3 := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
-	w3.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}}
+	w3.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}})
 	w3.s.Work.Card("s1-1").Fields["needs"] = "s1-2"
 	p = FriendGive(w3.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
