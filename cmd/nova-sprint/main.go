@@ -34,7 +34,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
@@ -47,6 +46,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 const prog = "nova-sprint"

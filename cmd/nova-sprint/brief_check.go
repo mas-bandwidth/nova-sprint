@@ -14,10 +14,10 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // brief check runs every check add runs, over every brief, and collects every

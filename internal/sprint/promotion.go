@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // Promotion into dev (docs/SPEC-SPRINT.md section 7, "dev is behind"; the owner, 2026-10-04:

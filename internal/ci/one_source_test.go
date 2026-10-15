@@ -1,6 +1,9 @@
 package ci
 
 import (
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -179,4 +182,64 @@ func TestTheOneSourceAllowanceOnlyShrinks(t *testing.T) {
 		t.Errorf("%s allows %d copies that %s does not: the list only shrinks; port the behaviour into nova-tools and import it instead:\n%s",
 			oneSourceAllowedFile, len(added), base, strings.Join(added, "\n"))
 	}
+}
+
+// sprintSwarmCopyImport is the import path of nova-sprint's own copy of nova-tools
+// pkg/swarm, which is deleted: its importers use nova-tools pkg/swarm.
+const sprintSwarmCopyImport = "github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+
+// importsOfThePath is every .go file under root (skipping .git, tmp, bin, node_modules
+// and testdata) that imports path, as a root-relative slash path, sorted.
+func importsOfThePath(root, path string) ([]string, error) {
+	var out []string
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "tmp", "bin", "node_modules", "testdata":
+				if p != root {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if filepath.Ext(p) != ".go" {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range f.Imports {
+			if strings.Trim(imp.Path.Value, "\"`") == path {
+				rel, _ := filepath.Rel(root, p)
+				out = append(out, filepath.ToSlash(rel))
+				break
+			}
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
+// TestNothingImportsTheSprintSwarmCopy: no .go file of the module imports
+// github.com/mas-bandwidth/nova-sprint/pkg/swarm; the one source of swarm is
+// github.com/mas-bandwidth/nova-tools/pkg/swarm. The scan is first proved on a known
+// yes and a known no.
+func TestNothingImportsTheSprintSwarmCopy(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "yes.go"), []byte("package x\n\nimport \""+sprintSwarmCopyImport+"\"\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "no.go"), []byte("package x\n\nimport \"github.com/mas-bandwidth/nova-tools/pkg/swarm\"\n"), 0o644))
+	known, err := importsOfThePath(dir, sprintSwarmCopyImport)
+	require.NoError(t, err)
+	require.Equal(t, []string{"yes.go"}, known)
+
+	got, err := importsOfThePath("../..", sprintSwarmCopyImport)
+	require.NoError(t, err)
+	require.Empty(t, got, "one true source: these files import nova-sprint's copy of pkg/swarm; import %s/pkg/swarm", novaToolsModule)
 }
