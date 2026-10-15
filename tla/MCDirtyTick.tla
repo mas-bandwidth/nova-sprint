@@ -139,6 +139,11 @@ ScnHandBack == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.hand = TRUE, !
                             !.rd = [c \in Cards |-> "r1"],
                             !.mr = [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],
                             !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
+\* READ ENVIRONMENT. As ScnHandBack, but r1's returns are the environment's
+\* (the wall, staging, a stale pin, exit 134 or 137): asked again at the same
+\* attempt, no re-ask or work counter moves, and at EnvReadCap one judgment
+\* names the environment (DirtyTick.tla, EnvNeverRedoes, EnvJudgedAtCap).
+ScnEnv == [ScnHandBack EXCEPT !.hand = FALSE] @@ [env |-> TRUE]
 \* The same with the machines' lapses on: r1's host may go down after r1
 \* returns the read, leaving the card no reader up (STRANDED).
 ScnHandBackLapse == [ScnHandBack EXCEPT !.lapse = TRUE]

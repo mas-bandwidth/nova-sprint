@@ -806,6 +806,12 @@ func (c *held) decisions(pr *Card) []string {
 		out = []string{"accept", "rework", "drop"}
 	case pr.Col == Review && pr.F("result") == "failed":
 		out = []string{"rework", "drop"}
+	case pr.Col == Review && readBranchMissingOpen(c.s, pr):
+		// the judgment holds its reads: ask is refused while no branch on origin holds the
+		// head (askStateAt), and --another always (tla/ReadBranchMissing.tla, AskRefusalsAgree),
+		// so only the verbs that always resolve it are offered here; the judgment's own
+		// decisions offer ask for when the branch is pushed
+		out = []string{"rework", "drop"}
 	case pr.Col == Review && ReadsWanted(c.s, pr) == 0 && askedAtAttempt(c.s, pr):
 		out = []string{"ask --another", "rework", "drop"} // a read is already asked: --another adds one
 	case pr.Col == Review && ReadsWanted(c.s, pr) == 0:

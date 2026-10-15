@@ -1235,25 +1235,56 @@ Brief ==
     /\ pendstate' = state'
     /\ UNCHANGED <<attemptGeneration, headGeneration, needs, waived, everLanded, flags, members, wmember, mg, sstream, scause, ranked, pending, ci>>
 
-\* An operational note changes neither the task nor head provenance. The one-step
-\* event marker makes the edit observable without recording irrelevant history; the mutant reproduces the old blanket bounce.
+\* An operational note or scope-widening edit (PATHS, NEW or SHARED entries
+\* added, or START (read) entries added; steps_edit.go operationalBriefOnly,
+\* scopeWidenedOnly) refines the contract without invalidating the in-flight or
+\* reviewed head: on a working card briefGeneration stands, and on a review card
+\* state, rplace and headGeneration stand. The one-step event marker makes the
+\* edit observable without recording irrelevant history; the mutants reproduce
+\* the old blanket working bounce and review redeal.
 OperationalEdit ==
   \E c \in Flash :
     /\ Free
-    /\ state[c] = "working"
-    /\ briefGeneration[c] = attemptGeneration[c]
-    /\ briefGeneration[c] = 0
     /\ c \notin operationalEdits
-    /\ operationalEdits' = operationalEdits \cup {c}
-    /\ briefGeneration' = IF Broken = "operationalbounce"
-         THEN [briefGeneration EXCEPT ![c] = 1] ELSE briefGeneration
-    /\ UNCHANGED <<attemptGeneration, headGeneration, keptHead, state, needs,
-         waived, everLanded, flags, members, wplace, wmember, rplace, mg,
-         sstream, scause, ranked, pending, ci, pendstate>>
+    /\ \/ /\ state[c] = "working"
+          /\ briefGeneration[c] = attemptGeneration[c]
+          /\ briefGeneration[c] = 0
+          /\ operationalEdits' = operationalEdits \cup {c}
+          /\ briefGeneration' = IF Broken \in {"operationalbounce", "scopebounce"}
+               THEN [briefGeneration EXCEPT ![c] = 1] ELSE briefGeneration
+          /\ state' = state
+          /\ wplace' = wplace
+          /\ rplace' = rplace
+          /\ pendstate' = state'
+       \/ /\ (Cardinality(Card) = 1 \/ Broken = "scoperedeal")
+          /\ state[c] = "review"
+          /\ operationalEdits' = operationalEdits \cup {c}
+          /\ briefGeneration' = briefGeneration
+          /\ IF Broken = "scoperedeal"
+             THEN /\ state' = [state EXCEPT ![c] = "ready"]
+                  /\ wplace' = [wplace EXCEPT ![c] = "none"]
+                  /\ ClearReads(c)
+             ELSE /\ state' = state
+                  /\ wplace' = wplace
+                  /\ rplace' = rplace
+          /\ pendstate' = state'
+    /\ UNCHANGED <<attemptGeneration, headGeneration, keptHead, needs,
+         waived, everLanded, flags, members, wmember, mg, sstream, scause,
+         ranked, pending, ci>>
+
+ScopeWiden == OperationalEdit
 
 OperationalEditPreservesHead ==
   [][\A c \in operationalEdits' \ operationalEdits :
        briefGeneration'[c] = briefGeneration[c]]_allTableVars
+
+ScopeWidenPreservesHead ==
+  [][\A c \in operationalEdits' \ operationalEdits :
+       briefGeneration'[c] = briefGeneration[c]]_allTableVars
+
+ScopeWidenKeepsReview ==
+  [][\A c \in operationalEdits' \ operationalEdits :
+       state[c] = "review" => state'[c] = "review" /\ rplace'[c] = rplace[c]]_allTableVars
 
 \* Attempt/head provenance follows the same lifecycle step; metadata never
 \* changes a legacy action's enabledness.
