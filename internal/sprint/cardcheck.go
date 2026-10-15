@@ -11,8 +11,8 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 )
 
 // The core pre-start card check (v1.2.17, start-refuses-until-a-clean-check; docs/SPEC-SPRINT.md

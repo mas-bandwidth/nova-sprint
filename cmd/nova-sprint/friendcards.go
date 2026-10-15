@@ -282,7 +282,7 @@ func friendFinish(ctx context.Context, name string, p sprint.Packet, report stri
 		case err != nil:
 			return r, fmt.Errorf("origin's tip of %s in %s cannot be read: %w", p.Branch, repo, err)
 		case at == "":
-			return r, fmt.Errorf("Head %s, and origin has no branch %s", head, p.Branch)
+			return r, fmt.Errorf("Head %s, and origin has no branch %s; run: git push origin HEAD:refs/heads/%s; then retry the finish", head, p.Branch, p.Branch)
 		case !strings.EqualFold(at, head):
 			return r, fmt.Errorf("Head %s is not origin's tip of %s, %s", head, p.Branch, at)
 		}
@@ -937,7 +937,7 @@ func (a *app) friendCollect(ctx context.Context, st *store.Store, name string, p
 		return false, nil
 	}
 	r.Reported = at
-	step := store.FinishStep(r)
+	step := a.finishStep(r)
 	step.Actor, step.Epoch = r.Who, &p.Epoch
 	if op != "" {
 		step.CallerOp = op + ".collect." + step.Args
