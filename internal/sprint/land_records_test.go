@@ -84,6 +84,7 @@ func TestTheLanderWantsARunRecordForAnEditedModel(t *testing.T) {
 		assert.Empty(t, note)
 		require.Len(t, refused, 1, "MCB reads nothing the change edits: %v", refused)
 		assert.Equal(t, "tla/RUNS.tsv:2 has no current run record for the case MCA.cfg (group alpha) and the change edits tla/A.tla; "+
+			"the record was held to "+sprint.BuiltRunnerName()+"; the tree pins no runner (no .github/workflows file builds tlacheck at a nova-tools commit); "+
 			"run make tlc TLC_GROUP=alpha on a TLC bench, merge its RUNS.tsv with tlacheck merge --keep tla/RUNS.tsv and commit it (tla/README.md)",
 			refused[0].String())
 		assert.NotContains(t, refused[0].String(), "\n", "one line")

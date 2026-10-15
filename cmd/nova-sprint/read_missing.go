@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -101,4 +102,79 @@ func (a *app) readMissingOf(ctx context.Context, st *store.Store, ids []string) 
 		return nil
 	}
 	return a.readMissing(ctx, packets)
+}
+
+// finishStep checks origin only after the normal planner accepts a fresh,
+// successful finish into review. Each snapshot retry observes origin again;
+// a refusal returns no mutations, including for a multi-card finish.
+func (a *app) finishStep(r sprint.FinishReq) store.Step {
+	step := store.FinishStep(r)
+	if a.readHeads == nil {
+		return step // no-git runs retain their routing
+	}
+	plan := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		p := plan(s)
+		if len(p.Refused) > 0 {
+			return p // named finishes are all-or-none in the store
+		}
+		var refused []sprint.Refusal
+		for _, u := range p.Units {
+			c := s.Fleet.Card(u.Key)
+			if c == nil || c.Col != sprint.Working {
+				continue // late reports do not enter review from working
+			}
+			pr := s.Work.Placed(c.F("primary"))
+			if pr == nil {
+				continue
+			}
+			entersReview := false
+			head := ""
+			for _, ch := range u.Changes {
+				if ch.Table == sprint.Work && ch.Entry.ID == pr.ID && ch.Entry.Move != nil && ch.Entry.Move.Col == sprint.Review && ch.Entry.Set["result"] == "ok" {
+					entersReview = true
+					head = ch.Entry.Set["head"]
+				}
+			}
+			if !entersReview {
+				continue
+			}
+			base := swarm.ReadCardBase([]byte(pr.F("brief")))
+			repo := base.Repo
+			if repo == "" {
+				if base.Named != "" {
+					refused = append(refused, sprint.Refusal{Key: c.ID, Why: "REPO: " + base.Named + " cannot be resolved; correct the repository before retrying the finish; nothing was changed"})
+				}
+				continue
+			}
+			branch := r.Branch
+			if branch == "" {
+				branch = sprint.BranchOf(s.Prefix, s.Epoch, c.ID, c.Int("gen"))
+			}
+			if err := a.finishOrigin(context.Background(), repo, branch, head); err != nil {
+				refused = append(refused, sprint.Refusal{Key: c.ID, Why: err.Error()})
+			}
+		}
+		if len(refused) > 0 {
+			return sprint.Plan{Refused: refused}
+		}
+		return p
+	}
+	return step
+}
+
+func (a *app) finishOrigin(ctx context.Context, repo, branch, head string) error {
+	if !typedrec.IsFullSha(head) {
+		return fmt.Errorf("Head %q for branch %s is not a full commit SHA; resolve it with git rev-parse HEAD, push with git push origin HEAD:refs/heads/%s, then retry the finish with --head <full sha>; nothing was changed", head, branch, branch)
+	}
+	heads, err := a.readHeads(ctx, repo, "refs/heads/*")
+	if err != nil {
+		return fmt.Errorf("origin branches in %s cannot be read for Head %s on branch %s: %w; restore origin access and retry the finish; nothing was changed", repo, head, branch, err)
+	}
+	for _, tip := range heads {
+		if strings.EqualFold(tip, head) {
+			return nil
+		}
+	}
+	return fmt.Errorf("Head %s on branch %s is held by no branch on origin in %s; run: git push origin HEAD:refs/heads/%s; then retry the finish; nothing was changed", head, branch, repo, branch)
 }

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // GATE-NEEDS (docs/SPEC-SPRINT.md, the gate-host rule; docs/SPEC-CARD-CONTRACT.md,
