@@ -4,7 +4,8 @@
 \* "this sounds like something the machine should not do. it should raise it to
 \* you as a thing to do, but not do it automatically." A route rests only on a
 \* provider-typed failure or the coordinator's word; a take that ended with no
-\* result is the model's output on that card and never rests the route; a low
+\* result with output (or unknown usage) never rests the route. A silent take
+\* made one request with every token counter zero: a provider timeout. A low
 \* balance is a judgment raised to the coordinator, never a rest.
 \*
 \* The state, for one provider and its routes: provRest, the provider's one
@@ -27,12 +28,13 @@
 \*
 \* The design, Broken = {}:
 \*   Launch     a take is launched on a serving route (in flight).
-\*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
+\*   TakeEnds   a take on a serving route ends (ok, noresult, transient:
 \*              a timeout at the provider, or a 5xx past MaxRateReturns,
 \*              fivexx: a 5xx returned untouched, credit: a 402, auth: a 401);
 \*              the tick that sees it rests the provider on a refusal, and the
 \*              route when its window holds After transient failures. A
-\*              no-result counts in the window and never toward a rest.
+\*              no-result counts in the window and never toward a rest;
+\*              silent (one request, zero tokens) counts as a timeout.
 \*   Refuse     a take in flight ends refused: one launched after the last
 \*              rest's mark rests the provider; one launched before it is
 \*              ignored (providerRestsDue, e.taken.After(last.Mark())).
@@ -58,6 +60,8 @@
 \*   "coordclock" the clock ends an open coordinator rest: CoordOpenEndsOnlyWoken
 \*   "fivexxspend" the take ending of BASE 65973f2b: a provider 5xx ends the take
 \*              and spends a redeal: Provider5xxSpendsNoRedeal
+\*   "silentprovider" a silent provider never counts: SilentProviderRests;
+\*              the all-silent storm can keep being dealt forever.
 \*   "unbounded" the exhausted case: a 5xx at MaxReturns is still returned
 \*              untouched: Provider5xxReturnsBounded
 \* Not modelled: an out-of-credit return on a limited route shares the card's
@@ -78,7 +82,7 @@ vars == <<provRest, own, win, low, judged, event, redeal, returns>>
 \* failure does. returns is the card's FieldRateReturns as the 5xx path counts it.
 MaxReturns == 2
 
-Kinds == {"ok", "noresult", "transient", "fivexx", "credit", "auth"}
+Kinds == {"ok", "noresult", "silent", "transient", "fivexx", "credit", "auth"}
 \* fivexx is a 5xx returned untouched (returns < MaxReturns); fivexxend is a 5xx
 \* at the bound, which ends the take and spends a redeal
 Events == Kinds \cup {"fivexxend", "balance", "raise", "payment", "funded", "coord", "wake", "clock", "launch", "ignored"}
@@ -92,10 +96,17 @@ Flight == {"none", "after", "before"}
 \* a route's window: its ended takes and its take in flight
 Windows == [ends : Ends, flight : Flight]
 
+\* Check sequence membership without enumerating all |Kinds|^W windows; the
+\* production W=10 silent replay has only eleven reachable windows.
 TypeOK ==
     /\ provRest \in {"none", "credit", "auth", "coord", "coordopen", "balance"}
     /\ own \in [Routes -> {"none", "provider", "coord", "coordopen"}]
-    /\ win \in [Routes -> Windows]
+    /\ DOMAIN win = Routes
+    /\ \A r \in Routes :
+         /\ DOMAIN win[r] = {"ends", "flight"}
+         /\ win[r].ends \in Seq(Kinds)
+         /\ Len(win[r].ends) <= W
+         /\ win[r].flight \in Flight
     /\ low \in BOOLEAN
     /\ judged \in BOOLEAN
     /\ event \in Events \cup {"init"}
@@ -119,7 +130,9 @@ Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 
 \* the ends that count toward a route's own rest (RestsDue: transient only; a
 \* 5xx returned untouched still leaves its FieldProviderTake, so it counts)
-Counts(k) == k \in {"transient", "fivexx"} \/ ("noresult" \in Broken /\ k = "noresult")
+Counts(k) == k \in {"transient", "fivexx"}
+             \/ (k = "silent" /\ "silentprovider" \notin Broken)
+             \/ ("noresult" \in Broken /\ k = "noresult")
 
 \* a 5xx is returned untouched while the card's returns are under MaxReturns
 \* (steps_work.go: c.Int(FieldRateReturns) < MaxRateReturns); "unbounded"
@@ -290,7 +303,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Raise)
 \* a serving route begins to rest only on a provider-typed failure or the
 \* coordinator's word: never a no-result, never a balance read
 RestOnlyByProviderOrCoordinator ==
-    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "fivexx", "fivexxend", "credit", "auth", "coord"}]_vars
+    [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"silent", "transient", "fivexx", "fivexxend", "credit", "auth", "coord"}]_vars
 
 \* a provider's credit rest ends only on a payment seen, funded, or the
 \* coordinator's wake: never by the clock
@@ -309,7 +322,16 @@ CoordOpenEndsOnlyWoken ==
           \/ \E r \in Routes : (own[r] = "coordopen" /\ own'[r] # "coordopen"))
         => event' = "wake" ]_vars
 
-\* a no-result step never changes a rest
+\* A silent end is a timeout. Check the threshold independently of Counts,
+\* so the reversed silentprovider witness cannot weaken this obligation.
+SilentProviderRests ==
+    [][\A r \in Routes :
+        (TakeEnds(r, "silent") /\
+         Cardinality({i \in 1..Len(Push(win[r].ends, "silent")) :
+             Push(win[r].ends, "silent")[i] \in {"silent", "transient", "fivexx"}}) >= After)
+        => own'[r] = "provider"]_vars
+
+\* a no-result step (output present or usage unknown) never changes a rest
 NoResultNeverRests ==
     [][event' = "noresult" => (provRest' = provRest /\ own' = own)]_vars
 

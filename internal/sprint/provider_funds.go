@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // A PROVIDER OUT OF FUNDS IS NEVER A MYSTERY FAILURE (nova-tools#5199; the owner,
@@ -79,21 +81,42 @@ func outOfCredit(line string) bool {
 // (a 429, the provider's or upstream of it), the provider's own server error, and the
 // provider not answering in time. Each is the provider's, never the card's. Enough 5xxs and
 // timeouts on a route rest it (RestsDue, transient); a rate limit only backs the route off
-// briefly (rateBackoffs; tla/RateBackoff.tla); a take that ended with no result is none.
+// briefly (rateBackoffs; tla/RateBackoff.tla). A no-result take counts only when
+// its usage proves the provider was silent (silentProvider).
 const (
 	classRateLimited = "rate-limited"
 	class5xx         = "provider-5xx"
 	classTimeout     = "timeout"
 )
 
-// transient says a take's line is a provider failure the 3-in-10 rest counts (a 5xx, a
-// timeout), the line the member writes (`provider: class=<c> status=<n|-> msg=<m>`). A
-// no-result line is never one: its cause is the model's output, not the provider.
-func transient(line string) bool {
-	if IsNoResult(strings.TrimSpace(line)) {
+// silentProvider says a no-result take made exactly one request and explicitly
+// reported zero in every token class. Missing counters are unknown, never zero.
+// The literal idle-reap line is the historical storm's no-result record; ordinary
+// take records carry the canonical "no result:" prefix. This is a classTimeout,
+// not a model-call failure: tla/RouteRest.tla silent and SilentProviderRests.
+func silentProvider(t ProviderTake) bool {
+	line := strings.TrimSpace(t.Error)
+	if !IsNoResult(line) && line != "idle-reap: no RESULT.md shape" {
 		return false
 	}
-	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
+	u := cardcost.ParseUsage(t.Usage).Tokens
+	return u.Requests == 1 && u.Input == 0 && u.CacheRead == 0 &&
+		u.CacheWrite == 0 && u.Output == 0 && u.Reasoning == 0
+}
+
+// transient says a take is a provider failure the existing 3-in-10 rest counts:
+// a typed 5xx or timeout, or a silent no-result take (classTimeout). No result
+// with model output or unknown usage never counts: tla/RouteRest.tla Counts,
+// SilentProviderRests and NoResultNeverRests.
+func transient(t ProviderTake) bool {
+	if silentProvider(t) {
+		return true
+	}
+	line := strings.TrimSpace(t.Error)
+	if IsNoResult(line) {
+		return false
+	}
+	m := causeRE.FindStringSubmatch(line)
 	// a rate limit never counts here: it stalls the route briefly from its own records
 	// (RestsDue, rateBackoffs), never toward the 3-in-10 rest (a-rate-limited-refusal-
 	// never-fails-the-cardc; tla/RateBackoff.tla)

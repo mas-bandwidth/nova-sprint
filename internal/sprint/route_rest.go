@@ -23,9 +23,11 @@ import (
 // its routes rest, written in the deal's batch with a happened note to the coordinator
 // naming the cards; the deal draws no work card (a first deal, a redeal or a rework's) on a
 // resting route, and the rest ends by itself at its time. A take that ended with NO RESULT
-// is the model's output on that card, never the provider's: it counts against the card's
-// attempt and the route's ok%, and it never rests the route (rule 3 of 2026-10-02 rested on
-// three of them; that rule is retired, and a rest it wrote holds no route: Retired). One
+// and model output or unknown usage never counts toward this provider rest: its card
+// attempt and the route's ok% carry it (rule 3 of 2026-10-02 rested on
+// three of them; that rule is retired, and a rest it wrote holds no route: Retired).
+// A no-result take with exactly one request and every token counter explicitly zero
+// is a provider timeout and counts toward RestProvider (silentProvider). Another
 // no-result take is not the model's: a take whose child made no model call at all (no
 // token reported). Such takes on two or more members of one route within IdleReapWindow
 // are the route's, and rest it (RestNoModelCall, hold_cause.go; the owner, 2026-10-13,
@@ -494,7 +496,7 @@ func restedRoutes(r RouteRest, routes []Route) []string {
 // (its child launched; zero when its record holds none), whether the provider failed it
 // transiently (a 5xx, a timeout: transient), and the provider's line when the
 // provider refused it for credit or for its key (refusal, provider_funds.go), "" otherwise.
-// A take that left no result is neither: it is the model's, never the provider's.
+// A no-result take is neither unless usage proves provider silence (silentProvider).
 type routeEnd struct {
 	card      string
 	take      int
@@ -521,7 +523,7 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 				continue
 			}
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
+			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t), refused: refusal(t.Error)})
 		}
 		if c.Col != Finished && c.Col != DoneOK && c.Col != DoneFailed {
 			continue
@@ -537,8 +539,8 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 // RestsDue is the rests the rule writes now: each route of the store not resting at s.Now
 // whose window (its last RouteRestWindow ended takes after its last rest began, in the
 // order they ended) holds RouteRestAfter or more the provider failed transiently, rested
-// from s.Now for RouteRestFor, naming those takes' cards (a take that left no result never
-// counts: tla/RouteRest.tla); each other route not resting whose rate-limited takes back it
+// from s.Now for RouteRestFor, naming those takes' cards (a no-result take counts only
+// when usage proves provider silence: tla/RouteRest.tla SilentProviderRests); each other route not resting whose rate-limited takes back it
 // off at s.Now (rateBackoffs: a fixed end from the records, never from s.Now, so it holds
 // while now is before it and is due again on every step until then; tla/RateBackoff.tla);
 // and each provider a refusal rests
