@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 type flagSet = *flag.FlagSet
@@ -394,7 +396,7 @@ one answer to each judgment (every one prints its own, filled in):
   the fleet's failure           mend its cause (the toolchain, a member, a route, a provider), then ack <note> --reason '<what was mended>'  (one judgment for a failure many cards share; the cards rework themselves meanwhile)
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
   a reader found it broken    rework --group <id> --expect <n> --answers <notes>  (each fix is the reader's finding; a read with a finding is reworked by rule read-broken, a friend's card too, so only one with no finding or at its brief's bound comes here; no wait parks it)
-  read's branch not on origin push the branch, then ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
+  read's branch not on origin push the branch, then ask --group <id> --expect <n> --answers <notes> (the read is asked again and the judgment closes; refused naming the judgment while no branch on origin holds the head), or ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
   the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, rework <id> --fix <text> --tier <t> (re-tier), rework <id> --carry --fix <text>, or drop <id>; the same finding twice, or max_attempts attempts (nova-config's sprint row, default 4) since your last decision on the card
   conflict on a card          resume --stream <s> --did '<what you did>' --answers <note>  (land merges again, regenerating the ledgers; a conflict outside them: rework or drop)
   stream branch red           return <suspect> --answers <note>, then resume --stream <s> --did 'returned <suspect>' --answers <note>
@@ -2798,7 +2800,7 @@ func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
 		}
 		return ""
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.AskStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
+		return a.askStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
 	})
 }
 
@@ -4714,4 +4716,64 @@ func receiptContractCheck(version, usage string) error {
 		return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
 	}
 	return nil
+}
+
+// askStep is the ask, with origin asked for each primary it names whose read's branch is not
+// on origin (judgment NReadBranchMissing): the branch on origin that holds its head, so the
+// ask re-asks the read and closes the judgment, or is refused naming it
+// (tla/ReadBranchMissing.tla, Ask). Each snapshot retry asks origin again, as finishStep does;
+// a primary not named is never asked again by an ask of the rest.
+func (a *app) askStep(r sprint.AskReq) store.Step {
+	step := store.AskStep(r)
+	if a.readTip == nil || a.readHeads == nil || (len(r.IDs) == 0 && r.Only == nil) {
+		return step
+	}
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		req := r
+		for _, ck := range sprint.ReadBranchChecks(s) {
+			if !slices.Contains(r.IDs, ck.Primary) && !slices.Contains(r.Only, ck.Primary) {
+				continue
+			}
+			if b := a.branchHolding(context.Background(), ck); b != "" {
+				if req.Holds == nil {
+					req.Holds = map[string]string{}
+				}
+				req.Holds[ck.Primary] = b
+			}
+		}
+		return sprint.Ask(s, req)
+	}
+	return step
+}
+
+// branchHolding is the branch on origin that holds the check's head: the branch the read was
+// handed when it is on origin now at the head, else a branch of the same work card
+// (sprint/<prefix><card>.g*) at the head; "" when none does, or origin cannot be read (the
+// judgment stays open: a listing that failed is no branch found).
+func (a *app) branchHolding(ctx context.Context, ck sprint.BranchCheck) string {
+	repo := swarm.ReadCardBase([]byte(ck.Brief)).Repo
+	if repo == "" || ck.Branch == "" || !typedrec.IsFullSha(ck.Head) {
+		return ""
+	}
+	tip, err := a.readTip(ctx, repo, ck.Branch)
+	if err != nil {
+		return ""
+	}
+	if strings.EqualFold(tip, ck.Head) {
+		return ck.Branch
+	}
+	i := strings.LastIndex(ck.Branch, ".g")
+	if i <= 0 {
+		return ""
+	}
+	heads, err := a.readHeads(ctx, repo, "refs/heads/"+ck.Branch[:i]+".g*")
+	if err != nil {
+		return ""
+	}
+	for _, b := range slices.Sorted(maps.Keys(heads)) {
+		if b != ck.Branch && strings.EqualFold(heads[b], ck.Head) {
+			return b
+		}
+	}
+	return ""
 }

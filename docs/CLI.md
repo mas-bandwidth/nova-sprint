@@ -68,6 +68,7 @@ nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | 
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
+# ask <card> [--answers <j>] on a card whose "a read's branch is not on origin" judgment is open asks origin: a branch of the work holding the head asks the read again and closes it; none is refused in one line naming the judgment, rework with a fix and drop (ask --another gives the same reason; tla/ReadBranchMissing.tla)
 nova-sprint queue --as <reader|member> [--wait <duration> --after <cursor>] | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
@@ -606,7 +607,9 @@ the failing log's tail. A pull request closed without a merge clears the promoti
 flight with one judgment naming it, `JUDGMENT closed-pr ... pr=<n>`, and the next pass cuts
 afresh. The verb claims the promotion cleared only after every in-flight key is gone: a
 cleanup that fails is a refusal naming the keys that remain. Every step prints a line as it goes, and every wait names what it waits on
-(`PROMOTE WAIT ... checks pending: <names>`), looking again every `--poll` (default 1m).
+(`PROMOTE WAIT ... checks pending: <names>`). While the promotion is pending the wait blocks on the store's `ev:github` stream
+for a row naming the repository and the pull request (the checks arrive as events, written by the ci receipts); such a row ends the
+wait at once and the verb asks gh once, and `--poll` (default 1m) stays the backstop for a lost row.
 Without `--once` the verb repeats every `--every`. `--dry-run` prints the cut it would make,
 or the promotion in flight, and writes, enqueues and records nothing. The contract is
 [SPEC-SPRINT.md section 11](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), promote.
