@@ -112,7 +112,6 @@ func TestEveryAccessorReadsItsDefaultWhenAbsent(t *testing.T) {
 		assert.False(t, s.FriendsOff())
 		assert.True(t, s.FleetTakes("heavy"))
 		assert.True(t, s.FriendsTake("flash"))
-		assert.Equal(t, "", s.UnservedTierFallsTo())
 		assert.Equal(t, DealtMaxDefault, s.DealtMax())
 		assert.Equal(t, ReadyMaxDefault, s.ReadyMax())
 		assert.Equal(t, FriendIdleDefault, s.FriendIdleAfter())

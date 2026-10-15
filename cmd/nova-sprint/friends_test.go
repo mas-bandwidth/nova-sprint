@@ -477,19 +477,3 @@ func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	assert.Contains(t, res.Stdout, " row_mode=one-shot row_width=1")
 	assert.Contains(t, res.Stdout, " row_token_cap=6000000")
 }
-
-func (ta *testApp) hookDown(friend string) {
-	prev := ta.a.readFriendHooks
-	ta.a.readFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
-		rows, at, err := prev(ctx, names...)
-		if err != nil {
-			return nil, at, err
-		}
-		for i := range rows {
-			if rows[i].Name == friend {
-				rows[i].State = hook.StateExpired
-			}
-		}
-		return rows, at, nil
-	}
-}

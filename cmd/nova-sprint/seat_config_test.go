@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/seatcred"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 

@@ -19,7 +19,7 @@ func TestEverySetFlagHasASettingsRow(t *testing.T) {
 		"base", "dealt-max", "fleet", "fleet-tiers", "friend-finish",
 		"friend-idle", "friends", "friends-tiers", "go-lanes",
 		"landing-stall-bound", "pegged-bound", "read-cards", "read-tier",
-		"reads", "rework-priority", "unserved-tier-falls-to",
+		"reads", "rework-priority",
 	}
 	rows := SettingsRows()
 	seen := map[string]int{}

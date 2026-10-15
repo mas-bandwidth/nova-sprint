@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 const exampleDetail = `Writes a minimal pair of tree files (tree.lisp, against.lisp) and a recorded

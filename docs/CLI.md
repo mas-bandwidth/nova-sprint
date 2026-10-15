@@ -94,16 +94,10 @@ nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--che
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--unserved-tier-falls-to <heavy|pro|flash|off|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 
-`set --unserved-tier-falls-to <heavy|pro|flash>` is the coordinator's one replacement for
-pinning frontier cards by hand when their brief tier no route and no up friend serves: the
-tick records a fallback tier on every such card — the strongest served tier at or below the
-setting — so the deal runs it where something can take it (`off` and `default`, the
-behaviour when unset, leave today's behaviour). When the brief tier is served again the
-next tick clears the fallback on every card not yet taken. A card the seat pinned is never
-touched. `card` and `where --json --rows` show `tier=<brief> (falls to <t>)`.
+A card waits for its own tier: no cross-tier dealing. The `set --unserved-tier-falls-to` fallback is retired.
 nova-sprint backup (--out <dir> [--part-bytes <n>] [--secrets-store <dir> --secrets-as <seat> --secrets-key <path> --sops <path>] | --file <path> [--dry-run])
 nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <path>] [--redis-server <path>]
 nova-sprint demo stop [--dir <dir>]
@@ -1024,3 +1018,16 @@ eligible reader, ask names the reader reason and remedy. `rework`, `drop` and
 A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
+
+`nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n`. A delivery fault means an escalation still
+needs a successful bus receipt; it is not proof that the coordinator or owner saw
+anything. The server folds overdue decisions to the coordinator once per changed
+set and to the configured owner at most every 30 minutes while unchanged. Failed
+or ambiguous sends retry, including a renewed token after expiry. Safe defaults
+and the terminal sprint-done exemption are listed in SPEC-SPRINT.md, "Decisions owed".
+
+Server-default parked cards remain in DECISIONS OWED and folded escalation until
+released, even after their audit report is older than one hour. Their hold reason
+names server-default and the original judgment. Oldest decision age excludes
+STOPPED time. The owner lane sends at most once every 30 minutes after a successful
+receipt, including when the set changes; pending failed deliveries retain retries.

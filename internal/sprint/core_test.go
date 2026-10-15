@@ -13,6 +13,7 @@ import (
 func TestLifecycleIsTheSpecTable(t *testing.T) {
 	t.Parallel()
 	legal := map[[2]State]bool{
+		{Review, Waiting}: true, {Waiting, Review}: true,
 		{Waiting, Ready}: true, {Ready, Working}: true, {Working, Review}: true, {Working, Ready}: true,
 		{Review, Merging}: true, {Review, Working}: true, {Review, Ready}: true, {Merging, Review}: true, {Merging, Landed}: true,
 		{Merging, Working}: true, {Merging, Ready}: true,

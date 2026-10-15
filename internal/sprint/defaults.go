@@ -80,7 +80,6 @@ var Defaults = []Default{
 	{Name: PropFleetTiers, Home: HomeProp, Value: TiersAll, Why: "the fleet may take every tier"},
 	{Name: PropFriendsTiers, Home: HomeProp, Value: TiersAll, Why: "the friends may take every tier"},
 	{Name: PropReworkPriority, Home: HomeProp, Value: PriorityFix, Why: "a next attempt is dealt at fix priority"},
-	{Name: PropUnservedTierFallsTo, Home: HomeProp, Value: SwitchOff, Why: "an unserved card waits for its tier (OPEN: the owner's to state)"},
 	{Name: PropReadTier, Home: HomeProp, Value: ReadTierDefault, Why: "each card's reads run at its own tier"},
 	{Name: PropReadsNeeded, Home: HomeProp, Value: ReadTierDefault, Why: "each card's own rule: one read for a flash card, two above"},
 	// the bounds

@@ -169,7 +169,7 @@ func TestOneReaderUpReadsTheFlashCardAndHoldsTheProCard(t *testing.T) {
 	t.Parallel()
 	w := tierWorld(t)
 	w.s.ReaderStates = map[string]string{"reader-a": ReaderUp, "reader-b": ReaderAway, "reader-c": ReaderDown}
-	assert.Equal(t, 1, MovesDue(w.s)-len(w.s.Fleet.Column(Withdrawn)), "the flash card is due to be asked, the pro card is not")
+	assert.Equal(t, 1, len(MoveDueKeys(w.s))-len(w.s.Fleet.Column(Withdrawn)), "the flash card is due to be asked, the pro card is not")
 	p, _ := TickAsk(w.s, TickReq{})
 	w.must(p)
 	assert.Len(t, liveReadsAt(w.s, w.s.Work.Card("s1-1"), 1), 1, "the flash card asked of the reader up")

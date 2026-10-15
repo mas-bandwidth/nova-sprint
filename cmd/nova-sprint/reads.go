@@ -21,8 +21,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
@@ -636,11 +636,12 @@ func seatWaitsOf(r store.StopsRecord, now time.Time) *seatWaitsView {
 
 // whereView is the view, for a program.
 type whereView struct {
-	At      time.Time `json:"at"`
-	Landed  int64     `json:"landed"`
-	All     int64     `json:"all"`
-	Held    int64     `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
-	Summary string    `json:"summary"`
+	Decisions sprint.DecisionSummary `json:"decisions"`
+	At        time.Time              `json:"at"`
+	Landed    int64                  `json:"landed"`
+	All       int64                  `json:"all"`
+	Held      int64                  `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
+	Summary   string                 `json:"summary"`
 	// ArchivedCards and ArchivedLanded are the cards of the archived streams (stream
 	// archive) and those landed, beside the headline, which counts only the streams on the
 	// table: All+ArchivedCards and Landed+ArchivedLanded are the whole epoch's.
@@ -1326,19 +1327,19 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
-	coordinator, err := st.B.Coordinator(ctx)
-	if err != nil {
-		return whereView{}, "", err
-	}
 	// the seat's record and the server's heartbeat, read in one exchange so the
 	// server's own version does not cost where --json a round trip of its own:
 	// the version and commit it runs, when it started and when it last wrote,
 	// fresh (no older than its TTL) or absent (store.SeatAndServer, ServerRecord)
-	seat, moved, serverRec, serverOK, err := st.SeatAndServer(ctx)
+	seat, moved, serverRec, serverOK, coordinator, err := st.SeatServerCoordinator(ctx)
 	if err != nil {
 		return whereView{}, "", err
 	}
 	now := a.now()
+	decisionNotes, err := st.B.OpenNotes(ctx)
+	if err != nil {
+		return whereView{}, "", err
+	}
 	v := whereView{At: now, Tables: map[string]map[string]map[string]any{}, Streams: clocks, Epoch: st.PinnedEpoch(), Coordinator: coordinator}
 	if serverOK {
 		v.ServerVersion = serverRec.Version
@@ -1357,6 +1358,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	v.Decisions = sprint.DecisionsOwed(now, decisionNotes, facts.DecisionHolds, facts.Machine.StoppedBetween)
 	v.Landed, v.All = counts(shapes[0], facts.Sentinels)
 	v.Archived = archivedOf(shapes[0], facts.Sentinels)
 	if v.Archived != nil {
@@ -1444,6 +1446,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		return whereView{}, "", err
 	}
 	var b strings.Builder
+	b.WriteString(v.Decisions.Line() + "\n")
+	for _, history := range v.Decisions.ReceiptHistory {
+		b.WriteString("DECISION RECEIPT HISTORY: " + history + "\n")
+	}
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
 	if line := sprint.IdleLine(v.Blockers); line != "" {
 		b.WriteString(line + "\n")
@@ -2658,7 +2664,7 @@ type cardView struct {
 	// Column is the live table placement, as linePlace reads it, never the
 	// legacy place:work field (docs/SPEC-SPRINT.md section 11).
 	Column  string `json:"column"`
-	Tier    string `json:"tier"`            // the tier it is on, "(falls to <t>)" on a fallback (sprint.CardTierShown)
+	Tier    string `json:"tier"`            // the tier it is on (sprint.CardTierShown)
 	Ceiling string `json:"ceiling"`         // the highest the machine escalates it to
 	Grade   string `json:"grade,omitempty"` // nova-decide's grade, as the card holds it (sprint.FieldGrade)
 	// Who is the worker its brief's WHO line names (sprint.FieldWho): friend for any
@@ -2785,8 +2791,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		if pinned, err := st.Pinned(ctx); err == nil {
 			epoch = pinned.PinnedEpoch()
 		}
-		// the tier it is on and its ceiling: flash first, pro on escalation; a card with a
-		// fallback tier shows its own brief tier and where it falls (unserved_tier.go)
+		// the tier it is on and its ceiling: flash first, pro on escalation
 		_, ceiling := sprint.CardTiers(v.Primary)
 		shown := sprint.CardTierShown(v.Primary)
 		// and its grade, nova-decide's convergence grade before its first deal (decide.go)
@@ -3097,8 +3102,7 @@ type primaryRow struct {
 	State  string            `json:"state"`
 	Score  float64           `json:"score"`
 	Fields map[string]string `json:"fields"`
-	// TierShown is the tier the card shows: its own brief tier with "(falls to <t>)" when
-	// the sprint gave it a fallback tier, else the tier it is on (unserved_tier.go).
+	// TierShown is the tier the card shows: the tier it is on.
 	TierShown string `json:"tier_shown,omitempty"`
 }
 

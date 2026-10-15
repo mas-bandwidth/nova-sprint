@@ -12,8 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // start refuses until a clean card check matches the cards (v1.2.17,

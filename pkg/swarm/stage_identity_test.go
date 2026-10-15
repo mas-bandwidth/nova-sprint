@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcontract"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 

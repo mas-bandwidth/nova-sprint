@@ -163,10 +163,10 @@ func (p *Plan) refuse(key, why string) { p.Refused = append(p.Refused, Refusal{k
 // named, each on its own (the seat ledger v1.2.4-held-2026-10-10.md bug 12,
 // stream-remove-removes-what-exists; docs/SPEC-SPRINT.md section 11, the
 // stream remove row): one name that is no row of the work or merge table no
-// longer refuses the batch, as the all-or-none rule StreamRemove refused 223
-// streams over one stale name. The rule of one name is streamRemoveWhy, the
-// one StreamRemove applies whole: a RUNNING machine and a stream that holds a
-// card are refused there, with its remedy. A name named twice is taken once.
+// longer refuses the batch, as the retired all-or-none rule (StreamRemove,
+// replaced by this split in b1ed5872) refused 223 streams over one stale name.
+// The rule of one name is streamRemoveWhy: a RUNNING machine and a stream that
+// holds a card are refused there, with its remedy. A name named twice is taken once.
 func StreamRemoveExisting(s *Snapshot, running bool, streams []string) (remove []string, refused []Refusal) {
 	seen := map[string]bool{}
 	for _, st := range streams {

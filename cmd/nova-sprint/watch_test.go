@@ -175,6 +175,8 @@ func TestWhereFrameHoldsOnlyTheHeaderAndTheTables(t *testing.T) {
 	ta.mu.Unlock()
 
 	frame := ta.ok("where --all")
+	require.True(t, strings.HasPrefix(frame, "DECISIONS OWED "))
+	_, frame, _ = strings.Cut(frame, "\n")
 	lines := strings.Split(frame, "\n")
 	// the machine RUNNING, its last tick three hours late: running, never STOPPED
 	require.Equal(t, []string{"SPRINT TABLE  coordinator coordinator", "", "0/3 0.0% -> ETA -  running (tick late 10800s)", "providers: none applied WARN no provider rows applied (nova-config apply --kind provider)", ""}, lines[:5], "the head of the frame")
@@ -303,7 +305,7 @@ func TestWatchDrawsEachFrameInPlaceWithOneWrite(t *testing.T) {
 	}
 	// no frame shows a time: the view's first line is its title
 	assert.NotContains(t, screen.writes[1], "2030-01-02", "the head of a frame")
-	assert.Contains(t, screen.writes[1], "\x1b[HSPRINT TABLE", "the head of a frame")
+	assert.Contains(t, screen.writes[1], "\x1b[HDECISIONS OWED", "the head of a frame")
 }
 
 // The writer's sequences, and its one write to a frame: two frames are two

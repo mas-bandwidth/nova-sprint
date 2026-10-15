@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
@@ -341,11 +341,13 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 		}
 		pass()
 		r.boss("nova-sprint tick")
+		pass() // a lane freed by a report is filled by the next pass (nova-tools pkg/member)
 		assert.Len(t, rn.packets, 2*(round+2), "the freed lanes are filled again: %s", log.String())
 		assert.LessOrEqual(t, m.Running(), 2, "never over its width")
 	}
-	// a member with no load sampled yet does not beat a load it did not measure
-	require.ErrorContains(t, m.Beat(), "no sample yet")
+	// a member with no load sampled yet beats a load of 0 (nova-tools pkg/member),
+	// never one it did not measure
+	require.NoError(t, m.Beat())
 	verbs := map[string]int{}
 	for _, v := range r.served {
 		verbs[v[0]]++
@@ -353,7 +355,7 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 	assert.Equal(t, 4, verbs["finish"], "%v\n%s", verbs, log.String())
 	assert.Positive(t, verbs["take"])
 	assert.Positive(t, verbs["queue"])
-	assert.Zero(t, verbs["fleet"], "the beat with no load was not sent")
+	assert.Positive(t, verbs["fleet"], "the beat with no load was sent as 0")
 	seen := map[string]bool{}
 	for _, p := range rn.packets {
 		assert.False(t, seen[p.Card], "%s started twice", p.Card)
