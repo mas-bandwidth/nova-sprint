@@ -194,9 +194,12 @@ func friendTiers(f FriendSeat) []string {
 
 // friendDealable says the deal may fill the friend's row (docs/SPEC-SPRINT.md section 1, a
 // friend's card): her status is up by the friends' rule (nova-hook: her session's
-// evidence, never a beat alone; not held, not down), the coordinator's row of
-// her (her fleet control card) says neither down nor held, and the stall ladder has not
-// marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a
+// evidence, never a beat alone; not held, not down), and the coordinator's row of
+// her (her fleet control card) says neither down nor held. The stall ladder's mark
+// (PropFriendStallDown) gates no deal: the sprint's friend states are up, down and held
+// alone (the owner, 2026-10-14), and a mark released only by her activity deadlocked an
+// up friend with an empty row, who has no card to be active on (2026-10-15, aurora and
+// stella marked at rung 5 and never dealt again). On 2026-10-06 a
 // friend whose row read down, her lanes paused and her daemon beating, was dealt 18 cards
 // twice; a row that cannot work is filled by no deal. While the friends' work is off
 // (FriendsOff, nova-sprint set --friends off) no friend's row is. A friend whose roles do
@@ -274,9 +277,6 @@ func friendCanRead(s *Snapshot, f FriendSeat) bool {
 		if st := ctl.F("status"); st == Down || st == Held || ctl.F("held") != "" {
 			return false
 		}
-	}
-	if down, _ := s.Fleet.Prop(PropFriendStallDown(f.Name)); down != "" {
-		return false
 	}
 	return true
 }
