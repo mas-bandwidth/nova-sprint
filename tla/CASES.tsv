@@ -717,3 +717,7 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCLoopWake.cfg	MCLoopWake.tla	pass	-	ignore-terminal	loopwake	required	-
+MCLoopWakeLostPush.cfg	MCLoopWake.tla	pass	-	ignore-terminal	loopwake	required	-
+MCLoopWakeBrokenClockOnly.cfg	MCLoopWake.tla	invariant	PushedWithinOneEvent	ignore-terminal	loopwake	required	-
+MCLoopWakeBrokenCursorAhead.cfg	MCLoopWake.tla	temporal	EveryChangeIsHandled	ignore-terminal	loopwake	required	-

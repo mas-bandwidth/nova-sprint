@@ -25,7 +25,10 @@ import (
 // answers a token it has seen with the message it sent). Raises of judgments no longer open
 // are forgotten at each look.
 
-// seatSilentLook is the least time between two looks for the judgment.
+// seatSilentLook is the least time between two looks for the judgment on a quiet log: the
+// judgment is about silence, so its timer stays its signal (tla/LoopWake.tla Backstop). A look
+// after a line of the log that the last look has not seen is taken at once (Wake): the run loop
+// ticks on each line, at most once a store.TickFloor, and looks after each tick.
 const seatSilentLook = 5 * time.Second
 
 // seatSilentTold is each raise of the judgment told to the owner, by its token, and the last
@@ -34,6 +37,9 @@ type seatSilentTold struct {
 	mu     sync.Mutex
 	told   map[string]bool
 	lookAt time.Time
+	// the log's tail as the last look began: a line after it wakes the next look
+	epoch  uint64
+	cursor string
 }
 
 // seatSilentToken is the bus token of one raise of the judgment: the sprint (its key
@@ -62,12 +68,28 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 // tla/NeedsBlocked.tla BlockedDependentsCovered
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	now := a.now()
+	// the cursor is read before the look reads, so a line committed during the look is after it
+	// and wakes the next one (tla/LoopWake.tla PassEnd); a log that cannot be read keeps the interval
+	var epoch uint64
+	var tail string
+	tailed := false
+	if es, err := st.EpochNow(ctx); err == nil {
+		b := st.B
+		if es.N != 0 {
+			b = b.AtEpoch(es.N, false)
+		}
+		if t, _, err := b.Tails(ctx); err == nil {
+			epoch, tail, tailed = es.N, t, true
+		}
+	}
 	a.seatSilent.mu.Lock()
-	if !a.seatSilent.lookAt.IsZero() && now.Sub(a.seatSilent.lookAt) < seatSilentLook && now.After(a.seatSilent.lookAt) {
+	quiet := !tailed || (a.seatSilent.epoch == epoch && a.seatSilent.cursor == tail)
+	if !a.seatSilent.lookAt.IsZero() && now.Sub(a.seatSilent.lookAt) < seatSilentLook && now.After(a.seatSilent.lookAt) && quiet {
 		a.seatSilent.mu.Unlock()
 		return
 	}
 	a.seatSilent.lookAt = now
+	a.seatSilent.epoch, a.seatSilent.cursor = epoch, tail
 	a.seatSilent.mu.Unlock()
 	groups, err := st.OpenGroups(ctx)
 	if err != nil {

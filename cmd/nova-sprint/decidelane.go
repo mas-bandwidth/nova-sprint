@@ -157,16 +157,18 @@ func (l *decideLane) answerOutcomes(s *sprint.Snapshot) (int, []string) {
 	return n, problems
 }
 
-// decideLoop runs decideRound every DecideEvery until ctx ends.
+// decideLoop runs decideRound at each line of the sprint log, and every DecideEvery while the
+// log is quiet, until ctx ends (tla/LoopWake.tla Wake, Backstop).
 func (a *app) decideLoop(ctx context.Context, addr string, stdout io.Writer) {
 	grading := "no grading: " + decide.JevSecret + " is absent from this environment"
 	if a.decide.backend != nil {
 		grading = "grading with " + a.decide.backend.Name()
 	}
-	fmt.Fprintf(stdout, "DECIDE every %s: attempt and grade decisions recorded under %s, outcomes attached on landing and drop; %s\n", DecideEvery, a.decide.dir, grading)
+	fmt.Fprintf(stdout, "DECIDE every %s (the quiet log's backstop), and at once on a line of the log (at most every %s): attempt and grade decisions recorded under %s, outcomes attached on landing and drop; %s\n", DecideEvery, store.TickFloor, a.decide.dir, grading)
 	for ctx.Err() == nil {
+		mark, began := a.logMark(ctx, addr), a.now()
 		a.decideRound(ctx, addr, stdout)
-		a.sleep(DecideEvery)
+		a.logPause(ctx, addr, mark, began, DecideEvery, func(context.Context) { a.sleep(DecideEvery) })
 	}
 }
 

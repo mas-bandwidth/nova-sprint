@@ -49,21 +49,92 @@ const landLaneWho = "lander"
 // landLaneBase is the holder the base re-check's gate records on a bench's Go lane.
 const landLaneBase = landLaneWho + "/base"
 
-// landLoop runs one land cycle every LandEvery until ctx ends. Each cycle writes
+// landLoop runs one land cycle at each line of the sprint log, and every LandEvery while
+// the log is quiet, until ctx ends (tla/LoopWake.tla Wake, Backstop). Each cycle writes
 // one line: LAND OK, LAND REFUSED, or LAND IDLE. A landing runs beside the loop,
 // so a long gate still leaves a line. A refusal is a state, not an event: while one
 // stands every cycle writes LAND REFUSED naming its reason and its remedy, and its
 // first cycle raises one judgment at once (landRefusal; tla/ServerSwitch.tla
 // LandRefused, LandOk).
 func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
-	fmt.Fprintf(stdout, "LANDING every %s: land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery)
+	fmt.Fprintf(stdout, "LANDING every %s (the quiet log's backstop), and at once on a line of the log (at most every %s): land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery, store.TickFloor)
 	var flight *landFlight
 	for ctx.Err() == nil {
+		// the cursor is the log's tail before the cycle reads: a line committed during the cycle
+		// stays after it and wakes the next wait (tla/LoopWake.tla PassEnd)
+		mark, began := a.logMark(ctx, addr), a.now()
 		flight = a.landCycle(ctx, addr, stdout, flight)
 		if ctx.Err() != nil {
 			break
 		}
-		a.landPause(ctx)
+		a.logPause(ctx, addr, mark, began, LandEvery, a.landPause)
+	}
+}
+
+// logSeen is where a loop stands on the sprint log: the epoch and the last line it has seen.
+// ok is false when the log could not be read, and the loop then keeps only its interval.
+type logSeen struct {
+	epoch  uint64
+	cursor string
+	ok     bool
+}
+
+// logMark reads the tail of the sprint log as it stands now: the cursor of a loop's next wait.
+// It is read before the loop's pass, so a line committed during the pass is after it.
+// tla/LoopWake.tla Wake
+func (a *app) logMark(ctx context.Context, addr string) logSeen {
+	st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
+	if err != nil {
+		return logSeen{}
+	}
+	es, err := st.EpochNow(ctx)
+	if err != nil {
+		return logSeen{}
+	}
+	b := st.B
+	if es.N != 0 {
+		b = b.AtEpoch(es.N, false)
+	}
+	tail, _, err := b.Tails(ctx)
+	if err != nil {
+		return logSeen{}
+	}
+	return logSeen{epoch: es.N, cursor: tail, ok: true}
+}
+
+// logPause is the wait between two passes of a loop: it blocks on the sprint log from the mark
+// until a line comes or every has passed (the quiet-log backstop: a lost push is still caught,
+// and a wait the store refuses falls back to it), and returns at once when ctx ends. A woken
+// pass begins no sooner than store.TickFloor after the last began, so a busy log runs a loop at
+// most ten times a second. pause is the interval wait the loop kept on its own sleep.
+// tla/LoopWake.tla Wake, Backstop
+func (a *app) logPause(ctx context.Context, addr string, mark logSeen, began time.Time, every time.Duration, pause func(context.Context)) {
+	if !mark.ok {
+		pause(ctx)
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
+		if err == nil {
+			var woke bool
+			if _, woke, err = st.WaitLog(ctx, mark.epoch, mark.cursor, every); err == nil {
+				if woke {
+					if left := store.TickFloor - a.now().Sub(began); left > 0 {
+						a.sleep(left)
+					}
+				}
+				return
+			}
+		}
+		if ctx.Err() == nil {
+			a.sleep(every)
+		}
+	}()
+	select {
+	case <-ctx.Done():
+	case <-done:
 	}
 }
 

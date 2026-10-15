@@ -1043,3 +1043,13 @@ released, even after their audit report is older than one hour. Their hold reaso
 names server-default and the original judgment. Oldest decision age excludes
 STOPPED time. The owner lane sends at most once every 30 minutes after a successful
 receipt, including when the set changes; pending failed deliveries retain retries.
+
+## The server's loops and the log
+
+The server's land loop and decide lane block on the sprint log (`Store.WaitLog`, from the
+last line they have seen) and run within one log event of a change, at most once per
+`TickFloor` (100 ms) on a busy log. Their intervals (`LandEvery` 2 s, `DecideEvery` 5 s) are
+the quiet log's backstop, so a lost push is still caught. The seat-silent look runs at once
+after a line it has not seen, and otherwise every `seatSilentLook` (5 s). The start lines read
+`LANDING every 2s (the quiet log's backstop), and at once on a line of the log ...` and the same for `DECIDE`.
+Model: `tla/LoopWake.tla`.
