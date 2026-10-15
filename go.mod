@@ -4,6 +4,7 @@ go 1.26.6
 
 tool (
 	github.com/mas-bandwidth/nova-tools/tools/roadmap
+	github.com/mas-bandwidth/nova-tools/tools/tlacheck
 	golang.org/x/tools/cmd/deadcode
 )
 

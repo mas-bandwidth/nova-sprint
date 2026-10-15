@@ -7,3 +7,4 @@
 internal/roadmapdoc	github.com/mas-bandwidth/nova-tools/pkg/roadmap
 internal/worklang	github.com/mas-bandwidth/nova-tools/pkg/sexp
 tools/roadmap	github.com/mas-bandwidth/nova-tools/tools/roadmap (go.mod tool directive; make roadmap runs it)
+tools/tlacheck	github.com/mas-bandwidth/nova-tools/tools/tlacheck (go.mod tool directive; make tlc*, tlc.yml run it)

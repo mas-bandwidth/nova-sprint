@@ -108,3 +108,51 @@ func jobTimeout(t *testing.T, name, body string) int {
 	require.Failf(t, "no timeout", "job %q has no timeout-minutes", name)
 	return 0
 }
+
+// ruleRecipe is the recipe lines of the Makefile rule named target: the tab-indented
+// lines that follow its header.
+func ruleRecipe(t *testing.T, text, target string) string {
+	t.Helper()
+	var recipe []string
+	in := false
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, target) {
+			in = true
+			continue
+		}
+		if !in {
+			continue
+		}
+		if line == "" || !strings.HasPrefix(line, "\t") {
+			break
+		}
+		recipe = append(recipe, line)
+	}
+	return strings.Join(recipe, "\n")
+}
+
+// TestTheTLCWorkflowRunsNovaToolsTlacheck pins that nova-sprint runs nova-tools'
+// tlacheck: go.mod's tool directive supplies it, so the Makefile and tlc.yml call
+// `go tool tlacheck`, never the deleted local copy ./tools/tlacheck, and tlc.yml's
+// pull-request path trigger watches go.mod instead of the deleted tools/tlacheck.
+func TestTheTLCWorkflowRunsNovaToolsTlacheck(t *testing.T) {
+	t.Parallel()
+	mk, err := os.ReadFile("../../Makefile")
+	require.NoError(t, err)
+	mkText := string(mk)
+	require.NotContains(t, mkText, "./tools/tlacheck", "the Makefile still names the deleted local copy tools/tlacheck")
+	for _, target := range []string{"tlc:", "tlc-full:", "tlc-groups:", "tlc-test:"} {
+		recipe := ruleRecipe(t, mkText, target)
+		require.NotEmpty(t, recipe, "Makefile has no %s rule", target)
+		require.Contains(t, recipe, "tool tlacheck", "Makefile %s does not run nova-tools' tlacheck through `$(GO) tool tlacheck`", target)
+		require.NotContains(t, recipe, "./tools/tlacheck", "Makefile %s still runs the deleted local copy", target)
+	}
+
+	b, err := os.ReadFile("../../.github/workflows/tlc.yml")
+	require.NoError(t, err)
+	wf := string(b)
+	require.NotContains(t, wf, "go run ./tools/tlacheck", "tlc.yml still runs the deleted local copy")
+	require.Contains(t, wf, "go tool tlacheck", "tlc.yml does not run nova-tools' tlacheck through `go tool tlacheck`")
+	require.Contains(t, wf, `- "go.mod"`, "tlc.yml's pull-request path trigger does not watch go.mod")
+	require.NotContains(t, wf, "tools/tlacheck/**", "tlc.yml's pull-request path trigger still watches the deleted tools/tlacheck")
+}
