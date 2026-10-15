@@ -530,6 +530,7 @@ MCReadVerdictBrokenReadersOnly.cfg	MCReadVerdict.tla	temporal	AcceptedWorkCounts
 MCDoneRecord.cfg	MCDoneRecord.tla	pass	-	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenNoDedup.cfg	MCDoneRecord.tla	invariant	NoDoubleCount	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenKeepEpoch.cfg	MCDoneRecord.tla	invariant	ClearStartsAgain	ignore-terminal	donerecord	required	-
+MCDoneRecordBrokenOverwriteNewer.cfg	MCDoneRecord.tla	invariant	OlderBuildNeverWritesNewerLayout	ignore-terminal	donerecord	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenEmptyFlashOnly.cfg	MCReaderTiers.tla	invariant	EmptyCellReadsEveryServedTier	ignore-terminal	readertiers	required	-

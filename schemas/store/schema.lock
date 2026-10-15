@@ -1,0 +1,15 @@
+schema-lock 7
+package donewire
+
+fixed table Completion layout=0x8d678f2fe83b1918 lineage=0xdb38bac60de3d514
+    field kind id=0xef9c96d721673243 kind=12 width=24 default=bytes: cap=16
+    field card id=0xb5614e90e87b455f kind=12 width=520 default=bytes: cap=515
+    field row id=0x8a0bc1196111ad9b kind=12 width=140 default=bytes: cap=135
+    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
+    lineage wire=0x16ff82384d9c6181 record=686 bytes=0500000007b2d4dcf0e9dbe70dae0200000400000043326721d7969cef0c14000000000000005f457be8904e61b50c07020000000000009bad116119c10b8a0c8b0000000000000068a945b5074e9c08050800000000000000
+
+fixed table DoneRecord layout=0x68212dfc9cf26f57 lineage=0x9c01219096c94779
+    field epoch id=0xfc9697d1196e6ba6 kind=9 width=8 default=0
+    field cursor id=0xf927453fbe6252ef kind=12 width=48 default=bytes: cap=41
+    field done id=0xdc51fb6761fd6e91 kind=14 width=66124 default=born:0 held=Completion@0x8d678f2fe83b1918 elem=13/696 bound=95 shape=counted
+    lineage wire=0xa32e114afd25d6b0 record=65227 bytes=09000000d0389100fa0e25b40dcbfe000003000000a66b6e19d19796fc090800000000000000ef5262be3f4527f90c2d00000000000000916efd6167fb51dc0e96fe00000100000000000000000000000dae0200000400000043326721d7969cef0c14000000000000005f457be8904e61b50c07020000000000009bad116119c10b8a0c8b0000000000000068a945b5074e9c08050800000000000000
