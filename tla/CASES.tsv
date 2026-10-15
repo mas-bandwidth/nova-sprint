@@ -711,3 +711,5 @@ MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ig
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
 MCStageNeeds.cfg	MCStageNeeds.tla	pass	-	check	stageneeds	required	-
 MCStageNeedsBrokenStaleTip.cfg	MCStageNeeds.tla	invariant	NoChildWithoutLandedNeeds	check	stageneeds	required	-
+MCFriendGive.cfg	MCFriendGive.tla	pass	-	ignore-terminal	friendgive	required	-
+MCFriendGiveBrokenDoneIsDealt.cfg	MCFriendGive.tla	invariant	GiveReachesABouncedCard	ignore-terminal	friendgive	required	-
