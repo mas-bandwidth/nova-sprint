@@ -186,7 +186,7 @@ func RepairMerge(dir string, git func(args ...string) (string, error), before st
 		}
 	}
 	// a merge that edits a model is refused without its run records (land_records.go)
-	owed, err := recordsRefusals(dir, diff)
+	owed, err := recordsRefusals(dir, diff, pinnedRunnerFiles)
 	if err != nil {
 		return "", nil, err
 	}
