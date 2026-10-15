@@ -715,5 +715,7 @@ MCFriendGive.cfg	MCFriendGive.tla	pass	-	ignore-terminal	friendgive	required	-
 MCFriendGiveBrokenDoneIsDealt.cfg	MCFriendGive.tla	invariant	GiveReachesABouncedCard	ignore-terminal	friendgive	required	-
 MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLandingOnUnjudgedTip	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassStall.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenStallEachMinute.cfg	MCCoordinatorPass.tla	invariant	StallOncePerCause	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
