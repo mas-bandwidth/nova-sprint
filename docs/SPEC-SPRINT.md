@@ -4663,7 +4663,11 @@ words, comments dropped (internal/sprint/land_runner_pin.go), and a pin is one o
 that clones nova-tools and checks that clone out (`git -C <dir> checkout ...`, or `cd <dir>`
 then `git checkout ...`), as rocketnet's `.github/workflows/tlc.yml` does; or
 `go install|run github.com/mas-bandwidth/nova-tools/tools/tlacheck@<rev>`. A checkout of any
-other repository is no pin. Each of these is one refusal on its line, never a fall back to the
+other repository is no pin. The working directory is followed as a shell keeps it: a `cd`
+holds across the lines of a run script, a subshell's `( ... )` scopes it, each step starts in
+the job's workspace (or its `working-directory:`), and a clone made in one step of a job is
+that job's in its later steps; a checkout after a `cd` the lander cannot follow (`cd -`,
+`cd ~...`, a bare `cd`) in a job that clones nova-tools is refused rather than guessed. Each of these is one refusal on its line, never a fall back to the
 built-in runner: a pinned revision that is not exactly 40 lowercase hex digits (a branch, a
 tag, an abbreviation, `<sha>^`); a workflow the lander cannot read or parse; two pins of two
 commits; and a pin it cannot fetch. A record another runner wrote is refused naming the

@@ -312,6 +312,68 @@ func TestTheRunnerPinIsReadAsYAMLAndShell(t *testing.T) {
 		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - uses: actions/checkout@v4\n" +
 			"      - uses: actions/checkout@v4\n        with:\n          repository: mas-bandwidth/nova-tools\n          ref: " + pinRev + "\n          path: runner\n"})
 	})
+	t.Run("a cd on its own line holds for the lines after it", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+			"          git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+			"          cd runner\n" +
+			"          git checkout --detach " + pinRev + "\n" +
+			"          go build ./tools/tlacheck\n"})
+	})
+	t.Run("cd a && cd b reaches a/b", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+			"          mkdir -p work\n" +
+			"          git clone https://github.com/mas-bandwidth/nova-tools.git work/runner\n" +
+			"          cd work && cd runner\n" +
+			"          git checkout --detach " + pinRev + "\n"})
+	})
+	t.Run("a cd inside a subshell ends with it", func(t *testing.T) {
+		t.Parallel()
+		wf := "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+			"          git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+			"          (cd runner && go build ./tools/tlacheck)\n" +
+			"          git checkout --detach " + otherRev + "\n" // the tree's own checkout, not nova-tools
+		refused, reads := check(t, map[string]string{"tlc.yml": wf}, built)
+		assert.Empty(t, refused, "no pin: the built-in runner holds the records")
+		assert.Empty(t, reads)
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+			"          git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+			"          (cd runner && git checkout --detach " + pinRev + ")\n" +
+			"          git checkout --detach " + otherRev + "\n"})
+	})
+	t.Run("a clone in one step and its checkout in a later step of the job pins", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n" +
+			"      - run: git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+			"      - run: git -C runner checkout --detach " + pinRev + "\n" +
+			"      - run: (cd runner && go build ./tools/tlacheck)\n"})
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n" +
+			"      - run: git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+			"      - working-directory: runner\n        run: git checkout --detach " + pinRev + "\n"})
+	})
+	t.Run("each step starts in the workspace", func(t *testing.T) {
+		t.Parallel()
+		wf := "jobs:\n  tlc:\n    steps:\n" +
+			"      - run: git clone https://github.com/mas-bandwidth/nova-tools.git runner && cd runner\n" +
+			"      - run: git checkout --detach " + otherRev + "\n" // the tree's own checkout
+		refused, reads := check(t, map[string]string{"tlc.yml": wf}, built)
+		assert.Empty(t, refused)
+		assert.Empty(t, reads)
+	})
+	t.Run("a checkout after a cd the lander cannot follow is refused", func(t *testing.T) {
+		t.Parallel()
+		for _, cd := range []string{"cd -", "cd ~/runner", "cd"} {
+			wf := "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+				"          git clone https://github.com/mas-bandwidth/nova-tools.git runner\n" +
+				"          " + cd + "\n" +
+				"          git checkout --detach " + pinRev + "\n"
+			refused, reads := check(t, map[string]string{"tlc.yml": wf}, pinned)
+			require.Len(t, refused, 1, "%s: %v", cd, refused)
+			assert.True(t, strings.HasPrefix(refused[0].String(), ".github/workflows/tlc.yml:7 checks out a repository in a directory the lander cannot follow"), "%s: %s", cd, refused[0].String())
+			assert.Empty(t, reads)
+		}
+	})
 	for name, c := range map[string]struct{ wf, want string }{
 		"a parent of the commit": {strings.Replace(pinWorkflow(pinRev), pinRev, pinRev+"^", 1),
 			".github/workflows/tlc.yml:13 checks out nova-tools at \"" + pinRev + "^\", which is not a full commit"},

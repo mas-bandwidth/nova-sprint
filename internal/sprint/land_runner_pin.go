@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -104,8 +105,9 @@ func workflowPins(rel string, raw []byte) ([]runnerPin, *DocFix) {
 		if steps == nil || steps.Kind != yaml.SequenceNode {
 			continue
 		}
+		clones := map[string]bool{} // a job's steps share one workspace: its nova-tools clones
 		for _, step := range steps.Content {
-			found, fix := stepPins(rel, step)
+			found, fix := stepPins(rel, step, clones)
 			if fix != nil {
 				return nil, fix
 			}
@@ -116,7 +118,9 @@ func workflowPins(rel string, raw []byte) ([]runnerPin, *DocFix) {
 }
 
 // stepPins is the pins of one step: an actions/checkout of nova-tools, or a run script.
-func stepPins(rel string, step *yaml.Node) ([]runnerPin, *DocFix) {
+// clones is the directories, under the job's workspace, the job's steps so far cloned
+// nova-tools into; a step adds to it.
+func stepPins(rel string, step *yaml.Node, clones map[string]bool) ([]runnerPin, *DocFix) {
 	if step.Kind != yaml.MappingNode {
 		return nil, nil
 	}
@@ -126,6 +130,11 @@ func stepPins(rel string, step *yaml.Node) ([]runnerPin, *DocFix) {
 		if repo == nil || !strings.EqualFold(repo.Value, "mas-bandwidth/nova-tools") {
 			return nil, nil
 		}
+		into := "."
+		if p := mapValue(with, "path"); p != nil && p.Kind == yaml.ScalarNode {
+			into = joinDir("", p.Value)
+		}
+		clones[into] = true
 		ref := mapValue(with, "ref")
 		if ref == nil {
 			return nil, &DocFix{File: rel, Line: repo.Line, What: "checks out nova-tools at no ref; pin the TLC runner to a full commit (40 hex digits)"}
@@ -140,7 +149,11 @@ func stepPins(rel string, step *yaml.Node) ([]runnerPin, *DocFix) {
 	if run.Style == yaml.LiteralStyle || run.Style == yaml.FoldedStyle {
 		first++ // a block scalar's text starts on the line after its indicator
 	}
-	return scriptPins(rel, first, run.Value)
+	cwd := "."
+	if wd := mapValue(step, "working-directory"); wd != nil && wd.Kind == yaml.ScalarNode {
+		cwd = joinDir("", wd.Value)
+	}
+	return scriptPins(rel, first, run.Value, cwd, clones)
 }
 
 // revPin is the pin at rev, or a refusal when rev is not a full commit.
@@ -151,19 +164,17 @@ func revPin(rel string, line int, rev, what string) ([]runnerPin, *DocFix) {
 	return []runnerPin{{File: rel, Line: line, Rev: rev}}, nil
 }
 
-// scriptPins is the pins of a run script whose first line is line first of the file: its
-// commands, read as shell words with comments dropped, that check out a nova-tools clone
-// the script made, or go-install or go-run tlacheck at a revision.
-func scriptPins(rel string, first int, script string) ([]runnerPin, *DocFix) {
-	clones := map[string]bool{} // directories the script cloned nova-tools into
+// scriptPins is the pins of a run script whose first line is line first of the file,
+// run in the directory cwd of the job's workspace: its commands, read as shell words with
+// comments dropped, that check out a nova-tools clone the job made (clones, which the
+// script adds to), or go-install or go-run tlacheck at a revision. A checkout in a
+// directory the lander cannot follow (after cd -, cd ~ or a bare cd), in a job that
+// clones nova-tools, is refused rather than guessed.
+func scriptPins(rel string, first int, script, cwd string, clones map[string]bool) ([]runnerPin, *DocFix) {
 	var pins []runnerPin
-	for _, c := range shellCommands(script) {
+	for _, c := range shellCommands(script, cwd) {
 		line := first + c.line
 		w := c.words
-		// a run of commands joined by && or ; shares a working directory: cd <dir> leads
-		if len(w) == 2 && w[0] == "cd" {
-			continue
-		}
 		if len(w) >= 2 && w[0] == "go" && (w[1] == "install" || w[1] == "run") {
 			for _, a := range w[2:] {
 				if mod, rev, ok := strings.Cut(a, "@"); ok && mod == tlacheckModule {
@@ -182,7 +193,7 @@ func scriptPins(rel string, first int, script string) ([]runnerPin, *DocFix) {
 		gitDir, rest := c.cwd, w[1:]
 		for len(rest) >= 2 && (rest[0] == "-C" || rest[0] == "-c") {
 			if rest[0] == "-C" {
-				gitDir = rest[1]
+				gitDir = joinDir(gitDir, rest[1])
 			}
 			rest = rest[2:]
 		}
@@ -207,9 +218,15 @@ func scriptPins(rel string, first int, script string) ([]runnerPin, *DocFix) {
 				if len(pos) >= 2 {
 					into = pos[1]
 				}
-				clones[into] = true
+				if gitDir == unknownDir {
+					return nil, &DocFix{File: rel, Line: line, What: "clones nova-tools into a directory the lander cannot follow (after a cd it cannot resolve); clone it into a named directory"}
+				}
+				clones[joinDir(gitDir, into)] = true
 			}
 		case "checkout", "switch":
+			if gitDir == unknownDir && len(clones) > 0 {
+				return nil, &DocFix{File: rel, Line: line, What: "checks out a repository in a directory the lander cannot follow (after a cd it cannot resolve), in a job that clones nova-tools; check the clone out with git -C <dir> so the TLC runner's pin can be read"}
+			}
 			if !clones[gitDir] {
 				continue // a checkout of some other repository
 			}
@@ -232,6 +249,22 @@ func scriptPins(rel string, first int, script string) ([]runnerPin, *DocFix) {
 	return pins, nil
 }
 
+// unknownDir is a working directory the lander cannot follow: after cd -, cd ~ or a bare cd.
+const unknownDir = "\x00unknown"
+
+// joinDir is the directory p names from the directory dir, both as a script spells them
+// (variables left as written): an absolute p, or one that starts with a variable, stands
+// alone; a relative one is under dir; "." is the workspace.
+func joinDir(dir, p string) string {
+	if dir == unknownDir {
+		return unknownDir
+	}
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "$") || dir == "" {
+		return path.Clean(p)
+	}
+	return path.Clean(dir + "/" + p)
+}
+
 // takesValue says a git clone option takes the next word as its value.
 func takesValue(opt string) bool {
 	switch opt {
@@ -242,25 +275,27 @@ func takesValue(opt string) bool {
 }
 
 // shellCommand is one simple command of a script: its words, quotes removed and
-// variables left as written, the line (0-based) it starts on, and the directory a cd
-// earlier in its && or ; chain moved to ("" when none).
+// variables left as written, the line (0-based) it starts on, and the directory it runs in.
 type shellCommand struct {
 	words []string
 	line  int
 	cwd   string
 }
 
-// shellCommands splits a script into simple commands: words split on blanks, quotes
-// removed, a backslash-newline joining lines, a # at the start of a word ending the line,
-// and the operators ; && || | & ( ) and newlines ending a command. A cd in a chain sets the
-// cwd of the commands after it on that chain; a newline or a closing ) ends the chain.
-func shellCommands(script string) []shellCommand {
+// shellCommands splits a script run in the directory cwd into simple commands: words
+// split on blanks, quotes removed, a backslash-newline joining lines, a # at the start of
+// a word ending the line, and newlines and the operators ; && || | & ( ) ending a command.
+// The working directory is the shell's state, so a cd holds for every later command of
+// the script, across lines, as in a real shell; only a subshell, ( ... ) or $( ... ),
+// scopes it: its close restores the directory its open had. A cd to a directory the
+// lander cannot follow (cd -, cd ~..., a bare cd, more than one argument) leaves unknownDir.
+func shellCommands(script, cwd string) []shellCommand {
 	var out []shellCommand
 	var words []string
 	var word strings.Builder
 	inWord := false
 	line, start := 0, 0
-	cwd := ""
+	var outer []string // the working directories of the enclosing shells
 	flushWord := func() {
 		if inWord {
 			words = append(words, word.String())
@@ -268,18 +303,19 @@ func shellCommands(script string) []shellCommand {
 			inWord = false
 		}
 	}
-	endCmd := func(chainEnds bool) {
+	endCmd := func() {
 		flushWord()
 		if len(words) > 0 {
 			out = append(out, shellCommand{words: words, line: start, cwd: cwd})
-			if len(words) == 2 && words[0] == "cd" {
-				cwd = words[1]
+			if words[0] == "cd" {
+				if len(words) == 2 && words[1] != "-" && !strings.HasPrefix(words[1], "~") {
+					cwd = joinDir(cwd, words[1])
+				} else {
+					cwd = unknownDir
+				}
 			}
 		}
 		words = nil
-		if chainEnds {
-			cwd = ""
-		}
 	}
 	r := []rune(script)
 	for i := 0; i < len(r); i++ {
@@ -319,23 +355,35 @@ func shellCommands(script string) []shellCommand {
 				i++
 			}
 		case ch == '\n':
-			endCmd(true)
+			endCmd()
 			line++
 		case ch == ' ' || ch == '\t':
 			flushWord()
-		case ch == ';' || ch == '&' || ch == '|' || ch == '(':
-			endCmd(ch == '|' || (ch == '&' && !(i+1 < len(r) && r[i+1] == '&')) || (ch == '|' && i+1 < len(r) && r[i+1] == '|'))
-			if i+1 < len(r) && (r[i+1] == '&' || r[i+1] == '|') && r[i+1] == ch {
+		case ch == ';' || ch == '&' || ch == '|':
+			endCmd()
+			if i+1 < len(r) && r[i+1] == ch {
 				i++
 			}
+		case ch == '(':
+			if inWord && strings.HasSuffix(word.String(), "$") { // $( ... ): the word holds its value
+				w := word.String()
+				word.Reset()
+				word.WriteString(strings.TrimSuffix(w, "$"))
+			}
+			endCmd()
+			outer = append(outer, cwd)
 		case ch == ')':
-			endCmd(true)
+			endCmd()
+			if len(outer) > 0 {
+				cwd = outer[len(outer)-1]
+				outer = outer[:len(outer)-1]
+			}
 		default:
 			word.WriteRune(ch)
 			inWord = true
 		}
 	}
-	endCmd(true)
+	endCmd()
 	return out
 }
 
