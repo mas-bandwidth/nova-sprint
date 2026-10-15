@@ -29,7 +29,7 @@ func takeWorld(t *testing.T) *world {
 func TestTheCoordinatorTakesBackOneOfAFriendsCards(t *testing.T) {
 	t.Parallel()
 	w := takeWorld(t)
-	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1"}, Reason: "she is on another job", Who: "rowan"}))
+	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1"}, Working: true, Reason: "she is on another job", Who: "rowan"}))
 	wc := w.s.Fleet.Card("s1-1.w1")
 	assert.Equal(t, Withdrawn, wc.Col)
 	assert.Equal(t, FriendRow("amy"), wc.Row)
@@ -73,19 +73,23 @@ func TestTakeAllUnstartedTakesEveryOneSheHasNotStarted(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
 	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
-	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Started: map[string]string{"s1-2.w1": "her beat names it running"}}))
+	p := w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Started: map[string]string{"s1-2.w1": "her beat names it running"}}))
 	amy := FriendRow("amy")
-	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col)
-	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col)
+	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col, "dealt and not taken: taken back")
+	assert.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "a working card is never taken by --all-unstarted")
 	assert.Equal(t, Working, w.s.Fleet.Card("s1-2.w1").Col, "the started one stays with her")
-	assert.Equal(t, 1, w.s.Fleet.Count(amy, Working)+w.s.Fleet.Count(amy, Ready))
+	assert.Equal(t, 2, w.s.Fleet.Count(amy, Working)+w.s.Fleet.Count(amy, Ready))
+	said := strings.Join(p.Said, "\n")
+	assert.Contains(t, said, "friend amy keeps s1-1.w1: it is working on the friend's row")
+	assert.Contains(t, said, "friend amy keeps s1-2.w1: her beat names it running")
+	assert.NotContains(t, said, "WARNING", "no working card withdrawn")
 	assert.Empty(t, Check(w.s, nil))
 
 	// a card that names her, taken from her, waits: the deal never gives it back to her
 	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
-	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col)
-	assert.Equal(t, Ready, w.s.StateOf("s1-1"))
-	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col)
+	assert.Equal(t, Ready, w.s.StateOf("s1-3"))
+	hd := Holder(running(w), w.s.Now, "s1-3")
 	assert.Equal(t, HeldByWaiting, hd.By)
 	assert.Contains(t, hd.Why, "waits for only friend amy")
 }
@@ -130,14 +134,14 @@ func TestATakenCardIsDealtAgainToAnotherFriend(t *testing.T) {
 	assert.Empty(t, Check(w.s, nil))
 }
 
-// friend take --all-unstarted says the mark it writes (docs/SPEC-SPRINT.md section 1, a
+// friend take says the mark it writes (docs/SPEC-SPRINT.md section 1, a
 // friend's card taken back): each card taken says it is back to ready and not dealt to her
 // again until friend give, and the plan's summary counts them (marked=<n>), so the seat is
 // told why her row goes quiet instead of only FRIEND-TAKE OK moved=<n>.
 func TestTakeAllUnstartedSaysTheMarkItWrites(t *testing.T) {
 	t.Parallel()
 	w := takeWorld(t)
-	p := FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Who: "rowan"})
+	p := FriendTake(w.s, FriendTakeReq{Friend: "amy", Working: true, IDs: []string{"s1-1", "s1-2"}, Who: "rowan"})
 	require.Empty(t, p.Refused)
 	require.Len(t, p.Units, 2)
 	var moved []string
@@ -205,7 +209,7 @@ func TestFriendGiveRefusesWhatItCannotHand(t *testing.T) {
 func TestFriendGiveOnATakenCardClearsTheMark(t *testing.T) {
 	t.Parallel()
 	w := takeWorld(t)
-	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"}))
+	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1"}, Working: true, Who: "rowan"}))
 	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").F(FieldTakenFrom))
 	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"})
 	require.Empty(t, p.Refused)

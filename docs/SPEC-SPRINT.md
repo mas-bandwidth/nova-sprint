@@ -529,7 +529,7 @@ start (`TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt`,
 `TestTwinStoreAFriendCardIsWorkingOnlyOnceSheStartsIt`,
 `TestFriendSyncStartsACardWhoseJobSheBegan`,
 `TestFriendSyncCollectsAReportOnACardStillReady`). Not yet built: the
-`collect` verb, `friend reconcile` and her daemon's outbox pass read only cards
+`collect` verb and her daemon's outbox pass read only cards
 working on her row, so a report on a card still ready waits for friend sync's
 start receipt; and `friendNext` and `FriendTake` still move a card to working,
 for the tick to put back.
@@ -596,8 +596,18 @@ last beat naming it running (`friend beat --running`, by its work card id, its
 job or its primary), or finished (in review or later, no longer on her row's
 ready or working). A card not dealt to her is refused naming where it is. The
 refusals are one line each and, with ids named, all or none.
-`--all-unstarted` takes every card of hers she has not started and says each
-one she keeps on a NOTE line. A working card taken frees her lane: her oldest
+`--all-unstarted` takes ONLY the cards dealt to her and not taken: ready in
+her queue with no take recorded (`taken`, `first_taken`), no progress, no
+report, no carried head, and not started. It never takes a working card (on
+2026-10-14 it withdrew two friends' working cards mid-flight), and says each
+one she keeps on a NOTE line. A card named that is in flight (working, or with
+a take, progress, report or carried head recorded) is refused unless
+`--working` is given; with it the card is withdrawn mid-flight and one
+`WARNING` line counts the working cards withdrawn. `--working` is for named
+cards only, never with `--all-unstarted`. `--dry-run` lists each card that
+would move (`WOULD`), each kept and each refused, and writes nothing. The
+machine's named take-backs (the late rule, the re-tier) and the stall ladder's
+rung 4 take working cards as before. A working card taken frees her lane: her oldest
 ready card not taken goes into working in the same unit, as her finish takes
 it. The friends' deal places the same work card again (`friendRedealUnit`): to
 the friend up with room its WHO line allows, never the friend it was taken
@@ -731,8 +741,7 @@ placed on her fleet row `friend.<name>` in working while she has a lane,
 ready behind her working cards otherwise, at generation 1 (a read asked
 before the ask wrote one is at generation 0, and is read and returned the same
 way). Its job directory is the card id at every epoch and generation
-(`inbox/<read>/`, `outbox/<read>/`, and the `job` of her `QUEUE.json`), and
-`friend reconcile` leaves a read with its report to friend sync. Her packet
+(`inbox/<read>/`, `outbox/<read>/`, and the `job` of her `QUEUE.json`). Her packet
 says how it is returned: the outbox report, or
 `nova-sprint read --as friend.<name> (--ok | --broken) <read> --epoch <n> [--finding ...]`,
 which writes the same close as her report (`readCardVerb`): the verdict
@@ -832,43 +841,19 @@ the deal first adds it), so the stored view `sprint` does not draw it either;
 as for any hidden row, its counts stay in that table's folded footer there,
 where `where` leaves them out.
 
-**Friend reconcile** (the owner, 2026-10-04: "trust but VERIFY"; "Are they actually
-doing the work that is shown in the friend table? Really?"; "Mechanical. You know the
-drill."; the case: a friend said all 35 of her cards were done while the table showed
-34 working). `friend reconcile <friend>` (the coordinator's; `--op`, each collect run
-under `<op>.collect.<its args>` and the return under `<op>.return.<its args>`, so a retry
-with the same `--op` replays; `--root` as friend sync takes
-it, else HOME; `--dry-run`) compares her own account of her cards with the store's and
-settles each card working on her row (`sprint.FriendReconcileOf`). Her account is
-`<friend>-working/inbox/QUEUE.json`, `{"tasks":[{"id":<id>,"state":<state>}]}`, an id
-being the work card's or its job's (`sprint.StoredID`) and a state `queued`, `working`
-or `done`, with the time the file was last written; it is read only as a regular file of
-at most 1 MiB, and a file that is not there, is not that shape, has a task with no id or
-an id twice, is refused, exit 1, nothing changed, as is a friend no row of the friends
-table names. For each card: when `outbox/<job>/REPORT.md` is there it is collected, the
-very finish friend sync gives it (its LAND read at origin's tip, its refusals the same);
-else, when her account says `queued` or `working`, it is kept; else, when it says `done`,
-or does not hold the card and was written in a second after the card's deal (her account
-is newer than the deal, so she has had it to account for), it is returned; a card her
-account does not hold that was dealt in or after the second her account was last
-written, a card with no deal stamp, and a state of any other word are kept, each said.
-A return (`sprint.FriendReturn`, one step for all of them, all or none) retires the work
-card off her row, its record kept (`retired_by` `friend reconcile`, `return_reason` the
-line), and moves its primary working -> ready, as a member going down leaves one: no
-failed-work judgment, no redeal spent, and nothing counted in her done or ok%; the
-tick's friend deal places it again at its next attempt, a new work card. A card that
-moved since it was read, is not working on her row, or whose primary is not working on
-it is refused. Each card says one line, `FRIEND-CARD FINISHED`/`REFUSED` for a collect
-(friend sync's lines), `FRIEND-RECONCILE COLLECT` for a collect under `--dry-run`,
-`FRIEND-RECONCILE KEPT`, `FRIEND-RECONCILE RETURNED` and
-`FRIEND-RECONCILE REFUSED`; each return is one move line in the log and one happened
-note, `a friend's card returned to ready`, carrying the actor and the line. An id of her
-account that is no card working on her row is named on a `NOTE` line and never acted
-on. It ends `FRIEND-RECONCILE OK friend= collected= kept= returned= refused= strays=`,
-exit 0, or `FRIEND-RECONCILE FAILED` with the same counts, exit 1, when a collect or the
-return was refused; `--json` carries the counts, the strays and every line. It writes
-nothing in her directory, and the server does not run it (it reads the directories of
-the machine it runs on).
+**Friend reconcile, retired** (v1.3, the friend lane is a client with no local state;
+the owner pulled it forward on 2026-10-14). The coordinator's verb that compared a
+friend's own queue file with her row, and the run loop's pass that did the same after
+every tick, are deleted: a friend lane's state is the server's records alone (the card
+each lane holds, its generation, its lease `lane_at`, her deadline, and the finish), her
+lanes are clients of the server that ask what they hold (`take --as friend.<name> --lane
+<n>`), and a file in her directory may cache, never decide. A friend's own take, by lane
+or not, is her start (`friendStartSet`), so the tick never puts a card she took back
+ready; a lane unheard past `LaneGoneAfter` is gone and its card goes back ready at its
+next generation (`laneGoneUnits`). The model is nova-tools `tla/FriendLaneClient.tla`
+(`OneLanePerCard`, `FinishedOnce`, `TakenStaysTaken`, `RestartResumes`,
+`DeadClientReleases`, `DeadModelReleases`). `TestAFriendsTakeThenATickIsStillWorking`,
+`TestATakeUnderAFriendsBareNameIsRefusedWithTheLaneForm`.
 
 **Collect** (the coordinator's stopgap `finish-loop.py`, 92 finishes on the night of
 2026-10-05: every 30 s it finished each report of a working card, searching every
@@ -1235,32 +1220,10 @@ written with the moves. A step whose write committed and whose display copies
 then failed to sync reports OK, for every verb, with the sync's error on its own
 line, never FAILED: the table holds what the step wrote.
 
-### friend-reconcile-every-tick-r.w1: the run loop reconciles every friend each tick
+### friend-reconcile-every-tick-r.w1: retired
 
-Friend reconcile above ran only when the coordinator typed it, so a phantom working count
-stayed until someone looked (2026-10-04: one friend's row read working=4 with nothing
-running). After each tick of a RUNNING system, `run` reconciles every friend of the friends
-table with the verb's own plan (`reconcileFriend`, shared by `friend reconcile`:
-`sprint.FriendReconcileOf`, the collect of friend sync, `sprint.FriendReturn`), as the
-system, so each fix is the verb's history line and nothing new decides; her directory is
-`<HOME>/<friend>-working`, HOME the server's, as the verbs take it with no `--root`. It is
-bounded to one stat walk of each friend's directory a tick (the directory, her
-`inbox/QUEUE.json`, each working card's `outbox/<job>/REPORT.md`), and a friend whose
-directory is not reachable from the server, or whose account cannot be read, is skipped
-with one record line, `FRIEND-RECONCILE SKIPPED friend=<name>: <why>`, said once until she
-is read again and never an error. Only moves are printed (`FRIEND-CARD FINISHED`/`REFUSED`,
-`FRIEND-RECONCILE RETURNED`/`REFUSED`), never a keep. Each card it moves pushes the
-coordinator one note naming the card and why: a return's own happened note, `a friend's
-card returned to ready`, addressed to the coordinator (`FriendReturnReq.Push`), and for a
-collect `a friend's card collected by reconcile`. A friend whose row's working count
-still differs from the tasks her QUEUE.json says `working` after the pass is one note to
-the coordinator an episode, `a friend's row disagrees with her QUEUE.json`, and one more,
-`a friend's row agrees with her QUEUE.json again`, when it ends; the episode is kept on the
-fleet table's property `friend_disagree_<friend>` as the idle alarm keeps its own, so it
-is one note across ticks and run loops, never one a tick (`sprint.FriendDisagree`). The
-cards the tick has just dealt are not yet delivered (friend sync delivers them, in the
-coordinator's loop); her account was written before their deal, so the verb's rule keeps
-them. `TestRunReconcilesFriendsEveryTick`.
+The run loop's pass over every friend's directory is deleted with friend reconcile (above,
+**Friend reconcile, retired**): the run loop reads no friend's directory.
 
 ### who-dash-is-fleet.w1
 
@@ -6683,7 +6646,7 @@ default: it is `--actor`, else
 NOVA_SPRINT_ACTOR, and a verb that writes with neither is refused. Every verb
 has one class of who may run it. The coordinator's verbs (init, add, quack, release,
 resolve, start, stop, ask, accept, rework, return, drop, rank, brief, move, tier, resume, land, hold, unhold, fleet
-up, fleet down, fleet level, fleet sync, friend sync, friend reconcile, friend down, friend up, friend take, friend level, reader add, reader away, reader up, reader remove, stream remove, stream archive, stream unarchive, merge-window open, routes rest, routes wake, wait, ack, answer, clear, teardown, repair,
+up, fleet down, fleet level, fleet sync, friend sync, friend down, friend up, friend take, friend level, reader add, reader away, reader up, reader remove, stream remove, stream archive, stream unarchive, merge-window open, routes rest, routes wake, wait, ack, answer, clear, teardown, repair,
 goal set, goal drop, play) are the sprint's coordinator's alone: the first
 init names the coordinator (`--coordinator`, else the actor), a later init is
 refused unless its actor is that coordinator and never changes it (the seat
@@ -6775,12 +6738,11 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | friend sync | the friends table's rows made nova-config's friend rows (section 1); `--every <d>` loops as the seat each pass, and `friend sync install --every <d>` / `friend sync uninstall` put that loop in place as this machine's service ("Handing over the seat") |
 | collect | every friend's outbox report of a card working on a friend's row finished as her row, a LAND only at origin's tip, and with `--dead-lanes` a lane her runner ENDed with no report finished failed (section 1, collect): `collect [<friend>...] [--dead-lanes] [--root <dir>] [--dry-run]`; never run by the server |
 | gc | the system's scratch reclaimed on the machine it runs on, or on `--machine`'s through the fleet runner (section 1, gc): `gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]`; job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees and bench directories past `--max-age`, the go caches trimmed to their cap, never a path under no known scratch root or a clone with work that is nowhere else; one line per class and `GC OK freed=<bytes> volume=<use%>`; run by `run` on every machine hourly and on a volume at 80%; never run by the server |
-| friend reconcile | a friend's own account of her cards, `<friend>-working/inbox/QUEUE.json`, and her outbox compared with the cards working on her row, each collected, kept or returned to ready (section 1, friend reconcile): `friend reconcile <friend> [--root <dir>] [--dry-run]`; never run by the server |
 | friend give | the coordinator's undo of `friend take` (section 1, a friend's card taken back): `friend give <friend> <id>... [--reason <text>]`; on each card named (a primary or its work card), ready or waiting, its current attempt's work card loses `taken_from` her row, so the next deal may deal it to her again, a hard pin taken back from her included; the marks of other friends stay. A card not ready or waiting, or never taken back from her, and a friend not on the friends table are refused, one `REFUSED` line each, the rest given; each given says `MOVED <card> may be dealt to <friend> again (<reason>)` (default reason: given back by the coordinator) with a happened note, then `FRIEND-GIVE OK moved=<n> refused=<m>` (`FAILED`, exit 1, when any is refused) |
 | friend clean | the retention rule of the friends' working directories (docs/FRIENDS.md; ideas#833), run nightly from a loop row on the machine that holds them, never by the server and never on the store: `friend clean [--pg <dsn>] [--root <dir>] [--days <n>] [--dry-run]`. For each friend row of nova-config (as `friend sync` reads them; the coordinator is one), `<root>/<friend>-working` (`--root`, else HOME); a friend with no directory there is said and skipped. A job is `inbox/<job>/` or `jobs/<job>/`, done when `outbox/<job>/REPORT.md` is a regular file, its age that file's. Inside a done job at least `--days` old (default 3) a clone (a directory holding `.git`) is removed when `git status --porcelain` is empty, it holds no stash and no commit of `HEAD` or a local branch is missing from every remote-tracking ref (`git log HEAD --branches --not --remotes`, no network); build output (`node_modules`, `target`, `gocache`, `gocache-*`, `.gocache`, `go-build`, `wt-*`) that is no clone is removed. A clone that fails the check, or whose git fails, is dirty: listed each run, `FRIENDS-CLEAN DIRTY friend= path= age=<d>d why=`, and removed once its job is 14 days old whatever its state, its line saying `dirty=<why>`. Nothing else is touched: the brief and any text of the job, `outbox/`, every file outside `inbox/` and `jobs/`; a link is never followed; a job under `jobs/` that is itself a clone is one target, one under `inbox/` is never removed (a NOTE). Every removal is `safepath.RemoveUnderRoots` under the job's directory. The friend's one build cache, `<friend>-working/.cache/go-build`, is held under 20 GiB by the member's trim (`internal/gocache`). `--dry-run` says `WOULD-REMOVE` in place of `REMOVED` with the bytes and removes nothing. Lines `FRIENDS-CLEAN REMOVED\|WOULD-REMOVE friend= path= bytes= age=<d>d kind=clone\|build[ dirty=<why>]`, `FRIENDS-CLEAN CACHE ...`, `FRIENDS-CLEAN FRIEND <f> dir= jobs= done= freed= listed=` (or `absent`), `FRIENDS-CLEAN FAILED friend= path=: <why>`, and last `FRIENDS-CLEAN OK freed=<bytes> listed=<n>` (a dry run adds `dry-run: nothing was removed`), or `FRIENDS-CLEAN INCOMPLETE ... failed=<n>`, exit 1; a config that cannot be read or holds no friend row, exit 3, nothing removed; `--json` one object with the lines |
 | friend beat | a friend's beat, `friend beat <friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>] [--active <RFC3339>]`, run by its own machinery every second; through the sprint's server it is `friend beat <friend>` and its report's flags, each once with its value, and nothing more |
 | friend down, friend up | `hold <friend>` and `unhold <friend>` in the old words, for one release: hold a friend (status `held`, whatever she beats or the coordinator observes; every card dealt to her goes back to ready, started or not, a started one with a push carrying its pushed head; `--reason <text>` and `--until <RFC3339>` shown in her status cell) and release the hold (no evidence: `down` until her session answers a wake ping or she finishes a card; `--width <n>` sets her width) |
-| friend take | take back cards dealt to a friend that she has not started (`<id>...` or `--all-unstarted`), each back to ready for the friends' deal |
+| friend take | take back cards dealt to a friend and not taken (`<id>...`, or `--all-unstarted`, which never takes a working card; a named working card wants `--working`), each back to ready for the friends' deal |
 | friend level | even the ready queues of the friends up, idle lanes first and by the card's tier, as fleet level evens the members'; the tick runs it too (friend-deal-idle-lanes-first.w1) |
 | seat | the seat as the daemons read it every second: `SEAT holder= epoch= generation=`, `--json`; three keys, no table (section 1, a friend's health) |
 | lane take | `lane take go --machine <m> --as <worker> [--wait <duration>]`: a worker's take of one of the machine's Go lanes (section 18); exit 0 granted, exit 1 queued with its place and the next command; --wait asks again every 5 s until granted or the wait is over; through the sprint's server it is `lane take <kind> --machine <m> --as <worker>` and nothing more |
@@ -8434,7 +8396,7 @@ The coordinator's verbs go to the server too. The server listens a second time o
 loopback address at the same port, and there it runs any verb of the command but the ones it
 runs for nobody: itself (`run`, `tick`), `land` and `play`, which work outside the store for
 seconds or minutes, `fleet sync` and `friend sync`, which read the config store with their
-caller's own credentials, `friend clean`, `friend reconcile` and `gc`, which work on the directories of the machine they
+caller's own credentials, `friend clean` and `gc`, which work on the directories of the machine they
 run on, `doctor`, which reads the config store with its caller's credentials, and `dashboard`, which
 serves a page until it is interrupted and reads through the server, nor a read that waits for the sprint to move (`where --watch`, `inbox --wait`): the
 server moves the sprint on the one line of control such a verb would hold. With
@@ -8842,18 +8804,8 @@ began every 30 to 95 s and `where --json` took 6 to 15 s. Three changes:
   at the revision its shape read) and `CacheIsHistory`, each reversed by a witness (a catch-up
   that misses the last write; a cache later than the shape used as it is; the mark not
   checked).
-- The run loop's friend reconcile (section 1, friend-reconcile-every-tick-r.w1) runs in the
-  tick's own turn of the line, before the tick lets the line go, instead of taking a batch's
-  place in the line once per friend: each pass queued behind every waiting batch, and the
-  passes cost 12 s a tick at the median (the gap between ticks less the tick's own time, over
-  the 5,991 ticks of 2026-10-09 17:40 to 23:40 ET). The line still has one holder at a time
-  (`tla/ServerLanes.tla`: the tick is one holder from TickBegin to TickEnd), and the batches'
-  turn after a tick is as long as the tick held the line (`sprint.ControlLine`), the reconcile
-  included. Every read of a friend's directory in that pass (its stat, her QUEUE.json, each
-  card's outbox report) answers within `FriendReadDeadline` (2 s) or the friend is passed over
-  for the tick: one record line, and one note to the coordinator an episode ("a friend's
-  directory did not answer the reconcile"); what the pass settled before the stall stands, and
-  the read is left to finish on its own (it only reads).
+- The run loop's friend reconcile once ran in the tick's own turn of the line; it is retired
+  (section 1, **Friend reconcile, retired**), and the tick reads no friend's directory.
 
 Tested on the twin store: `TestReadCellsReadsOnlyTheNamedCells`,
 `TestLoadCacheReadsOnlyWhatChanged`, `TestLoadCacheSnapshotsShareNothing`,
