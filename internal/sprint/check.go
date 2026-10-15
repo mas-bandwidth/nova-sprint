@@ -257,6 +257,18 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{11, fmt.Sprintf("%s is %s and needs %s, not landed", c.ID, c.Col, strings.Join(w, ","))})
 		}
 	}
+	// 11. A working card's rule-11 marker (FieldWaitsAfter) names only needs its needs
+	// field names: the needs field is the card's one record of what it waits for, and
+	// a marker outside it makes the finish and the lifecycle disagree (the finish
+	// sends the card to waiting for a need the lifecycle will not wait for, refused
+	// without end). Every needs write keeps it inside (steps_edit.go keepWaitsInNeeds);
+	// this names the stores that hold such a card already.
+	// tla/SprintTables.tla WaitsAfterWithinNeeds.
+	for _, c := range s.Work.Column(Working) {
+		if stale := without(Split(c.F(FieldWaitsAfter)), Split(c.F("needs"))); len(stale) > 0 {
+			out = append(out, Violation{11, fmt.Sprintf("%s is working and its waits_after names %s, which its needs do not: set its needs (nova-sprint needs set) so they agree", c.ID, strings.Join(stale, ","))})
+		}
+	}
 	// 11. The needs make no cycle: add refuses the add that would close one,
 	// and a store written before add walked the sentinels' needs may still
 	// hold one; each is named with the cards it keeps from ever being reached.

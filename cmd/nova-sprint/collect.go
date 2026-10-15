@@ -251,7 +251,11 @@ func (a *app) friendFinishStep(ctx context.Context, st *store.Store, name string
 		return "", err
 	}
 	if len(res.Refused) > 0 {
-		return res.Refused[0].Why, nil
+		why := res.Refused[0].Why
+		if raised := finishRefusedRaised(res.Raised); len(raised) > 0 {
+			why += "; judgment raised: " + strings.Join(raised, ", ")
+		}
+		return why, nil
 	}
 	return "", nil
 }

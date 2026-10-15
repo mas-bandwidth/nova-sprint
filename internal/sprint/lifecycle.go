@@ -333,6 +333,23 @@ func needsOpen(e ntable.BatchMemberEntry, pre *Snapshot) bool {
 	return false
 }
 
+// NamedNeedsOpen is the card's named needs (the needs field, the card's one record
+// of what it waits for) that have not landed and were not waived, judged against
+// s. The lifecycle's working -> waiting guard (namedNeedsOpen) and the finish
+// (steps_work.go finishPlan) both decide by it, so they cannot disagree.
+// tla/SprintTables.tla FinishAgreesWithLifecycle, WorkingToWaitingOnlyOnNeeds;
+// reversed witness "staleafter".
+func NamedNeedsOpen(s *Snapshot, pc *Card) []string {
+	var out []string
+	waived := Split(pc.F("waived"))
+	for _, n := range Split(pc.F("needs")) {
+		if !contains(waived, n) && s.StateOf(n) != Landed {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // namedNeedsOpen says the card's named needs in the pre-state hold one that
 // has not landed and is not waived; false when the plan carries no pre-state
 // or the pre-state does not hold the card (nothing to judge by, so the move
@@ -345,13 +362,7 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 	if pc == nil {
 		return false
 	}
-	waived := Split(pc.F("waived"))
-	for _, n := range Split(pc.F("needs")) {
-		if !contains(waived, n) && pre.StateOf(n) != Landed {
-			return true
-		}
-	}
-	return false
+	return len(NamedNeedsOpen(pre, pc)) > 0
 }
 
 // Rejudge holds entries a repair is about to apply one by one to the

@@ -2568,6 +2568,28 @@ its finish, whatever the worker reports (the needs-stop path, needsStopReturned)
 a card in review is refused one, since nothing moves it back. A needs rewrite that
 would close a cycle is refused, as add's is.
 
+**The needs field is the one record (finish-agrees-with-the-needs-record).** A
+card's `needs` field is its one record of what it waits for. The lifecycle's
+working -> waiting guard and the finish decide by the same function,
+`NamedNeedsOpen` (the needs not landed and not waived), so a finish whose named
+needs have all landed, or that names none, goes to review (or ready when the brief
+generation moved) and is never refused by the lifecycle, and one with an open named
+need goes to waiting. `waits_after` is only the rule-11 marker of the needs gained
+while working and the words of the status line: every needs write (`needs set`,
+`needs set --clear`, a brief's DEPENDS-ON rewrite) rewrites it, in the same unit as
+the needs, to the old marker plus the needs gained while working, intersected with
+the new needs, and unsets it when that is empty, so `--clear` on a working card
+prints no "waits for". `nova-sprint check` names a working card whose `waits_after`
+names a need its `needs` do not (rule 11). A finish the lifecycle refuses writes
+nothing but a count on its work card (`finish_refusals`, reset with the attempt, a
+redeal being a new work card); the refusal that passes `FinishRefusalBound` (5)
+raises one `a finish is refused again and again` judgment, naming the card, the
+attempt, the head offered and the refusal's words, once for the card and attempt;
+`finish`, `collect` and `friend sync` print its id (`JUDGMENT raised <id> <type>`).
+tla/SprintTables.tla: `WaitsAfterWithinNeeds`, `FinishAgreesWithLifecycle`,
+`FinishRefusalsBounded`; reversed witnesses `MCSprintTablesBrokenStaleAfter.cfg`,
+`MCSprintTablesBrokenStaleAfterFinish.cfg`, `MCSprintTablesBrokenFinishLoop.cfg`.
+
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
 the table, and leaves only from an open state; a unit that does not is refused,
