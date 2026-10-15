@@ -717,3 +717,5 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCCIReceiptTell.cfg	MCCIReceiptTell.tla	pass	-	ignore-terminal	cireceipttell	required	-
+MCCIReceiptTellBrokenCursorFirst.cfg	MCCIReceiptTell.tla	temporal	EveryReceiptIsPushed	ignore-terminal	cireceipttell	required	-

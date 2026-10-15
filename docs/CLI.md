@@ -32,6 +32,13 @@ even when a server is configured; see the
 
 ### Server version
 
+The server also pushes completed CI receipts from `ev:github` to the coordinator
+and the identified card owner as `CI <conclusion> <repo>@<sha12> pr=<number>
+run=<id> card=<card or ->`. Delivery is event driven, with a ten-minute recovery
+sweep; retries retain the same message and once-key. Unmatched receipts go to the
+seat alone. See [CI receipt notifications](SPEC-SPRINT.md#ci-receipt-notifications)
+for routing, restart and hook-display limits.
+
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
 
 ### Verbs
