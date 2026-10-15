@@ -528,7 +528,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			return f, err
 		}
 		f.Records = true
-		f.Done = st.doneRecordOf(vals[6], oks[6])
+		f.Done, _, _, _ = st.readDoneFrom(ctx, kv, vals[6], oks[6])
 		// the stats reset's mark, in the same exchange: an unreadable stats record is none
 		// here, as it is no tidy (the tick says it, statsRecordOf)
 		var stats StatsRecord

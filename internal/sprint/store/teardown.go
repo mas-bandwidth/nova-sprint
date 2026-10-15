@@ -62,6 +62,8 @@ type Epochs struct {
 	RetiredPushers []string
 	// StatsArchives is every stats tidy's archive record (StatsRecord.Archives).
 	StatsArchives []string
+	// DonePages is every follow-on page of the done record (donePageKey).
+	DonePages []string
 }
 
 // TeardownKeys is every key a deployment leaves after its tables are dropped
@@ -123,6 +125,9 @@ func TeardownKeys(names sprint.Names, ids map[string][]string, epochs Epochs) []
 	}
 	for _, a := range epochs.StatsArchives {
 		keys = append(keys, names.Key(a))
+	}
+	for _, p := range epochs.DonePages {
+		keys = append(keys, names.Key(p))
 	}
 	return append(keys, names.EpochKey())
 }
@@ -197,6 +202,7 @@ func (st *Store) Teardown(ctx context.Context) (int, error) {
 	var stats StatsRecord
 	_ = st.getJSON(ctx, keyStats, &stats) // ignored: an unreadable record leaves its archives, as a missing one does
 	epochs.StatsArchives = stats.Archives
+	epochs.DonePages = st.donePageKeys(ctx)
 	epochs.Friends = st.friendNames(ctx)
 	_ = st.B.ViewDelete(ctx, st.Names.View())
 	for _, t := range All {
