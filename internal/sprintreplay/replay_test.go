@@ -143,7 +143,7 @@ func TestReplayIsDeterministic(t *testing.T) {
 }
 
 const (
-	pinnedDigest = "1f1db80e65f3e85f4d43e1141f242061613125ed981c08527ddd24b4473d9b45"
+	pinnedDigest = "91806618d1319847da2e09b8dfe198e5891d7570201e96005c30e1e088250829"
 	pinnedLines  = 60620
 )
 
@@ -245,5 +245,29 @@ func TestReplayWithdrawalEndsFleetTake(t *testing.T) {
 	events := got.Attempts[0].Events
 	if len(events) != 2 || events[0].What != "take" || events[1].What != "take-ended" {
 		t.Errorf("friend take emitted %+v, want take then take-ended", events)
+	}
+}
+
+func TestReplayEmitsStagingRefusalBeforeRedeal(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	lines := []sprint.Line{
+		{Kind: sprint.LineMove, At: base, Table: "fleet", Card: "alpha.w1", Verb: "deal",
+			To: "member:ready", Set: map[string]string{"member": "member"}},
+		{Kind: sprint.LineMove, At: base.Add(time.Second), Table: "fleet", Card: "alpha.w1", Verb: "take",
+			From: "member:ready", To: "member:working"},
+		{Kind: sprint.LineMove, At: base.Add(2 * time.Second), Table: "fleet", Card: "alpha.w1", Verb: "finish",
+			From: "member:working", To: "member:withdrawn", Set: map[string]string{"staging_take_1": "refused"}},
+		{Kind: sprint.LineMove, At: base.Add(3 * time.Second), Table: "fleet", Card: "alpha.w1", Verb: "deal",
+			To: "member:ready", Set: map[string]string{"member": "member"}},
+	}
+	got := Replay(Input{Lines: lines})
+	if len(got.Attempts) != 1 {
+		t.Fatalf("got %d attempts, want 1", len(got.Attempts))
+	}
+	a := got.Attempts[0]
+	if len(a.Events) != 4 || a.Events[0].What != "take" || a.Events[1].What != "staging" ||
+		a.Events[2].What != "take-ended" || a.Events[3].What != "redeal" {
+		t.Errorf("staging refusal events %+v, want take, staging, take-ended, redeal", a.Events)
 	}
 }

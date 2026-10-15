@@ -113,6 +113,25 @@ func TestInFlightSilenceStopsAtWithdrawalAndNeedsLeadTime(t *testing.T) {
 	}
 }
 
+func TestStagingRefusalIsKnownOnlyBeforeAttemptEnd(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	rule := Rule{Feature: "staging_takes", Threshold: 1}
+	a := &Attempt{Dealt: base, End: base.Add(10 * time.Second), Events: []Event{
+		{At: base.Add(time.Second), What: "take"},
+		{At: base.Add(3 * time.Second), What: "staging"},
+		{At: base.Add(3 * time.Second), What: "take-ended"},
+		{At: base.Add(5 * time.Second), What: "redeal"},
+	}}
+	if at, ok := rule.knownAt(a); !ok || !at.Equal(base.Add(3*time.Second)) {
+		t.Errorf("first staging refusal known at %s, ok=%v; want 3s before end", at, ok)
+	}
+	a.End = base.Add(3 * time.Second)
+	if at, ok := rule.knownAt(a); ok {
+		t.Errorf("staging refusal at attempt end predicts with no lead at %s", at)
+	}
+}
+
 func TestSearchSplitsAllDealsBeforeScoringKnownOutcomes(t *testing.T) {
 	t.Parallel()
 	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)

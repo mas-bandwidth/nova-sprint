@@ -292,6 +292,14 @@ func Replay(in Input) *Result {
 				case l.Verb == "progress":
 					a.Events = append(a.Events, Event{l.At, "progress"})
 				case l.Verb == "finish" && strings.HasSuffix(l.To, ":withdrawn"):
+					// staging_take_N is recorded on the refusal that withdrew a
+					// fleet take. A later redeal of this .wN may still be ahead.
+					for field := range l.Set {
+						if strings.HasPrefix(field, "staging_take_") {
+							a.Events = append(a.Events, Event{l.At, "staging"})
+							break // one staging event per withdrawal line
+						}
+					}
 					e := l.Set["provider_error"]
 					if sprint.FailureClass(e) == "no result" || strings.Contains(l.Cause, "left no result") {
 						a.Events = append(a.Events, Event{l.At, "no-result"})

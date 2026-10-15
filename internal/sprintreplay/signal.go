@@ -177,6 +177,7 @@ type AttemptView struct {
 	SinceAlive                                            time.Duration // since the last take or progress line (since the deal before any take)
 	Taken                                                 bool
 	NoResultTakes                                         int
+	StagingTakes                                          int
 }
 
 // View is the attempt's view at its deal.
@@ -202,7 +203,7 @@ func (r Rule) String() string {
 
 // inFlight says the rule's feature is known only during the attempt's life.
 func (r Rule) inFlight() bool {
-	return r.Feature == "silent_s" || r.Feature == "untaken_s" || r.Feature == "no_result_takes"
+	return r.Feature == "silent_s" || r.Feature == "untaken_s" || r.Feature == "no_result_takes" || r.Feature == "staging_takes"
 }
 
 func rate(f, n int) float64 {
@@ -245,6 +246,8 @@ func (r Rule) Fires(v AttemptView) bool {
 		x = v.SinceAlive.Seconds()
 	case "no_result_takes":
 		x = float64(v.NoResultTakes)
+	case "staging_takes":
+		x = float64(v.StagingTakes)
 	default:
 		return false
 	}
@@ -264,7 +267,7 @@ func (r Rule) knownAt(a *Attempt) (time.Time, bool) {
 		if !active || now.IsZero() {
 			return time.Time{}, false
 		}
-		if r.Feature == "no_result_takes" {
+		if r.Feature == "no_result_takes" || r.Feature == "staging_takes" {
 			return now, r.Fires(v) && (a.End.IsZero() || now.Before(a.End))
 		}
 		if t := alive.Add(time.Duration(r.Threshold * float64(time.Second))); t.Before(now) || t.Equal(now) {
@@ -283,6 +286,11 @@ func (r Rule) knownAt(a *Attempt) (time.Time, bool) {
 			return t, true
 		}
 		switch e.What {
+		case "staging":
+			v.StagingTakes++
+			if t, ok := check(e.At); ok {
+				return t, true
+			}
 		case "take", "progress":
 			alive, taken, active = e.At, true, true
 		case "no-result":
@@ -409,6 +417,7 @@ func candidates(train []*Attempt) []Rule {
 		out = append(out, Rule{Feature: "silent_s", Threshold: s}, Rule{Feature: "untaken_s", Threshold: s})
 	}
 	out = append(out, Rule{Feature: "no_result_takes", Threshold: 1}, Rule{Feature: "no_result_takes", Threshold: 2})
+	out = append(out, Rule{Feature: "staging_takes", Threshold: 1}, Rule{Feature: "staging_takes", Threshold: 2})
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
 }
