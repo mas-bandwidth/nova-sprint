@@ -195,7 +195,7 @@ func encodeIssue(b *bytes.Buffer, repo string, is Issue) error {
 	return nil
 }
 
-// quote writes s as a worklang string: a backslash before every `"` and `\`,
+// quote writes s as a sexp string: a backslash before every `"` and `\`,
 // every other byte as it is (the reader takes the byte after a backslash
 // literally, SPEC-WORKLANG section 1).
 func quote(s string) string {

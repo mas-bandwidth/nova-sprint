@@ -49,7 +49,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -1141,7 +1141,7 @@ func (l *lander) landingLedgerEntry(ctx context.Context, head, id string) (sprin
 	if err != nil {
 		return sprint.LandingLedgerEntry{}, err
 	}
-	fixes, err := roadmapdoc.DecodeFixes("docs/fixes.sexp", []byte(data))
+	fixes, err := roadmap.DecodeFixes("docs/fixes.sexp", []byte(data))
 	if err != nil {
 		return sprint.LandingLedgerEntry{}, err
 	}

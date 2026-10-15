@@ -1,0 +1,18 @@
+# one-source-retired.txt -- the copies of nova-tools code that are retired and must
+# not come back (the rule in internal/ci/one_source_retired_test.go,
+# TestNoRetiredOneSourceCopyReturns).
+#
+# The roadmap, the s-expression reader and the Limits that bounds it have one
+# source: nova-tools pkg/roadmap and pkg/sexp (nova-tools#5746; the 10 MiB bound
+# of nova-tools#5811 landed twice because Limits was defined in both repos).
+# nova-sprint imports them; it carries no copy.
+#
+# One row per retired path: `<path><TAB><what replaced it>`. A listed path that
+# exists in the module is red. The same test refuses any Go type in the module
+# named Limits with the fields MaxBytes, MaxDepth and MaxNodes: that is the copy
+# returning under another path. Value literals of sexp.Limits are uses, not
+# copies, and stay.
+
+internal/roadmapdoc	github.com/mas-bandwidth/nova-tools/pkg/roadmap
+internal/worklang	github.com/mas-bandwidth/nova-tools/pkg/sexp
+tools/roadmap	github.com/mas-bandwidth/nova-tools/tools/roadmap (go run through the go.mod tool directive: make roadmap)

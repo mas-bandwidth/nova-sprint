@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 )
 
 // A move across the two files carries every field of the record. A field the
@@ -17,7 +17,7 @@ import (
 // every field of the item (TestARoundTripIsLossless).
 
 // kept is a record's :kept pairs, in order, with set, take and has.
-type kept []roadmapdoc.Pair
+type kept []roadmap.Pair
 
 func (k *kept) set(key, v string) {
 	for i := range *k {
@@ -26,7 +26,7 @@ func (k *kept) set(key, v string) {
 			return
 		}
 	}
-	*k = append(*k, roadmapdoc.Pair{Key: key, Value: v})
+	*k = append(*k, roadmap.Pair{Key: key, Value: v})
 }
 
 // take returns the value under key and removes it.
@@ -48,7 +48,7 @@ func (k *kept) setIf(key, v string) {
 
 // itemToFix is the fix an item becomes in release: planned, with the item's
 // title, text and origin, and every other field of the item under :kept.
-func itemToFix(it roadmapdoc.Item, release string) roadmapdoc.Fix {
+func itemToFix(it roadmap.Item, release string) roadmap.Fix {
 	k := append(kept(nil), it.Kept...)
 	k.set("item-group", it.Group)
 	k.set("item-date", it.Date)
@@ -71,13 +71,13 @@ func itemToFix(it roadmapdoc.Item, release string) roadmapdoc.Fix {
 	if v, ok := k.take("fix-release"); ok && v != release {
 		k.set("fix-release", v) // an earlier release, not this one: still kept
 	}
-	return roadmapdoc.Fix{ID: it.ID, Release: release, Title: it.Title, Text: text, Origin: origin, Status: Planned, Kept: k}
+	return roadmap.Fix{ID: it.ID, Release: release, Title: it.Title, Text: text, Origin: origin, Status: Planned, Kept: k}
 }
 
 // fixToItem is the item a fix becomes under group: the fix's title, text and
 // origin, its status and release under :kept, and every item field :kept
 // holds from an earlier move restored.
-func fixToItem(fx roadmapdoc.Fix, group, today string) roadmapdoc.Item {
+func fixToItem(fx roadmap.Fix, group, today string) roadmap.Item {
 	k := append(kept(nil), fx.Kept...)
 	k.set("fix-status", fx.Status)
 	k.set("fix-release", fx.Release)
@@ -86,7 +86,7 @@ func fixToItem(fx roadmapdoc.Fix, group, today string) roadmapdoc.Item {
 		text = fx.Title
 		k.set("fix-text", "")
 	}
-	it := roadmapdoc.Item{ID: fx.ID, Group: group, Title: fx.Title, Text: text, Origin: fx.Origin, Date: today}
+	it := roadmap.Item{ID: fx.ID, Group: group, Title: fx.Title, Text: text, Origin: fx.Origin, Date: today}
 	if v, ok := k.take("item-origin"); ok {
 		if v == "" && fx.Origin == "roadmap item "+fx.ID {
 			it.Origin = ""
@@ -118,7 +118,7 @@ func fixToItem(fx roadmapdoc.Fix, group, today string) roadmapdoc.Item {
 
 // itemToDone is the :done note an item becomes: its title, its text with the
 // evidence, dated today, and every other field of the item under :kept.
-func itemToDone(it roadmapdoc.Item, note, today string) roadmapdoc.Note {
+func itemToDone(it roadmap.Item, note, today string) roadmap.Note {
 	k := append(kept(nil), it.Kept...)
 	k.set("item-group", it.Group)
 	k.set("item-date", it.Date)
@@ -130,14 +130,14 @@ func itemToDone(it roadmapdoc.Item, note, today string) roadmapdoc.Note {
 	}
 	k.setIf("item-release", it.Release)
 	k.setIf("item-origin", it.Origin)
-	return roadmapdoc.Note{ID: it.ID, Title: it.Title, Text: strings.TrimRight(it.Text, " \n\t") + note, Date: today, Kept: k}
+	return roadmap.Note{ID: it.ID, Title: it.Title, Text: strings.TrimRight(it.Text, " \n\t") + note, Date: today, Kept: k}
 }
 
 // The records below write a value as it was read (a text wrapped across lines
 // keeps its line breaks), so a carried field is the same bytes inside its
 // quotes.
 
-func itemRecord(it roadmapdoc.Item) string {
+func itemRecord(it roadmap.Item) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "(item %s :group %s :date %s\n   :title %s\n   :text %s", quote(it.ID), quote(it.Group), quote(it.Date), quote(it.Title), quote(it.Text))
 	for _, kv := range [][2]string{{"why", it.Why}, {"area", it.Area}, {"exists", it.Exists}, {"release", it.Release}, {"origin", it.Origin}} {
@@ -151,7 +151,7 @@ func itemRecord(it roadmapdoc.Item) string {
 	return b.String() + keptRecord(it.Kept) + ")"
 }
 
-func fixRecord(fx roadmapdoc.Fix) string {
+func fixRecord(fx roadmap.Fix) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "(fix %s :release %s :status %s\n   :title %s", quote(fx.ID), quote(fx.Release), quote(fx.Status), quote(fx.Title))
 	if strings.TrimSpace(fx.Text) != "" {
@@ -161,11 +161,11 @@ func fixRecord(fx roadmapdoc.Fix) string {
 	return b.String() + keptRecord(fx.Kept) + ")"
 }
 
-func doneRecord(n roadmapdoc.Note) string {
+func doneRecord(n roadmap.Note) string {
 	return fmt.Sprintf("(done %s :title %s\n   :text %s\n   :date %s", quote(n.ID), quote(n.Title), quote(n.Text), quote(n.Date)) + keptRecord(n.Kept) + ")"
 }
 
-func keptRecord(k []roadmapdoc.Pair) string {
+func keptRecord(k []roadmap.Pair) string {
 	if len(k) == 0 {
 		return ""
 	}

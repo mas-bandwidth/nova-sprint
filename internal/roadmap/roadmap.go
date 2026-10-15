@@ -5,14 +5,14 @@ FIXES.md from them in the same step, so neither the data nor the pages are
 edited by hand and no GitHub call is made per entry.
 
 It writes no reader and no renderer of its own. The files are read through
-internal/worklang (data, never evaluated), whose forms carry their byte offsets,
+nova-tools pkg/sexp (data, never evaluated), whose forms carry their byte offsets,
 and an edit splices only the bytes of the records it changes, so comments
 (a removed record's own trailing comment aside), spacing and every other record
 stay as they were. A move between the files carries every field; one the target
 shape has no key for is kept under :kept (carry.go). Every edit is decoded again
-through internal/roadmapdoc, the shape the pages are rendered from, before any
-byte is written; an edit roadmapdoc refuses is refused whole, nothing written.
-The pages are roadmapdoc.Render and roadmapdoc.RenderFixes of the saved data,
+through nova-tools pkg/roadmap, the shape the pages are rendered from, before any
+byte is written; an edit pkg/roadmap refuses is refused whole, nothing written.
+The pages are roadmap.Render and roadmap.RenderFixes of the saved data,
 the bytes tools/roadmap writes and TestRoadmapIsGeneratedFromTheSexp holds.
 
 An entry's life (tla/RoadmapEntry.tla): a roadmap item under a group is todo; a
@@ -35,8 +35,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
@@ -76,8 +76,8 @@ type Set struct {
 	first   *file // written first by Save: the file an entry moved into
 	Today   string
 	decoded struct {
-		road *roadmapdoc.Doc
-		fix  *roadmapdoc.Fixes
+		road *roadmap.Doc
+		fix  *roadmap.Fixes
 	}
 }
 
@@ -107,19 +107,19 @@ func Load(dir, today string) (*Set, error) {
 	return s, nil
 }
 
-// decode decodes both files through roadmapdoc and holds the ids unique across
+// decode decodes both files through pkg/roadmap and holds the ids unique across
 // them.
 func (s *Set) decode() error {
 	var probs []error
 	if s.road.present {
-		d, err := roadmapdoc.Decode(s.road.rel, s.road.data)
+		d, err := roadmap.Decode(s.road.rel, s.road.data)
 		if err != nil {
 			probs = append(probs, err)
 		}
 		s.decoded.road = d
 	}
 	if s.fix.present {
-		fx, err := roadmapdoc.DecodeFixes(s.fix.rel, s.fix.data)
+		fx, err := roadmap.DecodeFixes(s.fix.rel, s.fix.data)
 		if err != nil {
 			probs = append(probs, err)
 		}
@@ -225,10 +225,10 @@ func (s *Set) usedID(id string) bool {
 			return true
 		}
 	}
-	if d := s.decoded.road; d != nil && slices.ContainsFunc(d.Groups, func(g roadmapdoc.Group) bool { return g.ID == id }) {
+	if d := s.decoded.road; d != nil && slices.ContainsFunc(d.Groups, func(g roadmap.Group) bool { return g.ID == id }) {
 		return true
 	}
-	if fx := s.decoded.fix; fx != nil && slices.ContainsFunc(fx.Releases, func(r roadmapdoc.Release) bool { return r.ID == id }) {
+	if fx := s.decoded.fix; fx != nil && slices.ContainsFunc(fx.Releases, func(r roadmap.Release) bool { return r.ID == id }) {
 		return true
 	}
 	return false
@@ -250,9 +250,9 @@ func (s *Set) group(id string) error {
 
 // release returns the release id names, refusing one that is not there or is
 // cut: a shipped release is frozen.
-func (s *Set) release(id string) (roadmapdoc.Release, error) {
+func (s *Set) release(id string) (roadmap.Release, error) {
 	if s.decoded.fix == nil {
-		return roadmapdoc.Release{}, fmt.Errorf("--release %q: this repository has no %s", id, FixesFile)
+		return roadmap.Release{}, fmt.Errorf("--release %q: this repository has no %s", id, FixesFile)
 	}
 	var ids []string
 	for _, r := range s.decoded.fix.Releases {
@@ -264,7 +264,7 @@ func (s *Set) release(id string) (roadmapdoc.Release, error) {
 		}
 		ids = append(ids, r.ID)
 	}
-	return roadmapdoc.Release{}, fmt.Errorf("--release %q names no release of %s; the releases are %s", id, FixesFile, strings.Join(ids, ", "))
+	return roadmap.Release{}, fmt.Errorf("--release %q names no release of %s; the releases are %s", id, FixesFile, strings.Join(ids, ", "))
 }
 
 // open returns the entry id names when it is still work: a todo item or an
@@ -369,7 +369,7 @@ func (s *Set) AddItem(it Item) error {
 	if err := s.group(it.Group); err != nil {
 		return err
 	}
-	rec := roadmapdoc.Item{ID: it.ID, Group: it.Group, Title: it.Title, Text: it.Text, Why: it.Why, Origin: it.Origin, Date: s.Today}
+	rec := roadmap.Item{ID: it.ID, Group: it.Group, Title: it.Title, Text: it.Text, Why: it.Why, Origin: it.Origin, Date: s.Today}
 	if err := s.appendRecord(&s.road, "items", itemRecord(rec)); err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ func (s *Set) AddFix(fx Fix) error {
 	if fx.Status != Planned && fx.Status != InProgress {
 		return fmt.Errorf("--status %q: a new fix is planned or in-progress", fx.Status)
 	}
-	if err := s.appendRecord(&s.fix, "items", fixRecord(roadmapdoc.Fix{ID: fx.ID, Release: fx.Release, Title: fx.Title, Text: fx.Text, Origin: fx.Origin, Status: fx.Status})); err != nil {
+	if err := s.appendRecord(&s.fix, "items", fixRecord(roadmap.Fix{ID: fx.ID, Release: fx.Release, Title: fx.Title, Text: fx.Text, Origin: fx.Origin, Status: fx.Status})); err != nil {
 		return err
 	}
 	s.first = &s.fix
@@ -478,22 +478,22 @@ func (s *Set) cross(to, from *file, rec, id string) error {
 	return nil
 }
 
-func (s *Set) item(id string) roadmapdoc.Item {
+func (s *Set) item(id string) roadmap.Item {
 	for _, it := range s.decoded.road.Items {
 		if it.ID == id {
 			return it
 		}
 	}
-	return roadmapdoc.Item{}
+	return roadmap.Item{}
 }
 
-func (s *Set) fix1(id string) roadmapdoc.Fix {
+func (s *Set) fix1(id string) roadmap.Fix {
 	for _, it := range s.decoded.fix.Items {
 		if it.ID == id {
 			return it
 		}
 	}
-	return roadmapdoc.Fix{}
+	return roadmap.Fix{}
 }
 
 var evidenceRE = regexp.MustCompile(`^((PR )?#[0-9]+|[0-9a-f]{7,40}|https://github\.com/[^ ]+/(pull|commit)/[^ ]+)$`)
@@ -593,10 +593,10 @@ func (s *Set) Changed() []string {
 func (s *Set) Pages() map[string]string {
 	out := map[string]string{}
 	if s.decoded.road != nil {
-		out[RoadmapPage] = roadmapdoc.Render(s.decoded.road, RoadmapFile)
+		out[RoadmapPage] = roadmap.Render(s.decoded.road, RoadmapFile)
 	}
 	if s.decoded.fix != nil {
-		out[FixesPage] = roadmapdoc.RenderFixes(s.decoded.fix, FixesFile)
+		out[FixesPage] = roadmap.RenderFixes(s.decoded.fix, FixesFile)
 	}
 	return out
 }
@@ -689,27 +689,27 @@ func RenderFile(in, out, source string) (kind string, items int, err error) {
 	if err != nil {
 		return "", 0, err
 	}
-	top, err := worklang.Read(in, raw, roadmapdoc.Limits)
+	top, err := sexp.Read(in, raw, roadmap.Limits)
 	if err != nil {
 		return "", 0, err
 	}
-	if top.Kind != worklang.List || len(top.List) == 0 || top.List[0].Kind != worklang.Symbol {
+	if top.Kind != sexp.List || len(top.List) == 0 || top.List[0].Kind != sexp.Symbol {
 		return "", 0, fmt.Errorf("%s: want one (roadmap \"v1\" ...) or (fixes \"v1\" ...) form", in)
 	}
 	var page string
 	switch kind = top.List[0].Value; kind {
 	case "roadmap":
-		d, err := roadmapdoc.Decode(in, raw)
+		d, err := roadmap.Decode(in, raw)
 		if err != nil {
 			return kind, 0, err
 		}
-		page, items = roadmapdoc.Render(d, source), len(d.Items)
+		page, items = roadmap.Render(d, source), len(d.Items)
 	case "fixes":
-		fx, err := roadmapdoc.DecodeFixes(in, raw)
+		fx, err := roadmap.DecodeFixes(in, raw)
 		if err != nil {
 			return kind, 0, err
 		}
-		page, items = roadmapdoc.RenderFixes(fx, source), len(fx.Items)
+		page, items = roadmap.RenderFixes(fx, source), len(fx.Items)
 	default:
 		return kind, 0, fmt.Errorf("%s: the head form is (%s ...); nova-work renders (roadmap \"v1\" ...) and (fixes \"v1\" ...)", in, kind)
 	}

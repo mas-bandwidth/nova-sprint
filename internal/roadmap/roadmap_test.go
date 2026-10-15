@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -361,9 +361,9 @@ func TestRenderFileRendersDataHeldElsewhere(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "roadmap", kind)
 	assert.Equal(t, 3, items)
-	d, err := roadmapdoc.Decode("x", []byte(fixtureRoadmap))
+	d, err := roadmap.Decode("x", []byte(fixtureRoadmap))
 	require.NoError(t, err)
-	assert.Equal(t, roadmapdoc.Render(d, "work/roadmaps/other.sexp"), read(t, dir, "ROADMAP.md"))
+	assert.Equal(t, roadmap.Render(d, "work/roadmaps/other.sexp"), read(t, dir, "ROADMAP.md"))
 
 	require.NoError(t, os.WriteFile(in, []byte(`(:roadmap 1 :releases ())`), 0o644))
 	_, _, err = RenderFile(in, out, "x")
@@ -400,7 +400,7 @@ func TestARoundTripIsLossless(t *testing.T) {
 	clean(t, dir)
 	fx := load(t, dir).fix1("item-full")
 	assert.Equal(t, before.Text, fx.Text, "the text keeps its bytes")
-	assert.Equal(t, []roadmapdoc.Pair{{Key: "item-group", Value: "beta"}, {Key: "item-date", Value: "2026-09-01"},
+	assert.Equal(t, []roadmap.Pair{{Key: "item-group", Value: "beta"}, {Key: "item-date", Value: "2026-09-01"},
 		{Key: "item-why", Value: "It waits."}, {Key: "item-area", Value: "sprint"}, {Key: "item-exists", Value: "half"},
 		{Key: "item-cards", Value: "3"}, {Key: "item-release", Value: "after v1.4"}}, fx.Kept)
 
@@ -409,7 +409,7 @@ func TestARoundTripIsLossless(t *testing.T) {
 	require.NoError(t, s.Save())
 	clean(t, dir)
 	after := load(t, dir).item("item-full")
-	assert.Equal(t, []roadmapdoc.Pair{{Key: "fix-status", Value: "planned"}, {Key: "fix-release", Value: "v1.0.3"}}, after.Kept)
+	assert.Equal(t, []roadmap.Pair{{Key: "fix-status", Value: "planned"}, {Key: "fix-release", Value: "v1.0.3"}}, after.Kept)
 	after.Kept = nil
 	assert.Equal(t, before, after, "roadmap -> fixes -> roadmap lost a field")
 }
@@ -427,7 +427,7 @@ func TestAFixRoundTripKeepsItsFields(t *testing.T) {
 	require.NoError(t, s.Save())
 	clean(t, dir)
 	after := load(t, dir).fix1("fix-2a")
-	assert.Equal(t, []roadmapdoc.Pair{{Key: "fix-status", Value: "in-progress"}, {Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: today}}, after.Kept)
+	assert.Equal(t, []roadmap.Pair{{Key: "fix-status", Value: "in-progress"}, {Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: today}}, after.Kept)
 	assert.Equal(t, Planned, after.Status)
 	after.Kept, after.Status = nil, before.Status
 	assert.Equal(t, before, after)
@@ -451,7 +451,7 @@ func TestDoneKeepsTheItemsFields(t *testing.T) {
 	d := load(t, dir).decoded.road.Done
 	n := d[len(d)-1]
 	assert.Equal(t, "item-a2", n.ID)
-	assert.Equal(t, []roadmapdoc.Pair{{Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: "2026-10-01"}, {Key: "item-exists", Value: "half of it"}}, n.Kept)
+	assert.Equal(t, []roadmap.Pair{{Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: "2026-10-01"}, {Key: "item-exists", Value: "half of it"}}, n.Kept)
 }
 
 func TestNoteRetitlesAndKeepsTheOldTitle(t *testing.T) {
@@ -464,7 +464,7 @@ func TestNoteRetitlesAndKeepsTheOldTitle(t *testing.T) {
 	clean(t, dir)
 	fx := load(t, dir).fix1("fix-2a")
 	assert.Equal(t, "Newer title", fx.Title)
-	assert.Equal(t, []roadmapdoc.Pair{{Key: "earlier-title", Value: "Two a"}, {Key: "earlier-title-2", Value: "New title"}}, fx.Kept)
+	assert.Equal(t, []roadmap.Pair{{Key: "earlier-title", Value: "Two a"}, {Key: "earlier-title-2", Value: "New title"}}, fx.Kept)
 	assert.Equal(t, "A.", fx.Text)
 }
 
