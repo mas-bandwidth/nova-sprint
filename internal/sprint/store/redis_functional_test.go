@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/testredis"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"

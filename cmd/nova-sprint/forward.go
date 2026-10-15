@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )

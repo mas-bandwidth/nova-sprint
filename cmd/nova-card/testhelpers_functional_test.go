@@ -16,10 +16,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 )
 
 // builtSprint is how this package's functional test runs nova-sprint verbs when

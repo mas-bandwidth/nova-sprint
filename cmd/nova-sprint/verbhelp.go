@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 )
 
 // releaseHoldWords distinguishes a card's release operand from the holds on a
