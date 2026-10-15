@@ -9,6 +9,8 @@ defect. A change not yet in `dev` is marked "after PR N" and listed under "Open 
 machine, `<s>` a stream, `<id>` an inbox group id, `<card>` a primary's id. Each judgment answer below is the
 line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows the exact lines.
 
+To keep the seat's cost down, run a dispatcher for the routine routing: [DISPATCHER.md](DISPATCHER.md).
+
 ## 1. The seat
 
 ### A first live start
