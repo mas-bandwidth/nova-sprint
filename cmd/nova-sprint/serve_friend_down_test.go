@@ -69,7 +69,7 @@ func (r *serverRig) pong(friend string) {
 		}
 		for _, n := range names {
 			if n == friend {
-				rows = append(rows, hook.Status{Name: friend, State: hook.StateProven})
+				rows = append(rows, hook.Status{Name: friend, Role: hook.Friend, State: hook.StateProven})
 			}
 		}
 		return rows, at, nil

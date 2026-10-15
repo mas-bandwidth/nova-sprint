@@ -181,7 +181,7 @@ func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
 	}
 	r := sprint.FriendLevelReq{Started: map[string]string{}, Who: c.actor}
 	for _, f := range rows {
-		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode})
+		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode, WorkerLive: f.WorkerLive})
 		if f.Status != sprint.Up {
 			continue
 		}

@@ -313,7 +313,7 @@ func (ta *testApp) pong(friend string) {
 				by[r.Name] = r
 			}
 		}
-		by[friend] = hook.Status{Name: friend, State: hook.StateProven}
+		by[friend] = hook.Status{Name: friend, Role: hook.Friend, State: hook.StateProven}
 		var out []hook.Status
 		for _, n := range names {
 			if r, ok := by[n]; ok {
