@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
@@ -35,7 +35,7 @@ func TestAMemberRunsTheWidthOfItsFleetRow(t *testing.T) {
 		require.NoError(t, err, log.String())
 	}
 	tick()
-	require.Contains(t, log.String(), "width 0 -> 2 (the fleet row)", "the row's width is read with the queue")
+	require.Contains(t, log.String(), "width 0 -> 2 (nova-config)", "the row's width is read with the queue")
 	require.Len(t, rn.packets, 2, "two children at width 2: %s", log.String())
 
 	twin("nova-sprint fleet up m1 --width 1")
@@ -51,7 +51,7 @@ func TestAMemberRunsTheWidthOfItsFleetRow(t *testing.T) {
 	tick() // and reported; one still runs at width 1: nothing new is taken
 	assert.Equal(t, 1, m.Running())
 	assert.Len(t, rn.packets, 2, "no new take while the running fill the lowered width: %s", log.String())
-	assert.Contains(t, log.String(), "width 2 -> 1 (the fleet row)")
+	assert.Contains(t, log.String(), "width 2 -> 1 (nova-config)")
 
 	end(rn.packets[1].Card)
 	twin("nova-sprint tick")
