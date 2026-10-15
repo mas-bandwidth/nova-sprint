@@ -334,7 +334,7 @@ func TestDoctorFriendsFailsADaemonThatBeatsNoMore(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	in := healthyInput(w)
-	in.Req.Friends = []FriendSeat{{Name: "emma", Status: Up, Width: 4}, {Name: "stella", Status: Held, Width: 16, Why: "out of Codex usage to 2026-10-16"}}
+	in.Req.Friends = workerSeatFixtures([]FriendSeat{{Name: "emma", Status: Up, Width: 4}, {Name: "stella", Status: Held, Width: 16, Why: "out of Codex usage to 2026-10-16"}})
 	in.FriendBeats = map[string]Beat{"emma": {At: w.s.Now.Add(-10 * time.Minute)}}
 	cs := DoctorFriends(in)
 	fails := failsOn(cs, CheckFriends)

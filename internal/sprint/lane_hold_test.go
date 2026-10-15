@@ -11,13 +11,13 @@ import (
 
 // A friend's lanes are thin clients of the server (lane_hold.go; nova-tools tla/FriendLane.tla).
 
-var amyLanes = FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+var amyLanes = workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 
 // laneWorld is three cards dealt ready on amy's row (width 2), none started.
 func laneWorld(t *testing.T) *world {
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
 	dealWith(w, amyLanes)
-	w.s.Friends = []FriendSeat{amyLanes}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{amyLanes})
 	require.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Ready), 3, "dealt ready, unstarted")
 	return w
 }
@@ -114,7 +114,7 @@ func TestALanesTakeRefusals(t *testing.T) {
 		require.Len(t, p.Refused, 1, "%+v", r)
 		assert.Empty(t, p.Units)
 	}
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Down, Why: "her beat says down"}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Down, Why: "her beat says down"}})
 	p := laneTake(w, 1)
 	assert.Empty(t, p.Units)
 	assert.Nil(t, LaneHolds(w.s, FriendRow("amy"), 1))

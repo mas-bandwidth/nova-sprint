@@ -32,11 +32,11 @@ func TestFriendHookStatus(t *testing.T) {
 
 func TestExplicitUnhookReturnsWorkWithoutABeatAndKeepsStopReceipt(t *testing.T) {
 	w := friendWorld(t, friendBrief("friend"))
-	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}}
+	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}})
 	dealStarted(w, seats...)
 	c := w.s.Fleet.Cell(FriendRow("amy"), Working)[0]
 	gen := c.Int("gen")
-	w.s.Friends = []FriendSeat{{Name: "amy", Status: Down, Held: true, Unhooked: true}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Status: Down, Held: true, Unhooked: true}})
 	p := LiveReturns(w.s, nil, true)
 	if len(p.Units) == 0 {
 		t.Fatal("explicit unhook must return work without a report")
@@ -52,7 +52,7 @@ func TestExplicitUnhookReturnsWorkWithoutABeatAndKeepsStopReceipt(t *testing.T) 
 }
 
 func TestHookDownPreservesSprintReaderHold(t *testing.T) {
-	s := &Snapshot{Friends: []FriendSeat{{Name: "amy", Status: Down, Held: true}}}
+	s := &Snapshot{Friends: workerSeatFixtures([]FriendSeat{{Name: "amy", Status: Down, Held: true}})}
 	if !s.heldFriendReader(ReaderPrefix + "amy") {
 		t.Fatal("down display must not release sprint hold")
 	}
@@ -63,7 +63,7 @@ func TestExplicitUnhookReadCarriesPairedStopReceipt(t *testing.T) {
 	fleet.SetRows([]string{FriendRow("amy")})
 	c := &Card{ID: "read.g2", Row: FriendRow("amy"), Col: Working, Fields: map[string]string{"kind": "read", "gen": "2"}}
 	fleet.Put(c)
-	s := &Snapshot{Now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC), Fleet: fleet, Friends: []FriendSeat{{Name: "amy", Status: Down, Unhooked: true}}}
+	s := &Snapshot{Now: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC), Fleet: fleet, Friends: workerSeatFixtures([]FriendSeat{{Name: "amy", Status: Down, Unhooked: true}})}
 	p := LiveReturns(s, nil, true)
 	if len(p.Units) != 1 {
 		t.Fatalf("got %d returns, want one read return", len(p.Units))

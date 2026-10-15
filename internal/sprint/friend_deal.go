@@ -194,8 +194,12 @@ type FriendSeat struct {
 	Held     bool // Sprint hold, even when nova-hook says down.
 	// Session is FriendOneShot for a friend with no live session (a member lane on her row),
 	// "" for a live friend.
-	Session  string
-	Unhooked bool // nova-hook explicitly unhooked this friend; work may be returned.
+	Session string
+	// WorkerLive is authoritative worker evidence at this snapshot: a healthy,
+	// proven friend-role hook, or a live member beat for a one-shot seat.
+	// Status Up alone also admits coordinator/comms hooks and is not this proof.
+	WorkerLive bool
+	Unhooked   bool // nova-hook explicitly unhooked this friend; work may be returned.
 }
 
 // FieldFriendsLeft is the friends a friend's work card has left, comma joined: each the
@@ -231,7 +235,12 @@ func friendTiers(f FriendSeat) []string {
 // dealt-no-more mark, a fourth state that kept an up friend from the deal, is retired,
 // v1.3.6).
 func friendDealable(s *Snapshot, f FriendSeat) bool {
-	return !s.FriendsOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder)
+	return !s.FriendsOff() && friendWorkerLive(s, f) && friendCanRead(s, f) && friendHasRole(f, RoleBuilder)
+}
+
+// friendWorkerLive requires explicit worker evidence, excluding the coordinator.
+func friendWorkerLive(s *Snapshot, f FriendSeat) bool {
+	return f.WorkerLive && f.Name != s.Coordinator
 }
 
 // friendHasTaken says the friend has taken a card: her beat names a job running
