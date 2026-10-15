@@ -280,7 +280,7 @@ func TestEveryCoordinatorRuleNamesVerbsThatExist(t *testing.T) {
 		}
 		head := "# x\n\n" + rulesSection + "\n\n"
 		good := head + rule(1, "`nova-sprint fleet level`, `nova-sprint set --friend-finish 30m`.") +
-			rule(2, "`nova-sprint where --watch`; `nova-friend ping --as <c> --to <f>`.") +
+			rule(2, "`nova-sprint where --watch`; `nova-friend reach --as <c> --to <f>`.") +
 			rule(3, "judgment: the seat decides.")
 		assert.Empty(t, checkCoordRules(verbs, good), "rules that name real verbs and flags are refused")
 

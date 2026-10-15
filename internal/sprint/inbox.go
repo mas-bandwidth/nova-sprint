@@ -163,8 +163,8 @@ type Group struct {
 	// To is who the group's notes are addressed to (Note.To): its happened
 	// notes, and a timer's judgment, which the tick raises addressed to the
 	// actor it wakes (docs/SPEC-SPRINT.md, "Timers"); Hint is what to do
-	// next. A group addressed to someone is shown first, and the seat push
-	// writes it to that actor's inbox.
+	// next. A group addressed to someone is shown first, and the server sends
+	// it to the coordinator on the bus.
 	To   string `json:"to,omitempty"`
 	Hint string `json:"hint,omitempty"`
 }

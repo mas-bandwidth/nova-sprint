@@ -15,14 +15,9 @@
 cmd/nova-sprint/dashboard_cover_test.go
 cmd/nova-sprint/fleet_back_test.go
 cmd/nova-sprint/flush_stream_test.go
-cmd/nova-sprint/forward_server_test.go
 cmd/nova-sprint/friend_start_test.go
 cmd/nova-sprint/friendcards_cover_test.go
-cmd/nova-sprint/friendcards_verb_test.go
 cmd/nova-sprint/friendclean_test.go
-cmd/nova-sprint/hook_compact_test.go
-cmd/nova-sprint/hook_gate_every_verb_test.go
-cmd/nova-sprint/hook_test.go
 cmd/nova-sprint/land_beat_test.go
 cmd/nova-sprint/land_class_test.go
 cmd/nova-sprint/landpass_lanes_test.go
@@ -30,10 +25,8 @@ cmd/nova-sprint/landpass_unblocked_test.go
 cmd/nova-sprint/landring_test.go
 cmd/nova-sprint/landstage_test.go
 cmd/nova-sprint/main_cover_test.go
-cmd/nova-sprint/main_test.go
 cmd/nova-sprint/reexec_test.go
 cmd/nova-sprint/seat_check_offline_test.go
-cmd/nova-sprint/seatinstall_test.go
 cmd/nova-sprint/serve_test.go
 cmd/nova-sprint/snapshot_info_test.go
 cmd/nova-sprint/tick_deadline_test.go

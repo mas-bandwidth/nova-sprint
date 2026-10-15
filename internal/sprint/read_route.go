@@ -20,7 +20,7 @@ import (
 
 // ownModelReader says the reader brings its own model: it is a friend's reader,
 // reader-<name> for a friend (or a bud, a friend on a Claude account) whose seat the
-// snapshot holds or whose friend row the fleet table has (pkg/friend ReaderOf).
+// snapshot holds or whose friend row the fleet table has (nova-tools pkg/friend ReaderOf).
 // Any other reader is the fleet's and runs its read's route. A held friend's reader
 // brings no model: a friend and her reader row are one member to the server, and a
 // held member serves nothing (docs/SPEC-SPRINT.md section 11, hold).
@@ -39,8 +39,8 @@ func (s *Snapshot) ownModelReader(reader string) bool {
 }
 
 // heldFriendReader says reader is a held friend's reader row: reader-<name> names a
-// friend the snapshot holds with status held (her seat), or a friend row the fleet
-// table has whose control card reads held. A held friend and her reader row are one
+// friend the snapshot holds with status held (her seat, FriendStates: the coordinator's
+// hold is the one held). A held friend and her reader row are one
 // member to the server, and a held member serves nothing, new reads and its route
 // judgment alike (docs/SPEC-SPRINT.md section 11, hold).
 func (s *Snapshot) heldFriendReader(reader string) bool {
@@ -53,11 +53,7 @@ func (s *Snapshot) heldFriendReader(reader string) bool {
 			return f.Held || f.Status == Held
 		}
 	}
-	if s.Fleet == nil || !s.Fleet.HasRow(FriendRow(name)) {
-		return false
-	}
-	ctl := s.MemberCtl(FriendRow(name))
-	return ctl != nil && ctl.F("status") == Held
+	return false
 }
 
 // tierRouted says a fleet reader can draw a read of tier: the store holds no route

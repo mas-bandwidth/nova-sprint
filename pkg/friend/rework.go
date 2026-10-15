@@ -3,7 +3,6 @@ package friend
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 )
@@ -236,12 +235,11 @@ func UnaddressedText(by, fix string, missing []string) string {
 
 // The holders of an unaddressed LAND, as UnaddressedText names them.
 const (
-	HeldByDaemon     = "the daemon"
 	HeldByFriendSync = "friend sync"
 )
 
 // UnaddressedLand is the one fix check of a LAND, the daemon's outbox pass's and friend
-// sync's (cmd/nova-sprint, friendFinish, the finish of friend sync, friend reconcile and
+// sync's (cmd/nova-sprint, friendFinish, the finish of friend sync and
 // collect): held is UnaddressedText when report does not address the fix brief asks (BriefFix,
 // in either form), "" when it does or when brief asks none. A held LAND is finished as a
 // HOLD, its head kept.
@@ -258,15 +256,4 @@ func unaddressed(by, report, fix string) string {
 		return UnaddressedText(by, fix, missing)
 	}
 	return ""
-}
-
-// jobFix is the fix a job's brief asks: the BRIEF.md in her inbox, the brief the lane read,
-// else the server's brief.
-func jobFix(path, server string) string {
-	if raw, err := os.ReadFile(path); err == nil {
-		if fix := BriefFix(string(raw)); fix != "" {
-			return fix
-		}
-	}
-	return BriefFix(server)
 }

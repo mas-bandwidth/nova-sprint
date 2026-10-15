@@ -4,7 +4,7 @@ import (
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 )
 
 // LandScope is E12 as the lander reads one merge's diff (docs/SPEC-SPRINT.md section 7,
