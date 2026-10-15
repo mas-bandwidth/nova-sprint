@@ -154,7 +154,7 @@
 \*   "identicalrework" the second identical failure is reworked as failed work on its tier
 \*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
 \*   "nostall"    the tick never raises the landing-stall judgment: StallLive
-\*   "noclear"    a landing does not clear the episode: StallNotYoung
+\*   "noclear"    a landing does not clear the episode: StallNotYoung, FirstTimeClearsAtTarget
 \*   "harnessredeal" the harness rule reworks the second identical harness fault a third time
 \*                instead of judging it: HarnessFaultBounded
 \*   "groupredeal" the harness rule redeals a card the fleet's grouped harness-fault judgment
@@ -209,7 +209,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           ctier, cst, crefused, cway, catt,         \* conflict
           ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
           alopen, almsg, altold,                      \* alert
-          rest, card, tierJ, cardJ, staleJ            \* tier
+          rest, card, tierJ, cardJ, staleJ,           \* tier
+          ftclk, ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared \* firsttime
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
@@ -225,7 +226,8 @@ conflictVars == <<ctier, cst, crefused, cway, catt>>
 norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
 alertVars == <<alopen, almsg, altold>>
 tierVars == <<rest, card, tierJ, cardJ, staleJ>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+ftVars == <<ftclk, ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -315,6 +317,13 @@ TypeOK ==
   /\ tierJ \in BOOLEAN
   /\ cardJ \in BOOLEAN
   /\ staleJ \in BOOLEAN
+  /\ ftclk \in 0..MaxClock
+  /\ ftcounted \in 0..Cap
+  /\ ftunder \in BOOLEAN
+  /\ ftsince \in (0..MaxClock) \cup {-1}
+  /\ ftsaid \in (0..MaxClock) \cup {-1}
+  /\ ftjudged \in BOOLEAN
+  /\ ftcleared \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -347,6 +356,7 @@ Init ==
   /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
   /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
   /\ rest = FALSE /\ card = "ready" /\ tierJ = FALSE /\ cardJ = FALSE /\ staleJ = FALSE
+  /\ ftclk = 0 /\ ftcounted = 0 /\ ftunder = FALSE /\ ftsince = -1 /\ ftsaid = -1 /\ ftjudged = FALSE /\ ftcleared = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -1697,36 +1707,105 @@ QuietWhileUnfunded == (rest /\ card # "working") => (~cardJ /\ ~staleJ)
 ResumesWhenFunded == (~rest /\ card = "ready") ~> (~tierJ)
 
 -----------------------------------------------------------------------------
+\* Part "firsttime": the first-time land rate goal (internal/sprint first_time.go,
+\* judgments.go TickFirstTime; run from the deadlines part). When a stream has at least
+\* Cap counted primaries in its window (10 in the code) and its windowed first-time land
+\* rate is under the target (ftunder), the tick end raises one NFirstTimeUnderTarget
+\* judgment to the coordinator, re-raised no more often than StallBound, and clears with
+\* a happened note when the windowed rate is back at or over the target (~ftunder). As in
+\* Part "stall", recovery clears in one step so FirstTimeClearsAtTarget holds at every
+\* state; the "noclear" defect leaves the judgment open when the windowed rate recovers.
+
+\* the outside: a primary is counted (lands after rework/attempt > 1 or is dropped) and
+\* the stream's windowed rate is under the target
+FtCountUnder ==
+  /\ ftclk < MaxClock
+  /\ ftcounted' = IF ftcounted < Cap THEN ftcounted + 1 ELSE Cap
+  /\ ftunder' = TRUE
+  /\ ftcleared' = FALSE
+  /\ UNCHANGED <<ftclk, ftsince, ftsaid, ftjudged>>
+
+\* the outside: a primary lands on attempt 1 with no rework, brief replacement or carry,
+\* bringing the stream's windowed rate back to at or over the target; the "noclear" defect
+\* leaves the judgment open
+FtRecover ==
+  /\ ftclk < MaxClock
+  /\ ftcounted > 0 /\ ftunder
+  /\ ftcounted' = IF ftcounted < Cap THEN ftcounted + 1 ELSE Cap
+  /\ ftunder' = FALSE
+  /\ IF Broken = "noclear"
+       THEN UNCHANGED <<ftsince, ftsaid, ftjudged, ftcleared>>
+       ELSE /\ ftsince' = -1 /\ ftsaid' = -1 /\ ftjudged' = FALSE
+            /\ ftcleared' = (ftjudged \/ ftsaid # -1)
+  /\ UNCHANGED ftclk
+
+\* the tick end's judgment: once at least Cap primaries are counted and the windowed rate
+\* is under the target, raises NFirstTimeUnderTarget and re-raises no more often than
+\* StallBound; clears when back at or over the target
+FtTick ==
+  /\ ftclk < MaxClock
+  /\ LET now == ftclk + 1
+         active == ftcounted >= Cap /\ ftunder
+         due == (ftsaid = -1) \/ (now - ftsaid >= StallBound)
+     IN /\ ftclk' = now
+        /\ IF active
+             THEN /\ ftsince' = IF ftsince = -1 THEN now ELSE ftsince
+                  /\ IF due
+                       THEN /\ ftjudged' = TRUE /\ ftsaid' = now
+                       ELSE UNCHANGED <<ftjudged, ftsaid>>
+                  /\ UNCHANGED <<ftcounted, ftunder, ftcleared>>
+             ELSE IF Broken = "noclear"
+                    THEN UNCHANGED <<ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared>>
+                    ELSE /\ ftsince' = -1 /\ ftsaid' = -1 /\ ftjudged' = FALSE
+                         /\ ftcleared' = IF ftjudged THEN TRUE ELSE ftcleared
+                         /\ UNCHANGED <<ftcounted, ftunder>>
+
+FtNext == FtCountUnder \/ FtRecover \/ FtTick
+
+\* No judgment is raised until the stream has at least Cap counted primaries in its window.
+FirstTimeNotBelowMin == ftjudged => ftcounted >= Cap
+
+\* The first-time under-target judgment is open only while the stream's windowed rate is
+\* under the target: when the rate is back at or over the target, the episode clears.
+FirstTimeClearsAtTarget == ftjudged => ftunder
+
+\* A stream with at least Cap counted primaries whose windowed rate is under the target is
+\* judged or recovers to target, under fairness of the tick.
+FirstTimeLive == (ftcounted >= Cap /\ ftunder) ~> (ftjudged \/ ~ftunder)
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>
-  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>
-  \/ Part = "tier" /\ TierNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars, ftVars>>
+  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars, ftVars>>
+  \/ Part = "tier" /\ TierNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, ftVars>>
+  \/ Part = "firsttime" /\ FtNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
 
 \* The rules and a mind act when they may; the outside is unfair. The stall's running tick
 \* and the machine's start are fair (a stopped machine adds no running time, so a stall can
 \* only be owed once the machine has run the bound); the alert's send is fair so a raise is
 \* eventually told; the tier's tick is fair so the tier judgment closes when routes wake.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>)
-  /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, ftVars>>)
+  /\ SF_vars(Part = "firsttime" /\ FtTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

@@ -831,6 +831,10 @@ number of cards and the oldest card still merging. One check alone:
 n=0. The contract is [SPEC-RELEASE.md](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-RELEASE.md) section 16, subsection
 release-check-merge-queue-p90-b.w7.
 
+### First-time land rate goal
+
+`nova-sprint where` shows a `first time` column on the work table (`<pct>% <first>/<counted>`, `-` when none counted) and a summary line under the work table (`first time: <overall> target 90%`, naming any streams under target), and `where --json` carries `first time` on each work row alongside top-level `first_time`, `first_time_target`, `first_time_window`, and `first_time_under_target`. A primary counts only when it has landed or been dropped; it counts as first-time only when it landed on attempt 1 with no rework, no brief replacement, and no carry.
+
 
 ## nova-card
 
