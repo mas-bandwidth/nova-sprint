@@ -284,6 +284,7 @@ func StatusTransitions(s *Snapshot, r TickReq) Plan {
 			// seat told it changed
 			n := judgment.Note
 			n.What, n.At, n.Who = what, s.Now, r.who()
+			n.CoordinatorDelivery = nil // each counted transition is a new episode
 			p.Updates = append(p.Updates, n)
 			for _, o := range onRow[row.row] {
 				if o.Note.ID != n.ID {

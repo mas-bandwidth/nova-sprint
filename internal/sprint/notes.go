@@ -192,9 +192,19 @@ func Preview(items []string, sep string) string {
 	return strings.Join(items[:PreviewLen], sep) + sep + "... and " + strconv.Itoa(len(items)-PreviewLen) + " more"
 }
 
+// CoordinatorDelivery is the frozen bus message for one state episode. Sent is
+// recorded only after bus success; Token bridges a crash between send and commit.
+type CoordinatorDelivery struct {
+	CoveredBy                         string // shares the causal notification's token and payload
+	To, Token, Subject, Body, Episode string
+	Sent                              bool
+	RetryBefore                       time.Time // no automatic retry after the bus token acceptance window
+}
+
 // Note is one notification.
 type Note struct {
-	ID string `json:"id"`
+	ID                  string               `json:"id"`
+	CoordinatorDelivery *CoordinatorDelivery `json:"coordinator_delivery,omitempty"`
 	// Alias is a judgment's or an acknowledgement's alias, j<n>, its place among
 	// the epoch's in the order written: the store's commit numbers it (inbox.go,
 	// Alias); "" on a happened or decided note.

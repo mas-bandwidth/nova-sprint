@@ -113,9 +113,15 @@ Follow(n) ==
   /\ rec' = "none" /\ bySeat' = FALSE /\ answered' = FALSE /\ lease' = FALSE /\ proof' = FALSE
   /\ UNCHANGED <<open, sent, up, busUp, failed>>
 
+\* If the failed work resolves before retry, one real status send tests the
+\* transport. It succeeds only while the bus accepts sends; healthy looks do
+\* not probe. This is transport evidence, never session challenge evidence.
+Recover == /\ up /\ failed /\ Fresh = {} /\ busUp /\ failed' = FALSE
+           /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp>>
+
 Next ==
   \/ \E k \in Keys : Raise(k) \/ Close(k)
-  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Look
+  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Look \/ Recover
   \/ \E n \in Names : Follow(n)
 
 Spec == Init /\ [][Next]_vars

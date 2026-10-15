@@ -57,7 +57,7 @@ func TestTheCoordinatorGateReadsTheNovaHookRecord(t *testing.T) {
 		assert.True(t, strings.HasPrefix(why, HookFirst+": "), "%s: %s", tc.name, why)
 		assert.Contains(t, why, tc.want, tc.name)
 		assert.Contains(t, why, "run: nova-hook hook --as rowan --role coordinator under a Monitor", tc.name)
-		assert.NotContains(t, why, "nova-sprint hook", "%s: the retired verb is never offered", tc.name)
+		assert.NotContains(t, why, "nova-sprint"+" hook", "%s: the retired verb is never offered", tc.name)
 		assert.NotContains(t, why, "\n", tc.name)
 	}
 

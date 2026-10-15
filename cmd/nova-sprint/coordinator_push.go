@@ -3,10 +3,10 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,7 +35,9 @@ import (
 //     someone: forCoordinator) with a delivery key not told yet (deliveryKeys: each note,
 //     and a waited judgment again once its wait is due) goes in one bus message to the
 //     seat's holder, or, addressed to someone else (a timer for a friend), to that name;
-//     its keys are told only once the send succeeded, so a failed send is sent again at
+//     State episodes freeze their message and persist a success receipt on the
+//     judgment note; their token makes ambiguous sends safe to retry. Other groups
+//     keep their delivery keys in this server's memory. A failed send is sent again at
 //     the next look. Keys of groups no longer open are forgotten; a new
 //     epoch, or a new holder, starts from nothing told, as a server's start does.
 //   - warns: a judgment waiting sprint.JudgmentWarnAfter or longer is warned about at
@@ -58,18 +60,20 @@ const coordPushMax = 20
 // coordPush is the server's memory of what it told the coordinator: the holder and the
 // epoch it is for, the delivery keys told, and the warning's and the late tick's state.
 type coordPush struct {
-	mu        sync.Mutex
-	holder    string
-	epoch     uint64
-	told      map[string]bool
-	firstSeen map[string]time.Time
-	warned    map[string]bool
-	warnedAt  time.Time
-	warnSet   string
-	late      lateWatch
-	failed    bool      // the last send to the holder failed: the sprint push is unproven
-	heldAt    time.Time // the sprint push's last renewal
-	heldWhy   string    // what the last renewal said, said again only when it changes
+	mu             sync.Mutex
+	holder         string
+	epoch          uint64
+	told           map[string]bool
+	firstSeen      map[string]time.Time
+	warned         map[string]bool
+	warnedAt       time.Time
+	warnSet        string
+	late           lateWatch
+	recoveryBefore time.Time // last safe retry of the transport recovery send
+	recoveryToken  string    // one transport recovery send per failed episode
+	failed         bool      // the last send to the holder failed: the sprint push is unproven
+	heldAt         time.Time // the sprint push's last renewal
+	heldWhy        string    // what the last renewal said, said again only when it changes
 }
 
 // coordPushLoop is the server's look, every coordPushLook, for the life of the server.
@@ -89,6 +93,7 @@ func (a *app) coordPushLoop(ctx context.Context) {
 // coordLook is what one look read on the line.
 type coordLook struct {
 	holder  string
+	scope   string
 	epoch   uint64
 	groups  []sprint.Group
 	open    []sprint.Open
@@ -110,6 +115,7 @@ func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 			return err
 		}
 		l.epoch = es.N
+		l.scope = a.serveAddr + "\x00" + st.Names.Prefix
 		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
 		if err != nil {
 			return err
@@ -146,13 +152,16 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	p := &a.coord
 	p.mu.Lock()
 	if p.holder != l.holder || p.epoch != l.epoch || p.told == nil {
-		// a new holder or a new epoch hears everything open, as after a server's start
+		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
+		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore = false, time.Time{}, "", time.Time{}
 		p.firstSeen, p.warned, p.warnedAt, p.warnSet = map[string]time.Time{}, nil, time.Time{}, ""
 	}
 	sends := coordFresh(p.told, l, now)
 	var warn string
-	if ws := sprint.JudgmentWarnings(l.groups, now, p.firstSeen); len(ws) > 0 {
+	var warnSet string
+	var warnSeen map[string]bool
+	if ws := sprint.JudgmentWarnings(coordWarningGroups(l), now, p.firstSeen); len(ws) > 0 {
 		seen := make(map[string]bool, len(ws))
 		for _, w := range ws {
 			seen[w.ID] = true
@@ -163,9 +172,11 @@ func (a *app) coordinatorPass(ctx context.Context) {
 			if set != p.warnSet {
 				warn = sprint.JudgmentWarningText(ws)
 			}
-			p.warnSet, p.warnedAt = set, now
+			warnSet = set
+		} else {
+			p.warned = seen
 		}
-		p.warned = seen
+		warnSeen = seen
 	} else {
 		p.warnSet, p.warned, p.warnedAt = "", nil, time.Time{}
 	}
@@ -173,8 +184,12 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	p.mu.Unlock()
 
 	failed := false
+	attemptedHolder := false
 	send := func(to string, m bus.Message) bool {
 		m.From, m.To = prog, []string{to}
+		if to == l.holder {
+			attemptedHolder = true
+		}
 		if err := a.bus(ctx, m, func(s string) { a.serveSay("%s", s) }); err != nil {
 			a.serveSay("COORDINATOR PUSH to=%s: %q could not be sent, sent again at the next look: %s", to, m.Subject, oneline.Escape(err.Error()))
 			if to == l.holder {
@@ -184,7 +199,44 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		}
 		return true
 	}
+	candidates := map[string]sprint.CoordinatorDelivery{}
 	for _, d := range sends {
+		if d.note != "" {
+			candidates[d.note] = sprint.CoordinatorDelivery{To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: now.Add(bus.DefaultTokenLife)}
+		}
+	}
+	prepared := map[string]sprint.CoordinatorDelivery{}
+	if len(candidates) > 0 {
+		err := a.onLine(ctx, func(st *store.Store) error {
+			var err error
+			prepared, err = st.CoordinatorDeliveries(ctx, candidates, false, l.epoch)
+			return err
+		})
+		if err != nil {
+			failed, attemptedHolder = true, true
+			a.serveSay("COORDINATOR PUSH: preparing episode batch: %s", err)
+			prepared = nil
+		}
+	}
+	receipts := map[string]sprint.CoordinatorDelivery{}
+	attemptedTokens := map[string]bool{}
+	for _, d := range sends {
+		frozen, found := prepared[d.note]
+		if d.note != "" {
+			if !found || frozen.Sent {
+				continue
+			}
+			if frozen.RetryBefore.IsZero() || !now.Before(frozen.RetryBefore) {
+				failed, attemptedHolder = true, true
+				a.serveSay("COORDINATOR PUSH note=%s: delivery receipt unknown; retry window ended, inspect the bus and resolve the judgment manually", d.note)
+				continue
+			}
+			if attemptedTokens[frozen.Token] {
+				continue
+			}
+			attemptedTokens[frozen.Token] = true
+			d.to, d.subject, d.text, d.token = frozen.To, frozen.Subject, frozen.Body, frozen.Token
+		}
 		subject := d.subject
 		switch {
 		case subject != "":
@@ -193,8 +245,15 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		default:
 			subject = fmt.Sprintf("nova-sprint: %d new for %s", len(d.groups), d.to)
 		}
-		if !send(d.to, bus.Message{Kind: d.kind, Subject: subject, Body: d.text}) {
+		if !send(d.to, bus.Message{Kind: d.kind, Subject: subject, Body: d.text, Token: d.token}) {
 			continue
+		}
+		if found {
+			for id, shared := range prepared {
+				if shared.Token == frozen.Token {
+					receipts[id] = shared
+				}
+			}
 		}
 		p.mu.Lock()
 		if p.holder == l.holder && p.epoch == l.epoch {
@@ -205,15 +264,45 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		p.mu.Unlock()
 		a.serveSay("COORDINATOR PUSH to=%s groups=%s", d.to, strings.Join(d.groups, ","))
 	}
+	if len(receipts) > 0 {
+		err := a.onLine(ctx, func(st *store.Store) error {
+			_, err := st.CoordinatorDeliveries(ctx, receipts, true, l.epoch)
+			return err
+		})
+		if err != nil {
+			a.serveSay("COORDINATOR PUSH: recording episode batch: %s", err)
+		}
+	}
 	if warn != "" {
-		send(l.holder, bus.Message{Kind: bus.KindRequest, Subject: "nova-sprint: judgments waiting on the coordinator", Body: warn})
+		if send(l.holder, bus.Message{Kind: bus.KindRequest, Subject: "nova-sprint: judgments waiting on the coordinator", Body: warn}) {
+			p.mu.Lock()
+			p.warnSet, p.warnedAt, p.warned = warnSet, now, warnSeen
+			p.mu.Unlock()
+		}
 	}
 	if late != "" {
 		send(l.holder, bus.Message{Kind: bus.KindBlocker, Subject: "nova-sprint: the machine's tick runs late", Body: late})
 	}
 	p.mu.Lock()
-	if len(sends) > 0 || warn != "" || late != "" {
+	recover := p.failed && len(sends) == 0 && warn == "" && late == ""
+	recoveryToken, recoveryBefore := p.recoveryToken, p.recoveryBefore
+	p.mu.Unlock()
+	if recover && (recoveryBefore.IsZero() || !now.Before(recoveryBefore)) {
+		failed, attemptedHolder = true, true
+		a.serveSay("COORDINATOR PUSH: recovery receipt unknown; retry window ended, inspect the bus before restoring delivery")
+	} else if recover {
+		send(l.holder, bus.Message{Kind: bus.KindStatus, Token: recoveryToken, Subject: "nova-sprint: coordinator delivery restored", Body: "The previous delivery attempt failed; its work is resolved. This one recovery message confirms that coordinator bus delivery works again."})
+	}
+	p.mu.Lock()
+	if attemptedHolder {
 		p.failed = failed
+		if failed && p.recoveryToken == "" {
+			p.recoveryBefore = now.Add(bus.DefaultTokenLife)
+			p.recoveryToken = fmt.Sprintf("recovery:%x", sha256.Sum256([]byte(l.scope+l.holder+strconv.FormatUint(l.epoch, 10)+now.UTC().Format(time.RFC3339Nano))))
+		}
+		if !failed {
+			p.recoveryToken, p.recoveryBefore = "", time.Time{}
+		}
 	}
 	due := p.heldAt.IsZero() || !now.Before(p.heldAt.Add(hook.RenewEvery))
 	ok := !p.failed
@@ -237,12 +326,13 @@ func (a *app) coordinatorPass(ctx context.Context) {
 // coordSend is one message the look sends: to whom, its kind, its text, and the groups
 // and keys it tells.
 type coordSend struct {
-	to      string
-	kind    string
-	subject string // "" for the batch's own
-	text    string
-	groups  []string
-	keys    []string
+	to                              string
+	kind                            string
+	subject                         string // "" for the batch's own
+	text                            string
+	groups                          []string
+	keys                            []string
+	note, token, episode, coveredBy string // state episode: persisted frozen payload and bus retry token
 }
 
 // coordFresh is what the look delivers: for each name a group is for (its addressee, a
@@ -259,8 +349,31 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 	more := map[string]int{}
 	body := map[string]*strings.Builder{}
 	var state []coordSend
+	notes := make(map[string]sprint.Note, len(l.open))
+	for _, o := range l.open {
+		notes[o.Note.ID] = o.Note
+	}
 	for _, g := range l.groups {
-		if !forCoordinator(g) {
+		if !forCoordinator(g) || g.Type == sprint.NStatusChanged && (strings.Contains(g.What, " is down ") || strings.Contains(g.What, " is held ")) {
+			continue
+		}
+		to := cmp.Or(g.To, l.holder)
+		who, reason, stateJudgment := sprint.StateJudgment(g)
+		coveredBy := sprint.StateStatusOwner(g, l.groups)
+		if stateJudgment || coveredBy != "" {
+			for _, id := range g.Notes {
+				n := notes[id]
+				if n.ID == "" || n.CoordinatorDelivery != nil && n.CoordinatorDelivery.Sent {
+					continue
+				}
+				episode := sprint.StateEpisodeKey(n)
+				token := fmt.Sprintf("state:%x", sha256.Sum256([]byte(l.scope+"\x00"+episode)))
+				// The payload is frozen in the note before its first send; later cause
+				// rewrites, waits and elapsed clocks cannot change retry arguments.
+				state = append(state, coordSend{to: to, kind: bus.KindJudgment, groups: []string{g.ID}, note: id, token: token, episode: episode, coveredBy: coveredBy,
+					subject: "nova-sprint: " + cmp.Or(who, "-") + " " + g.Type + ": " + reason,
+					text:    "NOVA SPRINT JUDGMENT: " + cmp.Or(who, "-") + "\n" + groupText(g, now, false)})
+			}
 			continue
 		}
 		all, eligible := deliveryKeys(g, l.open, now, l.stopped)
@@ -274,15 +387,6 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 			}
 		}
 		if len(fresh) == 0 {
-			continue
-		}
-		to := cmp.Or(g.To, l.holder)
-		if who, reason, ok := sprint.StateJudgment(g); ok {
-			// a member's or a friend's state changed: a message of its own, naming it
-			slices.Sort(fresh)
-			state = append(state, coordSend{to: to, kind: bus.KindJudgment, keys: fresh, groups: []string{g.ID},
-				subject: "nova-sprint: " + cmp.Or(who, "-") + " " + g.Type + ": " + reason,
-				text:    "NOVA SPRINT JUDGMENT: " + cmp.Or(who, "-") + "\n" + groupText(g, now, false)})
 			continue
 		}
 		d := byTo[to]
@@ -400,4 +504,26 @@ func (a *app) holdSprintPush(ctx context.Context, name string, ok bool) (string,
 		return "the sprint push of " + name + " is held and unproven: the last send to it failed", nil
 	}
 	return "", nil
+}
+
+// A status audit covered by a causal episode remains quiet after that causal
+// note closes; only a new status transition clears the durable coverage.
+func coordWarningGroups(l coordLook) []sprint.Group {
+	covered := map[string]bool{}
+	for _, o := range l.open {
+		if d := o.Note.CoordinatorDelivery; d != nil && d.CoveredBy != "" {
+			covered[o.Note.ID] = true
+		}
+	}
+	var groups []sprint.Group
+	for _, g := range l.groups {
+		skip := false
+		for _, id := range g.Notes {
+			skip = skip || covered[id]
+		}
+		if !skip {
+			groups = append(groups, g)
+		}
+	}
+	return groups
 }

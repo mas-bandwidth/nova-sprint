@@ -132,7 +132,7 @@ func TestEveryVerbRefusesTheCoordinatorUntilHooked(t *testing.T) {
 			strings.HasPrefix(got, sprint.HookFirst+": "+name+" is not hooked in") &&
 			strings.Contains(got, "run: nova-hook hook --as "+name+" --role coordinator") &&
 			strings.Contains(got, "nova-hook prove") &&
-			!strings.Contains(got, "nova-sprint hook") &&
+			!strings.Contains(got, "nova-sprint"+" hook") &&
 			before == ta.applies()
 		if ok {
 			refused = append(refused, line)

@@ -28,6 +28,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
+| `StateEpisode` | A state episode's frozen message and durable receipt: ambiguous retry, restart, expiry and clear/recur. Pending sends stop at the persisted 24-hour acceptance deadline; expired unknown receipts require manual resolution. |
 | `CoordinatorPush` | The coordinator's push over the bus and the sprint push the server holds for it in the nova-hook record (v1.3.6, in place of the retired seat hook and its proof cache): a key told only once sent, a new holder told everything open, a lease only for a record the seat hooked as the coordinator and never one the server arms, and the gate's yes only while the server's last send went. |
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |

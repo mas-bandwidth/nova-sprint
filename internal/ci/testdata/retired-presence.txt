@@ -56,6 +56,7 @@ ident WatchHarness the hook record; a process is never liveness
 
 # the sprint's own seat hook and seat push (v1.3.6): the coordinator proves only through nova-hook
 # (a text name of more than one word that is no nova- command is written in double quotes)
+text nova-sprint hook nova-hook hook --as <name> --role coordinator
 text nova-sprint unhook nova-hook unhook --as <name>
 text "--push seat" the server's coordinator push on the bus (cmd/nova-sprint/coordinator_push.go); nova-sprint seat uninstall removes the old loop
 text --quiet-happened the server's coordinator push on the bus

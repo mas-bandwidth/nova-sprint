@@ -9187,3 +9187,34 @@ still closes the wait earlier. The wait does not block an eligible read.
 ### Typed subscription receipt contract (v1.2.19)
 
 [Paired subscription receipts](SPEC-SUBSCRIPTION-RECEIPTS.md) defines subscription zero marginal billing, retained raw harness dollars and original Muse counters, receipt contract 2, compatibility refusal and supported paired adoption. Existing plan prediction remains unchanged. The contract supersedes the older subscription read description that discarded harness dollars: those dollars now remain evidence and never become marginal subscription burn.
+
+### State episode delivery receipts
+
+An auto-hold, member down, environment fault, or counted friend down transition
+sends one coordinator bus message per episode. The existing judgment note stores
+its frozen recipient, subject, body and retry token before sending, then records
+a successful send. A changed cause or explicit wait preserves that receipt;
+clearing the fault and raising it again creates a new episode. A status judgment
+reused for a later transition clears the prior episode's receipt. State episodes
+are excluded from the repeating waiting-judgment warning. A fleet status audit
+caused by an existing auto-hold or down judgment shares that frozen delivery
+and success receipt. Its pending send survives the causal note closing. Preparation
+rechecks the causal note; if it has already closed, the status owns its alert.
+A new transition clears the prior delivery.
+
+The note persists a retry deadline at preparation, bounded by
+`bus.DefaultTokenLife` (24 hours). Pending delivery stops automatically at that
+deadline; its unknown receipt and unproven transport gate remain for the
+coordinator to inspect the bus and resolve the judgment manually. It never
+retries after the token's later seven-day cleanup. A successful note receipt
+suppresses repeats for the full episode lifetime, including server restarts.
+The pending message stays frozen so an ordinary retry never changes its arguments.
+`StateEpisode.tla` checks these boundaries, with witnesses for premature or
+volatile receipts, changed retry arguments and unsafe late retries.
+
+If a failed delivery's work resolves before the next attempt, the server sends
+one status message confirming delivery is restored. Failed attempts retry the
+same token within the same 24-hour acceptance bound; an unknown expired recovery
+receipt leaves the gate unproven until resolved. Success clears the transport
+failure. Healthy passes never probe.
+This transport check supplies no session challenge answer or presence proof.

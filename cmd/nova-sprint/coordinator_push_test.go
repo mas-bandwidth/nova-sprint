@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-tools/hook"
 )
 
@@ -79,7 +82,8 @@ func TestAJudgmentReachesTheCoordinatorsBusOnce(t *testing.T) {
 	ta.a.coordinatorPass(context.Background())
 	ta.a.bus = send
 	sent = ta.pass(name)
-	require.Len(t, sent, 1, "the failed send is sent again at the next look: %+v", sent)
+	require.Len(t, sent, 2, "the failed delivery and failed warning both retry at the next look: %+v", sent)
+	assert.Equal(t, "nova-sprint: judgments waiting on the coordinator", sent[1].Subject)
 	assert.Contains(t, sent[0].Body, "JUDGMENT ", "the group with the new reminder in it")
 	assert.Empty(t, ta.pass(name), "and once it went, it is told")
 }
@@ -236,4 +240,321 @@ func TestAnAutoHoldIsOneJudgmentMessageToTheCoordinator(t *testing.T) {
 	assert.Contains(t, judged[0].Subject, "m1 "+sprint.NMemberEnvFault+": ")
 	assert.Contains(t, judged[0].Subject, "(push)", "the subject names the reason")
 	assert.Contains(t, judged[0].Body, "fleet up m1")
+}
+
+// A state episode has a durable receipt, and its frozen token payload bridges a
+// lost bus response. Waiting, rewriting the cause and restarting do not resend it;
+// closing it and raising the fault again makes a new episode.
+func TestStateEpisodeSurvivesRetryRestartWaitAndRecurrence(t *testing.T) {
+	t.Parallel()
+	const name = "push-episode"
+	ta, rig, _ := coordSprint(t, name)
+	rig.Hook(t, name, hook.Coordinator)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	add := func() {
+		_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 environment fault: credential unavailable", At: ta.a.now()}))
+		require.NoError(t, err)
+	}
+	add()
+	fake := bustest.NewFake(ta.a.now(), name, prog)
+	b := &bus.Bus{Store: fake}
+	ta.a.bus = func(ctx context.Context, m bus.Message, _ func(string)) error { _, err := b.Send(ctx, m); return err }
+	fake.Fail = errors.New("bus unavailable")
+	ta.a.coordinatorPass(ctx)
+	assert.Zero(t, fake.Len(bus.StreamOf(name)))
+	fake.Fail = nil
+	fake.Lose = errors.New("response lost after commit")
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, fake.Len(bus.StreamOf(name)))
+	// Drop every in-memory delivery cache as on a restart; also change the message
+	// that would be generated now. The persisted pending payload must win.
+	ta.a.coord = coordPush{}
+	open, err := ta.m.OpenNotes(ctx)
+	require.NoError(t, err)
+	require.Len(t, open, 1)
+	n := open[0].Note
+	require.NotNil(t, n.CoordinatorDelivery)
+	require.False(t, n.CoordinatorDelivery.Sent)
+	n.What = "member m1 environment fault: a different cause in the same episode"
+	_, err = st.Run(ctx, store.Step{Verb: "fixture update", Plan: func(*sprint.Snapshot) sprint.Plan { return sprint.Plan{Updates: []sprint.Note{n}} }})
+	require.NoError(t, err)
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, fake.Len(bus.StreamOf(name)), "ambiguous send retries the same token and frozen arguments")
+	open, err = ta.m.OpenNotes(ctx)
+	require.NoError(t, err)
+	require.True(t, open[0].Note.CoordinatorDelivery.Sent)
+	require.NoError(t, st.SetReview(ctx, n.ID, ta.a.now().Add(time.Minute)))
+	ta.step(8 * 24 * time.Hour)
+	fake.Advance(8 * 24 * time.Hour) // past the bus token cleanup: receipt still suppresses send
+	ta.a.coord = coordPush{}
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, fake.Len(bus.StreamOf(name)), "one per episode, including no repeated generic warning")
+	_, err = st.Run(ctx, store.Step{Verb: "fixture clear", Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: s.Open} }})
+	require.NoError(t, err)
+	add()
+	ta.a.coordinatorPass(ctx)
+	assert.Equal(t, 2, fake.Len(bus.StreamOf(name)), "a cleared fault that recurs is a new episode")
+}
+
+func TestFailedWarningRetriesAtTheNextLook(t *testing.T) {
+	t.Parallel()
+	const name = "push-warning-retry"
+	ta, rig, _ := coordSprint(t, name)
+	rig.Hook(t, name, hook.Coordinator)
+	timerJudgment(ta, name)
+	ta.pass(name) // deliver the judgment before the warning is due
+	ta.step(sprint.JudgmentWarnAfter)
+	send := ta.a.bus
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
+	ta.a.coordinatorPass(context.Background())
+	ta.a.bus = send
+	ta.step(coordPushLook)
+	messages := ta.pass(name)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "nova-sprint: judgments waiting on the coordinator", messages[0].Subject)
+	assert.False(t, ta.a.coord.failed)
+}
+
+// A status judgment can keep its ID when a later transition changes its episode.
+// A send prepared from an older inbox snapshot must not attach to the new one.
+func TestStateDeliveryPreparationRejectsAnOldTransition(t *testing.T) {
+	t.Parallel()
+	const name = "push-transition"
+	ta, _, _ := coordSprint(t, name)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NStatus, Primaries: []string{"friend.worker"}, At: ta.a.now(), What: "friend worker is down (was up)"}))
+	require.NoError(t, err)
+	look, err := ta.a.readCoordLook(ctx)
+	require.NoError(t, err)
+	sends := coordFresh(map[string]bool{}, look, ta.a.now())
+	require.Len(t, sends, 1)
+	d := sends[0]
+	n := look.open[0].Note
+	n.At = n.At.Add(time.Minute)
+	_, err = st.Run(ctx, store.Step{Verb: "fixture transition", Plan: func(*sprint.Snapshot) sprint.Plan { return sprint.Plan{Updates: []sprint.Note{n}} }})
+	require.NoError(t, err)
+	frozen, err := st.CoordinatorDeliveries(ctx, map[string]sprint.CoordinatorDelivery{d.note: {To: d.to, Token: d.token, Episode: d.episode, Subject: d.subject, Body: d.text}}, false, look.epoch)
+	require.NoError(t, err)
+	assert.Empty(t, frozen, "the old episode cannot freeze its message on the new transition")
+	look, err = ta.a.readCoordLook(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, look.open[0].Note.CoordinatorDelivery)
+	newer := coordFresh(map[string]bool{}, look, ta.a.now())
+	require.Len(t, newer, 1)
+	assert.NotEqual(t, d.token, newer[0].token)
+	look.scope += "another-sprint"
+	other := coordFresh(map[string]bool{}, look, ta.a.now())
+	require.Len(t, other, 1)
+	assert.NotEqual(t, newer[0].token, other[0].token, "stores/namespaces sharing a bus cannot collide")
+}
+
+func TestFleetCauseAndItsStatusSendOneMessage(t *testing.T) {
+	t.Parallel()
+	for _, typ := range []string{sprint.NMemberEnvFault, sprint.NStopMemberDown} {
+		t.Run(typ, func(t *testing.T) {
+			t.Parallel()
+			name := "push-cause-down"
+			if typ == sprint.NMemberEnvFault {
+				name = "push-cause-env"
+			}
+			ta, _, _ := coordSprint(t, name)
+			ctx := context.Background()
+			st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+			_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: typ, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 fault", At: ta.a.now()}))
+			require.NoError(t, err)
+			word := "down"
+			if typ == sprint.NMemberEnvFault {
+				word = "held"
+			}
+			_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NStatus, Primaries: []string{"m1"}, What: "member m1 is " + word + " (was up)", At: ta.a.now()}))
+			require.NoError(t, err)
+			sent := ta.pass(name)
+			require.Len(t, sent, 1, "the causal episode owns the notification")
+			assert.Equal(t, bus.KindJudgment, sent[0].Kind)
+			ta.a.coord = coordPush{}
+			ta.step(time.Minute)
+			assert.Empty(t, ta.pass(name), "restart and status warnings add no second notification")
+		})
+	}
+}
+
+func TestResolvedFailedDeliveryUsesOneRecoveryProbe(t *testing.T) {
+	t.Parallel()
+	const name = "push-recovery"
+	ta, rig, _ := coordSprint(t, name)
+	hookBusOnly(t, rig, name)
+	ta.pass(name)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 fault", At: ta.a.now()}))
+	require.NoError(t, err)
+	send := ta.a.bus
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
+	ta.step(hook.RenewEvery)
+	ta.a.coordinatorPass(ctx)
+	assert.True(t, ta.a.coord.failed)
+	ta.refusedFirst("where", sprint.HookFirst+": "+name+" is not hooked in: live as coordinator (bus=proven sprint=armed)")
+	_, err = st.Run(ctx, store.Step{Verb: "fixture resolve", Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: s.Open} }})
+	require.NoError(t, err)
+	ta.a.coordinatorPass(ctx) // recovery probe fails: same recovery token is retained
+	token := ta.a.coord.recoveryToken
+	require.NotEmpty(t, token)
+	ta.a.bus = send
+	ta.step(hook.RenewEvery)
+	messages := ta.pass(name)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "nova-sprint: coordinator delivery restored", messages[0].Subject)
+	assert.Equal(t, token, messages[0].Token)
+	assert.False(t, ta.a.coord.failed)
+	ta.lined(func() { ta.ok("where") })
+	assert.Empty(t, ta.pass(name), "no periodic healthy probe")
+}
+
+func TestStateEpisodeStoreOperationsAreBatched(t *testing.T) {
+	t.Parallel()
+	for _, count := range []int{1, 100} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			t.Parallel()
+			name := "push-batch-" + strconv.Itoa(count)
+			ta, _, _ := coordSprint(t, name)
+			ctx := context.Background()
+			st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+			var notes []sprint.Note
+			for i := range count {
+				notes = append(notes, sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m" + strconv.Itoa(i)), StreamLevel: true, What: "environment fault", At: ta.a.now()})
+			}
+			_, err := st.Run(ctx, store.Step{Verb: "fixture batch", Plan: func(*sprint.Snapshot) sprint.Plan { return sprint.Plan{Notes: notes} }})
+			require.NoError(t, err)
+			before := ta.m.Calls["acquire"]
+			messages := ta.pass(name)
+			require.Len(t, messages, count)
+			assert.Equal(t, 2, ta.m.Calls["acquire"]-before, "one prepare and one receipt commit, independent of count")
+		})
+	}
+}
+
+func TestAmbiguousStateDeliveryStopsBeforeTokenExpiry(t *testing.T) {
+	t.Parallel()
+	const name = "push-expired"
+	ta, _, _ := coordSprint(t, name)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 fault", At: ta.a.now()}))
+	require.NoError(t, err)
+	fake := bustest.NewFake(ta.a.now(), name, prog)
+	b := &bus.Bus{Store: fake}
+	calls := 0
+	ta.a.bus = func(ctx context.Context, m bus.Message, _ func(string)) error {
+		calls++
+		_, err := b.Send(ctx, m)
+		return err
+	}
+	fake.Lose = errors.New("response lost after commit")
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, fake.Len(bus.StreamOf(name)))
+	for _, elapsed := range []time.Duration{bus.DefaultTokenLife + time.Hour, 8 * 24 * time.Hour} {
+		ta.step(elapsed)
+		fake.Advance(elapsed)
+		ta.a.coord = coordPush{}
+		ta.a.coordinatorPass(ctx)
+		require.Equal(t, 1, calls, "an expired pending receipt cannot send automatically")
+		require.Equal(t, 1, fake.Len(bus.StreamOf(name)))
+		require.True(t, ta.a.coord.failed, "unknown receipt keeps the transport gate unproven")
+	}
+}
+
+func TestStatusKeepsItsAlertWhenTheCauseCloses(t *testing.T) {
+	t.Parallel()
+	for _, afterFailedSend := range []bool{false, true} {
+		t.Run(strconv.FormatBool(afterFailedSend), func(t *testing.T) {
+			t.Parallel()
+			name := "push-close-" + strconv.FormatBool(afterFailedSend)
+			ta, _, _ := coordSprint(t, name)
+			ctx := context.Background()
+			st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+			for _, n := range []sprint.Note{
+				{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 environment fault", At: ta.a.now()},
+				{Kind: sprint.Judgment, Type: sprint.NStatus, Primaries: []string{"m1"}, What: "member m1 is held (was up)", At: ta.a.now()},
+			} {
+				_, err := st.Run(ctx, store.NoteStep("fixture", n))
+				require.NoError(t, err)
+			}
+			look, err := ta.a.readCoordLook(ctx)
+			require.NoError(t, err)
+			candidates := map[string]sprint.CoordinatorDelivery{}
+			for _, d := range coordFresh(map[string]bool{}, look, ta.a.now()) {
+				candidates[d.note] = sprint.CoordinatorDelivery{To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: ta.a.now().Add(bus.DefaultTokenLife)}
+			}
+			if afterFailedSend {
+				send := ta.a.bus
+				ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
+				ta.a.coordinatorPass(ctx)
+				ta.a.bus = send
+			}
+			_, err = st.Run(ctx, store.Step{Verb: "fixture close cause", Plan: func(s *sprint.Snapshot) sprint.Plan {
+				var p sprint.Plan
+				for _, o := range s.Open {
+					if o.Note.Type == sprint.NMemberEnvFault {
+						p.Closes = append(p.Closes, o)
+					}
+				}
+				return p
+			}})
+			require.NoError(t, err)
+			if !afterFailedSend {
+				// The inbox observed the cause, but the fenced preparation no longer does.
+				ds, err := st.CoordinatorDeliveries(ctx, candidates, false, look.epoch)
+				require.NoError(t, err)
+				require.Len(t, ds, 1)
+				for _, d := range ds {
+					assert.Empty(t, d.CoveredBy)
+				}
+			}
+			messages := ta.pass(name)
+			require.Len(t, messages, 1)
+			assert.Equal(t, bus.KindJudgment, messages[0].Kind, "a recovery status is not the missing alert")
+			if afterFailedSend {
+				assert.Contains(t, messages[0].Body, "environment fault")
+			} else {
+				assert.Contains(t, messages[0].Body, "is held")
+			}
+			ta.a.coord = coordPush{}
+			assert.Empty(t, ta.pass(name))
+		})
+	}
+}
+
+func TestAmbiguousRecoveryStopsBeforeTokenExpiry(t *testing.T) {
+	t.Parallel()
+	const name = "push-recovery-expired"
+	ta, _, _ := coordSprint(t, name)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 fault", At: ta.a.now()}))
+	require.NoError(t, err)
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
+	ta.a.coordinatorPass(ctx)
+	_, err = st.Run(ctx, store.Step{Verb: "fixture resolve", Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: s.Open} }})
+	require.NoError(t, err)
+	fake := bustest.NewFake(ta.a.now(), name, prog)
+	fake.Lose = errors.New("response lost after commit")
+	b := &bus.Bus{Store: fake}
+	calls := 0
+	ta.a.bus = func(ctx context.Context, m bus.Message, _ func(string)) error {
+		calls++
+		_, err := b.Send(ctx, m)
+		return err
+	}
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, fake.Len(bus.StreamOf(name)))
+	for _, elapsed := range []time.Duration{bus.DefaultTokenLife + time.Hour, 8 * 24 * time.Hour} {
+		ta.step(elapsed)
+		fake.Advance(elapsed)
+		ta.a.coordinatorPass(ctx)
+		require.Equal(t, 1, calls)
+		require.Equal(t, 1, fake.Len(bus.StreamOf(name)))
+		require.True(t, ta.a.coord.failed)
+	}
 }
