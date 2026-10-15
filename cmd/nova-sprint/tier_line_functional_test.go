@@ -17,9 +17,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // A heavy card is dealt on heavy (the seat, 2026-10-12 ~00:05Z: six cards admitted with

@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/pkg/friend"
-	"strings"
 )
 
 // friendSays selects the explicit synced row for a text about this friend. A

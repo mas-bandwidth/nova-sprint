@@ -21,12 +21,13 @@ func TestTheWorkStampsAreReadOnlyByWorkDeadline(t *testing.T) {
 	t.Parallel()
 	stamps := map[string]bool{"dealt": true, "taken": true, "first_dealt": true, "first_taken": true, "untaken_since": true}
 	allowed := map[string]bool{
-		"WorkDeadline": true, // the one deadline
-		"takenStamps":  true, // writes first_taken once
-		"nextGen":      true, // writes untaken_since once per take
-		"AttemptLine":  true, // prints an attempt's stamps, judges nothing
-		"RouteStats":   true, // a route's mean wall, shown, judges nothing
-		"takeStamps":   true, // a take's waiting and running time, recorded and shown, judges nothing (cost.go)
+		"WorkDeadline":       true, // the one deadline
+		"takenStamps":        true, // writes first_taken once
+		"nextGen":            true, // writes untaken_since once per take
+		"AttemptLine":        true, // prints an attempt's stamps, judges nothing
+		"RouteStats":         true, // a route's mean wall, shown, judges nothing
+		"takeStamps":         true, // a take's waiting and running time, recorded and shown, judges nothing (cost.go)
+		"FriendCardInFlight": true, // whether a take is recorded on a friend's card, judges no clock (friend_take.go)
 	}
 	var dirs []string
 	err := filepath.WalkDir(".", func(p string, d os.DirEntry, err error) error {

@@ -152,7 +152,7 @@ type coordinatorView struct {
 	At     time.Time `json:"at"`
 	Epoch  uint64    `json:"epoch"`
 	Seat   string    `json:"seat,omitempty"`
-	Hook   string    `json:"hook,omitempty"` // the holder's hook: state=<s> proven=<RFC3339|-> unacked=<n>
+	Hook   string    `json:"hook,omitempty"` // the holder's nova-hook record: state=<s> role=<r> epoch=<n> <push>=<state>... (sprint.HookSaid)
 	// Fleet and Friends are the work switches, carried only when off (nova-sprint set
 	// --fleet off, --friends off): the deal hands that side no work card.
 	Fleet   string `json:"fleet,omitempty"`
@@ -301,17 +301,18 @@ func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (coordinatorView, error) {
 	now := a.now()
 	v := coordinatorView{View: "coordinator", Schema: viewSchema, At: now.UTC().Truncate(time.Second), Items: []viewItem{}}
-	// the holder's hook, read where the server writes it: the store as given, never an epoch's
+	// the holder's hook, as its nova-hook record says it (a record that cannot be read is
+	// said so, and the view goes on)
 	holder, err := st.B.Coordinator(ctx)
 	if err != nil {
 		return v, err
 	}
 	if holder != "" {
-		rec, ok, err := readHook(ctx, st)
-		if err != nil {
-			return v, err
+		if hs, err := a.hookStatus(ctx, holder); err != nil {
+			v.Hook = "state=unread why=" + oneline.Field(err.Error())
+		} else {
+			v.Hook = sprint.HookSaid(hs, now)
 		}
-		v.Hook = sprint.HookSaid(rec, ok, holder, now)
 	}
 	st, err = st.Pinned(ctx)
 	if err != nil {

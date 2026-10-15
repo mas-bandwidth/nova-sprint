@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
 )
 
 // THE CHILD RULES: EVERY RULE THE COORDINATOR GIVES A CHILD IS A RULE OF THE CARD LINT.

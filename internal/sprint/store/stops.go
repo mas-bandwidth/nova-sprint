@@ -130,7 +130,7 @@ func (st *Store) StopsNow(ctx context.Context) (StopsRecord, error) {
 }
 
 // Tell writes one happened note addressed to the coordinator, in a notes-only step of the
-// machine's, so the push delivers it (inbox --push seat): what a verb that runs outside the
+// machine's, so the server sends it the coordinator on the bus: what a verb that runs outside the
 // tick (promote) found and the seat must hear of. typ is the note's type, what its text and
 // hint the verb to run.
 func (st *Store) Tell(ctx context.Context, verb, typ, what, hint string) error {

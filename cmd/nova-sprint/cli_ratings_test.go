@@ -113,7 +113,7 @@ func TestGlobalFlagsBeforeVerb(t *testing.T) {
 }
 
 // TestTwinRunsWithoutBusHookOrServer verifies that a mem:<path> twin store
-// runs cleanly without requiring NOVA_BUS_REDIS, nova-sprint hook, or NOVA_SPRINT_SERVER
+// runs cleanly without requiring NOVA_BUS_REDIS, a nova-hook record, or NOVA_SPRINT_SERVER
 // (card sprint-twin-runs-without-bus-hook-or-server).
 func TestTwinRunsWithoutBusHookOrServer(t *testing.T) {
 	// Arm hook checks as in production to prove mem: stores bypass hook checks
