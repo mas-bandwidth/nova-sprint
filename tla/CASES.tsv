@@ -710,3 +710,5 @@ MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ig
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
 MCStageNeeds.cfg	MCStageNeeds.tla	pass	-	check	stageneeds	required	-
 MCStageNeedsBrokenStaleTip.cfg	MCStageNeeds.tla	invariant	NoChildWithoutLandedNeeds	check	stageneeds	required	-
+MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLandingOnUnjudgedTip	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
