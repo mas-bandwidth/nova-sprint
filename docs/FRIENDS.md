@@ -176,7 +176,7 @@ Work in ~/<name>-working/jobs/<job>/: every clone, worktree and build output goe
 A friend's job is staged by the verb, never by hand: `nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]` clones the card's REPO into
 `jobs/<job>/` at its NEXT head when one is carried (else at BASE), creates the
 delivered branch (the branch the `FRIEND-CARD DELIVERED` bus message carries),
-sets the friend's own git identity from her nova-config row's `git_identity=`
+sets the friend's own git identity from the friend's nova-config row's `git_identity=`
 field in the clone's local config (never the machine's global identity, never
 the sprint's default), and writes `JOB.md` naming the exact finish command. It
 refuses a card not dealt to the named friend, and a friend whose nova-config row

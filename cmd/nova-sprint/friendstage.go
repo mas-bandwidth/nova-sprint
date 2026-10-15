@@ -31,7 +31,7 @@ var friendStageGit = func(ctx context.Context, dir string, args ...string) (stri
 }
 
 // friendStageWords is what friend stage says on -h.
-const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's own git identity from her nova-config row's git_identity= field in the clone's local config, and writes JOB.md naming the exact finish command. It refuses a card not dealt to the named friend, and refuses a friend whose nova-config row has no git_identity field (it never falls back to the machine's global identity or the sprint's default). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
+const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's own git identity from the friend's nova-config row's git_identity= field in the clone's local config, and writes JOB.md naming the exact finish command. It refuses a card not dealt to the named friend, and refuses a friend whose nova-config row has no git_identity field (it never falls back to the machine's global identity or the sprint's default). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -105,7 +105,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	p := pk[0]
 
-	// (3) the friend's own git identity, from her nova-config row; never the
+	// (3) the friend's own git identity, from the friend's nova-config row; never the
 	// machine's global git config, never the sprint's default identity
 	rows, err := a.friends(ctx, *pg)
 	if err != nil {
