@@ -2,6 +2,9 @@ package sprint
 
 import "fmt"
 
+// A tip moved outside the lander is judged before merging by gateBase and
+// OutsideBaseRed (land_base.go); this reader covers CI after lander pushes.
+//
 // The base's CI after a landing (docs/SPEC-SPRINT.md section 8, "Drift alarms",
 // beside the base red alarm). On 2026-10-11 the base was red for eight landings
 // and nothing told the seat: the lander's narrow gate (NBaseRed) judged its own
