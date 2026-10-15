@@ -23,20 +23,18 @@ var sprintKeys = []string{keyFence, keyGen, keyInbox, keyLog, keyNotes, keyOpen,
 
 // machineKeys are the machine's records, the people's goals and the timers: one for the
 // whole sprint, under its prefix, never per epoch, so a clear keeps them.
-var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, KeySeatPushers, KeySeatHook, keyStats, keyStops, keyDoneRecord}
+var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, keyRetiredPushers, keyRetiredSeatHook, keyStats, keyStops, keyDoneRecord}
 
-// KeySeatPushers is the names whose seat has a push record (SeatPushKey), a
-// JSON list the writer of a record adds its name to (cmd/nova-sprint
-// pushproof.go), so teardown deletes each record by name.
-const KeySeatPushers = "seat-pushers"
+// The retired seat hook's and seat push's records (v1.3.6: the coordinator hooks in with
+// nova-hook, and its judgments go over the bus). Nothing writes them now; teardown still
+// deletes what an older build left: the hook record, the list of names with a push record,
+// and each of those records.
+const (
+	keyRetiredSeatHook = "seat-hook"
+	keyRetiredPushers  = "seat-pushers"
+)
 
-// KeySeatHook is the seat's hook record (sprint.HookRecord), one for the sprint: the
-// server's word on the coordinator's subscription, which every coordinator command
-// reads (cmd/nova-sprint hook.go; tla/SeatHook.tla).
-const KeySeatHook = "seat-hook"
-
-// SeatPushKey is name's push record (sprint.PushRecord), a key of the sprint's.
-func SeatPushKey(name string) string { return "seat-push:" + name }
+func retiredPushKey(name string) string { return "seat-push:" + name }
 
 // residueSuffixes are the keys of a table the table layer's drop keeps: its
 // revision, definition record and change log; and its operation records,
@@ -59,8 +57,9 @@ type Epochs struct {
 	// Friends is every friend of the roster: each may have a beat record and a health record
 	// (friends.go).
 	Friends []string
-	// Pushers is every name with a seat push record (KeySeatPushers).
-	Pushers []string
+	// RetiredPushers is every name an older build left a seat push record for
+	// (keyRetiredPushers).
+	RetiredPushers []string
 	// StatsArchives is every stats tidy's archive record (StatsRecord.Archives).
 	StatsArchives []string
 }
@@ -119,8 +118,8 @@ func TeardownKeys(names sprint.Names, ids map[string][]string, epochs Epochs) []
 	for _, f := range epochs.Friends {
 		keys = append(keys, names.Key(friendBeatKey(f)))
 	}
-	for _, p := range epochs.Pushers {
-		keys = append(keys, names.Key(SeatPushKey(p)))
+	for _, p := range epochs.RetiredPushers {
+		keys = append(keys, names.Key(retiredPushKey(p)))
 	}
 	for _, a := range epochs.StatsArchives {
 		keys = append(keys, names.Key(a))
@@ -194,7 +193,7 @@ func (st *Store) Teardown(ctx context.Context) (int, error) {
 	}
 	epochs.Beating = slices.Sorted(maps.Keys(beating))
 	epochs.Readers = slices.Sorted(maps.Keys(reading))
-	_ = st.getJSON(ctx, KeySeatPushers, &epochs.Pushers) // ignored: an unreadable list leaves its records, as a missing one does
+	_ = st.getJSON(ctx, keyRetiredPushers, &epochs.RetiredPushers) // ignored: an unreadable list leaves its records, as a missing one does
 	var stats StatsRecord
 	_ = st.getJSON(ctx, keyStats, &stats) // ignored: an unreadable record leaves its archives, as a missing one does
 	epochs.StatsArchives = stats.Archives

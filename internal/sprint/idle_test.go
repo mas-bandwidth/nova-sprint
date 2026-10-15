@@ -78,29 +78,31 @@ func TestAnIdleEpisodeEndedByWorkSaysWorkingAgain(t *testing.T) {
 	assert.Empty(t, w.notesOf(NIdleEnded), "no end note on the recovery")
 }
 
-// (b) No card waits: the episode ends naming that.
-func TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause(t *testing.T) {
+// (b) No card waits, and (d) the fleet's work is switched off (set --fleet off): the
+// episode ends naming the cause.
+func TestAnIdleEpisodeEndedSaysTheCause(t *testing.T) {
 	t.Parallel()
-	w := idleSaid(t)
-	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-9"}}, Reason: "done with it", Who: "coordinator"}))
-	tickIdle(t, w)
-	ended := w.notesOf(NIdleEnded)
-	require.Len(t, ended, 1, "no card waits: the end names it")
-	assert.Contains(t, ended[0].What, "no card waits")
-	assert.Empty(t, w.notesOf(NIdleCleared))
-}
-
-// (d) The fleet's work is switched off (set --fleet off): the episode ends
-// naming the switch.
-func TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause(t *testing.T) {
-	t.Parallel()
-	w := idleSaid(t)
-	w.must(Set(w.s, SetReq{Fleet: SwitchOff, Who: "coordinator"}))
-	tickIdle(t, w)
-	ended := w.notesOf(NIdleEnded)
-	require.Len(t, ended, 1, "the switch ends the episode and names it")
-	assert.Contains(t, ended[0].What, "the fleet's work is switched off (set --fleet on)")
-	assert.Empty(t, w.notesOf(NIdleCleared))
+	for _, tc := range []struct {
+		name, want, msg string
+		end             func(w *world) Plan
+	}{
+		{"AnIdleEpisodeEndedByNoWaitingCardSaysTheCause", "no card waits", "no card waits: the end names it", func(w *world) Plan {
+			return Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-9"}}, Reason: "done with it", Who: "coordinator"})
+		}},
+		{"AnIdleEpisodeEndedByTheFleetSwitchSaysTheCause", "the fleet's work is switched off (set --fleet on)",
+			"the switch ends the episode and names it", func(w *world) Plan { return Set(w.s, SetReq{Fleet: SwitchOff, Who: "coordinator"}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := idleSaid(t)
+			w.must(tc.end(w))
+			tickIdle(t, w)
+			ended := w.notesOf(NIdleEnded)
+			require.Len(t, ended, 1, tc.msg)
+			assert.Contains(t, ended[0].What, tc.want)
+			assert.Empty(t, w.notesOf(NIdleCleared))
+		})
+	}
 }
 
 // The alarm is raised once an episode, never once a tick (docs/SPEC-SPRINT.md section 14,
