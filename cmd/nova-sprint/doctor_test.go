@@ -14,7 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The doctor checks the definition of done (docs/SPEC-SPRINT.md, "The seat check"): each

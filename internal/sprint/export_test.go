@@ -93,3 +93,21 @@ var (
 	TickVerdictsFn     = TickVerdicts
 	TickFriendRedealFn = TickFriendRedeal
 )
+
+// RecordsRefusals is the lander's run-record check of a merge in dir whose diff is diff,
+// with fetch reading a pinned runner revision (land_records.go, land_runner.go).
+func RecordsRefusals(dir, diff string, fetch RunnerSource) ([]DocFix, error) {
+	return recordsRefusals(dir, diff, fetch)
+}
+
+// GitRunnerSource is the RunnerSource reading nova-tools revisions from the cache at cache.
+func GitRunnerSource(cache string) RunnerSource { return gitRunnerSource(cache) }
+
+// BuiltRunnerName is how a refusal names the runner this binary was built with.
+func BuiltRunnerName() string {
+	b, err := builtRunner()
+	if err != nil {
+		panic(err)
+	}
+	return b.name
+}

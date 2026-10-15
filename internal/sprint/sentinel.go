@@ -19,8 +19,8 @@ import (
 // the model holds: no part of its own, and nothing the model's walks would have to know
 // -- no walk admits a sentinel that names needs.
 
-// NCutReady is the seat push of a resolve's self-release: a happened note addressed to
-// the seat (Note.To, which the push loop delivers, as the accept's "ready to merge"
+// NCutReady is the seat's notice of a resolve's self-release: a happened note addressed to
+// the seat (Note.To, which the server sends it on the bus, as the accept's "ready to merge"
 // notice is), that the release is ready to cut.
 const NCutReady = "the release is ready to cut"
 
@@ -103,7 +103,7 @@ func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Not
 	return units, after, notes, landing
 }
 
-// cutNotice is the one seat push of a resolve's self-releases (SentinelReleases), as
+// cutNotice is the seat's one notice of a resolve's self-releases (SentinelReleases), as
 // acceptedNotice (steps_tick.go) is the accept's: a happened note addressed to the seat,
 // naming every sentinel the resolve released, that the release is ready to cut. It is a
 // notice, not a judgment: the publish itself stays a gated step with a cold read, and the

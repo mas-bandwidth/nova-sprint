@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 )
 
 // TestANewStreamLandsOnItsOwnBranchWithNoSetting runs a real landing on a private store

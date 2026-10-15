@@ -125,7 +125,7 @@ doc.addEventListener('keydown', ev => {
     const w0 = writes, r0 = redundant, d0 = drawsAt(), s0 = viewer.scrollTop;
     nextBody = { build: 'b1', data: input.snaps[i] }; await tick();
     doc.dispatch('keydown', { key: 'PageDown' });
-    const now = nodes(); const lost = [...before].filter(n => !n.isConnected && !n.parentNode);
+    const now = nodes(); const lost = [...before].filter(n => !n.isConnected && !n.parentNode && n.className.split(' ').includes('row'));
     out.steps.push({
       name: input.names[i], draws: drawsAt() - d0, writes: writes - w0, redundant: redundant - r0,
       lost: lost.map(n => n.textContent.slice(0, 20)), scrollTop: viewer.scrollTop, advanced: viewer.scrollTop > s0,

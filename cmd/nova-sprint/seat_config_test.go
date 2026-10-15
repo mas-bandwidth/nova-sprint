@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/pkg/seatcred"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // coordinator-config-through-the-seat: seat install writes the nova-config seat
@@ -48,7 +48,7 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 	profile := filepath.Join(cfg, "nova-config", seatcred.ProfileFile)
 	record := filepath.Join(cfg, "nova-sprint", "seat.json")
 	const pgDSN = "postgres://nova_config@127.0.0.1:5432/nova"
-	install := []string{"seat", "install", "--dir", units, "--server", "127.0.0.1:7399", "--harness", "opencode", "--target", t.TempDir(),
+	install := []string{"seat", "install", "--server", "127.0.0.1:7399",
 		"--config-seat", "studio", "--config-dsn", pgDSN, "--config-password-env", "NOVA_PG_CONFIG_PASSWORD"}
 
 	// another seat's row and a stale row of this seat are already there
@@ -67,12 +67,9 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 	// the install writes the row in place of the stale one, keeps the others, and records the server
 	code, out, errs = do(install...)
 	require.Equal(t, 0, code, errs)
-	assert.Contains(t, out, "SEAT INSTALL OK unit=")
 	assert.Contains(t, out, "SEAT CONFIG OK seat=studio dsn="+pgDSN+" password-env=NOVA_PG_CONFIG_PASSWORD profile="+profile+" server=127.0.0.1:7399")
-	unit, err := os.ReadFile(filepath.Join(units, "nova-sprint-seat-push.service"))
-	require.NoError(t, err)
-	assert.Contains(t, string(unit), `Environment="NOVA_SPRINT_SERVER=127.0.0.1:7399"`, "--server is the unit's server too")
-	assert.Equal(t, []string{"127.0.0.1:7399"}, askedAt, "the push target goes to --server")
+	assert.NoDirExists(t, units, "seat install writes no unit: the seat's push loop is retired")
+	assert.Empty(t, askedAt, "seat install asks the server nothing: the push target is retired")
 	p, err := seatcred.LoadConfigProfile(profile, "studio")
 	require.NoError(t, err, "nova-config --seat reads the row seat install wrote")
 	assert.Equal(t, seatcred.ConfigProfile{Name: "studio", DSN: pgDSN, PasswordEnv: "NOVA_PG_CONFIG_PASSWORD"}, p)
@@ -103,7 +100,7 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 		{"--config-dsn", pgDSN},
 		{"--config-seat", "studio", "--config-dsn", pgDSN, "--config-password-env", "lower-case"},
 	} {
-		code, _, errs = do(append([]string{"seat", "install", "--dir", units}, bad...)...)
+		code, _, errs = do(append([]string{"seat", "install"}, bad...)...)
 		assert.Equal(t, 2, code, "%v: %s", bad, errs)
 		assert.NotContains(t, errs, "hunter2", "a refusal never quotes a password")
 		b, err = os.ReadFile(profile)

@@ -21,12 +21,11 @@ coordinator shell, set `NOVA_SPRINT_SERVER` to that server's local address,
 The server process also needs `NOVA_BUS_REDIS`. See the
 [environment reference](ENVIRONMENT.md) for the connection choices.
 
-For live coordination, run `nova-sprint hook` before other coordinator verbs.
-Prove each challenge while the hook is connected, read the complete event
-stream, and acknowledge each `PUSH` using the session-specific command it
-prints. Keep `PUSH` lines when filtering output; an unacknowledged push can
-refuse coordinator commands. If the hook ends or becomes stale, reconnect and
-follow the new challenge and acknowledgement lines.
+For live coordination, hook in with nova-hook before other coordinator verbs:
+`nova-hook hook --as <you> --role coordinator` under a Monitor. Answer each
+`HOOK CHALLENGE` it prints with `nova-hook prove`; two missed in a row unhook
+you. The sprint's server sends every judgment and note for the coordinator to
+your name on the bus, and nova-hook puts each one into your session.
 
 Before `start`, run `nova-sprint check cards` and resolve every finding. The
 check includes file overlaps: when one stream produces files another needs,
@@ -69,27 +68,27 @@ dependency wait from an explicit hold or an unresponsive machine.
   export NOVA_SPRINT_ACTOR=$(nova-sprint where --json | jq -r .coordinator)
   ```
 
-- The coordinator hooks in ([The hook](SPEC-SPRINT.md#the-hook)): coordinator commands against a live store fail
-  with `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. From inside the session:
+- The coordinator hooks in with nova-hook ([The hook](SPEC-SPRINT.md#the-hook)): coordinator commands against a
+  live store fail with `You must hook in first: <why>; run: nova-hook hook --as <you> --role coordinator ...` until
+  the coordinator's nova-hook record is proven as the coordinator. From inside the session:
 
-  1. Run in the coordinator's interactive session (with `NOVA_SPRINT_SERVER` set): `nova-sprint hook --actor $NOVA_SPRINT_ACTOR`. Each line it
-     prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <judgment> session=<token>` with its text and session-bound acknowledgement command, `HOOK BYE`, `HOOK DROPPED`.
-  2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The
-     challenge is asked once a connection, never again while it stays up; a hook lapses only when its stream ends,
-     or when no act at all, keepalive included, reaches the server for 15 minutes (recorded gone, the owner told).
-  3. Read each `PUSH <id> <judgment> session=<token>` and run the acknowledgement command shown there, for example
-     `nova-sprint hook --ack <id> --session <token> --actor $NOVA_SPRINT_ACTOR` (every id up to it). The token is
-     specific to that live hook session. If the hook reconnects, read the replayed push line and use its current
-     token; a missing or stale token refuses without acknowledging anything. Numeric-only ACKs from older clients
-     are refused. A push unacknowledged for 10 minutes refuses every coordinator command, naming it.
-  4. When you stop: `nova-sprint unhook --actor $NOVA_SPRINT_ACTOR` (recorded away, the owner told).
+  1. Run in the coordinator's interactive session, under a Monitor (with `NOVA_BUS_REDIS` set):
+     `nova-hook hook --as $NOVA_SPRINT_ACTOR --role coordinator`. Each line it prints is one event: a message to
+     you on the bus (the sprint's judgments and notes among them, `nova-sprint: <n> new for the coordinator`), or
+     a `HOOK CHALLENGE`.
+  2. Answer each `HOOK CHALLENGE` at once, from inside the turn: `nova-hook prove --as $NOVA_SPRINT_ACTOR --nonce
+     <nonce>`. `nova-hook serve` asks once a minute; two unanswered in a row unhook you.
+  3. Read each message and act on it: the sprint's carry the commands that answer each judgment.
+  4. The sprint push is the server's: it is proven while `nova-sprint run --listen` runs and its sends reach the
+     bus. See your record with `nova-hook status --as $NOVA_SPRINT_ACTOR`; when you stop: `nova-hook unhook --as
+     $NOVA_SPRINT_ACTOR`.
 - Not served, and run where typed with credentials of their own: `run`, `tick`, `land`, `play`, `fleet sync`,
   `friend sync`, and any verb given its own `--redis`. `fleet sync` and `friend sync` read the config store, so
   they run under one `nova-secrets exec` wrapper that names variables and never a value;
   [SPRINT-COORDINATOR-SEAT.md](SPRINT-COORDINATOR-SEAT.md) builds it, each value from a command, and shows what
   each command prints. A wrapper that refuses is reported, not worked around.
-- The units the coordinator's machine runs (the store, the bus, the server, its member, the push loop, the
-  friend sync loop, the table) are each installed by a verb, never written by hand: `nova-redis install store|bus` and `nova-sprint install server|member|seat-push|friend-sync|table`, after card
+- The units the coordinator's machine runs (the store, the bus, the server, its member, the friend sync loop,
+  the table) are each installed by a verb, never written by hand: `nova-redis install store|bus` and `nova-sprint install server|member|friend-sync|table`, after card
   every-unit-installed-by-a-verb. `nova-sprint units --check` names each installed, missing or different
   ([`nova-sprint help units`](CLI.md#verbs)); a hand-written unit reads as
   different until the seat switches it over.
@@ -497,13 +496,14 @@ carry. `nova-sprint handover` prints each rule's number and sentence (after the 
 R1. **A friend is working only when its cards go from working to done; awake is not working.**
     Why: friends answered every ping and held cards for hours with no card finished.
     Done by: `nova-sprint friend cards <friend>`; `nova-sprint set --friend-finish <duration>` (past it the
-    pass asks the friend what blocks it, and the blocker is removed).
+    pass asks the friend what blocks it, and the blocker is removed; the judgment is a fact, and her state stays
+    the hook record's).
 
-R2. **A friend whose session does not answer a wake ping is woken and fixed on the pass that sees it, never
-left overnight.**
+R2. **A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it,
+never left overnight.**
     Why: a friend slept deaf all night with work assigned to it.
-    Done by: `nova-friend ping --as <coordinator> --to <friend>`; `nova-friend wait-pong --from <friend> --nonce
-    <n>`; `nova-friend ping-install --as <coordinator> --every <duration>`. A cause on the owner's side (credit,
+    Done by: `nova-hook friends --json` (the one record of who is there; `nova-hook serve` challenges every
+    hooked friend once a minute); `nova-friend reach --as <coordinator> --to <friend>`. A cause on the owner's side (credit,
     keys, an account) is `nova-sprint friend down <friend> --reason <text>`, so its cards move, and a note to the
     owner.
 
@@ -513,16 +513,19 @@ delivered, started, progressing, finished, returned, balanced.**
     Done by: `nova-friend check --as <coordinator>`; `nova-sprint view coordinator --json`; `nova-sprint watch
     --wake --check 10m`. A problem found by hand becomes a push the same day.
 
-R4. **A returning friend or machine is brought up by evidence: its own beat, a pong, a card finished, never
-an expectation.**
-    Why: reports said friends were up that were not, and returning ones stayed down.
-    Done by: `nova-friend check --as <coordinator> <friend>`; `nova-sprint friend up <friend>`; `nova-sprint
-    fleet up <machine>`.
+R4. **A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of
+its work changes its state or keeps a card from it, and a returning machine is brought up by its own beat.**
+    Why: reports said friends were up that were not, and returning ones stayed down; on 2026-10-14 a friend up on
+    the hook record was "stalled" in the sprint and the deal skipped her until a manual `friend up` (the stall
+    ladder is retired, v1.3.6: the sprint's friend states are up, down and held, nothing else).
+    Done by: `nova-hook friends --json` (up or down); `nova-sprint friend down <friend>`, `nova-sprint hold
+    <friend>`, `nova-sprint friend up <friend>`, `nova-sprint unhold <friend>` (held and its release, the only
+    state the coordinator sets); `nova-friend check --as <coordinator> <friend>`; `nova-sprint fleet up <machine>`.
 
 R5. **Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its
 outbox, and a brief names no path outside it.**
     Why: friends trampled each other's files, and symlinked directories broke on every move.
-    Done by: `nova-sprint friend sync --root <dir>`; `nova-sprint friend reconcile <friend> --root <dir>`.
+    Done by: `nova-sprint friend sync --root <dir>`.
 
 R6. **An order to the coordinator (stop, conserve, sleep) is the coordinator's alone; friends change only on an
 order to all friends or to them by name.**
@@ -899,7 +902,7 @@ accepted only after another agent coordinates from it alone.**
 R80. **The main session never blocks: anything over about 15 seconds runs in the background and notifies, and
 the coordinator never waits on children or CI without a watcher armed.**
     Why: the owner found the coordinator blocked.
-    Done by: `nova-sprint inbox --wait --push seat`; `nova-sprint watch --wake --check 10m`.
+    Done by: `nova-hook hook --as <you> --role coordinator` under a Monitor; `nova-sprint watch --wake --check 10m`.
 
 R81. **The owner's phrases map to verbs: a new sprint is clear, adding work is add, start and stop, and pause and
 unpause are stop and start.**
