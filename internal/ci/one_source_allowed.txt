@@ -15,7 +15,6 @@
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
 bench	SPRINT-AHEAD: standalone-clone check (StandaloneLine/NotStandalone) not in tools
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
-units	SPRINT-AHEAD: one lander (landArg, server must name --land) not in tools
 bus	DIVERGED: bustest fake Tail / empty-stream vs tools' own changes
 cardcontract	DIVERGED: gateRuns and fullSha take vs tools' 8 commits
 cardcost	DIVERGED: subscription receipts and unpriced zero cost vs tools' changes

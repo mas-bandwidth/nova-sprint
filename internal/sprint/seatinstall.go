@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/units"
+	"github.com/mas-bandwidth/nova-tools/pkg/units"
 )
 
 // seat uninstall (docs/SPEC-SPRINT.md, "Handing over the seat"): the seat's push loop,
