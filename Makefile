@@ -94,8 +94,8 @@ release-accept:
 	GO=$(GO) NOVA_SPRINT_BIN=$(NOVA_SPRINT_BIN) sh tools/release-accept.sh
 
 roadmap:
-	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
-	$(GO) run ./tools/roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
+	$(GO) tool roadmap --file docs/roadmap.sexp --out ROADMAP.md
+	$(GO) tool roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
 
 # tlc-require refuses (exit 2) unless TLC_JAR, TLC_OUT and TLC_GROUP are named.
 tlc-require:

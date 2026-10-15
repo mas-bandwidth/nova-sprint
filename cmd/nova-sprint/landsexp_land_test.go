@@ -25,7 +25,7 @@ func fixesFile(items ...string) string {
 		strings.Join(items, "\n\n  ") + "))\n"
 }
 
-// fakeFixesRun stands in for `go run ./tools/roadmap --kind fixes`: FIXES.md is the ids
+// fakeFixesRun stands in for `go tool roadmap --kind fixes`: FIXES.md is the ids
 // docs/fixes.sexp names, one a line.
 const fakeFixesRun = `grep -o '(fix "[^"]*"' docs/fixes.sexp > FIXES.md`
 
