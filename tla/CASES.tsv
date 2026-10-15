@@ -683,6 +683,7 @@ MCCoordinatorPushBrokenToldfirst.cfg	MCCoordinatorPush.tla	invariant	ToldWasSent
 MCCoordinatorPushBrokenKeepold.cfg	MCCoordinatorPush.tla	invariant	ToldWasSent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenArms.cfg	MCCoordinatorPush.tla	invariant	HookedOnlyByTheSeat	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenProvefailed.cfg	MCCoordinatorPush.tla	invariant	GateMeansAWayIn	ignore-terminal	coordinatorpush	required	-
+MCCoordinatorPushBrokenResendSame.cfg	MCCoordinatorPush.tla	invariant	SameSetNotResentWithin	ignore-terminal	coordinatorpush	required	-
 MCStateEpisode.cfg	MCStateEpisode.tla	pass	-	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenAckFirst.cfg	MCStateEpisode.tla	invariant	ReceiptMeansSent	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenVolatile.cfg	MCStateEpisode.tla	invariant	DurableReceipt	ignore-terminal	stateepisode	required	-

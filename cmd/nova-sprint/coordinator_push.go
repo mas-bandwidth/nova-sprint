@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strconv"
@@ -41,8 +42,9 @@ import (
 //     the next look. Keys of groups no longer open are forgotten; a new
 //     epoch, or a new holder, starts from nothing told, as a server's start does.
 //   - warns: a judgment waiting sprint.JudgmentWarnAfter or longer is warned about at
-//     once, then at most once a sprint.JudgmentWarnEvery while the set stands
-//     (sprint.JudgmentWarnings, sprint.JudgmentWarnDue).
+//     once and when its ID set changes, then at most once a sprint.ReminderEvery
+//     (30m) while the set stands. Only successful sends advance that receipt
+//     (sprint.JudgmentWarnings, sprint.JudgmentWarnDue; CoordinatorPush.tla).
 //   - tells a late tick: the tick running TickLatePush late or more is one message, at
 //     most once a sprint.PassEvery (lateWatch, pushlate.go).
 //   - holds the sprint push: every hook.RenewEvery, when the holder's record is hooked as
@@ -67,7 +69,6 @@ type coordPush struct {
 	firstSeen      map[string]time.Time
 	warned         map[string]bool
 	warnedAt       time.Time
-	warnSet        string
 	late           lateWatch
 	recoveryBefore time.Time // last safe retry of the transport recovery send
 	recoveryFrom   string    // frozen sender of the recovery token
@@ -165,11 +166,10 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
-		p.firstSeen, p.warned, p.warnedAt, p.warnSet = map[string]time.Time{}, nil, time.Time{}, ""
+		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
 	sends := coordFresh(p.told, l, now)
 	var warn string
-	var warnSet string
 	var warnSeen map[string]bool
 	if ws := sprint.JudgmentWarnings(coordWarningGroups(l), now, p.firstSeen); len(ws) > 0 {
 		seen := make(map[string]bool, len(ws))
@@ -179,16 +179,13 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		if sprint.JudgmentWarnDue(ws, p.warned, p.warnedAt, now) {
 			set := sprint.JudgmentWarningSet(ws)
 			warn = set + "\n"
-			if set != p.warnSet {
+			if !maps.Equal(seen, p.warned) {
 				warn = sprint.JudgmentWarningText(ws)
 			}
-			warnSet = set
-		} else {
-			p.warned = seen
 		}
 		warnSeen = seen
 	} else {
-		p.warnSet, p.warned, p.warnedAt = "", nil, time.Time{}
+		p.warned, p.warnedAt = nil, time.Time{}
 	}
 	late := p.late.step(l.machine, now)
 	p.mu.Unlock()
@@ -327,7 +324,7 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	if warn != "" {
 		if send(l.holder, bus.Message{Kind: bus.KindRequest, Subject: "nova-sprint: judgments waiting on the coordinator", Body: warn}) {
 			p.mu.Lock()
-			p.warnSet, p.warnedAt, p.warned = warnSet, now, warnSeen
+			p.warnedAt, p.warned = now, warnSeen
 			p.mu.Unlock()
 		}
 	}

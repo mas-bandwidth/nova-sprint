@@ -31,59 +31,74 @@
 \*   "keepold"     a new holder keeps the old holder's told keys: ToldWasSent.
 \*   "arms"        the server arms a record that is not hooked: HookedOnlyByTheSeat.
 \*   "provefailed" the server proves the sprint push after a failed send: GateMeansAWayIn.
+\*   "resendsame" each look repeats an unchanged warning before ReminderEvery.
+\* The reminder clock is elapsed minutes, saturated at ReminderEvery (30), not
+\* an unbounded wall clock. open abstracts the warning-eligible judgment ID set;
+\* fresh key delivery and warning delivery remain distinct sends. Resetting the
+\* server/holder scopes its in-memory warning receipt, just as coordinatorPass.
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Keys, Names, Broken
 
-VARIABLES open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed
-vars == <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed>>
+ReminderEvery == 30
+VARIABLES open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed,
+          warned, warnAge, sameSetResent, missedChange
+reminderVars == <<warned, warnAge, sameSetResent, missedChange>>
+vars == <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed,
+          warned, warnAge, sameSetResent, missedChange>>
 
 TypeOK ==
   /\ open \subseteq Keys /\ told \subseteq Keys /\ sent \subseteq (Names \X Keys)
   /\ holder \in Names /\ rec \in {"none", "hooked", "unhooked"}
   /\ bySeat \in BOOLEAN /\ answered \in BOOLEAN /\ lease \in BOOLEAN /\ proof \in BOOLEAN
   /\ up \in BOOLEAN /\ busUp \in BOOLEAN /\ failed \in BOOLEAN
+  /\ warned \subseteq Keys /\ warnAge \in 0..ReminderEvery
+  /\ sameSetResent \in BOOLEAN /\ missedChange \in BOOLEAN
 
 Init ==
   /\ open = {} /\ told = {} /\ sent = {}
   /\ holder \in Names /\ rec = "none" /\ bySeat = FALSE /\ answered = FALSE
   /\ lease = FALSE /\ proof = FALSE /\ up = TRUE /\ busUp = TRUE /\ failed = FALSE
+  /\ warned = {} /\ warnAge = ReminderEvery
+  /\ sameSetResent = FALSE /\ missedChange = FALSE
 
 \* ---- the outside ----
 
 \* A judgment or a note for the coordinator is raised, or answered.
-Raise(k) == k \notin open /\ open' = open \cup {k} /\ UNCHANGED <<told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed>>
-Close(k) == k \in open /\ open' = open \ {k} /\ UNCHANGED <<told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed>>
+Raise(k) == k \notin open /\ open' = open \cup {k} /\ UNCHANGED <<reminderVars, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed>>
+Close(k) == k \in open /\ open' = open \ {k} /\ UNCHANGED <<reminderVars, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp, failed>>
 
 \* The bus takes sends, or does not.
-BusFlip == busUp' = ~busUp /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, failed>>
+BusFlip == busUp' = ~busUp /\ UNCHANGED <<reminderVars, open, told, sent, holder, rec, bySeat, answered, lease, proof, up, failed>>
 
 \* nova-hook hook --as <holder> --role coordinator: a new epoch, nothing of the old one counts.
 Hook ==
   /\ rec # "hooked"
   /\ rec' = "hooked" /\ bySeat' = TRUE /\ answered' = FALSE /\ lease' = FALSE /\ proof' = FALSE
-  /\ UNCHANGED <<open, told, sent, holder, up, busUp, failed>>
+  /\ UNCHANGED <<reminderVars, open, told, sent, holder, up, busUp, failed>>
 
 \* nova-hook prove: only the model answers the heartbeat's challenge.
-Prove == rec = "hooked" /\ ~answered /\ answered' = TRUE /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, lease, proof, up, busUp, failed>>
+Prove == rec = "hooked" /\ ~answered /\ answered' = TRUE /\ UNCHANGED <<reminderVars, open, told, sent, holder, rec, bySeat, lease, proof, up, busUp, failed>>
 
 \* nova-hook unhook, or two challenges missed in a row (nova-hook serve).
 Unhook ==
   /\ rec = "hooked"
   /\ rec' = "unhooked" /\ answered' = FALSE /\ lease' = FALSE /\ proof' = FALSE
-  /\ UNCHANGED <<open, told, sent, holder, bySeat, up, busUp, failed>>
+  /\ UNCHANGED <<reminderVars, open, told, sent, holder, bySeat, up, busUp, failed>>
 
 \* The server stops: its lease lapses (LeaseTTL, here at once) and its memory is gone; it
 \* starts again.
 Stop == up /\ up' = FALSE /\ lease' = FALSE /\ proof' = FALSE /\ told' = {} /\ failed' = FALSE
-        /\ UNCHANGED <<open, sent, holder, rec, bySeat, answered, busUp>>
-Start == ~up /\ up' = TRUE /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease, proof, busUp, failed>>
+        /\ warned' = {} /\ warnAge' = ReminderEvery
+        /\ UNCHANGED <<sameSetResent, missedChange, open, sent, holder, rec, bySeat, answered, busUp>>
+Start == ~up /\ up' = TRUE /\ UNCHANGED <<reminderVars, open, told, sent, holder, rec, bySeat, answered, lease, proof, busUp, failed>>
 
 \* ---- the server's look (coordinatorPass) ----
 
 \* What the look sends: every open key not told. A look that reads a new holder starts from
 \* nothing told (here the told set is the holder's; "keepold" keeps it).
 Fresh == open \ told
+WarningDue == open # {} /\ (open # warned \/ warnAge = ReminderEvery \/ Broken = "resendsame")
 
 Look ==
   /\ up
@@ -91,10 +106,16 @@ Look ==
          goes == fresh # {} /\ busUp
          toldNow == IF Broken = "toldfirst" THEN (told \cap open) \cup fresh
                     ELSE IF goes THEN (told \cap open) \cup fresh ELSE told \cap open
-         failedNow == IF fresh = {} THEN failed ELSE ~busUp
+         warnDue == WarningDue
+         warns == warnDue /\ busUp
+         failedNow == IF fresh = {} /\ ~warnDue THEN failed ELSE ~busUp
      IN /\ told' = toldNow
         /\ sent' = IF goes THEN sent \cup ({holder} \X fresh) ELSE sent
         /\ failed' = failedNow
+        /\ warned' = IF open = {} THEN {} ELSE IF warns THEN open ELSE warned
+        /\ warnAge' = IF open = {} THEN ReminderEvery ELSE IF warns THEN 0 ELSE warnAge
+        /\ sameSetResent' = sameSetResent \/ (warns /\ open = warned /\ warnAge < ReminderEvery)
+        /\ missedChange' = missedChange \/ (busUp /\ open # {} /\ open # warned /\ ~warns)
         \* the hold (holdSprintPush): only a record hooked as the coordinator
         /\ IF rec = "hooked"
              THEN /\ lease' = TRUE
@@ -111,23 +132,35 @@ Follow(n) ==
   /\ up /\ holder' = n /\ n # holder
   /\ told' = IF Broken = "keepold" THEN told ELSE {}
   /\ rec' = "none" /\ bySeat' = FALSE /\ answered' = FALSE /\ lease' = FALSE /\ proof' = FALSE
-  /\ UNCHANGED <<open, sent, up, busUp, failed>>
+  /\ warned' = {} /\ warnAge' = ReminderEvery
+  /\ UNCHANGED <<sameSetResent, missedChange, open, sent, up, busUp, failed>>
 
 \* If the failed work resolves before retry, one real status send tests the
 \* transport. It succeeds only while the bus accepts sends; healthy looks do
 \* not probe. This is transport evidence, never session challenge evidence.
-Recover == /\ up /\ failed /\ Fresh = {} /\ busUp /\ failed' = FALSE
-           /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp>>
+Recover == /\ up /\ failed /\ Fresh = {} /\ ~WarningDue /\ busUp /\ failed' = FALSE
+           /\ UNCHANGED <<reminderVars, open, told, sent, holder, rec, bySeat, answered, lease, proof, up, busUp>>
+
+\* One minute passes; saturation keeps the graph finite while preserving both
+\* sides of the exact 30-minute boundary. Failed sends never reset this clock.
+Minute == /\ warnAge < ReminderEvery /\ warnAge' = warnAge + 1
+          /\ UNCHANGED <<open, told, sent, holder, rec, bySeat, answered, lease,
+                         proof, up, busUp, failed, warned, sameSetResent, missedChange>>
 
 Next ==
   \/ \E k \in Keys : Raise(k) \/ Close(k)
-  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Look \/ Recover
+  \/ BusFlip \/ Hook \/ Prove \/ Unhook \/ Stop \/ Start \/ Look \/ Recover \/ Minute
   \/ \E n \in Names : Follow(n)
 
 Spec == Init /\ [][Next]_vars
 LiveSpec == Spec /\ WF_vars(Look)
 
 \* ---- what it keeps ----
+
+\* A successful warning of the same nonempty set never repeats before 30m;
+\* a changed nonempty set is sent on the very next successful look.
+SameSetNotResentWithin == ~sameSetResent
+ChangedSetWarnedImmediately == ~missedChange
 
 \* The gate's yes (hook.Status.Gate): hooked as the coordinator, the challenge answered,
 \* and the sprint push live and proven.
