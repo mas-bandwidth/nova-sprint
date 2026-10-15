@@ -8670,6 +8670,52 @@ a shell around it; the wire and the worker's client are internal/sprintwire. Eac
 test in cmd/nova-sprint/serve_test.go and internal/sprintwire/worker_test.go, and none opens a
 socket.
 
+#### CI receipt notifications
+
+The server reads `ev:github` with `XREAD BLOCK`. A completed `workflow_run`
+receipt produces one status message to the coordinator seat and the matching
+card's owner, with this subject:
+
+`CI <conclusion> <repo>@<sha12> pr=<number> run=<id> card=<card or ->`
+
+The head match takes precedence over a branch match, and both are scoped to the
+receipt's repository. A `friend.<name>` owner is addressed as `<name>`; a member
+keeps its name. The branch fallback uses prior `pull_request` events' repository,
+number and branch, replayed in stream order and persisted across server restarts.
+Other event kinds and incomplete runs produce no message. When no card can be
+identified, the seat receives `card=-`. A CI receipt preceding its PR mapping
+and lacking a head match is unmatched; a later mapping does not change or resend
+that message. Owner delivery is guaranteed only for an identifiable owner when
+the receipt is first processed.
+
+The once-key consists of repository, full SHA and run ID. The durable
+`server:ci-receipt:*` records under the sprint's store prefix keep the cursor,
+PR observations and each frozen message's sender, recipients, subject and body.
+These records are separate from the three-second server heartbeat and survive
+an epoch clear. The server writes the pending message before sending it, and
+marks it sent before advancing the cursor. A failed or ambiguous send retries
+with exactly the same arguments, including after a seat change or restart.
+The bus atomically accepts the message for all recipients under that token.
+A successful durable receipt prevents a repeated stream row from sending again,
+even after the bus token expires. An unresolved pending send older than the bus's
+24-hour retry lifetime stops with a diagnostic for manual receipt reconciliation;
+it never replaces an ambiguous token with a new one.
+
+Every ten minutes, `XRANGE` reads after the last successfully processed ID to
+recover a missed push. Reads are bounded to 128 rows; ordinary receipt delivery
+requires one stream event and no clock advance. This assumes one active server,
+a retained event stream, an enrolled recipient roster, and eventual successful
+store and bus operations within the retry lifetime. Bus acceptance does not prove
+human sight. Coordinator hook display of self-sent status messages additionally
+depends on `friend-status-transitions-push-to-the-coordinator` in nova-tools.
+
+`CIReceiptTell.tla` checks the cursor ordering and once-key invariant and eventual
+bus delivery under weak fairness. Its reversed cursor-first configuration
+advances a row before a lost send, disables the sweep, and violates
+`EveryReceiptIsPushed`. Runtime tests cover routing, frozen retry payloads,
+restart, duplicate rows, the ten-minute backstop and expired pending sends.
+
+
 #### install-canary-shadow-tick-r.w1: a shadow tick before every server swap
 
 A release build broke the lander for 13 minutes, and a cold server crash-looped from 4:28 to
