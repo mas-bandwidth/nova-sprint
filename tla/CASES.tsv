@@ -711,6 +711,8 @@ MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ig
 MCQueueWait.cfg	MCQueueWait.tla	pass	-	check	queuewait	required	-
 MCQueueWaitBrokenCursorSkips.cfg	MCQueueWait.tla	invariant	CursorNeverSkips	check	queuewait	required	-
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
+MCStagingRepoWindow.cfg	MCStagingRepoWindow.tla	pass	-	ignore-terminal	stagingrepowindow	required	-
+MCStagingRepoWindowBrokenCardOnly.cfg	MCStagingRepoWindow.tla	invariant	NoBarredRepositoryDealt	ignore-terminal	stagingrepowindow	required	-
 MCFriendReadyTakeBrokenNoWorker.cfg	MCFriendReadyTake.tla	invariant	DealtOnlyToLiveWorker	ignore-terminal	friendreadytake	required	-
 MCStageNeeds.cfg	MCStageNeeds.tla	pass	-	check	stageneeds	required	-
 MCStageNeedsBrokenStaleTip.cfg	MCStageNeeds.tla	invariant	NoChildWithoutLandedNeeds	check	stageneeds	required	-
