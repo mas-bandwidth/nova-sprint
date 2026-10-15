@@ -346,6 +346,7 @@ MCServerLanesBrokenReadOnLine.cfg	MCServerLanes.tla	invariant	ReadWaitsOnlyForRe
 MCServerLanesBrokenRunGone.cfg	MCServerLanes.tla	invariant	GoneNeverRuns	ignore-terminal	serverlanes	required	-
 MCServerLanesBrokenNoRenew.cfg	MCServerLanes.tla	action	LiveLeaseNeverTakenBack	ignore-terminal	serverlanes	required	-
 MCServerLanesBrokenTickQueues.cfg	MCServerLanes.tla	invariant	TickWaitsOneTurn	ignore-terminal	serverlanes	required	-
+MCServerLanesBrokenDashOnReadLane.cfg	MCServerLanes.tla	invariant	DashWaitsOnlyForDash	ignore-terminal	serverlanes	required	-
 MCCoordinatorWake.cfg	MCCoordinatorWake.tla	pass	-	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenNoCursor.cfg	MCCoordinatorWake.tla	invariant	AtMostOnce	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenSkip.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
