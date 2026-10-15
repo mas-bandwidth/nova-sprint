@@ -68,7 +68,7 @@ func twinMemberFlow(t *testing.T, pu *twinPusher) (r *serverRig, branch, out str
 	)
 	rn := &twinRunner{children: map[string]*twinChild{}}
 	var log bytes.Buffer
-	m := member.New(member.Config{As: "m1", Width: 1}, &sprintwire.Worker{Send: r.send}, rn, pu, &log)
+	m := member.New(member.Config{As: "m1", ScopeCollect: twinFinishScope, Width: 1}, &sprintwire.Worker{Send: r.send}, rn, pu, &log)
 	_, err := m.Tick(time.Unix(0, 0))
 	require.NoError(t, err, log.String())
 	require.Len(t, rn.packets, 1, "the member took the card: %s", log.String())

@@ -134,15 +134,7 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 		return review(j)
 	}
 	if way == RefusedPaths {
-		set[FieldRuleRedo], set[FieldRuleRefused], set[FieldRuleRefusal] = attempt, way, cutText(orDash(r.Note), MaxCardTextBytes)
-		if lines := findingsOf(pr, pr.Int("attempt"), finding+": "+orDash(r.Note)); len(lines) > 0 {
-			set[FieldFindings] = findingsLine(lines)
-		}
-		j := judgment(NReturned, r.Stream, s.Now, pr.Int("returns"), id)
-		j.Who, j.Attempt, j.What = r.Who, pr.Int("attempt"), cutText(refusal, MaxCardTextBytes)
-		if !acceptable(s, pr) {
-			j.Decisions = removeDecision(j.Decisions, "accept")
-		}
+		j := recordPathsRefusal(s, pr, set, r.Note, r.Who)
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head: files outside its PATHS; off merge %s)", id, m.Col)
 		return review(j)
 	}
@@ -390,4 +382,20 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 	roundWrites(&p, rr, moves)
 	ri.write(&p)
 	return p
+}
+
+// recordPathsRefusal is the shared E12 record: finish and landing feed the same rules.
+func recordPathsRefusal(s *Snapshot, pr *Card, set map[string]string, note, who string) Note {
+	attempt := pr.F("attempt")
+	set["returns"], set["return_reason"], set[FieldReturnedAttempt] = itoa(pr.Int("returns")+1), "conflict", attempt
+	set[FieldRuleRedo], set[FieldRuleRefused], set[FieldRuleRefusal] = attempt, RefusedPaths, cutText(orDash(note), MaxCardTextBytes)
+	if lines := findingsOf(pr, pr.Int("attempt"), LandRefusedFinding+RefusedPaths+": "+orDash(note)); len(lines) > 0 {
+		set[FieldFindings] = findingsLine(lines)
+	}
+	j := judgment(NReturned, pr.Row, s.Now, pr.Int("returns"), pr.ID)
+	j.Who, j.Attempt, j.What = who, pr.Int("attempt"), cutText("the landing refused attempt "+attempt+"'s head: "+orDash(note), MaxCardTextBytes)
+	if !acceptable(s, pr) {
+		j.Decisions = removeDecision(j.Decisions, "accept")
+	}
+	return j
 }

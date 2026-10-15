@@ -324,7 +324,7 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 	r := newServerRig(t, twoLanes()...)
 	rn := &twinRunner{children: map[string]*twinChild{}}
 	var log bytes.Buffer
-	m := member.New(member.Config{As: "m1"}, &sprintwire.Worker{Send: r.send}, rn, pushed("0123456789abcdef0123456789abcdef01234567"), &log)
+	m := member.New(member.Config{As: "m1", ScopeCollect: twinFinishScope}, &sprintwire.Worker{Send: r.send}, rn, pushed("0123456789abcdef0123456789abcdef01234567"), &log)
 	pass := func() {
 		t.Helper()
 		_, err := m.Tick(time.Unix(0, 0))

@@ -40,7 +40,7 @@ func TestALaneIsHeldUntilItsCardIsReportedAndThePassNeverWaitsOnAPush(t *testing
 	rn := &twinRunner{children: map[string]*twinChild{}}
 	pu := &heldPusher{began: make(chan struct{}, 1), release: make(chan struct{}), push: member.Push{Sha: "0123456789abcdef0123456789abcdef01234567"}}
 	var log bytes.Buffer
-	m := member.New(member.Config{As: "m1", Background: true}, &sprintwire.Worker{Send: r.send}, rn, pu, &log)
+	m := member.New(member.Config{As: "m1", ScopeCollect: twinFinishScope, Background: true}, &sprintwire.Worker{Send: r.send}, rn, pu, &log)
 	tick := func() {
 		t.Helper()
 		_, err := m.Tick(time.Unix(0, 0))

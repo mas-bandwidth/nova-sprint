@@ -1813,6 +1813,7 @@ type FinishReq struct {
 	Gens   map[string]int // the generation held, per named card
 	Failed bool
 	Head   string
+	Scope  string // optional bound git evidence; machine members always supply it
 	Report string
 	// Exit is the child's exit code, as the member read it (0: a clean end or
 	// unknown). A failed finish whose exit is 134 or 137, or whose report says
@@ -1951,6 +1952,18 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			who = r.Who
 		}
 		pr := s.Work.Placed(c.F("primary"))
+		scopeWhy := ""
+		if !r.Failed {
+			var err error
+			scopeWhy, err = finishScope(r.Scope, r.Head, c.ID, c.Int("gen"), s.Epoch, decide.CardPaths(pr.F("brief")))
+			if err != nil {
+				p.refuse(c.ID, err.Error())
+				continue
+			}
+			if scopeWhy != "" {
+				scopeWhy = "the head " + r.Head + " of " + pr.ID + " fails the lander's checks: " + scopeWhy
+			}
+		}
 		late := c.Col == DoneFailed || c.Col == Finished // a late report for the attempt a deadline failed (lateFinish)
 		// how a failed finish is routed: by the reason line's prefix, or by the take's
 		// attempt decision at or above its class's bar on the card (decide.go, finishKind)
@@ -2266,7 +2279,19 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// with the route it draws. A read the finish creates itself carries no route (a
 		// finish loads none), so no reader can start it.
 		asked := map[string]string{}
-		if passed {
+		if scopeWhy != "" {
+			j := recordPathsRefusal(s, pr, set, scopeWhy, who)
+			bound := WidensSpent(pr)
+			if bb, ok := AtBriefBound(pr, LandRefusedFinding+RefusedPaths, s.AttemptsCap(pr.Row)); ok && bb.Finding != "" {
+				bound = bb.Why()
+			}
+			if bound != "" {
+				j = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID)
+				j.Who, j.Attempt, j.What = who, attempt, cutText(bound+"; "+scopeWhy, MaxCardTextBytes)
+			}
+			u.Notes = append(u.Notes, j)
+			u.Closes = closesFor(s.Open, ReturnResolves, pr.ID)
+		} else if passed {
 			n := happened(NWorkOK, pr.Row, s.Now, pr.ID)
 			n.Who, n.Attempt = who, attempt
 			n.What = "nothing new at " + head + ", which a reader passed: back in review at it; " + r.Report

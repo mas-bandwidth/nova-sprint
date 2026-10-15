@@ -390,6 +390,9 @@ func coordinatorBrokenAtHead(c *Card) bool {
 // acceptable, however many oks stand: the broken verdict outweighs them
 // (hasBrokenAtHead; docs/SPEC-SPRINT.md section 8, the read-broken rule).
 func acceptable(s *Snapshot, pr *Card) bool {
+	if pr.F(FieldRuleRefused) == RefusedPaths && pr.F(FieldRuleRedo) == pr.F("attempt") {
+		return false
+	}
 	need := ReadsNeededIn(s, pr)
 	if need == 0 {
 		return pr.F("result") != "failed" && pr.F("head") != ""
@@ -661,6 +664,9 @@ func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 //
 // tla/ReaderTiers.tla Ask
 func ReadsWanted(s *Snapshot, pr *Card) int {
+	if pr.F(FieldRuleRefused) == RefusedPaths && pr.F(FieldRuleRedo) == pr.F("attempt") {
+		return 0
+	}
 	if readBranchMissingOpen(s, pr) {
 		return 0 // its branch is not on origin: the seat's judgment holds it (read_missing.go)
 	}

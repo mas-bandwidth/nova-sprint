@@ -28,7 +28,7 @@ func TestAMemberRunsTheWidthOfItsFleetRow(t *testing.T) {
 	twin := func(line string) { t.Helper(); r.boss(line) }
 	rn := &twinRunner{children: map[string]*twinChild{}}
 	var log bytes.Buffer
-	m := member.New(member.Config{As: "m1"}, &sprintwire.Worker{Send: r.send}, rn, &twinPusher{push: member.Push{Sha: "0123456789abcdef0123456789abcdef01234567"}}, &log)
+	m := member.New(member.Config{As: "m1", ScopeCollect: twinFinishScope}, &sprintwire.Worker{Send: r.send}, rn, &twinPusher{push: member.Push{Sha: "0123456789abcdef0123456789abcdef01234567"}}, &log)
 	tick := func() {
 		t.Helper()
 		_, err := m.Tick(time.Unix(0, 0))

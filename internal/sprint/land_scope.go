@@ -1,7 +1,13 @@
 package sprint
 
 import (
+	"encoding/json"
+	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
+	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
@@ -53,3 +59,47 @@ func OutsideByRule(files []diffcheck.File, outside []string) []string {
 	}
 	return out
 }
+
+// finishScope validates the supplied take/head binding before using the lander's exact rule.
+// Omitted evidence is the legacy/manual/friend compatibility boundary; land still checks it.
+func finishScope(raw, head, card string, gen int, epoch uint64, paths []string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	var e member.FinishScopeEvidence
+	if err := json.Unmarshal([]byte(raw), &e); err != nil {
+		return "", fmt.Errorf("scope JSON: %w", err)
+	}
+	if e.Card != card || e.Gen != gen || e.Epoch != epoch || e.Head != head || !typedrec.IsFullSha(e.Head) || !typedrec.IsFullSha(e.Base) || e.Tracked == nil {
+		return "", fmt.Errorf("scope evidence must bind this card, generation, epoch, full base and finish head, and tracked files")
+	}
+	for _, line := range strings.Split(e.Diff, "\n") {
+		if strings.HasPrefix(line, "@@ ") && !scopeHunk.MatchString(line) {
+			return "", fmt.Errorf("scope diff has an invalid hunk header")
+		}
+	}
+	files := diffcheck.Parse(e.Diff)
+	if e.Diff != "" && len(files) == 0 {
+		return "", fmt.Errorf("scope diff has no file records")
+	}
+	for _, f := range files {
+		if f.Old == "" || f.New == "" {
+			return "", fmt.Errorf("scope diff has an invalid file record")
+		}
+	}
+	_, outside := LandScope(paths, e.Diff, e.Tracked)
+	if len(outside) == 0 {
+		return "", nil
+	}
+	parts := []string{}
+	for _, f := range outside {
+		if entry := diffcheck.ExpectedEntry(paths, f); entry != "" {
+			parts = append(parts, f+" (expected to match PATHS entry "+entry+")")
+		} else {
+			parts = append(parts, f)
+		}
+	}
+	return "it changes files outside its PATHS (E12): " + strings.Join(parts, ", "), nil
+}
+
+var scopeHunk = regexp.MustCompile(`^@@ -[0-9]+(,[0-9]+)? \+[0-9]+(,[0-9]+)? @@`)

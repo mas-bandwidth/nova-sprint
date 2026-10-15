@@ -1037,3 +1037,19 @@ released, even after their audit report is older than one hour. Their hold reaso
 names server-default and the original judgment. Oldest decision age excludes
 STOPPED time. The owner lane sends at most once every 30 minutes after a successful
 receipt, including when the set changes; pending failed deliveries retain retries.
+
+### Finish scope evidence
+
+Machine members send `finish --scope <json>` with every successful pushed head.
+The JSON carries `card`, `gen`, `epoch`, `base` (the protected staged commit),
+`head` (the pushed commit), `diff` (file headers from git diff -M of those commits, with catalog hunks), and `tracked`
+(the files tracked at the base, an array including the empty-array case).
+The member fails closed if collecting these git facts fails. The server refuses
+malformed evidence or a mismatched take/head, then uses the lander's `LandScope`
+rule, including always-in-PATHS files, rename checks and scope amendments.
+An outside file records E12 at finish and stops read requests; the existing
+widen or conflict rule handles the refusal before another head is reviewed.
+The lander's E12 check remains in place. This is the machine-member boundary:
+legacy, manual and friend finishes may omit `--scope` and remain lander-checked;
+it is not a global producer migration. Evidence is a member assertion of local
+git facts, not a server-side fetch or proof against a malicious producer.
