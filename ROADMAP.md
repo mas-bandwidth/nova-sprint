@@ -10,7 +10,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [The sprint system](#the-sprint-system) (211)
 - [Setup, release and operations](#setup-release-and-operations) (32)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
-- [Friend AIs](#friend-ais) (20)
+- [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -2368,6 +2368,16 @@ Queue sync writes a versioned snapshot of the friend's current Ready and Working
 Target: v1.3
 
 From: PR #5486
+
+### A friend row takes its ready queue by itself
+
+A friend row whose seat is live takes every card dealt to its ready queue at once, up to its width, without any session deciding; the take starts the worker the row's harness configures, at a model no lower than the card's tier (heavy and frontier go to the row's strongest model). A card the row cannot run is refused back to the deal with a judgment naming why, never left sitting ready. Where shows the dealt-to-taken latency per row; a ready card untaken past 60 s on a live row with free width raises one judgment. The model (FriendReadyTake) gains the invariant that a live row with free width holds no ready card past one tick, with a reversed witness. Tests run on the in-memory twin with time as an argument. The full brief is kept at working/tmp/v15cards/a-friend-row-takes-its-ready-queue-by-itself.md. Source: Glenn 2026-10-16 ~00:35Z: "Add a card to v1.5 to setup something so you take cards in ready queue automatically. that is the disgn and the intent."
+
+Why it waits: Cards sat in a friend row's ready queue for long stretches on 2026-10-15 because taking waited for a dispatcher session to decide.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16 ~00:35Z
 
 ## Moved out of the sprint on 2026-10-15: nova-local
 
