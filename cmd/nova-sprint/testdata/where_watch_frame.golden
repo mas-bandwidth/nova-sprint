@@ -1,4 +1,5 @@
-[HSPRINT TABLE  coordinator coordinator[K
+[HDECISIONS OWED 0, oldest 0s; server-defaults applied this hour 0; delivery faults 0; earlier receipts unknown 0[K
+SPRINT TABLE  coordinator coordinator[K
 [K
 0/3 0.0% -> ETA -[K
 providers: none applied WARN no provider rows applied (nova-config apply --kind provider)[K

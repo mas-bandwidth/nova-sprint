@@ -25,7 +25,7 @@ func TestCoordinatorPushFoldThirtyMinutesAndSetChanges(t *testing.T) {
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
 	add := func(typ string) {
 		t.Helper()
-		_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: typ, What: typ, At: ta.a.now()}))
+		_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: typ, What: typ, At: ta.a.now(), Review: ta.a.now().Add(4 * time.Hour), ReviewSet: ta.a.now()}))
 		require.NoError(t, err)
 		ta.step(sprint.JudgmentWarnAfter) // the added judgment enters the warning-eligible set
 	}

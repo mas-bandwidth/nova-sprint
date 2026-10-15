@@ -68,7 +68,7 @@ func undeclaredFlags(flags []string) []string {
 func TestEverySetFlagHasADeclaredDefault(t *testing.T) {
 	t.Parallel()
 	flags := setVerbFlags(t)
-	for _, want := range []string{"friend-finish", "pegged-bound", "base", "read-cards", "alarm-ready", "unserved-tier-falls-to"} {
+	for _, want := range []string{"friend-finish", "pegged-bound", "base", "read-cards", "alarm-ready"} {
 		require.Contains(t, flags, want, "the wrapper flags are read too")
 	}
 	assert.Empty(t, undeclaredFlags(flags), "a set flag with no declared default")

@@ -45,7 +45,7 @@ type Backend interface {
 	// skipped): the readers table's reader remove, which first refuses a row
 	// that holds a card (docs/SPEC-SPRINT.md section 6), and stream remove,
 	// which first refuses a stream that holds one, its control card going with
-	// its merge row (sprint.StreamRemove).
+	// its merge row (sprint.StreamRemoveExisting).
 	RowsDel(ctx context.Context, table string, rows []string) error
 	// RowsDelIf removes each guard's row, with the cards placed in it, only
 	// while the guard's record (the row's control card) is still on no cell

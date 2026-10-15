@@ -70,7 +70,7 @@ func JudgmentWarnings(groups []Group, now time.Time, firstSeen map[string]time.T
 	open := map[string]bool{}
 	for _, g := range groups {
 		_, _, state := StateJudgment(g)
-		if g.Kind != Judgment || state || StateStatusOwner(g, groups) != "" {
+		if g.Kind != Judgment || state || StateStatusOwner(g, groups) != "" || len(g.Notes) > 0 && !g.Due.IsZero() && !now.Before(g.Due) {
 			continue
 		}
 		open[g.ID] = true

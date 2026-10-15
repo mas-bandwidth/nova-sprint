@@ -3470,22 +3470,13 @@ no fleet member, and an `--end` with no quiet in force are refused, nothing writ
 rule is `internal/sprint/fleet_quiet.go`; the twin test is
 `TestFleetQuietDealsNothingAndTellsWorkersUntilItEnds`.
 
-### An unserved tier falls to the strongest served tier
+### A card waits for its own tier
 
-The setting `set --unserved-tier-falls-to <heavy|pro|flash|off|default>` is the
-coordinator's one replacement for pinning cards by hand when their brief tier is unserved
-(`off`, the default, is today's behaviour). While it is set, a tick part before the deal
-(`internal/sprint/unserved_tier.go`, `TickUnservedFallback`) walks every unlanded primary
-whose brief tier no route serves and no up friend serves (the one tier check, `tierServed`,
-read through `tierHasServer`) and records a fallback tier on it: the strongest served tier
-at or below the setting, written as a field of its own (`FieldFallbackTier`, never the
-brief's line 1 and never a pin the seat made), with a timeline note naming the unserved
-tier and the reason. The deal and `DealtTier` read the fallback tier, so the card runs
-where something can take it. When the brief tier is served again (a route or an up friend
-serves it) the next tick clears the fallback on every card not yet taken, so they go back
-to their own tier; a taken card keeps its run. A card the seat pinned (`tier --set`,
-`brief --tier`) is never changed. `card` and `where --json --rows` show
-`tier=<brief> (falls to <t>)`.
+A card waits for its own tier: no cross-tier dealing. The unserved-tier fallback
+(`set --unserved-tier-falls-to`, `TickUnservedFallback`) is retired (Glenn, 2026-10-14:
+"Remove it."): the setting, its tick part and the deal's fallback are gone, so a card
+whose brief tier no route and no up friend serves stays ready for that tier until it
+is served. `card` and `where --json --rows` show the tier it is on.
 
 ## 6. The readers
 
@@ -7700,8 +7691,7 @@ in the new epoch that need to be set"). `sprint.Defaults`
 row a name, a home and a value:
 
 - `prop`, a work-table property, epoch keyed: read_cards on, fleet and friends on,
-  fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
-  (OPEN, the owner's to state), read_tier and reads default, every bound at its
+  fleet and friends tiers all, rework_priority fix, read_tier and reads default, every bound at its
   default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
   friend_finish, friend_start_max, pegged_bound, landing_stall_bound, drift,
   low_balance_usd, identical), and alarm_ready on;
@@ -9249,3 +9239,75 @@ same token within the same 24-hour acceptance bound; an unknown expired recovery
 receipt leaves the gate unproven until resolved. Success clears the transport
 failure. Healthy passes never probe.
 This transport check supplies no session challenge answer or presence proof.
+
+### Decisions owed: deadlines, owner escalation and safe defaults
+
+The 2026-10-15 owner's ruling supersedes the earlier repeated coordinator warning
+**after the judgment deadline**. Before that deadline, the 30-minute folded
+warning remains. At the deadline, all unanswered decisions form one message per
+changed set to the coordinator. The owner receives the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
+`init --owner` bus name, falling back to `NOVA_SPRINT_OWNER`; no new channel is
+configured. The owner escalation does not depend on a proven coordinator hook.
+An empty set or changed recipient does not erase the owner lane's last successful delivery time; new sets wait for the remaining interval. Successful receipts, frozen
+payloads and retry tokens persist through server restart and are epoch-scoped.
+
+| Judgment kind | Declared safe default at twice its deadline |
+| --- | --- |
+| Card reached its bound; brief wrong at the attempt cap | Park a Ready or Review primary in Waiting with its bound judgment, cause and saved prior state. Release restores that exact state; a Review primary keeps its head, attempt and read records. An existing hold is never overwritten. |
+| Cannot ask / no eligible reader | Wait 30 minutes, then re-evaluate the existing reader condition. The normal ask pass may proceed sooner if an eligible reader becomes available. |
+| Every other kind, including member held with no cause, acceptance, merge and drop decisions | `none`; keep open and escalate to the owner. |
+| Sprint done | Terminal exemption: no decision deadline and no server default. |
+
+The deadline is the existing running-time interval (normally ten minutes), or the
+explicit review interval set by wait. A safe default is recorded with
+`actor=server-default`, its judgment ID and reason, and reported to both channels
+in their next folded message. A default never drops, accepts, merges, lands or
+changes a brief. Existing independent automatic answer rules retain their own
+contracts; they are not decision defaults.
+
+A due delivery obligation is durable before transport. Failed sends retain their
+payload and token and expose a delivery fault on the first `where` line. A bus
+receipt establishes transport acceptance, never human sight. The owner's
+12:01:51 clarification chooses **at-least-once escalation**: after an ambiguous
+send and token expiry, renew the token and retry, retaining visible receipt-unknown
+history even after a later receipt succeeds. A duplicate notice is identifiable by its judgment
+IDs and changes no sprint state. Thus one-per-unchanged-set describes healthy,
+acknowledged delivery, not a ban on ambiguity recovery. Eventual owner receipt
+requires the transport eventually to succeed. `tla/DecisionsOwed.tla` models this
+boundary separately from hook proof (`SeatHealth.tla`).
+
+`where` starts with `DECISIONS OWED n, oldest <age>`, the number of defaults applied
+in the last hour, the number of unresolved delivery faults, and earlier ambiguous receipts retained for inspection. Counts include distinct open judgment IDs and each primary still held by server-default.
+Parked primaries remain owed and included in folded notices until release; their
+original judgment ID and cause remain visible after the one-hour audit-report window.
+Oldest age uses the running clock, excluding STOPPED spans. Default reports are
+independent of the inbox read cursor.
+
+The central lifecycle permits two guarded moves: Review → Waiting only for a
+server-default bound hold, and Waiting → Review only for release of that saved
+Review state. Ready → Waiting also admits that same bound-hold cause. Existing
+sentinel/needs transitions and ordinary release behavior are unchanged. Parking
+alone does not retire an in-flight read; its independent timeout/rest rules still
+apply. `SprintTables` checks park/release actions inside its full `Spec` on a one-primary
+instance with real lifecycle, head and read state, retaining every control invariant
+and property. Broken configurations invoke those actions with missing cause or
+wrong restored state. The historical three-card instances leave parking disabled;
+this is a one-primary composition proof, not a full three-card parking proof.
+Store regressions also check composition with the real deal/read machinery.
+A parked primary must be released before its brief, needs, tier, head or attempt is
+changed. The lifecycle guard enforces that ordering even for a composed edit;
+explicit coordinator drop remains permitted. This prevents a later release from
+restoring an obsolete Review head or silently redealing the parked attempt.
+
+This ladder counts persisted judgment notes with stable IDs and deadlines. Transient
+hook and machine status groups retain the existing state-episode lane; they are not
+minted into additional judgment notes. Receipt history remains visible in `where`
+and its JSON after a newer set replaces the delivery. If a recipient changes while
+receipt is unknown, the frozen obligation transfers with a new token and current
+sender identity; its judgment IDs and prior uncertainty remain recorded.
+
+The `where` read batches coordinator, seat and server keys in one Redis MGET.
+The existing 3,000-card ceiling stays at nine backend API calls, with no cell-ID
+scan or whole-log read. That metric is not a wire-round count: `OpenNotes` reads
+its index then note bodies, so a nonempty index adds one Redis wire round versus
+the old view (the empty case is unchanged after removing the coordinator GET).

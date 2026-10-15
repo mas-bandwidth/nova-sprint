@@ -48,7 +48,6 @@ var sprintSecretOpeners = map[string]any{
 	"internal/sprint.ParseReadCard":         sprint.ParseReadCard,
 	"internal/sprint.ParseReaderTiers":      sprint.ParseReaderTiers,
 	"internal/sprint.ParseRoute":            sprint.ParseRoute,
-	"internal/sprint.ParseSiblings":         sprint.ParseSiblings,
 	"internal/sprint.ParseWidth":            sprint.ParseWidth,
 	"internal/sprint.ParseWorkCard":         sprint.ParseWorkCard,
 	"internal/sprint/refmodel.New":          refmodel.New,

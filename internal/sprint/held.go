@@ -486,6 +486,9 @@ func (c *held) tickOn(pr *Card) string {
 // tla/Holds.tla NoSilentStall
 func (c *held) judgment(pr *Card) string {
 	if IsHeld(pr) {
+		if pr.F("held_by") == ServerDefaultActor {
+			return "held by server-default for judgment " + pr.F("held_judgment") + ": " + pr.F("held_reason") + " until release"
+		}
 		return "held by the coordinator (add --held) until release"
 	}
 	if (pr.Col == Ready || pr.Col == Waiting) && StreamHeld(c.s, pr.Row) {
