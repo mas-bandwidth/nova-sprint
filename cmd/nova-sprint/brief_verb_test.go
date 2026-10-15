@@ -96,7 +96,7 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --stream a --count 1 --one --brief-file " + writeBrief(t, "the old work"))
+	ta.ok("add --stream a --count 1 --one --brief-file " + writeBrief(t, "the old work\nIt adds the AFrob verb."))
 	ta.ok("add --stream a a-2 --one --needs a-1 --brief-file " + writeBrief(t, "the old second"))
 	ta.ok("add --stream a a-3 --one --needs a-1 --brief-file " + writeBrief(t, "the old third"))
 	ta.deal(1)
@@ -105,23 +105,23 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 
 	// the replacement brief names the need a-1, so the waiting card keeps waiting
 	// with that need: a brief that names none would clear it and let the deal take it
-	assert.Contains(t, ta.ok("brief a-2 --brief-file "+writeNeedsBrief(t, t.TempDir(), "a-2", "the new second", "a-1")), "a-2 brief replaced")
+	assert.Contains(t, ta.ok("brief a-2 --brief-file "+writeNeedsBrief(t, t.TempDir(), "a-2", "the new second", "a-1 (uses: AFrob)")), "a-2 brief replaced")
 	ta.ok("tick")
-	assert.Equal(t, needsText("the new second", "a-1"), ta.primary("a-2").F("brief"))
+	assert.Equal(t, needsText("the new second", "a-1 (uses: AFrob)"), ta.primary("a-2").F("brief"))
 	assert.Equal(t, sprint.Waiting, ta.primary("a-2").Col)
 
 	dir := t.TempDir()
-	writeNeedsBrief(t, dir, "a-2", "the newer second", "a-1")
-	writeNeedsBrief(t, dir, "a-3", "the new third", "a-1")
+	writeNeedsBrief(t, dir, "a-2", "the newer second", "a-1 (uses: AFrob)")
+	writeNeedsBrief(t, dir, "a-3", "the new third", "a-1 (uses: AFrob)")
 	out := ta.ok("brief --dir " + dir)
 	assert.Contains(t, out, "BRIEF OK moved=2 refused=0")
 	assert.Contains(t, out, "a-3 brief replaced")
 	ta.ok("tick")
-	assert.Equal(t, needsText("the newer second", "a-1"), ta.primary("a-2").F("brief"))
-	assert.Equal(t, needsText("the new third", "a-1"), ta.primary("a-3").F("brief"))
+	assert.Equal(t, needsText("the newer second", "a-1 (uses: AFrob)"), ta.primary("a-2").F("brief"))
+	assert.Equal(t, needsText("the new third", "a-1 (uses: AFrob)"), ta.primary("a-3").F("brief"))
 
 	// a working card takes its brief for the next attempt: the call that names one writes BRIEF OK
-	writeNeedsBrief(t, dir, "a-1", "the new work", "")
+	writeNeedsBrief(t, dir, "a-1", "the new work\nIt adds the AFrob verb.", "")
 	writeNeedsBrief(t, dir, "a-2", "the newest second", "")
 	out = ta.ok("brief --replace-in-flight --dir " + dir)
 	assert.Contains(t, out, "BRIEF OK moved=3 refused=0")

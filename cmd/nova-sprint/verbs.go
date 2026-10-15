@@ -163,7 +163,7 @@ func init() {
 		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
 		{"card base", "<id> <branch> [--repo-dir <clone>]", "card base s1-4 main", (*app).cmdCardBase},
 		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCard},
-		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
+		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs 's1-1 (uses: internal/sprint/steps_edit.go), s1-2 (overlap: docs/CLI.md; why: both rewrite the verb table and a conflict is a full redo)'", (*app).cmdNeeds},
 		{"streams", "[--repo <owner/name>] [--release <name>] [--cards]", "streams --cards", (*app).cmdStreams},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
 		{"sentinels", "[--stream <s>]", "sentinels", (*app).cmdSentinels},
@@ -1092,6 +1092,10 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	}
 	fmt.Fprintf(out, "%s %s %s\n", token(verbName), status, fields)
 	for _, s := range c.says {
+		if strings.HasPrefix(s, "OVERLAP NEEDS ") { // a count of its own, not a note (overlapNeedsSay)
+			fmt.Fprintln(out, s)
+			continue
+		}
 		fmt.Fprintf(out, "NOTE %s\n", oneline.Escape(s))
 	}
 	if err != nil {
@@ -1562,6 +1566,14 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
 			return code
 		}
+		if n := len(checks); n > 0 {
+			if *count > 1 && len(ids) == 0 {
+				n = *count
+			}
+			if say := overlapNeedsSay(map[string]int{*brief: n}); say != "" {
+				c.says = append(c.says, say)
+			}
+		}
 		if code := a.holdBriefBase("add", st, *allowPersonal, stderr, checks...); code != 0 {
 			return code
 		}
@@ -1725,6 +1737,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
 		return code
 	}
+	kept := map[string]int{}
+	for _, cd := range cards {
+		kept[cd.Brief]++
+	}
+	if say := overlapNeedsSay(kept); say != "" {
+		c.says = append(c.says, say)
+	}
 	if code := a.holdBriefBase("add", st, allowPersonal, stderr, checks...); code != 0 {
 		return code
 	}
@@ -1767,33 +1786,14 @@ func (a *app) briefFiles(dir string, files []string, stderr io.Writer) ([]string
 
 // briefNeeds is the needs a brief names: the first `Needs:` header line (read
 // by cardhdr.KeyValue), else the DEPENDS-ON: line of its typed header block
-// (swarm.CardHeaderValue; nova-tools#5096 item 17), its ids comma separated,
-// each cut at an opening parenthesis. "none" or "-" (also after the cut, so
-// "none (first card)"), an owner/repo#n reference (a pull request or issue,
-// not a card), or no such line is no needs.
+// (swarm.CardHeaderValue; nova-tools#5096 item 17), its entries comma separated
+// outside parentheses (an entry `<id> (uses: a, b)` holds commas of its own),
+// each cut at an opening parenthesis to its id. "none" or "-" (also after the cut,
+// so "none (first card)"), an owner/repo#n reference (a pull request or issue,
+// not a card), or no such line is no needs. The grammar is
+// docs/SPEC-CARD-CONTRACT.md section 2; swarm.LintDependsOn holds it.
 func briefNeeds(brief string) []string {
-	value, found := "", false
-	for _, line := range strings.Split(brief, "\n") {
-		if key, v, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "needs") {
-			value, found = v, true
-			break
-		}
-	}
-	if !found {
-		value, _ = swarm.CardHeaderValue([]byte(brief), "DEPENDS-ON")
-	}
-	var out []string
-	for _, id := range strings.Split(value, ",") {
-		if cut, _, ok := strings.Cut(id, "("); ok {
-			id = cut
-		}
-		switch id = strings.TrimSpace(id); {
-		case id == "", id == "-", strings.EqualFold(id, "none"), strings.Contains(id, "#"):
-			continue
-		}
-		out = append(out, id)
-	}
-	return out
+	return swarm.DependsOnIDs(brief)
 }
 
 func briefConsumers(brief string) []string {
@@ -3300,6 +3300,25 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	if len(checks) > 0 {
+		// every brief of the call is held to the DEPENDS-ON grammar on its new text, the needed
+		// briefs looked for among the call's before the table (a DEPENDS-ON-only edit too)
+		siblings := map[string]string{}
+		for _, b := range checks {
+			siblings[b.id] = b.brief
+		}
+		for i := range checks {
+			checks[i].siblings = siblings
+		}
+		if code := a.holdDependsOn("brief", st, stderr, checks...); code != 0 {
+			return code
+		}
+		kept := map[string]int{}
+		for _, b := range checks {
+			kept[b.brief]++
+		}
+		if say := overlapNeedsSay(kept); say != "" {
+			c.says = append(c.says, say)
+		}
 		if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
 			return code
 		}

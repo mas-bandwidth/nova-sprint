@@ -144,6 +144,7 @@ func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
 		// store's checks (who, base, card checks, brief base, sprint base, the
 		// plan) are named not run
 		findings = append(findings, a.briefStoreFreeChecks(items)...)
+		findings = append(findings, briefDependsStoreFree(items)...)
 	}
 	sort.SliceStable(findings, func(i, j int) bool {
 		if fileOrder[findings[i].File] != fileOrder[findings[j].File] {
@@ -278,8 +279,9 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 		})...)
 	}
 	out = append(out, a.briefStoreFreeChecks(items)...)
+	siblings := briefTexts(items)
 	for _, it := range items {
-		b := briefCheck{id: it.id, brief: it.text}
+		b := briefCheck{id: it.id, brief: it.text, siblings: siblings}
 		out = append(out, collectHold(it.file, it.id, "card-checks", chkCardChecks, func(w io.Writer) int {
 			return a.holdCardChecks("brief check", st, w, b)
 		})...)
@@ -297,6 +299,30 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 		out = append(out, briefFinding{File: byID[ref.Key], ID: ref.Key, Check: "plan", Why: ref.Why, order: chkPlan})
 	}
 	return out, nil
+}
+
+// briefDependsStoreFree is the DEPENDS-ON grammar with no table read: the forms, the rank words
+// and every need the checked briefs can answer; a need outside them is not judged, the store
+// line says the table was out of reach (dependsFindings).
+func briefDependsStoreFree(items []briefItem) []briefFinding {
+	var out []briefFinding
+	siblings := briefTexts(items)
+	for _, it := range items {
+		for _, f := range dependsFindings(nil, []briefCheck{{id: it.id, brief: it.text, siblings: siblings}}) {
+			out = append(out, briefFinding{File: it.file, ID: it.id, Check: "card-checks", Why: strings.TrimPrefix(f.String(), "LINT DRIFT "), order: chkCardChecks})
+		}
+	}
+	return out
+}
+
+// briefTexts is the briefs of the call by card id: the needed briefs a DEPENDS-ON entry is
+// looked up in before the table.
+func briefTexts(items []briefItem) map[string]string {
+	out := make(map[string]string, len(items))
+	for _, it := range items {
+		out[it.id] = it.text
+	}
+	return out
 }
 
 func briefCardsOf(items []briefItem) []sprint.CardAdd {

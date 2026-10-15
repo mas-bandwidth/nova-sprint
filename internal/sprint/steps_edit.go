@@ -463,18 +463,10 @@ func sentinelHeaderValue(brief, wantKey string) (string, bool) {
 func sentinelBriefNeeds(brief string, fallback []string) ([]string, bool) {
 	for _, key := range []string{"NEEDS", "DEPENDS-ON"} {
 		if v, ok := sentinelHeaderValue(brief, key); ok {
-			var out []string
-			for _, part := range strings.Split(v, ",") {
-				if cut, _, hasParen := strings.Cut(part, "("); hasParen {
-					part = cut
-				}
-				part = strings.TrimSpace(part)
-				if part == "" || part == "-" || strings.EqualFold(part, "none") || strings.Contains(part, "#") {
-					continue
-				}
-				out = append(out, part)
-			}
-			return out, true
+			// the entries are cut at commas outside parentheses, as add reads them: an entry
+			// `<id> (uses: a, b)` holds commas, and its id is the words before the parenthesis
+			// (docs/SPEC-CARD-CONTRACT.md section 2, the DEPENDS-ON grammar)
+			return swarm.DependsOnIDsOf(v), true
 		}
 	}
 	if len(fallback) > 0 {
@@ -1379,8 +1371,12 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 
 // NeedsSetReq re-points one primary's needs (nova-sprint needs set).
 type NeedsSetReq struct {
-	ID      string
-	Needs   []string
+	ID    string
+	Needs []string // the ids alone: what the card records
+	// Entries, when given, are the DEPENDS-ON entries the ids came from, each `<id> (uses:
+	// ...)` or `<id> (overlap: ...; why: ...)` (docs/SPEC-CARD-CONTRACT.md section 2): the
+	// brief's needs line is rewritten with them whole, so card <id> shows each need's reason.
+	Entries []string
 	Clear   bool
 	Answers []string
 	Who     string
@@ -1455,6 +1451,9 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 		return p
 	}
 	brief := setBriefNeeds(c.F("brief"), wants)
+	if !r.Clear && len(r.Entries) > 0 {
+		brief = SetBriefNeeds(c.F("brief"), r.Entries)
+	}
 	// the path is chosen by the card's column, not by whether it has ever been
 	// dealt: a card working or in review is dealt, so it takes the new needs
 	// through the DEPENDS-ON rule (steps_edit.go, briefDepends) for its next
@@ -1510,13 +1509,45 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	return Lawful(p)
 }
 
-// setBriefNeeds rewrites the line a brief names its needs on, to needs: the
+// setBriefNeeds rewrites the needs line of a brief to the ids needs, each keeping the whole
+// entry the line gave it, reason and all (`<id> (uses: ...)`, docs/SPEC-CARD-CONTRACT.md
+// section 2): a need the edit keeps keeps its reason, and one it adds is the id alone.
+func setBriefNeeds(brief string, needs []string) string {
+	have := map[string]string{}
+	for _, l := range strings.Split(brief, "\n") {
+		if key, v, ok := cardhdr.KeyValue(l); ok && (key == "Needs" || key == "DEPENDS-ON") {
+			for _, e := range swarm.SplitDependsOn(v) {
+				if _, seen := have[swarm.DependsOnEntryID(e)]; !seen {
+					have[swarm.DependsOnEntryID(e)] = e
+				}
+			}
+			break
+		}
+	}
+	line := make([]string, len(needs))
+	for i, n := range needs {
+		line[i] = n
+		if e, ok := have[n]; ok {
+			line[i] = e
+		}
+	}
+	return SetBriefNeeds(brief, line)
+}
+
+// SetBriefNeeds rewrites the line a brief names its needs on, to needs: the
 // first Needs: header line (cardhdr.KeyValue), else a DEPENDS-ON: line, keeping
 // that line's key; --clear (needs empty) takes the line off; a brief with no
 // such line and needs gains a DEPENDS-ON: line above it. Every other line is
 // kept byte for byte, so card <id> shows the truth and nothing else changes
-// (docs/SPEC-SPRINT.md, needs).
-func setBriefNeeds(brief string, needs []string) string {
+// (docs/SPEC-SPRINT.md, needs). needs are bare ids, joined by commas, or whole
+// DEPENDS-ON entries (`<id> (uses: ...)`), joined by comma and a blank, which hold
+// commas of their own. needs set holds the text this returns to the DEPENDS-ON
+// grammar before it writes it (cmd/nova-sprint/needs.go).
+func SetBriefNeeds(brief string, needs []string) string {
+	sep := ","
+	if slices.ContainsFunc(needs, func(n string) bool { return strings.ContainsAny(n, "( ") }) {
+		sep = ", "
+	}
 	lines := strings.Split(brief, "\n")
 	for i, l := range lines {
 		key, _, ok := cardhdr.KeyValue(l)
@@ -1526,13 +1557,13 @@ func setBriefNeeds(brief string, needs []string) string {
 		if len(needs) == 0 {
 			return strings.Join(append(append([]string(nil), lines[:i]...), lines[i+1:]...), "\n")
 		}
-		lines[i] = key + ": " + strings.Join(needs, ",")
+		lines[i] = key + ": " + strings.Join(needs, sep)
 		return strings.Join(lines, "\n")
 	}
 	if len(needs) == 0 {
 		return brief
 	}
-	return "DEPENDS-ON: " + strings.Join(needs, ",") + "\n" + brief
+	return "DEPENDS-ON: " + strings.Join(needs, sep) + "\n" + brief
 }
 
 // needsCycle is why rewriting id's needs to wants would close a cycle of needs,

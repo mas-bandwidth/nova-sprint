@@ -250,6 +250,21 @@ const cardHelpWords = "a brief is held to the card lint (nova-swarm template --n
 // codes (docs/CLI.md, add --partial).
 const addPartialWords = "\n\nadd --partial, with --brief-dir or a repeated --brief-file, runs every check over every brief, holds back every brief with a finding and every card that needs a held card through its Needs: or DEPENDS-ON: line, and admits the rest in one store write; one HELD <id>: line per held card, then the add's closing line. It exits 0 when every card was admitted, 1 when some were held and the rest written, and 2 when none could be admitted, or for a usage refusal: --partial is refused with ids, --count, --sentinel or --land-protected, since a marked first add is one step."
 
+// dependsOnWords is the DEPENDS-ON grammar in the help of add, brief, brief check and needs set
+// (docs/SPEC-CARD-CONTRACT.md, "The DEPENDS-ON grammar"): a need blocks the deal, so each entry
+// names what it consumes, or an overlap kept with its reason.
+const dependsOnWords = `a need names what it consumes (docs/SPEC-CARD-CONTRACT.md, "The DEPENDS-ON grammar"): a need blocks the deal, so each DEPENDS-ON entry of a brief, and each --needs entry of needs set, is
+  <id> (uses: <thing>[, <thing>...])           a path, symbol, verb or flag spelling, or model name that the needed card produces
+  <id> (overlap: <file>; why: <reason>)        a file both cards name, kept because a conflict would cost a TLC rerun or a full redo
+or the line is none or -. Entries are separated by commas outside parentheses. A bare id, a thing the needed card does not produce
+(it must be in the needed card's NEW, PATHS or task text), an overlap with no why or on a file not in both cards' PATHS or NEW, and rank
+words in place of a reason ("best after", "independent", "not blocked") are refused, exit 2, nothing written, each finding on its own
+LINT DRIFT ... check=depends-uses line; a kept overlap is counted on an OVERLAP NEEDS <n> line. The card records the ids alone.
+example:
+  DEPENDS-ON: n-1 (uses: pkg/x/y.go, Frobnicate), n-2 (overlap: docs/CLI.md; why: both rewrite the verb table and a conflict is a full redo)
+  nova-sprint needs set n-3 --needs 'n-1 (uses: pkg/x/y.go), n-2 (overlap: docs/CLI.md; why: both rewrite the verb table and a conflict is a full redo)'
+`
+
 // verbProse is the explanation a verb's -h carries past its flags. The banner
 // still carries the inbox walkthrough and the friends section on their own.
 func verbProse(name string) string {
@@ -275,9 +290,11 @@ func verbProse(name string) string {
 	case "friend level":
 		return friendLevelWords
 	case "add":
-		return cardHelpWords + addPartialWords
+		return cardHelpWords + addPartialWords + "\n\n" + dependsOnWords
 	case "brief":
-		return cardHelpWords
+		return cardHelpWords + "\n\n" + dependsOnWords
+	case "brief check", "needs":
+		return dependsOnWords
 	case "hold", "unhold":
 		return holdWords()
 	case "fleet hold", "fleet unhold", "friend hold", "friend unhold":

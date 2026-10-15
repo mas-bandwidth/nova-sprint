@@ -20,9 +20,9 @@ func setBaseWorld(t *testing.T) (*testApp, string) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	dir := t.TempDir()
-	ta.ok("add --stream s1 x --one --brief-file " + writeNeedsBrief(t, dir, "x", "the working work", ""))
+	ta.ok("add --stream s1 x --one --brief-file " + writeNeedsBrief(t, dir, "x", "the working work\nIt adds the XFrob verb.", ""))
 	ta.ok("add --stream s1 y --one --brief-file " + writeNeedsBrief(t, dir, "y", "the review work", ""))
-	ta.ok("add --stream s1 w --one --brief-file " + writeNeedsBrief(t, dir, "w", "the waiting work", "x"))
+	ta.ok("add --stream s1 w --one --brief-file " + writeNeedsBrief(t, dir, "w", "the waiting work", "x (uses: XFrob)"))
 	ta.deal(2) // x and y are dealt; w waits on x
 	ta.ok("take --as m1 x.w1@1 y.w1@1")
 	ta.ok("finish --as m1 y.w1@1 --head " + landHead + " --report done")

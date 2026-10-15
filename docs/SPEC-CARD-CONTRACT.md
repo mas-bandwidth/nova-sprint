@@ -85,3 +85,56 @@ with the path quoted.
 The header is how the card is staged (docs/SPEC-STAGING.md, the siblings): the member
 clones each SIBLINGS repository at its ref into `$JOB/siblings/<name>` and points the
 harness there from `JOB.md`.
+
+## The DEPENDS-ON grammar (the card header, section 2)
+
+This is the one place the grammar is written; [SPEC-SPRINT.md](SPEC-SPRINT.md) (section 2, the
+card header; section 11, the add, brief, brief check and needs set verbs) and the help of those
+verbs point here.
+
+A need blocks the deal: a card is dealt only once every need has landed, so each `DEPENDS-ON:`
+entry serialises two cards' whole runs. The lander already reworks a head that conflicts at the
+base tip without stopping the stream, so two cards that touch one file rarely need an edge at all
+(the shared-path rule above, which holds the cards of one many-brief `add` and takes a needs edge as its remedy, is the one place a file overlap still asks for an edge: write it as an `overlap:` entry with its reason, or add the cards in separate calls). The reason is therefore part of the
+grammar, and an edge that consumes nothing cannot be written. The value of `DEPENDS-ON:` (or of a
+`Needs:` line, which the readers take first) is `none`, `-`, or entries separated by commas
+**outside parentheses**, each one of:
+
+```
+DEPENDS-ON: <id> (uses: <thing>[, <thing>...])
+DEPENDS-ON: <id> (overlap: <file>; why: <reason>)
+```
+
+- **`uses:`** names what this card consumes from the needed card. Each thing is a repository path,
+  a Go or TLA+ symbol, a verb or flag spelling, or a model name that the needed card produces. A
+  path must be named by the needed brief's `NEW:` or `PATHS:` (a glob as the gate reads it,
+  `diffcheck.Covers`; a directory above a file counts). A symbol, a spelling or a model name must
+  appear in the needed brief's `NEW:`, `PATHS:` or task text (the body under the header) as a whole
+  word or phrase.
+- **`overlap:`** is an overlap kept because a conflict would cost a TLC model rerun or a full redo
+  (two cards that both extend one `.tla` model, two that both rewrite the import blocks of the same
+  files). The file must be named by both cards' `PATHS:` or `NEW:`, and `why:` gives the reason in
+  words. Kept overlaps are counted: `add`, `brief` and `needs set` print `OVERLAP NEEDS <n>` for the
+  call.
+- A bare id, or an id with any other parenthesis, is neither form and is refused.
+
+`swarm.LintDependsOn(raw, needed)` (pkg/swarm/lintdepends.go) holds a brief to it; each finding is
+its own `LINT DRIFT card=<id> check=depends-uses line=<n>: ...` line naming the entry, the reason
+and the line, and ending in a remedy that names both forms:
+
+| finding | refuses |
+|---|---|
+| `depends-uses` (a) | an entry with neither `uses:` nor `overlap:` |
+| `depends-uses` (b) | a `uses:` thing the needed card does not produce |
+| `depends-uses` (c) | an `overlap:` with no `why:` in words, or whose file is not in both cards' `PATHS:` or `NEW:` |
+| `depends-uses` (d) | rank words in place of a reason, on the `DEPENDS-ON:` line or in a sentence of the body that names an id on it: "best after", "independent", "not blocked", "if both are ready", and "after `<id>` lands" or "once `<id>` lands" for an id whose entry gave no `uses:`; an ORDER paragraph that names no id of the line draws nothing |
+| `depends-unknown` | an id that is neither a card of the same add nor on the table, never a pass |
+
+The callers are `add` (every brief of the add, a need looked up among the add's briefs before the
+table), `brief` (the replacement text, a `DEPENDS-ON:`-only edit too; a `CARRY: head=` text, which
+`--widen` writes from the card's own, is not held again), `brief check` (the checked files before
+the table, the table when one is reachable) and `needs set` (each `--needs` entry, held as the
+card's brief with its needs line replaced by them; `--clear` is never refused). One red entry
+refuses the whole call, exit 2, nothing written. The card records the ids alone as its needs, and
+its brief's needs line keeps each entry whole. A card already on the table keeps its needs: the
+lint holds new text and does not rewrite the table. `add --needs` is not held by this lint.
