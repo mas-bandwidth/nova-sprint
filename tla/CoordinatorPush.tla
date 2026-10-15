@@ -114,8 +114,8 @@ Look ==
         /\ failed' = failedNow
         /\ warned' = IF open = {} THEN {} ELSE IF warns THEN open ELSE warned
         /\ warnAge' = IF open = {} THEN ReminderEvery ELSE IF warns THEN 0 ELSE warnAge
-        /\ sameSetResent' = sameSetResent \/ (warns /\ open = warned /\ warnAge < ReminderEvery)
-        /\ missedChange' = missedChange \/ (busUp /\ open # {} /\ open # warned /\ ~warns)
+        /\ sameSetResent' = (sameSetResent \/ (warns /\ open = warned /\ warnAge < ReminderEvery))
+        /\ missedChange' = (missedChange \/ (busUp /\ open # {} /\ open # warned /\ ~warns))
         \* the hold (holdSprintPush): only a record hooked as the coordinator
         /\ IF rec = "hooked"
              THEN /\ lease' = TRUE
