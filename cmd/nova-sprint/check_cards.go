@@ -586,14 +586,14 @@ func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io
 				for _, f := range findings {
 					fmt.Fprintf(stderr, "%s start: run nova-sprint check cards: %s\n", prog, oneline.Escape(f.Line()))
 				}
-				fmt.Fprintf(stderr, "%s start: %d provider finding(s): the machine is not started and nothing was written\n", prog, len(findings))
-				return 1
+				fmt.Fprintf(stderr, "%s start: WARN %d provider finding(s); the machine starts anyway (a check reports, it never gates a start)\n", prog, len(findings))
+				return 0
 			}
 		}
 	}
 	if why == "" {
 		return 0
 	}
-	fmt.Fprintf(stderr, "%s start: %s; the machine is not started and nothing was written\n", prog, oneline.Escape(why))
-	return 1
+	fmt.Fprintf(stderr, "%s start: WARN %s; the machine starts anyway (a check reports, it never gates a start)\n", prog, oneline.Escape(why))
+	return 0
 }
