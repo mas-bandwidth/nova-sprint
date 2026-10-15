@@ -90,8 +90,9 @@ The coordinator puts a card on a friend's row two ways: the deal fills the
 rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
 named ready card to her at once (the same work card `friend sync` delivers),
 so the seat need not wait for the deal to draw it for whoever it chooses.
-`friend take <friend> <id>` takes a card of hers she has not started back to
-ready and marks it not to be dealt to her again; each taken card says so and
+`friend take <friend> <id>` takes a card dealt to her and not taken back to
+ready (a card she is working wants `--working` as well, and
+`--all-unstarted` never takes a working card) and marks it not to be dealt to her again; each taken card says so and
 the summary counts them, and `friend give` clears the mark or hands the card
 back (docs/SPEC-SPRINT.md section 1, the seat hands a named card to a friend).
 
@@ -155,9 +156,9 @@ liveness. An explicitly unhooked hook record makes the tick return the friend's
 working cards and review assignments to their deals (`sprint.LiveReturns`),
 even without a new work report. A missing or unproven hook prevents new deals;
 it is not itself an explicit unhook. Sprint's hold remains separate through
-these changes. Work-report reconciliation continues to check the cards the
-daemon actually names, and `friend reconcile` still compares reports with the
-friend's own queue.
+these changes. No file in her directory decides what she holds: the friend
+reconcile against her queue file is retired, and her lanes ask the server
+(`take --as friend.<name> --lane <n>`; nova-tools `tla/FriendLaneClient.tla`).
 
 ## Where a job's work lives
 

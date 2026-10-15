@@ -526,7 +526,7 @@ her work changes her state or keeps a card from her, and a returning machine is 
 R5. **Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its
 outbox, and a brief names no path outside it.**
     Why: friends trampled each other's files, and symlinked directories broke on every move.
-    Done by: `nova-sprint friend sync --root <dir>`; `nova-sprint friend reconcile <friend> --root <dir>`.
+    Done by: `nova-sprint friend sync --root <dir>`.
 
 R6. **An order to the coordinator (stop, conserve, sleep) is the coordinator's alone; friends change only on an
 order to all friends or to them by name.**
