@@ -383,18 +383,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())
-		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
-			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
-				// ignored: a best-effort lease renewal on reader beat; next beat will renew
-				_, _ = st.Run(ctx, store.Step{
-					Verb: "lease",
-					Load: []string{sprint.Readers},
-					Plan: func(s *sprint.Snapshot) sprint.Plan {
-						return sprint.RenewReaderLeases(s, as)
-					},
-				})
-			}
-		}
+
 	}
 	return out
 }

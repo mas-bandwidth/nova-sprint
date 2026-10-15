@@ -348,6 +348,18 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			return a.queueReadFailed("queue", err, stderr)
 		}
 	}
+	if a.serving && *as != "" {
+		// ServerLanes.tla Renew and QueueWait.tla Read: finish our own
+		// best-effort renewal after the wait, before its returned cursor.
+		// Renewing after the snapshot makes every next wait wake on this lease;
+		// moving the cursor after the snapshot would instead skip a deal.
+		// ignored: the next queue beat retries a failed lease renewal.
+		_, _ = st.Run(ctx, store.Step{
+			Verb: "lease",
+			Load: []string{sprint.Readers},
+			Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RenewReaderLeases(s, *as) },
+		})
+	}
 	// QueueWait.tla CursorNeverSkips: sample the log BEFORE reading cells.
 	// A later commit remains after this cursor, even if it also enters this read.
 	cursor, err := st.LogTail(ctx)

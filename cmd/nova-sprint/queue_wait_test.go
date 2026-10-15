@@ -285,3 +285,59 @@ func TestQueueWaitForwardedActor(t *testing.T) {
 	require.Contains(t, out.String(), `"id":"s1-1.w1"`)
 	require.Contains(t, out.String(), `"cursor":`)
 }
+
+// A served reader queue renews its active read. That own durable write must
+// precede the returned cut, otherwise each next wait wakes on the prior lease.
+// QueueWait.tla Read: the safe cut still precedes every queue cell snapshot.
+func TestQueueWaitReaderLeaseDoesNotWakeItsNextHTTPWait(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.inReview(1)
+	ta.ok("ask")
+	id := "s1-1.r1.reader-a"
+	ta.ok("read --as reader-a --begin " + id)
+	ta.a.serveAddr = "mem:0"
+	st := &store.Store{B: ta.m, Now: ta.a.now}
+	wire := sprintwire.Client{Addr: "sprint.test:6390", HTTP: &http.Client{Transport: handlerTransport{ta.a}}}
+	waits := 0
+	ta.m.LogWait = func(d time.Duration) {
+		waits++
+		require.Equal(t, waitLook, d)
+		require.True(t, ta.a.serial.TryLock())
+		ta.a.serial.Unlock()
+		ta.a.sleep(d)
+	}
+	cursor := ""
+	for round := 0; round < 3; round++ {
+		argv := []string{"queue", "--as", "reader-a", "--json"}
+		if round > 0 {
+			argv = append(argv, "--wait", waitLook.String(), "--after", cursor)
+		}
+		before := ta.a.now()
+		res, err := wire.Do(context.Background(), argv)
+		require.NoError(t, err)
+		require.Zero(t, res[0].Code, res[0].Stderr)
+		var got struct {
+			Cards  []queueCard `json:"cards"`
+			Cursor string      `json:"cursor"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(res[0].Stdout), &got))
+		require.Len(t, got.Cards, 1)
+		require.Equal(t, id, got.Cards[0].ID)
+		require.Equal(t, round, waits, "a quiet wait must not wake on its previous queue's own lease")
+		if round > 0 {
+			require.Equal(t, waitLook, ta.a.now().Sub(before))
+		}
+		records, err := st.Records(context.Background(), sprint.Readers, []string{id})
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		lease, err := time.Parse(time.RFC3339Nano, records[0].F(sprint.FieldLease))
+		require.NoError(t, err)
+		require.Equal(t, ta.a.now().Add(sprint.DefaultReadLease), lease, "the queue still renews the active read")
+		cursor = got.Cursor
+	}
+	tail, err := st.LogTail(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, tail, cursor, "the returned cursor includes the queue's own renewal")
+}

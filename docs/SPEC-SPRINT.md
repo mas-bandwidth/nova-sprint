@@ -8458,7 +8458,10 @@ line after that cursor wakes it immediately, or it returns at the deadline.
 The response remains the whole current queue, including cards already seen;
 a timeout does not mean an empty queue. The server holds this HTTP request open
 outside both its writer and read lines, then runs the ordinary queue read and
-reader beat under its existing writer lock. A wait is one verb in its own
+reader beat under its existing writer lock. Its own reader lease renewal finishes
+after the wait and before capturing the returned cursor, so a quiet next wait
+cannot wake on that renewal. The cursor still precedes every queue cell read.
+A wait is one verb in its own
 request; a mixed batch is refused before any verb runs. Client and server
 transport deadlines allow the requested duration plus the existing request
 allowance, without removing ordinary request timeouts. Cancellation ends the
