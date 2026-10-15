@@ -20,7 +20,7 @@ import (
 
 // ownModelReader says the reader brings its own model: it is a friend's reader,
 // reader-<name> for a friend (or a bud, a friend on a Claude account) whose seat the
-// snapshot holds or whose friend row the fleet table has (pkg/friend ReaderOf).
+// snapshot holds or whose friend row the fleet table has (nova-tools pkg/friend ReaderOf).
 // Any other reader is the fleet's and runs its read's route. A held friend's reader
 // brings no model: a friend and her reader row are one member to the server, and a
 // held member serves nothing (docs/SPEC-SPRINT.md section 11, hold).
