@@ -8485,6 +8485,43 @@ for the packets it can use this pass and no others (a reader of width 8 with 150
 184,003 before, 10,637 after). A verb the server does not run is answered exit 2, saying
 nothing was changed, and the batch goes on.
 
+A worker's queue loop reads `queue --as <worker>`, then repeats
+`queue --as <worker> --wait <d> --after <cursor>`, carrying each response's
+`cursor` (`CURSOR <id>` in plain output; `0-0` for an empty log). A committed log
+line after that cursor wakes it immediately, or it returns at the deadline.
+The response remains the whole current queue, including cards already seen;
+a timeout does not mean an empty queue. The server holds this HTTP request open
+outside both its writer and read lines, then runs the ordinary queue read and
+reader beat under its existing writer lock. Its own reader lease renewal finishes
+after the wait and before capturing the returned cursor, so a quiet next wait
+cannot wake on that renewal. The cursor still precedes every queue cell read.
+A wait is one verb in its own
+request; a mixed batch is refused before any verb runs. Client and server
+transport deadlines allow the requested duration plus the existing request
+allowance, without removing ordinary request timeouts. Cancellation ends the
+wait before the queue read or reader beat.
+
+The cursor is sampled **before** queue cells are read. A deal between that cut
+and the snapshot may be included now, and remains pending for the next wait;
+sampling the tail after the snapshot could skip it. QueueWait.tla models this
+ordering, durable-log wake, timeout and per-worker eventual observation with
+finite atomic deals. The reversed CursorNeverSkips witness reads the snapshot,
+then a deal commits, then it returns the later tail. The runtime regression
+inserts that same interleaving. The model assumes dealt cards remain available
+until observed and does not prove arbitrary multiwriter snapshot consistency.
+The unchanged timer backstop can still recover a skipped push, so an invariant
+counterexample is not itself proof of eventual-observation failure.
+
+Keep existing worker heartbeat and timer sweeps at their current cadences as
+slow backstops; migrating nova-tools loops is separate. A long queue wait does
+not itself renew a reader heartbeat. The blocking queue path checks the durable
+log and epoch at most every 15 seconds when no notification arrives. Inbox's
+15-second quiet backstop also stays. Its `--wait-tick` cursor is on the notes
+stream, distinct from the queue's log cursor; zero duration seeds that cursor
+before the initial inbox read. `--wait-tick` takes `--json` and refuses ordinary
+log filters and historical epochs. Its output requires `cursor` and `woke`;
+a missing field or failed wait is an error, never a successful inbox fallback.
+
 The coordinator's verbs go to the server too. The server listens a second time on the
 loopback address at the same port, and there it runs any verb of the command but the ones it
 runs for nobody: itself (`run`, `tick`), `land` and `play`, which work outside the store for
@@ -8501,9 +8538,9 @@ byte as the verb run on the store prints it. So the coordinator's side names no 
 no store credentials. The verbs not served, a verb given its own `--redis` (it names its own
 store), a verb's help and flags the verb refuses run where they are typed. A waiting read waits
 where it is typed and holds the server between none of its reads: `where --watch` sends one plain
-`where` a frame and draws it as its own watch does; `inbox --wait` reads the log's tick-end notes
-(`log --json` as far back as its timeout and a second) once a second, and at each one that its
-last read did not show (and every 15 s while none comes) reads `inbox --json` for what is new
+`where` a frame and draws it as its own watch does; `inbox --wait` sends a blocking
+`log --wait-tick <d> --after <notes-cursor> --json` request, outside both server lines,
+and at each tick end (and every 15 s while none comes) reads `inbox --json` for what is new
 for the coordinator, until something is or the system stops or its `--timeout` passes, then
 sends the plain `inbox` and prints it as `inbox --wait` does (its one line of how it ended, and
 `woke` and `new` under `--json`); `--push <dir>` writes its files where it is typed, each group

@@ -15,7 +15,7 @@ func friendReadWorld(t *testing.T) (*world, []FriendSeat, *Card) {
 	t.Helper()
 	w := readCardsWorld(t, 4, "m1")
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
-	seats := []FriendSeat{readerSeat("amy", 2, []string{"flash"}, []string{"reader"})}
+	seats := workerSeatFixtures([]FriendSeat{readerSeat("amy", 2, []string{"flash"}, []string{"reader"})})
 	dealReads(t, w, seats)
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 1, "the fixture: one read, amy's")
@@ -77,7 +77,7 @@ func TestNoBranchHoldingTheHeadIsJudgedAtOnceAndNotReasked(t *testing.T) {
 	require.Equal(t, first.ID, js[0].Card)
 	require.Contains(t, js[0].What, first.ID, "it names the card")
 	require.Contains(t, js[0].What, named, "and the branch")
-	require.Equal(t, []string{"ask", "ack", "rework with a fix", "drop"}, js[0].Decisions)
+	require.Equal(t, []string{"ack", "rework with a fix", "drop"}, js[0].Decisions)
 	require.Empty(t, w.notesOf(NReadBroken), "no verdict, no rework")
 
 	pr := w.s.Work.Card("s1-1")

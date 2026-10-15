@@ -71,7 +71,7 @@ func TestAFriendStillOnTheTableKeepsItsJudgment(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			t.Parallel()
 			w := setup(t, 0)
-			w.s.Friends = []FriendSeat{{Name: "friend-a", Status: status}}
+			w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "friend-a", Status: status})}
 			w.s.Work.SetProps(map[string]string{PropFriends: SwitchOff})
 			w.note(Note{ID: "idle", Kind: Judgment, Type: NFriendIdle, Primaries: []string{FriendRow("friend-a")}, At: w.s.Now})
 			var p Plan

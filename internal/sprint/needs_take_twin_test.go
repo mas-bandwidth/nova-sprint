@@ -42,7 +42,7 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 	setNeeds(w.s, "s1-1", "n1", "n2")
 	require.Len(t, WaitsFor(w.s, pr, nil), 2, "the fixture: two needs have not landed")
 
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 	dealWith(w, amy)
 	for _, row := range w.s.Fleet.Rows() {
 		for _, col := range []State{Ready, Working} {
@@ -65,8 +65,8 @@ func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 	// by the world to the store's lawful-move check: the card's own named needs in the
 	// pre-state have not landed (lifecycle.go namedNeedsOpen).
 	w := friendWorld(t, fleetBrief("flash"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	w.s.Friends = []FriendSeat{amy}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	w.s.Friends = workerSeatFixtures([]FriendSeat{amy})
 	dealWith(w, amy)
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.NotNil(t, wc, "the fixture: s1-1 is dealt")

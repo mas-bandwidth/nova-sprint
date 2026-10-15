@@ -24,7 +24,7 @@ func TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"), friendBrief("friend"))
 	w.s.Fleet.SetProp("friend_stall_down.aurora", stamp(w.s.Now.Add(-time.Hour)))
-	seats := []FriendSeat{{Name: "aurora", Width: 8, Status: Up, Class: "flash,pro"}}
+	seats := workerSeatFixtures([]FriendSeat{{Name: "aurora", Width: 8, Status: Up, Class: "flash,pro"}})
 
 	dealWith(w, seats...)
 

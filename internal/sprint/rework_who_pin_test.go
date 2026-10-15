@@ -15,9 +15,9 @@ import (
 func TestAReworkKeepsTheWhoPin(t *testing.T) {
 	t.Parallel()
 	amy := func(status string) FriendSeat {
-		return FriendSeat{Name: "amy", Width: 2, Status: status, Class: "flash,pro"}
+		return workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: status, Class: "flash,pro"})
 	}
-	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"}
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"})
 
 	// waitsForAmy deals with amy down, then held, bob up with room and the machines up:
 	// the card stays ready, and no attempt of it reaches bob or a machine; then amy up,

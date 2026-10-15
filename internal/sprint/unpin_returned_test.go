@@ -12,7 +12,7 @@ import (
 func TestUnpinUnstartedTakenBackCard(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"))
-	dealWith(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"})
+	dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}))
 	wc := w.s.Fleet.Card("s1-2.w1")
 	require.Equal(t, Ready, wc.Col)
 	require.Empty(t, wc.F("taken"))
@@ -24,7 +24,7 @@ func TestUnpinUnstartedTakenBackCard(t *testing.T) {
 	assert.Equal(t, "tester", p.Units[0].Notes[0].Who)
 	assert.Contains(t, p.Units[0].Notes[0].What, "WHO: only friend amy")
 	w.must(p)
-	dealWith(w, FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"})
+	dealWith(w, workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"}))
 	wc = w.s.Fleet.Card("s1-2.w1")
 	assert.Equal(t, "friend.bob", wc.Row)
 	assert.Equal(t, 3, wc.Int("gen"))
@@ -38,7 +38,7 @@ func TestUnpinRefusesStartedOrFinishedWork(t *testing.T) {
 	for _, col := range []string{Working, Review, Merging, Landed} {
 		t.Run(col, func(t *testing.T) {
 			w := friendWorld(t, friendBrief("only friend amy"))
-			dealWith(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"})
+			dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"}))
 			c := w.s.Primary("s1-1")
 			// the fixture places the primary in col: working -> merging and working ->
 			// landed are no moves of the lifecycle, so no plan may make them (the

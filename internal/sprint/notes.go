@@ -147,7 +147,7 @@ var Decisions = map[string][]string{
 	NBaseRed:           {"resume"},         // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
 	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
-	NReadBranchMissing: {"ask", "ack", "rework with a fix", "drop"}, // read_missing.go: ask re-asks the read once a branch on origin holds the head (tla/ReadBranchMissing.tla)
+	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin; ask also resolves it once a branch holds the head (tla/ReadBranchMissing.tla) but is not listed, the three are pinned by read_missing_test.go
 	NMissingNeed:       {"drop", "ack"},
 	NCIRed:             {"rework with a fix", "return", "drop", "look", "ack"},
 	NReadsExhausted:    {"ask another reader", "rework", "drop"},
