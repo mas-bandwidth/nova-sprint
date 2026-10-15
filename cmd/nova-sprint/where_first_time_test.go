@@ -153,4 +153,3 @@ func TestWhereFirstTimeLandRateAtFiveHundredPlusCardsCountsExactAttemptOneOnly(t
 	ta.ok("add --stream s2 --count 1 --one --brief-file " + proBriefFile(t))
 	checkExact("after work revision advance with SeriesCounted")
 }
-
