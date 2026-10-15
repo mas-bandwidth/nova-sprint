@@ -11,9 +11,11 @@ import (
 )
 
 // TestTheFunctionalJobIsAMatrixOfRestAndShards pins .github/workflows/ci.yml:
-// the functional job is a matrix with a rest leg and SHARDS shard legs, each k
-// leg running make functional-gate-shard SHARD=k SHARDS=3 and the rest leg make
-// functional-gate-rest, and the SHARDS value matching the number of shard legs.
+// the functional job is a matrix with a rest leg, a deadcode leg and SHARDS
+// shard legs, each k leg running make functional-gate-shard SHARD=k SHARDS=3,
+// the rest leg make functional-gate-rest and the deadcode leg make
+// functional-gate-deadcode, and the SHARDS value matching the number of shard
+// legs.
 func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/ci.yml")
 	require.NoError(t, err)
@@ -34,6 +36,8 @@ func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 	require.NotEmpty(t, shardLegs, "the matrix has no shard legs")
 
 	require.Contains(t, body, "make functional-gate-rest", "the rest leg does not run make functional-gate-rest")
+	require.Contains(t, legs, "deadcode", "the matrix has no deadcode leg")
+	require.Contains(t, body, "deadcode) make functional-gate-deadcode", "the deadcode leg does not run make functional-gate-deadcode")
 	require.Contains(t, body, "make functional-gate-shard", "the shard legs do not run make functional-gate-shard")
 	for _, leg := range shardLegs {
 		k := strings.TrimSuffix(leg, "/3")
@@ -47,12 +51,12 @@ func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 }
 
 // TestTheFunctionalJobEveryLegCarriesTheTwoMinuteTimeout pins that every leg's
-// command carries -timeout 120s through the Makefile (functional-gate-rest and
-// functional-gate-shard) and none a larger one.
+// command carries -timeout 120s through the Makefile (functional-gate-rest,
+// functional-gate-deadcode and functional-gate-shard) and none a larger one.
 func TestTheFunctionalJobEveryLegCarriesTheTwoMinuteTimeout(t *testing.T) {
 	makefile, err := os.ReadFile("../../Makefile")
 	require.NoError(t, err)
-	for _, target := range []string{"functional-gate-rest", "functional-gate-shard"} {
+	for _, target := range []string{"functional-gate-rest", "functional-gate-deadcode", "functional-gate-shard"} {
 		recipe := makeRecipes(t, string(makefile), target)
 		require.NotEmpty(t, recipe, "target %q has no recipe", target)
 		require.Contains(t, recipe, "-timeout 120s", "target %q does not bound at -timeout 120s", target)
@@ -80,6 +84,23 @@ func TestTheFunctionalJobRestLegExcludesCmdNovaSprint(t *testing.T) {
 	require.NotContains(t, recipe, "./cmd/nova-sprint", "the rest recipe names ./cmd/nova-sprint")
 	whole := makeRecipes(t, text, "functional-gate")
 	require.Contains(t, whole, "./...", "functional-gate no longer runs the whole ./... tree")
+}
+
+// TestTheDeadCodeRuleRunsInExactlyOneLeg pins the split: the rest leg skips
+// TestDeadCode and only TestDeadCode, and the deadcode leg runs it and only it,
+// in its package, so the rule is neither run twice nor dropped.
+func TestTheDeadCodeRuleRunsInExactlyOneLeg(t *testing.T) {
+	makefile, err := os.ReadFile("../../Makefile")
+	require.NoError(t, err)
+	text := string(makefile)
+	require.Contains(t, text, "DEAD_CODE_TEST := ^TestDeadCode$$", "DEAD_CODE_TEST does not name exactly TestDeadCode")
+	rest := makeRecipes(t, text, "functional-gate-rest")
+	require.Contains(t, rest, "-skip '$(DEAD_CODE_TEST)'", "the rest leg does not skip TestDeadCode")
+	require.Equal(t, 1, strings.Count(rest, "-skip"), "the rest leg skips more than TestDeadCode")
+	dead := makeRecipes(t, text, "functional-gate-deadcode")
+	require.Contains(t, dead, "-run '$(DEAD_CODE_TEST)' ./internal/ci/", "the deadcode leg does not run TestDeadCode in ./internal/ci/")
+	require.Contains(t, dead, "-tags functional", "the deadcode leg drops the functional tag TestDeadCode is built under")
+	require.Contains(t, dead, "NOVA_CI=1", "the deadcode leg drops NOVA_CI=1")
 }
 
 // matrixLegs returns the matrix's leg values of a job body.

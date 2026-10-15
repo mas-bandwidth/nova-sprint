@@ -9,7 +9,7 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional functional-gate release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-shard release-accept help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -17,7 +17,8 @@ help:
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
 	@echo "make functional  go test -tags functional -count=1 ./... (needs redis-server on PATH)"
 	@echo "make functional-gate  the tier as CI runs it: NOVA_CI=1 and a 2-minute bound per package"
-	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint (its rest leg)"
+	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint and TestDeadCode (its rest leg)"
+	@echo "make functional-gate-deadcode  TestDeadCode alone (its deadcode leg)"
 	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
@@ -59,11 +60,22 @@ functional-gate:
 
 # functional-gate-rest runs the tier without ./cmd/nova-sprint, which the
 # functional job's matrix runs sharded across three legs
-# (.github/workflows/ci.yml).
+# (.github/workflows/ci.yml), and without TestDeadCode, which its deadcode leg
+# runs alone.
 FUNCTIONAL_REST := $(filter-out %/cmd/nova-sprint,$(shell $(GO) list ./...))
 
+# the dead code rule (internal/ci/dead_code_test.go) runs alone, in its own leg,
+# under the same two-minute bound: its 18 deadcode runs each load and analyse
+# the whole program, and beside the rest leg's sibling packages on a four-core
+# runner they were still running at 2m0s (runs 38751459368, 38754975433), where
+# alone on four cores they take 45-50 s
+DEAD_CODE_TEST := ^TestDeadCode$$
+
 functional-gate-rest:
-	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s $(FUNCTIONAL_REST)
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -p $(GOTEST_P) -tags functional -count=1 -timeout 120s -skip '$(DEAD_CODE_TEST)' $(FUNCTIONAL_REST)
+
+functional-gate-deadcode:
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -tags functional -count=1 -timeout 120s -run '$(DEAD_CODE_TEST)' ./internal/ci/
 
 # functional-gate-shard runs one shard of ./cmd/nova-sprint's functional package:
 # SHARD names the shard (1..SHARDS) and SHARDS the number of them; both are
