@@ -15,6 +15,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
 - [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
+- [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -1736,11 +1737,11 @@ From: Glenn, 2026-10-15 ~21:30Z
 
 ### The deal prefers the cheapest row, and the fleet is overflow
 
-The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"; ~22:00Z: "Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row." Also a sprint card of the same id.
+The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"; ~22:00Z: "Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row." Also a sprint card of the same id. Resume after the rocketnet milestone (Glenn, 2026-10-15): the card of the same id was dropped from the sprint, nothing pushed; brief in the card record, base v1.5.
 
 Why it waits: Cost: the subscription rows are already paid; the fleet spends API credit per card.
 
-Target: v1.5
+Target: after the rocketnet milestone
 
 From: Glenn, 2026-10-15 ~21:50Z
 
@@ -2541,3 +2542,49 @@ RESULT: an-ended-read-record-never-blocks-ask sha=<sha12> tier: frontier REPO: m
 Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
 
 Target: v1.5
+
+## Resume after the rocketnet milestone
+
+Cards moved out of the sprint on 2026-10-15 when Glenn said: "move the schema cards out to the roadmap. We will continue them only after we have rocketnet in the bag." One item per card with its pushed heads and any head not on origin.
+
+### C11: nova-sprint's bus reads legacy and typed envelopes alike, counted per form
+
+Resume after the rocketnet milestone. THE TASK. Make nova-sprint's pkg/bus reader accept both the legacy entry and the typed Envelope, through pkg/schemaread, counting reads per form. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### C16: one full night on Layer 1, measured, for Glenn's sign-off
+
+Resume after the rocketnet milestone. THE TASK. Gather one night's evidence that Layer 1 holds, in numbers, and write it for Glenn to sign off. The card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### C22: nova-work builds the typed result and refuses before writing
+
+Resume after the rocketnet milestone. THE TASK. Give nova-work a result builder that validates the Result table before writing RESULT.md, per section 4.8's Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### C27: the Layer 2 sign-off fence: measured across one stream, for Glenn
+
+Resume after the rocketnet milestone. THE TASK. Gather the Layer 2 evidence and write it for Glenn to sign off; the card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### C24: a judgment's verdict is a field; JudgmentRetire gains the typed-verdict invariant
+
+Resume after the rocketnet milestone. THE TASK. Model first, then make FinishedAs read the verdict from the typed judgment's field, never from a subject or a log Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### C25: no verdict, card or kind is read from a subject: a rewrite fuzz proves it
+
+Resume after the rocketnet milestone. THE TASK. Find every read of meaning from a message subject in pkg/friend and move it to the typed field; prove it with a rewrite Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+
+Target: after the rocketnet milestone
+
+### friend-tiers-and-fleet-tiers-default-all
+
+Resume after the rocketnet milestone. THE TASK. The sprint has `set --fleet-tiers` (the tiers the fleet as a whole may be dealt) but no matching setting for the friends as a whole. Add Source: Glenn, 2026-10-15 ~21:58Z: "we should be able to configure tiers allowed for friends (as a whole) and fleet (as a whole). Default Heads: none.
+
+Target: after the rocketnet milestone

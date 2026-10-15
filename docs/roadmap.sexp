@@ -47,7 +47,9 @@
   (group "export-v15-features" :title "Moved out of the sprint on 2026-10-15: v15-features"
    :text "The open cards of sprint stream v15-features, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down (v1.5 work not about schema adoption moves to v1.7), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.")
   (group "export-v15-merging" :title "Moved out of the sprint on 2026-10-15: target v1.5"
-   :text "Cards that were merging when Glenn moved the rest into v1.5 (2026-10-15); one item per card with its pushed heads and any head not on origin."))
+   :text "Cards that were merging when Glenn moved the rest into v1.5 (2026-10-15); one item per card with its pushed heads and any head not on origin.")
+  (group "after-rocketnet" :title "Resume after the rocketnet milestone"
+   :text "Cards moved out of the sprint on 2026-10-15 when Glenn said: \"move the schema cards out to the roadmap. We will continue them only after we have rocketnet in the bag.\" One item per card with its pushed heads and any head not on origin."))
 
  :items
  (
@@ -2306,9 +2308,51 @@
    :kept (:kind "bug"))
   (item "the-deal-prefers-the-cheapest-row-and-the-fleet-is-overflow" :group "sprint" :area "nova-sprint"
    :title "The deal prefers the cheapest row, and the fleet is overflow"
-   :text "The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: \"flash and pro should go to you first, because you are CHEAPEST\"; ~22:00Z: \"Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row.\" Also a sprint card of the same id."
+   :text "The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: \"flash and pro should go to you first, because you are CHEAPEST\"; ~22:00Z: \"Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row.\" Also a sprint card of the same id. Resume after the rocketnet milestone (Glenn, 2026-10-15): the card of the same id was dropped from the sprint, nothing pushed; brief in the card record, base v1.5."
    :why "Cost: the subscription rows are already paid; the fleet spends API credit per card."
    :date "2026-10-15"
-   :release "v1.5"
+   :release "after the rocketnet milestone"
    :origin "Glenn, 2026-10-15 ~21:50Z"
-   :kept (:kind "feature"))))
+   :kept (:kind "feature"))
+  (item "l1-bus-envelope-dual-read" :group "after-rocketnet" :area "nova-sprint"
+   :title "C11: nova-sprint's bus reads legacy and typed envelopes alike, counted per form"
+   :text "Resume after the rocketnet milestone. THE TASK. Make nova-sprint's pkg/bus reader accept both the legacy entry and the typed Envelope, through pkg/schemaread, counting reads per form. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l1-bus-envelope-dual-read" :sprint-stream "v13-schema-adoption" :sprint-column "waiting" :tier "heavy" :sprint-base "v1.3/comms" :needs "nova-sprint-schema-pin-and-import,l1-defs-bus-envelope" :pushed-head "" :pushed-branch ""))
+  (item "l1-acceptance-soak" :group "after-rocketnet" :area "nova-sprint"
+   :title "C16: one full night on Layer 1, measured, for Glenn's sign-off"
+   :text "Resume after the rocketnet milestone. THE TASK. Gather one night's evidence that Layer 1 holds, in numbers, and write it for Glenn to sign off. The card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l1-acceptance-soak" :sprint-stream "v13-schema-adoption" :sprint-column "waiting" :tier "" :sprint-base "v1.5-schema-tables" :needs "l1-bus-envelope-dual-read,l1-nova-bus-reader-builder-and-show,l1-pong-dual-read,l1-hook-stamp-typed,l1-seat-hook-typed-reader,l1-fixed-done-record-compacted-paged,l1-writers-switch,l1-nova-bus-native-binary-form" :pushed-head "" :pushed-branch ""))
+  (item "l2-nova-work-result-builder" :group "after-rocketnet" :area "nova-sprint"
+   :title "C22: nova-work builds the typed result and refuses before writing"
+   :text "Resume after the rocketnet milestone. THE TASK. Give nova-work a result builder that validates the Result table before writing RESULT.md, per section 4.8's Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l2-nova-work-result-builder" :sprint-stream "v13-schema-adoption" :sprint-column "waiting" :tier "" :sprint-base "v1.5-schema-tables" :needs "nova-sprint-schema-pin-and-import,l2-friend-report-gateway" :pushed-head "" :pushed-branch ""))
+  (item "l2-signoff-fence" :group "after-rocketnet" :area "nova-sprint"
+   :title "C27: the Layer 2 sign-off fence: measured across one stream, for Glenn"
+   :text "Resume after the rocketnet milestone. THE TASK. Gather the Layer 2 evidence and write it for Glenn to sign off; the card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l2-signoff-fence" :sprint-stream "v13-schema-adoption" :sprint-column "waiting" :tier "" :sprint-base "v1.5-schema-tables" :needs "l2-tla-card-contract-result-typed,l2-defs-card-jobpacket-result,l2-brief-parse-parity,l2-result-table-reader,l2-friend-report-gateway,l2-nova-work-result-builder" :pushed-head "" :pushed-branch ""))
+  (item "l3-judgment-verdict-field" :group "after-rocketnet" :area "nova-sprint"
+   :title "C24: a judgment's verdict is a field; JudgmentRetire gains the typed-verdict invariant"
+   :text "Resume after the rocketnet milestone. THE TASK. Model first, then make FinishedAs read the verdict from the typed judgment's field, never from a subject or a log Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l3-judgment-verdict-field" :sprint-stream "v13-schema-adoption" :sprint-column "ready" :tier "" :sprint-base "v1.5-schema-tables" :needs "nova-sprint-schema-pin-and-import" :pushed-head "" :pushed-branch ""))
+  (item "l3-subject-census-and-rewrite-fuzz" :group "after-rocketnet" :area "nova-sprint"
+   :title "C25: no verdict, card or kind is read from a subject: a rewrite fuzz proves it"
+   :text "Resume after the rocketnet milestone. THE TASK. Find every read of meaning from a message subject in pkg/friend and move it to the typed field; prove it with a rewrite Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "l3-subject-census-and-rewrite-fuzz" :sprint-stream "v13-schema-adoption" :sprint-column "waiting" :tier "" :sprint-base "v1.5-schema-tables" :needs "l3-judgment-verdict-field" :pushed-head "" :pushed-branch ""))
+  (item "friend-tiers-and-fleet-tiers-default-all" :group "after-rocketnet" :area "nova-sprint"
+   :title "friend-tiers-and-fleet-tiers-default-all"
+   :text "Resume after the rocketnet milestone. THE TASK. The sprint has `set --fleet-tiers` (the tiers the fleet as a whole may be dealt) but no matching setting for the friends as a whole. Add Source: Glenn, 2026-10-15 ~21:58Z: \"we should be able to configure tiers allowed for friends (as a whole) and fleet (as a whole). Default Heads: none."
+   :date "2026-10-15"
+   :release "after the rocketnet milestone"
+   :kept (:sprint-card "friend-tiers-and-fleet-tiers-default-all" :sprint-stream "v15-features" :sprint-column "ready" :tier "" :sprint-base "v1.5" :needs "" :pushed-head "" :pushed-branch ""))))
