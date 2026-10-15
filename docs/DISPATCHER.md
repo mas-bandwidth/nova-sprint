@@ -117,7 +117,21 @@ same finding twice comes to the inbox as "the brief is wrong".
   the brief naming the head on a `CARRY:` line. `nova-sprint continue <card> --carry <sha>`
   keeps the same id instead.
 
-## 8. Measuring it
+## 8. Keep dependencies minimal
+
+A need blocks the deal: a card waits until every card it needs has landed. Add
+one (`nova-sprint add --needs <a,b>`, `nova-sprint needs set <id> --needs <a,b>`)
+only when the card consumes the other's output: an API, a generated file, a
+model, a layer fence.
+
+- Never add a need for file overlap or for rank order.
+- Order by rank instead: `nova-sprint rank <id> --before <other>` or `--first`.
+- A rare conflict at the base tip comes to the inbox as "conflict on a card";
+  the lander reworks it there.
+- Read the edges with `nova-sprint needs --stream <s>`, and empty an
+  overlap-only one with `nova-sprint needs set <id> --clear`.
+
+## 9. Measuring it
 
 Before moving more of the loop to low effort, run a trial block and compare it
 with a block the coordinator ran alone:
