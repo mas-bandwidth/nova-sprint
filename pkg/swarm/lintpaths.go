@@ -46,6 +46,9 @@ import (
 //	spike-paths-research  a KIND: spike or tracer brief names in PATHS and NEW only paths
 //	                      under the research roots (ResearchRoots); its code travels as
 //	                      perf/experiments/<id>/experiment.patch, never as source
+//	paths-cover-registry  a card that adds a C or C++ test source covers each file at the BASE
+//	                      tip that registers its sibling tests by name (a Makefile, test/main.c,
+//	                      a CMakeLists.txt); a Go test needs no registry
 //	who-serves-tier       the friend WHO names (or, for any friend, some friend) serves the tier
 //
 // NO EVIDENCE IS NOT NEGATIVE EVIDENCE, as the base checks have it: a check that needs the
@@ -72,6 +75,7 @@ var BriefBaseRemedies = map[string]string{
 	// tla-is-frontier is the rule's old token, kept as an alias for one release.
 	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
 	"spike-paths-research": "a spike or tracer is never the product: what it keeps is what it taught, not its code, so its KIND: spike or tracer brief names in PATHS: and NEW: only paths under docs/research/, rnd/, perf/, benchmark/experiments/ or benchmark/findings/; deliver the code as a patch file (NEW: perf/experiments/<id>/experiment.patch beside perf/findings/<id>.md and perf/experiments/<id>/raw.txt) and edit no source file, or cut the production change as its own card with another KIND",
+	"paths-cover-registry": "a C or C++ suite builds and runs only the test sources its registry names (a Makefile listing them, test/main.c running each suite, a CMakeLists.txt adding each file), so a card adding a test source changes the registry too: name each registry the finding names on PATHS:; apply the corrected PATHS: line add printed",
 	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
 }
 
@@ -428,6 +432,26 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 
 	// 10b. spike-paths-research runs above, before the PATHS: return (spikeOutsideResearch).
 
+	// 10c. paths-cover-registry.
+	if added := addedTestSources(files, tree, paths, news); len(added) > 0 {
+		if tree {
+			var want []string
+			for _, src := range added {
+				for _, r := range testRegistries(bb, files, src) {
+					if !covers(paths, r) && !slices.Contains(want, r) {
+						want = append(want, r)
+					}
+				}
+			}
+			if len(want) > 0 {
+				add("paths-cover-registry", pathsF.line, fmt.Sprintf("the card adds the test source %s, and %s at %s names its sibling tests, so the card changes it too; PATHS does not cover it", quoteDepends(added), quoteDepends(want), at()))
+				addPaths = append(addPaths, want...)
+			}
+		} else {
+			missingFinding("paths-cover-registry", pathsF.line)
+		}
+	}
+
 	// 11. who-serves-tier.
 	if w, why := cardhdr.ReadWho(string(raw)); why == "" && w.Friend && model.Tier != "" && model.Tier != "-" {
 		switch {
@@ -509,6 +533,98 @@ func spikeOutsideResearch(h map[string]headerField) (int, []string) {
 		}
 	}
 	return line, outside
+}
+
+// testSourceExts are the extensions of a C or C++ source a test registry lists.
+var testSourceExts = []string{".c", ".cc", ".cpp", ".cxx"}
+
+// testSource says p is a C or C++ test source: a C or C++ file under a test/ or tests/
+// directory, or one named *_test.* or test_*.*. A Go test is none: go test finds it alone.
+func testSource(p string) bool {
+	p = cleanEntry(p)
+	if strings.ContainsAny(p, "*?[") || !slices.Contains(testSourceExts, path.Ext(p)) {
+		return false
+	}
+	stem := strings.TrimSuffix(path.Base(p), path.Ext(p))
+	if strings.HasSuffix(stem, "_test") || strings.HasPrefix(stem, "test_") {
+		return true
+	}
+	return slices.ContainsFunc(strings.Split(path.Dir(p), "/"), func(seg string) bool { return seg == "test" || seg == "tests" })
+}
+
+// addedTestSources is every test source the card adds: a NEW entry that is one, and a PATHS
+// entry that is one and that the tree at the base does not hold. With no tree, every test
+// source PATHS or NEW names, since none can be shown to exist already.
+func addedTestSources(files []string, tree bool, paths, news []string) []string {
+	var out []string
+	for _, e := range append(slices.Clone(news), paths...) {
+		e = cleanEntry(e)
+		if !testSource(e) || slices.Contains(out, e) {
+			continue
+		}
+		if tree && slices.Contains(files, e) && !slices.ContainsFunc(news, func(n string) bool { return cleanEntry(n) == e }) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// registryNames are the base names of a file that registers test sources: a build file in
+// the test source's directory or any directory above it, or a test runner's main beside it.
+var (
+	registryBuildNames = []string{"Makefile", "makefile", "GNUmakefile", "CMakeLists.txt"}
+	registryMainNames  = []string{"main.c", "main.cc", "main.cpp", "main.cxx"}
+)
+
+// testRegistries is every file at the base that registers the test source src's siblings:
+// a build file of src's directory or one above it, or a main beside src, whose text names a
+// test source of src's directory (src itself aside) by file name or by stem, as a whole word.
+// None when the directory holds no other test source, or nothing names one (a glob builds
+// them all).
+func testRegistries(bb BriefBase, files []string, src string) []string {
+	dir := path.Dir(src)
+	var siblings []string
+	for _, f := range files {
+		if path.Dir(f) == dir && f != src && testSource(f) && !slices.Contains(registryMainNames, path.Base(f)) {
+			siblings = append(siblings, f)
+		}
+	}
+	if len(siblings) == 0 {
+		return nil
+	}
+	var cands []string
+	for _, n := range registryMainNames {
+		cands = append(cands, path.Join(dir, n))
+	}
+	for d := dir; ; d = path.Dir(d) {
+		for _, n := range registryBuildNames {
+			cands = append(cands, path.Join(d, n))
+		}
+		if d == "." || d == "/" {
+			break
+		}
+	}
+	var pats []*regexp.Regexp
+	for _, s := range siblings {
+		base := path.Base(s)
+		stem := strings.TrimSuffix(base, path.Ext(base))
+		pats = append(pats, regexp.MustCompile(`(^|[^A-Za-z0-9_])(`+regexp.QuoteMeta(base)+`|`+regexp.QuoteMeta(stem)+`)($|[^A-Za-z0-9_])`))
+	}
+	var out []string
+	for _, c := range cands {
+		if !slices.Contains(files, c) || slices.Contains(out, c) {
+			continue
+		}
+		text, err := baseGit(bb.Repo, "show", "--end-of-options", bb.Sha+":"+c)
+		if err != nil {
+			continue
+		}
+		if slices.ContainsFunc(pats, func(re *regexp.Regexp) bool { return re.MatchString(text) }) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // BriefRemedy is what a brief token wants: BriefBaseRemedies, else CardBaseRemedies.
