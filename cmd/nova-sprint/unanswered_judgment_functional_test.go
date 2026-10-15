@@ -3,12 +3,10 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,8 +29,8 @@ import (
 )
 
 // ujRig is a sprint on a real store (a redis-server of its own, the function library
-// loaded), its server in this process on a clock the test steps, the seat hooked in and
-// then silent, and the owner's bus a recorder. The environment is the store's address and
+// loaded), its server in this process on a clock the test steps, the seat silent, and the
+// bus (the owner's and the seat's) a recorder. The environment is the store's address and
 // the seat's name, HOME and XDG_CONFIG_HOME in the test's own directory, and nothing else:
 // no NOVA_* of the machine the test runs on.
 type ujRig struct {
@@ -44,7 +42,6 @@ type ujRig struct {
 	mu   sync.Mutex
 	now  time.Time
 	sent []bus.Message
-	hook chan hookMsg
 }
 
 const ujSeat = "seat-uj"
@@ -75,7 +72,6 @@ func newUJRig(t *testing.T) *ujRig {
 		r.sent = append(r.sent, m)
 		return nil
 	}
-	r.a.hookSock = shortSock(t)
 	r.a.serveAddr = r.addr
 	// the routes nova-config's apply writes: flash and heavy, no pro
 	for _, x := range [][2]string{{"flash-a", "flash"}, {"heavy-a", "heavy"}} {
@@ -172,71 +168,23 @@ func (r *ujRig) work(readers ...string) {
 	}
 }
 
-// hookIn hooks the seat in over a pipe and proves it, then reads the stream into r.hook;
-// the seat answers nothing more: silent.
-func (r *ujRig) hookIn() *hookSession {
+// pushes is every message one look of the server's coordinator push sent the seat on the
+// bus (coordinator_push.go).
+func (r *ujRig) pushes() []bus.Message {
 	r.t.Helper()
-	server, client := net.Pipe()
-	r.hook = make(chan hookMsg, 256)
-	go func() {
-		sc := bufio.NewScanner(client)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
-			var m hookMsg
-			if json.Unmarshal(sc.Bytes(), &m) == nil {
-				r.hook <- m
-			}
-		}
-		close(r.hook)
-	}()
-	go r.a.hookRun(r.ctx, ujSeat, server, 0)
-	r.t.Cleanup(func() { _ = client.Close() })
-	var chal string
-	for chal == "" {
-		select {
-		case m := <-r.hook:
-			chal = m.Challenge
-		case <-time.After(10 * time.Second):
-			r.t.Fatal("no challenge on the hook")
+	r.mu.Lock()
+	before := len(r.sent)
+	r.mu.Unlock()
+	r.a.coordinatorPass(r.ctx)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []bus.Message
+	for _, m := range r.sent[before:] {
+		if len(m.To) == 1 && m.To[0] == ujSeat {
+			out = append(out, m)
 		}
 	}
-	b, _ := json.Marshal(hookMsg{T: "prove", Req: "p1", Challenge: chal})
-	_, err := client.Write(append(b, '\n'))
-	require.NoError(r.t, err)
-	for {
-		select {
-		case m := <-r.hook:
-			if m.Req == "p1" {
-				require.Equal(r.t, "ok", m.T, m.Why)
-				h := r.a.hookHub()
-				h.mu.Lock()
-				defer h.mu.Unlock()
-				for _, v := range h.cur {
-					return v
-				}
-				return nil
-			}
-		case <-time.After(10 * time.Second):
-			r.t.Fatal("the proof was not answered")
-		}
-	}
-}
-
-// pushes is every push the hook's stream has carried so far.
-func (r *ujRig) pushes(s *hookSession) []hookMsg {
-	r.t.Helper()
-	s.look(r.ctx)
-	var out []hookMsg
-	for {
-		select {
-		case m := <-r.hook:
-			if m.T == "push" {
-				out = append(out, m)
-			}
-		case <-time.After(300 * time.Millisecond):
-			return out
-		}
-	}
+	return out
 }
 
 // The owner, 2026-10-12: "This must never happen again." A real server and store, the seat
@@ -245,7 +193,7 @@ func (r *ujRig) pushes(s *hookSession) []hookMsg {
 // missing read and read again, returned for its needs, pinned to a held friend, on a tier no
 // route serves), and the cards that need a mind (returned by the seat; pinned by the
 // coordinator to a tier no route serves) are named by "the seat is not answering", on the
-// hook's stream and on the owner's bus.
+// seat's bus and on the owner's.
 func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	t.Parallel()
 	began := time.Now()
@@ -297,7 +245,6 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	var out, errb bytes.Buffer
 	code := runOnStore(r.a, r.addr, split("brief s6-1 --tier heavy"), &out, &errb)
 	require.Equal(t, 2, code, "re-tier without --reason should be refused: %s", errb.String())
-	s := r.hookIn()
 	r.do("start")
 	// the seat says nothing from here on
 	r.step(time.Second)
@@ -316,15 +263,15 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	assert.Equal(t, sprint.Ready, r.col("s6-1"), "pinned to pro by the coordinator: stays put, never re-tiered")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
 
-	// the seat-not-answering judgment reached the hook's stream and the owner's bus,
-	// naming the card still held
-	var onHook bool
-	for _, p := range r.pushes(s) {
-		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") && strings.Contains(p.Text, "s6-1") {
-			onHook = true
+	// the seat-not-answering judgment reached the seat's bus and the owner's, naming the
+	// card still held
+	var onSeat bool
+	for _, p := range r.pushes() {
+		if strings.Contains(p.Body, ujSeatSilent) && strings.Contains(p.Body, "s3-1") && strings.Contains(p.Body, "s6-1") {
+			onSeat = true
 		}
 	}
-	assert.True(t, onHook, "the alarm is pushed on the seat's hook")
+	assert.True(t, onSeat, "the alarm is sent to the seat on the bus")
 	r.mu.Lock()
 	sent := append([]bus.Message(nil), r.sent...)
 	r.mu.Unlock()

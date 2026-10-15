@@ -96,6 +96,10 @@ func parseRetiredNames(src string) ([]retiredName, []string) {
 			continue
 		}
 		f := strings.Fields(line)
+		if quoted, ok := quotedRetiredName(line); ok {
+			// a name of more than one word in double quotes: `text "--push seat" <replacement>`
+			f = append(append(f[:1:1], quoted), strings.Fields(strings.TrimSpace(line[strings.LastIndex(line, `"`)+1:]))...)
+		}
 		if len(f) < 3 {
 			faults = append(faults, fmt.Sprintf("line %d: want `<kind> <name> <what replaced it>`, got %q", i+1, line))
 			continue
@@ -111,6 +115,18 @@ func parseRetiredNames(src string) ([]retiredName, []string) {
 		rows = append(rows, retiredName{Kind: kind, Name: name, Replacement: strings.Join(rest, " ")})
 	}
 	return rows, faults
+}
+
+// quotedRetiredName is a row's name in double quotes (its second field opens with one), the
+// words inside it as one name; ok false for a row whose name is not quoted.
+func quotedRetiredName(line string) (string, bool) {
+	_, rest, _ := strings.Cut(line, " ")
+	rest = strings.TrimSpace(rest)
+	if !strings.HasPrefix(rest, `"`) {
+		return "", false
+	}
+	name, _, ok := strings.Cut(rest[1:], `"`)
+	return name, ok && name != ""
 }
 
 // retiredMatcher is the regexp a row is found by.
@@ -161,10 +177,14 @@ func TestTheRetiredPresenceScanFindsEachFormAndNothingElse(t *testing.T) {
 ident FriendEvidence the hook record
 text nova-friend ping nova-hook serve
 text --to-friends nova-hook serve
+text "--push seat" the coordinator's bus
 `)
 	require.Empty(t, faults)
-	require.Len(t, rows, 3)
+	require.Len(t, rows, 4)
 	assert.Equal(t, retiredName{Kind: "text", Name: "nova-friend ping", Replacement: "nova-hook serve"}, rows[1])
+	assert.Equal(t, retiredName{Kind: "text", Name: "--push seat", Replacement: "the coordinator's bus"}, rows[3], "a quoted name of two words")
+	assert.Equal(t, []string{`docs/Y.md:1: text "--push seat" is retired; use the coordinator's bus`},
+		retiredFindings("docs/Y.md", []byte("inbox --wait --push seat\ninbox --wait --push ./dir\n--push seats\n"), rows[3:]))
 
 	goSrc := []byte("package x\nfunc FriendEvidence() {}\nfunc FriendEvidenceOf() {}\n")
 	assert.Equal(t, []string{`internal/sprint/x.go:2: ident "FriendEvidence" is retired; use the hook record`},

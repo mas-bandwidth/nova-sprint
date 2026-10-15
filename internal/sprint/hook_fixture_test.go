@@ -2,10 +2,11 @@ package sprint_test
 
 import (
 	"context"
+	"time"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/hook"
-	"time"
 )
 
 func setFriendHook(st *store.Store, name, state string) error {

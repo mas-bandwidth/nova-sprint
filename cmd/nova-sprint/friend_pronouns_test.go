@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"

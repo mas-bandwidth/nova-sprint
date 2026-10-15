@@ -687,7 +687,7 @@ func bound(p Plan) (Plan, int) {
 // behind it stays waiting until the coordinator releases it -- every sentinel
 // but a cut (sentinel.go, isCut): the cut sentinel a step before this tick has
 // marked reached, whose every wait now stands met, releases itself in this
-// part, the release as the coordinator's lands it, with the seat pushed that
+// part, the release as the coordinator's lands it, with the seat told that
 // the release is ready to cut (SentinelReleases; docs/roadmap.sexp,
 // auto-sentinels-released-by-tick; the publish itself stays a gated step with
 // a cold read). The part is bounded as one (bound): a bound that cuts leaves

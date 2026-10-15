@@ -219,18 +219,13 @@ absolutely go"; "You should have setup children so you get notified when
 nova-sprint sends messages to you."). The coordinator's three earlier scripts
 are replaced with verbs:
 
-1. **The seat push loop**: `nova-sprint inbox --wait --push seat` is installed as
-   a `nova-config` loop record kept alive on the coordinator machine:
-
-```
-nova-config loop add seat-push --machine bench-a --argv '["/usr/bin/env","NOVA_SPRINT_SERVER=127.0.0.1:6390","nova-sprint","inbox","--wait","--push","seat"]' --keepalive true --as ada
-```
-
-   Its log is the loop's, `~/nova-bench/loops/seat-push.log`. It writes each new
-   judgment and note into the holder's inbox directory,
-   `~/<holder>-working/inbox/sprint-judgments/`, and follows the seat when it
-   moves. It replaces the hand-written launch agent `com.nova.loop.seat-push-<seat>`
-   (a zsh script under `nova-secrets exec`).
+1. **The seat push loop** is retired (v1.3.6): the sprint's server sends every
+   judgment and note for the coordinator to its name on the bus, and the
+   coordinator hooks in with `nova-hook hook --as <coordinator> --role coordinator`
+   under a Monitor, which puts each message into the session. A `seat-push`
+   loop record left on the coordinator machine is retired with it, and its row
+   is removed from nova-config: `nova-sprint inbox --wait` refuses the seat's
+   push word, naming this.
 
 2. **The receive thread**: The coordinator is a friend row like any other (the
    sprint row's `coordinator` names her). Her receive thread is her own

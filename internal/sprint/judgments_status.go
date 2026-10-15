@@ -30,7 +30,7 @@ import (
 // on the record and shown on the judgment ("flapped n times since <t>"). A row has at most
 // one open status judgment: a further transition replaces its text in place (the same id and
 // alias) and tells the seat it changed (NStatusChanged, a happened note to the coordinator,
-// which the push loop delivers); an answered one is closed and a new one raised. So a friend
+// which the server sends the coordinator on the bus); an answered one is closed and a new one raised. So a friend
 // flipping every minute is one push, and one more for each change that outlasts the dwell.
 // The record is the fleet table's one property PropStatusSeen, written in the same
 // operation as the judgment: a restart reads it back and replays none, and the first sight of

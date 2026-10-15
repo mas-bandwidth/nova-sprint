@@ -260,8 +260,9 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // clean and friend reconcile, which work on the directories of the machine they run on, and dashboard, which
 // serves a page until it is interrupted and reads through the server, doctor, which reads
 // the config store with its caller's credentials, and seat install and seat uninstall,
-// which install the push loop as a service of the machine they are typed on.
-var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "doctor", "answer", "seat install", "seat uninstall", "selftest land", "server switch", "hook", "unhook"}
+// which record the seat on, and remove the retired push loop's unit from, the machine they
+// are typed on.
+var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "doctor", "answer", "seat install", "seat uninstall", "selftest land", "server switch"}
 
 // serveCtx is the server's one step: the batch's verbs run in order, each through
 // the verb's own code with its worker as the actor, and each answered. The
@@ -579,10 +580,6 @@ func (a *app) serveHTTP(w http.ResponseWriter, r *http.Request, local bool) {
 		a.serveFriendCards(w, r)
 		return
 	}
-	if r.URL.Path == hookPath {
-		a.serveHook(w, r, local)
-		return
-	}
 	if r.URL.Path != sprintwire.Path || r.Method != http.MethodPost {
 		http.Error(w, "the sprint server takes POST "+sprintwire.Path, http.StatusNotFound)
 		return
@@ -680,8 +677,9 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 		// ignored: a best-effort read cleanup on server listen; tick takes care of any subsequent lapses
 		_ = a.serverStart(context.Background(), st)
 	}
-	// a hook an earlier server held is gone with it (hook.go)
-	a.hookServerStart(context.Background())
+	// the coordinator's push: its judgments to its name on the bus, and its sprint push
+	// held in its nova-hook record (coordinator_push.go)
+	go a.coordPushLoop(context.Background())
 	for at, h := range lns {
 		ln, err := net.Listen("tcp", at)
 		if err != nil {

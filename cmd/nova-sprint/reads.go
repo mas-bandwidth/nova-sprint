@@ -2321,13 +2321,16 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 	atEpoch := fs.Int64("at-epoch", -1, "the inbox as it was at an earlier epoch (before a clear)")
 	wait := fs.Bool("wait", false, "block until a judgment, or a note to the coordinator, that was not in the inbox when the wait began (a held judgment never wakes it), or the machine stops; then show the inbox, saying what is new")
 	timeout := fs.Duration("timeout", 5*time.Minute, "with --wait, the longest wait; the inbox is shown when it passes (with --push, how often the loop looks at the machine)")
-	push := fs.String("push", "", "with --wait, keep running (until interrupted): each new judgment and note to the coordinator is written once as <dir>/<note id>.md, the group as inbox --open prints it and the clock; the files there are the cursor, so a restart pushes nothing twice; a local write; seat is the holder's inbox, ~/<holder>-working/inbox/sprint-judgments, followed through a seat change (a directory named seat is ./seat)")
+	push := fs.String("push", "", "with --wait, keep running (until interrupted): each new judgment and note to the coordinator is written once as <dir>/<note id>.md, the group as inbox --open prints it and the clock; the files there are the cursor, so a restart pushes nothing twice; a local write (the word seat, the retired seat push loop's, is refused: the server sends the coordinator's judgments to its name on the bus; a directory named seat is ./seat)")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "inbox", argErr("takes no words ", err, pos...))
 	}
 	if *read && *atEpoch >= 0 {
 		return refuse(stderr, "inbox", "--read moves the cursor of the sprint's epoch, and --at-epoch reads an earlier one as it was: give one of them")
+	}
+	if *push == retiredPushWord {
+		return refuse(stderr, "inbox", "the seat's push loop is retired (v1.3.6): the sprint's server sends every judgment and note for the coordinator to its name on the bus, and nova-hook pushes it into the session (nova-hook hook --as <you> --role coordinator); remove the loop's unit: nova-sprint seat uninstall; to write the judgments as files, give a directory: --push ./seat")
 	}
 	if *push != "" && (!*wait || *read || *open != "" || *atEpoch >= 0) {
 		return refuse(stderr, "inbox", "--push <dir> runs with --wait alone, a loop that writes each new judgment to the directory: it takes no --read, --open or --at-epoch")
