@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // seatRecordedApp is a coordinator's side with no server in its environment and a seat

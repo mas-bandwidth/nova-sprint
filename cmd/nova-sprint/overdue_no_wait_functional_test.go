@@ -20,9 +20,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // An overdue card-holding judgment offers no wait on a real store: the inbox's printed

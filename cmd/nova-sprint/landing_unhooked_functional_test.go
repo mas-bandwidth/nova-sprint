@@ -17,10 +17,10 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
-	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The server's own land loop is machine work, not a coordinator command: it must land

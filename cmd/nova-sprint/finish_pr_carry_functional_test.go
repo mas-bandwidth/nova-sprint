@@ -20,7 +20,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // A finish-PR card stages from the PR's own head, not from its base (two of the first
