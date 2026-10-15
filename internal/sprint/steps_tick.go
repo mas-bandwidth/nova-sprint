@@ -858,6 +858,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if StreamHeld(s, c.Row) || IsSentinel(c) {
 			continue
 		}
+		if IsHeld(c) {
+			continue // a card that carries a hold is offered to no friend until release (tla/Holds.tla DealH, NoHeldCardDealt)
+		}
 		// a primary whose named needs have not landed is offered to no friend
 		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): the friends' deal hands
 		// it to no friend until its needs land, as the machines' deal does not
@@ -885,6 +888,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	for _, c := range s.Work.Column(Ready) {
 		if StreamHeld(s, c.Row) {
 			continue // its stream is held (hold.go): dealt to no machine and no friend until unhold
+		}
+		if IsHeld(c) {
+			continue // a card that carries a hold is dealt by no path until release (tla/Holds.tla DealH, NoHeldCardDealt)
 		}
 		// a primary whose named needs have not landed is dealt to no machine either
 		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): the dealt card, if any,

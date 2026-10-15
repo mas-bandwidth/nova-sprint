@@ -363,7 +363,7 @@ func Release(s *Snapshot, r ReleaseReq) Plan {
 		case w.Operand != WaitOnLine && w.Operand != WaitOnRelease:
 			p.refuse(id, "not a sentinel or a held card: a primary lands by merging")
 			continue
-		case c.Col != Waiting:
+		case c.Col != Waiting && !(c.Col == Ready && IsHeld(c) && !IsSentinel(c)):
 			p.refuse(id, "is "+c.Col+", not a sentinel waiting to be released")
 			continue
 		case !IsSentinel(c):
@@ -471,6 +471,12 @@ func notUnderWay(s *Snapshot, waits []string) (string, string) {
 // ready when it waits for nothing else.
 func releaseHeld(s *Snapshot, c *Card, r ReleaseReq) Unit {
 	set := map[string]string{"released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason}
+	if c.Col == Ready {
+		// ready while held: the deal refuses it (dealPlan); the release clears the hold
+		// and it stays ready (tla/Holds.tla ReleaseHeld)
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
+			Moved: fmt.Sprintf("%s released by %s; it is ready", c.ID, r.Who)}
+	}
 	if DecisionParkedReview(c) {
 		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Review, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))}, Moved: fmt.Sprintf("%s waiting -> review (server-default hold released by %s; head and reads retained)", c.ID, r.Who)}
 	}
