@@ -39,6 +39,8 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-2.md"), []byte(passingBrief("s1-2: a second friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend bob")), 0o644))
+	// s1-3 carries an earlier attempt's head: its NEXT head
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-3.md"), []byte(passingBrief("s1-3: a carried friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nCARRY: s1-3 attempt 1 head="+landHead+"\nWHO: friend amy")), 0o644))
 	ta.ok("add --stream s1 --brief-dir " + dir)
 	ta.ok("start")
 	ta.ok("tick")
@@ -96,6 +98,46 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	assert.True(t, sawName && sawEmail, "the clone's local identity is the friend's")
 	assert.True(t, sawCheckout, "the delivered branch is checked out")
 
+	// no git invocation after the clone ran before both identity writes: nothing
+	// after the clone can commit under a global identity
+	nameAt, emailAt := -1, -1
+	for i, c := range calls {
+		if c.args[0] == "config" && c.args[1] == "user.name" {
+			nameAt = i
+		}
+		if c.args[0] == "config" && c.args[1] == "user.email" {
+			emailAt = i
+		}
+	}
+	for i, c := range calls {
+		if c.args[0] != "clone" && c.args[0] != "config" {
+			assert.Greater(t, i, nameAt, "%v ran before user.name was set", c.args)
+			assert.Greater(t, i, emailAt, "%v ran before user.email was set", c.args)
+		}
+	}
+
+	// a card carrying a NEXT head stages at that head: fetched, then the
+	// delivered branch created on it, and JOB.md names it as the head
+	calls = nil
+	out = ta.ok(fmt.Sprintf("friend stage s1-3.w1@1 --as friend.amy --dir %s", jobs))
+	assert.Contains(t, out, "FRIEND-STAGE OK friend=amy card=s1-3.w1 gen=1 branch=sprint/s1-3.w1.g1.e0")
+	var sawFetch, sawNextCheckout bool
+	for _, c := range calls {
+		if c.args[0] == "fetch" {
+			sawFetch = true
+			assert.Equal(t, landHead, c.args[len(c.args)-1])
+		}
+		if c.args[0] == "checkout" {
+			sawNextCheckout = true
+			assert.Equal(t, []string{"checkout", "-q", "-B", "sprint/s1-3.w1.g1.e0", landHead}, c.args, "the branch is created at the NEXT head")
+		}
+	}
+	assert.True(t, sawFetch && sawNextCheckout)
+	jm3, err := os.ReadFile(filepath.Join(jobs, "s1-3.w1", "JOB.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(jm3), "HEAD: "+landHead+"\n")
+	assert.Contains(t, string(jm3), "--head "+landHead+" --branch sprint/s1-3.w1.g1.e0 --base sprint/s1\n")
+
 	// a second stage of the same card@gen is idempotent: it prints the JOB.md path
 	before := len(calls)
 	code, out, errs := ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --dir %s", jobs))
@@ -105,13 +147,13 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 
 	// a card not dealt to the named friend is refused
 	code, _, errs = ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.bob --dir %s", jobs))
-	assert.Equal(t, 2, code)
+	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "not dealt to friend bob")
 
 	// a friend with no git_identity on record is refused and no clone is made
 	before = len(calls)
 	code, _, errs = ta.do(fmt.Sprintf("friend stage s1-2.w1@1 --as friend.bob --dir %s", filepath.Join(root, "bob-working", "jobs")))
-	assert.Equal(t, 2, code)
+	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no git_identity field")
 	assert.Equal(t, before, len(calls), "no clone is made for a friend with no identity")
 	_, statErr := os.Lstat(filepath.Join(root, "bob-working", "jobs", "s1-2.w1"))

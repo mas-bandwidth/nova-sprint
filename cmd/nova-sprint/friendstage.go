@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
@@ -76,6 +77,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
+	c.orActor(friendName) // a worker's verb is its worker's: no --actor is needed
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
@@ -95,7 +97,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if work == nil {
-		return refuse(stderr, name, fmt.Sprintf("card %s at gen %d is not dealt to friend %s (ready or working)", oneline.Field(card), gen, friendName))
+		return refuseState(stderr, name, fmt.Sprintf("card %s at gen %d is not dealt to friend %s (ready or working)", oneline.Field(card), gen, friendName))
 	}
 	pk, err := st.Packets(ctx, []*sprint.Card{work})
 	if err != nil {
@@ -118,7 +120,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	id, ok := config.ParseGitIdentity(git)
 	if !ok {
-		return refuse(stderr, name, fmt.Sprintf("friend %s has no git_identity field on record in nova-config (a git_identity='Name <email>' field), so staging would fall back to the machine's global git config; run: nova-config friend set %s --fields git_identity='Name <email>'", friendName, friendName))
+		return refuseState(stderr, name, fmt.Sprintf("friend %s has no git_identity field on record in nova-config (a git_identity='Name <email>' field), so staging would fall back to the machine's global git config; run: nova-config friend set %s --fields git_identity='Name <email>'", friendName, friendName))
 	}
 
 	// (2) the delivered branch is the one the bus message FRIEND-CARD DELIVERED
@@ -132,9 +134,17 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if baseField == "" {
 		baseField = base.Ref
 	}
+	// the NEXT head: the packet's, else the CARRY line a widened card's brief
+	// holds (the same rule friendServerBrief reads it by)
+	next := p.BaseHead
+	if next == "" {
+		if c, ok := member.CarryOf(p.Brief); ok {
+			next = c.Head
+		}
+	}
 	startRef := ""
-	if p.BaseHead != "" {
-		startRef = p.BaseHead
+	if next != "" {
+		startRef = next
 	} else if base.Sha != "" {
 		startRef = base.Sha
 	} else {
@@ -164,7 +174,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			a.outcome, a.changed = "accepted", "no"
 			return 0
 		}
-		return refuse(stderr, name, fmt.Sprintf("the job %s is already staged as another card, branch or head; nothing was written", oneline.Field(job)))
+		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card, branch or head; nothing was written", oneline.Field(job)))
 	} else if !os.IsNotExist(err) {
 		return refuse(stderr, name, err.Error())
 	}
@@ -183,9 +193,9 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if _, err := friendStageGit(ctx, jobDir, "config", "user.email", id.Email); err != nil {
 		return refuse(stderr, name, "setting the clone's local user.email: "+oneline.Err(err))
 	}
-	if p.BaseHead != "" {
-		if _, err := friendStageGit(ctx, jobDir, "fetch", "-q", "origin", p.BaseHead); err != nil {
-			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(p.BaseHead)+": "+oneline.Err(err))
+	if next != "" {
+		if _, err := friendStageGit(ctx, jobDir, "fetch", "-q", "origin", next); err != nil {
+			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(next)+": "+oneline.Err(err))
 		}
 	}
 	if _, err := friendStageGit(ctx, jobDir, "checkout", "-q", "-B", p.Branch, startRef); err != nil {
@@ -208,4 +218,14 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile))
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
+}
+
+// refuseState is refuse for a refusal of the world's state, not of the words
+// typed (a card not on her row, a friend with no identity on record): exit 1,
+// "failed or incomplete (including refused)", nothing written. Exit 2 stays
+// usage, so the verb's help example, which names a card no test sprint holds,
+// is not a usage refusal.
+func refuseState(stderr io.Writer, verb, what string) int {
+	refuse(stderr, verb, what)
+	return 1
 }
