@@ -573,7 +573,7 @@ func TestAReadHandedBackByFriendTakeIsNotDealtToHerAgain(t *testing.T) {
 		dealReads(t, w, seats)
 		id := ReadCardID("s1-1", 1, "amy")
 		require.NotNil(t, w.s.Fleet.Placed(id))
-		w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{id}, All: hold, Hold: hold, Spends: !hold, Reason: "outside her tiers", Who: "coordinator"}))
+		w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{id}, All: hold, Hold: hold, Working: !hold, Spends: !hold, Reason: "outside her tiers", Who: "coordinator"}))
 		require.Equal(t, Withdrawn, w.s.Fleet.Card(id).Col)
 		dealReads(t, w, seats)
 		if hold {

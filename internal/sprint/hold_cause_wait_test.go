@@ -19,11 +19,8 @@ import (
 // served after the first: the hold, and the judgment that is its cause.
 func idleReapHeld(t *testing.T) (*world, Open) {
 	w := reapWorld(t, 3)
-	now := w.s.Now
-	putReap(w, "x1.w1", "ds", "m1", now.Add(-9*time.Minute))
-	putReap(w, "x2.w1", "ds", "m1", now.Add(-6*time.Minute))
-	putReap(w, "x3.w1", "ds", "m1", now.Add(-3*time.Minute))
-	putOK(w, "y1.w1", "ds", "m2", now.Add(-5*time.Minute))
+	dReapsOnM1(w)
+	putOK(w, "y1.w1", "ds", "m2", w.s.Now.Add(-5*time.Minute))
 	w.part(TickDeal, TickReq{Beats: freshBeats(w, "m1", "m2")})
 	require.Equal(t, CauseIdleReap, w.s.MemberCtl("m1").F(FieldHeldCause), "m1 was not held for its reaps: %v", w.s.MemberCtl("m1").Fields)
 	judged := w.openOn(StreamSubject(MemberSubject("m1")))

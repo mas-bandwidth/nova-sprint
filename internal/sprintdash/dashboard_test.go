@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -267,6 +268,27 @@ func TestDashboardServesThePageNoStore(t *testing.T) {
 	assert.Contains(t, page, `<img id="logo" class="logo-tile" src="data:image/png;base64,`, "no --logo: the live page's inline logo, as index.html carries it")
 	assert.Contains(t, page, `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=`+r.s.Build()+`">`)
 	assert.Equal(t, r.s.Build(), r.api()["build"])
+}
+
+// Every path app.js still asks for is served: a path the page fetches that the
+// server does not answer is a dead request on every load.
+func TestEveryPathThePageAsksIsServed(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	js := string(file("app.js"))
+	asked := map[string]bool{}
+	for _, re := range []string{`fetch\("([^"]+)"`, `EventSource\("([^"]+)"`} {
+		for _, m := range regexp.MustCompile(re).FindAllStringSubmatch(js, -1) {
+			asked[m[1]] = true
+		}
+	}
+	require.NotEmpty(t, asked, "app.js asks for nothing: the path scan found no fetch")
+	for path := range asked {
+		w := httptest.NewRecorder()
+		r.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		assert.Equal(t, http.StatusOK, w.Code, "app.js asks for %s, which the server must answer", path)
+	}
+	assert.NotContains(t, js, "/landings.json")
 }
 
 // --logo names the image served as the logo and the favicon; a new file changes the
