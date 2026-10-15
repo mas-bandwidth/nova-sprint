@@ -180,6 +180,47 @@ func TestDashboardThroughput(t *testing.T) {
 	assert.InDelta(t, 0, v["throughputMinutes"], 0)
 }
 
+// The samples are kept across a restart: an instance with 30 minutes of samples saves them, and a
+// fresh one over the same saved bytes shows a rate on its first read, not a 10 minute warm-up. A
+// landed below the last saved still starts the samples again.
+func TestDashboardThroughputSurvivesARestart(t *testing.T) {
+	t.Parallel()
+	var saved []byte
+	keep := func(r *rig) {
+		r.s.LoadSamples = func() ([]byte, error) { return saved, nil }
+		r.s.SaveSamples = func(b []byte) error { saved = b; return nil }
+	}
+	old := newRig(t)
+	keep(old)
+	landed := 100
+	old.next = func() ([]byte, error) { return where(landed), nil }
+	for i := 0; i <= 3; i++ { // 30 minutes of samples, 10 cards each 10 minutes
+		old.api()
+		old.advance(10 * time.Minute)
+		landed += 10
+	}
+	require.NotEmpty(t, saved, "the samples were saved")
+
+	fresh := newRig(t) // a restart: a new process over the same saved bytes
+	fresh.now = old.now
+	keep(fresh)
+	fresh.next = func() ([]byte, error) { return where(landed), nil }
+	v := fresh.api()
+	require.NotNil(t, v["throughput"], "the first read after a restart shows a rate")
+	assert.Greater(t, v["throughputMinutes"], 10.0)
+
+	cleared := newRig(t) // the sprint was cleared while it was down: landed below the last saved
+	cleared.now = old.now
+	keep(cleared)
+	cleared.next = func() ([]byte, error) { return where(1), nil }
+	assert.Nil(t, cleared.api()["throughput"], "a landed that fell starts the samples again")
+
+	empty := newRig(t) // the first ever start: nothing saved, the warm-up is MinSpan's
+	empty.s.LoadSamples = func() ([]byte, error) { return nil, nil }
+	empty.s.SaveSamples = func([]byte) error { return nil }
+	assert.Nil(t, empty.api()["throughput"])
+}
+
 // An archive moves landed cards off the headline (landed falls by them, archived_landed
 // rises by them) and lands nothing: the pull routes' throughput samples the epoch's landed
 // cards, so it is no fall that starts them again (the page counts as the live page does:
