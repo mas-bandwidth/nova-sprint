@@ -606,7 +606,9 @@ the failing log's tail. A pull request closed without a merge clears the promoti
 flight with one judgment naming it, `JUDGMENT closed-pr ... pr=<n>`, and the next pass cuts
 afresh. The verb claims the promotion cleared only after every in-flight key is gone: a
 cleanup that fails is a refusal naming the keys that remain. Every step prints a line as it goes, and every wait names what it waits on
-(`PROMOTE WAIT ... checks pending: <names>`), looking again every `--poll` (default 1m).
+(`PROMOTE WAIT ... checks pending: <names>`). While the promotion is pending the wait blocks on the store's `ev:github` stream
+for a row naming the repository and the pull request (the checks arrive as events, written by the ci receipts); such a row ends the
+wait at once and the verb asks gh once, and `--poll` (default 1m) stays the backstop for a lost row.
 Without `--once` the verb repeats every `--every`. `--dry-run` prints the cut it would make,
 or the promotion in flight, and writes, enqueues and records nothing. The contract is
 [SPEC-SPRINT.md section 11](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), promote.
