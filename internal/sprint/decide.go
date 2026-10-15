@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
