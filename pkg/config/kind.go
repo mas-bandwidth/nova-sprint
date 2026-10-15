@@ -216,6 +216,27 @@ const (
 	DefaultFriendMode = FriendModeBatch
 )
 
+// FriendSessionWords are whether a friend has a live session between cards: live (the
+// default) or one-shot, a friend with none who runs as a member lane on her row
+// (nova-swarm member --as friend.<name> --prompt <file>). The copy of nova-tools
+// pkg/config's (docs/SPEC-CONFIG.md, friend; nova-tools migration 0045).
+var FriendSessionWords = []string{FriendSessionLive, FriendSessionOneShot}
+
+// The session words and the default a row without one has.
+const (
+	FriendSessionLive    = "live"
+	FriendSessionOneShot = "one-shot"
+	DefaultFriendSession = FriendSessionLive
+)
+
+// FriendSession is a friend row's session: its session field, live when it names none.
+func FriendSession(r Row) string {
+	if s := r.Fields["session"]; s != "" {
+		return s
+	}
+	return DefaultFriendSession
+}
+
 // FriendPronounSets are the friend row's explicit pronoun choices, matching nova-config.
 var FriendPronounSets = []string{"she/her", "he/him", "they/them"}
 
@@ -547,6 +568,7 @@ var Kinds = []*Kind{
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},
 			{Name: "kinds", Type: TypeNames, Help: "optional comma-separated card KIND values this friend may be dealt; empty means any kind"},
 			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
+			{Name: "session", Type: TypeEnum, Enum: FriendSessionWords, Default: DefaultFriendSession, Help: "whether the friend has a live session between cards: live (the default) or one-shot (no session: a member lane on her row, nova-swarm member --as friend.<name> --prompt <identity file>)"},
 		},
 		Check: checkFriend,
 		ApplyOrder: func(r Row) int {

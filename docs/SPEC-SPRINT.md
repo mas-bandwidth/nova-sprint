@@ -307,6 +307,23 @@ continues to report work and hold friends. `TestFriendHookStatus` covers the
 down/held/up mapping; `TestFriendRowsUseHookAndHoldWithoutReportInference`
 covers the store read without real time, sockets or network.
 
+**A one-shot friend is a member lane** (the owner, 2026-10-14: "just make one shot
+friends, exactly the same code that already works in the fleet, just with an extra prompt
+at the front"; the nova-tools v1.3 friend lane spec, guarantee 12). A friend
+row with `session=one-shot` (nova-config; a friend with no live session between cards) is
+worked by an ordinary member on her row, `nova-swarm member --as friend.<name> --prompt
+<identity file>`: `fleet beat friend.<name>` is accepted for her (and for no live friend's
+row, nor a row the roster lacks), her status is that beat by the fleet's one rule
+(`PresenceStatus`: up while it has missed fewer than three beat windows, held while the
+coordinator holds her, else down, `no member beat on friend.<name>`), never a hook record,
+which is not read for her; `queue --as friend.<name>` answers her roster width; and her
+cards are dealt, taken by count, progressed and finished with the member's own verbs on her
+row, so each finish is credited to her row by the server's claim. No friend lane or daemon
+serves her: `friend beat <name>` and a lane's take (`take --lane`, a take by id through the
+lane) for her row are refused, naming the member that serves it
+(`TestAOneShotFriendIsDealtAndFinishesThroughTheMemberPath`,
+`TestTheFriendLanePathIsRefusedForAOneShot`; nova-tools tla/FriendLane.tla, OneShot).
+
 **A friend's card** (the owner, 2026-10-03: "Could we try expressing the work
 left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing
 parts on friends where we would normally do friend work."). WHO is a preference (docs/SPEC-CARD-CONTRACT.md, the WHO line; `cardhdr.ReadWho`
