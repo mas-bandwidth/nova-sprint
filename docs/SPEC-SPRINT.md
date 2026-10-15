@@ -9311,3 +9311,27 @@ The existing 3,000-card ceiling stays at nine backend API calls, with no cell-ID
 scan or whole-log read. That metric is not a wire-round count: `OpenNotes` reads
 its index then note bodies, so a nonempty index adds one Redis wire round versus
 the old view (the empty case is unchanged after removing the coordinator GET).
+
+### First-time land rate goal
+
+A primary counts toward the first-time land rate when it has landed or been dropped
+(an open card has not been tried to its end, and a sentinel or replaced card whose
+spend was carried to its twin is not counted twice). A counted primary landed first
+time if and only if it landed on attempt 1 with no rework, no brief replacement, and
+no carry (`sprint.FirstTimeCounted`, `sprint.FirstTimeLanded`; `tla/SprintRules.tla`,
+part `"firsttime"`, `FtCountUnder` and `FtRecover`). The rate is tracked per stream
+and per route (attempt 1's route) over the sprint and over a rolling window of the
+last N counted primaries of each stream (default 20, `first_time_window`), against a
+sprint-wide target (default 90%, `first_time_target`).
+
+When a stream has at least 10 counted primaries in its window and its windowed
+first-time land rate is under the target, the tick (`sprint.TickFirstTime`,
+`tla/SprintRules.tla` `FtTick`) raises one `first time under target` judgment naming
+the stream, its windowed rate, the window and its top failure class over the window,
+re-raising no more often than the stall bound, and clears with a `first time at target`
+happened note when the windowed rate returns to at or over the target. `where` shows a
+`first time` column on the work table (`-` for none) and a `first time: <overall>
+target 90%` summary line naming the streams under target, and `where --json` carries
+the same on the work rows and the top-level view (`TestFirstTimeLandRateCountsOnlyAttemptOneWithNoRework`,
+`TestFirstTimeLandRateJudgedUnderTargetOnce`, `TestWhereShowsFirstTimeLandRateAndTarget`).
+
