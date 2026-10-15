@@ -2523,7 +2523,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | waiting -> ready | its needs have landed or were waived, nothing in line before it | `steps_work.go` resolvePlan, resolveAfter | Resolve | yes |
 | waiting -> ready | the coordinator waives a dropped or missing need | `steps_ack.go` waive | Waive | yes |
 | waiting -> ready | release of a held waiting card | `steps_sentinel.go` releaseHeld | Resolve | yes |
-| waiting -> ready | `needs set` gives it needs that have all landed | `steps_edit.go` NeedsSet | NeedsSet | yes |
+| waiting -> ready | `needs set` gives a card that is not held needs that have all landed; a held card keeps its column and its hold | `steps_edit.go` NeedsSet | NeedsSet (a held card stays; witness "needssetheld") | yes |
 | ready -> working | the deal and redeal, machines and friends | `steps_work.go` deal, redeal; `friend_deal.go` friendDealUnit, friendRedealUnit | Start | yes, its needs landed |
 | review -> working | rework delegated at once | `steps_review.go` Rework (deal) | Rework | yes |
 | merging -> working | redo delegated at once | `redo.go` Redo (deal) | Redo | yes |
@@ -2603,7 +2603,14 @@ witness `withdrawready`; Finish's NeedsMet guard and its reversed witness
 `finishunmet`). A card's needs are set at add, by a brief
 edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
 rewrites the brief's needs line and moves the card by this table, so a card
-admitted with the wrong needs is corrected in place, never by a twin. A brief
+admitted with the wrong needs is corrected in place, never by a twin. A needs change
+never releases a hold: a held card (`add --held`, or a hold) keeps its column, its hold
+stamp, `held_by` and `held_reason` through `needs set`, a brief edit and a relink, its needs written
+as asked, and moves only by the coordinator's `release`, which checks the needs itself;
+the deal refuses a ready card that carries a hold and names `release`, so a held card that
+reached ready by any path still waits there (tla/Holds.tla NeedsSetH and DealH; reversed
+witnesses "needssetheld" and "dealheld"). `release` of a held card that is ready clears the hold
+and leaves it ready. A brief
 edit records its needs by the rule below, and a ready card that gains a need not
 landed waits until it lands (section 3, the brief verb). A brief edit's needs
 are the card's, not the text's: the text's `DEPENDS-ON:` is the admission-time
