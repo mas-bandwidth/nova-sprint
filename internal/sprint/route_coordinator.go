@@ -45,20 +45,33 @@ type RouteWakeReq struct {
 	Who    string
 }
 
-// routeTarget is what a target names: a provider (provider true, its routes) or one route
-// (its provider); ok is false when it names neither.
-func routeTarget(s *Snapshot, target string) (provider string, routes []string, isProvider, ok bool) {
-	for _, r := range s.Routes {
-		if r.Name == target {
-			return r.Provider, []string{r.Name}, false, true
+// routeTarget is what a target names on the route list nova-sprint routes shows
+// (RouteStats(s.Routes, s.Fleet)): a provider of the sprint's route set (isProvider
+// true, its routes) or one route in the sprint's route set (its provider); why is
+// non-empty when it names neither, naming nova-config apply --kind route when the
+// target is listed from the cards that ran on it (tla/RouteRest.tla, ResolveRoute).
+func routeTarget(s *Snapshot, target string) (provider string, routes []string, isProvider bool, why string) {
+	stats := RouteStats(s.Routes, s.Fleet)
+	storeRoutes := stats[:len(s.Routes)]
+	for _, x := range storeRoutes {
+		if x.Route.Name == target {
+			return x.Route.Provider, []string{x.Route.Name}, false, ""
 		}
 	}
-	for _, r := range s.Routes {
-		if r.Provider == target {
-			routes = append(routes, r.Name)
+	for _, x := range storeRoutes {
+		if x.Route.Provider == target {
+			routes = append(routes, x.Route.Name)
 		}
 	}
-	return target, routes, true, len(routes) > 0
+	if len(routes) > 0 {
+		return target, routes, true, ""
+	}
+	for _, x := range stats[len(s.Routes):] {
+		if x.Route.Name == target {
+			return x.Route.Provider, nil, false, target + " is listed from the cards that ran on it but is not in the sprint's route set: nova-config apply --kind route copies it, or rest its provider"
+		}
+	}
+	return target, nil, true, target + " names no route and no provider of a route (nova-sprint routes lists them)"
 }
 
 // RestRoutes is routes rest: the provider's routes or the one route rest from s.Now, cause
@@ -72,9 +85,9 @@ func RestRoutes(s *Snapshot, r RouteRestReq) Plan {
 		p.refuse(r.Target, "routes rest wants --reason: why the routes rest, in a few words")
 		return p
 	}
-	provider, routes, isProvider, ok := routeTarget(s, r.Target)
-	if !ok {
-		p.refuse(r.Target, r.Target+" names no route and no provider of a route (nova-sprint routes lists them)")
+	provider, routes, isProvider, why := routeTarget(s, r.Target)
+	if why != "" {
+		p.refuse(r.Target, why)
 		return p
 	}
 	until := OpenUntil
@@ -131,9 +144,9 @@ func WakeRoutes(s *Snapshot, r RouteWakeReq) Plan {
 		p.refuse(r.Target, "routes wake wants --reason: why the routes serve again, in a few words (a payment is funded's)")
 		return p
 	}
-	provider, routes, isProvider, ok := routeTarget(s, r.Target)
-	if !ok {
-		p.refuse(r.Target, r.Target+" names no route and no provider of a route (nova-sprint routes lists them)")
+	provider, routes, isProvider, why := routeTarget(s, r.Target)
+	if why != "" {
+		p.refuse(r.Target, why)
 		return p
 	}
 	end := func(rest RouteRest) RouteRest {

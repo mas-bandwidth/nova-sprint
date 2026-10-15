@@ -32,10 +32,13 @@ type memSnapshot struct {
 	Cleared  time.Time                 `json:"cleared"`
 	Owed     bool                      `json:"owed"`
 	// DefaultsOwed is the epoch the set-defaults owed flag names, 0 for none
-	DefaultsOwed uint64                  `json:"defaults_owed,omitempty"`
-	Logs         map[uint64]*logSnapshot `json:"logs,omitempty"`
-	KV           map[string]string       `json:"kv,omitempty"`
-	Seq          int                     `json:"seq"`
+	DefaultsOwed uint64                     `json:"defaults_owed,omitempty"`
+	Logs         map[uint64]*logSnapshot    `json:"logs,omitempty"`
+	KV           map[string]string          `json:"kv,omitempty"`
+	Seq          int                        `json:"seq"`
+	Providers    map[string]sprint.Provider `json:"providers,omitempty"`
+	Routes       []sprint.Route             `json:"routes,omitempty"`
+	Tiers        map[string][]string        `json:"tiers,omitempty"`
 }
 
 type tableSnapshot struct {
@@ -158,8 +161,13 @@ func (s *tableSnapshot) table() *memTable {
 func (m *Mem) Snapshot() ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	tiers := map[string][]string{}
+	for t, a := range m.tiers {
+		tiers[t] = append([]string(nil), a...)
+	}
 	s := memSnapshot{Version: SnapshotVersion, Tables: map[string]*tableSnapshot{}, Dropped: map[string]*residueSnap{}, Views: m.views,
-		EpochSet: m.epochSet, EpochN: m.epochN, Cleared: m.cleared, Owed: m.owed, DefaultsOwed: m.defaultsOwed, Logs: map[uint64]*logSnapshot{}, KV: m.kv, Seq: m.seq}
+		EpochSet: m.epochSet, EpochN: m.epochN, Cleared: m.cleared, Owed: m.owed, DefaultsOwed: m.defaultsOwed, Logs: map[uint64]*logSnapshot{}, KV: m.kv, Seq: m.seq,
+		Providers: maps.Clone(m.providers), Routes: append([]sprint.Route(nil), m.routes...), Tiers: tiers}
 	for n, t := range m.tables {
 		s.Tables[n] = snapTable(t)
 	}
@@ -234,6 +242,7 @@ func (m *Mem) Restore(doc []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.tables, m.dropped, m.views, m.logs, m.kv = tables, dropped, views, logs, kv
+	m.providers, m.routes, m.tiers = maps.Clone(s.Providers), append([]sprint.Route(nil), s.Routes...), s.Tiers
 	m.epochSet, m.epochN, m.cleared, m.owed, m.defaultsOwed, m.seq = s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.DefaultsOwed, s.Seq
 	return nil
 }

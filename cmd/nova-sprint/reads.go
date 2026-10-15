@@ -3082,7 +3082,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 	if t := sprint.TierRoutes(rs); t != "" {
 		fmt.Fprintln(stdout, "TIERS "+t)
 	}
-	for _, x := range stats {
+	for i, x := range stats {
 		r := x.Route
 		model := "-"
 		if r.Provider != "" {
@@ -3091,7 +3091,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		how := fmt.Sprintf("tier=%s enabled=%t", oneline.Field(orDashStr(r.Tier, "-")), r.Enabled)
 		if x.Pinned {
 			how = "pinned"
-		} else if r.Tier == "" {
+		} else if i >= len(rs) && r.Tier == "" {
 			how = "gone" // a route the cards name that the store no longer holds
 		}
 		fmt.Fprintf(stdout, "ROUTE %s model=%s %s attempts=%d ok=%d failed=%d provider_failures=%d mean_wall=%s rested_until=%s balance=%s\n",

@@ -35,9 +35,15 @@ func (a *app) planDry(verb string, c common, st *store.Store, step store.Step, s
 	if step.Plan == nil {
 		return refuse(stderr, verb, "this step has no plan to show; nothing was changed; run it without --dry-run")
 	}
-	snap, err := st.Load(context.Background(), step.Load, step.Extras)
+	ctx := context.Background()
+	snap, err := st.Load(ctx, step.Load, step.Extras)
 	if err != nil {
 		return a.readFailed(verb, err, stderr)
+	}
+	if step.Routes {
+		if err := st.RoutesInto(ctx, snap); err != nil {
+			return a.readFailed(verb, err, stderr)
+		}
 	}
 	p := step.Plan(snap)
 	var lines []string

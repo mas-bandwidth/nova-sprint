@@ -3042,9 +3042,13 @@ order the cards were dealt in, so a card brought to the front of its stream by
   resting (a refused take's credit rest included) or a route resting on its own line is
   refused, naming the rest, so a credit rest never loses its place in the all-out stop
   (`TestRoutesRestNeverReplacesARestThatHolds`). A wake is never a payment: `funded` says one, and the seat
-  never says `funded` to lift a rest no payment ended. Each is refused whole with no reason,
-  a name that is neither a route nor a provider of one, or (wake) nothing resting
-  (`TestTheCoordinatorRestsAndWakesRoutes`).
+  never says `funded` to lift a rest no payment ended. Each resolves its target from the
+  same `sprint.RouteStats` list `nova-sprint routes` shows (with and without `--dry-run`,
+  disabled routes included), and is refused whole with no reason, a card-only gone route
+  not in the sprint's route set (`<target> is listed from the cards that ran on it but is
+  not in the sprint's route set: nova-config apply --kind route copies it, or rest its
+  provider`), a name that is neither a route nor a provider of one, or (wake) nothing resting
+  (`TestTheCoordinatorRestsAndWakesRoutes`, `TestRoutesRestAndLimitResolveEveryListedRoute`).
   The property is one per provider, never one per route, so the table's properties
   (64, `ntable.LimitTableProps`) grow with the providers. At 100 routes over two
   providers, every route rested, the fleet table holds 4 properties

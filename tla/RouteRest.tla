@@ -64,6 +64,11 @@
 \*              the all-silent storm can keep being dealt forever.
 \*   "unbounded" the exhausted case: a 5xx at MaxReturns is still returned
 \*              untouched: Provider5xxReturnsBounded
+\*   "listwider" routes lists a route that routes rest / wake / limit refuses
+\*              with "names no route" (either because planDry omitted
+\*              Step.Routes on --dry-run, or because a card-referenced route
+\*              in Fleet is not in Routes and routeTarget says "names no
+\*              route" instead of the gone reason): ListedIsResolvable
 \* Not modelled: an out-of-credit return on a limited route shares the card's
 \* FieldRateReturns in the code; returns here counts the 5xx returns alone, and
 \* OutOfCreditSpendsNoRedeal still claims no spend past that bound. Counts takes
@@ -96,6 +101,30 @@ Flight == {"none", "after", "before"}
 \* a route's window: its ended takes and its take in flight
 Windows == [ends : Ends, flight : Flight]
 
+\* RouteStats(Routes, Fleet) lists the store's routes (Routes) and any gone
+\* route named only by the fleet table's work cards (CardRoutes). A step with
+\* Step.Routes loads Routes on both a real run and --dry-run (planDry,
+\* st.RoutesInto); under "listwider", --dry-run omits Step.Routes (empty set)
+\* and routeTarget refuses a gone route with "no_route" instead of "gone".
+CardRoutes == {"gone"}
+ListedRoutes == Routes \cup CardRoutes
+StepRoutes(dry) == IF dry /\ "listwider" \in Broken THEN {} ELSE Routes
+ResolveRoute(r, dry) ==
+    IF r \in StepRoutes(dry) THEN "route"
+    ELSE IF r \in CardRoutes /\ "listwider" \notin Broken THEN "gone"
+    ELSE "no_route"
+
+\* Every route nova-sprint routes lists is resolved by routes rest, routes wake
+\* and routes limit (real and --dry-run): on a coordinator rest or wake step, a
+\* route in Routes resolves as a store route ("route"), and a card-only route in
+\* ListedRoutes \ Routes is refused with the specific gone reason ("gone"),
+\* never "no_route".
+ListedIsResolvable ==
+    event \in {"coord", "wake"} =>
+        /\ \A r \in ListedRoutes, dry \in BOOLEAN : ResolveRoute(r, dry) # "no_route"
+        /\ \A r \in Routes, dry \in BOOLEAN : ResolveRoute(r, dry) = "route"
+        /\ \A r \in ListedRoutes \ Routes, dry \in BOOLEAN : ResolveRoute(r, dry) = "gone"
+
 \* Check sequence membership without enumerating all |Kinds|^W windows; the
 \* production W=10 silent replay has only eleven reachable windows.
 TypeOK ==
@@ -112,6 +141,7 @@ TypeOK ==
     /\ event \in Events \cup {"init"}
     /\ redeal \in 0..W
     /\ returns \in 0..MaxReturns
+    /\ ("listwider" \in Broken \/ ListedIsResolvable)
 
 Init ==
     /\ provRest = "none"

@@ -1395,7 +1395,11 @@ func RouteStats(routes []Route, fleet *Table) []RouteStat {
 		}
 		return &out[i]
 	}
-	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	var cards []*Card
+	if fleet != nil {
+		cards = fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn)
+	}
+	for _, c := range cards {
 		name := c.F(FieldRoute)
 		if name == "" {
 			continue

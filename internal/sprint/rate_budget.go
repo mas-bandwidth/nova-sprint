@@ -396,9 +396,9 @@ func SetRouteLimit(s *Snapshot, r RouteLimitReq) Plan {
 		p.refuse(r.Target, "a budget is a whole number, 0 clearing it, found "+strconv.Itoa(n))
 		return p
 	}
-	provider, routes, isProvider, ok := routeTarget(s, r.Target)
-	if !ok {
-		p.refuse(r.Target, r.Target+" names no route and no provider of a route (nova-sprint routes lists them)")
+	provider, routes, isProvider, why := routeTarget(s, r.Target)
+	if why != "" {
+		p.refuse(r.Target, why)
 		return p
 	}
 	var name, what string
