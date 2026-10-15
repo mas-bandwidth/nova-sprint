@@ -720,3 +720,6 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCSoftDependency.cfg	MCSoftDependency.tla	pass	-	ignore-terminal	softdependency	required	-
+MCSoftDependencyBrokenBlocksDeal.cfg	MCSoftDependency.tla	invariant	SoftNeverBlocksDeal	ignore-terminal	softdependency	required	-
+MCSoftDependencyBrokenAnyOrder.cfg	MCSoftDependency.tla	invariant	SoftLandsInOrder	ignore-terminal	softdependency	required	-

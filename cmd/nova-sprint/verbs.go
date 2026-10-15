@@ -162,8 +162,8 @@ func init() {
 		{"answer", "[--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]", "answer --dry-run", (*app).cmdAnswer},
 		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
 		{"card base", "<id> <branch> [--repo-dir <clone>]", "card base s1-4 main", (*app).cmdCardBase},
-		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCard},
-		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
+		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCardWithSoftDeps},
+		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
 		{"streams", "[--repo <owner/name>] [--release <name>] [--cards]", "streams --cards", (*app).cmdStreams},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
 		{"sentinels", "[--stream <s>]", "sentinels", (*app).cmdSentinels},
@@ -1577,7 +1577,11 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	step = promotionGuard(step, rs, *landProtected)
 	step = mirrorNotice(step, rs)
-	return a.runStep("add", *c, st, step, stdout, stderr)
+	code := a.runStep("add", *c, st, step, stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rs) {
+		return 2
+	}
+	return code
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
@@ -1585,6 +1589,20 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 // (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A
 // first-add mark is written onto the new control card in the same step as its first card.
 func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) store.Step {
+	extras := step.Extras
+	if extraIDs := sprint.AddSoftDepsExtras(rs); len(extraIDs) > 0 {
+		step.Extras = func(s *sprint.Snapshot) map[string][]string {
+			var m map[string][]string
+			if extras != nil {
+				m = extras(s)
+			}
+			if m == nil {
+				m = map[string][]string{}
+			}
+			m[sprint.Work] = append(m[sprint.Work], extraIDs...)
+			return m
+		}
+	}
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
 		if landProtected != "" {
@@ -1595,12 +1613,12 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 			if len(rs) != 1 || s.StreamCtl(stream) != nil {
 				return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "--land-protected marks a new stream only"}}}
 			}
-			return sprint.AddMarked(s, rs[0], landProtected)
+			return sprint.WithAddSoftDeps(s, sprint.AddMarked(s, rs[0], landProtected), rs)
 		}
 		if refused := sprint.PromotionRefusals(s, rs); len(refused) > 0 {
 			return sprint.Plan{Refused: refused}
 		}
-		return plan(s)
+		return sprint.WithAddSoftDeps(s, plan(s), rs)
 	}
 	return step
 }
@@ -1745,7 +1763,12 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	c.addStream = stream
 	c.addBefore = before
-	return a.runStep("add", *c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}, landProtected), stdout, stderr)
+	rsReq := []sprint.AddReq{r}
+	code = a.runStep("add", *c, st, promotionGuard(store.AddStep(r), rsReq, landProtected), stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
+		return 2
+	}
+	return code
 }
 
 // briefFiles is the brief files of a many-brief add, in order: the *.md files
@@ -3035,8 +3058,53 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}
-		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor})
+		req := sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor}
+		step := store.DropStep(req)
+		plan := step.Plan
+		step.Plan = func(snap *sprint.Snapshot) sprint.Plan {
+			return sprint.WithDropSoftDeps(snap, plan(snap), req)
+		}
+		return step
 	})
+}
+
+func (a *app) cmdCardWithSoftDeps(args []string, stdout, stderr io.Writer) int {
+	var buf bytes.Buffer
+	code := a.cmdCard(args, &buf, stderr)
+	out := buf.String()
+	if code != 0 || len(args) == 0 {
+		fmt.Fprint(stdout, out)
+		return code
+	}
+	fs, c := a.verbSetup("card")
+	brief := fs.Bool("brief", false, "")
+	fields := fs.Bool("fields", false, "")
+	all := fs.Bool("all", false, "")
+	stream := fs.String("stream", "", "")
+	atEpoch := fs.Int("at-epoch", -1, "")
+	pos, err := parse(fs, args)
+	if err == nil && len(pos) == 1 && !*brief && !*fields && !*all && *stream == "" && *atEpoch < 0 && !c.json {
+		if st, err := a.store(*c); err == nil {
+			if s, err := st.Load(context.Background(), []string{sprint.Work}, nil); err == nil {
+				if pr := s.Work.Card(pos[0]); pr != nil {
+					if soft := sprint.SoftDepsOf(s, pr); len(soft) > 0 {
+						softLine := "soft: " + strings.Join(soft, ",") + "\n"
+						if idx := strings.Index(out, "\nneeds:"); idx >= 0 {
+							end := strings.IndexByte(out[idx+1:], '\n')
+							if end >= 0 {
+								cut := idx + 1 + end + 1
+								out = out[:cut] + softLine + out[cut:]
+							}
+						} else if nl := strings.IndexByte(out, '\n'); nl >= 0 {
+							out = out[:nl+1] + softLine + out[nl+1:]
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Fprint(stdout, out)
+	return code
 }
 
 // cmdBrief replaces a primary's brief in place, on a running machine as on a stopped one
