@@ -44,15 +44,22 @@ func TestBriefSetBaseByIDsFileMovesEverySelectedCardsBase(t *testing.T) {
 	t.Parallel()
 	ta, ids := setBaseWorld(t)
 
+	code, _, errs := ta.do("brief --ids-file " + ids + " --set-base release-1")
+	require.Equal(t, 1, code)
+	assert.Contains(t, errs, "--replace-in-flight")
+	for _, id := range []string{"w", "x", "y"} {
+		assert.NotContains(t, ta.primary(id).F("brief"), "BASE: release-1", "refusal is atomic")
+	}
+
 	applies := ta.applies()
-	out := ta.dry("brief --ids-file " + ids + " --set-base release-1 --dry-run")
+	out := ta.dry("brief --ids-file " + ids + " --replace-in-flight --set-base release-1 --dry-run")
 	assert.Contains(t, out, "BRIEF OK DRY-RUN selected=3", out)
 	assert.Equal(t, applies, ta.applies(), "a dry run wrote")
 	for _, id := range []string{"w", "x", "y"} {
 		assert.NotContains(t, ta.primary(id).F("brief"), "BASE: release-1", "%s is untouched by a dry run", id)
 	}
 
-	out = ta.ok("brief --ids-file " + ids + " --set-base release-1")
+	out = ta.ok("brief --ids-file " + ids + " --replace-in-flight --set-base release-1")
 	assert.Contains(t, out, "BRIEF OK moved=3 refused=0", out)
 	for _, id := range []string{"w", "x", "y"} {
 		assert.Contains(t, ta.primary(id).F("brief"), "\nBASE: release-1\n", "%s's BASE moved", id)
@@ -71,13 +78,13 @@ func TestBriefSetBaseByStreamMovesEverySelectedCardsBase(t *testing.T) {
 	t.Parallel()
 	ta, _ := setBaseWorld(t)
 
-	out := ta.dry("brief --stream s1 --set-base release-1 --dry-run")
+	out := ta.dry("brief --stream s1 --replace-in-flight --set-base release-1 --dry-run")
 	assert.Contains(t, out, "BRIEF OK DRY-RUN selected=3", out)
 	for _, id := range []string{"w", "x", "y"} {
 		assert.NotContains(t, ta.primary(id).F("brief"), "BASE: release-1", "%s is untouched by a dry run", id)
 	}
 
-	out = ta.ok("brief --stream s1 --set-base release-1")
+	out = ta.ok("brief --stream s1 --replace-in-flight --set-base release-1")
 	assert.Contains(t, out, "BRIEF OK moved=3 refused=0", out)
 	for _, id := range []string{"w", "x", "y"} {
 		assert.Contains(t, ta.primary(id).F("brief"), "\nBASE: release-1\n", "%s's BASE moved", id)

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // --- a server build on a store missing its locked columns (v1.2.10, 13:11Z) ---

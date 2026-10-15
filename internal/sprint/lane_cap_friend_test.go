@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // cappedWords is how a capped lane's end names the cap, in the words nova-tools' friend
