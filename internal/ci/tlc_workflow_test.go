@@ -137,6 +137,11 @@ func ruleRecipe(t *testing.T, text, target string) string {
 // pull-request path trigger watches go.mod instead of the deleted tools/tlacheck.
 func TestTheTLCWorkflowRunsNovaToolsTlacheck(t *testing.T) {
 	t.Parallel()
+	gm, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	require.Contains(t, string(gm), "github.com/mas-bandwidth/nova-tools/tools/tlacheck", "go.mod's tool directive does not name nova-tools' tlacheck")
+	_, err = os.Stat("../../tools/tlacheck/main.go")
+	require.True(t, os.IsNotExist(err), "tools/tlacheck still exists")
 	mk, err := os.ReadFile("../../Makefile")
 	require.NoError(t, err)
 	mkText := string(mk)
