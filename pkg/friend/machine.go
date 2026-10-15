@@ -166,8 +166,7 @@ func PingText(seat string, since time.Time, nonce string) string {
 	return fmt.Sprintf("PING %s\nseat=%s since=%s\nAnswer first, before anything else, with one command: nova-friend pong --as <you> --nonce %s --queue <tasks queued> --working <tasks working> --width <your width>\nThen go on with what you were doing.", nonce, seat, since.UTC().Format(time.RFC3339), nonce)
 }
 
-// WakeMark marks a ping as a wake check (nova-friend ping --wake): a line of
-// its own in the ping's body.
+// WakeMark marks a ping as a wake check: a line of its own in the ping's body.
 const WakeMark = "wake=1"
 
 // IsWake says whether a ping's text asks for a wake check: one of its lines

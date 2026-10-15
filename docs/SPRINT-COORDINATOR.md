@@ -499,11 +499,11 @@ R1. **A friend is working only when its cards go from working to done; awake is 
     Done by: `nova-sprint friend cards <friend>`; `nova-sprint set --friend-finish <duration>` (past it the
     pass asks the friend what blocks it, and the blocker is removed).
 
-R2. **A friend whose session does not answer a wake ping is woken and fixed on the pass that sees it, never
-left overnight.**
+R2. **A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it,
+never left overnight.**
     Why: a friend slept deaf all night with work assigned to it.
-    Done by: `nova-friend ping --as <coordinator> --to <friend>`; `nova-friend wait-pong --from <friend> --nonce
-    <n>`; `nova-friend ping-install --as <coordinator> --every <duration>`. A cause on the owner's side (credit,
+    Done by: `nova-hook friends --json` (the one record of who is there; `nova-hook serve` challenges every
+    hooked friend once a minute); `nova-friend reach --as <coordinator> --to <friend>`. A cause on the owner's side (credit,
     keys, an account) is `nova-sprint friend down <friend> --reason <text>`, so its cards move, and a note to the
     owner.
 

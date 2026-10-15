@@ -350,7 +350,7 @@ func friendStallStops(s *Snapshot) []Stop {
 			out = append(out, Stop{Kind: StopKindFriendDown, Subject: f, Since: at,
 				What:   fmt.Sprintf("friend %s was marked down by the stall ladder (reason stalled) at %s", f, v),
 				Effect: "no card is dealt to the friend until activity releases the stall",
-				Undo:   "nova-friend ping --as <coordinator> --to " + f + " --wake; activity releases the stall", Signal: NFriendStall})
+				Undo:   "nova-friend reach --as <coordinator> --to " + f + "; activity releases the stall", Signal: NFriendStall})
 		}
 		v, _ := s.Fleet.Prop(PropFriendStallRung(f))
 		rung, _ := strconv.Atoi(v) // ignored: no rung, or one that does not read, is rung 0
@@ -368,9 +368,9 @@ func friendStallStops(s *Snapshot) []Stop {
 		out = append(out, Stop{Kind: StopKindFriendStalled, Subject: f,
 			What:   fmt.Sprintf("friend %s stalled: the stall ladder stands at rung %d of 5 (%s)", f, rung, did),
 			Effect: fmt.Sprintf("%d cards on the friend's row wait", cards),
-			Undo:   "nova-friend ping --as <coordinator> --to " + f + " --wake, or nova-sprint friend take " + f + " --all-unstarted",
+			Undo:   "nova-friend reach --as <coordinator> --to " + f + ", or nova-sprint friend take " + f + " --all-unstarted",
 			Signal: NFriendStalled, typ: NFriendStalled, primaries: []string{f},
-			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason 'stalled'", "ack", "wait"}})
+			decisions: []string{"nova-friend reach --as <coordinator> --to " + f, "friend take " + f + " --all-unstarted", "friend down " + f + " --reason 'stalled'", "ack", "wait"}})
 	}
 	return out
 }

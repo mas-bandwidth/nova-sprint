@@ -11,7 +11,7 @@ import "strconv"
 // coordinatorRules is the rules in order, coordinatorRules[i] rule i+1.
 var coordinatorRules = []string{
 	"A friend is working only when its cards go from working to done; awake is not working.",
-	"A friend whose session does not answer a wake ping is woken and fixed on the pass that sees it, never left overnight.",
+	"A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it, never left overnight.",
 	"Every 10 minutes the friend chain is walked, each friend to its lowest failing link: up, hears, delivered, started, progressing, finished, returned, balanced.",
 	"A returning friend or machine is brought up by evidence: its own beat, a pong, a card finished, never an expectation.",
 	"Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its outbox, and a brief names no path outside it.",

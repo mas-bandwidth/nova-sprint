@@ -332,7 +332,7 @@ func (ta *testApp) beatUp(friend string) {
 }
 
 // A friend is up only on her session's evidence: a wake ping her session answered under
-// sprint.FriendPongWindow old (or a card of hers finished); a beat is never evidence; held
+// the pong window old (or a card of hers finished); a beat is never evidence; held
 // while friend down holds her whatever she does, and friend up releases the hold without
 // counting as evidence. The rows go up, then held, then down, each by name
 // (store.FleetOrder).

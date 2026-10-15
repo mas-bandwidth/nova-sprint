@@ -67,7 +67,7 @@ type Status struct {
 	ProofSent time.Time `json:"proof_sent,omitzero"`
 	// HarnessSeen is what the harness check last read (HarnessRunning,
 	// HarnessNotSeen, or empty: cannot tell). Advisory: it
-	// never makes the friend down (alive.go, HarnessWatch).
+	// never makes the friend down (alive.go).
 	HarnessSeen string `json:"harness_seen,omitempty"`
 	// HarnessAlive is the rule the harness check read it by: RuleSession (the
 	// session's last turn) or RuleApp (the app in the process table); empty
