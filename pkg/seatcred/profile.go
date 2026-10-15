@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 )
 
 // A seat profile is one row of a tool's seats.tsv: the seat

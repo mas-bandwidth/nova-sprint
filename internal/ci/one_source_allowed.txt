@@ -22,5 +22,4 @@ member	DIVERGED: 113 unported lines, member.go conflicts
 ntable	DIVERGED: Clear / ns_table_clear and ChangesKey not in tools
 safepath	DIVERGED: twin-function fold conflicts with tools' own edit
 seatcred	DIVERGED: ErrNoProfileRow not in tools
-secrets	DIVERGED: ParseNameLine and sops remedies vs tools' changes
 swarm	DIVERGED: 459 unported lines and dashboardask.go; last to merge
