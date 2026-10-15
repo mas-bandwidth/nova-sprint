@@ -157,10 +157,11 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	code, out, errs = ta.do("check cards")
 	require.Equal(t, 1, code, "findings: %s%s", out, errs)
 	assert.Equal(t, []string{"needs a3", "files s1", "same-file a5", "bases b3", "names s3", "stale-fix a7", "lint a8"}, checkLines(out), out)
-	// the same-file finding is a warning (two cards of one stream): printed, failing nothing
-	kinds := "needs:1,files:1,bases:1,names:1,stale-fix:1,lint:1"
-	assert.Contains(t, out, "CHECK CARDS FAILED kinds="+kinds+" warned=same-file:1")
-	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6, and neither needs the other WARN serialized=same stream s1: ")
+	// a shared file is a warning: printed, failing nothing, ordering nothing
+	kinds := "needs:1,bases:1,names:1,stale-fix:1,lint:1"
+	assert.Contains(t, out, "CHECK CARDS FAILED kinds="+kinds+" warned=files:1,same-file:1")
+	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=work it out in the merge")
+	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6 WARN serialized=work it out in the merge")
 	assert.NotContains(t, out, "brief-size", "a record over the bound with a brief under it is no finding")
 	code, out, errs = ta.do("start")
 	require.Equal(t, 1, code, "refused: %s%s", out, errs)
@@ -283,11 +284,8 @@ func TestNewAppGatesStartOnTheCardCheck(t *testing.T) {
 	assert.NotEmpty(t, verbEffect["check cards"])
 }
 
-// v1.2.18 (the owner, 2026-10-13: "the gate keeps refusing on needs, bases, routes and brief
-// size, but only warns on file overlap that a sentinel or stream order already serializes"): a
-// check whose only findings are warnings is clean, prints each warning and why it is
-// serialized, and start proceeds; one unordered overlap more and the check fails and start
-// refuses (tla/MachineReady.tla Check, WarnsNeverFail, CleanRecordHasNoDefect).
+// A shared file warns and does not fail the check, ordered or not, and start proceeds.
+// A bad base still fails. The words name no wait path.
 func TestStartProceedsOverWarningsAndRefusesOverAnUnorderedOverlap(t *testing.T) {
 	t.Parallel()
 	ta := gateOn(t)
@@ -304,8 +302,8 @@ func TestStartProceedsOverWarningsAndRefusesOverAnUnorderedOverlap(t *testing.T)
 	code, out, errs := ta.do("check cards")
 	require.Equal(t, 0, code, "warnings alone are clean: %s%s", out, errs)
 	assert.Equal(t, []string{"files s1", "same-file a5"}, checkLines(out), out)
-	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=1 writer pair(s), each ordered by waits; first: b2 -> s1-stop (sentinel) -> a4 remedy=")
-	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6, and neither needs the other WARN serialized=same stream s1: ")
+	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=work it out in the merge remedy=")
+	assert.Contains(t, out, "CHECK same-file a5 internal/c.go is named in PATHS by a5 and a6 WARN serialized=work it out in the merge")
 	assert.Contains(t, out, "CHECK CARDS OK cards=8 warned=files:1,same-file:1")
 
 	var got struct {
@@ -328,21 +326,19 @@ func TestStartProceedsOverWarningsAndRefusesOverAnUnorderedOverlap(t *testing.T)
 	assert.True(t, ta.machineRunning(), "a check with warnings only starts the machine")
 	ta.ok("stop --reason 'the overlap below' --until 30m")
 
-	// a12 in s1 and b3 in s2 write internal/x/two.go (b2 too, by its glob), each ready or
-	// waiting on no card of s1 that writes it: an overlap no wait orders, which refuses
+	// a12 in s1 and b3 in s2 write internal/x/two.go with no need between them: still a
+	// warning, and start proceeds. A stream on the trunk still fails.
 	ta.seed(nil, nil, []ntable.BatchMemberEntry{
 		seedCard("b3", "s2", sprint.Ready, map[string]string{"brief": lintedBrief("b3", "sprint/s2", "internal/x/two.go")}),
 		seedCard("a12", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a12", "sprint/s1", "internal/x/two.go")}),
 	})
 	code, out, errs = ta.do("check cards")
-	require.Equal(t, 1, code, "an unordered overlap refuses: %s%s", out, errs)
-	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
-	assert.NotContains(t, out, "internal/x/two.go is written by streams s1 and s2 WARN")
-	assert.Contains(t, out, "CHECK CARDS FAILED kinds=files:1 warned=files:1,same-file:1")
-	code, out, errs = ta.do("start")
-	require.Equal(t, 1, code, "refused: %s%s", out, errs)
-	assert.Contains(t, errs, "run nova-sprint check cards: the last check found files:1")
-	assert.False(t, ta.machineRunning())
+	require.Equal(t, 0, code, "a shared file warns: %s%s", out, errs)
+	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 WARN serialized=work it out in the merge")
+	assert.Contains(t, out, "CHECK CARDS OK")
+	assert.NotContains(t, out, "FAILED")
+	ta.ok("start")
+	assert.True(t, ta.machineRunning(), "a shared file does not stop the sprint")
 }
 
 // --dry-run runs the card check and prints its findings (text and --json), leaving the epoch's
@@ -417,7 +413,7 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	}
 	code, out, errs := offline.do("check cards --from " + liveCards)
 	require.Equal(t, 0, code, "offline --from file: %s%s", out, errs)
-	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=1 writer pair(s), each ordered by waits; first: b2 -> s1-stop (sentinel) -> a4")
+	assert.Contains(t, out, "CHECK files s1 internal/x/one.go is written by streams s1 and s2 WARN serialized=work it out in the merge")
 	assert.Contains(t, out, "CHECK CARDS OK cards=6 warned=files:1")
 	assert.Equal(t, "no", offline.a.changed)
 
@@ -438,7 +434,7 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	assert.Contains(t, out, `"dry_run":true`)
 	assert.Contains(t, out, `"warned":"files:1"`)
 
-	// 3. an unordered overlap in the export refuses with exit 1
+	// 3. a shared file in the export warns and exits 0
 	ta.seed(nil, nil, []ntable.BatchMemberEntry{
 		seedCard("a12", "s1", sprint.Ready, map[string]string{"brief": lintedBrief("a12", "sprint/s1", "internal/x/two.go")}),
 		seedCard("b3", "s2", sprint.Ready, map[string]string{"brief": lintedBrief("b3", "sprint/s2", "internal/x/two.go")}),
@@ -447,7 +443,8 @@ func TestCheckCardsFromExportRunsWithoutAStore(t *testing.T) {
 	ta.ok("backup --file " + backupFile)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "trees", "owner__repo__sprint__s1.txt"), []byte(treeText), 0o600))
 	code, out, errs = offline.do("check cards --from " + backupFile)
-	require.Equal(t, 1, code, "offline --from backup with unordered overlap: %s%s", out, errs)
-	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 remedy=")
-	assert.Contains(t, out, "CHECK CARDS FAILED kinds=files:1 warned=files:1")
+	require.Equal(t, 0, code, "offline --from backup with a shared file: %s%s", out, errs)
+	assert.Contains(t, out, "CHECK files s1 internal/x/two.go is written by streams s1 and s2 WARN serialized=work it out in the merge")
+	assert.Contains(t, out, "CHECK CARDS OK")
+	assert.NotContains(t, out, "FAILED")
 }

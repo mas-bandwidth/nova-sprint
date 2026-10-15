@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 )
 

@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -9,14 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
+// cappedWords is how a capped lane's end names the cap, in the words nova-tools' friend
+// daemon writes (nova-tools pkg/friend CappedWords): `capped at <cap> (tier <tier>, overrun <d>)`.
+func cappedWords(limit time.Duration, tier string, overrun time.Duration) string {
+	return fmt.Sprintf("capped at %s (tier %s, overrun %s)", limit, tier, max(overrun, 0).Round(time.Second))
+}
+
 // cappedReport is the report a friend's capped lane finishes with, in the lane's own words
-// (internal/friend, TestALaneIsCappedByItsTier holds that the lane writes them).
+// (nova-tools' TestALaneIsCappedByItsTier holds that the lane writes them).
 func cappedReport() string {
-	return "friend bob HOLD: nova-friend lane 1 of bob finished card c1: " + friend.CappedWords(2*time.Minute, "flash", 3*time.Second) +
+	return "friend bob HOLD: nova-friend lane 1 of bob finished card c1: " + cappedWords(2*time.Minute, "flash", 3*time.Second) +
 		": the card's wall reached its tier's cap and the daemon ended the lane"
 }
 
@@ -58,11 +64,11 @@ func TestACappedFriendLaneIsReDealtOnceAtTheNextTierUp(t *testing.T) {
 	assert.Equal(t, "2m0s", capEntryOf(p.Units[0], "c1").Set[sprint.FieldLaneCap])
 }
 
-// The sprint reads the words a capped lane writes (friend.CappedWords): its cap, its
-// overrun and its tier.
+// The sprint reads the words a capped lane writes (cappedWords): its cap, its overrun and
+// its tier.
 func TestTheSprintReadsTheWordsACappedLaneWrites(t *testing.T) {
 	t.Parallel()
-	words := friend.CappedWords(15*time.Minute, "flash", 2400*time.Millisecond)
+	words := cappedWords(15*time.Minute, "flash", 2400*time.Millisecond)
 	lc, ok := sprint.ParseLaneCap("friend bob HOLD: nova-friend lane 1 of bob finished card c1: " + words + ": the card's wall ...")
 	require.True(t, ok, "the sprint reads the words the lane writes")
 	assert.Equal(t, sprint.LaneCap{Cap: 15 * time.Minute, Overrun: 2 * time.Second, Tier: "flash"}, lc)

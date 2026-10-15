@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
@@ -26,8 +26,8 @@ import (
 const (
 	CheckRoutes            = "routes"             // applied provider rows and funded route coverage
 	CheckNeeds             = "needs"              // 1: every need names a card of this epoch, not dropped; no self-need, no cycle
-	CheckFiles             = "files"              // 3: no file written by two streams
-	CheckSameFile          = "same-file"          // 5: no two cards of a stream name one PATHS file with no need between them
+	CheckFiles             = "files"              // 3: no file of one repository written by two streams; a path ending in .md is none
+	CheckSameFile          = "same-file"          // 5: no two cards of a stream name one PATHS file with no need between them; a path ending in .md is none
 	CheckBases             = "bases"              // 6: each stream on its own branch, never the trunk; no need across two bases
 	CheckNames             = "names"              // 7: each stream's display name set and readable
 	CheckStaleFix          = "stale-fix"          // 8: no card at priority fix with no failed attempt this epoch
@@ -62,14 +62,19 @@ var CheckKinds = []string{
 // on 2026-10-11): a card whose brief is over it is a finding of kind brief-size.
 const DrainBriefBytes = 16384
 
-// The severity of a finding (v1.2.18, the owner, 2026-10-13: "the gate keeps refusing on needs,
-// bases, routes and brief size, but only warns on file overlap that a sentinel or stream order
-// already serializes"). A refusing finding fails the check and start; a warning is printed and
-// recorded and fails neither. Only a files or same-file finding whose writers are provably
-// ordered is a warning (serializedFiles, sameFile); every other finding refuses.
+// The severity of a finding. A refusing finding fails the check and start; a warning is
+// printed and recorded and fails neither. A shared file (files, same-file) is always a
+// warning and never an order: a need is only for code that builds on other code, and a
+// shared file is worked out in the merge (Glenn, 2026-10-15). Bases, names, needs and the
+// other kinds still refuse.
+//
+// overlapWarn is the warning's serialized words. It names no wait path.
 const (
 	SeverityRefuse = "refuse"
 	SeverityWarn   = "warn"
+
+	overlapWarn   = "work it out in the merge"
+	overlapRemedy = "work the overlap out in the merge; add a need only when one card's code builds on the other's"
 )
 
 // CardFinding is one finding of the card check: its kind, the card or stream it is about, what
@@ -151,7 +156,6 @@ type cardCheck struct {
 	in      CardCheckIn
 	open    []*Card // placed, not landed, in a stream checked, in id order
 	streams []string
-	waitsOn map[string][]string // each card's WaitsFor, read once (waitPath)
 }
 
 // CheckCards runs the core kinds over the snapshot's work table and streams and returns every
@@ -340,181 +344,86 @@ func (c *cardCheck) written(card *Card) (files map[string]bool, patterns []strin
 	return files, patterns
 }
 
-// files is kind 3: no file is written by two streams. Each stream's files are the union of its
-// open cards' PATHS, expanded at their base tree (the tree add's admission reads); a file every
-// card may write (everyCardWrites) is no finding. The finding names both streams; the remedy is
-// the owner's three ways out. A finding whose every pair of writing cards, one of each stream,
-// is ordered by the work table's waits (serializedFiles) is a warning (v1.2.18); any other
-// refuses.
+// files is kind 3: a file of one repository written by two streams is a warning, never a
+// failure, and it orders nothing. The key is the brief's named repository
+// (ReadCardBase.Named, the REPO: or base-repo: line) plus the path. The same path in two
+// repositories is two files. A path ending in .md is no finding: docs merge trivially.
+// Each stream's other files are the union of its open cards' PATHS, expanded at their base
+// tree (the tree add's admission reads); a file every card may write (everyCardWrites) is
+// no finding.
 func (c *cardCheck) files() []CardFinding {
 	type side struct {
-		files    map[string]bool
-		patterns []string
+		files    map[string]bool // repo + NUL + path
+		patterns []string        // repo + NUL + pattern
 	}
 	by := map[string]*side{}
-	writes := map[string]*side{} // each open card's own files and patterns, by card id
 	for _, card := range c.open {
 		sd := by[card.Row]
 		if sd == nil {
 			sd = &side{files: map[string]bool{}}
 			by[card.Row] = sd
 		}
+		repo := swarm.ReadCardBase([]byte(card.F("brief"))).Named
 		fs, ps := c.written(card)
 		for f := range fs {
-			sd.files[f] = true
+			sd.files[repo+"\x00"+f] = true
 		}
-		sd.patterns = append(sd.patterns, ps...)
-		writes[card.ID] = &side{files: fs, patterns: ps}
-	}
-	// writersOf is the open cards of a stream that may write f: f among its files, or a
-	// pattern of its covering f, covered by f, or f itself. It errs wide: a card more is a
-	// pair more to order, never a pair less.
-	writersOf := func(stream, f string) []string {
-		var out []string
-		for _, card := range c.open {
-			if card.Row != stream {
-				continue
-			}
-			w := writes[card.ID]
-			hit := w.files[f] || slices.ContainsFunc(w.patterns, func(p string) bool {
-				return p == f || diffcheck.Covers(p, f) || diffcheck.Covers(f, p)
-			})
-			if !hit && strings.ContainsAny(f, "*?[") {
-				for g := range w.files {
-					if diffcheck.Covers(f, g) {
-						hit = true
-						break
-					}
-				}
-			}
-			if hit {
-				out = append(out, card.ID)
-			}
+		for _, p := range ps {
+			sd.patterns = append(sd.patterns, repo+"\x00"+p)
 		}
-		return out
 	}
-	const remedy = "move the card to one stream, split the shared change into a producer-stream card the other needs, or merge the streams"
 	var out []CardFinding
 	said := map[string]bool{}
-	clash := func(a, b, f string) {
-		if everyCardWrites(f) {
+	pathOf := func(key string) string {
+		_, path, _ := strings.Cut(key, "\x00")
+		return path
+	}
+	repoOf := func(key string) string {
+		repo, _, _ := strings.Cut(key, "\x00")
+		return repo
+	}
+	clash := func(a, b, key string) {
+		f := pathOf(key)
+		if everyCardWrites(f) || strings.HasSuffix(f, ".md") {
 			return
 		}
-		key := a + "\x00" + b + "\x00" + f
-		if said[key] {
+		seen := a + "\x00" + b + "\x00" + key
+		if said[seen] {
 			return
 		}
-		said[key] = true
-		finding := refusing(CheckFiles, a, f+" is written by streams "+a+" and "+b, remedy)
-		if why, ok := c.serializedFiles(writersOf(a, f), writersOf(b, f)); ok {
-			finding.Severity, finding.Serialized = SeverityWarn, why
-		}
-		out = append(out, finding)
+		said[seen] = true
+		out = append(out, warning(CheckFiles, a, f+" is written by streams "+a+" and "+b, overlapRemedy, overlapWarn))
+	}
+	covers := func(patternKey, fileKey string) bool {
+		return repoOf(patternKey) == repoOf(fileKey) && diffcheck.Covers(pathOf(patternKey), pathOf(fileKey))
 	}
 	for i, a := range c.streams {
 		for _, b := range c.streams[i+1:] {
 			sa, sb := by[a], by[b]
-			for _, f := range checkFilesSorted(sa.files) {
-				if sb.files[f] || slices.ContainsFunc(sb.patterns, func(p string) bool { return diffcheck.Covers(p, f) }) {
-					clash(a, b, f)
+			for _, fk := range checkFilesSorted(sa.files) {
+				if sb.files[fk] || slices.ContainsFunc(sb.patterns, func(p string) bool { return covers(p, fk) }) {
+					clash(a, b, fk)
 				}
 			}
-			for _, p := range sa.patterns {
-				for _, f := range checkFilesSorted(sb.files) {
-					if diffcheck.Covers(p, f) {
-						clash(a, b, f)
+			for _, pk := range sa.patterns {
+				for _, fk := range checkFilesSorted(sb.files) {
+					if covers(pk, fk) {
+						clash(a, b, fk)
 					}
 				}
-				for _, q := range sb.patterns {
+				for _, qk := range sb.patterns {
+					if repoOf(pk) != repoOf(qk) {
+						continue
+					}
+					p, q := pathOf(pk), pathOf(qk)
 					if p == q || diffcheck.Covers(p, q) || diffcheck.Covers(q, p) {
-						clash(a, b, q)
+						clash(a, b, qk)
 					}
 				}
 			}
 		}
 	}
 	return out
-}
-
-// serializedFiles says every pair of writers, one of as and one of bs, is ordered: one waits
-// for the other through the work table's live waits (waitPath), and says how, naming the
-// first pair's path and any sentinel on it. No writers on a side, or one pair unordered, is no
-// order: the finding refuses.
-func (c *cardCheck) serializedFiles(as, bs []string) (string, bool) {
-	if len(as) == 0 || len(bs) == 0 {
-		return "", false
-	}
-	first := ""
-	for _, a := range as {
-		for _, b := range bs {
-			p := c.waitPath(a, b)
-			if p == nil {
-				p = c.waitPath(b, a)
-			}
-			if p == nil {
-				return "", false
-			}
-			if first == "" {
-				first = c.pathWords(p)
-			}
-		}
-	}
-	return fmt.Sprintf("%d writer pair(s), each ordered by waits; first: %s", len(as)*len(bs), first), true
-}
-
-// waitPath is a path by which from waits for to, from first, through the work table's live
-// waits at any depth (WaitsFor: each named need not landed and not waived, and a waiting
-// card's stop, or a stop's line before it), nil when there is none. A need already landed or
-// waived orders nothing and is not followed, nor is one on no card or a dropped one. A stop
-// the coordinator releases while its line is still under way lets what waits on it start:
-// that release is the coordinator's decision, made with the stop's line in view.
-func (c *cardCheck) waitPath(from, to string) []string {
-	if c.waitsOn == nil {
-		c.waitsOn = map[string][]string{}
-	}
-	parent := map[string]string{from: ""}
-	queue := []string{from}
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		ws, ok := c.waitsOn[id]
-		if !ok {
-			if card := c.s.Work.Card(id); card != nil {
-				ws = WaitsFor(c.s, card, nil)
-			}
-			c.waitsOn[id] = ws
-		}
-		for _, n := range ws {
-			if _, seen := parent[n]; seen {
-				continue
-			}
-			if nc := c.s.Work.Card(n); nc == nil || !nc.Placed() {
-				continue // a need on no card or a dropped one is kind 1's, and orders nothing
-			}
-			parent[n] = id
-			if n == to {
-				var path []string
-				for x := to; x != ""; x = parent[x] {
-					path = append([]string{x}, path...)
-				}
-				return path
-			}
-			queue = append(queue, n)
-		}
-	}
-	return nil
-}
-
-// pathWords is a wait path as words, "a -> s (sentinel) -> b".
-func (c *cardCheck) pathWords(path []string) string {
-	words := make([]string, len(path))
-	for i, id := range path {
-		words[i] = id
-		if card := c.s.Work.Card(id); card != nil && IsSentinel(card) {
-			words[i] += " (sentinel)"
-		}
-	}
-	return strings.Join(words, " -> ")
 }
 
 func checkFilesSorted(m map[string]bool) []string {
@@ -554,11 +463,10 @@ func (c *cardCheck) reaches(from, to string) bool {
 }
 
 // sameFile is kind 5: two open cards of one stream that name one PATHS file with no need between
-// them, either way, would edit it at once: the rule add's sharedPaths applies to the cards of
-// one add (cardgen.RefuseOverlaps), here over the stored cards. A file every card may write is
-// no finding. Both writers are of one stream, whose one lander lands its cards in line order,
-// so every finding of this kind is a warning (v1.2.18): stream order serializes the landing,
-// and an edit the second card's landing finds conflicting goes back to rework.
+// them, either way. It is a warning and it orders nothing: a need is only for code that builds
+// on other code, and the overlap is worked out in the merge. A file every card may write is
+// no finding. A path ending in .md is no finding. A pair that already has a need either way
+// is not a finding: that need was chosen because the code builds on the other card.
 func (c *cardCheck) sameFile() []CardFinding {
 	var out []CardFinding
 	for _, stream := range c.streams {
@@ -569,7 +477,7 @@ func (c *cardCheck) sameFile() []CardFinding {
 				continue
 			}
 			for _, p := range pathsOf(card.F("brief")) {
-				if everyCardWrites(p) || contains(named[p], card.ID) {
+				if everyCardWrites(p) || strings.HasSuffix(p, ".md") || contains(named[p], card.ID) {
 					continue
 				}
 				if len(named[p]) == 0 {
@@ -586,20 +494,13 @@ func (c *cardCheck) sameFile() []CardFinding {
 					if c.reaches(a, b) || c.reaches(b, a) {
 						continue
 					}
-					f := refusing(CheckSameFile, a, p+" is named in PATHS by "+a+" and "+b+", and neither needs the other",
-						"nova-sprint needs set "+b+" --needs "+a+" (or the other way), or take "+p+" off one card's PATHS")
-					f.Severity, f.Serialized = SeverityWarn, sameStreamWords(stream)
-					out = append(out, f)
+					out = append(out, warning(CheckSameFile, a, p+" is named in PATHS by "+a+" and "+b,
+						overlapRemedy, overlapWarn))
 				}
 			}
 		}
 	}
 	return out
-}
-
-// sameStreamWords is why a same-file finding is a warning.
-func sameStreamWords(stream string) string {
-	return "same stream " + stream + ": its lander lands its cards in line order"
 }
 
 // StreamBranchOf is the branch a stream lands on: its control card's stream branch, else

@@ -3,7 +3,6 @@ package sprint
 import (
 	"cmp"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 	"maps"
 	"regexp"
 	"slices"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
@@ -1541,6 +1542,13 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
+	if friend, ok := FriendOfRow(r.As); ok && (r.Lane != 0 || r.LaneByID) && s.FriendIsOneShot(friend) {
+		// a one-shot friend's row is worked by a member, by count, never by a friend lane
+		// (FriendOneShot): a lane's take for it is refused, naming the member that serves it
+		var p Plan
+		p.refuse("take", OneShotLaneRefusal(friend))
+		return p
+	}
 	if r.LaneByID {
 		return NamedLaneTake(s, r)
 	}
@@ -1617,6 +1625,11 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 		return width, ""
 	}
 	if !s.Fleet.HasRow(as) {
+		if slices.ContainsFunc(s.Friends, func(x FriendSeat) bool { return x.Name == as }) {
+			// a friend's bare name is no row: her lanes take under her row, one lane a card
+			// (the coordinator's ask of 2026-10-14: a bare take bounced, a lane's held)
+			return 0, "no fleet member " + as + ": " + as + " is a friend; the friend's lanes take as take --as " + FriendRow(as) + " --lane <n>, n from 1 to the friend's width"
+		}
 		return 0, "no fleet member " + as
 	}
 	// a member held by an uncleared environment fault takes nothing: the fault is the
@@ -1769,7 +1782,17 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	for _, c := range chosen {
 		set, unset := takenStamps(c, s.Now), []string{"untaken_since"}
 		if friend, ok := FriendOfRow(r.As); ok {
-			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			// a friend's own take (take --as friend.<name>, by count, by id or by lane) is her
+			// start, as a lane's take is (laneSet): the tick never puts it back ready as
+			// unstarted (friendUnstartedWorking); only its lease or its deadline ends it. The
+			// fault of 2026-10-14 20:30:21 EDT: friend.emma took a card and the same tick moved
+			// it working -> ready (tla/FriendLaneClient.tla in nova-tools, TakenStaysTaken;
+			// witness MCFriendLaneClientBrokenTickUnstarts.cfg). A read keeps the take alone.
+			if isRead(c) {
+				set, unset = friendTaken(s, c, friend)
+			} else {
+				set, unset = friendStartSet(s, c, friend)
+			}
 		}
 		if r.Lane == 0 {
 			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)

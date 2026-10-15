@@ -6,47 +6,25 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
 )
 
-// syncedBuf is a bytes.Buffer safe for the server and hook children, which write
-// from several goroutines at once.
-type syncedBuf struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (s *syncedBuf) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.Write(p)
-}
-
-func (s *syncedBuf) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.String()
-}
-
 // builtSprint is how this package's functional test runs nova-sprint verbs when
 // it needs the real binary: it builds it once, starts the test's own Redis, and
-// runs every verb, the server and the hook through a scrubbed environment with
+// runs every verb through a scrubbed environment with
 // --redis <the test's own store>, so a verb can never reach a live sprint server
 // however the machine is set up (forward.go). It is the counterpart of
 // cmd/nova-sprint's in-process helper for a test that lives outside that package.
@@ -57,12 +35,8 @@ type builtSprint struct {
 	store string
 }
 
-// newBuiltSprint builds the real nova-sprint binary, starts the test's own Redis
-// (with the function library loaded), and makes the helper: an environment with
-// no NOVA_* variable from the machine, a home and config directory of the test's
-// own, and a cache directory short enough for the hook's unix socket (hookSocket
-// puts it at <cache>/nova-sprint/hook-<actor>.sock), so the seat record is the
-// test's and there is no named server. One store serves the whole test.
+// newBuiltSprint builds the real binary and starts an isolated functional store,
+// with no host NOVA_* variables and a temporary home and configuration.
 func newBuiltSprint(t *testing.T) *builtSprint {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "nova-sprint")
@@ -73,28 +47,18 @@ func newBuiltSprint(t *testing.T) *builtSprint {
 	build.Env = goenv.Clean(os.Environ())
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, "building nova-sprint: %s", out)
-	// the store is the test's own redis: the built binary arms the hook gate for
-	// every name (hook.go), and proving the seat needs the sprint's server, which
-	// run --listen refuses on a twin.
 	store := testutil.Start(t)
 	rc := redis.NewClient(&redis.Options{Addr: store})
 	t.Cleanup(func() { _ = rc.Close() })
 	require.NoError(t, fn.Load(context.Background(), rc))
-	// the seat's bus store is the test's own Redis (NOVA_BUS_REDIS below), and the
-	// hook reads its own bus stream to answer the bus half of the challenge. Seed
-	// that stream so the hook arms at its tail: an absent stream answers Tail with
-	// no id, which Redis then refuses as a cursor.
-	_, err = rc.XAdd(context.Background(), &redis.XAddArgs{Stream: bus.StreamOf("coordinator"), Values: map[string]any{"seed": "1"}}).Result()
-	require.NoError(t, err)
 	home := t.TempDir()
-	cache := shortCache(t)
 	env := append(withoutNOVA(goenv.Clean(os.Environ())),
 		"NOVA_SPRINT_REDIS="+store,
 		"NOVA_BUS_REDIS="+store,
 		"NOVA_SPRINT_ACTOR=coordinator",
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME="+cache,
+		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 	)
 	return &builtSprint{t: t, bin: bin, env: env, store: store}
 }
@@ -118,83 +82,23 @@ func (s *builtSprint) run(args ...string) (int, string) {
 	return 0, b.String()
 }
 
-// serve starts the sprint's server on a loopback port and waits until it is
-// listening, so the hook and the seat's proof have a server to reach; it returns
-// the server's address. The server stays live for the rest of the test.
-func (s *builtSprint) serve() string {
+// proveCoordinator gives the isolated functional store the record that nova-hook owns.
+// This test exercises admission, not the heartbeat or delivery adapters.
+func (s *builtSprint) proveCoordinator() {
 	s.t.Helper()
-	addr := net.JoinHostPort("127.0.0.1", testutil.FreePort(s.t))
-	serverEnv := append(s.env, "NOVA_SPRINT_SERVER="+addr)
-	server := exec.Command(s.bin, "run", "--listen", addr, "--redis", s.store)
-	server.Env = serverEnv
-	buf := &syncedBuf{}
-	server.Stdout, server.Stderr = buf, buf
-	require.NoError(s.t, server.Start())
-	s.t.Cleanup(func() { _ = server.Process.Kill(); _ = server.Wait() })
-	require.Eventually(s.t, func() bool {
-		return strings.Contains(buf.String(), "SERVER listening")
-	}, 30*time.Second, 50*time.Millisecond, "the server did not listen")
-	return addr
-}
-
-// hook starts the seat's hook against the server at addr and returns its buffer,
-// which the caller reads after its wait for the challenge. The hook holds the
-// seat's subscription for the rest of the test.
-func (s *builtSprint) hook(addr string) *syncedBuf {
-	s.t.Helper()
-	hookEnv := append(s.env, "NOVA_SPRINT_SERVER="+addr)
-	hook := exec.Command(s.bin, "hook", "--redis", s.store)
-	hook.Env = hookEnv
-	buf := &syncedBuf{}
-	hook.Stdout, hook.Stderr = buf, buf
-	require.NoError(s.t, hook.Start())
-	s.t.Cleanup(func() { _ = hook.Process.Kill(); _ = hook.Wait() })
-	return buf
-}
-
-// shortCache is the cache directory handed to the built binary: short enough that
-// the hook's unix socket (<cache>/nova-sprint/hook-<actor>.sock) stays under the
-// platform's path limit, wherever the checkout sits. os.TempDir (=$TMPDIR) is deep
-// on this sandbox and overflows a unix socket's path, and /tmp, /dev/shm and
-// /var/tmp are not writable here, so the directory is made under the first short
-// writable base that holds the socket: /tmp, then the GOCACHE directory's parent,
-// then os.TempDir, each checked before it is used. The bound is twinSocketMax, the
-// codebase's conservative unix-socket path limit (macOS holds fewer than Linux).
-func shortCache(t *testing.T) string {
-	t.Helper()
-	for _, base := range []string{"/tmp", gocacheParent(), os.TempDir()} {
-		if base == "" {
-			continue
-		}
-		dir, err := os.MkdirTemp(base, "nsc")
-		if err != nil {
-			continue
-		}
-		sock := filepath.Join(dir, "nova-sprint", "hook-coordinator.sock")
-		if !filepath.IsAbs(dir) || len(sock) > 100 {
-			_ = os.RemoveAll(dir)
-			continue
-		}
-		t.Cleanup(func() { _ = os.RemoveAll(dir) })
-		return dir
-	}
-	t.Fatal("no directory short enough for the hook's unix socket could be made")
-	return ""
-}
-
-// gocacheParent is the directory that holds the build cache (os.Getenv("GOCACHE")),
-// the one short writable location on this sandbox, or "" when it is unset or not
-// absolute.
-func gocacheParent() string {
-	dir := os.Getenv("GOCACHE")
-	if dir == "" {
-		return ""
-	}
-	parent := filepath.Dir(dir)
-	if !filepath.IsAbs(parent) {
-		return ""
-	}
-	return parent
+	ctx := context.Background()
+	rc := redis.NewClient(&redis.Options{Addr: s.store})
+	defer rc.Close()
+	store := hook.Store{C: rc}
+	_, _, err := store.HookAs(ctx, "coordinator", hook.Coordinator, "fixture")
+	require.NoError(s.t, err)
+	holder := hook.Holder{Store: store, Name: "coordinator", Role: hook.Coordinator, Pushes: hook.PushesOf(hook.Coordinator), By: "fixture"}
+	require.NoError(s.t, holder.Start(ctx))
+	require.NoError(s.t, holder.Beat(ctx, map[hook.Push]bool{hook.Bus: true, hook.Sprint: true}))
+	now, err := rc.Time(ctx).Result()
+	require.NoError(s.t, err)
+	require.NoError(s.t, rc.HSet(ctx, hook.ServeKey, "at", now.UnixMilli(), "every", hook.BeatEvery.Milliseconds(), "by", "fixture").Err())
+	require.NoError(s.t, rc.HSet(ctx, hook.RecordKey("coordinator"), "answered_at", now.UnixMilli()).Err())
 }
 
 // withoutNOVA is the environment minus every NOVA_* variable: no variable from

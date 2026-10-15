@@ -543,7 +543,7 @@ SwitchRestart == /\ midSwitch = FALSE
                                 rolledOnRefusal, landTried>>
                  /\ Restarted
 
-\* The seat runs nova-sprint hook and answers the challenge: the gate lets a hand
+\* The seat runs nova-hook hook and answers the challenge: the gate lets a hand
 \* land run (the automatic pass never waits on it).
 SeatHooksIn == /\ midSwitch = FALSE
                /\ ~hooked

@@ -116,12 +116,12 @@ PACKET s1-1.w1 attempt=1 gen=1 epoch=0
   base: the stream's base
   notes: none
   report it: nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --branch sprint/s1-1.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
-TAKE OK moved=1 refused=0 notes=0 op=take-t32-1
+TAKE OK moved=1 refused=0 notes=0 op=take-t30-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --report done
 MOVED s1-1.w1 working -> done ok; s1-1 working -> review
-FINISH OK moved=1 refused=0 notes=1 op=finish-t33-1
+FINISH OK moved=1 refused=0 notes=1 op=finish-t31-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -144,12 +144,12 @@ PACKET s1-1.r1.m2 attempt=1 gen=1 epoch=0
   notes: none
   attribution: the By: line, the Co-Authored-By trailer and the model or harness named are never a finding and never decide a verdict
   report it: nova-sprint read --as m2 (--ok | --broken) s1-1.r1.m2 --epoch 0 --finding '<file:line, and what to change>'
-TAKE OK moved=1 refused=0 notes=0 op=take-t37-1
+TAKE OK moved=1 refused=0 notes=0 op=take-t35-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as m2 --ok s1-1.r1.m2@1 --epoch 0
 MOVED s1-1.r1.m2 working -> ok (retired: read by m2)
-READ OK moved=1 refused=0 notes=0 op=read-t38-1
+READ OK moved=1 refused=0 notes=0 op=read-t36-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -162,7 +162,7 @@ TICK OK state=RUNNING idle=no moved=3 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=3 op=merge-t43-1
+MERGE OK moved=1 refused=0 notes=3 op=merge-t41-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
@@ -238,13 +238,13 @@ PACKET s1-2.w1 attempt=1 gen=1 epoch=0
   base: the stream's base
   notes: none
   report it: nova-sprint finish --as m1 s1-2.w1@1 --epoch 0 --branch sprint/s1-2.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
-TAKE OK moved=2 refused=0 notes=0 op=take-t31-1
+TAKE OK moved=2 refused=0 notes=0 op=take-t29-1
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0 --failed --report 'the tests went red'
 MOVED s1-1.w1 working -> done failed; s1-1 working -> review
 MOVED s1-2.w1 working -> done failed; s1-2 working -> review
-FINISH OK moved=2 refused=0 notes=1 op=finish-t32-1
+FINISH OK moved=2 refused=0 notes=1 op=finish-t30-1
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -257,14 +257,14 @@ TICK OK state=RUNNING idle=no moved=3 notes=0
 
 $ nova-sprint answer --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
 judgment        card  kind    verb    p     act     why
-finish-t32-1.1  s1-1  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-1 --one
-finish-t32-1.1  s1-2  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-2 --one
+finish-t30-1.1  s1-1  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-1 --one
+finish-t30-1.1  s1-2  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-2 --one
 ANSWER OK rows=2 applied=0 would_apply=0 listed=2 refused=0 failed=0 left=0 outcomes=0 bar=- record=./judgment.jsonl; run: nova-sprint inbox
 
 $ nova-sprint answer --bar 0.8 --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
 judgment        card  kind    verb    p     act      why
-finish-t32-1.1  s1-1  failed  rework  0.91  applied  nova-sprint rework s1-1 --one --op decide.finish-t32-1.1_s1-1
-finish-t32-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --one --op decide.finish-t32-1.1_s1-2
+finish-t30-1.1  s1-1  failed  rework  0.91  applied  nova-sprint rework s1-1 --one --op decide.finish-t30-1.1_s1-1
+finish-t30-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --one --op decide.finish-t30-1.1_s1-2
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
@@ -399,31 +399,11 @@ every streaming verb writes each line to stdout as one `write(2)` (there is no
 user-space buffer to flush), so the line is readable on a real OS pipe within
 one second while the verb still runs. A regression that buffered stdout without
 flushing it would hide the line until the verb exited and fail the guard
-(docs/SPEC-SPRINT.md, "The hook"). The streaming verbs are `hook` (streams
-HOOK CHALLENGE and its messages until `unhook`), `where --watch` (a frame every
+(docs/SPEC-SPRINT.md, "The hook"). The streaming verbs are `where --watch` (a frame every
 `--every` until interrupted) and `watch --wake` (blocks, then prints its one
 WAKE line). `log` has no follow mode and prints every line it has and exits, so
 there is no `log -f` stream to guard.
 
-- Unit, `cmd/nova-sprint/hook_test.go`:
-  `TestHookFlushesAfterChallenge` runs `hook` against a private server with its
-  stdout a real OS pipe (`os.Pipe`) and asserts the HOOK CHALLENGE line is
-  readable within 1s while the hook still runs; then ends it with `unhook`.
-- Functional (`-tags functional`), `cmd/nova-sprint/hook_flush_functional_test.go`:
-  `TestHookFlushesAfterChallengeOnTheStore` does the same on a private
-  redis-server, the store named explicitly with `--redis` on every verb, in a
-  scrubbed environment.
-- Unit, `cmd/nova-sprint/hook_compact_test.go`:
-  `TestHookCompactPrintsOnlyWhatTheSeatActsOn` runs `hook --compact --overdue 2s`
-  against a private server and store with its stdout a real OS pipe, proves it,
-  raises one card-holding judgment and one HAPPENED note addressed to the seat and
-  checks that the JUDGMENT and its first detail line are read as `PUSH <id> JUDGMENT ...` with no acknowledge menu and that the HAPPENED push is not
-  printed; it asserts that one `OVERDUE <alias> <age> <kind> :: <cards>` line is
-  read past `--overdue` and a second after another interval, and that none is
-  read once the judgment is answered. `TestCompactSayPrintsACriticalJudgment`
-  pins that a judgment whose cards wait on it (its group line prefixed
-  `CRITICAL <n> behind:`) is printed, not dropped. (docs/SPEC-SPRINT.md,
-  "The hook"; docs/CLI.md, `nova-sprint hook --compact`.)
 - Unit, `cmd/nova-sprint/flush_stream_test.go`:
   `TestWhereWatchFlushesEveryFrame` runs `where --watch --every 20ms` against the
   test store with its stdout a real OS pipe and asserts a frame is readable
@@ -431,22 +411,30 @@ there is no `log -f` stream to guard.
   end; `TestWatchWakeFlushesTheWake` runs `watch --wake` with its stdout a real
   OS pipe and asserts its WAKE line is readable within 1s.
 
-### The ready to merge notice and its hook push
+### The ready to merge notice on the coordinator's bus
 
 The "ready to merge" notice names only the cards newly accepted and the group's
 count, one line; it never accumulates the primaries of every accept the group has
-seen, and an informational HAPPENED push is not re-pushed on reconnect once
-acknowledged. `hook --quiet-happened` makes the seat receive judgments and
-challenges only, not the informational HAPPENED pushes.
+seen, and once told it is not sent the coordinator again.
 
 - Unit, `cmd/nova-sprint/ready_merge_push_test.go`:
   `TestReadyToMergePushNamesOnlyTheNewCard` writes two "ready to merge" happened
-  notes on one stream, proves a hook, and asserts the push names the newly
-  queued card and the group's count only -- never the earlier accepted card --
-  and that after acknowledging it, a reconnect re-pushes no "ready to merge"
-  group. `TestHookQuietHappenedOmitsInformationalPushes` sets the hook's
-  quiet-happened mode and asserts the informational happened push is not
-  delivered.
+  notes on one stream and runs one look of the server's coordinator push, and
+  asserts the message to the coordinator's bus names the newly queued card and
+  the group's count only -- never the earlier accepted card -- and that the next
+  look sends no "ready to merge" group again.
+
+### The coordinator hooks in with nova-hook (v1.3.6)
+
+- Unit, `cmd/nova-sprint/coordinator_hook_test.go` (a hooktest rig: miniredis
+  over net.Pipe, on a clock the test moves): `TestEveryVerbRefusesTheCoordinatorUntilHooked`
+  (every verb of the registry, the exempt aside, refused with the nova-hook
+  breadcrumb, nothing written), `TestTheGateReadsTheNovaHookRecord` (no record,
+  the bus push alone, the server's sprint push held, unhooked, comms, an unproven
+  sprint push, no answer to the heartbeat), `TestTheGateFailsClosed`.
+- Unit, `cmd/nova-sprint/coordinator_push_test.go`: `TestAJudgmentReachesTheCoordinatorsBusOnce`,
+  `TestTheServerHoldsTheSprintPushWhileItsSendsGo`, `TestAWaitingJudgmentIsWarnedOnTheBus`,
+  `TestCoordFreshTellsEachKeyOnceAndForgetsTheClosed`.
 
 ### A need added to a working card is not a broken invariant (v1.2.13)
 
@@ -1015,11 +1003,9 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline`, `TestAHeavyCardNoRouteServesIsNeverReTieredToFlash`, `TestAPinnedCardNoRouteServesStaysOnItsPinnedTier` (`internal/sprint/seat_answers_rule_test.go`): the no-route default, never down a tier, never over a pin.
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
 - `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
-- `TestLandingUnhookedLandsOnARealServer` (functional, `cmd/nova-sprint/landing_unhooked_functional_test.go`): a real server and store; the seat hooks in, a card is accepted, the hook lapses (its live-until passes with no prove) and the card lands anyway within one tick of the server's own land loop, while a hand land by the coordinator is still refused until the seat hooks in again.
+- `TestLandingUnhookedLandsOnARealServer` (functional, `cmd/nova-sprint/landing_unhooked_functional_test.go`): a real server and store; a card is accepted, the seat's nova-hook record is not proven, and the card lands anyway within one tick of the server's own land loop, while a hand land by the coordinator is still refused until the seat hooks in again.
 - `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.
 - `TestFriendWithNoFreeLaneIsNotDealt` (`internal/sprint/friend_free_lane_test.go`): a friend with no free lane is not dealt work while a machine that serves the card's tier has one, so the card is started at once instead of queueing behind her lanes.
-- `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
-- `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
 - `TestConsumersOutWorkingCardWithNoAttempt`, `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards`, `TestConsumersOutReviewCardWithNoReadAndNoJudgment` (`internal/sprint/consumers_out_test.go`) and `TestEveryProducerCard` (functional, `cmd/nova-sprint/consumers_functional_test.go`): the consumers-out postcondition — a working card with no live attempt, a review card whose reads are all for other cards, and a review card with no read and no open judgment each raise one judgment naming the card, and a real store whose readers table is emptied raises it within one tick.
 - `TestDropRefusesACardAnUnlandedCardNeeds`, `TestDropWithWaiveLeavesNoStrandedNeed` (`internal/sprint/missing_need_test.go`) and `TestDropRefusesANeededCardAndWaiveLeavesNone`, `TestDropGroupRefusesANeededCard`, `TestDropWithRelinkRepointsTheNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (a), drop of a card an unlanded card needs is refused naming the dependants — by id or as a group — and `--waive` and `--relink` each pass and leave no stranded need.
 - `TestEveryStateAlertsTheCoordinatorOfAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b), a real store and the seat hooked in, a need taken off the table by a store edit (a path that can strand it) for a card in each state (waiting, ready, working, review, merging), and the coordinator's hook stream receives the judgment naming the card and the missing need within one second of running time each time; `TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): the judgment stays open, repeats at its deadline, and clears when answered with `needs set`; `TestTickNeedsJudgesAGoneNeedInEveryUnlandedState`, `TestTickNeedsHoldsAndClears` (`internal/sprint/missing_need_test.go`): the same judgment per state, its non-doubling while open and its closing when the need is set away.

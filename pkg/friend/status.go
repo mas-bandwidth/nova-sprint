@@ -24,7 +24,7 @@ const LimitFile = "limit.json"
 // The harness evidence: whether the harness's process was seen in the
 // process table. Advisory, shown and never deciding: a session run from its
 // command line has no app to see, and an app that runs answers nothing.
-// HarnessNotSeen is defined in alive.go ("not-seen").
+// "not-seen" is the third word.
 const (
 	HarnessUnknown = ""
 	HarnessRunning = "running"
@@ -32,7 +32,7 @@ const (
 
 // Evidence is what a friend's status is decided from.
 type Evidence struct {
-	Harness     string    // HarnessRunning, HarnessNotSeen or HarnessUnknown; shown, never deciding
+	Harness     string    // HarnessRunning, "not-seen" or HarnessUnknown; shown, never deciding
 	DaemonUp    bool      // the daemon's status file is fresh; shown, never deciding up
 	LastAnswer  time.Time // the session's last pong; zero is never
 	Limit       string    // the limit's name, when the provider said one
