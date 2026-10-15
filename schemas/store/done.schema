@@ -1,0 +1,40 @@
+// done.schema: the sprint store's done record (internal/sprint/store/done.go,
+// DoneRecord; tla/DoneRecord.tla) as a FIXED table: the sprint server is its only
+// writer and its only reader, and the server is upgraded first, which is the fixed
+// table's contract (schema docs/SPEC-TABLES.md section 21: a newer reader reads an
+// older image, an older reader refuses a newer one as layout_newer).
+//
+// TRACER BULLET (schema-tracer-done-record-fixed, 2026-10-15). Every bound is the
+// code's own; see docs/research/schema-tracer/done-record.md for each one and for
+// why the done list's bound is the form's ceiling, not the data's.
+package donewire
+
+// Completion is sprint.Completion: one card a row completed.
+fixed table Completion
+{
+    // sprint.DoneKinds names: "work", "fix", "read" today (4 bytes); 16 leaves
+    // room for a registered kind (done_test.go registers "merge").
+    kind string(16)
+    // sprint.ValidCardID: at most 4 dot-joined ValidID words of MaxIDLen (128)
+    // bytes each, so 4*128 + 3 = 515.
+    card string(515)
+    // a fleet row: a member name (ValidID, 128) or a friend row "friend." + a
+    // ValidID name (sprint.FriendRow), so 7 + 128 = 135.
+    row  string(135)
+    // the log line's time, Unix nanoseconds UTC; 0 is the zero time.
+    at   int64
+}
+
+// DoneRecord is store.DoneRecord: the epoch, the stream id of the last log line
+// read, and the completions of the lines read.
+fixed table DoneRecord
+{
+    epoch  uint64
+    // a Redis stream id "<ms>-<seq>", two uint64 in decimal: 20 + 1 + 20 = 41.
+    cursor string(41)
+    // NOT the data's bound: the code holds every completion of the epoch, with no
+    // cap. 95 is the most a record body under the fixed form's 65536-byte ceiling
+    // holds at these text bounds (8 + 45 + 4 + 95 * 686 = 65227). A record past it
+    // keeps the legacy JSON form (done.go, encodeDoneRecord).
+    done   [..95]Completion
+}
