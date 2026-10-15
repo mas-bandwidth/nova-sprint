@@ -237,40 +237,73 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 	// 2. donewhen-test-name, read off the TEST line.
 	testF := h["TEST"]
 	tl, testWhy := cardhdr.ParseTest(testF.value)
+	dt, runnerForm := runnerDoneTest(testF.value)
+	checked := false
 	switch {
 	case !testF.found: // a brief with no TEST line is held to it where the copy wrapper reads it
+		checked = true
+	case runnerForm:
+		if why, _ := runnerTestLine(testF.value); why != "" {
+			add("donewhen-test-name", testF.line, why)
+			checked = true
+		}
 	case testWhy != "":
 		add("donewhen-test-name", testF.line, testWhy)
+		checked = true
 	case tl.None:
-	case !tree:
-		missingFinding("donewhen-test-name", testF.line)
+		checked = true
 	default:
-		runner := tl.Runner
-		if runner == "" {
-			runner = "go"
+		dt.runner = tl.Runner
+		if dt.runner == "" {
+			dt.runner = "go"
 		}
-		if runner == "ctest" {
-			if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":CMakeLists.txt"); err != nil {
-				add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: ctest %s names a CMake test, and %s holds no CMakeLists.txt at the base", tl.Name, at()))
-				break
+		dt.name = tl.Name
+		if dt.runner == "go" {
+			dt.scope = []string{goPkgArg(tl.Package)}
+		}
+	}
+	if !checked {
+		if !tree {
+			missingFinding("donewhen-test-name", testF.line)
+		} else {
+			if dt.runner == "ctest" && len(dt.scope) == 0 {
+				if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":CMakeLists.txt"); err != nil {
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: ctest %s names a CMake test, and %s holds no CMakeLists.txt at the base", dt.name, at()))
+					checked = true
+				}
 			}
-		}
-		var scope []string
-		if runner == "go" {
-			scope = []string{goPkgArg(tl.Package)}
-		}
-		present, err := testDefinedAt(bb.Repo, bb.Sha, doneTest{runner: runner, name: tl.Name, scope: scope})
-		switch {
-		case err != nil:
-			add("donewhen-test-name", testF.line, fmt.Sprintf("MISSING: could not search the tree at %s for %s: %v", at(), tl.Name, err))
-		case present && ledgerClassTest(h["KIND"].value, tl.Package):
-			// a ledger card: its class test is green at the base by construction (LedgerKind)
-		case present:
-			where := tl.Package + " "
-			if runner == "ctest" {
-				where = ""
+			if !checked && dt.runner == "make" && len(dt.scope) > 0 {
+				missingTarget := ""
+				for _, sc := range dt.scope {
+					sc = strings.TrimPrefix(sc, "./")
+					if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":"+sc); err != nil {
+						missingTarget = sc
+						break
+					}
+				}
+				if missingTarget != "" {
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: make %s %s names target/file %s, and %s holds no such file at the base; the target must exist", dt.scope[0], dt.name, missingTarget, at()))
+					checked = true
+				}
 			}
-			add("donewhen-test-name", testF.line, fmt.Sprintf("TEST %s exists in %sat %s, so it cannot be red there; name the new test the card adds", tl.Name, where, at()))
+			if !checked {
+				present, err := testDefinedAt(bb.Repo, bb.Sha, dt)
+				switch {
+				case err != nil:
+					add("donewhen-test-name", testF.line, fmt.Sprintf("MISSING: could not search the tree at %s for %s: %v", at(), dt.name, err))
+				case present && ledgerClassTest(h["KIND"].value, tl.Package):
+					// a ledger card: its class test is green at the base by construction (LedgerKind)
+				case present:
+					where := ""
+					if dt.runner == "go" {
+						where = tl.Package + " "
+					}
+					if len(dt.scope) > 0 {
+						where = dt.scope[0] + " "
+					}
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST %s exists in %sat %s, so it cannot be red there; name the new test the card adds", dt.name, where, at()))
+				}
+			}
 		}
 	}
 
