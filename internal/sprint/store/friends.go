@@ -512,8 +512,12 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		if word == sprint.Up {
 			row.Evidence = "nova-hook proven"
 		}
-		// A proven coordinator/comms record is up too, but carries no worker role.
-		row.WorkerLive = h.Name == n && h.Gate(hook.Want{Name: n, Need: hook.PushesOf(hook.Friend), Roles: []hook.Role{hook.Friend}, Role: hook.Friend}) == nil
+		// A name has one hook record, so a proven coordinator or comms record is the worker
+		// proof for the name's friend row too: the coordinator's row is a worker row
+		// (Glenn, 2026-10-15: one row takes every tier, a dispatcher staffs each card).
+		// Its pushes are the record's own role's; the protection against a card sitting
+		// on a row nobody works is the hold and the unhook, which fail this gate.
+		row.WorkerLive = h.Name == n && h.Gate(hook.Want{Name: n, Need: hook.PushesOf(h.Role), Roles: []hook.Role{hook.Friend, hook.Coordinator, hook.Comms}, Role: h.Role}) == nil
 		rows[n], status[n] = row, word
 	}
 	out := make([]FriendRow, 0, len(names))
