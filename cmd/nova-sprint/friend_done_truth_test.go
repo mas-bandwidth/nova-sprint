@@ -50,8 +50,7 @@ func rowCells(ta *testApp, table, row string) map[string]any {
 }
 
 // A friend completes six cards by every path that records a completion: three work cards
-// (friend sync collecting her report, her own finish verb as friend.stella, friend reconcile
-// collecting a report her queue says done), one fix card (the rework of a card a reader read
+// (friend sync collecting her report, and her own finish verb as friend.stella, twice), one fix card (the rework of a card a reader read
 // broken), each read ok on a read card of the fleet table by the reader friend fred, and two
 // read cards of fred's work she completes herself. Her row shows done 6 (3 work + 1 fix + 2
 // reads) in where --json and in the dashboard's pull of her row; ok% is her work's alone, the
@@ -154,26 +153,9 @@ func TestADoneIsEveryCardTheRowCompleted(t *testing.T) {
 	require.Contains(t, out, "FRIEND-CARD FINISHED friend=stella card=s1-1.w1 result=ok", out)
 	// s1-2: her own finish verb, as friend.stella
 	ta.ok("finish --as " + sprint.FriendRow("stella") + " s1-2.w1@1 --report done --head " + landHead)
-	// s1-3: friend reconcile collects the report her queue says done
-	job3 := inboxJobOf(t, root, "stella", "s1-3.w1")
-	outboxReport(t, root, "stella", job3, land)
-	queuePath := filepath.Join(root, "stella-working", "inbox", "QUEUE.json")
-	text, err := os.ReadFile(queuePath)
-	require.NoError(t, err)
-	var q friendQueue
-	require.NoError(t, json.Unmarshal(text, &q))
-	marked := false
-	for i := range q.Tasks {
-		if q.Tasks[i].ID == "s1-3.w1" {
-			q.Tasks[i].State, marked = "done", true
-		}
-	}
-	require.True(t, marked, "her queue holds s1-3.w1: %s", text)
-	text, err = json.Marshal(q)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(queuePath, text, 0o644))
-	out = ta.ok("friend reconcile stella --root " + root)
-	require.Contains(t, out, "collected=1", out)
+	// s1-3: her own finish verb again, the one way a friend lane finishes (the QUEUE.json
+	// reconcile that once collected it is retired: the server's records alone decide)
+	ta.ok("finish --as " + sprint.FriendRow("stella") + " s1-3.w1@1 --report done --head " + landHead)
 
 	// fred reads her four: ok, but s1-6 broken, which is reworked with its finding: its next
 	// attempt, the fix card, is hers again
