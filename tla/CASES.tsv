@@ -695,3 +695,9 @@ MCSeatHealthBrokenServerIgnored.cfg	MCSeatHealth.tla	invariant	HookDownWins	igno
 MCSeatHealthBrokenWorkStalls.cfg	MCSeatHealth.tla	invariant	ThreeWords	ignore-terminal	seathealth	required	-
 MCSeatHealthBrokenSameGen.cfg	MCSeatHealth.tla	action	GenerationStepsWithTheSeat	ignore-terminal	seathealth	required	-
 MCFriendDealtReturnBrokenBounce.cfg	MCFriendDealtReturn.tla	action	OneShotWorkingStays	ignore-terminal	frienddealtreturn	required	-
+MCDecisionsOwed.cfg	MCDecisionsOwed.tla	pass	-	ignore-terminal	decisionsowed	required	-
+MCDecisionsOwedBrokenSilentPile.cfg	MCDecisionsOwed.tla	invariant	NoSilentPile	ignore-terminal	decisionsowed	required	-
+MCDecisionsOwedBrokenUnsafeDefault.cfg	MCDecisionsOwed.tla	invariant	DefaultIsSafe	ignore-terminal	decisionsowed	required	-
+MCSprintTablesDecisionParking.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHasCause	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	invariant	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-

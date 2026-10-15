@@ -327,3 +327,15 @@ Only names and source/header comments changed. `StopFence` includes its
 `StopReturn`. Their groups are `friendreadytake`, `friendredeallate`, and
 `stopfence`. Coverage stays partial for the concrete differences recorded in
 `COVERAGE.tsv`; fresh TLC passes do not erase those differences.
+
+`DecisionsOwed` / `MCDecisionsOwed*` models a bounded bound-card, reader and merge
+judgment, a five-observation clock, hook proof independent of owner delivery,
+separate durable owed and successful owner-receipt sets, safe defaults only after
+twice the deadline, and one explicit ambiguous retry. `NoSilentPile` requires a
+durable delivery obligation or receipt, not human sight. Fair observation and
+owner delivery imply eventual answer, default or owner receipt. Broken silent and
+unsafe-default configurations must violate `NoSilentPile` and `DefaultIsSafe`.
+The exact 30-minute elapsed-time cadence, epoch/recipient reset, frozen payload,
+transport-fault display and renewed bus token are pinned by runtime tests; the
+model abstracts elapsed intervals. `CoordinatorPush` retains the prerequisite's
+pre-deadline 30-minute reminder abstraction; `DecisionsOwed` owns overdue cadence.

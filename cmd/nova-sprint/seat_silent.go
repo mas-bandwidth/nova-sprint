@@ -79,8 +79,30 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
 		return
 	}
+	// Ordinary overdue decisions use the persistent folded deadline lane. Keep
+	// the legacy special alarm only when no underlying due decision exists.
+	all, readErr := st.B.OpenNotes(ctx)
+	if readErr != nil {
+		a.serveSay("DECISIONS OWED: read failed; preserving legacy owner alarm: %s", readErr)
+	}
+	machine, _, machineErr := st.Machine(ctx)
+	if machineErr != nil {
+		a.serveSay("DECISIONS OWED: clock read failed; preserving legacy owner alarm: %s", machineErr)
+	}
+	hasDue := false
+	for _, o := range all {
+		if readErr == nil && machineErr == nil && o.Note.Kind == sprint.Judgment && o.Note.Type != sprint.NSeatSilent {
+			age, limit := sprint.DecisionAge(now, o.Note, machine.StoppedBetween)
+			if limit > 0 && age >= limit {
+				hasDue = true
+			}
+		}
+	}
 	open := map[string]bool{}
 	for _, g := range groups {
+		if g.Type == sprint.NSeatSilent && hasDue {
+			continue
+		}
 		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
 			continue
 		}

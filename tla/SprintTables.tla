@@ -257,7 +257,8 @@ Moves ==
     <<"merging", "landed">>,
     <<"waiting", "landed">>,
     <<"ready", "waiting">>,
-    <<"working", "waiting">> }
+    <<"working", "waiting">>,
+    <<"review", "waiting">>, <<"waiting", "review">> }
 
 Legal(from, to) == <<from, to>> \in Moves
 
@@ -291,6 +292,10 @@ VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, state, n
 GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead>>
 
 vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
+
+VARIABLES parkState, parkSaved, parkBound, parkCause, parkHead, parkReads, parkEvent
+parkingVars == <<parkState,parkSaved,parkBound,parkCause,parkHead,parkReads,parkEvent>>
+allTableVars == <<vars,parkingVars>>
 
 TypeOK ==
   /\ briefGeneration \in [Card -> 0..1]
@@ -410,7 +415,7 @@ ReachN(c) ==
 Needed(c) ==
   \E d \in Card \ {c} : IsOpen(state[d]) /\ c \in needs[d] /\ c \notin waived[d]
 
-Init ==
+TableInit ==
   /\ briefGeneration = [c \in Card |-> 0]
   /\ attemptGeneration = [c \in Card |-> 0]
   /\ headGeneration = [c \in Card |-> 0]
@@ -432,6 +437,11 @@ Init ==
   /\ pending = ""
   /\ ci = [c \in Card |-> ""]
   /\ pendstate = InitOf
+
+Init == TableInit
+        /\ parkState = "ready" /\ parkSaved = "" /\ parkBound = FALSE
+        /\ parkCause = FALSE /\ parkHead = "head" /\ parkReads = {"read1","read2"}
+        /\ parkEvent = "init"
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
 \* step carries no plan flag. The deferred write tracks the work table.
@@ -1229,17 +1239,17 @@ GenerationStep ==
   /\ headGeneration' = [c \in Card |-> IF state'[c] = "review" /\ state[c] = "working" THEN attemptGeneration[c] ELSE headGeneration[c]]
   /\ UNCHANGED <<briefGeneration, keptHead>>
 
-Next == (LegacyNext /\ GenerationStep) \/ Brief
+Next == ((LegacyNext /\ GenerationStep) \/ Brief) /\ UNCHANGED parkingVars
 
 NoOldBriefHeadInReview ==
   \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
 
 CrashNext ==
   \/ Next
-  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep
+  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep /\ UNCHANGED parkingVars
 
-Spec == Init /\ [][Next]_vars
-CrashSpec == Init /\ [][CrashNext]_vars
+Spec == Init /\ [][Next]_allTableVars
+CrashSpec == Init /\ [][CrashNext]_allTableVars
 
 \* ------------------------------------------------------------- the rules
 
@@ -1340,4 +1350,25 @@ StreamAfter == \A s \in Streams : sstream[s] = StreamState(s, state, mg, scause)
 \* lands (merge or release), so the invariant holds.
 RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 
+\* The central parking guard is checked as a separate bounded projection so the
+\* historical full-table instances keep their budgets and invariants. Runtime
+\* tests cover composition with live read retirement and the store fence.
+ParkingInit == /\ TableInit /\ parkState \in {"ready","review"} /\ parkSaved = ""
+               /\ parkBound \in BOOLEAN /\ parkCause = FALSE
+               /\ parkHead = "head" /\ parkReads = {"read1","read2"}
+               /\ parkEvent = "init"
+ParkingHold == /\ parkState \in {"ready","review"} /\ parkSaved = ""
+               /\ (parkBound \/ Broken = "parkwithoutcause")
+               /\ parkSaved' = parkState /\ parkState' = "waiting"
+               /\ parkCause' = parkBound /\ parkEvent' = "park"
+               /\ UNCHANGED <<parkBound,parkHead,parkReads>>
+ParkingRelease == /\ parkState = "waiting" /\ parkSaved # ""
+                  /\ parkState' = IF Broken = "releaseprestate" THEN "ready" ELSE parkSaved
+                  /\ parkEvent' = "release"
+                  /\ UNCHANGED <<parkSaved,parkBound,parkCause,parkHead,parkReads>>
+ParkingNext == (ParkingHold \/ ParkingRelease) /\ UNCHANGED vars
+ParkingSpec == ParkingInit /\ [][ParkingNext]_allTableVars
+ParkingHasCause == parkEvent = "park" => parkBound /\ parkCause
+ParkingRestoresPrestate == parkEvent = "release" => parkState = parkSaved
+ParkingPreservesWork == parkHead = "head" /\ parkReads = {"read1","read2"}
 =============================================================================
