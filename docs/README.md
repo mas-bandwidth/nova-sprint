@@ -12,7 +12,7 @@ through review and landing.
 
 | Your next question | Where to go |
 |---|---|
-| Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#start-with-one-lane-then-go-wider) |
+| Can I watch a sprint doing real work? | [Live dashboard](http://37.27.135.206) and [the README tour](../README.md#start-with-one-lane-then-go-wider) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
 | Can I try the workflow before setting up a team? | [Local first lap](FIRST-LAP.md) |
 | How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-all-the-way-home) |
