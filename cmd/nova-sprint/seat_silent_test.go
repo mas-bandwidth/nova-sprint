@@ -134,30 +134,57 @@ func TestASeatSilentRaiseNoLongerOpenIsForgotten(t *testing.T) {
 	assert.False(t, ta.a.seatSilent.told[seatSilentToken("", 0, "gone", 3)], "the closed raise is forgotten")
 }
 
-func TestSeatSilentRemainsUntilOwnerReceipt(t *testing.T) {
-	b := &tokenBus{}
-	ta, st, _ := seatSilentRig(t, b)
-	ctx := context.Background()
-	_, _, _, err := st.SetMachine(ctx, true)
-	require.NoError(t, err)
-	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "unanswered", At: ta.a.now()}))
-	require.NoError(t, err)
-	ta.step(sprint.DeadlineJudgment)
-	ta.a.tellSeatSilent(ctx, st)
-	require.Len(t, b.delivered, 1, "an overdue obligation without an owner receipt must not suppress the legacy alarm")
-}
-
-func TestSeatSilentSuppressedAfterOwnerReceipt(t *testing.T) {
-	b := &tokenBus{}
-	ta, st, _ := seatSilentRig(t, b)
-	ctx := context.Background()
-	_, _, _, err := st.SetMachine(ctx, true)
-	require.NoError(t, err)
-	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "unanswered", At: ta.a.now()}))
-	require.NoError(t, err)
-	ta.step(sprint.DeadlineJudgment)
-	_, err = st.Run(ctx, store.NoteStep("receipt", sprint.Note{Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NDecisionDelivery, DecisionDelivery: &sprint.DecisionDelivery{Lane: "owner", SentAt: ta.a.now()}}))
-	require.NoError(t, err)
-	ta.a.tellSeatSilent(ctx, st)
-	require.Empty(t, b.delivered)
+func TestSeatSilentRequiresMatchingOwnerReceipt(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		receipt string
+		want    int
+	}{
+		{"no receipt", "", 1},
+		{"matching receipt", "match", 0},
+		{"old A receipt does not cover B", "old", 1},
+		{"substring is not a receipt", "substring", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := &tokenBus{}
+			ta, st, _ := seatSilentRig(t, b)
+			ctx := context.Background()
+			_, _, _, err := st.SetMachine(ctx, true)
+			require.NoError(t, err)
+			_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBound, Primaries: []string{"s1-1"}, At: ta.a.now()}))
+			require.NoError(t, err)
+			_, err = st.Run(ctx, store.NoteStep("earlier A", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBriefWrong, Primaries: []string{"s1-1"}, At: ta.a.now()}))
+			require.NoError(t, err)
+			all, err := st.B.OpenNotes(ctx)
+			require.NoError(t, err)
+			id, earlierID := "", ""
+			for _, o := range all {
+				if o.Note.Type == sprint.NBound {
+					id = o.Note.ID
+				}
+				if o.Note.Type == sprint.NBriefWrong {
+					earlierID = o.Note.ID
+				}
+			}
+			require.NotEmpty(t, id)
+			require.NotEmpty(t, earlierID)
+			// Unrelated overdue judgments must not prevent suppression for this group.
+			_, err = st.Run(ctx, store.NoteStep("unrelated", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "unrelated", At: ta.a.now()}))
+			require.NoError(t, err)
+			ta.step(sprint.DeadlineJudgment)
+			if tc.receipt != "" {
+				set := id + "\x00" + earlierID
+				if tc.receipt == "old" {
+					set = earlierID
+				}
+				if tc.receipt == "substring" {
+					set = "prefix-" + id
+				}
+				_, err = st.Run(ctx, store.NoteStep("receipt", sprint.Note{Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NDecisionDelivery, DecisionDelivery: &sprint.DecisionDelivery{Lane: "owner", Set: set, SentAt: ta.a.now()}}))
+				require.NoError(t, err)
+			}
+			ta.a.tellSeatSilent(ctx, st)
+			require.Len(t, b.delivered, tc.want)
+		})
+	}
 }

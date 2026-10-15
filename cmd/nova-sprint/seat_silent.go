@@ -79,8 +79,8 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
 		return
 	}
-	// Ordinary overdue decisions use the persistent folded deadline lane. Keep
-	// the legacy special alarm only when no underlying due decision exists.
+	// Suppress the legacy alarm only after a successful folded owner delivery
+	// covered every overdue card-holding judgment represented by this group.
 	all, readErr := st.B.OpenNotes(ctx)
 	if readErr != nil {
 		a.serveSay("DECISIONS OWED: read failed; preserving legacy owner alarm: %s", readErr)
@@ -89,22 +89,50 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	if machineErr != nil {
 		a.serveSay("DECISIONS OWED: clock read failed; preserving legacy owner alarm: %s", machineErr)
 	}
-	hasDue, ownerSent := false, false
+	received := map[string]bool{}
 	for _, o := range all {
 		if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "owner" && !d.SentAt.IsZero() {
-			ownerSent = true
-		}
-		if readErr == nil && machineErr == nil && o.Note.Kind == sprint.Judgment && o.Note.Type != sprint.NSeatSilent {
-			age, limit := sprint.DecisionAge(now, o.Note, machine.StoppedBetween)
-			if limit > 0 && age >= limit {
-				hasDue = true
+			for _, id := range strings.Split(d.Set, "\x00") {
+				received[id] = true
 			}
 		}
 	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type == sprint.NSeatSilent && hasDue && ownerSent {
-			continue
+		if g.Type == sprint.NSeatSilent && readErr == nil && machineErr == nil {
+			relevant, covered := false, true
+			groupCards := map[string]bool{}
+			for _, id := range g.Primaries {
+				groupCards[id] = true
+			}
+			for _, o := range all {
+				n := o.Note
+				if n.Kind != sprint.Judgment || !sprint.HoldsACard(n.Type) {
+					continue
+				}
+				age, limit := sprint.DecisionAge(now, n, machine.StoppedBetween)
+				if limit <= 0 || age < limit {
+					continue
+				}
+				cards := n.Primaries
+				if len(cards) == 0 {
+					if n.Card != "" {
+						cards = []string{n.Card}
+					} else {
+						cards = n.Subjects()
+					}
+				}
+				for _, card := range cards {
+					if groupCards[card] {
+						relevant = true
+						covered = covered && received[n.ID]
+						break
+					}
+				}
+			}
+			if relevant && covered {
+				continue
+			}
 		}
 		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
 			continue
