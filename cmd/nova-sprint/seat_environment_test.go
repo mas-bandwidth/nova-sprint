@@ -415,6 +415,7 @@ func TestTheSeatEnvironmentIsSeatcreds(t *testing.T) {
 			require.NoError(t, err, tc.name)
 		} else {
 			require.Error(t, err, tc.name)
+			assert.Equal(t, scErr.Error(), err.Error(), tc.name)
 		}
 	}
 }
