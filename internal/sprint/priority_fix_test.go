@@ -234,7 +234,7 @@ func TestFixStateSeparatesReworkFromReadReview(t *testing.T) {
 func TestFixStateIncludesACompletedBriefDefect(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"}))
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "HOLD: brief defect: the TEST line names a test the PATHS cannot reach"}))
 	require.Equal(t, DoneDefect, w.s.Fleet.Card("s1-1.w1").Col)
 	require.Equal(t, Review, w.s.Primary("s1-1").Col)

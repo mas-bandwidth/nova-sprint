@@ -17,10 +17,10 @@ func cannotAskEpisodeWorld(t *testing.T) (w *world, none, room, free []FriendSea
 	w = readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: heavy\n", "bob", 1)
 	bob := readerSeat("bob", 8, []string{"heavy"}, []string{"builder", "reader"})
-	none = []FriendSeat{bob}
-	room = []FriendSeat{bob, readerSeat("amy", 0, []string{"heavy"}, []string{"builder", "reader"})}
-	free = []FriendSeat{bob, readerSeat("amy", 8, []string{"heavy"}, []string{"builder", "reader"}),
-		readerSeat("cal", 8, []string{"heavy"}, []string{"builder", "reader"})} // heavy wants two reads
+	none = workerSeatFixtures([]FriendSeat{bob})
+	room = workerSeatFixtures([]FriendSeat{bob, readerSeat("amy", 0, []string{"heavy"}, []string{"builder", "reader"})})
+	free = workerSeatFixtures([]FriendSeat{bob, readerSeat("amy", 8, []string{"heavy"}, []string{"builder", "reader"}),
+		readerSeat("cal", 8, []string{"heavy"}, []string{"builder", "reader"})}) // heavy wants two reads
 	return w, none, room, free
 }
 
