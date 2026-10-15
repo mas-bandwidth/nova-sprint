@@ -9,7 +9,7 @@ import (
 // setting (pkg/config/kind.go, "friend"), one of the three sets below. Pronouns
 // are read, never inferred: a friend whose pronouns are not stated goes by
 // they/them, and no text a daemon writes calls a friend "it". The zero value is
-// they/them, so a Daemon or a text built without them is already right.
+// they/them, so a daemon or a text built without them is already right.
 type Pronouns string
 
 // The pronoun sets a friend row may name, and the default a row without one

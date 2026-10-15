@@ -58,6 +58,36 @@ func TestStatusIsDerivedFromTheBeat(t *testing.T) {
 	require.Equal(t, Held, s, "held while beating: %s, want held", s)
 }
 
+// TestLoadIsBusyOverTotalAcrossAllCores: load is CPU busy-over-total across
+// all cores on a 0-100 scale (docs/SPEC-SPRINT-DASHBOARD.md, Fleet): a machine
+// with all 32 cores busy reads 100.0%, an idle machine about 0%, and a load
+// average over the cores (which counts waiting threads and so passes the
+// busy scale) never reads over 100%.
+func TestLoadIsBusyOverTotalAcrossAllCores(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		pct  float64 // the beat's measured percent: busy-over-total, or a load average over cores
+		want float64
+		text string
+	}{
+		{"all 32 cores busy", 100.0, 100.0, "100.0%"},
+		{"idle", 0.0, 0.0, "0.0%"},
+		{"load average twice the cores", 200.0, 100.0, "100.0%"},
+		{"load average eight times the cores", 800.0, 100.0, "100.0%"},
+	} {
+		b := NextBeat(Beat{}, p0, tc.pct, hostload.HowCPU, hostload.State{})
+		require.Equal(t, tc.want, b.Load, "%s: %+v, want load %v", tc.name, b, tc.want)
+		require.Equal(t, tc.text, LoadText(b, p0), "%s: %q, want %q", tc.name, LoadText(b, p0), tc.text)
+	}
+	// A sample stored before the clamp (a load-average beat) leaves the scale
+	// at the next beat, not at the end of its window.
+	prev := NextBeat(Beat{}, p0, 250.0, hostload.HowLoad1, hostload.State{})
+	next := NextBeat(prev, p0.Add(time.Second), 10, hostload.HowCPU, hostload.State{})
+	require.Equal(t, 100.0, next.Load, "a clamped window: %+v, want highest 100.0", next)
+	require.Equal(t, "100.0%", LoadText(Beat{At: p0, Load: 250.0}, p0), "a stored load over the scale still shows 100.0%%")
+}
+
 // TestPresenceWithoutBeatsDoesNothing: a tick given no beats (a caller that
 // read none) moves no member.
 func TestPresenceWithoutBeatsDoesNothing(t *testing.T) {

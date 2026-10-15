@@ -217,7 +217,7 @@ func friendDealByLadder(s *Snapshot, offer []*Card, seats []FriendSeat) (p Plan,
 		for _, pw := range part.Props {
 			k := pw.Table + "." + pw.Name
 			if props[k] {
-				continue // a friend's start clears the dealt-no-more mark, planned in every pass, one write
+				continue // a prop write planned in every pass is one write
 			}
 			props[k] = true
 			p.Props = append(p.Props, pw)

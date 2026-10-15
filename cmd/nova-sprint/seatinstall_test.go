@@ -2,106 +2,76 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
-// seat install and seat uninstall through the command: the unit goes into the home
-// the test gives, runs this binary's inbox --wait --push seat on the store the verb
-// was given, and is loaded by the test's loader, never launchctl or systemctl.
-func TestSeatInstallVerbWritesLoadsAndRemovesTheUnit(t *testing.T) {
+// seat install records the seat on this machine (the sprint's server it uses) and writes
+// no unit: the seat's push loop is retired (v1.3.6; the server sends the coordinator's
+// judgments to its name on the bus). Given neither a server nor a config seat it refuses
+// and writes nothing. seat uninstall removes the retired loop's unit where an older build
+// left it, through the test's loader, never launchctl or systemctl.
+func TestSeatInstallRecordsTheSeatAndUninstallRemovesTheRetiredLoop(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": "127.0.0.1:6381", "NOVA_SPRINT_ACTOR": "rowan"}
+	env := map[string]string{"NOVA_SPRINT_ACTOR": "rowan", "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
 	a := newApp(func(k string) string { return env[k] })
-	m := store.NewMem()
-	a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return m, nil }
-	var asked [][]string
-	a.forward = func(_ context.Context, _ string, verbs ...[]string) ([]sprintwire.Result, error) {
-		asked = append(asked, verbs...)
-		return []sprintwire.Result{{}}, nil
-	}
-	session := t.TempDir()
-	push := []string{"--harness", "opencode", "--target", session}
+	a.seatLoginOn()
 	a.goos = "darwin"
 	a.home = func() (string, error) { return home, nil }
-	a.executable = func() (string, error) { return "/opt/nova/bin/nova-sprint", nil }
 	var calls []string
 	a.seatLoad = func(goos, op, path string) error { calls = append(calls, goos+" "+op+" "+path); return nil }
 	do := func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
-		if len(args) > 1 && args[1] == "install" {
-			args = append(args, push...)
-		}
 		code := runInto(a, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
-	unit := filepath.Join(home, "Library", "LaunchAgents", sprint.SeatLabel+".plist")
+	record := filepath.Join(home, ".config", "nova-sprint", seatRecordFile)
 
-	// no recorded login and no shell user: refused, nothing written
-	refuseDir := t.TempDir()
-	loginPath := filepath.Join(home, ".config", "nova-sprint", "login.json")
-	code, out, errs := do("seat", "install", "--dir", refuseDir)
-	require.Equal(t, 2, code, errs)
-	assert.Empty(t, out)
-	assert.Contains(t, errs, "no seat login is recorded at "+loginPath+"; run: nova-sprint seat login --store <dir> --as <seat> --key <file> --secret <NAME> --user <name> --redis <addr>")
-	assert.NoFileExists(t, filepath.Join(refuseDir, sprint.SeatUnitFile(a.seatOS())))
-	assert.Empty(t, calls)
+	code, out, errs := do("seat", "install")
+	require.Equal(t, 2, code, out+errs)
+	assert.Contains(t, errs, "was given neither; nothing was written")
+	assert.NoFileExists(t, record)
 
-	// a shell user with no recorded login is unitLogin's sentence, and still writes nothing
-	env["NOVA_SPRINT_REDIS_USER"] = "coordinator"
-	code, out, errs = do("seat", "install", "--dir", refuseDir)
-	require.Equal(t, 2, code, errs)
-	assert.Empty(t, out)
-	assert.Contains(t, errs, "the unit carries no password, and the store 127.0.0.1:6381 is logged in to here as coordinator from this shell's environment: record the login the unit reads in its own process, run: nova-sprint seat login --redis 127.0.0.1:6381 --user coordinator --store <dir> --as <seat> --key <file> --secret <NAME>")
-	assert.NoFileExists(t, filepath.Join(refuseDir, sprint.SeatUnitFile(a.seatOS())))
-	delete(env, "NOVA_SPRINT_REDIS_USER")
-	recordSeatLogin(t, a, "127.0.0.1:6381")
+	for _, retired := range [][]string{{"--harness", "opencode"}, {"--target", home}, {"--dir", home}} {
+		code, _, errs = do(append([]string{"seat", "install", "--server", "127.0.0.1:7480"}, retired...)...)
+		assert.Equal(t, 2, code, "%v is the retired push loop's flag: %s", retired, errs)
+	}
+	assert.NoFileExists(t, record)
 
-	code, out, errs = do("seat", "install", "--dry-run")
+	code, out, errs = do("seat", "install", "--server", "127.0.0.1:7480", "--dry-run")
 	require.Equal(t, 0, code, errs)
-	assert.Contains(t, out, "SEAT INSTALL DRY-RUN unit="+unit)
-	assert.Contains(t, out, "<string>--push</string>\n\t\t<string>seat</string>\n\t\t<string>--redis</string>\n\t\t<string>127.0.0.1:6381</string>")
-	assert.Contains(t, out, filepath.Join(home, "Library", "Logs", "nova-sprint-seat-push.log"))
-	assert.NoFileExists(t, unit, "a dry run writes nothing")
-	assert.Empty(t, calls, "a dry run loads nothing")
+	assert.Contains(t, out, "SEAT RECORD DRY-RUN file="+record+" server=127.0.0.1:7480; nothing was written")
+	assert.NoFileExists(t, record)
 
-	code, out, errs = do("seat", "install")
+	code, out, errs = do("seat", "install", "--server", "127.0.0.1:7480")
 	require.Equal(t, 0, code, errs)
-	assert.Contains(t, out, "SEAT INSTALL OK unit="+unit+" written=true loaded=true")
-	assert.Contains(t, out, "runs: /opt/nova/bin/nova-sprint inbox --wait --push seat --redis 127.0.0.1:6381")
-	assert.FileExists(t, unit)
-	body, err := os.ReadFile(unit)
+	assert.Contains(t, out, "SEAT RECORD OK file="+record+" server=127.0.0.1:7480 config-seat=-")
+	b, err := os.ReadFile(record)
 	require.NoError(t, err)
-	assert.NotContains(t, string(body), "NOVA_SPRINT_REDIS_USER")
-	assert.NotContains(t, string(body), "PW")
-	assert.Equal(t, []string{"darwin load " + unit}, calls)
-	// the push target is recorded with it: the push loop reaches the session through it
-	assert.Contains(t, out, "push: opencode into "+session)
-	st := &store.Store{B: m, Names: sprint.Names{}, Now: time.Now}
-	rec, ok, err := readPush(context.Background(), st, "rowan")
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.Equal(t, sprint.PushRecord{Name: "rowan", Harness: "opencode", Target: session}, rec)
+	var rec seatRecord
+	require.NoError(t, json.Unmarshal(b, &rec))
+	assert.Equal(t, seatRecord{Server: "127.0.0.1:7480"}, rec)
+	assert.Equal(t, "127.0.0.1:7480", a.seatServer(), "the coordinator's verbs read the server from the record")
+	assert.Empty(t, calls, "seat install loads nothing")
+	assert.NoDirExists(t, filepath.Join(home, "Library", "LaunchAgents"), "seat install writes no unit")
 
-	code, out, errs = do("seat", "uninstall", "--dry-run")
+	// the retired loop's unit, as an older build left it: uninstall unloads and removes it
+	agents := t.TempDir()
+	unit := filepath.Join(agents, sprint.SeatUnitFile("darwin"))
+	require.NoError(t, os.WriteFile(unit, []byte("<plist/>"), 0o644))
+	code, out, errs = do("seat", "uninstall", "--dir", agents, "--dry-run")
 	require.Equal(t, 0, code, errs)
 	assert.Contains(t, out, "SEAT UNINSTALL DRY-RUN unit="+unit+" present=true")
 	assert.FileExists(t, unit, "a dry run removes nothing")
-	assert.Equal(t, []string{"darwin load " + unit}, calls, "a dry run unloads nothing")
-
-	code, out, errs = do("seat", "uninstall", "--json")
+	code, out, errs = do("seat", "uninstall", "--dir", agents, "--json")
 	require.Equal(t, 0, code, errs)
 	var got struct {
 		Path    string `json:"path"`
@@ -111,36 +81,25 @@ func TestSeatInstallVerbWritesLoadsAndRemovesTheUnit(t *testing.T) {
 	assert.Equal(t, unit, got.Path)
 	assert.True(t, got.Removed)
 	assert.NoFileExists(t, unit)
-	assert.Equal(t, []string{"darwin load " + unit, "darwin unload " + unit}, calls)
-
-	// the sprint's server, when the verb is given no --redis of its own: a server
-	// unit does not dial Redis, so it installs with no recorded login
-	a.loginFile = nil
-	env["NOVA_SPRINT_SERVER"] = "127.0.0.1:7480"
-	dir := t.TempDir()
-	a.goos = "linux"
-	code, out, errs = do("seat", "install", "--dir", dir)
-	require.Equal(t, 0, code, errs)
-	b, err := os.ReadFile(filepath.Join(dir, sprint.SeatService))
-	require.NoError(t, err)
-	assert.Contains(t, string(b), `Environment="NOVA_SPRINT_SERVER=127.0.0.1:7480"`)
-	assert.NotContains(t, string(b), "--redis", out)
-	assert.NotContains(t, string(b), "NOVA_SPRINT_REDIS_USER")
-	require.Len(t, asked, 1, "the push target goes to the server")
-	assert.Equal(t, []string{"seat", "--actor", "rowan", "push", "--actor", "rowan", "--harness", "opencode", "--target", session}, asked[0])
-
-	// the twin has no machine to wait on: refused, nothing written or loaded
-	delete(env, "NOVA_SPRINT_SERVER")
-	env["NOVA_SPRINT_REDIS"] = "mem:0"
-	before := len(calls)
-	code, _, errs = do("seat", "install", "--dir", t.TempDir())
-	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "nova-sprint seat install REFUSED: ")
-	assert.Equal(t, before, len(calls))
+	assert.Equal(t, []string{"darwin unload " + unit}, calls)
 }
 
-// recordSeatLogin records a login for addr. A Redis seat unit is installed only
-// when that login matches. The file names the secret and holds no value.
+// The seat's push loop's word is refused by inbox --wait, naming what replaced it: a unit
+// an older build installed fails at once with the remedy, and writes nothing.
+func TestInboxWaitRefusesTheRetiredSeatPushLoop(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	code, out, errs := ta.do("inbox --wait --push " + retiredPushWord + " --timeout 200ms")
+	assert.Equal(t, 2, code, out+errs)
+	assert.Contains(t, errs, "the seat's push loop is retired (v1.3.6)")
+	assert.Contains(t, errs, "nova-hook hook --as <you> --role coordinator")
+	assert.Contains(t, errs, "nova-sprint seat uninstall")
+	assert.NoDirExists(t, retiredPushWord)
+}
+
+// recordSeatLogin records a login for addr. A Redis unit is installed only when that
+// login matches. The file names the secret and holds no value.
 func recordSeatLogin(t *testing.T, a *app, addr string) {
 	t.Helper()
 	dir := t.TempDir()
