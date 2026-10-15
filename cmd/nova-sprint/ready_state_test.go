@@ -56,7 +56,7 @@ func TestTheWaitingJudgmentWarningRepeatsAtABoundedRate(t *testing.T) {
 	assert.NotEqual(t, 0, code, "stop on READY is refused")
 	assert.Contains(t, errs, "the machine is READY: it has not started since the clear; nothing to stop")
 
-	// STOPPED with moves due: the judgment, the warning at 10 s, then at most once a minute
+	// STOPPED with moves due: the judgment, the warning at 10 s, then at most once every 30 minutes
 	ta.lined(func() { ta.ok("start") })
 	ta.step(time.Second)
 	ta.lined(func() { ta.ok("stop --reason 'a test' --until 1h") })
@@ -77,9 +77,9 @@ func TestTheWaitingJudgmentWarningRepeatsAtABoundedRate(t *testing.T) {
 	require.NotEmpty(t, at)
 	assert.Equal(t, sprint.JudgmentWarnAfter, at[0], "the first warning at 10 s, as before")
 	for k := 1; k < len(at); k++ {
-		assert.GreaterOrEqual(t, at[k]-at[k-1], sprint.JudgmentWarnEvery, "warnings %d and %d: at most once a minute", k-1, k)
+		assert.GreaterOrEqual(t, at[k]-at[k-1], sprint.JudgmentWarnEvery, "warnings %d and %d: at most once every 30 minutes", k-1, k)
 	}
-	assert.Len(t, at, 10, "ten minutes: at 10 s, then once a minute: %v", at)
+	assert.Len(t, at, 1, "ten minutes: only the first warning at 10 s: %v", at)
 }
 
 // A stop of a READY machine that holds a live owner lease (a take before the first start)

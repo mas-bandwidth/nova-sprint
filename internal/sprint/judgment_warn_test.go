@@ -56,5 +56,5 @@ func TestAJudgmentWaitingTenSecondsIsWarnedEverySecond(t *testing.T) {
 	assert.True(t, strings.HasPrefix(text, JudgmentWarningSet(ws)+"; answer each"), text)
 	assert.Contains(t, text, "j7 n-1 cards=s1-1,s1-2 waited=10s\n  accept: nova-sprint accept --group n-1 --expect 2\n")
 	assert.Contains(t, text, "j8 n-3 cards=s1-1,s1-2 waited=1m10s\n  read it: nova-sprint inbox --open n-3\n")
-	assert.Contains(t, text, "it repeats once a minute until they are answered")
+	assert.Contains(t, text, "it repeats at most once every 30 minutes until they are answered")
 }
