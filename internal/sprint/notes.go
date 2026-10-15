@@ -38,6 +38,8 @@ const (
 	NStartedMerging = "stream started merging"
 	NBatchLanded    = "batch landed"
 	NStreamLanded   = "stream landed"
+	NStreamStopped  = "stream stopped"
+	NStreamResumed  = "stream resumed"
 	NWorkOK         = "work came back ok"
 	NMemberUp       = "fleet member up"
 	NMemberDown     = "fleet member down"
@@ -201,8 +203,19 @@ type CoordinatorDelivery struct {
 	RetryBefore                             time.Time // no automatic retry after the bus token acceptance window
 }
 
+// StreamTransition freezes a stream notice at its committing store TIME, including
+// the affected friends. The happened note survives the stop judgment closing.
+// tla/CoordinatorPush.tla: CommitTransition, SeparateBlockerLines.
+type StreamTransition struct {
+	State   string   `json:"state"`
+	Cause   string   `json:"cause,omitempty"`
+	Waiting int      `json:"waiting"`
+	Owners  []string `json:"owners,omitempty"`
+}
+
 // Note is one notification.
 type Note struct {
+	StreamTransition       *StreamTransition    `json:"stream_transition,omitempty"`
 	ID                     string               `json:"id"`
 	SafeDefault            string               `json:"safe_default,omitempty"`
 	DecisionDelivery       *DecisionDelivery    `json:"decision_delivery,omitempty"`

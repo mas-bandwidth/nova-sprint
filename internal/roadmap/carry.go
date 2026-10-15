@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	roadmapdoc "github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 )
 
 // A move across the two files carries every field of the record. A field the

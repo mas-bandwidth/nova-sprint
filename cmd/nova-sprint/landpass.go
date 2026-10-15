@@ -238,7 +238,7 @@ func (l *lander) fork(stream string) *lander {
 	f.out, f.toScore, f.toCost = nil, nil, nil
 	f.ledgerLog, f.recLog, f.recNote, f.baseFix, f.followed = nil, nil, "", "", ""
 	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
-	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
+	f.baseStop, f.baseCount, f.baseWhy, f.baseOutsideTip = false, false, "", ""
 	f.gateHost, f.gateWall = "", 0
 	f.gateKey, f.gateRing, f.gateSlot = stream, 0, 0
 	f.laneAs = landLaneWho + "/" + stream
@@ -1226,6 +1226,11 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 			}
 			if newBase != j.baseSha {
 				if why := f.again(ctx, j, newBase, pushed); why != "" {
+					if f.baseOutsideTip != "" {
+						f.baseRefused(*b, stream, why)
+						j.ended(0, false, true)
+						return
+					}
 					j.refuse(why)
 					return
 				}

@@ -95,8 +95,8 @@ release-accept:
 	GO=$(GO) NOVA_SPRINT_BIN=$(NOVA_SPRINT_BIN) sh tools/release-accept.sh
 
 roadmap:
-	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
-	$(GO) run ./tools/roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
+	$(GO) tool roadmap --file docs/roadmap.sexp --out ROADMAP.md
+	$(GO) tool roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
 
 # schemawire-check is the one check of the generated wire packages
 # (schemas/README.md): a definition in schemas/<area>/ generates pkg/<area>wire/,

@@ -49,7 +49,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -58,6 +57,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/filelock"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
@@ -367,8 +367,9 @@ type lander struct {
 	// baseCount says the last build ran the base's gate under the rule and it was red, baseWhy
 	// its finding: the refusal is counted in the store (baseRefused), never only in this
 	// process, which a hand land starts empty every run and the server every start
-	baseCount bool
-	baseWhy   string
+	baseCount      bool
+	baseWhy        string
+	baseOutsideTip string // exact externally moved commit whose gate was red
 	// baseAbsent says the last build's fetch of the base alone failed with origin's
 	// words for a ref it does not hold (notOnOrigin). The batch is the dead-base
 	// fact (deadBaseRefused), not a fetch to retry.
@@ -928,12 +929,34 @@ func (l *lander) fact(b landBatch, r sprint.MergeReq, pins []landCard, fact, why
 // count stopped the stream. The base's one judgment is sprint.LandBaseRefused's: a base whose
 // red already stopped another stream refuses this one under that judgment, never stopping it.
 func (l *lander) baseRefused(b landBatch, stream, why string) (bool, bool) {
+	tip := l.baseOutsideTip
+	if tip == "" {
+		tip = b.Tip
+	}
+	outside := false
+	if tip != "" {
+		var why string
+		outside, why = l.baseMovedOutside(context.Background(), b.Repo, b.Base, tip)
+		if why != "" {
+			b.Status, b.Reason = "failed", why
+			l.keep(b)
+			return false, false
+		}
+	}
 	r := sprint.MergeReq{Stream: stream, Base: b.Base, BaseRefused: l.baseWhy, Who: l.c.actor}
-	if l.baseStop {
+	if outside {
+		r.BaseRefused = ""
+		r.BaseRed = fmt.Sprintf("outside commit %s on %s: %s", tip, b.Base, l.baseWhy)
+	} else if l.baseStop {
 		r.BaseRed = l.baseWhy
 	}
 	b.Status, b.Reason = "refused", why
-	res, err := l.stepWith(r, nil, sprint.LandBaseRefused)
+	res, err := l.stepWith(r, nil, func(s *sprint.Snapshot, r sprint.MergeReq) sprint.Plan {
+		if outside {
+			return sprint.OutsideBaseRed(s, sprint.BaseGreenReq{Stream: stream, Base: b.Base, Sha: tip, Who: l.c.actor}, l.baseWhy)
+		}
+		return sprint.LandBaseRefused(s, r)
+	})
 	switch {
 	case stepExit(res, err) != 0:
 		b.Reason = why + "; the merge step did not count it (" + stepWhy(res, err) + "); " + againRemedy(stream)
@@ -1141,7 +1164,7 @@ func (l *lander) landingLedgerEntry(ctx context.Context, head, id string) (sprin
 	if err != nil {
 		return sprint.LandingLedgerEntry{}, err
 	}
-	fixes, err := roadmapdoc.DecodeFixes("docs/fixes.sexp", []byte(data))
+	fixes, err := roadmap.DecodeFixes("docs/fixes.sexp", []byte(data))
 	if err != nil {
 		return sprint.LandingLedgerEntry{}, err
 	}
@@ -1171,7 +1194,14 @@ func (l *lander) landed(b landBatch, stream string, pins []landCard) bool {
 		}
 		ledgerEntries[c.id] = entry
 	}
-	res, err := l.step(sprint.MergeReq{Stream: stream, Batch: len(ids), Who: l.c.actor, LedgerEntries: ledgerEntries}, pins)
+	res, err := l.stepWith(sprint.MergeReq{Stream: stream, Batch: len(ids), Who: l.c.actor, LedgerEntries: ledgerEntries}, pins,
+		func(s *sprint.Snapshot, r sprint.MergeReq) sprint.Plan {
+			repo := b.Repo
+			if repo == "" {
+				repo = l.repoDir
+			}
+			return sprint.RecordBaseLanding(s, r, repo, b.Base, b.Tip)
+		})
 	if b.Times != nil {
 		since(&b.Times.Report, start)
 	}
@@ -1859,7 +1889,11 @@ func (l *lander) gateBase(ctx context.Context, dir, stream string, cards []landC
 	}
 	defer release()
 	base := cards[0].base
-	l.baseStop, l.baseCount, l.baseWhy = false, false, ""
+	l.baseStop, l.baseCount, l.baseWhy, l.baseOutsideTip = false, false, "", ""
+	outside, readWhy := l.baseMovedOutside(ctx, cards[0].repo, base, baseSha)
+	if readWhy != "" {
+		return nil, 0, readWhy, ""
+	}
 	was := 0
 	s.gateMu.Lock()
 	if f := l.baseGateFails[baseSha]; f != nil {
@@ -1875,6 +1909,12 @@ func (l *lander) gateBase(ctx context.Context, dir, stream string, cards []landC
 	}
 	if red == "" {
 		return nil, 0, "", ""
+	}
+	// A new outside tip is judged before any queued head is tried, including a
+	// cure. Its first red gate is the base's episode, never a card's retry count.
+	if outside {
+		l.baseStop, l.baseCount, l.baseWhy, l.baseOutsideTip = true, true, red, baseSha
+		return nil, 0, "", "outside commit " + baseSha + " on " + base + " fails the tree gate at its tip: " + red
 	}
 	// a queued head whose tree passes the gate the base fails is the base's fix, not a
 	// casualty of it: it lands first and the batch goes on after it (sprint.FindBaseCure)
@@ -2714,4 +2754,22 @@ func (l *lander) scopeOf(merged []string) []string {
 		}
 	}
 	return out
+}
+
+// baseMovedOutside reads durable provenance before the gate. Unknown provenance
+// gets the same first-red episode as a known outside push, including after upgrade.
+func (l *lander) baseMovedOutside(ctx context.Context, repo, base, tip string) (bool, string) {
+	if l.st == nil {
+		return false, ""
+	} // pure gate fixtures have no landing store
+	if repo == "" {
+		repo = l.repoDir
+	}
+	l.a.serial.Lock()
+	s, err := l.st.Load(ctx, []string{sprint.Work}, nil)
+	l.a.serial.Unlock()
+	if err != nil {
+		return false, "the base's last landed tip could not be read: " + oneline.Err(err)
+	}
+	return sprint.BaseMovedOutside(s, repo, base, tip), ""
 }

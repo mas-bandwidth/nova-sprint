@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -165,6 +166,58 @@ func RefusedVerbLines(recs []RefusedVerb, now time.Time) []string {
 		for _, v := range verbs {
 			if len(groups[m][v]) >= RefusedVerbBound {
 				out = append(out, RefusedVerbFault(m, v, groups[m][v]))
+			}
+		}
+	}
+	return out
+}
+
+// LintRefusalWhy is the Why of one add or brief lint refusal's refused-verb record: the
+// rule tokens the refusal drew (the finding checks, paths-cover-named, test-named and so
+// on), deduped and sorted, each named as `token=<rule>`, so a later review counts refusals
+// per rule from the record (RefusedLintTokens, CountRefusedLintTokens). "" when the refusal
+// drew no token.
+func LintRefusalWhy(tokens []string) string {
+	seen := map[string]bool{}
+	var uniq []string
+	for _, t := range tokens {
+		if t = strings.TrimSpace(t); t != "" && !seen[t] {
+			seen[t] = true
+			uniq = append(uniq, t)
+		}
+	}
+	if len(uniq) == 0 {
+		return ""
+	}
+	sort.Strings(uniq)
+	return "lint refused token=" + strings.Join(uniq, ", token=")
+}
+
+// RefusedLintTokens is the rule tokens one refused-verb record's Why names: every
+// `token=<rule>` word LintRefusalWhy wrote, in Why order. A Why that names none is none.
+func RefusedLintTokens(why string) []string {
+	var out []string
+	for _, w := range strings.Fields(why) {
+		if t, ok := strings.CutPrefix(w, "token="); ok {
+			if t = strings.Trim(t, ","); t != "" {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+// CountRefusedLintTokens counts refused-verb records' rule tokens: each record's tokens
+// (RefusedLintTokens) once per record, so the same rule drawn twice by one refusal counts
+// once. It is how a later review measures what the lints cost, per rule.
+func CountRefusedLintTokens(recs []RefusedVerb) map[string]int {
+	out := map[string]int{}
+	for _, r := range recs {
+		seen := map[string]bool{}
+		for _, t := range RefusedLintTokens(r.Why) {
+			if !seen[t] {
+				seen[t] = true
+				out[t]++
 			}
 		}
 	}
