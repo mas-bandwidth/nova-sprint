@@ -79,6 +79,15 @@ func (a *app) holdCardChecks(verbName string, st *store.Store, stderr io.Writer,
 	if len(red) == 0 {
 		return 0
 	}
+	var ruleTokens []string
+	var ids []string
+	for _, f := range red {
+		ruleTokens = append(ruleTokens, f.Check)
+		if f.ID != "" && !slices.Contains(ids, f.ID) {
+			ids = append(ids, f.ID)
+		}
+	}
+	a.recordLintRefusal(st, verbName, ids, ruleTokens)
 	for _, f := range red {
 		fmt.Fprintln(stderr, oneline.Escape(f.String()))
 	}

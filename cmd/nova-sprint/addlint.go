@@ -78,6 +78,8 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 	evidence := map[key]swarm.BriefBase{}
 	l := &lander{a: a}
 	var lines []string
+	var tokens []string
+	var ids []string
 	findings, first := 0, ""
 	for _, c := range cards {
 		cb := swarm.ReadCardBase([]byte(c.brief))
@@ -104,7 +106,9 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 		if id == "" {
 			id = "-"
 		}
+		ids = append(ids, id)
 		for _, f := range fs {
+			tokens = append(tokens, f.Check)
 			if first == "" {
 				first = f.Check + ": " + f.Excerpt
 			}
@@ -119,6 +123,7 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 	if findings == 0 {
 		return 0
 	}
+	a.recordLintRefusal(st, verbName, ids, tokens)
 	for _, x := range lines {
 		fmt.Fprintln(stderr, x)
 	}
@@ -162,4 +167,33 @@ func (a *app) briefBaseAt(ctx context.Context, l *lander, cb swarm.CardBase) swa
 		return swarm.BriefBase{Missing: "the base " + cb.Ref + pinOf(cb) + " is no commit in " + dir}
 	}
 	return swarm.BriefBase{Repo: dir, Sha: sha}
+}
+
+// recordLintRefusal writes one refused-verb record for an add or brief lint refusal: the
+// verb, the card ids and the rule tokens the refusal drew (the finding checks, paths-cover-
+// named, test-named and so on), in Why, so a later review counts refusals per rule from the
+// record (the doctor's refused-verb checks read the same record). It is best effort; nothing
+// of the refusal's answer depends on it.
+func (a *app) recordLintRefusal(st *store.Store, verb string, cards []string, tokens []string) {
+	if st == nil || len(tokens) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	var uniq []string
+	for _, t := range tokens {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			uniq = append(uniq, t)
+		}
+	}
+	if len(uniq) == 0 {
+		return
+	}
+	slices.Sort(uniq)
+	_ = st.RecordRefused(context.Background(), sprint.RefusedVerb{
+		At:   a.now(),
+		Verb: verb,
+		Card: strings.Join(cards, ","),
+		Why:  fmt.Sprintf("lint refused token=%s", strings.Join(uniq, ", token=")),
+	})
 }
