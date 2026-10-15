@@ -13,7 +13,6 @@
 # deleted. A listed name with no copy left (or no nova-tools twin) fails the lint until its
 # line is removed; a copy not listed fails the lint; a name not in the base's list fails
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
-bench	SPRINT-AHEAD: standalone-clone check (StandaloneLine/NotStandalone) not in tools
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
 bus	DIVERGED: bustest fake Tail / empty-stream vs tools' own changes
 cardcontract	DIVERGED: gateRuns and fullSha take vs tools' 8 commits
