@@ -358,8 +358,12 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		}
 		s.changed = make(chan struct{})
 		s.snap.OK, s.snap.Error = true, nil
-		s.snap.Data = placed(bytes.TrimSpace(body))
-		s.pageRecord(bytes.TrimSpace(body), up, end)
+		trimmed := bytes.TrimSpace(body)
+		if up == nil {
+			trimmed = foldHoldUntil(trimmed, end)
+		}
+		s.snap.Data = placed(trimmed)
+		s.pageRecord(trimmed, up, end)
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
 	}
 	s.summarize(end, took, err != nil)
@@ -712,4 +716,112 @@ func fixView(body json.RawMessage) json.RawMessage {
 		top["priorities"] = mustJSON(prio)
 	}
 	return mustJSON(top)
+}
+
+// foldHoldUntil folds each held member's release time and words from holds[] onto its
+// tables.fleet row in body (tla/HoldUntil.tla; the owner, 2026-10-14: "We should add an
+// expiry time for fleet member holds."), so the page and the pull routes carry until and
+// hold_release on the fleet row even after pageData strips holds[].
+func foldHoldUntil(body json.RawMessage, now time.Time) json.RawMessage {
+	var top map[string]json.RawMessage
+	if json.Unmarshal(body, &top) != nil || top == nil {
+		return body
+	}
+	var holds []struct {
+		Kind  string `json:"kind"`
+		Name  string `json:"name"`
+		Until string `json:"until"`
+	}
+	if json.Unmarshal(top["holds"], &holds) != nil || len(holds) == 0 {
+		return body
+	}
+	var at time.Time
+	if json.Unmarshal(top["at"], &at) == nil && !at.IsZero() {
+		now = at
+	}
+	var tables map[string]json.RawMessage
+	if json.Unmarshal(top["tables"], &tables) != nil || tables == nil {
+		return body
+	}
+	var fleet map[string]map[string]any
+	if json.Unmarshal(tables["fleet"], &fleet) != nil || fleet == nil {
+		return body
+	}
+	changed := false
+	for _, h := range holds {
+		if h.Kind != "" && h.Kind != "member" {
+			continue
+		}
+		row := fleet[h.Name]
+		if row == nil {
+			continue
+		}
+		if h.Until != "" && row["until"] != h.Until {
+			row["until"] = h.Until
+			changed = true
+		}
+		rel := holdUntilWords(h.Until, now)
+		if row["hold_release"] != rel {
+			row["hold_release"] = rel
+			changed = true
+		}
+	}
+	if !changed {
+		return body
+	}
+	tables["fleet"] = mustJSON(fleet)
+	top["tables"] = mustJSON(tables)
+	return mustJSON(top)
+}
+
+func holdUntilWords(untilText string, now time.Time) string {
+	s := strings.TrimSpace(untilText)
+	if s == "" {
+		return "indefinite"
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return "releases at " + s
+	}
+	canon := t.UTC().Format(time.RFC3339)
+	if now.IsZero() {
+		return "releases at " + canon
+	}
+	if !now.Before(t) {
+		if over := now.Sub(t).Truncate(time.Second); over > 0 {
+			return fmt.Sprintf("releases at %s (overdue by %s)", canon, holdDurationWords(over))
+		}
+		return "releases at " + canon + " (due now)"
+	}
+	return fmt.Sprintf("releases at %s (in %s)", canon, holdDurationWords(t.Sub(now)))
+}
+
+func holdDurationWords(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	d = d.Truncate(time.Second)
+	days := int(d / (24 * time.Hour))
+	d -= time.Duration(days) * 24 * time.Hour
+	hours := int(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+	mins := int(d / time.Minute)
+	d -= time.Duration(mins) * time.Minute
+	secs := int(d / time.Second)
+	switch {
+	case days > 0 && hours > 0:
+		return fmt.Sprintf("%dd%dh", days, hours)
+	case days > 0:
+		return fmt.Sprintf("%dd", days)
+	case hours > 0 && mins > 0:
+		return fmt.Sprintf("%dh%dm", hours, mins)
+	case hours > 0:
+		return fmt.Sprintf("%dh", hours)
+	case mins > 0 && secs > 0:
+		return fmt.Sprintf("%dm%ds", mins, secs)
+	case mins > 0:
+		return fmt.Sprintf("%dm", mins)
+	default:
+		return fmt.Sprintf("%ds", secs)
+	}
 }

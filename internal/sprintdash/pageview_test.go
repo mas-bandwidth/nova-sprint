@@ -34,7 +34,7 @@ import (
 // "remove the /events and /landings.json requests".
 const (
 	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
-	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
+	pageAppSHA256   = "a959cf28d4f375ac290c7784be15b7bf9c577b3b58ff9c9f05ba25a4cca32348"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"

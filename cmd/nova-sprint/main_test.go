@@ -407,7 +407,7 @@ func TestAStaleFinishIsRefusedAndARetryReplays(t *testing.T) {
 	ta.now = ta.now.Add(sprint.MissedBeatsDown*sprint.BeatDeadline + time.Second)
 	ta.mu.Unlock()
 	ta.ok("tick") // the presence sweep observes m1's missed beat windows
-	ta.ok("hold m1 --return --reason dead-run")
+	ta.ok("hold m1 --indefinite --return --reason dead-run")
 	code, _, errs := ta.do("finish --as m1 " + card + "@1")
 	require.Equal(t, 1, code, "a stale finish: %d %s", code, errs)
 	require.Contains(t, errs, "stale", "a stale finish: %d %s", code, errs)

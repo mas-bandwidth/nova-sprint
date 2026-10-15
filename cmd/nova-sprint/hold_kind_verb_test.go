@@ -64,7 +64,7 @@ func TestFleetHoldIsHoldOfAMemberAlone(t *testing.T) {
 	assert.Contains(t, errs, "s1 is a stream; run: nova-sprint hold s1 --reason <text>")
 	assert.Empty(t, holdsOf(t, ta), "a refused name refuses the whole call: nothing held")
 
-	out := ta.ok("fleet hold m1 --reason 'the cache trim'")
+	out := ta.ok("fleet hold m1 --indefinite --reason 'the cache trim'")
 	assert.Regexp(t, `(?m)^HOLD OK moved=`, out)
 	assert.Equal(t, []string{"member m1: the cache trim"}, holdsOf(t, ta))
 	var v whereView
@@ -72,7 +72,7 @@ func TestFleetHoldIsHoldOfAMemberAlone(t *testing.T) {
 	assert.Equal(t, sprint.Held, v.Tables["fleet"]["m1"]["status"])
 	assert.Contains(t, ta.ok("log"), "member m1 held: the cache trim")
 	// the top-level hold on the other member says the same lines
-	assert.Equal(t, strings.ReplaceAll(okLines(out), "m1", "m2"), okLines(ta.ok("hold m2 --reason 'the cache trim'")))
+	assert.Equal(t, strings.ReplaceAll(okLines(out), "m1", "m2"), okLines(ta.ok("hold m2 --indefinite --reason 'the cache trim'")))
 	ta.ok("unhold m2")
 
 	code, _, errs = ta.do("fleet unhold reader-a")

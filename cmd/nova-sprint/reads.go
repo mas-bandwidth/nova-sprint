@@ -1245,6 +1245,14 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 				return "", a.readFailed("where", err, stderr), false
 			}
 		}
+		if r.c.json && v.Holds == nil && anyHeldInView(&v) {
+			if v.Holds, err = st.Holds(ctx); err != nil {
+				return "", a.readFailed("where", err, stderr), false
+			}
+		}
+		if r.c.json {
+			foldMemberHoldViews(&v)
+		}
 		if r.c.json && r.rows {
 			s, err := st.Load(ctx, []string{sprint.Work}, nil)
 			if err != nil {
@@ -1276,6 +1284,54 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 		}
 		return frame, 0, true
 	})
+}
+
+// anyHeldInView reports whether any fleet member, reader, stream or friend in v
+// is currently held, so where --json reads st.Holds only when a hold is in force.
+func anyHeldInView(v *whereView) bool {
+	for _, row := range v.Tables[sprint.Fleet] {
+		if row[sprint.Status] == sprint.Held {
+			return true
+		}
+	}
+	for _, row := range v.Tables[sprint.Readers] {
+		if row["state"] == sprint.Held {
+			return true
+		}
+	}
+	for _, row := range v.Tables[sprint.Merge] {
+		if row["state"] == sprint.Held {
+			return true
+		}
+	}
+	for _, f := range v.Friends {
+		if f.Status == sprint.Held {
+			return true
+		}
+	}
+	return false
+}
+
+// foldMemberHoldViews folds each held member's release time and words onto its
+// tables.fleet row for where --json and the dashboard.
+func foldMemberHoldViews(v *whereView) {
+	fleet := v.Tables[sprint.Fleet]
+	if fleet == nil {
+		return
+	}
+	for _, h := range v.Holds {
+		if h.Kind != sprint.HoldMember {
+			continue
+		}
+		row := fleet[h.Name]
+		if row == nil {
+			continue
+		}
+		if h.Until != "" {
+			row["until"] = h.Until
+		}
+		row["hold_release"] = sprint.HoldUntilWords(h.Until, v.At)
+	}
 }
 
 // heldMembersText is where's lines of the fleet members held (sprint.HoldLine): each one's

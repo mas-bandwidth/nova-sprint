@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -15,7 +17,7 @@ import (
 // holdWords is hold and unhold in nova-sprint help (docs/SPEC-SPRINT.md section 11).
 func holdWords() string {
 	return strings.TrimSpace(`
-Hold and unhold: hold <name>... --reason <text> [--return] holds fleet members,
+Hold and unhold: hold <name>... --reason <text> [--until <rfc3339> | --for <d> | --indefinite] [--extend <d>] [--return] holds fleet members,
 readers, friends and streams, one verb for the four, the coordinator's alone:
 a name held takes no new cards; what is dealt and not begun is handed back now
 (a member's ready cards dealt round the fleet, a reader's reads asked and not
@@ -27,13 +29,17 @@ withdrawn to ready). A held friend keeps no card, with
 --return or without: every card on the friend's row goes back to ready, begun or not, and
 a started one with a push carries its pushed head to the next taker. Its status reads held, the reason
 beside it (where --json --cards: holds; handover), and the hold is a line
-of the log. A fleet member's hold may name its cause, --cause j<n> (a
+of the log. A fleet member's hold names when it ends (--until <rfc3339>, --for <d>,
+or --indefinite): a timed hold releases itself at the first tick whose now >= until
+("released: until <rfc3339> reached"), --indefinite is never released by the tick over time,
+and --extend <d> pushes an active timed member hold's until out by <d> (max(until, now) + d).
+A fleet member's hold may name its cause, --cause j<n> (a
 judgment open now): the tick ends the hold in the step that sees the
 judgment answered or retired, and logs "released: cause <x> resolved" to
 the seat. A doctor check is no cause in v1.2.x: --cause doctor:<check> is
 refused. A member's hold with no cause is
 reported to the seat every two hours until it is released or names one;
-where lists each held member's cause, its age and the verb that releases it.`) + "\n" + strings.TrimSpace(`
+where lists each held member's cause, its release time, its age and the verb that releases it.`) + "\n" + strings.TrimSpace(`
 unhold <name>... [--reason <text>] releases it: a member that beats is up at
 once, a reader's and a friend's state is their beat's, a stream is dealt again.
 fleet down <member> (hold --return), reader away <reader>... (hold --return),
@@ -79,8 +85,16 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		fs.BoolVar(&ret, "return", false, "hand back only a member's ready cards; when the member is down, its dead working cards too; hand back a reader's reads asked or begun or withdraw a stream's working cards (default: a member that is up keeps its taken cards and finishes them; what is begun finishes for other names, but a held friend keeps no card either way)")
 	}
 	cause := new(string)
+	until := new(string)
+	forDur := new(time.Duration)
+	indefinite := new(bool)
+	extend := new(time.Duration)
 	if !release && kind != sprint.HoldFriend {
 		cause = fs.String("cause", "", "what ends a fleet member's hold: a judgment open now (its alias j<n> or its id); the tick releases the hold in the step that sees it end, and logs 'released: cause <x> resolved' to the seat. A hold with no cause is reported every "+sprint.HoldNoCauseEvery.String()+" until it is released or names one")
+		until = fs.String("until", "", "when a fleet member's hold releases itself (RFC3339, e.g. 2030-01-02T05:00:00Z); a member hold wants one of --until, --for or --indefinite")
+		forDur = fs.Duration("for", 0, "how long a fleet member's hold stands before releasing itself (above 0, e.g. 30m, 2h); a member hold wants one of --until, --for or --indefinite")
+		indefinite = fs.Bool("indefinite", false, "hold a fleet member with no release time; released by unhold (or --cause)")
+		extend = fs.Duration("extend", 0, "push an active timed fleet member hold's release time out by this duration (above 0, e.g. 15m)")
 	}
 	dry := fs.Bool("dry-run", false, "check the names and the reason, print what would be held or released, and write nothing")
 	var repo listFlag
@@ -93,6 +107,15 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 	if err != nil {
 		return refuse(stderr, verb, err.Error())
 	}
+	var forSet, extendSet bool
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "for":
+			forSet = true
+		case "extend":
+			extendSet = true
+		}
+	})
 	var probs []string
 	switch {
 	case len(pos) == 0 && kind == sprint.HoldMember:
@@ -107,7 +130,7 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 			probs = append(probs, "a name wants letters, digits, _ and -: "+n)
 		}
 	}
-	if !release && strings.TrimSpace(*reason) == "" {
+	if !release && !extendSet && strings.TrimSpace(*reason) == "" {
 		probs = append(probs, "--reason <text> is required: why it is held, shown beside its held status and kept in the log")
 	}
 	if len(repo) > 0 && *expect == 0 {
@@ -142,6 +165,19 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		return 0
 	}
 	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor}
+	if !release && kind != sprint.HoldFriend {
+		req.Until = strings.TrimSpace(*until)
+		req.For = *forDur
+		req.Indefinite = *indefinite
+		req.Extend = *extend
+		req.RequireEnd = !extendSet
+		switch {
+		case forSet && *forDur <= 0:
+			req.Flag = "--for"
+		case extendSet && *extend <= 0:
+			req.Flag = "--extend"
+		}
+	}
 	if req.Cause = strings.TrimSpace(*cause); req.Cause != "" {
 		if _, doctor := sprint.DoctorCause(req.Cause); doctor {
 			// no doctor cause in v1.2.x (hold_cause.go, DoctorCauseDeferred)

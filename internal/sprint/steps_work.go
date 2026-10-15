@@ -2996,6 +2996,9 @@ type FleetReq struct {
 	// control card (FieldHeldCause, FieldHeldCauseNote) for the tick to read.
 	Cause     string `json:",omitempty"`
 	CauseNote string `json:",omitempty"`
+	// HoldUntil, with hold, is when a timed member hold releases itself (hold_until.go):
+	// kept on the control card (FieldHeldUntil) for the tick to read; "" when indefinite.
+	HoldUntil string `json:",omitempty"`
 	// Finish, with hold (and on a down move), lets the member's working cards finish:
 	// only its ready cards, never begun, are dealt round the fleet, and the hold
 	// is marked so (FieldHeldFinish) for the sweep to leave them (hold.go).
@@ -3413,6 +3416,12 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			line += "; cause " + r.Cause
 		case ctl.F(FieldHeldBy) != HeldByProbe:
 			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldIdleReapRoutes)
+		}
+		if r.HoldUntil != "" {
+			set[FieldHeldUntil] = r.HoldUntil
+			line += "; until " + r.HoldUntil
+		} else if ctl.F(FieldHeldBy) != HeldByProbe {
+			unset = append(unset, FieldHeldUntil)
 		}
 		if r.HeldBy == "" && r.Who != "" {
 			set[FieldHeldWho] = r.Who

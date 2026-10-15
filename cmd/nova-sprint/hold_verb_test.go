@@ -28,7 +28,7 @@ func TestTheHoldVerbsHoldAndReleaseWithTheReason(t *testing.T) {
 	code, _, _ = ta.do("unhold")
 	assert.Equal(t, 2, code)
 
-	out := ta.ok("hold m1 reader-a s1 --reason 'the cache trim'")
+	out := ta.ok("hold m1 reader-a s1 --indefinite --reason 'the cache trim'")
 	assert.Contains(t, out, "HOLD OK")
 	var v whereView
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json --cards")), &v))

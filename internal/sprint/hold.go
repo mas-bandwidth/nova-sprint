@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // The coordinator's hold (docs/SPEC-SPRINT.md section 11, hold and unhold): one verb
@@ -92,6 +93,17 @@ type HoldReq struct {
 	// step that sees the cause end; a hold with none is reported every HoldNoCauseEvery.
 	Cause     string `json:",omitempty"`
 	CauseNote string `json:",omitempty"`
+	// Until, For, Indefinite and Extend are a member hold's release time (hold_until.go):
+	// Until is RFC3339 UTC truncated to the second, For is a duration above zero from the
+	// snapshot's Now, Indefinite holds with no release time, RequireEnd requires one of the
+	// three on a member hold (the CLI verb sets it), and Extend adds to an active timed
+	// member hold's held_until.
+	Until      string        `json:",omitempty"`
+	For        time.Duration `json:",omitempty"`
+	Indefinite bool          `json:",omitempty"`
+	RequireEnd bool          `json:",omitempty"`
+	Extend     time.Duration `json:",omitempty"`
+	Flag       string        `json:",omitempty"`
 	// HeldBy, when the hold is the machine's own (HeldByFault), marks it so the tick
 	// clears it by itself once the member is healthy; a coordinator's hold leaves it
 	// empty and stays until a person lifts it.
@@ -125,9 +137,11 @@ type HoldView struct {
 	// Return says the hold handed back the work begun (--return); else that work
 	// finishes.
 	Return bool `json:"return,omitempty"`
-	// Cause is what ends a member's hold (hold_cause.go), "" for none; Who is who made a
-	// coordinator's hold; Release is the verb that ends it by hand.
+	// Cause is what ends a member's hold (hold_cause.go), "" for none; Until is when a
+	// member's timed hold releases itself (hold_until.go), "" when indefinite; Who is who
+	// made a coordinator's hold; Release is the verb that ends it by hand.
 	Cause   string `json:"cause,omitempty"`
+	Until   string `json:"until,omitempty"`
 	Who     string `json:"who,omitempty"`
 	Release string `json:"release,omitempty"`
 }
@@ -209,8 +223,15 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	if why := holdCauseWhy(s, r, targets); len(refused) == 0 && why != "" {
 		refused = append(refused, Refusal{"hold", why})
 	}
+	untilText, uwhy := holdUntilWhy(s, r, targets)
+	if len(refused) == 0 && uwhy != "" {
+		refused = append(refused, Refusal{"hold", uwhy})
+	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}
+	}
+	if !r.Release && r.Extend > 0 {
+		return holdExtendPlan(s, r, targets)
 	}
 	var members []string
 	keep := map[string]bool{} // streams held here: their hold withdraws their cards, a member's hold leaves them
@@ -259,7 +280,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 					line = fmt.Sprintf("--return: %d taken cards stay with their worker and finish: %s", len(ids), strings.Join(ids, ","))
 				}
 			}
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, Cause: r.Cause, CauseNote: r.CauseNote, keep: keep}, up, rr, moves, q, widths))
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, Cause: r.Cause, CauseNote: r.CauseNote, HoldUntil: untilText, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)

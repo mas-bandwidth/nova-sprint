@@ -48,9 +48,9 @@ var verbExit = map[string]string{
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
 // states one (docs/STANDARD.md: `effect: inspection|local write|delivery`).
 var verbEffect = map[string]string{
-	"hold":              "local write: holds the named members, readers, friends or streams in the sprint's store (--return also hands back their begun work); --dry-run writes nothing",
+	"hold":              "local write: holds the named members, readers, friends or streams in the sprint's store (--until, --for or --indefinite names when a member hold ends, --extend pushes a timed member hold's release time out, --return also hands back their begun work); --dry-run writes nothing",
 	"unhold":            "local write: releases the named holds in the sprint's store; --dry-run writes nothing",
-	"fleet hold":        "local write: holds the named fleet members in the sprint's store, as hold does (--return also hands back their begun work); --dry-run writes nothing",
+	"fleet hold":        "local write: holds the named fleet members in the sprint's store, as hold does (--until, --for or --indefinite names when a member hold ends, --extend pushes a timed member hold's release time out, --return also hands back their begun work); --dry-run writes nothing",
 	"fleet unhold":      "local write: releases the named fleet members' holds in the sprint's store, as unhold does; --dry-run writes nothing",
 	"friend hold":       "local write: holds the named friends in the sprint's store, as hold does (every card the friend holds goes back to ready); --dry-run writes nothing",
 	"friend unhold":     "local write: releases the named friends' holds in the sprint's store, as unhold does; --dry-run writes nothing",

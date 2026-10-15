@@ -720,3 +720,7 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCHoldUntil.cfg	MCHoldUntil.tla	pass	-	ignore-terminal	holduntil	required	-
+MCHoldUntilBrokenOutlives.cfg	MCHoldUntil.tla	invariant	NoTimedHoldOutlivesItsTick	ignore-terminal	holduntil	required	-
+MCHoldUntilBrokenIndefiniteReleased.cfg	MCHoldUntil.tla	action	IndefiniteHoldNeverReleasedByTick	ignore-terminal	holduntil	required	-
+MCHoldUntilBrokenExtendShortens.cfg	MCHoldUntil.tla	action	ExtendNeverShortens	ignore-terminal	holduntil	required	-

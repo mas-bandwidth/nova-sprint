@@ -187,7 +187,7 @@ func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	// no stream, so the page's release places it by its row
 	ta.ok("add --stream jev jev-after --one --needs sprint-v1-release-1 --actor lead")
 	ta.ok("add --stream sprint-v1-release v1-after --one --needs jev-1 --actor lead")
-	ta.ok("hold m1 --reason 'nothing dealt: the critical cards stay off the fleet' --actor lead")
+	ta.ok("hold m1 --indefinite --reason 'nothing dealt: the critical cards stay off the fleet' --actor lead")
 	ta.ok("start --actor lead")
 	ta.ok("tick") // the tick counts the critical path into the where record
 

@@ -69,7 +69,7 @@ func TestATakeNoteNamesAHeldMemberAndReason(t *testing.T) {
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("start")
 	ta.ok("tick")
-	ta.ok("fleet hold m1 --reason 'maintenance\nwindow'")
+	ta.ok("fleet hold m1 --indefinite --reason 'maintenance\nwindow'")
 
 	take := ta.ok("take --as m1")
 	assert.Contains(t, take, "TAKE OK moved=0 ", "the held member takes no card")

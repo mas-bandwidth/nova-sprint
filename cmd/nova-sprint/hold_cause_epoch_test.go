@@ -42,10 +42,10 @@ func TestAJudgmentOfAnEarlierEpochIsNoCauseOfAHold(t *testing.T) {
 
 	ta.clearWithReturns(0, "m1", "s1-2.w1@1")
 
-	code, _, errs := ta.do("hold m1 --reason 'looking' --cause " + old.Alias)
+	code, _, errs := ta.do("hold m1 --indefinite --reason 'looking' --cause " + old.Alias)
 	assert.NotEqual(t, 0, code, "the old epoch's alias was taken: %s", errs)
 	assert.Contains(t, errs, "epoch")
-	code, _, errs = ta.do("hold m1 --reason 'looking' --cause " + old.Notes[0])
+	code, _, errs = ta.do("hold m1 --indefinite --reason 'looking' --cause " + old.Notes[0])
 	assert.NotEqual(t, 0, code, "the old epoch's note was taken: %s", errs)
 	assert.Contains(t, errs, "names no open judgment")
 	_, held := ta.heldMember("m1")
@@ -55,7 +55,7 @@ func TestAJudgmentOfAnEarlierEpochIsNoCauseOfAHold(t *testing.T) {
 	ta.timerOnce("look-again")
 	now := ta.group(sprint.NTimer, "")
 	require.NotEqual(t, old.Notes[0], now.Notes[0])
-	ta.ok("hold m1 --reason 'looking' --cause " + now.Alias)
+	ta.ok("hold m1 --indefinite --reason 'looking' --cause " + now.Alias)
 	h, held := ta.heldMember("m1")
 	require.True(t, held)
 	assert.Equal(t, now.Alias, h.Cause)

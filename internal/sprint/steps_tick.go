@@ -1171,9 +1171,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	fc := faultClear(s, r)
 	p.Units = append(p.Units, fc.Units...)
 	p.Notes = append(p.Notes, fc.Notes...)
-	// a hold whose cause ended ends in this step, and a member whose takes end with no
-	// model call on routes that serve elsewhere is held with its cause (hold_cause.go;
-	// tla/HoldCause.tla Tick)
+	// a hold whose cause ended or whose release time arrived ends in this step, and a
+	// member whose takes end with no model call on routes that serve elsewhere is held
+	// with its cause (hold_cause.go, hold_until.go; tla/HoldCause.tla, tla/HoldUntil.tla)
 	holdCauseClear(s, r, &p)
 	idleReapHolds(s, r, &p)
 	// every provider out of credit: the binding stops the machine as the plan commits

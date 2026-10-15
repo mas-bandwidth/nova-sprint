@@ -105,11 +105,13 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
-nova-sprint hold <name>... --reason <text> [--return]
+nova-sprint hold <name>... --reason <text> [--until <RFC3339> | --for <duration> | --indefinite] [--extend <duration>] [--return]
 
-A member that is up keeps taken cards and finishes them, including with `--return`; that
-flag hands back only its dealt, untaken cards. A member that is down also returns its dead
-working cards. `fleet down <member>` follows the same rule.
+A fleet member's hold requires one of `--until <RFC3339>`, `--for <duration>` or `--indefinite`;
+a timed hold releases itself at the first tick whose `now >= until`, and `--extend <duration>`
+pushes an active timed hold's release time out. A member that is up keeps taken cards and finishes
+them, including with `--return`; that flag hands back only its dealt, untaken cards. A member that
+is down also returns its dead working cards. `fleet down <member>` follows the same rule.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level

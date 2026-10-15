@@ -157,7 +157,7 @@ func (st *Store) Holds(ctx context.Context) ([]sprint.HoldView, error) {
 				continue
 			}
 			h := sprint.HoldView{Kind: sprint.HoldMember, Name: row.Key, Reason: ctl.Fields[sprint.FieldHeldReason], By: ctl.Fields[sprint.FieldHeldBy],
-				At: ctl.Fields["held"], Return: ctl.Fields[sprint.FieldHeldFinish] == "", Cause: ctl.Fields[sprint.FieldHeldCause], Who: ctl.Fields[sprint.FieldHeldWho]}
+				At: ctl.Fields["held"], Return: ctl.Fields[sprint.FieldHeldFinish] == "", Cause: ctl.Fields[sprint.FieldHeldCause], Until: ctl.Fields[sprint.FieldHeldUntil], Who: ctl.Fields[sprint.FieldHeldWho]}
 			h.Release = sprint.HoldReleaseVerb(h)
 			out = append(out, h)
 		}

@@ -245,12 +245,12 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 
 // holdFields is every field of a member's hold: a release unsets them all.
 var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote,
-	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
+	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes, FieldHeldUntil}
 
 // HeldCarried is every field of a member's hold a clear carries into the new epoch beside
-// held and held_by (RestoreShape): its cause, its reason and who made it.
+// held and held_by (RestoreShape): its cause, its release time, its reason and who made it.
 var HeldCarried = []string{FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType,
-	FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
+	FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes, FieldHeldUntil}
 
 // ctlWritten says a unit of the plan writes the member's control card already: the step
 // writes a control card once, so a second write waits for the next tick (tla/HoldCause.tla,
@@ -267,21 +267,26 @@ func ctlWritten(p *Plan, member string) bool {
 	return false
 }
 
-// holdCauseClear is the tick's end of every hold whose cause ended (tla/HoldCause.tla
-// Tick, NoHoldOutlivesItsCause and NoHoldForARestedRoute): the hold's fields go, a member
-// whose beat is alive is up in this step (as unhold brings it up), the idle-reap judgment
-// a route's rest answered closes, and the release is a line of the log to the seat. A hold
-// with no cause is holdNoCauseConds', and the machine's other holds (fault, environment,
-// probe, sync, adopt) are their own releases'.
+// holdCauseClear is the tick's end of every hold whose cause ended or whose release time
+// arrived (tla/HoldCause.tla Tick, NoHoldOutlivesItsCause and NoHoldForARestedRoute;
+// tla/HoldUntil.tla Tick, NoTimedHoldOutlivesItsTick and IndefiniteHoldNeverReleasedByTick):
+// the hold's fields go, a member whose beat is alive is up in this step (as unhold brings
+// it up), the idle-reap judgment a route's rest answered closes, and the release is a line
+// of the log to the seat. A hold with no cause is holdNoCauseConds', and the machine's
+// other holds (fault, environment, probe, sync, adopt) are their own releases'.
 func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
-		if ctl == nil || ctl.F("held") == "" || ctl.F(FieldHeldCause) == "" || ctlWritten(p, m) {
+		if ctl == nil || ctl.F("held") == "" || (ctl.F(FieldHeldCause) == "" && ctl.F(FieldHeldUntil) == "") || ctlWritten(p, m) {
 			continue
 		}
-		how := causeEnded(s, m, ctl)
-		if how == "" {
-			continue
+		until, expired := holdUntilExpired(s, ctl)
+		how := ""
+		if !expired {
+			how = causeEnded(s, m, ctl)
+			if how == "" {
+				continue
+			}
 		}
 		cause := ctl.F(FieldHeldCause)
 		set := map[string]string{"since": stamp(s.Now), "status": Down}
@@ -291,10 +296,17 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 		}
 		n := happened(NHoldReleased, "", s.Now)
 		n.Who, n.To = r.who(), s.Coordinator
-		n.What = fmt.Sprintf("%s released: cause %s resolved (%s); it is %s", m, cause, how, state)
+		var moved string
+		if expired {
+			n.What = fmt.Sprintf("%s released: hold ran its time (until %s); it is %s", m, until, state)
+			moved = fmt.Sprintf("%s released: hold ran its time (until %s)", m, until)
+		} else {
+			n.What = fmt.Sprintf("%s released: cause %s resolved (%s); it is %s", m, cause, how, state)
+			moved = fmt.Sprintf("%s released: cause %s resolved", m, cause)
+		}
 		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, holdFields...))},
-			Notes: []Note{n}, Moved: fmt.Sprintf("%s released: cause %s resolved", m, cause)}
-		if cause == CauseIdleReap {
+			Notes: []Note{n}, Moved: moved}
+		if !expired && cause == CauseIdleReap {
 			for _, o := range s.Open {
 				if o.Note.Type == NMemberIdleReaps && o.Subject() == StreamSubject(MemberSubject(m)) {
 					u.Closes = append(u.Closes, o)
@@ -314,6 +326,9 @@ func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
 		if ctl == nil || ctl.F("held") == "" || causeLive(ctl.F(FieldHeldCause)) {
+			continue
+		}
+		if _, expired := holdUntilExpired(s, ctl); expired {
 			continue
 		}
 		cause := "no cause"
@@ -561,7 +576,7 @@ func idleReapHolds(s *Snapshot, r TickReq, p *Plan) {
 		n.StreamLevel, n.Who, n.To = true, r.who(), s.Coordinator
 		n.Decisions = []string{"ack", "wait"}
 		n.What = fmt.Sprintf("%s held: %s; cards %s; its working cards finish and it is dealt nothing; answering this ends the hold (ack it once its harness and keys are seen to), and so does a rest of %s for no model call: the tick releases it", m, why, strings.Join(cards, ","), strings.Join(routes, " or "))
-		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho))},
+		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldHeldUntil))},
 			Notes: []Note{n}, Moved: fmt.Sprintf("%s held: %s", m, why)})
 	}
 }
@@ -592,7 +607,8 @@ func idleReapConds(s *Snapshot) []cond {
 }
 
 // HoldLine is one hold in force as where says it: the name, how long it has stood and by
-// whom, its cause (or that it names none) and reason, and the verb that releases it.
+// whom, its cause (or that it names none) and reason, when it releases (or indefinite),
+// and the verb that releases it.
 func HoldLine(h HoldView, now time.Time) string {
 	age := "-"
 	if at, err := time.Parse(time.RFC3339, h.At); err == nil {
@@ -613,6 +629,9 @@ func HoldLine(h HoldView, now time.Time) string {
 	line := fmt.Sprintf("held %s %s %s by %s: %s", h.Kind, h.Name, age, by, cause)
 	if h.Reason != "" {
 		line += " (" + h.Reason + ")"
+	}
+	if h.Kind == HoldMember {
+		line += "; " + HoldUntilWords(h.Until, now)
 	}
 	return line + "; release: " + HoldReleaseVerb(h)
 }

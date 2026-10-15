@@ -413,7 +413,31 @@ window.addEventListener("resize", function () { if (overallLast) renderOverall(o
 // tables share, so their columns have the same widths.
 // `clamp` (Friends only, SPEC.md "Friends working, clamped to width, soft", the owner 2026-10-03 12:14 PM):
 // a friend's working figure never exceeds its width; the raw count is the cell's title only.
-function fleetLike(box, table, nameLabel, scale, clamp) {
+function holdDurationWords(ms) {
+  if (!(ms > 0)) return "0s";
+  var s = Math.floor(ms / 1000), d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600); s -= h * 3600;
+  var m = Math.floor(s / 60); s -= m * 60;
+  if (d > 0) return h > 0 ? d + "d" + h + "h" : d + "d";
+  if (h > 0) return m > 0 ? h + "h" + m + "m" : h + "h";
+  if (m > 0) return s > 0 ? m + "m" + s + "s" : m + "m";
+  return s + "s";
+}
+function holdReleaseWords(m, at) {
+  var u = String(m.until || "").trim();
+  if (u) {
+    var t = Date.parse(u), now = Date.parse(at || "");
+    if (!isNaN(t) && !isNaN(now)) return t > now ? "in " + holdDurationWords(t - now) : "due now";
+    return "until " + u;
+  }
+  var r = String(m.hold_release || "").trim();
+  if (r === "indefinite") return "indefinite";
+  var inMatch = /\(in ([^)]+)\)/.exec(r);
+  if (inMatch) return "in " + inMatch[1];
+  if (/\bdue now\b/.test(r)) return "due now";
+  return "indefinite";
+}
+function fleetLike(box, table, nameLabel, scale, clamp, at) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
   // rows by status (up, held, down), then by name
@@ -464,7 +488,13 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
     if (st in t) t[st]++;
     if (shownStatus(m.status) === "up") { t.upWidth += width; t.upWorking += working; }
     setText(r.name, budLabel(k, table));
-    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral");
+    var pillText = st || "-", pillTitle = pillText;
+    if (!clamp && st === "held") {
+      var rel = holdReleaseWords(m, at);
+      pillText = st + " · " + rel;
+      pillTitle = m.until ? st + " · releases at " + m.until + " (" + rel + ")" : (m.hold_release ? st + " · " + m.hold_release : pillText);
+    }
+    setPill(r.pill, pillText, STATUS_TONE[st] || "neutral", pillTitle);
     setTrack(r.track, working, width, scale, m);
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
@@ -483,7 +513,7 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
 }
 
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d));
+  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, d.at);
   setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
