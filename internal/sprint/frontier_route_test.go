@@ -68,7 +68,7 @@ func TestAFrontierCardIsDealtFromItsRoutesLikeEveryTier(t *testing.T) {
 		t.Parallel()
 		answer := func(tier string) []any {
 			s, card := frontierTwin(t, tier, "a")
-			s.Friends = []FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{tier}}}
+			s.Friends = workerSeatFixtures([]FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{tier}}})
 			c := card("s1-1")
 			_, got, why, byFriend := s.routeOf(c, nil, nil, "")
 			sTier, sWhy, sBy := s.routeServed(c, nil, "")

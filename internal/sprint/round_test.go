@@ -33,6 +33,7 @@ func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 // applies its plan.
 func (w *world) part(fn func(*Snapshot, TickReq) (Plan, int), r TickReq) Plan {
 	w.t.Helper()
+	rememberWorkerSeats(w.s, r.Friends)
 	p, _ := fn(w.s, r)
 	return w.must(p)
 }

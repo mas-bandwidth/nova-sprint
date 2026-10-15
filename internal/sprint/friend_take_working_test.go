@@ -21,7 +21,7 @@ func workingWorld(t *testing.T) *world {
 	t.Helper()
 	b := friendBrief("only friend amy")
 	w := friendWorld(t, b, b, b, b, b)
-	dealStarted(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash"}))
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		require.Equal(t, Working, w.s.Fleet.Card(id).Col, id)
 	}

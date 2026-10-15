@@ -20,7 +20,7 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 	t.Run("a card with no tier carries the dealer's default in its packet", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend"))
-		dealWith(w, FriendSeat{Name: "fay", Width: 2, Status: Up, Tiers: []string{"flash"}})
+		dealWith(w, workerSeatFixture(FriendSeat{Name: "fay", Width: 2, Status: Up, Tiers: []string{"flash"}}))
 		wc := w.s.Fleet.Card("s1-1.w1")
 		require.NotNil(t, wc)
 		pr := w.s.Primary("s1-1")
@@ -33,8 +33,8 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, proBrief("friend alex"))
 		dealWith(w,
-			FriendSeat{Name: "alex", Width: 2, Status: Up, Tiers: []string{"flash"}},
-			FriendSeat{Name: "jo", Width: 2, Status: Up, Tiers: []string{"flash", "pro"}})
+			workerSeatFixture(FriendSeat{Name: "alex", Width: 2, Status: Up, Tiers: []string{"flash"}}),
+			workerSeatFixture(FriendSeat{Name: "jo", Width: 2, Status: Up, Tiers: []string{"flash", "pro"}}))
 		assert.Equal(t, FriendRow("jo"), w.s.Fleet.Card("s1-1.w1").Row)
 		assert.Equal(t, 0, w.s.Fleet.Count(FriendRow("alex"), Working)+w.s.Fleet.Count(FriendRow("alex"), Ready))
 	})
@@ -46,12 +46,12 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 			briefs = append(briefs, friendBrief("friend"))
 		}
 		w := friendWorld(t, briefs...)
-		dealWith(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{"flash", "pro"}})
-		seats := []FriendSeat{
+		dealWith(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{"flash", "pro"}}))
+		seats := workerSeatFixtures([]FriendSeat{
 			{Name: "amy", Width: 2, Status: Up, Tiers: []string{"flash", "pro"}},
 			{Name: "bob", Width: 2, Status: Up, Tiers: []string{"flash", "frontier", "heavy", "pro"}},
-		}
-		p := w.must(FriendLevel(w.s, FriendLevelReq{Seats: seats}))
+		})
+		p := w.must(friendLevelFixture(w.s, FriendLevelReq{Seats: seats}))
 		require.NotEmpty(t, p.Units, "bob serves flash too: the cards level to him")
 		assert.Equal(t, len(p.Units), w.s.Fleet.Count(FriendRow("bob"), Ready)+w.s.Fleet.Count(FriendRow("bob"), Working), "every card moved is on his row")
 	})
@@ -59,7 +59,7 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 	t.Run("a re-tiered card leaves a holder who cannot serve it and is dealt again", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
-		emma := FriendSeat{Name: "emma", Width: 1, Status: Up, Tiers: []string{"flash", "pro"}}
+		emma := workerSeatFixture(FriendSeat{Name: "emma", Width: 1, Status: Up, Tiers: []string{"flash", "pro"}})
 		dealWith(w, emma)
 		require.Equal(t, FriendRow("emma"), w.s.Fleet.Card("s1-1.w1").Row)
 		require.Equal(t, FriendRow("emma"), w.s.Fleet.Card("s1-2.w1").Row)
@@ -68,7 +68,7 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 		require.Equal(t, "heavy", w.s.DealTier(w.s.Primary("s1-1")))
 
 		// no friend serves heavy: both come back to ready, none stranded on her row
-		p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{emma}})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{emma})})
 		w.must(p)
 		for _, id := range []string{"s1-1", "s1-2"} {
 			wc := w.s.Fleet.Card(id + ".w1")
@@ -78,8 +78,8 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 		}
 
 		// a friend serving heavy takes them
-		hal := FriendSeat{Name: "hal", Width: 2, Status: Up, Tiers: []string{"heavy"}}
-		p, _ = TickDeal(w.s, TickReq{Friends: []FriendSeat{emma, hal}})
+		hal := workerSeatFixture(FriendSeat{Name: "hal", Width: 2, Status: Up, Tiers: []string{"heavy"}})
+		p, _ = tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{emma, hal})})
 		w.must(p)
 		assert.Equal(t, FriendRow("hal"), w.s.Fleet.Card("s1-1.w1").Row)
 		assert.Equal(t, FriendRow("hal"), w.s.Fleet.Card("s1-2.w1").Row)
@@ -89,10 +89,10 @@ func TestEveryFriendDecisionReadsTheOneTierOfTheCard(t *testing.T) {
 	t.Run("a started card stays", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend"))
-		emma := FriendSeat{Name: "emma", Width: 1, Status: Up, Tiers: []string{"flash", "pro"}, Running: []string{"s1-1.w1"}}
+		emma := workerSeatFixture(FriendSeat{Name: "emma", Width: 1, Status: Up, Tiers: []string{"flash", "pro"}, Running: []string{"s1-1.w1"}})
 		dealWith(w, emma)
 		w.must(Brief(w.s, BriefReq{ID: "s1-1", Tier: "heavy"}))
-		p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{emma}})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{emma})})
 		w.must(p)
 		assert.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
 	})

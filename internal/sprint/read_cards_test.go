@@ -113,7 +113,7 @@ func TestMemberReaderWithAllTiersGetsAsked(t *testing.T) {
 		"reader-m3": {ReaderTiers: "flash,pro,heavy,frontier"},
 	}
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	dealReads(t, w, []FriendSeat{})
+	dealReads(t, w, workerSeatFixtures([]FriendSeat{}))
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 2, "two reads asked, one to each reader with all tiers")
 	for _, c := range reads {
@@ -145,7 +145,7 @@ func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 			}
 			w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: tc.enabled}}
 			putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-			dealReads(t, w, []FriendSeat{})
+			dealReads(t, w, workerSeatFixtures([]FriendSeat{}))
 			reads := readCardsOf(w, "s1-1")
 			require.Len(t, reads, 1, "one read asked to m2 (m1 is the worker)")
 			require.Equal(t, "m2", reads[0].Row)
@@ -162,7 +162,7 @@ func TestMemberReaderWithoutExplicitTiersNeedsEnabledRoute(t *testing.T) {
 	// Set up a DISABLED pro route - the reader should NOT be able to serve pro
 	w.s.Routes = []Route{{Name: "pro-a", Tier: "pro", Provider: "p", Model: "m", Enabled: false}}
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	dealReads(t, w, []FriendSeat{})
+	dealReads(t, w, workerSeatFixtures([]FriendSeat{}))
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 0, "no reads asked when no pro route is enabled for readers without explicit tier config")
 }
@@ -181,7 +181,7 @@ func TestReadCardsOffAskAsBefore(t *testing.T) {
 
 // readerSeat is a friend up of the tiers and roles given.
 func readerSeat(name string, width int, tiers, roles []string) FriendSeat {
-	return FriendSeat{Name: name, Width: width, Status: Up, Tiers: tiers, Roles: roles}
+	return workerSeatFixture(FriendSeat{Name: name, Width: width, Status: Up, Tiers: tiers, Roles: roles})
 }
 
 // TestAReadCardIsDealtToAReaderOfItsTierAndNeverTheWorker pins layer 2's rules, the deal's own
@@ -195,12 +195,12 @@ func TestAReadCardIsDealtToAReaderOfItsTierAndNeverTheWorker(t *testing.T) {
 		t.Parallel()
 		w := readCardsWorld(t, 4, "m1")
 		putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "zoe", 1)
-		seats := []FriendSeat{
+		seats := workerSeatFixtures([]FriendSeat{
 			readerSeat("alex", 8, []string{"pro"}, []string{"builder"}),
 			readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"}),
 			readerSeat("pat", 2, []string{"pro"}, []string{"reader"}),
 			readerSeat("zoe", 2, []string{"pro"}, []string{"builder", "reader"}),
-		}
+		})
 		dealReads(t, w, seats)
 		require.ElementsMatch(t, []string{FriendRow("pat"), "m1"}, eReadRows(w, "s1-1"), "a reader of its tier, never a builder alone, never flash for pro, never zoe who worked it")
 	})
@@ -356,7 +356,7 @@ func TestTheWorkSwitchesStopWorkNeverReads(t *testing.T) {
 	w.s.Work.SetProp(PropFleet, "off")
 	w.s.Work.SetProp(PropFriends, "off")
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
-	dealReads(t, w, []FriendSeat{readerSeat("pat", 2, []string{"pro"}, []string{"reader"})})
+	dealReads(t, w, workerSeatFixtures([]FriendSeat{readerSeat("pat", 2, []string{"pro"}, []string{"reader"})}))
 	require.ElementsMatch(t, []string{"m2", FriendRow("pat")}, eReadRows(w, "s1-1"))
 }
 
@@ -370,10 +370,10 @@ func TestAFriendReadsEveryTierAtOrBelowHers(t *testing.T) {
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "fred", 1)
 	putReviewBy(w, "s1-2", "s1-2: work (s1) tier: pro\n", "fred", 2)
 	putReviewBy(w, "s1-3", "s1-3: work (s1) tier: pro\n", "zoe", 3)
-	seats := []FriendSeat{
+	seats := workerSeatFixtures([]FriendSeat{
 		readerSeat("jon", 16, []string{"heavy"}, []string{"builder", "reader"}),
 		readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"}),
-	}
+	})
 	dealReads(t, w, seats)
 	require.Equal(t, []string{FriendRow("jon")}, eReadRows(w, "s1-1"), "heavy reads flash")
 	require.Equal(t, []string{FriendRow("jon")}, eReadRows(w, "s1-2"), "heavy reads pro; fred worked it")
@@ -401,25 +401,25 @@ func TestAReaderOneTierBelowMayTakeAReadCard(t *testing.T) {
 			w.s.Fleet.Put(&Card{ID: "busy-" + itoa(i) + ".w1", Row: FriendRow("jon"), Col: Working, Score: 1, Rev: 1, Fields: map[string]string{"kind": "work", "primary": "busy-" + itoa(i), "stream": "s9", "attempt": "1"}})
 		}
 		fred := readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"})
-		dealReads(t, w, []FriendSeat{jon, fred})
+		dealReads(t, w, workerSeatFixtures([]FriendSeat{jon, fred}))
 		require.ElementsMatch(t, []string{FriendRow("jon"), FriendRow("fred")}, eReadRows(w, "s1-1"), "the second read goes to the flash friend")
 	})
 	t.Run("its own tier, then one below, before above", func(t *testing.T) {
 		t.Parallel()
 		w := readCardsWorld(t, 4)
 		putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "zoe", 1)
-		dealReads(t, w, []FriendSeat{
+		dealReads(t, w, workerSeatFixtures([]FriendSeat{
 			readerSeat("fred", 32, []string{"flash"}, []string{"builder", "reader"}),
 			readerSeat("jon", 16, []string{"heavy"}, []string{"builder", "reader"}),
 			readerSeat("pat", 2, []string{"pro"}, []string{"reader"}),
-		})
+		}))
 		require.ElementsMatch(t, []string{FriendRow("pat"), FriendRow("fred")}, eReadRows(w, "s1-1"), "the pro reader, then the flash reader one below; never the heavy reader while they are idle")
 	})
 	t.Run("two tiers below never", func(t *testing.T) {
 		t.Parallel()
 		w := readCardsWorld(t, 4)
 		putReviewBy(w, "s1-1", "s1-1: work (s1) tier: heavy\n", "zoe", 1)
-		dealReads(t, w, []FriendSeat{readerSeat("fred", 32, []string{"flash"}, []string{"reader"})})
+		dealReads(t, w, workerSeatFixtures([]FriendSeat{readerSeat("fred", 32, []string{"flash"}, []string{"reader"})}))
 		require.Empty(t, readCardsOf(w, "s1-1"), "flash never reads heavy")
 	})
 }
@@ -459,31 +459,31 @@ func TestAReadCardGoesToTheCheapestReaderThatMayTakeIt(t *testing.T) {
 		want    []string
 	}{
 		{name: "a flash read goes to the flash reader", brief: "tier: flash",
-			seats: []FriendSeat{fred(4), pat(8), jon(16)}, want: []string{FriendRow("fred")}},
+			seats: workerSeatFixtures([]FriendSeat{fred(4), pat(8), jon(16)}), want: []string{FriendRow("fred")}},
 		{name: "a pro read with the pro reader busy goes to the flash reader", brief: "tier: pro",
-			seats: []FriendSeat{fred(4), pat(1), jon(16), readerSeat("kim", 4, []string{"pro"}, []string{"reader"})},
+			seats: workerSeatFixtures([]FriendSeat{fred(4), pat(1), jon(16), readerSeat("kim", 4, []string{"pro"}, []string{"reader"})}),
 			busy:  map[string]int{"pat": 1}, holds: "kim", want: []string{FriendRow("fred")}},
 		{name: "a heavy read goes to the heavy reader, then one tier below", brief: "tier: heavy",
-			seats: []FriendSeat{fred(32), pat(4), jon(4), readerSeat("ada", 16, []string{"frontier"}, []string{"reader"})},
+			seats: workerSeatFixtures([]FriendSeat{fred(32), pat(4), jon(4), readerSeat("ada", 16, []string{"frontier"}, []string{"reader"})}),
 			want:  []string{FriendRow("jon"), FriendRow("pat")}},
 		{name: "a flash read with every flash and pro reader busy goes to the heavy reader", brief: "tier: flash",
-			seats: []FriendSeat{fred(1), pat(1), jon(16)}, busy: map[string]int{"fred": 1, "pat": 1},
+			seats: workerSeatFixtures([]FriendSeat{fred(1), pat(1), jon(16)}), busy: map[string]int{"fred": 1, "pat": 1},
 			want: []string{FriendRow("jon")}},
 		{name: "two reads of one primary go to two idle readers of its tier", brief: "tier: pro",
-			seats: []FriendSeat{pat(4), readerSeat("kim", 4, []string{"pro"}, []string{"reader"}), jon(16)},
+			seats: workerSeatFixtures([]FriendSeat{pat(4), readerSeat("kim", 4, []string{"pro"}, []string{"reader"}), jon(16)}),
 			want:  []string{FriendRow("pat"), FriendRow("kim")}},
 		{name: "a frontier read goes to the frontier reader, then the heavy one, before pro members", brief: "tier: frontier",
 			members: []string{"m1", "m2"}, tiers: "pro",
-			seats: []FriendSeat{readerSeat("ada", 16, []string{"frontier"}, []string{"reader"}), jon(16)},
+			seats: workerSeatFixtures([]FriendSeat{readerSeat("ada", 16, []string{"frontier"}, []string{"reader"}), jon(16)}),
 			want:  []string{FriendRow("ada"), FriendRow("jon")}},
 		// the second read: m1 and pat are both one tier below; the ring cursor, never the
 		// most idle, picks among equals (the-read-deal-counts-the-queue-and-fills-free-lanes-first)
 		{name: "a heavy read: a pro member reads one below, as a pro friend does", brief: "tier: heavy",
 			members: []string{"m1"}, tiers: "pro",
-			seats: []FriendSeat{jon(16), pat(8)},
+			seats: workerSeatFixtures([]FriendSeat{jon(16), pat(8)}),
 			want:  []string{FriendRow("jon"), "m1"}},
 		{name: "a member idle before a friend of its tier busy", brief: "tier: flash", members: []string{"m1"},
-			seats: []FriendSeat{fred(1)}, busy: map[string]int{"fred": 1}, want: []string{"m1"}},
+			seats: workerSeatFixtures([]FriendSeat{fred(1)}), busy: map[string]int{"fred": 1}, want: []string{"m1"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -526,7 +526,7 @@ func TestAWithdrawnReadCardSpendsNoOne(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "bob", 1)
-	seats := []FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})}
+	seats := workerSeatFixtures([]FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})})
 	id := ReadCardID("s1-1", 1, "amy")
 	w.s.Fleet.Put(&Card{ID: id, Row: FriendRow("amy"), Col: Withdrawn, Score: 1, Rev: 1, Fields: map[string]string{
 		"kind": "read", "primary": "s1-1", "stream": "s1", "reader": "amy", "attempt": "1", "head": "work-s1-1", FieldReadCard: "1"}})
@@ -548,10 +548,10 @@ func TestReadCardsWhySaysWhichClauseRefusesEachUnit(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: heavy\n", "bob", 1)
-	seats := []FriendSeat{
+	seats := workerSeatFixtures([]FriendSeat{
 		readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"}),
 		readerSeat("bob", 8, []string{"heavy"}, []string{"builder", "reader"}),
-	}
+	})
 	why := ReadCardsWhy(w.s, seats)
 	require.Len(t, why, 2, "the units, then the one primary that waits")
 	require.Contains(t, why[0], "units: amy half=")
@@ -569,7 +569,7 @@ func TestAReadHandedBackByFriendTakeIsNotDealtToHerAgain(t *testing.T) {
 	for _, hold := range []bool{false, true} {
 		w := readCardsWorld(t, 4)
 		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "bob", 1)
-		seats := []FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})}
+		seats := workerSeatFixtures([]FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})})
 		dealReads(t, w, seats)
 		id := ReadCardID("s1-1", 1, "amy")
 		require.NotNil(t, w.s.Fleet.Placed(id))
@@ -593,7 +593,7 @@ func TestAReadCardHoldsItsPrimaryToTheReadCardsDeadline(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "bob", 1)
-	dealReads(t, w, []FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})})
+	dealReads(t, w, workerSeatFixtures([]FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})}))
 	rc := w.s.Fleet.Placed(ReadCardID("s1-1", 1, "amy"))
 	require.NotNil(t, rc)
 	require.Equal(t, Working, rc.Col)
@@ -613,7 +613,7 @@ func TestReadCardsWhySaysWhyAPrimaryWantsNoRead(t *testing.T) {
 	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "bob", 1)
 	putReviewBy(w, "s1-2", "s1-2: work (s1)\n", "bob", 2)
 	w.s.Work.Card("s1-2").Fields["result"] = "failed"
-	seats := []FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})}
+	seats := workerSeatFixtures([]FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})})
 	dealReads(t, w, seats)
 	why := strings.Join(ReadCardsWhy(w.s, seats), "\n")
 	require.Contains(t, why, "s1-1 wants 0: attempt=1 stands: placed "+ReadCardID("s1-1", 1, "amy")+" col=working")
@@ -632,7 +632,7 @@ func TestAPrimaryWaitingForAReadCardIsNeverStranded(t *testing.T) {
 	closing := noteIDs(w.s.Open)
 	j, ok := reviewJudgment(w.s, w.s.Work.Card("s1-1"), reviewStep{closing: closing})
 	require.False(t, ok, "waiting for its read card, not stranded: %s %s", j.Type, j.What)
-	dealReads(t, w, []FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})})
+	dealReads(t, w, workerSeatFixtures([]FriendSeat{readerSeat("amy", 8, []string{"flash"}, []string{"builder", "reader"})}))
 	j, ok = reviewJudgment(w.s, w.s.Work.Card("s1-1"), reviewStep{closing: closing})
 	require.False(t, ok, "its read card dealt holds it: %s %s", j.Type, j.What)
 }
@@ -644,7 +644,7 @@ func TestAReadNoUnitMayTakeIsCannotAskOnce(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: heavy\n", "bob", 1)
-	seats := []FriendSeat{readerSeat("bob", 8, []string{"heavy"}, []string{"builder", "reader"})}
+	seats := workerSeatFixtures([]FriendSeat{readerSeat("bob", 8, []string{"heavy"}, []string{"builder", "reader"})})
 	p, _ := readCardsAskPart(w.s, TickReq{Friends: seats}, seats)
 	var cannot []Note
 	for _, n := range p.Notes {
@@ -672,10 +672,10 @@ func TestReadsAreAskedEveryTickUntilThereIsRoom(t *testing.T) {
 	const K = 5
 	w := readCardsWorld(t, 4)
 	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "bob", 1)
-	full := []FriendSeat{
+	full := workerSeatFixtures([]FriendSeat{
 		readerSeat("amy", 0, []string{"pro"}, []string{"reader"}),
 		readerSeat("cal", 0, []string{"pro"}, []string{"reader"}),
-	}
+	})
 	for i := 0; i < K; i++ {
 		dealReads(t, w, full)
 		raised, _ := askTick(t, w, full)
@@ -686,12 +686,12 @@ func TestReadsAreAskedEveryTickUntilThereIsRoom(t *testing.T) {
 		require.NotEmpty(t, w.s.Work.Card("s1-1").F(FieldWaitingReader), "tick %d: the waiting mark", i)
 	}
 	// one reader frees a lane each tick: the first read, then the second
-	dealt := []FriendSeat{readerSeat("amy", 2, []string{"pro"}, []string{"reader"}), full[1]}
+	dealt := workerSeatFixtures([]FriendSeat{readerSeat("amy", 2, []string{"pro"}, []string{"reader"}), full[1]})
 	dealReads(t, w, dealt)
 	first := readCardsOf(w, "s1-1")
 	require.Len(t, first, 1, "the first read goes out on the first tick its reader has room")
 	require.Equal(t, "amy", first[0].F("reader"), "to the reader with room")
-	oneMore := []FriendSeat{dealt[0], readerSeat("cal", 2, []string{"pro"}, []string{"reader"})}
+	oneMore := workerSeatFixtures([]FriendSeat{dealt[0], readerSeat("cal", 2, []string{"pro"}, []string{"reader"})})
 	dealReads(t, w, oneMore)
 	require.Len(t, readCardsOf(w, "s1-1"), 2, "the second read goes out the next tick its reader has room")
 }
@@ -738,7 +738,7 @@ func TestTickDealCarriesReadCardRefusalsInPlan(t *testing.T) {
 		Fields: map[string]string{"kind": "read", "primary": "s1-1"},
 	})
 
-	p, _ := TickDeal(w.s, TickReq{})
+	p, _ := tickDealFixture(w.s, TickReq{})
 	require.NotEmpty(t, p.Refused, "TickDeal must carry read card refusals in Plan.Refused")
 	require.Equal(t, "m2", p.Refused[0].Key)
 	require.Equal(t, "read generations past the load window", p.Refused[0].Why)

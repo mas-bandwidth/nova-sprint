@@ -15,7 +15,7 @@ import (
 func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"}))
 	amy := FriendRow("amy")
 	_, n := FriendMedianWall(w.s, "amy")
 	require.Zero(t, n)
@@ -41,7 +41,7 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	require.Equal(t, Working, wc.Col)
 	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(wc))
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-4"}, Hold: true}))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"}))
 	wc = w.s.Fleet.Card("s1-4.w1")
 	require.Equal(t, Working, wc.Col)
 	assert.Equal(t, "12600", wc.F(FieldFriendDeadline), "three times 70 minutes")

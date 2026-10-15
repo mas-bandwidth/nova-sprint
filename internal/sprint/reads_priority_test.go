@@ -24,7 +24,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 	w := newWorld(t)
 	w.readersTable() // this priority fixture exercises legacy full-width reads
 	w.s.Work.SetRows([]string{"s1", "s2", "s3"})
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}})
 	if working > 0 {
 		amy.Running = []string{WorkCardID("s3-1", 1)} // her beat names her one card running
 	}
@@ -67,7 +67,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 // runs them in order (TickTables), each applied.
 func tickDealAndAsk(t *testing.T, w *world, seats ...FriendSeat) {
 	t.Helper()
-	p, _ := TickDeal(w.s, TickReq{Friends: seats})
+	p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 	w.must(p)
 	askReaders(t, w, seats)
 }
@@ -115,7 +115,7 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 			r, _ := friendRoom(amy)
 			require.Equal(t, 3, r-friendLoad(w.s, "amy"), "her room is three")
 
-			p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy}})
+			p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})})
 			firstRead, firstWork := -1, -1
 			for i, u := range p.Units {
 				if u.Moved == u.Key+" asked of friend amy" && firstRead < 0 {
@@ -130,7 +130,7 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 				require.Less(t, firstRead, firstWork, "the deal's plan places a read before any normal work card")
 			}
 			w.must(p)
-			askReaders(t, w, []FriendSeat{amy})
+			askReaders(t, w, workerSeatFixtures([]FriendSeat{amy}))
 			assert.Len(t, friendReads(w, "amy"), tc.reads, "every read she may take is placed")
 			assert.Len(t, friendNewWork(w, "amy"), tc.work, "work only in the room the reads leave")
 			assert.Equal(t, 4, friendLoad(w.s, "amy"), "her room is full")
@@ -178,7 +178,7 @@ func TestAFriendsRoomGoesToReadsFirst(t *testing.T) {
 	t.Run("a read she may take that finds no room holds her work", func(t *testing.T) {
 		t.Parallel()
 		w, amy := priorityWorld(t, 1, 5, 0, 10)
-		seats := friendReadsFirst(w.s, []FriendSeat{amy}, readsWaitingCards(w.s), Plan{})
+		seats := friendReadsFirst(w.s, workerSeatFixtures([]FriendSeat{amy}), readsWaitingCards(w.s), Plan{})
 		r, _ := friendRoom(seats[0])
 		assert.LessOrEqual(t, r-friendLoad(w.s, "amy"), 0, "a waiting read she may take leaves no room for work")
 		tickDealAndAsk(t, w, amy)

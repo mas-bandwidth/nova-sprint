@@ -20,7 +20,7 @@ import (
 func friendTierWorld(t *testing.T, n, width int) (*world, FriendSeat) {
 	t.Helper()
 	w := setup(t, n)
-	stella := FriendSeat{Name: "stella", Width: width, Status: Up, Class: "heavy,pro"}
+	stella := workerSeatFixture(FriendSeat{Name: "stella", Width: width, Status: Up, Class: "heavy,pro"})
 	var ids []string
 	for i := 1; i <= n; i++ {
 		id := "s1-" + itoa(i)
@@ -31,7 +31,7 @@ func friendTierWorld(t *testing.T, n, width int) (*world, FriendSeat) {
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 		{Name: "pro-off", Tier: cardhdr.RoutePro, Provider: "p", Model: "pro", Enabled: false},
 	}
-	w.s.Friends = []FriendSeat{stella}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{stella})
 	w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: ids}, Fix: "make it green", Tier: cardhdr.RoutePro}))
 	for _, id := range ids {
 		require.Equal(t, Ready, w.state(id))
@@ -56,7 +56,7 @@ func TestAFriendHeldCardIsNotAStall(t *testing.T) {
 		w, stella := friendTierWorld(t, 3, 1)
 		dealWith(w, stella)
 		stella.Width = 2 // her room grows to 4: one free place, and s1-3 still ready
-		w.s.Friends = []FriendSeat{stella}
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella})
 		mustHold(t, running(w), "s1-3", HeldByTick)
 		// the deal that did not hand it over: the next tick does nothing to it
 		c := newHeld(running(w), w.s.Now)
