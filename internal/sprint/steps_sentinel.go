@@ -471,11 +471,14 @@ func notUnderWay(s *Snapshot, waits []string) (string, string) {
 // ready when it waits for nothing else.
 func releaseHeld(s *Snapshot, c *Card, r ReleaseReq) Unit {
 	set := map[string]string{"released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason}
+	if DecisionParkedReview(c) {
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Review, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))}, Moved: fmt.Sprintf("%s waiting -> review (server-default hold released by %s; head and reads retained)", c.ID, r.Who)}
+	}
 	if w := WaitsFor(s, c, nil); len(w) > 0 {
-		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld))},
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
 			Moved: fmt.Sprintf("%s released by %s; it waits for %s", c.ID, r.Who, strings.Join(w, ","))}
 	}
-	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, set, FieldHeld))},
+	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
 		Moved: fmt.Sprintf("%s waiting -> ready (released by %s)", c.ID, r.Who)}
 }
 

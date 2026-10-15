@@ -265,31 +265,40 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 // cost a trip of its own. Its answers are exactly Seat's (the seat moved) and
 // Server's (the server is fresh, no older than ServerTTL).
 func (st *Store) SeatAndServer(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, error) {
+	seat, moved, server, fresh, _, err := st.SeatServerCoordinator(ctx)
+	return seat, moved, server, fresh, err
+}
+
+// SeatServerCoordinator reads the seat, server and coordinator keys in one
+// MGET on Redis. This funds where's decision-index read without another serial
+// coordinator GET; no backend call count is hidden or rewritten.
+func (st *Store) SeatServerCoordinator(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, string, error) {
 	var s sprint.SeatChange
 	var r ServerRecord
 	kv, ok := st.B.(KV)
 	if !ok {
-		return s, false, r, false, nil // a backend that keeps no keys has neither
+		coordinator, err := st.B.Coordinator(ctx)
+		return s, false, r, false, coordinator, err // a backend without keys keeps no seat/server records
 	}
-	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer})
+	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer, keyCoordinator})
 	if err != nil {
-		return s, false, r, false, err
+		return s, false, r, false, "", err
 	}
 	if oks[0] {
 		if err := json.Unmarshal([]byte(vals[0]), &s); err != nil {
-			return s, false, r, false, err
+			return s, false, r, false, "", err
 		}
 	}
 	fresh := false
 	if oks[1] {
 		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
-			return s, false, r, false, err
+			return s, false, r, false, "", err
 		}
 		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
 			r = ServerRecord{}
 		}
 	}
-	return s, s.Holder != "", r, fresh, nil
+	return s, s.Holder != "", r, fresh, vals[2], nil
 }
 
 // ServerActor is the actor the server runs as, by its record: "" with no

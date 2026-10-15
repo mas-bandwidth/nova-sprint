@@ -1889,6 +1889,9 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 // of the judgments still late and of the friends idle (a fact, never a friend state).
 func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := tickOverdue(s, r)
+	p.on(s)
+	defaults := TickDecisionDefaults(s, r)
+	p.Units = append(p.Units, defaults.Units...)
 	pass, passDue := TickCoordinatorPass(s, r)
 	// every judgment that holds a card is raised again at each deadline it passes
 	// unanswered (seat_answers.go)

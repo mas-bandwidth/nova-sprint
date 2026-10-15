@@ -122,7 +122,8 @@ func (r InboxReq) due(n Note) (time.Time, bool) {
 // stalled stream, stale:<stream>), never its position in the list, so a verb
 // given --group <id> acts on this group or is refused, never on another.
 type Group struct {
-	ID string `json:"id"`
+	ID          string `json:"id"`
+	SafeDefault string `json:"safe_default"`
 	// Alias is the group's judgment's alias, j<n> (Note.Alias); "" for a happened
 	// group or a stale stream's.
 	Alias     string   `json:"alias,omitempty"`
@@ -230,7 +231,7 @@ func Inbox(r InboxReq) []Group {
 		if !ok {
 			i = len(judg)
 			at[k] = i
-			judg = append(judg, Group{Kind: Judgment, Type: n.Type, Stream: n.Stream, Oldest: n.At, Due: due,
+			judg = append(judg, Group{Kind: Judgment, Type: n.Type, SafeDefault: SafeDecisionDefault(n.Type), Stream: n.Stream, Oldest: n.At, Due: due,
 				Decisions: n.Decisions, To: n.To, Hint: n.Hint})
 		}
 		if f, ok := first[i]; !ok || n.At.Before(f.At) || n.At.Equal(f.At) && n.ID < f.ID {

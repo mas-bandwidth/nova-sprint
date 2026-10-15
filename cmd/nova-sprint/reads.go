@@ -636,11 +636,12 @@ func seatWaitsOf(r store.StopsRecord, now time.Time) *seatWaitsView {
 
 // whereView is the view, for a program.
 type whereView struct {
-	At      time.Time `json:"at"`
-	Landed  int64     `json:"landed"`
-	All     int64     `json:"all"`
-	Held    int64     `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
-	Summary string    `json:"summary"`
+	Decisions sprint.DecisionSummary `json:"decisions"`
+	At        time.Time              `json:"at"`
+	Landed    int64                  `json:"landed"`
+	All       int64                  `json:"all"`
+	Held      int64                  `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
+	Summary   string                 `json:"summary"`
 	// ArchivedCards and ArchivedLanded are the cards of the archived streams (stream
 	// archive) and those landed, beside the headline, which counts only the streams on the
 	// table: All+ArchivedCards and Landed+ArchivedLanded are the whole epoch's.
@@ -1326,19 +1327,19 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
-	coordinator, err := st.B.Coordinator(ctx)
-	if err != nil {
-		return whereView{}, "", err
-	}
 	// the seat's record and the server's heartbeat, read in one exchange so the
 	// server's own version does not cost where --json a round trip of its own:
 	// the version and commit it runs, when it started and when it last wrote,
 	// fresh (no older than its TTL) or absent (store.SeatAndServer, ServerRecord)
-	seat, moved, serverRec, serverOK, err := st.SeatAndServer(ctx)
+	seat, moved, serverRec, serverOK, coordinator, err := st.SeatServerCoordinator(ctx)
 	if err != nil {
 		return whereView{}, "", err
 	}
 	now := a.now()
+	decisionNotes, err := st.B.OpenNotes(ctx)
+	if err != nil {
+		return whereView{}, "", err
+	}
 	v := whereView{At: now, Tables: map[string]map[string]map[string]any{}, Streams: clocks, Epoch: st.PinnedEpoch(), Coordinator: coordinator}
 	if serverOK {
 		v.ServerVersion = serverRec.Version
@@ -1357,6 +1358,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	v.Decisions = sprint.DecisionsOwed(now, decisionNotes, facts.DecisionHolds, facts.Machine.StoppedBetween)
 	v.Landed, v.All = counts(shapes[0], facts.Sentinels)
 	v.Archived = archivedOf(shapes[0], facts.Sentinels)
 	if v.Archived != nil {
@@ -1444,6 +1446,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		return whereView{}, "", err
 	}
 	var b strings.Builder
+	b.WriteString(v.Decisions.Line() + "\n")
+	for _, history := range v.Decisions.ReceiptHistory {
+		b.WriteString("DECISION RECEIPT HISTORY: " + history + "\n")
+	}
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
 	if line := sprint.IdleLine(v.Blockers); line != "" {
 		b.WriteString(line + "\n")
