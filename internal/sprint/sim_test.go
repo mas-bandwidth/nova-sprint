@@ -48,6 +48,10 @@ func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 func (w *world) do(p Plan) Plan {
 	w.t.Helper()
 	p = w.lawful(p)
+	// Retain the observed friend evidence carried by the plan snapshot for Check.
+	if p.pre != nil && p.pre.Friends != nil {
+		w.s.Friends = slices.Clone(p.pre.Friends)
+	}
 	for _, ra := range p.Rows {
 		tb := w.s.T(ra.Table)
 		if !tb.HasRow(ra.Row) {

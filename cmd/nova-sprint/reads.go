@@ -281,6 +281,8 @@ type queueCard struct {
 
 func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("queue")
+	wait := fs.Duration("wait", 0, "block until a sprint log line after --after, or this duration; return the queue and its next cursor")
+	after := fs.String("after", "", "with --wait: the cursor returned by the previous queue read")
 	as := fs.String("as", "", "a reader (its read cards, asked then reading) or a fleet member (its work cards, ready then working)")
 	stream := fs.String("stream", "", "a stream: its merge queue, then its stuck cards")
 	col := fs.String("col", "", "with --stream: waiting lists the stream's waiting primaries, each with what it still waits for")
@@ -291,6 +293,9 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "queue", err.Error())
+	}
+	if why := queueWaitFlags(verbArgs{fs: fs}, *as, *wait, *after); why != "" {
+		return refuse(stderr, "queue", why)
 	}
 	want, err := packetsWanted(*packets, *have)
 	if err != nil {
@@ -319,6 +324,17 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "queue", err.Error())
 	}
 	ctx := context.Background()
+	if *wait > 0 {
+		var stop context.CancelFunc
+		ctx, stop = a.notify(ctx)
+		defer stop()
+		if a.twinOpen(c.redis) {
+			return refuse(stderr, "queue", twinMachine)
+		}
+		if err := a.waitQueue(ctx, st, *wait, *after); err != nil {
+			return a.queueReadFailed("queue", err, stderr)
+		}
+	}
 	if st, err = st.Pinned(ctx); err != nil {
 		return a.queueReadFailed("queue", err, stderr)
 	}
@@ -332,6 +348,25 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			return a.queueReadFailed("queue", err, stderr)
 		}
 	}
+	if a.serving && *as != "" {
+		// ServerLanes.tla Renew and QueueWait.tla Read: finish our own
+		// best-effort renewal after the wait, before its returned cursor.
+		// Renewing after the snapshot makes every next wait wake on this lease;
+		// moving the cursor after the snapshot would instead skip a deal.
+		// ignored: the next queue beat retries a failed lease renewal.
+		_, _ = st.Run(ctx, store.Step{
+			Verb: "lease",
+			Load: []string{sprint.Readers},
+			Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RenewReaderLeases(s, *as) },
+		})
+	}
+	// QueueWait.tla CursorNeverSkips: sample the log BEFORE reading cells.
+	// A later commit remains after this cursor, even if it also enters this read.
+	cursor, err := st.LogTail(ctx)
+	if err != nil {
+		return a.queueReadFailed("queue", err, stderr)
+	}
+	cursor = waitCursor(cursor)
 	var cards []queueCard
 	width := -1 // a fleet member's width, from its row (-1: not a member, or none read; 0: it drains)
 	add := func(table string, cs []*sprint.Card) {
@@ -438,7 +473,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		if cards == nil {
 			cards = []queueCard{}
 		}
-		out := map[string]any{"as": *as, "stream": *stream, "epoch": epoch, "cards": cards, "outcome": a.outcome, "changed": a.changed}
+		out := map[string]any{"as": *as, "stream": *stream, "epoch": epoch, "cursor": cursor, "cards": cards, "outcome": a.outcome, "changed": a.changed}
 		if width >= 0 {
 			out["width"] = width // the worker runs this many: the fleet row is the truth
 		}
@@ -498,11 +533,11 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 				printPacket(stdout, *cards[i].Packet)
 			}
 		}
-		fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d\n", len(cards), epoch)
+		fmt.Fprintf(stdout, "CURSOR %s\nQUEUE OK cards=%d epoch=%d\n", cursor, len(cards), epoch)
 		return 0
 	}
 	listed(stdout, "CARD", lines, c.max, "queue")
-	fmt.Fprintf(stdout, "QUEUE OK cards=%d epoch=%d\n", len(cards), epoch)
+	fmt.Fprintf(stdout, "CURSOR %s\nQUEUE OK cards=%d epoch=%d\n", cursor, len(cards), epoch)
 	return 0
 }
 

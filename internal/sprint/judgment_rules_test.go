@@ -100,8 +100,8 @@ func brokenOnce(t *testing.T, w *world, finding string) {
 func friendDealt(t *testing.T, running ...string) (*world, FriendSeat) {
 	t.Helper()
 	w := friendWorld(t, friendBrief("friend"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro", Running: running}
-	bob := FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro", Running: running})
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash,pro"})
 	dealWith(w, amy)
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.Equal(t, FriendRow("amy"), wc.Row)

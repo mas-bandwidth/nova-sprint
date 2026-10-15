@@ -18,7 +18,7 @@ func TestWhoIsAPreferenceOnTheTwin(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, seats, 1, "unpinned work still reads the friend roster")
 	var due int
-	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: seats}, nil, nil, &due))
+	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: h.workerSeats(seats)}, nil, nil, &due))
 	assert.Equal(t, "friend.amy", h.snap().Fleet.Card("s1-1.w1").Row)
 	h.clean("friend preference")
 }
@@ -53,7 +53,7 @@ func TestPreferenceOverflowOnTheTwin(t *testing.T) {
 			h.setup(0)
 			h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{{ID: "job", Brief: "job tier: pro\nWHO: " + tc.who + "\n\nWork."}}}))
 			var due int
-			h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: tc.seats}, nil, nil, &due))
+			h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: h.workerSeats(tc.seats)}, nil, nil, &due))
 			wc := h.snap().Fleet.Card("job.w1")
 			if tc.want == "" {
 				assert.Nil(t, wc)
@@ -85,7 +85,7 @@ func TestPreferenceConsumesActualRoomOnTheTwin(t *testing.T) {
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: cards}))
 	seats := []sprint.FriendSeat{{Name: "amy", Width: 1, Status: sprint.Up, Class: "pro"}, {Name: "bob", Width: 1, Status: sprint.Up, Class: "pro"}}
 	var due int
-	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: seats}, nil, nil, &due))
+	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: h.workerSeats(seats)}, nil, nil, &due))
 	s := h.snap()
 	for _, id := range []string{"a", "b"} {
 		assert.Equal(t, "friend.amy", s.Fleet.Card(id+".w1").Row)
@@ -121,7 +121,7 @@ func TestUnpinReturnedCardWhileRunningOnTheTwin(t *testing.T) {
 	brief := "job tier: pro\nWHO: only friend amy\n\nWork."
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{{ID: "a", Brief: brief}, {ID: "b", Brief: brief}}}))
 	var due int
-	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: []sprint.FriendSeat{{Name: "amy", Width: 1, Status: sprint.Up, Class: "flash,pro"}}}, nil, nil, &due))
+	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: h.workerSeats([]sprint.FriendSeat{{Name: "amy", Width: 1, Status: sprint.Up, Class: "flash,pro"}})}, nil, nil, &due))
 	h.must(FriendTakeStep(sprint.FriendTakeReq{Friend: "amy", IDs: []string{"b"}, Reason: "share"}))
 	h.startMachine()
 	h.must(UnpinStep(sprint.UnpinReq{IDs: []string{"b"}, Reason: "share returned work", Who: "tester"}))
@@ -132,7 +132,7 @@ func TestUnpinReturnedCardWhileRunningOnTheTwin(t *testing.T) {
 	assert.Empty(t, s.Primary("b").F(sprint.FieldWho))
 	assert.Equal(t, brief, s.Primary("b").F("brief"))
 	assert.Equal(t, 1, s.Primary("b").Int("attempt"))
-	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: []sprint.FriendSeat{{Name: "bob", Width: 1, Status: sprint.Up, Class: "pro"}}}, nil, nil, &due))
+	h.must(TickPartStep("deal", sprint.TickDeal, sprint.TickReq{Friends: h.workerSeats([]sprint.FriendSeat{{Name: "bob", Width: 1, Status: sprint.Up, Class: "pro"}})}, nil, nil, &due))
 	assert.Equal(t, "friend.bob", h.snap().Fleet.Card("b.w1").Row)
 	assert.Equal(t, 3, h.snap().Fleet.Card("b.w1").Int("gen"))
 	h.clean("returned unpin")

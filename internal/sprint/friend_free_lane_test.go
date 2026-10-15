@@ -20,7 +20,7 @@ func TestFriendWithNoFreeLaneIsNotDealt(t *testing.T) {
 	// amy at width 2 fills both lanes: two work cards working on her row, no free lane,
 	// and no card behind them
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 	dealStarted(w, amy)
 	require.Equal(t, 2, w.s.Fleet.Count(FriendRow("amy"), Working), "both lanes work")
 	require.Zero(t, workOn(w, FriendRow("amy"))-w.s.Fleet.Count(FriendRow("amy"), Working), "nothing waits behind them")

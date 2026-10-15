@@ -26,7 +26,7 @@ func setFriendHook(st *store.Store, name, state string) error {
 		if state == sprint.Up {
 			word = hook.StateProven
 		}
-		by[name] = hook.Status{Name: name, State: word}
+		by[name] = hook.Status{Name: name, Role: hook.Friend, State: word}
 		var out []hook.Status
 		for _, n := range names {
 			if r, ok := by[n]; ok {
