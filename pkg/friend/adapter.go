@@ -28,20 +28,10 @@ type Deliverer interface {
 	Deliver(ctx context.Context, text string) (exit int, err error)
 }
 
-// TextLimit is the most bytes of text d takes as one turn: its own
-// TextLimit() when it has one above zero, else BatchBytes. The daemon's
-// envelope is cut to it (Envelope).
-func TextLimit(d Deliverer) int {
-	if l, ok := d.(interface{ TextLimit() int }); ok && l.TextLimit() > 0 {
-		return l.TextLimit()
-	}
-	return BatchBytes
-}
-
 // Deferred is a Deliverer's answer when the session cannot take a turn now
 // and nothing has failed (for example, neither Codex queue nor resume can
 // accept it). The daemon keeps the message in hand, tries again
-// after RecheckEvery, counts nothing toward MaxDeliveries and acks nothing,
+// after RecheckEvery, counts nothing toward its delivery bound and acks nothing,
 // so a chat open all day loses no message. Remedy is set when no retry
 // can succeed, because the adapter cannot drive the session at all (dsh: a
 // session under an agent preset): what the friend does instead, which
@@ -86,26 +76,13 @@ type Exec func(ctx context.Context, dir, name string, args []string, stdin strin
 const OutputKept = 2048
 
 // outputKey carries, in a delivery's context, what to call when the command
-// prints: the daemon's watch on a running turn (WithOutputSeen).
+// prints: the daemon's watch on a running turn (nova-tools' nova-friend run sets it).
 type outputKey struct{}
-
-// WithOutputSeen is ctx carrying seen, called each time the command a
-// delivery runs prints to stdout or stderr: a turn that prints is working,
-// and only a turn silent past the daemon's SilentStop is stopped.
-func WithOutputSeen(ctx context.Context, seen func()) context.Context {
-	return context.WithValue(ctx, outputKey{}, seen)
-}
 
 // tailKey carries, in a delivery's context, what to hand each write the command prints:
 // the daemon's tail of a lane's output, the lines a capped lane's report quotes
-// (WithOutputTail, lane_cap.go).
+// (nova-tools' nova-friend run sets it).
 type tailKey struct{}
-
-// WithOutputTail is ctx carrying tail, handed each write the command a delivery runs
-// prints to stdout or stderr.
-func WithOutputTail(ctx context.Context, tail func([]byte)) context.Context {
-	return context.WithValue(ctx, tailKey{}, tail)
-}
 
 // seenWriter is a Builder that says each write to the context's watch and tail.
 type seenWriter struct {
@@ -129,7 +106,7 @@ func (w *seenWriter) Write(p []byte) (int, error) {
 // turn that prints keeps running however long it takes, and the daemon
 // stops one silent past its SilentStop by cancelling ctx (the finding of
 // 2026-10-04: a fixed ten-minute cap killed real work mid-turn). Every write
-// to stdout or stderr is said to the watch in ctx (WithOutputSeen). The
+// to stdout or stderr is said to the watch in ctx, when one is set. The
 // command is its own session leader (Setsid), and on a cancel the whole
 // group is signalled, SIGTERM then SIGKILL after KillDelay: a harness that
 // forks (opencode run does) leaves no orphan behind a stop. On a nonzero

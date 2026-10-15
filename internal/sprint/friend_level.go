@@ -68,6 +68,9 @@ func friendLevel(s *Snapshot, r FriendLevelReq, dealt, dealtWorking map[string]i
 	var p Plan
 	var seats []FriendSeat
 	for _, f := range r.Seats {
+		if f.Session == FriendOneShot {
+			continue // a one-shot's row is levelled by the fleet's level, never the friends': her member takes by count
+		}
 		if friendDealable(s, f) {
 			seats = append(seats, f)
 		}

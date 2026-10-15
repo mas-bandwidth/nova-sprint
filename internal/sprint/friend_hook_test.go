@@ -1,9 +1,10 @@
 package sprint
 
 import (
-	"github.com/mas-bandwidth/nova-tools/hook"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/hook"
 )
 
 func TestFriendHookStatus(t *testing.T) {

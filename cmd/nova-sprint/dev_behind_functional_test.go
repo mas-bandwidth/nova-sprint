@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,15 +17,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 )
 
 // TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches drives the "dev is behind" rule on a
 // real store (docs/SPEC-SPRINT.md section 7): cards landed onto main and onto dev in two
 // repositories with no sprint branch never count, and a card landed on a sprint branch of a
 // repository that has a dev branch counts and is named by its id. The clock is injected so the
-// 30-minute age threshold passes without waiting.
+// 30-minute age threshold passes without waiting. Each repository is a local bare origin the
+// REPO: name resolves to (url.<origin>.insteadOf), and each card finishes at the full sha of
+// a real commit pushed to it, so the finish guard (a head origin holds) passes as a member's
+// finish does. No network.
 func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	t.Parallel()
 	addr := testutil.Start(t)
@@ -58,18 +64,62 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 		devRepo  = "mas-bandwidth/nova-tools"
 	)
 
-	// land drives the ids of one stream through the whole flow to landed.
-	land := func(stream string, ids []string) {
+	// Each repository's origin is a local bare repository its REPO: name resolves to, and a
+	// worker's clone of it makes and pushes each card's commit.
+	gitEnv := append(slices.DeleteFunc(os.Environ(), func(e string) bool { return strings.HasPrefix(e, "GOFLAGS=") }),
+		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=worker", "GIT_AUTHOR_EMAIL=worker@example.invalid", "GIT_COMMITTER_NAME=worker", "GIT_COMMITTER_EMAIL=worker@example.invalid")
+	git := func(dir string, args ...string) string {
 		t.Helper()
-		var workIDs []string
-		for _, id := range ids {
-			workIDs = append(workIDs, id+".w1@1")
-		}
+		res, err := gitrun.Run(context.Background(), gitrun.Options{C: dir, Env: gitEnv, OwnRepo: dir != ""}, args...)
+		require.NoError(t, err, "git %v: %s", args, res.Stderr)
+		return strings.TrimSpace(string(res.Stdout))
+	}
+	fixture := t.TempDir()
+	workers := map[string]string{}
+	var insteadOf []string
+	for i, repo := range []string{mainRepo, devRepo} {
+		name := filepath.Base(repo)
+		remote, worker := filepath.Join(fixture, name+".git"), filepath.Join(fixture, name)
+		git("", "init", "-q", "--bare", "-b", "main", remote)
+		git(remote, "config", "receive.autogc", "false") // no detached writer outlives the TempDir
+		git("", "clone", "-q", remote, worker)
+		require.NoError(t, os.WriteFile(filepath.Join(worker, "README"), []byte("base\n"), 0o600))
+		git(worker, "add", "README")
+		git(worker, "commit", "-q", "-m", "base")
+		git(worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+		workers[repo] = worker
+		insteadOf = append(insteadOf,
+			"GIT_CONFIG_KEY_"+strconv.Itoa(i)+"=url."+remote+".insteadOf",
+			"GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+swarm.CardRepoURL(repo))
+	}
+	gitEnv = append(gitEnv, append([]string{"GIT_CONFIG_COUNT=" + strconv.Itoa(len(workers))}, insteadOf...)...)
+	a.gitEnv = gitEnv
+
+	// pushed is the card's work as a member makes it: a commit in repo's worker clone, pushed
+	// to origin on the card's branch (the branch the finish guard names); its full sha.
+	pushed := func(repo, id string) string {
+		t.Helper()
+		worker := workers[repo]
+		require.NoError(t, os.WriteFile(filepath.Join(worker, id+".txt"), []byte(id+"\n"), 0o600))
+		git(worker, "add", id+".txt")
+		git(worker, "commit", "-q", "-m", "work of "+id)
+		head := git(worker, "rev-parse", "HEAD")
+		git(worker, "push", "-q", "origin", "HEAD:refs/heads/sprint/"+id+".w1.g1.e0")
+		return head
+	}
+
+	// land drives the ids of one stream through the whole flow to landed, each card
+	// finished at the full sha of its commit pushed to repo's origin.
+	land := func(stream, repo string, ids []string) {
+		t.Helper()
 		run("fleet beat m1") // m1's cards are not redealt as stale
 		run("tick")
 		run("tick")
 		run("take --as m1 --limit " + strconv.Itoa(len(ids)) + " --epoch 0")
-		run("finish --as m1 " + strings.Join(workIDs, " ") + " --epoch 0")
+		for _, id := range ids {
+			run("finish --as m1 " + id + ".w1@1 --epoch 0 --head " + pushed(repo, id))
+		}
 		run("queue --as reader-a")
 		run("queue --as reader-b")
 		run("tick")
@@ -94,9 +144,9 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	// Stream s2 is added only after s1 lands: a take --limit takes per member, not per
 	// stream, so the two streams' cards must not be dealt together.
 	run("add --stream s1 --land-protected any --count 2 --brief-file " + briefFile("main.md", passingBrief("tier: pro\nREPO: "+mainRepo+"\nBASE: main\n")))
-	land("s1", []string{"s1-1", "s1-2"})
+	land("s1", mainRepo, []string{"s1-1", "s1-2"})
 	run("add --stream s2 --land-protected any --count 2 --brief-file " + briefFile("dev.md", passingBrief("tier: pro\nREPO: "+devRepo+"\nBASE: dev\n")))
-	land("s2", []string{"s2-1", "s2-2"})
+	land("s2", devRepo, []string{"s2-1", "s2-2"})
 
 	// Past the age threshold, the main and dev cards still raise no judgment.
 	clock = clock.Add(sprint.PromoteAge + time.Minute)
@@ -106,7 +156,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	// A sprint branch in a repository that has a dev branch: s2's repository already has dev
 	// cards landed, so the sprint-branch card counts.
 	run("add --stream s2 --count 2 --brief-file " + briefFile("sprint.md", passingBrief("tier: pro\nREPO: "+devRepo+"\nBASE: sprint/base\n")))
-	land("s2", []string{"s2-3", "s2-4"})
+	land("s2", devRepo, []string{"s2-3", "s2-4"})
 	clock = clock.Add(sprint.PromoteAge + time.Minute)
 	run("tick")
 

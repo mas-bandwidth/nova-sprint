@@ -12,7 +12,7 @@ import (
 // working directory, the outbox and inbox first, found by one stat walk bounded in files
 // and in time, and carried on her beat.
 
-// ActivityEvery is how often the daemon walks: the beat goes every BeatEvery and carries
+// ActivityEvery is how often the daemon walks: the beat goes every second and carries
 // the last walk's answer in between.
 const ActivityEvery = 10 * time.Second
 
@@ -34,7 +34,7 @@ var DefaultActivityLimits = ActivityLimits{Files: 2000, Time: 50 * time.Millisec
 var activitySkip = map[string]bool{".git": true, ".cache": true, "node_modules": true, ".nova-friend": true}
 
 // activitySkipFile are the files her daemon writes, never her session: a job's lane mark,
-// refreshed every LaneMarkEvery while a lane runs (one_lane.go).
+// refreshed while a lane runs.
 var activitySkipFile = map[string]bool{LaneMarkFile: true}
 
 // ActivityRoots are the places the walk reads, in this order, under her working directory:

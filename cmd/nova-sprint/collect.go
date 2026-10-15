@@ -244,7 +244,7 @@ func (a *app) cmdCollect(args []string, stdout, stderr io.Writer) int {
 // session wrote in her own tree (evidence) is recorded as her session's evidence; a report
 // in another's tree, or a lane that ended with none, is no evidence of her.
 func (a *app) friendFinishStep(ctx context.Context, st *store.Store, name string, p sprint.Packet, r sprint.FinishReq, evidence bool, say func(string)) (refused string, err error) {
-	step := store.FinishStep(r)
+	step := a.finishStep(r)
 	step.Actor, step.Epoch = r.Who, &p.Epoch
 	res, err := st.Run(ctx, step)
 	if err != nil {

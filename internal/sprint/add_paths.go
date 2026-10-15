@@ -7,10 +7,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 )
 

@@ -15,8 +15,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // inbox --wait and --push: the coordinator is woken by what is new for it, and
@@ -68,7 +68,7 @@ type inboxSource interface {
 }
 
 // inboxLook is one look at the inbox: its groups, the machine's line and who
-// holds the seat (whose inbox --push seat writes to).
+// holds the seat.
 type inboxLook struct {
 	groups  []sprint.Group
 	machine string
@@ -387,17 +387,12 @@ func (a *app) inboxWaitAt(addr string, fs *flag.FlagSet, args []string, atEpoch 
 
 // pushLoop is inbox --wait --push <dir>: every judgment and every note to
 // the coordinator the directory does not hold is written to it, then it waits
-// for the next, until it is interrupted (exit 0). With --push seat the
-// directory is the holder's inbox, read again at every look, so a seat change
-// moves the push to the new holder's (pushTarget). A failure of the store, the
+// for the next, until it is interrupted (exit 0). A failure of the store, the
 // server or the directory ends it with its line.
 func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout time.Duration, asJSON bool, stdout, stderr io.Writer) int {
-	p := &pushTarget{a: a, seen: map[string]map[string]bool{}}
-	if dir != pushSeat {
-		p.fixed = dir
-		if _, err := p.keys(dir); err != nil {
-			return refuse(stderr, "inbox", "--push: "+err.Error())
-		}
+	p := &pushTarget{dir: dir}
+	if _, err := p.keys(); err != nil {
+		return refuse(stderr, "inbox", "--push: "+err.Error())
 	}
 	ctx, stop := a.notify(ctx)
 	defer stop()
@@ -405,37 +400,25 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 	if err != nil {
 		return a.waitFailed(err, stderr)
 	}
-	if code := p.follow(look.holder, true, stdout, stderr); code != 0 {
-		return code
-	}
 	fresh, err := p.unseen(look)
 	if err != nil {
 		return refuse(stderr, "inbox", "--push: "+err.Error())
 	}
 	// the tick's lateness, at every look (pushlate.go): a tick that runs late cannot tell of itself
 	late := &lateWatch{}
-	a.pushLate(ctx, src, p, late, look, asJSON, stdout, stderr)
+	a.pushLate(p, late, look, asJSON, stdout, stderr)
 	for {
-		var texts []string
 		for _, g := range fresh {
-			text, code := a.push(ctx, src, p, look.holder, g, asJSON, stdout, stderr)
-			if code != 0 {
+			if code := a.push(ctx, src, p, g, asJSON, stdout, stderr); code != 0 {
 				return code
 			}
-			if text != "" {
-				texts = append(texts, text)
-			}
-		}
-		if p.fixed == "" {
-			a.pushJudgments(ctx, src, look.holder, texts, asJSON, stdout)
 		}
 		if ctx.Err() != nil {
 			return 0
 		}
 		running := lineRunning(look.machine)
 		fresh, look, err = a.waitNew(ctx, src, func(l inboxLook) ([]sprint.Group, error) {
-			p.follow(l.holder, false, stdout, stderr)
-			a.pushLate(ctx, src, p, late, l, asJSON, stdout, stderr)
+			a.pushLate(p, late, l, asJSON, stdout, stderr)
 			return p.unseen(l)
 		}, running, timeout)
 		if err != nil {
@@ -455,42 +438,34 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 // push writes the group's notes its directory does not hold, each as
 // <dir>/<note id>.md, the group read whole first (as inbox --open reads it)
 // so that the file carries its members and needs. A group that closed since
-// the look that found it is nothing to write. It returns the group's text when
-// it wrote a file: what the push loop then delivers into the holder's session
-// (pushJudgments), the file kept as the record of what was pushed.
-func (a *app) push(ctx context.Context, src inboxSource, p *pushTarget, holder string, g sprint.Group, asJSON bool, stdout, stderr io.Writer) (string, int) {
+// the look that found it is nothing to write.
+func (a *app) push(ctx context.Context, src inboxSource, p *pushTarget, g sprint.Group, asJSON bool, stdout, stderr io.Writer) int {
 	look, err := src.inbox(ctx, g.ID)
 	if err != nil {
-		return "", a.waitFailed(err, stderr)
+		return a.waitFailed(err, stderr)
 	}
 	whole, ok := sprint.FindGroup(look.groups, g.ID)
 	if !ok {
-		return "", 0
+		return 0
 	}
-	dir := p.dirOf(holder, whole)
-	if dir == "" {
-		return "", 0 // the inbox it goes to went away since the look: the next look finds it
-	}
-	seen, err := p.keys(dir)
+	seen, err := p.keys()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s inbox --push: %s\n", prog, oneline.Escape(err.Error()))
-		return "", 1
+		return 1
 	}
 	now := a.now()
 	text := groupText(whole, now, true) + "clock: " + now.UTC().Format(time.RFC3339) + "\n"
-	wrote := false
 	for _, id := range noteKeys(whole) {
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
-		path := filepath.Join(dir, id+".md")
+		path := filepath.Join(p.dir, id+".md")
 		written, err := writeOnce(path, text)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s inbox --push: %s\n", prog, oneline.Escape(err.Error()))
-			return "", 1
+			return 1
 		}
-		wrote = wrote || written
 		switch {
 		case asJSON:
 			b, _ := json.Marshal(map[string]any{"pushed": id, "group": whole.ID, "file": path, "written": written, "at": now}) // ignored: strings, a bool and a time always encode
@@ -501,10 +476,7 @@ func (a *app) push(ctx context.Context, src inboxSource, p *pushTarget, holder s
 			fmt.Fprintf(stdout, "NOTE %s exists: kept, not written again\n", oneline.Field(path))
 		}
 	}
-	if !wrote {
-		return "", 0
-	}
-	return text, 0
+	return 0
 }
 
 // pushedKeys is the keys of the notes the directory holds: its .md files' stems.

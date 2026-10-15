@@ -3,11 +3,12 @@ package sprint
 import (
 	"encoding/base64"
 	"encoding/json"
-	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFleetSubscriptionReceiptSurvivesPairedAdoption(t *testing.T) {
