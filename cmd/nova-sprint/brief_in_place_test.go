@@ -233,7 +233,7 @@ func TestBriefKeepHeadDirectAndDirectory(t *testing.T) {
 			if directory {
 				cmd = "brief --dir " + dir
 			}
-			out := ta.ok(cmd + " --keep-head")
+			out := ta.ok(cmd + " --keep-head --replace-in-flight")
 			assert.Contains(t, out, "head kept: eligible for review (--keep-head)")
 			ta.ok("finish --as m1 s1-1.w1@1 --head " + landHead + " --report done")
 			assert.Equal(t, sprint.Review, ta.primary("s1-1").Col)

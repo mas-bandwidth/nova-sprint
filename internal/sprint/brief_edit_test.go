@@ -138,6 +138,8 @@ func TestABriefEditKeepsWhatAVerbSet(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			w := c.world(t)
+			// This fixture intentionally replaces a working brief.
+			c.req.ReplaceInFlight = true
 			p := Brief(w.s, c.req)
 			require.Empty(t, p.Refused)
 			w.must(p)

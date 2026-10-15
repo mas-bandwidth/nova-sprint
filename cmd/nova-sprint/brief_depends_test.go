@@ -61,8 +61,8 @@ func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	// to the pool (docs/SPEC-SPRINT.md, needs and the deal; needsWithdrawals): its primary
 	// goes working -> waiting in that tick, the lifecycle's move for needs not landed
 	require.Equal(t, "working", ta.primary("a-1").Col, "the tick dealt a-1")
-	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/a1.go"))
-	assert.Contains(t, out, "MOVED a-1 DEPENDS-ON replaced: needs a-3 ")
+	out = ta.ok("brief a-1 --replace-in-flight --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/a1.go"))
+	assert.Contains(t, out, "a-1 brief edited in place")
 	ta.ok("tick")
 	assert.Equal(t, "a-3", ta.primary("a-1").F("needs"))
 	assert.Contains(t, ta.primary("a-1").F("brief"), "DEPENDS-ON: a-3\n")
