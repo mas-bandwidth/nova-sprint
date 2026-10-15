@@ -87,7 +87,7 @@ func PongRequest(text string) (kind, nonce string, only bool) {
 	case strings.Contains(text, "RECV OK id="):
 		return PongWake, nonce, false
 	case strings.HasPrefix(text, "Run this now, exactly as written: ") && strings.Count(strings.TrimSpace(text), "\n") == 0:
-		return PongWake, nonce, true // a wake turn (WakeTurnText)
+		return PongWake, nonce, true // a wake turn
 	}
 	_, rest, ok := strings.Cut(text, "\nThen read on.\n\n")
 	return PongWake, nonce, ok && strings.HasPrefix(rest, "nova-friend: you hold ") // an idle wake

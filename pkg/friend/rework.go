@@ -3,7 +3,6 @@ package friend
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 )
@@ -236,7 +235,6 @@ func UnaddressedText(by, fix string, missing []string) string {
 
 // The holders of an unaddressed LAND, as UnaddressedText names them.
 const (
-	HeldByDaemon     = "the daemon"
 	HeldByFriendSync = "friend sync"
 )
 
@@ -258,15 +256,4 @@ func unaddressed(by, report, fix string) string {
 		return UnaddressedText(by, fix, missing)
 	}
 	return ""
-}
-
-// jobFix is the fix a job's brief asks: the BRIEF.md in her inbox, the brief the lane read,
-// else the server's brief.
-func jobFix(path, server string) string {
-	if raw, err := os.ReadFile(path); err == nil {
-		if fix := BriefFix(string(raw)); fix != "" {
-			return fix
-		}
-	}
-	return BriefFix(server)
 }
