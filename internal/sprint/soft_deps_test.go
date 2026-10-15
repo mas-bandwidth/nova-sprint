@@ -258,4 +258,3 @@ func runFourCardHardChain(t *testing.T) (dealRounds int) {
 	}
 	return dealRounds
 }
-

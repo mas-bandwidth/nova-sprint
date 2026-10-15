@@ -33,7 +33,7 @@ func writeSoftHeaderBrief(t *testing.T, dir, id, depends, landAfter, repo, base,
 }
 
 // TestNeedsSetLandAfter pins `nova-sprint needs set <id> --land-after <a,b>`:
-// sets the soft dependency without moving the card to waiting; `--land-after ''`
+// sets the soft dependency without moving the card to waiting; `--land-after` with an empty value
 // clears it; self, duplicate, off-table target, a target already in needs, a
 // target in another repository or base, or a cycle through soft dependencies and
 // needs together is refused with exit 2 and nothing written; `--land-after` with
