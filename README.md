@@ -130,7 +130,7 @@ working, reviewing, merging and landed.
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
-Then go wider. Work alongside the team, or come back in the morning.
+Then go wider. Work alongside the team, or just come back in the morning.
 
 **Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://37.27.135.206/)!**
 
