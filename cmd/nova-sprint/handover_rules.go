@@ -13,7 +13,7 @@ var coordinatorRules = []string{
 	"A friend is working only when its cards go from working to done; awake is not working.",
 	"A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it, never left overnight.",
 	"Every 10 minutes the friend chain is walked, each friend to its lowest failing link: up, hears, delivered, started, progressing, finished, returned, balanced.",
-	"A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of her work changes her state or keeps a card from her, and a returning machine is brought up by its own beat.",
+	"A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of its work changes its state or keeps a card from it, and a returning machine is brought up by its own beat.",
 	"Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its outbox, and a brief names no path outside it.",
 	"An order to the coordinator (stop, conserve, sleep) is the coordinator's alone; friends change only on an order to all friends or to them by name.",
 	"A silent friend is debugged by the coordinator in order: the bus, the daemon's push, then the friend's own window; the owner is never handed text to paste.",

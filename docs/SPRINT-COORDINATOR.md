@@ -515,7 +515,7 @@ delivered, started, progressing, finished, returned, balanced.**
     --wake --check 10m`. A problem found by hand becomes a push the same day.
 
 R4. **A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of
-her work changes her state or keeps a card from her, and a returning machine is brought up by its own beat.**
+its work changes its state or keeps a card from it, and a returning machine is brought up by its own beat.**
     Why: reports said friends were up that were not, and returning ones stayed down; on 2026-10-14 a friend up on
     the hook record was "stalled" in the sprint and the deal skipped her until a manual `friend up` (the stall
     ladder is retired, v1.3.6: the sprint's friend states are up, down and held, nothing else).
