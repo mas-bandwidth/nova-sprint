@@ -30,6 +30,11 @@ type AskReq struct {
 	// back (retired_by coordinator) and asked of one other reader in the same
 	// step, chosen and routed as Another's (ask --instead)
 	Instead string `json:",omitempty"`
+	// Holds is, by primary, the branch on origin that holds its head, for a primary with the
+	// NReadBranchMissing judgment open: the verb asked origin (ReadBranchChecks) and the
+	// ask re-asks the read on it, closing the judgment. A primary absent has none: it is
+	// refused naming the judgment (askStateAt; tla/ReadBranchMissing.tla, Ask).
+	Holds map[string]string `json:",omitempty"`
 }
 
 // RetiredByCoordinator is a read card's retired_by when the coordinator took
@@ -105,6 +110,16 @@ func readsAt(s *Snapshot, pr *Card, attempt int) []*Card {
 	return out
 }
 
+// AskResolves is the judgments an ask discharges on its primary when it asks the read
+// (NReadBranchMissing only when a branch on origin holds the head: a card with it open is
+// eligible only then, askStateAt); AskAnotherResolves is what ask --another discharges.
+// The decisions table is held to them (TestEveryDecisionResolvesItsJudgment;
+// tla/ReadBranchMissing.tla, OfferedDecisionResolves).
+var (
+	AskResolves        = []string{NCannotAsk, NStranded, NStalled, NReadBranchMissing}
+	AskAnotherResolves = []string{NCannotAsk, NReadsExhausted, NStranded, NStalled}
+)
+
 // Ask deals every primary in review that wants a read (ReadsWanted) to as many
 // different readers up as it wants now, in work order. A card's reads are
 // asked together (the interim rule of 2026-10-06, ReadsWanted): the rest it needs
@@ -147,17 +162,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		if r.Instead != "" {
 			return insteadHeld(s, c, r.Instead)
 		}
-		asked := askedAtAttempt(s, c)
-		if another && !asked {
-			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
-		}
-		if !another && ReadsWanted(s, c) == 0 {
-			if len(liveReadsAt(s, c, c.Int("attempt"))) < ReadsNeededIn(s, c) {
-				return "asked already: its reads are out, or one found it broken"
-			}
-			return "asked already"
-		}
-		return ""
+		return askStateAt(s, c, another, r.Holds[c.ID])
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
 	cannotAskJudgments := append(slices.Clone(s.Open), s.Acked...)
@@ -165,17 +170,53 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		return o.Note.Type == NCannotAsk && slices.Contains(r.Answers, o.Note.ID) &&
 			slices.ContainsFunc(chosen, func(c *Card) bool { return c.ID == o.Subject() })
 	})
-	if s.ReadCardsOn() && !another && answeringCannotAsk {
+	// the chosen cards whose NReadBranchMissing judgment this ask resolves: a branch on origin
+	// holds the head (r.Holds), so the read is asked again and the judgment closes with it
+	// (tla/ReadBranchMissing.tla, Ask)
+	reasked := map[string]Open{}
+	reaskedHead := map[string]string{}
+	if !another {
+		for _, c := range chosen {
+			if o, ok := openReadBranchMissing(s, c); ok && r.Holds[c.ID] != "" {
+				reasked[c.ID] = o
+				_, _, reaskedHead[c.ID] = attemptEnds(s, c.ID, readAttempt(c))
+			}
+		}
+	}
+	// readBranchSet is what the primary records so every read of that head names the branch
+	// origin holds it on (FieldReadBranch, as missingBranchUnit records it)
+	readBranchSet := func(id string) map[string]string {
+		return map[string]string{FieldReadBranch: r.Holds[id], FieldReadBranchHead: reaskedHead[id]}
+	}
+	if s.ReadCardsOn() && !another && (answeringCannotAsk || len(reasked) > 0) {
 		only := map[string]bool{}
 		for _, c := range chosen {
 			only[c.ID] = true
+		}
+		// the deal asks no read of a primary the judgment holds (readCardsWanted): it deals
+		// them on a view of the snapshot where that judgment is closed
+		deal := s
+		if len(reasked) > 0 {
+			v := *s
+			v.Open = slices.DeleteFunc(slices.Clone(s.Open), func(o Open) bool {
+				_, ok := reasked[o.Subject()]
+				return ok && o.Note.Type == NReadBranchMissing
+			})
+			v.Work = s.Work.Frozen()
+			for id := range reasked {
+				c := *v.Work.Card(id)
+				c.Fields = maps.Clone(c.Fields)
+				maps.Copy(c.Fields, readBranchSet(id))
+				v.Work.Put(&c)
+			}
+			deal = &v
 		}
 		// SprintRules.AskDealt: ask uses the fleet read-card deal, not legacy reads.
 		var ri routeIndexes
 		if s.Fleet != nil && len(s.Routes) > 0 {
 			ri = routeIndexesOf(s)
 		}
-		dealt, waits := readCardsAskSelected(s, s.Friends, ri, nil, nil, only)
+		dealt, waits := readCardsAskSelected(deal, s.Friends, ri, nil, nil, only)
 		p.Rows = append(p.Rows, dealt.Rows...)
 		p.Units = append(p.Units, dealt.Units...)
 		p.Props = append(p.Props, dealt.Props...)
@@ -188,6 +229,28 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			}) {
 				p.refuse(c.ID, why+"; add or bring up a reader at its tier, then ask "+c.ID+", or rework or drop it")
 			}
+		}
+		// the read asked again closes the judgment in its own unit: a primary the deal
+		// asked nothing of keeps it, and is refused above by its wait
+		for _, c := range chosen {
+			o, ok := reasked[c.ID]
+			if !ok {
+				continue
+			}
+			i := slices.IndexFunc(p.Units, func(u Unit) bool {
+				return u.Key == c.ID && slices.ContainsFunc(u.Changes, func(ch Change) bool {
+					return ch.Table == Fleet && ch.Entry.Create != nil && ch.Entry.Set["kind"] == "read"
+				})
+			})
+			if i < 0 {
+				if !slices.ContainsFunc(p.Refused, func(f Refusal) bool { return f.Key == c.ID }) {
+					p.refuse(c.ID, "no read was asked again of "+c.ID+", so its judgment "+cmp.Or(o.Note.Alias, o.Note.ID)+" stays open; rework it with a fix, or drop it")
+				}
+				continue
+			}
+			p.Units[i].Closes = append(p.Units[i].Closes, o)
+			p.Units[i].Changes = append(p.Units[i].Changes, change(Work, setEntry(c, readBranchSet(c.ID))))
+			p.Units[i].Moved += "; its read's branch is on origin (" + r.Holds[c.ID] + "), judgment " + cmp.Or(o.Note.Alias, o.Note.ID) + " closed"
 		}
 		if len(p.Refused) > 0 && len(r.Answers) > 0 {
 			return Plan{Refused: p.Refused}
@@ -344,10 +407,17 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			u.Changes = append(u.Changes, change(Readers, createEntry(cardID, rd, Asked, c.Score, fields)))
 		}
 		all = append(append(all, chosenReaders...), again...)
+		set := map[string]string{}
 		if pair := strings.Join(all, ","); !another && pair != c.F("asked") {
 			// the primary's asked field names the readers of its attempt;
 			// --another's reader is one more, not one of the two
-			u.Changes = append(u.Changes, change(Work, setEntry(c, map[string]string{"asked": pair})))
+			set["asked"] = pair
+		}
+		if _, ok := reasked[c.ID]; ok {
+			maps.Copy(set, readBranchSet(c.ID))
+		}
+		if len(set) > 0 {
+			u.Changes = append(u.Changes, change(Work, setEntry(c, set)))
 		}
 		named := append([]string{}, chosenReaders...)
 		if finder != "" {
@@ -371,9 +441,12 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			// judgment (a reader found it broken, or the brief's bound it raised) stays
 			// open and the card goes back to work with the finding (docs/SPEC-SPRINT.md
 			// section 8, the read-broken rule; tla/SprintRules.tla, Part "reads").
-			u.Closes = closesFor(s.Open, []string{NCannotAsk, NReadsExhausted, NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, AskAnotherResolves, c.ID)
 		} else {
-			u.Closes = closesFor(s.Open, []string{NCannotAsk, NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, AskResolves, c.ID)
+			// NReadBranchMissing is among them: the card is eligible with it open only
+			// when a branch on origin holds the head (askStateAt), so the read is asked
+			// again and the judgment that held it closes (tla/ReadBranchMissing.tla, Ask)
 		}
 		asked := map[string]string{}
 		for _, rd := range chosenReaders {
@@ -411,6 +484,14 @@ func Ask(s *Snapshot, r AskReq) Plan {
 					return Plan{Refused: p.Refused}
 				}
 			}
+		}
+	}
+	// A refusal that names the open NReadBranchMissing judgment this ask answers is the whole
+	// answer: "resolves no obligation of <it>" would only say the same thing again, worse
+	// (tla/ReadBranchMissing.tla, AskRefusalsAgree).
+	for _, f := range p.Refused {
+		if o, ok := openReadBranchMissing(s, s.Work.Card(f.Key)); ok && slices.Contains(r.Answers, o.Note.ID) {
+			return Plan{Refused: p.Refused}
 		}
 	}
 	answered(&p, s, r.Answers, r.Who)
@@ -1445,9 +1526,10 @@ type ReworkCard struct {
 	Rule, Said string            `json:",omitempty"`
 }
 
-// ReworkResolves is the judgments a rework discharges on its primary.
+// ReworkResolves is the judgments a rework discharges on its primary (NReadBranchMissing
+// too: tla/ReadBranchMissing.tla, OfferedDecisionResolves).
 // SprintRules.EpNext: rework ends the cannot-ask attempt.
-var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault}
+var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault, NReadBranchMissing}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:
@@ -2123,8 +2205,9 @@ type ReturnReq struct {
 
 // ReturnResolves is the judgments a return is a decision for: a red CI on the
 // primary is discharged; a stream's red or rejected batch is answered and stays
-// open while the stream is stopped.
-var ReturnResolves = []string{NCIRed, NRed, NRejected, NRepairSkipped, NStalled}
+// open while the stream is stopped; a merging card's dead base is discharged, the card
+// leaving merging (NDeadBase offers return: TestEveryDecisionResolvesItsJudgment).
+var ReturnResolves = []string{NCIRed, NRed, NRejected, NRepairSkipped, NStalled, NDeadBase}
 
 func answeredIn(notes []Note, id string) bool {
 	return slices.ContainsFunc(notes, func(n Note) bool { return n.Kind == Decided && n.Answers == id })

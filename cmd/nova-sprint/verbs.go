@@ -394,7 +394,7 @@ one answer to each judgment (every one prints its own, filled in):
   the fleet's failure           mend its cause (the toolchain, a member, a route, a provider), then ack <note> --reason '<what was mended>'  (one judgment for a failure many cards share; the cards rework themselves meanwhile)
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
   a reader found it broken    rework --group <id> --expect <n> --answers <notes>  (each fix is the reader's finding; a read with a finding is reworked by rule read-broken, a friend's card too, so only one with no finding or at its brief's bound comes here; no wait parks it)
-  read's branch not on origin push the branch, then ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
+  read's branch not on origin push the branch, then ask --group <id> --expect <n> --answers <notes> (the read is asked again and the judgment closes; refused naming the judgment while no branch on origin holds the head), or ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
   the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, rework <id> --fix <text> --tier <t> (re-tier), rework <id> --carry --fix <text>, or drop <id>; the same finding twice, or max_attempts attempts (nova-config's sprint row, default 4) since your last decision on the card
   conflict on a card          resume --stream <s> --did '<what you did>' --answers <note>  (land merges again, regenerating the ledgers; a conflict outside them: rework or drop)
   stream branch red           return <suspect> --answers <note>, then resume --stream <s> --did 'returned <suspect>' --answers <note>
@@ -2798,7 +2798,7 @@ func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
 		}
 		return ""
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.AskStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
+		return a.askStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
 	})
 }
 

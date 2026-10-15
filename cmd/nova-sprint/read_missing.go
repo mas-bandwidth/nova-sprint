@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -102,6 +103,66 @@ func (a *app) readMissingOf(ctx context.Context, st *store.Store, ids []string) 
 		return nil
 	}
 	return a.readMissing(ctx, packets)
+}
+
+// askStep is the ask, with origin asked for each primary it names whose read's branch is not
+// on origin (judgment NReadBranchMissing): the branch on origin that holds its head, so the
+// ask re-asks the read and closes the judgment, or is refused naming it
+// (tla/ReadBranchMissing.tla, Ask). Each snapshot retry asks origin again, as finishStep does;
+// a primary not named is never asked again by an ask of the rest.
+func (a *app) askStep(r sprint.AskReq) store.Step {
+	step := store.AskStep(r)
+	if a.readTip == nil || a.readHeads == nil || (len(r.IDs) == 0 && r.Only == nil) {
+		return step
+	}
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		req := r
+		for _, ck := range sprint.ReadBranchChecks(s) {
+			if !slices.Contains(r.IDs, ck.Primary) && !slices.Contains(r.Only, ck.Primary) {
+				continue
+			}
+			if b := a.branchHolding(context.Background(), ck); b != "" {
+				if req.Holds == nil {
+					req.Holds = map[string]string{}
+				}
+				req.Holds[ck.Primary] = b
+			}
+		}
+		return sprint.Ask(s, req)
+	}
+	return step
+}
+
+// branchHolding is the branch on origin that holds the check's head: the branch the read was
+// handed when it is on origin now at the head, else a branch of the same work card
+// (sprint/<prefix><card>.g*) at the head; "" when none does, or origin cannot be read (the
+// judgment stays open: a listing that failed is no branch found).
+func (a *app) branchHolding(ctx context.Context, ck sprint.BranchCheck) string {
+	repo := swarm.ReadCardBase([]byte(ck.Brief)).Repo
+	if repo == "" || ck.Branch == "" || !typedrec.IsFullSha(ck.Head) {
+		return ""
+	}
+	tip, err := a.readTip(ctx, repo, ck.Branch)
+	if err != nil {
+		return ""
+	}
+	if strings.EqualFold(tip, ck.Head) {
+		return ck.Branch
+	}
+	i := strings.LastIndex(ck.Branch, ".g")
+	if i <= 0 {
+		return ""
+	}
+	heads, err := a.readHeads(ctx, repo, "refs/heads/"+ck.Branch[:i]+".g*")
+	if err != nil {
+		return ""
+	}
+	for _, b := range slices.Sorted(maps.Keys(heads)) {
+		if b != ck.Branch && strings.EqualFold(heads[b], ck.Head) {
+			return b
+		}
+	}
+	return ""
 }
 
 // finishStep checks origin only after the normal planner accepts a fresh,
