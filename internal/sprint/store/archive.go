@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // keyArchive is the archive's record: the streams the coordinator brought back
