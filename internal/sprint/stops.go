@@ -43,15 +43,10 @@ const (
 	// NStopPinWaits is a ready card hard-pinned to a friend who is not up: it, and every
 	// card that needs it, waits for her alone.
 	NStopPinWaits = "a card pinned to one friend waits while she is not up"
-	// NFriendStalled is the stall ladder's third rung (friend_stall.go): two wakes
-	// unanswered. Its own type, kept by the pass while her rung stands at 3 or above, so
-	// the tick's check does not close it in the tick that raised it (as it did as NStalled,
-	// whose findings never name a friend).
-	NFriendStalled = "a friend stalled: two wakes unanswered"
 )
 
 // StopTypes are the stop judgments, kept by the coordinator's pass as its own (PassTypes).
-var StopTypes = []string{NStopMemberDown, NStopPinWaits, NFriendStalled}
+var StopTypes = []string{NStopMemberDown, NStopPinWaits}
 
 const (
 	// StopMemberAfter is how long a member must have been down, in running time, before
@@ -71,7 +66,6 @@ func init() {
 	// no wait: the stop names a card on the work table, so a wait on it is refused
 	// (wait_refused.go, WaitRefusalIn) and never extends the pin (PinReleased)
 	TickDecisions[NStopPinWaits] = []string{"ack"}
-	TickDecisions[NFriendStalled] = []string{"ack", "wait"}
 }
 
 // Stop is one automatic stop that holds: its kind (a word), what it stops (its subject),
@@ -97,8 +91,6 @@ const (
 	StopKindMemberDown    = "member-down"
 	StopKindMemberAdopt   = "member-adopting"
 	StopKindPinWaits      = "pin-waits"
-	StopKindFriendStalled = "friend-stalled"
-	StopKindFriendDown    = "friend-stall-down"
 	StopKindRouteRest     = "route-rest"
 	StopKindProviderRest  = "provider-rest"
 	StopKindStreamStopped = "stream-stopped"
@@ -122,7 +114,7 @@ func (x Stop) Line(now time.Time) string {
 }
 
 // LiveStops is every automatic stop that holds at s.Now, in kind and subject order: the
-// pass's own (memberStops, pinStops, friendStallStops) and those another part signals
+// pass's own (memberStops, pinStops) and those another part signals
 // (the rests, a stream stopped by the lander), listed so the seat sees each with its age.
 func LiveStops(s *Snapshot, r TickReq) []Stop {
 	if s == nil {
@@ -131,7 +123,6 @@ func LiveStops(s *Snapshot, r TickReq) []Stop {
 	var out []Stop
 	out = append(out, memberStops(s, r)...)
 	out = append(out, pinStops(s, r)...)
-	out = append(out, friendStallStops(s)...)
 	out = append(out, restStops(s)...)
 	out = append(out, streamStops(s)...)
 	sort.SliceStable(out, func(i, j int) bool {
@@ -332,42 +323,6 @@ func needing(s *Snapshot, id string) []string {
 	return out
 }
 
-// friendStallStops is each friend the stall ladder (friend_stall.go) has climbed past its
-// wakes: at rung 3 or above while she holds cards, the pass keeps NFriendStalled. Its
-// rung-5 mark (PropFriendStallDown) is no stop: it gates no deal (friendCanRead).
-func friendStallStops(s *Snapshot) []Stop {
-	if s.Fleet == nil {
-		return nil
-	}
-	var out []Stop
-	for _, row := range s.Fleet.Rows() {
-		f, ok := FriendOfRow(row)
-		if !ok {
-			continue
-		}
-		v, _ := s.Fleet.Prop(PropFriendStallRung(f))
-		rung, _ := strconv.Atoi(v) // ignored: no rung, or one that does not read, is rung 0
-		cards := len(s.Fleet.Cell(row, Ready)) + len(s.Fleet.Cell(row, Working))
-		if rung < 3 || cards == 0 {
-			continue
-		}
-		did := "two wakes unanswered"
-		switch {
-		case rung >= 5:
-			did += ", the friend's unstarted cards taken back and the friend was marked down"
-		case rung == 4:
-			did += ", the friend's unstarted cards taken back"
-		}
-		out = append(out, Stop{Kind: StopKindFriendStalled, Subject: f,
-			What:   fmt.Sprintf("friend %s stalled: the stall ladder stands at rung %d of 5 (%s)", f, rung, did),
-			Effect: fmt.Sprintf("%d cards on the friend's row wait", cards),
-			Undo:   "nova-friend reach --as <coordinator> --to " + f + ", or nova-sprint friend take " + f + " --all-unstarted",
-			Signal: NFriendStalled, typ: NFriendStalled, primaries: []string{f},
-			decisions: []string{"nova-friend reach --as <coordinator> --to " + f, "friend take " + f + " --all-unstarted", "friend down " + f + " --reason 'stalled'", "ack", "wait"}})
-	}
-	return out
-}
-
 // restStops is each route and provider rest that holds at s.Now (route_rest.go,
 // provider_funds.go): their signals are the rests' own (a note, and a judgment for a
 // provider's funds or key), and the rest decision is theirs; listed here with their age.
@@ -526,7 +481,6 @@ const (
 var stopKindOf = map[string]string{
 	NStopMemberDown: StopKindMemberDown,
 	NStopPinWaits:   StopKindPinWaits,
-	NFriendStalled:  StopKindFriendStalled,
 }
 
 // stopsDigest writes the tick's digest of the stops still holding when one is due (above;

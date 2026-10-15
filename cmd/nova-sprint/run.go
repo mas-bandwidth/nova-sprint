@@ -326,7 +326,6 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "tick", err.Error())
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	ctx := context.Background()
 	res, err := st.Tick(ctx)
@@ -447,7 +446,6 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "run", "invalid --tick-deadline: "+a.tickDeadline.String()+": a negative value is refused, 0 waits for ever")
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)

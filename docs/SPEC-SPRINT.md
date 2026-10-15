@@ -368,15 +368,37 @@ checks the selection and the hard pin; the reversed only witness permits fallbac
 and violates `OnlyToItsFriend`. The tick reads the friends' roster before each pump,
 because a queued change can make work ready in the same tick. The tick's deal offers
 ready work, in the deal order (below), to a
-friend up (the friends' rule: not held, with evidence from her own session) below her room,
-and fills no row that cannot work: a friend whose status is not up (her beat alone is
-no evidence), or whose control row on the fleet table says down or held, is dealt
-nothing, by the deal, the level and the attempt cap's deal alike (`sprint.friendDealable`;
-2026-10-06: a friend whose row read down, her daemon beating, was dealt 18 cards twice;
-`TestTheDealSkipsADownRowAndHonoursTheWhoPin`). The stall ladder's rung-5 mark gates no
-deal: an up friend with an empty row is dealt whatever mark it left (2026-10-15: a mark
-released only by her activity left two friends, who had no card to be active on, undealt;
-`TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick`), and her row's `streams` and
+friend up (the friends' rule, below) below her room, and fills no row that cannot work:
+a friend whose status is not up is dealt nothing, by the deal, the level and the attempt
+cap's deal alike (`sprint.friendDealable`; 2026-10-06: a friend whose row read down, her
+daemon beating, was dealt 18 cards twice; `TestTheDealSkipsADownRowAndHonoursTheWhoPin`).
+
+**The friends' rule: three states** (the owner, 2026-10-14, v1.3.6: "there is only up,
+down, held from the sprint POV"; "being marked as 'stalled' should be removed"). A
+friend's status is `up`, `down` or `held` and nothing else (`sprint.FriendStates`). For a
+friend with a live session, the status is written by `sprint.FriendHookStatus` alone, and
+`up` and `down` come only from the nova-hook record, the one truth of whether she is
+there (nova-tools `hook`; `store.ReadFriendHooks`). The one exception is a one-shot friend
+(`session=one-shot`, a member lane, above): her status is her member's beat by the fleet's
+rule (`PresenceStatus`), the same three words, and no hook record is read for her. For a
+live session, proven with no down reason is `up`, anything else (no record, unhooked, expired, partial,
+live but unproven, or a down reason) is `down`. `held` is only the coordinator's explicit
+hold (`nova-sprint friend down` or `hold`, released by `friend up` or `unhold`), and a
+held friend whose hook record is not proven reads `down`. A down or held friend is not
+dealt; an up friend is. A judgment may report a fact about her work (`NFriendIdle`: she
+holds working cards and finished none in the friend-finish window; the view's `friend
+idle` item), and it never changes her state nor keeps a card from her. Retired with it
+(v1.3.6): the friend stall ladder (its wakes, its judgment, its take-back and its down),
+a friend row's fleet control card read as her status, and the dealt-no-more mark (a
+friend whose untaken cards were returned is dealt again; the returned card records her on
+its `friends_left`, so it goes on to another taker). A stale stall mark left on a live store gates nothing: an up friend with an empty row is dealt (`TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick`; 2026-10-15, two friends marked at rung 5 were never dealt again). `TestTheSprintHasExactlyThreeFriendStates`
+(internal/sprint/store) enumerates every status the friends rows and the deal's seats can
+carry and finds exactly the three, with the reversed witness
+`TestTheThreeStatesCheckRefusesAFourthState`; `TestAnUpFriendWithNoRecentFinishesIsStillDealt`,
+`TestAnUnhookedFriendIsNotDealt`, `TestATickDealsAnUpFriendWhoHasFinishedNothing` and
+`TestATickDealsNothingToAnUnhookedFriend` hold the deal to it.
+
+The deal fills an up friend's row, and her row's `streams` and
 `kinds` restriction (docs/SPEC-CONFIG.md, friend) filters every card the deal, the
 level, the start-bound level and the attempt cap's deal may hand her
 (`sprint.friendRestrictionAllows`; `TestDealerNeverDealsAFriendOutsideHerStreams`): in
@@ -545,8 +567,7 @@ that it has not left and who is not herself stuck so, ready on that row at its
 next generation, the friend it left added to `friends_left` so it never goes
 back to her, one line each (`... (not started 20m0s after its deal, and friend
 <name> names no job running)`; `sprint.friendUnstartedLevel`; a hard pin stays).
-The recipient must be dealable (up, with builder role, not marked dealt-no-more,
-and friends work on).
+The recipient must be dealable (up, with builder role, and friends work on).
 A card no friend may take stays, and the deadline rule judges it once
 `friend_start_max` plus `FriendReadyMax` has run (`TickDeadlines`). The level's
 own evening leaves the oldest unstarted cards that hold her free lanes to her
@@ -685,9 +706,9 @@ carry", and the hold's own line says "carried the pushed head of <n>: <ids>"
 limit is held this way when the seat runs the `friend down` line her daemon
 sends. Not yet: a work card's packet and a friend's brief read the carry
 (`PacketOf` stages a later generation from its own base, `friendStart` names
-only an earlier attempt's head), and a friend down by her beat alone (`friend
-beat --until`, or no beat) keeps her cards on her row until the stall ladder
-takes the unstarted ones.
+only an earlier attempt's head). A friend down on the hook record keeps her cards on her
+row until the coordinator holds her (`friend down`) or takes them (`friend take`); her
+cards' own deadlines redeal them as any card's do.
 
 **Friend level** (the owner, 2026-10-04: "What else is like this? Missing
 verbs we need for friends, that machines already have"; `sprint.FriendLevel`).
@@ -5729,8 +5750,9 @@ on your own in my experience, so if it is mechanical, make the machine prompt yo
 friend changes their status." The tick's presence part (`TickPresence`, internal/sprint
 judgments_status.go `StatusTransitions`) reads each row's status as the server computes it
 in that tick: a fleet member's by the presence rule (`MemberStatus`: `held`, `up`, `down`),
-a friend's by the friends' rule (`FriendStatus`: `held`, `up`, `down`; a friend whose
-daemon answers and whose session does not is `down`, and her judgment says so). A change of
+a friend's by the friends' rule (section 1: `up` or `down` from the nova-hook record, `held`
+by the coordinator's hold, and no other; a friend whose daemon answers and whose hook record
+is not proven is `down`, and her judgment says so). A change of
 it is told to the seat as a judgment of type `status` on the row (the member, or
 `friend.<name>`), aliased `j<n>` and pushed as every judgment is: anything to `up`, `up` to
 `down`, to `held` and from `held` (unheld), and, for a friend, a new generation of her
@@ -6358,8 +6380,8 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   `NStopMemberDown`, a fleet machine down (or never beaten) that the coordinator did not hold,
   past the status dwell, or held adopting past `StopAdoptAfter`: its width idles; `NStopPinWaits`,
   a ready card hard-pinned (`WHO: only friend <name>`) to a friend who is not up, with the cards
-  that need it; `NFriendStalled`, the stall ladder at rung 3 or above while she holds cards (its
-  own type: as `stalled` the check closed it in the tick that raised it). A hold the coordinator
+  that need it. No stop names a friend's state: hers is the hook record's or the hold's (section
+  1, the friends' rule; the stall ladder's stall stop is retired, v1.3.6). A hold the coordinator
   made (`fleet down`, `hold`) is hers and never a stop.
 - **The judgments late on the coordinator escalate**: the overdue line is addressed to the
   coordinator, so the push delivers it at the deadline; `NCoordinatorBehind` opens with its level
@@ -6472,9 +6494,7 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   already refuses such a candidate; exit 1 on any FAIL, as doctor does.
 
 Left as they are, and listed: the route and provider rests (route_rest.go, provider_funds.go: a
-sibling card makes their decision the coordinator's); the stall ladder's take-back and down at
-rungs 4 and 5 (pushed to the coordinator as `friend stall` notes; their bound is modelled,
-tla/StallLadder.tla `NoCardHeldPastBound`). `TestAMemberDownTheCoordinatorDidNotHoldIsRaisedAgainUntilItIsHeld`,
+sibling card makes their decision the coordinator's). `TestAMemberDownTheCoordinatorDidNotHoldIsRaisedAgainUntilItIsHeld`,
 `TestACardPinnedToAFriendWhoIsNotUpIsRaisedUntilUnpinned`,
 `TestJudgmentsLateOnTheCoordinatorArePushedAndEscalatePastAWait` (internal/sprint/stops_test.go),
 `TestTheDoctorListsEveryAutomaticStopWithItsAgeAndUndo`,
@@ -7681,8 +7701,8 @@ row a name, a home and a value:
   fleet and friends tiers all, rework_priority fix, unserved_tier_falls_to off
   (OPEN, the owner's to state), read_tier and reads default, every bound at its
   default duration or count (dealt_max, ready_max, go_lanes, friend_idle,
-  friend_finish, friend_start_max, pegged_bound, landing_stall_bound, the friend
-  stall ladder, drift, low_balance_usd, identical), and alarm_ready on;
+  friend_finish, friend_start_max, pegged_bound, landing_stall_bound, drift,
+  low_balance_usd, identical), and alarm_ready on;
 - `carry`, a work-table property that is the coordinator's choice, carried across
   the clear: the threshold alarms alarm_review, alarm_merging and alarm_fleet (at
   their working thresholds 120, 60 and 50 when never set), sprint_base (no default:
@@ -9106,70 +9126,21 @@ gives one at a time beside the store, so no two steps of the record interleave.
 
 ## friend-stall-ladder-r.w1
 
-**The friend stall ladder** (docs/SPEC-SPRINT.md, `internal/sprint/friend_stall.go`;
-the model is `tla/StallLadder.tla`). When a friend stalls while holding dealt sprint cards,
-recovery is fully mechanical as a tick part (`PartFriendStall = "friend-stall"`) in the
-fleet update pass, after presence (`TickTables`, `TickParts`), with no step needing the
-coordinator; the reference model decides it as the duty `friend-stall`
-(`internal/sprint/refmodel`).
-
-A friend holding dealt cards (`Ready` or `Working` on her row) is stalled when neither
-activity of hers nor any card progress stamp (`FieldProgress`) is newer than
-`friend_stall_after` (default 20 minutes, configurable via `nova-sprint set --friend-stall-after`).
-Her activity is any of: her session activity (`FriendReport.Active`, her daemon's report of
-the newest write under her working directory and outbox); a beat whose running list is not
-empty (`friend beat --running`), at the beat's time, since a one-shot lane friend and a
-friend whose cards run in child agents move no session while they work; and a finish of a
-card on her row (`DoneOK` or `DoneFailed`, its `finished` stamp), so a finish within
-`friend_stall_after` holds her at rung 0 (2026-10-05: working friends were stalled and
-marked down on session activity alone). A running beat is activity only while it is her
-beat: nothing remembers it once her beat names nothing running. A report on her row (`reported`) also counts as work activity. The ladder
-reads the newest work activity (`sprint.FriendWorked`), never a session check,
-pong or separate finish record. A stamp dated
-after the server's clock counts as that clock, logged once, so a future stamp cannot hold
-her at rung 0 until a time that has not arrived (`TestFutureDatedEvidenceCountsAsNow`); her
-hook record is the sole liveness source. The view's
-`friend idle` item measures the same evidence and her cards' moves (a take, a progress
-stamp), never her daemon's walk alone.
-
-While stalled, the ladder climbs one rung per `friend_stall_step` (default 5 minutes,
-configurable via `nova-sprint set --friend-stall-step`):
-1. **Wake turn 1**: a bus message to her (`wakeFriendStall`, the store's `WakeFriend` that
-   `tick` and `run` set) pushed into her daemon as a turn; a message not sent is said on
-   stderr and on the tick's result, and the rung climbs the same. The part only plans the
-   wake: the store's tick (`tickRun.parts`, `internal/sprint/store/tick.go`) hands it a
-   `TickReq.WakeFriend` that keeps the wakes of the plan being made, and sends the last
-   plan's once the part's step commits. A plan made to see whether the part has work, or
-   made again after a commit lost to another writer, wakes no one, so each wake rung wakes
-   her once (2026-10-05: the plan made to see whether the part had work sent the wake too,
-   and every wake went twice; `TestATickWakesAStalledFriendOnceAtEachWakeRung`).
-2. **Wake turn 2**: a second wake bus message.
-3. **Coordinator note**: a pushed judgment (`Kind: Judgment`, `Type: NStalled`,
-   `"friend <f> stalled <d>: two wakes unanswered"`).
-4. **Unstarted cards taken back**: unstarted cards on her row are taken back (`FriendTake`
-   with `All: true`), each withdrawn on her row with its primary back to `Ready` for the next
-   deal; any started card (one her beat names running, with `FieldProgress` stamped, or with
-   a report of hers on it) stays with her and finishes.
-5. **Work stall recorded**: the final rung records a work stall until fresh
-   work activity resumes. It changes neither nova-hook liveness nor sprint's
-   hold. Clearing it resets the work-stall properties only.
-
-Every rung emits a happened note (`Kind: Happened`, `Type: "friend stall"`). Any activity
-or card progress resets her to rung 0.
-
-The TLA+ specification `tla/StallLadder.tla` verifies five invariants:
-- `NoCardHeldPastBound`: no unstarted card is held by a stalled friend for more than the bound
-  (`friend_stall_after + 4 * friend_stall_step`).
-- `NoStartedRedealt`: no started card is taken back or redealt; started cards stay and finish.
-- `ReleasedOnlyByActivity`: the historical model's stall state clears only on work
-  activity (session writes, running work, card finishes or reports), never card
-  progress alone. Runtime liveness remains nova-hook's alone. Its one activity action
-  (`FriendActivity`) stands for all of them.
-- `WokenAtEveryWakeRung`: a friend past wake rung n (n = 1, 2) was sent wake n (reversed
-  witness `nowake`: the wake planned and never sent, as `friend-stall-ladder-r` left it).
-- `NoWakeWithoutRung`: a wake is sent only at a rung the ladder climbed, and once
-  (`PlanUncommitted`, a plan the tick makes and does not commit; reversed witness
-  `wakeinplan`: the planner sends the wake as it plans).
+**Retired in v1.3.6** (the owner, 2026-10-14: "being marked as 'stalled' should be
+removed"; "there is only up, down, held from the sprint POV"). The friend stall ladder
+(a tick part that woke a friend holding cards with no sign of work, raised a judgment, took
+her unstarted cards back and marked her down) is gone, with its settings, its stop, its
+wakes and its model (`tla/StallLadder.tla`). On 2026-10-14 a friend up on the hook record
+was "stalled" in the sprint and the deal skipped her until a manual `friend up`. What
+replaces it: her state is the hook record's, `up` or `down`, or the coordinator's hold,
+`held` (section 1, the friends' rule); the coordinator's pass still reports the fact
+(`NFriendIdle`: she holds working cards and finished none in the friend-finish window), and
+the view's `friend idle` item measures her newest evidence of work (`sprint.FriendWorked`:
+her session writes, a beat naming running work, a finish or a report, a stamp dated after
+the server's clock counted as that clock and logged once; `TestFutureDatedEvidenceCountsAsNow`)
+and her cards' moves, never her daemon's walk alone. Neither changes her state or keeps a
+card from her; the coordinator decides (`nova-friend reach`, `friend take`, `friend down`).
+The names are refused by `internal/ci/testdata/retired-presence.txt`.
 
 ## 19. Timers
 

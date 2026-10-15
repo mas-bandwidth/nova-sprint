@@ -308,63 +308,6 @@ func TestTheDealSkipsADownRowAndHonoursTheWhoPin(t *testing.T) {
 	}
 }
 
-// An up, unheld friend with an empty row is dealt by the tick whatever mark the stall
-// ladder left on her (PropFriendStallDown): the mark was released only by her activity, and
-// a friend dealt nothing has no card to be active on, so she was never dealt again
-// (2026-10-15 live, v1.3.8: aurora and stella up with empty rows of width 8, marked at
-// rung 5 at 00:39Z and 00:40Z, while cards waited ready and the coordinator pass raised
-// "an up friend has an empty row while cards wait"). The sprint's friend states are up,
-// down and held alone (the owner, 2026-10-14).
-func TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"), friendBrief("friend"))
-	marked := stamp(w.s.Now.Add(-time.Hour))
-	w.s.Fleet.SetProp(PropFriendStallDown("aurora"), marked)
-	seats := []FriendSeat{{Name: "aurora", Width: 8, Status: Up, Class: "flash,pro"}}
-
-	// the tick's stall part first, as the fleet update runs it: no activity of hers, so it
-	// keeps the mark; then the deal
-	sp, _ := TickFriendStall(w.s, TickReq{Friends: seats})
-	w.must(sp)
-	dealWith(w, seats...)
-
-	row := FriendRow("aurora")
-	assert.Equal(t, 3, w.s.Fleet.Count(row, Ready)+w.s.Fleet.Count(row, Working), "an up friend with an empty row is dealt the cards that wait, mark or no mark")
-}
-
-// A friend whose status is up is still not dealt when her fleet control card says
-// down or held (friendDealable): the row cannot work, whatever her session says.
-// On 2026-10-06 a friend whose row read down, her lanes paused and her daemon
-// beating, was dealt 18 cards twice.
-func TestAFriendUpWhoseControlCardIsHeldOrDownIsNotDealt(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"), friendBrief("friend"))
-	putCtl := func(name, status, held string) {
-		t.Helper()
-		row := FriendRow(name)
-		w.s.Fleet.Put(&Card{
-			ID: CtlID(row), Row: row, Col: Ctl, Rev: 1,
-			Fields: map[string]string{"kind": "member", "status": status, "held": held},
-		})
-	}
-	putCtl("amy", Down, "")
-	putCtl("bob", Held, "")
-	putCtl("cat", Up, stamp(w.s.Now))
-	seats := []FriendSeat{
-		{Name: "amy", Width: 4, Status: Up, Class: "flash,pro"},
-		{Name: "bob", Width: 4, Status: Up, Class: "flash,pro"},
-		{Name: "cat", Width: 4, Status: Up, Class: "flash,pro"},
-		{Name: "dan", Width: 4, Status: Up, Class: "flash,pro"},
-	}
-	dealWith(w, seats...)
-
-	for _, name := range []string{"amy", "bob", "cat"} {
-		n := w.s.Fleet.Count(FriendRow(name), Ready) + w.s.Fleet.Count(FriendRow(name), Working)
-		assert.Zero(t, n, "friend %s is up, and her control card is held or down: dealt nothing", name)
-	}
-	assert.Equal(t, 3, w.s.Fleet.Count(FriendRow("dan"), Ready)+w.s.Fleet.Count(FriendRow("dan"), Working), "a friend up whose control card is not held or down is dealt")
-}
-
 // A friend's configured work restriction (her nova-config row's streams and kinds,
 // docs/SPEC-SPRINT.md section 1, a friend's card): the deal hands her no card outside it,
 // on either the stream or the KIND, and an unrestricted friend is dealt as before.

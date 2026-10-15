@@ -33,8 +33,6 @@ var stopLayer = map[string]string{
 	sprint.StopKindRouteRest:     "routes",
 	sprint.StopKindMemberDown:    "machines",
 	sprint.StopKindMemberAdopt:   "machines",
-	sprint.StopKindFriendStalled: "friends",
-	sprint.StopKindFriendDown:    "friends",
 	sprint.StopKindPinWaits:      "cards",
 	sprint.StopKindStreamStopped: "cards",
 }

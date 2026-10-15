@@ -406,8 +406,8 @@ func (st *Store) fleetBeats(ctx context.Context, shapes []ntable.Table) (ntable.
 	if err != nil {
 		return shape, beats, err
 	}
-	// each friend's own beat under her name, beside the machines' (the friend stall reads
-	// her session activity there, sprint.TickFriendStall): a friend's beat is kept by her
+	// each friend's own beat under her name, beside the machines' (her live set and work
+	// report, read as facts of her cards, never her state): a friend's beat is kept by her
 	// name, not her row
 	for _, row := range members {
 		f, ok := sprint.FriendOfRow(row)
