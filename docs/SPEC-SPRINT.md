@@ -7874,17 +7874,13 @@ sets, never a card's whole record, so a card's attempt, consumer and cost histor
 measured: v1.2.17 summed every field and refused cards whose briefs were under the bound). It
 prints `CHECK <kind> <card|stream> <finding> remedy=<what to do>` a finding, then `CHECK CARDS OK
 cards=<n>` (exit 0) or `CHECK CARDS FAILED kinds=<kind:n,...>` (exit 1); 2 is usage or a store
-that did not answer. **Warnings** (v1.2.18; the owner, 2026-10-13: "the gate keeps refusing on
-needs, bases, routes and brief size, but only warns on file overlap that a sentinel or stream
-order already serializes"; tla/MachineReady.tla WarnsNeverFail, WarnOnlyStarts): a same-file
-finding (both cards of one stream, whose lander lands them in line order), and a files finding
-whose every pair of writing cards, one of each stream, is ordered by the work table's live waits
-(`WaitsFor`: a named need not landed and not waived, a waiting card's stop, a stop's line before
-it; at any depth, so through a sentinel), is a warning: printed as `CHECK <kind> <card|stream>
-<finding> WARN serialized=<why> remedy=<what to do>`, kept with the record's findings, counted
-as `warned=<kind:n,...>` on the last line and in `--json` (`warned`; each finding's `severity`,
-`refuse` or `warn`, and `serialized`), and failing neither the check nor start. A files finding
-with one pair unordered, or a writer it cannot name, refuses; every other kind refuses.
+that did not answer. **Warnings** (Glenn, 2026-10-15: a shared file is worked out in the merge
+and never fails the check; a need is only for code that builds on other code): a files finding
+and a same-file finding are always warnings, whether or not any wait orders the writers. Printed
+as `CHECK <kind> <card|stream> <finding> WARN serialized=work it out in the merge remedy=<what to do>`,
+kept with the record's findings, counted as `warned=<kind:n,...>` on the last line and in
+`--json` (`warned`; each finding's `severity`, `refuse` or `warn`, and `serialized`), and failing
+neither the check nor start. The serialized words name no wait path. Every other kind refuses.
 Every live run without `--dry-run` writes the epoch's one **check record** (`--dry-run` and `--from` write no check record; internal/sprint/store/check_record.go, beside
 the machine's record and keyed by epoch as it is: one of another epoch reads as none, so a clear
 leaves none): when, by whom, clean or the findings by kind, and every card checked (its id,
