@@ -14,7 +14,6 @@ it is. These are routine, and the dispatcher runs them:
 
 - Take a dealt card and start a worker on it: `nova-sprint take --as <member> <card>@<gen>`,
   or for a friend's lane `nova-sprint take --as friend.<name> <card>@<gen> --lane <n>`.
-- Prove its own hook's challenges: `nova-hook prove --as <me> --nonce <n>`, from inside its own turn.
 - Merge only on an independent reader's MERGE verdict that names the exact head being
   merged; a head that moved since the read is read again (`nova-sprint ask <id> --another`).
 - Re-finish a known head after a bounce caused only by the environment:
@@ -35,10 +34,12 @@ runs the loop above and sends the coordinator only judgment.
 - The coordinator keeps the conversation with the owner, the rulings, and the
   coordinator hook (`nova-hook hook --as <coordinator> --role coordinator`).
   Only the session holding a hook answers its challenges; the dispatcher never
-  runs `nova-hook prove` for the coordinator's name.
-- The dispatcher hooks in under its own name to use the bus
-  (`nova-hook hook --as <dispatcher> --role comms`) and hears the coordinator's
-  judgments through the push loop, `nova-sprint inbox --wait --push <dir>`.
+  runs `nova-hook prove`.
+- The dispatcher talks to the coordinator over the bus
+  (`nova-bus send --as <dispatcher> --to <coordinator> ...`, `nova-bus recv --as <dispatcher>`)
+  and hears the judgments through the push loop, `nova-sprint inbox --wait --push <dir>`.
+  Check your build first: in nova-tools v1.3/comms every `nova-bus` verb refuses a
+  name that is not hooked in (`TestEveryVerbRefusesUntilHooked`).
 - A coordinator verb runs only while the judgments have a way to the seat
   (the gate in `cmd/nova-sprint/coordinator_hook.go`), so the dispatcher's
   routine steps stop when the coordinator's hook is gone. That is intended:
@@ -106,12 +107,15 @@ agents commit under; the sprint machine's own is its row's `git_identity` in
 
 ## 7. Stuck by count
 
-Count attempts, not feelings. The machine counts too: a card at its attempts
-bound (`nova-sprint stream set <stream> --attempts <n>`, default 4) or with the
-same finding twice comes to the inbox as "the brief is wrong".
+Count attempts, not feelings. There are two thresholds, one for the machine
+and one for the coordinator:
 
-- The same finding three times: stop, and take it to the owner with the evidence
-  (`nova-sprint log --card <id>`, the readers' findings).
+- Twice: the machine escalates. A card with the same finding twice, or at its
+  attempts bound (`nova-sprint stream set <stream> --attempts <n>`, default 4),
+  comes to the inbox as "the brief is wrong".
+- Three times: the coordinator stops. The same finding a third time means stop
+  and take it to the owner with the evidence (`nova-sprint log --card <id>`,
+  the readers' findings).
 - When readers judge against a stale brief, re-admit the card fresh, carrying
   the good head: `nova-sprint add --stream <s> <new-id> --replaces <old-id> --brief-file <f>`,
   the brief naming the head on a `CARRY:` line. `nova-sprint continue <card> --carry <sha>`
