@@ -80,6 +80,42 @@ func frozenMismatch(name string) string {
 	return fmt.Sprintf("pkg/%s is an allowed copy of nova-tools pkg/%s and is frozen: land the change in nova-tools first, then update its row in internal/ci/testdata/one-source-frozen.txt in the same pull request that imports it", name, name)
 }
 
+// frozenProblems is the freeze check's verdict against root's pkg/<name> copies:
+// a row whose name is no longer allowed, an allowed name with no row, and an
+// allowed copy whose digest disagrees with its row, are red.
+func frozenProblems(t *testing.T, root string, allowed, frozen map[string]string) []string {
+	t.Helper()
+	var problems []string
+
+	var notAllowed []string
+	for name := range frozen {
+		if _, ok := allowed[name]; !ok {
+			notAllowed = append(notAllowed, name)
+		}
+	}
+	sort.Strings(notAllowed)
+	for _, name := range notAllowed {
+		problems = append(problems, fmt.Sprintf("%s lists %s, which is no longer an allowed copy: remove the row", oneSourceFrozenFile, name))
+	}
+
+	var names []string
+	for name := range allowed {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		hash, ok := frozen[name]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("pkg/%s is an allowed copy of nova-tools pkg/%s and is frozen: add its row to internal/ci/testdata/one-source-frozen.txt", name, name))
+			continue
+		}
+		if got := frozenDigest(t, root, name); got != hash {
+			problems = append(problems, fmt.Sprintf("%s: %s", frozenMismatch(name), got))
+		}
+	}
+	return problems
+}
+
 // TestAnAllowedCopyIsFrozen: an allowed pkg/<name> copy is frozen at the digest
 // in one-source-frozen.txt. A mismatch is red with the remedy; an allowed name
 // with no row, and a row whose name is no longer allowed, are red.
@@ -94,27 +130,8 @@ func TestAnAllowedCopyIsFrozen(t *testing.T) {
 	require.NoError(t, err)
 	frozen := frozenRows(t, string(fb))
 
-	var notAllowed []string
-	for name := range frozen {
-		if _, ok := allowed[name]; !ok {
-			notAllowed = append(notAllowed, name)
-		}
-	}
-	sort.Strings(notAllowed)
-	for _, name := range notAllowed {
-		t.Errorf("%s lists %s, which is no longer an allowed copy: remove the row", oneSourceFrozenFile, name)
-	}
-
-	for name := range allowed {
-		hash, ok := frozen[name]
-		if !ok {
-			t.Errorf("pkg/%s is an allowed copy of nova-tools pkg/%s and is frozen: add its row to internal/ci/testdata/one-source-frozen.txt", name, name)
-			continue
-		}
-		if got := frozenDigest(t, root, name); got != hash {
-			t.Errorf("%s: %s", frozenMismatch(name), got)
-		}
-	}
+	problems := frozenProblems(t, root, allowed, frozen)
+	require.Empty(t, problems, "an allowed copy is frozen at its digest in one-source-frozen.txt:\n%s", strings.Join(problems, "\n"))
 }
 
 // TestTheFreezeSeesAKnownYesAndAKnownNo proves the freeze over a fixture package
@@ -128,13 +145,27 @@ func TestTheFreezeSeesAKnownYesAndAKnownNo(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(pkg, "a.go"), []byte("package swarm\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(pkg, "a_test.go"), []byte("package swarm\n"), 0o644))
 
+	allowed := map[string]string{"swarm": "r"}
 	dig := frozenDigest(t, dir, "swarm")
 	require.NotEmpty(t, dig)
 
-	unchanged := frozenDigest(t, dir, "swarm")
-	require.Equal(t, dig, unchanged)
+	require.Empty(t, frozenProblems(t, dir, allowed, map[string]string{"swarm": dig}))
 
+	containsMismatch := func(problems []string) bool {
+		for _, p := range problems {
+			if strings.HasPrefix(p, frozenMismatch("swarm")) {
+				return true
+			}
+		}
+		return false
+	}
+
+	frozen := map[string]string{"swarm": dig}
 	require.NoError(t, os.WriteFile(filepath.Join(pkg, "a.go"), []byte("package swarm2\n"), 0o644))
 	edited := frozenDigest(t, dir, "swarm")
 	require.NotEqual(t, dig, edited)
+	require.True(t, containsMismatch(frozenProblems(t, dir, allowed, frozen)))
+
+	stale := frozenProblems(t, dir, allowed, map[string]string{"swarm": strings.Repeat("0", len(dig))})
+	require.True(t, containsMismatch(stale))
 }
