@@ -16,9 +16,9 @@ func TestTheMachineKeepsRunningWhileAFriendIsUp(t *testing.T) {
 		friends []FriendSeat
 		stop    bool
 	}{
-		{"a friend up keeps it running", []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}}, false},
-		{"no friend up stops it", []FriendSeat{{Name: "amy", Width: 8, Status: "down"}}, true},
-		{"a friend up with no width stops it", []FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "flash,pro"}}, true},
+		{"a friend up keeps it running", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}}), false},
+		{"no friend up stops it", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 8, Status: "down"}}), true},
+		{"a friend up with no width stops it", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "flash,pro"}}), true},
 		{"no roster stops it", nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

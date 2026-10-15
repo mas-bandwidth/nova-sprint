@@ -23,14 +23,14 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"))
 	amy, bob := FriendRow("amy"), FriendRow("bob")
 	seats := func(running ...string) []FriendSeat {
-		return []FriendSeat{
+		return workerSeatFixtures([]FriendSeat{
 			{Name: "amy", Width: 3, Status: Up, Class: "flash", Running: running},
 			{Name: "bob", Width: 1, Status: Up, Class: "flash"},
-		}
+		})
 	}
 	tick := func(running ...string) Plan {
 		t.Helper()
-		p, _ := TickDeal(w.s, TickReq{Friends: seats(running...)})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: seats(running...)})
 		return w.must(p)
 	}
 	notStarted := func(p Plan) []string {
@@ -108,7 +108,7 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	// moves it: friendTaken, no FieldStarted; his own take is a start and is not this): the
 	// next tick puts it back ready, untaken, one line
 	w.tick(time.Minute)
-	w.s.Friends = seats()
+	rememberWorkerSeats(w.s, seats())
 	w.must(Take(w.s, TakeReq{As: bob, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}, Who: bob}))
 	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
 	nx := w.s.Fleet.Card("s1-1.w1")
@@ -148,15 +148,15 @@ func TestAFriendWritingWithinTheBoundKeepsHerUnstartedCards(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"))
 	seat := func(active time.Time) []FriendSeat {
-		return []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash", Active: active}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+		return workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash", Active: active}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}})
 	}
-	w.must(func() Plan { p, _ := TickDeal(w.s, TickReq{Friends: seat(time.Time{})}); return p }())
+	w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seat(time.Time{})}); return p }())
 	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row)
 	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-	p, _ := TickDeal(w.s, TickReq{Friends: seat(w.s.Now.Add(-time.Minute))})
+	p, _ := tickDealFixture(w.s, TickReq{Friends: seat(w.s.Now.Add(-time.Minute))})
 	w.must(p)
 	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "a write a minute ago: she is at work")
-	p, _ = TickDeal(w.s, TickReq{Friends: seat(t0)})
+	p, _ = tickDealFixture(w.s, TickReq{Friends: seat(t0)})
 	w.must(p)
 	assert.Equal(t, FriendRow("bob"), w.s.Fleet.Card("s1-1.w1").Row, "no write within the bound: it moves")
 }
@@ -166,12 +166,12 @@ func TestAFriendWritingWithinTheBoundKeepsHerUnstartedCards(t *testing.T) {
 func TestAFriendRunningAJobKeepsHerUnstartedCards(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	seats := []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
-	w.must(func() Plan { p, _ := TickDeal(w.s, TickReq{Friends: seats}); return p }())
+	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}})
+	w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seats}); return p }())
 	require.Equal(t, 2, w.s.Fleet.Count(FriendRow("amy"), Ready))
 	w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-1.w1"}, Gens: map[string]int{"s1-1.w1": 1}}))
 	w.s.Now = t0.Add(FriendStartMaxDefault + time.Hour)
-	p, _ := TickDeal(w.s, TickReq{Friends: seats})
+	p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 	w.must(p)
 	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "she is running a job")
 	assert.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "her started card stays working")
@@ -205,16 +205,16 @@ func TestStartBoundLevellingSkipsARestrictedRecipient(t *testing.T) {
 			brief := "c: a restricted level\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: " + tc.kind + "\n\nThe task."
 			w.must(Add(w.s, AddReq{Stream: tc.stream, Cards: []CardAdd{{ID: id, Brief: brief}}}))
 			seats := func() []FriendSeat {
-				return []FriendSeat{
+				return workerSeatFixtures([]FriendSeat{
 					{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"},
 					{Name: "bob", Width: 1, Status: Up, Class: "flash,pro", Streams: tc.streams, Kinds: tc.kinds},
-				}
+				})
 			}
-			w.must(func() Plan { p, _ := TickDeal(w.s, TickReq{Friends: seats()}); return p }())
+			w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seats()}); return p }())
 			require.Equal(t, FriendRow("amy"), w.s.Fleet.Card(id+".w1").Row, "the card is dealt to amy first")
 
 			w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-			p, _ := TickDeal(w.s, TickReq{Friends: seats()})
+			p, _ := tickDealFixture(w.s, TickReq{Friends: seats()})
 			w.must(p)
 			assert.Equal(t, FriendRow(tc.want), w.s.Fleet.Card(id+".w1").Row, "the level honours the recipient's restriction")
 		})

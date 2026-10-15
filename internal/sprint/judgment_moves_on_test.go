@@ -18,7 +18,7 @@ import (
 func TestJudgmentClosesWhenItsCardMovesOn(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 	row := FriendRow("amy")
 	// an ok push gives the card a head, then the same card's attempt ends on a
 	// brief defect: the judgment is raised at attempt 1
@@ -118,7 +118,7 @@ func TestAMovedOnJudgmentCanBeAcked(t *testing.T) {
 func reBriefedDefect(t *testing.T) (*world, Open) {
 	t.Helper()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 	row := FriendRow("amy")
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-2.w1"}}, As: row, Gens: gensOf(w.s, "s1-2.w1"), Failed: true,

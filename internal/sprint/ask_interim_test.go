@@ -115,7 +115,7 @@ func TestFleetOffDealsNoWorkToMachines(t *testing.T) {
 	dealt := func() int { return w.s.Fleet.Count("m1", Ready) + w.s.Fleet.Count("m2", Ready) }
 	before := dealt()
 
-	p, _ := TickDeal(w.s, TickReq{})
+	p, _ := tickDealFixture(w.s, TickReq{})
 	w.must(p)
 	assert.Equal(t, before, dealt(), "no work card is dealt to a machine")
 	assert.Empty(t, w.notesOf(NNoMember))
@@ -134,7 +134,7 @@ func TestFleetOffDealsNoWorkToMachines(t *testing.T) {
 	require.False(t, w.s.FleetOff())
 	p, _ = TickIdle(w.s, TickReq{IdleAlarm: true})
 	assert.NotEmpty(t, p.Units, "on: the idle episode begins")
-	p, _ = TickDeal(w.s, TickReq{})
+	p, _ = tickDealFixture(w.s, TickReq{})
 	w.must(p)
 	assert.Greater(t, dealt(), before, "on: the tick deals")
 }
@@ -151,7 +151,7 @@ func TestFriendsOffDealsNoWorkToFriends(t *testing.T) {
 	assert.Equal(t, []string{"s1-1"}, friendReads(w, "amy"), "her read flows")
 	assert.Empty(t, friendNewWork(w, "amy"), "no work card is dealt to a friend")
 	var empty Plan
-	assert.Empty(t, emptyConds(&empty, w.s, TickReq{Friends: []FriendSeat{amy}}), "no empty-row alarm while the friends' work is off")
+	assert.Empty(t, emptyConds(&empty, w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})}), "no empty-row alarm while the friends' work is off")
 
 	w.must(Set(w.s, SetReq{Friends: SwitchOn, Who: "coordinator"}))
 	tickDealAndAsk(t, w, amy)
@@ -186,8 +186,8 @@ func TestAHeavyCardIsReadOnPro(t *testing.T) {
 	w.readersTable() // explicit legacy reader-table fixture
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	johnny := FriendSeat{Name: "johnny", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteHeavy}}
-	w.s.Friends = []FriendSeat{johnny}
+	johnny := workerSeatFixture(FriendSeat{Name: "johnny", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteHeavy}})
+	w.s.Friends = workerSeatFixtures([]FriendSeat{johnny})
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Tokens: 1000, Enabled: true},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "q", Tokens: 1000, Enabled: true},

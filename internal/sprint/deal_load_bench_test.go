@@ -38,7 +38,7 @@ func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 32}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 32}))
 	for i := 0; i < friends; i++ {
-		w.s.Friends = append(w.s.Friends, FriendSeat{Name: fmt.Sprintf("f%02d", i), Width: 8, Status: Up, Class: "flash,pro"})
+		w.s.Friends = append(w.s.Friends, workerSeatFixture(FriendSeat{Name: fmt.Sprintf("f%02d", i), Width: 8, Status: Up, Class: "flash,pro"}))
 	}
 	cards := make([]CardAdd, ready)
 	for i := range cards {
@@ -70,7 +70,7 @@ func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
 	before := modelReads.Load()
-	TickDeal(s, TickReq{})
+	tickDealFixture(s, TickReq{})
 	parsed := modelReads.Load() - before
 	t.Logf("TICK-COST ready=%d briefs_parsed=%d", ready, parsed)
 	require.EqualValues(t, ready, parsed,
@@ -113,11 +113,11 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	// No clock here (the unit tier keeps none): the wall is BenchmarkTickDealAtLoad's and
 	// BenchmarkTickDrainAtLoad's, outside the gate.
 	Drain(s, s.Queue, MachineActor)
-	TickDeal(s, TickReq{})
+	tickDealFixture(s, TickReq{})
 	for i := 0; i < 5; i++ {
-		TickDeal(s, TickReq{})
+		tickDealFixture(s, TickReq{})
 	}
-	plan, _ := TickDeal(s, TickReq{})
+	plan, _ := tickDealFixture(s, TickReq{})
 	_, q := QueueOf(plan, DrainVerb, MachineActor)
 	Drain(s, q, MachineActor)
 
@@ -127,7 +127,7 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	// and by the allocation hold in TestTickDealAllocatesNoPerCardRouteMapAtScale.
 	resetModelMemo()
 	before := modelReads.Load()
-	TickDeal(s, TickReq{})
+	tickDealFixture(s, TickReq{})
 	parsed := modelReads.Load() - before
 	require.EqualValues(t, ready, parsed, "the deal parses each ready brief once: the tick's model-read work")
 	require.Less(t, len(q), ready, "the drain is not the tick's dominant cost: its moves are bounded by the deal's queued output")
@@ -156,9 +156,9 @@ func TestTickDealAllocatesNoPerCardRouteMapAtScale(t *testing.T) {
 
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
-	TickDeal(s, TickReq{}) // warm the memo, as the tick warms it on its first run
+	tickDealFixture(s, TickReq{}) // warm the memo, as the tick warms it on its first run
 
-	allocs := testing.AllocsPerRun(3, func() { TickDeal(s, TickReq{}) })
+	allocs := testing.AllocsPerRun(3, func() { tickDealFixture(s, TickReq{}) })
 	perCard := allocs / float64(ready)
 	t.Logf("TICK-ALLOC ready=%d allocs_per_run=%.0f allocs_per_card=%.2f", ready, allocs, perCard)
 	require.Less(t, perCard, 40.0,
@@ -184,10 +184,10 @@ func BenchmarkTickDealAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			resetModelMemo()
-			TickDeal(s, TickReq{}) // warm the memo once, as the tick does on its first run
+			tickDealFixture(s, TickReq{}) // warm the memo once, as the tick does on its first run
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				TickDeal(s, TickReq{})
+				tickDealFixture(s, TickReq{})
 			}
 		})
 	}
@@ -206,8 +206,8 @@ func BenchmarkTickDrainAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			resetModelMemo()
-			TickDeal(s, TickReq{})
-			plan, _ := TickDeal(s, TickReq{})
+			tickDealFixture(s, TickReq{})
+			plan, _ := tickDealFixture(s, TickReq{})
 			_, q := QueueOf(plan, DrainVerb, MachineActor)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

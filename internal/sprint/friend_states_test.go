@@ -31,7 +31,7 @@ var hookStates = []hook.Status{
 func TestAnUpFriendWithNoRecentFinishesIsStillDealt(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: FriendHookStatus(hook.Status{Name: "amy", State: hook.StateProven}, false), Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: FriendHookStatus(hook.Status{Name: "amy", State: hook.StateProven}, false), Class: "flash,pro"})
 	require.Equal(t, Up, amy.Status)
 	dealWith(w, amy)
 	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "s1-1 is dealt to amy")
@@ -41,7 +41,7 @@ func TestAnUpFriendWithNoRecentFinishesIsStillDealt(t *testing.T) {
 
 	w.tick(45 * time.Minute)
 	amy.Running = nil // her beat no longer names it: quiet, no finish, no session write
-	r := TickReq{Friends: []FriendSeat{amy}}
+	r := TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})}
 	for _, tu := range TickTables {
 		if tu.Table != Fleet {
 			continue
@@ -76,7 +76,7 @@ func TestAnUnhookedFriendIsNotDealt(t *testing.T) {
 	for _, h := range hookStates {
 		for _, held := range []bool{false, true} {
 			w := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
-			amy := FriendSeat{Name: "amy", Width: 2, Status: FriendHookStatus(h, held), Class: "flash,pro", Held: held}
+			amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: FriendHookStatus(h, held), Class: "flash,pro", Held: held})
 			dealWith(w, amy)
 			n := w.s.Fleet.Count(FriendRow("amy"), Ready) + w.s.Fleet.Count(FriendRow("amy"), Working)
 			if amy.Status == Up {
