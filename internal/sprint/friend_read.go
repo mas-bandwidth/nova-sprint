@@ -680,11 +680,16 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	for _, c := range chosen {
 		pr := s.Work.Card(c.F("primary"))
 		if r.Return {
-			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {
+			readHead := c.F("head")
+			ended, code, env := ReadEnvEnd(r.Reason, r.Exit, readHead, pr.F("head"))
+			if env && IsFriendRow(row) {
+				env = false // a friend's row is no member's environment: her returns are judged as before
+			}
+			if env {
 				// the member's child ended on its environment: no verdict, and its reader is
 				// not spent, so the deal may deal it the read again (docs/SPEC-SPRINT.md, "An
 				// environment exit"; RetiredByEnvironment)
-				p.Units = append(p.Units, readEnvExitUnit(s, c, pr, r, ended, name))
+				p.Units = append(p.Units, readEnvExitUnit(s, c, pr, r, ended, code, name))
 				continue
 			}
 			set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": cutText(r.Reason, MaxCardTextBytes)}

@@ -683,6 +683,8 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 	// the coordinator's push: its judgments to its name on the bus, and its sprint push
 	// held in its nova-hook record (coordinator_push.go)
 	go a.coordPushLoop(context.Background())
+	// CIReceiptTell.tla: event-driven CI receipt delivery with a ten-minute sweep.
+	go a.ciTellLoop(context.Background())
 	for at, h := range lns {
 		ln, err := net.Listen("tcp", at)
 		if err != nil {
