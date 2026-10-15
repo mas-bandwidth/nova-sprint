@@ -128,13 +128,11 @@ func (r FriendTakeReq) takenBackWhy() string {
 // that she has started, is refused, one refusal each, and so is a card named in flight
 // (FriendCardInFlight) unless Working; the rest are taken; with AllOrNothing one refusal takes none,
 // each card that would have been taken refused too. All (not Hold) takes ONLY the cards
-// dealt to her and not taken: ready on her row, not in flight, not started (the stall
-// ladder's rung 4, with Working, also takes a working card not started); each card it
+// dealt to her and not taken: ready on her row, not in flight, not started; each card it
 // leaves is said ("friend <f> keeps <id>: <why>"). A working card taken (Working, or the
 // hold) frees her lane: her oldest ready card not taken is taken into working in the same
 // unit, as her finish takes it (friendNext), and the plan says one WARNING line counting
 // the working cards withdrawn.
-// tla/StallLadder.tla Tick: rung 4 takes back the cards she has not started.
 // tla/WhoPreference.tla TakeBack.
 func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 	var p Plan

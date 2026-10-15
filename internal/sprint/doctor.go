@@ -385,7 +385,6 @@ func readyWhys(s *Snapshot, r TickReq, cards []*Card) (why map[string]string) {
 			}
 		}
 	}()
-	r.WakeFriend = nil
 	if r.Who == "" {
 		r.Who = MachineActor
 	}

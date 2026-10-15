@@ -394,6 +394,13 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			add(t.table, own)
 			mine = append(mine, own...)
 		}
+		// a one-shot friend's member runs at the friend's width, her roster's (nova-config's
+		// friend row): her row has no control card (sprint.FriendOneShot)
+		if f, ok := sprint.FriendOfRow(*as); ok {
+			if spec, err := st.FriendSpecOf(ctx, f); err == nil && spec.Session == sprint.FriendOneShot {
+				width = spec.Width
+			}
+		}
 		// a reader runs at its machine's width: reader-<m>'s is m's fleet row's
 		// (sprint.ReaderMachine), read here as the member's own is above
 		if m, ok := sprint.ReaderMachine(*as); isReader && ok {

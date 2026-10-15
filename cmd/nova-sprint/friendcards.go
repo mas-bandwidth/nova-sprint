@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -709,36 +708,6 @@ func (a *app) wakeFriendPass(ctx context.Context, st *store.Store, name, inbox s
 		return err
 	}
 	return nil
-}
-
-// stallWaker is the store's WakeFriend for the machine (tick and run): the friend stall
-// part's wake turn sent on the bus (wakeFriendStall), a message not sent said on out.
-func (a *app) stallWaker(st *store.Store, out io.Writer) func(string, int, time.Duration) error {
-	return func(name string, rung int, d time.Duration) error {
-		return a.wakeFriendStall(context.Background(), st, name, rung, d, func(l string) { fmt.Fprintln(out, l) })
-	}
-}
-
-// wakeFriendStall wakes a friend whose stall ladder has climbed to a wake rung (1 or 2;
-// docs/SPEC-SPRINT.md section friend-stall-ladder-r.w1; the model is tla/StallLadder.tla):
-// a bus message pushed to her daemon as a turn, waking her to resume or report progress.
-func (a *app) wakeFriendStall(ctx context.Context, st *store.Store, name string, rung int, d time.Duration, say func(string)) error {
-	m := bus.Message{
-		From:    st.Actor,
-		To:      []string{name},
-		Subject: fmt.Sprintf("stall wake: friend %s turn %d (%s)", name, rung, d.Round(time.Minute)),
-		Body:    fmt.Sprintf("Your session has shown no activity for %s while holding dealt sprint cards (wake turn %d); please resume work or report progress.", d.Round(time.Minute), rung),
-	}
-	err := a.bus(ctx, m, say)
-	if err == nil {
-		return nil
-	}
-	sayf := friendSays(ctx, st, name)
-	why := oneline.Escape(err.Error())
-	if say != nil {
-		say(sayf("FRIEND-STALL NOTE friend=%s rung=%d: the bus message to {them} was not sent (%s); tell {them} by hand", name, rung, why))
-	}
-	return err
 }
 
 // friendReadText is the BRIEF.md of a friend's read, as friend sync and friend cards

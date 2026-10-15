@@ -85,10 +85,6 @@ type Store struct {
 	// IdleAlarm says the tick watches for an idle fleet and pushes the coordinator one note
 	// of why an episode (run --idle-alarm, on by default there; sprint.TickIdle).
 	IdleAlarm bool
-	// WakeFriend, when set (run and tick), sends a stalled friend her wake turn as the
-	// friend stall part of the tick climbs her ladder to rung 1 or 2 (sprint.TickFriendStall,
-	// a bus message pushed to her daemon); nil sends nothing and the rung climbs the same.
-	WakeFriend func(friend string, rung int, d time.Duration) error
 	// BaseCI, when set (run and tick), is the tick's read of the base's CI after a
 	// landing (one per repository and base; sprint.TickBaseCI, base_ci.go): the facts
 	// the binding read, passed into the tick's TickReq. nil passes none, and no
