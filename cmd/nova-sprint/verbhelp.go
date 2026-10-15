@@ -269,6 +269,8 @@ func verbProse(name string) string {
 		return friendGiveWords
 	case "friend cards":
 		return friendCardsWords
+	case "friend stage":
+		return friendStageWords
 	case "friend level":
 		return friendLevelWords
 	case "add":
