@@ -704,6 +704,7 @@ MCSeatHealthBrokenHoldWins.cfg	MCSeatHealth.tla	invariant	HookDownWins	ignore-te
 MCSeatHealthBrokenServerIgnored.cfg	MCSeatHealth.tla	invariant	HookDownWins	ignore-terminal	seathealth	required	-
 MCSeatHealthBrokenWorkStalls.cfg	MCSeatHealth.tla	invariant	ThreeWords	ignore-terminal	seathealth	required	-
 MCSeatHealthBrokenSameGen.cfg	MCSeatHealth.tla	action	GenerationStepsWithTheSeat	ignore-terminal	seathealth	required	-
+MCSeatHealthBrokenDerive.cfg	MCSeatHealth.tla	action	OneWriter	ignore-terminal	seathealth	required	-
 MCFriendDealtReturnBrokenBounce.cfg	MCFriendDealtReturn.tla	action	OneShotWorkingStays	ignore-terminal	frienddealtreturn	required	-
 MCDecisionsOwed.cfg	MCDecisionsOwed.tla	pass	-	ignore-terminal	decisionsowed	required	-
 MCDecisionsOwedBrokenSilentPile.cfg	MCDecisionsOwed.tla	invariant	NoSilentPile	ignore-terminal	decisionsowed	required	-

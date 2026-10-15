@@ -48,6 +48,9 @@ type testApp struct {
 	// oldReaders marks tests that intentionally exercise the legacy readers table.
 	// The default fixture remains propertyless; these tests opt out explicitly.
 	oldReaders bool
+	// noServer is a test that writes the friends' status itself (serverPass), as the server
+	// would, and wants nothing else to: the beat before each command does not.
+	noServer bool
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -114,6 +117,12 @@ func (ta *testApp) beat() {
 	for _, m := range live {
 		_, err := st.Beat(context.Background(), m, &zero, hostload.Source{})
 		require.NoError(ta.t, err)
+	}
+	// the server's pass: it writes every friend's status word from the hook records as they
+	// stand, which where and the dashboard only read (store.PublishFriendStatus)
+	if !ta.noServer {
+		st.ReadFriendHooks = ta.a.readFriendHooks
+		require.NoError(ta.t, st.PublishFriendStatus(context.Background(), ta.a.now()))
 	}
 	rows, err := st.ReaderRows(context.Background())
 	require.NoError(ta.t, err)

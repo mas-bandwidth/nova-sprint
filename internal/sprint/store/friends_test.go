@@ -25,6 +25,7 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	h.up("amy")
 	require.NoError(t, err)
 	require.NoError(t, h.st.SetFriendHeld(h.ctx, "bob", true, "c", "", time.Time{}, 0))
+	require.NoError(t, h.st.PublishFriendStatus(h.ctx, h.now)) // the server's pass
 	rows, err := h.st.FriendRows(h.ctx, h.now)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
