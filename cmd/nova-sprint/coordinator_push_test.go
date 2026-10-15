@@ -24,7 +24,7 @@ func (ta *testApp) toSeat(name string) []bus.Message {
 	defer ta.mu.Unlock()
 	var out []bus.Message
 	for _, m := range ta.sent {
-		if m.From == prog && len(m.To) == 1 && m.To[0] == name {
+		if m.From != prog && len(m.To) == 1 && m.To[0] == name {
 			out = append(out, m)
 		}
 	}
@@ -257,7 +257,7 @@ func TestStateEpisodeSurvivesRetryRestartWaitAndRecurrence(t *testing.T) {
 		require.NoError(t, err)
 	}
 	add()
-	fake := bustest.NewFake(ta.a.now(), name, prog)
+	fake := bustest.NewFake(ta.a.now(), name)
 	b := &bus.Bus{Store: fake}
 	ta.a.bus = func(ctx context.Context, m bus.Message, _ func(string)) error { _, err := b.Send(ctx, m); return err }
 	fake.Fail = errors.New("bus unavailable")
@@ -443,7 +443,7 @@ func TestAmbiguousStateDeliveryStopsBeforeTokenExpiry(t *testing.T) {
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
 	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NMemberEnvFault, Stream: sprint.MemberSubject("m1"), StreamLevel: true, What: "member m1 fault", At: ta.a.now()}))
 	require.NoError(t, err)
-	fake := bustest.NewFake(ta.a.now(), name, prog)
+	fake := bustest.NewFake(ta.a.now(), name)
 	b := &bus.Bus{Store: fake}
 	calls := 0
 	ta.a.bus = func(ctx context.Context, m bus.Message, _ func(string)) error {
@@ -485,7 +485,7 @@ func TestStatusKeepsItsAlertWhenTheCauseCloses(t *testing.T) {
 			require.NoError(t, err)
 			candidates := map[string]sprint.CoordinatorDelivery{}
 			for _, d := range coordFresh(map[string]bool{}, look, ta.a.now()) {
-				candidates[d.note] = sprint.CoordinatorDelivery{To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: ta.a.now().Add(bus.DefaultTokenLife)}
+				candidates[d.note] = sprint.CoordinatorDelivery{From: name, To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: ta.a.now().Add(bus.DefaultTokenLife)}
 			}
 			if afterFailedSend {
 				send := ta.a.bus
@@ -538,7 +538,7 @@ func TestAmbiguousRecoveryStopsBeforeTokenExpiry(t *testing.T) {
 	ta.a.coordinatorPass(ctx)
 	_, err = st.Run(ctx, store.Step{Verb: "fixture resolve", Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Plan{Closes: s.Open} }})
 	require.NoError(t, err)
-	fake := bustest.NewFake(ta.a.now(), name, prog)
+	fake := bustest.NewFake(ta.a.now(), name)
 	fake.Lose = errors.New("response lost after commit")
 	b := &bus.Bus{Store: fake}
 	calls := 0

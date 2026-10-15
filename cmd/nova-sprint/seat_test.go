@@ -250,6 +250,13 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 func TestThePushFollowsTheSeat(t *testing.T) {
 	t.Parallel()
 	ta, _ := heldAndWaiting(t)
+	getenv := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus.test:6379"
+		}
+		return getenv(k)
+	}
 	ta.a.serveAddr = "mem:0"
 	// a judgment addressed to the seat (the held one is a timer, addressed to its actor): it
 	// follows the seat

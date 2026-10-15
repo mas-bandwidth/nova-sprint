@@ -253,7 +253,7 @@ func filled(kind string) sprint.Note {
 			// the frozen bus message of the note's episode (coordinator_push.go): delivery
 			// bookkeeping, set so the move is shown to hold the note with it present
 			v.Field(i).Set(reflect.ValueOf(&sprint.CoordinatorDelivery{
-				CoveredBy: "s-" + name + "-covered", To: "s-" + name + "-to", Token: "s-" + name + "-token",
+				CoveredBy: "s-" + name + "-covered", From: "s-" + name + "-from", To: "s-" + name + "-to", Token: "s-" + name + "-token",
 				Subject: "s-" + name + "-subject", Body: "s-" + name + "-body", Episode: "s-" + name + "-episode",
 				Sent: true, RetryBefore: t0.Add(time.Duration(i+1) * time.Minute),
 			}))

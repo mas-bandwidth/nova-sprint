@@ -25,7 +25,7 @@ import (
 func coordSprint(t *testing.T, name string) (*testApp, *hooktest.Rig, map[string]string) {
 	t.Helper()
 	ta := newTestApp(t)
-	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name}
+	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name, busRedisEnv: "bus.test:6379"}
 	var mu sync.Mutex
 	ta.a.getenv = func(k string) string { mu.Lock(); defer mu.Unlock(); return env[k] }
 	rig := hooktest.New(t)
@@ -220,11 +220,12 @@ func TestTheGateReadsTheNovaHookRecord(t *testing.T) {
 func TestTheGateFailsClosed(t *testing.T) {
 	t.Parallel()
 	const name = "hook-closed"
-	ta, rig, _ := coordSprint(t, name)
+	ta, rig, env := coordSprint(t, name)
 	rig.Hook(t, name, hook.Coordinator)
 	ta.lined(func() { ta.ok("where") })
 
 	// no test store: the process's own, which wants NOVA_BUS_REDIS
+	delete(env, busRedisEnv)
 	ta.a.hookStoreFn = nil
 	why := ta.refusedFirst("where", sprint.HookFirst+": the nova-hook record of "+name+" could not be checked")
 	assert.Contains(t, why, busRedisEnv+" is not set")

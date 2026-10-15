@@ -9190,7 +9190,7 @@ still closes the wait earlier. The wait does not block an eligible read.
 
 An auto-hold, member down, environment fault, or counted friend down transition
 sends one coordinator bus message per episode. The existing judgment note stores
-its frozen recipient, subject, body and retry token before sending, then records
+its frozen sender, recipient, subject, body and retry token before sending, then records
 a successful send. A changed cause or explicit wait preserves that receipt;
 clearing the fault and raising it again creates a new episode. A status judgment
 reused for a later transition clears the prior episode's receipt. State episodes
@@ -9199,6 +9199,17 @@ caused by an existing auto-hold or down judgment shares that frozen delivery
 and success receipt. Its pending send survives the causal note closing. Preparation
 rechecks the causal note; if it has already closed, the status owns its alert.
 A new transition clears the prior delivery.
+
+The sender is the effective bus login, including a recorded seat login; with no
+named login it is the coordinator. A pending send preserves that sender across
+handoff and restart. A changed named login cannot replay another sender's token
+and is refused before sending. Recovery messages freeze their sender too.
+Legacy pending notes without a sender first inspect the old program sender's
+token: a found receipt keeps that sender and must pass normal identity, roster
+and argument checks. An absent receipt permits a fenced sender migration only
+inside the retry window and while the old program name is unregistered. An
+unreadable receipt, an expired window or a registered old sender with no receipt
+refuses visibly. No program identity is enrolled by this process.
 
 The note persists a retry deadline at preparation, bounded by
 `bus.DefaultTokenLife` (24 hours). Pending delivery stops automatically at that
