@@ -45,8 +45,8 @@ type Packet struct {
 	BaseHead    string `json:"base_head,omitempty"`
 	BaseAttempt int    `json:"base_attempt,omitempty"`
 	// NeedHeads describes each primary need, populated by the store's pinned
-	// record reads. Only work packets carry it; the worker can refuse a tree
-	// that lacks a recorded landed head before starting the child.
+	// record reads. Only work packets carry it; the server records it and no
+	// member reads it yet (a member-side refusal would be a nova-tools card).
 	NeedHeads []NeedHead `json:"need_heads,omitempty"`
 	// A work card's route (route.go): the route drawn ("pin" for a pinned card),
 	// the model id the member launches with (provider/model), its token budget
