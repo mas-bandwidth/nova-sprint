@@ -705,3 +705,6 @@ MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHas
 MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
+MCFriendSyncWake.cfg	MCFriendSyncWake.tla	pass	-	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenClockOnly.cfg	MCFriendSyncWake.tla	invariant	PushedWithinOneEvent	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenTellLost.cfg	MCFriendSyncWake.tla	temporal	EveryDealIsPushed	ignore-terminal	friendsyncwake	required	-

@@ -76,6 +76,7 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 			if tc.mode == config.FriendModeOneShot && len(sent) == tc.cards {
 				seen := map[string]int{}
 				for _, m := range sent {
+					assert.Equal(t, bus.KindStatus, m.Kind)
 					assert.Contains(t, m.Subject, " dealt: FRIEND-CARD DELIVERED")
 					assert.Contains(t, m.Body, "BRIEF.md")
 					for i := 1; i <= tc.cards; i++ {

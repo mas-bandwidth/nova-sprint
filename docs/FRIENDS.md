@@ -107,18 +107,24 @@ cards she holds, so friends see what each other are on (`/api/team` as JSON).
 
 ## The friend sync loop
 
-`nova-sprint friend sync --every <d>` is the loop: it syncs, waits `d`, and
-syncs again until it is interrupted (the owner, 2026-10-04: "Golang nova-tools
-and nova-sprint verbs only"; "Make the ping loop mechanical!!!!"). Each pass
-reopens the store, so it runs at the sprint's epoch then, and, given no
-`--actor`, acts as the sprint's coordinator seat as the store says it then, so
-a seat that moves takes the loop with it. A pass that changed something (a
-friend added, taken off or updated, a card delivered or finished) prints its
-lines; a pass with nothing to do prints nothing; a failing pass is said once on
-stderr as `FRIEND-SYNC FAILING`, again only when what it says changes, and the
-first pass that is ok after it prints `FRIEND-SYNC OK again after <n> failing
-passes`. An interrupt ends it with 0 (`FRIEND-SYNC STOP interrupted`), and a
-binary replaced under it with 3, so its supervisor starts the new one.
+`nova-sprint friend sync --every <d>` is the loop: it syncs, blocks on the
+sprint log (`store.WaitLog`) for up to `d` so a deal committed by a tick wakes
+it on the deal's log line while `d` stays as the quiet-log backstop sweep
+(`tla/FriendSyncWake.tla`, `Wake` and `Sweep`), and syncs again until it is
+interrupted (the owner, 2026-10-04: "Golang nova-tools and nova-sprint verbs
+only"; "Make the ping loop mechanical!!!!"). Each pass reopens the store, so it
+runs at the sprint's epoch then, and, given no `--actor`, acts as the sprint's
+coordinator seat as the store says it then, so a seat that moves takes the loop
+with it. A card delivered to a friend row (including the coordinator seat's own
+row, whether configured in `batch` or `one-shot` mode) is written to
+`inbox/<job>/BRIEF.md` and told on the bus with `kind=status`. A pass that
+changed something (a friend added, taken off or updated, a card delivered or
+finished) prints its lines; a pass with nothing to do prints nothing; a failing
+pass is said once on stderr as `FRIEND-SYNC FAILING`, again only when what it
+says changes, and the first pass that is ok after it prints `FRIEND-SYNC OK
+again after <n> failing passes`. An interrupt ends it with 0 (`FRIEND-SYNC STOP
+interrupted`), and a binary replaced under it with 3, so its supervisor starts
+the new one.
 
 Every pass, cards or none, puts each friend row's name on the bus store's
 roster (the `friends` set at `NOVA_BUS_REDIS`, a Redis apart from the sprint

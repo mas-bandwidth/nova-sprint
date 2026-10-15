@@ -42,10 +42,11 @@ func friendWords() string {
 	return strings.TrimSpace(`
 The friends: the friends table is nova-config's friend rows, copied into the
 store by friend sync (--pg, else NOVA_PG_DSN, as nova-config takes it; with
---every <d> it syncs again each time d passes until interrupted, acting as the
-seat each pass, the friend sync loop row's verb, docs/FRIENDS.md; friend sync
-install --every <d> runs that loop as this machine's own service, a launchd agent
-or a systemd user unit, and friend sync uninstall removes it): a friend
+--every <d> it wakes on the sprint log and at least every d when the log is
+quiet until interrupted, acting as the seat each pass, the friend sync loop
+row's verb, docs/FRIENDS.md; friend sync install --every <d> runs that loop as
+this machine's own service, a launchd agent or a systemd user unit, and friend
+sync uninstall removes it): a friend
 the store lacks is added, one nova-config no longer has is taken off with the friend's
 beat, and a friend that stays keeps the friend's hold. The same sync writes each friend's width,
 the jobs the friend works at once: the configured row's width (nova-config friend set
@@ -163,7 +164,7 @@ func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	pg := fs.String("pg", "", "the config store, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN; the password from the variable NOVA_PG_PASSWORD_ENV names), as nova-config takes it")
 	root := fs.String("root", "", "the directory the friends' working directories are under, <root>/<friend>-working (else HOME); the sync delivers and collects each friend's sprint cards there and never writes elsewhere")
-	every := fs.Duration("every", 0, "sync now and again each time this passes, until interrupted, as the sprint's coordinator seat when no --actor is given, read again each pass (default: once); friend sync install --every <d> runs it as this machine's service and friend sync uninstall removes it (-h of each), or the friend sync loop row runs it (docs/FRIENDS.md)")
+	every := fs.Duration("every", 0, "sync now and again as the sprint log advances or each time this quiet-log backstop passes, until interrupted, as the sprint's coordinator seat when no --actor is given, read again each pass (default: once); friend sync install --every <d> runs it as this machine's service and friend sync uninstall removes it (-h of each), or the friend sync loop row runs it (docs/FRIENDS.md)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())

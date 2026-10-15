@@ -21,10 +21,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
-	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
@@ -656,20 +656,22 @@ func (a *app) busEnroll(ctx context.Context, names ...string) ([]string, error) 
 }
 
 // wakeFriend tells a one-shot friend of the card just delivered, one bus message
-// from the coordinator (the store's actor) to her: her runner starts a lane from
-// it, which the inbox file alone never does. Her name is made a known bus name
-// first (enrollBus), so a bud whose row exists is told. The message is a
-// courtesy and the inbox file is the record: a send that fails never fails
-// the delivery; it is said on sync's line and written on the card's story as
-// one happened note (NFriendNotWoken), so the coordinator sees she was not
-// told. Batch mode does not call this; wakeFriendPass sends one message for the pass.
+// of kind status from the coordinator (the store's actor) to her (tla/FriendSyncWake.tla,
+// Tell): her runner starts a lane from it, which the inbox file alone never does,
+// and the coordinator seat's own row receives it as a machine status line. Her
+// name is made a known bus name first (enrollBus), so a bud whose row exists is
+// told. The message is a courtesy and the inbox file is the record: a send that
+// fails never fails the delivery; it is said on sync's line and written on the
+// card's story as one happened note (NFriendNotWoken), so the coordinator sees
+// she was not told. Batch mode does not call this; wakeFriendPass sends one
+// message for the pass.
 func (a *app) wakeFriend(ctx context.Context, st *store.Store, name string, p sprint.Packet, brief, line string, say func(string)) error {
 	a.enrollBus(ctx, name, say)
 	start := "Read it and start; its STATUS line says where to push and where to report."
 	if p.Kind == "read" {
 		start = "It is a read: read it and start; its STATUS line says where to report, and nothing is pushed."
 	}
-	m := bus.Message{From: st.Actor, To: []string{name}, Subject: "card " + p.Card + " dealt: " + line,
+	m := bus.Message{From: st.Actor, To: []string{name}, Kind: bus.KindStatus, Subject: "card " + p.Card + " dealt: " + line,
 		Body: "Your sprint card " + p.Card + " (attempt " + strconv.Itoa(p.Attempt) + " of " + p.Primary + ") is in your inbox: " + brief + "\n" + start}
 	err := a.bus(ctx, m, say)
 	if err == nil {

@@ -18,15 +18,18 @@ func init() {
 }
 
 // The friend sync loop (docs/FRIENDS.md, "The friend sync loop"; docs/SPEC-FRIEND.md,
-// "The beat comes from the daemon"; the owner, 2026-10-04: "Golang nova-tools and
-// nova-sprint verbs only"; "Make the ping loop mechanical!!!!"): friend sync --every
-// is the loop, a nova-config loop row kept alive runs it, and no shell wraps it. Each
-// pass reopens the store, so it runs at the sprint's epoch then, and acts as the
-// sprint's coordinator seat then when no --actor is given, so a seat that moves takes
-// the loop with it. A pass that changed something says its lines; a pass with nothing
-// to do says nothing; a failing pass is said once on stderr, again only when what it
-// says changes, and the pass that is ok after it says so once. An interrupt ends the
-// loop with 0, and a binary replaced under it with exitReplaced, so its supervisor
+// "The beat comes from the daemon"; tla/FriendSyncWake.tla, Wake and Sweep; the owner,
+// 2026-10-04: "Golang nova-tools and nova-sprint verbs only"; "Make the ping loop
+// mechanical!!!!"): friend sync --every is the loop, a nova-config loop row kept alive
+// runs it, and no shell wraps it. Each pass reopens the store, so it runs at the
+// sprint's epoch then, and acts as the sprint's coordinator seat then when no --actor is
+// given, so a seat that moves takes the loop with it. Between passes it blocks on the
+// sprint log (store.WaitLog) from the last line its pass saw, bounded by --every, so a
+// deal committed by a tick wakes the loop on its log line while --every stays as the
+// quiet-log backstop sweep. A pass that changed something says its lines; a pass with
+// nothing to do says nothing; a failing pass is said once on stderr, again only when
+// what it says changes, and the pass that is ok after it says so once. An interrupt ends
+// the loop with 0, and a binary replaced under it with exitReplaced, so its supervisor
 // starts the new one.
 func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, stdout, stderr io.Writer) int {
 	ctx := context.Background()
@@ -100,6 +103,40 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 			}
 			failing, failed, since = "", 0, time.Time{}
 		}
+		a.friendSyncWait(ctx, c, every, after)
+	}
+}
+
+// friendSyncWait blocks on the sprint log from the last line seen for at most
+// every (store.WaitLog; tla/FriendSyncWake.tla, Wake and Sweep), so a deal
+// committed by a tick wakes the loop on its log line while --every stays as the
+// quiet-log backstop sweep. A store that cannot be opened falls back to the
+// --every timer.
+func (a *app) friendSyncWait(ctx context.Context, c common, every time.Duration, after func(time.Duration) <-chan time.Time) {
+	read := c
+	read.verb = "where"
+	st, err := a.storeCtx(ctx, read)
+	if err != nil {
+		select {
+		case <-ctx.Done():
+		case <-after(every):
+		}
+		return
+	}
+	cursor, _ := st.LogTail(ctx)
+	if a.after != nil {
+		if m, ok := st.B.(*store.Mem); ok {
+			prev := m.LogWait
+			m.LogWait = func(d time.Duration) {
+				select {
+				case <-ctx.Done():
+				case <-a.after(d):
+				}
+			}
+			defer func() { m.LogWait = prev }()
+		}
+	}
+	if _, _, err := st.WaitLog(ctx, st.PinnedEpoch(), cursor, every); err != nil && ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
 		case <-after(every):

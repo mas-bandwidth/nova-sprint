@@ -302,8 +302,12 @@ card it selects in one store step, prints one line per card and the total, and w
 `--dry-run` lists what would change and writes nothing (docs/SPEC-SPRINT.md, "One
 selector, one step").
 
-`friend sync` wakes a friend through the bus store at `NOVA_BUS_REDIS` after
-delivering her card. Its bus login reads `NOVA_BUS_REDIS_USER` and the password
+`friend sync` wakes a friend through the bus store at `NOVA_BUS_REDIS` with a
+`kind=status` message after delivering her card (for both `batch` and `one-shot`
+rows, including the coordinator seat's own row); with `--every <d>` it blocks on
+the sprint log (`store.WaitLog`; `tla/FriendSyncWake.tla`) so a deal committed
+by a tick wakes it on the deal's log line while `<d>` stays as the quiet-log
+backstop sweep. Its bus login reads `NOVA_BUS_REDIS_USER` and the password
 variable named by `NOVA_BUS_REDIS_PASSWORD_ENV`, separately from the sprint
 store's login. With no bus user it uses the default user; a failed bus send
 leaves the delivered card in her inbox and records that she was not woken.
