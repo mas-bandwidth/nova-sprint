@@ -1,0 +1,9 @@
+# one-source-retired.txt: nova-sprint paths that were copies of nova-tools code and are
+# deleted, read by internal/ci TestNoRetiredOneSourceCopyReturns. One
+# "<path><TAB><what replaced it>" a line, the path relative to the repository root; a
+# line beginning with # is a comment. A listed path that exists again is red: import the
+# replacement instead of carrying a second copy. Listed 2026-10-15
+# (sprint-roadmap-and-sexp-from-nova-tools).
+internal/roadmapdoc	github.com/mas-bandwidth/nova-tools/pkg/roadmap
+internal/worklang	github.com/mas-bandwidth/nova-tools/pkg/sexp
+tools/roadmap	github.com/mas-bandwidth/nova-tools/tools/roadmap (go.mod tool directive; make roadmap runs it)
