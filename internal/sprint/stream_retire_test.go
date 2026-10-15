@@ -33,7 +33,8 @@ func stoppedRed(t *testing.T) *conflictRig {
 	require.NoError(t, err)
 	r.must(store.DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"s2-1"}}, Reason: "obsolete"}))
 	require.Len(t, r.openOf("s2"), 1, "the stopped judgment outlives the drop")
-	require.Empty(t, sprint.StreamRemove(r.snap(), false, []string{"s2"}), "s2 holds no card")
+	_, refused := sprint.StreamRemoveExisting(r.snap(), false, []string{"s2"})
+	require.Empty(t, refused, "s2 holds no card")
 	return r
 }
 

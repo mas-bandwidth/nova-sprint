@@ -269,12 +269,12 @@ IsSentinel(c) == c \in Sentinels
 \* The plan flags of the step just taken (lifecycle.go Plan): releasing lands a sentinel,
 \* inserting moves a primary ready -> waiting, removing takes a landed primary
 \* off the table. Each is a nondeterministic choice of the plan the step runs.
-Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
+Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN, decisionPark : BOOLEAN, decisionRelease : BOOLEAN]
 
 \* An ordinary step's plan: no flag. Release, the add that inserts a sentinel and
 \* the remove set their own flag on the step they take (flags', read by the
 \* rules), so a flag is the plan of that step and never a state carried on.
-NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
+NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE, decisionPark |-> FALSE, decisionRelease |-> FALSE]
 
 \* A red CI observation on a primary: none or an open red (refmodel Primary.CI
 \* and the ci judgment; a green observation and an ack both close the red, and
@@ -291,6 +291,10 @@ VARIABLES briefGeneration, attemptGeneration, headGeneration, keptHead, state, n
 GenerationVars == <<briefGeneration, attemptGeneration, headGeneration, keptHead>>
 
 vars == <<briefGeneration, attemptGeneration, headGeneration, keptHead, state, needs, waived, everLanded, flags, members, wplace, wmember, rplace, mg, sstream, scause, ranked, pending, ci, pendstate>>
+
+VARIABLES parkState, parkSaved, parkBound, parkCause, parkHead, parkReads, parkEvent
+parkingVars == <<parkState,parkSaved,parkBound,parkCause,parkHead,parkReads,parkEvent>>
+allTableVars == <<vars,parkingVars>>
 
 TypeOK ==
   /\ briefGeneration \in [Card -> 0..1]
@@ -410,7 +414,7 @@ ReachN(c) ==
 Needed(c) ==
   \E d \in Card \ {c} : IsOpen(state[d]) /\ c \in needs[d] /\ c \notin waived[d]
 
-Init ==
+TableInit ==
   /\ briefGeneration = [c \in Card |-> 0]
   /\ attemptGeneration = [c \in Card |-> 0]
   /\ headGeneration = [c \in Card |-> 0]
@@ -432,6 +436,12 @@ Init ==
   /\ pending = ""
   /\ ci = [c \in Card |-> ""]
   /\ pendstate = InitOf
+
+ParkCard == CHOOSE c \in Card \ Sentinels : TRUE
+Init == TableInit
+        /\ parkState = "none" /\ parkSaved = "" /\ parkBound = TRUE
+        /\ parkCause = FALSE /\ parkHead = headGeneration[ParkCard]
+        /\ parkReads = rplace[ParkCard] /\ parkEvent = "init"
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
 \* step carries no plan flag. The deferred write tracks the work table.
@@ -1229,17 +1239,54 @@ GenerationStep ==
   /\ headGeneration' = [c \in Card |-> IF state'[c] = "review" /\ state[c] = "working" THEN attemptGeneration[c] ELSE headGeneration[c]]
   /\ UNCHANGED <<briefGeneration, keptHead>>
 
-Next == (LegacyNext /\ GenerationStep) \/ Brief
+\* A parked card is fenced against lifecycle/provenance edits until release.
+ParkFence == parkState = "held" =>
+  /\ state'[ParkCard] = state[ParkCard]
+  /\ needs'[ParkCard] = needs[ParkCard]
+  /\ briefGeneration'[ParkCard] = briefGeneration[ParkCard]
+  /\ headGeneration'[ParkCard] = headGeneration[ParkCard]
+  /\ attemptGeneration'[ParkCard] = attemptGeneration[ParkCard]
+  /\ rplace'[ParkCard] = rplace[ParkCard]
+  /\ wplace'[ParkCard] = wplace[ParkCard]
+
+\* Bounded composition: parking is enabled for the one-primary full-Spec
+\* instances; historical three-card instances retain their original action set.
+DecisionParkStep ==
+  /\ Cardinality(Card) = 1
+  /\ Free /\ parkState = "none" /\ state[ParkCard] \in {"ready", "review"}
+  /\ parkBound
+  /\ state' = [state EXCEPT ![ParkCard] = "waiting"]
+  /\ pendstate' = state'
+  /\ flags' = [NoFlags EXCEPT !.decisionPark = TRUE]
+  /\ parkSaved' = state[ParkCard] /\ parkState' = "held"
+  /\ parkCause' = (Broken # "parkwithoutcause") /\ parkEvent' = "park"
+  /\ parkHead' = headGeneration[ParkCard] /\ parkReads' = rplace[ParkCard]
+  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead,
+       needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
+       scause, ranked, pending, ci, parkBound>>
+DecisionReleaseStep ==
+  /\ Free /\ parkState = "held" /\ parkCause
+  /\ (parkSaved = "review" => NeedsMet(ParkCard))
+  /\ (parkSaved = "ready" => NeedsMet(ParkCard))
+  /\ state' = [state EXCEPT ![ParkCard] = IF Broken = "releaseprestate" THEN "ready" ELSE parkSaved]
+  /\ pendstate' = state'
+  /\ flags' = [NoFlags EXCEPT !.decisionRelease = TRUE]
+  /\ parkState' = "released" /\ parkEvent' = "release"
+  /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead,
+       needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
+       scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
+Next == \/ ((LegacyNext /\ GenerationStep) \/ Brief) /\ ParkFence /\ UNCHANGED parkingVars
+        \/ DecisionParkStep \/ DecisionReleaseStep
 
 NoOldBriefHeadInReview ==
   \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
 
 CrashNext ==
   \/ Next
-  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep
+  \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep /\ ParkFence /\ UNCHANGED parkingVars
 
-Spec == Init /\ [][Next]_vars
-CrashSpec == Init /\ [][CrashNext]_vars
+Spec == Init /\ [][Next]_allTableVars
+CrashSpec == Init /\ [][CrashNext]_allTableVars
 
 \* ------------------------------------------------------------- the rules
 
@@ -1268,6 +1315,10 @@ MovesOnlyByTable ==
   [][\A c \in Card :
     \/ state'[c] = state[c]
     \/ Legal(state[c], state'[c])
+    \/ /\ c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause'
+       /\ state[c] \in {"ready", "review"} /\ state'[c] = "waiting"
+    \/ /\ c = ParkCard /\ flags'.decisionRelease /\ parkCause
+       /\ state[c] = "waiting" /\ state'[c] = parkSaved
     \/ /\ state'[c] = "off"
        /\ (IsOpen(state[c]) \/ flags'.removing)]_vars
 
@@ -1276,7 +1327,8 @@ MovesOnlyByTable ==
 \* that has not landed (lifecycle.go needsOpen).
 ReadyToWaitingOnlyByInsertOrNeeds ==
   [][\A c \in Card :
-    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')]_vars
+    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')
+      \/ (c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause')]_allTableVars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
@@ -1340,4 +1392,9 @@ StreamAfter == \A s \in Streams : sstream[s] = StreamState(s, state, mg, scause)
 \* lands (merge or release), so the invariant holds.
 RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 
+\* These invariants observe actual lifecycle transitions inside Spec, including
+\* the same-card head and live-read provenance; no disconnected projection.
+ParkingHasCause == parkState = "held" => parkBound /\ parkCause /\ state[ParkCard] = "waiting"
+ParkingRestoresPrestate == [][flags'.decisionRelease => state'[ParkCard] = parkSaved]_allTableVars
+ParkingPreservesWork == parkState = "held" => headGeneration[ParkCard] = parkHead /\ rplace[ParkCard] = parkReads
 =============================================================================

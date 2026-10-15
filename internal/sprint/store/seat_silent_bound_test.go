@@ -73,6 +73,12 @@ func TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce(t *testing.T) {
 	assert.GreaterOrEqual(t, raisedAgain(h, alarm.ID+" ("+sprint.NSeatSilent+")"), 1, "the alarm is raised again at the next deadline")
 	assert.GreaterOrEqual(t, raisedAgain(h, held.ID+" ("+sprint.NBound+") still holds s1-1"), 1, "the bound is raised again at its next deadline")
 
+	// At twice the deadline the new reversible default parks the bound card.
+	// Restore its saved Review state before applying the original rework answer.
+	require.Equal(t, sprint.Waiting, h.snap().Work.Card("s1-1").Col)
+	release := h.run(ReleaseStep(sprint.ReleaseReq{IDs: []string{"s1-1"}, Reason: "reviewed the bound", Who: h.st.Actor, Coordinator: h.st.Actor}))
+	require.Empty(t, release.Refused)
+	h.must(DrainStep())
 	// answered, it clears
 	require.Empty(t, h.reworkOf("handle the empty case", "pro"), "the bound's answer: a rework on the tier above")
 	h.tick(time.Second)
