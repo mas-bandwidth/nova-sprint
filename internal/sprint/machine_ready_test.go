@@ -202,8 +202,8 @@ func TestAClearLeavesTheMachineReadyAndRaisesNoJudgment(t *testing.T) {
 
 // The warning's rate (sprint.JudgmentWarnDue): the first warning of a set at once, the
 // same set no more often than once a JudgmentWarnEvery, a judgment joining the set at
-// once, and a set that only shrank waits its minute.
-func TestTheWarningIsDueAtOnceForANewJudgmentElseOnceAMinute(t *testing.T) {
+// once, including when a judgment leaves the set.
+func TestTheWarningIsDueAtOnceForAChangedSetElseEveryThirtyMinutes(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 	a, b := sprint.JudgmentWarning{ID: "a"}, sprint.JudgmentWarning{ID: "b"}
@@ -211,8 +211,8 @@ func TestTheWarningIsDueAtOnceForANewJudgmentElseOnceAMinute(t *testing.T) {
 	assert.True(t, sprint.JudgmentWarnDue(one, nil, time.Time{}, at), "the first warning of a set")
 	seen := map[string]bool{"a": true}
 	assert.False(t, sprint.JudgmentWarnDue(one, seen, at, at.Add(time.Second)), "the same set a second later")
-	assert.False(t, sprint.JudgmentWarnDue(one, seen, at, at.Add(sprint.JudgmentWarnEvery-time.Second)), "the same set within the minute")
-	assert.True(t, sprint.JudgmentWarnDue(one, seen, at, at.Add(sprint.JudgmentWarnEvery)), "the same set a minute later")
+	assert.False(t, sprint.JudgmentWarnDue(one, seen, at, at.Add(sprint.JudgmentWarnEvery-time.Second)), "the same set within the interval")
+	assert.True(t, sprint.JudgmentWarnDue(one, seen, at, at.Add(sprint.JudgmentWarnEvery)), "the same set at the repeat interval")
 	assert.True(t, sprint.JudgmentWarnDue(two, seen, at, at.Add(time.Second)), "a judgment joining the set: at once")
-	assert.False(t, sprint.JudgmentWarnDue(one, map[string]bool{"a": true, "b": true}, at, at.Add(time.Second)), "a set that only shrank waits its minute")
+	assert.True(t, sprint.JudgmentWarnDue(one, map[string]bool{"a": true, "b": true}, at, at.Add(time.Second)), "a set that shrank sends at once")
 }
