@@ -26,8 +26,8 @@ import (
 const (
 	CheckRoutes            = "routes"             // applied provider rows and funded route coverage
 	CheckNeeds             = "needs"              // 1: every need names a card of this epoch, not dropped; no self-need, no cycle
-	CheckFiles             = "files"              // 3: no file written by two streams
-	CheckSameFile          = "same-file"          // 5: no two cards of a stream name one PATHS file with no need between them
+	CheckFiles             = "files"              // 3: no file of one repository written by two streams; a path ending in .md is none
+	CheckSameFile          = "same-file"          // 5: no two cards of a stream name one PATHS file with no need between them; a path ending in .md is none
 	CheckBases             = "bases"              // 6: each stream on its own branch, never the trunk; no need across two bases
 	CheckNames             = "names"              // 7: each stream's display name set and readable
 	CheckStaleFix          = "stale-fix"          // 8: no card at priority fix with no failed attempt this epoch
@@ -340,7 +340,10 @@ func (c *cardCheck) written(card *Card) (files map[string]bool, patterns []strin
 	return files, patterns
 }
 
-// files is kind 3: no file is written by two streams. Each stream's files are the union of its
+// files is kind 3: no file of one repository is written by two streams. The key is the
+// brief's named repository (ReadCardBase.Named, the REPO: or base-repo: line) plus the path.
+// The same path in two repositories is two files. A path ending in .md is no finding: docs
+// merge trivially and must not chain streams. Each stream's other files are the union of its
 // open cards' PATHS, expanded at their base tree (the tree add's admission reads); a file every
 // card may write (everyCardWrites) is no finding. The finding names both streams; the remedy is
 // the owner's three ways out. A finding whose every pair of writing cards, one of each stream,
@@ -348,34 +351,45 @@ func (c *cardCheck) written(card *Card) (files map[string]bool, patterns []strin
 // refuses.
 func (c *cardCheck) files() []CardFinding {
 	type side struct {
+		files    map[string]bool // repo + NUL + path
+		patterns []string        // repo + NUL + pattern
+	}
+	type owned struct {
+		repo     string
 		files    map[string]bool
 		patterns []string
 	}
 	by := map[string]*side{}
-	writes := map[string]*side{} // each open card's own files and patterns, by card id
+	writes := map[string]*owned{} // each open card's own files and patterns, by card id
 	for _, card := range c.open {
 		sd := by[card.Row]
 		if sd == nil {
 			sd = &side{files: map[string]bool{}}
 			by[card.Row] = sd
 		}
+		repo := swarm.ReadCardBase([]byte(card.F("brief"))).Named
 		fs, ps := c.written(card)
 		for f := range fs {
-			sd.files[f] = true
+			sd.files[repo+"\x00"+f] = true
 		}
-		sd.patterns = append(sd.patterns, ps...)
-		writes[card.ID] = &side{files: fs, patterns: ps}
+		for _, p := range ps {
+			sd.patterns = append(sd.patterns, repo+"\x00"+p)
+		}
+		writes[card.ID] = &owned{repo: repo, files: fs, patterns: ps}
 	}
-	// writersOf is the open cards of a stream that may write f: f among its files, or a
-	// pattern of its covering f, covered by f, or f itself. It errs wide: a card more is a
-	// pair more to order, never a pair less.
-	writersOf := func(stream, f string) []string {
+	// writersOf is the open cards of a stream and repository that may write f: f among its
+	// files, or a pattern of its covering f, covered by f, or f itself. It errs wide: a card
+	// more is a pair more to order, never a pair less. A card of another repository is not a writer.
+	writersOf := func(stream, repo, f string) []string {
 		var out []string
 		for _, card := range c.open {
 			if card.Row != stream {
 				continue
 			}
 			w := writes[card.ID]
+			if w.repo != repo {
+				continue
+			}
 			hit := w.files[f] || slices.ContainsFunc(w.patterns, func(p string) bool {
 				return p == f || diffcheck.Covers(p, f) || diffcheck.Covers(f, p)
 			})
@@ -396,38 +410,55 @@ func (c *cardCheck) files() []CardFinding {
 	const remedy = "move the card to one stream, split the shared change into a producer-stream card the other needs, or merge the streams"
 	var out []CardFinding
 	said := map[string]bool{}
-	clash := func(a, b, f string) {
-		if everyCardWrites(f) {
+	pathOf := func(key string) string {
+		_, path, _ := strings.Cut(key, "\x00")
+		return path
+	}
+	repoOf := func(key string) string {
+		repo, _, _ := strings.Cut(key, "\x00")
+		return repo
+	}
+	clash := func(a, b, key string) {
+		f := pathOf(key)
+		if everyCardWrites(f) || strings.HasSuffix(f, ".md") {
 			return
 		}
-		key := a + "\x00" + b + "\x00" + f
-		if said[key] {
+		seen := a + "\x00" + b + "\x00" + key
+		if said[seen] {
 			return
 		}
-		said[key] = true
+		said[seen] = true
+		repo := repoOf(key)
 		finding := refusing(CheckFiles, a, f+" is written by streams "+a+" and "+b, remedy)
-		if why, ok := c.serializedFiles(writersOf(a, f), writersOf(b, f)); ok {
+		if why, ok := c.serializedFiles(writersOf(a, repo, f), writersOf(b, repo, f)); ok {
 			finding.Severity, finding.Serialized = SeverityWarn, why
 		}
 		out = append(out, finding)
 	}
+	covers := func(patternKey, fileKey string) bool {
+		return repoOf(patternKey) == repoOf(fileKey) && diffcheck.Covers(pathOf(patternKey), pathOf(fileKey))
+	}
 	for i, a := range c.streams {
 		for _, b := range c.streams[i+1:] {
 			sa, sb := by[a], by[b]
-			for _, f := range checkFilesSorted(sa.files) {
-				if sb.files[f] || slices.ContainsFunc(sb.patterns, func(p string) bool { return diffcheck.Covers(p, f) }) {
-					clash(a, b, f)
+			for _, fk := range checkFilesSorted(sa.files) {
+				if sb.files[fk] || slices.ContainsFunc(sb.patterns, func(p string) bool { return covers(p, fk) }) {
+					clash(a, b, fk)
 				}
 			}
-			for _, p := range sa.patterns {
-				for _, f := range checkFilesSorted(sb.files) {
-					if diffcheck.Covers(p, f) {
-						clash(a, b, f)
+			for _, pk := range sa.patterns {
+				for _, fk := range checkFilesSorted(sb.files) {
+					if covers(pk, fk) {
+						clash(a, b, fk)
 					}
 				}
-				for _, q := range sb.patterns {
+				for _, qk := range sb.patterns {
+					if repoOf(pk) != repoOf(qk) {
+						continue
+					}
+					p, q := pathOf(pk), pathOf(qk)
 					if p == q || diffcheck.Covers(p, q) || diffcheck.Covers(q, p) {
-						clash(a, b, q)
+						clash(a, b, qk)
 					}
 				}
 			}
@@ -556,7 +587,8 @@ func (c *cardCheck) reaches(from, to string) bool {
 // sameFile is kind 5: two open cards of one stream that name one PATHS file with no need between
 // them, either way, would edit it at once: the rule add's sharedPaths applies to the cards of
 // one add (cardgen.RefuseOverlaps), here over the stored cards. A file every card may write is
-// no finding. Both writers are of one stream, whose one lander lands its cards in line order,
+// no finding. A path ending in .md is no finding and forces no order: docs merge trivially.
+// Both writers are of one stream, whose one lander lands its cards in line order,
 // so every finding of this kind is a warning (v1.2.18): stream order serializes the landing,
 // and an edit the second card's landing finds conflicting goes back to rework.
 func (c *cardCheck) sameFile() []CardFinding {
@@ -569,7 +601,7 @@ func (c *cardCheck) sameFile() []CardFinding {
 				continue
 			}
 			for _, p := range pathsOf(card.F("brief")) {
-				if everyCardWrites(p) || contains(named[p], card.ID) {
+				if everyCardWrites(p) || strings.HasSuffix(p, ".md") || contains(named[p], card.ID) {
 					continue
 				}
 				if len(named[p]) == 0 {
