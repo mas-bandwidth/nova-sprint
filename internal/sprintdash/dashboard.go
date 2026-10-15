@@ -341,11 +341,19 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		if up != nil {
 			at, rate, minutes = *up.FetchedAt, up.Throughput, up.ThroughputMinutes
 		} else {
-			epoch := v.Landed
-			if !v.Done {
-				epoch += v.ArchivedLanded
+			// a copy that carries landedSeries.lastHour is the landing log's last hour, the
+			// throughput at once, no warm-up (docs/SPEC-SPRINT-DASHBOARD.md); only a copy with
+			// none (an older server) keeps the samples
+			if f, fl, ok := landedSeriesLastHour(body); ok {
+				f := float64(f + fl)
+				rate, minutes = &f, 60
+			} else {
+				epoch := v.Landed
+				if !v.Done {
+					epoch += v.ArchivedLanded
+				}
+				rate, minutes = s.sampleLanded(start, epoch)
 			}
-			rate, minutes = s.sampleLanded(start, epoch)
 		}
 		s.fresh.at = at
 		var c sprintCopy
@@ -385,6 +393,37 @@ func (s *Server) sampleLanded(at time.Time, landed int64) (*float64, float64) {
 	}
 	rate := round1(float64(landed-s.samples[0].landed) * float64(time.Hour) / float64(span))
 	return &rate, minutes
+}
+
+// landedSeriesLastHour reads a copy's landedSeries.lastHour: the cards the epoch's landing
+// log landed in the 3600 s before the copy's time, split friends and fleet
+// (docs/SPEC-SPRINT-DASHBOARD.md), so a copy that carries one is the figure at once, no
+// warm-up. ok is false when the body carries none (an older server), so the sampler stands.
+func landedSeriesLastHour(body []byte) (friends, fleet int, ok bool) {
+	var top map[string]json.RawMessage
+	if json.Unmarshal(body, &top) != nil {
+		return 0, 0, false
+	}
+	ls, has := top["landedSeries"]
+	if !has {
+		return 0, 0, false
+	}
+	var series map[string]json.RawMessage
+	if json.Unmarshal(ls, &series) != nil {
+		return 0, 0, false
+	}
+	lh, has := series["lastHour"]
+	if !has {
+		return 0, 0, false
+	}
+	var v struct {
+		Friends int `json:"friends"`
+		Fleet   int `json:"fleet"`
+	}
+	if json.Unmarshal(lh, &v) != nil {
+		return 0, 0, false
+	}
+	return v.Friends, v.Fleet, true
 }
 
 func round1(f float64) float64 {
