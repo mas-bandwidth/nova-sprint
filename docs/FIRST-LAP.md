@@ -53,7 +53,8 @@ landing. A live landing needs a pushed commit and the `land` verb.
 
 For a live sprint, set `NOVA_SPRINT_SERVER`, `NOVA_BUS_REDIS`, and
 `NOVA_SPRINT_ACTOR` in the coordinator's interactive shell; the server process
-also needs `NOVA_BUS_REDIS`. Connect and prove `nova-sprint hook`, then follow
+also needs `NOVA_BUS_REDIS`. Hook in with `nova-hook hook --as <you> --role
+coordinator` and answer its challenge with `nova-hook prove`, then follow
 the [coordinator's live start](SPRINT-COORDINATOR.md#a-first-live-start). The
 [environment reference](ENVIRONMENT.md) explains the connection choices.
 

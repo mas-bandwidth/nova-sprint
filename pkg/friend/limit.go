@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -38,7 +37,7 @@ type Usage struct {
 // Limit is what a command's output says of the harness's limit: Limited,
 // until when and why; Usage when the output measured it; Overage when the
 // harness is spending paid overage (a limit only if the owner does not allow
-// it, Limits.AllowOverage).
+// it).
 type Limit struct {
 	Limited bool
 	Until   time.Time
@@ -203,50 +202,3 @@ func claudeLimit(ev rateLimitEvent, now time.Time) Limit {
 	}
 	return lim
 }
-
-// Limits is one friend's harness limit: up, or down until a reset, then
-// waking until a turn answers the current nonce (tla/FriendLimit.tla is
-// owed). Watch reads every command's output for it; Gate holds deliveries
-// while it is down and wakes the session after the reset. The hooks say the
-// change to the sprint: Down once per limit with its reset (friend down
-// --until), Up when a wake answered.
-type Limits struct {
-	Now   func() time.Time
-	Nonce func() string // six random characters when nil
-	Down  func(until time.Time, reason string)
-	Up    func(nonce string)
-	// Unread is the judgment when a limit's text names no reset this reads: the
-	// friend is held for Rest and the text goes to the coordinator, once until
-	// a wake is answered, so the reset is set by a person (friend down --until)
-	// and not guessed again each Rest (usage-limit-reset-read-from-the-message-b.w1).
-	Unread func(text string)
-	// Harness is the harness whose own wording a failed turn is read in
-	// (ParseLimit), and Rest how long it is down when the text names no
-	// reset (DefaultLimitWait when zero): --limit-rest.
-	Harness string
-	Rest    time.Duration
-	// AllowOverage is the owner's word that this friend may spend paid
-	// overage; without it a harness on overage reads down.
-	AllowOverage bool
-	// Pacing is the row's pacing (the fraction of each subscription window the
-	// sprint may spend), read at each batch turn; nil, or out of (0, 1], is
-	// DefaultPacing. Every output's rate_limit_event feeds the pacer, and a batch
-	// turn while a window is at the pacing is Deferred until it resets
-	// (pacing.go).
-	Pacing func() float64
-
-	mu       sync.Mutex
-	beatMu   sync.Mutex // a down beat's look and its send, against a wake ending the limit (BeatOrDown, gated.Deliver)
-	pace     Pacer
-	limited  bool
-	until    time.Time
-	reason   string
-	kind     string // KindLimit or KindCredits while limited; empty when the text gave none
-	episodes int    // limits seen, so a turn knows it hit one
-	waking   string
-	answered bool
-	judged   bool // Unread said for this hold; cleared when a wake is answered
-}
-
-// shellQuote is s in single quotes for a line to paste.
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

@@ -44,7 +44,7 @@ const (
 	NUnknownMachine = "an unknown machine is beating"
 	NStagingRefused = "a member refused a card at staging"        // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route"     // dealt again on one that serves
-	NFriendReturned = "a friend's card returned to ready"         // by friend reconcile: no report, and her queue says done or does not hold it
+	NFriendReturned = "a friend's card returned to ready"         // by the live pass: her run is gone
 	NFriendRedealt  = "a friend's card redealt past its deadline" // by friend redeal: work card redealt, primary back to ready
 	// A card dealt to a member that drains, or a read asked of a reader that drains or whose
 	// machine is held or drains, and not taken, returned for the deal or the ask to give to
@@ -192,9 +192,23 @@ func Preview(items []string, sep string) string {
 	return strings.Join(items[:PreviewLen], sep) + sep + "... and " + strconv.Itoa(len(items)-PreviewLen) + " more"
 }
 
+// CoordinatorDelivery is the frozen bus message for one state episode. Sent is
+// recorded only after bus success; Token bridges a crash between send and commit.
+type CoordinatorDelivery struct {
+	CoveredBy                               string // shares the causal notification's token and payload
+	From, To, Token, Subject, Body, Episode string
+	Sent                                    bool
+	RetryBefore                             time.Time // no automatic retry after the bus token acceptance window
+}
+
 // Note is one notification.
 type Note struct {
-	ID string `json:"id"`
+	ID                     string               `json:"id"`
+	SafeDefault            string               `json:"safe_default,omitempty"`
+	DecisionDelivery       *DecisionDelivery    `json:"decision_delivery,omitempty"`
+	DefaultCoordinatorTold bool                 `json:"default_coordinator_told,omitempty"`
+	DefaultOwnerTold       bool                 `json:"default_owner_told,omitempty"`
+	CoordinatorDelivery    *CoordinatorDelivery `json:"coordinator_delivery,omitempty"`
 	// Alias is a judgment's or an acknowledgement's alias, j<n>, its place among
 	// the epoch's in the order written: the store's commit numbers it (inbox.go,
 	// Alias); "" on a happened or decided note.
@@ -371,6 +385,9 @@ func boolWord(b bool) string {
 
 // Bound cuts the listed primaries to MaxListed; Count keeps the total.
 func (n Note) Bound() Note {
+	if n.Kind == Judgment {
+		n.SafeDefault = SafeDecisionDefault(n.Type)
+	}
 	if len(n.Primaries) > MaxListed {
 		n.Primaries = append([]string(nil), n.Primaries[:MaxListed]...)
 	}
@@ -382,7 +399,14 @@ func (n Note) Bound() Note {
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
 
-// NoteTypeText is a human label for the four historical friend note identifiers.
+// The retired QUEUE.json reconcile's notes (friend_return.go): no step raises them any more,
+// and their persisted identifiers keep their historical bytes for the history that holds them.
+const (
+	NFriendDisagrees = "a friend's row disagrees with her QUEUE.json"
+	NFriendAgrees    = "a friend's row agrees with her QUEUE.json again"
+)
+
+// NoteTypeText is a human label for the historical friend note identifiers.
 // Note.Type itself remains unchanged so stored judgments and API consumers keep
 // matching their existing identifiers, release ages and acknowledgments.
 func NoteTypeText(typ string) string {

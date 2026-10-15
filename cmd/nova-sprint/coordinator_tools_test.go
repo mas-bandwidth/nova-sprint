@@ -145,8 +145,8 @@ func TestEveryCoordinatorToolMapsToARealNovaVerb(t *testing.T) {
 		head := "| Tool | What it does | Replaced by |\n|---|---|---|\n"
 		good := head + "| `a` | x | `NOVA_SPRINT_SERVER=127.0.0.1:6390 nova-sprint where --watch --every 1s` |\n" +
 			"| `b` | x | `nova-sprint friend sync --root <d> --actor <c>` |\n" +
-			"| `c` | x | `nova-friend ping --as <c> --to <f>`, `nova-swarm disk-guard --root <d>`, `nova-bus recv --as <me> --forever --exec <cmd>` |\n" +
-			"| `d` | x | card: friend-ping-every; needs `nova-friend ping --every <d>`; PATHS: cmd/nova-friend/main.go |\n"
+			"| `c` | x | `nova-friend reach --as <c> --to <f>`, `nova-swarm disk-guard --root <d>`, `nova-bus recv --as <me> --forever --exec <cmd>` |\n" +
+			"| `d` | x | card: friend-reach-every; needs `nova-friend reach --every <d>`; PATHS: cmd/nova-friend/main.go |\n"
 		assert.Empty(t, checkCoordinatorTools(verbs, good), "rows that name real verbs and flags are refused")
 
 		for line, want := range map[string]string{

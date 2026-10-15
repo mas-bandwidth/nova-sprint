@@ -219,8 +219,6 @@ type TickReq struct {
 	// IdleAlarm says the tick watches for an idle fleet and tells the coordinator why
 	// (idle.go; run --idle-alarm).
 	IdleAlarm bool
-	// WakeFriend wakes a friend by bus message during the stall ladder (cmd/nova-sprint/friendcards.go).
-	WakeFriend func(friend string, rung int, d time.Duration) error
 	// Drift is the repository's drift facts, read by the binding (ReadDrift, with the last
 	// whole-tree gate at the base; drift.go, docs/SPEC-SPRINT.md section 8, "Drift alarms"):
 	// the deadlines part keeps a judgment for each drift. nil is none read, and no drift
@@ -321,16 +319,13 @@ var TickTables = []TableUpdate{
 	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartUnservedFallback, TickUnservedFallback}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
-	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
+	{Fleet, []TickPartDef{{"presence", TickPresence}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
 }
 
 // The attempt cap's default answer of 2026-10-04 (PartCapDeal, "cap deal": a card past its
 // cap dealt to a frontier or heavy friend before the deal) is retired (the owner,
 // 2026-10-12): a card at its cap is the coordinator's as one judgment and is dealt to no
 // one until a decision (brief_bound.go; the deal, steps_work.go).
-
-// PartFriendStall is the friend stall ladder part (friend_stall.go).
-const PartFriendStall = "friend-stall"
 
 // PartFriendRedeal is the friend redeal part (verdicts.go).
 const PartFriendRedeal = "friend-redeal"
@@ -687,7 +682,7 @@ func bound(p Plan) (Plan, int) {
 // behind it stays waiting until the coordinator releases it -- every sentinel
 // but a cut (sentinel.go, isCut): the cut sentinel a step before this tick has
 // marked reached, whose every wait now stands met, releases itself in this
-// part, the release as the coordinator's lands it, with the seat pushed that
+// part, the release as the coordinator's lands it, with the seat told that
 // the release is ready to cut (SentinelReleases; docs/roadmap.sexp,
 // auto-sentinels-released-by-tick; the publish itself stays a gated step with
 // a cold read). The part is bounded as one (bound): a bound that cuts leaves
@@ -1116,8 +1111,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(reads.Units, p.Units...)
 	if len(r.Friends) > 0 {
 		// a card dealt to a friend and not taken within the dealt bound returns to the pool
-		// and is dealt to the next capable member, and a friend that has not taken a dealt
-		// card is dealt no more until it takes one (friendDealtReturn; tla/FriendDealtReturn.tla)
+		// and is dealt to the next capable member; she stays up and is dealt again
+		// (friendDealtReturn; tla/FriendDealtReturn.tla)
 		rt, returned := friendDealtReturn(s, seats, func(at string) (time.Duration, bool) { return r.running(s.Now, at) })
 		p.Rows = append(p.Rows, rt.Rows...)
 		p.Units = append(p.Units, rt.Units...)
@@ -1891,9 +1886,12 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 // silent is visible: every judgment waiting on them is named, once, as
 // overdue. The coordinator's pass (TickCoordinatorPass) runs in this part
 // too, after the overdue lines: it reminds the coordinator, every PassEvery,
-// of the judgments still late and of the friends deaf or idle.
+// of the judgments still late and of the friends idle (a fact, never a friend state).
 func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := tickOverdue(s, r)
+	p.on(s)
+	defaults := TickDecisionDefaults(s, r)
+	p.Units = append(p.Units, defaults.Units...)
 	pass, passDue := TickCoordinatorPass(s, r)
 	// every judgment that holds a card is raised again at each deadline it passes
 	// unanswered (seat_answers.go)
@@ -2091,7 +2089,7 @@ func condKey(typ, subject, card, what string) string {
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
-		NStopMemberDown, NStopPinWaits, NFriendStalled, NMemberIdleReaps,
+		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged:
 		what = ""

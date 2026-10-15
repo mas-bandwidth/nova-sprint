@@ -12,8 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // THE SERVER'S LANES. The serial lock (app.serial) is the one line of control: a tick, a
@@ -118,7 +118,7 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	r.serveAddr = a.serveAddr
 	r.readFriendHooks = a.readFriendHooks
-	r.hk, r.busOpen = a.hk, a.busOpen // the server's hook records: the gate reads them on this lane too
+	r.hk, r.hookStoreFn, r.busOpen = a.hk, a.hookStoreFn, a.busOpen // the server's hook record connection: the gate reads it on this lane too
 	l.read = r
 	a.lanes = l
 	return l
@@ -159,7 +159,7 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 	b := l.b
 	r.now, r.serveAddr = l.now, l.read.serveAddr
 	r.readFriendHooks = l.read.readFriendHooks
-	r.hk, r.busOpen = l.read.hk, l.read.busOpen // the server's hook records, never a store per take
+	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per take
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)

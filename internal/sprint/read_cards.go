@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
@@ -588,7 +588,7 @@ func readCardsTakeBack(s *Snapshot) map[string][]Change {
 		by := ""
 		pr := s.Work.Placed(c.F("primary"))
 		switch {
-		case pr == nil || pr.Col != Review || readAttempt(pr) != c.Int("attempt"):
+		case pr == nil || pr.Col != Review && !DecisionParkedReview(pr) || readAttempt(pr) != c.Int("attempt"):
 			by = RetiredByPrimary
 		case c.F(FieldReadCard) != "" && c.Col == Working && !readStart(c).IsZero() && !s.Now.Before(readStart(c).Add(ReadCardDeadline)):
 			by = RetiredByLate
