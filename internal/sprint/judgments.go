@@ -548,7 +548,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	judged, onReview := 0, 0
 	oldestJ, oldestAlias := time.Time{}, ""
 	for _, o := range s.Open {
-		if o.Note.Kind != Judgment || o.Note.Type == NLandingStall {
+		if o.Note.Kind != Judgment || o.Note.Type == NLandingStall || o.Note.Type == NFirstTimeUnderTarget {
 			continue
 		}
 		judged++
@@ -747,3 +747,167 @@ func landingStallKept(p Plan, moved string) Plan {
 // not the brief" instead, naming the member or friend and the fault, with the offered
 // actions hold <member>, rework --tier <other tier>, and drop. The attempt record and
 // the lane-broken bound are in attempts.go and bounds.go.
+
+const (
+	// NFirstTimeUnderTarget is the judgment raised when a stream has at least
+	// FirstTimeWindowMin counted primaries in its window and its windowed first-time
+	// land rate is under the target.
+	NFirstTimeUnderTarget = "first time under target"
+	// NFirstTimeRecovered is the happened note when a stream's windowed first-time
+	// land rate returns to at or over the target.
+	NFirstTimeRecovered = "first time at target"
+	// PartFirstTime is the part key for first-time land rate judgments.
+	PartFirstTime = "first-time"
+)
+
+func openStreamJudgmentOf(s *Snapshot, typ, stream string) (Open, bool) {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == typ && o.Note.Stream == stream {
+			return o, true
+		}
+	}
+	return Open{}, false
+}
+
+func parseStreamStamps(raw string) map[string]string {
+	out := map[string]string{}
+	for _, part := range strings.Split(raw, ";") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && k != "" && v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func formatStreamStamps(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k, v := range m {
+		if k != "" && v != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+m[k])
+	}
+	return strings.Join(parts, ";")
+}
+
+func firstTimeUnderTargetWhat(stream string, sc FirstTimeStream, ft FirstTimeSummary) string {
+	return fmt.Sprintf("stream %s first-time land rate is %s (target %d%%, window %d); top failure class: %s",
+		stream, sc.Window.String(), ft.Target, ft.Window, orDash(sc.TopFailure))
+}
+
+// TickFirstTime checks each stream's windowed first-time land rate at tick end
+// (tla/SprintRules.tla Part "firsttime", FtTick): when a stream has at least
+// FirstTimeWindowMin (10) counted primaries in its window and its windowed rate
+// is under the target, it raises one NFirstTimeUnderTarget judgment naming the
+// stream, its rate, the window and its top failure class over the window,
+// re-raising no more often than the stall bound, and clears with a happened note
+// when the windowed rate is back at or over the target.
+func TickFirstTime(s *Snapshot, r TickReq) (Plan, int) {
+	var p Plan
+	if s == nil || s.Work == nil {
+		return p, 0
+	}
+	ft := FirstTimeOf(s)
+	rawSince, _ := s.Work.Prop(PropFirstTimeSince)
+	rawSaid, _ := s.Work.Prop(PropFirstTimeSaid)
+	sinces := parseStreamStamps(rawSince)
+	saids := parseStreamStamps(rawSaid)
+
+	write := func(name, value string) {
+		was, ok := s.Work.Prop(name)
+		if ok && was == value {
+			return
+		}
+		if !ok && value == "" {
+			return
+		}
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: name, Value: value, Was: was, WasAbsent: !ok})
+	}
+
+	seen := map[string]bool{}
+	var streams []string
+	for st := range ft.Streams {
+		seen[st] = true
+		streams = append(streams, st)
+	}
+	for st := range sinces {
+		if !seen[st] {
+			seen[st] = true
+			streams = append(streams, st)
+		}
+	}
+	for st := range saids {
+		if !seen[st] {
+			seen[st] = true
+			streams = append(streams, st)
+		}
+	}
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NFirstTimeUnderTarget && o.Note.Stream != "" && !seen[o.Note.Stream] {
+			seen[o.Note.Stream] = true
+			streams = append(streams, o.Note.Stream)
+		}
+	}
+	sort.Strings(streams)
+
+	bound := s.landingStallBound()
+	for _, st := range streams {
+		sc := ft.Streams[st]
+		under := sc.Window.Counted >= FirstTimeWindowMin && sc.Window.UnderTarget(ft.Target)
+		since := sinces[st]
+		said := saids[st]
+		openJ, hasOpen := openStreamJudgmentOf(s, NFirstTimeUnderTarget, st)
+		switch {
+		case !under && (since != "" || said != "" || hasOpen):
+			if hasOpen {
+				p.Closes = append(p.Closes, openJ)
+			}
+			if said != "" || hasOpen {
+				n := happened(NFirstTimeRecovered, "", s.Now)
+				n.Stream, n.StreamLevel = st, true
+				n.What = fmt.Sprintf("stream %s first-time land rate is back at target: %s (target %d%%, window %d)", st, sc.Window.String(), ft.Target, ft.Window)
+				n.Who, n.To = r.who(), s.Coordinator
+				p.Notes = append(p.Notes, n)
+			}
+			delete(sinces, st)
+			delete(saids, st)
+		case under:
+			if since == "" {
+				sinces[st] = landingStamp(s.Now)
+			}
+			due := said == ""
+			if !due {
+				if d, ok := r.running(s.Now, said); !ok || d >= bound {
+					due = true
+				}
+			}
+			if due {
+				what := firstTimeUnderTargetWhat(st, sc, ft)
+				if hasOpen {
+					n := openJ.Note
+					n.What, n.At = what, s.Now
+					p.Updates = append(p.Updates, n)
+				} else {
+					n := Note{Kind: Judgment, Type: NFirstTimeUnderTarget, Stream: st, StreamLevel: true, What: what, Who: r.who(), To: s.Coordinator, At: s.Now}
+					p.Notes = append(p.Notes, n)
+				}
+				p.Units = append(p.Units, Unit{Key: PartFirstTime, Moved: what})
+				saids[st] = landingStamp(s.Now)
+			}
+		}
+	}
+	write(PropFirstTimeSince, formatStreamStamps(sinces))
+	write(PropFirstTimeSaid, formatStreamStamps(saids))
+	if len(p.Props) > 0 && p.Empty() {
+		p.Units = append(p.Units, Unit{Key: PropFirstTimeSince, Moved: "first-time land rate episode updated"})
+	}
+	return p, 0
+}

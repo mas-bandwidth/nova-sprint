@@ -1872,7 +1872,12 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	ls, stallDue := TickLandingStall(s, r)
 	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ls.Notes...), append(p.Closes, ls.Closes...), append(p.Updates, ls.Updates...), append(p.Props, ls.Props...)
 	p.Units = append(p.Units, ls.Units...)
-	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue
+	// the first-time land rate goal (judgments.go, first_time.go; tla/SprintRules.tla
+	// Part "firsttime", FtTick), watched at the tick end alongside the landing-stall alarm.
+	ft, ftDue := TickFirstTime(s, r)
+	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ft.Notes...), append(p.Closes, ft.Closes...), append(p.Updates, ft.Updates...), append(p.Props, ft.Props...)
+	p.Units = append(p.Units, ft.Units...)
+	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue + ftDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
