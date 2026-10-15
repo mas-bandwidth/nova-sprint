@@ -133,7 +133,7 @@ nova-sprint friend beat <friend> [--working <n>] [--queue <n>] [--width <n>] [--
 nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
 nova-sprint friend cards <friend> [--json]
-nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
+nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]
 nova-sprint friend level
 nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up

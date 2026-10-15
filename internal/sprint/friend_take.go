@@ -84,6 +84,32 @@ type FriendTakeReq struct {
 	// spends its reader (retired_by returned, readSpent), as read --return does; the
 	// machine's take-backs (a hold, a stall) spend nothing.
 	Spends bool
+	// Working lets a card in flight be taken back (FriendCardInFlight: working on her row,
+	// or carrying a take, a progress, a report or a carried head). Without it a named card
+	// in flight is refused and All takes none (unless Hold). friend take --working sets it
+	// for named cards only; the machine's take-backs (the late rule, the re-tier, the stall
+	// ladder's rung 4) set it.
+	Working bool
+}
+
+// FriendCardInFlight says why the friend's card is hers in flight, "" when it is only dealt: in the
+// working column, or carrying a take (taken, first_taken), a progress stamp, a report, or a
+// head carried from a push. A card in flight is never taken by friend take --all-unstarted
+// (nova-sprint, 2026-10-14: --all-unstarted withdrew two friends' working cards mid-flight).
+func FriendCardInFlight(c *Card) string {
+	switch {
+	case c.Col == Working:
+		return "it is working on her row"
+	case c.F("taken") != "" || c.F("first_taken") != "":
+		return "a take is recorded on it"
+	case c.F(FieldProgress) != "":
+		return "progress is recorded on it"
+	case c.F(FieldReported) != "":
+		return "a report is recorded on it"
+	case c.F(FieldCarryHead) != "":
+		return "it carries a pushed head " + c.F(FieldCarryHead)
+	}
+	return ""
 }
 
 // takenBackWhy is the words a taken card carries (FieldTakenBack).
@@ -99,10 +125,15 @@ func (r FriendTakeReq) takenBackWhy() string {
 
 // FriendTake takes back the friend's cards she has not started: each one withdrawn on her
 // row, its primary ready for the friends' deal. A card named that is not dealt to her, or
-// that she has started, is refused, one refusal each, and the rest are taken; with
-// AllOrNothing one refusal takes none, each card that would have been taken refused too;
-// with All a started card stays (the caller, which read Started, says so). A working card taken frees her lane: her oldest ready card not taken
-// is taken into working in the same unit, as her finish takes it (friendNext).
+// that she has started, is refused, one refusal each, and so is a card named in flight
+// (FriendCardInFlight) unless Working; the rest are taken; with AllOrNothing one refusal takes none,
+// each card that would have been taken refused too. All (not Hold) takes ONLY the cards
+// dealt to her and not taken: ready on her row, not in flight, not started (the stall
+// ladder's rung 4, with Working, also takes a working card not started); each card it
+// leaves is said ("friend <f> keeps <id>: <why>"). A working card taken (Working, or the
+// hold) frees her lane: her oldest ready card not taken is taken into working in the same
+// unit, as her finish takes it (friendNext), and the plan says one WARNING line counting
+// the working cards withdrawn.
 // tla/StallLadder.tla Tick: rung 4 takes back the cards she has not started.
 // tla/WhoPreference.tla TakeBack.
 func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
@@ -121,7 +152,15 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 				if c.Col == Working || r.Started[c.ID] != "" {
 					take = append(take, c)
 				}
-			case r.Started[c.ID] == "" || r.Hold:
+			case r.Hold:
+				take = append(take, c)
+			case r.Started[c.ID] != "":
+				p.Said = append(p.Said, fmt.Sprintf("friend %s keeps %s: %s", r.Friend, c.ID, r.Started[c.ID]))
+			case !r.Working && FriendCardInFlight(c) != "":
+				// --all-unstarted is dealt and not taken, only: a card in flight is never
+				// withdrawn by it (name it with --working)
+				p.Said = append(p.Said, fmt.Sprintf("friend %s keeps %s: %s", r.Friend, c.ID, FriendCardInFlight(c)))
+			default:
 				take = append(take, c)
 			}
 		}
@@ -142,6 +181,8 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 			p.refuse(id, fmt.Sprintf("%s has started: friend %s finished it (%s), and its primary %s is %s", c.ID, r.Friend, c.Col, c.F("primary"), orDash(s.StateOf(c.F("primary")))))
 		case r.Started[c.ID] != "":
 			p.refuse(id, fmt.Sprintf("%s has started: %s; it stays with friend %s and finishes", c.ID, r.Started[c.ID], r.Friend))
+		case !r.Working && !r.Hold && FriendCardInFlight(c) != "":
+			p.refuse(id, fmt.Sprintf("%s is in flight with friend %s: %s; withdrawing it mid-flight wants --working", c.ID, r.Friend, FriendCardInFlight(c)))
 		case !slices.Contains(take, c):
 			take = append(take, c)
 		}
@@ -162,6 +203,17 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 		}
 	}
 	why := r.takenBackWhy()
+	if !r.Hold {
+		var working []string
+		for _, c := range take {
+			if FriendCardInFlight(c) != "" {
+				working = append(working, c.ID)
+			}
+		}
+		if len(working) > 0 {
+			p.Said = append(p.Said, fmt.Sprintf("WARNING: withdraws %d working card(s) from friend %s mid-flight: %s", len(working), r.Friend, strings.Join(working, ",")))
+		}
+	}
 	for _, c := range take {
 		// the take, not the hold, keeps her from it; a card never taken from her has its whole
 		// dealt bound again from now (untaken_since), its first take unset

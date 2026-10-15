@@ -90,8 +90,9 @@ The coordinator puts a card on a friend's row two ways: the deal fills the
 rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
 named ready card to her at once (the same work card `friend sync` delivers),
 so the seat need not wait for the deal to draw it for whoever it chooses.
-`friend take <friend> <id>` takes a card of hers she has not started back to
-ready and marks it not to be dealt to her again; each taken card says so and
+`friend take <friend> <id>` takes a card dealt to her and not taken back to
+ready (a card she is working wants `--working` as well, and
+`--all-unstarted` never takes a working card) and marks it not to be dealt to her again; each taken card says so and
 the summary counts them, and `friend give` clears the mark or hands the card
 back (docs/SPEC-SPRINT.md section 1, the seat hands a named card to a friend).
 
