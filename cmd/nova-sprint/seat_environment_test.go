@@ -3,12 +3,16 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	tok "go/token"
 	"os"
 	"path/filepath"
-	"syscall"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/seatcred"
 	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,7 +114,7 @@ func TestSeatEnvironmentCredentialReferenceIsBoundToEachAddress(t *testing.T) {
 	reads := 0
 	a.loginSecret = func(got secrets.Login) (secrets.Secret, error) {
 		reads++
-		assert.Equal(t, l.secrets(), got)
+		assert.Equal(t, seatLoginSecrets(l), got)
 		return secrets.NewSecret("NEVER_PRINT"), nil
 	}
 	for _, addr := range []string{"other:6380", l.Redis} {
@@ -244,26 +248,6 @@ func TestSeatEnvironmentKeepsMetadataAndHelpUsable(t *testing.T) {
 	assert.True(t, seatEnvironmentNeeded([]string{"hold", "--", "-h"}), "words after -- are not flags")
 }
 
-type seatFileInfo struct {
-	os.FileInfo
-	stat *syscall.Stat_t
-}
-
-func (f seatFileInfo) Sys() any { return f.stat }
-
-func TestSeatEnvironmentRejectsOtherOwnerWithoutHostPrivileges(t *testing.T) {
-	t.Parallel()
-	a := seatEnvApp(t, `{"version":1}`)
-	path, err := a.seatEnvironmentPath()
-	require.NoError(t, err)
-	fi, err := os.Lstat(path)
-	require.NoError(t, err)
-	assert.True(t, seatFileOwned(fi, os.Getuid()))
-	st := *fi.Sys().(*syscall.Stat_t)
-	st.Uid++
-	assert.False(t, seatFileOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
-}
-
 func TestSeatEnvironmentKeepsLegacyProcessAddressAheadOfFile(t *testing.T) {
 	t.Parallel()
 	a := seatEnvApp(t, `{"version":1,"environment":{"NOVA_SPRINT_REDIS":"file:6380"}}`)
@@ -322,11 +306,6 @@ func TestSeatEnvironmentRejectsUntrustedConfigDirectory(t *testing.T) {
 	assert.Nil(t, a.seatEnvironment)
 	require.NoError(t, os.Chmod(dir, 0700))
 	require.NoError(t, a.loadSeatEnvironment())
-	fi, err := os.Lstat(dir)
-	require.NoError(t, err)
-	st := *fi.Sys().(*syscall.Stat_t)
-	st.Uid++
-	assert.False(t, seatDirectoryOwned(seatFileInfo{FileInfo: fi, stat: &st}, os.Getuid()))
 }
 
 func TestSeatEnvironmentDoesNotReadRelativeHomeConfig(t *testing.T) {
@@ -381,18 +360,61 @@ func TestSeatEnvironmentMissingOptionalHomeDoesNotBlockExplicitConfiguration(t *
 func TestSeatEnvironmentEndpointMatchesProducer(t *testing.T) {
 	t.Parallel()
 	for _, v := range []string{"mem:/tmp/twin", "host:any", "host:0", "host:65536", ":6380", "host:12\x7f", "host:1'"} {
-		assert.False(t, seatEndpoint(v), v)
+		assert.False(t, seatcred.ValidSeatEndpoint(v), v)
 	}
 	for _, v := range []string{"host:1", "host:65535", "[::1]:6380"} {
-		assert.True(t, seatEndpoint(v), v)
+		assert.True(t, seatcred.ValidSeatEndpoint(v), v)
 	}
 }
 func TestSeatEnvironmentSafeSpecificCauses(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ body, cause string }{{`{"version":1,"version":1}`, "duplicate key"}, {`{"version":1,"secret":"INJECTED_SECRET"}`, "unknown field"}, {`{"version":1,"environment":null}`, "null field"}, {`{`, "malformed JSON"}} {
+	for _, tc := range []struct{ body, cause string }{{`{"version":1,"version":1}`, "duplicate key"}, {`{"version":1,"secret":"INJECTED_SECRET"}`, "unknown key"}, {`{"version":1,"environment":null}`, "null value"}, {`{`, "invalid JSON"}} {
 		err := seatEnvApp(t, tc.body).loadSeatEnvironment()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tc.cause)
 		assert.NotContains(t, err.Error(), "INJECTED_SECRET")
+	}
+}
+
+func TestTheSeatEnvironmentIsSeatcreds(t *testing.T) {
+	t.Parallel()
+	forbidden := []string{"seatEndpoint", "uniqueJSONKeys", "seatJSONFields", "seatFileOwned", "seatDirectoryOwned", "writePrivate"}
+	fset := tok.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	require.NoError(t, err)
+	for _, pkg := range pkgs {
+		for fname, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == tok.TYPE {
+					for _, spec := range gd.Specs {
+						if ts, ok := spec.(*ast.TypeSpec); ok {
+							assert.NotContains(t, forbidden, ts.Name.Name, "%s declares %s", fname, ts.Name.Name)
+						}
+					}
+				} else if fd, ok := decl.(*ast.FuncDecl); ok {
+					assert.NotContains(t, forbidden, fd.Name.Name, "%s declares %s", fname, fd.Name.Name)
+				}
+			}
+		}
+	}
+	cases := []struct{ name, body string }{
+		{"valid", `{"version":1}`},
+		{"duplicate key", `{"version":1,"version":1}`},
+		{"unknown key", `{"version":1,"actor":"x"}`},
+		{"null value", `{"version":1,"environment":null}`},
+		{"bad endpoint", `{"version":1,"environment":{"NOVA_SPRINT_REDIS":"mem:x"}}`},
+		{"incomplete login", `{"version":1,"login":{"redis":"host:1","user":"u"}}`},
+	}
+	for _, tc := range cases {
+		a := seatEnvApp(t, tc.body)
+		err := a.loadSeatEnvironment()
+		path, pathErr := a.seatEnvironmentPath()
+		require.NoError(t, pathErr)
+		_, scErr := seatcred.LoadSeatEnvironment(path)
+		if scErr == nil {
+			require.NoError(t, err, tc.name)
+		} else {
+			require.Error(t, err, tc.name)
+		}
 	}
 }

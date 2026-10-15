@@ -814,7 +814,7 @@ func (a *app) installSeat(f configSeatFlags, server string, dry bool, stdout io.
 		}
 	}
 	b, _ := json.MarshalIndent(rec, "", "  ") // ignored: a struct of strings always encodes
-	if err := writePrivate(recPath, append(b, '\n')); err != nil {
+	if err := writePrivateFile(recPath, append(b, '\n')); err != nil {
 		return fmt.Errorf("the seat record %s was not written: %v", recPath, err)
 	}
 	if named {
@@ -835,7 +835,7 @@ func (a *app) configPasswordNote(p seatcred.ConfigProfile) string {
 	if err != nil || !ok {
 		return " password=unresolved NOTE no store login names a nova-secrets seat to read " + p.PasswordEnv + " from; run: nova-sprint seat login"
 	}
-	sl := l.secrets()
+	sl := seatLoginSecrets(l)
 	sl.Name = p.PasswordEnv
 	if s, err := a.secretReader()(sl); err != nil || !s.Loaded() || s.Empty() {
 		return " password=unresolved NOTE seat " + oneline.Field(l.As) + " of " + oneline.Field(l.Store) + " holds no " + p.PasswordEnv + "; seal it with nova-secrets seal --as " + oneline.Field(l.As) + " --name " + p.PasswordEnv

@@ -138,7 +138,7 @@ func (a *app) recordUnitKeyNames(names []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writePrivate(filepath.Join(filepath.Dir(path), unitKeysFile), append(b, '\n')); err != nil {
+	if err := writePrivateFile(filepath.Join(filepath.Dir(path), unitKeysFile), append(b, '\n')); err != nil {
 		return fmt.Errorf("the seat login's keys were not recorded: %w; run: nova-sprint run --keys <NAME,...>", err)
 	}
 	return nil
