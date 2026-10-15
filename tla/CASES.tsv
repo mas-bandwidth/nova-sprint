@@ -707,3 +707,5 @@ MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestore
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
+MCFriendGive.cfg	MCFriendGive.tla	pass	-	ignore-terminal	friendgive	required	-
+MCFriendGiveBrokenDoneIsDealt.cfg	MCFriendGive.tla	invariant	GiveReachesABouncedCard	ignore-terminal	friendgive	required	-
