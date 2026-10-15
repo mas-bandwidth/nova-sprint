@@ -570,3 +570,36 @@ func cmpOr(a, b string) string {
 	}
 	return b
 }
+
+// streamTransition is committed in the same unit as the state change. Keep the
+// stop notice separate from its judgment so resume cannot erase an unpushed stop.
+// Owners and waiting count cover queued and stuck cards, once per friend.
+// tla/CoordinatorPush.tla CommitTransition.
+func streamTransition(s *Snapshot, stream, typ, state, cause, who, did string) Note {
+	n := happened(typ, stream, s.Now)
+	n.Who, n.What = who, cutText(did, MaxCardTextBytes)
+	tr := &StreamTransition{State: state, Cause: cause}
+	for _, col := range []string{Queued, Stuck} {
+		for _, c := range s.Merge.Cell(stream, col) {
+			tr.Waiting++
+			if pr := s.Work.Card(c.ID); pr != nil && s.Fleet != nil {
+				// Only the exact current attempt's work record owns this notice.
+				// The store wrapper loads it even after it becomes unplaced.
+				wc := s.Fleet.Card(WorkCardID(pr.ID, pr.Int("attempt")))
+				if wc == nil {
+					continue
+				}
+				owner, ok := FriendOfRow(wc.F("member"))
+				if !ok {
+					owner, ok = FriendOfRow(wc.Row)
+				}
+				if ok && !slices.Contains(tr.Owners, owner) {
+					tr.Owners = append(tr.Owners, owner)
+				}
+			}
+		}
+	}
+	sort.Strings(tr.Owners)
+	n.StreamTransition = tr
+	return n
+}
