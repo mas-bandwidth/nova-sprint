@@ -2366,7 +2366,7 @@
    :kept (:kind "bug"))
   (item "adopt-store-step-no-false-half-move" :group "ops" :area "nova-sprint"
    :title "The adopt step store does not report a false half move"
-   :text "On every non-seat host the adopt prints "REFUSED step=store, a half move" even when the install worked. The step must report what it did. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report)."
+   :text "On every non-seat host the adopt prints \"REFUSED step=store, a half move\" even when the install worked. The step must report what it did. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report)."
    :why "Kind: bug."
    :date "2026-10-15"
    :release "v1.5"
