@@ -137,6 +137,10 @@ type Attempt struct {
 	// Features at the deal (Deal) are filled by features(); they read only what the log held
 	// at or before Dealt.
 	Deal DealView `json:"deal"`
+
+	// Line positions break ties when distinct log lines have the same At. They
+	// are replay bookkeeping, not a feature visible in an attempt record.
+	dealPos, outcomePos int
 }
 
 // Result is a replay: the attempt records in deal order, and how many lines it stepped.
@@ -177,12 +181,13 @@ func Replay(in Input) *Result {
 			a.End, a.EndPlace = t, place
 		}
 	}
-	fail := func(a *Attempt, t time.Time) {
+	fail := func(a *Attempt, t time.Time, pos int) {
 		if a.Outcome != Failed {
 			a.Outcome, a.OutcomeAt = Failed, t
+			a.outcomePos = pos
 		}
 	}
-	for _, i := range idx {
+	for pos, i := range idx {
 		l := in.Lines[i]
 		res.Places = sprint.ReplayOnto(res.Places, l)
 		res.Lines++
@@ -196,99 +201,113 @@ func Replay(in Input) *Result {
 			}
 			return p.Row + ":" + p.Col
 		}
-		switch l.Table {
-		case "work":
-			p := l.Card
-			if b := briefSize.FindStringSubmatch(l.Text["brief"]); b != nil {
-				briefBytes[p], _ = strconv.Atoi(b[1])
-				briefEdits[p]++
-			}
-			if v, ok := l.Set[sprint.FieldRanAttempts]; ok {
-				ranField[p] = v
-			}
-			if f := l.Set[sprint.FieldFailure]; f != "" {
-				if a := at[key(p, atoi(l.Set[sprint.FieldFailureAt]))]; a != nil {
-					a.Failure = f
+		// ReplayOnto steps a grouped move once for every named card. Extract each
+		// card's attempt evidence from that same move without counting the line
+		// again: GroupSets keeps the shared fields on one line and puts the other
+		// cards in Cards (docs/SPEC-SPRINT.md, the log).
+		for _, card := range l.Names() {
+			l := l
+			l.Card = card
+			switch l.Table {
+			case "work":
+				p := l.Card
+				if b := briefSize.FindStringSubmatch(l.Text["brief"]); b != nil {
+					briefBytes[p], _ = strconv.Atoi(b[1])
+					briefEdits[p]++
 				}
-			}
-			if lf := l.Set[sprint.FieldLastFinish]; lf != "" {
-				n, how, _ := strings.Cut(lf, ":")
-				if a := at[key(p, atoi(n))]; a != nil {
-					end(a, l.At, place("fleet", a.card()))
-					if how == "failed" {
-						fail(a, l.At)
+				if v, ok := l.Set[sprint.FieldRanAttempts]; ok {
+					ranField[p] = v
+				}
+				if f := l.Set[sprint.FieldFailure]; f != "" {
+					if a := at[key(p, atoi(l.Set[sprint.FieldFailureAt]))]; a != nil {
+						a.Failure = f
 					}
 				}
-			}
-			if strings.HasSuffix(l.To, ":landed") && !strings.HasSuffix(l.From, ":landed") {
-				if a := at[key(p, latest[p])]; a != nil && a.Outcome == "" {
-					a.Outcome, a.OutcomeAt = Landed, l.At // the primary landed: docs/SPEC-SPRINT.md, the landing
-				}
-			}
-			if l.Verb == "drop" {
-				if a := at[key(p, latest[p])]; a != nil {
-					end(a, l.At, "dropped")
-				}
-			}
-		case "fleet":
-			m := workCard.FindStringSubmatch(l.Card)
-			if m == nil {
-				continue
-			}
-			p, n := m[1], atoi(m[2])
-			a := at[key(p, n)]
-			dealt := strings.HasSuffix(l.To, ":ready") && l.Set["member"] != "" && !l.Removed
-			if a == nil {
-				if !dealt || l.From != "" {
-					continue // an attempt dealt before the dump began
-				}
-				a = &Attempt{Primary: p, N: n, Dealt: l.At, Outcome: ""}
-				at[key(p, n)] = a
-				order = append(order, a)
-				// the attempt before it ends here, failed: another attempt began
-				if prev := at[key(p, n-1)]; prev != nil {
-					end(prev, l.At, place("fleet", prev.card()))
-					if prev.Outcome != Landed {
-						fail(prev, l.At)
-					}
-					prev.Why = l.Text["why"]
-					if r, ok := rows[key(p, n)]; ok {
-						prev.Joined = true
-						if prev.Why == "" {
-							prev.Why = r.Why
+				if lf := l.Set[sprint.FieldLastFinish]; lf != "" {
+					n, how, _ := strings.Cut(lf, ":")
+					if a := at[key(p, atoi(n))]; a != nil {
+						end(a, l.At, place("fleet", a.card()))
+						if how == "failed" {
+							fail(a, l.At, pos)
 						}
 					}
 				}
-				if n > latest[p] {
-					latest[p] = n
+				if strings.HasSuffix(l.To, ":landed") && !strings.HasSuffix(l.From, ":landed") {
+					if a := at[key(p, latest[p])]; a != nil && a.Outcome == "" {
+						a.Outcome, a.OutcomeAt = Landed, l.At // the primary landed: docs/SPEC-SPRINT.md, the landing
+						a.outcomePos = pos
+					}
 				}
-				a.Deal.BriefBytes, a.Deal.BriefEdits = briefBytes[p], briefEdits[p]
-			}
-			if !a.End.IsZero() {
-				continue // lines after its end are not its life
-			}
-			if dealt {
-				a.dealtAs(l)
-				if len(a.Events) > 0 {
-					a.Events = append(a.Events, Event{l.At, "redeal"})
+				if l.Verb == "drop" {
+					if a := at[key(p, latest[p])]; a != nil {
+						end(a, l.At, "dropped")
+					}
 				}
-			}
-			switch {
-			case l.Verb == "take" && strings.HasSuffix(l.To, ":working"):
-				a.Events = append(a.Events, Event{l.At, "take"})
-			case l.Verb == "progress":
-				a.Events = append(a.Events, Event{l.At, "progress"})
-			case l.Verb == "finish" && strings.HasSuffix(l.To, ":withdrawn"):
-				e := l.Set["provider_error"]
-				if sprint.FailureClass(e) == "no result" || strings.Contains(l.Cause, "left no result") {
-					a.Events = append(a.Events, Event{l.At, "no-result"})
-				} else {
+			case "fleet":
+				m := workCard.FindStringSubmatch(l.Card)
+				if m == nil {
+					continue
+				}
+				p, n := m[1], atoi(m[2])
+				a := at[key(p, n)]
+				dealt := strings.HasSuffix(l.To, ":ready") && l.Set["member"] != "" && !l.Removed
+				if a == nil {
+					if !dealt || l.From != "" {
+						continue // an attempt dealt before the dump began
+					}
+					a = &Attempt{Primary: p, N: n, Dealt: l.At, dealPos: pos, Outcome: ""}
+					at[key(p, n)] = a
+					order = append(order, a)
+					// the attempt before it ends here, failed: another attempt began
+					if prev := at[key(p, n-1)]; prev != nil {
+						end(prev, l.At, place("fleet", prev.card()))
+						if prev.Outcome != Landed {
+							fail(prev, l.At, pos)
+						}
+						prev.Why = l.Text["why"]
+						if r, ok := rows[key(p, n)]; ok {
+							prev.Joined = true
+							if prev.Why == "" {
+								prev.Why = r.Why
+							}
+						}
+					}
+					if n > latest[p] {
+						latest[p] = n
+					}
+					a.Deal.BriefBytes, a.Deal.BriefEdits = briefBytes[p], briefEdits[p]
+				}
+				if !a.End.IsZero() {
+					continue // lines after its end are not its life
+				}
+				if dealt {
+					a.dealtAs(l)
+					if len(a.Events) > 0 {
+						a.Events = append(a.Events, Event{l.At, "redeal"})
+					}
+				}
+				switch {
+				case l.Verb == "take" && strings.HasSuffix(l.To, ":working"):
+					a.Events = append(a.Events, Event{l.At, "take"})
+				case l.Verb == "progress":
+					a.Events = append(a.Events, Event{l.At, "progress"})
+				case l.Verb == "finish" && strings.HasSuffix(l.To, ":withdrawn"):
+					e := l.Set["provider_error"]
+					if sprint.FailureClass(e) == "no result" || strings.Contains(l.Cause, "left no result") {
+						a.Events = append(a.Events, Event{l.At, "no-result"})
+					} else {
+						a.Events = append(a.Events, Event{l.At, "take-ended"})
+					}
+				case l.Verb == "finish" && (strings.HasSuffix(l.To, ":finished") || strings.HasSuffix(l.To, ":defect")):
+					a.Report = l.Text["report"]
+					a.Events = append(a.Events, Event{l.At, "finish"})
+					end(a, l.At, place("fleet", l.Card))
+				case (strings.HasSuffix(l.From, ":ready") || strings.HasSuffix(l.From, ":working")) &&
+					!strings.HasSuffix(l.To, ":ready") && !strings.HasSuffix(l.To, ":working"):
+					// Holds, friend takes and idle reaps also withdraw fleet work.
+					// They end its active assignment without being a new take.
 					a.Events = append(a.Events, Event{l.At, "take-ended"})
 				}
-			case l.Verb == "finish" && (strings.HasSuffix(l.To, ":finished") || strings.HasSuffix(l.To, ":defect")):
-				a.Report = l.Text["report"]
-				a.Events = append(a.Events, Event{l.At, "finish"})
-				end(a, l.At, place("fleet", l.Card))
 			}
 		}
 	}

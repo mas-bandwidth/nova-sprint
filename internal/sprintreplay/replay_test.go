@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // secretShapes are the shapes TestReplayTestdataHoldsNoSecrets refuses in any testdata byte:
@@ -140,6 +143,107 @@ func TestReplayIsDeterministic(t *testing.T) {
 }
 
 const (
-	pinnedDigest = "bcf1056025339aad3fd3e178380f4c6dc6eb54b78d6ed47958d1ca14474d88fe"
+	pinnedDigest = "1f1db80e65f3e85f4d43e1141f242061613125ed981c08527ddd24b4473d9b45"
 	pinnedLines  = 60620
 )
+
+// GroupSets writes one move line for multiple cards. The place replay already expands
+// Cards; attempt histories must be the same as if those moves were separate lines.
+func TestReplayGroupedMovesMatchExpanded(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	primaries := []string{"alpha", "beta"}
+	works := []string{"alpha.w1", "beta.w1"}
+	grouped := []sprint.Line{
+		{Kind: sprint.LineMove, At: base, Table: "work", Card: primaries[0], Cards: primaries,
+			Verb: "brief", To: "machine:ready", Text: map[string]string{"brief": "<brief: 15000 bytes>"}},
+		{Kind: sprint.LineMove, At: base.Add(time.Second), Table: "fleet", Card: works[0], Cards: works,
+			Verb: "deal", To: "member:ready", Set: map[string]string{"member": "member", "tier": "heavy"}},
+		{Kind: sprint.LineMove, At: base.Add(2 * time.Second), Table: "fleet", Card: works[0], Cards: works,
+			Verb: "take", From: "member:ready", To: "member:working"},
+		{Kind: sprint.LineMove, At: base.Add(3 * time.Second), Table: "fleet", Card: works[0], Cards: works,
+			Verb: "progress", From: "member:working", To: "member:working"},
+	}
+	var expanded []sprint.Line
+	for _, line := range grouped {
+		for _, card := range line.Cards {
+			one := line
+			one.Card, one.Cards = card, nil
+			expanded = append(expanded, one)
+		}
+	}
+	got, want := Replay(Input{Lines: grouped}), Replay(Input{Lines: expanded})
+	if len(got.Attempts) != 2 {
+		t.Fatalf("grouped replay has %d attempts, want 2", len(got.Attempts))
+	}
+	if got.Digest() != want.Digest() {
+		t.Fatalf("grouped attempts differ from expanded moves:\n grouped %s\nexpanded %s\n grouped records: %+v\nexpanded records: %+v",
+			got.Digest(), want.Digest(), got.Attempts, want.Attempts)
+	}
+	for _, attempt := range got.Attempts {
+		if attempt.Deal.BriefBytes != 15000 || len(attempt.Events) != 2 ||
+			attempt.Events[0].What != "take" || attempt.Events[1].What != "progress" {
+			t.Errorf("%s has brief %d and events %+v, want brief 15000 and take, progress",
+				attempt.Primary, attempt.Deal.BriefBytes, attempt.Events)
+		}
+	}
+}
+
+// Two lines can have the same At. An outcome from a later line is not known at
+// an earlier deal even when their timestamps are equal.
+func TestReplayDealRatesExcludeLaterSameTimestampOutcome(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	deal := func(card string, at time.Time) sprint.Line {
+		return sprint.Line{Kind: sprint.LineMove, At: at, Table: "fleet", Card: card,
+			Verb: "deal", To: "member:ready", Set: map[string]string{"member": "member", "route": "route"}}
+	}
+	same := base.Add(time.Second)
+	lines := []sprint.Line{
+		deal("alpha.w1", base),
+		deal("beta.w1", same),  // alpha's failed outcome is still in the future
+		deal("alpha.w2", same), // a retry ends alpha.w1 as failed
+		deal("gamma.w1", same), // now alpha's outcome is known
+	}
+	got := Replay(Input{Lines: lines})
+	byPrimary := map[string]*Attempt{}
+	for _, a := range got.Attempts {
+		byPrimary[a.Primary] = a
+	}
+	for _, tc := range []struct {
+		primary string
+		ends    int
+	}{{"beta", 0}, {"gamma", 1}} {
+		a := byPrimary[tc.primary]
+		if a == nil {
+			t.Fatalf("%s attempt missing", tc.primary)
+		}
+		if a.Deal.MemberEnds != tc.ends || a.Deal.RouteEnds != tc.ends ||
+			a.Deal.MemberFails != tc.ends || a.Deal.RouteFails != tc.ends {
+			t.Errorf("%s deal rates are %+v, want %d known failure(s)", tc.primary, a.Deal, tc.ends)
+		}
+	}
+}
+
+// A fleet withdrawal by another verb also ends the active take. Friend take
+// withdraws work from its fleet member; it is not a new fleet take.
+func TestReplayWithdrawalEndsFleetTake(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	lines := []sprint.Line{
+		{Kind: sprint.LineMove, At: base, Table: "fleet", Card: "alpha.w1", Verb: "deal",
+			To: "member:ready", Set: map[string]string{"member": "member"}},
+		{Kind: sprint.LineMove, At: base.Add(time.Second), Table: "fleet", Card: "alpha.w1", Verb: "take",
+			From: "member:ready", To: "member:working"},
+		{Kind: sprint.LineMove, At: base.Add(2 * time.Second), Table: "fleet", Card: "alpha.w1", Verb: "friend take",
+			From: "member:working", To: "machine:withdrawn"},
+	}
+	got := Replay(Input{Lines: lines})
+	if len(got.Attempts) != 1 {
+		t.Fatalf("got %d attempts, want 1", len(got.Attempts))
+	}
+	events := got.Attempts[0].Events
+	if len(events) != 2 || events[0].What != "take" || events[1].What != "take-ended" {
+		t.Errorf("friend take emitted %+v, want take then take-ended", events)
+	}
+}

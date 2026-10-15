@@ -123,11 +123,17 @@ type DealView struct {
 // before its deal: a function of the lines at or before the deal alone.
 func features(r *Result) {
 	known := append([]*Attempt(nil), r.Attempts...)
-	sort.SliceStable(known, func(i, j int) bool { return known[i].OutcomeAt.Before(known[j].OutcomeAt) })
+	sort.SliceStable(known, func(i, j int) bool {
+		if known[i].OutcomeAt.Equal(known[j].OutcomeAt) {
+			return known[i].outcomePos < known[j].outcomePos
+		}
+		return known[i].OutcomeAt.Before(known[j].OutcomeAt)
+	})
 	for _, a := range r.Attempts {
 		var mem, route []bool
 		for _, k := range known {
-			if k.Outcome == Open || k.OutcomeAt.After(a.Dealt) {
+			if k.Outcome == Open || k.OutcomeAt.After(a.Dealt) ||
+				k.OutcomeAt.Equal(a.Dealt) && k.outcomePos >= a.dealPos {
 				continue
 			}
 			f := k.Outcome == Failed
@@ -251,14 +257,20 @@ func (r Rule) Fires(v AttemptView) bool {
 func (r Rule) knownAt(a *Attempt) (time.Time, bool) {
 	v := a.View()
 	if !r.inFlight() {
-		return a.Dealt, r.Fires(v)
+		return a.Dealt, r.Fires(v) && (a.End.IsZero() || a.Dealt.Before(a.End))
 	}
-	alive, taken := a.Dealt, false
+	alive, taken, active := a.Dealt, false, true
 	check := func(now time.Time) (time.Time, bool) {
+		if !active || now.IsZero() {
+			return time.Time{}, false
+		}
 		if r.Feature == "no_result_takes" {
-			return now, r.Fires(v)
+			return now, r.Fires(v) && (a.End.IsZero() || now.Before(a.End))
 		}
 		if t := alive.Add(time.Duration(r.Threshold * float64(time.Second))); t.Before(now) || t.Equal(now) {
+			if !a.End.IsZero() && !t.Before(a.End) {
+				return time.Time{}, false
+			}
 			v.SinceAlive, v.Taken = t.Sub(alive), taken
 			if r.Fires(v) {
 				return t, true
@@ -272,15 +284,17 @@ func (r Rule) knownAt(a *Attempt) (time.Time, bool) {
 		}
 		switch e.What {
 		case "take", "progress":
-			alive, taken = e.At, true
+			alive, taken, active = e.At, true, true
 		case "no-result":
 			v.NoResultTakes++
 			if t, ok := check(e.At); ok {
 				return t, true
 			}
-			alive, taken = e.At, false
+			alive, taken, active = e.At, false, false
 		case "redeal":
-			alive, taken = e.At, false
+			alive, taken, active = e.At, false, true
+		case "take-ended", "finish":
+			alive, taken, active = e.At, false, false
 		}
 	}
 	return check(a.End)
@@ -319,13 +333,14 @@ type Half struct {
 
 // SearchReport is the train-half search and the held-out judgement.
 type SearchReport struct {
-	TrainN, TestN int
-	SplitAt       time.Time // the deal of the first test attempt
-	Top           []Candidate
-	Chosen        Candidate
-	ChosenClass   string
-	Train, Test   Half
-	Classes       map[string]int // class -> failed attempts, both halves
+	TrainDeals, TestDeals int
+	TrainN, TestN         int
+	SplitAt               time.Time // the deal of the first test attempt
+	Top                   []Candidate
+	Chosen                Candidate
+	ChosenClass           string
+	Train, Test           Half
+	Classes               map[string]int // class -> failed attempts, both halves
 }
 
 // The selection rule, fixed before the search: a candidate qualifies on the train half when
@@ -342,9 +357,9 @@ const (
 )
 
 // scored is the attempts with a known outcome, in deal order.
-func scored(r *Result) []*Attempt {
+func scored(as []*Attempt) []*Attempt {
 	var out []*Attempt
-	for _, a := range r.Attempts {
+	for _, a := range as {
 		if a.Outcome != Open {
 			out = append(out, a)
 		}
@@ -434,17 +449,18 @@ func judge(r Rule, as []*Attempt) Half {
 	return h
 }
 
-// Search splits the scored attempts by deal time, chooses the earliest qualifying signal on
-// the train half alone, and judges it on the test half.
+// Search splits every attempt by deal time before looking at outcomes, chooses the earliest
+// qualifying signal on scored attempts in the train half, and judges scored attempts in the
+// test half. Open attempts stay on their side of the timeline but have no known label to score.
 func Search(r *Result) SearchReport {
-	as := scored(r)
-	cut := int(float64(len(as)) * TrainShare)
-	train, test := as[:cut], as[cut:]
-	rep := SearchReport{TrainN: len(train), TestN: len(test), Classes: map[string]int{}}
-	if len(test) > 0 {
-		rep.SplitAt = test[0].Dealt
+	cut := int(float64(len(r.Attempts)) * TrainShare)
+	train, test := scored(r.Attempts[:cut]), scored(r.Attempts[cut:])
+	rep := SearchReport{TrainDeals: cut, TestDeals: len(r.Attempts) - cut,
+		TrainN: len(train), TestN: len(test), Classes: map[string]int{}}
+	if cut < len(r.Attempts) {
+		rep.SplitAt = r.Attempts[cut].Dealt
 	}
-	for _, a := range as {
+	for _, a := range r.Attempts {
 		if a.Outcome == Failed {
 			rep.Classes[a.Class]++
 		}
@@ -499,7 +515,9 @@ func Search(r *Result) SearchReport {
 // and its held-out numbers per class and overall.
 func (s SearchReport) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "scored attempts %d: train %d, test %d (test from %s)\n", s.TrainN+s.TestN, s.TrainN, s.TestN, s.SplitAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "deals %d: train %d, test %d; scored attempts %d: train %d, test %d (test from %s)\n",
+		s.TrainDeals+s.TestDeals, s.TrainDeals, s.TestDeals, s.TrainN+s.TestN, s.TrainN, s.TestN,
+		s.SplitAt.UTC().Format(time.RFC3339))
 	fmt.Fprintf(&b, "classes:")
 	for _, c := range Classes {
 		fmt.Fprintf(&b, " %s=%d", c, s.Classes[c])
@@ -535,6 +553,6 @@ func Predict(rec AttemptView) (fail bool, class string, why string) {
 // ChosenRule and ChosenClass are the signal Search chose on epoch 21's train half, pinned so
 // Predict needs no replay (TestEarliestSignalPredictsHeldOut fails when the search moves).
 var (
-	ChosenRule  = Rule{Feature: "brief_bytes", Threshold: 14954}
+	ChosenRule  = Rule{Feature: "brief_bytes", Threshold: 14599}
 	ChosenClass = ClassIdleReap
 )
