@@ -3,13 +3,9 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/donewire"
 )
 
 // The done record (docs/SPEC-SPRINT.md section 1, done and ok%): every card a row completed,
@@ -23,7 +19,7 @@ import (
 // epoch's: one of another epoch is counted again. tla/DoneRecord.tla models it (NoDoubleCount,
 // CaughtUpIsTruth, ResetShowsZero, ClearStartsAgain).
 
-const keyDoneRecord = "donerecord" // STRING, the done record (the fixed table, or legacy JSON); "done" is the operations' hash
+const keyDoneRecord = "donerecord" // STRING, the done record (JSON); "done" is the operations' hash
 
 // DoneRecord is the done record: the epoch, the stream id of the last log line read, and the
 // completions of the lines read.
@@ -46,154 +42,11 @@ func (st *Store) readDoneRecord(ctx context.Context, kv KV) (DoneRecord, error) 
 // doneRecordOf is the epoch's done record of a stored value; empty when there is none, it does
 // not read, or it is another epoch's.
 func (st *Store) doneRecordOf(raw string, ok bool) DoneRecord {
-	if !ok {
-		return DoneRecord{Epoch: st.epoch}
-	}
-	r, why := decodeDoneRecord(raw)
-	if why != "" || r.Epoch != st.epoch {
+	var r DoneRecord
+	if !ok || json.Unmarshal([]byte(raw), &r) != nil || r.Epoch != st.epoch {
 		return DoneRecord{Epoch: st.epoch}
 	}
 	return r
-}
-
-// The stored forms (TRACER, schema-tracer-done-record-fixed; docs/research/schema-tracer/
-// done-record.md). The record is the schema compiler's FIXED table DoneRecord
-// (schemas/store/done.schema, generated into donewire): a form-3 file of one record, its
-// first byte 3. A record the fixed form cannot hold (more completions than the declared max,
-// a text past its bound or not UTF-8 without NUL, a time past int64 nanoseconds) keeps the
-// legacy JSON form, whose first byte is '{'; JSON is read for one release whatever wrote it.
-// A newer layout (layout_newer, layout_unsupported) is refused loudly: keepDone never writes
-// this build's older layout over it.
-const (
-	doneFormFixed    = "fixed" // the stored form's name: the fixed table
-	doneFormJSON     = "json"  // the legacy form, "json:<why>" when the fixed form refused the record
-	doneFixedMaxDone = 95      // the done list's declared max (schemas/store/done.schema)
-)
-
-// doneFixedPlanRoom is the plan scratch DoneRecordFixedLoad is handed: the identity plan's
-// entries and room for any lineage plan (it refuses plan_too_large past it).
-var doneFixedPlanRoom = 2 * len(donewire.DoneRecordFixedPlan.Entries)
-
-// doneRefusedNewer says a refusal names a layout newer than this build's.
-func doneRefusedNewer(why string) bool { return why == "layout_newer" || why == "layout_unsupported" }
-
-// decodeDoneRecord is a stored done record, or the name of the refusal that read nothing: the
-// schema runtime's (report.Reason: layout_newer, layout_malformed, no_layout, previous_form,
-// newer_form, message_form_as_file, batch_too_large, text_ill_formed, ...), or this store's
-// where the runtime gives a flag or a counter and no name: empty, malformed (report.Malformed),
-// record_count (not one record), clamped (a count or length past its bound, which the runtime
-// clamps and counts), unknown (a field the writer had and this layout does not), and
-// legacy_json_unreadable.
-func decodeDoneRecord(raw string) (DoneRecord, string) {
-	if raw == "" {
-		return DoneRecord{}, "empty"
-	}
-	if raw[0] == '{' {
-		var r DoneRecord
-		if err := json.Unmarshal([]byte(raw), &r); err != nil {
-			return DoneRecord{}, "legacy_json_unreadable"
-		}
-		return r, ""
-	}
-	out := make([]donewire.DoneRecord, 1)
-	plan := make([]donewire.TableFixedEntry, doneFixedPlanRoom)
-	var rep donewire.TableReport
-	n := donewire.DoneRecordFixedLoad(out, []byte(raw), plan, &rep)
-	switch {
-	case n < 0 && rep.Reason != "":
-		return DoneRecord{}, rep.Reason
-	case n < 0 || rep.Malformed:
-		return DoneRecord{}, "malformed"
-	case n != 1:
-		return DoneRecord{}, "record_count"
-	case rep.Clamped != 0:
-		return DoneRecord{}, "clamped"
-	case rep.Unknown != 0 || rep.KindMismatch != 0:
-		return DoneRecord{}, "unknown"
-	}
-	w := &out[0]
-	r := DoneRecord{Epoch: w.Epoch, Cursor: string(w.Cursor[:w.CursorLength])}
-	if w.DoneCount > 0 {
-		r.Done = make([]sprint.Completion, w.DoneCount)
-	}
-	for i := range r.Done {
-		e := &w.Done[i]
-		r.Done[i] = sprint.Completion{Kind: string(e.Kind[:e.KindLength]), Card: string(e.Card[:e.CardLength]),
-			Row: string(e.Row[:e.RowLength]), At: doneTimeOf(e.At)}
-	}
-	return r, ""
-}
-
-// doneTimeOf is a completion's time of its stored Unix nanoseconds; 0 is the zero time.
-func doneTimeOf(n int64) time.Time {
-	if n == 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, n).UTC()
-}
-
-// doneText puts s into a fixed text field of capacity len(dst), or says why it does not fit:
-// past the bound, or not the schema's string text (UTF-8, no NUL).
-func doneText(dst []byte, s string) (int32, string) {
-	if len(s) > len(dst) {
-		return 0, "text_over_bound"
-	}
-	if !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0 {
-		return 0, "text_ill_formed"
-	}
-	return int32(copy(dst, s)), ""
-}
-
-// doneFixedOf is r as the fixed table's value, or why the fixed form cannot hold it.
-func doneFixedOf(r DoneRecord, w *donewire.DoneRecord) string {
-	donewire.DoneRecordReset(w)
-	if len(r.Done) > len(w.Done) {
-		return "over_max_count"
-	}
-	w.Epoch = r.Epoch
-	var why string
-	if w.CursorLength, why = doneText(w.Cursor[:], r.Cursor); why != "" {
-		return why
-	}
-	w.DoneCount = int32(len(r.Done))
-	for i, c := range r.Done {
-		e := &w.Done[i]
-		for _, f := range []struct {
-			n   *int32
-			dst []byte
-			s   string
-		}{{&e.KindLength, e.Kind[:], c.Kind}, {&e.CardLength, e.Card[:], c.Card}, {&e.RowLength, e.Row[:], c.Row}} {
-			if *f.n, why = doneText(f.dst, f.s); why != "" {
-				return why
-			}
-		}
-		if !c.At.IsZero() {
-			// UnixNano is undefined outside about 1678..2262; a time that does not
-			// come back is one the form cannot hold
-			if n := c.At.UnixNano(); n == 0 || !time.Unix(0, n).Equal(c.At) {
-				return "time_out_of_range"
-			} else {
-				e.At = n
-			}
-		}
-	}
-	return ""
-}
-
-// encodeDoneRecord is the done record's stored form and the form's name: the fixed table, or
-// the legacy JSON with the reason the fixed form refused the record ("json:<why>").
-func encodeDoneRecord(r DoneRecord) (string, string, error) {
-	var w donewire.DoneRecord
-	why := doneFixedOf(r, &w)
-	if why == "" {
-		b := make([]byte, donewire.DoneRecordFixedMeasure(1))
-		if donewire.DoneRecordFixedSave([]donewire.DoneRecord{w}, b) == int64(len(b)) {
-			return string(b), doneFormFixed, nil
-		}
-		why = "save_refused"
-	}
-	b, err := json.Marshal(r)
-	return string(b), doneFormJSON + ":" + why, err
 }
 
 // doneAfter adds to r the completions of the log's lines after its cursor, at most pages
@@ -225,11 +78,6 @@ func (st *Store) doneAfter(ctx context.Context, r *DoneRecord, pages int) (more 
 // exchange): the lines after its cursor read, at most logIndexPages pages, and the record
 // written when it moved.
 func (st *Store) keepDone(ctx context.Context, kv KV, raw string, ok bool) error {
-	if ok {
-		if _, why := decodeDoneRecord(raw); doneRefusedNewer(why) {
-			return fmt.Errorf("%s: the stored done record is a newer build's layout; this build reads the log whole and writes nothing over it", why)
-		}
-	}
 	r := st.doneRecordOf(raw, ok)
 	was := r.Cursor
 	if _, err := st.doneAfter(ctx, &r, logIndexPages); err != nil {
@@ -238,11 +86,11 @@ func (st *Store) keepDone(ctx context.Context, kv KV, raw string, ok bool) error
 	if r.Cursor == was {
 		return nil
 	}
-	b, _, err := encodeDoneRecord(r)
+	b, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
-	return kv.SetKey(ctx, keyDoneRecord, b)
+	return kv.SetKey(ctx, keyDoneRecord, string(b))
 }
 
 // DoneSince is each fleet row's done by kind: the completions after since (a stats reset's
