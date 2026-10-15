@@ -87,11 +87,13 @@ func TickBaseCI(s *Snapshot, r TickReq) (Plan, int) {
 // vet; the lander named a fix-red card in its judgment and admitted none, so each base waited
 // for the coordinator. A class-red tree gate now admits that card into the stream whose base is
 // red (FixRedAdmit): a blocker, first in the stream's line, one card for a class and base
-// while one is open (OneFixRedPerClass). The tick deals it as any ready card. When it has been
+// while one is open (OneFixRedPerClass), admitted in the plan of the stop that opens the episode
+// (WithFixRed). The tick deals it as any ready card. When it has been
 // read ok and sits queued to merge, the stream the base's red stopped is resumed by the
 // base-gate rule (TickRuleFixRed), so the lander's cure search lands it first onto the red base
-// (land_cure.go); the base is then green on the new tip and the stream's next landing goes on
-// (ResumesWithoutCoordinator). A card tried as a cure that did not cure resumes nothing again at
+// (land_cure.go); the episode, the stop's judgment, stays open until the card lands, and its
+// landing answers it (EpisodeOpenUntilLanding, EpisodeClosesOnLanding): the base is then green
+// on the new tip and the stream's next landing goes on (ResumesWithoutCoordinator). A card tried as a cure that did not cure resumes nothing again at
 // the same head (FieldFixRedTried): the judgment stays for a mind.
 
 // FixRedPrefix starts the id of a fix-red card (cardgen.PlanClassRed: fix-red-<class>-<base>).
@@ -171,10 +173,26 @@ func FixRedRepo(s *Snapshot, stream, base string) string {
 
 // FixRedAdd is a class-red base's fix-red card as the lander built it: Card is its id, file and
 // brief (cardgen.Render of cardgen.PlanClassRed), already held to the add lint by the caller.
+// Stream is the stream the lander is stopping on the base, the card's stream when it holds a card
+// not landed on that base; else the first stream that does (FixRedStream).
 type FixRedAdd struct {
-	Base string
-	Card CardAdd
-	Who  string
+	Base   string
+	Stream string
+	Card   CardAdd
+	Who    string
+}
+
+// fixRedStreamOf is the stream the card of r goes into: r.Stream when it holds a card not
+// landed on the base, else FixRedStream.
+func fixRedStreamOf(s *Snapshot, r FixRedAdd) string {
+	if r.Stream != "" {
+		for _, c := range s.Work.Cards() {
+			if c.Row == r.Stream && c.Placed() && c.Col != Landed && !IsSentinel(c) && fixRedBriefLine(c.F("brief"), "BASE") == r.Base {
+				return r.Stream
+			}
+		}
+	}
+	return FixRedStream(s, r.Base)
 }
 
 // FixRedAdmit admits the fix-red card of a class-red base through the add path (Add): into
@@ -184,7 +202,7 @@ type FixRedAdd struct {
 // (tla/CoordinatorPass.tla OneFixRedPerClass). An id a landed card of an earlier red holds
 // takes the next free -<n>. An empty plan when there is nothing to admit.
 func FixRedAdmit(s *Snapshot, r FixRedAdd) Plan {
-	stream := FixRedStream(s, r.Base)
+	stream := fixRedStreamOf(s, r)
 	if stream == "" || FixRedOpen(s, r.Card.ID) != nil {
 		return Plan{}
 	}
@@ -196,6 +214,65 @@ func FixRedAdmit(s *Snapshot, r FixRedAdd) Plan {
 		c.Brief = strings.Replace(c.Brief, "RESULT: "+r.Card.ID, "RESULT: "+c.ID, 1)
 	}
 	return Add(s, add)
+}
+
+// WithFixRed is the plan of a stop with the fix-red card admitted in it (the one store step of
+// the stop that opens the base-red episode; tla/CoordinatorPass.tla FxRaise): p is the lander's
+// plan (LandBaseRefused), and when it raises the episode's judgment (NBaseRed) the card add
+// joins it, so the episode never exists without its card, nor the card without its episode. A
+// plan that raises no episode (a refusal counted, a stream refused under another's judgment)
+// admits nothing. A refusal of the add (its lint, the stream's cards) is never routed around and
+// never refuses the stop: it is said in the episode's judgment text. add nil admits nothing.
+//
+// A stream resumed with its fix-red card queued keeps its episode's judgment open until the
+// card lands (TickRuleFixRed); a stop raised on that stream again (the card did not cure the
+// base) answers that judgment as superseded, so the episode has one judgment
+// (OneJudgmentAnEpisode).
+func WithFixRed(s *Snapshot, p Plan, add *FixRedAdd) Plan {
+	if len(p.Refused) > 0 {
+		return p
+	}
+	ju, jn := -1, -1
+	for i, u := range p.Units {
+		for j, n := range u.Notes {
+			if n.Kind == Judgment && n.Type == NBaseRed {
+				ju, jn = i, j
+			}
+		}
+	}
+	if ju < 0 {
+		return p
+	}
+	st := p.Units[ju].Stream
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NBaseRed && o.Note.Stream == st && o.Key != "" {
+			u := &p.Units[ju]
+			u.Closes = append(u.Closes, o)
+			u.Notes = append(u.Notes, decided(o, RuleSaid(RuleBaseGate, "the stop is raised again; this episode's judgment is the new one's"), u.Notes[jn].Who, s.Now))
+		}
+	}
+	if add == nil {
+		return p
+	}
+	in := *add
+	in.Stream = st // the stream the stop is on
+	q := FixRedAdmit(s, in)
+	if len(q.Refused) > 0 {
+		n := &p.Units[ju].Notes[jn]
+		n.What = cutText(n.What+"; the fix-red card "+add.Card.ID+" was refused by the add: "+q.Refused[0].Why, MaxCardTextBytes)
+		return p
+	}
+	if len(q.Units) == 0 {
+		return p
+	}
+	p.on(s)
+	p.Rows = append(p.Rows, q.Rows...)
+	p.Places = append(p.Places, q.Places...)
+	p.Units = append(p.Units, q.Units...)
+	p.Notes = append(p.Notes, q.Notes...)
+	p.Said = append(p.Said, q.Said...)
+	p.Props = append(p.Props, q.Props...)
+	return p
 }
 
 // fixRedQueued is the fix-red card of the stream's base that sits queued to merge, nil when
@@ -210,11 +287,19 @@ func fixRedQueued(s *Snapshot, stream, base string) *Card {
 	return nil
 }
 
-// TickRuleFixRed is the base-gate rule's resume for a stream stopped on its base's red whose
-// fix-red card has been read ok and sits queued to merge: the stream resumes, so the lander's
-// pass lands the card first as the base's cure; the judgment of the stop is answered by the
-// rule. The card at the head it was resumed for is recorded (FieldFixRedTried), and a stop
-// that meets that pair again is left to a mind. tla/CoordinatorPass.tla FxResume.
+// TickRuleFixRed is the base-gate rule's two steps on an episode that admitted a fix-red card.
+//
+// The resume: a stream stopped on its base's red whose fix-red card has been read ok and sits
+// queued to merge is resumed, so the lander's pass lands the card first as the base's cure. The
+// episode stays open: its judgment is not answered (EpisodeOpenUntilLanding). The card at the
+// head it was resumed for is recorded (FieldFixRedTried), and a stop that meets that pair again
+// is left to a mind. tla/CoordinatorPass.tla FxResume.
+//
+// The close: a stream resumed that way whose recorded card has landed, and is not stopped again,
+// has its episode closed: the judgment is answered by the rule, the record cleared. The landing
+// is the lander's and was gated (the cure search lands a head only when its tree passes the
+// whole class gate), so the base is green on the new tip. tla/CoordinatorPass.tla FxLandCard,
+// EpisodeClosesOnLanding.
 func TickRuleFixRed(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if !r.AnswerRules || s.RuleOff(RuleBaseGate) {
@@ -226,7 +311,7 @@ func TickRuleFixRed(s *Snapshot, r TickReq) (Plan, int) {
 		if c == nil || ctl.F(FieldFixRedTried) == c.ID+"@"+c.F("head") {
 			continue
 		}
-		why := RuleSaid(RuleBaseGate, "its fix-red card "+c.ID+" is read ok and queued to merge: the stream resumes and the lander lands it first as the base's cure")
+		why := RuleSaid(RuleBaseGate, "its fix-red card "+c.ID+" is read ok and queued to merge: the stream resumes and the lander lands it first as the base's cure; the episode stays open until it lands")
 		q := Resume(s, ResumeReq{Stream: st, Did: why, Who: r.who()})
 		for _, u := range q.Units {
 			clearBasePassed(&u, ctl)
@@ -238,12 +323,29 @@ func TickRuleFixRed(s *Snapshot, r TickReq) (Plan, int) {
 					e.Set[FieldFixRedTried] = c.ID + "@" + c.F("head")
 				}
 			}
-			for _, o := range u.Closes {
-				u.Notes = append(u.Notes, decided(o, why, r.who(), s.Now))
-			}
+			u.Closes = nil // the episode's judgment is the card's landing to answer
 			p.Units = append(p.Units, u)
 		}
 		p.Refused = append(p.Refused, q.Refused...)
+	}
+	for _, o := range s.Open {
+		if o.Note.Kind != Judgment || o.Note.Type != NBaseRed {
+			continue
+		}
+		st := o.Note.Stream
+		ctl := s.StreamCtl(st)
+		if ctl == nil || ctl.F("state") == StreamStopped {
+			continue
+		}
+		id, _, ok := strings.Cut(ctl.F(FieldFixRedTried), "@")
+		if !ok || s.StateOf(id) != Landed {
+			continue
+		}
+		why := RuleSaid(RuleBaseGate, "its fix-red card "+id+" landed: the base is green on the new tip and the episode is closed")
+		p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: st,
+			Changes: []Change{change(Merge, setEntry(ctl, nil, FieldFixRedTried))},
+			Closes:  []Open{o}, Notes: []Note{decided(o, why, r.who(), s.Now)},
+			Moved: "stream " + st + ": the fix-red card " + id + " landed; the base-red episode is closed"})
 	}
 	return p, 0
 }

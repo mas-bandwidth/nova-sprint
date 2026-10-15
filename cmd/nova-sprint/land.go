@@ -367,8 +367,11 @@ type lander struct {
 	// baseCount says the last build ran the base's gate under the rule and it was red, baseWhy
 	// its finding: the refusal is counted in the store (baseRefused), never only in this
 	// process, which a hand land starts empty every run and the server every start
-	baseCount      bool
-	baseWhy        string
+	baseCount bool
+	baseWhy   string
+	// fixRed is the fix-red card the base's red gate built (landgo.go, buildFixRed), admitted in
+	// the plan of the stop that opens the base-red episode (sprint.WithFixRed).
+	fixRed         *sprint.FixRedAdd
 	baseOutsideTip string // exact externally moved commit whose gate was red
 	// baseAbsent says the last build's fetch of the base alone failed with origin's
 	// words for a ref it does not hold (notOnOrigin). The batch is the dead-base
@@ -953,9 +956,9 @@ func (l *lander) baseRefused(b landBatch, stream, why string) (bool, bool) {
 	b.Status, b.Reason = "refused", why
 	res, err := l.stepWith(r, nil, func(s *sprint.Snapshot, r sprint.MergeReq) sprint.Plan {
 		if outside {
-			return sprint.OutsideBaseRed(s, sprint.BaseGreenReq{Stream: stream, Base: b.Base, Sha: tip, Who: l.c.actor}, l.baseWhy)
+			return l.withFixRed(s, sprint.OutsideBaseRed(s, sprint.BaseGreenReq{Stream: stream, Base: b.Base, Sha: tip, Who: l.c.actor}, l.baseWhy))
 		}
-		return sprint.LandBaseRefused(s, r)
+		return l.withFixRed(s, sprint.LandBaseRefused(s, r))
 	})
 	switch {
 	case stepExit(res, err) != 0:

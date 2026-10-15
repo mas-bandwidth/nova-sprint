@@ -126,14 +126,15 @@
 \* episode (the stream stops, NBaseRed), and the SAME plan admits that class's fix-red card
 \* into the stream as a blocker, first in line. The card is dealt, worked, read ok and queued
 \* to merge; the base-gate rule resumes the stream once the card is queued (so the lander's
-\* cure search lands it first onto the red base), its landing makes the base green and closes
-\* the episode, and the stream's next landing goes on by the existing rule: no coordinator step.
+\* cure search lands it first onto the red base) but leaves the episode open: the card's landing
+\* makes the base green and closes the episode (answers its judgment), and the stream's next
+\* landing goes on by the existing rule: no coordinator step.
 \*   fxRed      the base fails its tree gate on the class (an outside event, fxReds counts them).
-\*   fxStopped  the episode is open: the stream is stopped on the base (cause base).
+\*   fxStopped  the stream is stopped on the base (cause base): the lander lands nothing of it.
 \*   fxCard     the class's fix-red card: 0 none, 1 admitted (waiting or ready), 2 dealt and
 \*              worked, 3 read ok and queued to merge, 4 landed.
 \*   fxOpen     how many fix-red cards for the class and base are open at once.
-\*   fxNamed    the episode's judgment names a card.
+\*   fxNamed    the episode is open: its judgment (NBaseRed) is open and names a card.
 \*   fxRaises   how many times this red stretch raised the episode (the first red, a second red
 \*              pass on the same class and base, a re-raise).
 \*   fxLands    ordinary landings of the stream, after the base is green.
@@ -142,6 +143,9 @@
 \*                2026-10-15): ResumesWithoutCoordinator.
 \*   "dupadmit"   every raise admits a card, not only the first (no check of an open card of the
 \*                class and base): OneFixRedPerClass.
+\*   "closeatresume" the episode's judgment is answered when the stream is resumed with the
+\*                card only queued, before the card lands (attempt 1 of the card, 2026-10-15):
+\*                EpisodeOpenUntilLanding.
 EXTENDS Integers
 
 CONSTANTS Every, MaxClock, Broken, Kind
@@ -256,15 +260,18 @@ FxDeal == /\ fxCard = 1 /\ fxCard' = 2
 FxFinish == /\ fxCard = 2 /\ fxCard' = 3
             /\ UNCHANGED <<fxRed, fxStopped, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
 
-\* The base-gate rule (rules.go ruleBaseGate) resumes the stream stopped on the base once the
-\* episode's fix-red card is queued, so the lander's pass lands it first (the base cure).
+\* The base-gate rule (base_ci.go TickRuleFixRed) resumes the stream stopped on the base once the
+\* episode's fix-red card is queued, so the lander's pass lands it first (the base cure). The
+\* episode stays open: its judgment is answered only by the card's landing (FxLandCard). The
+\* reversed witness "closeatresume" answers it here, at the queueing.
 FxResume ==
   /\ fxStopped /\ fxCard = 3
   /\ fxStopped' = FALSE
-  /\ UNCHANGED <<fxRed, fxCard, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+  /\ fxNamed' = (Broken # "closeatresume")
+  /\ UNCHANGED <<fxRed, fxCard, fxOpen, fxReds, fxRaises, fxLands>>
 
 \* The lander lands the queued card first onto the red base: the base is green on the new tip,
-\* and the episode is closed.
+\* and the episode is closed (base_ci.go TickRuleFixRed answers its judgment on the landing).
 FxLandCard ==
   /\ fxCard = 3 /\ ~fxStopped /\ fxRed
   /\ fxCard' = 4 /\ fxOpen' = fxOpen - 1 /\ fxRed' = FALSE /\ fxNamed' = FALSE
@@ -298,7 +305,12 @@ OneFixRedPerClass == fxOpen <= 1
 NamedCardIsAdmitted == fxNamed => fxCard # 0
 
 \* The card's landing closes the episode: the base is green and the stream is not stopped.
-EpisodeClosesOnLanding == (fxCard = 4 /\ ~fxRed) => ~fxStopped
+EpisodeClosesOnLanding == (fxCard = 4 /\ ~fxRed) => (~fxStopped /\ ~fxNamed)
+
+\* The episode is closed by the card's landing and by nothing before it: while the base is red
+\* and the raised episode's card is admitted, dealt or queued, its judgment stays open (the
+\* stream may be resumed meanwhile, so the lander can land the card).
+EpisodeOpenUntilLanding == (fxRed /\ fxRaises > 0 /\ fxCard \in 1..3) => fxNamed
 
 \* A class-red base returns to green and its stream lands again with no coordinator action
 \* (FxHandFix is not fair): under the fairness of the machine, the owner's workers and the

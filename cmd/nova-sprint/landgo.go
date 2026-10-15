@@ -286,6 +286,9 @@ type baseGateFail struct {
 	n    int
 	why  string
 	next time.Time
+	// fix is the fix-red card the last red run built for the class it is red on, admitted in
+	// the plan of the stop that opens the episode (sprint.WithFixRed); nil when none.
+	fix *sprint.FixRedAdd
 }
 
 // treeGateBase gates the base's tip at baseSha: "" when green, else the finding, and stop
@@ -301,6 +304,7 @@ type baseGateFail struct {
 // green one is, as before the rule: every landing on it refused until the base moves.
 func (l *lander) treeGateBase(ctx context.Context, dir, baseSha string, branch ...string) (why string, stop bool) {
 	s := l.locks()
+	l.fixRed = nil // set below by the run that built the card, or by the failure that holds it
 	s.gateMu.Lock()
 	if l.baseGateCache == nil {
 		l.baseGateCache = map[string]string{}
@@ -316,13 +320,16 @@ func (l *lander) treeGateBase(ctx context.Context, dir, baseSha string, branch .
 	f := l.baseGateFails[baseSha]
 	switch {
 	case f != nil && f.n > len(sprint.BaseGateRetries):
+		l.fixRed = f.fix
 		s.gateMu.Unlock()
 		return f.why, true
 	case f != nil && now.Before(f.next):
+		l.fixRed = f.fix
 		s.gateMu.Unlock()
 		return f.said(), false
 	}
 	s.gateMu.Unlock()
+	var fix *sprint.FixRedAdd
 	why = l.treeGate(ctx, dir, true, nil)
 	if err := ctx.Err(); err != nil {
 		return err.Error(), false // an abandoned gate never counts as a red base
@@ -340,11 +347,15 @@ func (l *lander) treeGateBase(ctx context.Context, dir, baseSha string, branch .
 		}
 		found := why
 		why = sprint.ClassGateWhy(dir, base, baseSha, why)
-		// the red gate admits the fix-red card the judgment names (tla/CoordinatorPass.tla,
-		// Kind "fixred"); a refusal of the add lint is the episode's own text
-		if note := l.admitFixRed(ctx, dir, base, baseSha, found); note != "" {
+		// the red gate builds the fix-red card the judgment names (tla/CoordinatorPass.tla,
+		// Kind "fixred"); the stop that opens the episode admits it in its own plan
+		// (sprint.WithFixRed); a refusal of the add lint is the episode's own text
+		var note string
+		fix, note = l.buildFixRed(ctx, dir, base, baseSha, found)
+		if note != "" {
 			why += "; " + note
 		}
+		l.fixRed = fix
 	}
 	off := why != "" && slices.Contains(l.offRules(ctx), sprint.RuleBaseGate)
 	s.gateMu.Lock()
@@ -358,7 +369,7 @@ func (l *lander) treeGateBase(ctx context.Context, dir, baseSha string, branch .
 		f = &baseGateFail{}
 		l.baseGateFails[baseSha] = f
 	}
-	f.n, f.why = f.n+1, why
+	f.n, f.why, f.fix = f.n+1, why, fix
 	if f.n > len(sprint.BaseGateRetries) {
 		f.why = fmt.Sprintf("the base %s failed its tree gate %d times, %s apart then %s: %s", shortSha(baseSha), f.n, sprint.BaseGateRetries[0], sprint.BaseGateRetries[1], why)
 		return f.why, true
@@ -1349,31 +1360,32 @@ func (l *lander) cureBase(ctx context.Context, dir, stream string, cards []landC
 	return i, ""
 }
 
-// admitFixRed admits the fix-red card of a class-red base (sprint.FixRedAdmit; docs/SPEC-SPRINT.md
+// buildFixRed builds the fix-red card of a class-red base (sprint.FixRedAdd; docs/SPEC-SPRINT.md
 // section 7, the base's class gate; tla/CoordinatorPass.tla, Kind "fixred", FxRaise): the
-// generator's card for the finding, its brief held to the lint any added card is held to, added
-// through the add path into the stream whose base is red, a blocker first in its line. It admits
-// nothing while a card of that class and base is open (OneFixRedPerClass), so each red gate run
-// and each re-raise of the episode is the same call. What it returns is the episode's text: ""
-// when the card is admitted or already open, else why it is not (the add lint's refusal, or the
-// step's), never routed around. With the base-gate rule off, a dry run and a twin it admits none.
-func (l *lander) admitFixRed(ctx context.Context, dir, base, baseSha, finding string) string {
+// generator's card for the finding, its brief held to the lint any added card is held to. It
+// admits nothing: the stop that opens the episode admits it, in its own plan (sprint.WithFixRed,
+// through the lander's merge step), a blocker first in the line of the stream whose base is red.
+// What it returns is the card, nil when there is none to admit (no card of a class, a stream
+// not waiting on the base, a card of the class open already: OneFixRedPerClass), and the
+// episode's text: "" when the card is built, else why it is not (the add lint's refusal, or the
+// read's), never routed around. With the base-gate rule off, a dry run and a twin it builds none.
+func (l *lander) buildFixRed(ctx context.Context, dir, base, baseSha, finding string) (*sprint.FixRedAdd, string) {
 	if l.st == nil || l.a == nil || l.dry || l.twin || slices.Contains(l.offRules(ctx), sprint.RuleBaseGate) {
-		return ""
+		return nil, ""
 	}
 	card, _, ok := sprint.ClassGateCard(dir, base, finding)
 	if !ok {
-		return ""
+		return nil, ""
 	}
 	l.a.serial.Lock()
 	s, err := l.st.Load(ctx, []string{sprint.Work, sprint.Merge}, nil)
 	l.a.serial.Unlock()
 	if err != nil {
-		return "the fix-red card " + card.ID + " was not admitted: the store read failed: " + oneline.Err(err)
+		return nil, "the fix-red card " + card.ID + " was not admitted: the store read failed: " + oneline.Err(err)
 	}
 	stream := sprint.FixRedStream(s, base)
 	if stream == "" || sprint.FixRedOpen(s, card.ID) != nil {
-		return ""
+		return nil, ""
 	}
 	repo := sprint.FixRedRepo(s, stream, base)
 	brief := cardgen.Render(cardgen.Header{Repo: repo, Base: base, Sha: baseSha}, card)
@@ -1381,28 +1393,20 @@ func (l *lander) admitFixRed(ctx context.Context, dir, base, baseSha, finding st
 	var buf strings.Builder
 	rs, code := l.a.briefRules("land", "", &l.c, &held, &buf)
 	if code != 0 {
-		return "the fix-red card " + card.ID + " was not admitted: " + oneline.Cap(strings.TrimSpace(buf.String()), 600)
+		return nil, "the fix-red card " + card.ID + " was not admitted: " + oneline.Cap(strings.TrimSpace(buf.String()), 600)
 	}
 	if cs := cardRules(brief, rs); cs.held == "" && len(cs.rules) > 0 {
 		brief += "\n\n" + strings.TrimSuffix(swarm.RulesParagraph(cs.rules), "\n")
 	}
 	add := sprint.CardAdd{ID: card.ID, File: card.ID, Brief: brief, Rules: cardRules(brief, rs).held, Base: base, Repo: repo}
 	if lintBriefFiles("land", []sprint.CardAdd{add}, rs, 0, &buf) != 0 {
-		return "the fix-red card " + card.ID + " was refused by the add lint: " + oneline.Cap(strings.TrimSpace(buf.String()), 600)
+		return nil, "the fix-red card " + card.ID + " was refused by the add lint: " + oneline.Cap(strings.TrimSpace(buf.String()), 600)
 	}
-	req := sprint.FixRedAdd{Base: base, Card: add, Who: l.c.actor}
-	step := store.AddStep(sprint.AddReq{Stream: stream, Cards: []sprint.CardAdd{add}, Who: l.c.actor})
-	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.FixRedAdmit(s, req) }
-	epoch := l.epoch
-	step.Epoch = &epoch
-	l.a.serial.Lock()
-	res, err := l.st.Run(ctx, step)
-	l.a.serial.Unlock()
-	switch {
-	case err != nil:
-		return "the fix-red card " + card.ID + " was not admitted: " + oneline.Err(err)
-	case len(res.Refused) > 0:
-		return "the fix-red card " + card.ID + " was refused by the add: " + res.Refused[0].Why
-	}
-	return ""
+	return &sprint.FixRedAdd{Base: base, Card: add, Who: l.c.actor}, ""
+}
+
+// withFixRed is a stop's plan with the fix-red card the red gate built admitted in it
+// (sprint.WithFixRed): the one store step of the stop that opens the base-red episode.
+func (l *lander) withFixRed(s *sprint.Snapshot, p sprint.Plan) sprint.Plan {
+	return sprint.WithFixRed(s, p, l.fixRed)
 }
