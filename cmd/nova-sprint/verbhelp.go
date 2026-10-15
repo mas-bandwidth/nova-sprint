@@ -77,7 +77,7 @@ var verbEffect = map[string]string{
 	"seat install":      "local write: records the seat on this machine (the sprint's server it uses, and the nova-config seat profile) beside the store login; --dry-run prints what it would write and writes nothing",
 	"seat uninstall":    "local write: unloads the retired push loop's unit, where an older build installed it, and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"needs":             "inspection: reads the waiting cards, writes nothing (needs set replaces a primary's needs or --land-after soft dependencies, where work runs in parallel and the lander lands the two in order)",
+	"needs":             "inspection: reads the waiting cards, writes nothing (needs set replaces a primary's needs or --land-after soft dependencies, where work runs in parallel and the lander lands the two in order; a held card keeps its column and its hold through a needs change, and only release moves it)",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
 	"held":              "inspection: reads the held cards of the table, writes nothing",
 	"sentinels":         "inspection: reads the sentinels and what each waits on, writes nothing",

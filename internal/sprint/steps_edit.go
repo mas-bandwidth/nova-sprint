@@ -1600,8 +1600,10 @@ type NeedsSetReq struct {
 // with a need not landed waits again at the tick; one in review takes none). A
 // rewrite that would close a cycle of needs is refused (needsCycle). A landed or
 // off-table card, a sentinel, and a need that is no primary on the table (named
-// whole) are refused, nothing written. Coordinator-only (docs/SPEC-SPRINT.md,
-// needs). It is the one writer of a primary's needs, with the brief edit.
+// whole) are refused, nothing written. A held card keeps its column, its hold stamp,
+// held_by and held_reason through the change, its needs written as asked: a needs
+// change never releases a hold, only release does (tla/Holds.tla NeedsSetH). Coordinator-only
+// (docs/SPEC-SPRINT.md, needs). It is the one writer of a primary's needs, with the brief edit.
 func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	var p Plan
 	p.on(s)
@@ -1686,6 +1688,13 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 			to = Waiting
 		}
 	}
+	// a held card keeps its column and its hold through any needs change: it moves only
+	// by the coordinator's release (releaseHeld), which checks the needs itself
+	// (tla/Holds.tla NeedsSetH, reversed witness "needssetheld")
+	held := IsHeld(c)
+	if held {
+		to = c.Col
+	}
 	set := map[string]string{"brief": brief}
 	var unset []string
 	if len(wants) > 0 {
@@ -1694,7 +1703,10 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 		unset = append(unset, "needs")
 	}
 	u := Unit{Key: c.ID, Stream: c.Row}
-	if to != c.Col {
+	if held {
+		u.Changes = []Change{change(Work, setEntry(c, set, unset...))}
+		u.Moved = fmt.Sprintf("%s needs %s stream=%s %s; held: a needs change never releases a hold: nova-sprint release %s --reason '<why>'", c.ID, orDash(set["needs"]), c.Row, c.Col, c.ID)
+	} else if to != c.Col {
 		u.Changes = []Change{change(Work, moveEntry(c, c.Row, to, set, unset...))}
 		u.Moved = fmt.Sprintf("%s needs %s: %s -> %s stream=%s", c.ID, orDash(set["needs"]), c.Col, to, c.Row)
 	} else {

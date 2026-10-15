@@ -1186,6 +1186,12 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		if why := inState(c, Ready); why != "" {
 			return why
 		}
+		// a card that carries a hold is dealt by no path: it moves only by the coordinator's
+		// release, so one that reached ready while held (a needs change before the hold was
+		// guarded) waits here (tla/Holds.tla DealH, reversed witness "dealheld")
+		if IsHeld(c) {
+			return c.ID + " is held (add --held): it is not dealt until the coordinator releases it: nova-sprint release " + c.ID + " --reason '<why>'"
+		}
 		// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
 		// needs and the deal): a ready card whose brief named a need not landed
 		// (a brief edit records them) waits here, and the tick's invariant names it.
