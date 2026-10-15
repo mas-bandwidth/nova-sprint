@@ -155,6 +155,6 @@ func TestFriendReconcileRunsEachStepUnderTheOp(t *testing.T) {
 }
 
 // A card of hers finished from the report her session wrote is her session's evidence: past
-// her pong's window, the collect makes her up on the finish for sprint.FriendFinishWindow,
+// her pong's window, the collect makes her up on the finish for the finish window,
 // her row naming it and its age, and down again after it (docs/SPEC-FRIEND.md, "Presence
 // is her session's evidence").

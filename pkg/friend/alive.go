@@ -71,7 +71,7 @@ const AliveWithin = SessionQuiet + SessionBound
 // finding of 2026-10-06: zhi's deliveries through dsh headless answered in
 // 4 s while the DeepSeek Harness app was closed, and the app check said
 // "harness not running"). A deferred turn (nothing ran) is not a turn. The
-// clock is the daemon's, set by WatchHarness; time.Now until then.
+// clock is the daemon's, set by the daemon; time.Now until then.
 type SessionTurns struct {
 	mu      sync.Mutex
 	now     func() time.Time
@@ -370,112 +370,4 @@ func (g *Gemini) Alive(context.Context) Liveness {
 // Alive: a stub delivers nothing and watches nothing.
 func (s Stub) Alive(context.Context) Liveness {
 	return cannotTell(s.Harness + " has no adapter that reads its process; the session check alone")
-}
-
-// HarnessWatch is the harness check beside the daemon's beat (SPEC-FRIEND.md,
-// the harness check). Every Every (AliveEvery when zero) it asks Alive and
-// keeps the answer on the daemon's status (Status.HarnessSeen), saying each
-// change on the record. It is advisory: it never holds the beat back and never
-// makes the friend down. Presence is the session's (SessionCheck): the finding
-// of 2026-10-05 was a friend run from the dsh command line, answering every
-// session check for three hours, held down because no app was in the process
-// table. An adapter that cannot tell changes nothing. The model is app in
-// tla/FriendPresence.tla, read by no rule (SessionShownUp; the witness
-// appholds is this finding).
-type HarnessWatch struct {
-	Alive Aliver
-	Every time.Duration
-	Now   func() time.Time
-
-	mu      sync.Mutex
-	d       *Daemon
-	beat    func(ctx context.Context, active time.Time) error
-	checked time.Time
-	live    Liveness
-	said    string // the seen state and rule the record last said: each change is said once
-	told    bool
-}
-
-// WatchHarness puts a HarnessWatch over adapter beside d's beat; call it
-// once d is built and before Run. Pass the bare adapter, the one
-// NewDeliverer returned: the gates in front of it (SessionCheck.Gate,
-// Limits.Gate) are Deliverers that answer no Alive. A nil adapter is d's
-// Deliver. Alive is optional by assertion: an adapter that is no Aliver
-// cannot tell.
-func WatchHarness(d *Daemon, adapter Deliverer) *HarnessWatch {
-	w := &HarnessWatch{d: d, beat: d.Beat, Now: d.Now}
-	if adapter == nil {
-		adapter = d.Deliver
-	}
-	if a, ok := adapter.(Aliver); ok {
-		w.Alive = a
-	}
-	if t, ok := adapter.(sessionTurner); ok {
-		t.sessionTurns().clock(func() time.Time { return w.Now() }) // the session's turns on the daemon's clock
-	}
-	d.Beat = w.Beat
-	d.HarnessStatus = w.Status
-	return w
-}
-
-// Status returns the last advisory observation without sharing the daemon's
-// mutable Status with the independent beat worker.
-func (w *HarnessWatch) Status() (string, string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return seen(w.live), w.live.Rule
-}
-
-func seen(l Liveness) string {
-	switch {
-	case !l.Known:
-		return HarnessUnknown
-	case l.Running:
-		return HarnessRunning
-	}
-	return HarnessNotSeen
-}
-
-// Beat is the daemon's beat, with the harness check beside it: it runs the
-// check when one is due, then beats, whatever the check read.
-func (w *HarnessWatch) Beat(ctx context.Context, active time.Time) error {
-	now := w.Now()
-	every := w.Every
-	if every <= 0 {
-		every = AliveEvery
-	}
-	if w.Alive != nil && (w.checked.IsZero() || now.Sub(w.checked) >= every) {
-		w.checked = now
-		live := w.Alive.Alive(ctx)
-		w.mu.Lock()
-		w.live = live
-		w.mu.Unlock()
-		if said := seen(live) + " " + live.Rule; !w.told || said != w.said {
-			w.told, w.said = true, said
-			w.record(now, seenLine(live))
-		}
-	}
-	return w.beat(ctx, active)
-}
-
-// seenLine is the record's line for what the check read, with the rule that
-// read it (alive=session|app) when there is one.
-func seenLine(l Liveness) string {
-	rule := ""
-	if l.Rule != "" {
-		rule = "alive=" + l.Rule + " "
-	}
-	switch seen(l) {
-	case HarnessRunning:
-		return "harness: running: " + rule + l.Why
-	case HarnessNotSeen:
-		return "harness: not seen: " + rule + l.Why + "; advisory: presence is the session's answer"
-	}
-	return "harness check: cannot tell: " + rule + l.Why
-}
-
-func (w *HarnessWatch) record(now time.Time, line string) {
-	if w.d.Record != nil {
-		w.d.Record(now.UTC().Format(time.RFC3339) + " " + line)
-	}
 }

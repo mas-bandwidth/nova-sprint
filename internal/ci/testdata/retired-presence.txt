@@ -1,0 +1,55 @@
+# retired-presence.txt -- the old friend presence, liveness and delivery names that
+# are retired and must not come back (the rule in
+# internal/ci/retired_presence_test.go, TestNoRetiredPresenceNameReturns).
+#
+# The owner, 2026-10-14: "continue to remove the old stuff, so they don't come
+# back, or get used when using the tool, or building new code" (v1.3.5). The one
+# truth for friend liveness is the nova-hook record and its per-minute challenge,
+# only the model proves (nova-tools cmd/nova-hook, docs/SPEC-HOOK.md); the sprint
+# reads it (internal/sprint/store/friends.go: "Only nova-hook owns liveness").
+# nova-tools holds the same rule over its own tree.
+#
+# One row per name: `<kind> <name> <what replaced it>`.
+#   ident  a Go identifier, matched as a whole word in every .go file
+#   text   a command, flag or label, matched in every text file (.go, .md, .sh,
+#          .sexp, .txt, .tsv, .yml, .json, .plist, .tla, .cfg), not followed by a
+#          letter, digit or underscore
+# History is not scanned: CHANGELOG.md, FIXES.md, docs/fixes.sexp, tmp/.
+
+# the coordinator's one-second keepalive loop and its sprint-side record
+ident PingEvery nova-hook serve's per-minute challenge
+ident RowsEvery nova-hook serve reads the hooked names each pass
+ident NewKeepalive the hook record, two misses unhook
+ident PeerUp the hook record's proven state
+ident PeerDown the hook record's unhooked state
+ident cmdFriendHealth the hook record (friend health is deleted)
+ident FriendHealth the hook record
+text nova-friend serve nova-hook serve
+
+# the coordinator's ping, the wake ping loop and the pong wait
+text nova-friend ping nova-hook serve's challenge; nova-friend reach to escalate
+text nova-friend wait-pong nova-hook friends --json; nova-friend reach
+text friend-wake-ping nova-hook serve, the hook-serve launch agent
+text --to-friends nova-hook serve challenges every hooked name
+text nova-friend beat the daemon's own beat; liveness is nova-hook's
+
+# the server's old friends rule (presence from beats, pongs and finishes)
+ident FriendEvidence the hook record: held, else proven or unhooked
+ident FriendDownWhy the hook record's reason
+ident FriendBeatBound the hook record; a beat is never liveness
+ident FriendPongWindow the hook record
+ident FriendProofLive the hook record
+ident FriendFinishWindow the hook record; work is not presence
+ident FriendDeafAfter nova-hook serve's FRIEND DOWN judgment
+ident NFriendDeaf nova-hook serve's FRIEND DOWN judgment
+ident FriendSessions the hook record
+ident CheckAnswerWithin the hook record
+ident LegacyPongGrace the hook record
+
+# the daemon copy's session-check presence, push proof and harness watch
+ident StartPresence the hook record
+ident SessionCheck the hook record; only the model's nova-hook prove proves a session
+ident PushProver the hook record (bus2:push is deleted)
+ident PushRenewEvery the hook record
+ident HarnessWatch the hook record; a process is never liveness
+ident WatchHarness the hook record; a process is never liveness

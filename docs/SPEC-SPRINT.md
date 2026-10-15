@@ -5803,15 +5803,15 @@ number on the row, and the exact verbs; its decisions are `ack` and `wait`. Its 
   or after `--started`; else the `nova-bus send --to <f> --subject present --body
   "PRESENT <time>: ..."` line to send it by hand); `4 into the sprint: <held|not held>,
   evidence <evidence>, <a take at <time>|no take within 10m0s; run: nova-sprint where, and
-  nova-friend ping --as <coordinator> --to <f> --wake>` (done when she is not held and a
+  nova-friend reach --as <coordinator> --to <f>>` (done when she is not held and a
   card on her row was taken within `TakeWithin`, 10 minutes). A new generation of her
   daemon while she is up is the same four steps under `friend <f>'s daemon started again
   at <time> (its start before: <time>), she is up, at <time>, transition <n>`.
 - a friend to `down`: `friend <f> is down (was <word>) at <time>, transition <n>: <the
   evidence she lacks>`, when her daemon's pong is all the coordinator observed `; her
   daemon answers and her session does not`, then her last beat and its age (or `it has
-  never beaten`), and the wake line: `wake her: nova-friend ping --as <coordinator> --to
-  <f> --wake; if her daemon is gone, on her machine: launchctl kickstart -k
+  never beaten`), and the wake line: `wake her: nova-friend reach --as <coordinator> --to
+  <f>; if her daemon is gone, on her machine: launchctl kickstart -k
   gui/$(id -u)/com.nova.friend-<f>; or hold her: nova-sprint hold <f> --reason <text>`.
 - a friend to `held`: `friend <f> is held (was <word>) at <time>, transition <n>: the
   coordinator's hold (<why>); her started cards finish, the rest went back to ready;
