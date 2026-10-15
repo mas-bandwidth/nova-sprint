@@ -275,7 +275,7 @@ other twenty are U164-U183 in R order. Section 7 holds their full design.
 
 | # | Question | emma | aurora | stella file | Evidence I opened | Ruling |
 |---|---|---|---|---|---|---|
-| D1 | Fixed tables for Layer 1 frames, and the fleet rule | Fixed for pong, beat, receipt, hook, presence; fixed is backward-only, so readers deploy first; adopt order gives that (U29, U129) | Fixed for pong, beat, challenge; envelope variable; "append-only" (U30) | Fixed for envelope, pong, beat, receipt, refusal; "friends adopt independently" (U35, §3b) | schema `docs/SPEC-TABLES.md` §21 (at `38af9571` and `4d9941fb`): "An older reader given a newer file refuses it by name"; §21.6 "Readers ship before writers". `ROADMAP.md` at `4d9941fb`: Go column ❌ for "Shared byte oracle and round-trip conformance" and "Hostile-input checks and negative controls"; the fixed-tables section still says the work is "not yet on main" | **Evidence settles the fact for emma**: fixed tables are backward-only, so the stella file's "adopt independently" does not hold for its fixed envelope. Two further limits emma did not state: the Go fixed-table oracle and hostile-input cells are still ❌, and readers-first holds only friend-to-server (U161). ~~Lean: variable first; promote pong/beat to fixed after C1 and R3.~~ **(rev) SETTLED by Glenn, 2026-10-15: adopt both forms in nova-tools and nova-sprint and dogfood both.** Fixed tables for records whose reader is always the same version or newer (server-owned store records); variable tables for messages an older reader may meet (every friend-exchanged frame, including pong and beat). The tracers bound it further: fixed only for small, bounded, server-owned records (done-record tracer: an unbounded record does not fit, 95 entries max under the 65,536-byte body). The mixed-version matrix that tests the rule is R6, not R3 (R3 is the cold-AI test). |
+| D1 | Fixed tables for Layer 1 frames, and the fleet rule | Fixed for pong, beat, receipt, hook, presence; fixed is backward-only, so readers deploy first; adopt order gives that (U29, U129) | Fixed for pong, beat, challenge; envelope variable; "append-only" (U30) | Fixed for envelope, pong, beat, receipt, refusal; "friends adopt independently" (U35, §3b) | schema `docs/SPEC-TABLES.md` §21 (at `38af9571` and `4d9941fb`): "An older reader given a newer file refuses it by name"; §21.6 "Readers ship before writers". `ROADMAP.md` at `4d9941fb`: Go column ❌ for "Shared byte oracle and round-trip conformance" and "Hostile-input checks and negative controls"; the fixed-tables section still says the work is "not yet on main" | **Evidence settles the fact for emma**: fixed tables are backward-only, so the stella file's "adopt independently" does not hold for its fixed envelope. **(rev 2)** Emma also raised the gate herself: her §6.2 item 1 advises against fixed tables on untrusted boundaries until Go's fixed-table oracle and hostile-input cells are green (U141); at `4d9941fb` they are still ❌ (F11). One further limit emma did not state: readers-first holds only friend-to-server (U161). ~~Lean: variable first; promote pong/beat to fixed after C1 and R3.~~ **(rev) SETTLED by Glenn, 2026-10-15: adopt both forms in nova-tools and nova-sprint and dogfood both.** Fixed tables for records whose reader is always the same version or newer (server-owned store records); variable tables for messages an older reader may meet (every friend-exchanged frame, including pong and beat). The tracers bound it further: fixed only for small, bounded, server-owned records (done-record tracer: an unbounded record does not fit, 95 entries max under the 65,536-byte body). The mixed-version matrix that tests the rule is R6, not R3 (R3 is the cold-AI test). |
 | D2 | Where `.schema` and generated Go live | schema repo `tables/<unit>`, imported via go.mod (U75) | nova-sprint `schemas/` (U73) | nova-tools, "which both repos already depend on" (U74) | nova-sprint `go.mod` requires no nova-tools module; `NOVA-TOOLS-VERSION`: seeded from v1.2.5; schema `tables/AGENTS.md` lists `tables/` as compiler corpora; `docs/CARDS.md` "Import and module setup": local module `cards`, replace directives ~~The stella premise is false (no dependency).~~ **(rev) Corrected per Glenn, 2026-10-15:** at `1ae18735` (this card's first base) the premise was false, but nova-sprint's go.mod at `v1.3/comms` `5dea8434` (`fbb51563` "delete pkg/units, import nova-tools/pkg/units") requires `github.com/mas-bandwidth/nova-tools v1.2.26-0.20261015045441-f9ef81e091a2`, and at `v1.3/comms` `dfae414b` nova-sprint imports `nova-tools/pkg/cardhdr`, `pkg/typedrec`, `hook`, `pkg/bus` and others, its own copies deleted. **The stella premise holds on the v1.3 line.** Emma's import path is unnecessary (U158): both tracers showed generated table Go imports only the standard library, so there is no schema runtime module to import and option (b) and card C3 as written are not needed. The dependency worry is settled; **the one open question is where the one definition lives.** Lean (OPINION, Glenn decides): a type read by both repos is defined once in nova-tools `schemas/<area>/`, generated into nova-tools `pkg/<area>wire/`, and nova-sprint imports it through the require it already has (no copy, no vendoring, no byte-compare sync); a record only one repo reads lives beside its one consumer (the done-record tracer's `schemas/store/` + `internal/sprint/store/donewire/` in nova-sprint). |
 | D3 | Scope of v1.3 | Four layers incl. manifest validator, worker RPC, config, cairn, hook unification; 18 wd (U115, U138) | L0-L5 with config/receipts as L4 and a delete layer; 28 wd | L0-L4, L4 "open-ended, only after 1-3 are boring" | Costs are ESTIMATED by all three; nothing to open settles it | **UNSETTLED; Glenn decides.** Lean (OPINION): Layers 0-3 and the delete layer in v1.3; Layer 4 items each come back as their own decision after Layer 3 is used for real. |
 | D4 | Card definition | Reuse upstream Card + rework fields (U52, U53) | Reuse upstream Card (U52) | New `CardFrame` (U54) | `tables/cards/Card.schema` at `4d9941fb` (79 lines) already has id, sha, tier enum, repo, base, stream, paths, needs, test, done, body, column, head, branch, extra, consumers | Evidence favours reuse: the upstream Card is a superset of `CardFrame` and has a tested facade. Lean: reuse, nova's 16 KiB bound in nova's facade (U160). |
@@ -467,9 +467,16 @@ table Result
 }
 ```
 
-  The enums carry no "unset" zero value of their own: under the absent-reads-as-zero lesson, the facade
-  refuses a Result whose `outcome` field was absent on the wire (`RESULT REFUSED: verdict missing`), which
-  needs a presence check (`?WorkVerdict`) or the schema-side `required` the pong tracer asks for.
+  **(rev 2)** Every enum does carry an unset zero: the Go emitter writes `<Enum>None = 0` before the
+  variants, which are dense from 1 (schema `4d9941fb` `internal/codegen/golang/golang.go:240-245`), the
+  table codec writes None as reference id zero (`internal/codegen/gotable/codecs.go:287, 291`), and an id
+  this build cannot name reads back as None (`codecs.go:298-306`). So under the absent-reads-as-zero lesson
+  an absent or unknown `outcome` reads as `WorkVerdictNone`, which is not a run outcome, and the facade can
+  refuse it by value with no presence bit: a non-optional `outcome` that reads None is refused
+  (`RESULT REFUSED: verdict missing`). The risk differs by type. A numeric field has no such spare value:
+  the pong's `queue = 0` is a legitimate reading, indistinguishable on the read from an absent field, so
+  only a presence check or the schema-side `required` the pong tracer asks for closes it there. Enums are
+  the case the facade can already guard; numbers are the case that needs schema help.
 
 ### 4.4 Judgments, refusals, findings (Layer 3)
 
@@ -910,6 +917,21 @@ started**, and both verdicts are cited (section 3).
 - **The ledger stays at 183 rows.** It indexes the three input files; the tracers are not inputs to the
   merge. Their findings live in section 3 and in the rows they amend (U74, U157, U158).
 - **The 24 experiments keep their ids.** Their outcomes gained the restored measures.
+
+### Second reader's fixes (attempt 2, card `schema-adoption-union-fixes.w2`)
+
+An independent reader passed the five fixes above and found two errors in this file at `22a80181`.
+
+1. **Enums do have an unset zero (section 4.3).** The first revision said the enums carry no "unset"
+   zero value. False at schema `4d9941fb`: the Go emitter writes `<Enum>None = 0`
+   (`internal/codegen/golang/golang.go:240-245`), and the table codec writes None as id zero and reads an
+   unknown id as None (`internal/codegen/gotable/codecs.go:287-306`). The argument is corrected: a
+   non-optional `WorkVerdict` can refuse None for an absent or unknown outcome, while a numeric field
+   such as the pong's `queue = 0` has a legitimate zero and needs a presence check or schema `required`.
+2. **The oracle warning is emma's (D1).** D1 said the Go fixed-table oracle and hostile-input gate was a
+   limit emma did not state. Emma's §6.2 item 1 states it explicitly (U141; `emma.md` line 792 on
+   `sprint/v1.3-research`); neither aurora nor stella raises it. D1 now credits emma and keeps U161
+   (readers-first holds only friend-to-server) as the one limit she did not state.
 
 ### Not done
 
