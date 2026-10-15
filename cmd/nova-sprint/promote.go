@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -134,7 +135,18 @@ type promoter struct {
 	// how many times it found that pull request out of the queue, neither merged nor closed.
 	queued  string
 	ejected int
+	// wake, when set, is the pending wait's event source: the store's ev:github
+	// stream, where nova-tools ci receipts write the workflow_run and check_run
+	// rows a promotion's checks arrive as. It blocks at most d for a row naming
+	// the promotion's repository and its pull request, and its channel receives
+	// when one arrives; nil (or an error) leaves the poll as the only wake.
+	wake func(ctx context.Context, d time.Duration) (<-chan struct{}, error)
 }
+
+// promoteWakes is the event source a test stands in for the pending wait, keyed
+// by the --repo-dir it runs in (as promoteForges): a clone with none reads the
+// store's ev:github stream.
+var promoteWakes sync.Map
 
 // The notes a promotion tells the coordinator (promoter.tell).
 const (
@@ -244,6 +256,14 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 	if f, ok := promoteForges.Load(*repo); ok {
 		p.forge = f.(promoteForge)
 	}
+	// the pending wait blocks on the store's ev:github stream for a row naming
+	// the pull request, bounded by --poll; --poll stays the backstop. A test
+	// stands a fake in here (promoteWakes).
+	if f, ok := promoteWakes.Load(*repo); ok {
+		p.wake = f.(func(context.Context, time.Duration) (<-chan struct{}, error))
+	} else if !*dry {
+		p.wake = a.githubEventWake(p, *c)
+	}
 	if !*dry {
 		p.red = a.redCutter(*c)
 		p.tell = func(ctx context.Context, typ, what, hint string) {
@@ -300,10 +320,36 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 		if after == nil {
 			after = time.After
 		}
-		select {
-		case <-ctx.Done():
-			return 0
-		case <-after(wait):
+		// While the promotion is pending the wait blocks on the store's ev:github
+		// stream for a row naming the pull request (its checks arrive as events),
+		// bounded by --poll. Such a row ends the wait without the poll's clock,
+		// and the loop asks gh once; --poll stays the backstop for a lost row.
+		woke := false
+		switch {
+		case out.Pending && p.wake != nil:
+			if ev, err := p.wake(ctx, wait); err == nil {
+				select {
+				case <-ctx.Done():
+					return 0
+				case <-ev:
+					woke = true
+				case <-after(wait):
+				}
+			} else {
+				select {
+				case <-ctx.Done():
+					return 0
+				case <-after(wait):
+				}
+			}
+		default:
+			select {
+			case <-ctx.Done():
+				return 0
+			case <-after(wait):
+			}
+		}
+		if !woke {
 			if a.now != nil {
 				p.now = a.now()
 			} else {
@@ -862,6 +908,71 @@ func (p *promoter) forget(ctx context.Context) error {
 func promoteKeyAbsent(err error) bool {
 	var ee *exec.ExitError
 	return errors.As(err, &ee) && ee.ExitCode() == 5
+}
+
+// githubEventWake is the pending wait's event source: the store's ev:github
+// stream (the shared ciReceiptStream), where nova-tools ci receipts write the
+// workflow_run and check_run rows a promotion's checks arrive as. It reuses the
+// ci-receipt reader (ciReceiptReader via ciRedis) the server's CI tell runs on;
+// it adds no second reader or stream constant. The returned function blocks
+// (XREAD BLOCK) from the stream's tail when the wait began for a row naming the
+// promotion's repository and its pull request (its number, or its head), at
+// most d; the channel it returns receives when such a row arrives. A backend
+// with no such stream reports an error, and the pending wait falls back to the
+// poll, which stays the backstop for a lost row.
+func (a *app) githubEventWake(p *promoter, c common) func(context.Context, time.Duration) (<-chan struct{}, error) {
+	return func(ctx context.Context, d time.Duration) (<-chan struct{}, error) {
+		st, err := a.store(c)
+		if err != nil {
+			return nil, err
+		}
+		r, ok := st.B.(*store.Redis)
+		if !ok {
+			return nil, errors.New("the event stream is the sprint Redis backend")
+		}
+		reader := ciRedis{r.C}
+		repo, err := p.forger().Repo(ctx)
+		if err != nil {
+			return nil, err
+		}
+		pr, _ := p.git(ctx, "config", "--local", "--get", "promote.pr")
+		head, _ := p.git(ctx, "config", "--local", "--get", "promote.branch")
+		ch := make(chan struct{})
+		go func() {
+			for {
+				// "$" reads only rows arriving after the wait began: the stream's
+				// tail when the wait started. A missing row is the poll's backstop.
+				rows, err := reader.BlockRead(ctx, ciReceiptStream, "$", d, 64)
+				if err != nil || len(rows) == 0 {
+					// timeout or cancel: the poll backstop holds this wait
+					return
+				}
+				for _, row := range rows {
+					if githubRowMatches(row.Fields, repo, pr, head) {
+						close(ch)
+						return
+					}
+				}
+			}
+		}()
+		return ch, nil
+	}
+}
+
+// githubRowMatches says a ci receipt row of the ev:github stream names the
+// promotion's repository and its pull request: its number, or its head (the
+// frozen branch, or a commit).
+func githubRowMatches(f map[string]string, repo, pr, head string) bool {
+	if f["repo"] == "" || sprint.RepoName(f["repo"]) != sprint.RepoName(repo) {
+		return false
+	}
+	if pr != "" && f["number"] == pr {
+		return true
+	}
+	if head != "" && (f["head"] == head || f["branch"] == head) {
+		return true
+	}
+	return false
 }
 
 func (p *promoter) rev(ctx context.Context, rev string) (string, error) {

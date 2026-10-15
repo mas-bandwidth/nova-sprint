@@ -179,6 +179,24 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			continue
 		}
 		c := s.Work.Placed(b.ID)
+		if c != nil && !IsSentinel(c) && (c.Col == Working || (c.Col == Review && c.F("result") != "failed" && !r.ByRule)) &&
+			scopeWidenedOnly(c.F("brief"), b.Brief) && b.Rules == c.F(FieldRules) &&
+			(r.Tier == "" || r.Tier == c.F(FieldTier)) && sameNeeds(Split(c.F("needs")), kept[b.ID]) {
+			if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+				p.refuse(c.ID, why)
+				continue
+			}
+			seen[b.ID] = true
+			if c.Int("attempt") > 0 {
+				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
+			}
+			said := fmt.Sprintf("scope widened in place by %s at attempt %d: %s", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
+			if r.Reason != "" {
+				said += "; reason: " + r.Reason
+			}
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": b.Brief, "why": cutText(said, MaxCardTextBytes)}))}, Moved: c.ID + " " + said})
+			continue
+		}
 		if c != nil && !IsSentinel(c) && c.Col == Working {
 			// tla/SprintTables.tla OperationalEdit: only operational text changes;
 			// preserve provenance, task/decision bounds, needs and all held evidence.
@@ -267,7 +285,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// an edit that changes only a routing line or the tier is the same task and keeps
 		// the count; a new task resets it (FieldBriefAttempt). The same text again is
 		// refused above (sameLines).
-		if c.Int("attempt") > 0 && sameTask(c.F("brief"), b.Brief) {
+		if c.Int("attempt") > 0 && (sameTask(c.F("brief"), b.Brief) || (!r.ByRule && c.F("result") != "failed" && scopeWidenedOnly(c.F("brief"), b.Brief))) {
 			p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 		} else {
 			set[FieldBriefAttempt] = c.F("attempt")
@@ -802,32 +820,33 @@ func briefChange(old, brief string) string {
 	return cutText(strings.Join(out, " | "), 1024)
 }
 
+func stripOperationalLines(text string) ([]string, map[string]int) {
+	var body []string
+	counts := make(map[string]int)
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		key := ""
+		for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
+			if strings.HasPrefix(line, candidate) {
+				key = candidate
+				break
+			}
+		}
+		if key == "" {
+			body = append(body, line)
+		} else {
+			counts[key]++
+		}
+	}
+	return body, counts
+}
+
 // operationalBriefOnly compares all non-operational lines byte for byte and in
 // order. A note is a whole, column-zero header, never a paragraph/continuation.
 // Removing a note is deliberately not the add/change exception.
 func operationalBriefOnly(old, brief string) bool {
-	strip := func(text string) (string, map[string]int) {
-		var body []string
-		counts := make(map[string]int)
-		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-			key := ""
-			for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
-				if strings.HasPrefix(line, candidate) {
-					key = candidate
-					break
-				}
-			}
-			if key == "" {
-				body = append(body, line)
-			} else {
-				counts[key]++
-			}
-		}
-		return strings.Join(body, "\n"), counts
-	}
-	a, ac := strip(old)
-	b, bc := strip(brief)
-	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") || a != b {
+	a, ac := stripOperationalLines(old)
+	b, bc := stripOperationalLines(brief)
+	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") || strings.Join(a, "\n") != strings.Join(b, "\n") {
 		return false
 	}
 	for key, count := range ac {
@@ -836,6 +855,187 @@ func operationalBriefOnly(old, brief string) bool {
 		}
 	}
 	return true
+}
+
+// scopeWidenedOnly reports whether brief refines old only by adding entries to
+// PATHS, NEW or SHARED lines (none removed, none reordered away) or adding
+// START entries marked (read), optionally alongside operational notes
+// (tla/SprintTables.tla ScopeWiden).
+func scopeWidenedOnly(old, brief string) bool {
+	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") {
+		return false
+	}
+	oldLines, ac := stripOperationalLines(old)
+	newLines, bc := stripOperationalLines(brief)
+	for key, count := range ac {
+		if bc[key] < count {
+			return false
+		}
+	}
+	if len(oldLines) == 0 || len(newLines) == 0 || oldLines[0] != newLines[0] {
+		return false
+	}
+	colZeroHeader := func(line string) (string, string, bool) {
+		if line != strings.TrimLeft(line, " \t") {
+			return "", "", false
+		}
+		return cardhdr.KeyValue(line)
+	}
+	oldHasKey := map[string]bool{}
+	for idx := 1; idx < len(oldLines); idx++ {
+		if strings.TrimSpace(oldLines[idx]) == "" {
+			continue
+		}
+		k, _, ok := colZeroHeader(oldLines[idx])
+		if !ok {
+			break
+		}
+		oldHasKey[k] = true
+	}
+	insertedKey := map[string]bool{}
+	inHeader := true
+	widened := false
+	i, j := 1, 1
+	for i < len(oldLines) || j < len(newLines) {
+		if !inHeader {
+			if i >= len(oldLines) || j >= len(newLines) || oldLines[i] != newLines[j] {
+				return false
+			}
+			i++
+			j++
+			continue
+		}
+		if i < len(oldLines) && j < len(newLines) && oldLines[i] == newLines[j] {
+			if strings.TrimSpace(oldLines[i]) != "" {
+				if _, _, ok := colZeroHeader(oldLines[i]); !ok {
+					inHeader = false
+				}
+			}
+			i++
+			j++
+			continue
+		}
+		if i < len(oldLines) && j < len(newLines) {
+			kOld, vOld, okOld := colZeroHeader(oldLines[i])
+			kNew, vNew, okNew := colZeroHeader(newLines[j])
+			if okOld && okNew && kOld == kNew {
+				var w, ok bool
+				switch kOld {
+				case "PATHS", "NEW", "SHARED":
+					w, ok = scopeListWidened(vOld, vNew)
+				case "START":
+					w, ok = startListWidened(vOld, vNew)
+				}
+				if !ok {
+					return false
+				}
+				widened = widened || w
+				i++
+				j++
+				continue
+			}
+		}
+		if j < len(newLines) && oldHasKey["PATHS"] {
+			kNew, vNew, okNew := colZeroHeader(newLines[j])
+			if okNew && !oldHasKey[kNew] && !insertedKey[kNew] {
+				var w, ok bool
+				switch kNew {
+				case "NEW", "SHARED":
+					w, ok = scopeListWidened("none", vNew)
+				case "START":
+					w, ok = startListWidened("none", vNew)
+				}
+				if ok && w {
+					insertedKey[kNew] = true
+					widened = true
+					j++
+					continue
+				}
+			}
+		}
+		return false
+	}
+	return widened
+}
+
+func scopeEntries(v string) ([]string, bool) {
+	t := strings.TrimSpace(v)
+	if t == "" || t == "-" || strings.EqualFold(t, "none") {
+		return nil, true
+	}
+	var out []string
+	for _, raw := range strings.Split(v, ",") {
+		g := strings.TrimSpace(raw)
+		if g == "" || g == "-" || strings.EqualFold(g, "none") || slices.Contains(out, g) {
+			return nil, false
+		}
+		out = append(out, g)
+	}
+	return out, true
+}
+
+func scopeListWidened(vOld, vNew string) (widened, ok bool) {
+	oldItems, ok := scopeEntries(vOld)
+	if !ok {
+		return false, false
+	}
+	newItems, ok := scopeEntries(vNew)
+	if !ok || len(newItems) < len(oldItems) {
+		return false, false
+	}
+	idx := 0
+	var added []string
+	for _, item := range newItems {
+		if idx < len(oldItems) && item == oldItems[idx] {
+			idx++
+		} else {
+			added = append(added, item)
+		}
+	}
+	if idx != len(oldItems) {
+		return false, false
+	}
+	if len(added) == 0 {
+		return false, true
+	}
+	w := PathsWidened("PATHS: "+strings.Join(oldItems, ","), added, "")
+	return strings.HasPrefix(w, "PATHS: ") && w != "PATHS: ", true
+}
+
+func startListWidened(vOld, vNew string) (widened, ok bool) {
+	oldItems, ok := scopeEntries(vOld)
+	if !ok {
+		return false, false
+	}
+	newItems, ok := scopeEntries(vNew)
+	if !ok || len(newItems) < len(oldItems) {
+		return false, false
+	}
+	idx := 0
+	var added []string
+	for _, item := range newItems {
+		if idx < len(oldItems) && item == oldItems[idx] {
+			idx++
+		} else {
+			if !isReadStartEntry(item) {
+				return false, false
+			}
+			added = append(added, item)
+		}
+	}
+	if idx != len(oldItems) {
+		return false, false
+	}
+	return len(added) > 0, true
+}
+
+func isReadStartEntry(item string) bool {
+	const suffix = "(read)"
+	if len(item) <= len(suffix) || !strings.EqualFold(item[len(item)-len(suffix):], suffix) {
+		return false
+	}
+	path := strings.TrimSpace(item[:len(item)-len(suffix)])
+	return path != "" && !strings.ContainsAny(path, "() \t")
 }
 
 // sameLines says two briefs hold the same lines, trimmed, blank lines left out, in any
