@@ -663,7 +663,8 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			continue
 		}
 		if r.Return {
-			// A return is not a read (tla/DirtyTick.tla, handback and
+			// A return is not a read (tla/DirtyTick.tla, handback, envret
+			// (a read's environment return, EnvNeverRedoes) and
 			// JudgedOnlyAfterTheBound): the card goes back to asked on its
 			// own row, stamped returned, so its reader is not counted as
 			// having read the attempt; the next ask places it again (Ask) and
@@ -685,12 +686,12 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			returns := c.Int(FieldReasked) + 1
 			run := nextTake(c, FieldReadTake)
 			rec := readCostRecord(s, c, r.Usage, c.F("asked"), cmp.Or(c.F("begun"), stamp(s.Now)))
-			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) {
+			if ended, code, env := ReadEnvEnd(r.Reason, r.Exit, c.F("head"), pr.F("head")); env {
 				// an environment exit is no read and no return of the reader's own: back in
 				// asked, stamped returned, its re-asks NOT counted, the ended word and the
 				// harness tail on the card and the run's record on the primary with that end
 				// (docs/SPEC-SPRINT.md, "An environment exit")
-				er := EnvironmentExitRecord(r.Exit, r.Harness)
+				er := EnvExitRecord{Ended: ended, Harness: EnvironmentExitRecord(r.Exit, r.Harness).Harness}
 				fields, unset := er.envExitFields()
 				set := map[string]string{FieldReadTake + itoa(run): rec, FieldReturned: stamp(s.Now)}
 				maps.Copy(set, fields)
@@ -705,7 +706,7 @@ func Read(s *Snapshot, r ReadReq) Plan {
 					if base == "" {
 						base = pr.F(FieldEnvExitReads)
 					}
-					history, capped = envExitCountFrom(base, readAttempt(c), c.Row, r.Exit)
+					history, capped = envExitCountFrom(base, readAttempt(c), c.Row, code)
 					costs[pr.ID][FieldEnvExitReads] = history
 				}
 				if capped {
