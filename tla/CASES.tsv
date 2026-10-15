@@ -726,3 +726,5 @@ MCLandBoundConflictCarry.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	require
 MCLandBoundBrokenConflictIsBriefDefect.cfg	MCLandBound.tla	invariant	ConflictBoundCarries	ignore-terminal	land	required	-
 MCCIReceiptTell.cfg	MCCIReceiptTell.tla	pass	-	ignore-terminal	cireceipttell	required	-
 MCCIReceiptTellBrokenCursorFirst.cfg	MCCIReceiptTell.tla	temporal	EveryReceiptIsPushed	ignore-terminal	cireceipttell	required	-
+MCSprintTablesBrokenScopeBounce.cfg	MCSprintTables.tla	action	ScopeWidenPreservesHead	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenScopeRedeal.cfg	MCSprintTables.tla	action	ScopeWidenKeepsReview	ignore-terminal	sprinttables	required	-
