@@ -375,10 +375,13 @@ daemon beating, was dealt 18 cards twice; `TestTheDealSkipsADownRowAndHonoursThe
 
 **The friends' rule: three states** (the owner, 2026-10-14, v1.3.6: "there is only up,
 down, held from the sprint POV"; "being marked as 'stalled' should be removed"). A
-friend's status is `up`, `down` or `held` and nothing else (`sprint.FriendStates`, written
-by `sprint.FriendHookStatus` alone). `up` and `down` come only from the nova-hook record,
-the one truth of whether a friend is there (nova-tools `hook`; `store.ReadFriendHooks`):
-proven with no down reason is `up`, anything else (no record, unhooked, expired, partial,
+friend's status is `up`, `down` or `held` and nothing else (`sprint.FriendStates`). For a
+friend with a live session, the status is written by `sprint.FriendHookStatus` alone, and
+`up` and `down` come only from the nova-hook record, the one truth of whether she is
+there (nova-tools `hook`; `store.ReadFriendHooks`). The one exception is a one-shot friend
+(`session=one-shot`, a member lane, above): her status is her member's beat by the fleet's
+rule (`PresenceStatus`), the same three words, and no hook record is read for her. For a
+live session, proven with no down reason is `up`, anything else (no record, unhooked, expired, partial,
 live but unproven, or a down reason) is `down`. `held` is only the coordinator's explicit
 hold (`nova-sprint friend down` or `hold`, released by `friend up` or `unhold`), and a
 held friend whose hook record is not proven reads `down`. A down or held friend is not
