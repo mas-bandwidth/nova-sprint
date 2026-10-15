@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
@@ -149,7 +149,7 @@ func writeRoadmap(path string, cards []*sprint.Card, date string) error {
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
-	decoded, err := roadmapdoc.Decode(path, raw)
+	decoded, err := roadmap.Decode(path, raw)
 	if err != nil {
 		return fmt.Errorf("%s does not decode: %w", path, err)
 	}
@@ -174,7 +174,7 @@ func writeRoadmap(path string, cards []*sprint.Card, date string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := roadmapdoc.Decode(path, []byte(next)); err != nil {
+	if _, err := roadmap.Decode(path, []byte(next)); err != nil {
 		return fmt.Errorf("the appended roadmap data does not decode: %w", err)
 	}
 	if err := os.WriteFile(path, []byte(next), 0o644); err != nil {

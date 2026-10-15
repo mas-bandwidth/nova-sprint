@@ -5,15 +5,17 @@ FIXES.md from them in the same step, so neither the data nor the pages are
 edited by hand and no GitHub call is made per entry.
 
 It writes no reader and no renderer of its own. The files are read through
-internal/worklang (data, never evaluated), whose forms carry their byte offsets,
+nova-tools pkg/sexp (data, never evaluated), whose forms carry their byte offsets,
 and an edit splices only the bytes of the records it changes, so comments
 (a removed record's own trailing comment aside), spacing and every other record
 stay as they were. A move between the files carries every field; one the target
 shape has no key for is kept under :kept (carry.go). Every edit is decoded again
-through internal/roadmapdoc, the shape the pages are rendered from, before any
+through nova-tools pkg/roadmap (imported as roadmapdoc), the shape the pages are
+rendered from, before any
 byte is written; an edit roadmapdoc refuses is refused whole, nothing written.
 The pages are roadmapdoc.Render and roadmapdoc.RenderFixes of the saved data,
-the bytes tools/roadmap writes and TestRoadmapIsGeneratedFromTheSexp holds.
+the bytes nova-tools' tools/roadmap writes (`make roadmap`, `go tool roadmap`)
+and TestRoadmapIsGeneratedFromTheSexp (generated_test.go) holds.
 
 An entry's life (tla/RoadmapEntry.tla): a roadmap item under a group is todo; a
 fix in a point release is open (planned or in-progress); done is a roadmap item
@@ -35,8 +37,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	roadmapdoc "github.com/mas-bandwidth/nova-tools/pkg/roadmap"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
@@ -689,11 +691,11 @@ func RenderFile(in, out, source string) (kind string, items int, err error) {
 	if err != nil {
 		return "", 0, err
 	}
-	top, err := worklang.Read(in, raw, roadmapdoc.Limits)
+	top, err := sexp.Read(in, raw, roadmapdoc.Limits)
 	if err != nil {
 		return "", 0, err
 	}
-	if top.Kind != worklang.List || len(top.List) == 0 || top.List[0].Kind != worklang.Symbol {
+	if top.Kind != sexp.List || len(top.List) == 0 || top.List[0].Kind != sexp.Symbol {
 		return "", 0, fmt.Errorf("%s: want one (roadmap \"v1\" ...) or (fixes \"v1\" ...) form", in)
 	}
 	var page string

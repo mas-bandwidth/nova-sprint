@@ -4,43 +4,43 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	roadmapdoc "github.com/mas-bandwidth/nova-tools/pkg/roadmap"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 )
 
-// The edits below read the file through worklang, whose forms carry each one's
+// The edits below read the file through nova-tools pkg/sexp, whose forms carry each one's
 // first byte and the byte past its last, and splice only the bytes of the
 // records they change. Every byte outside those spans is kept.
 
 // top reads f's one form.
-func top(f *file) (worklang.Form, error) {
-	return worklang.Read(f.rel, f.data, roadmapdoc.Limits)
+func top(f *file) (sexp.Form, error) {
+	return sexp.Read(f.rel, f.data, roadmapdoc.Limits)
 }
 
 // value returns the value form of :key in a record or the top form, and its
 // index in the record's list; -1 when the key is absent.
-func value(rec worklang.Form, key string) (worklang.Form, int) {
+func value(rec sexp.Form, key string) (sexp.Form, int) {
 	for i := 1; i+1 < len(rec.List); i++ {
-		if rec.List[i].Kind == worklang.Keyword && rec.List[i].Value == key {
+		if rec.List[i].Kind == sexp.Keyword && rec.List[i].Value == key {
 			return rec.List[i+1], i + 1
 		}
 	}
-	return worklang.Form{}, -1
+	return sexp.Form{}, -1
 }
 
 // record finds the record whose identity is id in the list :list holds, and
 // its index in that list.
-func record(t worklang.Form, list, id string) (worklang.Form, worklang.Form, int, error) {
+func record(t sexp.Form, list, id string) (sexp.Form, sexp.Form, int, error) {
 	l, at := value(t, list)
-	if at < 0 || l.Kind != worklang.List {
-		return worklang.Form{}, worklang.Form{}, -1, fmt.Errorf("no :%s list to find %s in", list, id)
+	if at < 0 || l.Kind != sexp.List {
+		return sexp.Form{}, sexp.Form{}, -1, fmt.Errorf("no :%s list to find %s in", list, id)
 	}
 	for i, r := range l.List {
-		if r.Kind == worklang.List && len(r.List) > 1 && r.List[1].Kind == worklang.String && r.List[1].Value == id {
+		if r.Kind == sexp.List && len(r.List) > 1 && r.List[1].Kind == sexp.String && r.List[1].Value == id {
 			return l, r, i, nil
 		}
 	}
-	return worklang.Form{}, worklang.Form{}, -1, fmt.Errorf("unknown id %q in :%s", id, list)
+	return sexp.Form{}, sexp.Form{}, -1, fmt.Errorf("unknown id %q in :%s", id, list)
 }
 
 func (f *file) splice(start, end int, with string) {
@@ -66,7 +66,7 @@ func (s *Set) appendRecord(f *file, list, rec string) error {
 	switch {
 	case at < 0:
 		f.splice(t.End-1, t.End-1, "\n :"+list+"\n ("+rec+")")
-	case l.Kind != worklang.List:
+	case l.Kind != sexp.List:
 		return fmt.Errorf("%s: :%s is not a list", f.rel, list)
 	case len(l.List) == 0:
 		f.splice(l.Offset, l.End, "("+rec+")")
@@ -178,9 +178,9 @@ func (s *Set) retitle(f *file, list, id, title string) error {
 	return s.addKept(f, list, id, key, was)
 }
 
-func hasKeptKey(k worklang.Form, key string) bool {
+func hasKeptKey(k sexp.Form, key string) bool {
 	for _, x := range k.List {
-		if x.Kind == worklang.Keyword && x.Value == key {
+		if x.Kind == sexp.Keyword && x.Value == key {
 			return true
 		}
 	}
@@ -224,7 +224,7 @@ func (s *Set) setKey(f *file, list, id, key, v string) error {
 	return nil
 }
 
-// quote writes s as a worklang string: a double quote and a backslash are
+// quote writes s as an s-expression string: a double quote and a backslash are
 // escaped, nothing else.
 func quote(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`

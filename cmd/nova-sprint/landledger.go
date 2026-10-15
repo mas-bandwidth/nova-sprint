@@ -67,13 +67,13 @@ var landLedgers = []landLedger{{
 	owns:  func(p string) bool { return p == "FIXES.md" },
 	roots: []string{"FIXES.md"},
 	tests: "TestFixesIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
+	run:   []string{"go", "tool", "roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
 }, {
 	// the roadmap's page, owned by TestRoadmapIsGeneratedFromTheSexp, the same way
 	owns:  func(p string) bool { return p == "ROADMAP.md" },
 	roots: []string{"ROADMAP.md"},
 	tests: "TestRoadmapIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
+	run:   []string{"go", "tool", "roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
 }}
 
 // landRegenPasses bounds the update runs of one resolution: an update that writes

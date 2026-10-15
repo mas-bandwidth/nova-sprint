@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
@@ -30,24 +30,24 @@ import (
 // (its first two atoms, "<kind>:<id>"), each as a canonical printed value, so a record
 // compares across the sides of a merge. An id met twice is an error.
 func evidenceEntries(file string, data []byte) (map[string]string, error) {
-	top, err := worklang.Read(file, data, landDataLimits)
+	top, err := sexp.Read(file, data, landDataLimits)
 	if err != nil {
 		return nil, err
 	}
-	if top.Kind != worklang.List || len(top.List) < 1 || top.List[0].Kind != worklang.Symbol || top.List[0].Value != "evidence" {
+	if top.Kind != sexp.List || len(top.List) < 1 || top.List[0].Kind != sexp.Symbol || top.List[0].Value != "evidence" {
 		return nil, errors.New("want one (evidence \"v1\" ...) form")
 	}
 	out := map[string]string{}
 	for i, f := range top.List {
-		if f.Kind != worklang.Keyword || f.Value != "items" || i+1 >= len(top.List) {
+		if f.Kind != sexp.Keyword || f.Value != "items" || i+1 >= len(top.List) {
 			continue
 		}
 		items := top.List[i+1]
-		if items.Kind != worklang.List {
+		if items.Kind != sexp.List {
 			return nil, errors.New(":items is not a list")
 		}
 		for _, it := range items.List {
-			if it.Kind != worklang.List || len(it.List) < 2 || it.List[1].Kind != worklang.String {
+			if it.Kind != sexp.List || len(it.List) < 2 || it.List[1].Kind != sexp.String {
 				return nil, errors.New("an entry is not (<kind> <id> ...)")
 			}
 			key := it.List[0].Value + ":" + it.List[1].Value
@@ -60,20 +60,20 @@ func evidenceEntries(file string, data []byte) (map[string]string, error) {
 	return out, nil
 }
 
-// formString is a worklang form as a canonical, comparable string (offsets dropped).
-func formString(f worklang.Form) string {
+// formString is an s-expression form as a canonical, comparable string (offsets dropped).
+func formString(f sexp.Form) string {
 	switch f.Kind {
-	case worklang.List:
+	case sexp.List:
 		parts := make([]string, len(f.List))
 		for i, x := range f.List {
 			parts[i] = formString(x)
 		}
 		return "(" + strings.Join(parts, " ") + ")"
-	case worklang.String:
+	case sexp.String:
 		return strconv.Quote(f.Value)
-	case worklang.Keyword:
+	case sexp.Keyword:
 		return ":" + f.Value
-	case worklang.Integer:
+	case sexp.Integer:
 		return strconv.FormatInt(f.Int, 10)
 	default:
 		return f.Value
@@ -90,14 +90,14 @@ func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
 }
 
 // landDataLimits is the bound on a lander decode of the roadmap data (docs/fixes.sexp,
-// docs/roadmap.sexp) and the evidence ledgers: the same shape as roadmapdoc.Limits with
+// docs/roadmap.sexp) and the evidence ledgers: the same shape as roadmap.Limits with
 // room for a repository whose data stands past 512 KiB (the schema repository's
 // docs/roadmap.sexp is 1,081,875 bytes), so the lander merges that data instead of
 // refusing the card at the tip, round after round (tla/LandLedgers.tla, ResolveLand).
 // Data past it is still refused whole, never truncated. It bounds the lander's own
-// decode only: roadmapdoc.Limits and every other caller (the generators, nova-work)
+// decode only: roadmap.Limits and every other caller (the generators, nova-work)
 // keep theirs.
-var landDataLimits = worklang.Limits{MaxBytes: 16 << 20, MaxNodes: 16 << 20, MaxDepth: roadmapdoc.Limits.MaxDepth}
+var landDataLimits = sexp.Limits{MaxBytes: 16 << 20, MaxNodes: 16 << 20, MaxDepth: roadmap.Limits.MaxDepth}
 
 // entriesMerged holds the merged data to what the two sides did, entry by entry: an entry
 // all three share is the side's that changed it (both changing it differently is a
@@ -256,19 +256,19 @@ func unionEvidenceSexpAdd(file string, ours, theirs []byte) ([]byte, error) {
 // bytes in file order, and the footer (everything after the last entry, the closing
 // parentheses included).
 func evidenceParts(file string, data []byte) (header []byte, entries [][]byte, footer []byte, err error) {
-	top, err := worklang.Read(file, data, landDataLimits)
+	top, err := sexp.Read(file, data, landDataLimits)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if top.Kind != worklang.List || len(top.List) < 1 || top.List[0].Kind != worklang.Symbol || top.List[0].Value != "evidence" {
+	if top.Kind != sexp.List || len(top.List) < 1 || top.List[0].Kind != sexp.Symbol || top.List[0].Value != "evidence" {
 		return nil, nil, nil, errors.New("want one (evidence \"v1\" ...) form")
 	}
 	for i, f := range top.List {
-		if f.Kind != worklang.Keyword || f.Value != "items" || i+1 >= len(top.List) {
+		if f.Kind != sexp.Keyword || f.Value != "items" || i+1 >= len(top.List) {
 			continue
 		}
 		items := top.List[i+1]
-		if items.Kind != worklang.List || len(items.List) == 0 {
+		if items.Kind != sexp.List || len(items.List) == 0 {
 			return nil, nil, nil, errors.New(":items is not a non-empty list")
 		}
 		header = data[:items.List[0].Offset]
