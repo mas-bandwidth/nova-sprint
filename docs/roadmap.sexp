@@ -2295,4 +2295,12 @@
    :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
    :date "2026-10-15"
    :release "v1.5"
-   :kept (:sprint-card "an-ended-read-record-never-blocks-ask" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "a70d422b59ebb92c138c9541a94b111b3b7ce960" :pushed-branch "sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21"))))
+   :kept (:sprint-card "an-ended-read-record-never-blocks-ask" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "a70d422b59ebb92c138c9541a94b111b3b7ce960" :pushed-branch "sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21"))
+  (item "reads-per-tier-are-configurable-one-friend-reader-at-heavy-and-frontier" :group "sprint" :area "nova-sprint"
+   :title "Reads per tier are configurable: one friend reader at heavy and frontier"
+   :text "The reads a card needs are set per tier (nova-sprint set --reads <tier>=<n>, or a stream setting), and heavy and frontier cards need exactly one friend read to land. Today the count per tier is fixed in the rules, and with few friends up nothing lands. Source: Glenn 2026-10-15 ~21:30Z: \"Please reduce to 1 reader only. Otherwise nothing lands.\" and \"(1 friend reader at heavy, frontier...)\" and \"if you can't do it per-tier yet, don't worry.\""
+   :why "Kind: bug. Nothing lands at heavy and frontier while few friends are up."
+   :date "2026-10-15"
+   :release "v1.5"
+   :origin "Glenn, 2026-10-15 ~21:30Z"
+   :kept (:kind "bug"))))

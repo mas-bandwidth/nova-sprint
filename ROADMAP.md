@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (208)
+- [The sprint system](#the-sprint-system) (209)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
@@ -1723,6 +1723,16 @@ Why it waits: New capability.
 Target: v1.3
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
+
+### Reads per tier are configurable: one friend reader at heavy and frontier
+
+The reads a card needs are set per tier (nova-sprint set --reads <tier>=<n>, or a stream setting), and heavy and frontier cards need exactly one friend read to land. Today the count per tier is fixed in the rules, and with few friends up nothing lands. Source: Glenn 2026-10-15 ~21:30Z: "Please reduce to 1 reader only. Otherwise nothing lands." and "(1 friend reader at heavy, frontier...)" and "if you can't do it per-tier yet, don't worry."
+
+Why it waits: Kind: bug. Nothing lands at heavy and frontier while few friends are up.
+
+Target: v1.5
+
+From: Glenn, 2026-10-15 ~21:30Z
 
 ## Setup, release and operations
 
