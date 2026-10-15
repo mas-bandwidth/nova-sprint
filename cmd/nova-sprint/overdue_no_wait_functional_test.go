@@ -37,7 +37,8 @@ func TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore(t *testing.T) {
 	require.NoError(t, fn.Load(context.Background(), c))
 	home := t.TempDir()
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
-		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
+		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		busRedisEnv: "bus.test:6379"} // Identity resolution only; the bus recorder below never dials it.
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
 	a.home = func() (string, error) { return home, nil }

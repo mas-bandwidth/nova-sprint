@@ -58,7 +58,8 @@ func newUJRig(t *testing.T) *ujRig {
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(r.ctx, admin))
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": r.addr, "NOVA_SPRINT_ACTOR": ujSeat, "HOME": home, "XDG_CONFIG_HOME": home}
+	env := map[string]string{"NOVA_SPRINT_REDIS": r.addr, "NOVA_SPRINT_ACTOR": ujSeat, "HOME": home, "XDG_CONFIG_HOME": home,
+		busRedisEnv: "bus.test:6379"} // Identity resolution only; the bus recorder below never dials it.
 	r.a = newApp(func(k string) string { return env[k] })
 	// The hook and sprint records share only this rig's private Redis connection.
 	// No hook record means down; the independently stored sprint hold still applies.
