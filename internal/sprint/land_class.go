@@ -137,8 +137,22 @@ func UnitPackages(module string, changed []string) []string {
 
 // ClassGateWhy names the first red run with the repair card the generator
 // stamps for it. The existing base-gate rule stores this on its one judgment.
-// This is the metadata half of SPEC-SPRINT's base class gate, not another gate.
+// This is the metadata half of SPEC-SPRINT's base class gate: the card it names is
+// admitted by FixRedAdmit (base_ci.go), not left a name (tla/CoordinatorPass.tla,
+// Kind "fixred").
 func ClassGateWhy(dir, base, sha, why string) string {
+	card, class, ok := ClassGateCard(dir, base, why)
+	if !ok {
+		return why
+	}
+	return cutText(fmt.Sprintf("the base %s at %s is red on its class %s; fix-red card %s (TEST: %s); %s", base, sha[:min(12, len(sha))], class.Name, card.ID, card.Test, why), MaxCardTextBytes)
+}
+
+// ClassGateCard is the fix-red card the generator stamps for a red tree gate run (why, the
+// gate's finding): the class the run is attributed to and cardgen.PlanClassRed's card for it,
+// its PATHS the files the finding names that dir holds. false when the finding names no
+// class of BaseClasses.
+func ClassGateCard(dir, base, why string) (cardgen.Card, Class, bool) {
 	var class Class
 	for _, c := range BaseClasses {
 		if strings.HasPrefix(why, strings.Join(c.Run, " ")+":") || c.Name == "class-tests" && strings.HasPrefix(why, strings.Join(c.Run, " ")+" ") {
@@ -147,7 +161,7 @@ func ClassGateWhy(dir, base, sha, why string) string {
 		}
 	}
 	if class.Name == "" {
-		return why
+		return cardgen.Card{}, Class{}, false
 	}
 	test := class.Test
 	if m := classFailRE.FindStringSubmatch(why); m != nil {
@@ -169,6 +183,5 @@ func ClassGateWhy(dir, base, sha, why string) string {
 			files = append(files, f)
 		}
 	}
-	card := cardgen.PlanClassRed(cardgen.ClassRed{Class: class.Name, Run: strings.Join(class.Run, " "), Test: test, Files: files, Finding: why}, base, "")
-	return cutText(fmt.Sprintf("the base %s at %s is red on its class %s; fix-red card %s (TEST: %s); %s", base, sha[:min(12, len(sha))], class.Name, card.ID, card.Test, why), MaxCardTextBytes)
+	return cardgen.PlanClassRed(cardgen.ClassRed{Class: class.Name, Run: strings.Join(class.Run, " "), Test: test, Files: files, Finding: why}, base, ""), class, true
 }

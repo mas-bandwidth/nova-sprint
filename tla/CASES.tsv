@@ -717,3 +717,6 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCCoordinatorPassFixRed.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenFixRedIdle.cfg	MCCoordinatorPass.tla	temporal	ResumesWithoutCoordinator	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenFixRedDup.cfg	MCCoordinatorPass.tla	invariant	OneFixRedPerClass	ignore-terminal	coordinatorpass	required	-

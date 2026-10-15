@@ -120,6 +120,28 @@
 \*                say nothing of it, instead of carrying it: UnknownCarried.
 \*   "waitforever" the wait never expires its hold: a condition that still holds at its
 \*                review time is never raised again: WaitedRaisedAgainOnExpiry.
+\* With Kind = "fixred" (internal/sprint steps_merge.go baseGateStep, rules.go ruleBaseGate,
+\* cardgen.PlanClassRed; the owner, 2026-10-15: the space bases went red on gofmt and vet and each
+\* waited for the coordinator): a base red on one class of the tree gate opens the base-red
+\* episode (the stream stops, NBaseRed), and the SAME plan admits that class's fix-red card
+\* into the stream as a blocker, first in line. The card is dealt, worked, read ok and queued
+\* to merge; the base-gate rule resumes the stream once the card is queued (so the lander's
+\* cure search lands it first onto the red base), its landing makes the base green and closes
+\* the episode, and the stream's next landing goes on by the existing rule: no coordinator step.
+\*   fxRed      the base fails its tree gate on the class (an outside event, fxReds counts them).
+\*   fxStopped  the episode is open: the stream is stopped on the base (cause base).
+\*   fxCard     the class's fix-red card: 0 none, 1 admitted (waiting or ready), 2 dealt and
+\*              worked, 3 read ok and queued to merge, 4 landed.
+\*   fxOpen     how many fix-red cards for the class and base are open at once.
+\*   fxNamed    the episode's judgment names a card.
+\*   fxRaises   how many times this red stretch raised the episode (the first red, a second red
+\*              pass on the same class and base, a re-raise).
+\*   fxLands    ordinary landings of the stream, after the base is green.
+\* Reversed witnesses:
+\*   "fixredidle" the episode names the card in its judgment and admits nothing (the code before
+\*                2026-10-15): ResumesWithoutCoordinator.
+\*   "dupadmit"   every raise admits a card, not only the first (no check of an open card of the
+\*                class and base): OneFixRedPerClass.
 EXTENDS Integers
 
 CONSTANTS Every, MaxClock, Broken, Kind
@@ -139,7 +161,19 @@ VARIABLES baseTip, landedTip, judgedTip, baseRed, outsideOpen, triedUngated,
           triedRed
 outsideVars == <<baseTip, landedTip, judgedTip, baseRed, outsideOpen,
                 triedUngated, triedRed>>
-vars == <<episodeVars, outsideVars>>
+
+\* The fix-red admission (Kind = "fixred"): the base-red episode that admits one card.
+VARIABLES fxRed, fxStopped, fxCard, fxOpen, fxNamed, fxReds, fxRaises, fxLands
+fixVars == <<fxRed, fxStopped, fxCard, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+vars == <<holds, seen, open, acked, first, again, clk, written, pushes,
+          marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
+          quiet, sawQuiet,
+          baseTip, landedTip, judgedTip, baseRed, outsideOpen, triedUngated, triedRed,
+          fxRed, fxStopped, fxCard, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+FixInit ==
+  /\ fxRed = FALSE /\ fxStopped = FALSE /\ fxCard = 0 /\ fxOpen = 0
+  /\ fxNamed = FALSE /\ fxReds = 0 /\ fxRaises = 0 /\ fxLands = 0
+
 OutsideInit ==
   /\ baseTip = 0
   /\ landedTip \in (IF Kind = "outside" /\ Broken = "none" THEN {-1, 0} ELSE {0})
@@ -184,6 +218,94 @@ NoLandingOnRedTip == ~triedRed
 KnownLanderTipJudged == landedTip = baseTip => judgedTip = baseTip
 OutsideRedSignalled == (judgedTip = baseTip /\ baseRed) => outsideOpen
 
+\* ---------------------------------------------------------------------------------------
+\* Kind = "fixred": a red base admits its fix-red card, and the card's landing resumes the
+\* stream with no coordinator step.
+
+\* The base goes red on the class (an outside event: a landing, a push outside the lander). A
+\* class red again after its card landed is a new red stretch needing a new card.
+FxGoRed ==
+  /\ ~fxRed /\ fxReds < 2
+  /\ fxRed' = TRUE /\ fxReds' = fxReds + 1 /\ fxRaises' = 0
+  /\ fxCard' = IF fxCard = 4 THEN 0 ELSE fxCard
+  /\ UNCHANGED <<fxStopped, fxOpen, fxNamed, fxLands>>
+
+\* The lander's red gate opens the episode on the stream, or raises it again (a second red pass
+\* on the same class and base): the plan that stops the stream admits the class's fix-red card
+\* when no card of that class and base is open (baseGateStep: FixRedAdmit), and admits nothing
+\* when one is. The reversed witnesses: the episode names the card and admits none, or admits
+\* on every raise.
+FxRaise ==
+  /\ fxRed /\ fxRaises < 2
+  /\ fxRaises' = fxRaises + 1
+  /\ fxStopped' = TRUE /\ fxNamed' = TRUE
+  /\ IF Broken = "fixredidle"
+       THEN UNCHANGED <<fxCard, fxOpen>>
+     ELSE IF Broken = "dupadmit"
+       THEN /\ fxCard' = IF fxCard = 0 THEN 1 ELSE fxCard
+            /\ fxOpen' = fxOpen + 1
+     ELSE IF fxOpen = 0
+       THEN /\ fxCard' = 1 /\ fxOpen' = 1
+       ELSE UNCHANGED <<fxCard, fxOpen>>
+  /\ UNCHANGED <<fxRed, fxReds, fxLands>>
+
+\* The next tick deals the card (a blocker, first in line); a worker works it, finishes, and the
+\* read answers ok: the card is queued to merge.
+FxDeal == /\ fxCard = 1 /\ fxCard' = 2
+          /\ UNCHANGED <<fxRed, fxStopped, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+FxFinish == /\ fxCard = 2 /\ fxCard' = 3
+            /\ UNCHANGED <<fxRed, fxStopped, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+
+\* The base-gate rule (rules.go ruleBaseGate) resumes the stream stopped on the base once the
+\* episode's fix-red card is queued, so the lander's pass lands it first (the base cure).
+FxResume ==
+  /\ fxStopped /\ fxCard = 3
+  /\ fxStopped' = FALSE
+  /\ UNCHANGED <<fxRed, fxCard, fxOpen, fxNamed, fxReds, fxRaises, fxLands>>
+
+\* The lander lands the queued card first onto the red base: the base is green on the new tip,
+\* and the episode is closed.
+FxLandCard ==
+  /\ fxCard = 3 /\ ~fxStopped /\ fxRed
+  /\ fxCard' = 4 /\ fxOpen' = fxOpen - 1 /\ fxRed' = FALSE /\ fxNamed' = FALSE
+  /\ UNCHANGED <<fxStopped, fxReds, fxRaises, fxLands>>
+
+\* The stream's next card lands once the base is green and the stream is not stopped.
+FxNextLand ==
+  /\ ~fxRed /\ ~fxStopped /\ fxLands < 2
+  /\ fxLands' = fxLands + 1
+  /\ UNCHANGED <<fxRed, fxStopped, fxCard, fxOpen, fxNamed, fxReds, fxRaises>>
+
+\* The coordinator mends the base by hand: not fair, never required (the way out the broken
+\* model is left with).
+FxHandFix ==
+  /\ fxRed
+  /\ fxRed' = FALSE /\ fxStopped' = FALSE /\ fxNamed' = FALSE
+  /\ UNCHANGED <<fxCard, fxOpen, fxReds, fxRaises, fxLands>>
+
+FxMachine == FxDeal \/ FxFinish \/ FxResume \/ FxLandCard \/ FxNextLand
+FxNext == FxGoRed \/ FxRaise \/ FxMachine \/ FxHandFix
+
+FixTypeOK ==
+  /\ fxRed \in BOOLEAN /\ fxStopped \in BOOLEAN /\ fxNamed \in BOOLEAN
+  /\ fxCard \in 0..4 /\ fxOpen \in 0..4 /\ fxReds \in 0..2 /\ fxRaises \in 0..2 /\ fxLands \in 0..2
+
+\* One fix-red card is open for a class and base at a time: a second red on the same class and
+\* base, or a re-raise of the episode, admits no second card while that card is open.
+OneFixRedPerClass == fxOpen <= 1
+
+\* A card the judgment names is a card on the table (never named only).
+NamedCardIsAdmitted == fxNamed => fxCard # 0
+
+\* The card's landing closes the episode: the base is green and the stream is not stopped.
+EpisodeClosesOnLanding == (fxCard = 4 /\ ~fxRed) => ~fxStopped
+
+\* A class-red base returns to green and its stream lands again with no coordinator action
+\* (FxHandFix is not fair): under the fairness of the machine, the owner's workers and the
+\* lander. The broken model leaves the stream stopped on a named card nothing works.
+ResumesWithoutCoordinator == fxRed ~> (~fxRed /\ ~fxStopped)
+
+
 \* The escalation step: three windows (the code: BehindEscalateEvery, three PassEvery).
 EscEvery == 3 * Every
 
@@ -214,6 +336,7 @@ TypeOK ==
 
 Init ==
   /\ OutsideInit
+  /\ FixInit
   /\ holds = FALSE /\ seen = FALSE /\ open = FALSE /\ acked = FALSE
   /\ first = -1 /\ again = 0 /\ clk = 0 /\ written = 0 /\ pushes = 0
   /\ marks = {} /\ newLate = 0 /\ lastPush = -1 /\ tickPushes = 0
@@ -418,11 +541,18 @@ Unquiet ==
 Next ==
   IF Kind = "outside"
     THEN (OutsidePush \/ OutsideGate \/ OutsideLand \/ LanderPush)
-         /\ UNCHANGED episodeVars
+         /\ UNCHANGED episodeVars /\ UNCHANGED fixVars
+  ELSE IF Kind = "fixred"
+    THEN FxNext /\ UNCHANGED episodeVars /\ UNCHANGED outsideVars
     ELSE (Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet)
-         /\ UNCHANGED outsideVars
+         /\ UNCHANGED outsideVars /\ UNCHANGED fixVars
 
 Spec == Init /\ [][Next]_vars
+
+\* Kind = "fixred": the machine, the owner's workers and the lander are fair; the coordinator's
+\* hand fix is not.
+FxFrame == UNCHANGED episodeVars /\ UNCHANGED outsideVars
+FixRedSpec == Spec /\ WF_vars(FxMachine /\ FxFrame) /\ WF_vars(FxRaise /\ FxFrame)
 
 \* One judgment an episode: raising again rewrites it, never writes a second.
 OneJudgmentAnEpisode == written <= 1

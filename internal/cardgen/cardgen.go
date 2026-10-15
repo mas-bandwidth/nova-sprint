@@ -220,6 +220,9 @@ type Card struct {
 	// New is the NEW: line, the files the card creates (none for most): a test file
 	// in a package that has none yet (NewTestFile).
 	New []string
+	// Priority is the PRIORITY: line ("" for none): the level the add reads it at
+	// (internal/sprint priority.go). A fix-red card of a red base is a blocker.
+	Priority string
 }
 
 // Plan is a directory's worth of cards with what the planner had to leave out.
@@ -690,7 +693,9 @@ func PlanClassRed(r ClassRed, base, tier string) Card {
 		Tier:  tier,
 		Wave:  1,
 		Kind:  "fix-red",
-		Task:  fmt.Sprintf("The base %s is red on its class %s, so the lander lands nothing onto it until a head that cures it lands first. The run `%s` says: %s. Fix each finding at its cause in the files it names; %s. A ledger that only shrinks is not raised to make it pass.", base, r.Class, r.Run, strings.TrimSuffix(r.Finding, "."), gate) + draftRule,
+		// tla/CoordinatorPass.tla, Kind "fixred": the card is a blocker, first in the stream's line
+		Priority: "blocker",
+		Task:     fmt.Sprintf("The base %s is red on its class %s, so the lander lands nothing onto it until a head that cures it lands first. The run `%s` says: %s. Fix each finding at its cause in the files it names; %s. A ledger that only shrinks is not raised to make it pass.", base, r.Class, r.Run, strings.TrimSuffix(r.Finding, "."), gate) + draftRule,
 	}
 }
 
@@ -796,6 +801,9 @@ func Render(h Header, c Card) string {
 	fmt.Fprintf(&b, "REPO: %s\n", h.Repo)
 	fmt.Fprintf(&b, "BASE: %s\n", h.Base)
 	fmt.Fprintf(&b, "KIND: %s\n", c.Kind)
+	if c.Priority != "" {
+		fmt.Fprintf(&b, "PRIORITY: %s\n", c.Priority)
+	}
 	fmt.Fprintf(&b, "DEPENDS-ON: %s\n", deps)
 	fmt.Fprintf(&b, "PATHS: %s\n", strings.Join(paths, ", "))
 	if len(c.New) > 0 {
