@@ -18,6 +18,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus/bustest"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // TestDealIsToldOnCommitNotOnFriendSync pins tla/FriendSyncWake.tla
@@ -616,4 +617,34 @@ func TestFriendDeliveryLegacyReadKeepsPreparedBriefAcrossRestart(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, item.BriefHash, friendDeliveryHash(string(text)), "restart must write the originally prepared bytes, not renew the read deadline")
 	require.Len(t, friendDeliveryNotes(t, st), 1)
+}
+
+func TestFriendDeliveryReadTargetChangeRefusesStaleSend(t *testing.T) {
+	t.Parallel()
+	for field, replacement := range map[string]string{"head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "branch": "changed-read-target", "base": "changed-base", "report": "changed report"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			ta, root, id := friendReadTwin(t, false)
+			st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+			require.NoError(t, err)
+			ctx := context.Background()
+			before := ta.fleetCard(id)
+			calls := 0
+			ta.a.bus = func(context.Context, bus.Message, func(string)) error { calls++; return errors.New("offline") }
+			_, _, err = ta.a.friendCardsOf(ctx, st, "amy", filepath.Join(root, "amy-working"), func(string) {})
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
+			snap, err := st.Load(ctx, []string{sprint.Fleet}, nil)
+			require.NoError(t, err)
+			work := snap.Fleet.Card("s1-1.w1")
+			require.NotNil(t, work)
+			_, err = ta.m.Apply(ctx, ntable.BatchManifest{Schema: 1, Table: st.Names.Table(sprint.Fleet), Epoch: fmt.Sprint(st.PinnedEpoch()), ExpectedTableRevision: fmt.Sprint(snap.Fleet.Revision), OperationID: "change-read-target-" + field, Members: []ntable.BatchMemberEntry{{ID: work.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(work.Rev)}, Set: map[string]string{field: replacement}}}})
+			require.NoError(t, err)
+			after := ta.fleetCard(id)
+			require.Equal(t, before.Int("gen"), after.Int("gen"))
+			require.Equal(t, before.Int("attempt"), after.Int("attempt"))
+			require.NoError(t, ta.a.friendDeliverySend(ctx, st, "amy", filepath.Join(root, "amy-working"), func(string) {}))
+			assert.Equal(t, 1, calls, "changed read target at same generation cannot send stale brief")
+		})
+	}
 }

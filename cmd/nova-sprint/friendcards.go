@@ -724,10 +724,19 @@ func friendDeliveryHash(v any) string {
 	b, _ := json.Marshal(v)
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
-func friendPacketHash(p sprint.Packet) string {
-	// Exclude changing observations (notes/current head); retain the immutable
-	// delivery identity and the operational brief/branch binding.
-	return friendDeliveryHash([]any{p.Card, p.Epoch, p.Gen, p.Attempt, p.Kind, p.Brief, p.Branch, p.BaseHead, p.ReadJob})
+func friendPacketHash(p sprint.Packet, c *sprint.Card) string {
+	// Pin every stable operand rendered into a work/read BRIEF. Observational
+	// notes and regenerated deadline text do not change the prepared delivery.
+	operands := []any{p.Card, p.Primary, p.Stream, p.Epoch, p.Gen, p.Attempt, p.Kind, p.Brief, p.Branch, p.BaseHead, p.BaseAttempt, p.ReadJob, p.Rules, p.Fix, p.Finding, p.Why}
+	if p.Kind == "read" {
+		start, branch, head := "", p.WorkBranch, p.Head
+		if c != nil {
+			start = c.F("start")
+			branch, head = cmp.Or(branch, c.F("branch")), cmp.Or(head, c.F("head"))
+		}
+		operands = append(operands, head, branch, p.WorkBase, p.Report, p.Tier, start)
+	}
+	return friendDeliveryHash(operands)
 }
 
 // friendDeliveryPrepare reserves all jobs in a batch in one store transaction.
@@ -754,7 +763,7 @@ func (a *app) friendDeliveryPrepare(ctx context.Context, st *store.Store, name, 
 		if p.Kind == "read" {
 			text = friendReadText(st, name, p, cs[i])
 		}
-		items[job] = sprint.FriendDeliveryItem{Primary: p.Primary, Stream: p.Stream, Card: p.Card, Gen: p.Gen, Attempt: p.Attempt, PacketHash: friendPacketHash(p), BriefHash: friendDeliveryHash(text), BriefText: text}
+		items[job] = sprint.FriendDeliveryItem{Primary: p.Primary, Stream: p.Stream, Card: p.Card, Gen: p.Gen, Attempt: p.Attempt, PacketHash: friendPacketHash(p, cs[i]), BriefHash: friendDeliveryHash(text), BriefText: text}
 		if _, err := os.Lstat(filepath.Join(in, "BRIEF.md")); errors.Is(err, fs.ErrNotExist) {
 			candidates[job] = p
 		} else if err != nil {
@@ -890,10 +899,10 @@ func (a *app) friendDeliverySend(ctx context.Context, st *store.Store, name, dir
 		if resolved, err := filepath.EvalSymlinks(dir); err != nil || resolved != filepath.Clean(dir) {
 			continue
 		}
-		for _, p := range ps {
+		for i, p := range ps {
 			job := friendJobOf(p)
 			item, ok := f.Items[job]
-			if !ok || item.PacketHash != friendPacketHash(p) {
+			if !ok || item.PacketHash != friendPacketHash(p, cs[i]) {
 				valid = false
 				break
 			}
