@@ -175,6 +175,8 @@ func (r *holdRig) heldView(name string) (sprint.HoldView, bool) {
 
 func (r *holdRig) friendStatus(name string) string {
 	r.t.Helper()
+	// the server's pass first: FriendRows shows the word the server wrote
+	require.NoError(r.t, r.st.PublishFriendStatus(r.ctx, r.st.Now()))
 	rows, err := r.st.FriendRows(r.ctx, r.st.Now())
 	require.NoError(r.t, err)
 	for _, f := range rows {

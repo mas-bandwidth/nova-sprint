@@ -79,6 +79,7 @@ func (r *serverRig) pong(friend string) {
 // friendRow is the named friend's row as where --json gives it, read on the server's line.
 func (r *serverRig) friendRow(name string) store.FriendRow {
 	r.t.Helper()
+	r.boss("nova-sprint tick") // the server's pass writes the friends' status that where shows
 	var w struct {
 		Friends []store.FriendRow `json:"friends"`
 	}

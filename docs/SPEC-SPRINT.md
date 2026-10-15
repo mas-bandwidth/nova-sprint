@@ -239,8 +239,17 @@ Sprint stores only its own hold. The friend status mapping is:
 | up | held | held |
 | up | released | up |
 
+The mapping is made once, by the server: each tick pass writes every friend's word
+(up, held or down), with its reason, into the `friend-status` record
+(`store.PublishFriendStatus`; `tla/SeatHealth.tla` Publish), and `where`, the
+dashboard and the views show that word and never derive one (`store.FriendRows`;
+OneWriter), so a reader with no bus address shows what the server wrote. A friend
+the server has written no word for reads down. A server that cannot read the hook
+record writes down, with the reason.
+
 A missing, unproven, unhooked or server-stale record reads down; an unavailable
-read returns an error. Work reports and a released hold cannot make a friend
+read is written as down by the server and is an error to the deal's own read
+(`FriendSeats`). Work reports and a released hold cannot make a friend
 up. `friend down`/`hold` records the sprint hold with its reason and expected
 return; `friend up`/`unhold` releases it. A down row uses the hook's reason;
 a held row uses sprint's hold reason. Down rows show zero working. Explicit
