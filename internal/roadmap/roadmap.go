@@ -37,9 +37,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 	roadmapdoc "github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
-	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The files of a repository's work record, relative to its root.
