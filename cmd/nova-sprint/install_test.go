@@ -34,7 +34,6 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 			a.executable = func() (string, error) { return "/opt/nova/bin/nova-sprint", nil }
 			m := store.NewMem()
 			a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return m, nil }
-			session := t.TempDir()
 			var calls []string
 			a.seatLoad = func(goos, op, path string) error { calls = append(calls, op+" "+filepath.Base(path)); return nil }
 			do := func(verb func(*app, []string, io.Writer, io.Writer) int, args ...string) (int, string, string) {
@@ -52,7 +51,7 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 			code, out, errs := do((*app).cmdUnits, "--check")
 			assert.Equal(t, 1, code, errs)
 			assert.Contains(t, out, "UNIT server missing unit="+file("server")+"; run: nova-sprint install server")
-			assert.Contains(t, out, "UNITS CHECK DIFFERENT installed=0 missing=9 different=0")
+			assert.Contains(t, out, "UNITS CHECK DIFFERENT installed=0 missing=8 different=0")
 			assert.Contains(t, out, "UNIT disk-guard missing unit="+file("disk-guard")+"; run: nova-swarm install disk-guard")
 			assert.Contains(t, out, "UNIT mirror-refresh missing unit="+file("mirror-refresh")+"; owed: nova-swarm install mirror-refresh (nova-swarm has no mirror verb", "a verb not there yet is named owed, never as a line to run")
 
@@ -66,7 +65,6 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 			for _, line := range [][]string{
 				{"server", "--listen", "127.0.0.1:6390", "--land", "--decide", "/srv/decide"},
 				{"member", "--as", "m1", "--server", "127.0.0.1:6390", "--harness", "/opt/h/opencode", "--root", "/srv/run", "--pass", "PROVIDER_A_KEY"},
-				{"seat-push", "--harness", "opencode", "--target", session},
 				{"friend-sync", "--every", "15s"},
 				{"table", "--out", "/srv/table.txt"},
 			} {
@@ -94,7 +92,7 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 			args, err = units.UnitArgs(goos, b)
 			require.NoError(t, err)
 			assert.Equal(t, []string{"/opt/nova/bin/nova-sprint", "where", "--watch", "--every", "1s", "--redis", "127.0.0.1:6380"}, args)
-			assert.Len(t, calls, 5, "each unit loaded once")
+			assert.Len(t, calls, 4, "each unit loaded once")
 
 			// the units nova-sprint installs are in; the store, the bus and the upkeep are
 			// missing; a hand-written wrapper in the server's place is different
@@ -117,7 +115,7 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 				states[s.Kind] = s.State
 			}
 			assert.Equal(t, map[string]string{
-				"server": sprint.UnitDifferent, "member": sprint.UnitInstalled, "seat-push": sprint.UnitInstalled,
+				"server": sprint.UnitDifferent, "member": sprint.UnitInstalled,
 				"friend-sync": sprint.UnitInstalled, "table": sprint.UnitInstalled, "store": sprint.UnitMissing,
 				"bus": sprint.UnitMissing, "disk-guard": sprint.UnitMissing, "mirror-refresh": sprint.UnitMissing,
 			}, states)
@@ -127,9 +125,9 @@ func TestInstallWritesEachSprintUnitAndUnitsCheckNamesWhatIsMissing(t *testing.T
 			assert.Contains(t, out, "UNINSTALL TABLE OK unit="+file("table")+" removed=true")
 			assert.NoFileExists(t, file("table"))
 			assert.Equal(t, "unload "+filepath.Base(file("table")), calls[len(calls)-1])
-			code, out, errs = do((*app).cmdUninstall, "seat-push")
-			require.Equal(t, 0, code, errs)
-			assert.NoFileExists(t, file("seat-push"), out)
+			code, _, errs = do((*app).cmdInstall, "seat-push")
+			assert.Equal(t, 2, code, "the seat's push loop is retired (v1.3.6): no unit kind")
+			assert.Contains(t, errs, "no unit kind seat-push")
 		})
 	}
 }
@@ -149,7 +147,7 @@ func TestInstallRefusesAKindItDoesNotOwnAndAStoreTheUnitCannotLogInTo(t *testing
 		args []string
 		want string
 	}{
-		{(*app).cmdInstall, nil, "install wants the unit's kind first: server|member|seat-push|friend-sync|table"},
+		{(*app).cmdInstall, nil, "install wants the unit's kind first: server|member|friend-sync|table"},
 		{(*app).cmdInstall, []string{"store"}, "the store unit is nova-redis's to install; run: nova-redis install store"},
 		{(*app).cmdUninstall, []string{"disk-guard"}, "run: nova-swarm uninstall disk-guard"},
 		{(*app).cmdInstall, []string{"nope"}, "no unit kind nope"},

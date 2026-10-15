@@ -1,9 +1,6 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -11,57 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/hook"
 )
 
-// lookAndCollect runs one look of the session, then a barrier over the hook (a line the
-// server refuses, answered in order after every line the look wrote), and returns the
-// pushes the look wrote. Nothing waits on a clock: the barrier's answer is the end.
-func lookAndCollect(t *testing.T, s *hookSession, c *hookClient) []hookMsg {
-	t.Helper()
-	s.look(context.Background())
-	return barrier(t, c)
-}
-
-// barrier writes one line the server refuses and reads the hook up to its answer,
-// returning the pushes before it.
-func barrier(t *testing.T, c *hookClient) []hookMsg {
-	t.Helper()
-	c.n++
-	req := "barrier-" + string(rune('a'+c.n%26)) + strings.Repeat("x", c.n/26)
-	b, err := json.Marshal(hookMsg{T: "barrier", Req: req})
-	require.NoError(t, err)
-	_, err = c.conn.Write(append(b, '\n'))
-	require.NoError(t, err)
-	// the server answers every line in order, so the barrier's answer always comes after
-	// what the look wrote (the test's own -timeout is the only bound; no clock here)
-	var pushes []hookMsg
-	for m := range c.lines {
-		if m.Req == req {
-			return pushes
-		}
-		if m.T == "push" {
-			pushes = append(pushes, m)
-		}
-	}
-	t.Fatalf("the hook closed before the barrier's answer %s", req)
-	return nil
-}
-
-// keepalive is the hook client's keepalive, held to the server's read by a barrier, so
-// the silent bound (sprint.HookSilentBound) never lapses the hook over simulated hours.
-func keepalive(t *testing.T, c *hookClient) {
-	t.Helper()
-	b, err := json.Marshal(hookMsg{T: "alive"})
-	require.NoError(t, err)
-	_, err = c.conn.Write(append(b, '\n'))
-	require.NoError(t, err)
-	require.Empty(t, barrier(t, c), "a keepalive is answered by nothing")
-}
-
-func warnings(ms []hookMsg) []hookMsg {
-	var out []hookMsg
+// warnings is the waiting-judgment warnings among the messages to the seat.
+func warnings(ms []bus.Message) []bus.Message {
+	var out []bus.Message
 	for _, m := range ms {
-		if m.What == hookWarnWhat {
+		if m.Subject == "nova-sprint: judgments waiting on the coordinator" {
 			out = append(out, m)
 		}
 	}
@@ -73,18 +28,13 @@ func warnings(ms []hookMsg) []hookMsg {
 // on a fake clock, a cleared sprint with moves due is READY, `where` says READY, and ten
 // simulated minutes of looks push nothing; `stop` on it is refused with the reason; a
 // STOPPED machine with moves due pushes its judgment, then the warning at 10 s, then no
-// more often than once a minute for the same set over ten minutes, an ack of a warning
-// holding until the minute passes.
+// more often than once a minute for the same set over ten minutes (the server's look, on
+// the bus to the coordinator's name: coordinator_push.go).
 func TestTheWaitingJudgmentWarningRepeatsAtABoundedRate(t *testing.T) {
 	t.Parallel()
 	const name = "hook-ready"
-	ta, _ := hookSprint(t, name)
-	c := ta.hookOn(name)
-	c.next("hello")
-	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	ta.busProven(name)
-	s := ta.hookSession()
-	require.NotNil(t, s)
+	ta, rig, _ := coordSprint(t, name)
+	rig.Hook(t, name, hook.Coordinator)
 
 	// READY: the sprint as init and a clear leave it, with moves due
 	ta.lined(func() { ta.ok("clear --confirm sprint") })
@@ -93,13 +43,10 @@ func TestTheWaitingJudgmentWarningRepeatsAtABoundedRate(t *testing.T) {
 	ta.lined(func() { where = ta.ok("where") })
 	assert.Contains(t, where, "READY", "where says READY after a clear")
 	assert.NotContains(t, where, "STOPPED")
-	var pushed []hookMsg
-	for i := range 600 {
+	var pushed []bus.Message
+	for range 600 {
 		ta.step(time.Second)
-		if i%60 == 0 {
-			keepalive(t, c)
-		}
-		pushed = append(pushed, lookAndCollect(t, s, c)...)
+		pushed = append(pushed, ta.pass(name)...)
 	}
 	assert.Empty(t, pushed, "READY with moves due: no judgment and no warning over ten minutes")
 
@@ -115,25 +62,16 @@ func TestTheWaitingJudgmentWarningRepeatsAtABoundedRate(t *testing.T) {
 	ta.lined(func() { ta.ok("stop --reason 'a test' --until 1h") })
 	ta.lined(func() { where = ta.ok("where") })
 	assert.Contains(t, where, "STOPPED")
-	first := lookAndCollect(t, s, c)
+	first := ta.pass(name)
 	require.Len(t, first, 1, "%+v", first)
-	require.Equal(t, "machine:stopped", first[0].What)
+	require.Contains(t, first[0].Body, "machine:stopped")
 	var at []time.Duration
-	var acked bool
 	for i := 1; i <= 600; i++ {
 		ta.step(time.Second)
-		if i%60 == 0 {
-			keepalive(t, c)
-		}
-		ws := warnings(lookAndCollect(t, s, c))
+		ws := warnings(ta.pass(name))
 		require.LessOrEqual(t, len(ws), 1, "one warning a look at most")
 		if len(ws) == 1 {
 			at = append(at, time.Duration(i)*time.Second)
-			if !acked {
-				// an ack of the warning holds until the minute passes (it never silences it)
-				require.Equal(t, "ok", c.say(hookMsg{T: "ack", ID: ws[0].ID}).T)
-				acked = true
-			}
 		}
 	}
 	require.NotEmpty(t, at)

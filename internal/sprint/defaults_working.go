@@ -90,8 +90,6 @@ var workingChecks = map[string]workingCheck{
 	PropGoLanes:             {BySet: true},
 	PropFriendIdle:          {BySet: true},
 	PropLandingStallBound:   {BySet: true},
-	PropFriendStallAfter:    {BySet: true},
-	PropFriendStallStep:     {BySet: true},
 	PropDriftCommits:        {BySet: true},
 	PropDriftHours:          {BySet: true},
 	PropUnservedTierFallsTo: {BySet: true},

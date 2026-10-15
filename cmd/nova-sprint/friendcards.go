@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -236,7 +235,7 @@ func (a *app) branchTip(ctx context.Context, repo, branch string) (string, error
 // friendFinish is the finish a friend's report gives her card (a reworked card's LAND that
 // does not address its fix is read as a HOLD, friend.UnaddressedLand; the model is
 // pkg/friend/tla/OutboxFinish.tla, SyncFinish). friendCollect, the one collect of
-// friend sync, friend reconcile and the run loop, calls it, and collect does too: LAND with
+// friend sync calls it, and collect does too: LAND with
 // a full sha Head
 // that is origin's tip of the card's branch (tip, read once) is work ok at that tip, as a
 // member's ok finish; HOLD, FAIL (or FAILED, BROKEN) is work that came back failed, its
@@ -560,9 +559,9 @@ func busOptions(getenv func(string) string) redisconn.Options {
 	return o
 }
 
-// openBus is the real busOpen: the bus store dialed as nova-bus dials it
-// (pkg/redisconn, the fleet's login from the environment).
-func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
+// busConnectionOptions is shared by the connection and coordinator sender
+// selection, including a recorded seat login for this address.
+func (a *app) busConnectionOptions(addr, user string) (redisconn.Options, func(string) string, error) {
 	o := busOptions(a.getenv)
 	if addr != "" {
 		o.Addr = addr
@@ -571,6 +570,14 @@ func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(),
 		o.User = user
 	}
 	o, getenv, err := a.seatBusOptions(o)
+	if err != nil {
+		return redisconn.Options{}, nil, err
+	}
+	return o, getenv, nil
+}
+
+func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
+	o, getenv, err := a.busConnectionOptions(addr, user)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -709,36 +716,6 @@ func (a *app) wakeFriendPass(ctx context.Context, st *store.Store, name, inbox s
 		return err
 	}
 	return nil
-}
-
-// stallWaker is the store's WakeFriend for the machine (tick and run): the friend stall
-// part's wake turn sent on the bus (wakeFriendStall), a message not sent said on out.
-func (a *app) stallWaker(st *store.Store, out io.Writer) func(string, int, time.Duration) error {
-	return func(name string, rung int, d time.Duration) error {
-		return a.wakeFriendStall(context.Background(), st, name, rung, d, func(l string) { fmt.Fprintln(out, l) })
-	}
-}
-
-// wakeFriendStall wakes a friend whose stall ladder has climbed to a wake rung (1 or 2;
-// docs/SPEC-SPRINT.md section friend-stall-ladder-r.w1; the model is tla/StallLadder.tla):
-// a bus message pushed to her daemon as a turn, waking her to resume or report progress.
-func (a *app) wakeFriendStall(ctx context.Context, st *store.Store, name string, rung int, d time.Duration, say func(string)) error {
-	m := bus.Message{
-		From:    st.Actor,
-		To:      []string{name},
-		Subject: fmt.Sprintf("stall wake: friend %s turn %d (%s)", name, rung, d.Round(time.Minute)),
-		Body:    fmt.Sprintf("Your session has shown no activity for %s while holding dealt sprint cards (wake turn %d); please resume work or report progress.", d.Round(time.Minute), rung),
-	}
-	err := a.bus(ctx, m, say)
-	if err == nil {
-		return nil
-	}
-	sayf := friendSays(ctx, st, name)
-	why := oneline.Escape(err.Error())
-	if say != nil {
-		say(sayf("FRIEND-STALL NOTE friend=%s rung=%d: the bus message to {them} was not sent (%s); tell {them} by hand", name, rung, why))
-	}
-	return err
 }
 
 // friendReadText is the BRIEF.md of a friend's read, as friend sync and friend cards
@@ -946,8 +923,8 @@ func writeQueueFile(dir string, states map[string]string, leftOf func(ids []stri
 }
 
 // friendCollect finishes one card working on a friend's row from her report (friendFinish,
-// then the finish step as her row), the one collect of friend sync and friend reconcile
-// (docs/SPEC-SPRINT.md section 1, friend sync and friend reconcile). It says what it did in
+// then the finish step as her row), the one collect of friend sync
+// (docs/SPEC-SPRINT.md section 1, friend sync). It says what it did in
 // a line: FINISHED, or REFUSED when the tip or the sprint refused the finish, the card left
 // working for the next sync to read the report again; done says the card was finished. op,
 // when not empty, is the caller's --op: the finish runs under op.collect.<its args> (one

@@ -14,29 +14,24 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/hook/hooktest"
 )
 
-func actorDefaultRig(t *testing.T, name string, rec sprint.HookRecord) (*testApp, map[string]string) {
+// actorDefaultRig is a sprint whose coordinator name is hooked in and proven as the
+// coordinator in its nova-hook record, the process's actor unset.
+func actorDefaultRig(t *testing.T, name string) (*testApp, *hooktest.Rig, map[string]string) {
 	t.Helper()
-	ta, env := hookSprint(t, name)
+	ta, rig, env := coordSprint(t, name)
 	env["NOVA_SPRINT_ACTOR"] = ""
-	st := &store.Store{B: ta.m, Now: ta.a.now}
-	require.NoError(t, writeHook(context.Background(), st, rec))
-	ta.busProven(name)
-	return ta, env
-}
-
-func liveActorHook(name string, now time.Time) sprint.HookRecord {
-	return sprint.HookRecord{
-		Name: name, Session: "fake-session", State: sprint.HookHooked,
-		Proven: now, Live: now.Add(time.Hour),
-	}
+	rig.Hook(t, name, hook.Coordinator)
+	return ta, rig, env
 }
 
 func TestCoordinatorVerbDefaultsToTheProvenHookOnce(t *testing.T) {
 	t.Parallel()
 	const name = "actor-default-live"
-	ta, _ := actorDefaultRig(t, name, liveActorHook(name, t0))
+	ta, _, _ := actorDefaultRig(t, name)
 	before := ta.applies()
 	code, out, errs := ta.do("add --stream s1 --count 1 --one")
 	require.Equal(t, 0, code, "%s%s", out, errs)
@@ -48,7 +43,7 @@ func TestCoordinatorVerbDefaultsToTheProvenHookOnce(t *testing.T) {
 func TestForwardedCoordinatorVerbDefaultsOnTheServerHook(t *testing.T) {
 	t.Parallel()
 	const name = "actor-default-forwarded"
-	ta, env := actorDefaultRig(t, name, liveActorHook(name, t0))
+	ta, _, env := actorDefaultRig(t, name)
 	env["NOVA_SPRINT_ACTOR"] = "server-must-not-act"
 	clientEnv := map[string]string{ServerEnv: "127.0.0.1:6390"}
 	client := newApp(func(k string) string { return clientEnv[k] })
@@ -67,24 +62,18 @@ func TestForwardedCoordinatorVerbDefaultsOnTheServerHook(t *testing.T) {
 	assert.NotContains(t, errs.String(), "server-must-not-act", errs.String())
 }
 
+// A restarted server reads the same nova-hook record: the proof is nova-hook's, never the
+// server's memory, so the first verb after a restart defaults to the proven coordinator.
 func TestForwardedCoordinatorVerbDefaultsAfterServerRestart(t *testing.T) {
 	t.Parallel()
 	const name = "actor-default-restart"
-	ta, env := actorDefaultRig(t, name, liveActorHook(name, t0))
+	ta, _, env := actorDefaultRig(t, name)
 	env["NOVA_SPRINT_ACTOR"] = "server-must-not-act"
-	ta.restartTestServer()
-	st := &store.Store{B: ta.m, Now: ta.a.now}
-	rec, ok, err := readHook(context.Background(), st)
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.Equal(t, sprint.HookGone, rec.State, "restart invalidates the old sprint-hook proof")
-	assert.True(t, rec.Live.IsZero(), "restart clears the previous live interval")
-
-	second := ta.hookOn(name)
-	second.next("hello")
-	challenge := second.next("challenge").Challenge
-	require.Equal(t, "ok", second.say(hookMsg{T: "prove", Challenge: challenge}).T)
-	ta.busProven(name)
+	old := ta.a
+	a := newApp(old.getenv)
+	a.now, a.sleep, a.backend, a.serveAddr, a.bus, a.busOpen, a.hookStoreFn = old.now, old.sleep, old.backend, old.serveAddr, old.bus, old.busOpen, old.hookStoreFn
+	a.meter, a.mergeQueue, a.checkTwin = old.meter, old.mergeQueue, old.checkTwin
+	ta.a = a
 	clientEnv := map[string]string{ServerEnv: "127.0.0.1:6390"}
 	client := newApp(func(k string) string { return clientEnv[k] })
 	t.Cleanup(client.close)
@@ -102,13 +91,13 @@ func TestForwardedCoordinatorVerbDefaultsAfterServerRestart(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(errs.String(), "ACTOR "+name+" (coordinator hook proven)"), errs.String())
 	assert.NotContains(t, errs.String(), "server-must-not-act", errs.String())
 	assert.Contains(t, out.String(), "ADD OK stream=s1 cards=1", out.String())
-	assert.Greater(t, ta.applies(), before, "the restarted server used the newly proven actor")
+	assert.Greater(t, ta.applies(), before, "the restarted server used the proven actor")
 }
 
 func TestCoordinatorActorDefaultKeepsExplicitActor(t *testing.T) {
 	t.Parallel()
 	const name = "actor-default-explicit"
-	ta, _ := actorDefaultRig(t, name, liveActorHook(name, t0))
+	ta, _, _ := actorDefaultRig(t, name)
 	before := ta.applies()
 	code, out, errs := ta.do("add --stream s1 --count 1 --one --actor forged")
 	assert.NotEqual(t, 0, code, "%s%s", out, errs)
@@ -117,127 +106,57 @@ func TestCoordinatorActorDefaultKeepsExplicitActor(t *testing.T) {
 	assert.Equal(t, before, ta.applies(), "an explicit other identity must not write")
 }
 
-func TestCoordinatorActorDefaultNeedsBothLivePushes(t *testing.T) {
-	t.Parallel()
-	const name = "actor-default-no-sprint-proof"
-	ta, env := hookSprint(t, name)
-	env["NOVA_SPRINT_ACTOR"] = ""
-	ta.busProven(name) // the bus push alone is insufficient
-	before := ta.applies()
-	code, out, errs := ta.do("add --stream s1 --count 1 --one")
-	assert.Equal(t, 2, code, "%s%s", out, errs)
-	assert.Contains(t, errs, "--actor <name> is required", errs)
-	assert.Contains(t, errs, "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven", errs)
-	assert.NotContains(t, errs, "there is no default", errs)
-	assert.NotContains(t, errs, "ACTOR "+name, errs)
-	assert.Equal(t, before, ta.applies(), "an unproven identity must not write")
-}
-
-func TestCoordinatorActorDefaultKeepsTheOverdueAckRemedy(t *testing.T) {
-	t.Parallel()
-	const name = "actor-default-ack"
-	oldest := &sprint.HookItem{ID: 7, What: "the queued push", At: t0.Add(-sprint.HookAckBound - time.Second)}
-	rec := liveActorHook(name, t0)
-	rec.Oldest, rec.Unacked = oldest, 1
-	ta, _ := actorDefaultRig(t, name, rec)
-	before := ta.applies()
-	code, out, errs := ta.do("add --stream s1 --count 1 --one")
-	assert.NotEqual(t, 0, code, "%s%s", out, errs)
-	assert.Contains(t, errs, sprint.HookUnacked(*oldest, 1), errs)
-	assert.NotContains(t, errs, "--actor <name> is required", errs)
-	assert.Equal(t, 1, strings.Count(errs, "ACTOR "+name+" (coordinator hook proven)"), errs)
-	assert.Equal(t, before, ta.applies(), "the overdue push still blocks the write")
-}
-
-func TestCoordinatorActorDefaultRejectsIncompleteOrForgedProof(t *testing.T) {
+// The default wants the record proven as the coordinator: the bus push alone (no server
+// holding the sprint push), an unhooked record, a record of another role, a record of
+// another name, and no answer to the heartbeat within its window each withhold it.
+func TestCoordinatorActorDefaultNeedsTheRecordProven(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name   string
-		want   string
-		change func(*testing.T, *testApp, string)
-		record func(string) sprint.HookRecord
+		record func(*testing.T, *hooktest.Rig, string)
 	}{
-		{
-			name: "empty-session",
-			want: "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven",
-			record: func(name string) sprint.HookRecord {
-				rec := liveActorHook(name, t0)
-				rec.Session = ""
-				return rec
-			},
-		},
-		{
-			name: "stale-sprint-proof",
-			want: "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven",
-			record: func(name string) sprint.HookRecord {
-				rec := liveActorHook(name, t0)
-				rec.Live = t0.Add(-time.Second)
-				return rec
-			},
-		},
-		{
-			name:   "wrong-sprint-name",
-			want:   "ACTOR default withheld: the coordinator's sprint hook is missing, stale, or unproven",
-			record: func(name string) sprint.HookRecord { return liveActorHook(name+"-forged", t0) },
-		},
-		{
-			name:   "missing-bus-proof",
-			want:   "ACTOR default withheld: the coordinator's bus push proof is missing, stale, or invalid",
-			record: func(name string) sprint.HookRecord { return liveActorHook(name, t0) },
-		},
-		{
-			name:   "stale-bus-proof",
-			want:   "ACTOR default withheld: the coordinator's bus push proof is missing, stale, or invalid",
-			record: func(name string) sprint.HookRecord { return liveActorHook(name, t0) },
-			change: func(t *testing.T, ta *testApp, name string) {
-				ta.now = t0.Add(sprint.HookSharedBound + time.Second)
-			},
-		},
-		{
-			name:   "wrong-bus-role",
-			want:   "ACTOR default withheld: the coordinator's bus push proof is missing, stale, or invalid",
-			record: func(name string) sprint.HookRecord { return liveActorHook(name, t0) },
-			change: func(t *testing.T, ta *testApp, name string) {
-				h, err := ta.a.hooker(context.Background())
-				require.NoError(t, err)
-				bh := h.(busHooker)
-				rec, _, err := bh.Shared(context.Background(), name)
-				require.NoError(t, err)
-				fields := rec.Fields()
-				fields["role"] = "worker"
-				require.NoError(t, bh.set(context.Background(), name, fields))
-				ta.a.hookerForget(name)
-			},
-		},
+		{"never-hooked", func(*testing.T, *hooktest.Rig, string) {}},
+		{"bus-push-only", func(t *testing.T, rig *hooktest.Rig, name string) { hookBusOnly(t, rig, name) }},
+		{"unhooked", func(t *testing.T, rig *hooktest.Rig, name string) {
+			rig.Hook(t, name, hook.Coordinator)
+			rig.Unhook(t, name)
+		}},
+		{"comms", func(t *testing.T, rig *hooktest.Rig, name string) { rig.Hook(t, name, hook.Comms) }},
+		{"another-name", func(t *testing.T, rig *hooktest.Rig, name string) { rig.Hook(t, name+"-forged", hook.Coordinator) }},
+		{"no-answer", func(t *testing.T, rig *hooktest.Rig, name string) {
+			rig.Hook(t, name, hook.Coordinator)
+			require.NoError(t, rig.Client.HSet(context.Background(), hook.RecordKey(name), "answered_at", time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).UnixMilli()).Err())
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			holder := "actor-default-" + strings.ReplaceAll(tc.name, "_", "-")
-			ta, env := hookSprint(t, holder)
+			holder := "actor-default-" + tc.name
+			ta, rig, env := coordSprint(t, holder)
 			env["NOVA_SPRINT_ACTOR"] = ""
-			st := &store.Store{B: ta.m, Now: ta.a.now}
-			require.NoError(t, writeHook(context.Background(), st, tc.record(holder)))
-			if tc.name != "missing-bus-proof" {
-				ta.busProven(holder)
-			}
-			if tc.change != nil {
-				tc.change(t, ta, holder)
-			}
+			tc.record(t, rig, holder)
 			before := ta.applies()
 			code, out, errs := ta.do("add --stream s1 --count 1 --one")
 			assert.Equal(t, 2, code, "%s%s", out, errs)
 			assert.Contains(t, errs, "--actor <name> is required", errs)
-			assert.Contains(t, errs, tc.want, errs)
-			assert.NotContains(t, errs, "ACTOR "+holder, errs)
-			assert.Equal(t, before, ta.applies(), "unproven/forged identity wrote")
+			assert.Contains(t, errs, "ACTOR default withheld: the coordinator's nova-hook record is not proven as the coordinator", errs)
+			assert.NotContains(t, errs, "ACTOR "+holder+" ", errs)
+			assert.Equal(t, before, ta.applies(), "an unproven identity must not write")
 		})
 	}
+	// a record that cannot be read withholds it too, naming no backend detail
+	ta, _, env := coordSprint(t, "actor-default-unread")
+	env["NOVA_SPRINT_ACTOR"] = ""
+	ta.a.hookStoreFn = func(context.Context) (hook.Store, error) { return hook.Store{}, errors.New("private dial detail") }
+	code, out, errs := ta.do("add --stream s1 --count 1 --one")
+	assert.Equal(t, 2, code, "%s%s", out, errs)
+	assert.Contains(t, errs, "ACTOR default withheld: the coordinator's nova-hook record could not be read", errs)
+	assert.NotContains(t, errs, "private dial detail", errs)
 }
 
 func TestCoordinatorActorDefaultNamesBackendFailureWithoutLeakingDetails(t *testing.T) {
 	t.Parallel()
 	const name = "actor-default-backend-error"
-	ta, env := hookSprint(t, name)
+	ta, _, env := coordSprint(t, name)
 	env["NOVA_SPRINT_ACTOR"] = ""
 	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
 		return nil, errors.New("private connection detail")
@@ -257,7 +176,7 @@ func TestCoordinatorActorDefaultPreservesEnvironmentAndExplicitEmptyPrecedence(t
 	t.Run("environment actor wins", func(t *testing.T) {
 		t.Parallel()
 		const name = "actor-default-env"
-		ta, env := actorDefaultRig(t, name, liveActorHook(name, t0))
+		ta, _, env := actorDefaultRig(t, name)
 		env["NOVA_SPRINT_ACTOR"] = "different"
 		before := ta.applies()
 		code, out, errs := ta.do("add --stream s1 --count 1 --one")
@@ -269,7 +188,7 @@ func TestCoordinatorActorDefaultPreservesEnvironmentAndExplicitEmptyPrecedence(t
 	t.Run("explicit empty wins", func(t *testing.T) {
 		t.Parallel()
 		const name = "actor-default-empty"
-		ta, _ := actorDefaultRig(t, name, liveActorHook(name, t0))
+		ta, _, _ := actorDefaultRig(t, name)
 		before := ta.applies()
 		code, out, errs := ta.do("add --stream s1 --count 1 --one --actor ''")
 		assert.Equal(t, 2, code, "%s%s", out, errs)
@@ -280,7 +199,7 @@ func TestCoordinatorActorDefaultPreservesEnvironmentAndExplicitEmptyPrecedence(t
 	t.Run("explicit identity wins environment", func(t *testing.T) {
 		t.Parallel()
 		const name = "actor-default-cli"
-		ta, env := actorDefaultRig(t, name, liveActorHook(name, t0))
+		ta, _, env := actorDefaultRig(t, name)
 		env["NOVA_SPRINT_ACTOR"] = "different"
 		code, out, errs := ta.do("add --stream s1 --count 1 --one --actor " + name)
 		assert.Equal(t, 0, code, "%s%s", out, errs)

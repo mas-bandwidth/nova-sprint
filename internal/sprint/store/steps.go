@@ -482,18 +482,6 @@ func RecutStep(r sprint.RecutReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Recut(s, r) }}
 }
 
-// FriendReturnStep is friend reconcile returning a friend's abandoned cards to ready
-// (sprint.FriendReturn; docs/SPEC-SPRINT.md section 1, friend reconcile): all or none.
-func FriendReturnStep(r sprint.FriendReturnReq) Step {
-	ids := make([]string, len(r.Cards))
-	for i, c := range r.Cards {
-		ids[i] = c.ID
-	}
-	return Step{Named: true, Args: ArgsOf(r), Verb: "friend reconcile", Load: tables(sprint.Fleet, sprint.Work), Mirrors: true,
-		Extras: sprint.NamedExtras(sprint.Fleet, ids),
-		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendReturn(s, r) }}
-}
-
 // ServerRestartStep is the server restart plan (sprint.ServerRestart; docs/SPEC-SPRINT.md
 // section 6): on server start, keep every in-flight read whose lease is live,
 // and only take back reads whose lease has lapsed.
