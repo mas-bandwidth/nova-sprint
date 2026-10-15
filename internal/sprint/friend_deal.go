@@ -193,43 +193,29 @@ func friendTiers(f FriendSeat) []string {
 }
 
 // friendDealable says the deal may fill the friend's row (docs/SPEC-SPRINT.md section 1, a
-// friend's card): her status is up by the friends' rule (nova-hook: her session's
-// evidence, never a beat alone; not held, not down), the coordinator's row of
-// her (her fleet control card) says neither down nor held, and the stall ladder has not
-// marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a
-// friend whose row read down, her lanes paused and her daemon beating, was dealt 18 cards
-// twice; a row that cannot work is filled by no deal. While the friends' work is off
+// friend's card): her status is up (friendCanRead). The sprint's friend states are three, up,
+// down and held (FriendStates): up and down are the nova-hook record's alone, and held is
+// the coordinator's hold (friend down or hold, released by friend up or unhold). A down
+// friend is dealt nothing and an up friend is dealt; no judgment of her work (no finish in
+// a while, a quiet session) changes her state or keeps a card from her (the owner,
+// 2026-10-14, v1.3.6: "there is only up, down, held from the sprint POV"; the stall
+// ladder, which marked an up friend down, is retired). While the friends' work is off
 // (FriendsOff, nova-sprint set --friends off) no friend's row is. A friend whose roles do
 // not name builder (RoleBuilder) is dealt no work card: a reader-only row reads and builds
 // nothing (the dogfood of 2026-10-10 evening, a reader-only friend was dealt 16 work cards
 // once it came up). A friend whose dealt cards were returned to the pool for not taking
-// (PropFriendDealtNoMore) is dealt no more until she takes one (friendDealtReturn;
-// tla/FriendDealtReturn.tla DealtNoMoreHolds).
+// them (friendDealtReturn) is dealt again: the return moves cards, never her state (the
+// dealt-no-more mark, a fourth state that kept an up friend from the deal, is retired,
+// v1.3.6).
 func friendDealable(s *Snapshot, f FriendSeat) bool {
-	return !s.FriendsOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder) && !friendDealtNoMore(s, f.Name)
-}
-
-// PropFriendDealtNoMore is the fleet property marking a friend whose dealt cards were not
-// taken within the dealt bound and were returned to the pool (friendDealtReturn): the deal
-// hands her no more work until she takes one, and her start clears the mark
-// (friendDealPass). The value is when she was marked.
-func PropFriendDealtNoMore(friend string) string { return "friend_dealt_no_more." + friend }
-
-// friendDealtNoMore says the friend has been dealt cards she did not take within the bound:
-// she is dealt no more until she takes one.
-func friendDealtNoMore(s *Snapshot, name string) bool {
-	if s == nil || s.Fleet == nil {
-		return false
-	}
-	v, _ := s.Fleet.Prop(PropFriendDealtNoMore(name))
-	return v != ""
+	return !s.FriendsOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder)
 }
 
 // friendHasTaken says the friend has taken a card: her beat names a job running
 // (f.Running), or any card on her row, ready or working, is started at its generation
 // (startedNow) or carries her start or her progress (friendStarted, on a work card). It is
 // the tick's one predicate for "she has taken one", read by the return's leave-alone gate
-// (friendDealtReturn) and by the mark clear (friendTakenClear). The model is
+// (friendDealtReturn). The model is
 // tla/FriendDealtReturn.tla, whose Return requires no card of hers in started.
 func friendHasTaken(s *Snapshot, f FriendSeat) bool {
 	if len(f.Running) > 0 {
@@ -245,40 +231,11 @@ func friendHasTaken(s *Snapshot, f FriendSeat) bool {
 	return false
 }
 
-// friendTakenClear is the clear of a friend's dealt-no-more mark (PropFriendDealtNoMore)
-// when she has taken a card (friendHasTaken): a marked friend who takes one is dealt again
-// (friendDealtReturn; tla/FriendDealtReturn.tla Start removes f from dealtNoMore). It
-// answers the clear, guarded on the value it read, when she is marked and has taken, else
-// nothing. friendDealPass, friendUnstartedWorking and FriendStart each call it at the point
-// her start is read.
-func friendTakenClear(s *Snapshot, f FriendSeat) []PropWrite {
-	if !friendDealtNoMore(s, f.Name) || !friendHasTaken(s, f) {
-		return nil
-	}
-	was, _ := s.Fleet.Prop(PropFriendDealtNoMore(f.Name))
-	return []PropWrite{{Table: Fleet, Name: PropFriendDealtNoMore(f.Name), Value: "", Was: was, WasAbsent: false}}
-}
-
 // friendCanRead says the friend's row may be dealt a read card: friendDealable but for the
 // friends' work switch, which stops her work and never her reads (set --friends off: "her
 // reads still flow"; read_cards.go).
 func friendCanRead(s *Snapshot, f FriendSeat) bool {
-	if f.Status != Up {
-		return false
-	}
-	if s == nil || s.Fleet == nil {
-		return true
-	}
-	row := FriendRow(f.Name)
-	if ctl := s.MemberCtl(row); ctl != nil {
-		if st := ctl.F("status"); st == Down || st == Held || ctl.F("held") != "" {
-			return false
-		}
-	}
-	if down, _ := s.Fleet.Prop(PropFriendStallDown(f.Name)); down != "" {
-		return false
-	}
-	return true
+	return f.Status == Up
 }
 
 // friendTakes says the friend may be given a card of the tier: it is one of her tiers
@@ -655,17 +612,10 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	// moved there with no start of hers goes back ready (friendUnstartedWorking)
 	// a lane gone unheard past its bound: its card bounces back ready (lane_hold.go)
 	p.Units = append(p.Units, laneGoneUnits(s)...)
-	unstarted, unstartedCleared := friendUnstartedWorking(s, seats)
-	p.Units = append(p.Units, unstarted...)
-	p.Props = append(p.Props, unstartedCleared...)
+	p.Units = append(p.Units, friendUnstartedWorking(s, seats)...)
 	starts, started := friendStartUnits(s, seats)
 	p.Units = append(p.Units, starts...)
 	maps.Copy(dealtWorking, started)
-	// a friend who takes a card is dealt again: her start clears the dealt-no-more mark
-	// (friendTakenClear; friendDealtReturn, PropFriendDealtNoMore)
-	for _, f := range seats {
-		p.Props = append(p.Props, friendTakenClear(s, f)...)
-	}
 	members := s.UpMembers()
 	declared := map[string]bool{}
 	for _, c := range cards {
@@ -784,20 +734,19 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 
 // friendDealtReturn is the tick's return of a friend's dealt cards she has not taken within
 // the dealt bound (s.DealtMax, docs/SPEC-SPRINT.md section 1, a friend's card;
-// tla/FriendDealtReturn.tla Return and DealtNoMoreHolds): each work card ready on her row
+// tla/FriendDealtReturn.tla Return): each work card ready on her row
 // past the bound, that she has not started (friendStarted) and that is not her hard pin
 // (pinnedTo), is withdrawn — its primary back to ready, no redeal of its bound spent (a
 // return is no failure, so FieldTakeEnded is not set) — so the machines' deal places it on
 // the next capable member. A friend who has taken a card (friendHasTaken: her beat names a
 // job running, or a card on her row, ready or working, is started or carries her progress)
-// is left alone: her daemon is at work. Each friend returned is marked dealt no more
-// (PropFriendDealtNoMore) until she takes one, which her start clears (friendDealPass). The
-// returned work-card ids are answered (skip) so the start-bound level and the level do not
-// move them a second time in the same tick.
+// is left alone: her daemon is at work. The return moves cards and never her state: she
+// stays up and is dealt again (the dealt-no-more mark is retired, v1.3.6: an up friend is
+// dealt). The returned work-card ids are answered (skip) so the start-bound level and the
+// level do not move them a second time in the same tick.
 func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time.Duration, bool)) (p Plan, skip map[string]bool) {
 	skip = map[string]bool{}
 	bound := s.DealtMax()
-	marked := map[string]bool{}
 	for _, f := range seats {
 		if f.Status != Up {
 			continue
@@ -821,21 +770,15 @@ func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time
 			if d, ok := since(max(c.F(own), c.F(field))); !ok || d <= bound {
 				continue
 			}
-			set := map[string]string{FieldTakenBack: "returned to the pool: dealt to friend " + f.Name + " and not taken within the dealt bound", "untaken_since": stamp(s.Now)}
+			// the card, not the friend, remembers the return: it has left her for good
+			// (FieldFriendsLeft), so it goes on to another taker while she stays up and is
+			// dealt other cards
+			set := map[string]string{FieldTakenBack: "returned to the pool: dealt to friend " + f.Name + " and not taken within the dealt bound", "untaken_since": stamp(s.Now),
+				FieldFriendsLeft: strings.Join(withFriend(friendsLeft(c), f.Name), ",")}
 			u := withdrawUnit(s, c, set, []string{"first_taken"}, NTakenBack, MachineActor,
 				fmt.Sprintf("%s %s:ready -> withdrawn (dealt and not taken within the dealt bound %s)", c.ID, row, bound))
 			p.Units = append(p.Units, u)
 			skip[c.ID] = true
-			marked[f.Name] = true
-		}
-	}
-	for name := range marked {
-		if !friendDealtNoMore(s, name) {
-			// the mark is gated on the value, not the presence: a friend whose first clear
-			// wrote "" (the key stays present) is re-marked when she stops taking again
-			// (friendDealPass's clear; tla/FriendDealtReturn.tla Return re-adds f)
-			was, had := s.Fleet.Prop(PropFriendDealtNoMore(name))
-			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropFriendDealtNoMore(name), Value: stamp(s.Now), Was: was, WasAbsent: !had})
 		}
 	}
 	return p, skip

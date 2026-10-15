@@ -621,10 +621,11 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-reconcile-and-stall-ladder" :group "friends"
-   :title "Reconcile friends and run the stall ladder every tick"
-   :text "The tick reconciles each friend's store with her inbox and outbox, and a mechanical stall ladder
-    returns cards held by a stalled friend with no step needing the coordinator."
+  (item "friend-reconcile-every-tick" :group "friends"
+   :title "Reconcile friends every tick"
+   :text "The tick reconciles each friend's store with her inbox and outbox, with no step needing the
+    coordinator. A friend's state stays the hook record's (up, down) or the coordinator's hold (held):
+    the stall ladder is retired (v1.3.6)."
    :date "2026-10-10"
    :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")

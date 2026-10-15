@@ -53,3 +53,41 @@ ident PushProver the hook record (bus2:push is deleted)
 ident PushRenewEvery the hook record
 ident HarnessWatch the hook record; a process is never liveness
 ident WatchHarness the hook record; a process is never liveness
+
+# friend states other than up, down, held (v1.3.6): the hook record is up or down, the hold is held
+# The owner, 2026-10-14: "being marked as 'stalled' should be removed"; "there is only up,
+# down, held from the sprint POV". sprint.FriendStates is the list; FriendHookStatus writes it.
+ident TickFriendStall the hook record (up or down) and the hold; nothing climbs on silence
+ident PartFriendStall the hook record and the hold; the tick has no stall part
+ident PropFriendStallRung the hook record and the hold; no rung is kept
+ident PropFriendStallDown the hook record's down; held is the coordinator's hold
+ident NFriendStall the coordinator pass's NFriendIdle, a fact that changes no state
+ident NFriendStalled the coordinator pass's NFriendIdle, a fact that changes no state
+ident StopKindFriendStalled the hook record and the hold; no stall stop
+ident StopKindFriendDown the hook record's down; held is the coordinator's hold
+ident friendStallStops the hook record and the hold; no stall stop
+ident PropFriendStallAfter the friend-finish window of the NFriendIdle fact
+ident PropFriendStallStep the hook record and the hold; no rung is kept
+ident FriendStallAfter the friend-finish window of the NFriendIdle fact
+ident FriendStallStep the hook record and the hold; no rung is kept
+ident FriendStallAfterDefault the friend-finish window of the NFriendIdle fact
+ident FriendStallStepDefault the hook record and the hold; no rung is kept
+ident WakeFriend nova-friend reach, by the coordinator; the tick wakes no one
+ident stallWaker nova-friend reach, by the coordinator
+ident wakeFriendStall nova-friend reach, by the coordinator
+ident stallWake nova-friend reach, by the coordinator
+ident friendWorkOf sprint.FriendWorked, a fact the view reports
+ident DutyFriendStall the hook record and the hold; the reference model has no stall duty
+ident FriendStallMoves the hook record and the hold; the reference model has no stall duty
+ident PropFriendDealtNoMore the returned card's friends_left; an up friend is dealt
+ident friendDealtNoMore the returned card's friends_left; an up friend is dealt
+ident friendTakenClear the returned card's friends_left; an up friend is dealt
+text friend_stall_after the friend_finish window of the NFriendIdle fact
+text friend_stall_step the hook record and the hold
+text friend_stall_rung the hook record and the hold
+text friend_stall_down the hook record's down; held is the coordinator's hold
+text friend_dealt_no_more the returned card's friends_left; an up friend is dealt
+text --friend-stall-after the friend-finish window (set --friend-finish)
+text --friend-stall-step the hook record and the hold
+text friend-stalled the hook record and the hold; no stall stop
+text friend-stall-down the hook record's down; held is the coordinator's hold

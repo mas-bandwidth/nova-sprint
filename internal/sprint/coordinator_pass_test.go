@@ -64,9 +64,9 @@ func (r *holdRig) startFriends() {
 }
 
 // tick moves the clock by d, beats everyone (each friend with her pong, and her session
-// active, as on a long turn: the stall ladder, friend_stall.go, leaves her be, and the
-// pass alone judges her), records each pong as a wake ping her session answered (her
-// beat is no evidence: she is up only on that answer) and runs one tick.
+// active, as on a long turn: the pass alone judges her), records each pong as a wake ping
+// her session answered (her beat is no evidence: she is up only on that answer) and runs
+// one tick.
 func (r *passRig) tick(d time.Duration) {
 	r.t.Helper()
 	r.mu.Lock()

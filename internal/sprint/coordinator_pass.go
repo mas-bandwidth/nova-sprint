@@ -166,7 +166,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, row := range s.Fleet.Rows() {
 		f, ok := FriendOfRow(row)
-		if !ok || friendHeld(r.Friends, f) || s.MemberCtl(row).F("status") == Held {
+		if !ok || friendHeld(r.Friends, f) {
 			continue
 		}
 		working := s.Fleet.Cell(row, Working)
@@ -402,7 +402,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	for _, name := range names {
 		f := seats[name]
 		row := FriendRow(name)
-		up := f.Status == Up && !f.Held && s.MemberCtl(row).F("status") != Held && !s.FriendsOff()
+		up := f.Status == Up && !s.FriendsOff()
 		var cards []idleWait
 		if up && friendLoad(s, name) == 0 {
 			cards = cardsWaitingFor(s, f, seats)

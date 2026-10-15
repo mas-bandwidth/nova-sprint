@@ -392,13 +392,6 @@ MCSprintTablesBrokenFinishUnmet.cfg	MCSprintTables.tla	invariant	Rule11	ignore-t
 MCSprintTablesCrash.cfg	MCSprintTablesCrash.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesCrashBrokenHalfstep.cfg	MCSprintTablesCrash.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
 MCSprintTablesMerge.cfg	MCSprintTablesMerge.tla	pass	-	ignore-terminal	sprinttables	required	-
-MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenTakestamped.cfg	MCStallLadder.tla	invariant	NoStampedTaken	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenRelease.cfg	MCStallLadder.tla	invariant	ReleasedOnlyByActivity	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenNoWake.cfg	MCStallLadder.tla	invariant	WokenAtEveryWakeRung	ignore-terminal	stallladder	required	-
-MCStallLadderBrokenWakeInPlan.cfg	MCStallLadder.tla	invariant	NoWakeWithoutRung	ignore-terminal	stallladder	required	-
 MCCoordinatorPass.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenNoReraise.cfg	MCCoordinatorPass.tla	invariant	PushedEveryWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenReopen.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnEpisode	ignore-terminal	coordinatorpass	required	-

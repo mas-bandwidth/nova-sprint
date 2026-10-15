@@ -497,7 +497,8 @@ carry. `nova-sprint handover` prints each rule's number and sentence (after the 
 R1. **A friend is working only when its cards go from working to done; awake is not working.**
     Why: friends answered every ping and held cards for hours with no card finished.
     Done by: `nova-sprint friend cards <friend>`; `nova-sprint set --friend-finish <duration>` (past it the
-    pass asks the friend what blocks it, and the blocker is removed).
+    pass asks the friend what blocks it, and the blocker is removed; the judgment is a fact, and her state stays
+    the hook record's).
 
 R2. **A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it,
 never left overnight.**
@@ -513,11 +514,14 @@ delivered, started, progressing, finished, returned, balanced.**
     Done by: `nova-friend check --as <coordinator>`; `nova-sprint view coordinator --json`; `nova-sprint watch
     --wake --check 10m`. A problem found by hand becomes a push the same day.
 
-R4. **A returning friend or machine is brought up by evidence: its own beat, a pong, a card finished, never
-an expectation.**
-    Why: reports said friends were up that were not, and returning ones stayed down.
-    Done by: `nova-friend check --as <coordinator> <friend>`; `nova-sprint friend up <friend>`; `nova-sprint
-    fleet up <machine>`.
+R4. **A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of
+her work changes her state or keeps a card from her, and a returning machine is brought up by its own beat.**
+    Why: reports said friends were up that were not, and returning ones stayed down; on 2026-10-14 a friend up on
+    the hook record was "stalled" in the sprint and the deal skipped her until a manual `friend up` (the stall
+    ladder is retired, v1.3.6: the sprint's friend states are up, down and held, nothing else).
+    Done by: `nova-hook friends --json` (up or down); `nova-sprint friend down <friend>`, `nova-sprint hold
+    <friend>`, `nova-sprint friend up <friend>`, `nova-sprint unhold <friend>` (held and its release, the only
+    state the coordinator sets); `nova-friend check --as <coordinator> <friend>`; `nova-sprint fleet up <machine>`.
 
 R5. **Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its
 outbox, and a brief names no path outside it.**
