@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -261,23 +260,40 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
 
 	// The deadline lane replaces the coordinator's legacy seat-silent alarm.
-	// The route judgment is open on the tier, not its historical card list (s5
-	// has already moved). Run the first look, then verify no unchanged resend.
-	r.pushes()
-	for _, p := range r.pushes() {
-		assert.NotEqual(t, "nova-sprint: decisions owed", p.Subject, "unchanged overdue set is not resent")
-	}
+	// The tier notice must name only the cards still waiting, not s5 which
+	// has already moved. Require the first delivery before checking no resend.
 	r.mu.Lock()
-	sent := append([]bus.Message(nil), r.sent...)
+	before := len(r.sent)
+	r.mu.Unlock()
+	first := r.pushes()
+	require.NotEmpty(t, first, "first look must deliver to the coordinator")
+	r.mu.Lock()
+	delivered := append([]bus.Message(nil), r.sent[before:]...)
 	r.mu.Unlock()
 	for _, to := range []string{ujSeat, "glenn"} {
-		var delivered bool
-		for _, m := range sent {
-			if m.Subject == "nova-sprint: decisions owed" && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "subjects=stream:tier:pro") && len(m.To) == 1 && m.To[0] == to {
-				delivered = true
+		var notices []bus.Message
+		for _, m := range delivered {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == to {
+				notices = append(notices, m)
 			}
 		}
-		assert.True(t, delivered, "the folded overdue notice names the returned card and blocked tier for %s: %+v", to, sent)
+		require.Len(t, notices, 1, "first look delivers one folded notice to %s: %+v", to, delivered)
+		body := notices[0].Body
+		assert.Contains(t, body, "s3-1")
+		assert.Contains(t, body, "cards=s6-1")
+		assert.Contains(t, body, "1 primaries of tier pro wait:")
+		assert.NotContains(t, body, "s5-1")
+		assert.NotContains(t, body, "2 primaries of tier pro wait:")
+	}
+	r.mu.Lock()
+	before = len(r.sent)
+	r.mu.Unlock()
+	r.pushes()
+	r.mu.Lock()
+	resent := append([]bus.Message(nil), r.sent[before:]...)
+	r.mu.Unlock()
+	for _, m := range resent {
+		assert.NotEqual(t, "nova-sprint: decisions owed", m.Subject, "unchanged overdue set is not resent to either recipient")
 	}
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }

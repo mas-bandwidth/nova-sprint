@@ -131,7 +131,7 @@ func TestDecisionBatchPreservesCardHoldingRemedies(t *testing.T) {
 		t.Run(typ, func(t *testing.T) {
 			n := sprint.Note{ID: "judgment-1", Kind: sprint.Judgment, Type: typ, Primaries: []string{"s1-1"}, At: now.Add(-sprint.DeadlineJudgment), What: "needs a decision"}
 			for _, lane := range []string{"coordinator", "owner"} {
-				set, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Note: n}}, nil, lane, nil)
+				set, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Key: sprint.OpenKey(n.ID, "s1-1"), Note: n}}, nil, lane, nil, nil)
 				require.Equal(t, n.ID, set)
 				require.Contains(t, body, "subjects=s1-1")
 				require.Contains(t, body, "act: "+sprint.WaitRefusedAction(n))
@@ -146,10 +146,60 @@ func TestDecisionBatchNamesOnlyOpenSubjects(t *testing.T) {
 	n := sprint.Note{ID: "judgment-1", Kind: sprint.Judgment, Type: sprint.NWorkFailed, Primaries: []string{"answered-card", "open-card"}, At: now.Add(-sprint.DeadlineJudgment)}
 	for _, subject := range []string{"open-card", sprint.StreamSubject("stream-a"), sprint.SprintSubject} {
 		t.Run(subject, func(t *testing.T) {
-			_, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Key: sprint.OpenKey(n.ID, subject), Note: n}}, nil, "coordinator", nil)
+			_, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Key: sprint.OpenKey(n.ID, subject), Note: n}}, nil, "coordinator", nil, nil)
 			require.Contains(t, body, "subjects="+subject+" age=")
 			require.NotContains(t, body, "answered-card")
 			require.NotContains(t, body, "cards=")
+		})
+	}
+}
+
+func TestDecisionBatchDoesNotInventSubjectsWithoutOpenKeys(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	n := sprint.Note{ID: "judgment", Kind: sprint.Judgment, Type: sprint.NWorkFailed, Primaries: []string{"answered-card", "unknown-card"}, At: now.Add(-sprint.DeadlineJudgment)}
+	_, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Note: n}}, nil, "coordinator", nil, nil)
+	require.NotContains(t, body, "answered-card")
+	require.NotContains(t, body, "unknown-card")
+}
+
+func TestDecisionBatchTierCardsExcludeMovedAndRetieredPrimaries(t *testing.T) {
+	r := newHoldRig(t, 4, 0)
+	s := r.snap()
+	// Only the first card is still on the original ready tier. One has been
+	// dealt; another has changed tier even though it remains ready.
+	s.Work.Card("s1-2").Col = sprint.Working
+	s.Work.Card("s1-3").Fields["brief"] = "RESULT: c tier: pro\n"
+	s.Work.Card("s1-3").Fields[sprint.FieldTierNow] = "pro"
+	s.Work.Card("s1-4").Col = sprint.Review
+	s.Work.Card("s1-4").Fields["result"] = "failed"
+	n := sprint.Note{ID: "tier-judgment", Kind: sprint.Judgment, Type: sprint.NNoRoute, StreamLevel: true, Stream: sprint.TierSubject("flash"), Primaries: []string{"s1-1", "s1-2", "s1-3", "s1-4"}, At: s.Now.Add(-sprint.DeadlineJudgment), What: "4 primaries of tier flash wait: no route serves it"}
+	for _, lane := range []string{"coordinator", "owner"} {
+		_, body, _ := sprint.DecisionBatch(s.Now, []sprint.Open{{Key: sprint.OpenKey(n.ID, sprint.StreamSubject(n.Stream)), Note: n}}, nil, lane, nil, s)
+		require.Contains(t, body, "cards=s1-1\n")
+		require.Contains(t, body, "1 primaries of tier flash wait:")
+		require.NotContains(t, body, "s1-2")
+		require.NotContains(t, body, "s1-3")
+		require.NotContains(t, body, "s1-4")
+		require.NotContains(t, body, "4 primaries")
+	}
+}
+
+func TestDecisionBatchTierDoesNotCountAlreadyRoutedReads(t *testing.T) {
+	for _, col := range []string{sprint.Asked, sprint.Reading, sprint.OK} {
+		t.Run(col, func(t *testing.T) {
+			r := newHoldRig(t, 1, 0)
+			s := r.snap()
+			pr := s.Work.Card("s1-1")
+			pr.Col = sprint.Review
+			pr.Fields["result"], pr.Fields["head"] = "ok", "head"
+			s.Work.SetProp(sprint.PropReadsNeeded, "1")
+			s.Readers.Put(&sprint.Card{ID: sprint.ReadCardID(pr.ID, pr.Int("attempt"), "reader-a"), Row: "reader-a", Col: col, Fields: map[string]string{"primary": pr.ID, "head": "head", sprint.FieldRoute: "flash-route"}})
+			require.Zero(t, sprint.ReadsWanted(s, pr), "fixture already has its required read")
+			n := sprint.Note{ID: "tier-judgment", Kind: sprint.Judgment, Type: sprint.NNoRoute, StreamLevel: true, Stream: sprint.TierSubject("flash"), Primaries: []string{pr.ID}, At: s.Now.Add(-sprint.DeadlineJudgment), What: "1 primaries of tier flash wait: no route serves it"}
+			_, body, _ := sprint.DecisionBatch(s.Now, []sprint.Open{{Key: sprint.OpenKey(n.ID, sprint.StreamSubject(n.Stream)), Note: n}}, nil, "coordinator", nil, s)
+			require.Contains(t, body, "0 primaries of tier flash wait:")
+			require.NotContains(t, body, "cards=")
+			require.NotContains(t, body, pr.ID)
 		})
 	}
 }

@@ -535,11 +535,12 @@ func (d DecisionSummary) Line() string {
 // DecisionBatch folds by stable note identity, never by changing ages. A default
 // report remains owed until both channels have a successful receipt; afterward it
 // stays in the folded hour's report. No transport operation occurs here.
-func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped func(time.Time, time.Time) time.Duration) (string, string, []string) {
+func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped func(time.Time, time.Time) time.Duration, current *Snapshot) (string, string, []string) {
 	notes := map[string]Note{}
 	subjects := map[string][]string{}
 	for _, n := range held {
 		notes[n.ID] = n
+		subjects[n.ID] = n.Subjects() // Derived from live held cards, never an old open note.
 	}
 	for _, o := range all {
 		n := o.Note
@@ -580,16 +581,43 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 			reports = append(reports, id)
 		}
 		reason := n.What
+		var cards []string
+		if n.Type == NNoRoute && n.StreamLevel && strings.HasPrefix(n.Stream, "tier:") && current != nil && current.Work != nil {
+			tier := strings.TrimPrefix(n.Stream, "tier:")
+			for _, id := range n.Primaries {
+				c := current.Work.Placed(id)
+				if c == nil {
+					continue
+				}
+				if c.Col == Ready && current.DealTier(escalating(current, c)) == tier {
+					cards = append(cards, id)
+				}
+				// Use the deal's read predicate: a failed review or one whose
+				// reads are already running/completed is not held by this tier.
+				if c.Col == Review && c.F("result") != "failed" && readsWithoutRoute(current, c) {
+					readTier, why := current.readRouteMissing(c)
+					if readTier == tier && (why != "" || current.refusedNoRoute(c)) {
+						cards = append(cards, id)
+					}
+				}
+			}
+			cards = slices.Compact(slices.Sorted(slices.Values(cards)))
+			// The recorded count is historical: a rule may already have dealt a
+			// subset. Keep its route explanation, but report only cards still held.
+			if _, why, ok := strings.Cut(reason, " wait: "); ok {
+				reason = fmt.Sprintf("%d primaries of tier %s wait: %s", len(cards), tier, why)
+			}
+		}
 		if len(reason) > 512 {
 			reason = reason[:512] + "… [full reason in inbox]"
 		}
 		age, _ := DecisionAge(now, n, stopped)
 		active := subjects[id]
-		if len(active) == 0 {
-			active = n.Subjects() // Synthetic held notes and keyless in-memory fixtures.
-		}
 		active = slices.Compact(slices.Sorted(slices.Values(active)))
 		line := fmt.Sprintf("%s %s subjects=%s age=%s safe-default=%s: %s\n", id, n.Type, Preview(active, ","), age.Truncate(time.Second), SafeDecisionDefault(n.Type), reason)
+		if len(cards) > 0 {
+			line += "  cards=" + Preview(cards, ",") + "\n"
+		}
 		if n.Kind == Judgment {
 			if action := WaitRefusedAction(n); action != "" {
 				line += "  act: " + action + "\n"
@@ -629,7 +657,7 @@ func DefaultHeldDecisions(s *Snapshot) []Note {
 			continue
 		}
 		at, _ := time.Parse(time.RFC3339, c.F(FieldHeld))
-		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: "server-default hold", At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
+		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: "server-default hold", Primaries: []string{c.ID}, At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
 	}
 	return out
 }
