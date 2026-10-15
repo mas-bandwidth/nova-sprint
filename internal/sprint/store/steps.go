@@ -102,6 +102,8 @@ func AskStep(r sprint.AskReq) Step {
 	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "ask", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet), Readers: true, Routes: true,
 		// Every read card id each reader could get at the primaries' attempts,
 		// placed or retired: a reader who already has one is not free.
+		// The fleet extras also expose ended read-card ids to the allocator;
+		// tla/AskReadIDs.tla models the re-ask that would reuse one without them.
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			var ids []string
 			for _, c := range s.Work.Column(sprint.Review) {
@@ -109,7 +111,7 @@ func AskStep(r sprint.AskReq) Step {
 					ids = append(ids, ReadCardIDs(c.ID, c.Int("attempt"), rd)...)
 				}
 			}
-			return map[string][]string{sprint.Readers: ids}
+			return map[string][]string{sprint.Readers: ids, sprint.Fleet: sprint.ReadCardExtras(s)}
 		},
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Ask(s, r) }}
 }
