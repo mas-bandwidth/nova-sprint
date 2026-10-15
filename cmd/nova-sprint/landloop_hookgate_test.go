@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-tools/pkg/bus"
-	"github.com/mas-bandwidth/nova-tools/pkg/bus/bustest"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/hook/hooktest"
 )
 
 // The v1.2.12 switch rolled itself back 1.5 seconds after it began: the restart dropped the
@@ -36,11 +38,18 @@ type switchedRig struct {
 	seat        string
 	now         *time.Time
 	t0          time.Time
+	rig         *hooktest.Rig
 }
 
 func newSwitchedRig(t *testing.T) *switchedRig {
 	t.Helper()
+	// a name of its own per test, within nova-hook's 64 bytes
 	seat := "coordinator-" + strings.ToLower(strings.NewReplacer("/", "-", "_", "-").Replace(t.Name()))
+	if len(seat) > 64 {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(seat)) // ignored: a hash's write never fails
+		seat = fmt.Sprintf("%s-%08x", seat[:55], h.Sum32())
+	}
 	r := newLandRigAs(t, seat)
 	r.ok("add --stream s1 s1-1 --one")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
@@ -55,22 +64,13 @@ func newSwitchedRig(t *testing.T) *switchedRig {
 	now := t0
 	r.a.now = func() time.Time { return now }
 	r.a.executable = func() (string, error) { return target, nil }
-	// the gate's bus push is live over an in-memory bus store, as the hook process arms it
-	fake := bustest.NewFake(t0, seat)
-	r.a.busOpen = func(context.Context, string, string) (*bus.Bus, func(), error) {
-		return &bus.Bus{Store: fake}, func() {}, nil
-	}
-	getenv := r.a.getenv
-	r.a.getenv = func(k string) string {
-		if k == busRedisEnv {
-			return "bus:test"
-		}
-		return getenv(k)
-	}
+	// the coordinator's nova-hook record: a hooktest rig, not hooked in until a test hooks it
+	rig := hooktest.New(t)
+	r.a.hookStoreFn = func(context.Context) (hook.Store, error) { return rig.Store, nil }
 	require.NoError(t, sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
 		Binary: candidate, Target: target, Rollback: true, Window: 15 * time.Minute, Now: func() time.Time { return now },
 	}))
-	sr := &switchedRig{landRig: r, target: target, dir: dir, seat: seat, now: &now, t0: t0}
+	sr := &switchedRig{landRig: r, target: target, dir: dir, seat: seat, now: &now, t0: t0, rig: rig}
 	sr.gate(t, true)
 	t.Cleanup(func() { hookTests.Delete(seat) })
 	return sr
@@ -87,21 +87,11 @@ func (r *switchedRig) gate(t *testing.T, armed bool) {
 	}
 }
 
-// hookLive records a live, proven hook for the coordinator, as the server's hook session
-// does once the seat answers its challenge: the sprint push and the bus push both live.
+// hookLive hooks the coordinator in, proven, in its nova-hook record, as nova-hook hook
+// and the server's sprint push leave it once the seat answers its challenge.
 func (r *switchedRig) hookLive(t *testing.T) {
 	t.Helper()
-	st, err := r.a.store(common{redis: "mem:0"})
-	require.NoError(t, err)
-	now := r.a.now()
-	require.NoError(t, writeHook(context.Background(), st, sprint.HookRecord{
-		Name: r.seat, Session: "s1", State: sprint.HookHooked, Since: now, Proven: now, Live: now.Add(time.Hour),
-	}))
-	hk, err := r.a.hooker(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, hk.Arm(context.Background(), r.seat, now))
-	require.NoError(t, hk.Prove(context.Background(), r.seat, now))
-	r.a.hookerForget(r.seat)
+	r.rig.Hook(t, r.seat, hook.Coordinator)
 }
 
 func (r *switchedRig) binary(t *testing.T) string {

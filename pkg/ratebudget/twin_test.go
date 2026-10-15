@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
+	"github.com/mas-bandwidth/nova-tools/pkg/testredis"
 )
 
 // The twin: the in-process Mem backend must agree with Redis, the backend the fleet

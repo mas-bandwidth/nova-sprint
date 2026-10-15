@@ -22,7 +22,7 @@ var awayFromDefault = sprint.SetReq{Who: "tester",
 	ReadCards: sprint.SwitchOff, Fleet: sprint.SwitchOff, Friends: sprint.SwitchOff,
 	FleetTiers: "flash", FriendsTiers: "pro", ReworkPriority: sprint.ReworkKeep,
 	UnservedTierFallsTo: "pro", ReadTier: "heavy", Reads: "3", DealtMax: "7h", GoLanes: "3",
-	FriendIdle: "9m", LandingStallBound: "9m", FriendStallAfter: "9m", FriendStallStep: "9m",
+	FriendIdle: "9m", LandingStallBound: "9m",
 	DriftCommits: "99", DriftHours: "99", AlarmReview: "3", AlarmMerging: "3", AlarmFleet: "70", AlarmReady: sprint.SwitchOff}
 
 var awayProps = map[string]string{sprint.PropReadyMax: "9m", sprint.PropLowBalanceUsd: "50", sprint.PropFriendFinish: "9m",
@@ -99,8 +99,6 @@ func TestAClearSetsEveryWorkingDefaultInTheNewEpoch(t *testing.T) {
 	assert.Equal(t, sprint.FriendFinishDefault, s.FriendFinishAfter())
 	assert.Equal(t, sprint.FriendStartMaxDefault, s.FriendStartMax())
 	assert.Equal(t, sprint.PeggedBoundDefault, s.PeggedBound())
-	assert.Equal(t, sprint.FriendStallAfterDefault, s.FriendStallAfter())
-	assert.Equal(t, sprint.FriendStallStepDefault, s.FriendStallStep())
 	assert.Equal(t, sprint.DriftCommitsDefault, s.DriftCommits())
 	assert.Equal(t, sprint.DriftHoursDefault, s.DriftHours())
 	assert.Equal(t, sprint.IdenticalDefault, s.IdenticalBound("s1"))

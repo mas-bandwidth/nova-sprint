@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
 	"io"
 	"net"
 	"net/http"
@@ -28,24 +27,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"golang.org/x/mod/semver"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 const prog = "nova-sprint"
@@ -224,15 +225,15 @@ type app struct {
 	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
 	lanesMu sync.Mutex
 	lanes   *serveLanes
-	// hooks is the server's hold of the seat's hook (hook.go), made at the first, under
-	// lanesMu; hookSock, when set (a test), is where a hook process takes its session's
-	// lines, in place of the user's cache directory.
-	hooks    *hookHub
-	hookSock func(name string) (string, error)
-	// hk is this process's shared hook records (hook.go, hooker): the bus store
-	// NOVA_BUS_REDIS names, opened at the first gate that reads it and kept; the server's
-	// lane apps share their server's (servelanes.go), so a lane opens no store of its own.
-	hk *hookerBox
+	// hk is this process's kept connection to the nova-hook record's store
+	// (coordinator_hook.go, hookStore); the server's lane apps share their server's
+	// (servelanes.go), so a lane dials no store of its own. hookStoreFn, when set (a
+	// test), is the store in its place.
+	hk          *hookConn
+	hookStoreFn func(ctx context.Context) (hook.Store, error)
+	// coord is the server's memory of what it told the coordinator on the bus
+	// (coordinator_push.go).
+	coord coordPush
 	// seatSilent is what the run loop has told the owner of the seat not answering
 	// (seat_silent.go): each raise of the judgment once.
 	seatSilent seatSilentTold
@@ -292,8 +293,8 @@ type app struct {
 	// decider, when set (a test), is answer's backend for the judgment decision:
 	// nil is the one --backend names (decide.Jev with JEV_API_KEY, or a fixed file).
 	decider decide.Backend
-	// home is the directory a seat's inbox is under (inbox --wait --push seat:
-	// ~/<holder>-working/inbox): os.UserHomeDir unless a test sets it.
+	// home is the user's home, where a unit's directory is (seat uninstall, install):
+	// os.UserHomeDir unless a test sets it.
 	home func() (string, error)
 	// goos is the OS seat install writes its unit for (seatinstall.go): runtime.GOOS unless a
 	// test sets it; seatLoad, when set (a test), loads and unloads the unit in place of
@@ -399,7 +400,7 @@ func newApp(getenv func(string) string) *app {
 	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
-	a.hk = &hookerBox{}
+	a.hk = &hookConn{}
 	a.landRoot = defaultLandRoot
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
@@ -741,16 +742,15 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
-			b, close, err := a.busOpen(ctx, a.getenv(busRedisEnv), a.getenv(busUserEnv))
+			hs, err := a.hookStore(ctx)
 			if err != nil {
 				return nil, time.Time{}, err
 			}
-			defer close()
-			r, ok := b.Store.(bus.Redis)
-			if !ok {
-				return nil, time.Time{}, errors.New("friend presence requires the nova-hook Redis record")
+			sts, now, err := hs.Read(ctx, names...)
+			if err != nil {
+				a.hookDrop()
 			}
-			return (hook.Store{C: r.C, Timeout: 5 * time.Second}).Read(ctx, names...)
+			return sts, now, err
 		}
 	}
 	// every verb this process runs on the store reads through one twin: a
@@ -793,12 +793,6 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 			}
 		}
 		return nil, err
-	}
-	switch verbClasses[c.verb] {
-	case classCoordinator, classSeat, classRead:
-		// a verb of the seat's the gate let through is an act of the seat: its hook stays
-		// live while it acts (hook.go, seatActs)
-		a.seatActs(c.actor)
 	}
 	return st, nil
 }
@@ -918,8 +912,8 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	// --shadow`) opens its store read-only before the window's fn load: its
 	// library check tolerates a library the window will load (libraryCheck).
 	a.shadow = len(args) >= 2 && args[0] == "tick" && slices.Contains(args[1:], "--shadow")
-	// every command run as the coordinator waits for the seat's live, proven hook: one
-	// line and nothing else (hook.go)
+	// every command run as the coordinator waits for its nova-hook record proven as the
+	// coordinator: one line and nothing else (coordinator_hook.go)
 	if code, refused := a.hookFirst(args, stderr); refused {
 		return code
 	}

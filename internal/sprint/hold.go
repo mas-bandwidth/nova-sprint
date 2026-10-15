@@ -473,7 +473,7 @@ func holdFriendCards(s *Snapshot, friend string, r HoldReq) (Plan, string) {
 }
 
 // takeBackFriendReaderReads returns a held friend's reader-row reads: reader-<friend>
-// (pkg/friend ReaderOf) is her reader row, and a friend and her reader row are one
+// (nova-tools pkg/friend ReaderOf) is her reader row, and a friend and her reader row are one
 // member to the server, so a hold with --return takes back the reads asked of it too
 // (returnReads), where a reader up is free to read them (docs/SPEC-SPRINT.md section
 // 11, hold).
