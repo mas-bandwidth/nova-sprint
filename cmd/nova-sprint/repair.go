@@ -16,7 +16,7 @@ import (
 // returns rule-6 merging cards to review), and its --dry-run is its own, so
 // the effect is stated here rather than stepdry.go.
 func init() {
-	verbEffect["repair"] = "store write: finishes the pending operation the fence holds (a step cut short), and returns each merging card that entered merging with ok reads from fewer different readers at its head than it needs (check rule 6) back to review with the reason recorded, so it is read again; --dry-run prints each move it would make and writes nothing"
+	verbEffect["repair"] = "store write: finishes the pending operation the fence holds (a step cut short), and returns each merging card that entered merging with ok reads from fewer different readers at its head than it needs (check rule 6) back to review with the reason recorded, so it is read again; it also prints one line per review card whose next read id is held by an ended read's record (kept history, never changed here); --dry-run prints each move it would make and writes nothing"
 }
 
 // cmdRepair finishes the pending operation (if any) and returns rule-6 merging
@@ -55,6 +55,19 @@ func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 		})
 		return a.runStep("repair", *c, st, step, stdout, stderr)
 	}
+	// An ended read's record is the store's history, never drift: say which
+	// review card's next read id it holds, and change nothing for it.
+	// tla/AskReadIDs.tla HistoryKept
+	held, err := st.EndedReadHolds(ctx)
+	if err != nil {
+		return a.readFailed("repair", err, stderr)
+	}
+	for _, line := range held {
+		if c.json {
+			break
+		}
+		fmt.Fprintln(stdout, oneline.Escape(line))
+	}
 	// no rule 6: the pending operation, if any, is the repair. --dry-run
 	// reads the fence and says what it would finish, never finishing it.
 	if c.dry {
@@ -63,6 +76,9 @@ func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 			return a.readFailed("repair", err, stderr)
 		}
 		if f.Pending == nil {
+			if len(held) > 0 {
+				return 0
+			}
 			return a.refuseNothing(stderr)
 		}
 		sayOK(stdout, c.json, "repair", fmt.Sprintf("WOULD finish OPERATION %s verb=%s", oneline.Escape(f.Pending.ID), oneline.Escape(f.Pending.Verb)),
@@ -75,6 +91,9 @@ func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(rr) == 0 {
+		if len(held) > 0 {
+			return 0
+		}
 		return a.refuseNothing(stderr)
 	}
 	if c.json {

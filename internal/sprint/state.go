@@ -490,6 +490,10 @@ type Snapshot struct {
 	// about; absent for an id never a judgment or still open): one the machine
 	// answered is a note, not a refusal (answered).
 	Answered map[string]string
+	// ReadIDThrough is the highest generation explicitly read (absent included)
+	// for each fleet read base ID, at Fleet.Revision. Ask's paged loader fills
+	// it before planning; a new snapshot must establish its own bound.
+	ReadIDThrough map[string]int
 	// Acked is the tick's conditions the coordinator acknowledged, held
 	// while they hold (Acknowledged).
 	Acked []Open

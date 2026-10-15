@@ -189,6 +189,10 @@ type Step struct {
 	// plan in the same step, so a refused read never blocks work cards.
 	// tla/DirtyTick.tla OneRefusedReadNeverBlocksWork
 	DropRefusedReadCreates bool
+	// ReadIDs verifies every Ask allocation candidate and permits one re-plan
+	// after an ended read identity's MEMBEREXISTS refusal. No other refusal
+	// changes, and a second collision remains a named failure.
+	ReadIDs bool
 	// Twin, when set, is the tick's twin (twin.go): a step that loads the four
 	// tables plans on it while the fence is at its generation, instead of
 	// reading them, and applies its receipts to it when it commits.
@@ -510,6 +514,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 	if family == "" {
 		family = strings.ReplaceAll(step.Verb, " ", "-") + "-" + st.newID()
 	}
+	readRetried := false
 	rowsAdded := false
 	// placed says the step's places (sprint.Plan.Places) were made, and came is
 	// their NOTE lines: the plan after them places nothing, and says them still
@@ -725,6 +730,13 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				snap.FriendTextPronouns[spec.Name] = spec.Pronouns
 			}
 		}
+		if step.ReadIDs {
+			if err := st.loadAskReadIDs(ctx, snap); errors.Is(err, errMoved) {
+				continue // the checked absences belong to a different revision
+			} else if err != nil {
+				return res, err
+			}
+		}
 		// Every plan is held to the lifecycle here, whatever step built it.
 		plan := sprint.Applied(snap, step.Plan(snap))
 		// a step that takes a member's control card off (the fleet sync, the tick's retire, a
@@ -935,6 +947,28 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			}
 			if bound != nil {
 				res.Op = ""
+				if step.ReadIDs && !readRetried {
+					id, retryErr := st.endedReadCollision(ctx, plan, bound)
+					if retryErr != nil {
+						return res, retryErr
+					}
+					if id != "" {
+						// tla/AskReadIDs.tla Retry: explicitly reload the refused
+						// record, then mint past it. Only one collision is curable.
+						readRetried = true
+						extras := step.Extras
+						step.Extras = func(s *sprint.Snapshot) map[string][]string {
+							out := map[string][]string{}
+							if extras != nil {
+								out = extras(s)
+							}
+							out[sprint.Fleet] = append(out[sprint.Fleet], id)
+							return out
+						}
+						tries = max(tries, res.Attempts+1)
+						continue
+					}
+				}
 				return refuseWhole(res, plan, bound.Error())
 			}
 			continue
@@ -2605,4 +2639,103 @@ func abandonment(op OpRecord, by string, now time.Time) OpRecord {
 	n := sprint.Note{ID: op.ID + ".abandoned", Kind: sprint.Happened, Type: sprint.NAbandoned, At: now, Who: by,
 		What: fmt.Sprintf("operation %s (%s) by %s, %s old: its first manifest never applied", op.ID, op.Verb, who, now.Sub(op.At).Round(time.Second))}
 	return OpRecord{ID: op.ID, Verb: op.Verb, At: op.At, Notes: []sprint.Note{n}}
+}
+
+// loadAskReadIDs checks absence as well as presence at Fleet.Revision. Pages
+// from all bases share read sets; only newly requested IDs are fetched. Long
+// chains take additional rounds, not an unsafe fixed cap or a whole-table scan.
+func (st *Store) loadAskReadIDs(ctx context.Context, s *sprint.Snapshot) error {
+	seen := map[string]bool{}
+	s.ReadIDThrough = map[string]int{}
+	for {
+		windows := sprint.ReadCardWindows(s, 64)
+		var ids []string
+		for _, page := range windows {
+			for _, id := range page {
+				if !seen[id] && s.Fleet.Card(id) == nil {
+					ids = append(ids, id)
+				}
+				seen[id] = true
+			}
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		slices.Sort(ids)
+		if err := st.readInto(ctx, s.Fleet, st.sids(ids), false); err != nil {
+			return err
+		}
+		for base, page := range windows {
+			s.ReadIDThrough[base] = len(page) - 1
+		}
+	}
+}
+
+// EndedReadHolds is repair's diagnostic: one line per review card whose next read id is
+// held by an ended record. It reads, never writes.
+func (st *Store) EndedReadHolds(ctx context.Context) ([]string, error) {
+	s, err := st.loadAskReads(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sprint.EndedReadDiagnostics(s), nil
+}
+
+// loadAskReads is the read-only view used by repair's ended-record diagnostic.
+// A changed table revision retries the whole view; it changes no history.
+func (st *Store) loadAskReads(ctx context.Context) (*sprint.Snapshot, error) {
+	st, err := st.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r := st.retry(ctx)
+	for r.next(LoadTries) {
+		s, err := st.Load(ctx, All, nil)
+		if err != nil {
+			return nil, err
+		}
+		s.Friends, err = st.FriendSeats(ctx, s.Now)
+		if err != nil {
+			return nil, err
+		}
+		if err := st.readerStatesInto(ctx, s); err != nil {
+			return nil, err
+		}
+		if err := st.loadAskReadIDs(ctx, s); errors.Is(err, errMoved) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+	return nil, fmt.Errorf("ended read records kept changing while read: %w", errMoved)
+}
+
+func (st *Store) endedReadCollision(ctx context.Context, plan sprint.Plan, bound *boundError) (string, error) {
+	if bound.Table != st.Names.Table(sprint.Fleet) || refusalCode(bound.Cause) != "MEMBEREXISTS" {
+		return "", nil
+	}
+	for _, u := range plan.Units {
+		for _, ch := range u.Changes {
+			e := ch.Entry
+			if ch.Table != sprint.Fleet || e.Create == nil || e.Expect == nil || !e.Expect.Absent || e.Set["kind"] != "read" {
+				continue
+			}
+			id := sprint.CardID(e.ID)
+			// The table layer names the refused member before its detail. Match
+			// the whole identity, never a prefix such as .g1 against .g10.
+			message := bound.Cause.Error()
+			if !strings.Contains(message, "member \""+st.sid(id)+"\"") && !strings.Contains(message, "member "+st.sid(id)+":") {
+				continue
+			}
+			records, err := st.Records(ctx, sprint.Fleet, []string{id})
+			if err != nil {
+				return "", err
+			}
+			if len(records) == 1 && !records[0].Placed() && records[0].F("kind") == "read" {
+				return id, nil
+			}
+		}
+	}
+	return "", nil
 }

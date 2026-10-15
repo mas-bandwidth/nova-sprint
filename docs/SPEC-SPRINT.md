@@ -4012,6 +4012,16 @@ reached. Each such verdict sent its card to rework, a new attempt and two new re
   cost kept as a returned run's), which spends no reader (it is not among the retirements that
   spend one: a reader may be asked it again under its next identity, `<read>.g<n>`); no
   broken-read judgment is written, so the card is not reworked and its attempt is not spent.
+  An ended read's record is kept, with no placement: it is the store's history and is
+  never deleted or reused. The ask mints past it. Its load names the next read id of every
+  reader it may deal to (a friend with no fleet row included) and reads on, a page at a
+  time, until the id it would mint is read absent at the revision it plans on
+  (`Snapshot.ReadIDThrough`, `store.loadAskReadIDs`); a create refused `MEMBEREXISTS` on a read
+  card is re-planned once with that record loaded, and a second refusal fails naming the id.
+  `repair --dry-run` (and `repair`) prints one line per review card whose next read id is held
+  by such a record ("<id> is held by an ended record; ask mints <next>") and changes nothing
+  for it. tla/AskReadIDs.tla, `NoReusedReadID` and `HistoryKept`; the reversed witnesses
+  `MCAskReadIDsBrokenNoFleetExtras` and `MCAskReadIDsBrokenRowFilter` fail the first.
   When the server found a branch that holds the head, the primary records it and the ask asks
   the read again on it. When no branch of the work on origin holds the head, a read asked again
   could only find the same: the seat is told at once, one judgment on the primary, "a read's

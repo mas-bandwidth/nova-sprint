@@ -1,4 +1,5 @@
 config	module	expected	property	deadlock	group	gate	debt
+MCAskReadIDsBrokenRowFilter.cfg	MCAskReadIDs.tla	invariant	NoReusedReadID	ignore-terminal	askreadids	required	-
 MCAskReadIDs.cfg	MCAskReadIDs.tla	pass	-	ignore-terminal	askreadids	required	-
 MCAskReadIDsBrokenNoFleetExtras.cfg	MCAskReadIDs.tla	invariant	NoReusedReadID	ignore-terminal	askreadids	required	-
 MCCardMachineSmall.cfg	MCCardMachineSmall.tla	pass	-	ignore-terminal	cardmachine	required	-

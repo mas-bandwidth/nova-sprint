@@ -90,7 +90,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 		Now: s.Now, Epoch: s.Epoch, Prefix: s.Prefix, Cleared: s.Cleared,
 		Coordinator: s.Coordinator, Actor: s.Actor, SeatGeneration: s.SeatGeneration,
 		Work: cloneTable(s.Work), Readers: cloneTable(s.Readers), Merge: cloneTable(s.Merge), Fleet: cloneTable(s.Fleet),
-		Open: cloneOpen(s.Open), Acked: cloneOpen(s.Acked), Answered: maps.Clone(s.Answered),
+		Open: cloneOpen(s.Open), Acked: cloneOpen(s.Acked), Answered: maps.Clone(s.Answered), ReadIDThrough: maps.Clone(s.ReadIDThrough),
 		QueueLen: s.QueueLen, Queue: cloneQueue(s.Queue), Held: maps.Clone(s.Held),
 		Routes: slices.Clone(s.Routes), Tiers: maps.Clone(s.Tiers), Providers: maps.Clone(s.Providers),
 		DecideBounce: s.DecideBounce, DecideReview: s.DecideReview, DecideScoreBar: s.DecideScoreBar,

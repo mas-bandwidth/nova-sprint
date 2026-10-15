@@ -51,6 +51,7 @@ func TestCloneIsolatesNestedSnapshotMetadata(t *testing.T) {
 		"tier map":                  func(s *refmodel.Snapshot) { s.Tables.Tiers["new"] = []string{"new"} },
 		"tier array":                func(s *refmodel.Snapshot) { s.Tables.Tiers["flash"][0] = "changed" },
 		"answered":                  func(s *refmodel.Snapshot) { s.Tables.Answered["note"] = "changed" },
+		"read ids":                  func(s *refmodel.Snapshot) { s.Tables.ReadIDThrough["base"] = 9 },
 		"held":                      func(s *refmodel.Snapshot) { s.Tables.Held["card"] = false },
 		"rules":                     func(s *refmodel.Snapshot) { s.Tables.RulesOff[0] = "changed" },
 		"reader states":             func(s *refmodel.Snapshot) { s.Tables.ReaderStates["reader"] = "changed" },
@@ -186,7 +187,7 @@ func metadataSnapshot() refmodel.Snapshot {
 		Now: t0, Cleared: t0,
 		Providers: map[string]sprint.Provider{"provider": {Name: "provider", Funded: true}},
 		Routes:    []sprint.Route{{Name: "route", Enabled: true, Share: 0.25}}, Tiers: map[string][]string{"flash": {"route"}},
-		Answered: map[string]string{"note": "answer"}, Held: map[string]bool{"card": true}, RulesOff: []string{"rule"},
+		Answered: map[string]string{"note": "answer"}, ReadIDThrough: map[string]int{"base": 3}, Held: map[string]bool{"card": true}, RulesOff: []string{"rule"},
 		ReaderStates: map[string]string{"reader": "up"}, NoRoom: map[string]string{"member": "held"}, FriendTextPronouns: map[string]string{"seat": "they/them"},
 		Friends: []sprint.FriendSeat{seat}, Queue: []sprint.QueuedChange{{Prop: &sprint.PropWrite{Value: "value"}, Entry: &ntable.BatchMemberEntry{
 			ID: "card", Set: map[string]string{"field": "value"}, Unset: []string{"field"}, Create: &ntable.MemberCreateOp{Row: "stream"}, Move: &ntable.MemberMoveOp{Row: "stream", Score: &score},

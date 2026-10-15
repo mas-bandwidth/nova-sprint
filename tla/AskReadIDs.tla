@@ -1,50 +1,79 @@
 ----------------------------- MODULE AskReadIDs -----------------------------
-\* The identity allocated when AskStep re-asks a read (internal/sprint/store/steps.go).
-\* The first fleet read ended without a verdict. ReadCardExtras must load that
-\* ended Fleet record before sprint.Ask calls the read-card allocator, so the
-\* allocator advances from r1 to r2 instead of reusing r1. This small bounded
-\* model isolates that visibility rule; the reversed witness models AskStep
-\* omitting Fleet ReadCardExtras.
-
+\* Ask keeps ended records and allocates beyond them. Load uses the candidate
+\* reader set, including a friend without a fleet row, and loads the complete
+\* ended generation chain. A first create refusal reloads and re-plans once.
+\* NoReusedReadID forbids a terminal collision; the store always refuses an
+\* existing identity, so even the broken witness never overwrites its history.
 EXTENDS Naturals, FiniteSets, Sequences
-
 CONSTANT Broken
 
-VARIABLES cards, loaded, prepared, asked
-vars == <<cards, loaded, prepared, asked>>
+Readers == {"member", "friend"}
+Rows == {"member"}
+MaxEnded == 5
+FilterRows == FALSE
+RetryOn == ~Broken
+
+VARIABLES records, loaded, phase, reader, proposed, retries, raced, created
+vars == <<records, loaded, phase, reader, proposed, retries, raced, created>>
 
 Init ==
-  /\ cards = <<[id |-> "r1", ended |-> TRUE]>>
+  /\ records = Readers \X (0..(MaxEnded - 1))
   /\ loaded = {}
-  /\ prepared = FALSE
-  /\ asked = FALSE
+  /\ phase = "load"
+  /\ reader \in Readers
+  /\ proposed = 0
+  /\ retries = 0
+  /\ raced = FALSE
+  /\ created = {}
 
-\* AskStep loads ended fleet read cards with sprint.ReadCardExtras(s).
+Visible == IF Broken THEN {} ELSE
+  {id \in records : ~FilterRows \/ id[1] \in Rows}
+NextID == CHOOSE n \in 0..(MaxEnded + 1) :
+  /\ <<reader, n>> \notin loaded
+  /\ \A m \in 0..(n - 1) : <<reader, m>> \in loaded
+
 Load ==
-  /\ loaded' = IF Broken THEN {} ELSE {cards[i].id : i \in 1..Len(cards)}
-  /\ prepared' = TRUE
-  /\ UNCHANGED <<cards, asked>>
+  /\ phase = "load"
+  /\ loaded' = Visible
+  /\ phase' = "plan"
+  /\ UNCHANGED <<records, reader, proposed, retries, raced, created>>
+Plan ==
+  /\ phase = "plan"
+  /\ proposed' = NextID
+  /\ phase' = "create"
+  /\ UNCHANGED <<records, loaded, reader, retries, raced, created>>
+\* An ended record appears after the snapshot: the first refusal is curable.
+Race ==
+  /\ phase = "create" /\ ~raced /\ retries = 0
+  /\ records' = records \cup {<<reader, proposed>>}
+  /\ raced' = TRUE
+  /\ UNCHANGED <<loaded, phase, reader, proposed, retries, created>>
+Create ==
+  /\ phase = "create"
+  /\ IF <<reader, proposed>> \in records
+     THEN /\ phase' = IF RetryOn /\ retries = 0 THEN "refused" ELSE "failed"
+          /\ UNCHANGED created
+     ELSE /\ phase' = "done"
+          /\ created' = {<<reader, proposed>>}
+  /\ UNCHANGED <<records, loaded, reader, proposed, retries, raced>>
+Retry ==
+  /\ phase = "refused" /\ retries = 0
+  /\ loaded' = records
+  /\ retries' = 1
+  /\ phase' = "plan"
+  /\ UNCHANGED <<records, reader, proposed, raced, created>>
 
-\* The bounded allocator chooses the base id when it cannot see r1, or the
-\* next id when the ended Fleet record is in the snapshot.
-Ask ==
-  /\ prepared /\ ~asked
-  /\ LET id == IF "r1" \in loaded THEN "r2" ELSE "r1"
-     IN cards' = Append(cards, [id |-> id, ended |-> FALSE])
-  /\ asked' = TRUE
-  /\ UNCHANGED <<loaded, prepared>>
-
-Next == Load \/ Ask
+Next == Load \/ Plan \/ Race \/ Create \/ Retry
 Spec == Init /\ [][Next]_vars
-
 TypeOK ==
-  /\ cards \in Seq([id : {"r1", "r2"}, ended : BOOLEAN])
-  /\ loaded \subseteq {"r1", "r2"}
-  /\ prepared \in BOOLEAN
-  /\ asked \in BOOLEAN
-
-\* Each read-card identity is unique even when its earlier record has ended.
-NoReusedReadID ==
-  Cardinality({cards[i].id : i \in 1..Len(cards)}) = Len(cards)
-
+  /\ records \subseteq Readers \X (0..MaxEnded)
+  /\ loaded \subseteq records
+  /\ reader \in Readers
+  /\ phase \in {"load", "plan", "create", "refused", "done", "failed"}
+  /\ proposed \in 0..(MaxEnded + 1)
+  /\ retries \in 0..1
+  /\ raced \in BOOLEAN
+  /\ created \subseteq Readers \X (0..(MaxEnded + 1))
+NoReusedReadID == phase # "failed" /\ created \intersect records = {}
+HistoryKept == Readers \X (0..(MaxEnded - 1)) \subseteq records
 =============================================================================

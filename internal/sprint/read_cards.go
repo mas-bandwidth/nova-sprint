@@ -339,7 +339,7 @@ func readNextGen(cards []*Card, primary string, attempt int, reader string) int 
 // It deals the next generation only when it lies inside the loaded window (readCardLoadWindow)
 // and the snapshot holds no record of it; past the window it returns "" (readRefusal answers
 // "read generations past the load window").
-func readCardIDFor(cards []*Card, primary string, attempt int, reader string) string {
+func readCardIDFor(cards []*Card, primary string, attempt int, reader string, checked ...map[string]int) string {
 	base := ReadCardID(primary, attempt, reader)
 	next := 0
 	placedNext := 0
@@ -356,7 +356,11 @@ func readCardIDFor(cards []*Card, primary string, attempt int, reader string) st
 			}
 		}
 	}
-	if next > placedNext+readCardLoadWindow {
+	limit := placedNext + readCardLoadWindow
+	if len(checked) > 0 {
+		limit = max(limit, checked[0][base])
+	}
+	if next > limit {
 		return ""
 	}
 	id := base
@@ -371,35 +375,67 @@ func readCardIDFor(cards []*Card, primary string, attempt int, reader string) st
 	return id
 }
 
-// ReadCardExtras is the fleet table's read card ids a step that judges reads must read as
-// records, placed or kept (a store's snapshot holds only the placed cards and the records a
-// step names): every identity of a read card of each primary in review, at its attempt, of
-// every reader the fleet table has a row for (a friend, by her name; a member with its
-// reader row).
+// ReadCardExtras names fleet read records, including ended identities and friends
+// without a fleet row. Ask extends these windows until its candidate was read
+// absent at the snapshot revision; tla/AskReadIDs.tla Load and NoReusedReadID.
 func ReadCardExtras(s *Snapshot) []string {
-	if s == nil || s.Work == nil || s.Fleet == nil {
-		return nil
-	}
 	var out []string
+	for _, ids := range ReadCardWindows(s, readCardLoadWindow) {
+		out = append(out, ids...)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// ReadCardWindows is a page beyond the highest visible generation for each
+// candidate reader. Existing rows are included too: other judgments still need
+// ended reads of readers that are currently down. A missing row is no filter.
+func ReadCardWindows(s *Snapshot, window int) map[string][]string {
+	out := map[string][]string{}
+	if s == nil || s.Work == nil || s.Fleet == nil {
+		return out
+	}
+	names := map[string]bool{}
+	for _, u := range readUnitsOf(s, s.Friends) {
+		names[u.name] = true
+	}
+	for _, row := range s.Fleet.Rows() {
+		name, friend := FriendOfRow(row)
+		if !friend {
+			if s.Readers == nil || !s.Readers.HasRow(ReaderPrefix+row) {
+				continue
+			}
+			name = row
+		}
+		names[name] = true
+	}
 	for _, c := range s.Work.Column(Review) {
 		attempt := readAttempt(c)
-		for _, row := range s.Fleet.Rows() {
-			name, ok := FriendOfRow(row)
-			if !ok {
-				if s.Readers == nil || !s.Readers.HasRow(ReaderPrefix+row) {
-					continue // a member with no reader row is dealt no read
-				}
-				name = row
-			}
-			// the identities the store must read are those the read index holds and the
-			// generation after the highest of them, the one readCardIDFor deals next: no
-			// reader is ever refused "no id", however often its read was taken back
+		for name := range names {
 			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
-			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next+readCardLoadWindow) {
-				if s.Fleet.Placed(id) == nil {
-					out = append(out, id)
-				}
+			out[ReadCardID(c.ID, attempt, name)] = ReadCardGenIDs(c.ID, attempt, name, next+window)
+		}
+	}
+	return out
+}
+
+// EndedReadDiagnostics reports history, never drift to delete. Each review
+// primary gets at most one line; the next identity comes from the checked load.
+func EndedReadDiagnostics(s *Snapshot) []string {
+	var out []string
+	for _, pr := range s.Work.Column(Review) {
+		for _, u := range readUnitsOf(s, s.Friends) {
+			base := ReadCardID(pr.ID, readAttempt(pr), u.name)
+			c := s.Fleet.Card(base)
+			if c == nil || c.Placed() {
+				continue
 			}
+			next := readCardIDFor(s.Fleet.Cards(), pr.ID, readAttempt(pr), u.name, s.ReadIDThrough)
+			if next == "" {
+				continue
+			}
+			out = append(out, base+" is held by an ended record; ask mints "+next)
+			break
 		}
 	}
 	return out
@@ -429,7 +465,7 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 	case readSpent(mine):
 		c := readSpender(mine)
 		return "spent(" + c.ID[strings.LastIndex(c.ID, ".")+1:] + " col=" + c.Col + " verdict=" + c.F("verdict") + " retired_by=" + c.F("retired_by") + " head=" + c.F("head") + ")"
-	case readCardIDFor(mine, pr.ID, attempt, u.name) == "":
+	case readCardIDFor(mine, pr.ID, attempt, u.name, s.ReadIDThrough) == "":
 		return "read generations past the load window"
 	}
 	if !u.friend {
@@ -826,7 +862,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 			un := &units[i]
 			un.half--
 			un.idle--
-			id := readCardIDFor(cards, pr.ID, attempt, un.name)
+			id := readCardIDFor(cards, pr.ID, attempt, un.name, view.ReadIDThrough)
 			if id == "" || (view != nil && view.Fleet != nil && view.Fleet.Card(id) != nil) {
 				continue
 			}
