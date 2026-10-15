@@ -45,7 +45,9 @@
   (group "export-v13-blockers" :title "Moved out of the sprint on 2026-10-15: v13-blockers"
    :text "The open cards of sprint stream v13-blockers, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down to the four tiny fixes of v13-blockers, tool-review-2026-10-15 and nova-local, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.")
   (group "export-v15-features" :title "Moved out of the sprint on 2026-10-15: v15-features"
-   :text "The open cards of sprint stream v15-features, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down (v1.5 work not about schema adoption moves to v1.7), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin."))
+   :text "The open cards of sprint stream v15-features, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down (v1.5 work not about schema adoption moves to v1.7), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.")
+  (group "export-v15-merging" :title "Moved out of the sprint on 2026-10-15: target v1.5"
+   :text "Cards that were merging when Glenn moved the rest into v1.5 (2026-10-15); one item per card with its pushed heads and any head not on origin."))
 
  :items
  (
@@ -2251,4 +2253,46 @@
    :date "2026-10-15"
    :release "v1.7"
    :origin "sprint card a-member-hold-releases-itself-at-its-time (stream v15-features, column working, tier , base v1.5), moved out of the sprint 2026-10-15"
-   :kept (:sprint-card "a-member-hold-releases-itself-at-its-time" :sprint-stream "v15-features" :sprint-column "working" :tier "" :sprint-base "v1.5" :needs "" :pushed-head "" :pushed-branch ""))))
+   :kept (:sprint-card "a-member-hold-releases-itself-at-its-time" :sprint-stream "v15-features" :sprint-column "working" :tier "" :sprint-base "v1.5" :needs "" :pushed-head "" :pushed-branch ""))
+  (item "sprint-config-from-nova-tools" :group "export-v15-merging" :area "nova-sprint"
+   :title "sprint-config-from-nova-tools"
+   :text "RESULT: sprint-config-from-nova-tools sha=<sha12> tier: heavy CARRY: sprint-config-from-nova-tools attempt 5 Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 64766041b9f9 (stella; origin sprint/sprint-config-from-nova-tools.w1.g4.e21); 902376d7e973 (rowan; origin sprint/sprint-config-from-nova-tools.w2.g1.e21); ca143cc02b6f (rowan; origin sprint/sprint-config-from-nova-tools.w4.g1.e21); b457e417fa2e (rowan; origin sprint/sprint-config-from-nova-tools.w6.g1.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "sprint-config-from-nova-tools" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "b457e417fa2ef63daacf38aea1afaf429da19f07" :pushed-branch "sprint/sprint-config-from-nova-tools.w6.g1.e21"))
+  (item "sprint-swarm-from-nova-tools" :group "export-v15-merging" :area "nova-sprint"
+   :title "sprint-swarm-from-nova-tools"
+   :text "RESULT: sprint-swarm-from-nova-tools sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: Glenn, 2026-10-15 13:16Z: card Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 6ccfc0d2bbc7 (rowan; origin sprint/sprint-swarm-from-nova-tools.w1.g1.e21); 7184b6c61e9a (emma; origin sprint/sprint-swarm-from-nova-tools.w2.g1.e21); 65a79bfdbb58 (emma; origin sprint/sprint-swarm-from-nova-tools.w3.g1.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "sprint-swarm-from-nova-tools" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "swarm-tools-takes-the-sprint-hunks,swarm-tools-takes-the-model-gate-and-runner-base-hunks" :pushed-head "65a79bfdbb58a86f30fa92acca5a6cc1672cfbe6" :pushed-branch "sprint/sprint-swarm-from-nova-tools.w3.g1.e21"))
+  (item "sprint-seat-environment-from-seatcred" :group "export-v15-merging" :area "nova-sprint"
+   :title "sprint-seat-environment-from-seatcred"
+   :text "RESULT: sprint-seat-environment-from-seatcred sha=<sha12> tier: pro CARRY: sprint-seat-environment-from-seatcred attempt 3 Source: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, findings F6 and Heads: 8886ebfec6b8 (vision; origin sprint/sprint-seat-environment-from-seatcred.w2.g1.e21); b7e150bfbab2 (hetzner1; origin sprint/sprint-seat-environment-from-seatcred.w4.g2.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "sprint-seat-environment-from-seatcred" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "pro" :sprint-base "v1.3/comms" :needs "" :pushed-head "b7e150bfbab2041f5adbdf96fd8d4c2098df8d7e" :pushed-branch "sprint/sprint-seat-environment-from-seatcred.w4.g2.e21"))
+  (item "a-need-names-what-it-consumes" :group "export-v15-merging" :area "nova-sprint"
+   :title "a-need-names-what-it-consumes"
+   :text "RESULT: a-need-names-what-it-consumes sha=<sha12> tier: frontier CARRY: a-need-names-what-it-consumes attempt 2 Source: Glenn ~15:02Z 2026-10-15: \"How can we remember and enforce not putting toooooo restrictive dependencies on cards in future? I love the rigor, but we don't really need things Heads: 1f8c2fbf29f7 (rowan; origin sprint/a-need-names-what-it-consumes.w2.g1.e21); 60e5fc07a7d0 (emma; origin sprint/a-need-names-what-it-consumes.w3.g2.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "a-need-names-what-it-consumes" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "60e5fc07a7d0673baa2820887e3d2bde3a7ebf9e" :pushed-branch "sprint/a-need-names-what-it-consumes.w3.g2.e21"))
+  (item "lander-checks-docs-against-the-candidate-verbs" :group "export-v15-merging" :area "nova-sprint"
+   :title "lander-checks-docs-against-the-candidate-verbs"
+   :text "RESULT: lander-checks-docs-against-the-candidate-verbs sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the lander's Source: the coordinator, 2026-10-15: the card bench-grants-owned-by-the-sprint-server adds the verb `nova-sprint grant` and documents it; the installed lander (v1.3.14) reads the Heads: a42017f5fbfb (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w1.g1.e21); 784ff63034e8 (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w2.g1.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "lander-checks-docs-against-the-candidate-verbs" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "784ff63034e813fc706423bef5e7d26dc70351e8" :pushed-branch "sprint/lander-checks-docs-against-the-candidate-verbs.w2.g1.e21"))
+  (item "an-ended-read-record-never-blocks-ask" :group "export-v15-merging" :area "nova-sprint"
+   :title "an-ended-read-record-never-blocks-ask"
+   :text "RESULT: an-ended-read-record-never-blocks-ask sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: `nova-sprint ask` Source: the coordinator, epoch 21 (2026-10-15): `ask` refused with code=MEMBEREXISTS: `member \"virtualgo-research-a.r1.batman~21\": member identity already exists: expected absent, Heads: a70d422b59eb (rowan; origin sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21)."
+   :why "Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging)."
+   :date "2026-10-15"
+   :release "v1.5"
+   :kept (:sprint-card "an-ended-read-record-never-blocks-ask" :sprint-stream "v13-blockers" :sprint-column "merging" :tier "" :sprint-base "v1.3/comms" :needs "" :pushed-head "a70d422b59ebb92c138c9541a94b111b3b7ce960" :pushed-branch "sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21"))))
