@@ -717,3 +717,5 @@ MCCoordinatorPassBrokenOutsidePush.cfg	MCCoordinatorPass.tla	invariant	NoLanding
 MCCoordinatorPassOutsidePush.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPushBrokenLookOnly.cfg	MCCoordinatorPush.tla	invariant	PushedWithinOneEvent	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResumeSilent.cfg	MCCoordinatorPush.tla	temporal	EveryStopAndResumeIsPushed	ignore-terminal	coordinatorpush	required	-
+MCSprintTablesBrokenScopeBounce.cfg	MCSprintTables.tla	action	ScopeWidenPreservesHead	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenScopeRedeal.cfg	MCSprintTables.tla	action	ScopeWidenKeepsReview	ignore-terminal	sprinttables	required	-
