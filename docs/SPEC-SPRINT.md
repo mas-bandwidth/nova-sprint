@@ -4651,8 +4651,17 @@ the records after a model edit"). Five seat-model cards came back broken on the 
 2026-10-05 only because the records lacked rows for the cases they edited or added. A
 case's inputs are what its TLC run reads (`tlc.Source.Inputs`), so an edit to a module
 another case extends touches that case too; a record is current when it names the
-fingerprint the merged tree gives the case (`tlc.StaleGroups`, the runner's files read from
-the merged tree). `sprint.RepairMerge` runs the check on each merge commit, so `checkCard`
+fingerprint the merged tree gives the case (`tlc.StaleGroups`). The runner's result files are
+inputs of every fingerprint, and the tree is the one authority for which runner its records
+answer to (internal/sprint/land_runner.go): a tree that holds the runner (`pkg/tlc`) is held to
+those files; else a tree whose CI workflow builds tlacheck at a full nova-tools commit (a
+nova-tools checkout at that commit, or `go install .../nova-tools/tools/tlacheck@<commit>`, as
+rocketnet's `.github/workflows/tlc.yml` does) is held to that commit's `pkg/tlc`, read from
+nova-tools into a cache beside land's clones; only a tree that pins nothing is held to the
+runner built into nova-sprint. A record another runner wrote is refused naming the runner it
+was held to (its revision and runner digest) and, when the tree pins one, whether the record
+is the built-in runner's or neither's; a pin the lander cannot read, or two workflows pinning
+two commits, is one refusal on the pin's line. `sprint.RepairMerge` runs the check on each merge commit, so `checkCard`
 refuses with it, one line per case: `tla/RUNS.tsv:<line> has no current run record for the
 case <config> (group <group>) and the change edits <files>; run make tlc TLC_GROUP=<group>
 ...`, the line the case's stale row, or the one where a missing row is owed. A base's stale
@@ -4667,8 +4676,10 @@ with a file no row or a row no file. An edit to `tla/CASES.tsv` alone is enough 
 check on a tree that carries a model (some `MC*.cfg`); a tree with no `MC*.cfg` holds no
 models, as one with no `tla/CASES.tsv` holds none. A generated card whose PATHS reach `tla/` runs the model
 in its own STEP 4 gate and carries `tla/RUNS.tsv` on its PATHS line (docs/SPEC-CARD-CONTRACT.md
-section 6). The test is internal/sprint/land_records_test.go
-(`TestTheLanderWantsARunRecordForAnEditedModel`, on a real merge commit).
+section 6). The tests are internal/sprint/land_records_test.go
+(`TestTheLanderWantsARunRecordForAnEditedModel`, on a real merge commit) and
+internal/sprint/land_runner_test.go (`TestTheLanderHoldsRecordsToTheTreesPinnedRunner`,
+`TestTheRunnerSourceReadsACachedRevision`).
 
 **The tree gate.** Every tip of the batch branch passes the tree gate before the
 next head is merged onto it, in a clone that holds a `go.mod`: the module builds
