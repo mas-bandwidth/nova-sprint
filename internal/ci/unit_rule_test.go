@@ -117,7 +117,7 @@ var unitRuleCalls = map[string]map[string]string{
 	},
 	// testredis starts a real redis-server on a real port (its SocketPath and
 	// Program only name a path)
-	"github.com/mas-bandwidth/nova-sprint/pkg/testredis": {
+	"github.com/mas-bandwidth/nova-tools/pkg/testredis": {
 		"Start": "service", "StartServer": "service", "Far": "service", "FarLink": "service",
 	},
 }
@@ -617,8 +617,8 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			[]string{"3 socket net/http/httptest.NewServer"}},
 		"an HTTP call": {"package p\nimport \"net/http\"\nfunc TestX() { http.Get(\"https://example.com\") }\n",
 			[]string{"3 service net/http.Get"}},
-		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-sprint/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
-			[]string{"3 service github.com/mas-bandwidth/nova-sprint/pkg/testredis.Start"}},
+		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
+			[]string{"3 service github.com/mas-bandwidth/nova-tools/pkg/testredis.Start"}},
 		"the hook socket helper": {"package p\nfunc TestX(t T) { a.hookSock = shortSock(t) }\n",
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
@@ -665,7 +665,7 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 		"a recorder":                  "package p\nimport \"net/http/httptest\"\nfunc TestX() { _ = httptest.NewRecorder(); _ = httptest.NewRequest(\"GET\", \"/\", nil) }\n",
 		"a local name like the clock": "package p\nfunc TestX(c clock) { _ = c.Now(); c.Sleep(1) }\n",
 		"a test named Eventually":     "package p\nfunc TestStalledCallerIsEventuallyGranted(t T) {}\n",
-		"a socket's path":             "package p\nimport \"github.com/mas-bandwidth/nova-sprint/pkg/testredis\"\nfunc TestX() { testredis.SocketPath(\"d\", \"n.sock\") }\n",
+		"a socket's path":             "package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX() { testredis.SocketPath(\"d\", \"n.sock\") }\n",
 	}
 	for name, src := range no {
 		t.Run("no/"+name, func(t *testing.T) {

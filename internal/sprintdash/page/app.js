@@ -1,7 +1,7 @@
 // Sprint dashboard: polls /api/sprint (the server's cached `where --json`)
-// once a second whatever the round trip, or follows /events when the server
-// offers it, and patches the DOM in place. Nothing is blanked on a failed
-// poll; the page holds the last data and says nothing.
+// once a second whatever the round trip, and patches the DOM in place.
+// Nothing is blanked on a failed poll; the page holds the last data and
+// says nothing.
 "use strict";
 
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
@@ -911,7 +911,7 @@ function render(d) {
 // One snapshot, from the poll or the stream: shown only when its `at` is newer than the one on
 // screen, so a slow response that arrives after a faster later one never moves the page backwards
 // (SPEC.md, the owner 11:30 AM). Accepts the /api/sprint envelope ({data, build, throughput}) or a bare
-// `where --json` snapshot (an /events message may carry either).
+// `where --json` snapshot.
 function accept(j) {
   if (!j) return;
   var d = j.tables ? j : j.data;
@@ -942,113 +942,12 @@ function poll() {
   }).then(function () { inFlight--; if (kill) clearTimeout(kill); });
 }
 function startPoll() { if (pollTimer == null) { poll(); pollTimer = setInterval(poll, POLL_MS); } }
-function stopPoll() { if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; } }
-// The stream: when the server offers /events (server-sent events, the nova-sprint dashboard verb),
-// each `sprint` event is rendered as it arrives and the poll stops while the stream is live. On any
-// error (a 404 from a server without it, a dropped stream) or 5 s without an event (a stream a proxy
-// holds open but silent), the stream is closed, the poll resumes, and the stream is tried again 5 s later.
-var STREAM_RETRY_MS = 5000, STREAM_SILENT_MS = 5000, stream = null, streamHeard = 0;
-function dropStream() {
-  if (!stream) return;
-  console.debug("events: stream dropped, polling; retry in " + STREAM_RETRY_MS / 1000 + " s");
-  stream.close(); stream = null;
-  startPoll();
-  setTimeout(connectStream, STREAM_RETRY_MS);
-}
-function connectStream() {
-  if (typeof EventSource !== "function" || stream) return;
-  var es;
-  try { es = new EventSource("/events" + RELEASE_Q); } catch (e) { return; }
-  stream = es; streamHeard = Date.now();
-  es.addEventListener("open", function () { if (stream === es) { streamHeard = Date.now(); stopPoll(); } });
-  es.addEventListener("sprint", function (ev) {
-    if (stream !== es) return;
-    streamHeard = Date.now();
-    var j; try { j = JSON.parse(ev.data); } catch (e) { return; }
-    accept(j);
-  });
-  es.addEventListener("error", function () { if (stream === es) dropStream(); });
-}
-setInterval(function () { if (stream && Date.now() - streamHeard > STREAM_SILENT_MS) dropStream(); }, 1000);
 
 // The top bar's centre line is static CSS (index.html): nothing here moves the title, the
 // pills, the clock or the button after load.
 
 // theme: always dark (the owner 2026-10-04 2:21 PM: no light theme, no toggle)
 startPoll();
-connectStream();
-
-// Landings (the owner 2026-10-04 4:20 PM, live/SPEC.md): cards landed per 10 minutes over the last 24 hours,
-// fleet at the base and friends on top, drawn as plain SVG. The series comes from /landings.json, which
-// bin/landings.sh writes every 60 s (a STOPGAP until where --json carries it); the panel stays hidden
-// until that file is fetched, and redraws only when its "generated" changes or the window resizes.
-var LAND_POLL_MS = 15000, landLast = null;
-function svgEl(tag, attrs, text) {
-  var e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
-  if (text != null) e.textContent = text;
-  return e;
-}
-function niceStep(max) {
-  var steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
-  for (var i = 0; i < steps.length; i++) if (max / steps[i] <= 4) return steps[i];
-  return steps[steps.length - 1];
-}
-function hourLabel(d) { var h = d.getHours(); return (h % 12 || 12) + " " + (h < 12 ? "AM" : "PM"); }
-function drawLandings(j) {
-  var svg = $("landchart"), W = svg.clientWidth, H = svg.clientHeight;
-  if (!W || !H) return;
-  var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  var padL = 3.5 * rem, padB = 2.75 * rem, padT = 1 * rem, plotW = W - padL, plotH = H - padT - padB;
-  var n = j.buckets, fr = j.friends, fl = j.fleet, max = 0;
-  for (var i = 0; i < n; i++) max = Math.max(max, fr[i] + fl[i]);
-  var step = niceStep(Math.max(max, 4)), top = Math.max(step, Math.ceil(max / step) * step);
-  var y = function (v) { return padT + plotH - v / top * plotH; };
-  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  for (var v = 0; v <= top; v += step) {
-    var yy = Math.round(y(v)) + 0.5;
-    svg.appendChild(svgEl("line", { "class": v === 0 ? "axis" : "grid", x1: padL, x2: W, y1: yy, y2: yy }));
-    svg.appendChild(svgEl("text", { x: padL - 0.75 * rem, y: yy, "text-anchor": "end", "dominant-baseline": "central" }, String(v)));
-  }
-  var slot = plotW / n, gap = slot >= 6 ? 2 : 1, bw = Math.max(1, slot - gap);
-  for (var b = 0; b < n; b++) {
-    var x = padL + b * slot + gap / 2, h1 = fl[b] / top * plotH, h2 = fr[b] / top * plotH;
-    var op = b === n - 1 ? { opacity: 0.6 } : {}; // the current bucket is still filling
-    if (h1 > 0) svg.appendChild(svgEl("rect", Object.assign({ "class": "fleet", x: x, y: padT + plotH - h1, width: bw, height: h1, rx: 1 }, op)));
-    if (h2 > 0) svg.appendChild(svgEl("rect", Object.assign({ "class": "friends", x: x, y: padT + plotH - h1 - h2, width: bw, height: h2, rx: 1 }, op)));
-    var t = new Date((j.start + b * j.bucketSeconds) * 1000);
-    if (t.getMinutes() === 0 && t.getHours() % 2 === 0) {
-      var xx = Math.round(padL + b * slot) + 0.5;
-      svg.appendChild(svgEl("line", { "class": "axis", x1: xx, x2: xx, y1: padT + plotH, y2: padT + plotH + 0.5 * rem }));
-      svg.appendChild(svgEl("text", { x: xx, y: padT + plotH + 1.75 * rem, "text-anchor": b === 0 ? "start" : "middle" }, hourLabel(t)));
-    }
-  }
-  var lg = $("landings-legend"), tot = j.totals || {}, lh = j.lastHour || {};
-  var html = '<span><i class="sw friends"></i><span>friends <b>' + (tot.friends || 0) + '</b></span></span>' +
-    '<span><i class="sw fleet"></i><span>fleet <b>' + (tot.fleet || 0) + '</b></span></span>' +
-    '<span>last hour <b>' + (lh.friends || 0) + '</b>&nbsp;friends&nbsp;· <b>' + (lh.fleet || 0) + '</b>&nbsp;fleet</span>' +
-    (tot.unknown ? '<span>worker unknown <b>' + tot.unknown + '</b></span>' : "");
-  if (lg.innerHTML !== html) lg.innerHTML = html;
-}
-function pollLandings() {
-  fetch("/landings.json", { cache: "no-store" }).then(function (r) {
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
-  }).then(function (j) {
-    if (!j || !j.buckets || !j.friends || !j.fleet) return;
-    var changed = !landLast || landLast.generated !== j.generated;
-    landLast = j;
-    $("landings-panel").hidden = false;
-    if (changed || !$("landchart").firstChild) drawLandings(j); // a panel folded at load draws on its first open
-  }).catch(function () {
-    // hold: the panel keeps its last drawing, or stays hidden until the file is served
-  });
-}
-window.addEventListener("resize", function () { if (landLast) drawLandings(landLast); });
-if ($("landings-panel")) $("landings-panel").addEventListener("click", function (e) { if (landLast && e.target.classList.contains("fold")) setTimeout(function () { drawLandings(landLast); }, 0); });
-pollLandings();
-setInterval(pollLandings, LAND_POLL_MS);
 
 // the version and epoch chips stay only while the header holds them and the clock on one line;
 // the clock has priority, so the last chip goes first (the owner 2026-10-12 ~01:20Z)
