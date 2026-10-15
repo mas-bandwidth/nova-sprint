@@ -345,11 +345,13 @@ because a queued change can make work ready in the same tick. The tick's deal of
 ready work, in the deal order (below), to a
 friend up (the friends' rule: not held, with evidence from her own session) below her room,
 and fills no row that cannot work: a friend whose status is not up (her beat alone is
-no evidence), whose control row on the fleet table says down or held, or whom the stall
-ladder marked down until her activity releases her is dealt nothing, by the deal, the
-level and the attempt cap's deal alike (`sprint.friendDealable`; 2026-10-06: a friend
-whose row read down, her daemon beating, was dealt 18 cards twice;
-`TestTheDealSkipsADownRowAndHonoursTheWhoPin`), and her row's `streams` and
+no evidence), or whose control row on the fleet table says down or held, is dealt
+nothing, by the deal, the level and the attempt cap's deal alike (`sprint.friendDealable`;
+2026-10-06: a friend whose row read down, her daemon beating, was dealt 18 cards twice;
+`TestTheDealSkipsADownRowAndHonoursTheWhoPin`). The stall ladder's rung-5 mark gates no
+deal: an up friend with an empty row is dealt whatever mark it left (2026-10-15: a mark
+released only by her activity left two friends, who had no card to be active on, undealt;
+`TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick`), and her row's `streams` and
 `kinds` restriction (docs/SPEC-CONFIG.md, friend) filters every card the deal, the
 level, the start-bound level and the attempt cap's deal may hand her
 (`sprint.friendRestrictionAllows`; `TestDealerNeverDealsAFriendOutsideHerStreams`): in

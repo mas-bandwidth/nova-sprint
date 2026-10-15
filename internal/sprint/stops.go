@@ -333,8 +333,8 @@ func needing(s *Snapshot, id string) []string {
 }
 
 // friendStallStops is each friend the stall ladder (friend_stall.go) has climbed past its
-// wakes: at rung 3 or above while she holds cards, the pass keeps NFriendStalled; marked
-// down by it (rung 5), the down is listed until her activity releases her.
+// wakes: at rung 3 or above while she holds cards, the pass keeps NFriendStalled. Its
+// rung-5 mark (PropFriendStallDown) is no stop: it gates no deal (friendCanRead).
 func friendStallStops(s *Snapshot) []Stop {
 	if s.Fleet == nil {
 		return nil
@@ -344,13 +344,6 @@ func friendStallStops(s *Snapshot) []Stop {
 		f, ok := FriendOfRow(row)
 		if !ok {
 			continue
-		}
-		if v, _ := s.Fleet.Prop(PropFriendStallDown(f)); v != "" {
-			at, _ := time.Parse(time.RFC3339, v) // ignored: an unreadable stamp lists the down with no age
-			out = append(out, Stop{Kind: StopKindFriendDown, Subject: f, Since: at,
-				What:   fmt.Sprintf("friend %s was marked down by the stall ladder (reason stalled) at %s", f, v),
-				Effect: "no card is dealt to the friend until activity releases the stall",
-				Undo:   "nova-friend reach --as <coordinator> --to " + f + "; activity releases the stall", Signal: NFriendStall})
 		}
 		v, _ := s.Fleet.Prop(PropFriendStallRung(f))
 		rung, _ := strconv.Atoi(v) // ignored: no rung, or one that does not read, is rung 0

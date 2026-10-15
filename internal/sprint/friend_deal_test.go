@@ -269,33 +269,27 @@ func TestAOneShotFriendsFreedLaneTakesHerNextWhileOtherLanesRun(t *testing.T) {
 }
 
 // The deal fills only a row that can work (docs/SPEC-SPRINT.md section 1, a friend's card):
-// a friend whose status is not up (her beat alone is no evidence) or whom the stall ladder
-// marked down is dealt nothing; and a card whose WHO line names a friend up with room goes
+// a friend whose status is not up (her beat alone is no evidence) is dealt nothing; and a card whose WHO line names a friend up with room goes
 // to her, even when another friend has more room. A WHO: friend <name> card whose friend is
 // not up is offered on, as the preference it is, with the pin-ignored judgment naming why
 // (2026-10-06: a friend whose row read down, her daemon beating, was dealt 18 cards twice).
 func TestTheDealSkipsADownRowAndHonoursTheWhoPin(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend bob"), friendBrief("friend"), friendBrief("friend"))
-	// cat is up by her session's evidence, but the stall ladder marked her down
-	w.s.Fleet.SetProp(PropFriendStallDown("cat"), stamp(w.s.Now.Add(-time.Minute)))
 	seats := []FriendSeat{
 		{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"},
 		{Name: "bob", Width: 4, Status: Down, Class: "flash,pro", Why: "no session evidence; her beat 1s ago is not evidence"},
-		{Name: "cat", Width: 4, Status: Up, Class: "flash,pro"},
 		{Name: "dan", Width: 4, Status: Up, Class: "flash,pro"},
 	}
 	p := dealWith(w, seats...)
 
 	assert.Zero(t, w.s.Fleet.Count(FriendRow("bob"), Ready)+w.s.Fleet.Count(FriendRow("bob"), Working), "a down row, beating, is dealt nothing")
-	assert.Zero(t, w.s.Fleet.Count(FriendRow("cat"), Ready)+w.s.Fleet.Count(FriendRow("cat"), Working), "a row the stall ladder marked down is dealt nothing")
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.NotNil(t, wc)
 	assert.Equal(t, FriendRow("amy"), wc.Row, "WHO: friend amy goes to amy, up with room, though dan has more")
 	wc = w.s.Fleet.Card("s1-2.w1")
 	require.NotNil(t, wc)
 	assert.NotEqual(t, FriendRow("bob"), wc.Row)
-	assert.NotEqual(t, FriendRow("cat"), wc.Row)
 	var ignored []Note
 	for _, u := range p.Units {
 		for _, n := range u.Notes {
@@ -312,6 +306,30 @@ func TestTheDealSkipsADownRowAndHonoursTheWhoPin(t *testing.T) {
 		require.NotNil(t, c, id)
 		assert.Contains(t, []string{FriendRow("amy"), FriendRow("dan")}, c.Row, "%s goes to a row that can work", id)
 	}
+}
+
+// An up, unheld friend with an empty row is dealt by the tick whatever mark the stall
+// ladder left on her (PropFriendStallDown): the mark was released only by her activity, and
+// a friend dealt nothing has no card to be active on, so she was never dealt again
+// (2026-10-15 live, v1.3.8: aurora and stella up with empty rows of width 8, marked at
+// rung 5 at 00:39Z and 00:40Z, while cards waited ready and the coordinator pass raised
+// "an up friend has an empty row while cards wait"). The sprint's friend states are up,
+// down and held alone (the owner, 2026-10-14).
+func TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"), friendBrief("friend"))
+	marked := stamp(w.s.Now.Add(-time.Hour))
+	w.s.Fleet.SetProp(PropFriendStallDown("aurora"), marked)
+	seats := []FriendSeat{{Name: "aurora", Width: 8, Status: Up, Class: "flash,pro"}}
+
+	// the tick's stall part first, as the fleet update runs it: no activity of hers, so it
+	// keeps the mark; then the deal
+	sp, _ := TickFriendStall(w.s, TickReq{Friends: seats})
+	w.must(sp)
+	dealWith(w, seats...)
+
+	row := FriendRow("aurora")
+	assert.Equal(t, 3, w.s.Fleet.Count(row, Ready)+w.s.Fleet.Count(row, Working), "an up friend with an empty row is dealt the cards that wait, mark or no mark")
 }
 
 // A friend whose status is up is still not dealt when her fleet control card says
