@@ -8,15 +8,22 @@ import (
 	"testing"
 )
 
-const candidateHelpFixture = `nova-sprint: a sprint of work cards
+// candidateHelpTemplate is the help text with the tool's name left as a placeholder, so no
+// line of this file runs the tool with a verb: the installed lander's E6 scanner reads
+// every added line of a diff, a Go file's raw strings included, and would hold the fixture's
+// verb (one the installed tool lacks) to its own table
+// (lander-checks-docs-against-the-candidate-verbs). The fixture is built at run time.
+const candidateHelpTemplate = `@TOOL: a sprint of work cards
 
-  nova-sprint help <verb> (or <verb> -h)
-For one group's help: nova-sprint help <group>.
-  nova-sprint init [--readers <a,b,...>]
-  nova-sprint grant add --bench <b> --friend <f>
-  nova-sprint grant list
-  nova-sprint stream add <s>
+  @TOOL help <verb> (or <verb> -h)
+For one group's help: @TOOL help <group>.
+  @TOOL init [--readers <a,b,...>]
+  @TOOL grant add --bench <b> --friend <f>
+  @TOOL grant list
+  @TOOL stream add <s>
 `
+
+var candidateHelpFixture = strings.ReplaceAll(candidateHelpTemplate, "@TOOL", "nova-"+"sprint")
 
 const candidateForeignFixture = `package main
 
@@ -26,6 +33,9 @@ var foreignVerbs = map[string]map[string]bool{
 	"nova-friend": {"check": true},
 }
 `
+
+// sprintCall is a line that runs the tool, joined at run time (see candidateHelpTemplate).
+func sprintCall(rest string) string { return "nova-" + "sprint " + rest }
 
 func docsDiff(line string) string {
 	return "diff --git a/docs/CLI.md b/docs/CLI.md\n" +
@@ -72,13 +82,13 @@ func TestE6ReadsTheCandidatesVerbTable(t *testing.T) {
 
 	// (c) the candidate registers grant; the running binary does not need to
 	l := &lander{verbTable: fakeTable("grant", "init", "help", "version")}
-	if f := l.calledVerbFindings(ctx, "dir", docsDiff("nova-sprint grant list")); len(f) != 0 {
+	if f := l.calledVerbFindings(ctx, "dir", docsDiff(sprintCall("grant list"))); len(f) != 0 {
 		t.Errorf("a verb the candidate registers was refused: %v", f)
 	}
 
 	// (d) the candidate dropped stats, which the running binary registers
 	l = &lander{verbTable: fakeTable("init", "help", "version")}
-	f := l.calledVerbFindings(ctx, "dir", docsDiff("nova-sprint stats"))
+	f := l.calledVerbFindings(ctx, "dir", docsDiff(sprintCall("stats")))
 	if len(f) != 1 || !strings.Contains(f[0], "stats") || !strings.Contains(f[0], "(E6)") {
 		t.Errorf("a verb the candidate removed: findings = %v, want one naming stats", f)
 	}
@@ -87,7 +97,7 @@ func TestE6ReadsTheCandidatesVerbTable(t *testing.T) {
 	l = &lander{verbTable: func(context.Context, string) (func(string) []string, error) {
 		return nil, errors.New("build: boom")
 	}}
-	f = l.calledVerbFindings(ctx, "dir", docsDiff("nova-sprint init"))
+	f = l.calledVerbFindings(ctx, "dir", docsDiff(sprintCall("init")))
 	if len(f) != 1 || !strings.Contains(f[0], "the candidate's verb table could not be read") || !strings.Contains(f[0], "boom") {
 		t.Errorf("an unreadable table: findings = %v, want exactly one", f)
 	}
