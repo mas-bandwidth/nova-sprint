@@ -81,11 +81,14 @@ func fenceLine(l string) bool {
 	return strings.HasPrefix(strings.TrimSpace(l), "```")
 }
 
-// registeredVerbs is the verb table a repository tool carries at the head, what the
-// lander's E6 check holds a called verb to (docs/SPEC-SPRINT.md section 7, the lander's
-// checks): nova-sprint's own table (the binary's, read from verbs.go) and, for the tools
-// nova-sprint does not build (nova-friend, nova-swarm, nova-config and the rest of
-// foreignVerbs), the runbook's list. A tool of neither is not checked.
+// registeredVerbs is the verb table of the tools this running binary carries: nova-sprint's
+// own (verbNames(), read from verbs.go) and, for the tools nova-sprint does not build
+// (nova-friend, nova-swarm, nova-config and the rest of foreignVerbs), the runbook's list.
+// It is not the table the lander's E6 check holds a head to when the head carries
+// cmd/nova-sprint: that is the candidate tree's, built and read by candidateVerbs
+// (lander-checks-docs-against-the-candidate-verbs). This one answers for a tree without
+// cmd/nova-sprint (nova-tools and every other repository), whose docs call the installed
+// tools, and for the tests. A tool of neither is not checked.
 func registeredVerbs(tool string) []string {
 	if tool == "sprint" {
 		return verbNames()

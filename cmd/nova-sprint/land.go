@@ -324,6 +324,9 @@ type lander struct {
 	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
 	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
 	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
+	// verbTable reads the verb table of the candidate tree in dir for the lander's E6 check
+	// (calledVerbFindings); nil means candidateVerbs with this lander's runner.
+	verbTable func(ctx context.Context, dir string) (func(tool string) []string, error)
 	// toCost is the red gates' decide calls, each split over its batch's cards, written on
 	// the cards after the whole pass (landgate.go, recordGateCosts)
 	toCost []sprint.DecideCostReq
@@ -2325,15 +2328,13 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 		why = append(why, f.String()+" (E4)")
 	}
 	// A changed line that runs one of the repository's own tools with a verb must call a
-	// verb the tool registers at the head (E6, docs/SPEC-SPRINT.md section 7): a missing
-	// verb refuses the head naming the file, the line and the tool's known verbs. The line
-	// is one that runs the tool — after indentation, a play's dash, a prompt, `run:`, `env`
-	// and `VAR=` — and, in a Markdown file, only inside a fenced code block, so prose that
-	// merely names a tool is not read (calledVerbs, toolCallRE, fenceLine). registeredVerbs
-	// holds nova-sprint to its own table and nova-friend, nova-swarm and nova-config to the
-	// runbook's list; a shell built-in is not checked.
-	for _, f := range calledVerbs(diff, registeredVerbs) {
-		why = append(why, f.String()+" (E6)")
+	// verb the tool registers in the candidate tree being landed (E6, docs/SPEC-SPRINT.md
+	// section 7, lander-checks-docs-against-the-candidate-verbs): calledVerbFindings reads
+	// the table from the candidate, not from this running lander, so a head that adds a verb
+	// and documents it lands under an older lander and a head that removes a verb a doc
+	// still calls is refused.
+	for _, w := range l.calledVerbFindings(ctx, dir, diff) {
+		why = append(why, w)
 	}
 	// The attempt's start: an earlier attempt's pushed head when the card has one and
 	// this head moved from it, else where this head left the base (a carried head equal

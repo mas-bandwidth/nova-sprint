@@ -4578,6 +4578,7 @@ What each of the lander's checks does with a head:
 | a code fence the change leaves open | repairs; refuses when ambiguous, naming the line |
 | a ledger the merge leaves stale | repairs (regenerated at the merge) |
 | a model or configuration under `tla/` edited without a current `tla/RUNS.tsv` record for a case it touches | refuses, one line per case naming it and its group |
+| a changed line that runs a repository tool with a verb (E6) | refuses a verb the candidate tree does not register, naming the file, the line and the tool's verbs; the table is the candidate's, not the running lander's: when the tree holds `cmd/nova-sprint` the lander builds that command from the candidate, reads its verbs from the binary's `help` and the foreign tools' verbs from the candidate's `cmd/nova-sprint/foreign_verbs.go`, so a head that adds a verb and documents it lands under an older lander and a head that removes a verb a doc still calls is refused; a table that cannot be read is refused with one finding saying so, never passed; a tree without `cmd/nova-sprint` keeps the installed tables |
 | the tree gate | refuses |
 
 **The document repairs** (`sprint.RepairMerge` and `sprint.RepairDoc`,
