@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -115,33 +114,6 @@ func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 		return coord, st.B.SetCoordinator(ctx, coord)
 	}
 	return first, st.B.SetCoordinator(ctx, first)
-}
-
-// initSeatMove records init's move of the seat onto a not-new store whose key
-// holds none: the seat change as the seat's own step writes it, its generation
-// stepped, written with the key, its log line and its note, so an observation
-// records the new coordinator generation.
-func (st *Store) initSeatMove(ctx context.Context, first string) (string, error) {
-	step := Step{Named: true, Verb: "init", Args: "init --coordinator " + first,
-		Plan: func(s *sprint.Snapshot) sprint.Plan {
-			reason := "init --coordinator " + first
-			c := &sprint.SeatChange{Holder: first, Generation: max(s.SeatGeneration, sprint.FirstSeatGeneration) + 1, From: s.Coordinator, At: s.Now, By: s.Actor, Reason: reason}
-			from := s.Coordinator
-			if from == "" {
-				from = "-"
-			}
-			n := sprint.Note{Kind: sprint.Happened, Type: sprint.NSeat, At: s.Now, Who: s.Actor, To: first,
-				What: from + " -> " + first + ": " + reason + ", by " + s.Actor}
-			return sprint.Plan{Seat: c, Notes: []sprint.Note{n}}
-		}}
-	res, err := st.Run(ctx, step)
-	if err != nil {
-		return "", err
-	}
-	if len(res.Refused) > 0 {
-		return "", fmt.Errorf("init: %s", res.Refused[0].Why)
-	}
-	return first, nil
 }
 
 // SeatRepairStep writes the coordinator key from the seat's record, read now
