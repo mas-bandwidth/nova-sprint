@@ -2,7 +2,10 @@ module github.com/mas-bandwidth/nova-sprint
 
 go 1.26.6
 
-tool golang.org/x/tools/cmd/deadcode
+tool (
+	github.com/mas-bandwidth/nova-tools/tools/roadmap
+	golang.org/x/tools/cmd/deadcode
+)
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
