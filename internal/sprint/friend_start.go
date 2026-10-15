@@ -205,6 +205,9 @@ func friendUnstartedLevel(s *Snapshot, seats []FriendSeat, since func(string) (t
 	up := map[string]FriendSeat{}
 	var names []string
 	for _, f := range seats {
+		if f.Session == FriendOneShot {
+			continue // a one-shot's row is left to her member: no start-bound level moves her cards, and none moves onto her row
+		}
 		if f.Status == Up {
 			up[f.Name] = f
 			names = append(names, f.Name)
