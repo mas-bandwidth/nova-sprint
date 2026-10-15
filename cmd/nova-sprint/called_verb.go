@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 )
 
 // toolCallRE matches a line that runs one of the repository's own tools with a verb:
