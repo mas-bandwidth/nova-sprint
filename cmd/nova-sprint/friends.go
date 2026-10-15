@@ -118,6 +118,15 @@ type friendsFn func(ctx context.Context, pg string) ([]config.Row, error)
 
 // readFriends is the real friendsFn: the friend rows of Postgres, by
 // config.ResolveDSN, bounded.
+// friendSession is the roster's word for a friend row's session: sprint.FriendOneShot for
+// a one-shot (a member lane on her row), "" for a live friend.
+func friendSession(r config.Row) string {
+	if config.FriendSession(r) == config.FriendSessionOneShot {
+		return sprint.FriendOneShot
+	}
+	return ""
+}
+
 func (a *app) readFriends(ctx context.Context, pg string) ([]config.Row, error) {
 	var rows []config.Row
 	err := a.withConfig(ctx, pg, func(ctx context.Context, st config.Store) error {
@@ -211,7 +220,7 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 			fmt.Fprintf(stderr, "%s %s: friend %s has width %d, and a friend's width is at least 1; run: nova-config friend set %s --width <n>; nothing was changed\n", prog, name, n, width, n)
 			return 1, false
 		}
-		specs = append(specs, store.FriendSpec{Name: n, Width: width, Class: friendClass(r), Mode: config.FriendMode(r), ConfigDir: r.Fields["config_dir"], Pronouns: config.FriendPronouns(r), TokenCap: config.FriendTokenCap(r), TokenCapSet: true, Roles: friendRoles(r), Billing: r.Fields["billing"], Streams: r.Fields["streams"], Kinds: r.Fields["kinds"]})
+		specs = append(specs, store.FriendSpec{Name: n, Width: width, Class: friendClass(r), Mode: config.FriendMode(r), ConfigDir: r.Fields["config_dir"], Pronouns: config.FriendPronouns(r), Session: friendSession(r), TokenCap: config.FriendTokenCap(r), TokenCapSet: true, Roles: friendRoles(r), Billing: r.Fields["billing"], Streams: r.Fields["streams"], Kinds: r.Fields["kinds"]})
 	}
 	added, removed, updated, err := st.SyncFriends(ctx, specs)
 	if err != nil {
@@ -231,6 +240,9 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	// added can be written to before any card is dealt her (docs/FRIENDS.md)
 	names := make([]string, 0, len(specs))
 	for _, s := range specs {
+		if s.Session == sprint.FriendOneShot {
+			continue // a one-shot is no bus name: a send to her is refused, never queued (her work travels in the card brief)
+		}
 		names = append(names, s.Name)
 	}
 	enrolled, err := a.busEnroll(ctx, names...)
@@ -241,6 +253,9 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 		say("FRIEND-SYNC NOTE: the friend rows' names could not all be put on the bus store's roster (" + oneline.Escape(err.Error()) + ")")
 	}
 	for _, s := range specs {
+		if s.Session == sprint.FriendOneShot {
+			continue // no inbox, queue file, wake or start receipt is a one-shot's: her member reads the brief from the server
+		}
 		// her starts first, so a card she began is working before its report is read
 		if err := a.friendStartsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say); err != nil {
 			fmt.Fprint(stderr, friend.Pronouns(s.Pronouns).Sprintf("%s %s: the sprint cards of %s cannot be read for {their} starts: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error())))
@@ -441,7 +456,7 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		// a friend the roster lacks is a definite pre-write refusal: the store
 		// answered and nothing was written, so it is refused/no; any other error
 		// is a store that did not confirm the beat, so it is unknown
-		if store.IsNoFriend(err) {
+		if store.IsNoFriend(err) || store.IsOneShot(err) {
 			a.outcome, a.changed = "refused", "no"
 		} else {
 			a.outcome, a.changed = "unknown", "unknown"

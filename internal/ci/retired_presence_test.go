@@ -75,6 +75,7 @@ type retiredName struct {
 var retiredHistory = []string{
 	"CHANGELOG.md", "FIXES.md", "docs/fixes.sexp", "tmp/",
 	retiredPresenceTable, "internal/ci/retired_presence_test.go",
+	"internal/sprint/stale_stall_mark_test.go", // seeds the retired stall mark as a stale record (the 2026-10-15 regression)
 }
 
 // retiredTextExts are the files a text row is looked for in.

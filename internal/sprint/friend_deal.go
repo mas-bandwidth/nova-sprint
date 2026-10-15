@@ -50,6 +50,26 @@ func friendHasRole(f FriendSeat, role string) bool {
 // friendRowPrefix begins every friend's fleet row: a dot, so no machine's name is one.
 const friendRowPrefix = "friend."
 
+// FriendOneShot is a friend seat's Session for a friend with no live session between cards
+// (nova-config friend --session one-shot): she runs as an ordinary fleet member lane on her
+// row (nova-swarm member --as friend.<name> --prompt <file>), so her status is her member's
+// beat (PresenceStatus), never a hook, and no friend lane, daemon beat or link is hers
+// (the v1.3 friend lane spec, guarantee 12; nova-tools tla/FriendLane.tla,
+// OneShot).
+const FriendOneShot = "one-shot"
+
+// OneShotLaneRefusal is the refusal of a friend lane's verb (a lane take, a daemon beat) for a
+// one-shot friend: her lanes are her member's.
+func OneShotLaneRefusal(friend string) string {
+	return "friend " + friend + " is a one-shot: no friend lane or daemon serves a one-shot, whose row is worked by a member: nova-swarm member --as " + FriendRow(friend) + " --prompt <identity file>"
+}
+
+// FriendIsOneShot says the roster's friend seat is a one-shot's (FriendOneShot).
+func (s *Snapshot) FriendIsOneShot(friend string) bool {
+	i := slices.IndexFunc(s.Friends, func(f FriendSeat) bool { return f.Name == friend })
+	return i >= 0 && s.Friends[i].Session == FriendOneShot
+}
+
 // FriendRow is the fleet row, and the member, a friend's cards are dealt to.
 func FriendRow(name string) string { return friendRowPrefix + name }
 
@@ -172,6 +192,9 @@ type FriendSeat struct {
 	Evidence string
 	Current  string
 	Held     bool // Sprint hold, even when nova-hook says down.
+	// Session is FriendOneShot for a friend with no live session (a member lane on her row),
+	// "" for a live friend.
+	Session  string
 	Unhooked bool // nova-hook explicitly unhooked this friend; work may be returned.
 }
 
@@ -748,8 +771,8 @@ func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time
 	skip = map[string]bool{}
 	bound := s.DealtMax()
 	for _, f := range seats {
-		if f.Status != Up {
-			continue
+		if f.Status != Up || f.Session == FriendOneShot {
+			continue // a one-shot's dealt cards wait for her member's take: no dealt bound, no dealt-no-more mark
 		}
 		row := FriendRow(f.Name)
 		if friendHasTaken(s, f) {

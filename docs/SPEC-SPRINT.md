@@ -307,6 +307,31 @@ continues to report work and hold friends. `TestFriendHookStatus` covers the
 down/held/up mapping; `TestFriendRowsUseHookAndHoldWithoutReportInference`
 covers the store read without real time, sockets or network.
 
+**A one-shot friend is a member lane** (the owner, 2026-10-14: "just make one shot
+friends, exactly the same code that already works in the fleet, just with an extra prompt
+at the front"; the nova-tools v1.3 friend lane spec, guarantee 12). A friend
+row with `session=one-shot` (nova-config; a friend with no live session between cards) is
+worked by an ordinary member on her row, `nova-swarm member --as friend.<name> --prompt
+<identity file>`: `fleet beat friend.<name>` is accepted for her (and for no live friend's
+row, nor a row the roster lacks), her status is that beat by the fleet's one rule
+(`PresenceStatus`: up while it has missed fewer than three beat windows, held while the
+coordinator holds her, else down, `no member beat on friend.<name>`), never a hook record,
+which is not read for her; `queue --as friend.<name>` answers her roster width; and her
+cards are dealt, taken by count, progressed and finished with the member's own verbs on her
+row, so each finish is credited to her row by the server's claim. No friend lane or daemon
+serves her: `friend beat <name>` and a lane's take (`take --lane`, a take by id through the
+lane) for her row are refused, naming the member that serves it
+(`TestAOneShotFriendIsDealtAndFinishesThroughTheMemberPath`,
+`TestTheFriendLanePathIsRefusedForAOneShot`; nova-tools tla/FriendLane.tla, OneShot).
+No friend-lane machinery touches her row in the tick either: her member's working
+card is never bounced for want of a friend start, her dealt cards are never
+returned for not taking nor marked dealt-no-more, and the friends' level never
+moves a card to or from her row (the fleet's level levels her member's row);
+friend sync writes her no inbox brief, queue file or bus wake and enrols her as
+no bus name (`TestAOneShotFriendsCardStaysWorkingAcrossTicks`,
+`TestFriendSyncDeliversNothingToAOneShot`; tla/FriendDealtReturn.tla,
+OneShotWorkingStays, witness MCFriendDealtReturnBrokenBounce).
+
 **A friend's card** (the owner, 2026-10-03: "Could we try expressing the work
 left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing
 parts on friends where we would normally do friend work."). WHO is a preference (docs/SPEC-CARD-CONTRACT.md, the WHO line; `cardhdr.ReadWho`
@@ -363,7 +388,7 @@ idle` item), and it never changes her state nor keeps a card from her. Retired w
 (v1.3.6): the friend stall ladder (its wakes, its judgment, its take-back and its down),
 a friend row's fleet control card read as her status, and the dealt-no-more mark (a
 friend whose untaken cards were returned is dealt again; the returned card records her on
-its `friends_left`, so it goes on to another taker). `TestTheSprintHasExactlyThreeFriendStates`
+its `friends_left`, so it goes on to another taker). A stale stall mark left on a live store gates nothing: an up friend with an empty row is dealt (`TestAnUpFriendTheStallLadderMarkedIsDealtByTheTick`; 2026-10-15, two friends marked at rung 5 were never dealt again). `TestTheSprintHasExactlyThreeFriendStates`
 (internal/sprint/store) enumerates every status the friends rows and the deal's seats can
 carry and finds exactly the three, with the reversed witness
 `TestTheThreeStatesCheckRefusesAFourthState`; `TestAnUpFriendWithNoRecentFinishesIsStillDealt`,

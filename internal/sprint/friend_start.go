@@ -74,6 +74,9 @@ func friendStartSet(s *Snapshot, c *Card, name string) (set map[string]string, u
 func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started map[string]int) {
 	started = map[string]int{}
 	for _, f := range seats {
+		if f.Session == FriendOneShot {
+			continue // a one-shot's member takes by count: no friend start receipt is hers
+		}
 		row := FriendRow(f.Name)
 		ready := append([]*Card(nil), s.Fleet.Cell(row, Ready)...)
 		SortCards(ready)
@@ -101,6 +104,9 @@ func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started ma
 // moves it to working again when she begins it.
 func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit) {
 	for _, f := range seats {
+		if f.Session == FriendOneShot {
+			continue // working on a one-shot's row is her member's take, never bounced for want of a friend start
+		}
 		row := FriendRow(f.Name)
 		working := append([]*Card(nil), s.Fleet.Cell(row, Working)...)
 		SortCards(working)
