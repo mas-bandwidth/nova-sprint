@@ -4042,14 +4042,14 @@ const RetiredByEnvironment = "environment"
 // exit (ended), spending no reader: the ended word and the harness tail on the read card
 // and on its primary, the run's cost record kept as a returned run's, and the primary's
 // consumer record with that end (the attempt record the doctor counts, EnvExitChildren).
-func readEnvExitUnit(s *Snapshot, c, pr *Card, r ReadReq, ended, name string) Unit {
-	rec := EnvironmentExitRecord(r.Exit, r.Harness)
+func readEnvExitUnit(s *Snapshot, c, pr *Card, r ReadReq, ended, code, name string) Unit {
+	rec := EnvExitRecord{Ended: ended, Harness: EnvironmentExitRecord(r.Exit, r.Harness).Harness}
 	run := nextTake(c, FieldReadTake)
 	cost := readCostRecord(s, c, r.Usage, c.F("asked"), cmpOr(c.F("begun"), stamp(s.Now)))
 	// the read identity's count (EnvReadCap): at the cap the read is retired as a return of
 	// the reader's own, which spends it at the attempt (spentBy), and one bound judgment
 	// holds the card
-	history, capped := readEnvExitCount(pr, readAttempt(c), name, r.Exit)
+	history, capped := readEnvExitCount(pr, readAttempt(c), name, code)
 	retiredBy := RetiredByEnvironment
 	if capped {
 		retiredBy = RetiredByReturned
@@ -4097,8 +4097,8 @@ const FieldEnvExitReads = "env_exit_reads"
 
 // readEnvExitCount is the primary's read history with one more environment exit of reader's
 // read at attempt (exit), and whether that one reaches EnvReadCap for the read identity.
-func readEnvExitCount(pr *Card, attempt int, reader string, exit int) (history string, capped bool) {
-	return envExitCountFrom(pr.F(FieldEnvExitReads), attempt, reader, exit)
+func readEnvExitCount(pr *Card, attempt int, reader, code string) (history string, capped bool) {
+	return envExitCountFrom(pr.F(FieldEnvExitReads), attempt, reader, code)
 }
 
 // envExitCountFrom is readEnvExitCount over the history already held: one more environment exit
@@ -4106,9 +4106,9 @@ func readEnvExitCount(pr *Card, attempt int, reader string, exit int) (history s
 // identity. A step that reports several readers of one primary builds the history by calling this
 // on the pending value (costs[pr.ID][FieldEnvExitReads]) it is accumulating, never the primary's
 // original field each time, so an earlier reader's exit is not overwritten.
-func envExitCountFrom(base string, attempt int, reader string, exit int) (history string, capped bool) {
+func envExitCountFrom(base string, attempt int, reader, code string) (history string, capped bool) {
 	key := itoa(attempt) + ":" + reader + "="
-	h := append(Split(base), key+itoa(exit))
+	h := append(Split(base), key+code)
 	n := 0
 	for _, e := range h {
 		if strings.HasPrefix(e, key) {
