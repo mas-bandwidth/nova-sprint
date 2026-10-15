@@ -25,11 +25,18 @@ const (
 
 // pinWorkflow is a CI workflow pinning tlacheck as rocketnet's .github/workflows/tlc.yml
 // does: a nova-tools clone checked out at a full commit, tlacheck built from it. The pin
-// is on line 6.
+// is on line 13.
 func pinWorkflow(rev string) string {
-	return "name: tlc\non: [push]\njobs:\n  records:\n    steps:\n" +
-		"      - run: git -C \"$job/runner\" checkout --detach " + rev + "\n" +
-		"      - run: git clone https://github.com/mas-bandwidth/nova-tools.git \"$job/runner\" && (cd \"$job/runner\" && go build -o \"$job/tlacheck\" ./tools/tlacheck)\n"
+	return "name: tlc\non: [push]\njobs:\n  records:\n    runs-on: [self-hosted, linux]\n    steps:\n" +
+		"      - uses: actions/checkout@v4\n" +
+		"      - name: Check records\n" +
+		"        run: |\n" +
+		"          set -euo pipefail\n" +
+		"          job=$(mktemp -d \"$RUNNER_TEMP/rocketnet-tlc.XXXXXX\")\n" +
+		"          git -c credential.helper= clone --filter=blob:none --no-checkout https://github.com/mas-bandwidth/nova-tools.git \"$job/runner\"\n" +
+		"          git -C \"$job/runner\" checkout --detach " + rev + "\n" +
+		"          (cd \"$job/runner\" && go build -o \"$job/tlacheck\" ./tools/tlacheck)\n" +
+		"          \"$job/tlacheck\" groups --root . --stale\n"
 }
 
 // runnerLike is the runner this binary was built with, its suite.go marked by mark: a
@@ -133,7 +140,7 @@ func TestTheLanderHoldsRecordsToTheTreesPinnedRunner(t *testing.T) {
 		require.Len(t, refused, 1, "%v", refused)
 		s := refused[0].String()
 		assert.Contains(t, s, "tla/RUNS.tsv:2 has no current run record for the case MCA.cfg (group alpha) and the change edits tla/A.tla; ")
-		assert.Contains(t, s, "the record was held to the runner the tree pins, nova-tools "+pinRev+" (.github/workflows/tlc.yml:6, runner digest ")
+		assert.Contains(t, s, "the record was held to the runner the tree pins, nova-tools "+pinRev+" (.github/workflows/tlc.yml:13, runner digest ")
 		assert.Contains(t, s, "; it matches neither that nor "+builtName)
 		assert.Contains(t, s, "run make tlc TLC_GROUP=alpha")
 		assert.NotContains(t, s, "\n", "one line")
@@ -191,7 +198,7 @@ func TestTheLanderHoldsRecordsToTheTreesPinnedRunner(t *testing.T) {
 		refused, err := sprint.RecordsRefusals(writeTree(t, tree), editA, runners().source)
 		require.NoError(t, err)
 		require.Len(t, refused, 1, "%v", refused)
-		assert.Equal(t, ".github/workflows/tlc.yml:6 pins the TLC runner at nova-tools "+otherRev+
+		assert.Equal(t, ".github/workflows/tlc.yml:13 pins the TLC runner at nova-tools "+otherRev+
 			", which the lander could not read, so no edited model's run record can be checked: fatal: remote error: upload-pack: not our ref "+otherRev,
 			refused[0].String())
 	})
@@ -204,7 +211,8 @@ func TestTheLanderHoldsRecordsToTheTreesPinnedRunner(t *testing.T) {
 		refused, err := sprint.RecordsRefusals(writeTree(t, tree), editA, runners().source)
 		require.NoError(t, err)
 		require.Len(t, refused, 1, "%v", refused)
-		assert.Contains(t, refused[0].String(), pinRev+" (.github/workflows/a.yml:6) and "+otherRev+" (.github/workflows/b.yml:6)")
+		assert.Equal(t, ".github/workflows/b.yml:13 pins the TLC runner at nova-tools "+otherRev+", and .github/workflows/a.yml:13 pins it at "+pinRev+
+			"; the tree's records have one runner, so no edited model's run record can be checked", refused[0].String())
 	})
 }
 
@@ -237,4 +245,113 @@ func TestTheRunnerSourceReadsACachedRevision(t *testing.T) {
 	got, err := sprint.GitRunnerSource(cache)(rev)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
+}
+
+// The pin is read from the workflows as YAML and their run scripts as shell words
+// (land_runner_pin.go; Stella's HOLD on #344): a YAML or shell comment pins nothing, a
+// checkout of another repository pins nothing, a revision that is not exactly a full
+// commit is refused, and a workflow the lander cannot read or parse is a refusal naming
+// it, never a silent fall back to the built-in runner.
+func TestTheRunnerPinIsReadAsYAMLAndShell(t *testing.T) {
+	t.Parallel()
+	edited := with(recordsModels, map[string]string{"tla/A.tla": strings.Replace(recordsModels["tla/A.tla"], "x' = x", "x' = 1 - x", 1)})
+	pinned := runnerLike(t, "nova-tools "+pinRev)
+	built, err := tlc.RunnerFiles()
+	require.NoError(t, err)
+	check := func(t *testing.T, workflows map[string]string, runner map[string][]byte) ([]sprint.DocFix, []string) {
+		t.Helper()
+		tree := with(edited, map[string]string{"tla/RUNS.tsv": runsWith(t, edited, runner)})
+		for f, s := range workflows {
+			tree[".github/workflows/"+f] = s
+		}
+		f := &fakeRunners{revs: map[string]map[string][]byte{pinRev: pinned, otherRev: runnerLike(t, "other")}}
+		refused, err := sprint.RecordsRefusals(writeTree(t, tree), editA, f.source)
+		require.NoError(t, err)
+		return refused, f.reads
+	}
+	accepted := func(t *testing.T, workflows map[string]string) {
+		t.Helper()
+		refused, reads := check(t, workflows, pinned)
+		assert.Empty(t, refused)
+		assert.Equal(t, []string{pinRev}, reads, "the pin, and only the pin, is read")
+	}
+
+	t.Run("a YAML comment pins nothing", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n" +
+			"      # - run: git -C \"$job/runner\" checkout --detach " + otherRev + "\n" +
+			"      - run: go install github.com/mas-bandwidth/nova-tools/tools/tlacheck@" + pinRev + "\n"})
+	})
+	t.Run("a shell comment pins nothing", func(t *testing.T) {
+		t.Parallel()
+		wf := strings.Replace(pinWorkflow(pinRev), "          set -euo pipefail\n",
+			"          set -euo pipefail\n          # git -C \"$job/runner\" checkout --detach "+otherRev+"\n", 1)
+		wf = strings.Replace(wf, "checkout --detach "+pinRev+"\n", "checkout --detach "+pinRev+" # was "+otherRev+"\n", 1)
+		accepted(t, map[string]string{"tlc.yml": wf})
+	})
+	t.Run("a checkout of another repository is no pin", func(t *testing.T) {
+		t.Parallel()
+		other := "jobs:\n  fixtures:\n    steps:\n      - name: fixtures for tlacheck, beside nova-tools\n        run: |\n" +
+			"          git clone https://github.com/mas-bandwidth/rocketnet-fixtures.git fx\n" +
+			"          git -C fx checkout --detach " + otherRev + "\n" +
+			"          (cd fx && git checkout " + otherRev + ")\n"
+		accepted(t, map[string]string{"tlc.yml": pinWorkflow(pinRev), "fixtures.yml": other})
+
+		refused, reads := check(t, map[string]string{"fixtures.yml": other}, built)
+		assert.Empty(t, refused, "alone it pins nothing: the built-in runner holds the records")
+		assert.Empty(t, reads)
+	})
+	t.Run("a cd into the clone then a checkout pins", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - run: |\n" +
+			"          git clone --depth 1 https://github.com/mas-bandwidth/nova-tools runner\n" +
+			"          cd runner && git checkout -q " + pinRev + " && go build ./tools/tlacheck\n"})
+	})
+	t.Run("an actions/checkout of nova-tools at a full commit pins", func(t *testing.T) {
+		t.Parallel()
+		accepted(t, map[string]string{"tlc.yml": "jobs:\n  tlc:\n    steps:\n      - uses: actions/checkout@v4\n" +
+			"      - uses: actions/checkout@v4\n        with:\n          repository: mas-bandwidth/nova-tools\n          ref: " + pinRev + "\n          path: runner\n"})
+	})
+	for name, c := range map[string]struct{ wf, want string }{
+		"a parent of the commit": {strings.Replace(pinWorkflow(pinRev), pinRev, pinRev+"^", 1),
+			".github/workflows/tlc.yml:13 checks out nova-tools at \"" + pinRev + "^\", which is not a full commit"},
+		"a branch": {strings.Replace(pinWorkflow(pinRev), pinRev, "main", 1),
+			".github/workflows/tlc.yml:13 checks out nova-tools at \"main\", which is not a full commit"},
+		"an abbreviation": {strings.Replace(pinWorkflow(pinRev), pinRev, pinRev[:12], 1),
+			".github/workflows/tlc.yml:13 checks out nova-tools at \"" + pinRev[:12] + "\", which is not a full commit"},
+		"a tag installed": {"jobs:\n  t:\n    steps:\n      - run: go install github.com/mas-bandwidth/nova-tools/tools/tlacheck@v1.2.26\n",
+			".github/workflows/tlc.yml:4 installs tlacheck at \"v1.2.26\", which is not a full commit"},
+		"an actions/checkout ref that is a branch": {"jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          repository: mas-bandwidth/nova-tools\n          ref: main\n",
+			".github/workflows/tlc.yml:7 checks out nova-tools at \"main\", which is not a full commit"},
+	} {
+		t.Run("a revision that is not a full commit is refused: "+name, func(t *testing.T) {
+			t.Parallel()
+			refused, reads := check(t, map[string]string{"tlc.yml": c.wf}, pinned)
+			require.Len(t, refused, 1, "%v", refused)
+			assert.Contains(t, refused[0].String(), c.want)
+			assert.Contains(t, refused[0].String(), "so no edited model's run record can be checked")
+			assert.Empty(t, reads, "nothing is read for a pin that is no commit")
+		})
+	}
+	t.Run("a line longer than a scanner's buffer before the pin still finds it", func(t *testing.T) {
+		t.Parallel()
+		wf := strings.Replace(pinWorkflow(pinRev), "jobs:\n", "env:\n  BIG: "+strings.Repeat("x", 2<<20)+"\njobs:\n", 1)
+		accepted(t, map[string]string{"tlc.yml": wf})
+	})
+	t.Run("a workflow that is not YAML is a refusal naming it", func(t *testing.T) {
+		t.Parallel()
+		refused, reads := check(t, map[string]string{"tlc.yml": pinWorkflow(pinRev), "broken.yml": "jobs:\n  a: [\n    b: c\n"}, built)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.True(t, strings.HasPrefix(refused[0].String(), ".github/workflows/broken.yml:"), refused[0].String())
+		assert.Contains(t, refused[0].String(), "is not YAML the lander can read to find the TLC runner it pins")
+		assert.Empty(t, reads)
+	})
+	t.Run("a workflow that cannot be read is a refusal naming it", func(t *testing.T) {
+		t.Parallel()
+		tree := with(edited, map[string]string{"tla/RUNS.tsv": runsWith(t, edited, built), ".github/workflows/tlc.yml/x": "a directory named like a workflow\n"})
+		refused, err := sprint.RecordsRefusals(writeTree(t, tree), editA, (&fakeRunners{}).source)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.True(t, strings.HasPrefix(refused[0].String(), ".github/workflows/tlc.yml:1 cannot be read to find the TLC runner it pins: "), refused[0].String())
+	})
 }

@@ -187,9 +187,10 @@ func recordsRunner(dir string, fetch RunnerSource) (used landRunner, other *land
 	if err != nil {
 		return landRunner{}, nil, nil, err
 	}
-	pin, ok, perr := treeRunnerPin(dir)
-	if perr != nil {
-		return landRunner{}, nil, &DocFix{File: pin.File, Line: pin.Line, What: perr.Error() + ", so no edited model's run record can be checked; pin one"}, nil
+	pin, ok, pfix := treeRunnerPin(dir)
+	if pfix != nil {
+		pfix.What += ", so no edited model's run record can be checked"
+		return landRunner{}, nil, pfix, nil
 	}
 	if !ok {
 		built.name += "; the tree pins no runner (no .github/workflows file builds tlacheck at a nova-tools commit)"

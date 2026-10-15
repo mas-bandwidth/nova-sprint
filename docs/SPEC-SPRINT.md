@@ -4654,14 +4654,21 @@ another case extends touches that case too; a record is current when it names th
 fingerprint the merged tree gives the case (`tlc.StaleGroups`). The runner's result files are
 inputs of every fingerprint, and the tree is the one authority for which runner its records
 answer to (internal/sprint/land_runner.go): a tree that holds the runner (`pkg/tlc`) is held to
-those files; else a tree whose CI workflow builds tlacheck at a full nova-tools commit (a
-nova-tools checkout at that commit, or `go install .../nova-tools/tools/tlacheck@<commit>`, as
-rocketnet's `.github/workflows/tlc.yml` does) is held to that commit's `pkg/tlc`, read from
-nova-tools into a cache beside land's clones; only a tree that pins nothing is held to the
-runner built into nova-sprint. A record another runner wrote is refused naming the runner it
-was held to (its revision and runner digest) and, when the tree pins one, whether the record
-is the built-in runner's or neither's; a pin the lander cannot read, or two workflows pinning
-two commits, is one refusal on the pin's line. `sprint.RepairMerge` runs the check on each merge commit, so `checkCard`
+those files; else a tree whose CI workflow pins tlacheck to a nova-tools commit is held to
+that commit's `pkg/tlc`, read from nova-tools into a cache beside land's clones (the tree
+names only the revision, never the repository); only a tree that pins nothing is held to the
+runner built into nova-sprint. The workflows are read as YAML and their run scripts as shell
+words, comments dropped (internal/sprint/land_runner_pin.go), and a pin is one of: an
+`actions/checkout` step with `repository: mas-bandwidth/nova-tools` and a `ref:`; a run script
+that clones nova-tools and checks that clone out (`git -C <dir> checkout ...`, or `cd <dir>`
+then `git checkout ...`), as rocketnet's `.github/workflows/tlc.yml` does; or
+`go install|run github.com/mas-bandwidth/nova-tools/tools/tlacheck@<rev>`. A checkout of any
+other repository is no pin. Each of these is one refusal on its line, never a fall back to the
+built-in runner: a pinned revision that is not exactly 40 lowercase hex digits (a branch, a
+tag, an abbreviation, `<sha>^`); a workflow the lander cannot read or parse; two pins of two
+commits; and a pin it cannot fetch. A record another runner wrote is refused naming the
+runner it was held to (its revision, the pin's line and a runner digest) and, when the tree
+pins one, whether the record is the built-in runner's or neither's. `sprint.RepairMerge` runs the check on each merge commit, so `checkCard`
 refuses with it, one line per case: `tla/RUNS.tsv:<line> has no current run record for the
 case <config> (group <group>) and the change edits <files>; run make tlc TLC_GROUP=<group>
 ...`, the line the case's stale row, or the one where a missing row is owed. A base's stale
@@ -4679,7 +4686,7 @@ in its own STEP 4 gate and carries `tla/RUNS.tsv` on its PATHS line (docs/SPEC-C
 section 6). The tests are internal/sprint/land_records_test.go
 (`TestTheLanderWantsARunRecordForAnEditedModel`, on a real merge commit) and
 internal/sprint/land_runner_test.go (`TestTheLanderHoldsRecordsToTheTreesPinnedRunner`,
-`TestTheRunnerSourceReadsACachedRevision`).
+`TestTheRunnerPinIsReadAsYAMLAndShell`, `TestTheRunnerSourceReadsACachedRevision`).
 
 **The tree gate.** Every tip of the batch branch passes the tree gate before the
 next head is merged onto it, in a clone that holds a `go.mod`: the module builds

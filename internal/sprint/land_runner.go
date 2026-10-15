@@ -1,17 +1,13 @@
 package sprint
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime/debug"
-	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
@@ -25,9 +21,10 @@ import (
 //
 //  1. a tree that holds the runner (pkg/tlc, as nova-sprint does) is fingerprinted with
 //     those files;
-//  2. else a tree that pins tlacheck to a nova-tools revision in a CI workflow (rocketnet's
-//     .github/workflows/tlc.yml builds tlacheck from a nova-tools checkout at a full
-//     commit) is fingerprinted with that revision's pkg/tlc, read from nova-tools;
+//  2. else a tree whose CI workflows pin tlacheck to a nova-tools commit (rocketnet's
+//     .github/workflows/tlc.yml clones nova-tools and checks it out at a full commit; the
+//     shapes of a pin, and its refusals, are in land_runner_pin.go) is fingerprinted with
+//     that revision's pkg/tlc, read from nova-tools;
 //  3. else the runner this binary was built with.
 //
 // The embedded copy is only the fallback: two copies of the runner that disagree must not
@@ -47,59 +44,6 @@ type runnerPin struct {
 	File string // path under the tree root, slash-separated
 	Line int    // 1-based
 	Rev  string // 40 hex digits
-}
-
-// pinCheckoutRE is a checkout of a full commit (`git checkout --detach <sha>`, or
-// `git -C dir checkout <sha>`); pinInstallRE is `go install|run .../nova-tools/tools/tlacheck@<sha>`.
-var (
-	pinCheckoutRE = regexp.MustCompile(`\bcheckout\s+(?:--detach\s+|-q\s+|--quiet\s+)*([0-9a-f]{40})\b`)
-	pinInstallRE  = regexp.MustCompile(`nova-tools/tools/tlacheck@([0-9a-f]{40})\b`)
-)
-
-// treeRunnerPin is the tree's pin of its tlacheck runner, from its CI workflows: a
-// workflow that names tlacheck and nova-tools and checks out a full commit, or installs
-// tlacheck at one. ok is false when no workflow pins one. Two workflows pinning two
-// revisions is an error naming both: the tree's records have one runner.
-func treeRunnerPin(dir string) (pin runnerPin, ok bool, err error) {
-	var files []string
-	for _, pat := range []string{"*.yml", "*.yaml"} {
-		m, _ := filepath.Glob(filepath.Join(dir, ".github", "workflows", pat))
-		files = append(files, m...)
-	}
-	slices.Sort(files)
-	var pins []runnerPin
-	for _, f := range files {
-		raw, err := os.ReadFile(f)
-		if err != nil {
-			return runnerPin{}, false, err
-		}
-		if !bytes.Contains(raw, []byte("tlacheck")) || !bytes.Contains(raw, []byte("nova-tools")) {
-			continue
-		}
-		rel, _ := filepath.Rel(dir, f)
-		sc := bufio.NewScanner(bytes.NewReader(raw))
-		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-		for n := 1; sc.Scan(); n++ {
-			l := sc.Text()
-			m := pinInstallRE.FindStringSubmatch(l)
-			if m == nil {
-				m = pinCheckoutRE.FindStringSubmatch(l)
-			}
-			if m != nil {
-				pins = append(pins, runnerPin{File: filepath.ToSlash(rel), Line: n, Rev: m[1]})
-			}
-		}
-	}
-	if len(pins) == 0 {
-		return runnerPin{}, false, nil
-	}
-	for _, p := range pins[1:] {
-		if p.Rev != pins[0].Rev {
-			return pins[0], true, fmt.Errorf("the tree pins its TLC runner at two nova-tools revisions, %s (%s:%d) and %s (%s:%d); its records have one runner",
-				pins[0].Rev, pins[0].File, pins[0].Line, p.Rev, p.File, p.Line)
-		}
-	}
-	return pins[0], true, nil
 }
 
 // landRunner is the runner a tree's records are fingerprinted with, and how the lander
