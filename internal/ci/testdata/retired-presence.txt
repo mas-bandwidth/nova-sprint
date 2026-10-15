@@ -104,3 +104,14 @@ ident WithOutputSeen nova-tools pkg/friend (nova-friend run)
 ident WithOutputTail nova-tools pkg/friend (nova-friend run)
 ident ParseLimit nova-tools pkg/friend (nova-friend run)
 ident TokenCapReport nova-tools pkg/friend (nova-friend run)
+# the QUEUE.json reconcile: a friend's local queue file once decided her cards' fate (the
+# friend lane is a client with no local state, 2026-10-14; nova-tools tla/FriendLaneClient.tla)
+ident ReadFriendQueue the server's lane records (take --as friend.<name> --lane <n>)
+ident FriendReconcileOf the server's lane records and its lease (laneGoneUnits)
+ident FriendQueueStrays the server's lane records
+ident FriendDisagree the server's lane records (no second account to disagree with)
+ident FriendCollected the friend's own finish verb
+ident FriendQueueWorking the server's lane records
+ident reconcileFriendsTick nothing: the run loop reads no friend's directory
+ident cmdFriendReconcile the server's lane records
+ident FriendReturnStep the live pass (FriendReturn in live.go)

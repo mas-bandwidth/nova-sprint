@@ -236,7 +236,7 @@ func (a *app) branchTip(ctx context.Context, repo, branch string) (string, error
 // friendFinish is the finish a friend's report gives her card (a reworked card's LAND that
 // does not address its fix is read as a HOLD, friend.UnaddressedLand; the model is
 // pkg/friend/tla/OutboxFinish.tla, SyncFinish). friendCollect, the one collect of
-// friend sync, friend reconcile and the run loop, calls it, and collect does too: LAND with
+// friend sync calls it, and collect does too: LAND with
 // a full sha Head
 // that is origin's tip of the card's branch (tip, read once) is work ok at that tip, as a
 // member's ok finish; HOLD, FAIL (or FAILED, BROKEN) is work that came back failed, its
@@ -946,8 +946,8 @@ func writeQueueFile(dir string, states map[string]string, leftOf func(ids []stri
 }
 
 // friendCollect finishes one card working on a friend's row from her report (friendFinish,
-// then the finish step as her row), the one collect of friend sync and friend reconcile
-// (docs/SPEC-SPRINT.md section 1, friend sync and friend reconcile). It says what it did in
+// then the finish step as her row), the one collect of friend sync
+// (docs/SPEC-SPRINT.md section 1, friend sync). It says what it did in
 // a line: FINISHED, or REFUSED when the tip or the sprint refused the finish, the card left
 // working for the next sync to read the report again; done says the card was finished. op,
 // when not empty, is the caller's --op: the finish runs under op.collect.<its args> (one

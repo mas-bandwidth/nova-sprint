@@ -65,7 +65,7 @@ func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	taken := held[0]
 	ta.ok("friend up friend-b")
 	ta.ok("friend beat friend-b")
-	ta.ok("friend take friend-a " + strings.TrimSuffix(taken.Card, ".w1") + " --reason 'the other friend has room'")
+	ta.ok("friend take friend-a " + strings.TrimSuffix(taken.Card, ".w1") + " --working --reason 'the other friend has room'")
 	ta.ok("tick")
 	ta.ok("tick")
 	heldA := friendCardsAnswer(t, ta, "friend-a")

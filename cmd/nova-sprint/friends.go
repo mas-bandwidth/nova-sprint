@@ -93,19 +93,7 @@ neither done nor ok%, and its judgment asks to re-cut the brief, never
 rework; a LAND without a full sha, an empty report and any other verdict
 finish the card failed too, each with the report's first paragraph. card
 prints who=; where counts it on that friend's row in the friends table.
-
-friend reconcile <friend> settles the friend's cards when the friend's own account and the table
-disagree: it reads <friend>-working/inbox/QUEUE.json, {"tasks":[{"id":"<card>",
-"state":"queued|working|done"}]} (an id is the card or its job directory), and
-the friend's outbox, and for each card working on the friend's row collects it when
-outbox/<job>/REPORT.md is there (as friend sync does), keeps it while the friend's queue
-says queued or working, and returns it to ready (its work card retired, no
-failed-work judgment, the tick deals it again at its next attempt) when no
-report is there and the friend's queue says done, or does not hold it though it was
-written after the card's deal (a card dealt since is kept: the friend has not had
-it to account for). An id of the friend's queue that is no card working on the friend's row is
-named and left alone. It exits 1 when a collect or the return was refused.
---dry-run says each card's settlement and writes nothing.`) + "\n"
+`) + "\n"
 }
 
 // friendVerbWords is what friend beat, friend down, and friend up say on -h.

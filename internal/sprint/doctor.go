@@ -1468,9 +1468,9 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 		case f.Status == Held:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "nova-sprint friend up " + f.Name + " (once its cause is gone)"})
 		case f.Width > 0 && working > f.Width:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend take " + f.Name + " <card> (a card none of the friend's lanes holds; the friend's lanes ask the server what they hold)"})
 		case b.Friend != nil && len(f.Running) != working:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend take " + f.Name + " <card> (a card none of the friend's lanes holds; the friend's lanes ask the server what they hold)"})
 		default:
 			fine++
 		}

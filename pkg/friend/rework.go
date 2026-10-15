@@ -239,7 +239,7 @@ const (
 )
 
 // UnaddressedLand is the one fix check of a LAND, the daemon's outbox pass's and friend
-// sync's (cmd/nova-sprint, friendFinish, the finish of friend sync, friend reconcile and
+// sync's (cmd/nova-sprint, friendFinish, the finish of friend sync and
 // collect): held is UnaddressedText when report does not address the fix brief asks (BriefFix,
 // in either form), "" when it does or when brief asks none. A held LAND is finished as a
 // HOLD, its head kept.
