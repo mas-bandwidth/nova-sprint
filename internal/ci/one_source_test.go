@@ -1,10 +1,13 @@
 package ci
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +21,42 @@ const novaToolsModule = "github.com/mas-bandwidth/nova-tools"
 // oneSourceAllowedFile names the pkg/<name> copies still allowed while their sprint
 // behaviour moves into nova-tools: "<name>\t<reason>" a line, '#' lines comments.
 const oneSourceAllowedFile = "one_source_allowed.txt"
+
+// TestNothingImportsTheSprintConfigCopy keeps every Go caller on the canonical
+// nova-tools config package after the sprint copy is removed.
+func TestNothingImportsTheSprintConfigCopy(t *testing.T) {
+	t.Parallel()
+	const oldImport = "github.com/mas-bandwidth/nova-sprint/pkg/config"
+	err := filepath.WalkDir("../..", func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			name, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return err
+			}
+			if name == oldImport {
+				t.Errorf("%s imports %s; import nova-tools/pkg/config", path, oldImport)
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
 
 // oneSourceAllowed reads oneSourceAllowedFile's text into name -> reason; a line
 // with no reason, or a name listed twice, is red.

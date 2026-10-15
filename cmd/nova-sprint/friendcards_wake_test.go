@@ -13,26 +13,26 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
-// The inbox files are the record. A batch friend (the default) gets one status
-// message for the cards a pass delivers, not one per card; one-shot keeps a
-// message per card. A failed batch send is one line and one note, and the files stay.
-func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
+// The inbox files are the record. Every delivered card wakes one one-shot lane,
+// including when an old stored row still spells the retired batch mode. A failed
+// send leaves its file in place and records a note for that card.
+func TestFriendSyncWakesEachDeliveredCardInOneShotMode(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name, mode      string
-		cards, messages int
-		fail            bool
+		name, mode string
+		cards      int
+		fail       bool
 	}{
-		{name: "default batch", cards: 3, messages: 1},
-		{name: "explicit batch", mode: config.FriendModeBatch, cards: 3, messages: 1},
-		{name: "one-shot", mode: config.FriendModeOneShot, cards: 3, messages: 3},
+		{name: "default one-shot", cards: 3},
+		{name: "historical batch row", mode: config.FriendModeBatch, cards: 3},
+		{name: "explicit one-shot", mode: config.FriendModeOneShot, cards: 3},
 		{name: "no delivery"},
-		{name: "failed batch wake", cards: 3, messages: 1, fail: true},
-		{name: "bounded ids", cards: 13, messages: 1},
+		{name: "failed card wakes", cards: 3, fail: true},
+		{name: "thirteen distinct ids", cards: 13},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -67,15 +67,17 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 				return nil
 			}
 			out := ta.ok("friend sync --root " + root)
-			assert.Len(t, sent, tc.messages)
+			assert.Len(t, sent, tc.cards)
 			assert.Equal(t, tc.cards, strings.Count(out, "FRIEND-CARD DELIVERED"))
 			for i := range tc.cards {
 				_, err := os.Stat(filepath.Join(root, "amy-working", "inbox", fmt.Sprintf("s1-%02d.w1", i+1), "BRIEF.md"))
 				assert.NoError(t, err, "the delivered file stands")
 			}
-			if tc.mode == config.FriendModeOneShot && len(sent) == tc.cards {
+			if len(sent) == tc.cards {
 				seen := map[string]int{}
 				for _, m := range sent {
+					assert.Equal(t, "coordinator", m.From)
+					assert.Equal(t, []string{"amy"}, m.To)
 					assert.Contains(t, m.Subject, " dealt: FRIEND-CARD DELIVERED")
 					assert.Contains(t, m.Body, "BRIEF.md")
 					for i := 1; i <= tc.cards; i++ {
@@ -86,25 +88,9 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 					}
 				}
 				assert.Len(t, seen, tc.cards, "one message names each card")
-			}
-			if tc.mode != config.FriendModeOneShot && tc.cards > 0 && len(sent) == 1 {
-				m := sent[0]
-				assert.Equal(t, bus.KindStatus, m.Kind)
-				assert.Equal(t, "coordinator", m.From)
-				assert.Equal(t, []string{"amy"}, m.To)
-				assert.Contains(t, m.Subject, fmt.Sprintf("cards dealt: %d (", tc.cards))
-				for i := range min(tc.cards, 10) {
-					assert.Contains(t, m.Subject, fmt.Sprintf("s1-%02d.w1", i+1))
+				for i := range tc.cards {
+					assert.Equal(t, 1, seen[fmt.Sprintf("s1-%02d.w1", i+1)])
 				}
-				if tc.cards > 10 {
-					assert.Contains(t, m.Subject, "and 3 more")
-					assert.NotContains(t, m.Subject, "s1-11.w1")
-					assert.NotContains(t, m.Subject, "s1-12.w1")
-					assert.NotContains(t, m.Subject, "s1-13.w1")
-				}
-				inbox := filepath.Join(root, "amy-working", "inbox")
-				assert.Contains(t, m.Body, inbox)
-				assert.Contains(t, m.Body, "Read the inbox briefs and start; each STATUS line says where to push and where to report.")
 			}
 			notes, _, err := ta.m.NotesSince(context.Background(), "", 100)
 			require.NoError(t, err)
@@ -115,20 +101,20 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 				}
 			}
 			if tc.fail {
-				assert.Len(t, failed, 1)
-				assert.Equal(t, 1, strings.Count(out, "injected send failure"))
-				assert.Equal(t, 1, strings.Count(out, "FRIEND-CARD NOTE"))
-				if len(failed) == 1 {
-					assert.Equal(t, tc.cards, failed[0].Count)
-					assert.Contains(t, failed[0].What, "pass")
-					assert.NotContains(t, failed[0].What, "card s1-01.w1 dealt:")
-					assert.Empty(t, failed[0].Primaries)
+				assert.Len(t, failed, tc.cards)
+				assert.Equal(t, tc.cards, strings.Count(out, "injected send failure"))
+				assert.Equal(t, tc.cards, strings.Count(out, "FRIEND-CARD NOTE"))
+				if len(failed) == tc.cards {
+					for i, n := range failed {
+						assert.Equal(t, []string{fmt.Sprintf("s1-%02d", i+1)}, n.Primaries)
+						assert.Contains(t, n.What, fmt.Sprintf("s1-%02d.w1", i+1))
+					}
 				}
 			} else {
 				assert.Empty(t, failed)
 			}
 			ta.ok("friend sync --root " + root)
-			assert.Len(t, sent, tc.messages, "a pass with no new files has no wake")
+			assert.Len(t, sent, tc.cards, "a pass with no new files has no wake")
 			ta.clean()
 		})
 	}

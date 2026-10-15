@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
 // The friends table (docs/SPEC-SPRINT.md section 1; the owner, 2026-10-02: "add a
@@ -451,7 +451,7 @@ func TestAFriendBeatsThroughTheServer(t *testing.T) {
 
 // A friend's beat answers her row as friend sync last wrote it, her delivery
 // mode and her width, so her daemon reads her nova-config row from its beat
-// without reaching the config store; a row with no mode is batch, and a sync
+// without reaching the config store; a row with no mode is one-shot, and a sync
 // after the row changes is what the next beat says.
 func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	t.Parallel()
@@ -468,7 +468,7 @@ func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	r.boss("nova-sprint friend sync --root " + root)
 	res := r.one("friend", "beat", "amy")
 	require.Equal(t, 0, res.Code, res.Stderr)
-	assert.Contains(t, res.Stdout, " row_mode=batch row_width=8")
+	assert.Contains(t, res.Stdout, " row_mode=one-shot row_width=8")
 	assert.Contains(t, res.Stdout, " row_token_cap=6000000")
 	mode, width = "one-shot", "1"
 	r.boss("nova-sprint friend sync --root " + root)

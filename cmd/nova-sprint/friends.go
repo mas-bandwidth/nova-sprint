@@ -13,8 +13,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
@@ -50,7 +50,7 @@ the store lacks is added, one nova-config no longer has is taken off with the fr
 beat, and a friend that stays keeps the friend's hold. The same sync writes each friend's width,
 the jobs the friend works at once: the configured row's width (nova-config friend set
 <friend> --width <n>, at least 1), `+fmt.Sprint(config.DefaultFriendWidth)+` when the row names none; and the friend's delivery mode (mode:
-batch|one-shot, default batch), and configured pronouns (pronouns: `+friend.PronounList()+`;
+one-shot, the default; retired batch is refused), and configured pronouns (pronouns: `+friend.PronounList()+`;
 they/them when unstated). A row whose width is below 1 is refused with nothing changed. where counts the cards: ready, working,
 width, done (ok and failed), ok% (ok over done, pooled in the footer) and
 status, all from the friend's sprint cards — the cards dealt to the friend's fleet row
@@ -70,7 +70,7 @@ WHO: friend <name> prefers a known friend while the friend is up with room.
 WHO: only friend <name> waits for that friend alone. Other work, including
 cards with no WHO line, goes first to subscription friends whose tiers cover
 it, then to the fleet. Among eligible friends, most free room wins and name
-breaks ties. In batch and one-shot mode alike the friend's room is twice the friend's width: the friend
+breaks ties. A friend's room is twice the friend's width: the friend
 works at width and queues the rest, and a lane freed by a finish takes the next card
 at once. nova-sprint unpin <id>... --reason <text> removes an
 unstarted card's stored WHO choice without editing its brief; --stream <s>
