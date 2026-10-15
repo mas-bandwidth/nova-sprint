@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 )
 
 // AlwaysInPathsRule is the one sentence the brief generator, the lander and the readers

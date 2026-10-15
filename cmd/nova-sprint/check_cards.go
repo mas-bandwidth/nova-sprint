@@ -109,9 +109,8 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 		in.Trees[k] = a.cardTree(ctx, cb)
 	}
 	findings := sprint.CheckCards(snap, in)
-	// only a refusing finding fails the check, and so start; a warning (v1.2.18: a file overlap
-	// a stream's order or the waits already serialize) is printed and kept with the record's
-	// findings, and fails neither
+	// only a refusing finding fails the check, and so start; a shared-file warning is printed
+	// and kept with the record's findings, and fails neither and orders nothing
 	refusing, warned := sprint.RefusingFindings(findings), sprint.CardCheckKinds(sprint.WarningFindings(findings))
 	cards := sprint.CheckedCardsOf(snap)
 	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(refusing) == 0, Streams: streams,

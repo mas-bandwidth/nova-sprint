@@ -1,6 +1,6 @@
 package sprint
 
-import "github.com/mas-bandwidth/nova-sprint/pkg/units"
+import "github.com/mas-bandwidth/nova-tools/pkg/units"
 
 // The unit text, the install and the check live in pkg/units, which a worker's
 // binary may import. These names are the ones nova-sprint, nova-redis and the tests
@@ -44,7 +44,7 @@ func (in SeatInstaller) removeUnit(path string) (SeatResult, error) {
 	return SeatResult{Path: r.Path, Changed: r.Changed}, err
 }
 
-// InstallUnit writes the unit and loads it, as Install does the push loop's.
+// InstallUnit writes the unit and loads it.
 func (in SeatInstaller) InstallUnit(u ServiceUnit) (SeatResult, error) {
 	r, err := in.installer().Install(u)
 	return SeatResult{Path: r.Path, Changed: r.Changed}, err

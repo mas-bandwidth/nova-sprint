@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // serveFrom is serveCtx for a caller that never goes away (a test's step): only the tests

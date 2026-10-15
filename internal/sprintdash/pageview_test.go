@@ -28,9 +28,13 @@ import (
 // owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"; the friends table is
 // shown by default, the owner's ask of 2026-10-13: "Please fix the sprint dashboard so it shows the
 // friends table by default."): the page is that page, byte for byte (pageview.go).
+// The /events stream and the /landings.json fetch are gone from app.js (the page
+// polls /api/sprint alone; the Landings panel stays hidden, as it did while the
+// Go server answered 404 for that file), the owner's ask of 2026-10-14:
+// "remove the /events and /landings.json requests".
 const (
 	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
-	pageAppSHA256   = "8d434f01b26c318e31e3df3a810bb52c8d6c8a3d2cf062f93da7d05fac09d554"
+	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
