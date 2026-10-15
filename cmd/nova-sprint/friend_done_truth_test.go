@@ -16,7 +16,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
 // The owner, 2026-10-11: "The dashboard has to reflect the truth." "Anytime when it doesn't is
