@@ -118,8 +118,6 @@ func TestEveryAccessorReadsItsDefaultWhenAbsent(t *testing.T) {
 		assert.Equal(t, FriendFinishDefault, s.FriendFinishAfter())
 		assert.Equal(t, FriendStartMaxDefault, s.FriendStartMax())
 		assert.Equal(t, PeggedBoundDefault, s.PeggedBound())
-		assert.Equal(t, FriendStallAfterDefault, s.FriendStallAfter())
-		assert.Equal(t, FriendStallStepDefault, s.FriendStallStep())
 		assert.Equal(t, DriftCommitsDefault, s.DriftCommits())
 		assert.Equal(t, DriftHoursDefault, s.DriftHours())
 		assert.Equal(t, "", s.readTierSetting("s1"))

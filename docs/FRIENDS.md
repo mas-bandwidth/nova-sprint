@@ -90,8 +90,9 @@ The coordinator puts a card on a friend's row two ways: the deal fills the
 rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
 named ready card to her at once (the same work card `friend sync` delivers),
 so the seat need not wait for the deal to draw it for whoever it chooses.
-`friend take <friend> <id>` takes a card of hers she has not started back to
-ready and marks it not to be dealt to her again; each taken card says so and
+`friend take <friend> <id>` takes a card dealt to her and not taken back to
+ready (a card she is working wants `--working` as well, and
+`--all-unstarted` never takes a working card) and marks it not to be dealt to her again; each taken card says so and
 the summary counts them, and `friend give` clears the mark or hands the card
 back (docs/SPEC-SPRINT.md section 1, the seat hands a named card to a friend).
 
@@ -155,9 +156,9 @@ liveness. An explicitly unhooked hook record makes the tick return the friend's
 working cards and review assignments to their deals (`sprint.LiveReturns`),
 even without a new work report. A missing or unproven hook prevents new deals;
 it is not itself an explicit unhook. Sprint's hold remains separate through
-these changes. Work-report reconciliation continues to check the cards the
-daemon actually names, and `friend reconcile` still compares reports with the
-friend's own queue.
+these changes. No file in her directory decides what she holds: the friend
+reconcile against her queue file is retired, and her lanes ask the server
+(`take --as friend.<name> --lane <n>`; nova-tools `tla/FriendLaneClient.tla`).
 
 ## Where a job's work lives
 
@@ -219,18 +220,13 @@ absolutely go"; "You should have setup children so you get notified when
 nova-sprint sends messages to you."). The coordinator's three earlier scripts
 are replaced with verbs:
 
-1. **The seat push loop**: `nova-sprint inbox --wait --push seat` is installed as
-   a `nova-config` loop record kept alive on the coordinator machine:
-
-```
-nova-config loop add seat-push --machine bench-a --argv '["/usr/bin/env","NOVA_SPRINT_SERVER=127.0.0.1:6390","nova-sprint","inbox","--wait","--push","seat"]' --keepalive true --as ada
-```
-
-   Its log is the loop's, `~/nova-bench/loops/seat-push.log`. It writes each new
-   judgment and note into the holder's inbox directory,
-   `~/<holder>-working/inbox/sprint-judgments/`, and follows the seat when it
-   moves. It replaces the hand-written launch agent `com.nova.loop.seat-push-<seat>`
-   (a zsh script under `nova-secrets exec`).
+1. **The seat push loop** is retired (v1.3.6): the sprint's server sends every
+   judgment and note for the coordinator to its name on the bus, and the
+   coordinator hooks in with `nova-hook hook --as <coordinator> --role coordinator`
+   under a Monitor, which puts each message into the session. A `seat-push`
+   loop record left on the coordinator machine is retired with it, and its row
+   is removed from nova-config: `nova-sprint inbox --wait` refuses the seat's
+   push word, naming this.
 
 2. **The receive thread**: The coordinator is a friend row like any other (the
    sprint row's `coordinator` names her). Her receive thread is her own

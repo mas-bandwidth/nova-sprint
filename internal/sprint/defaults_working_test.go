@@ -23,8 +23,8 @@ func TestEveryDefaultsRowDeclaresWhetherItCanBeNonWorking(t *testing.T) {
 	w := tierWorld(t)
 	p := Set(w.s, SetReq{Who: w.s.Coordinator,
 		ReadTier: ReadTierDefault, DealtMax: ReadTierDefault, GoLanes: ReadTierDefault, FriendIdle: ReadTierDefault,
-		LandingStallBound: ReadTierDefault, FriendStallAfter: ReadTierDefault, FriendStallStep: ReadTierDefault,
-		DriftCommits: ReadTierDefault, DriftHours: ReadTierDefault, Fleet: SwitchOn, Friends: SwitchOn,
+		LandingStallBound: ReadTierDefault,
+		DriftCommits:      ReadTierDefault, DriftHours: ReadTierDefault, Fleet: SwitchOn, Friends: SwitchOn,
 		FleetTiers: TiersAll, FriendsTiers: TiersAll, ReadCards: SwitchOff, Reads: ReadTierDefault,
 		ReworkPriority: ReworkKeep,
 		AlarmReview:    AlarmOff, AlarmMerging: AlarmOff, AlarmFleet: AlarmOff, AlarmReady: AlarmOff})

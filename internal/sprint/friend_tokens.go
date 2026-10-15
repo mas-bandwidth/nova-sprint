@@ -17,7 +17,7 @@ import (
 // FriendUsage reads a friend card's usage out of the report her session wrote: the
 // first `usage:` line, whose in, out and cache words are cardcost's input, output
 // and cache read, or a `tokens:` line, or the tokens segment of the friend
-// machinery's `Cost:` line (intern/friend, lane_parity.go, PublishCost). ok is
+// machinery's `Cost:` line (nova-tools pkg/friend PublishCost). ok is
 // false when the text names none of the classes.
 func FriendUsage(text string) (cardcost.Usage, bool) {
 	for _, line := range strings.Split(text, "\n") {

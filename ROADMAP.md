@@ -2164,9 +2164,9 @@ Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
-### Reconcile friends and run the stall ladder every tick
+### Reconcile friends every tick
 
-The tick reconciles each friend's store with her inbox and outbox, and a mechanical stall ladder returns cards held by a stalled friend with no step needing the coordinator.
+The tick reconciles each friend's store with her inbox and outbox, with no step needing the coordinator. A friend's state stays the hook record's (up, down) or the coordinator's hold (held): the stall ladder is retired (v1.3.6).
 
 Target: v1.5
 

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A scenario is a short script of a sprint that a random walk reaches by luck
@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendGoesQuiet, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -212,11 +212,11 @@ func friendBrief(name string) string {
 	return "c: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend " + name + "\n\nThe task."
 }
 
-// aFriendStalls deals a friend two cards and lets her go silent: no session
-// activity, no progress stamp, past the stall bound and then a step at a time, the
-// friend stall climbing her ladder (the wake turns, the coordinator's judgment, her
-// unstarted cards taken back, marked down), a snapshot before each climb.
-func aFriendStalls(k *walk) []sample {
+// aFriendGoesQuiet deals a friend two cards and lets her go quiet: no session activity, no
+// progress stamp, for twenty minutes and more, a snapshot each time. She stays up (her
+// status is the hook record's, and the retired stall ladder no longer climbs on silence),
+// and the deal runs again over her row.
+func aFriendGoesQuiet(k *walk) []sample {
 	k.friends = []sprint.FriendSeat{{Name: "fia", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
 	for i := range 2 {
 		id := fmt.Sprintf("p%d", k.next)
@@ -229,12 +229,11 @@ func aFriendStalls(k *walk) []sample {
 		return nil
 	}
 	var out []sample
-	for _, past := range []time.Duration{sprint.FriendStallAfterDefault + time.Minute, sprint.FriendStallAfterDefault + 2*sprint.FriendStallStepDefault + time.Minute,
-		sprint.FriendStallAfterDefault + 4*sprint.FriendStallStepDefault + time.Minute} {
+	for _, past := range []time.Duration{21 * time.Minute, 31 * time.Minute, 41 * time.Minute} {
 		k.now = t0.Add(past + time.Duration(k.pick(30))*time.Second)
 		k.beatAll()
 		out = append(out, k.sample())
-		k.runPart(sprint.PartFriendStall)
+		k.runPart("deal")
 	}
 	return out
 }

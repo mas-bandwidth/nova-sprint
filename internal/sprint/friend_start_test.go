@@ -104,12 +104,15 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	assert.Contains(t, ref[0].Why, "generation 1, not 2")
 	assert.Contains(t, ref[1].Why, "not on friend amy's row")
 
-	// a take moves bob's card to working with no start of his (as a finish's or a
-	// take-back's next does): the next tick puts it back ready, untaken, one line
+	// bob's card moved to working with no start of his (as a finish's or a take-back's next
+	// moves it: friendTaken, no FieldStarted; his own take is a start and is not this): the
+	// next tick puts it back ready, untaken, one line
 	w.tick(time.Minute)
 	w.s.Friends = seats()
 	w.must(Take(w.s, TakeReq{As: bob, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}, Who: bob}))
 	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
+	nx := w.s.Fleet.Card("s1-1.w1")
+	w.must(Plan{Units: []Unit{{Key: nx.ID, Stream: nx.F("stream"), Changes: []Change{change(Fleet, setEntry(nx, nil, FieldStarted, "first_taken"))}, Moved: nx.ID + " as a next moves it"}}})
 	w.tick(time.Minute)
 	back := w.s.Now
 	p = tick("s1-2.w1", "s1-3.w1")

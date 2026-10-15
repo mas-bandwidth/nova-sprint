@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 )
 
 // The lander's run-record check (docs/SPEC-SPRINT.md section 7, the lander's checks; tla/README.md,
@@ -29,7 +29,7 @@ import (
 // (tlc.LoadCases), and a case the merge touches with no current record is refused. A plan
 // edit alone is enough to hold a tree that carries models (some MC*.cfg) to its plan.
 // RepairMerge calls it, so the lander refuses with it as with a document's fault.
-func recordsRefusals(dir, diff string) ([]DocFix, error) {
+func recordsRefusals(dir, diff string, fetch RunnerSource) ([]DocFix, error) {
 	edited := map[string]bool{}
 	planEdited := false
 	for _, f := range diffcheck.Parse(diff) {
@@ -73,11 +73,14 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 		return []DocFix{{File: "tla/" + tlc.CasesFile, Line: 1, What: "the case plan does not match the tree: " + err.Error() +
 			"; add the missing row (config, module, expected pass or the reversed witness's kind and property, deadlock, group, gate, debt) or take the file out, then run make tlc TLC_GROUP=<group> (tla/README.md)"}}, nil
 	}
-	runner, err := treeRunner(dir)
+	runner, other, fix, err := recordsRunner(dir, fetch)
 	if err != nil {
 		return nil, err
 	}
-	src := tlc.Source{TLADir: tla, Plan: plan, Runner: runner}
+	if fix != nil {
+		return []DocFix{*fix}, nil
+	}
+	src := tlc.Source{TLADir: tla, Plan: plan, Runner: runner.files}
 	rawRuns, err := os.ReadFile(filepath.Join(tla, tlc.RunsFile))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
@@ -105,17 +108,25 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 				continue
 			}
 		}
-		out = append(out, DocFix{File: runsFile, Line: line, What: recordOwed(c, touched, why)})
+		which := ""
+		if ok {
+			which = whichRunner(tlc.Source{TLADir: tla, Plan: plan}, c, records, runner, other)
+		}
+		out = append(out, DocFix{File: runsFile, Line: line, What: recordOwed(c, touched, why, which)})
 	}
 	return out, nil
 }
 
 // recordOwed is the one line a case without a current run record is refused with: the case,
-// its group, the inputs of it the merge edited, and the command that writes the record.
-func recordOwed(c tlc.Case, files []string, why string) string {
+// its group, the inputs of it the merge edited, which runner the record was held to and
+// which one, if any, it matches (whichRunner), and the command that writes the record.
+func recordOwed(c tlc.Case, files []string, why, which string) string {
 	s := fmt.Sprintf("has no current run record for the case %s (group %s) and the change edits %s", c.Config, c.Group, strings.Join(files, ", "))
 	if why != "" {
 		s += " (" + why + ")"
+	}
+	if which != "" {
+		s += "; " + which
 	}
 	return s + fmt.Sprintf("; run make tlc TLC_GROUP=%s on a TLC bench, merge its RUNS.tsv with tlacheck merge --keep tla/RUNS.tsv and commit it (tla/README.md)", c.Group)
 }
@@ -149,23 +160,69 @@ func caseTouched(src tlc.Source, c tlc.Case, edited map[string]bool) (touched []
 	return touched, ""
 }
 
-// treeRunner is the runner's result files as the merged tree holds them, so the fingerprint
-// is the one the tree's own tlacheck computes; a tree with no pkg/tlc takes the bytes
-// this binary was built with.
-func treeRunner(dir string) (map[string][]byte, error) {
-	out := map[string][]byte{}
+// recordsRunner is the runner the tree's records are fingerprinted with (land_runner.go):
+// the tree's own pkg/tlc, else the nova-tools revision its CI pins tlacheck at, read by
+// fetch, else the runner this binary was built with. other is the built-in runner when the
+// tree's pin is used, so a refusal can say which of the two a record matches. A pin that
+// cannot be read, or two pins that disagree, is fix: one line on the pin, since no record
+// can be checked without its runner.
+func recordsRunner(dir string, fetch RunnerSource) (used landRunner, other *landRunner, fix *DocFix, err error) {
+	own := map[string][]byte{}
 	for _, name := range tlc.ResultFiles {
 		p := tlc.RunnerDir + "/" + name
 		raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
 		if errors.Is(err, fs.ErrNotExist) {
-			return tlc.RunnerFiles()
+			own = nil
+			break
 		}
 		if err != nil {
-			return nil, err
+			return landRunner{}, nil, nil, err
 		}
-		out[p] = raw
+		own[p] = raw
 	}
-	return out, nil
+	if own != nil {
+		return landRunner{files: own, name: fmt.Sprintf("the tree's own runner (%s, runner digest %s)", tlc.RunnerDir, runnerDigest(own))}, nil, nil, nil
+	}
+	built, err := builtRunner()
+	if err != nil {
+		return landRunner{}, nil, nil, err
+	}
+	pin, ok, pfix := treeRunnerPin(dir)
+	if pfix != nil {
+		pfix.What += ", so no edited model's run record can be checked"
+		return landRunner{}, nil, pfix, nil
+	}
+	if !ok {
+		built.name += "; the tree pins no runner (no .github/workflows file builds tlacheck at a nova-tools commit)"
+		return built, nil, nil, nil
+	}
+	files, err := fetch(pin.Rev)
+	if err != nil {
+		return landRunner{}, nil, &DocFix{File: pin.File, Line: pin.Line, What: fmt.Sprintf("pins the TLC runner at nova-tools %s, which the lander could not read, so no edited model's run record can be checked: %s",
+			pin.Rev, strings.ReplaceAll(err.Error(), "\n", " "))}, nil
+	}
+	for _, name := range tlc.ResultFiles {
+		if _, ok := files[tlc.RunnerDir+"/"+name]; !ok {
+			return landRunner{}, nil, &DocFix{File: pin.File, Line: pin.Line, What: fmt.Sprintf("pins the TLC runner at nova-tools %s, which holds no %s/%s, so no edited model's run record can be checked", pin.Rev, tlc.RunnerDir, name)}, nil
+		}
+	}
+	used = landRunner{files: files, name: fmt.Sprintf("the runner the tree pins, nova-tools %s (%s:%d, runner digest %s)", pin.Rev, pin.File, pin.Line, runnerDigest(files))}
+	return used, &built, nil, nil
+}
+
+// whichRunner says which runner a case's stale record was held to and, when the tree's pin
+// was used, whether the record is the one the built-in runner gives it instead, or neither:
+// a record written by another runner than the tree's is diagnosable from the refusal alone.
+func whichRunner(src tlc.Source, c tlc.Case, records []tlc.Record, used landRunner, other *landRunner) string {
+	s := "the record was held to " + used.name
+	if other == nil {
+		return s
+	}
+	src.Runner = other.files
+	if stale, err := tlc.StaleGroups(src, []tlc.Case{c}, records); err == nil && len(stale) == 0 {
+		return s + ", and it is the one " + other.name + " gives the case, not the tree's pin"
+	}
+	return s + "; it matches neither that nor " + other.name
 }
 
 // recordLines is the line (1-based) of each case's row in a RUNS.tsv.

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // The pass's numbers (`nova-sprint stats`): how long each stage of the epoch's

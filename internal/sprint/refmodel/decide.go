@@ -10,14 +10,13 @@ import (
 // The duties of today's tick, by name, in the order the machine runs them: the
 // parts of sprint.TickParts in their order (the start's level and level reads,
 // then the four tables' updates: the work pump's resolve, deal, rebalance and accept, the
-// readers' ask, the merge's resume, the fleet's presence and friend stall; then the end), the unknown machines it tells of
+// readers' ask, the merge's resume, the fleet's presence; then the end), the unknown machines it tells of
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
 const (
 	DutyLive         = "live"          // a working card its row's live set has not named for the grace goes back ready (v1.2.6)
 	DutyStrangers    = "strangers"     // tell of a machine that beats and is no member
 	DutyPresence     = "presence"      // a member's status follows its beats
-	DutyFriendStall  = "friend-stall"  // a friend holding cards with no sign of life climbs the stall ladder
 	DutyVerdicts     = "verdicts"      // a finished work card's readers' verdict moves it to ok or failed
 	DutyFriendRedeal = "friend-redeal" // a friend's card past its deadline unfinished is redealt
 	DutyResolve      = "resolve"       // waiting primaries whose needs landed go ready; sentinels are reached
@@ -37,7 +36,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -61,7 +60,6 @@ var Duties = []Duty{
 	{DutyResume, ResumeMoves},
 	{DutyStrangers, StrangerMoves},
 	{DutyPresence, PresenceMoves},
-	{DutyFriendStall, FriendStallMoves},
 	{DutyVerdicts, VerdictMoves},
 	{DutyFriendRedeal, FriendRedealMoves},
 	{DutyCheck, CheckMoves},
@@ -137,13 +135,6 @@ func RebalanceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, D
 // dealt to a frontier or heavy friend) is retired with its tick part (the owner, 2026-10-12):
 // a card at its cap is the coordinator's and is dealt to no one (sprint.AtAttemptCap, the
 // deal's refusal and the tick's judgment).
-
-// FriendStallMoves is the friend stall ladder: each friend holding cards on her fleet row
-// with no sign of life (session activity, a progress stamp, a deal) for the stall bound
-// climbs one rung a step (two wake turns, a judgment for the coordinator, her unstarted
-// cards taken back, marked down), every rung a notice and her rung a fleet property; a
-// sign of life puts her back at rung 0, and session activity releases her when down.
-func FriendStallMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyFriendStall) }
 
 // VerdictMoves is a finished work card's readers' verdict moving it to its ok
 // or failed cell (sprint.TickVerdicts).
@@ -225,7 +216,6 @@ func decisions() []dutyOn {
 		{DutyResume, partOn(DutyResume)},
 		{DutyStrangers, strangersOn},
 		{DutyPresence, partOn(DutyPresence)},
-		{DutyFriendStall, partOn(DutyFriendStall)},
 		{DutyVerdicts, partOn(DutyVerdicts)},
 		{DutyFriendRedeal, partOn(DutyFriendRedeal)},
 		{DutyCheck, partOn(DutyCheck)},

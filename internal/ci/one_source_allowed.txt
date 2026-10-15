@@ -13,26 +13,16 @@
 # deleted. A listed name with no copy left (or no nova-tools twin) fails the lint until its
 # line is removed; a copy not listed fails the lint; a name not in the base's list fails
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
-bench	SPRINT-AHEAD: standalone-clone check (StandaloneLine/NotStandalone) not in tools
-cardhdr	SPRINT-AHEAD: the `TEST: ctest <name>` form (TestLine.Runner) not in tools
-cardtree	SPRINT-AHEAD: fullShaRE (one line) not in tools
-provbalance	SPRINT-AHEAD: deepseek balance endpoint and KeyEnv not in tools
-testredis	SPRINT-AHEAD: one comment line from a dead-code pass; port and delete
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
-units	SPRINT-AHEAD: one lander (landArg, server must name --land) not in tools
 bus	DIVERGED: bustest fake Tail / empty-stream vs tools' own changes
 cardcontract	DIVERGED: gateRuns and fullSha take vs tools' 8 commits
 cardcost	DIVERGED: subscription receipts and unpriced zero cost vs tools' changes
 config	DIVERGED: 14 sprint commits, 4 conflicting files (kind, redis, lines, apply)
-diffcheck	DIVERGED: a directory PATHS entry covers its files; conflicts with tools
 friend	DIVERGED: imports nova-sprint/internal/sprint; needs the coupling inverted first
 member	DIVERGED: 113 unported lines, member.go conflicts
-nsprint	DIVERGED: testutil StartRaw and capacity.lua vs tools' changes
 ntable	DIVERGED: Clear / ns_table_clear and ChangesKey not in tools
-redisacl	DIVERGED: routes/providers keys vs tools' own edit
 safepath	DIVERGED: twin-function fold conflicts with tools' own edit
 seatcred	DIVERGED: ErrNoProfileRow not in tools
 secrets	DIVERGED: ParseNameLine and sops remedies vs tools' changes
-sprintwire	DIVERGED: two sprint commits not in tools
 swarm	DIVERGED: 459 unported lines and dashboardask.go; last to merge
 tool	DIVERGED: GroupNotes and group examples in help not in tools

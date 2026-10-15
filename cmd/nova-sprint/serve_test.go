@@ -6,9 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/mas-bandwidth/nova-tools/hook"
 	"io"
 	"net"
+
+	"github.com/mas-bandwidth/nova-tools/hook"
 
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The sprint's server is tested as the state machine it is (the owner,

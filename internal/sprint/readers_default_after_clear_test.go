@@ -72,7 +72,6 @@ func defaultsFailures(s *Snapshot) []string {
 		{"friend_idle", s.FriendIdleAfter(), FriendIdleDefault}, {"friend_finish", s.FriendFinishAfter(), FriendFinishDefault},
 		{"friend_start_max", s.FriendStartMax(), FriendStartMaxDefault}, {"pegged_bound", s.PeggedBound(), PeggedBoundDefault},
 		{"landing_stall_bound", s.landingStallBound(), LandingStallBound},
-		{"friend_stall_after", s.FriendStallAfter(), FriendStallAfterDefault}, {"friend_stall_step", s.FriendStallStep(), FriendStallStepDefault},
 	} {
 		if d.got != d.want {
 			out = append(out, d.name+" reads "+d.got.String())
@@ -180,7 +179,7 @@ func TestEverySettingHoldsItsWorkingDefaultFreshAndAfterAClear(t *testing.T) {
 		}
 	}
 	for _, prop := range []string{PropDealtMax, PropReadyMax, PropFriendIdle, PropFriendFinish, PropFriendStartMax, PropPeggedBound,
-		PropLandingStallBound, PropFriendStallAfter, PropFriendStallStep} {
+		PropLandingStallBound} {
 		away[prop] = "1ms"
 	}
 	for prop, v := range map[string]string{PropDriftCommits: "999", PropDriftHours: "999", PropGoLanes: "9", PropLowBalanceUsd: "999",
