@@ -17,17 +17,17 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The server's own land loop is machine work, not a coordinator command: it must land
-// accepted cards whether or not the seat is hooked (a server restart, a dropped stream, a
-// seat away). On a real server and store: the seat hooks in, a card is accepted, the hook
-// lapses (its live-until passes with no prove) and the card lands anyway within one tick of
-// the loop. A hand land by the coordinator is still refused until the seat hooks in again.
+// accepted cards whether or not the seat is hooked (a server restart, two missed
+// challenges, a seat away). On a real server and store: a card is accepted, the seat's
+// nova-hook record is not proven (none here) and the card lands anyway within one tick of
+// the loop. A hand land by the coordinator is still refused until the seat hooks in.
 func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	t.Parallel()
 	wall := time.Now()
@@ -97,8 +97,8 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	}
 	run("tick")
 
-	// the seat's hook lapses: its live-until passes with no prove renewing it. Arm the hook
-	// gate for the coordinator with no live hook record, as the server holds it once hooked.
+	// the seat is not hooked in: arm the hook gate for the coordinator, whose nova-hook
+	// record cannot be proven here (no bus Redis is named: fail closed).
 	hookTests.Store("landing-unhooked", true)
 	defer hookTests.Delete("landing-unhooked")
 

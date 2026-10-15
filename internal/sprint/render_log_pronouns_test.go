@@ -1,8 +1,9 @@
 package sprint
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderingALegacyFriendNoteLeavesItsStoredTypeUntouched(t *testing.T) {

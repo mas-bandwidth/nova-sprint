@@ -16,15 +16,21 @@
 
 EXTENDS Naturals, Sequences, FiniteSets
 
-CONSTANT BugNoDedup, BugKeepEpoch
+CONSTANT BugNoDedup, BugKeepEpoch, BugNoOriginGuard
 
 Cards == {"c1", "c2"}
 MaxLines == 3
 MaxEpoch == 2
 Page == 1
 
+\* One representative repo-backed successful finish. Origin may change after
+\* review; the invariant records the observation at the transition, not a
+\* permanent promise about a mutable remote. A passed rework is a successful
+\* finish even when requested with --failed. Actual failed/no-repo/late routes
+\* do not enter review through this transition.
+VARIABLES originHasHead, inReview, originAtFinish
 VARIABLES epoch, log, mark, rec, stale, justReset
-vars == <<epoch, log, mark, rec, stale, justReset>>
+vars == <<epoch, log, mark, rec, stale, justReset, originHasHead, inReview, originAtFinish>>
 
 \* a record: its epoch, its cursor (lines read) and its entries (card, line index), a sequence
 \* so an entry read twice is held twice, as the record's list holds it
@@ -36,8 +42,10 @@ TypeOK ==
   /\ mark \in 0..MaxLines
   /\ rec.ep \in 1..MaxEpoch /\ rec.cur \in 0..MaxLines
   /\ justReset \in BOOLEAN
+  /\ originHasHead \in BOOLEAN /\ inReview \in BOOLEAN /\ originAtFinish \in BOOLEAN
 
 Init == epoch = 1 /\ log = <<>> /\ mark = 0 /\ rec = Rec(1, 0, <<>>) /\ stale = Rec(1, 0, <<>>) /\ justReset = FALSE
+        /\ originHasHead = FALSE /\ inReview = FALSE /\ originAtFinish = FALSE
 
 \* the record as the tick or where reads it: empty when it is another epoch's
 Current == IF rec.ep = epoch \/ BugKeepEpoch THEN rec ELSE Rec(epoch, 0, <<>>)
@@ -61,14 +69,14 @@ Complete == \E c \in Cards :
   /\ Len(log) < MaxLines
   /\ log' = Append(log, c)
   /\ justReset' = FALSE
-  /\ UNCHANGED <<epoch, mark, rec, stale>>
+  /\ UNCHANGED <<epoch, mark, rec, stale, originHasHead, inReview, originAtFinish>>
 
 Tick ==
   /\ Current.cur < Len(log)
   /\ stale' = Current
   /\ rec' = Take(Current, Page)
   /\ justReset' = FALSE
-  /\ UNCHANGED <<epoch, log, mark>>
+  /\ UNCHANGED <<epoch, log, mark, originHasHead, inReview, originAtFinish>>
 
 \* the slower of two ticks writes back the record it read: its older cursor and entries; the
 \* next tick reads those lines again
@@ -76,7 +84,7 @@ StaleWrite ==
   /\ stale.ep = epoch
   /\ rec' = stale
   /\ justReset' = FALSE
-  /\ UNCHANGED <<epoch, log, mark, stale>>
+  /\ UNCHANGED <<epoch, log, mark, stale, originHasHead, inReview, originAtFinish>>
 
 Clear ==
   /\ epoch < MaxEpoch
@@ -84,14 +92,27 @@ Clear ==
   /\ log' = <<>>
   /\ mark' = 0
   /\ justReset' = FALSE
-  /\ UNCHANGED <<rec, stale>>
+  /\ UNCHANGED <<rec, stale, originHasHead, inReview, originAtFinish>>
 
 Reset ==
   /\ mark' = Len(log)
   /\ justReset' = TRUE
-  /\ UNCHANGED <<epoch, log, rec, stale>>
+  /\ UNCHANGED <<epoch, log, rec, stale, originHasHead, inReview, originAtFinish>>
 
-Next == Complete \/ Tick \/ StaleWrite \/ Clear \/ Reset
+OriginChanges ==
+  /\ originHasHead' = ~originHasHead
+  /\ UNCHANGED <<epoch, log, mark, rec, stale, justReset, inReview, originAtFinish>>
+
+Finish ==
+  /\ ~inReview
+  /\ originHasHead \/ BugNoOriginGuard
+  /\ inReview' = TRUE
+  /\ originAtFinish' = originHasHead
+  /\ UNCHANGED <<epoch, log, mark, rec, stale, justReset, originHasHead>>
+
+Next == Complete \/ Tick \/ StaleWrite \/ Clear \/ Reset \/ OriginChanges \/ Finish
+
+ReviewObservedOnOrigin == inReview => originAtFinish
 
 Spec == Init /\ [][Next]_vars
 

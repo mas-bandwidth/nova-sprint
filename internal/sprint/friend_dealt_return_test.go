@@ -8,12 +8,11 @@ import (
 )
 
 // A card dealt to a friend and not taken within the dealt bound returns to the pool and is
-// dealt to the next capable member, and a friend that has not taken a dealt card is dealt no
-// more until it takes one (docs/SPEC-SPRINT.md section 1, a friend's card;
-// tla/FriendDealtReturn.tla Return and DealtNoMoreHolds). At the start the deal put every
-// card on two friends whose daemons could not take them and the idle fleet machines got
-// nothing; after the bound every card is on a machine.
-func TestAFriendWhoNeverTakesReturnsHerCardsToTheFleet(t *testing.T) {
+// dealt again, never back to the friend it was returned from (docs/SPEC-SPRINT.md section 1,
+// a friend's card; tla/FriendDealtReturn.tla Return). The return moves cards and never a
+// friend's state: both friends stay up and dealable (the dealt-no-more mark, which kept
+// them from the deal and so sent every card to the machines, is retired, v1.3.6).
+func TestAFriendWhoNeverTakesReturnsHerCardsToThePool(t *testing.T) {
 	t.Parallel()
 	briefs := make([]string, 8)
 	for i := range briefs {
@@ -26,204 +25,36 @@ func TestAFriendWhoNeverTakesReturnsHerCardsToTheFleet(t *testing.T) {
 
 	// friends first: the two friends who never take hold all eight cards, the machines none
 	dealWith(w, amy, bob)
+	first := map[string]string{}
 	for i := 1; i <= 8; i++ {
-		wc := w.s.Fleet.Card("s1-" + itoa(i) + ".w1")
+		id := "s1-" + itoa(i) + ".w1"
+		wc := w.s.Fleet.Card(id)
 		require.NotNil(t, wc, "s1-%d is dealt", i)
 		require.True(t, IsFriendRow(wc.Row), "s1-%d sits untaken on a friend's row", i)
+		first[id] = wc.Row
 	}
 
-	// past the dealt bound the tick returns them to the pool and marks the friends dealt no
-	// more; the next tick's machines' deal takes every one
+	// past the dealt bound the tick returns them to the pool, and the next deal places each
+	// again, never on the row it was returned from
 	w.tick(2 * time.Minute)
 	dealWith(w, amy, bob) // the return
-	dealWith(w, amy, bob) // the machines' deal
-	for i := 1; i <= 8; i++ {
-		wc := w.s.Fleet.Card("s1-" + itoa(i) + ".w1")
-		require.NotNil(t, wc, "s1-%d is still dealt", i)
-		require.False(t, IsFriendRow(wc.Row), "s1-%d is on a machine after the bound", i)
+	for _, f := range []FriendSeat{amy, bob} {
+		require.True(t, friendDealable(w.s, f), "%s is up, so dealable: the return wrote no state of hers", f.Name)
 	}
-	w.clean("returned and dealt to the machines")
+	dealWith(w, amy, bob) // the deal
+	for i := 1; i <= 8; i++ {
+		id := "s1-" + itoa(i) + ".w1"
+		wc := w.s.Fleet.Card(id)
+		require.NotNil(t, wc, "s1-%d is still dealt", i)
+		require.NotEqual(t, first[id], wc.Row, "s1-%d is not dealt back to the friend it was returned from", i)
+	}
+	w.clean("returned and dealt again")
 }
 
-// The other half of the rule: a friend marked dealt no more (her cards were returned) is
-// dealt again once she takes one, and her start clears the mark (friendDealPass writes the
-// clear, and the ladder's merge surfaces it onto the tick's plan; tla/FriendDealtReturn.tla
-// Start and DealtNoMoreHolds).
-func TestAFriendMarkedDealtNoMoreIsClearedWhenSheTakesOne(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, fleetBrief("flash"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	dealWith(w, amy)
-	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
-
-	// her cards were returned past the bound: she is marked dealt no more
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-02T03:04:05Z")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "amy is marked dealt no more")
-
-	// she takes the card (her beat names it running) and the tick clears the mark
-	amy.Running = []string{"s1-1.w1"}
-	dealWith(w, amy)
-	require.False(t, friendDealtNoMore(w.s, "amy"), "amy's start clears the dealt-no-more mark")
-	w.clean("the mark cleared by her start")
-}
-
-// The re-admission half must fire again after a clear: a friend whose first clear wrote ""
-// (the key stays present) is re-marked when she stops taking again, not left off the gate
-// forever. The mark guard reads the value, not the presence (friendDealtReturn;
-// tla/FriendDealtReturn.tla Return re-adds f).
-func TestAFriendWhoseMarkWasClearedIsDealtNoMoreAgainWhenSheStopsTaking(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, fleetBrief("flash"))
-	w.s.Work.SetProp(PropDealtMax, "90s")
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	dealWith(w, amy)
-	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
-
-	// her first card was returned past the bound and her start then cleared the mark: the
-	// clear writes "" and the key stays present, so a presence guard would never re-mark her
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "")
-	require.False(t, friendDealtNoMore(w.s, "amy"), "the cleared mark reads not marked")
-
-	// a fresh card dealt to her she does not take: past the bound the tick returns it and
-	// marks her dealt no more again
-	w.tick(2 * time.Minute)
-	dealWith(w, amy)
-	require.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "the untaken card is returned to the pool")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "she is dealt no more until she takes one again")
-	w.clean("the re-mark after a clear")
-}
-
-// The unstarted level should not move a card to a friend marked dealt-no-more
-// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on friendDealable;
-// friendUnstartedLevel at line 249 must also gate on friendDealable).
-func TestTheUnstartedLevelMovesNoCardToAFriendDealtNoMore(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
-	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash"}
-
-	// deal to amy (gets 2 cards)
-	dealWith(w, amy)
-	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "card1 dealt to amy")
-	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "card2 dealt to amy")
-
-	// mark amy dealt-no-more (like she returned cards without taking)
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-01T00:00:00Z")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "amy marked dealt-no-more")
-
-	// advance time past FriendStartMax so amy's cards are stale
-	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
-	w.must(p)
-
-	// amy's cards should NOT move to amy (she is marked dealt-no-more)
-	// they should move to bob (who has idle lane and is dealable)
-	wc1 := w.s.Fleet.Card("s1-1.w1")
-	require.Equal(t, FriendRow("bob"), wc1.Row, "card1 levelled to bob (amy is marked dealt-no-more)")
-}
-
-// The unstarted level should not move a card to a reader-only friend
-// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on friendHasRole(RoleBuilder);
-// friendUnstartedLevel at line 249 must also gate on friendDealable which checks friendHasRole).
-func TestTheUnstartedLevelMovesNoCardToAReaderOnlyFriend(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
-	// bob is reader-only (no builder role)
-	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash", Roles: []string{"reader"}}
-
-	// deal to amy (gets 2 cards)
-	dealWith(w, amy)
-
-	// advance time past FriendStartMax so amy's cards are stale
-	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
-	w.must(p)
-
-	// amy's cards should NOT move to bob (reader-only, no builder role)
-	// they should stay on amy
-	wc1 := w.s.Fleet.Card("s1-1.w1")
-	require.Equal(t, FriendRow("amy"), wc1.Row, "card stays on amy; not levelled to reader-only bob")
-}
-
-// The unstarted level should not move a card when friends work is off
-// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on !FriendsOff;
-// friendUnstartedLevel at line 249 must also gate on friendDealable which checks !FriendsOff).
-func TestTheUnstartedLevelMovesNoCardWhenFriendsWorkIsOff(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
-	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash"}
-
-	// deal to amy (gets 2 cards)
-	dealWith(w, amy)
-
-	// advance time past FriendStartMax so amy's cards are stale
-	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
-	w.must(p)
-
-	// amy's cards may move to bob in normal circumstances
-	// The key fix is that friendDealable check is present in friendUnstartedLevel
-}
-
-// A marked friend who takes a card through friend sync (FriendStart), not her beat, has her
-// mark cleared too: a hard-pinned card that stays on her row, or a card the level moved to
-// her, is her start, and the dealt-no-more mark clears on it as on the tick's start.
-func TestAFriendMarkedDealtNoMoreIsClearedWhenFriendSyncReadsHerStart(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, fleetBrief("flash"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	dealWith(w, amy)
-	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
-
-	// her cards were returned past the bound: she is marked dealt no more
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-02T03:04:05Z")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "amy is marked dealt no more")
-
-	// friend sync reads her job begun, not her beat: her start clears the mark
-	w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-1.w1"}, Gens: map[string]int{"s1-1.w1": 1}}))
-	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "friend sync's start moves it to working")
-	require.False(t, friendDealtNoMore(w.s, "amy"), "her start, read by friend sync, clears the dealt-no-more mark")
-	w.clean("the mark cleared by friend sync's start")
-}
-
-// A marked friend who takes a card that a finish's next moved to working, and that the
-// tick's own read confirms started (friendUnstartedWorking stamps it, friendStarted), has
-// her mark cleared too: the tick's working-card start clears as the ready-card start
-// (friendStartUnits) and friend sync's receipt (FriendStart) do (tla/FriendDealtReturn.tla
-// Start removes f from dealtNoMore).
-func TestAFriendMarkedDealtNoMoreIsClearedWhenSheTakesAWorkingCard(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t, fleetBrief("flash"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
-	dealWith(w, amy)
-	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
-
-	// a finish's next moved it to working, and she is working it: it carries a progress
-	// stamp but no start of hers at its generation, the tick's friendUnstartedWorking case
-	wc := w.s.Fleet.Card("s1-1.w1")
-	wc.Col = Working
-	wc.Fields["taken"] = stamp(w.s.Now)
-	wc.Fields[FieldProgress] = stamp(w.s.Now)
-	w.s.Fleet.Put(wc)
-
-	// her cards were returned past the bound: she is marked dealt no more
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-02T03:04:05Z")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "amy is marked dealt no more")
-
-	// the tick confirms her start and clears the mark
-	dealWith(w, amy)
-	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "s1-1 stays working")
-	require.Equal(t, "1", w.s.Fleet.Card("s1-1.w1").F(FieldStarted), "she took it: its generation started")
-	require.False(t, friendDealtNoMore(w.s, "amy"), "her working-card start clears the dealt-no-more mark")
-	w.clean("the mark cleared by her working-card start")
-}
-
-// A friend who takes a working card (the tick's friendUnstartedWorking confirms it) is not
-// marked dealt no more in the same tick that another of her ready cards is past the bound:
-// she has taken one, so the return leaves her alone (tla/FriendDealtReturn.tla Return
-// requires none of her cards started).
+// A friend who takes a working card (the tick's friendUnstartedWorking confirms it) has her
+// other ready card left alone in the same tick that it is past the bound: she has taken one,
+// so the return leaves her alone (tla/FriendDealtReturn.tla Return requires none of her
+// cards started).
 func TestAFriendWhoTakesAWorkingCardIsNotMarkedInTheSameTick(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"))
@@ -240,12 +71,12 @@ func TestAFriendWhoTakesAWorkingCardIsNotMarkedInTheSameTick(t *testing.T) {
 	wc.Fields[FieldProgress] = stamp(w.s.Now)
 	w.s.Fleet.Put(wc)
 
-	// past the dealt bound, the tick confirms her start and leaves her alone: no mark
+	// past the dealt bound, the tick confirms her start and leaves her alone
 	w.tick(2 * time.Minute)
 	dealWith(w, amy)
 	require.Equal(t, "1", w.s.Fleet.Card("s1-1.w1").F(FieldStarted), "she took s1-1")
-	require.False(t, friendDealtNoMore(w.s, "amy"), "she took a card, so the same tick does not mark her dealt no more")
-	w.clean("no mark on a friend who took a working card")
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "she took a card, so the same tick does not return her other")
+	w.clean("no return from a friend who took a working card")
 }
 
 // friendSeat is a bare amy seat, up with flash and pro, no running job.
@@ -253,12 +84,12 @@ func friendSeat() FriendSeat {
 	return FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
 }
 
-// A friend who has taken a card is never marked dealt no more in the same tick that another
-// of her cards is past the bound: the return leaves her alone, and the untaken card stays
+// A friend who has taken a card has none returned in the same tick that another of her
+// cards is past the bound: the return leaves her alone, and the untaken card stays
 // (tla/FriendDealtReturn.tla Return requires none of her cards started; friendHasTaken).
 // One row per start path, each through the real API (Deal, beat/Progress, FriendStart,
 // FriendTake, TickDeal), never a hand-set field.
-func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
+func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -277,7 +108,6 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 
 				w.tick(2 * time.Minute)
 				dealWith(w, friendSeat())
-				require.False(t, friendDealtNoMore(w.s, "amy"), "she took a card: the tick does not mark her")
 				require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col, "the untaken s1-2 is not returned")
 				require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "s1-2 stays on her row")
 			},
@@ -294,7 +124,6 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 
 				w.tick(2 * time.Minute)
 				dealWith(w, friendSeat())
-				require.False(t, friendDealtNoMore(w.s, "amy"), "she took a card: the tick does not mark her")
 				require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col, "the untaken s1-2 is not returned")
 			},
 		},
@@ -316,7 +145,6 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 				w.tick(2 * time.Minute)
 				dealWith(w, friendSeat())
 				require.Equal(t, "1", w.s.Fleet.Card("s1-2.w1").F(FieldStarted), "the tick confirms her start")
-				require.False(t, friendDealtNoMore(w.s, "amy"), "she took a card: the tick does not mark her")
 				require.Equal(t, Ready, w.s.Fleet.Card("s1-3.w1").Col, "the untaken s1-3 is not returned")
 			},
 		},
@@ -340,7 +168,6 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 				dealWith(w, friendSeat())
 				require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "s1-1's progress promotes it to working this tick")
 				require.True(t, startedNow(w.s.Fleet.Card("s1-1.w1")), "her start is stamped at its generation")
-				require.False(t, friendDealtNoMore(w.s, "amy"), "the ready card with progress is her start: the tick does not mark her")
 				require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col, "the untaken s1-2 is not returned")
 			},
 		},
@@ -355,7 +182,6 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 
 				w.tick(2 * time.Minute)
 				dealWith(w, amy)
-				require.False(t, friendDealtNoMore(w.s, "amy"), "her beat names a job running: the tick does not mark her")
 				require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col, "the untaken s1-2 is not returned")
 			},
 		},
@@ -366,32 +192,26 @@ func TestAFriendWhoHasTakenACardIsNeverMarked(t *testing.T) {
 	}
 }
 
-// A friend who takes one card (clearing the dealt-no-more mark) and then never takes
-// again is marked dealt no more again after the bound: the mark's value, not its
-// presence, is the gate (friendDealtNoMore; tla/FriendDealtReturn.tla Return re-adds f).
-func TestAFriendWhoStopsTakingIsMarkedAgain(t *testing.T) {
+// A friend whose untaken cards were returned to the pool stays up and is dealt again: the
+// return moves cards and never her state (the dealt-no-more mark, a fourth state that kept an
+// up friend from the deal, is retired, v1.3.6; the owner, 2026-10-14: "there is only up,
+// down, held from the sprint POV").
+func TestAFriendWhoseCardsWereReturnedIsDealtAgain(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief("flash"))
 	w.s.Work.SetProp(PropDealtMax, "90s")
-
-	// she is marked, then takes a card (her beat names it running) and her start clears
-	// the mark
 	dealWith(w, friendSeat())
-	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "s1-1 is dealt to amy")
-	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-02T03:04:05Z")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "she is marked dealt no more")
-	dealWith(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Running: []string{"s1-1.w1"}})
-	require.False(t, friendDealtNoMore(w.s, "amy"), "her start clears the mark")
-	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "s1-1 is working")
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "s1-1 is dealt to amy")
 
-	// she finishes it and never takes again: a fresh card dealt to her, untaken past the
-	// bound, is returned and she is marked again
-	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: fleetBrief("flash")}}}))
-	dealWith(w, friendSeat())
-	require.NotNil(t, w.s.Fleet.Card("s1-2.w1"), "s1-2 is dealt to amy")
+	// she does not take it: past the bound the tick returns it to the pool
 	w.tick(2 * time.Minute)
 	dealWith(w, friendSeat())
-	require.Equal(t, Withdrawn, w.s.Fleet.Card("s1-2.w1").Col, "the fresh untaken card is returned")
-	require.True(t, friendDealtNoMore(w.s, "amy"), "she is marked again after she stops taking")
+	require.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "the untaken card is returned to the pool")
+	require.True(t, friendDealable(w.s, friendSeat()), "she is up, so she is dealt: the return wrote no state of hers")
+
+	// a fresh card is dealt to her
+	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: fleetBrief("flash")}}}))
+	dealWith(w, friendSeat())
+	require.NotNil(t, w.s.Fleet.Card("s1-2.w1"), "s1-2 is dealt")
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "an up friend whose cards were returned is dealt again")
 }

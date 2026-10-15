@@ -65,7 +65,7 @@ func TestAKeywordMissIsAJudgmentNeverAHold(t *testing.T) {
 	assert.Equal(t, "ok", c.Primary.F("result"))
 }
 
-// friendFinish, the one finish of friend sync, friend reconcile and collect, holds a reworked
+// friendFinish, the one finish of friend sync and collect, holds a reworked
 // card's LAND by the daemon's check: one that names the fix's key words lands at origin's tip,
 // one that does not is a HOLD with its head kept, and a card that asks no fix lands as before.
 func TestFriendFinishKeepsAnUnaddressedLandAndRaisesASeatJudgment(t *testing.T) {

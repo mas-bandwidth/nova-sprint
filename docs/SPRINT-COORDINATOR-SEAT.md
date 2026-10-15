@@ -57,15 +57,13 @@ nova-secrets exec --store "$STORE" --as "$SEAT" --key "$KEY" --sops "$(command -
 
 ## The hook under a Monitor
 
-The seat's session runs `nova-sprint hook --actor "$SEAT"` under a Monitor, with `NOVA_SPRINT_SERVER` and
-`NOVA_SPRINT_REDIS` exported: it holds one subscription on the server and prints one event a line. A seat read
-by a person or a model rather than a Monitor runs `nova-sprint hook --compact` (docs/CLI.md): the same
-subscription, printing only the HOOK lines it acts on and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one
-line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix), dropping HAPPENED pushes and the acknowledge/verb menus, each line one write
-so it is read at once on a pipe with no pty. With `--overdue <duration>` (default `5m`) a card-holding judgment
-the server's own list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>`
-line, again every interval until it is answered -- the seat's `hookfilter.pl` and `overduewatch.py` are gone.
-The seat answers the challenge with `nova-sprint hook --prove <c>` and a push with `nova-sprint hook --ack <id> --session <token>`, both over the running hook's socket; `nova-sprint unhook` ends it.
+The seat's session runs `nova-hook hook --as "$SEAT" --role coordinator` under a Monitor, with `NOVA_BUS_REDIS`
+(and its login's variables) exported: nova-hook holds the seat's bus push and prints one event a line, each
+message to the seat on the bus (the sprint's server sends every judgment and note for the coordinator there,
+`nova-sprint: <n> new for the coordinator`, with the commands that answer each) and each `HOOK CHALLENGE`, which
+the seat answers from inside its turn with `nova-hook prove --as "$SEAT" --nonce <nonce>`. `nova-hook unhook --as
+"$SEAT"` ends it. The coordinator's sprint push is held by the sprint's server (`nova-sprint run --listen`) while it
+runs and reaches the bus; the sprint's own hook, its compact form and the seat's push loop are retired (v1.3.6).
 
 
 ### Seat environment defaults

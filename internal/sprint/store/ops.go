@@ -367,7 +367,7 @@ func (st *Store) OpenGroups(ctx context.Context) ([]sprint.Group, error) {
 
 // follow is the store pinned to the sprint's current epoch, re-reading the
 // active epoch when the sprint has left the one it holds: a clear advanced
-// the epoch under a long-running reader (the seat's push loop, inbox --wait)
+// the epoch under a long-running reader (inbox --wait, the server's coordinator push)
 // and its next look must read the new epoch and carry on, never be refused by
 // it (docs/SPEC-SPRINT.md section 13: "run goes on at the new epoch"; a
 // restore the clear still owes is performed first, as pin does). A store
