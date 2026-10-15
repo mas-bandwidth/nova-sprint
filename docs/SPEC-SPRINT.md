@@ -8402,7 +8402,16 @@ writes one record outside every table, the friend's beat, and runs on the beat l
 line and beside every other beat. A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
 `needs`, `goal show`, `handover`, and `inbox` without `--read`) writes nothing and runs on the
 read lane: one read at a time on the lane's own process state, beside the line, as a client
-reading the store directly always has. `queue` records a reader's beat, `fleet beat` can write
+reading the store directly always has. The dashboard's read (`where --json --dashboard`, once a
+second for each dashboard, with no other flag but the actor) has a lane of its own, beside the
+line and the read lane, so it never waits behind the reads ahead of the read lane (the owner,
+2026-10-15: "The dashboard is chugging 3-5 seconds per-update instead of every 1s": its read
+took 2.5 to 11.4 s through the server against 0.3 s on the store). The server answers it from a
+copy it keeps: a caller within one second (`dashFloor`) of the start of the last compute is
+handed that compute's answer, taking no lock; any other computes once, one at a time, on an app
+and a lock of its own, and a caller that arrives while a compute runs waits for it and shares
+its answer. Only an answer that succeeded is kept. It is counted as a read on the `SERVE` line
+(`read-lane=`). On a twin file it takes the line like every verb. `queue` records a reader's beat, `fleet beat` can write
 the fleet table and `inbox --read` moves the coordinator's cursor: each takes the line. A batch
 waits for the line only while its caller waits for the answer: a caller that has gone (its
 request ended: a client's deadline, a dropped connection) has the verbs of its batch not yet run
@@ -8422,8 +8431,9 @@ worker, the exit, the card argument and stderr's first line only, never the verb
 argv (a brief, a report) or its stdout. It is bounded: the same verb, worker, exit and first
 line repeated within a minute is written once, and when it changes the line that follows says
 `(repeated <n> times since <stamp>)`, so 40 minutes of refused finishes from ten members is a
-few hundred lines and never one per verb. The model is `tla/ServerLanes.tla`. The server
-keeps nothing between requests.
+few hundred lines and never one per verb. The model is `tla/ServerLanes.tla` (the dashboard
+lane: `DashWaitsOnlyForDash`, reversed by `MCServerLanesBrokenDashOnReadLane.cfg`). The server
+keeps nothing between requests but the dashboard's one-second copy.
 
 The server's heartbeat. At its start and every second (`store.ServerEvery`) the run loop
 writes one record, the server's heartbeat, to the store outside every table, under one SET

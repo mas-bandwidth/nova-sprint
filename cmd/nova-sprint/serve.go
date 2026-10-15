@@ -321,6 +321,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				serving = verbClasses[v.name] == classWorker
 				if lanes != nil && v.err == nil && !v.help && onReadLane(v) {
 					lane = "read"
+					if onDashLane(v, argv) {
+						lane = "dash" // the dashboard's read: its own lane (tla/ServerLanes.tla, DashWaitsOnlyForDash)
+					}
 				}
 				callerArgs := argv
 				callerArgs, actorNotice, actorResolved = a.defaultHookActor(argv, a.serveAddr, true)
@@ -356,6 +359,13 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				continue
 			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
+			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
+			continue
+		case "dash":
+			// the dashboard's read: a copy kept on the dashboard lane, counted as a read
+			// (servelanes.go dashWhere; tla/ServerLanes.tla, DashWaitsOnlyForDash)
+			reads++
+			out.Results[i] = lanes.dashWhere(ctx, args)
 			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
 		case "read":
