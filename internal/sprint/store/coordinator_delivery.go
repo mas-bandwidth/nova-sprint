@@ -20,6 +20,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 			}
 			var p sprint.Plan
 			fresh := map[string]bool{}
+			migrated := map[string]bool{}
 			for id, candidate := range candidates {
 				n, ok := notes[id]
 				if !ok || sprint.StateEpisodeKey(n) != candidate.Episode {
@@ -28,6 +29,10 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 				d := candidate
 				if n.CoordinatorDelivery != nil {
 					d = *n.CoordinatorDelivery
+					if !sent && !d.Sent && d.From == "" && candidate.From != "" && d.Token == candidate.Token {
+						d.From = candidate.From
+						migrated[id] = true
+					}
 					if sent && d.Token != candidate.Token {
 						continue
 					}
@@ -49,7 +54,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 				owner := d.CoveredBy
 				cause, ok := notes[owner]
 				shared, found := deliveries[owner]
-				if ok && cause.CoordinatorDelivery != nil {
+				if ok && !found && cause.CoordinatorDelivery != nil {
 					shared, found = *cause.CoordinatorDelivery, true
 				}
 				if ok && found && shared.Episode == sprint.StateEpisodeKey(cause) {
@@ -68,7 +73,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 					}
 					d.Sent = sent
 					deliveries[id] = d
-				} else if !fresh[id] {
+				} else if !fresh[id] && !migrated[id] {
 					continue
 				}
 				n.CoordinatorDelivery = &d

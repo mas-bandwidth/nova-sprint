@@ -195,10 +195,10 @@ func Preview(items []string, sep string) string {
 // CoordinatorDelivery is the frozen bus message for one state episode. Sent is
 // recorded only after bus success; Token bridges a crash between send and commit.
 type CoordinatorDelivery struct {
-	CoveredBy                         string // shares the causal notification's token and payload
-	To, Token, Subject, Body, Episode string
-	Sent                              bool
-	RetryBefore                       time.Time // no automatic retry after the bus token acceptance window
+	CoveredBy                               string // shares the causal notification's token and payload
+	From, To, Token, Subject, Body, Episode string
+	Sent                                    bool
+	RetryBefore                             time.Time // no automatic retry after the bus token acceptance window
 }
 
 // Note is one notification.

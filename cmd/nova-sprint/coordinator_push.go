@@ -70,6 +70,7 @@ type coordPush struct {
 	warnSet        string
 	late           lateWatch
 	recoveryBefore time.Time // last safe retry of the transport recovery send
+	recoveryFrom   string    // frozen sender of the recovery token
 	recoveryToken  string    // one transport recovery send per failed episode
 	failed         bool      // the last send to the holder failed: the sprint push is unproven
 	heldAt         time.Time // the sprint push's last renewal
@@ -149,12 +150,21 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		return
 	}
 	now := a.now()
+	login, identityErr := a.coordinatorBusLogin()
+	if identityErr != nil {
+		a.serveSay("COORDINATOR PUSH: sender identity unresolved: %s", identityErr)
+		if _, err := a.holdSprintPush(ctx, l.holder, false); err != nil {
+			a.serveSay("COORDINATOR PUSH: unproving sprint push: %s", err)
+		}
+		return
+	}
+	sender := cmp.Or(login, l.holder)
 	p := &a.coord
 	p.mu.Lock()
 	if p.holder != l.holder || p.epoch != l.epoch || p.told == nil {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
-		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore = false, time.Time{}, "", time.Time{}
+		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
 		p.firstSeen, p.warned, p.warnedAt, p.warnSet = map[string]time.Time{}, nil, time.Time{}, ""
 	}
 	sends := coordFresh(p.told, l, now)
@@ -186,7 +196,14 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	failed := false
 	attemptedHolder := false
 	send := func(to string, m bus.Message) bool {
-		m.From, m.To = prog, []string{to}
+		m.From, m.To = cmp.Or(m.From, sender), []string{to}
+		if why := coordinatorSenderRefusal(m.From, login); why != "" {
+			if to == l.holder {
+				failed, attemptedHolder = true, true
+			}
+			a.serveSay("COORDINATOR PUSH: %s", why)
+			return false
+		}
 		if to == l.holder {
 			attemptedHolder = true
 		}
@@ -200,9 +217,38 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		return true
 	}
 	candidates := map[string]sprint.CoordinatorDelivery{}
+	legacy := map[string]sprint.CoordinatorDelivery{}
+	for _, o := range l.open {
+		if d := o.Note.CoordinatorDelivery; d != nil && !d.Sent && d.From == "" {
+			legacy[o.Note.ID] = *d
+		}
+	}
+	legacySenders := map[string]string{}
+	legacyErrors := map[string]error{}
 	for _, d := range sends {
 		if d.note != "" {
-			candidates[d.note] = sprint.CoordinatorDelivery{To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: now.Add(bus.DefaultTokenLife)}
+			from := sender
+			if old, ok := legacy[d.note]; ok {
+				var err error
+				if !now.Before(old.RetryBefore) || old.RetryBefore.IsZero() {
+					err = errors.New("legacy receipt unknown: retry window expired")
+				} else {
+					key := old.Token
+					if _, known := legacySenders[key]; !known && legacyErrors[key] == nil {
+						legacySenders[key], legacyErrors[key] = a.coordinatorLegacySender(ctx, old, sender)
+					}
+					from, err = legacySenders[key], legacyErrors[key]
+				}
+				if err != nil {
+					failed, attemptedHolder = true, true
+					a.serveSay("COORDINATOR PUSH note=%s: legacy sender unresolved: %s", d.note, err)
+					continue
+				}
+				old.From = from
+				candidates[d.note] = old
+				continue
+			}
+			candidates[d.note] = sprint.CoordinatorDelivery{From: from, To: d.to, Token: d.token, Subject: d.subject, Body: d.text, Episode: d.episode, CoveredBy: d.coveredBy, RetryBefore: now.Add(bus.DefaultTokenLife)}
 		}
 	}
 	prepared := map[string]sprint.CoordinatorDelivery{}
@@ -226,6 +272,11 @@ func (a *app) coordinatorPass(ctx context.Context) {
 			if !found || frozen.Sent {
 				continue
 			}
+			if frozen.From == "" {
+				failed, attemptedHolder = true, true
+				a.serveSay("COORDINATOR PUSH note=%s: sender has not been frozen", d.note)
+				continue
+			}
 			if frozen.RetryBefore.IsZero() || !now.Before(frozen.RetryBefore) {
 				failed, attemptedHolder = true, true
 				a.serveSay("COORDINATOR PUSH note=%s: delivery receipt unknown; retry window ended, inspect the bus and resolve the judgment manually", d.note)
@@ -245,7 +296,7 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		default:
 			subject = fmt.Sprintf("nova-sprint: %d new for %s", len(d.groups), d.to)
 		}
-		if !send(d.to, bus.Message{Kind: d.kind, Subject: subject, Body: d.text, Token: d.token}) {
+		if !send(d.to, bus.Message{From: frozen.From, Kind: d.kind, Subject: subject, Body: d.text, Token: d.token}) {
 			continue
 		}
 		if found {
@@ -285,23 +336,24 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	}
 	p.mu.Lock()
 	recover := p.failed && len(sends) == 0 && warn == "" && late == ""
-	recoveryToken, recoveryBefore := p.recoveryToken, p.recoveryBefore
+	recoveryToken, recoveryBefore, recoveryFrom := p.recoveryToken, p.recoveryBefore, p.recoveryFrom
 	p.mu.Unlock()
 	if recover && (recoveryBefore.IsZero() || !now.Before(recoveryBefore)) {
 		failed, attemptedHolder = true, true
 		a.serveSay("COORDINATOR PUSH: recovery receipt unknown; retry window ended, inspect the bus before restoring delivery")
 	} else if recover {
-		send(l.holder, bus.Message{Kind: bus.KindStatus, Token: recoveryToken, Subject: "nova-sprint: coordinator delivery restored", Body: "The previous delivery attempt failed; its work is resolved. This one recovery message confirms that coordinator bus delivery works again."})
+		send(l.holder, bus.Message{From: recoveryFrom, Kind: bus.KindStatus, Token: recoveryToken, Subject: "nova-sprint: coordinator delivery restored", Body: "The previous delivery attempt failed; its work is resolved. This one recovery message confirms that coordinator bus delivery works again."})
 	}
 	p.mu.Lock()
 	if attemptedHolder {
 		p.failed = failed
 		if failed && p.recoveryToken == "" {
 			p.recoveryBefore = now.Add(bus.DefaultTokenLife)
+			p.recoveryFrom = sender
 			p.recoveryToken = fmt.Sprintf("recovery:%x", sha256.Sum256([]byte(l.scope+l.holder+strconv.FormatUint(l.epoch, 10)+now.UTC().Format(time.RFC3339Nano))))
 		}
 		if !failed {
-			p.recoveryToken, p.recoveryBefore = "", time.Time{}
+			p.recoveryToken, p.recoveryBefore, p.recoveryFrom = "", time.Time{}, ""
 		}
 	}
 	due := p.heldAt.IsZero() || !now.Before(p.heldAt.Add(hook.RenewEvery))

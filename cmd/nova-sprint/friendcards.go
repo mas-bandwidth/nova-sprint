@@ -559,9 +559,9 @@ func busOptions(getenv func(string) string) redisconn.Options {
 	return o
 }
 
-// openBus is the real busOpen: the bus store dialed as nova-bus dials it
-// (pkg/redisconn, the fleet's login from the environment).
-func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
+// busConnectionOptions is shared by the connection and coordinator sender
+// selection, including a recorded seat login for this address.
+func (a *app) busConnectionOptions(addr, user string) (redisconn.Options, func(string) string, error) {
 	o := busOptions(a.getenv)
 	if addr != "" {
 		o.Addr = addr
@@ -570,6 +570,14 @@ func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(),
 		o.User = user
 	}
 	o, getenv, err := a.seatBusOptions(o)
+	if err != nil {
+		return redisconn.Options{}, nil, err
+	}
+	return o, getenv, nil
+}
+
+func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
+	o, getenv, err := a.busConnectionOptions(addr, user)
 	if err != nil {
 		return nil, nil, err
 	}
