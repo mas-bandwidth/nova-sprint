@@ -46,10 +46,6 @@ type ujRig struct {
 
 const ujSeat = "seat-uj"
 
-// ujSeatSilent is the judgment's type in its words (sprint.NSeatSilent), named here so the
-// test reads the same on a build that has none.
-const ujSeatSilent = "the seat is not answering"
-
 func newUJRig(t *testing.T) *ujRig {
 	t.Helper()
 	r := &ujRig{t: t, ctx: context.Background(), now: time.Now().UTC().Truncate(time.Second)}
@@ -193,7 +189,7 @@ func (r *ujRig) pushes() []bus.Message {
 // deadline every card with a safe default has moved with no seat verb (returned for its
 // missing read and read again, returned for its needs, pinned to a held friend, on a tier no
 // route serves), and the cards that need a mind (returned by the seat; pinned by the
-// coordinator to a tier no route serves) are named by "the seat is not answering", on the
+// coordinator to a tier no route serves) are named by the folded decisions-owed notice, on the
 // seat's bus and on the owner's.
 func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	t.Parallel()
@@ -264,24 +260,24 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	assert.Equal(t, sprint.Ready, r.col("s6-1"), "pinned to pro by the coordinator: stays put, never re-tiered")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
 
-	// the seat-not-answering judgment reached the seat's bus and the owner's, naming the
-	// card still held
-	var onSeat bool
+	// The deadline lane replaces the coordinator's legacy seat-silent alarm.
+	// The route judgment is open on the tier, not its historical card list (s5
+	// has already moved). Run the first look, then verify no unchanged resend.
+	r.pushes()
 	for _, p := range r.pushes() {
-		if strings.Contains(p.Body, ujSeatSilent) && strings.Contains(p.Body, "s3-1") && strings.Contains(p.Body, "s6-1") {
-			onSeat = true
-		}
+		assert.NotEqual(t, "nova-sprint: decisions owed", p.Subject, "unchanged overdue set is not resent")
 	}
-	assert.True(t, onSeat, "the alarm is sent to the seat on the bus")
 	r.mu.Lock()
 	sent := append([]bus.Message(nil), r.sent...)
 	r.mu.Unlock()
-	var onBus bool
-	for _, m := range sent {
-		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "s6-1") && len(m.To) == 1 && m.To[0] == "glenn" {
-			onBus = true
+	for _, to := range []string{ujSeat, "glenn"} {
+		var delivered bool
+		for _, m := range sent {
+			if m.Subject == "nova-sprint: decisions owed" && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "subjects=stream:tier:pro") && len(m.To) == 1 && m.To[0] == to {
+				delivered = true
+			}
 		}
+		assert.True(t, delivered, "the folded overdue notice names the returned card and blocked tier for %s: %+v", to, sent)
 	}
-	assert.True(t, onBus, "the alarm is sent to the owner on the bus: %+v", sent)
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }

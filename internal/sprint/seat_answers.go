@@ -537,11 +537,15 @@ func (d DecisionSummary) Line() string {
 // stays in the folded hour's report. No transport operation occurs here.
 func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped func(time.Time, time.Time) time.Duration) (string, string, []string) {
 	notes := map[string]Note{}
+	subjects := map[string][]string{}
 	for _, n := range held {
 		notes[n.ID] = n
 	}
 	for _, o := range all {
 		n := o.Note
+		if subject := o.Subject(); subject != "" {
+			subjects[n.ID] = append(subjects[n.ID], subject)
+		}
 		if n.Kind == Judgment {
 			age, limit := DecisionAge(now, n, stopped)
 			if limit > 0 && age >= limit {
@@ -580,7 +584,17 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 			reason = reason[:512] + "… [full reason in inbox]"
 		}
 		age, _ := DecisionAge(now, n, stopped)
-		line := fmt.Sprintf("%s %s age=%s safe-default=%s: %s\n", id, n.Type, age.Truncate(time.Second), SafeDecisionDefault(n.Type), reason)
+		active := subjects[id]
+		if len(active) == 0 {
+			active = n.Subjects() // Synthetic held notes and keyless in-memory fixtures.
+		}
+		active = slices.Compact(slices.Sorted(slices.Values(active)))
+		line := fmt.Sprintf("%s %s subjects=%s age=%s safe-default=%s: %s\n", id, n.Type, Preview(active, ","), age.Truncate(time.Second), SafeDecisionDefault(n.Type), reason)
+		if n.Kind == Judgment {
+			if action := WaitRefusedAction(n); action != "" {
+				line += "  act: " + action + "\n"
+			}
+		}
 		if n.Type == NServerDefault {
 			line = fmt.Sprintf("%s server-default judgment=%s: %s\n", id, n.Answers, reason)
 		}

@@ -122,3 +122,34 @@ func TestDecisionDefaultCannotAskWaitsThirtyMinutes(t *testing.T) {
 	}
 	require.True(t, waited)
 }
+
+// The folded deadline lane must preserve the actionable no-wait remedy from
+// the inbox, and identify cards even when the reason does not name them.
+func TestDecisionBatchPreservesCardHoldingRemedies(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	for _, typ := range sprint.WaitRefusedKinds() {
+		t.Run(typ, func(t *testing.T) {
+			n := sprint.Note{ID: "judgment-1", Kind: sprint.Judgment, Type: typ, Primaries: []string{"s1-1"}, At: now.Add(-sprint.DeadlineJudgment), What: "needs a decision"}
+			for _, lane := range []string{"coordinator", "owner"} {
+				set, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Note: n}}, nil, lane, nil)
+				require.Equal(t, n.ID, set)
+				require.Contains(t, body, "subjects=s1-1")
+				require.Contains(t, body, "act: "+sprint.WaitRefusedAction(n))
+				require.NotContains(t, body, "nova-sprint wait")
+			}
+		})
+	}
+}
+
+func TestDecisionBatchNamesOnlyOpenSubjects(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	n := sprint.Note{ID: "judgment-1", Kind: sprint.Judgment, Type: sprint.NWorkFailed, Primaries: []string{"answered-card", "open-card"}, At: now.Add(-sprint.DeadlineJudgment)}
+	for _, subject := range []string{"open-card", sprint.StreamSubject("stream-a"), sprint.SprintSubject} {
+		t.Run(subject, func(t *testing.T) {
+			_, body, _ := sprint.DecisionBatch(now, []sprint.Open{{Key: sprint.OpenKey(n.ID, subject), Note: n}}, nil, "coordinator", nil)
+			require.Contains(t, body, "subjects="+subject+" age=")
+			require.NotContains(t, body, "answered-card")
+			require.NotContains(t, body, "cards=")
+		})
+	}
+}
