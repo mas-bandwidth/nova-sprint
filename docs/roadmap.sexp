@@ -2303,4 +2303,12 @@
    :date "2026-10-15"
    :release "v1.5"
    :origin "Glenn, 2026-10-15 ~21:30Z"
-   :kept (:kind "bug"))))
+   :kept (:kind "bug"))
+  (item "the-deal-prefers-the-cheapest-row-and-the-fleet-is-overflow" :group "sprint" :area "nova-sprint"
+   :title "The deal prefers the cheapest row, and the fleet is overflow"
+   :text "The deal hands a work card to the cheapest able row first (a friend row whose cost is a subscription, such as Rowan's row on the Max plan, already paid), and to a fleet machine only when no such row has width free, since fleet routes spend API credit per card. A setting names the order (set --deal-order friends,fleet), replacing today's all-or-nothing set --fleet on|off. Source: Glenn 2026-10-15 ~21:50Z: \"flash and pro should go to you first, because you are CHEAPEST\""
+   :why "Cost: the subscription rows are already paid; the fleet spends API credit per card."
+   :date "2026-10-15"
+   :release "v1.5"
+   :origin "Glenn, 2026-10-15 ~21:50Z"
+   :kept (:kind "feature"))))

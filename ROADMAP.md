@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (209)
+- [The sprint system](#the-sprint-system) (210)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
@@ -1733,6 +1733,16 @@ Why it waits: Kind: bug. Nothing lands at heavy and frontier while few friends a
 Target: v1.5
 
 From: Glenn, 2026-10-15 ~21:30Z
+
+### The deal prefers the cheapest row, and the fleet is overflow
+
+The deal hands a work card to the cheapest able row first (a friend row whose cost is a subscription, such as Rowan's row on the Max plan, already paid), and to a fleet machine only when no such row has width free, since fleet routes spend API credit per card. A setting names the order (set --deal-order friends,fleet), replacing today's all-or-nothing set --fleet on|off. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"
+
+Why it waits: Cost: the subscription rows are already paid; the fleet spends API credit per card.
+
+Target: v1.5
+
+From: Glenn, 2026-10-15 ~21:50Z
 
 ## Setup, release and operations
 
