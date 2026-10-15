@@ -739,3 +739,6 @@ MCSprintTablesBrokenScopeBounce.cfg	MCSprintTables.tla	action	ScopeWidenPreserve
 MCSprintTablesBrokenScopeRedeal.cfg	MCSprintTables.tla	action	ScopeWidenKeepsReview	ignore-terminal	sprinttables	required	-
 MCReadBranchMissing.cfg	MCReadBranchMissing.tla	pass	-	ignore-terminal	readbranchmissing	required	-
 MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	OfferedDecisionResolves	ignore-terminal	readbranchmissing	required	-
+MCFriendSyncWake.cfg	MCFriendSyncWake.tla	pass	-	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenClockOnly.cfg	MCFriendSyncWake.tla	invariant	PushedWithinOneEvent	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenTellLost.cfg	MCFriendSyncWake.tla	temporal	EveryDealPushedOrJudged	ignore-terminal	friendsyncwake	required	-

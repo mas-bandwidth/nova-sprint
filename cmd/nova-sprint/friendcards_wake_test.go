@@ -41,7 +41,7 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 			require.NoError(t, err)
 			root := t.TempDir()
 			ta.ok("friend sync --root " + root)
-			ta.beatUp("amy")
+			ta.workerUp("amy")
 			briefs := t.TempDir()
 			for i := range tc.cards {
 				id := fmt.Sprintf("s1-%02d", i+1)
@@ -76,6 +76,7 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 			if tc.mode == config.FriendModeOneShot && len(sent) == tc.cards {
 				seen := map[string]int{}
 				for _, m := range sent {
+					assert.Equal(t, bus.KindStatus, m.Kind)
 					assert.Contains(t, m.Subject, " dealt: FRIEND-CARD DELIVERED")
 					assert.Contains(t, m.Body, "BRIEF.md")
 					for i := 1; i <= tc.cards; i++ {
@@ -128,7 +129,12 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 				assert.Empty(t, failed)
 			}
 			ta.ok("friend sync --root " + root)
-			assert.Len(t, sent, tc.messages, "a pass with no new files has no wake")
+			if tc.fail {
+				assert.Len(t, sent, tc.messages+1, "a failed tell retries despite existing BRIEFs")
+				assert.Equal(t, sent[0], sent[len(sent)-1], "retry preserves token and payload")
+			} else {
+				assert.Len(t, sent, tc.messages, "a receipted pass with no new files has no wake")
+			}
 			ta.clean()
 		})
 	}

@@ -18,15 +18,18 @@ func init() {
 }
 
 // The friend sync loop (docs/FRIENDS.md, "The friend sync loop"; docs/SPEC-FRIEND.md,
-// "The beat comes from the daemon"; the owner, 2026-10-04: "Golang nova-tools and
-// nova-sprint verbs only"; "Make the ping loop mechanical!!!!"): friend sync --every
-// is the loop, a nova-config loop row kept alive runs it, and no shell wraps it. Each
-// pass reopens the store, so it runs at the sprint's epoch then, and acts as the
-// sprint's coordinator seat then when no --actor is given, so a seat that moves takes
-// the loop with it. A pass that changed something says its lines; a pass with nothing
-// to do says nothing; a failing pass is said once on stderr, again only when what it
-// says changes, and the pass that is ok after it says so once. An interrupt ends the
-// loop with 0, and a binary replaced under it with exitReplaced, so its supervisor
+// "The beat comes from the daemon"; tla/FriendSyncWake.tla, Wake and Sweep; the owner,
+// 2026-10-04: "Golang nova-tools and nova-sprint verbs only"; "Make the ping loop
+// mechanical!!!!"): friend sync --every is the loop, a nova-config loop row kept alive
+// runs it, and no shell wraps it. Each pass reopens the store, so it runs at the
+// sprint's epoch then, and acts as the sprint's coordinator seat then when no --actor is
+// given, so a seat that moves takes the loop with it. Between passes it blocks on the
+// sprint log (store.WaitLog) from the last line its pass saw, bounded by --every, so a
+// deal committed by a tick wakes the loop on its log line while --every stays as the
+// quiet-log backstop sweep. A pass that changed something says its lines; a pass with
+// nothing to do says nothing; a failing pass is said once on stderr, again only when
+// what it says changes, and the pass that is ok after it says so once. An interrupt ends
+// the loop with 0, and a binary replaced under it with exitReplaced, so its supervisor
 // starts the new one.
 func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, stdout, stderr io.Writer) int {
 	ctx := context.Background()
@@ -55,6 +58,9 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 			fmt.Fprintln(stdout, "FRIEND-SYNC STOP the binary this loop runs was replaced; its supervisor starts the new one")
 			return exitReplaced
 		}
+		// Capture before the snapshot: a deal committed during this pass must
+		// remain after the cursor (FriendSyncWake.Wake precedes Pass).
+		waitStore, cursor := a.friendSyncCursor(ctx, c)
 		var out, errs bytes.Buffer
 		code, changed := 1, false
 		if pc, why := a.friendSyncActor(ctx, c); why != "" {
@@ -100,6 +106,50 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 			}
 			failing, failed, since = "", 0, time.Time{}
 		}
+		a.friendSyncWait(ctx, waitStore, cursor, every, after)
+	}
+}
+
+// friendSyncCursor captures the current epoch and log tail before a pass reads
+// its snapshot. Failure uses the bounded backstop, never a tail read after Pass.
+func (a *app) friendSyncCursor(ctx context.Context, c common) (*store.Store, string) {
+	read := c
+	read.verb = "where"
+	st, err := a.storeCtx(ctx, read)
+	if err != nil {
+		return nil, ""
+	}
+	cursor, err := st.LogTail(ctx)
+	if err != nil {
+		return nil, ""
+	}
+	return st, cursor
+}
+
+// friendSyncWait waits from the cursor captured before the pass, for at most
+// every (FriendSyncWake.Wake and Sweep). The same pinned epoch is used for both
+// tail and wait. A store that cannot be read falls back to the --every timer.
+func (a *app) friendSyncWait(ctx context.Context, st *store.Store, cursor string, every time.Duration, after func(time.Duration) <-chan time.Time) {
+	if st == nil {
+		select {
+		case <-ctx.Done():
+		case <-after(every):
+		}
+		return
+	}
+	if a.after != nil {
+		if m, ok := st.B.(*store.Mem); ok {
+			prev := m.LogWait
+			m.LogWait = func(d time.Duration) {
+				select {
+				case <-ctx.Done():
+				case <-a.after(d):
+				}
+			}
+			defer func() { m.LogWait = prev }()
+		}
+	}
+	if _, _, err := st.WaitLog(ctx, st.PinnedEpoch(), cursor, every); err != nil && ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
 		case <-after(every):
