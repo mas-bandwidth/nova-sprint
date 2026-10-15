@@ -515,7 +515,7 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		facts["until"], facts["reason"] = rep.Until, rep.Reason
 	}
 	// the machine's word, so her daemon cancels its lanes on STOPPED and starts nothing
-	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs; pkg/friend/stop.go)
+	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs; nova-tools pkg/friend stop.go)
 	if word := machineWord(ctx, st); word != "" {
 		line += " machine=" + word
 		facts["machine"] = word

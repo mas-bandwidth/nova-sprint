@@ -18,7 +18,6 @@ cmd/nova-sprint/flush_stream_test.go
 cmd/nova-sprint/forward_server_test.go
 cmd/nova-sprint/friend_start_test.go
 cmd/nova-sprint/friendcards_cover_test.go
-cmd/nova-sprint/friendcards_verb_test.go
 cmd/nova-sprint/friendclean_test.go
 cmd/nova-sprint/hook_compact_test.go
 cmd/nova-sprint/hook_gate_every_verb_test.go
