@@ -329,13 +329,23 @@ Only names and source/header comments changed. `StopFence` includes its
 `COVERAGE.tsv`; fresh TLC passes do not erase those differences.
 
 `DecisionsOwed` / `MCDecisionsOwed*` models a bounded bound-card, reader and merge
-judgment, a five-observation clock, hook proof independent of owner delivery,
+judgment, a five-observation clock, unconditional owner escalation,
 separate durable owed and successful owner-receipt sets, safe defaults only after
 twice the deadline, and one explicit ambiguous retry. `NoSilentPile` requires a
 durable delivery obligation or receipt, not human sight. Fair observation and
-owner delivery imply eventual answer, default or owner receipt. Broken silent and
-unsafe-default configurations must violate `NoSilentPile` and `DefaultIsSafe`.
+owner delivery imply eventual answer, default or owner receipt. Broken silent, unsafe-default and owner-cadence configurations must violate
+`NoSilentPile`, `DefaultIsSafe` and `OwnerCadence`.
 The exact 30-minute elapsed-time cadence, epoch/recipient reset, frozen payload,
 transport-fault display and renewed bus token are pinned by runtime tests; the
 model abstracts elapsed intervals. `CoordinatorPush` retains the prerequisite's
 pre-deadline 30-minute reminder abstraction; `DecisionsOwed` owns overdue cadence.
+
+The decisions landing repair bounds owner deliveries per 30-minute model window,
+including changed sets (`OwnerCadence` and its broken witness). Unused hook proof
+state is removed: escalation is unconditional on hook status. A bound-card default
+remains an open obligation until release (`ParkedRemainsOwed`). SprintTables enables
+its real park/release actions when Cardinality(Card)=1; the one-primary configs run
+Spec with the original lifecycle invariants/properties plus cause, prestate and
+head/read preservation checks. Historical three-card instances keep their original
+action set. This is not a three-primary parking-composition proof. No state constraint
+or weakened fairness hides a transition in the one-primary instance.

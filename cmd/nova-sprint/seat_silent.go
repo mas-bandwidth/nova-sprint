@@ -89,8 +89,11 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	if machineErr != nil {
 		a.serveSay("DECISIONS OWED: clock read failed; preserving legacy owner alarm: %s", machineErr)
 	}
-	hasDue := false
+	hasDue, ownerSent := false, false
 	for _, o := range all {
+		if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "owner" && !d.SentAt.IsZero() {
+			ownerSent = true
+		}
 		if readErr == nil && machineErr == nil && o.Note.Kind == sprint.Judgment && o.Note.Type != sprint.NSeatSilent {
 			age, limit := sprint.DecisionAge(now, o.Note, machine.StoppedBetween)
 			if limit > 0 && age >= limit {
@@ -100,7 +103,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type == sprint.NSeatSilent && hasDue {
+		if g.Type == sprint.NSeatSilent && hasDue && ownerSent {
 			continue
 		}
 		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {

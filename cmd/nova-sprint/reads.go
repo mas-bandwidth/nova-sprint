@@ -1340,7 +1340,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
-	v := whereView{Decisions: sprint.DecisionsOwed(now, decisionNotes), At: now, Tables: map[string]map[string]map[string]any{}, Streams: clocks, Epoch: st.PinnedEpoch(), Coordinator: coordinator}
+	v := whereView{At: now, Tables: map[string]map[string]map[string]any{}, Streams: clocks, Epoch: st.PinnedEpoch(), Coordinator: coordinator}
 	if serverOK {
 		v.ServerVersion = serverRec.Version
 		v.Server = &serverBeatView{Version: serverRec.Version, Commit: serverRec.Commit, Started: serverRec.Started, At: serverRec.At}
@@ -1358,6 +1358,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	v.Decisions = sprint.DecisionsOwed(now, decisionNotes, facts.DecisionHolds, facts.Machine.StoppedBetween)
 	v.Landed, v.All = counts(shapes[0], facts.Sentinels)
 	v.Archived = archivedOf(shapes[0], facts.Sentinels)
 	if v.Archived != nil {

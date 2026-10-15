@@ -32,9 +32,11 @@ const keyWhere = "where" // STRING, the where record (JSON)
 // LandingRate may count from then on (sprint.RecentLandings), in Unix seconds,
 // oldest first.
 type WhereRecord struct {
-	Epoch uint64 `json:"epoch"`
-	Rev   uint64 `json:"rev"`
-	Held  int    `json:"held"`
+	DecisionHolds        []sprint.Note `json:"decision_holds,omitempty"`
+	DecisionHoldsCounted bool          `json:"decision_holds_counted"`
+	Epoch                uint64        `json:"epoch"`
+	Rev                  uint64        `json:"rev"`
+	Held                 int           `json:"held"`
 	// HeldStreams is Held counted per stream (sprint.HeldBackByStream):
 	// where --json's stream clocks carry it as held_cards beside each
 	// stream's stored state (a-waiting-stream-is-never-shown-held).
@@ -157,7 +159,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), HeldStreams: sprint.HeldBackByStream(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
+	r := WhereRecord{DecisionHolds: sprint.DefaultHeldDecisions(s), DecisionHoldsCounted: true, Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), HeldStreams: sprint.HeldBackByStream(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
@@ -425,10 +427,11 @@ func rttQuantile(samples [][2]int64, q float64) float64 {
 // records (Records: the store keeps them), the held cards, the landing
 // stamps for the rate, and the store round trip the server measured.
 type WhereFacts struct {
-	Records   bool
-	Machine   Machine
-	Heartbeat Heartbeat
-	Held      int
+	DecisionHolds []sprint.Note
+	Records       bool
+	Machine       Machine
+	Heartbeat     Heartbeat
+	Held          int
 	// HeldStreams is the record's per-stream held count (WhereRecord.HeldStreams).
 	HeldStreams map[string]int
 	Landed      []time.Time
@@ -565,9 +568,10 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.Series, f.SeriesCounted = r.Series, true
 		}
 		// a record counted from another stats record (a reset or a tidy since) is not taken
-		if ok && r.Epoch == st.epoch && r.Stats == stats.statsStamp(st.epoch) && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
+		if ok && r.DecisionHoldsCounted && r.Epoch == st.epoch && r.Stats == stats.statsStamp(st.epoch) && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
 			f.Held, f.HeldStreams, f.Critical, f.Tiers, f.Streams, f.StageTimes, f.DealtFleet = r.Held, r.HeldStreams, r.Critical, r.Tiers, r.Streams, r.StageTimes, r.DealtFleet
 			f.Sentinels = r.Sentinels
+			f.DecisionHolds = r.DecisionHolds
 			f.CostCheck = r.CostCheck
 			f.ReadsWaiting, f.Priorities, f.StreamPriorities = r.ReadsWaiting, r.Priorities, r.StreamPriorities
 			f.ReadsWindow = r.ReadsWindow
@@ -590,6 +594,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 	} else if t != nil {
 		snap := &sprint.Snapshot{Work: t}
 		f.Held, f.HeldStreams = sprint.HeldBack(snap), sprint.HeldBackByStream(snap)
+		f.DecisionHolds = sprint.DefaultHeldDecisions(snap)
 	}
 	// the streams' spend from the cards, as the tick counts it (keepWhere), so the cost
 	// column and the tile show the cards as they are when no record of them is there yet

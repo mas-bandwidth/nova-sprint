@@ -617,10 +617,10 @@ func (a *app) decisionPass(ctx context.Context) {
 			if err != nil {
 				return err
 			}
-			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work}, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
 				var p sprint.Plan
 				all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
-				set, body, reports := sprint.DecisionBatch(s.Now, all, lane, machine.StoppedBetween)
+				set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, machine.StoppedBetween)
 				var old *sprint.Note
 				var oldOpen []sprint.Open
 				for _, o := range s.Acked {
@@ -667,6 +667,11 @@ func (a *app) decisionPass(ctx context.Context) {
 						job = *old
 						return p
 					}
+					// Owner cadence is global to the lane, including changed/empty sets
+					// and recipient changes. Keep the receipt until the window ends.
+					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute {
+						return p
+					}
 					if set == "" {
 						if d.UnknownReceipts > 0 {
 							history := *old
@@ -678,7 +683,7 @@ func (a *app) decisionPass(ctx context.Context) {
 						p.Closes = oldOpen
 						return p
 					}
-					if d.To == to && d.Set == set && (lane == "coordinator" || s.Now.Sub(d.SentAt) < 30*time.Minute) {
+					if lane == "coordinator" && d.To == to && d.Set == set {
 						return p
 					}
 				}

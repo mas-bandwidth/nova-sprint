@@ -496,7 +496,10 @@ type DecisionSummary struct {
 	ReceiptHistory []string      `json:"receipt_history,omitempty"`
 }
 
-func DecisionsOwed(now time.Time, all []Open) DecisionSummary {
+func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Time, time.Time) time.Duration) DecisionSummary {
+	for _, n := range held {
+		all = append(all, Open{Note: n})
+	}
 	var out DecisionSummary
 	seen := map[string]bool{}
 	for _, o := range all {
@@ -507,7 +510,8 @@ func DecisionsOwed(now time.Time, all []Open) DecisionSummary {
 		seen[n.ID] = true
 		if n.Kind == Judgment && n.Type != NSprintDone {
 			out.Count++
-			out.Oldest = max(out.Oldest, now.Sub(n.At))
+			age, _ := DecisionAge(now, n, stopped)
+			out.Oldest = max(out.Oldest, age)
 		}
 		if n.Type == NServerDefault && !n.At.Before(now.Add(-time.Hour)) {
 			out.DefaultsHour++
@@ -531,8 +535,11 @@ func (d DecisionSummary) Line() string {
 // DecisionBatch folds by stable note identity, never by changing ages. A default
 // report remains owed until both channels have a successful receipt; afterward it
 // stays in the folded hour's report. No transport operation occurs here.
-func DecisionBatch(now time.Time, all []Open, lane string, stopped func(time.Time, time.Time) time.Duration) (string, string, []string) {
+func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped func(time.Time, time.Time) time.Duration) (string, string, []string) {
 	notes := map[string]Note{}
+	for _, n := range held {
+		notes[n.ID] = n
+	}
 	for _, o := range all {
 		n := o.Note
 		if n.Kind == Judgment {
@@ -593,4 +600,22 @@ func DecisionBatch(now time.Time, all []Open, lane string, stopped func(time.Tim
 // leaving review because its attempt or head was superseded.
 func DecisionParkedReview(c *Card) bool {
 	return c != nil && c.Col == Waiting && IsHeld(c) && c.F("held_by") == ServerDefaultActor && c.F("held_judgment") != "" && c.F("decision_held_from") == Review
+}
+
+// DefaultHeldDecisions derives obligations from live cards, not expiring audit
+// reports. Clearing the hold on release removes the obligation atomically with
+// the card move. The original judgment ID stays visible in every folded notice.
+func DefaultHeldDecisions(s *Snapshot) []Note {
+	var out []Note
+	if s == nil || s.Work == nil {
+		return out
+	}
+	for _, c := range s.Work.Column(Waiting) {
+		if !IsHeld(c) || c.F("held_by") != ServerDefaultActor {
+			continue
+		}
+		at, _ := time.Parse(time.RFC3339, c.F(FieldHeld))
+		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: "server-default hold", At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
+	}
+	return out
 }

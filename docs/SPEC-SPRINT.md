@@ -9255,11 +9255,10 @@ This transport check supplies no session challenge answer or presence proof.
 The 2026-10-15 owner's ruling supersedes the earlier repeated coordinator warning
 **after the judgment deadline**. Before that deadline, the 30-minute folded
 warning remains. At the deadline, all unanswered decisions form one message per
-changed set to the coordinator and one to the owner. The owner is the existing
+changed set to the coordinator. The owner receives the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
 `init --owner` bus name, falling back to `NOVA_SPRINT_OWNER`; no new channel is
 configured. The owner escalation does not depend on a proven coordinator hook.
-An unchanged open set reminds the owner at most once every 30 minutes. An empty
-set or a changed recipient resets that channel. Successful receipts, frozen
+An empty set or changed recipient does not erase the owner lane's last successful delivery time; new sets wait for the remaining interval. Successful receipts, frozen
 payloads and retry tokens persist through server restart and are epoch-scoped.
 
 | Judgment kind | Declared safe default at twice its deadline |
@@ -9288,17 +9287,23 @@ requires the transport eventually to succeed. `tla/DecisionsOwed.tla` models thi
 boundary separately from hook proof (`SeatHealth.tla`).
 
 `where` starts with `DECISIONS OWED n, oldest <age>`, the number of defaults applied
-in the last hour, the number of unresolved delivery faults, and earlier ambiguous receipts retained for inspection. Counts are distinct
-judgment IDs; default reports are independent of the inbox read cursor.
+in the last hour, the number of unresolved delivery faults, and earlier ambiguous receipts retained for inspection. Counts include distinct open judgment IDs and each primary still held by server-default.
+Parked primaries remain owed and included in folded notices until release; their
+original judgment ID and cause remain visible after the one-hour audit-report window.
+Oldest age uses the running clock, excluding STOPPED spans. Default reports are
+independent of the inbox read cursor.
 
 The central lifecycle permits two guarded moves: Review → Waiting only for a
 server-default bound hold, and Waiting → Review only for release of that saved
 Review state. Ready → Waiting also admits that same bound-hold cause. Existing
 sentinel/needs transitions and ordinary release behavior are unchanged. Parking
 alone does not retire an in-flight read; its independent timeout/rest rules still
-apply. `SprintTables` checks a bounded parking projection with broken witnesses
-for missing cause and release losing its saved prestate; store regressions check
-composition with the real deal/read machinery.
+apply. `SprintTables` checks park/release actions inside its full `Spec` on a one-primary
+instance with real lifecycle, head and read state, retaining every control invariant
+and property. Broken configurations invoke those actions with missing cause or
+wrong restored state. The historical three-card instances leave parking disabled;
+this is a one-primary composition proof, not a full three-card parking proof.
+Store regressions also check composition with the real deal/read machinery.
 A parked primary must be released before its brief, needs, tier, head or attempt is
 changed. The lifecycle guard enforces that ordering even for a composed edit;
 explicit coordinator drop remains permitted. This prevents a later release from

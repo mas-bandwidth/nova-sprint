@@ -1032,3 +1032,9 @@ anything. The server folds overdue decisions to the coordinator once per changed
 set and to the configured owner at most every 30 minutes while unchanged. Failed
 or ambiguous sends retry, including a renewed token after expiry. Safe defaults
 and the terminal sprint-done exemption are listed in SPEC-SPRINT.md, "Decisions owed".
+
+Server-default parked cards remain in DECISIONS OWED and folded escalation until
+released, even after their audit report is older than one hour. Their hold reason
+names server-default and the original judgment. Oldest decision age excludes
+STOPPED time. The owner lane sends at most once every 30 minutes after a successful
+receipt, including when the set changes; pending failed deliveries retain retries.

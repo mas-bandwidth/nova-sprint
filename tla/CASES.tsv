@@ -702,5 +702,6 @@ MCDecisionsOwedBrokenSilentPile.cfg	MCDecisionsOwed.tla	invariant	NoSilentPile	i
 MCDecisionsOwedBrokenUnsafeDefault.cfg	MCDecisionsOwed.tla	invariant	DefaultIsSafe	ignore-terminal	decisionsowed	required	-
 MCSprintTablesDecisionParking.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHasCause	ignore-terminal	sprinttables	required	-
-MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	invariant	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
+MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-

@@ -7,6 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	// A changed set is prepared durably before a failed send, and its fault is visible.
 	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "decision-d", At: ta.a.now().Add(-sprint.DeadlineJudgment)}))
 	require.NoError(t, err)
-	ta.step(sprint.DeadlineJudgment)
+	ta.step(30 * time.Minute)
 	b.fails = 2
 	ta.a.coordinatorPass(ctx)
 	var view string
@@ -245,4 +246,98 @@ func TestDecisionsWhereBatchesSeatServerCoordinator(t *testing.T) {
 	require.Equal(t, "test-version", server.Version)
 	require.Equal(t, "batched-seat", coordinator)
 	require.Equal(t, map[string]int{"kv": 1}, ta.m.Calls, "three actual keys share the backend multi-key read")
+}
+
+func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
+	ta, _, _ := coordSprint(t, "cadence-seat")
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "cadence-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	add := func(typ string) {
+		_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: typ, At: ta.a.now().Add(-sprint.DeadlineJudgment)}))
+		require.NoError(t, err)
+	}
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	add("first")
+	ta.step(sprint.DeadlineJudgment)
+	ta.a.decisionPass(ctx)
+	count := func() int {
+		n := 0
+		for _, m := range b.delivered {
+			if len(m.To) == 1 && m.To[0] == "glenn" {
+				n++
+			}
+		}
+		return n
+	}
+	require.Equal(t, 1, count())
+	ta.step(time.Minute)
+	add("second")
+	ta.a.decisionPass(ctx)
+	require.Equal(t, 1, count(), "changed sets must not bypass the owner's 30-minute bound")
+	ta.step(29*time.Minute - time.Second)
+	ta.a.decisionPass(ctx)
+	require.Equal(t, 1, count())
+	ta.step(time.Second)
+	ta.a.decisionPass(ctx)
+	require.Equal(t, 2, count())
+	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "second")
+}
+
+func TestDecisionsParkedCardRemainsOwedUntilRelease(t *testing.T) {
+	ta, rig, _ := coordSprint(t, "parked-seat")
+	rig.Hook(t, "parked-seat", hook.Coordinator)
+	ta.lined(func() { ta.ok("add --stream s1 --count 1 --one") })
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "parked-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBound, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: ta.a.now(), What: "budget bound"}))
+	require.NoError(t, err)
+	ta.step(2 * sprint.DeadlineJudgment)
+	_, err = st.Run(ctx, store.TickPartStep("overdue", sprint.TickOverdue, sprint.TickReq{}, nil, nil, nil))
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.DrainStep())
+	require.NoError(t, err)
+	// A second actual overdue pass retires the legacy alarm for the now-closed judgment.
+	_, err = st.Run(ctx, store.TickPartStep("overdue", sprint.TickOverdue, sprint.TickReq{}, nil, nil, nil))
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.DrainStep())
+	require.NoError(t, err)
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.a.decisionPass(ctx)
+	ta.step(2 * time.Hour)
+	v, _, err := ta.a.whereOf(ctx, st, 0, false, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, v.Decisions.Count, "parked card remains owed after the report hour expires")
+	ta.a.decisionPass(ctx)
+	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "s1-1")
+	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "server-default")
+	_, err = st.Run(ctx, store.ReleaseStep(sprint.ReleaseReq{IDs: []string{"s1-1"}, Who: "parked-seat", Coordinator: "parked-seat", Reason: "reviewed"}))
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.DrainStep())
+	require.NoError(t, err)
+	v, _, err = ta.a.whereOf(ctx, st, 0, false, true)
+	require.NoError(t, err)
+	require.Zero(t, v.Decisions.Count)
+}
+
+func TestDecisionsOldestExcludesStoppedTime(t *testing.T) {
+	ta, _, _ := coordSprint(t, "clock-seat")
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "clock-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "clock", At: ta.a.now()}))
+	require.NoError(t, err)
+	ta.step(time.Minute)
+	_, _, _, err = st.SetMachine(ctx, false)
+	require.NoError(t, err)
+	ta.step(time.Hour)
+	v, _, err := ta.a.whereOf(ctx, st, 0, false, true)
+	require.NoError(t, err)
+	require.Equal(t, time.Minute, v.Decisions.Oldest)
 }

@@ -133,3 +133,31 @@ func TestASeatSilentRaiseNoLongerOpenIsForgotten(t *testing.T) {
 	assert.Len(t, ta.a.seatSilent.told, 1, "only the open raise is kept: %v", ta.a.seatSilent.told)
 	assert.False(t, ta.a.seatSilent.told[seatSilentToken("", 0, "gone", 3)], "the closed raise is forgotten")
 }
+
+func TestSeatSilentRemainsUntilOwnerReceipt(t *testing.T) {
+	b := &tokenBus{}
+	ta, st, _ := seatSilentRig(t, b)
+	ctx := context.Background()
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "unanswered", At: ta.a.now()}))
+	require.NoError(t, err)
+	ta.step(sprint.DeadlineJudgment)
+	ta.a.tellSeatSilent(ctx, st)
+	require.Len(t, b.delivered, 1, "an overdue obligation without an owner receipt must not suppress the legacy alarm")
+}
+
+func TestSeatSilentSuppressedAfterOwnerReceipt(t *testing.T) {
+	b := &tokenBus{}
+	ta, st, _ := seatSilentRig(t, b)
+	ctx := context.Background()
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "unanswered", At: ta.a.now()}))
+	require.NoError(t, err)
+	ta.step(sprint.DeadlineJudgment)
+	_, err = st.Run(ctx, store.NoteStep("receipt", sprint.Note{Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NDecisionDelivery, DecisionDelivery: &sprint.DecisionDelivery{Lane: "owner", SentAt: ta.a.now()}}))
+	require.NoError(t, err)
+	ta.a.tellSeatSilent(ctx, st)
+	require.Empty(t, b.delivered)
+}
