@@ -41,7 +41,7 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 			assert.Equal(t, tc.reason, BriefDefectOf(tc.report))
 			w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
 			w.readersTable() // explicit legacy reader-table fixture
-			dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+			dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 			row := FriendRow("amy")
 			w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
 			require.Equal(t, -1, okPct(w.s, row), "the worker's ok word counts in no ok%% until a reader reads it")
@@ -121,7 +121,7 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 			assert.Empty(t, BriefDefectOf(report), report)
 		}
 		w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
-		dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		row := FriendRow("amy")
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-2.w1"}}, As: row, Gens: gensOf(w.s, "s1-2.w1"), Failed: true,

@@ -35,7 +35,7 @@ func bouncedWorld(t *testing.T, briefs ...string) *world {
 	w := friendWorld(t, briefs...)
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"})
 	dealStarted(w, amy)
 	bounce(w, "s1-1")
 	w.s.Friends = []FriendSeat{amy}
@@ -69,13 +69,13 @@ func TestFriendGiveRefusesACardWhoseWorkCardIsLive(t *testing.T) {
 	w := friendWorld(t, friendBrief("friend"))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
-	dealStarted(w, amy, FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"})
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"})
+	dealStarted(w, amy, workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"}))
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.NotNil(t, wc)
 	// force the primary ready over a live work card: the state the verb must still refuse
 	pr := w.s.Primary("s1-1")
-	w.s.Friends = []FriendSeat{amy, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	w.s.Friends = []FriendSeat{amy, workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"})}
 	for _, col := range []string{Ready, Working} {
 		wc.Col = col
 		w.s.Fleet.Put(wc)
@@ -93,7 +93,7 @@ func TestFriendGiveFromNoFriendHoldsTheDealsEligibility(t *testing.T) {
 	t.Parallel()
 	// hard-pinned to another friend: refused naming the pin and unpin
 	w := bouncedWorld(t, friendBrief("only friend amy"))
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}
+	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}), workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash"})}
 	p := FriendGive(w.s, FriendGiveReq{Friend: "bob", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "pinned to friend amy")
@@ -105,15 +105,15 @@ func TestFriendGiveFromNoFriendHoldsTheDealsEligibility(t *testing.T) {
 
 	// her tiers, her restriction, the card's needs
 	w = bouncedWorld(t, friendBrief("friend"), friendBrief("friend"))
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{"pro"}}}
+	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{"pro"}})}
 	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "does not serve tier")
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash", Streams: []string{"other-*"}}}
+	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash", Streams: []string{"other-*"}})}
 	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "restriction")
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash"}}
+	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"})}
 	w.s.Work.Card("s1-1").Fields["needs"] = "s1-2"
 	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
@@ -121,7 +121,7 @@ func TestFriendGiveFromNoFriendHoldsTheDealsEligibility(t *testing.T) {
 
 	// a friend not up is no refusal for a coordinator's give: the card waits on her row
 	w = bouncedWorld(t, friendBrief("friend"))
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Down, Class: "flash"}}
+	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Down, Class: "flash"})}
 	p = FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Empty(t, p.Refused)
 }

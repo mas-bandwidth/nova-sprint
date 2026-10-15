@@ -97,7 +97,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, "")}
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, "")})
 		tickAsk(t, w, seats)
 		require.NotNil(t, w.s.Fleet.Placed(ReadCardID("s1-1", 1, "amy")))
 		assert.Empty(t, w.notesOf(NWaitingForReader))
@@ -109,8 +109,8 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), "head")
 		}
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, "")}
-		w.s.Friends = seats
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, "")})
+		rememberWorkerSeats(w.s, seats)
 		_, due := tickAsk(t, w, seats)
 		assert.Zero(t, due, "a paid reader has room, so nothing waits")
 		assert.Empty(t, w.notesOf(NWaitingForReader))
@@ -126,7 +126,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, ""), frontierSeat("bob", 1, Up, "")}
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, ""), frontierSeat("bob", 1, Up, "")})
 		tickAsk(t, w, seats)
 		var first *Card
 		for _, n := range []string{"amy", "bob"} {
@@ -148,8 +148,8 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
-		seats := []FriendSeat{frontierSeat("amy", 1, Down, "")}
-		w.s.Friends = seats
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Down, "")})
+		rememberWorkerSeats(w.s, seats)
 		tickAsk(t, w, seats)
 		assert.Empty(t, w.notesOf(NFewReaders), "readers are up")
 		require.NotNil(t, placedReaderRead(w, "s1-1"))

@@ -217,7 +217,7 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		assert.Empty(t, BriefDefectOf("HOLD: the gate is red\nPATHS-PROPOSED: cmd/nova-sprint/verbs.go"), "a proposal alone stays the worker's failure")
 
 		w := friendWorld(t, friendBrief("friend amy"))
-		dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		row := FriendRow("amy")
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: report}))
 		wc := w.s.Fleet.Card("s1-1.w1")
@@ -234,7 +234,7 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		assert.Contains(t, js[0].What, BriefDefectPaths)
 
 		w2 := friendWorld(t, friendBrief("friend amy"))
-		dealStarted(w2, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w2, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		w2.must(Finish(w2.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w2.s, "s1-1.w1"), Failed: true,
 			Report: "HOLD: the gate is red\nPATHS-PROPOSED: cmd/nova-sprint/verbs.go"}))
 		assert.Equal(t, Finished, w2.s.Fleet.Card("s1-1.w1").Col)

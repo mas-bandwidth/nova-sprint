@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
@@ -32,10 +34,10 @@ func clientOf(t *testing.T, r *serverRig, actor string, sent *[][]string) (*app,
 	env := map[string]string{ServerEnv: "127.0.0.1:6390", "NOVA_SPRINT_ACTOR": actor}
 	c := newApp(func(k string) string { return env[k] })
 	t.Cleanup(c.close)
-	c.forward = func(_ context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
+	c.forward = func(ctx context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
 		assert.Equal(t, "127.0.0.1:6390", addr)
 		*sent = append(*sent, verbs...)
-		return r.a.serveFrom(sprintwire.Request{Verbs: verbs}, true).Results, nil
+		return r.a.serveCtx(ctx, sprintwire.Request{Verbs: verbs}, true).Results, nil
 	}
 	return c, func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
@@ -161,42 +163,45 @@ func TestAWatchThroughTheServerSendsOneReadAFrame(t *testing.T) {
 	assert.NotEqual(t, lines[1], lines[2], "the tick between the second and third frames is in the third")
 }
 
-// inbox --wait through the server waits here: it reads the server's log for a tick end
-// once a second on this process's clock, reads the inbox at the tick end after a
-// judgment opens and wakes for the new judgment, or says its timeout, then prints the
-// inbox as inbox --wait prints it.
-func TestAnInboxWaitThroughTheServerPollsForATickEnd(t *testing.T) {
+// inbox --wait blocks on the server notes stream. A committed tick end wakes
+// it without advancing client time; a quiet stream consumes its fake deadline.
+func TestAnInboxWaitThroughTheServerBlocksForATickEnd(t *testing.T) {
 	t.Parallel()
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
+	r, ta := newLongPollRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
 		"nova-sprint set --read-cards off",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
-	clock := r.a.now()
-	r.a.now = func() time.Time { return clock } // the server's clock, still: what it prints is the same at every read
 	var sent [][]string
 	c, boss := clientOf(t, r, "boss", &sent)
-	waited := clock
-	c.now = func() time.Time { return waited }
-	polls := 0
-	c.sleep = func(d time.Duration) {
-		assert.Equal(t, time.Second, d)
-		waited = waited.Add(d)
-		if polls++; polls == 2 {
-			r.boss("nova-sprint reader away reader-a") // fewer than two readers up: a judgment at the tick
+	c.now = ta.a.now
+	c.sleep = func(time.Duration) { t.Fatal("client must block on the server, not poll") }
+	waits := 0
+	b := inboxNotesWake{Mem: ta.m, wait: func(ctx context.Context, d time.Duration) (bool, error) {
+		waits++
+		if waits == 1 {
+			r.boss("nova-sprint reader away reader-a")
 			r.boss("nova-sprint tick")
+			return true, nil
 		}
-	}
+		ta.a.sleep(d)
+		return false, ctx.Err()
+	}}
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	code, out, errs := boss("inbox", "--wait", "--timeout", "4s")
 	require.Equal(t, 0, code, errs)
-	assert.Equal(t, 2, polls, "woke at the tick end after the judgment, not at the timeout")
+	assert.Equal(t, 1, waits, "one blocking exchange wakes at the committed tick end")
 	plain := r.boss("nova-sprint inbox")
-	assert.Equal(t, "inbox --wait: new=tick-ask-t34-1.1\n"+plain, out, "the wake line, then the inbox as inbox --wait prints it when it woke")
+	wake, body, ok := strings.Cut(out, "\n")
+	require.True(t, ok)
+	require.True(t, strings.HasPrefix(wake, "inbox --wait: new="), wake)
+	require.Contains(t, plain, strings.TrimPrefix(wake, "inbox --wait: new="), "the reported new group is in the inbox")
+	assert.Equal(t, plain, body, "the inbox is rendered whole after the wake")
 	assert.Contains(t, out, "fewer than two readers up")
-	assert.Len(t, sent, 6, "the log and the inbox at the start, two reads of the log, the inbox at the tick end, then the inbox")
+	assert.Len(t, sent, 5, "initial cursor and inbox, one blocking wait, inbox at the tick end, then final inbox")
 
 	code, out, errs = boss("inbox", "--wait", "--timeout", "3s", "--json")
 	require.Equal(t, 0, code, errs)
-	assert.Equal(t, 5, polls, "three more polls of a second: the timeout")
+	assert.Equal(t, 2, waits, "one more blocking wait consumes the quiet timeout")
 	assert.Equal(t, "inbox --wait: nothing new in 3s\n", errs, "said on stderr under --json, as inbox --wait says it")
 	var got map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &got), out)

@@ -21,7 +21,7 @@ const answerHead = "0123456789abcdef0123456789abcdef01234567"
 func friendInReview(t *testing.T, failed bool, report string) (*world, FriendSeat) {
 	t.Helper()
 	w := friendWorld(t, friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 	dealWith(w, amy)
 	startLanes(w, amy)
 	wc := w.s.Fleet.Card("s1-1.w1")
@@ -120,7 +120,7 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
 		w.s.MaxAttempts = "2"
-		amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		dealWith(w, amy)
 		startLanes(w, amy)
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: harnessFaults["lane died"]}))

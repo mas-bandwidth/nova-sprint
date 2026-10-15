@@ -24,11 +24,11 @@ func TestAFriendRowHoldsItsTiersUnlessTheCardIsPinnedToHer(t *testing.T) {
 		{ID: "s2-2", Brief: "c: a friend's card tier: frontier\nREPO: mas-bandwidth/nova-tools\nWHO: friend\n\nThe task."}, // frontier, any friend
 		{ID: "s2-3", Brief: "c: a friend's card tier: pro\nREPO: mas-bandwidth/nova-tools\nWHO: friend fay\n\nThe task."},  // pro, named fay (flash)
 	}}))
-	seats := []FriendSeat{
+	seats := workerSeatFixtures([]FriendSeat{
 		{Name: "fay", Width: 4, Status: Up, Class: cardhdr.RouteFlash},
 		{Name: "gus", Width: 4, Status: Up, Class: cardhdr.RouteFrontier},
 		{Name: "pam", Width: 4, Status: Up, Class: cardhdr.RoutePro},
-	}
+	})
 	w.part(TickDeal, TickReq{Friends: seats})
 
 	held := map[string]string{}

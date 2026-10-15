@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 // the wait had not seen: a held or waited judgment stays open and is never
 // new again, so a sentinel held on purpose wakes nobody. The wait sleeps on the
 // tick-end note as before (store.WaitTickEnd on the store; the log's tick-end
-// notes polled through the server), looks at the inbox at each one and every
+// notes blocked on through the server), looks at the inbox at each one and every
 // waitLook while nothing ticks (the machine stopping is seen within it), and
 // ends at the first look that finds something new, or when the machine stops
 // having run, or when --timeout passes.
@@ -41,9 +42,6 @@ import (
 // waitLook is the longest inbox --wait goes between two looks at the inbox
 // while nothing ticks.
 const waitLook = 15 * time.Second
-
-// tickEndPoll is how often inbox --wait through the server reads the log for a tick end.
-const tickEndPoll = time.Second
 
 // machineRunning is the machine line of a running machine (store.MachineLine).
 const machineRunning = "machine: running"
@@ -112,10 +110,9 @@ type exitErr struct{ code int }
 
 func (e *exitErr) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
-// serverSource is inbox --wait through the sprint's server, which never runs a
-// wait: the log's tick-end notes (log --json, as far back as the wait and a
-// poll) are read every tickEndPoll on this process's clock, and the inbox is
-// read as inbox --json.
+// serverSource is inbox --wait through the sprint server: each notes-stream
+// wait blocks on the server, outside its writer/read lines, then inbox --json
+// reads the groups. The unchanged waitLook timer remains the slow backstop.
 type serverSource struct {
 	a       *app
 	addr    string
@@ -133,9 +130,13 @@ func (a *app) serverSource(ctx context.Context, addr string, fs *flag.FlagSet, a
 	return s, err
 }
 
-// lastTickEnd is the id of the last tick-end note on the server's log.
+// lastTickEnd captures the notes-stream cursor before the initial inbox read.
 func (s *serverSource) lastTickEnd(ctx context.Context) (string, error) {
-	res, err := s.a.ask(ctx, s.addr, []string{"log"}, []string{"--json", "--since", (s.timeout + tickEndPoll).String()})
+	return s.waitTick(ctx, 0)
+}
+
+func (s *serverSource) waitTick(ctx context.Context, d time.Duration) (string, error) {
+	res, err := s.a.ask(ctx, s.addr, []string{"log"}, []string{"--json", "--wait-tick", d.String(), "--after", s.from})
 	if err != nil {
 		return "", &exitErr{s.a.unanswered("inbox --wait", s.addr, err, s.stderr)}
 	}
@@ -144,33 +145,24 @@ func (s *serverSource) lastTickEnd(ctx context.Context) (string, error) {
 		return "", &exitErr{res.Code}
 	}
 	var log struct {
-		Lines []sprint.Line `json:"lines"`
+		Cursor *string `json:"cursor"`
+		Woke   *bool   `json:"woke"`
 	}
 	if err := json.Unmarshal([]byte(res.Stdout), &log); err != nil {
 		return "", fmt.Errorf("the server's log is not JSON: %w", err)
 	}
-	last := ""
-	for _, l := range log.Lines {
-		if l.Note != nil && l.Note.Type == sprint.NTickEnd {
-			last = l.Note.ID
-		}
+	if log.Cursor == nil || log.Woke == nil || *log.Cursor == "" || !validWaitCursor(*log.Cursor) {
+		return "", errors.New("the server's log has no valid wait cursor or wake result")
 	}
-	return last, nil
+	return *log.Cursor, nil
 }
 
 func (s *serverSource) tickEnd(ctx context.Context, d time.Duration) error {
-	for end := s.a.now().Add(d); s.a.now().Before(end) && ctx.Err() == nil; {
-		s.a.sleep(min(end.Sub(s.a.now()), tickEndPoll))
-		last, err := s.lastTickEnd(ctx)
-		if err != nil {
-			return err
-		}
-		if last != "" && last != s.from {
-			s.from = last
-			return nil
-		}
+	cursor, err := s.waitTick(ctx, d)
+	if err == nil {
+		s.from = cursor
 	}
-	return nil
+	return err
 }
 
 func (s *serverSource) inbox(ctx context.Context, open string) (inboxLook, error) {
@@ -341,8 +333,8 @@ func sayWoke(fresh []sprint.Group, stopped bool, timeout time.Duration, asJSON b
 	}
 }
 
-// inboxWaitAt is inbox --wait through the sprint's server, which never runs a
-// wait: the wait runs here on a serverSource, then the inbox is read through
+// inboxWaitAt keeps the coordinator loop here while serverSource blocks each
+// notes-stream wait on the server; then the inbox is read through
 // the server and printed as inbox --wait prints it (sayWoke; woke and new
 // under --json).
 func (a *app) inboxWaitAt(addr string, fs *flag.FlagSet, args []string, atEpoch int64, timeout time.Duration, push string, asJSON bool, stdout, stderr io.Writer) int {
@@ -525,4 +517,148 @@ func writeOnce(path, text string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// waitCursor gives an empty Redis stream the portable start cursor. Cursors
+// belong to one stream: queue uses the sprint log, --wait-tick the notes stream.
+func waitCursor(id string) string {
+	if id == "" {
+		return "0-0"
+	}
+	return id
+}
+
+func validWaitCursor(id string) bool {
+	if id == "" {
+		return true
+	}
+	a, b, ok := strings.Cut(id, "-")
+	if !ok || a == "" || b == "" {
+		return false
+	}
+	for _, s := range []string{a, b} {
+		for _, c := range s {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+		if _, err := strconv.ParseUint(s, 10, 64); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func queueWaitFlags(v verbArgs, as string, d time.Duration, after string) string {
+	if v.given("wait") && (d <= 0 || d > time.Duration(1<<63-1)-sprintwire.Timeout) {
+		return "--wait wants a duration above zero with room for the transport deadline"
+	}
+	if (v.given("wait") || v.given("after")) && as == "" {
+		return "--wait and --after take --as <reader|member>"
+	}
+	if v.given("wait") && (v.fs.Lookup("stream").Value.String() != "" || v.fs.Lookup("col").Value.String() != "") {
+		return "--wait takes a worker queue, not --stream or --col"
+	}
+	if v.given("after") && !v.given("wait") {
+		return "--after takes --wait <duration>"
+	}
+	if !validWaitCursor(after) {
+		return "--after wants a stream cursor <milliseconds>-<sequence>"
+	}
+	return ""
+}
+
+// waitQueue blocks on durable commits; the existing inbox backstop bounds a
+// lost transient wake and an epoch change. It does not read the queue or move
+// its cursor. QueueWait.tla Wake/Timeout; Read samples its cursor separately.
+func (a *app) waitQueue(ctx context.Context, root *store.Store, d time.Duration, after string) error {
+	end := a.now().Add(d)
+	st, err := root.Pinned(ctx)
+	if err != nil {
+		return err
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		left := end.Sub(a.now())
+		if left <= 0 {
+			return nil
+		}
+		_, woke, err := st.WaitLog(ctx, st.PinnedEpoch(), after, min(left, waitLook))
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if woke {
+			return nil
+		}
+		// A dropped wake is not a dropped durable event. Never advance the
+		// cursor here: the queue read following this wait owns its safe cut.
+		tail, err := st.LogTail(ctx)
+		if err != nil {
+			return err
+		}
+		epoch, err := st.EpochNow(ctx)
+		if err != nil {
+			return err
+		}
+		if waitCursor(tail) != waitCursor(after) || epoch.N != st.PinnedEpoch() {
+			return nil
+		}
+	}
+}
+
+// waitTickAnswer is the notes-stream long-poll used by inbox --wait. The
+// subsequent inbox read covers this pre-read cursor (QueueWait.tla Read).
+func waitTickAnswer(ctx context.Context, st *store.Store, after string, d time.Duration) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	if after == "0-0" {
+		after = ""
+	}
+	st, err := st.Pinned(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	woke := false
+	if d > 0 {
+		woke, err = st.WaitTickEnd(ctx, after, d)
+		if err != nil {
+			return "", false, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	_, cursor, err := st.B.Tails(ctx)
+	return waitCursor(cursor), woke, err
+}
+
+func tickWaitFlags(v verbArgs) string {
+	if v.given("after") && !v.given("wait-tick") {
+		return "--after takes --wait-tick <duration>"
+	}
+	if !v.given("wait-tick") {
+		return ""
+	}
+	d, _ := time.ParseDuration(v.fs.Lookup("wait-tick").Value.String())
+	if d < 0 || d > time.Duration(1<<63-1)-sprintwire.Timeout {
+		return "--wait-tick wants a nonnegative duration with room for the transport deadline"
+	}
+	if !v.on("json") {
+		return "--wait-tick takes --json"
+	}
+	for _, name := range []string{"card", "stream", "member", "since", "at-epoch", "max"} {
+		if v.given(name) {
+			return "--wait-tick does not take --" + name + ": its cursor is on the current notes stream"
+		}
+	}
+	if !validWaitCursor(v.fs.Lookup("after").Value.String()) {
+		return "--after wants a notes-stream cursor <milliseconds>-<sequence>"
+	}
+	return ""
 }

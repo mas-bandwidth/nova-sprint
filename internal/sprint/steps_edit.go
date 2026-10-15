@@ -1149,10 +1149,18 @@ func unlandedNeeds(s *Snapshot, c *Card) string {
 	return strings.Join(missing, ",")
 }
 
-// reworkWhyCarry is reworkWhy for rework --carry: a card in review that ended on a brief defect
-// whose cause is coordination (IsCoordinationDefect) takes the rework once its needs have all
-// landed; while any has not, it is refused naming them; any other card is reworkWhy's.
+// reworkWhyCarry is reworkWhy for rework --carry: a card in review at the conflict bound (the
+// landing refused its head twice only for a merge conflict with the advanced base,
+// IsConflictBound) takes the rework whether or not the brief-defect rule marked it, since the
+// base moved under a correct head and the brief is not the cause (tla/Land.tla, THE BOUND,
+// ConflictBoundCarries); one that ended on a brief defect whose cause is coordination
+// (IsCoordinationDefect) takes it once its needs have all landed, and while any has not, it is
+// refused naming them; any other card is reworkWhy's (a gate, checks or paths bound stays the
+// brief's, and a card marked a brief defect for it is re-cut).
 func reworkWhyCarry(s *Snapshot, c *Card) string {
+	if IsConflictBound(c) {
+		return ""
+	}
 	if c.Placed() && c.Col == Review && c.F(FieldBriefDefect) != "" && IsCoordinationDefect(c.F(FieldBriefDefect)) {
 		if missing := unlandedNeeds(s, c); missing != "" {
 			return "it ended on a coordination brief defect (" + c.F(FieldBriefDefect) + "), and its needs " + missing + " have not landed: rework --carry once they have, or re-cut the brief; nothing was changed"
