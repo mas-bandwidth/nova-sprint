@@ -617,10 +617,10 @@ func (a *app) decisionPass(ctx context.Context) {
 			if err != nil {
 				return err
 			}
-			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work}, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work, sprint.Readers, sprint.Fleet}, Routes: true, Readers: true, Friends: true, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
 				var p sprint.Plan
 				all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
-				set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, machine.StoppedBetween)
+				set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, machine.StoppedBetween, s)
 				var old *sprint.Note
 				var oldOpen []sprint.Open
 				for _, o := range s.Acked {
