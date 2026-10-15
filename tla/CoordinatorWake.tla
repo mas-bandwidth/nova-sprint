@@ -25,6 +25,16 @@
 \* The design, Broken = {}:
 \*   ArriveAsk    a bus event that asks is appended; nothing else changes.
 \*   ArriveFilter a bus event that does not ask is appended; nothing else.
+\*   ArriveJudgment a bus event of kind judgment, from a friend or the sprint
+\*                server, is appended; it wakes (card
+\*                watch-wake-wakes-on-judgment-bus-messages).
+\*   ArriveMachine a message the machine sent under the coordinator's own name
+\*                (the sprint server's judgments and stop/resume lines, the
+\*                heartbeat's FRIEND DOWN/BACK, kind status FRIEND STATE) is
+\*                appended; it wakes: told from the seat's own note by its kind
+\*                and subject (serverSent, the rule nova-hook serve uses).
+\*   ArriveSelf   a message this seat sent itself under the coordinator's name
+\*                is appended; it never wakes.
 \*   RaiseLevel   a level event sets; ClearLevel clears it, between two looks.
 \*   Rerun        the session starts the verb; it reads the cursor and blocks.
 \*   Look         a blocked run reads; no ask and no due level event is found,
@@ -39,21 +49,34 @@
 \*                next run finds the same asks and fires them again (AtMostOnce).
 \*   "skip"       the run fires only the first ask and writes the cursor at the
 \*                newest arrival, past asks it has not fired (NoLapse).
+\*   "judgmentfiltered" the kind exclusion is restored: a judgment never wakes
+\*                (EveryJudgmentWakes).
+\*   "selffiltered" the From == coordinator exclusion is restored for the
+\*                machine's messages: they never wake (EveryJudgmentWakes).
 \*   "batchdrops" the run fires only the first ask of the batch and writes the
 \*                cursor past the rest, dropping the asks between (NoLapse).
 EXTENDS Naturals
 
 CONSTANTS MaxBus, MaxLevel, Window, Broken
 
-VARIABLES busArrived, waking, cursor, fired, level, held, seen, run
-vars == <<busArrived, waking, cursor, fired, level, held, seen, run>>
+VARIABLES busArrived, waking, cls, cursor, fired, level, held, seen, run
+vars == <<busArrived, waking, cls, cursor, fired, level, held, seen, run>>
 
 BusEvents == 1..MaxBus
+Classes == {"none", "ask", "filter", "judgment", "machine", "self"}
+
+\* whether a message of a class wakes: watchwake.go wakeMsg.wakes
+Wakes(c) ==
+    CASE c = "ask" -> TRUE
+      [] c = "judgment" -> ~("judgmentfiltered" \in Broken)
+      [] c = "machine" -> ~("selffiltered" \in Broken)
+      [] OTHER -> FALSE
 LevelEvents == 1..MaxLevel
 
 TypeOK ==
     /\ busArrived \in 0..MaxBus
     /\ waking \in [BusEvents -> BOOLEAN]
+    /\ cls \in [BusEvents -> Classes]
     /\ cursor \in 0..MaxBus
     /\ cursor <= busArrived
     /\ fired \in [BusEvents -> Nat]
@@ -65,6 +88,7 @@ TypeOK ==
 Init ==
     /\ busArrived = 0
     /\ waking = [e \in BusEvents |-> FALSE]
+    /\ cls = [e \in BusEvents |-> "none"]
     /\ cursor = 0
     /\ fired = [e \in BusEvents |-> 0]
     /\ level = {}
@@ -72,34 +96,37 @@ Init ==
     /\ seen = {}
     /\ run = "idle"
 
-\* a bus event that asks (waking), and one that does not (filtered)
-ArriveAsk ==
+\* a bus event of a class arrives; whether it wakes is Wakes(class). A filtered
+\* message and the seat's own message never wake.
+\* tla/CoordinatorWake.tla: watchwake.go wakeMsg.wakes cites these.
+Arrive(c) ==
     /\ busArrived < MaxBus
     /\ busArrived' = busArrived + 1
-    /\ waking' = [waking EXCEPT ![busArrived + 1] = TRUE]
+    /\ waking' = [waking EXCEPT ![busArrived + 1] = Wakes(c)]
+    /\ cls' = [cls EXCEPT ![busArrived + 1] = c]
     /\ UNCHANGED <<cursor, fired, level, held, seen, run>>
 
-ArriveFilter ==
-    /\ busArrived < MaxBus
-    /\ busArrived' = busArrived + 1
-    /\ waking' = [waking EXCEPT ![busArrived + 1] = FALSE]
-    /\ UNCHANGED <<cursor, fired, level, held, seen, run>>
+ArriveAsk == Arrive("ask")
+ArriveFilter == Arrive("filter")
+ArriveJudgment == Arrive("judgment")
+ArriveMachine == Arrive("machine")
+ArriveSelf == Arrive("self")
 
 \* a level event sets or clears between two looks; held moves only at a look
 RaiseLevel(e) ==
     /\ e \notin level
     /\ level' = level \cup {e}
-    /\ UNCHANGED <<busArrived, waking, cursor, fired, held, seen, run>>
+    /\ UNCHANGED <<busArrived, waking, cls, cursor, fired, held, seen, run>>
 
 ClearLevel(e) ==
     /\ e \in level
     /\ level' = level \ {e}
-    /\ UNCHANGED <<busArrived, waking, cursor, fired, held, seen, run>>
+    /\ UNCHANGED <<busArrived, waking, cls, cursor, fired, held, seen, run>>
 
 Rerun ==
     /\ run = "idle"
     /\ run' = "blocked"
-    /\ UNCHANGED <<busArrived, waking, cursor, fired, level, held, seen>>
+    /\ UNCHANGED <<busArrived, waking, cls, cursor, fired, level, held, seen>>
 
 \* the asks past the cursor; the last and the first of them
 WakingAfter == { e \in BusEvents : e > cursor /\ e <= busArrived /\ waking[e] }
@@ -129,7 +156,7 @@ Look ==
     /\ cursor' = busArrived
     /\ held' = AdvanceHeld
     /\ seen' = PruneSeen
-    /\ UNCHANGED <<busArrived, waking, fired, level>>
+    /\ UNCHANGED <<busArrived, waking, cls, fired, level>>
 
 \* a blocked run reads every ask past the cursor and fires them all, then writes
 \* the cursor and exits.
@@ -150,7 +177,7 @@ WakeBus ==
               /\ cursor' = cursor
        ELSE /\ fired' = [e \in BusEvents |-> IF e \in WakingAfter THEN fired[e] + 1 ELSE fired[e]]
             /\ cursor' = LastWaking
-    /\ UNCHANGED <<busArrived, waking, level>>
+    /\ UNCHANGED <<busArrived, waking, cls, level>>
 
 \* a blocked run reads no ask, and a level event has held a whole window: the run
 \* wakes on every such event (seen).
@@ -162,9 +189,9 @@ WakeLevel ==
     /\ seen' = PruneSeen \cup DueLevel
     /\ cursor' = busArrived
     /\ held' = AdvanceHeld
-    /\ UNCHANGED <<busArrived, waking, fired, level>>
+    /\ UNCHANGED <<busArrived, waking, cls, fired, level>>
 
-Next == ArriveAsk \/ ArriveFilter
+Next == ArriveAsk \/ ArriveFilter \/ ArriveJudgment \/ ArriveMachine \/ ArriveSelf
      \/ (\E e \in LevelEvents : RaiseLevel(e))
      \/ (\E e \in LevelEvents : ClearLevel(e))
      \/ Rerun \/ Look \/ WakeBus \/ WakeLevel
@@ -182,6 +209,16 @@ AtMostOnce == \A e \in BusEvents : fired[e] <= 1
 \* every bus event that asks and arrives is woken by some later run (the level
 \* events are not here: a level event cleared before a wake never wakes)
 NoLapse == \A e \in BusEvents : (busArrived >= e /\ waking[e]) ~> (fired[e] >= 1)
+
+\* a judgment, or a message the machine sent under the coordinator's name, that
+\* arrives on the bus wakes some run with no store look: the level events
+\* (the store's judgments) are not consulted here, so the push alone must do it.
+EveryJudgmentWakes ==
+    \A e \in BusEvents :
+        (busArrived >= e /\ cls[e] \in {"judgment", "machine"}) ~> (fired[e] >= 1)
+
+\* the seat's own message is never woken on
+SelfNeverWakes == \A e \in BusEvents : cls[e] = "self" => fired[e] = 0
 
 \* a level event that holds for a whole window of looks wakes a run, unless it is
 \* cleared first: the clear is the level event's own lapse, which NoLapse does

@@ -34,9 +34,11 @@ import (
 // decides between them when more than one is due:
 //
 //	bus       a message to the coordinator that asks or reports (a request, a
-//	          blocker or a report; a message with no kind is told by its
-//	          subject: no ping, pong, dealt, finished, landed, width, RESULT or
-//	          HOLD notice), never the coordinator's own
+//	          blocker, a report or a judgment; a message with no kind is told
+//	          by its subject: no ping, pong, dealt, finished, landed, width,
+//	          RESULT or HOLD notice), and a status or any of those that the
+//	          machine sent under the coordinator's own name; never what the
+//	          seat sent itself
 //	judgment  a judgment new since the last judgment wake, at most one wake in
 //	          --judgment-every
 //	stop      the machine STOPPED by anyone but the coordinator's stop verb,
@@ -178,15 +180,46 @@ func writeWakeState(path string, s wakeState) error {
 // the hand script filtered.
 var notAnAsk = regexp.MustCompile(`(?i)pong|ping|^card \S+ dealt|card \S+ finished|\bland\b|landed|^done|^width \d|e2e-ok|^awake|^result:| hold$|rule applied|^ack|acknowledged`)
 
+// machineSubjects are the subjects of what the machine sends under the
+// coordinator's own name: the sprint server's judgments, inbox lines and stream
+// stop/resume lines, and the heartbeat server's friend lines. The rule is the
+// one nova-hook serve settles (serverSent in nova-tools cmd/nova-hook/serve.go,
+// friend-status-transitions-push-to-the-coordinator): a message from the
+// coordinator's own name is the machine's when its kind and its subject say so,
+// and a note the seat sent itself with nova-bus send is not.
+var machineSubjects = map[string][]string{
+	bus.KindJudgment: {"nova-sprint: ", "FRIEND DOWN ", "FRIEND BACK ", "COORDINATOR DOWN ", "OVERDUE "},
+	bus.KindStatus:   {"FRIEND STATE ", "nova-sprint: "},
+	bus.KindBlocker:  {"STREAM STOPPED ", "STREAM RESUMED ", "nova-sprint: "},
+	bus.KindRequest:  {"nova-sprint: "},
+}
+
+// machineSent says a message from the coordinator's name is one the machine sent.
+func machineSent(m wakeMsg) bool {
+	for _, p := range machineSubjects[m.Kind] {
+		if strings.HasPrefix(m.Subject, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // wakes says the message is one the coordinator is woken by: by its kind when
-// it has one, by its subject when it has none; never the coordinator's own.
-// tla/CoordinatorWake.tla ArriveAsk ArriveFilter
+// it has one (a request, a blocker, a report or a judgment; a status only from
+// the machine), by its subject when it has none. A message from the
+// coordinator's name wakes only when the machine sent it: what this seat sent
+// itself never does. A judgment wakes at the push, within one bus read; the
+// store look at --judgment-every stays as the backstop for a lost message.
+// tla/CoordinatorWake.tla ArriveAsk ArriveFilter ArriveJudgment ArriveMachine ArriveSelf
+// (EveryJudgmentWakes, SelfNeverWakes)
 func (m wakeMsg) wakes(coordinator string) bool {
 	switch {
 	case m.From == coordinator:
+		return machineSent(m)
+	case m.Kind == bus.KindStatus:
 		return false
 	case m.Kind != "":
-		return m.Kind == bus.KindRequest || m.Kind == bus.KindBlocker || m.Kind == bus.KindReport
+		return m.Kind == bus.KindRequest || m.Kind == bus.KindBlocker || m.Kind == bus.KindReport || m.Kind == bus.KindJudgment
 	}
 	return !notAnAsk.MatchString(m.Subject)
 }
