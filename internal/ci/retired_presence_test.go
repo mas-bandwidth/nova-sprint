@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -122,6 +123,20 @@ func retiredMatcher(r retiredName) *regexp.Regexp {
 	return regexp.MustCompile(regexp.QuoteMeta(r.Name) + `(?:[^A-Za-z0-9_]|$)`)
 }
 
+// retiredMatchers caches each row's compiled matcher: the scan walks the whole tree,
+// and compiling every row's regexp once per file put the guard past the functional
+// tier's two-minute package bound on CI.
+var retiredMatchers sync.Map
+
+// retiredMatcherOf is retiredMatcher, compiled once per row.
+func retiredMatcherOf(r retiredName) *regexp.Regexp {
+	if re, ok := retiredMatchers.Load(r); ok {
+		return re.(*regexp.Regexp)
+	}
+	re, _ := retiredMatchers.LoadOrStore(r, retiredMatcher(r))
+	return re.(*regexp.Regexp)
+}
+
 // retiredScanned says whether a row of kind is looked for in the file rel.
 func retiredScanned(kind, rel string) bool {
 	for _, h := range retiredHistory {
@@ -138,12 +153,16 @@ func retiredScanned(kind, rel string) bool {
 // retiredFindings is every `<rel>:<line>: <kind> <name>` the rows find in src.
 func retiredFindings(rel string, src []byte, rows []retiredName) []string {
 	var out []string
-	lines := strings.Split(string(src), "\n")
+	text := string(src)
+	lines := strings.Split(text, "\n")
 	for _, r := range rows {
 		if !retiredScanned(r.Kind, rel) {
 			continue
 		}
-		re := retiredMatcher(r)
+		if !strings.Contains(text, r.Name) {
+			continue // the name is nowhere in the file: no line can match it
+		}
+		re := retiredMatcherOf(r)
 		for i, l := range lines {
 			if re.MatchString(l) {
 				out = append(out, fmt.Sprintf("%s:%d: %s %q is retired; use %s", rel, i+1, r.Kind, r.Name, r.Replacement))
