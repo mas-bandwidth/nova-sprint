@@ -198,12 +198,34 @@ type CoordinatorDelivery struct {
 	CoveredBy                               string // shares the causal notification's token and payload
 	From, To, Token, Subject, Body, Episode string
 	Sent                                    bool
+	ReceiptUnknown                          bool      // terminal: never renew or send after the retry window
 	RetryBefore                             time.Time // no automatic retry after the bus token acceptance window
+}
+
+// NFriendDelivery is a hidden durable inbox intent, not a coordinator push.
+const NFriendDelivery = "friend inbox delivery intent"
+
+type FriendDeliveryItem struct {
+	Primary, Stream       string
+	Card                  string
+	Gen, Attempt          int
+	PacketHash, BriefHash string
+	BriefText             string
+}
+
+// FriendDelivery reserves each job before its BRIEF is written. Existing inbox
+// files without an intent are legacy deliveries, never inferred pending sends.
+type FriendDelivery struct {
+	Root, Friend string
+	OneShot      bool
+	Items        map[string]FriendDeliveryItem
+	FailureNoted bool
 }
 
 // Note is one notification.
 type Note struct {
 	ID                     string               `json:"id"`
+	FriendDelivery         *FriendDelivery      `json:"friend_delivery,omitempty"`
 	SafeDefault            string               `json:"safe_default,omitempty"`
 	DecisionDelivery       *DecisionDelivery    `json:"decision_delivery,omitempty"`
 	DefaultCoordinatorTold bool                 `json:"default_coordinator_told,omitempty"`

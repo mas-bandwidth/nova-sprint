@@ -711,4 +711,6 @@ MCStageNeeds.cfg	MCStageNeeds.tla	pass	-	check	stageneeds	required	-
 MCStageNeedsBrokenStaleTip.cfg	MCStageNeeds.tla	invariant	NoChildWithoutLandedNeeds	check	stageneeds	required	-
 MCFriendSyncWake.cfg	MCFriendSyncWake.tla	pass	-	ignore-terminal	friendsyncwake	required	-
 MCFriendSyncWakeBrokenClockOnly.cfg	MCFriendSyncWake.tla	invariant	PushedWithinOneEvent	ignore-terminal	friendsyncwake	required	-
-MCFriendSyncWakeBrokenTellLost.cfg	MCFriendSyncWake.tla	temporal	EveryDealIsPushed	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenTellLost.cfg	MCFriendSyncWake.tla	temporal	EveryDealPushedOrJudged	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenFreshToken.cfg	MCFriendSyncWake.tla	invariant	NoDuplicateTell	ignore-terminal	friendsyncwake	required	-
+MCFriendSyncWakeBrokenAckBeforeSend.cfg	MCFriendSyncWake.tla	invariant	ReceiptAfterSend	ignore-terminal	friendsyncwake	required	-

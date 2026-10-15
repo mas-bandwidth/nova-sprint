@@ -129,7 +129,12 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 				assert.Empty(t, failed)
 			}
 			ta.ok("friend sync --root " + root)
-			assert.Len(t, sent, tc.messages, "a pass with no new files has no wake")
+			if tc.fail {
+				assert.Len(t, sent, tc.messages+1, "a failed tell retries despite existing BRIEFs")
+				assert.Equal(t, sent[0], sent[len(sent)-1], "retry preserves token and payload")
+			} else {
+				assert.Len(t, sent, tc.messages, "a receipted pass with no new files has no wake")
+			}
 			ta.clean()
 		})
 	}

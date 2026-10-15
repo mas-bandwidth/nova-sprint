@@ -227,6 +227,10 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	if err != nil {
 		return a.readFailed(name, err, stderr), false
 	}
+	// Expire intents even for a row removed from config or with no current cards.
+	if err := a.friendDeliveryExpire(ctx, st, "", ""); err != nil {
+		return a.readFailed(name, err, stderr), false
+	}
 	// the friends' sprint cards: each one dealt to her delivered into her inbox, each one
 	// she reported on finished from her outbox (friendcards.go)
 	delivered, finished := 0, 0

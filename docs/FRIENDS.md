@@ -126,6 +126,25 @@ again after <n> failing passes`. An interrupt ends it with 0 (`FRIEND-SYNC STOP
 interrupted`), and a binary replaced under it with 3, so its supervisor starts
 the new one.
 
+Before writing a new BRIEF, sync commits a hidden delivery intent on the sprint
+store. It reserves the exact jobs and freezes the sender, recipient, message,
+original 24-hour retry deadline and bus token. Failed sends, including a send
+accepted with its reply lost, retry that same token at the next sweep. A durable
+sent receipt stops later sends. Sync verifies current assignments and exact,
+regular BRIEF files before sending; pending records survive process restart.
+The log cursor is captured before the pass, so a commit during delivery cannot
+be skipped by the following wait.
+
+At or after the original deadline, the next serviced pass marks the intent
+terminal and raises one **delivery receipt unknown** judgment. It never marks
+that outcome sent or renews the token, even after the bus's token cleanup.
+Acknowledging that judgment does not authorize another send. Existing BRIEFs
+without an intent are legacy deliveries and are not mass-resent. A sprint clear
+fences old-epoch deliveries; they are not sent into the new epoch. The model's
+progress claim is delivery **or** receipt-unknown judgment under fair loop/store
+service in the same epoch, not an unconditional real-time guarantee through
+outages or clears (`EveryDealPushedOrJudged`).
+
 Every pass, cards or none, puts each friend row's name on the bus store's
 roster (the `friends` set at `NOVA_BUS_REDIS`, a Redis apart from the sprint
 store), so a row just added is a known bus name before anything is dealt her;

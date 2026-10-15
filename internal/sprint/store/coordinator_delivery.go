@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
@@ -15,7 +16,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			deliveries = map[string]sprint.CoordinatorDelivery{}
 			notes := map[string]sprint.Note{}
-			for _, o := range s.Open {
+			for _, o := range slices.Concat(s.Open, s.Acked) {
 				notes[o.Note.ID] = o.Note
 			}
 			var p sprint.Plan
@@ -29,7 +30,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 				d := candidate
 				if n.CoordinatorDelivery != nil {
 					d = *n.CoordinatorDelivery
-					if !sent && !d.Sent && d.From == "" && candidate.From != "" && d.Token == candidate.Token {
+					if n.Type != sprint.NFriendDelivery && !sent && !d.Sent && d.From == "" && candidate.From != "" && d.Token == candidate.Token {
 						d.From = candidate.From
 						migrated[id] = true
 					}
@@ -68,7 +69,7 @@ func (st *Store) CoordinatorDeliveries(ctx context.Context, candidates map[strin
 			for id, d := range deliveries {
 				n := notes[id]
 				if sent {
-					if d.Sent {
+					if d.Sent || d.ReceiptUnknown {
 						continue
 					}
 					d.Sent = sent

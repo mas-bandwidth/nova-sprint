@@ -33,6 +33,7 @@ type carried struct {
 // note gains that is not here fails the test that reads the type, so a new
 // field is a decision about what a move carries.
 var noteCarry = map[string]carried{
+	"FriendDelivery":         {"left out", "the friend inbox transport reserves immutable file pins and a bounded delivery intent independently of work decisions"},
 	"SafeDefault":            {"left out", "derived by Note.Bound from the judgment kind, not an independent decision"},
 	"DecisionDelivery":       {"left out", "the server transport lane persists its frozen payload and receipt independently of a work decision"},
 	"DefaultCoordinatorTold": {"left out", "the transport receipt marks this after a default report is written"},
@@ -255,13 +256,15 @@ func filled(kind string) sprint.Note {
 			v.Field(i).Set(reflect.ValueOf(t0.Add(time.Duration(i+1) * time.Minute)))
 		case *sprint.DecisionDelivery:
 			v.Field(i).Set(reflect.ValueOf(&sprint.DecisionDelivery{Lane: "owner", To: "owner", From: "coord", Set: "judgment-id", Body: "frozen", Token: "token", PreparedAt: t0, RetryBefore: t0.Add(time.Hour), SentAt: t0, Fault: "history", Reports: []string{"report"}, UnknownReceipts: 1}))
+		case *sprint.FriendDelivery:
+			v.Field(i).Set(reflect.ValueOf(&sprint.FriendDelivery{Root: "/inbox/root", Friend: "ada", OneShot: true, FailureNoted: true, Items: map[string]sprint.FriendDeliveryItem{"s1-1.w1.g2": {Primary: "s1-1", Stream: "s1", Card: "s1-1.w1", Gen: 2, Attempt: 1, PacketHash: "packet", BriefHash: "brief", BriefText: "frozen brief"}}}))
 		case *sprint.CoordinatorDelivery:
 			// the frozen bus message of the note's episode (coordinator_push.go): delivery
 			// bookkeeping, set so the move is shown to hold the note with it present
 			v.Field(i).Set(reflect.ValueOf(&sprint.CoordinatorDelivery{
 				CoveredBy: "s-" + name + "-covered", From: "s-" + name + "-from", To: "s-" + name + "-to", Token: "s-" + name + "-token",
 				Subject: "s-" + name + "-subject", Body: "s-" + name + "-body", Episode: "s-" + name + "-episode",
-				Sent: true, RetryBefore: t0.Add(time.Duration(i+1) * time.Minute),
+				Sent: true, ReceiptUnknown: true, RetryBefore: t0.Add(time.Duration(i+1) * time.Minute),
 			}))
 		default:
 			panic("the note's field " + name + " is of a type the test cannot fill")
