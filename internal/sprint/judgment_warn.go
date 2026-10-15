@@ -16,20 +16,25 @@ import (
 // longer sends one warning on the bus to the coordinator's name, listing every such
 // judgment, and again until it is answered: nothing turns it off. It repeats at a bounded rate (v1.2.17: a
 // warning every second drowned a seat preparing a cleared sprint, its reads refused
-// once ten minutes of them went unacknowledged): at once when a judgment joins the
-// set, else no more often than once a JudgmentWarnEvery (JudgmentWarnDue;
+// once ten minutes of them went unacknowledged). The owner, 2026-10-15: fold
+// unchanged reminders into one. Additions and removals send at once; unchanged
+// sets repeat no more often than once a ReminderEvery (JudgmentWarnDue;
 // docs/SPEC-SPRINT.md, "The waiting-judgment warning").
 
-// JudgmentWarnEvery is the most often the warning repeats for the same set of waiting
-// judgments; a judgment joining the set is warned about at once.
-const JudgmentWarnEvery = time.Minute
+// ReminderEvery bounds repeats of an unchanged waiting-judgment set. A changed
+// set is sent immediately; only a successful send starts the interval.
+// CoordinatorPush.tla: SameSetNotResentWithin, ChangedSetWarnedImmediately.
+const ReminderEvery = 30 * time.Minute
+
+// JudgmentWarnEvery retains the existing name for callers of the warning policy.
+const JudgmentWarnEvery = ReminderEvery
 
 // JudgmentWarnDue says the look at now pushes the warning ws: the first warning of a
-// set (none sent since the set was last empty: warnedAt zero), a judgment of ws not in
-// the set last seen (warned, by id: it joined since), or JudgmentWarnEvery or longer
-// since the last warning was sent (warnedAt). A set that only shrank waits its minute.
+// nonempty set (warnedAt zero), any change from the last successfully sent ID set,
+// or ReminderEvery since that send. Display order, aliases and elapsed text are
+// not set changes. The caller keeps the receipt unchanged if sending fails.
 func JudgmentWarnDue(ws []JudgmentWarning, warned map[string]bool, warnedAt, now time.Time) bool {
-	if warnedAt.IsZero() || now.Sub(warnedAt) >= JudgmentWarnEvery {
+	if warnedAt.IsZero() || len(ws) != len(warned) || now.Sub(warnedAt) >= ReminderEvery {
 		return true
 	}
 	for _, w := range ws {
@@ -41,7 +46,7 @@ func JudgmentWarnDue(ws []JudgmentWarning, warned map[string]bool, warnedAt, now
 }
 
 // JudgmentWarnAfter is how long a judgment waits on the coordinator before it is warned
-// about every look.
+// about by the first eligible look.
 const JudgmentWarnAfter = 10 * time.Second
 
 // JudgmentWarning is one judgment the warning names: its alias and id, the cards that
@@ -114,7 +119,7 @@ func JudgmentWarningSet(ws []JudgmentWarning) string {
 // then each judgment with its cards, how long it has waited, and what answers it.
 func JudgmentWarningText(ws []JudgmentWarning) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s; answer each: it repeats once a minute until they are answered, at once when another joins\n", JudgmentWarningSet(ws))
+	fmt.Fprintf(&b, "%s; answer each: it repeats at most once every 30 minutes until they are answered, at once when the set changes\n", JudgmentWarningSet(ws))
 	for _, w := range ws {
 		fmt.Fprintf(&b, "%s %s cards=%s waited=%s\n", cmp.Or(w.Alias, "-"), w.ID, cmp.Or(strings.Join(w.Cards, ","), "-"), w.Waited)
 		for _, a := range w.Answer {

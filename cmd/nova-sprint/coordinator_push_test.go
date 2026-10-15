@@ -119,8 +119,8 @@ func TestTheServerHoldsTheSprintPushWhileItsSendsGo(t *testing.T) {
 // for judgement should alert you via warning [...] once it has been in this state for 10
 // seconds or longer." "These must be push notifications."): a judgment open 9 s, nothing;
 // at 10 s one warning naming it and the command that answers it; a second later nothing
-// (the same set waits its minute, sprint.JudgmentWarnEvery); a minute later, again as one
-// line; answered with the command it names, none.
+// (the same set waits 30m, sprint.ReminderEvery); a minute later, still quiet;
+// answered with the command it names, none. The Fold test pins the 30m repeat.
 func TestAWaitingJudgmentIsWarnedOnTheBus(t *testing.T) {
 	t.Parallel()
 	const name = "push-warn"
@@ -139,13 +139,11 @@ func TestAWaitingJudgmentIsWarnedOnTheBus(t *testing.T) {
 	assert.Contains(t, w[0].Body, "WARNING 1 judgment(s) waiting on the coordinator 10s or longer")
 	assert.Contains(t, w[0].Body, "waited=10s")
 	ta.step(time.Second)
-	assert.Empty(t, ta.pass(name), "the same set a second later: it waits its minute")
+	assert.Empty(t, ta.pass(name), "the same set a second later: it waits 30m")
 
-	// the machine ticks through the minute (else it reads silent, a judgment of its own)
-	ta.lined(func() { ta.step(sprint.JudgmentWarnEvery - time.Second); ta.ok("tick") })
-	w2 := ta.pass(name)
-	require.Len(t, w2, 1)
-	assert.Equal(t, "WARNING 1 judgment(s) waiting on the coordinator 10s or longer: j1\n", w2[0].Body, "the set has not changed: its one line")
+	// Tick through one minute without crossing unrelated stream/timer deadlines.
+	ta.lined(func() { ta.step(time.Minute - time.Second); ta.ok("tick") })
+	assert.Empty(t, ta.pass(name), "an unchanged set no longer repeats after one minute")
 
 	// answered with the command it names: no more warnings
 	ta.lined(func() { ta.ok(strings.Join(warningAnswer(t, w[0].Body), " ")) })
