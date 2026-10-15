@@ -170,7 +170,7 @@ func (a *app) noServerHint() string {
 	if err != nil {
 		path = seatRecordFile
 	}
-	return fmt.Sprintf("no sprint server named: %s is not set and the seat's record %s names none; run: export %s=<host:port>, or record it: nova-sprint seat install --harness <name> --target <dir> --server <host:port>", ServerEnv, path, ServerEnv)
+	return fmt.Sprintf("no sprint server named: %s is not set and the seat's record %s names none; run: export %s=<host:port>, or record it: nova-sprint seat install --server <host:port>", ServerEnv, path, ServerEnv)
 }
 
 // forwarded sends the verb to the sprint's server when there is one and the server runs

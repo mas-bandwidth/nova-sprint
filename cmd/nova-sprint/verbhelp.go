@@ -73,8 +73,8 @@ var verbEffect = map[string]string{
 	"queue":             "inspection: reads a worker's or a stream's cards, writes nothing",
 	"handover":          "inspection: reads the store, writes nothing",
 	"seat check":        "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"seat install":      "local write: writes the push loop's unit (inbox --wait --push seat) into --dir and loads it with launchctl (macOS) or systemctl --user (Linux); --dry-run prints it and writes nothing",
-	"seat uninstall":    "local write: unloads the push loop's unit and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
+	"seat install":      "local write: records the seat on this machine (the sprint's server it uses, and the nova-config seat profile) beside the store login; --dry-run prints what it would write and writes nothing",
+	"seat uninstall":    "local write: unloads the retired push loop's unit, where an older build installed it, and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
 	"needs":             "inspection: reads the waiting cards, writes nothing",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
@@ -103,10 +103,9 @@ var verbEffect = map[string]string{
 	"server switch":     "local write: runs <binary> tick --shadow against the store first (read-only, under --tick-deadline) and refuses the swap, nothing changed, when it exits non-zero, panics or misses the deadline; then switches the server binary on disk, keeping the previous binary, the shadow's plan size and time at <target>.shadow.json, and rolling back on land failure in the window; --dry-run runs the shadow tick only and switches and writes nothing",
 	"merge-window open": "local write: the merge window, the merge table's properties in the sprint's store; land pauses while it is open; --dry-run checks --for and --reason and writes nothing",
 	// a store write, the collect's tip read and its directory reads said
-	"friend reconcile": "store write: finishes each card the friend reported on and returns each the friend abandoned, in the sprint's store; reads the friend's inbox/QUEUE.json and outbox, writes nothing in the friend's directory, and reads origin's tip (one git ls-remote) for each LAND it collects; --dry-run writes nothing and reads no tip",
-	"lane list":        "inspection: lists every machine's lanes and holders, writes nothing",
-	"lane take":        "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
-	"lane give":        "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
+	"lane list": "inspection: lists every machine's lanes and holders, writes nothing",
+	"lane take": "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
+	"lane give": "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
 	// the verbs whose one write is their store step, planned and not committed by --dry-run (stepdry.go)
 	"accept":   "local write: moves the eligible primaries in review into the merge queue, or records the coordinator's heavy read on each named primary, in the sprint's store; --dry-run writes nothing",
 	"ack":      "local write: closes the named notifications, nothing to be done, with the reason, in the sprint's store; --dry-run writes nothing",
@@ -127,13 +126,6 @@ var verbEffect = map[string]string{
 
 	// stop-return (the base's #5499) writes through one store step too; its --dry-run is stepdry.go's
 	"stop-return": "local write: returns the named stopped cards to the owner row that acknowledges the cancellation, keeping their placement and attempt, in the sprint's store; --dry-run writes nothing",
-
-	// seat push (the base's #5477) writes the seat's push target; its --dry-run is its own
-	"seat push": "store write: with --harness and --target, records the seat's push target (harness, target, session, adapter) in the sprint's store; with neither, prints the record and writes nothing; --dry-run checks the same and writes nothing",
-
-	// the hook (hook.go): the server records it; this process writes nothing
-	"hook":   "server subscription: holds the seat's hook on the sprint's server, which records it in the sprint's store and streams every judgment and push until the hook ends; --prove and --ack carry the session's answer over the running hook's connection; this process writes nothing",
-	"unhook": "server subscription: ends the running hook over its connection; the server records the seat away in the sprint's store and tells the owner; this process writes nothing",
 
 	// verbs that read and write nothing
 	"goal show": "inspection: reads the goals in the sprint's store, writes nothing",

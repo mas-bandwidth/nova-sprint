@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"io"
 	"net"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 )
 
 // seatEnvironment is data, never shell code or an identity assertion. Login

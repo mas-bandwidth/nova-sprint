@@ -19,7 +19,7 @@ import (
 // effectively are still locked up for you only"): every unit a running
 // sprint needs on its coordinator's machine is written and loaded by a verb, in place
 // of a unit written by hand around nova-secrets exec, zsh or a single-instance wrapper.
-// nova-sprint installs its own (server, member, seat-push, friend-sync, table); the
+// nova-sprint installs its own (server, member, friend-sync, table); the
 // store and the bus are nova-redis install's, the machine's upkeep nova-swarm
 // install's (sprint.UnitKinds). Each unit runs the verb itself, and the store's
 // password is read in the verb's own process from the seat login (nova-sprint seat
@@ -29,8 +29,8 @@ import (
 
 // installVerbs are the verbs' rows of the verb table (verbs.go appends them).
 var installVerbs = []verb{
-	{"install", "<server|member|seat-push|friend-sync|table> [--dir <dir>] [--log <file>] [--dry-run] (each kind's own flags are listed by install <kind> -h)", "install friend-sync --dry-run --every 15s --redis 127.0.0.1:6380", (*app).cmdInstall},
-	{"uninstall", "<server|member|seat-push|friend-sync|table> [--dir <dir>] [--dry-run]", "uninstall table --dry-run --dir ./no-unit-here", (*app).cmdUninstall},
+	{"install", "<server|member|friend-sync|table> [--dir <dir>] [--log <file>] [--dry-run] (each kind's own flags are listed by install <kind> -h)", "install friend-sync --dry-run --every 15s --redis 127.0.0.1:6380", (*app).cmdInstall},
+	{"uninstall", "<server|member|friend-sync|table> [--dir <dir>] [--dry-run]", "uninstall table --dry-run --dir ./no-unit-here", (*app).cmdUninstall},
 	{"units", "--check [--dir <dir>]", "units --check --dir ./no-units-here", (*app).cmdUnits},
 }
 
@@ -82,8 +82,6 @@ func (a *app) cmdInstall(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	switch k.Kind {
-	case "seat-push":
-		return a.cmdSeatInstall(args[1:], stdout, stderr)
 	case "friend-sync":
 		return a.cmdFriendSyncInstall(args[1:], stdout, stderr)
 	}
@@ -96,8 +94,6 @@ func (a *app) cmdUninstall(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	switch k.Kind {
-	case "seat-push":
-		return a.cmdSeatUninstall(args[1:], stdout, stderr)
 	case "friend-sync":
 		return a.cmdFriendSyncUninstall(args[1:], stdout, stderr)
 	}
@@ -150,7 +146,7 @@ func (a *app) cmdUninstall(args []string, stdout, stderr io.Writer) int {
 }
 
 // installUnit is install of server, member or table: the unit's line from the flags,
-// then written and loaded as seat install writes the push loop's.
+// then written and loaded as friend sync install writes its loop's.
 func (a *app) installUnit(k sprint.UnitKind, args []string, stdout, stderr io.Writer) int {
 	name := "install " + k.Kind
 	fs, c := a.verbSetup(name)

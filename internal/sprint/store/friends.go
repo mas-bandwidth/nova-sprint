@@ -46,6 +46,9 @@ type friendEntry struct {
 	// runs with as CLAUDE_CONFIG_DIR, which her beat answers (row_config_dir=).
 	ConfigDir string `json:"config_dir,omitempty"`
 	Pronouns  string `json:"pronouns,omitempty"`
+	// Session is her row's session (config.FriendSession): one-shot for a friend with no
+	// live session, who runs as a member lane on her row; empty is live.
+	Session string `json:"session,omitempty"`
 	// TokenCap is her row's per-card token cap. TokenCapSet is whether friend
 	// sync wrote one: a roster from before the field is unset, and her beat
 	// answers the default. An explicit 0 is no cap; omitempty would drop that
@@ -78,6 +81,9 @@ type FriendSpec struct {
 	// ConfigDir is her row's config_dir ("" when it names none).
 	ConfigDir string
 	Pronouns  string // The row's explicit pronouns, sent back by the beat.
+	// Session is her row's session: config.FriendSessionOneShot for a friend with no live
+	// session (a member lane on her row), else live ("").
+	Session string
 	// TokenCap is her row's per-card token cap. TokenCapSet is false for a
 	// spec built before the field: her beat then answers the default, and an
 	// explicit 0 (no cap) is TokenCapSet with TokenCap 0.
@@ -123,6 +129,8 @@ type FriendRow struct {
 	Status     string `json:"status"`
 	Class      string `json:"class,omitempty"`
 	Mode       string `json:"mode,omitempty"`
+	// Session is sprint.FriendOneShot for a one-shot friend (her status is her member's beat), "" for a live one.
+	Session string `json:"session,omitempty"`
 	// Roles is her row's roles, comma joined (reader: she is dealt read cards).
 	Roles string `json:"roles,omitempty"`
 	// Streams and Kinds are her work restriction as the deal reads it, never a
@@ -200,6 +208,18 @@ func (e *NoFriendError) Error() string {
 	return fmt.Sprintf("no friend %s on the friends table (friends: %s): its row is nova-config's friend row; run: nova-sprint friend sync", e.Friend, strings.Join(names, ","))
 }
 
+// OneShotError is the refusal of a friend daemon's verb for a one-shot friend: no daemon or
+// friend lane serves her; her row's member does (sprint.OneShotLaneRefusal).
+type OneShotError struct{ Friend string }
+
+func (e *OneShotError) Error() string { return sprint.OneShotLaneRefusal(e.Friend) }
+
+// IsOneShot says err is, or wraps, a OneShotError.
+func IsOneShot(err error) bool {
+	var o *OneShotError
+	return errors.As(err, &o)
+}
+
 // IsNoFriend says err is, or wraps, a NoFriendError.
 func IsNoFriend(err error) bool {
 	var n *NoFriendError
@@ -231,11 +251,11 @@ func (st *Store) SyncFriends(ctx context.Context, specs []FriendSpec) (added, re
 		case !had:
 			added = append(added, s.Name)
 			rosterChanged = true
-		case e.Width != s.Width || e.Class != s.Class || e.Mode != s.Mode || e.ConfigDir != s.ConfigDir || e.Pronouns != s.Pronouns || e.TokenCap != s.TokenCap || e.TokenCapSet != s.TokenCapSet || e.Roles != s.Roles || e.Billing != s.Billing || e.Streams != s.Streams || e.Kinds != s.Kinds:
+		case e.Width != s.Width || e.Class != s.Class || e.Mode != s.Mode || e.ConfigDir != s.ConfigDir || e.Pronouns != s.Pronouns || e.Session != s.Session || e.TokenCap != s.TokenCap || e.TokenCapSet != s.TokenCapSet || e.Roles != s.Roles || e.Billing != s.Billing || e.Streams != s.Streams || e.Kinds != s.Kinds:
 			updated = append(updated, s.Name)
 			rosterChanged = true
 		}
-		e.Width, e.Class, e.Mode, e.ConfigDir, e.Pronouns, e.TokenCap, e.TokenCapSet, e.Roles, e.Billing, e.Streams, e.Kinds = s.Width, s.Class, s.Mode, s.ConfigDir, s.Pronouns, s.TokenCap, s.TokenCapSet, s.Roles, s.Billing, s.Streams, s.Kinds
+		e.Width, e.Class, e.Mode, e.ConfigDir, e.Pronouns, e.Session, e.TokenCap, e.TokenCapSet, e.Roles, e.Billing, e.Streams, e.Kinds = s.Width, s.Class, s.Mode, s.ConfigDir, s.Pronouns, s.Session, s.TokenCap, s.TokenCapSet, s.Roles, s.Billing, s.Streams, s.Kinds
 		r[s.Name] = e
 	}
 	for n := range r {
@@ -290,8 +310,14 @@ func (st *Store) FriendBeatLive(ctx context.Context, friend string, rep sprint.F
 	if err != nil {
 		return sprint.Beat{}, err
 	}
-	if _, ok := r[friend]; !ok {
+	e, ok := r[friend]
+	if !ok {
 		return sprint.Beat{}, noFriend(r, friend)
+	}
+	if e.Session == sprint.FriendOneShot {
+		// a one-shot friend has no daemon and no friend lane: her row's member beats
+		// (fleet beat friend.<name>), and her status is that beat (friendRows)
+		return sprint.Beat{}, &OneShotError{Friend: friend}
 	}
 	now := st.now().UTC().Truncate(time.Second)
 	var prev sprint.Beat
@@ -410,8 +436,9 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		return nil, nil, err
 	}
 	var hooks []hook.Status
-	if st.ReadFriendHooks != nil {
-		hooks, _, err = st.ReadFriendHooks(ctx, names...)
+	live := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return r[n].Session == sprint.FriendOneShot })
+	if st.ReadFriendHooks != nil && len(live) > 0 {
+		hooks, _, err = st.ReadFriendHooks(ctx, live...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("friend hook record: %w", err)
 		}
@@ -420,6 +447,12 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 	for _, h := range hooks {
 		byName[h.Name] = h
 	}
+	// a one-shot friend's status is her member's beat on her row (beat:friend.<name>), the
+	// fleet's one presence rule (sprint.PresenceStatus): she has no hook, lease or link
+	members, err := st.oneShotBeats(ctx, kv, names, r)
+	if err != nil {
+		return nil, nil, err
+	}
 	rows := map[string]FriendRow{}
 	status := map[string]string{}
 	whys := map[string]string{}
@@ -427,6 +460,25 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		var b sprint.Beat
 		if i < len(oks) && oks[i] {
 			_ = json.Unmarshal([]byte(vals[i]), &b)
+		}
+		if r[n].Session == sprint.FriendOneShot {
+			mb := members[n]
+			word := sprint.PresenceStatus(r[n].Held, mb, now)
+			row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Class: r[n].Class, Mode: r[n].Mode, Session: sprint.FriendOneShot, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: mb.Load, Beat: mb.At, SprintHeld: r[n].Held}
+			switch word {
+			case sprint.Up:
+				row.Evidence = "member beat"
+			case sprint.Held:
+				row.Reason, row.Until = r[n].Reason, r[n].Until
+				row.Evidence = "held"
+				whys[n] = "held by the coordinator (friend down)"
+			default:
+				row.Reason = "no member beat on " + sprint.FriendRow(n)
+				row.Evidence = row.Reason
+				whys[n] = row.Reason
+			}
+			rows[n], status[n] = row, word
+			continue
 		}
 		h := byName[n]
 		word := sprint.FriendHookStatus(h, r[n].Held)
@@ -468,6 +520,34 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 	return out, whys, nil
 }
 
+// oneShotBeats is each one-shot friend's member beat (beat:friend.<name>, written by fleet
+// beat as for any member), by name, in one read; the zero beat for one that never beat.
+func (st *Store) oneShotBeats(ctx context.Context, kv KV, names []string, r map[string]friendEntry) (map[string]sprint.Beat, error) {
+	var ones, keys []string
+	for _, n := range names {
+		if r[n].Session == sprint.FriendOneShot {
+			ones = append(ones, n)
+			keys = append(keys, beatKey(sprint.FriendRow(n)))
+		}
+	}
+	out := make(map[string]sprint.Beat, len(ones))
+	if len(ones) == 0 {
+		return out, nil
+	}
+	vals, oks, err := getKeys(ctx, kv, keys)
+	if err != nil {
+		return nil, err
+	}
+	for i, n := range ones {
+		var b sprint.Beat
+		if i < len(oks) && oks[i] {
+			_ = json.Unmarshal([]byte(vals[i]), &b) // an unreadable beat is none: the member reads down until it beats again
+		}
+		out[n] = b
+	}
+	return out, nil
+}
+
 // friendNames is every friend of the roster, for teardown; none when the
 // store keeps no records or the record cannot be read.
 func (st *Store) friendNames(ctx context.Context) []string {
@@ -498,6 +578,7 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 		seats[i].Evidence, seats[i].Current = r.Evidence, currentBuild
 		seats[i].Unhooked = r.Unhooked
 		seats[i].Held = r.SprintHeld
+		seats[i].Session = r.Session
 	}
 	return seats, nil
 }
@@ -536,7 +617,7 @@ func (st *Store) FriendSpecs(ctx context.Context) ([]FriendSpec, error) {
 	out := make([]FriendSpec, 0, len(names))
 	for _, name := range names {
 		e := r[name]
-		out = append(out, FriendSpec{Name: name, Width: e.Width, Class: e.Class, Mode: e.Mode, ConfigDir: e.ConfigDir, Pronouns: e.Pronouns,
+		out = append(out, FriendSpec{Name: name, Width: e.Width, Class: e.Class, Mode: e.Mode, ConfigDir: e.ConfigDir, Pronouns: e.Pronouns, Session: e.Session,
 			TokenCap: e.TokenCap, TokenCapSet: e.TokenCapSet, Streams: e.Streams, Kinds: e.Kinds})
 	}
 	return out, nil
@@ -580,7 +661,7 @@ func (st *Store) FriendSpecOf(ctx context.Context, friend string) (FriendSpec, e
 	if !ok {
 		return FriendSpec{}, noFriend(r, friend)
 	}
-	return FriendSpec{Name: friend, Width: e.Width, Class: e.Class, Mode: e.Mode, ConfigDir: e.ConfigDir, Pronouns: e.Pronouns, TokenCap: e.TokenCap, TokenCapSet: e.TokenCapSet, Roles: e.Roles, Billing: e.Billing, Streams: e.Streams, Kinds: e.Kinds}, nil
+	return FriendSpec{Name: friend, Width: e.Width, Class: e.Class, Mode: e.Mode, ConfigDir: e.ConfigDir, Pronouns: e.Pronouns, Session: e.Session, TokenCap: e.TokenCap, TokenCapSet: e.TokenCapSet, Roles: e.Roles, Billing: e.Billing, Streams: e.Streams, Kinds: e.Kinds}, nil
 }
 
 // FriendBeats is every friend of the roster with her last beat (a zero beat

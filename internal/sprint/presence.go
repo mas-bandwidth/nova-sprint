@@ -233,6 +233,24 @@ func (b Beat) Alive(now time.Time) bool {
 	return b.Beaten() && (b.Missed(now) < MissedBeatsDown || b.Loaded(now))
 }
 
+// LoadMax is the top of the load scale: load is CPU busy-over-total across
+// all cores, 0-100%, where 100% is full use of the machine (all cores)
+// (docs/SPEC-SPRINT-DASHBOARD.md, Fleet). A load average over cores is not
+// bounded by it, so a beat carrying one is clamped here, at the one place
+// every member beat's record is made.
+const LoadMax = 100.0
+
+// clampLoad keeps a load percent on the 0-100 scale (LoadMax).
+func clampLoad(pct float64) float64 {
+	switch {
+	case pct < 0:
+		return 0
+	case pct > LoadMax:
+		return LoadMax
+	}
+	return pct
+}
+
 // NextBeat is the record after a beat at now with the load pct: the beat at
 // the second, the samples of the last LoadWindow with this one in place of any
 // of the same second, and their highest as the load. Two beats in the same
@@ -242,10 +260,11 @@ func NextBeat(prev Beat, now time.Time, pct float64, how string, meter hostload.
 	b := Beat{At: at, How: how, Meter: meter}
 	for _, s := range prev.Samples {
 		if s.At.After(at.Add(-LoadWindow)) && s.At.Before(at) {
+			s.Pct = clampLoad(s.Pct)
 			b.Samples = append(b.Samples, s)
 		}
 	}
-	b.Samples = append(b.Samples, LoadSample{At: at, Pct: float64(int64(pct*10+0.5)) / 10})
+	b.Samples = append(b.Samples, LoadSample{At: at, Pct: float64(int64(clampLoad(pct)*10+0.5)) / 10})
 	for _, s := range b.Samples {
 		b.Load = max(b.Load, s.Pct)
 	}
@@ -292,7 +311,7 @@ func LoadText(b Beat, now time.Time) string {
 	if !b.Fresh(now) && !b.Loaded(now) {
 		return ""
 	}
-	load := fmt.Sprintf("%.1f%%", b.Load)
+	load := fmt.Sprintf("%.1f%%", clampLoad(b.Load))
 	if b.Loaded(now) {
 		load += " loaded"
 	}
