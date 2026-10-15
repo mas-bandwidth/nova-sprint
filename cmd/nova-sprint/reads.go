@@ -20,9 +20,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
