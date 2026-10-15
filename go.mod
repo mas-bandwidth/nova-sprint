@@ -6,7 +6,7 @@ tool golang.org/x/tools/cmd/deadcode
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mas-bandwidth/nova-tools v1.2.26-0.20261014215241-69eb542a9b9f
+	github.com/mas-bandwidth/nova-tools v1.2.26-0.20261015041857-a2fccec6e64b
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/gopher-lua v1.1.1
