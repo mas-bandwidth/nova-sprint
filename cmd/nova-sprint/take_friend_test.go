@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
@@ -114,12 +113,12 @@ func TestAFriendTakesAndFinishesItsOwnReadyCard(t *testing.T) {
 	code, out = ta.served("progress", "--as", "friend.amy", "s1-3.w1@1", "--epoch", "0")
 	require.Equal(t, 0, code, out)
 	assert.Contains(t, out, "s1-3.w1 progress at")
-	// her daemon's own stamp, as it words it (friend.ProgressArgv), is taken as hers
-	for _, argv := range friend.ProgressArgv("amy", []friend.Card{{ID: "s1-3.w1", Outbox: "outbox/s1-3.w1"}}) {
-		code, out = ta.served(argv...)
-		require.Equal(t, 0, code, "%v: %s", argv, out)
-		assert.Contains(t, out, "s1-3.w1 progress at")
-	}
+	// her daemon's own stamp, as nova-tools' nova-friend run words it (a bare card id, her
+	// row as the holder), is taken as hers
+	argv := []string{"progress", "--as", "friend.amy", "s1-3.w1", "--epoch", "0"}
+	code, out = ta.served(argv...)
+	require.Equal(t, 0, code, "%v: %s", argv, out)
+	assert.Contains(t, out, "s1-3.w1 progress at")
 	code, out = ta.served("progress", "--as", "friend.bob", "s1-3.w1@1", "--epoch", "0")
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, out, "held by friend.amy, not friend.bob")

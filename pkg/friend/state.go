@@ -17,18 +17,10 @@ import (
 // never on the friend's volume: a background process on this platform may
 // not touch a removable volume without the person's permission (measured
 // 2026-10-04, "operation not permitted" on the mkdir). The daemon writes
-// Status and the log; the pong verb writes Pong. The queue file is the
-// coordinator's and the session's, under the working directory
-// (SPEC-FRIEND.md, the files).
+// Status and the log (the daemon is nova-tools' nova-friend run; SPEC-FRIEND.md,
+// the files).
 const (
 	StatusFile = "status.json"
-	QueueFile  = "inbox/QUEUE.json"
-)
-
-// DaemonStale is how old the status file may be while the daemon counts
-// as up: it rewrites the file at least every StatusEvery.
-const (
-	StatusEvery = 5 * time.Second
 )
 
 // Status is what the daemon knows, as status reads it: one file, rewritten
@@ -55,7 +47,7 @@ type Status struct {
 	BeatError      string    `json:"beat_error,omitempty"`
 	Envelope       int       `json:"envelope"`       // messages the last envelope carried (docs/SPEC-FRIEND.md, the loop)
 	EnvelopeBytes  int       `json:"envelope_bytes"` // its text's size: at most the deliverer's text limit, the first message always in
-	// Push is the push proof this run (PushProved, or PushUnproven while the
+	// Push is the push proof this run (proved, or unproven while the
 	// session has not answered its check: nothing is delivered), PushNonce the
 	// check's nonce and PushSince when the daemon started waiting, while unproven;
 	// empty for a harness with no session to prove. ProofSent is the session's
@@ -66,8 +58,8 @@ type Status struct {
 	PushSince time.Time `json:"push_since,omitzero"`
 	ProofSent time.Time `json:"proof_sent,omitzero"`
 	// HarnessSeen is what the harness check last read (HarnessRunning,
-	// HarnessNotSeen, or empty: cannot tell). Advisory: it
-	// never makes the friend down (alive.go, HarnessWatch).
+	// "not-seen", or empty: cannot tell). Advisory: it
+	// never makes the friend down (alive.go).
 	HarnessSeen string `json:"harness_seen,omitempty"`
 	// HarnessAlive is the rule the harness check read it by: RuleSession (the
 	// session's last turn) or RuleApp (the app in the process table); empty
@@ -75,12 +67,12 @@ type Status struct {
 	HarnessAlive string `json:"alive,omitempty"`
 	StoreError   string `json:"store_error,omitempty"`
 	Width        int    `json:"width"`
-	// Session is SessionOK, or SessionBroken once the provider refused BrokenAfter
+	// Session is "ok", or "broken" once the provider refused BrokenAfter
 	// turns in a row the same way; empty for a passive harness.
 	Session       string `json:"session,omitempty"`
 	SessionID     string `json:"session_id,omitempty"`
 	SessionReason string `json:"session_reason,omitempty"`
-	// SessionLive is the conversation a mailbox harness delivers into (Daemon.Mailbox):
+	// SessionLive is the conversation a mailbox harness delivers into:
 	// the one that reads, as the daemon last followed it; empty for every other harness.
 	SessionLive string `json:"session_live,omitempty"`
 	// Queued is her harness's own queue of deliveries not yet taken, as the last delivery
@@ -89,7 +81,7 @@ type Status struct {
 	QueueKnown bool      `json:"queue_known,omitempty"`
 	BrokenAt   time.Time `json:"broken_at,omitempty"`
 	// While the harness is at its usage limit or out of credits Session is
-	// SessionLimited, LimitKind says which (KindLimit or KindCredits) and
+	// "limited", LimitKind says which (limit or credits) and
 	// LimitUntil is the reset (docs/SPEC-FRIEND.md, limits-mean-down-w-r.w1~15).
 	LimitKind  string    `json:"limit_kind,omitempty"`
 	LimitUntil time.Time `json:"limit_until,omitzero"`
@@ -104,7 +96,7 @@ type Status struct {
 	Paced  *int   `json:"paced,omitempty"`
 	Window string `json:"window,omitempty"`
 	Pacing string `json:"pacing,omitempty"`
-	// Held, InboxJobs and Missing are the last inbox reconcile's counts (SyncInbox): the
+	// Held, InboxJobs and Missing are the last inbox reconcile's counts: the
 	// cards on her row, the sprint jobs in her inbox, and the held cards with no BRIEF.md
 	// after it; HeldKnown is false until the server has answered once, and InboxError is
 	// why the last reconcile did not finish, empty when it did.
@@ -116,46 +108,6 @@ type Status struct {
 	// HeldFrom is where the last answer came from: friend cards, or the worker view while the
 	// server does not serve it (no brief is written from the view).
 	HeldFrom string `json:"held_from,omitempty"`
-}
-
-// Pong is the session's last answer, as the pong verb records it beside
-// sending it: the proof the daemon forwards.
-type Pong struct {
-	Nonce   string    `json:"nonce"`
-	At      time.Time `json:"at"`
-	To      string    `json:"to"`
-	Queue   int       `json:"queue"`
-	Working int       `json:"working"`
-	Width   int       `json:"width"`
-}
-
-// Queue is the friend's queue file: one record per task; the coordinator
-// writes assignments into it, the session marks them working or done.
-type Queue struct {
-	Tasks []Task `json:"tasks"`
-}
-
-// Task is one record of the queue file.
-type Task struct {
-	Gen int    `json:"gen,omitempty"` // assignment generation; absent means 1 (docs/FRIENDS.md)
-	Job string `json:"job,omitempty"` // delivered inbox directory, when recorded
-
-	ID          string `json:"id"`
-	State       string `json:"state"` // queued, working, done
-	Deliverable string `json:"deliverable,omitempty"`
-}
-
-// Counts is what the queue file says: tasks queued and tasks working.
-func (q Queue) Counts() (queue, working int) {
-	for _, t := range q.Tasks {
-		switch t.State {
-		case "queued", "":
-			queue++
-		case "working":
-			working++
-		}
-	}
-	return queue, working
 }
 
 // DefaultStateDir is the home directory's state directory for friend,
@@ -197,12 +149,4 @@ func read(path string, v any) (found bool, err error) {
 func ReadStatus(stateDir string) (s Status, found bool, err error) {
 	found, err = read(statusPath(stateDir), &s)
 	return s, found, err
-}
-
-// Watch is the cursor of the coordinator's watch (docs/SPEC-FRIEND.md, Watch):
-// the last stream entry id it has seen and the wake file's offset it has read
-// to, so the next run misses nothing and takes no flag.
-type Watch struct {
-	After      string `json:"after"`
-	WakeOffset int64  `json:"wake_offset"`
 }

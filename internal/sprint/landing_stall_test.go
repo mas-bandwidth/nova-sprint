@@ -25,39 +25,55 @@ func stallCard(w *world, id, col string) {
 	w.s.Work.cells, w.s.Work.byPrimary = nil, nil
 }
 
-func TestLandingStallIsJudgedWhenCardsWaitAndNothingLands(t *testing.T) {
+// A stall raises one judgment to the coordinator with its cause breakdown: the counts
+// waiting, the reads out, the judgments on the coordinator, the lander's last refusal and
+// the CI. TickDeadlines runs TickLandingStall, so a stall is raised from the deadlines part
+// whether or not the idle alarm is on (docs/SPEC-SPRINT.md, the judgments section).
+func TestLandingStallIsRaised(t *testing.T) {
 	t.Parallel()
-	w := setup(t, 4)
-	stallCard(w, "s1-1", Review)
-	stallCard(w, "s1-3", Merging)
-	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
-	w.s.Work.SetProp(PropLandRefusal, "s1-2: the reader's finding stands")
-	w.s.Open = append(w.s.Open, Open{Key: OpenKey("j1", "s1-4"),
-		Note: Note{ID: "j1", Kind: Judgment, Type: "a judgment", Primaries: []string{"s1-4"}, At: w.s.Now.Add(-3 * time.Minute)}})
-	p, _ := TickLandingStall(w.s, TickReq{})
-	w.must(p)
-	got := w.notesOf(NLandingStall)
-	require.Len(t, got, 1, "one judgment for the stall")
-	assert.Equal(t, Judgment, got[0].Kind)
-	assert.Equal(t, "coordinator", got[0].To)
-	assert.Contains(t, got[0].What, "1 in review and 1 merging")
-	assert.Contains(t, got[0].What, "reads out")
-	assert.Contains(t, got[0].What, "waiting on the coordinator's judgment: 1")
-	assert.Contains(t, got[0].What, "accepted and not merged: 1")
-	assert.Contains(t, got[0].What, "the lander's last refusal: s1-2")
-	assert.Contains(t, got[0].What, "CI green")
-}
-
-func TestLandingStallNamesTheRedCI(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 4)
-	stallCard(w, "s1-1", Review)
-	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
-	p, _ := TickLandingStall(w.s, TickReq{BaseCI: []BaseCIFacts{{Repo: "mas-bandwidth/nova-sprint", Base: "main", Red: true, Failed: []string{"the gate"}}}})
-	w.must(p)
-	got := w.notesOf(NLandingStall)
-	require.Len(t, got, 1, "one judgment for the stall")
-	assert.Contains(t, got[0].What, "CI red: mas-bandwidth/nova-sprint@main (the gate)", "the breakdown names the red check")
+	for _, tc := range []struct {
+		name string
+		more func(w *world)
+		req  TickReq
+		part func(*Snapshot, TickReq) (Plan, int)
+		want []string
+		msg  string
+	}{
+		{"LandingStallIsJudgedWhenCardsWaitAndNothingLands", func(w *world) {
+			stallCard(w, "s1-3", Merging)
+			w.s.Work.SetProp(PropLandRefusal, "s1-2: the reader's finding stands")
+			w.s.Open = append(w.s.Open, Open{Key: OpenKey("j1", "s1-4"),
+				Note: Note{ID: "j1", Kind: Judgment, Type: "a judgment", Primaries: []string{"s1-4"}, At: w.s.Now.Add(-3 * time.Minute)}})
+		}, TickReq{}, TickLandingStall, []string{"1 in review and 1 merging", "reads out", "waiting on the coordinator's judgment: 1",
+			"accepted and not merged: 1", "the lander's last refusal: s1-2", "CI green"}, "one judgment for the stall"},
+		{"LandingStallNamesTheRedCI", nil,
+			TickReq{BaseCI: []BaseCIFacts{{Repo: "mas-bandwidth/nova-sprint", Base: "main", Red: true, Failed: []string{"the gate"}}}},
+			TickLandingStall, []string{"CI red: mas-bandwidth/nova-sprint@main (the gate)"}, "the breakdown names the red check"},
+		{"AStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall", func(w *world) {
+			w.s.Open = append(w.s.Open, Open{Key: OpenKey("j1", "s1-1"),
+				Note: Note{ID: "j1", Kind: Judgment, Type: "a judgment", Primaries: []string{"s1-1"}, At: w.s.Now}})
+		}, TickReq{}, TickLandingStall, []string{"the seat's stall"}, "the cards wait on the coordinator"},
+		{"TickDeadlinesRaisesTheLandingStall", nil, TickReq{}, TickDeadlines, []string{"1 in review"}, "the deadlines part raises the landing stall"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, 4)
+			stallCard(w, "s1-1", Review)
+			w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
+			if tc.more != nil {
+				tc.more(w)
+			}
+			p, _ := tc.part(w.s, tc.req)
+			w.must(p)
+			got := w.notesOf(NLandingStall)
+			require.Len(t, got, 1, tc.msg)
+			assert.Equal(t, Judgment, got[0].Kind)
+			assert.Equal(t, "coordinator", got[0].To)
+			for _, want := range tc.want {
+				assert.Contains(t, got[0].What, want, tc.msg)
+			}
+		})
+	}
 }
 
 func TestLandingStallIsReRaisedEachBound(t *testing.T) {
@@ -193,20 +209,6 @@ func TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead(t *testing.T) {
 	assert.Len(t, landingReadConsumers(w.s, c.ID, true), 1, "same consumer dedupes, stale attempts and heads do not count")
 }
 
-func TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 4)
-	stallCard(w, "s1-1", Review)
-	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
-	w.s.Open = append(w.s.Open, Open{Key: OpenKey("j1", "s1-1"),
-		Note: Note{ID: "j1", Kind: Judgment, Type: "a judgment", Primaries: []string{"s1-1"}, At: w.s.Now}})
-	p, _ := TickLandingStall(w.s, TickReq{})
-	w.must(p)
-	got := w.notesOf(NLandingStall)
-	require.Len(t, got, 1)
-	assert.Contains(t, got[0].What, "the seat's stall")
-}
-
 // Every landing is pushed to the coordinator as it happens (docs/SPEC-SPRINT.md,
 // the judgments section; the owner, 2026-10-11: "you should also get this push
 // notification, so you as coordinator can read the card that landed"). One
@@ -273,23 +275,6 @@ func TestMergeWritesTheLandersLastRefusal(t *testing.T) {
 	require.True(t, ok, "the merge step records the lander's last refusal")
 	assert.Contains(t, v, "s1-1", "the refusal names the card")
 	assert.Contains(t, v, "the ledger could not resolve", "the refusal names the reason")
-}
-
-// The landing stall is watched from the deadlines part, independent of the idle
-// alarm (docs/SPEC-SPRINT.md, the judgments section): TickDeadlines runs
-// TickLandingStall, so a stall is raised whether or not the idle alarm is on.
-func TestTickDeadlinesRaisesTheLandingStall(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 4)
-	stallCard(w, "s1-1", Review)
-	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
-	p, _ := TickDeadlines(w.s, TickReq{})
-	w.must(p)
-	got := w.notesOf(NLandingStall)
-	require.Len(t, got, 1, "the deadlines part raises the landing stall")
-	assert.Equal(t, Judgment, got[0].Kind)
-	assert.Equal(t, "coordinator", got[0].To)
-	assert.Contains(t, got[0].What, "1 in review")
 }
 
 // The first stall is measured from when the tick first sees waiting cards, even

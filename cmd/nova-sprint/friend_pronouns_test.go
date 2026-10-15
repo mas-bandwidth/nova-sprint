@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
@@ -102,7 +103,7 @@ func TestManualFriendTakeSaysTheConfiguredPronounsWhenItFillsTheFreedLane(t *tes
 			ta.ok("friend sync --root " + root)
 			ta.ok("tick")
 			ta.ok("take --as friend.pat s1-1.w1@1")
-			out := ta.ok("friend take pat s1-1")
+			out := ta.ok("friend take pat s1-1 --working")
 			assert.Contains(t, out, "s1-2.w1 ready -> working ("+tc.want+" next, taken now)")
 		})
 	}

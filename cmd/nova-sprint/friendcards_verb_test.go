@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,34 +20,20 @@ import (
 // friendCardsAnswer is friend cards <friend> --json, read as her daemon reads it.
 func friendCardsAnswer(t *testing.T, ta *testApp, who string) []friend.HeldCard {
 	t.Helper()
-	cards, err := friend.ParseHeld(who, ta.ok("friend cards "+who+" --json"))
-	require.NoError(t, err)
-	return cards
-}
-
-// inboxJobs is the job directories with a BRIEF.md in a friend's inbox under root.
-func inboxJobs(t *testing.T, root, who string) []string {
-	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(root, who+"-working", "inbox"))
-	require.NoError(t, err)
-	var out []string
-	for _, e := range entries {
-		if _, err := os.Stat(filepath.Join(root, who+"-working", "inbox", e.Name(), "BRIEF.md")); e.IsDir() && err == nil {
-			out = append(out, e.Name())
-		}
-	}
-	return out
+	var a friend.HeldAnswer
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(ta.ok("friend cards "+who+" --json"))), &a))
+	require.Equal(t, who, a.Friend, "the answer is the asked friend's")
+	return a.Cards
 }
 
 // The server serves every card held on a friend's row with its packet (the card
 // daemon-writes-every-taken-card3): the cards the deal put there in batch mode, working and
-// ready, and a card taken back from one friend and dealt to another. Her daemon writes each
-// from the answer alone (friend.SyncInbox), the same file friend sync writes, and retires the
-// job of a card that left her row; on a twin store, through the verb, the worker's POST and
-// GET /api/friend/<friend>/cards.
+// ready, and a card taken back from one friend and dealt to another; on a twin store, through
+// the verb, the worker's POST and GET /api/friend/<friend>/cards. The daemon that writes her
+// inbox from this answer is nova-tools' nova-friend run (pkg/friend there).
 func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	t.Parallel()
-	ta, root := takeApp(t, 20, nil, "friend-a", "friend-b")
+	ta, _ := takeApp(t, 20, nil, "friend-a", "friend-b")
 	ta.ok("friend down friend-b")
 	ta.ok("tick")
 	ta.startFriend("friend-a", 8) // she starts what her width holds; the rest wait ready
@@ -78,36 +61,11 @@ func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	assert.Positive(t, cols["ready"], "and the ones dealt ahead of her width in batch mode: %v", cols)
 	assert.Contains(t, ta.ok("friend cards friend-a"), "FRIEND-CARDS OK friend=friend-a cards=")
 
-	// her daemon writes every one from the answer alone, however many jobs her inbox holds
-	dirA := filepath.Join(root, "friend-a-working")
-	for i := range 30 {
-		job := filepath.Join(dirA, "inbox", "other-"+string(rune('a'+i%26))+strings.Repeat("x", i/26))
-		require.NoError(t, os.MkdirAll(job, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(job, "BRIEF.md"), []byte("by another hand\n"), 0o644))
-	}
-	var lines []string
-	record := func(l string) { lines = append(lines, l) }
-	got, err := friend.SyncInbox(dirA, friend.Row{Cards: held, Reads: true, From: friend.FromCards}, nil, time.Now(), time.Now(), record)
-	require.NoError(t, err)
-	assert.Equal(t, friend.InboxCounts{Held: len(held), Inbox: len(held)}, got)
-	assert.Len(t, lines, len(held), "one line a write: %v", lines)
-	// friend sync finds each there and writes none again, and renders the same file
-	assert.NotContains(t, ta.ok("friend sync --root "+root), "FRIEND-CARD DELIVERED friend=friend-a")
-	other := t.TempDir()
-	ta.ok("friend sync --root " + other)
-	for _, h := range held {
-		mine, err := os.ReadFile(filepath.Join(dirA, "inbox", h.Job, "BRIEF.md"))
-		require.NoError(t, err)
-		theirs, err := os.ReadFile(filepath.Join(other, "friend-a-working", "inbox", h.Job, "BRIEF.md"))
-		require.NoError(t, err)
-		assert.Equal(t, string(theirs), string(mine), "the daemon writes friend sync's file: %s", h.Job)
-	}
-
 	// a card taken back from her by the coordinator and dealt to the other friend
 	taken := held[0]
 	ta.ok("friend up friend-b")
 	ta.ok("friend beat friend-b")
-	ta.ok("friend take friend-a " + strings.TrimSuffix(taken.Card, ".w1") + " --reason 'the other friend has room'")
+	ta.ok("friend take friend-a " + strings.TrimSuffix(taken.Card, ".w1") + " --working --reason 'the other friend has room'")
 	ta.ok("tick")
 	ta.ok("tick")
 	heldA := friendCardsAnswer(t, ta, "friend-a")
@@ -119,20 +77,6 @@ func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	assert.Equal(t, 3, moved.Gen)
 	assert.Equal(t, taken.Card+".g3", moved.Job, "a card dealt again is a new job")
 	assert.Contains(t, moved.Brief, "push your work to the branch "+moved.Branch)
-
-	// her daemon retires its job; the other friend's writes it
-	lines = nil
-	_, err = friend.SyncInbox(dirA, friend.Row{Cards: heldA, Reads: true, From: friend.FromCards}, nil, time.Now().Add(time.Second), time.Now(), record)
-	require.NoError(t, err)
-	assert.NoDirExists(t, filepath.Join(dirA, "inbox", taken.Job))
-	assert.FileExists(t, filepath.Join(dirA, friend.RetiredDir, taken.Job, "BRIEF.md"))
-	assert.Contains(t, inboxJobs(t, root, "friend-a"), "other-a", "a job another hand put there is never moved")
-	dirB := t.TempDir()
-	_, err = friend.SyncInbox(dirB, friend.Row{Cards: heldB, Reads: true, From: friend.FromCards}, nil, time.Now(), time.Now(), record)
-	require.NoError(t, err)
-	brief, err := os.ReadFile(filepath.Join(dirB, "inbox", moved.Job, "BRIEF.md"))
-	require.NoError(t, err)
-	assert.Equal(t, moved.Brief, string(brief))
 
 	// the server answers it to the friend herself: the worker's POST and the GET
 	ta.a.serveAddr = "mem:0"

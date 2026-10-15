@@ -23,17 +23,8 @@ func emptyFixture() *Snapshot {
 }
 
 func addTestStream(s *Snapshot, stream, display string) {
-	s.Merge.Put(&Card{
-		ID:  CtlID(stream),
-		Row: stream,
-		Col: Ctl,
-		Fields: map[string]string{
-			"kind":            "stream",
-			FieldDisplay:      display,
-			FieldStreamBranch: "sprint/" + stream,
-			FieldTrunk:        "dev",
-		},
-	})
+	s.Merge.Put(&Card{ID: CtlID(stream), Row: stream, Col: Ctl, Fields: map[string]string{
+		"kind": "stream", FieldDisplay: display, FieldStreamBranch: "sprint/" + stream, FieldTrunk: "dev"}})
 }
 
 func TestCheckSentinelWide(t *testing.T) {
@@ -45,34 +36,21 @@ func TestCheckSentinelWide(t *testing.T) {
 	// Stream schema-shared: producer p1 and sentinel s1
 	p1Brief := "KIND: primary\nPATHS: internal/codegen/go/gen.go\nTEST: none reason\n"
 	s1Brief := "KIND: sentinel\nCONSUMERS: c1\nPATHS: docs/roadmap.sexp\nTEST: none reason\n"
-	p1 := &Card{ID: "p1", Row: "schema-shared", Col: Ready, Score: 10.0, Fields: map[string]string{
-		"brief": p1Brief,
-	}}
+	p1 := &Card{ID: "p1", Row: "schema-shared", Col: Ready, Score: 10.0, Fields: map[string]string{"brief": p1Brief}}
 	s1 := &Card{ID: "s1", Row: "schema-shared", Col: Waiting, Score: 20.0, Fields: map[string]string{
-		"kind":  "sentinel",
-		"brief": s1Brief,
-		"needs": "p1",
-	}}
+		"kind": "sentinel", "brief": s1Brief, "needs": "p1"}}
 
 	// Stream schema-js: consumer c1 needs sentinel s1
 	// c1 writes only js files, sharing no non-ledger glob with p1
 	c1Brief := "KIND: primary\nPATHS: internal/codegen/js/gen.js\nTEST: none reason\n"
-	c1 := &Card{ID: "c1", Row: "schema-js", Col: Waiting, Score: 100.0, Fields: map[string]string{
-		"brief": c1Brief,
-		"needs": "s1",
-	}}
+	c1 := &Card{ID: "c1", Row: "schema-js", Col: Waiting, Score: 100.0, Fields: map[string]string{"brief": c1Brief, "needs": "s1"}}
 
 	s.Work.Put(p1)
 	s.Work.Put(s1)
 	s.Work.Put(c1)
 
 	fs := CheckCards(s, CardCheckIn{})
-	var wide []CardFinding
-	for _, f := range fs {
-		if f.Kind == CheckSentinelWide {
-			wide = append(wide, f)
-		}
-	}
+	wide := cardFindingsOf(fs, CheckSentinelWide)
 
 	require.Len(t, wide, 1, "expected 1 sentinel-wide warning, got: %+v", fs)
 	w := wide[0]
@@ -87,12 +65,7 @@ func TestCheckSentinelWide(t *testing.T) {
 	p1.Fields["brief"] = p1SharedBrief
 
 	fsClean := CheckCards(s, CardCheckIn{})
-	var wideClean []CardFinding
-	for _, f := range fsClean {
-		if f.Kind == CheckSentinelWide {
-			wideClean = append(wideClean, f)
-		}
-	}
+	wideClean := cardFindingsOf(fsClean, CheckSentinelWide)
 	assert.Empty(t, wideClean, "expected 0 sentinel-wide findings when producer shares glob with consumer")
 }
 
@@ -105,34 +78,20 @@ func TestCheckSentinelConsumers(t *testing.T) {
 
 	// Sentinel with CONSUMERS header that only names c1
 	s1Brief := "KIND: sentinel\nCONSUMERS: c1\nPATHS: docs/roadmap.sexp\nTEST: none reason\n"
-	s1 := &Card{ID: "s1", Row: "schema-shared", Col: Waiting, Score: 20.0, Fields: map[string]string{
-		"kind":  "sentinel",
-		"brief": s1Brief,
-	}}
+	s1 := &Card{ID: "s1", Row: "schema-shared", Col: Waiting, Score: 20.0, Fields: map[string]string{"kind": "sentinel", "brief": s1Brief}}
 
 	// Consumer c1 and consumer c2 both need s1
 	c1Brief := "KIND: primary\nPATHS: a.go\nTEST: none reason\n"
-	c1 := &Card{ID: "c1", Row: "schema-a", Col: Waiting, Score: 30.0, Fields: map[string]string{
-		"brief": c1Brief,
-		"needs": "s1",
-	}}
+	c1 := &Card{ID: "c1", Row: "schema-a", Col: Waiting, Score: 30.0, Fields: map[string]string{"brief": c1Brief, "needs": "s1"}}
 	c2Brief := "KIND: primary\nPATHS: b.go\nTEST: none reason\n"
-	c2 := &Card{ID: "c2", Row: "schema-b", Col: Waiting, Score: 40.0, Fields: map[string]string{
-		"brief": c2Brief,
-		"needs": "s1",
-	}}
+	c2 := &Card{ID: "c2", Row: "schema-b", Col: Waiting, Score: 40.0, Fields: map[string]string{"brief": c2Brief, "needs": "s1"}}
 
 	s.Work.Put(s1)
 	s.Work.Put(c1)
 	s.Work.Put(c2)
 
 	fs := CheckCards(s, CardCheckIn{})
-	var scFindings []CardFinding
-	for _, f := range fs {
-		if f.Kind == CheckSentinelConsumers {
-			scFindings = append(scFindings, f)
-		}
-	}
+	scFindings := cardFindingsOf(fs, CheckSentinelConsumers)
 
 	require.Len(t, scFindings, 1, "expected 1 sentinel-consumers refusal for missing c2: %+v", fs)
 	f := scFindings[0]
@@ -144,12 +103,7 @@ func TestCheckSentinelConsumers(t *testing.T) {
 	// Fix the brief to declare both consumers (with optional stream parens)
 	s1.Fields["brief"] = "KIND: sentinel\nCONSUMERS: c1 (schema-a), c2 (schema-b)\nPATHS: docs/roadmap.sexp\nTEST: none reason\n"
 	fsFixed := CheckCards(s, CardCheckIn{})
-	var scFixed []CardFinding
-	for _, f := range fsFixed {
-		if f.Kind == CheckSentinelConsumers {
-			scFixed = append(scFixed, f)
-		}
-	}
+	scFixed := cardFindingsOf(fsFixed, CheckSentinelConsumers)
 	assert.Empty(t, scFixed, "expected 0 sentinel-consumers findings after brief is updated")
 }
 
@@ -183,33 +137,20 @@ func TestCheckOwner(t *testing.T) {
 
 	// Case 1: card has who=friend but brief has no WHO: line
 	c1Brief := "KIND: primary\nPATHS: c1.go\nTEST: none reason\n"
-	c1 := &Card{ID: "c1", Row: "s1", Col: Waiting, Score: 10.0, Fields: map[string]string{
-		"who":   "friend",
-		"brief": c1Brief,
-	}}
+	c1 := &Card{ID: "c1", Row: "s1", Col: Waiting, Score: 10.0, Fields: map[string]string{"who": "friend", "brief": c1Brief}}
 
 	// Case 2: card has who=friend, brief has WHO: friend, but attempts ran on fleet members
 	c2Brief := "KIND: primary\nWHO: friend\nPATHS: c2.go\nTEST: none reason\n"
 	c2 := &Card{ID: "c2", Row: "s1", Col: Waiting, Score: 20.0, Fields: map[string]string{
-		"who":     "friend",
-		"brief":   c2Brief,
-		"attempt": "2",
-		"routes":  "flash-a,flash-b",
-	}}
+		"who": "friend", "brief": c2Brief, "attempt": "2", "routes": "flash-a,flash-b"}}
 
 	// Case 3: valid fleet card
 	c3Brief := "KIND: primary\nPATHS: c3.go\nTEST: none reason\n"
-	c3 := &Card{ID: "c3", Row: "s1", Col: Waiting, Score: 30.0, Fields: map[string]string{
-		"who":   "fleet",
-		"brief": c3Brief,
-	}}
+	c3 := &Card{ID: "c3", Row: "s1", Col: Waiting, Score: 30.0, Fields: map[string]string{"who": "fleet", "brief": c3Brief}}
 
 	// Case 4: valid friend card, no fleet attempts
 	c4Brief := "KIND: primary\nWHO: friend\nPATHS: c4.go\nTEST: none reason\n"
-	c4 := &Card{ID: "c4", Row: "s1", Col: Waiting, Score: 40.0, Fields: map[string]string{
-		"who":   "friend",
-		"brief": c4Brief,
-	}}
+	c4 := &Card{ID: "c4", Row: "s1", Col: Waiting, Score: 40.0, Fields: map[string]string{"who": "friend", "brief": c4Brief}}
 
 	s.Work.Put(c1)
 	s.Work.Put(c2)
@@ -217,12 +158,7 @@ func TestCheckOwner(t *testing.T) {
 	s.Work.Put(c4)
 
 	fs := CheckCards(s, CardCheckIn{})
-	var ownerFindings []CardFinding
-	for _, f := range fs {
-		if f.Kind == CheckOwner {
-			ownerFindings = append(ownerFindings, f)
-		}
-	}
+	ownerFindings := cardFindingsOf(fs, CheckOwner)
 
 	require.Len(t, ownerFindings, 2, "expected 2 owner findings, got: %+v", ownerFindings)
 
@@ -243,19 +179,13 @@ func TestFriendCardCorrectedOwnerInDealAndRules(t *testing.T) {
 	t.Parallel()
 
 	// Once owner is corrected to fleet, FriendCard returns false
-	c1 := &Card{ID: "c1", Fields: map[string]string{
-		"who":   "fleet",
-		"brief": "KIND: primary\nPATHS: a.go\n",
-	}}
+	c1 := &Card{ID: "c1", Fields: map[string]string{"who": "fleet", "brief": "KIND: primary\nPATHS: a.go\n"}}
 	name, ok := FriendCard(c1)
 	assert.False(t, ok, "FriendCard should return false when who=fleet")
 	assert.Empty(t, name)
 
 	// Legitimate friend card
-	c3 := &Card{ID: "c3", Fields: map[string]string{
-		"who":   "friend",
-		"brief": "KIND: primary\nWHO: friend\nPATHS: a.go\n",
-	}}
+	c3 := &Card{ID: "c3", Fields: map[string]string{"who": "friend", "brief": "KIND: primary\nWHO: friend\nPATHS: a.go\n"}}
 	name, ok = FriendCard(c3)
 	assert.True(t, ok)
 	assert.Empty(t, name)
@@ -265,12 +195,7 @@ func TestFriendCardCorrectedOwnerInDealAndRules(t *testing.T) {
 	addTestStream(s, "s1", "Stream One")
 
 	cFailed := &Card{ID: "failed-card", Row: "s1", Col: Review, Fields: map[string]string{
-		"who":     "fleet",
-		"brief":   "KIND: primary\nWHO: friend\nPATHS: a.go\n",
-		"attempt": "1",
-		"routes":  "opencode-space",
-		"result":  "failed",
-	}}
+		"who": "fleet", "brief": "KIND: primary\nWHO: friend\nPATHS: a.go\n", "attempt": "1", "routes": "opencode-space", "result": "failed"}}
 	s.Work.Put(cFailed)
 
 	ans := &RuleAnswer{Subject: "failed-card"}
@@ -287,25 +212,13 @@ func TestCheckFailedInReview(t *testing.T) {
 	addTestStream(s, "s1", "Stream One")
 
 	c1 := &Card{ID: "c1", Row: "s1", Col: Review, Fields: map[string]string{
-		"attempt": "3",
-		"result":  "failed",
-		"brief":   "KIND: primary\nPATHS: a.go\nTEST: none reason\n",
-	}}
+		"attempt": "3", "result": "failed", "brief": "KIND: primary\nPATHS: a.go\nTEST: none reason\n"}}
 	c2 := &Card{ID: "c2", Row: "s1", Col: Review, Fields: map[string]string{
-		"attempt":     "6",
-		"last_finish": "6:failed",
-		"brief":       "KIND: primary\nPATHS: b.go\nTEST: none reason\n",
-	}}
+		"attempt": "6", "last_finish": "6:failed", "brief": "KIND: primary\nPATHS: b.go\nTEST: none reason\n"}}
 	c3OK := &Card{ID: "c3", Row: "s1", Col: Review, Fields: map[string]string{
-		"attempt": "1",
-		"result":  "ok",
-		"brief":   "KIND: primary\nPATHS: c.go\nTEST: none reason\n",
-	}}
+		"attempt": "1", "result": "ok", "brief": "KIND: primary\nPATHS: c.go\nTEST: none reason\n"}}
 	c4Working := &Card{ID: "c4", Row: "s1", Col: Working, Fields: map[string]string{
-		"attempt": "1",
-		"result":  "failed",
-		"brief":   "KIND: primary\nPATHS: d.go\nTEST: none reason\n",
-	}}
+		"attempt": "1", "result": "failed", "brief": "KIND: primary\nPATHS: d.go\nTEST: none reason\n"}}
 
 	s.Work.Put(c1)
 	s.Work.Put(c2)
@@ -313,12 +226,7 @@ func TestCheckFailedInReview(t *testing.T) {
 	s.Work.Put(c4Working)
 
 	fs := CheckCards(s, CardCheckIn{})
-	var failFindings []CardFinding
-	for _, f := range fs {
-		if f.Kind == CheckFailedInReview {
-			failFindings = append(failFindings, f)
-		}
-	}
+	failFindings := cardFindingsOf(fs, CheckFailedInReview)
 
 	require.Len(t, failFindings, 2, "expected 2 failed-in-review findings: %+v", fs)
 	assert.Equal(t, "c1", failFindings[0].Subject)
@@ -346,10 +254,7 @@ func TestDoctorFailedInReview(t *testing.T) {
 
 	// Case 2: card in review with result failed
 	c := &Card{ID: "c-failed", Row: "s1", Col: Review, Fields: map[string]string{
-		"attempt": "6",
-		"result":  "failed",
-		"head":    "e802cb56a9395e30d59b9775632637df22080318",
-	}}
+		"attempt": "6", "result": "failed", "head": "e802cb56a9395e30d59b9775632637df22080318"}}
 	s.Work.Put(c)
 
 	inFail := DoctorInput{Snap: s}
@@ -397,15 +302,8 @@ func TestLiveAudit20261013Incident(t *testing.T) {
 			"brief": "KIND: sentinel\nPATHS: docs/roadmap.sexp\nTEST: none reason\nCONSUMERS: js-carries-maps-and-union-arms-on-the-table-wire (schema-js)\n",
 		},
 	}
-	producer := &Card{
-		ID:    "the-guard-chain-answers-the-outer-tag",
-		Row:   "schema-shared",
-		Col:   Ready,
-		Score: 800.0,
-		Fields: map[string]string{
-			"brief": "KIND: primary\nPATHS: internal/codegen/shared/tag.go\nTEST: none reason\n",
-		},
-	}
+	producer := &Card{ID: "the-guard-chain-answers-the-outer-tag", Row: "schema-shared", Col: Ready, Score: 800.0, Fields: map[string]string{
+		"brief": "KIND: primary\nPATHS: internal/codegen/shared/tag.go\nTEST: none reason\n"}}
 	s.Work.Put(sentinel)
 	s.Work.Put(producer)
 
@@ -434,16 +332,8 @@ func TestLiveAudit20261013Incident(t *testing.T) {
 	}
 
 	for i, id := range consumerIDs {
-		c := &Card{
-			ID:    id,
-			Row:   consumerStreams[i],
-			Col:   Waiting,
-			Score: float64(100 + i),
-			Fields: map[string]string{
-				"needs": sentinel.ID,
-				"brief": "KIND: primary\nPATHS: " + consumerPaths[i] + "\nTEST: none reason\n",
-			},
-		}
+		c := &Card{ID: id, Row: consumerStreams[i], Col: Waiting, Score: float64(100 + i), Fields: map[string]string{
+			"needs": sentinel.ID, "brief": "KIND: primary\nPATHS: " + consumerPaths[i] + "\nTEST: none reason\n"}}
 		// The two friend cards in waiting with who=friend but no WHO: line
 		if id == "dart-carries-the-variable-class-beyond-the-card-constructs" || id == "java-carries-the-variable-class-beyond-the-card-constructs" {
 			c.Fields["who"] = "friend"

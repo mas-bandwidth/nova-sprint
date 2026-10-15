@@ -12,12 +12,10 @@ import (
 // The coordinator's pass (docs/SPEC-SPRINT.md section 8, "The coordinator's pass"; the
 // owner, 2026-10-05: "everything I described above needs to be mechanical, so you have a
 // reminder to do it (notification) coming from the machine every 10 minutes. Otherwise,
-// you will eventually drift and forget."). Three conditions the coordinator must act on,
+// you will eventually drift and forget."). The conditions the coordinator must act on,
 // each a judgment the tick raises once an episode, raises again every PassEvery of
 // running time while it holds, and closes when it stops holding:
 //
-//   - a friend's session is deaf: her beat carries her session's last pong (friend beat
-//     --pong) and it is older than FriendDeafAfter;
 //   - a friend is idle: she holds working cards and no work card of hers went from
 //     working to done in the friend-finish window (FriendFinishAfter; a read is not
 //     card work);
@@ -168,7 +166,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, row := range s.Fleet.Rows() {
 		f, ok := FriendOfRow(row)
-		if !ok || friendHeld(r.Friends, f) || s.MemberCtl(row).F("status") == Held {
+		if !ok || friendHeld(r.Friends, f) {
 			continue
 		}
 		working := s.Fleet.Cell(row, Working)
@@ -210,9 +208,9 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			finish = snapshotFriendPronouns(s, f).Sprintf("{their} last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
-			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-friend ping --as <coordinator> --to %s --wake",
+			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-friend reach --as <coordinator> --to %s",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
-			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
+			decisions: []string{"nova-friend reach --as <coordinator> --to " + f, "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
 	}
 	return out
 }
@@ -404,7 +402,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	for _, name := range names {
 		f := seats[name]
 		row := FriendRow(name)
-		up := f.Status == Up && !f.Held && s.MemberCtl(row).F("status") != Held && !s.FriendsOff()
+		up := f.Status == Up && !s.FriendsOff()
 		var cards []idleWait
 		if up && friendLoad(s, name) == 0 {
 			cards = cardsWaitingFor(s, f, seats)

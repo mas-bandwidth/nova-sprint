@@ -326,7 +326,6 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "tick", err.Error())
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	ctx := context.Background()
 	res, err := st.Tick(ctx)
@@ -447,7 +446,6 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "run", "invalid --tick-deadline: "+a.tickDeadline.String()+": a negative value is refused, 0 waits for ever")
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
@@ -914,8 +912,9 @@ const (
 // read alone. Every tick of a RUNNING machine is printed, naming every table
 // and the rows it changed in each, and every tick that
 // failed; an error is printed always and the loop goes on, waiting longer
-// after each failure in a row, up to TickBackoffCap. After each tick of a
-// RUNNING machine every friend is reconciled (reconcileFriendsTick).
+// after each failure in a row, up to TickBackoffCap. No friend's directory is
+// read: a friend lane's state is the server's records alone (nova-tools
+// tla/FriendLaneClient.tla).
 //
 // A loop runs the code it was started with for as long as it runs: a binary
 // installed under it (a release, a fix) would leave the store ticked by the
@@ -933,7 +932,6 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// every line before the loop is seen: the first tick reads the state whole
 	cursor, _ := st.LogTail(ctx)
 	why := tickStart
-	friends := newFriendTick()
 	// the server's record, the actor this loop runs as, which seat and handover
 	// show beside the seat's holder: written before the first tick and every
 	// store.ServerEvery (seat-key-follows-record.w2)
@@ -1046,15 +1044,6 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			if line := sprintLine(ctx, st); line != "" {
 				fmt.Fprintln(stdout, line)
 			}
-		}
-		if err == nil && res.State == store.Running {
-			// every friend reconciled after the tick's deal, with friend reconcile's plan
-			// (friendreconcile_tick.go; docs/SPEC-SPRINT.md section 1,
-			// friend-reconcile-every-tick-r.w1), in the tick's own turn of the line: on
-			// 2026-10-10 each friend's pass queued behind every waiting batch, and the
-			// passes cost 12 s a tick at the median (docs/SPEC-SPRINT.md section 14,
-			// store-trips-pipelinedb-bb)
-			a.reconcileFriendsTick(ctx, st, friends, stdout)
 		}
 		a.serial.Unlock()
 		if err == nil {

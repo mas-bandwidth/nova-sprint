@@ -19,7 +19,7 @@ import (
 
 // passRig is the hold rig with each friend's session pong kept on her beat. Each
 // friend's session last answered five minutes before the rig starts, so it is deaf
-// (FriendDeafAfter, fifteen minutes) ten minutes and more into the rig.
+// (fifteen minutes) ten minutes and more into the rig.
 type passRig struct {
 	*holdRig
 	pongs map[string]time.Time
@@ -64,9 +64,9 @@ func (r *holdRig) startFriends() {
 }
 
 // tick moves the clock by d, beats everyone (each friend with her pong, and her session
-// active, as on a long turn: the stall ladder, friend_stall.go, leaves her be, and the
-// pass alone judges her), records each pong as a wake ping her session answered (her
-// beat is no evidence: she is up only on that answer) and runs one tick.
+// active, as on a long turn: the pass alone judges her), records each pong as a wake ping
+// her session answered (her beat is no evidence: she is up only on that answer) and runs
+// one tick.
 func (r *passRig) tick(d time.Duration) {
 	r.t.Helper()
 	r.mu.Lock()
@@ -151,7 +151,7 @@ func TestThePassSparesAHeldFriendAnAcknowledgedJudgmentAndKeepsTheFinishSetting(
 
 // A quiet friend whose session answers is never judged deaf: her daemon asks the session
 // after ten minutes with no word and waits five for the answer, so her proof is at most
-// FriendProofLive old. Past that it has lapsed, and the coordinator is told once, as a
+// fifteen minutes old. Past that it has lapsed, and the coordinator is told once, as a
 // judgment naming her and the remedy, never only in her daemon's log.
 func TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce(t *testing.T) {
 	t.Parallel()

@@ -18,7 +18,7 @@ import (
 // and the tick's deal cuts its next attempt there; a second cap, or a cap with no tier
 // above it, is failed work as any other. Either way the cap and the overrun are on the work
 // card and in the take's cost record on the primary (Consumer.Cap, Consumer.Overrun). The
-// model is pkg/friend/tla/LaneEnd.tla, CapRedeal and RedealOnce.
+// model is nova-tools pkg/friend/tla/LaneEnd.tla, CapRedeal and RedealOnce.
 
 // The fields of a capped take: on the work card the cap and the overrun its finish named,
 // and on the primary the re-deal the cap spent (`<from> -> <to>`), once per card.
@@ -44,7 +44,7 @@ type LaneCap struct {
 var laneCapRE = regexp.MustCompile(`\bcapped at ([0-9][0-9a-zµ.]*) \(tier ([a-z-]+), overrun ([0-9][0-9a-zµ.]*)\)`)
 
 // ParseLaneCap reads the cap off a failed finish's report (the friend daemon's
-// CappedWords); ok is false when it names none.
+// CappedWords, nova-tools pkg/friend); ok is false when it names none.
 func ParseLaneCap(report string) (lc LaneCap, ok bool) {
 	m := laneCapRE.FindStringSubmatch(report)
 	if m == nil {
