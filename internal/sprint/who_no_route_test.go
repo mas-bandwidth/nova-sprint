@@ -41,8 +41,8 @@ func TestAReadyCardGoesToAFriendWhenNoMachineRouteServesItsTier(t *testing.T) {
 
 	w := setup()
 	dealStarted(w,
-		FriendSeat{Name: "bob", Width: 4, Status: Up, Class: "flash", Tiers: []string{cardhdr.RouteFlash}},
-		FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "pro", Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}})
+		workerSeatFixture(FriendSeat{Name: "bob", Width: 4, Status: Up, Class: "flash", Tiers: []string{cardhdr.RouteFlash}}),
+		workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "pro", Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}))
 	wc := w.s.Fleet.Card("s1-1.w1")
 	require.NotNil(t, wc, "dealt")
 	assert.Equal(t, FriendRow("amy"), wc.Row, "the friend whose tiers hold pro, not the one with more room")

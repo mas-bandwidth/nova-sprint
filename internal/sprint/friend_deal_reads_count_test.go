@@ -61,7 +61,7 @@ func dealsN(w *world, friend string, n int) (dealt, live int) {
 	}
 	row := FriendRow(friend)
 	before := w.s.Fleet.Count(row, Ready) + w.s.Fleet.Count(row, Working)
-	dealWith(w, FriendSeat{Name: friend, Width: 8, Status: Up, Class: "flash,pro"})
+	dealWith(w, workerSeatFixture(FriendSeat{Name: friend, Width: 8, Status: Up, Class: "flash,pro"}))
 	after := w.s.Fleet.Count(row, Ready) + w.s.Fleet.Count(row, Working)
 	return after - before, after
 }
@@ -96,8 +96,8 @@ func TestTheFriendLiveLanesCountsReads(t *testing.T) {
 	assert.Equal(t, 12, friendLiveLanes(w.s, "amy"), "4 work + 8 reads = 12 live lanes")
 	assert.Zero(t, friendFreeLanes(8, 4, 8), "12 of 8: no free lane")
 
-	seat := FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}}
-	units := readUnitsOf(w.s, []FriendSeat{seat})
+	seat := workerSeatFixture(FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}})
+	units := readUnitsOf(w.s, workerSeatFixtures([]FriendSeat{seat}))
 	require.Len(t, units, 1)
 	assert.LessOrEqual(t, units[0].half, 0, "the read ask may deal her no read at her width")
 }

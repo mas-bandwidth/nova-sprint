@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -25,7 +26,7 @@ import (
 // nobody (notServed), a verb given its own --redis, and a verb's help run here, as
 // before. A read that waits for the sprint to move (waits) is never run by the server:
 // here it sends the server its plain read, again and again (where --watch: one a
-// frame; inbox --wait: the log's tick-end notes, polled). What a verb's arguments say
+// frame; inbox --wait: blocking tick-note reads). What a verb's arguments say
 // (its help, its flags, which word is a flag's value) is read by the verb's own flags
 // (readVerb), never by a scan of the words.
 
@@ -207,7 +208,11 @@ func (a *app) ask(ctx context.Context, addr string, verb, rest []string) (sprint
 	send := a.forward
 	if send == nil {
 		send = func(ctx context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
-			return sprintwire.Client{Addr: addr}.Do(ctx, verbs...)
+			client := sprintwire.Client{Addr: addr}
+			if len(verbs) == 1 {
+				client.HTTP = a.longPollClient(verbs[0])
+			}
+			return client.Do(ctx, verbs...)
 		}
 	}
 	identity := []string(nil)
@@ -284,4 +289,13 @@ func absolutePaths(argv []string) []string {
 		}
 	})
 	return argv
+}
+
+// QueueWait.tla Timeout: the wire allows the requested wait plus the existing
+// request allowance. Ordinary verbs retain sprintwire's bounded default.
+func (a *app) longPollClient(argv []string) *http.Client {
+	if d, wait := longPollDuration(readVerb(argv)); wait {
+		return &http.Client{Timeout: d + sprintwire.Timeout, Transport: a.transport}
+	}
+	return nil
 }

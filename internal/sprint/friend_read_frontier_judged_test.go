@@ -33,7 +33,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		// no paid reader: amy (width 1, room 2) takes s1-1 and s1-2, and s1-3 has no one
 		w := newWorld(t)
 		w.readersTable() // this group explicitly tests the pre-card ask
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())})
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
 		}
@@ -71,7 +71,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 
 		// she has room for both: they are asked, and the judgment closes
 		w.tick(time.Minute)
-		askReaders(t, w, []FriendSeat{frontierSeat("amy", 4, Up, t.TempDir())})
+		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 4, Up, t.TempDir())}))
 		require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-3", 1, "amy")))
 		require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-4", 1, "amy")))
 		require.Empty(t, openFrontierRoom(w), "asked: the judgment closes")
@@ -84,7 +84,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
 		}
-		askReaders(t, w, []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())})
+		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}))
 		require.NotNil(t, placedReaderRead(w, "s1-3"))
 		require.Empty(t, w.notesOf(NNoFrontierRoom))
 	})
@@ -93,7 +93,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		w.readersTable() // this group explicitly tests the pre-card ask
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())})
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: pro\n", 1, float64(i+1), primHead)
 		}
@@ -105,7 +105,7 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		w.readersTable() // this group explicitly tests the pre-card ask
-		seats := []FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())}
+		seats := workerSeatFixtures([]FriendSeat{frontierSeat("amy", 1, Up, t.TempDir())})
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, body(id), 1, float64(i+1), primHead)
 		}
@@ -147,7 +147,7 @@ func TestAFrontierReadWaitingForRoomIsJudgedWithReadCards(t *testing.T) {
 	t.Run("every unit that may read it is at its room", func(t *testing.T) {
 		t.Parallel()
 		w := newWorldWaiting(t)
-		full := []FriendSeat{bob, frontierReader("amy", 0)}
+		full := workerSeatFixtures([]FriendSeat{bob, frontierReader("amy", 0)})
 		ask(w, full)
 		ns := w.notesOf(NNoFrontierRoom)
 		require.Len(t, ns, 1, "notes: %+v", w.notes)
@@ -160,14 +160,14 @@ func TestAFrontierReadWaitingForRoomIsJudgedWithReadCards(t *testing.T) {
 		require.Empty(t, w.updates, "the same facts rewrite nothing")
 
 		// cal comes up with room: both reads are dealt and the judgment closes
-		ask(w, []FriendSeat{bob, frontierReader("amy", 8), frontierReader("cal", 8)})
+		ask(w, workerSeatFixtures([]FriendSeat{bob, frontierReader("amy", 8), frontierReader("cal", 8)}))
 		require.Empty(t, openFrontierRoom(w), "dealt: the judgment closes")
 	})
 
 	t.Run("a read no unit may read is cannot ask's, not this judgment", func(t *testing.T) {
 		t.Parallel()
 		w := newWorldWaiting(t)
-		ask(w, []FriendSeat{bob})
+		ask(w, workerSeatFixtures([]FriendSeat{bob}))
 		require.Empty(t, w.notesOf(NNoFrontierRoom))
 		require.Len(t, w.notesOf(NCannotAsk), 1)
 	})

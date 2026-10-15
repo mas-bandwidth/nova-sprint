@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -36,6 +37,12 @@ import (
 // is retired: a friend tier is reached by the coordinator's re-tier. tla/SprintRules.tla
 // Part "reads" and "answers", NoAttemptPastCapWithoutDecision; tla/FriendEmptyRun.tla
 // CapDeal; docs/SPEC-SPRINT.md, the bounds.
+
+// LandRefusedConflict is the finding a landing's refusal for a merge conflict with the advanced
+// base leaves on its card (LandRefusedFinding, RefusedConflict). Two of them are not the brief
+// wrong: the base moved under a correct head (BriefBound.Conflict; tla/Land.tla, THE BOUND,
+// ConflictBoundCarries).
+const LandRefusedConflict = LandRefusedFinding + RefusedConflict
 
 // FieldFindingAttempt is the attempt whose broken reads' finding the primary's `finding`
 // carries (Rework writes both: the attempt it sends back and what its readers found). A
@@ -180,12 +187,25 @@ type BriefBound struct {
 	// on the harness.
 	Harness     bool
 	HarnessEnds int
+	// Conflict is true when the two same findings were both the landing's refusal for a merge
+	// conflict with the advanced base (LandRefusedConflict): the head is right and the base moved
+	// under it, so the bound is the base's, never the brief's. It is worded so, offers rework
+	// --carry first (carry the head, merge the current base, rerun the gates), and the card is
+	// taken for rework --carry however the brief-defect rule marked it (IsConflictBound,
+	// reworkWhyCarry). A gate, checks or paths refusal twice is not one: the head itself is wrong.
+	// tla/Land.tla, THE BOUND, ConflictBoundCarries; reversed witness
+	// MCLandBoundBrokenConflictIsBriefDefect.
+	Conflict bool
 }
 
 // String is the bound said in one line: what repeated and where, or the cap, the spend and
 // the findings, then the verdict. A card that reached the cap mostly on harness ends is
 // worded as the harness's, never as a vote that the brief is wrong.
 func (b BriefBound) String() string {
+	if b.Conflict {
+		return fmt.Sprintf("%s: the landing refused its head twice only for a merge conflict with the advanced base (attempts %d and %d): the brief is not the cause",
+			b.ID, b.Attempts[0], b.Attempts[1])
+	}
 	if b.Finding != "" {
 		return fmt.Sprintf("%s has failed the same way twice (attempts %d and %d: %s); the brief is wrong, not the worker",
 			b.ID, b.Attempts[0], b.Attempts[1], b.Finding)
@@ -209,8 +229,14 @@ func (b BriefBound) String() string {
 // window of attempts: the brief corrected in place, the card's next attempt staged from its
 // last pushed head; reworked on another tier (re-tier); carried on from its last head; or
 // dropped. The same-finding-twice bound offers no rework: a rework's --fix changes the brief
-// not at all.
+// not at all. A conflict bound (Conflict) is the exception, and offers rework --carry first:
+// the base moved under a correct head (tla/Land.tla, THE BOUND, ConflictBoundCarries).
 func (b BriefBound) Remedy() string {
+	if b.Conflict {
+		// the head is right and the base moved: carry the head, merge the current base and rerun
+		// the gates first (tla/Land.tla, THE BOUND, ConflictBoundCarries)
+		return "run: nova-sprint rework " + b.ID + " --carry --fix <text> (carry on from its last pushed head: merge the current base, rerun the gates), nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place), or nova-sprint drop " + b.ID + " --reason '<why>'"
+	}
 	if b.Finding != "" {
 		return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
 	}
@@ -275,6 +301,56 @@ func findingsLine(findings []string) string {
 	return strings.Join(findings, "\n")
 }
 
+// conflictFinding says a finding is the landing's refusal for a merge conflict with the
+// advanced base and nothing else (LandRefusedConflict, whatever follows it: the lander's note).
+// The ledger-only conflict is another finding ("a conflict in the shared ledgers only"), and is
+// never at the bound at all (landRefused).
+func conflictFinding(finding string) bool {
+	class := FindingClass(finding)
+	conflict := FindingClass(LandRefusedConflict)
+	return class == conflict || strings.HasPrefix(class, conflict+":")
+}
+
+// onlyConflicts says every finding the primary's findings list holds for the attempts since
+// the brief last changed (FieldFindings, after briefAt and before attempt) is the landing's
+// conflict refusal: a conflict, then a gate failure, then a conflict is not a conflict-only
+// bound, for the head failed in between. A conflict bound is "only for a merge conflict with the advanced
+// base" (tla/Land.tla, THE BOUND, ConflictBoundCarries).
+func onlyConflicts(c *Card, briefAt, attempt int) bool {
+	for _, l := range strings.Split(c.F(FieldFindings), "\n") {
+		head, rest, ok := strings.Cut(strings.TrimSpace(l), ": ")
+		var at int
+		if !ok {
+			continue
+		}
+		if _, err := fmt.Sscanf(head, "attempt %d", &at); err != nil || at <= briefAt || at >= attempt {
+			continue
+		}
+		if !conflictFinding(rest) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsConflictBound says the primary c is in review at the conflict bound: the landing refused
+// its current head for a merge conflict with the advanced base at two attempts of its brief
+// (BriefBound.Conflict), and nothing since. The bound's judgment is the base's, and whatever
+// the brief-defect rule did with it, rework --carry takes the card (reworkWhyCarry): carry the
+// head, merge the current base, rerun the gates. It is read off the card alone, from what
+// landRefused leaves when it sends a card to review at the bound: the returned attempt and
+// reason (a landing's conflict), the head the landing refused (FieldLandRefusedHead), and the
+// finding of the attempt before, which the second refusal repeated. tla/Land.tla, THE BOUND,
+// ConflictBoundCarries.
+func IsConflictBound(c *Card) bool {
+	if c == nil || !c.Placed() || c.Col != Review {
+		return false
+	}
+	attempt, briefAt, at := c.Int("attempt"), c.Int(FieldBriefAttempt), c.Int(FieldFindingAttempt)
+	return attempt > 0 && LandRefusedAtHead(c) && c.F("return_reason") == "conflict" && c.Int(FieldReturnedAttempt) == attempt &&
+		at > briefAt && at < attempt && conflictFinding(c.F("finding")) && onlyConflicts(c, briefAt, attempt)
+}
+
 // AtBriefBound is whether the primary c is at its brief's bound, and why. finding is what
 // its readers found at its current attempt, or the report of its failed work: the broken
 // reads' findings the store holds (brokenFindings), or the one a read step is about to
@@ -296,7 +372,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 		prevAt = attempt - 1
 	}
 	if prev != "" && prevAt > briefAt && prevAt < attempt && SameFinding(prev, finding) {
-		return BriefBound{ID: c.ID, Attempts: [2]int{prevAt, attempt}, Finding: firstSentence(prev)}, true
+		return BriefBound{ID: c.ID, Attempts: [2]int{prevAt, attempt}, Finding: firstSentence(prev), Conflict: conflictFinding(prev) && onlyConflicts(c, briefAt, attempt)}, true
 	}
 	if strings.HasPrefix(finding, LandRefusedFinding) {
 		for _, l := range strings.Split(c.F(FieldFindings), "\n") {
@@ -312,7 +388,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 				}
 			}
 			if f != "" && strings.HasPrefix(f, LandRefusedFinding) && (SameFinding(f, finding) || strings.HasPrefix(f, finding)) {
-				return BriefBound{ID: c.ID, Attempts: [2]int{at, attempt}, Finding: firstSentence(finding)}, true
+				return BriefBound{ID: c.ID, Attempts: [2]int{at, attempt}, Finding: firstSentence(finding), Conflict: conflictFinding(finding) && onlyConflicts(c, briefAt, attempt)}, true
 			}
 		}
 	}
@@ -496,4 +572,62 @@ func ReviewBreaker(c *Card, reader, finding string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// A READ'S ENVIRONMENT IS NOT THE WORK'S (tla/DirtyTick.tla, READ ENVIRONMENT,
+// EnvNeverRedoes; docs/SPEC-SPRINT.md, "An environment exit"). A read that ends
+// with no verdict because the reader's own environment refused it (its wall or
+// sandbox refused a write, staging could not fetch the head, its brief's pin is
+// no longer the card's head, or its child died 134 or 137) says nothing about
+// the work: it is asked again on the same head at the same attempt, spends no
+// redeal, no attempt and no work generation, and counts toward no bound of the
+// brief (a run of them is the read identity's own bound, EnvReadCap, one
+// judgment naming the environment). ReadEnvRefusal is the ONE classifier of it;
+// the read's return (steps_review.go Read, friend_read.go) is its only caller,
+// and nothing here, in the deal or in the brief's bounds, takes a read's
+// environment return for a reason to move a work card to a new generation.
+
+// The kinds of a read's environment refusal (ReadEnvRefusal), and the ended word
+// of one that is not an exit code.
+const (
+	EnvRefusalWall     = "wall"
+	EnvRefusalStaging  = "staging"
+	EnvRefusalStalePin = "stale-pin"
+	envRefusalWord     = "environment refusal="
+)
+
+var (
+	envWallRe    = regexp.MustCompile(`(?i)\bwall refused\b|\bsandbox refused\b|refused a write outside the job|\bOperation not permitted\b[^\n]*/`)
+	envStagingRe = regexp.MustCompile(`(?i)\bstaging refused\b|\brefused at staging\b|is in neither the mirror`)
+	envPinRe     = regexp.MustCompile(`(?i)\bpin no longer matches\b|\bbrief pin\b[^\n]*\b(stale|no longer)\b`)
+)
+
+// ReadEnvRefusal says a read's return is its environment's: the kind (EnvRefusalWall,
+// EnvRefusalStaging, EnvRefusalStalePin) and true when the reason names a wall or sandbox
+// refusal, a staging refusal, or a pin that no longer matches, or when readHead (the head the
+// read card pins, "" when it pins none) differs from cardHead (the primary's); "", false
+// otherwise. A child's exit 134 or 137 is the other half (HardEnvExit); it is not repeated here.
+func ReadEnvRefusal(reason, readHead, cardHead string) (kind string, ok bool) {
+	switch {
+	case envWallRe.MatchString(reason):
+		return EnvRefusalWall, true
+	case envStagingRe.MatchString(reason):
+		return EnvRefusalStaging, true
+	case envPinRe.MatchString(reason), readHead != "" && cardHead != "" && readHead != cardHead:
+		return EnvRefusalStalePin, true
+	}
+	return "", false
+}
+
+// ReadEnvEnd is a read return's environment class: the ended word and the code the read
+// identity's count keeps (a hard exit's number, or a refusal's kind), true when the return is
+// the environment's (a hard exit with no result, or ReadEnvRefusal).
+func ReadEnvEnd(reason string, exit int, readHead, cardHead string) (ended, code string, ok bool) {
+	if e, env := EnvExit(reason, exit); env && HardEnvExit(exit) {
+		return e, itoa(exit), true
+	}
+	if kind, refused := ReadEnvRefusal(reason, readHead, cardHead); refused {
+		return envRefusalWord + kind, kind, true
+	}
+	return "", "", false
 }

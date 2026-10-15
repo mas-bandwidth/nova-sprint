@@ -19,6 +19,8 @@ import (
 // said by its size and the card that shows it, not printed (--json has it).
 func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("log")
+	waitTick := fs.Duration("wait-tick", 0, "with --json: wait for a tick-end note after --after; zero samples the notes-stream cursor")
+	after := fs.String("after", "", "with --wait-tick: a notes-stream cursor from a preceding --wait-tick answer, not a queue log cursor")
 	card := fs.String("card", "", "the lines about this card (a primary: its work, read and merge cards too)")
 	stream := fs.String("stream", "", "the lines of this stream")
 	member := fs.String("member", "", "the lines of this fleet member or reader: what was dealt to, taken from or read by it")
@@ -27,6 +29,9 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "log", argErr("takes no words ", err, pos...))
+	}
+	if why := tickWaitFlags(verbArgs{fs: fs}); why != "" {
+		return refuse(stderr, "log", why)
 	}
 	var from time.Time
 	if *since != "" {
@@ -41,6 +46,20 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	st, err := a.storeAt(*c, *atEpoch)
 	if err != nil {
 		return refuse(stderr, "log", err.Error())
+	}
+	if (verbArgs{fs: fs}).given("wait-tick") {
+		if a.twinOpen(c.redis) {
+			return refuse(stderr, "log", twinMachine)
+		}
+		ctx, stop := a.notify(context.Background())
+		defer stop()
+		cursor, woke, err := waitTickAnswer(ctx, st, *after, *waitTick)
+		if err != nil {
+			return a.readFailed("log", err, stderr)
+		}
+		out, _ := json.Marshal(map[string]any{"cursor": cursor, "woke": woke})
+		fmt.Fprintln(stdout, string(out))
+		return 0
 	}
 	lines, err := st.Log(context.Background())
 	if err != nil {

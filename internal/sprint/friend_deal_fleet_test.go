@@ -100,8 +100,8 @@ func TestAFlashFriendWithRoomIsDealtFleetFlashCards(t *testing.T) {
 	who := []string{proBob, proBob, proBob}
 	w := aheadWorld(t, map[string][]string{"fleet": fleet, "who": who})
 	putReads(w, "freddy", 13)
-	freddy := FriendSeat{Name: "freddy", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}}
-	bob := FriendSeat{Name: "bob", Width: 4, Status: Up, Class: "pro", Tiers: []string{"pro"}}
+	freddy := workerSeatFixture(FriendSeat{Name: "freddy", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}})
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 4, Status: Up, Class: "pro", Tiers: []string{"pro"}})
 	dealWith(w, freddy, bob)
 	for i := range fleet {
 		id := "fleet-" + itoa(i+1)
@@ -133,7 +133,7 @@ func TestOneWidthHoldsHerWorkAndReads(t *testing.T) {
 		briefs[i] = fleetBrief("flash")
 	}
 	w := friendWorld(t, briefs...)
-	amy := FriendSeat{Name: "amy", Width: 16, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 16, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	row := FriendRow("amy")
 	w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), row))
 	for i := range 10 {
@@ -150,12 +150,12 @@ func TestOneWidthHoldsHerWorkAndReads(t *testing.T) {
 	// does (one lane per unit of width): a read in one of her 4 lanes leaves 3 for work
 	w2 := friendWorld(t, fleetBrief("flash"))
 	putReads(w2, "bee", 1)
-	dealWith(w2, FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}})
+	dealWith(w2, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}}))
 	assert.Equal(t, 1, workOn(w2, FriendRow("bee")), "a free lane beside the read takes the work card")
 	// and at her width, a read in every lane, she is dealt no work
 	w4 := friendWorld(t, fleetBrief("flash"))
 	putReads(w4, "bee", DealAhead*4)
-	dealWith(w4, FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}})
+	dealWith(w4, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}}))
 	assert.Zero(t, workOn(w4, FriendRow("bee")), "her room is full of reads")
 	wc := w4.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)
@@ -165,13 +165,13 @@ func TestOneWidthHoldsHerWorkAndReads(t *testing.T) {
 	w3 := newWorld(t, "reader-a", "reader-b")
 	putReview(w3, "s1-1", "s1-1: read this (s1) tier: flash\n", 1, 1, "head-1")
 	putAttemptWork(w3, "s1-1", 1, "sprint/s1-1", "cccccccccccccccccccccccccccccccccccccccc", "")
-	bee := FriendSeat{Name: "bee", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	bee := workerSeatFixture(FriendSeat{Name: "bee", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	w3.s.Fleet.SetRows(append(w3.s.Fleet.Rows(), FriendRow("bee")))
 	for i := range DealAhead {
 		w3.s.Fleet.Put(&Card{ID: WorkCardID("busy-"+itoa(i), 1), Row: FriendRow("bee"), Col: Working, Rev: 1, Fields: map[string]string{
 			"kind": "work", "primary": "busy-" + itoa(i), "stream": "s9", "attempt": "1"}})
 	}
-	p, _, err := friendReadAsk(w3.s, []FriendSeat{bee}, "")
+	p, _, err := friendReadAsk(w3.s, workerSeatFixtures([]FriendSeat{bee}), "")
 	require.NoError(t, err)
 	w3.do(p)
 	assert.Nil(t, w3.s.Fleet.Card(ReadCardID("s1-1", 1, "bee")), "her row is full: one width, no read room beside it")
@@ -184,7 +184,7 @@ func TestAnUntieredCardIsFlashForAFriend(t *testing.T) {
 	assert.Equal(t, "flash", w.s.dealTierOf(pr), "no tier line: flash, as the machines deal it")
 	assert.Equal(t, "heavy", w.s.dealTierOf(w.s.Work.Card("s1-2")), "a heavy brief starts on heavy, never flash")
 	assert.Equal(t, "pro", w.s.dealTierOf(w.s.Work.Card("s1-3")), "a pro brief starts on pro")
-	amy := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w, amy)
 	wc1 := w.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc1)
@@ -204,8 +204,8 @@ func TestAFriendReclaimsAnUntakenDealtAheadCard(t *testing.T) {
 	taken := w.s.Fleet.Cell("m1", Ready)[0]
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{taken.ID}}, Gens: gensOf(w.s, taken.ID)}))
 	require.Equal(t, Working, w.s.Fleet.Card(taken.ID).Col)
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash", Tiers: []string{"flash"}}
-	cat := FriendSeat{Name: "cat", Width: 2, Status: Up, Class: "pro", Tiers: []string{"pro"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash", Tiers: []string{"flash"}})
+	cat := workerSeatFixture(FriendSeat{Name: "cat", Width: 2, Status: Up, Class: "pro", Tiers: []string{"pro"}})
 	p := dealWith(w, amy, cat)
 	assert.Equal(t, 2, workOn(w, FriendRow("amy")), "her idle lanes take untaken dealt-ahead cards, no more")
 	assert.Zero(t, workOn(w, FriendRow("cat")), "a friend whose tiers do not hold flash reclaims none")
@@ -248,7 +248,7 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 	require.Equal(t, 8, w.s.Fleet.Count("m2", Ready))
 
 	// three idle lanes: three cards, the machines in turn
-	amy := FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w, amy)
 	assert.Equal(t, 3, workOn(w, FriendRow("amy")), "at most her idle lanes")
 	assert.Equal(t, 6, w.s.Fleet.Count("m1", Ready), "m1 gave two, its turn first and third")
@@ -260,7 +260,7 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
 	w2.must(Add(w2.s, AddReq{Stream: "ahead", Cards: ahead}))
 	dealWith(w2)
-	wide := FriendSeat{Name: "fay", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	wide := workerSeatFixture(FriendSeat{Name: "fay", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w2, wide)
 	assert.Equal(t, 8, workOn(w2, FriendRow("fay")), "half of each machine's eight")
 	assert.Equal(t, 4, w2.s.Fleet.Count("m1", Ready))
@@ -280,7 +280,7 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 func TestARedealToAFriendWritesItsTierNow(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief(""))
-	bob := FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w, bob)
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)
@@ -290,7 +290,7 @@ func TestARedealToAFriendWritesItsTierNow(t *testing.T) {
 	w.s.Work.Put(pr)
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "bob", IDs: []string{wc.ID}, Reason: "taken back", Who: "coordinator"}))
 	require.Equal(t, Ready, w.s.StateOf("s1-1"))
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w, amy)
 	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card(wc.ID).Row)
 	now, ceiling := CardTiers(w.s.Work.Card("s1-1"))
@@ -303,7 +303,7 @@ func TestARedealToAFriendWritesItsTierNow(t *testing.T) {
 func TestDealtFleetCountsOnlyCardsWithNoWhoLine(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, fleetBrief("flash"), friendBrief("friend"), friendBrief("friend amy"))
-	amy := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 	dealWith(w, amy)
 	require.Equal(t, 3, workOn(w, FriendRow("amy")))
 	assert.Equal(t, map[string]int{"amy": 1}, FriendsDealtFleet(w.s), "one card of the fleet's; WHO: friend and WHO: friend amy are hers")

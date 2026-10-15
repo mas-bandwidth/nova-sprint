@@ -1,6 +1,6 @@
 ------------------------ MODULE FriendReadyTake ------------------------
 EXTENDS Naturals, FiniteSets
-\* Moved unchanged in meaning from nova-tools dev 2314d437f. Historical
+\* Take/finish behavior preserved from nova-tools dev 2314d437f. Historical
 \* abstraction: current friendDealPass awaits a start receipt and TickDeadlines
 \* skips friend rows; COVERAGE.tsv records these gaps, not a current proof.
 \* docs/SPEC-SPRINT.md section 1, a friend takes her own ready cards
@@ -19,8 +19,14 @@ EXTENDS Naturals, FiniteSets
 \* the transport or the level.
 CONSTANTS Cards, MaxWidth, Max, BadNoFill, BadPastWidth, BadStranger, BadNoJudge
 Workers == {"a", "b"}
-VARIABLES col, taker, width, up, age, judged
-vars == <<col, taker, width, up, age, judged>>
+\* Snapshot eligibility is independent of up: a proven coordinator/comms hook
+\* can be up without a worker. Each friend has worker evidence, and the current
+\* coordinator is excluded even if it also carries worker evidence. These facts
+\* are fixed during this bounded deal; later hook loss is not a bad past deal.
+\* The row being dealt remains a; b is the stranger in the preserved take model.
+BadNoWorker == FALSE
+VARIABLES col, taker, width, up, age, judged, workerLive, coordinator
+vars == <<col, taker, width, up, age, judged, workerLive, coordinator>>
 
 Working == {c \in Cards : col[c] = "working"}
 Ready == {c \in Cards : col[c] = "ready"}
@@ -33,12 +39,15 @@ Init == /\ col = [c \in Cards |-> "new"]
         /\ up = TRUE
         /\ age = [c \in Cards |-> 0]
         /\ judged = {}
+        /\ workerLive \in [Workers -> BOOLEAN]
+        /\ coordinator \in Workers \cup {"none"}
 
 \* the friend's deal of one new card (friendDealPass): working on a free lane, else ready
 Deal(c) == /\ col[c] = "new" /\ up /\ Room
+           /\ (BadNoWorker \/ (workerLive["a"] /\ coordinator # "a"))
            /\ col' = [col EXCEPT ![c] = IF LaneFree THEN "working" ELSE "ready"]
            /\ taker' = [taker EXCEPT ![c] = IF LaneFree THEN "deal" ELSE "none"]
-           /\ UNCHANGED <<width, up, age, judged>>
+           /\ UNCHANGED <<workerLive, coordinator, width, up, age, judged>>
 
 \* the tick: the deal first takes her ready cards into her free
 \* lanes, oldest first; a ready card still in front of a free lane ages, and is
@@ -54,7 +63,7 @@ Tick == LET fill == Fill
            /\ age' = [c \in Cards |-> IF col1[c] = "ready" /\ free THEN IF age[c] < Max THEN age[c] + 1 ELSE Max ELSE 0]
            /\ judged' = IF BadNoJudge THEN judged
                         ELSE judged \cup {c \in Cards : col1[c] = "ready" /\ free /\ age'[c] >= Max}
-           /\ UNCHANGED <<width, up>>
+           /\ UNCHANGED <<workerLive, coordinator, width, up>>
 
 \* take --as friend.<w> c: her own row only, while she is up, within her lanes
 Take(w, c) == /\ col[c] = "ready"
@@ -64,7 +73,7 @@ Take(w, c) == /\ col[c] = "ready"
               /\ col' = [col EXCEPT ![c] = "working"]
               /\ taker' = [taker EXCEPT ![c] = w]
               /\ age' = [age EXCEPT ![c] = 0]
-              /\ UNCHANGED <<width, up, judged>>
+              /\ UNCHANGED <<workerLive, coordinator, width, up, judged>>
 
 \* her finish, which takes her oldest ready card into the lane it frees (friendNext)
 Finish(c) == /\ col[c] = "working"
@@ -76,14 +85,14 @@ Finish(c) == /\ col[c] = "working"
                    /\ col' = [col EXCEPT ![c] = "done", ![n] = "working"]
                    /\ taker' = [taker EXCEPT ![n] = "finish"]
                    /\ age' = [age EXCEPT ![n] = 0]
-             /\ UNCHANGED <<width, up, judged>>
+             /\ UNCHANGED <<workerLive, coordinator, width, up, judged>>
 
 Raise == /\ width < MaxWidth
          /\ width' = width + 1
-         /\ UNCHANGED <<col, taker, up, age, judged>>
+         /\ UNCHANGED <<workerLive, coordinator, col, taker, up, age, judged>>
 
 Presence == /\ up' = ~up
-            /\ UNCHANGED <<col, taker, width, age, judged>>
+            /\ UNCHANGED <<workerLive, coordinator, col, taker, width, age, judged>>
 
 Next == \/ \E c \in Cards : Deal(c) \/ Finish(c)
         \/ \E w \in Workers, c \in Cards : Take(w, c)
@@ -91,10 +100,15 @@ Next == \/ \E c \in Cards : Deal(c) \/ Finish(c)
 
 Spec == Init /\ [][Next]_vars
 
-TypeOK == /\ col \in [Cards -> {"new", "ready", "working", "done"}]
+TypeOK == /\ workerLive \in [Workers -> BOOLEAN]
+          /\ coordinator \in Workers \cup {"none"}
+          /\ col \in [Cards -> {"new", "ready", "working", "done"}]
           /\ taker \in [Cards -> {"none", "deal", "finish", "a", "b"}]
           /\ width \in 1..MaxWidth /\ up \in BOOLEAN
           /\ age \in [Cards -> 0..Max] /\ judged \subseteq Cards
+\* An observation of the actual placement, independent of the Deal guard.
+DealtOnlyToLiveWorker == \A c \in Cards : col[c] # "new" =>
+                           (workerLive["a"] /\ coordinator # "a")
 \* her lanes are hard, as a member's width
 LanesHard == Cardinality(Working) <= width
 \* no one but she, her deal or her finish takes a card on her row

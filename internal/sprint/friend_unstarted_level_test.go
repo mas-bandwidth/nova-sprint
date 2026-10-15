@@ -31,14 +31,14 @@ func TestTheUnstartedLevelLeavesAOneShotRowToHerMember(t *testing.T) {
 	t.Run("a stale card on a one-shot's row stays", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		seats := []FriendSeat{
+		seats := workerSeatFixtures([]FriendSeat{
 			{Name: "amy", Width: 1, Status: Up, Class: "flash", Session: FriendOneShot},
 			{Name: "bob", Width: 1, Status: Up, Class: "flash"},
-		}
-		w.must(func() Plan { p, _ := TickDeal(w.s, TickReq{Friends: seats}); return p }())
+		})
+		w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seats}); return p }())
 		require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "dealt to the one-shot she names")
 		w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-		p, _ := TickDeal(w.s, TickReq{Friends: seats})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 		w.must(p)
 		assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "her member takes it: the start-bound level does not move it")
 		assert.Empty(t, notStarted(p), "no not-started line moves a one-shot's card")
@@ -47,14 +47,14 @@ func TestTheUnstartedLevelLeavesAOneShotRowToHerMember(t *testing.T) {
 	t.Run("no stale card is levelled onto a one-shot's row", func(t *testing.T) {
 		t.Parallel()
 		w := friendWorld(t, friendBrief("friend amy"))
-		seats := []FriendSeat{
+		seats := workerSeatFixtures([]FriendSeat{
 			{Name: "amy", Width: 1, Status: Up, Class: "flash"},
 			{Name: "bob", Width: 1, Status: Up, Class: "flash", Session: FriendOneShot},
-		}
-		w.must(func() Plan { p, _ := TickDeal(w.s, TickReq{Friends: seats}); return p }())
+		})
+		w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seats}); return p }())
 		require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row)
 		w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
-		p, _ := TickDeal(w.s, TickReq{Friends: seats})
+		p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 		w.must(p)
 		assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "the only idle lane is a one-shot's member lane: it stays")
 		assert.Empty(t, notStarted(p))

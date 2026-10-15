@@ -14,7 +14,7 @@ import (
 func TestACappedLaneIsReDealtOnceAtTheNextTierUp(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("only friend amy"))
-	seats := []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash,pro,heavy"}}
+	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "flash,pro,heavy"}})
 	amy := FriendRow("amy")
 	dealStarted(w, seats...)
 	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
