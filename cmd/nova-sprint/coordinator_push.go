@@ -30,7 +30,7 @@ import (
 // the bus, so the gate (coordinator_hook.go) lets a coordinator command run only while
 // the judgments have a way to the seat. The model is tla/CoordinatorPush.tla.
 //
-// Every coordPushLook the server looks, on its line, at the inbox, the epoch and the
+// Every log event (and at most coordPushLook on a quiet log) the server looks, on its line, at the inbox, the epoch and the
 // machine's line, and then, off the line:
 //
 //   - delivers: every group for the coordinator (a judgment, or a note addressed to
@@ -54,7 +54,7 @@ import (
 //     not fail (unproven while it did). Only the session's answer to nova-hook's challenge
 //     proves the coordinator is there; the sprint push proves the way to the session.
 
-// coordPushLook is how often the server looks for what is new for the coordinator.
+// coordPushLook bounds WaitLog and remains the quiet-log retry backstop.
 const coordPushLook = 5 * time.Second
 
 // coordPushMax is the most groups one message names in full; the rest are counted.
@@ -64,6 +64,10 @@ const coordPushMax = 20
 // epoch it is for, the delivery keys told, and the warning's and the late tick's state.
 type coordPush struct {
 	mu             sync.Mutex
+	logEpoch       uint64
+	logCursor      string
+	streamCursor   string
+	streamPending  []sprint.Note
 	holder         string
 	epoch          uint64
 	told           map[string]bool
@@ -79,29 +83,47 @@ type coordPush struct {
 	heldWhy        string    // what the last renewal said, said again only when it changes
 }
 
-// coordPushLoop is the server's look, every coordPushLook, for the life of the server.
+// coordPushLoop wakes on each committed log event. The cursor is captured by
+// readCoordLook on the line, before sending: a commit racing a send stays after
+// it and wakes the next pass. Never hold the server line while blocking.
+// tla/CoordinatorPush.tla LogPush, Look, PushedWithinOneEvent.
 func (a *app) coordPushLoop(ctx context.Context) {
-	t := time.NewTicker(coordPushLook)
-	defer t.Stop()
-	for {
-		a.coordinatorPass(ctx)
-		select {
-		case <-ctx.Done():
+	for ctx.Err() == nil {
+		if !a.coordinatorPass(ctx) {
+			if ctx.Err() == nil {
+				a.sleep(coordPushLook)
+			}
+			continue
+		}
+		if ctx.Err() != nil {
 			return
-		case <-t.C:
+		}
+		st, err := a.store(common{redis: a.serveAddr})
+		if err == nil {
+			a.coord.mu.Lock()
+			epoch, cursor := a.coord.logEpoch, a.coord.logCursor
+			a.coord.mu.Unlock()
+			_, _, err = st.WaitLog(ctx, epoch, cursor, coordPushLook)
+		}
+		if err != nil && ctx.Err() == nil {
+			// A failed wait must not busy-spin or remove the existing retry backstop.
+			a.sleep(coordPushLook)
 		}
 	}
 }
 
 // coordLook is what one look read on the line.
 type coordLook struct {
-	holder  string
-	scope   string
-	epoch   uint64
-	groups  []sprint.Group
-	open    []sprint.Open
-	machine string
-	stopped func(time.Time, time.Time) time.Duration
+	holder       string
+	logCursor    string
+	streamCursor string
+	streamEvents []sprint.Note
+	scope        string
+	epoch        uint64
+	groups       []sprint.Group
+	open         []sprint.Open
+	machine      string
+	stopped      func(time.Time, time.Time) time.Duration
 }
 
 // readCoordLook reads the look on the line: the seat's holder, the epoch, the inbox and
@@ -109,15 +131,47 @@ type coordLook struct {
 func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 	var l coordLook
 	err := a.onLine(ctx, func(st *store.Store) error {
-		var err error
-		if l.holder, err = st.B.Coordinator(ctx); err != nil || l.holder == "" {
-			return err
-		}
 		es, err := st.EpochNow(ctx)
 		if err != nil {
 			return err
 		}
 		l.epoch = es.N
+		backend := st.B
+		if l.epoch != 0 {
+			backend = backend.AtEpoch(l.epoch, false)
+		}
+		if l.logCursor, _, err = backend.Tails(ctx); err != nil {
+			return err
+		}
+		if l.holder, err = st.B.Coordinator(ctx); err != nil || l.holder == "" {
+			return err
+		}
+		a.coord.mu.Lock()
+		if a.coord.holder == l.holder && a.coord.epoch == l.epoch {
+			l.streamCursor = a.coord.streamCursor
+			l.streamEvents = append(l.streamEvents, a.coord.streamPending...)
+		}
+		a.coord.mu.Unlock()
+		// Read immutable event notes independently of the human inbox cursor:
+		// answering a stop and advancing inbox must not swallow its notification.
+		for {
+			notes, ids, err := backend.NotesSince(ctx, l.streamCursor, 1000)
+			if err != nil {
+				return err
+			}
+			for _, n := range notes {
+				if n.StreamTransition != nil {
+					l.streamEvents = append(l.streamEvents, n)
+				}
+			}
+			if len(ids) == 0 {
+				break
+			}
+			l.streamCursor = ids[len(ids)-1]
+			if len(ids) < 1000 {
+				break
+			}
+		}
 		l.scope = a.serveAddr + "\x00" + st.Names.Prefix
 		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
 		if err != nil {
@@ -142,13 +196,17 @@ func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 
 // coordinatorPass is one look: read, then deliver, warn, tell a late tick and hold the
 // sprint push.
-func (a *app) coordinatorPass(ctx context.Context) {
+func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 	a.decisionPass(ctx)
 	l, err := a.readCoordLook(ctx)
 	if err != nil {
 		a.serveSay("COORDINATOR PUSH: the inbox could not be read, tried again at the next look: %s", oneline.Escape(err.Error()))
 		return
 	}
+	read = true
+	a.coord.mu.Lock()
+	a.coord.logEpoch, a.coord.logCursor = l.epoch, l.logCursor
+	a.coord.mu.Unlock()
 	if l.holder == "" {
 		return
 	}
@@ -170,6 +228,7 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
 		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
+	p.streamCursor, p.streamPending = l.streamCursor, l.streamEvents
 	sends := coordFresh(p.told, l, now)
 	var warn string
 	var warnSeen map[string]bool
@@ -265,7 +324,12 @@ func (a *app) coordinatorPass(ctx context.Context) {
 	}
 	receipts := map[string]sprint.CoordinatorDelivery{}
 	attemptedTokens := map[string]bool{}
+	blockedStreams := map[string]bool{}
 	for _, d := range sends {
+		streamRecipient := d.stream + "\x00" + d.to
+		if d.stream != "" && blockedStreams[streamRecipient] {
+			continue
+		}
 		frozen, found := prepared[d.note]
 		if d.note != "" {
 			if !found || frozen.Sent {
@@ -296,6 +360,9 @@ func (a *app) coordinatorPass(ctx context.Context) {
 			subject = fmt.Sprintf("nova-sprint: %d new for %s", len(d.groups), d.to)
 		}
 		if !send(d.to, bus.Message{From: frozen.From, Kind: d.kind, Subject: subject, Body: d.text, Token: d.token}) {
+			if d.stream != "" {
+				blockedStreams[streamRecipient] = true
+			}
 			continue
 		}
 		if found {
@@ -314,6 +381,21 @@ func (a *app) coordinatorPass(ctx context.Context) {
 		p.mu.Unlock()
 		a.serveSay("COORDINATOR PUSH to=%s groups=%s", d.to, strings.Join(d.groups, ","))
 	}
+	p.mu.Lock()
+	if p.holder == l.holder && p.epoch == l.epoch {
+		pending := p.streamPending[:0]
+		for _, n := range p.streamPending {
+			all := true
+			for _, target := range streamRecipients(n, l.holder) {
+				all = all && p.told[streamNoticeKey(n, target.to, target.kind)]
+			}
+			if !all {
+				pending = append(pending, n)
+			}
+		}
+		p.streamPending = pending
+	}
+	p.mu.Unlock()
 	if len(receipts) > 0 {
 		err := a.onLine(ctx, func(st *store.Store) error {
 			_, err := st.CoordinatorDeliveries(ctx, receipts, true, l.epoch)
@@ -372,11 +454,14 @@ func (a *app) coordinatorPass(ctx context.Context) {
 			}
 		}
 	}
+	return
+
 }
 
 // coordSend is one message the look sends: to whom, its kind, its text, and the groups
 // and keys it tells.
 type coordSend struct {
+	stream                          string // stream notices preserve order for each recipient across retries
 	to                              string
 	kind                            string
 	subject                         string // "" for the batch's own
@@ -395,6 +480,30 @@ type coordSend struct {
 // machine or the friend and the reason. told loses every key no longer open.
 func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 	active := map[string]bool{}
+	var transitions []coordSend
+	// CoordinatorPush.tla: every committed transition has its own blocker line,
+	// plus one status for each affected friend. Keep the judgment in its group.
+	for _, n := range l.streamEvents {
+		tr := n.StreamTransition
+		if tr == nil {
+			continue
+		}
+		subject := fmt.Sprintf("STREAM STOPPED %s cause=%s waiting=%d at=%s", n.Stream, tr.Cause, tr.Waiting, n.At.UTC().Format(time.RFC3339))
+		if n.Type == sprint.NStreamResumed {
+			subject = fmt.Sprintf("STREAM RESUMED %s -> %s at=%s", n.Stream, tr.State, n.At.UTC().Format(time.RFC3339))
+		}
+		for _, target := range streamRecipients(n, l.holder) {
+			to, kind := target.to, target.kind
+			key := streamNoticeKey(n, to, kind)
+			active[key] = true
+			if told[key] {
+				continue
+			}
+			token := fmt.Sprintf("stream:%x", sha256.Sum256([]byte(l.scope+"\x00"+strconv.FormatUint(l.epoch, 10)+"\x00"+key)))
+			transitions = append(transitions, coordSend{stream: n.Stream, to: to, kind: kind, subject: subject,
+				text: subject + "\nwho=" + n.Who + " did=" + n.What, keys: []string{key}, token: token})
+		}
+	}
 	byTo := map[string]*coordSend{}
 	var order []string
 	more := map[string]int{}
@@ -489,7 +598,29 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 		sort.Strings(d.keys)
 		out = append(out, *d)
 	}
-	return append(out, state...)
+	return append(transitions, append(out, state...)...)
+}
+
+type streamRecipient struct{ to, kind string }
+
+func streamRecipients(n sprint.Note, holder string) []streamRecipient {
+	out := []streamRecipient{{holder, bus.KindBlocker}}
+	seen := map[string]bool{}
+	if n.StreamTransition != nil {
+		for _, name := range n.StreamTransition.Owners {
+			if !seen[name] {
+				out = append(out, streamRecipient{name, bus.KindStatus})
+				seen[name] = true
+			}
+		}
+	}
+	return out
+}
+
+// The kind and immutable note ID distinguish stop/resume and recurrence even
+// when the store commits both in the same timestamp precision.
+func streamNoticeKey(n sprint.Note, to, kind string) string {
+	return "stream\x00" + n.Stream + "\x00" + n.At.UTC().Format(time.RFC3339Nano) + "\x00" + n.Type + "\x00" + n.ID + "\x00" + to + "\x00" + kind
 }
 
 // deliveryKeys identifies each open note separately, including its explicit wait

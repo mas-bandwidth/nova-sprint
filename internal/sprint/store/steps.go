@@ -189,7 +189,30 @@ func RedoStep(r sprint.RedoReq) Step {
 	return Step{Named: len(r.Sel.IDs) > 0, Args: ArgsOf(r), Verb: "redo", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,
 		// the redo deals: a member under its floor or draining is given nothing (notQuiet)
 		ReadNoRoom: true,
-		Plan:       func(s *sprint.Snapshot) sprint.Plan { return sprint.Redo(s, r) }}
+		Extras: func(s *sprint.Snapshot) map[string][]string {
+			streams := map[string]bool{}
+			if r.Sel.Stream != "" {
+				streams[r.Sel.Stream] = true
+			}
+			for _, id := range r.Sel.IDs {
+				if c := s.Work.Card(id); c != nil {
+					streams[c.Row] = true
+				}
+			}
+			if len(streams) == 0 {
+				for _, stream := range s.Merge.Rows() {
+					if s.StreamCtl(stream).F("state") == sprint.StreamStopped {
+						streams[stream] = true
+					}
+				}
+			}
+			var ids []string
+			for stream := range streams {
+				ids = append(ids, streamNoticeRecords(s, stream)[sprint.Fleet]...)
+			}
+			return map[string][]string{sprint.Fleet: ids}
+		},
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Redo(s, r) }}
 }
 
 // DropStep is the coordinator taking primaries off the table.
@@ -241,7 +264,8 @@ func MergeStep(r sprint.MergeReq) Step {
 	// friend read cards retire from Fleet, so friendReadCloseUnit stores their
 	// reader/attempt/head identity on Work before the push.
 	return Step{Args: ArgsOf(r), Verb: "merge", Load: tables(sprint.Merge, sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, Bars: true,
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
+		Extras: func(s *sprint.Snapshot) map[string][]string { return streamNoticeRecords(s, r.Stream) },
+		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
 }
 
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
@@ -321,8 +345,25 @@ func FundedStep(r sprint.FundedReq) Step {
 
 // ResumeStep moves a stopped stream again.
 func ResumeStep(r sprint.ResumeReq) Step {
-	return Step{Answers: r.Answers, Args: ArgsOf(r), Verb: "resume", Load: tables(sprint.Merge, sprint.Work), Mirrors: true,
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Resume(s, r) }}
+	// CoordinatorPush.tla CommitTransition snapshots affected friend owners on
+	// their Fleet work records in the same unit as the resume notice.
+	return Step{Answers: r.Answers, Args: ArgsOf(r), Verb: "resume", Load: tables(sprint.Merge, sprint.Work, sprint.Fleet), Mirrors: true,
+		Extras: func(s *sprint.Snapshot) map[string][]string { return streamNoticeRecords(s, r.Stream) },
+		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.Resume(s, r) }}
+}
+
+// Completed work records can be unplaced. Read their recorded owner explicitly
+// for the notice committed with the transition (CoordinatorPush.tla).
+func streamNoticeRecords(s *sprint.Snapshot, stream string) map[string][]string {
+	var ids []string
+	for _, col := range []string{sprint.Queued, sprint.Stuck} {
+		for _, c := range s.Merge.Cell(stream, col) {
+			if pr := s.Work.Card(c.ID); pr != nil && pr.Int("attempt") > 0 {
+				ids = append(ids, sprint.WorkCardID(pr.ID, pr.Int("attempt")))
+			}
+		}
+	}
+	return map[string][]string{sprint.Fleet: ids}
 }
 
 // FleetStep is a member up or down, the ready queues levelled, or the fleet

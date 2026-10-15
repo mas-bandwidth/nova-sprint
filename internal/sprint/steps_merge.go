@@ -160,7 +160,7 @@ func baseGateStep(p Plan, s *Snapshot, ctl *Card, r MergeReq) Plan {
 	set := map[string]string{"state": StreamStopped, "since": stamp(s.Now), "cause": "base"}
 	j := judgment(NBaseRed, r.Stream, s.Now, 0)
 	j.StreamLevel, j.Who, j.What = true, r.Who, cutText(what, MaxCardTextBytes)
-	p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"card", "other"}, baseGateCount...)...))}, Notes: []Note{j},
+	p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"card", "other"}, baseGateCount...)...))}, Notes: []Note{streamTransition(s, r.Stream, NStreamStopped, StreamStopped, "base", r.Who, what), j},
 		Moved: "stream " + r.Stream + " stopped: the base fails its tree gate"})
 	return p
 }
@@ -530,7 +530,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			was, had := s.Work.Prop(PropLandRefusal)
 			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(strings.Join(primaries, ",")+": "+reason, MaxCardTextBytes), Was: was, WasAbsent: !had})
 		}
-		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, j)}
+		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, streamTransition(s, r.Stream, NStreamStopped, StreamStopped, cause, r.Who, r.Note), j)}
 	}
 	switch {
 	case r.Conflict != "":
@@ -782,6 +782,8 @@ func Resume(s *Snapshot, r ResumeReq) Plan {
 	}
 	u := Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"cause", "card", "other", FieldConflictKind, FieldConflictPaths}, baseGateCount...)...))},
 		Moved: fmt.Sprintf("stream %s stopped -> %s; %d stuck -> queued", r.Stream, state, len(stuck))}
+	// tla/CoordinatorPush.tla CommitTransition: resume has its own durable notice.
+	u.Notes = append(u.Notes, streamTransition(s, r.Stream, NStreamResumed, state, "", r.Who, r.Did))
 	if state == StreamLanded {
 		n := happened(NStreamLanded, r.Stream, s.Now)
 		n.Who = r.Who

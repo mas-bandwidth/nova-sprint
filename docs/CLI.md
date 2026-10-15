@@ -181,6 +181,13 @@ nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
 
+A stream stop and `resume` each push a separate blocker message to the coordinator
+and a status message to each affected card owner. The resume notice includes the
+new state, actor and `--did` explanation. Delivery wakes on the committed sprint
+log, with the existing five-second quiet-log retry backstop; the stop judgment
+still requires its ordinary answer.
+
+
 Friend availability comes only from `nova-hook`: a missing, unproven or down
 hook reads `down`; a live, proven hook reads `held` when sprint's hold is set,
 and `up` otherwise. Down takes precedence in the display while the underlying

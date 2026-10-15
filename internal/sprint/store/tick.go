@@ -671,7 +671,15 @@ func tickExtras(s *sprint.Snapshot) map[string][]string {
 			}
 		}
 	}
-	return map[string][]string{sprint.Work: work, sprint.Readers: reads, sprint.Fleet: sprint.ReadCardExtras(s)}
+	fleet := sprint.ReadCardExtras(s)
+	// CoordinatorPush.tla CommitTransition: automatic resumes freeze the same
+	// current-attempt owners as the resume verb, including unplaced work cards.
+	for _, stream := range s.Merge.Rows() {
+		if s.StreamCtl(stream).F("state") == sprint.StreamStopped {
+			fleet = append(fleet, streamNoticeRecords(s, stream)[sprint.Fleet]...)
+		}
+	}
+	return map[string][]string{sprint.Work: work, sprint.Readers: reads, sprint.Fleet: fleet}
 }
 
 // TickPartStep is one part of the tick as a step of the engine: fenced,
