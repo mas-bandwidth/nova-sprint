@@ -58,7 +58,7 @@ func TestServerReviewMemberRecoversATakeWhenEveryReplyWasLost(t *testing.T) {
 			assert.Len(t, q["working"], 2)
 			assert.Len(t, q["ready"], 2, "no new take on the recovery pass")
 			takes := 0
-			for _, v := range r.served {
+			for _, v := range r.recorded() {
 				if v[0] == "take" {
 					takes++
 				}
