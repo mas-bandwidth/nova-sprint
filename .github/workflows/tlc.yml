@@ -1,10 +1,17 @@
-# nova-sprint TLC: the models in tla/ run on GitHub-hosted ubuntu-latest
-# runners. nova-sprint is a public repository, so the fleet's self-hosted
-# runners (registered to nova-tools) are not allowed here, and neither is a
-# desktop. The TLC jar is pinned by digest in tla/tla2tools.sha256 -- the same
-# digest every tla/RUNS.tsv record names -- and downloaded from the tlaplus
-# v1.7.4 release. The jobs never write tla/RUNS.tsv: records still land
-# through cards, from a bench.
+
+# nova-sprint TLC: the models in tla/ run on the fleet's own Linux benches,
+# the self-hosted runners registered to this repository with the labels
+# self-hosted, Linux, X64, fleet, nova-sprint (amd-2 and amd-3, 16 cores
+# each). The GitHub-hosted runner has four vCPUs, so tlacheck ran one case at a
+# time there and the slow groups overran their 110-second budget; on a 16-core
+# bench four cases run at once at two TLC workers each, half the bench's cores,
+# and every required group, the slow liveness cases with them, stays on the
+# nightly gate. nova-sprint is public: the models job runs on the fleet only for
+# the nightly schedule, workflow_dispatch and a pull request from a branch of
+# this repository, never for a pull request from a fork. The TLC jar is pinned
+# by digest in tla/tla2tools.sha256 -- the same digest every tla/RUNS.tsv
+# record names -- and downloaded from the tlaplus v1.7.4 release. The jobs
+# never write tla/RUNS.tsv: records still land through cards, from a bench.
 name: TLC
 
 on:
@@ -17,6 +24,7 @@ on:
       - "tla/**"
       - "pkg/tlc/**"
       - "tools/tlacheck/**"
+      - ".github/workflows/tlc.yml"
 
 permissions:
   contents: read
@@ -27,6 +35,7 @@ concurrency:
 
 jobs:
   groups:
+    # runs no TLC: the runner's own tests and the list of groups
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -56,13 +65,15 @@ jobs:
 
   models:
     needs: groups
-    # an empty list ends the workflow green: no groups means no matrix
-    if: ${{ needs.groups.outputs.groups != '[]' }}
-    runs-on: ubuntu-latest
+    # an empty list ends the workflow green: no groups means no matrix; a
+    # pull request from a fork never reaches the fleet's self-hosted runners
+    if: ${{ needs.groups.outputs.groups != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64, fleet, nova-sprint]
     timeout-minutes: 5
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # one job per fleet runner: the two benches each run one group at a time
+      max-parallel: 2
       matrix:
         group: ${{ fromJSON(needs.groups.outputs.groups) }}
     steps:
@@ -70,15 +81,18 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      - name: java from the runner image
-        # the runner image ships JDK 21; no setup-java action
+      - name: java from the bench
+        # the fleet's benches carry JDK 21 at JAVA_HOME (named in the
+        # runner's own .env); no setup-java action
         run: |
           set -euo pipefail
-          echo "${JAVA_HOME_21_X64}/bin" >> "${GITHUB_PATH}"
-          "${JAVA_HOME_21_X64}/bin/java" -version
+          test -x "${JAVA_HOME}/bin/java" || { echo "no java at JAVA_HOME=${JAVA_HOME}" >&2; exit 2; }
+          echo "${JAVA_HOME}/bin" >> "${GITHUB_PATH}"
+          "${JAVA_HOME}/bin/java" -version
       - name: tlc ${{ matrix.group }}
         # download the pinned jar, refuse it unless it matches
-        # tla/tla2tools.sha256, then run the group with the 110-second budget
+        # tla/tla2tools.sha256, then run the group with the 110-second budget,
+        # nproc/4 cases at once at two TLC workers each: half the bench's cores
         run: |
           set -euo pipefail
           jar="${RUNNER_TEMP}/tla2tools.jar"
@@ -90,11 +104,15 @@ jobs:
             echo "tla2tools.jar digest mismatch: want ${want}, got ${got}" >&2
             exit 2
           fi
+          parallel=$(( $(nproc) / 4 ))
+          if [ "${parallel}" -lt 1 ]; then parallel=1; fi
+          echo "$(nproc) CPUs: ${parallel} cases at once"
           make tlc \
             TLC_JAR="${jar}" \
             TLC_GROUP="${{ matrix.group }}" \
             TLC_OUT="${RUNNER_TEMP}/tlc-${{ matrix.group }}" \
-            TLC_BUDGET=110
+            TLC_BUDGET=110 \
+            TLC_PARALLEL="${parallel}"
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         if: ${{ always() }}
         with:

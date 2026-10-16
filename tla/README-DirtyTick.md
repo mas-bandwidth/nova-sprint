@@ -99,7 +99,7 @@ One observation about the counter rule: it is exact while the candidate set is f
 
 ## Reversed witnesses, goals and probes
 
-Each witness turns on one broken rule (`Broken`); its control is the unbroken configuration of the same scenario, which passes with every property. Group times are from `tlacheck run` on a Linux bench (32 CPUs, TLC at 1 or 2 workers, 110 s budget per group): `dirtytick` 11 s, `dirtytick-small` 12 s, `dirtytick-three` 14 s, `dirtytick-witnesses` 14 s, `dirtytick-goals` 6 s.
+Each witness turns on one broken rule (`Broken`); its control is the unbroken configuration of the same scenario, which passes with every property. Group times are from `make tlc` on the fleet runner amd-3 (16 CPUs, four cases at once, TLC at 1 or 2 workers, 110 s budget per group, 2026-10-16): `dirtytick` 21 s, `dirtytick-small` 43 s, `dirtytick-small-b` 16 s, `dirtytick-three` 63 s, `dirtytick-witnesses` 21 s, `dirtytick-goals` 85 s (nearly all of it `MCDirtyTickG1Live.cfg`, the liveness form, alone), `dirtytick-handback-live` 41 s, `dirtytick-handback-live-lapse` 94 s.
 
 | case | the rule broken | fails | states |
 |---|---|---|---|

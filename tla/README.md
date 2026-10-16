@@ -76,12 +76,17 @@ with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
 made stale, and `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
 your version, and record new results against the actual model inputs you ran.
 
-The same groups run on GitHub-hosted `ubuntu-latest` runners in
-[`.github/workflows/tlc.yml`](../.github/workflows/tlc.yml) (nightly, on
-`workflow_dispatch`, and on a pull request touching `tla/`, `pkg/tlc/` or
-`tools/tlacheck/`), which downloads the pinned tlaplus v1.7.4 release and
-checks it against [`tla2tools.sha256`](tla2tools.sha256) before
-`make tlc TLC_GROUP=<group> TLC_BUDGET=110`.
+The same groups run on the fleet's self-hosted Linux benches (runner labels
+`self-hosted, Linux, X64, fleet, nova-sprint`) in
+[`.github/workflows/tlc.yml`](../.github/workflows/tlc.yml) (every required
+group nightly and on `workflow_dispatch`; the stale groups on a pull request
+from a branch of this repository touching `tla/`, `pkg/tlc/`, `tools/tlacheck/`
+or the workflow, never on a fork's), which downloads the pinned tlaplus v1.7.4
+release and checks it against [`tla2tools.sha256`](tla2tools.sha256) before
+`make tlc TLC_GROUP=<group> TLC_BUDGET=110 TLC_PARALLEL=<nproc/4>`: four cases
+at once on a 16-core bench, two TLC workers each, half its cores. The budget is
+the whole group's, so a group is split when its cases no longer fit it with
+margin on that bench.
 
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
@@ -229,9 +234,10 @@ independently reproducing all 22 results and checking the eight negative witness
 and the necessity of each weak-fairness conjunct. This records model review, not
 product implementation or landing.
 
-Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
-Linux, then use `tools/tlacheck merge --keep` as described above. The group contains
-13 unchanged historical cases, the revised control, and eight negatives (22 total).
+Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` and
+the same with `TLC_GROUP=landpass-flow` on Linux, then use `tools/tlacheck merge --keep`
+as described above. The `landpass` group holds the historical cases; the revised
+control and its eight negatives are the `landpass-flow` group.
 A witness's runner PASS means TLC reported its declared violation. This bounded
 model omits crash recovery, dynamic stream membership, arbitrary batch sizes and
 full Git ancestry; it makes no claim that the staged Go implements every requested
