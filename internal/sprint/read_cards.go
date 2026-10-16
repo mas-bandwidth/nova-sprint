@@ -54,8 +54,75 @@ const FieldReadCard = "read_card"
 const ReadCardDeadline = 60 * time.Minute
 
 // readCardLoadWindow is how many generations past the highest placed card ReadCardExtras
-// loads and the deal may advance through (K=4). Past it, a reader is skipped.
+// loads and the deal may advance through (K=4), besides the generations the primary's
+// read top holds (readGenTop). Past both, a reader is skipped.
 const readCardLoadWindow = 4
+
+// PropReadGenTop is the fleet property holding the highest read card generation the deal
+// cut past the load window for any reader of the primary, "<attempt>:<gen>" (readGenTop).
+// It is written in the plan that cuts that generation (readGenTops), so every generation of
+// the attempt lies at or below the bound ReadCardExtras loads from the placed records and
+// the properties alone, and a reader whose reads the machine took back past the window is
+// dealt it again at a fresh one, never refused forever (the owner, 2026-10-06: "I don't
+// want any serial reads again"; 2026-10-15, forty review cards and no reads dealt, every
+// fleet reader's five generations taken back off a resting route; tla/ReadCards.tla,
+// CompleteView and NeverWedged).
+func PropReadGenTop(primary string) string { return "read_gen_top." + primary }
+
+// readGenTop is the generation the primary's read top holds for the attempt (PropReadGenTop),
+// 0 for none or for another attempt.
+func readGenTop(s *Snapshot, primary string, attempt int) int {
+	if s == nil || s.Fleet == nil {
+		return 0
+	}
+	v, ok := s.Fleet.Prop(PropReadGenTop(primary))
+	if !ok {
+		return 0
+	}
+	a, g, found := strings.Cut(v, ":")
+	if !found || a != itoa(attempt) {
+		return 0
+	}
+	n, err := strconv.Atoi(g)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// readGenBound is the highest generation of the reader's read card identity that may exist
+// at the attempt: the load window past the highest placed card (placedNext), or the
+// primary's read top when it is higher. ReadCardExtras loads every generation through one
+// past it, so the deal sees every card of the reader and the next identity is known absent.
+func readGenBound(placedNext, top int) int { return max(placedNext+readCardLoadWindow, top) }
+
+// readGenTops collects, for one plan, the read top each primary must hold for the cards
+// the plan cuts (PropReadGenTop): a generation past the window and past the top it read.
+type readGenTops map[string]struct{ attempt, gen int }
+
+// cut notes the plan cuts the reader's id at the attempt; s is the snapshot the plan read.
+func (t readGenTops) cut(s *Snapshot, primary string, attempt int, reader, id string) {
+	g := readGenOf(id, ReadCardID(primary, attempt, reader))
+	if g <= readCardLoadWindow || g <= readGenTop(s, primary, attempt) {
+		return
+	}
+	if was, ok := t[primary]; ok && was.attempt == attempt && was.gen >= g {
+		return
+	}
+	t[primary] = struct{ attempt, gen int }{attempt, g}
+}
+
+// writes is the property writes the plan carries for the tops it cut, guarded by the value read.
+func (t readGenTops) writes(s *Snapshot) []PropWrite {
+	var out []PropWrite
+	for _, primary := range slices.Sorted(maps.Keys(t)) {
+		v := t[primary]
+		name := PropReadGenTop(primary)
+		was, had := s.Fleet.Prop(name)
+		out = append(out, PropWrite{Table: Fleet, Name: name, Value: itoa(v.attempt) + ":" + itoa(v.gen), Was: was, WasAbsent: !had})
+	}
+	return out
+}
 
 // The retired_by of a read card the read-card ask takes back: past its deadline, or its
 // primary no longer in review at the card's attempt (reworked, its brief replaced, dropped,
@@ -339,7 +406,7 @@ func readNextGen(cards []*Card, primary string, attempt int, reader string) int 
 // It deals the next generation only when it lies inside the loaded window (readCardLoadWindow)
 // and the snapshot holds no record of it; past the window it returns "" (readRefusal answers
 // "read generations past the load window").
-func readCardIDFor(cards []*Card, primary string, attempt int, reader string) string {
+func readCardIDFor(cards []*Card, primary string, attempt int, reader string, top int) string {
 	base := ReadCardID(primary, attempt, reader)
 	next := 0
 	placedNext := 0
@@ -356,7 +423,7 @@ func readCardIDFor(cards []*Card, primary string, attempt int, reader string) st
 			}
 		}
 	}
-	if next > placedNext+readCardLoadWindow {
+	if next > readGenBound(placedNext, top)+1 {
 		return ""
 	}
 	id := base
@@ -395,7 +462,7 @@ func ReadCardExtras(s *Snapshot) []string {
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
 			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
-			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next+readCardLoadWindow) {
+			for _, id := range ReadCardGenIDs(c.ID, attempt, name, readGenBound(next, readGenTop(s, c.ID, attempt))+1) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
 				}
@@ -419,8 +486,9 @@ func mayReadCard(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 
 // readRefusal is the clause of mayReadCard that refuses the unit the read, "" when none
 // does: worker, spent, no id, staging refusal, friends' set, friend tier, reader row (a
-// readers-table read of the attempt), fleet set, reader tier (docs/SPEC-SPRINT.md section
-// 1, the read-card deal).
+// readers-table read of the attempt), fleet set, reader tier, and for a member every route
+// of the read's tier resting (ReadRoutesRest; docs/SPEC-SPRINT.md section 1, the read-card
+// deal).
 func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, cards []*Card) string {
 	mine := readerCardsAt(cards, pr.ID, attempt, u.name)
 	switch {
@@ -429,7 +497,7 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 	case readSpent(mine):
 		c := readSpender(mine)
 		return "spent(" + c.ID[strings.LastIndex(c.ID, ".")+1:] + " col=" + c.Col + " verdict=" + c.F("verdict") + " retired_by=" + c.F("retired_by") + " head=" + c.F("head") + ")"
-	case readCardIDFor(mine, pr.ID, attempt, u.name) == "":
+	case readCardIDFor(mine, pr.ID, attempt, u.name, readGenTop(s, pr.ID, attempt)) == "":
 		return "read generations past the load window"
 	}
 	if !u.friend {
@@ -463,10 +531,13 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 	if !s.FleetTakes(t) {
 		return "fleet set" // the fleet's tiers leave the read out (set --fleet-tiers)
 	}
-	if s.readerServesTier(rd, t) {
-		return ""
+	if !s.readerServesTier(rd, t) {
+		return "reader tier"
 	}
-	return "reader tier"
+	if s.readRoutesAllRest(pr) {
+		return ReadRoutesRest // dealt, it would be taken back off the resting route at once
+	}
+	return ""
 }
 
 // readTierDistance is how far above the read's tier (readTierOf) the unit reads, the
@@ -585,6 +656,10 @@ func readCardsTakeBack(s *Snapshot) map[string][]Change {
 	return out
 }
 
+// ReadRoutesRest is readRefusal's clause for a fleet reader while every route of the read's
+// tier rests (readRoutesAllRest): the read waits for a route, cutting no generation.
+const ReadRoutesRest = "every route of its read tier rests"
+
 // NoReaderMayRead begins the wait of a primary no unit up may be dealt its read card: the
 // read-card ask raises cannot ask on it (readCardsAskPart).
 const NoReaderMayRead = "no reader up may read it"
@@ -681,6 +756,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		unitByName[u.name] = i
 	}
 	readRounds := map[string]*round{}
+	tops := readGenTops{}
 	if why != nil {
 		var us, out []string
 		for _, u := range units {
@@ -705,10 +781,13 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		worker := attemptUnit(view, pr.ID, attempt)
 		cards := idx[pr.ID]
 		var may []int
+		resting := false
 		for i, u := range units {
 			r := readRefusal(view, u, pr, attempt, worker, cards)
 			if r == "" {
 				may = append(may, i)
+			} else if r == ReadRoutesRest {
+				resting = true
 			} else if r == "read generations past the load window" {
 				if !slices.ContainsFunc(p.Refused, func(ref Refusal) bool {
 					return ref.Key == u.name && ref.Why == r
@@ -766,6 +845,10 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		delete(back, pr.ID)
 		if len(picked) < want {
 			switch {
+			case len(may) == 0 && resting:
+				// the route's rest is noted once by itself (NRouteRested): no cannot-ask
+				// judgment for a read that waits only for its route to serve
+				waits[pr.ID] = ReadRoutesRest
 			case len(may) == 0:
 				waits[pr.ID] = NoReaderMayRead + ": no friend whose tiers reach its read tier, and no member whose reader row serves its tier, besides its own worker"
 			default:
@@ -807,10 +890,11 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 			un := &units[i]
 			un.half--
 			un.idle--
-			id := readCardIDFor(cards, pr.ID, attempt, un.name)
+			id := readCardIDFor(cards, pr.ID, attempt, un.name, readGenTop(view, pr.ID, attempt))
 			if id == "" || (view != nil && view.Fleet != nil && view.Fleet.Card(id) != nil) {
 				continue
 			}
+			tops.cut(view, pr.ID, attempt, un.name, id)
 			fields := map[string]string{
 				"kind": "read", "primary": pr.ID, "stream": pr.Row, "reader": un.name,
 				"attempt": itoa(attempt), "head": head, "asked": stamp(s.Now), "gen": "1",
@@ -880,6 +964,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		}
 		p.Props = append(p.Props, PropWrite{Table: r.table, Name: r.name, Value: r.value(), Was: r.read, WasAbsent: !r.had})
 	}
+	p.Props = append(p.Props, tops.writes(view)...)
 	return Lawful(p), waits
 }
 

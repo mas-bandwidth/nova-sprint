@@ -227,6 +227,10 @@ func Ask(s *Snapshot, r AskReq) Plan {
 					return ch.Table == Fleet && ch.Entry.Create != nil && ch.Entry.Set["kind"] == "read"
 				})
 			}) {
+				if why == ReadRoutesRest {
+					p.refuse(c.ID, why+"; it is dealt when a route of its tier serves again (nova-sprint routes; routes wake <provider|route>), or rework or drop it")
+					continue
+				}
 				p.refuse(c.ID, why+"; add or bring up a reader at its tier, then ask "+c.ID+", or rework or drop it")
 			}
 		}
