@@ -73,11 +73,11 @@ func TestARetiredReadWithoutAVerdictLeavesTheReaderAskable(t *testing.T) {
 	})
 }
 
-// A pro card is read on flash while no enabled route serves pro and one serves flash (the
-// owner, 2026-10-06 7:11 PM ET: "let flash read pro"): its read card is drawn on a flash
-// route and records tier flash. With a pro route enabled it is read on pro, and with no
-// flash route either it stays pro.
-func TestAProCardIsReadOnFlashWhenNoProRouteIsEnabled(t *testing.T) {
+// A pro card is never read on flash (the owner, 2026-10-16: a card is never read below its
+// tier; the interim "let flash read pro" of 2026-10-06 is gone): with no enabled route of
+// pro and one of flash, its read tier is pro and no read is drawn on the flash route; with
+// a pro route enabled it is read on pro.
+func TestAProCardIsNeverReadOnFlashWhenNoProRouteIsEnabled(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RoutePro
@@ -88,18 +88,14 @@ func TestAProCardIsReadOnFlashWhenNoProRouteIsEnabled(t *testing.T) {
 	}
 	readersReadEveryTier(w)
 	pr := w.s.Work.Card("s1-1")
-	require.Equal(t, cardhdr.RouteFlash, w.s.readTierOf(pr), "no pro route enabled: read on flash")
-	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	reads := readsAt(w.s, pr, 1)
-	require.NotEmpty(t, reads, "the pro card is asked of a reader")
-	for _, rc := range reads {
-		assert.Equal(t, "flash-a", rc.F(FieldRoute), rc.ID)
-		assert.Equal(t, cardhdr.RouteFlash, rc.F(FieldTier), rc.ID)
+	require.Equal(t, cardhdr.RoutePro, w.s.readTierOf(pr), "no pro route enabled: still read at pro")
+	w.do(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	for _, rc := range readsAt(w.s, pr, 1) {
+		assert.NotEqual(t, "flash-a", rc.F(FieldRoute), "never read on the flash route: "+rc.ID)
+		assert.NotEqual(t, cardhdr.RouteFlash, rc.F(FieldTier), rc.ID)
 	}
 	w.s.Routes[1].Enabled = true
 	assert.Equal(t, cardhdr.RoutePro, w.s.readTierOf(pr), "a pro route enabled: read on pro")
-	w.s.Routes[0].Enabled, w.s.Routes[1].Enabled = false, false
-	assert.Equal(t, cardhdr.RoutePro, w.s.readTierOf(pr), "no flash route either: pro, and its judgment")
 }
 
 // With the fleet's work off (nova-sprint set --fleet off) the tick deals no work card to a
@@ -175,11 +171,11 @@ func TestTheWorkSwitchesAreTheSprints(t *testing.T) {
 	assert.Equal(t, SwitchOn, SwitchWord(nil, PropFriends), "on by default")
 }
 
-// A heavy card is read on pro (the owner, 2026-10-06 7:41 PM ET: "let pro do it"): the heavy
-// friend is asked at the tier before the collapse, and a fleet pro reader is its second
-// reader, on a pro route, in the same tick (reads are asked together). Before, a heavy read drew from heavy, which no route serves,
-// and the fleet reader was asked nothing.
-func TestAHeavyCardIsReadOnPro(t *testing.T) {
+// A heavy card is never read on pro (the owner, 2026-10-16: a card is never read below its
+// tier; the interim "let pro do it" of 2026-10-06 is gone): the heavy friend is asked its
+// read at heavy, and the fleet reader of pro, with only flash and pro routes, is asked
+// nothing; its second read waits for a reader of heavy or above.
+func TestAHeavyCardIsNeverReadOnPro(t *testing.T) {
 	t.Parallel()
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	w := newWorld(t, "reader-m1", "reader-m2")
@@ -192,23 +188,20 @@ func TestAHeavyCardIsReadOnPro(t *testing.T) {
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Tokens: 1000, Enabled: true},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "q", Tokens: 1000, Enabled: true},
 	}
-	// one fleet reader of pro up (reader-m2 reads flash alone): with the friend's read it
-	// is the two readers a heavy card needs (enoughReadersUp counts her read)
 	w.s.Readers.Texts = map[string]map[string]string{"reader-m1": {ReaderTiers: "flash,pro"}, "reader-m2": {ReaderTiers: "flash"}}
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}
 	putReview(w, "s1-1", "s1-1: heavy work tier: heavy\n\nThe task.", 1, 1, head)
 	w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RouteHeavy
 	pr := w.s.Work.Card("s1-1")
-	require.Equal(t, cardhdr.RoutePro, w.s.readTierOf(pr), "a heavy read collapses to pro")
+	require.Equal(t, cardhdr.RouteHeavy, w.s.readTierOf(pr), "a heavy card is read at heavy")
 	require.Equal(t, 2, ReadsNeeded(pr), "a heavy card needs two readers")
 
 	tickDealAndAsk(t, w, johnny)
-	require.NotNil(t, w.s.Fleet.Placed(ReadCardID("s1-1", 1, "johnny")), "the heavy friend is asked, at the tier before the collapse")
-	reads := readsAt(w.s, pr, 1)
-	require.Len(t, reads, 1, "in the same tick (reads together) the second read is asked of the fleet pro reader")
-	assert.Equal(t, "reader-m1", reads[0].F("reader"))
-	assert.Equal(t, "pro-a", reads[0].F(FieldRoute))
-	assert.Equal(t, cardhdr.RoutePro, reads[0].F(FieldTier))
+	require.NotNil(t, w.s.Fleet.Placed(ReadCardID("s1-1", 1, "johnny")), "the heavy friend is asked")
+	for _, rc := range readsAt(w.s, pr, 1) {
+		assert.NotEqual(t, "pro-a", rc.F(FieldRoute), "never on the pro route: "+rc.ID)
+	}
+	assert.Empty(t, readsAt(w.s, pr, 1), "no fleet reader of pro is asked a heavy read")
 }
 
 // A card's reads are asked together (Glenn, 2026-10-06 6:02 PM ET: "send out multiple

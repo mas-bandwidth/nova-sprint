@@ -233,6 +233,7 @@ MCRouteIndexBrokenJudgeFleet.cfg	MCRouteIndex.tla	invariant	StrandedIsJudged	ign
 MCRouteIndexFirst.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoFirst.cfg	MCRouteIndex.tla	invariant	FirstPreferred	ignore-terminal	routeindex	required	-
 MCRouteIndexRead.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
+MCRouteIndexBrokenReadBelow.cfg	MCRouteIndex.tla	invariant	NeverBelowItsTier	ignore-terminal	routeindex	required	-
 MCRouteIndexFrontier.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenFrontierFriends.cfg	MCRouteIndex.tla	temporal	EveryTierIsDealtFromItsRoutes	ignore-terminal	routeindex	required	-
 MCLand.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
