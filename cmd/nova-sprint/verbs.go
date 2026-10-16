@@ -175,8 +175,8 @@ func init() {
 		{"log", "[--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]", "log --card s1-4", (*app).cmdLog},
 		// before check, so its two words are matched first (check_cards.go)
 		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
-		{"check", "", "check", (*app).cmdCheck},
-		{"repair", "", "repair", (*app).cmdRepair},
+		{"check", "[--max <n>] [--json]", "check", (*app).cmdCheck},
+		{"repair", "[--dry-run] [--json]", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
 		{"seat check", "", "seat check", (*app).cmdSeatCheck},
 		{"machinery", "", "machinery", (*app).cmdMachinery},
