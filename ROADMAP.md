@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (216)
+- [The sprint system](#the-sprint-system) (217)
 - [Setup, release and operations](#setup-release-and-operations) (34)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
@@ -1804,6 +1804,16 @@ Why it waits: Every manual multi-verb act today cost tokens and hit at least one
 Target: v1.7
 
 From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 is great idea for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
+
+### Every resolved judgment becomes a recorded lesson, and repeated lessons become verbs or checks
+
+Learned from Hermes Agent's skill loop (the agent writes a skill after solving something and improves it with use), but made deterministic. Glenn, 2026-10-16: skills are non-deterministic. The machine records every resolved judgment as data: the judgment kind, the cause the coordinator named, the verbs that fixed it, and how long the card was stuck. When a cause repeats past a threshold, the machine raises a named judgment proposing the fix as code: a composite verb (composite-verbs-one-call-per-coordinator-act), a refusal that names the next command, or a check that stops the cause at its source, so a hulk-style bench fault or a recut card with no BASE line is caught before it strands cards. A lesson never lives only as prose for an agent to remember. Today's examples, to seed it: a bench gate on the wrong Go, a misclassified attempt bound, a recut card missing REPO and BASE lines blocking a whole stream's batch, a false empty-commit on a no-ff merge over a carried head, soft land-after deps on file overlap, and stale GATE-NEEDS judgments after members gained facts.
+
+Why it waits: The coordinator fixed the same few causes by hand many times today; recording them as data and turning repeats into code makes the fix permanent and deterministic.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 and #3 is great for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
 
 ## Setup, release and operations
 
