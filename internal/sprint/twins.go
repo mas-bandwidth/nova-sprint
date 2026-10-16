@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // A card replaced by its twin (docs/SPEC-SPRINT.md section 2; the coordinator, 2026-10-04, at 1:30 PM:

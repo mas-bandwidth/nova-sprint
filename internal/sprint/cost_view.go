@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // Cost visibility (docs/SPEC-SPRINT.md section 1, the where view; the owner, 2026-10-04):
@@ -255,14 +255,16 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 		t.UnpricedRuns += tot.Records - tot.ChargedOf
 		listed := new(big.Rat)
 		for _, con := range v.Consumers {
-			if con.Kind == ConsumerDecide && cmp.Or(con.Usage.Actual, con.Usage.Predicted) == "" {
+			if con.Kind == ConsumerDecide && con.Usage.MarginalUSD() == "" {
 				// a decide call with no price is no run: counted apart (DecideUnpriced)
 				t.UnpricedRuns--
 				t.DecideUnpriced++
 			}
-			if con.Kind == "read" && con.Usage.Unpriced == WhySubscription {
+			if con.Kind == "read" && subscriptionUsage(con.Usage) {
 				// a subscription read's cost is its tokens: priced, never a run unpriced
-				t.UnpricedRuns--
+				if con.Usage.MarginalUSD() == "" {
+					t.UnpricedRuns--
+				}
 				t.ReadTokens += con.Usage.Tokens.Total()
 			}
 			if con.Kind == "read" && con.Usage.Unpriced == cardcost.WhyNoTokens {
@@ -276,7 +278,7 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 				rd.addRead(con, s.Now)
 				t.Readers[cmp.Or(con.Who, "-")] = rd
 			}
-			usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted))
+			usd, err := amountOf(con.Usage.MarginalUSD())
 			if err != nil || usd == nil {
 				continue
 			}
@@ -544,20 +546,6 @@ func amountOf(usd string) (*big.Rat, error) {
 	return r, nil
 }
 
-// PerLandedOf is a stream's dollars per landed card from the where view's cells alone
-// (the cost cell, MoneyText, over the landed count): what the text table shows when the
-// tick's record is not there; "-" with nothing landed or no cost.
-func PerLandedOf(costCell string, landed int) string {
-	if landed <= 0 || len(costCell) < 2 || costCell[0] != '$' {
-		return "-"
-	}
-	r, err := amountOf(costCell[1:])
-	if err != nil || r == nil {
-		return "-"
-	}
-	return cardcost.Cents(r.Quo(r, big.NewRat(int64(landed), 1)))
-}
-
 // ReadDay is one route's reads of a UTC day: the exact dollars charged (each read's
 // actual cost where reported, else its predicted one; "" when none was priced), the
 // tokens, and how many reads.
@@ -577,13 +565,13 @@ func addReadDay(days map[string]ReadDay, con Consumer) {
 		return
 	}
 	route := cmp.Or(u.Route, "-")
-	if u.Unpriced == WhySubscription {
+	if subscriptionUsage(u) {
 		route = WhySubscription
 	}
 	d := days[route]
 	d.Reads++
 	d.Tokens += max(u.Tokens.Total(), 0)
-	if usd := cmp.Or(u.Actual, u.Predicted); usd != "" {
+	if usd := u.MarginalUSD(); usd != "" {
 		if sum, ok := cardcost.Sum(d.USD, usd); ok {
 			d.USD = sum
 		}

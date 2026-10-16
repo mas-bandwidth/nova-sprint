@@ -115,7 +115,7 @@ func friendReadsFirst(s *Snapshot, seats []FriendSeat, waiting []*Card, placed P
 				continue
 			}
 			attempt := readAttempt(pr)
-			if friendMayRead(s, f, pr, attempt, friendReadTier(s, pr), attemptWorker(s, pr.ID, attempt)) {
+			if friendMayRead(s, f, pr, attempt, s.readTierOf(pr), attemptWorker(s, pr.ID, attempt)) {
 				all := f
 				all.ReadsFirst = 0
 				room, _ := friendRoom(all)
@@ -217,7 +217,7 @@ func friendDealByLadder(s *Snapshot, offer []*Card, seats []FriendSeat) (p Plan,
 		for _, pw := range part.Props {
 			k := pw.Table + "." + pw.Name
 			if props[k] {
-				continue // a friend's start clears the dealt-no-more mark, planned in every pass, one write
+				continue // a prop write planned in every pass is one write
 			}
 			props[k] = true
 			p.Props = append(p.Props, pw)

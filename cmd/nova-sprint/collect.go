@@ -13,8 +13,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // collect is the coordinator's hand on the friends' outboxes (the coordinator's stopgap
@@ -244,22 +244,18 @@ func (a *app) cmdCollect(args []string, stdout, stderr io.Writer) int {
 // session wrote in her own tree (evidence) is recorded as her session's evidence; a report
 // in another's tree, or a lane that ended with none, is no evidence of her.
 func (a *app) friendFinishStep(ctx context.Context, st *store.Store, name string, p sprint.Packet, r sprint.FinishReq, evidence bool, say func(string)) (refused string, err error) {
-	step := store.FinishStep(r)
+	step := a.finishStep(r)
 	step.Actor, step.Epoch = r.Who, &p.Epoch
 	res, err := st.Run(ctx, step)
 	if err != nil {
 		return "", err
 	}
 	if len(res.Refused) > 0 {
-		return res.Refused[0].Why, nil
-	}
-	if !evidence {
-		return "", nil
-	}
-	// her row reads up on it for sprint.FriendFinishWindow (docs/SPEC-FRIEND.md, "Presence is
-	// her session's evidence"); a record not written costs her that, never the finish
-	if err := st.FriendFinished(ctx, name, a.now()); err != nil {
-		say(fmt.Sprintf("COLLECT %s NOTE the finish is not recorded as the friend's evidence: %s", p.Card, oneline.Escape(err.Error())))
+		why := res.Refused[0].Why
+		if raised := finishRefusedRaised(res.Raised); len(raised) > 0 {
+			why += "; judgment raised: " + strings.Join(raised, ", ")
+		}
+		return why, nil
 	}
 	return "", nil
 }

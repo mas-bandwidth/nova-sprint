@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The typed lines nova-config prints (docs/SPEC-CONFIG.md, "Lines"). Every

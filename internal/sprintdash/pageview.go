@@ -3,7 +3,6 @@ package sprintdash
 import (
 	"bytes"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -62,38 +61,38 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Expires", "0")
 	switch r.URL.Path {
 	case "/", "/index.html":
-		s.send(w, "text/html; charset=utf-8", s.index())
+		s.send(w, r, "text/html; charset=utf-8", s.index())
 	case "/app.js":
-		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
+		s.send(w, r, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
-		s.send(w, "font/woff2", file("nunito-800.woff2"))
+		s.send(w, r, "font/woff2", file("nunito-800.woff2"))
 	case "/OFL.txt":
-		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
+		s.send(w, r, "text/plain; charset=utf-8", file("OFL.txt"))
 	case "/logo":
 		if body, err := s.logo(); err == nil {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no logo", http.StatusNotFound)
 		}
 	case "/favicon.svg":
 		if vb, inner, ok := s.svgLogo(); ok {
-			s.send(w, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
+			s.send(w, r, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
 		} else {
 			http.Error(w, "no svg logo", http.StatusNotFound)
 		}
 	case "/logo-tile-192.png", "/logo-tile-384.png":
 		// the live page's tile logo, embedded, when no --logo is given; else the --logo file
 		if s.Logo == "" {
-			s.send(w, "image/png", file(tileFile[r.URL.Path]))
+			s.send(w, r, "image/png", file(tileFile[r.URL.Path]))
 		} else if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no raster logo", http.StatusNotFound)
 		}
 	case "/favicon.png", "/logo-icon.png", "/logo.webp", "/logo.png":
 		// the raster logo's routes a page or a bookmark may still name: each is the --logo file
 		if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
-			s.send(w, logoType(s.Logo, body), body)
+			s.send(w, r, logoType(s.Logo, body), body)
 		} else {
 			http.Error(w, "no raster logo", http.StatusNotFound)
 		}
@@ -101,11 +100,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// the page's envelope over the page's copy (pageview.go): every stream, no release
 		// switch, the keys the live page's server serves; a query is read by nothing
 		s.Refresh()
-		s.send(w, "application/json", s.PageSnapshot())
+		s.send(w, r, "application/json", s.PageSnapshot())
 	case "/events":
 		s.events(w, r, func(*sprintCopy) ([]byte, bool) { return s.PageSnapshot(), true })
 	case "/healthz":
-		s.healthz(w)
+		s.healthz(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
@@ -354,7 +353,14 @@ func (s *Server) PageSnapshot() []byte {
 		MinInterval: s.Every.Seconds(), Throughput: s.pageRate.rate, ThroughputMinutes: s.pageRate.minutes, Build: build,
 	}
 	if len(s.page.data) > 0 {
-		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, s.page.age
+		var age *float64
+		if s.page.at != nil {
+			a := math.Round(s.Now().Sub(*s.page.at).Seconds()*1000) / 1000
+			age = &a
+		} else {
+			age = s.page.age
+		}
+		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = withServerVersion(s.page.data, s.Version), s.page.at, age
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {
@@ -366,16 +372,9 @@ func (s *Server) PageSnapshot() []byte {
 // tileFile is the embedded file each tile logo route serves.
 var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/logo-tile-384.png": "logo-robot-384.png"}
 
-// liveLogoData is the logo the live page carries in its slot (dashboard/live/index.html, as
-// changed 2026-10-12): the 384 px robot tile, logo-robot-384.png, byte for byte, inline as a data
-// PNG. The card's P1 names the nova-sprint image (the owner 2026-10-12 ~00:28Z: "The nova sprint
-// logo goes top left, and replaces the robot logo"); the live page, the owner's most recent state,
-// carries the robot, so this follows the live page until the owner rules.
-var liveLogoData = "data:image/png;base64," + base64.StdEncoding.EncodeToString(file("logo-robot-384.png"))
-
 // index is the page with its script versioned by the build and the logo slot and favicon
-// filled as the live page's server fills them (its index_page): with no --logo, the
-// live page's logo, the 384 px robot tile, inline as a data PNG (liveLogoData), the build in
+// filled as the live page's server fills them (its index_page): with no --logo, its tile
+// branch (the tile img in the slot, the tile favicon links), the build in
 // place of its version; with --logo, an svg logo is drawn inline in the page's
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
 func (s *Server) index() []byte {
@@ -384,7 +383,9 @@ func (s *Server) index() []byte {
 	slot, icon := "", ""
 	if s.Logo == "" {
 		v := build
-		slot = `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
+		// server.py index_page, its tile branch: the tile img in the <!--LOGO--> slot (which
+		// sits inside a comment in the live page, beside its inline data-PNG logo)
+		slot = `<img id="logo" class="logo-tile" src="/logo-tile-192.png?v=` + v + `" srcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x" alt="">`
 		icon = `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="apple-touch-icon" href="/logo-tile-192.png?v=` + v + `">` +
 			`<link rel="preload" as="image" href="/logo-tile-192.png?v=` + v + `" imagesrcset="/logo-tile-192.png?v=` + v + ` 1x, /logo-tile-384.png?v=` + v + ` 2x">`

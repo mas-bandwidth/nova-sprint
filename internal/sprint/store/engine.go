@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // What is atomic, and what is not.
@@ -60,15 +61,17 @@ import (
 
 // Store runs sprint steps against a Backend.
 type Store struct {
-	B        Backend
-	Names    sprint.Names
-	Actor    string
-	Now      func() time.Time
-	NewID    func() string       // a fresh operation id family; nil is NewID
-	Sleep    func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
-	Rand     func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
-	Attempts int                 // plans per step before giving up on a busy fence; default FenceTries
-	Resends  int                 // sends of one manifest after a lost reply; default 3
+	// ReadFriendHooks reads nova-hook on the bus Redis. Nil means no liveness evidence.
+	ReadFriendHooks func(context.Context, ...string) ([]hook.Status, time.Time, error)
+	B               Backend
+	Names           sprint.Names
+	Actor           string
+	Now             func() time.Time
+	NewID           func() string       // a fresh operation id family; nil is NewID
+	Sleep           func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
+	Rand            func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
+	Attempts        int                 // plans per step before giving up on a busy fence; default FenceTries
+	Resends         int                 // sends of one manifest after a lost reply; default 3
 	// Grace is how long an operation is taken as in flight (its writer alive)
 	// before a writer that finds its first manifest unapplied abandons it.
 	Grace time.Duration
@@ -82,10 +85,6 @@ type Store struct {
 	// IdleAlarm says the tick watches for an idle fleet and pushes the coordinator one note
 	// of why an episode (run --idle-alarm, on by default there; sprint.TickIdle).
 	IdleAlarm bool
-	// WakeFriend, when set (run and tick), sends a stalled friend her wake turn as the
-	// friend stall part of the tick climbs her ladder to rung 1 or 2 (sprint.TickFriendStall,
-	// a bus message pushed to her daemon); nil sends nothing and the rung climbs the same.
-	WakeFriend func(friend string, rung int, d time.Duration) error
 	// BaseCI, when set (run and tick), is the tick's read of the base's CI after a
 	// landing (one per repository and base; sprint.TickBaseCI, base_ci.go): the facts
 	// the binding read, passed into the tick's TickReq. nil passes none, and no
@@ -120,6 +119,8 @@ type Store struct {
 	// before its guarded exchange, and in a start between its pin and its lock: the pause a
 	// clear's advance can land in (guardedRows, machineTransition).
 	beforeGuardedWrite func()
+	beforeAdvance      func() // test pause before clear takes its advance fence
+	afterStartGuard    func() // test pause while START owns the machine fence
 	// LockAfterLoss has a part of the tick that lost a try take the fence
 	// before its next read (lock.go). The program's stores set it; a test
 	// harness whose other writers write from inside a part's plan (a writer
@@ -302,6 +303,9 @@ type Result struct {
 	Moved   []string         `json:"moved"`
 	Refused []sprint.Refusal `json:"refused"`
 	Notes   int              `json:"notes"`
+	// Raised is the id and type of each judgment the step raised
+	// ("<id> <type>"), so a caller can name it.
+	Raised []string `json:"raised,omitempty"`
 	// Said is what the step tells beside its moves (sprint.Plan.Said): a NOTE line each.
 	Said     []string `json:"said,omitempty"`
 	Attempts int      `json:"attempts"`
@@ -756,9 +760,18 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return refuseWhole(res, plan, why)
 			}
 		}
+		tally := plan.Tally
+		plan.Tally = nil
 		if step.Named && len(plan.Refused) > 0 && len(plan.Units)+len(plan.Notes)+len(plan.Closes)+len(plan.Rows) > 0 {
-			return allOrNone(res, plan), nil
+			ar := allOrNone(res, plan)
+			if len(tally) == 0 {
+				return ar, nil
+			}
+			// all or none, but for the refusal counts: they alone are written
+			plan.Refused = ar.Refused
+			plan.Units, plan.Notes, plan.Closes, plan.Rows = nil, nil, nil, nil
 		}
+		plan.Units = append(plan.Units, tally...)
 		actor := st.Actor
 		if step.Actor != "" {
 			actor = step.Actor
@@ -850,7 +863,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && op.Health == nil && len(op.HealthClear) == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
+		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -864,6 +877,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		res.Op = op.ID
 		res.Notes = len(op.Notes) + len(op.Decided)
+		for _, n := range op.Notes {
+			if n.Kind == sprint.Judgment {
+				res.Raised = append(res.Raised, n.ID+" "+n.Type)
+			}
+		}
 		body, _ := json.Marshal(res)
 		op.Result = string(body)
 		if n := recordSize(op); n > MaxOpRecord {
@@ -1577,7 +1595,7 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 // entries, each expecting the revision the one before it leaves; then the
 // notifications and the answers.
 func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprint.Snapshot) (OpRecord, error) {
-	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Health: plan.Health, HealthClear: plan.HealthClear, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
+	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
 	entries := map[string][]ntable.BatchMemberEntry{}
 	seen := map[entryKey]int{} // index+1 in entries[table]
 	cause := map[entryKey]string{}

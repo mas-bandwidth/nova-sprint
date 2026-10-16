@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The owner, 2026-10-04: "I need to be able to always trust the dashboard"; "Golang
@@ -50,6 +50,11 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	}
 	var log bytes.Buffer
 	srv := c.dashboardServer("", false, "", time.Second, "", &log)
+	// the read's timers are the fake clock's too: one that never fires, so each Tick
+	// waits for its read whatever the machine's load (with the real 300 ms first
+	// deadline, a read slower than that under load was left running and the next
+	// Tick skipped it: the flake this replaces)
+	srv.ReadTimer = func(time.Duration) (<-chan time.Time, func()) { return nil, func() {} }
 	second := func() {
 		mu.Lock()
 		now = now.Add(time.Second)
@@ -85,12 +90,12 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	pageOf := func(where string) string { return string(sprintdash.PageData([]byte(where), clock())) }
 
 	// a read a second with no page open, each sent to the live server as where --json
-	// --cards --rows (the rows place the critical path and are not served)
+	// --dashboard (the cheap page read)
 	for range 5 {
 		second()
 	}
 	assert.Equal(t, 5, reads(), "one read a second, whoever is looking")
-	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards", "--rows", "--archived"}, sent[0])
+	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--dashboard"}, sent[0])
 	data, stale := api()
 	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json --archived --rows")), data, "the page's data is the live server's own")
 	assert.False(t, stale)

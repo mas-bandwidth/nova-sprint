@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // ReadCells reads one row's cards in the named columns of a table: the
@@ -108,8 +108,8 @@ func (st *Store) CardIDs(ctx context.Context, logical string) (map[string]bool, 
 }
 
 // Packets is the packet of each work or read card: its primary, and the work
-// cards before it or the one it reads, read by identity in one read set per
-// table.
+// cards before it or the one it reads, and each work primary's needs. Records
+// are read by identity in batches at one pinned epoch, never once per need.
 func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Packet, error) {
 	st, err := st.pin(ctx)
 	if err != nil {
@@ -140,6 +140,30 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 		return nil, err
 	}
 	pt, ft := byID(ps), byID(ws)
+	// The needs are known after reading primaries. Share one ids list across
+	// every work packet and read their primary and merge evidence once each.
+	var needIDs []string
+	seen := map[string]bool{}
+	for _, c := range cards {
+		if c.F("kind") != "work" {
+			continue
+		}
+		for _, id := range sprint.Split(pt[c.F("primary")].F("needs")) {
+			if !seen[id] {
+				seen[id] = true
+				needIDs = append(needIDs, id)
+			}
+		}
+	}
+	ns, err := st.records(ctx, sprint.Work, needIDs)
+	if err != nil {
+		return nil, err
+	}
+	ms, err := st.records(ctx, sprint.Merge, needIDs)
+	if err != nil {
+		return nil, err
+	}
+	nt, mt := byID(ns), byID(ms)
 	var out []sprint.Packet
 	for _, c := range cards {
 		p, earlier, w := sprint.PacketCards(c)
@@ -154,6 +178,11 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 			wc = ft[w]
 		}
 		pk := sprint.PacketOf(st.Names.Prefix, st.epoch, c, pt[p], ec, wc)
+		if pk.Kind == "work" {
+			for _, id := range sprint.Split(pt[p].F("needs")) {
+				pk.NeedHeads = append(pk.NeedHeads, sprint.NeedHeadOf(id, nt[id], mt[id]))
+			}
+		}
 		if pk.Tier == "" {
 			pk.Tier = sprint.DealtTier(c, pt[p]) // every packet names its tier, a route or none
 		}

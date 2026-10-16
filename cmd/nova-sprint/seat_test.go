@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -202,14 +200,15 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 	out := ta.ok("handover")
 	for _, want := range []string{
 		"HANDOVER seat=coordinator since=init\n",
-		"STREAM s1 waiting=3 ready=1 working=0 review=0 merging=0 landed=0\n",
+		// the stream line counts s1's cards, never its stop sentinel (the owner, 2026-10-14)
+		"STREAM s1 waiting=2 ready=1 working=0 review=0 merging=0 landed=0\n",
 		"SENTINEL s1-stop stream=s1 held: 2 wait behind it (s1-",
 		"MEMBER m2 held by coordinator\n",
 		"DECISION ",
 		" hold member m2 by coordinator: --return: its work begun is handed back now\n",
 		"RULE R1. A friend is working only when its cards go from working to done; awake is not working.\n",
 		"FIRST nova-sprint where\n",
-		"FIRST nova-sprint inbox --wait --push seat\n",
+		"FIRST nova-hook hook --as <you> --role coordinator, under a Monitor (the judgments come on the bus)\n",
 		"FIRST read docs/SPEC-SPRINT.md, \"Handing over the seat\"\n",
 		"JUDGMENT machine:stopped",
 		"HANDOVER OK judgments=1 sentinels=1 members=1 decisions=1\n",
@@ -244,52 +243,48 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 	assert.Len(t, h.First, 3)
 }
 
-// inbox --wait --push seat writes to the holder's inbox, ~/<holder>-working/
-// inbox/sprint-judgments/, when ~/<holder>-working/inbox is there; a seat change
-// moves the push to the new holder's inbox (every open judgment is pushed there
-// once), and the note of a taken seat goes to the old holder's.
+// The server's coordinator push follows the seat (v1.3.6, in place of the retired seat
+// push loop): a seat change moves the judgments to the new holder's name on the bus (every
+// open one is sent there once), and the note of a taken seat, addressed to the old holder,
+// goes to the old holder's name.
 func TestThePushFollowsTheSeat(t *testing.T) {
 	t.Parallel()
 	ta, _ := heldAndWaiting(t)
+	getenv := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus.test:6379"
+		}
+		return getenv(k)
+	}
+	ta.a.serveAddr = "mem:0"
 	// a judgment addressed to the seat (the held one is a timer, addressed to its actor): it
 	// follows the seat
 	ta.failOnce("m1", "s2-1.w1@1", "tests red")
-	seatNote := ta.group(sprint.NWorkFailed, "s2").Notes[0]
-	home := t.TempDir()
-	ta.a.home = func() (string, error) { return home, nil }
-	for _, who := range []string{"coordinator", "rowan"} {
-		require.NoError(t, os.MkdirAll(filepath.Join(home, who+"-working", "inbox"), 0o755))
-	}
+	failed := ta.group(sprint.NWorkFailed, "s2").ID
 	ta.ok("init --owner glenn") // the owner set once, on a sprint that named none
-	in := ta.interruptible()
-	ta.atSleep(func(n int) {
-		switch n {
-		case 3:
-			ta.ok("coordinator rowan --take --approved-by glenn --reason 'coordinator is asleep' --actor rowan")
-			ta.ok("tick")
-		case 7:
-			in.now(t)
-		}
-	})
-	out := ta.ok("inbox --wait --push seat --timeout 200ms")
-	old := filepath.Join(home, "coordinator-working", "inbox", "sprint-judgments")
-	next := filepath.Join(home, "rowan-working", "inbox", "sprint-judgments")
-	assert.FileExists(t, filepath.Join(old, seatNote+".md"), out)
-	assert.FileExists(t, filepath.Join(next, seatNote+".md"), "the open judgment follows the seat:\n%s", out)
-	assert.Contains(t, out, "NOTE the seat is rowan's: pushing to "+next+"\n", out)
-	var takenNote string
+	first := ta.pass("coordinator")
+	require.NotEmpty(t, first)
+	assert.Contains(t, first[0].Body, failed, "the open judgment goes to the holder")
+
+	ta.ok("coordinator rowan --take --approved-by glenn --reason 'coordinator is asleep' --actor rowan")
+	ta.ok("tick")
+	next := ta.pass("rowan")
+	require.NotEmpty(t, next, "the new holder hears everything open")
+	assert.Contains(t, next[0].Body, failed, "the open judgment follows the seat")
+	var taken string
 	for _, g := range ta.inboxGroups() {
 		if g.Type == sprint.NSeatTaken {
-			takenNote = g.Notes[0]
+			taken = g.ID
 		}
 	}
-	require.NotEmpty(t, takenNote)
-	assert.FileExists(t, filepath.Join(old, takenNote+".md"), "the taken note is the old holder's:\n%s", out)
-	assert.NoFileExists(t, filepath.Join(next, takenNote+".md"), out)
-
-	// a holder whose ~/<holder>-working/inbox is not there: refused, naming it
-	ta.ok("coordinator nobody --reason r --actor rowan")
-	code, _, errs := ta.do("inbox --wait --push seat --timeout 200ms")
-	assert.Equal(t, 2, code, errs)
-	assert.Contains(t, errs, filepath.Join(home, "nobody-working", "inbox"), errs)
+	require.NotEmpty(t, taken)
+	var toOld bool
+	for _, m := range ta.toSeat("coordinator") {
+		toOld = toOld || strings.Contains(m.Body, taken)
+	}
+	assert.True(t, toOld, "the taken note is the old holder's")
+	for _, m := range next {
+		assert.NotContains(t, m.Body, taken, "the taken note is not the new holder's")
+	}
 }

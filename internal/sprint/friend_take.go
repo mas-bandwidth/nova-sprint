@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // A friend's card taken back (docs/SPEC-SPRINT.md section 1, a friend's card taken back;
@@ -84,6 +84,32 @@ type FriendTakeReq struct {
 	// spends its reader (retired_by returned, readSpent), as read --return does; the
 	// machine's take-backs (a hold, a stall) spend nothing.
 	Spends bool
+	// Working lets a card in flight be taken back (FriendCardInFlight: working on her row,
+	// or carrying a take, a progress, a report or a carried head). Without it a named card
+	// in flight is refused and All takes none (unless Hold). friend take --working sets it
+	// for named cards only; the machine's take-backs (the late rule, the re-tier, the stall
+	// ladder's rung 4) set it.
+	Working bool
+}
+
+// FriendCardInFlight says why the friend's card is hers in flight, "" when it is only dealt: in the
+// working column, or carrying a take (taken, first_taken), a progress stamp, a report, or a
+// head carried from a push. A card in flight is never taken by friend take --all-unstarted
+// (nova-sprint, 2026-10-14: --all-unstarted withdrew two friends' working cards mid-flight).
+func FriendCardInFlight(c *Card) string {
+	switch {
+	case c.Col == Working:
+		return "it is working on the friend's row"
+	case c.F("taken") != "" || c.F("first_taken") != "":
+		return "a take is recorded on it"
+	case c.F(FieldProgress) != "":
+		return "progress is recorded on it"
+	case c.F(FieldReported) != "":
+		return "a report is recorded on it"
+	case c.F(FieldCarryHead) != "":
+		return "it carries a pushed head " + c.F(FieldCarryHead)
+	}
+	return ""
 }
 
 // takenBackWhy is the words a taken card carries (FieldTakenBack).
@@ -99,11 +125,14 @@ func (r FriendTakeReq) takenBackWhy() string {
 
 // FriendTake takes back the friend's cards she has not started: each one withdrawn on her
 // row, its primary ready for the friends' deal. A card named that is not dealt to her, or
-// that she has started, is refused, one refusal each, and the rest are taken; with
-// AllOrNothing one refusal takes none, each card that would have been taken refused too;
-// with All a started card stays (the caller, which read Started, says so). A working card taken frees her lane: her oldest ready card not taken
-// is taken into working in the same unit, as her finish takes it (friendNext).
-// tla/StallLadder.tla Tick: rung 4 takes back the cards she has not started.
+// that she has started, is refused, one refusal each, and so is a card named in flight
+// (FriendCardInFlight) unless Working; the rest are taken; with AllOrNothing one refusal takes none,
+// each card that would have been taken refused too. All (not Hold) takes ONLY the cards
+// dealt to her and not taken: ready on her row, not in flight, not started; each card it
+// leaves is said ("friend <f> keeps <id>: <why>"). A working card taken (Working, or the
+// hold) frees her lane: her oldest ready card not taken is taken into working in the same
+// unit, as her finish takes it (friendNext), and the plan says one WARNING line counting
+// the working cards withdrawn.
 // tla/WhoPreference.tla TakeBack.
 func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 	var p Plan
@@ -121,7 +150,15 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 				if c.Col == Working || r.Started[c.ID] != "" {
 					take = append(take, c)
 				}
-			case r.Started[c.ID] == "" || r.Hold:
+			case r.Hold:
+				take = append(take, c)
+			case r.Started[c.ID] != "":
+				p.Said = append(p.Said, fmt.Sprintf("friend %s keeps %s: %s", r.Friend, c.ID, r.Started[c.ID]))
+			case !r.Working && FriendCardInFlight(c) != "":
+				// --all-unstarted is dealt and not taken, only: a card in flight is never
+				// withdrawn by it (name it with --working)
+				p.Said = append(p.Said, fmt.Sprintf("friend %s keeps %s: %s", r.Friend, c.ID, FriendCardInFlight(c)))
+			default:
 				take = append(take, c)
 			}
 		}
@@ -142,6 +179,8 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 			p.refuse(id, fmt.Sprintf("%s has started: friend %s finished it (%s), and its primary %s is %s", c.ID, r.Friend, c.Col, c.F("primary"), orDash(s.StateOf(c.F("primary")))))
 		case r.Started[c.ID] != "":
 			p.refuse(id, fmt.Sprintf("%s has started: %s; it stays with friend %s and finishes", c.ID, r.Started[c.ID], r.Friend))
+		case !r.Working && !r.Hold && FriendCardInFlight(c) != "":
+			p.refuse(id, fmt.Sprintf("%s is in flight with friend %s: %s; withdrawing it mid-flight wants --working", c.ID, r.Friend, FriendCardInFlight(c)))
 		case !slices.Contains(take, c):
 			take = append(take, c)
 		}
@@ -162,6 +201,17 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 		}
 	}
 	why := r.takenBackWhy()
+	if !r.Hold {
+		var working []string
+		for _, c := range take {
+			if FriendCardInFlight(c) != "" {
+				working = append(working, c.ID)
+			}
+		}
+		if len(working) > 0 {
+			p.Said = append(p.Said, fmt.Sprintf("WARNING: withdraws %d working card(s) from friend %s mid-flight: %s", len(working), r.Friend, strings.Join(working, ",")))
+		}
+	}
 	for _, c := range take {
 		// the take, not the hold, keeps her from it; a card never taken from her has its whole
 		// dealt bound again from now (untaken_since), its first take unset
@@ -254,13 +304,40 @@ func friendSeatOf(s *Snapshot, name string) (FriendSeat, bool) {
 	return FriendSeat{}, false
 }
 
+// friendGiveEligibility is what the friend deal holds for the friend a give names, "" when the
+// card may be handed to her: her tiers (friendTakes), her restriction (friendRestrictionAllows),
+// the card's needs that have not landed (WaitsFor, its place in line too), and a hard pin
+// (OnlyFriend, unless released: PinReleased) to another friend. A friend not up is not judged: a
+// coordinator's give waits on her row, as it always did. The deal's checks, one helper; the card
+// a-pinned-card-is-dealt-only-to-its-friend (same stream) writes the one predicate every
+// placement path shares, and this helper is what it replaces here.
+func friendGiveEligibility(s *Snapshot, seat FriendSeat, haveSeat bool, pr *Card, tier, friend string) string {
+	if haveSeat && !friendTakes(s, seat, tier) {
+		return snapshotFriendPronouns(s, friend).Sprintf("%s is a %s card, and friend %s's row does not serve tier %s ({their} tiers: %s)", pr.ID, tier, friend, tier, orDash(strings.Join(friendTiers(seat), ",")))
+	}
+	if haveSeat {
+		if why := FriendRestrictionWhy(seat.Streams, seat.Kinds, pr.F("stream"), BriefKind(pr.F("brief"))); why != "" {
+			return fmt.Sprintf("%s is outside friend %s's restriction: %s", pr.ID, friend, why)
+		}
+	}
+	if pinned, _ := FriendCard(pr); OnlyFriend(pr) && pinned != friend && !PinReleased(s, pr, s.Friends) {
+		return fmt.Sprintf("%s is pinned to friend %s (WHO: only friend): nothing is handed to friend %s; release the pin with nova-sprint unpin %s", pr.ID, orDash(pinned), friend, pr.ID)
+	}
+	if w := WaitsFor(s, pr, nil); len(w) > 0 {
+		return fmt.Sprintf("%s needs %s, not landed: nothing is handed to friend %s", pr.ID, strings.Join(w, ","), friend)
+	}
+	return ""
+}
+
 // FriendGive is the seat's verb to a friend (docs/SPEC-SPRINT.md section 1, a friend's card
-// taken back): on a card taken back from her (friend take) it clears the mark of the friend
-// it was taken from (FieldTakenFrom), so the deal may deal it to her again; on a ready card
-// never taken back it is the hand the deal could not be told to make: the card is dealt to
-// the friend named, not the queue head. A card not ready, one whose tier her row does not
-// serve, or one whose needs have not landed is refused, naming why; the rest are given, one
-// refusal each.
+// taken back; tla/FriendGive.tla): on a card taken back from her (friend take) it clears the
+// mark of the friend it was taken from (FieldTakenFrom), so the deal may deal it to her again;
+// on a ready card whose current work card is not live (none, or Done as a brief-replaced bounce
+// leaves it: only Ready or Working on a row is dealt, as friendDealPass judges) it is the hand
+// the deal could not be told to make: the card is dealt to the friend named at its next
+// attempt, not the queue head. A card not ready, one live on a row, one taken back and not from
+// her, one whose eligibility she lacks (friendGiveEligibility) is refused, naming why; the rest
+// are given, one refusal each.
 func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 	var p Plan
 	row := FriendRow(r.Friend)
@@ -291,7 +368,9 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 			from = "friend " + strings.TrimPrefix(wc.F(FieldTakenFrom), friendRowPrefix)
 		}
 		taken := wc != nil && wc.F(FieldTakenFrom) == row
+		wcLive := wc != nil && (wc.Col == Ready || wc.Col == Working)
 		tier := s.DealTier(pr)
+		giveWhy := friendGiveEligibility(s, seat, haveSeat, pr, tier, r.Friend)
 		switch {
 		case pr.Col != Ready && pr.Col != Waiting:
 			p.refuse(id, fmt.Sprintf("%s is %s, not ready or waiting", pr.ID, pr.Col))
@@ -306,12 +385,14 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 			p.Said = append(p.Said, pr.ID+": handed to "+r.Friend)
 		case pr.Col != Ready:
 			p.refuse(id, fmt.Sprintf("%s is %s, not ready: nothing is handed to friend %s", pr.ID, pr.Col, r.Friend))
-		case wc != nil:
+		case wcLive:
+			// only a live work card is dealt, as the friend deal judges it (friendDealPass: only a
+			// Withdrawn one is a redeal, a Done one is dealt over at its next attempt)
+			p.refuse(id, fmt.Sprintf("%s is already dealt: %s is %s, live; nothing is handed to friend %s (take it back first: nova-sprint friend take <friend> %s)", pr.ID, card, placeOf(wc), r.Friend, pr.ID))
+		case wc != nil && wc.Col == Withdrawn:
 			p.refuse(id, fmt.Sprintf("%s was never taken back from friend %s (taken from %s)", card, r.Friend, from))
-		case haveSeat && !friendTakes(s, seat, tier):
-			p.refuse(id, snapshotFriendPronouns(s, r.Friend).Sprintf("%s is a %s card, and friend %s's row does not serve tier %s ({their} tiers: %s)", pr.ID, tier, r.Friend, tier, orDash(strings.Join(friendTiers(seat), ","))))
-		case len(NamedWaits(s, pr, nil)) > 0:
-			p.refuse(id, fmt.Sprintf("%s needs %s, not landed: nothing is handed to friend %s", pr.ID, strings.Join(NamedWaits(s, pr, nil), ","), r.Friend))
+		case giveWhy != "":
+			p.refuse(id, giveWhy)
 		default:
 			// never taken back and never dealt: the seat hands a named ready card to her,
 			// where the deal draws the queue head instead (docs/SPEC-SPRINT.md section 1,

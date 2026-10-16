@@ -9,7 +9,45 @@ defect. A change not yet in `dev` is marked "after PR N" and listed under "Open 
 machine, `<s>` a stream, `<id>` an inbox group id, `<card>` a primary's id. Each judgment answer below is the
 line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows the exact lines.
 
+To keep the seat's cost down, run a dispatcher for the routine routing: [DISPATCHER.md](DISPATCHER.md).
+
 ## 1. The seat
+
+### A first live start
+
+Read the [first-lap note](FIRST-LAP.md) for installation checks and a local
+twin walkthrough. For a live sprint, start with one server beside the Redis
+store and use the coordinator actor named by the sprint. In the interactive
+coordinator shell, set `NOVA_SPRINT_SERVER` to that server's local address,
+`NOVA_BUS_REDIS` to the bus store, and `NOVA_SPRINT_ACTOR` to the coordinator.
+The server process also needs `NOVA_BUS_REDIS`. See the
+[environment reference](ENVIRONMENT.md) for the connection choices.
+
+For live coordination, hook in with nova-hook before other coordinator verbs:
+`nova-hook hook --as <you> --role coordinator` under a Monitor. Answer each
+`HOOK CHALLENGE` it prints with `nova-hook prove`; two missed in a row unhook
+you. The sprint's server sends every judgment and note for the coordinator to
+your name on the bus, and nova-hook puts each one into your session.
+
+Before `start`, run `nova-sprint check cards` and resolve every finding. The
+check includes file overlaps: when one stream produces files another needs,
+plan the producer stream first and make the cross-stream dependency name its sentinel.
+Place that sentinel just after the producers its consumers need; a sentinel
+also waits for open cards before it in its own stream. In its brief, describe
+the downstream work and the integration step it gates. That explanation keeps
+the plan readable, while the actual wait is derived from the sentinel's
+position and named needs. A `clear` writes the working defaults into the new
+epoch. Reapply any custom settings the plan requires before `start`; the start
+gate reports settings that leave required behavior disabled or unconfigured.
+
+Once running, check `where` and `inbox`. A judgment holds work until it is
+answered: read the current card and note, then use the close verbs it prints
+and their `help` text. If the same finding returns repeatedly, revisit the
+brief, tier, or split before asking another worker to repeat the same attempt.
+When `where` shows waiting work but no ready cards, inspect the dependency
+chain and the sentinels that release it; raising priority only reorders cards
+that are already ready. Use the row's status and hold cause to distinguish a
+dependency wait from an explicit hold or an unresponsive machine.
 
 - The coordinator is the actor the sprint's `init` named: `nova-sprint where --json | jq -r .coordinator`.
   Its verbs are the coordinator's alone ([SPEC-SPRINT.md section 11](SPEC-SPRINT.md#11-verbs)); another actor is
@@ -19,52 +57,42 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
   ticks, serves the workers' verbs on the fleet's private address and the coordinator's on
   `127.0.0.1:<port>`, and lands what the readers passed; its supervisor starts a new one when it exits 3 after
   its binary is replaced. [The server](SPEC-SPRINT.md#the-server) says what it serves.
-- Every value the seat needs is read from that loop's unit on the coordinator machine, never typed from
-  memory. On darwin the unit is `~/Library/LaunchAgents/com.nova.loop.sprint-server-<m>.plist` (on linux
-  `systemctl --user cat nova-loop-sprint-server-<m>.service`; [FLEET.md](FLEET.md) has both layouts; the same
-  row prints with `nova-config loop show sprint-server-<m>`). Its words are the store (`--store`), the seat
-  (`--as`), the key (`--key`), the secret (`--only`), the Redis address, user and password variable name (the
-  `env` words), the `--listen` address and the log (`StandardOutPath`):
+- For an existing server, `nova-config loop list` and `nova-config loop show <row>` identify its installed
+  service and listen address. Keep any secret paths or environment names from the service configuration in the
+  local secret tooling; do not paste its arguments into a shared note.
+- Every served verb needs the server and actor variables, and a read (`where`, `inbox`, `card`, `log`) needs only
+  the server address:
 
   ```
-  U=$(ls ~/Library/LaunchAgents/com.nova.loop.sprint-server-*.plist)
-  A=$(plutil -extract ProgramArguments json -o - "$U")
-  word() { echo "$A" | jq -r --arg k "$1" '.[index($k)+1]'; }
-  envw() { echo "$A" | jq -r --arg k "$1=" '.[]|select(startswith($k))|sub($k;"")'; }
-  STORE=$(word --store); SEAT=$(word --as); KEY=$(word --key); PORT=$(word --listen | sed 's/.*://')
-  REDIS=$(envw NOVA_SPRINT_REDIS); RUSER=$(envw NOVA_SPRINT_REDIS_USER); RPW=$(envw NOVA_SPRINT_REDIS_PASSWORD_ENV)
-  ```
-
-- Every served verb needs only two variables, and a read (`where`, `inbox`, `card`, `log`) only the first:
-
-  ```
-  export NOVA_SPRINT_SERVER=127.0.0.1:$PORT
+  printf 'Server listen address from loop show (host:port): '
+  read -r NOVA_SPRINT_SERVER
+  export NOVA_SPRINT_SERVER
   export NOVA_SPRINT_ACTOR=$(nova-sprint where --json | jq -r .coordinator)
   ```
 
-- The coordinator hooks in ([The hook](SPEC-SPRINT.md#the-hook)): every command run as the coordinator fails with
-  `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. From inside the session:
+- The coordinator hooks in with nova-hook ([The hook](SPEC-SPRINT.md#the-hook)): coordinator commands against a
+  live store fail with `You must hook in first: <why>; run: nova-hook hook --as <you> --role coordinator ...` until
+  the coordinator's nova-hook record is proven as the coordinator. From inside the session:
 
-  1. Run as a Monitor (with `NOVA_SPRINT_SERVER` set): `nova-sprint hook --actor $NOVA_SPRINT_ACTOR`. Each line it
-     prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <judgment> session=<token>` with its text and session-bound acknowledgement command, `HOOK BYE`, `HOOK DROPPED`.
-  2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The
-     challenge is asked once a connection, never again while it stays up; a hook lapses only when its stream ends,
-     or when no act at all, keepalive included, reaches the server for 15 minutes (recorded gone, the owner told).
-  3. Read each `PUSH <id> <judgment> session=<token>` and run the acknowledgement command shown there, for example
-     `nova-sprint hook --ack <id> --session <token> --actor $NOVA_SPRINT_ACTOR` (every id up to it). The token is
-     specific to that live hook session. If the hook reconnects, read the replayed push line and use its current
-     token; a missing or stale token refuses without acknowledging anything. Numeric-only ACKs from older clients
-     are refused. A push unacknowledged for 10 minutes refuses every coordinator command, naming it.
-  4. When you stop: `nova-sprint unhook --actor $NOVA_SPRINT_ACTOR` (recorded away, the owner told).
+  1. Run in the coordinator's interactive session, under a Monitor (with `NOVA_BUS_REDIS` set):
+     `nova-hook hook --as $NOVA_SPRINT_ACTOR --role coordinator`. Each line it prints is one event: a message to
+     you on the bus (the sprint's judgments and notes among them, `nova-sprint: <n> new for the coordinator`), or
+     a `HOOK CHALLENGE`.
+  2. Answer each `HOOK CHALLENGE` at once, from inside the turn: `nova-hook prove --as $NOVA_SPRINT_ACTOR --nonce
+     <nonce>`. `nova-hook serve` asks once a minute; two unanswered in a row unhook you.
+  3. Read each message and act on it: the sprint's carry the commands that answer each judgment.
+  4. The sprint push is the server's: it is proven while `nova-sprint run --listen` runs and its sends reach the
+     bus. See your record with `nova-hook status --as $NOVA_SPRINT_ACTOR`; when you stop: `nova-hook unhook --as
+     $NOVA_SPRINT_ACTOR`.
 - Not served, and run where typed with credentials of their own: `run`, `tick`, `land`, `play`, `fleet sync`,
   `friend sync`, and any verb given its own `--redis`. `fleet sync` and `friend sync` read the config store, so
   they run under one `nova-secrets exec` wrapper that names variables and never a value;
   [SPRINT-COORDINATOR-SEAT.md](SPRINT-COORDINATOR-SEAT.md) builds it, each value from a command, and shows what
   each command prints. A wrapper that refuses is reported, not worked around.
-- The units the coordinator's machine runs (the store, the bus, the server, its member, the push loop, the
-  friend sync loop, the table) are each installed by a verb, never written by hand: `nova-redis install store|bus` and `nova-sprint install server|member|seat-push|friend-sync|table`, after card
+- The units the coordinator's machine runs (the store, the bus, the server, its member, the friend sync loop,
+  the table) are each installed by a verb, never written by hand: `nova-redis install store|bus` and `nova-sprint install server|member|friend-sync|table`, after card
   every-unit-installed-by-a-verb. `nova-sprint units --check` names each installed, missing or different
-  ([FLEET.md](FLEET.md#the-coordinator-machines-units-installed-by-verbs)); a hand-written unit reads as
+  ([`nova-sprint help units`](CLI.md#verbs)); a hand-written unit reads as
   different until the seat switches it over.
 - The coordinator never starts a second server: `run`, `tick`, `land` and `play` against the store beside the
   running server are a second writer. A server that does not answer is a fault to find (section 8).
@@ -72,13 +100,11 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
   change is a verb. What `where` draws is the owner's (`internal/sprint/TABLES.lock`): a change is asked for.
 - No secret is printed, pasted or put on a command line. No `rm -rf`.
 
-### coordinator-needs-no-seat-only-tools
+### Keep coordination in the tools
 
-The seat runs on nova verbs alone. [COORDINATOR-TOOLS.md](COORDINATOR-TOOLS.md) lists every wrapper, script
-and loop a coordinator ran beside them (the seat wrapper, the wake, the dashboard, the friends' beat, ping and
-sync loops, the disk guard, the mirror loop and the hand-written units), each mapped to the verb lines that do
-the same or to the card that adds the verb; a verb or flag on that page that the tool does not carry fails
-`TestEveryCoordinatorToolMapsToARealNovaVerb`. A coordinator who reaches for a tool not on it adds its row first.
+Use the documented nova verbs for sprint state changes. If a task repeatedly needs an external script or a
+manual store edit, identify the missing tool behavior and document or propose that capability; do not silently
+work around a refusal or write the store directly. Keep secrets inside the configured secret tooling.
 
 ## 2. The day's loop
 
@@ -96,8 +122,8 @@ nova-sprint log --card <card>
 Waiting. `nova-sprint inbox --wait [--timeout 10m]` ends at the next tick-end note, so while any judgment
 stands open (a sentinel held on purpose, a `wait`) it returns at once: poll `nova-sprint inbox` once a minute
 and answer the groups not seen before. After PR 5129 `--wait` ends only for what was not open
-when it began, and `nova-sprint inbox --wait --push <dir>`, run as a supervised loop (row in
-[FLEET.md](FLEET.md)), writes each new judgment once as `<dir>/<note id>.md`, so nothing polls.
+when it began, and `nova-sprint inbox --wait --push <dir>`, run under a supervisor as a loop, writes each
+new judgment once as `<dir>/<note id>.md`, so nothing polls.
 
 Answering. A decision is its commands, one per line: copy them, fill each `'<...>'`. `--group <id> --expect
 <n>` acts on the whole group and refuses, changing nothing, when its size is not the printed one; `--answers
@@ -116,6 +142,13 @@ the owner's number or word (a width, a route, a release order) goes to the owner
 | sentinel reached | release only when the gate for that wave is passed | `nova-sprint release <sentinel> --reason '<what you looked at and found>' --answers <id>` |
 
 Notes on the rows:
+
+A stream stop and resume arrive separately as `STREAM STOPPED` and `STREAM RESUMED`
+blocker messages. They wake the coordinator through the committed log; the
+five-second look remains the fallback for a quiet log or failed send. The friends
+who own queued or stuck cards receive the same subjects as status messages. The
+stop message is a notice: answer the existing stop judgment as before. A resume
+notice names its new state, who resumed it, and the `--did` explanation.
 
 - Conflict. The stream is stopped until `resume`. A fix text names the cause and the way out: "Your head does
   not merge onto the sprint branch's tip: a file you touched changed after your base. Start again from the
@@ -157,7 +190,7 @@ bound judgment by itself: the verb nova-decide chose is applied, by the line the
 its probability is at or above `decide_judgment_bar` (nova-config's sprint row: `nova-config sprint set
 --decide_judgment_bar <p> --as <coordinator>`, then `nova-config apply --kind sprint`); `--bar <p>` gives one for
 a run. The row ships it empty, and with no bar nothing is applied: every decision is recorded and each row says
-what a bar would apply, so the record trains first. 0.8 is a starting point measured on 100 of the coordinator's own judgments, not an independent calibration (SPEC-NOVA-DECIDE.md section 13: 59
+what a bar would apply, so the record trains first. 0.8 is a starting point measured on 100 of the coordinator's own judgments, not an independent calibration (Nova Tools [nova-decide package documentation](https://pkg.go.dev/github.com/mas-bandwidth/nova-tools/pkg/decide): 59
 of 100 the coordinator's own verb; at 0.8 it applies 40, 39 of them the coordinator's; on blocked, 3 of 21, and
 bound, 3 of 13, Jev says drop, and a drop is never applied). What it lists is yours, each with why: every drop (with the reason the
 decision chose), everything under the bar, a verb the judgment does not print, a card applied before whose
@@ -357,7 +390,7 @@ The server's `--land` merges each card whose reads passed (one for a flash card,
 
 ## 7. The install after a landing
 
-[FLEET.md](FLEET.md) is the adopter's path; this is the order after a landing. Every play runs from a checkout
+This is the order after a landing. Every play runs from a checkout
 at the landed sha, with `NOVA_SPRINT_REDIS` naming the store for the inventory, and has a `--check` form.
 
 0. The release gate, before anything is installed or switched: `make release-accept NOVA_SPRINT_BIN=<the release's nova-sprint>` on a bench, from the checkout at the release's sha. It runs
@@ -472,13 +505,14 @@ carry. `nova-sprint handover` prints each rule's number and sentence (after the 
 R1. **A friend is working only when its cards go from working to done; awake is not working.**
     Why: friends answered every ping and held cards for hours with no card finished.
     Done by: `nova-sprint friend cards <friend>`; `nova-sprint set --friend-finish <duration>` (past it the
-    pass asks the friend what blocks it, and the blocker is removed).
+    pass asks the friend what blocks it, and the blocker is removed; the judgment is a fact, and her state stays
+    the hook record's).
 
-R2. **A friend whose session does not answer a wake ping is woken and fixed on the pass that sees it, never
-left overnight.**
+R2. **A friend the hook record shows down (two missed challenges) is woken and fixed on the pass that sees it,
+never left overnight.**
     Why: a friend slept deaf all night with work assigned to it.
-    Done by: `nova-friend ping --as <coordinator> --to <friend>`; `nova-friend wait-pong --from <friend> --nonce
-    <n>`; `nova-friend ping-install --as <coordinator> --every <duration>`. A cause on the owner's side (credit,
+    Done by: `nova-hook friends --json` (the one record of who is there; `nova-hook serve` challenges every
+    hooked friend once a minute); `nova-friend reach --as <coordinator> --to <friend>`. A cause on the owner's side (credit,
     keys, an account) is `nova-sprint friend down <friend> --reason <text>`, so its cards move, and a note to the
     owner.
 
@@ -488,16 +522,19 @@ delivered, started, progressing, finished, returned, balanced.**
     Done by: `nova-friend check --as <coordinator>`; `nova-sprint view coordinator --json`; `nova-sprint watch
     --wake --check 10m`. A problem found by hand becomes a push the same day.
 
-R4. **A returning friend or machine is brought up by evidence: its own beat, a pong, a card finished, never
-an expectation.**
-    Why: reports said friends were up that were not, and returning ones stayed down.
-    Done by: `nova-friend check --as <coordinator> <friend>`; `nova-sprint friend up <friend>`; `nova-sprint
-    fleet up <machine>`.
+R4. **A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of
+its work changes its state or keeps a card from it, and a returning machine is brought up by its own beat.**
+    Why: reports said friends were up that were not, and returning ones stayed down; on 2026-10-14 a friend up on
+    the hook record was "stalled" in the sprint and the deal skipped her until a manual `friend up` (the stall
+    ladder is retired, v1.3.6: the sprint's friend states are up, down and held, nothing else).
+    Done by: `nova-hook friends --json` (up or down); `nova-sprint friend down <friend>`, `nova-sprint hold
+    <friend>`, `nova-sprint friend up <friend>`, `nova-sprint unhold <friend>` (held and its release, the only
+    state the coordinator sets); `nova-friend check --as <coordinator> <friend>`; `nova-sprint fleet up <machine>`.
 
 R5. **Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its
 outbox, and a brief names no path outside it.**
     Why: friends trampled each other's files, and symlinked directories broke on every move.
-    Done by: `nova-sprint friend sync --root <dir>`; `nova-sprint friend reconcile <friend> --root <dir>`.
+    Done by: `nova-sprint friend sync --root <dir>`.
 
 R6. **An order to the coordinator (stop, conserve, sleep) is the coordinator's alone; friends change only on an
 order to all friends or to them by name.**
@@ -874,7 +911,7 @@ accepted only after another agent coordinates from it alone.**
 R80. **The main session never blocks: anything over about 15 seconds runs in the background and notifies, and
 the coordinator never waits on children or CI without a watcher armed.**
     Why: the owner found the coordinator blocked.
-    Done by: `nova-sprint inbox --wait --push seat`; `nova-sprint watch --wake --check 10m`.
+    Done by: `nova-hook hook --as <you> --role coordinator` under a Monitor; `nova-sprint watch --wake --check 10m`.
 
 R81. **The owner's phrases map to verbs: a new sprint is clear, adding work is add, start and stop, and pause and
 unpause are stop and start.**
@@ -998,8 +1035,8 @@ Each is a place this runbook describes a workaround; the change that removes it 
     the second;
   - `fleet/land/ruleset-dev.json` names SQUASH as the merge queue's method, while a batch keeps every head's
     history as a merge commit: the live ruleset is read before the first landing;
-  - [STANDARD.md](STANDARD.md) says landings go one at a time, the owner's rule is batches;
-  - [FLEET.md](FLEET.md) sets a reader's width on its loop row, the rule is one number per machine (after PR
-    5124, whose migration number collides with PR 5097's: the second to land renumbers);
+  - [Nova Tools standard](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/STANDARD.md) says landings go one at a time, the owner's rule is batches;
+  - Set each reader's width explicitly for the machine and workload; do not rely on a fleet loop row to
+    supply it;
   - no verb changes the sprint store's coordinator after `init`, so a seat handover moves who uses the
     actor, not the actor.

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // sideTierWorld is a world with a flash and a pro route enabled and the fleet's tiers set
@@ -49,7 +49,7 @@ func TestAModelPinDoesNotOverrideTheFleetsTiers(t *testing.T) {
 func TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers(t *testing.T) {
 	t.Parallel()
 	w := sideTierWorld(t)
-	w.s.Friends = []FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}})
 	c := sidePrimary("c: a card tier: frontier\n")
 	_, tier, why, byFriend := w.s.routeOf(c, nil, nil, "")
 	assert.Equal(t, cardhdr.RouteFrontier, tier)

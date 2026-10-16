@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // An ok end resets a route's rate-limit count and a failed end does not (tla/RateBackoff.tla,
@@ -112,10 +112,10 @@ func backoffWaitAsserts(t *testing.T, w *world) {
 	}
 	hd := Holder(running(w), w.s.Now, "s1-1")
 	assert.Contains(t, hd.Why, "waits for the rate-limit backoff on pro-a", "%s", hd)
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}})
 	rbPlace(w, "s1-8", cardhdr.RoutePro, FriendRow("amy"), Working)
 	rbPlace(w, "s1-9", cardhdr.RoutePro, FriendRow("amy"), Ready)
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "no machine has a pro route to draw")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "no machine has a pro route to draw")
 }
 
 // A tier whose one route backs off from a rate limit while the other's provider is at its
@@ -153,15 +153,15 @@ func TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall(t *testi
 // the machine with no route or model, outside the routes and the backoff.
 func TestRebalanceNeverMovesACardOntoAMachineWhoseTierBacksOff(t *testing.T) {
 	t.Parallel()
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
 	w := rbWorld(t, "m1")
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
 	rbPlace(w, "s1-2", cardhdr.RouteFlash, FriendRow("amy"), Ready)
 	w.s.Fleet.Put(&Card{ID: "x.w1", Row: "m1", Col: Withdrawn, Fields: map[string]string{"kind": "work", FieldRoute: "flash-a",
 		FieldRateTake + "1": ProviderTake{Route: "flash-a", Finished: stamp(w.s.Now), Error: "provider: class=rate-limited status=429 msg=Too many requests"}.String()}})
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "flash-a backs off: no machine route to draw")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "flash-a backs off: no machine route to draw")
 	w.tick(RateBackoffFor + time.Second)
-	p := w.must(Rebalance(w.s, []FriendSeat{amy}, "machine"))
+	p := w.must(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine"))
 	require.Len(t, rebalanced(p), 1, "the backoff ended: the machine draws flash-a again")
 	assert.Equal(t, "flash-a", w.s.Fleet.Card(WorkCardID("s1-2", 1)).F(FieldRoute))
 }

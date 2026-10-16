@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // The idle alarm's words and episode, driven through the exported TraceIdle and
@@ -104,39 +104,42 @@ func TestTheIdleTraceNamesHeldAndSentinelRoots(t *testing.T) {
 	}
 }
 
-// A ready need on a tier no route serves gives "tier <t>: no route serves it"
-// (idle.go:111-117).
-func TestTheIdleTraceNamesATierNoRouteServes(t *testing.T) {
-	t.Parallel()
-	w := idleWorld(t, waitCard("w", "n"),
-		&Card{ID: "n", Row: "s2", Col: Ready, Score: 1, Rev: 1,
-			Fields: map[string]string{"kind": "primary", "attempt": "0", "stream": "s2", "brief": proBrief, FieldTierNow: "pro"}})
-	// a route store with no route of the tier: the tier is not served
-	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Enabled: true}}
-	assert.Contains(t, TraceIdle(w.s, TickReq{}), "1 behind tier pro: no route serves it")
-}
-
-// A need left merging on a stopped stream is a stopped root: the trace names the
-// stream and the cause (idle.go:106-108).
-func TestTheIdleTraceNamesANeedOnAStoppedStream(t *testing.T) {
-	t.Parallel()
-	w := idleWorld(t, waitCard("w", "n"),
-		&Card{ID: "n", Row: "s2", Col: Merging, Score: 1, Rev: 1,
-			Fields: map[string]string{"kind": "primary", "stream": "s2"}})
-	w.s.Merge.Put(&Card{ID: CtlID("s2"), Row: "s2", Col: Ctl,
-		Fields: map[string]string{"state": StreamStopped, "cause": "conflict"}})
-	assert.Contains(t, TraceIdle(w.s, TickReq{}), "1 behind stream s2 stopped (conflict)")
-}
-
-// A need in flight with an open judgment is a judgment root: the trace names the
+// A need's own state names its root: a ready need on a tier no route serves gives "tier <t>:
+// no route serves it" (idle.go:111-117); one left merging on a stopped stream names the
+// stream and the cause (idle.go:106-108); one in flight with an open judgment names the
 // need, the judgment's type and its age (idle.go:103-104,225-226).
-func TestTheIdleTraceNamesANeedWithAnOpenJudgment(t *testing.T) {
+func TestTheIdleTraceNamesANeedsRoot(t *testing.T) {
 	t.Parallel()
-	w := idleWorld(t, waitCard("w", "n"),
-		&Card{ID: "n", Row: "s2", Col: Merging, Score: 1, Rev: 1,
-			Fields: map[string]string{"kind": "primary", "stream": "s2"}})
-	w.note(judgment(NBlocked, "s2", w.s.Now, 0, "n"))
-	assert.Contains(t, TraceIdle(w.s, TickReq{}), "1 behind n ("+NBlocked+", 0s)")
+	merging := func() *Card {
+		return &Card{ID: "n", Row: "s2", Col: Merging, Score: 1, Rev: 1, Fields: map[string]string{"kind": "primary", "stream": "s2"}}
+	}
+	for _, tc := range []struct {
+		name string
+		need func() *Card
+		more func(w *world)
+		want string
+	}{
+		{"TheIdleTraceNamesATierNoRouteServes", func() *Card {
+			return &Card{ID: "n", Row: "s2", Col: Ready, Score: 1, Rev: 1,
+				Fields: map[string]string{"kind": "primary", "attempt": "0", "stream": "s2", "brief": proBrief, FieldTierNow: "pro"}}
+		},
+			func(w *world) { // a route store with no route of the tier: the tier is not served
+				w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Enabled: true}}
+			}, "1 behind tier pro: no route serves it"},
+		{"TheIdleTraceNamesANeedOnAStoppedStream", merging, func(w *world) {
+			w.s.Merge.Put(&Card{ID: CtlID("s2"), Row: "s2", Col: Ctl, Fields: map[string]string{"state": StreamStopped, "cause": "conflict"}})
+		}, "1 behind stream s2 stopped (conflict)"},
+		{"TheIdleTraceNamesANeedWithAnOpenJudgment", merging, func(w *world) {
+			w.note(judgment(NBlocked, "s2", w.s.Now, 0, "n"))
+		}, "1 behind n (" + NBlocked + ", 0s)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := idleWorld(t, waitCard("w", "n"), tc.need())
+			tc.more(w)
+			assert.Contains(t, TraceIdle(w.s, TickReq{}), tc.want)
+		})
+	}
 }
 
 // The trace names at most IdleRoots roots, the most cards behind first, and says
@@ -238,4 +241,37 @@ func TestTickIdleEndsAnEpisodeThatNeverSaidItsNote(t *testing.T) {
 	assert.Empty(t, since, "the episode's idle_since is cleared")
 	said, _ := w.s.Fleet.Prop(PropIdleSaid)
 	assert.Empty(t, said, "the episode's idle_said stayed unset")
+}
+
+func TestIdleBlockersAndIdleLine(t *testing.T) {
+	t.Parallel()
+	assert.Empty(t, IdleBlockers(nil, 3))
+	assert.Empty(t, IdleBlockers(&Snapshot{}, 3))
+	assert.Equal(t, "", IdleLine(nil))
+	assert.Equal(t, "", IdleLine([]string{}))
+
+	w := idleWorld(t,
+		waitCard("x", "ghost"),
+		waitCard("y", "ghost"),
+	)
+	blockers := IdleBlockers(w.s, 3)
+	require.Len(t, blockers, 1)
+	assert.Equal(t, "2 behind 2 cards with missing needs", blockers[0])
+	assert.Equal(t, "idle: 2 behind 2 cards with missing needs", IdleLine(blockers))
+
+	// at most n blockers
+	wMany := setup(t, 0)
+	wMany.s.Work.SetRows(append(wMany.s.Work.Rows(), "s2"))
+	for i := 1; i <= 5; i++ {
+		sid := fmt.Sprintf("sent-%d", i)
+		wid := fmt.Sprintf("wait-%d", i)
+		wMany.s.Work.Put(&Card{ID: sid, Row: "s2", Col: Waiting, Score: 1, Rev: 1,
+			Fields: map[string]string{"kind": "sentinel", FieldHeld: "1"}})
+		wMany.s.Work.Put(waitCard(wid, sid))
+	}
+	top3 := IdleBlockers(wMany.s, 3)
+	require.Len(t, top3, 3, "at most 3 blockers")
+	line := IdleLine(top3)
+	assert.True(t, strings.HasPrefix(line, "idle: "))
+	assert.Equal(t, 2, strings.Count(line, "; "), "3 blockers separated by 2 semicolons")
 }

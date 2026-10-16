@@ -2,7 +2,6 @@ package sprint_test
 
 import (
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,15 +38,6 @@ func (r *conflictRig) failedAttempt(id, report string) {
 	r.must(store.TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}}))
 	wc = r.snap().Fleet.Card(wc.ID)
 	r.must(store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Failed: true, Report: report}))
-}
-
-// ledgerRefused drives the primary's attempt through work, ok reads and the accept to merging,
-// then the lander refuses its head on a conflict in the shared ledgers alone.
-func (r *conflictRig) ledgerRefused(id, head string) {
-	r.t.Helper()
-	r.toMergingAt(id, head)
-	why := "the head " + head + " of " + id + " does not merge: Auto-merging FIXES.md | CONFLICT (content): Merge conflict in FIXES.md | Automatic merge failed"
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "r", Batch: 1, Conflict: id, Note: why, ConflictKind: "file", ConflictPaths: []string{"FIXES.md", "docs/fixes.sexp"}}))
 }
 
 // snapRoutes is the rig's snapshot with the routes and the sprint row's bars read into it, as
@@ -160,7 +150,7 @@ func TestACoordinatorsDecisionOpensAFreshWindowOfAttempts(t *testing.T) {
 	r.brokenRead("r-1", "internal/y/b.go:44 the renamed call drops its second return")
 	r.tick()
 	require.Equal(t, 8, r.attemptOf("r-1"))
-	r.ledgerRefused("r-1", strings.Repeat("d4", 20))
+	r.failedAttempt("r-1", "build broken: internal/y/b.go:45: missing return")
 	r.tick()
 	r.noAttemptPast("r-1", 8)
 }

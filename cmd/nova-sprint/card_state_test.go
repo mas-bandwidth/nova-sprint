@@ -11,7 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // stalePlacementBackend leaves the table placement intact while supplying a
@@ -130,20 +130,22 @@ func TestCardJSONNeedsCarryTheirColumn(t *testing.T) {
 	assert.Equal(t, "s1-1", card.Needs[0].ID)
 	assert.Equal(t, sprint.Merging, card.Needs[0].Column, "a need's column is the needs verb's word")
 
-	// a waiting card whose need is off the table: only a waiting card defers, so
-	// the need waits on base, the waiter waits on the need, and deferring the
-	// need leaves the waiter on a dropped one.
+	// a waiting card whose need is waiting: the need waits on base, the
+	// waiter waits on the need; deferring need without car is refused by the
+	// no-stranding rule, so the need remains waiting and both readers report it.
 	dir := roadmapDir(t)
 	ta.ok("add --one --stream s3 base")
 	ta.ok("add --one --stream s3 need --needs base --brief-file " + writeBrief(t, "THE TASK. Do the need."))
 	ta.ok("add --one --stream s4 car --needs need")
-	ta.ok("defer need --repo-dir " + dir + " --reason 'deferred to the roadmap'")
+	code, _, errOut := ta.do("defer need --repo-dir " + dir + " --reason 'deferred to the roadmap'")
+	require.NotZero(t, code)
+	assert.Contains(t, errOut, "need is needed by car")
 
 	var off cardJSON
 	ta.json("card car", &off)
 	require.Len(t, off.Needs, 1)
 	assert.Equal(t, "need", off.Needs[0].ID)
-	require.False(t, off.Needs[0].Column == "", "a need off the table carries its column")
+	require.False(t, off.Needs[0].Column == "", "a need carries its column")
 
 	var graph struct {
 		Streams []struct {
@@ -159,6 +161,6 @@ func TestCardJSONNeedsCarryTheirColumn(t *testing.T) {
 	require.Len(t, graph.Streams[0].Cards[0].Needs, 1)
 	assert.Equal(t, graph.Streams[0].Cards[0].Needs[0].Column, off.Needs[0].Column,
 		"card --json and needs --json print the same column for the same need")
-	assert.Equal(t, "dropped", off.Needs[0].Column)
+	assert.Equal(t, sprint.Waiting, off.Needs[0].Column)
 	ta.clean()
 }

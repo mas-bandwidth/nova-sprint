@@ -60,6 +60,22 @@ func syncHeld(t *testing.T) *world {
 	return w
 }
 
+// dSyncAdded is a world with m1 up and count cards added, then synced to an inventory
+// that adds m9 at width.
+func dSyncAdded(t *testing.T, count, width int) (*world, FleetReq) {
+	t.Helper()
+	w := newWorld(t, "reader-a")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	if count > 0 {
+		w.must(Add(w.s, AddReq{Stream: "s1", Count: count}))
+	}
+	sync := FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", width}},
+		Machines: []string{"m1", "m9"}}
+	w.must(FleetStep(w.s, sync))
+	return w, sync
+}
+
 // TestASyncAddedMemberComesUpOnlyAfterItsProbe: a member the sync adds to the
 // fleet is held until its own probe passes, so presence's beat alone never
 // brings it up and it is dealt no card (internal/sprint/fleet_sync.go's
@@ -67,12 +83,7 @@ func syncHeld(t *testing.T) *world {
 // NewMemberProbed).
 func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
-		Machines: []string{"m1", "m9"}}))
+	w, _ := dSyncAdded(t, 2, DefaultWidth)
 	require.NotNil(t, w.s.MemberCtl("m9"), "the sync adds m9")
 	presenceWith(w, "m1", "m9")
 	w.must(Deal(w.s, DealReq{}))
@@ -88,12 +99,7 @@ func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
 // tla/ProviderBudget.tla, NewMemberProbed).
 func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", 3}},
-		Machines: []string{"m1", "m9"}}))
+	w, _ := dSyncAdded(t, 2, 3)
 
 	p := FleetStep(w.s, FleetReq{Op: "up", Member: "m9"})
 	require.Len(t, p.Refused, 1, "fleet up with no probe is refused: %+v", p)
@@ -119,11 +125,7 @@ func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 // 5, the fleet; tla/ProviderBudget.tla, NewMemberProbed).
 func TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
-		Machines: []string{"m1", "m9"}}))
+	w, _ := dSyncAdded(t, 0, DefaultWidth)
 	require.Equal(t, HeldByProbe, w.s.MemberCtl("m9").F(FieldHeldBy), "the sync adds m9 held by the probe")
 
 	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m9", Who: "coordinator"}))
@@ -141,33 +143,11 @@ func TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark(t *testing.T) {
 // no drift behind, so a sync after it writes nothing (FleetDrift, fleet_sync.go).
 func TestASecondSyncAfterAProbeAddWritesNothing(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	sync := FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
-		Machines: []string{"m1", "m9"}}
-	w.must(FleetStep(w.s, sync))
+	w, sync := dSyncAdded(t, 0, DefaultWidth)
 	require.NotNil(t, w.s.MemberCtl("m9"), "the sync adds m9")
 	assert.Empty(t, FleetDrift(w.s, sync.Sync, sync.Machines), "the add leaves no drift")
 	p := FleetStep(w.s, sync)
 	assert.Empty(t, p.Units, "a second sync writes nothing: %+v", p)
-}
-
-// TestAMemberTheSyncHeldAndReleasedIsUnchanged: a member the sync held (and
-// whose probe passed before it was up) is released by the sync, its width kept,
-// no probe hold written (FleetDrift DriftRelease, fleet_sync.go).
-func TestAMemberTheSyncHeldAndReleasedIsUnchanged(t *testing.T) {
-	t.Parallel()
-	w := syncHeld(t)
-	before := w.s.MemberCtl("m2").F(FieldWidth)
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}},
-		Machines: []string{"m1", "m2"}}))
-	ctl := w.s.MemberCtl("m2")
-	assert.Empty(t, ctl.F("held"), "released")
-	assert.Empty(t, ctl.F(FieldHeldBy), "no mark")
-	assert.NotEqual(t, HeldByProbe, ctl.F(FieldHeldBy), "never a probe hold")
-	assert.Equal(t, before, ctl.F(FieldWidth), "its width is unchanged")
 }
 
 // TestACoordinatorsHoldOnAMemberTheSyncHoldsClearsTheMark: fleet down on a
@@ -185,25 +165,32 @@ func TestACoordinatorsHoldOnAMemberTheSyncHoldsClearsTheMark(t *testing.T) {
 	}
 }
 
-// TestFleetUpClearsTheSyncsMark: releasing a member the sync held leaves no
-// mark behind for a later hold to inherit.
-func TestFleetUpClearsTheSyncsMark(t *testing.T) {
+// A member the sync held is released with no mark behind for a later hold to inherit, its
+// width kept and never a probe hold written: by the sync that names it again (with or
+// without the machines; FleetDrift DriftRelease, fleet_sync.go) or by fleet up.
+func TestASyncHeldMemberReleasedKeepsNoMark(t *testing.T) {
 	t.Parallel()
-	w := syncHeld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m2", Who: "coordinator"}))
-	ctl := w.s.MemberCtl("m2")
-	require.Empty(t, ctl.F("held"), "m2 after fleet up: %v", ctl.Fields)
-	require.Empty(t, ctl.F(FieldHeldBy), "m2 after fleet up: %v", ctl.Fields)
-}
-
-// TestTheSyncsReleaseClearsItsMark.
-func TestTheSyncsReleaseClearsItsMark(t *testing.T) {
-	t.Parallel()
-	w := syncHeld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}}}))
-	ctl := w.s.MemberCtl("m2")
-	require.Empty(t, ctl.F("held"), "m2 after the sync's release: %v", ctl.Fields)
-	require.Empty(t, ctl.F(FieldHeldBy), "m2 after the sync's release: %v", ctl.Fields)
+	both := []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}}
+	for _, tc := range []struct {
+		name, msg string
+		req       FleetReq
+	}{
+		{"AMemberTheSyncHeldAndReleasedIsUnchanged", "released by the sync",
+			FleetReq{Op: "sync", Who: "sync", Sync: both, Machines: []string{"m1", "m2"}}},
+		{"FleetUpClearsTheSyncsMark", "m2 after fleet up", FleetReq{Op: "release", Member: "m2", Who: "coordinator"}},
+		{"TheSyncsReleaseClearsItsMark", "m2 after the sync's release", FleetReq{Op: "sync", Who: "sync", Sync: both}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := syncHeld(t)
+			before := w.s.MemberCtl("m2").F(FieldWidth)
+			w.must(FleetStep(w.s, tc.req))
+			ctl := w.s.MemberCtl("m2")
+			require.Empty(t, ctl.F("held"), "%s: %v", tc.msg, ctl.Fields)
+			require.Empty(t, ctl.F(FieldHeldBy), "%s: no mark (never a probe hold): %v", tc.msg, ctl.Fields)
+			assert.Equal(t, before, ctl.F(FieldWidth), "%s: its width is unchanged", tc.msg)
+		})
+	}
 }
 
 // TestAHoldClearsAStaleMark: a member with a mark and no hold (a card written

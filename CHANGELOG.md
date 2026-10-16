@@ -11,5 +11,5 @@ Dogfood gate waived: Glenn, 2026-10-06 11:03 AM ET: the dogfood gate is waived f
 ## v1.0.0 (2026-10-06)
 
 The first release of nova-sprint as its own repository: the sprint server, the coordinator's verbs, the friend
-daemon, the lander and the public dashboard. The guarantees of this release and the roadmap for the next are in
-docs/RELEASE-NOTES-v1.0.0.md and ROADMAP.md.
+daemon, the lander and the public dashboard. The guarantees of this release are in the release notes at the
+v1.0.0 tag; the roadmap for the next release is in ROADMAP.md.

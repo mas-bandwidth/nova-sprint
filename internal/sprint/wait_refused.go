@@ -36,7 +36,7 @@ var WaitRefused = map[string]string{
 	NBriefDefect: "re-cut its brief, or drop it",
 	// a read that cannot be asked, a base or a read branch gone: the card waits on it
 	NMissingBase:       "rebase the card, or drop it",
-	NReadBranchMissing: "rework it with a fix, drop it, or ack it once its branch is on origin",
+	NReadBranchMissing: "ask it once a branch on origin holds its head, rework it with a fix, drop it, or ack it once its branch is on origin",
 	// a card the deal cannot place, or whose merge base is gone
 	NNoRoute:   "add a route, look at the card, or drop it",
 	NReadyOver: "look at the card and give the deal what it lacks, or drop it",
@@ -61,12 +61,15 @@ var WaitRefused = map[string]string{
 	// a harness fault repeated: the second identical one on a card, or on many cards, holds
 	// the card until the cause is mended and it is rebriefed or dropped (harness_fault.go)
 	NHarnessFault: "mend the cause (the toolchain, a route or a provider), then rebrief it, or drop it",
+	// a finish refused past its bound: the same finish is being sent again
+	NFinishRefused: "look at the card and mend what the refusal names, or drop it",
 }
 
 // WaitAllowedOnACard is the kinds a rework discharges on its primary (ReworkResolves) that
 // still take a wait, each with why: the exceptions TestEveryKindThatHoldsACardRefusesWait
 // reads, kept as few as the code allows.
 var WaitAllowedOnACard = map[string]string{
+	NCannotAsk: "the primary awaits a reader rather than a coordinator action: wait quiets the reader condition until its review time, and eligibility still closes it",
 	// a stall that names a card holds it and is refused (WaitRefusedWhenItNamesACard)
 	NStalled: "a stall that names no card on the work table is a report about a stream or the fleet with nothing held; one that names a card refuses wait",
 	// lateness: the card keeps working (or being read) under its holder, and the late rules
@@ -76,8 +79,7 @@ var WaitAllowedOnACard = map[string]string{
 	// the held wave's sentinel, never a card: a stop the coordinator placed
 	NStarving: "names the first held wave's sentinel, a stop the coordinator placed, never a single card",
 	// a friend's session: the judgment names a friend, not a card
-	NFriendIdle:    "names a friend whose session holds working cards and finishes none, not a card: the cards stay on that friend's row and keep their deadlines",
-	NFriendStalled: "names a friend, not a card: the cards keep their deadlines and the stall ladder wakes the friend",
+	NFriendIdle: "names a friend whose session holds working cards and finishes none, not a card: the cards stay on that friend's row and keep their deadlines",
 	// a deliberate stop: "do more before going on" is the sentinel's own decision
 	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
 }
@@ -101,7 +103,12 @@ func WaitRefusedKinds() []string {
 
 // WaitRefusal is why wait is refused on the judgment n: it holds a card from progressing,
 // and what to run instead; "" when a wait may hold it (an informational kind).
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func WaitRefusal(n Note) string {
+	if n.Type == NNeedBlocked {
+		return fmt.Sprintf("%s (%s) cannot be waited: decide the blocker (rework it on a higher tier, or drop it), or remove its needs; run: nova-sprint inbox --open %s", n.ID, n.Type, n.ID)
+	}
 	instead, ok := WaitRefused[n.Type]
 	if c, cardOnly := WaitRefusedWhenItNamesACard[n.Type]; !ok && cardOnly && !n.StreamLevel && !n.SprintLevel && len(n.Primaries) > 0 {
 		instead, ok = c, true
@@ -143,9 +150,14 @@ func WaitRefusalOn(n Note, onWork func(id string) bool) string {
 // WaitRefusedAction is the action WaitRefused names in place of a wait on the judgment n: the
 // one table's text for the kind, or "" when the kind takes a wait. A kind of
 // WaitRefusedWhenItNamesACard names it only when the judgment names a card.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func WaitRefusedAction(n Note) string {
 	if n.Kind != Judgment {
 		return ""
+	}
+	if n.Type == NNeedBlocked {
+		return "decide the blocker (rework it on a higher tier, or drop it), or remove its needs"
 	}
 	if instead, ok := WaitRefused[n.Type]; ok {
 		return instead

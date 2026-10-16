@@ -10,14 +10,14 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // friend sync install and friend sync uninstall (docs/SPEC-SPRINT.md, "The friend sync
 // loop as a service"; the owner, 2026-10-05: "We need to get away from these one shot
 // shell scripts"): the friend sync loop, friend sync --every <d>, as the tool's own
-// service on the machine they are typed on, as seat install runs the push loop
-// (seatinstall.go), in place of a zsh while-loop that read the seat with where --json
+// service on the machine they are typed on (seatinstall.go's installer), in place of a
+// zsh while-loop that read the seat with where --json
 // and jq. The unit's text and its install are sprint.FriendSyncUnit and
 // sprint.SeatInstaller; here are the machine's facts (its OS, the binary, the home,
 // the stores this verb was given). They are words of friend sync, dispatched by it

@@ -18,25 +18,25 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/seatcred"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/seatcred"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"; the owner,
 // 2026-10-02: "We need to make handover MORE SMOOTH."; nova-tools#5096 item 28).
 // coordinator <name> gives the seat (its holder, or the owner) or takes it (the
 // one taking it, --take --approved-by <owner>); handover prints the store view,
-// then the coordinator's numbered rules, one line each; inbox --wait --push seat writes to
-// the holder's inbox, and follows the seat.
+// then the coordinator's numbered rules, one line each.
 
 // OwnerEnv names the sprint's owner when init named none: the name a take
 // carries in its record.
 const OwnerEnv = "NOVA_SPRINT_OWNER"
 
-// pushSeat is the --push value that follows the seat: the holder's inbox,
-// ~/<holder>-working/inbox/sprint-judgments (a directory named seat is ./seat).
-const pushSeat = "seat"
+// retiredPushWord is the --push word of the seat's push loop, retired in v1.3.6 (the
+// server sends the coordinator's judgments to its name on the bus): inbox --wait refuses
+// it, naming what replaced it (a directory named so is ./seat).
+const retiredPushWord = "seat"
 
 // owner is the sprint's owner: init --owner, else NOVA_SPRINT_OWNER.
 func (a *app) owner(ctx context.Context, st *store.Store) (string, error) {
@@ -74,8 +74,9 @@ func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	if why := sprint.NotSeat(holder, req); why != "" {
 		return refuse(stderr, "coordinator", why)
 	}
-	// the new holder hooks in before any of its commands runs (hook.go): the seat moves
-	// to it, and every coordinator command of its waits for its hook
+	// the new holder hooks in with nova-hook before any of its commands runs
+	// (coordinator_hook.go): the seat moves to it, and every coordinator command of its
+	// waits for its nova-hook record proven as the coordinator
 	how := "given"
 	if req.Take {
 		how = "taken approved_by=" + oneline.Field(req.ApprovedBy)
@@ -312,7 +313,7 @@ func (a *app) handover(ctx context.Context, st *store.Store) (handoverView, stri
 		}
 	}
 	h.Rules = handoverRules()
-	h.First = []string{"nova-sprint where", "nova-sprint inbox --wait --push " + pushSeat, `read docs/SPEC-SPRINT.md, "Handing over the seat"`}
+	h.First = []string{"nova-sprint where", "nova-hook hook --as <you> --role coordinator, under a Monitor (the judgments come on the bus)", `read docs/SPEC-SPRINT.md, "Handing over the seat"`}
 	return h, a.handoverText(h), nil
 }
 
@@ -455,113 +456,37 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// seatInbox is a name's inbox for pushed judgments,
-// ~/<name>-working/inbox/sprint-judgments, and the inbox it is under; ok false
-// when that inbox is not there.
-func (a *app) seatInbox(name string) (dir, parent string, ok bool) {
-	home, err := a.home()
-	if err != nil || name == "" {
-		return "", "", false
-	}
-	parent = filepath.Join(home, name+"-working", "inbox")
-	info, err := os.Stat(parent)
-	return filepath.Join(parent, "sprint-judgments"), parent, err == nil && info.IsDir()
-}
-
-// pushTarget is where inbox --wait --push writes each note: one directory, or,
-// following the seat (--push seat), the holder's inbox, and a note addressed to
-// someone with an inbox there, theirs. Each directory's files are its cursor.
+// pushTarget is where inbox --wait --push writes each note: one directory, whose files
+// are its cursor.
 type pushTarget struct {
-	a      *app
-	fixed  string                     // --push <dir>; "" follows the seat
-	seen   map[string]map[string]bool // each directory's keys, read once
-	holder string                     // the holder last pushed for
+	dir  string
+	seen map[string]bool // the directory's keys, read once
 }
 
-// dirOf is the directory the group is written to with the seat held by holder,
-// "" when there is none to write it to now.
-func (p *pushTarget) dirOf(holder string, g sprint.Group) string {
-	if p.fixed != "" {
-		return p.fixed
+// keys is the directory's keys, made and read the first time.
+func (p *pushTarget) keys() (map[string]bool, error) {
+	if p.seen != nil {
+		return p.seen, nil
 	}
-	if g.To != "" && g.To != holder {
-		if dir, _, ok := p.a.seatInbox(g.To); ok {
-			return dir
-		}
-	}
-	if dir, _, ok := p.a.seatInbox(holder); ok {
-		return dir
-	}
-	return ""
-}
-
-// keys is the directory's keys, made and read the first time it is named.
-func (p *pushTarget) keys(dir string) (map[string]bool, error) {
-	if p.fixed != "" {
-		if k, ok := p.seen[dir]; ok {
-			return k, nil
-		}
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(p.dir, 0o755); err != nil {
 		return nil, err
 	}
-	k, err := pushedKeys(dir)
+	k, err := pushedKeys(p.dir)
 	if err != nil {
 		return nil, err
 	}
-	if p.fixed != "" {
-		p.seen[dir] = k
-	}
+	p.seen = k
 	return k, nil
 }
 
-// unseen is the groups that wake the coordinator and hold a key their
-// directory does not, in the inbox's order; a group with no directory now waits.
-// When following the seat, all coordinator groups are returned to enable
-// repeated pushes while judgments remain unanswered.
+// unseen is the groups that wake the coordinator and hold a key the directory does
+// not, in the inbox's order.
 func (p *pushTarget) unseen(l inboxLook) ([]sprint.Group, error) {
-	var out []sprint.Group
-	for _, g := range l.groups {
-		if !forCoordinator(g) {
-			continue
-		}
-		dir := p.dirOf(l.holder, g)
-		if dir == "" {
-			continue
-		}
-		if p.fixed == "" {
-			out = append(out, g)
-			continue
-		}
-		k, err := p.keys(dir)
-		if err != nil {
-			return nil, err
-		}
-		if len(unseen(k, []sprint.Group{g})) > 0 {
-			out = append(out, g)
-		}
+	k, err := p.keys()
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
-}
-
-// follow says where a loop following the seat writes, once for each holder: a
-// line when the seat moved, and whether the holder has an inbox. A loop
-// started for a holder with none is refused (exit 2, naming it).
-func (p *pushTarget) follow(holder string, first bool, stdout, stderr io.Writer) int {
-	if p.fixed != "" || holder == p.holder {
-		return 0
-	}
-	p.holder = holder
-	dir, parent, ok := p.a.seatInbox(holder)
-	switch {
-	case first && !ok:
-		return refuse(stderr, "inbox", fmt.Sprintf("--push seat writes to the holder's inbox, %s, and %s is not there: make it, or give --push <dir>", dir, parent))
-	case !ok:
-		fmt.Fprintf(stdout, "NOTE the seat is %s's, and %s is not there: nothing is pushed until it is\n", oneline.Field(holder), oneline.Field(parent))
-	case !first:
-		fmt.Fprintf(stdout, "NOTE the seat is %s's: pushing to %s\n", oneline.Field(holder), oneline.Field(dir))
-	}
-	return 0
+	return unseen(k, l.groups), nil
 }
 
 // cmdSeat is the seat as the friends' daemons read it every second: the
@@ -575,16 +500,13 @@ func (p *pushTarget) follow(holder string, first bool, stdout, stderr io.Writer)
 // (seat-key-follows-record.w2).
 func (a *app) cmdSeat(args []string, stdout, stderr io.Writer) int {
 	// seat login and seat logout are the seat's store login, kept on this machine and
-	// never in the store (storelogin.go); seat push is the seat's push target
-	// (pushproof.go)
+	// never in the store (storelogin.go)
 	if len(args) > 0 {
 		switch args[0] {
 		case "login":
 			return a.cmdSeatLogin(args[1:], stdout, stderr)
 		case "logout":
 			return a.cmdSeatLogout(args[1:], stdout, stderr)
-		case "push":
-			return a.cmdSeatPush(args[1:], stdout, stderr)
 		}
 	}
 	fs, c := a.verbSetup("seat")

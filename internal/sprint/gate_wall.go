@@ -2,10 +2,11 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // THE GATE'S WALL (docs/SPEC-SPRINT.md section 5, the gate's wall). A card whose gate cannot
@@ -59,12 +60,18 @@ func gatePackage(brief string) string {
 
 // gateTier is what add writes on a card with brief by its gate's measured wall (walls,
 // gateWalls): FieldTierNow pro and FieldGateWall when the median is over FlashGateBound, with
-// the sentence its unit says; nothing for a card whose tier is pinned (pinnedTier: a
+// the sentence its unit says; nothing for a card above pro (the wall only raises), nothing
+// for a card whose tier is pinned (pinnedTier: a
 // frontier card, a model pin), one never measured, or one at or under the bound.
 func gateTier(walls map[string][]float64, brief string) (set map[string]string, said string) {
 	m, bad := cardhdr.ReadModel(brief)
 	pkg := gatePackage(brief)
 	if bad != "" || pkg == "" || pinnedTier(&Card{}, m) || len(walls[pkg]) == 0 {
+		return nil, ""
+	}
+	if slices.Index(capLadder, m.Tier) > slices.Index(capLadder, cardhdr.RoutePro) {
+		// a heavy card is above pro: the wall raises a card to pro and never lowers one
+		// below its tier
 		return nil, ""
 	}
 	got := measure(walls[pkg])

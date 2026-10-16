@@ -26,9 +26,10 @@ func TestWhereCarriesTiersAndPerLandedCost(t *testing.T) {
 	}
 	ta.ok("start")
 	ta.landStream("s1", []string{"input=10 actual_usd=1 actual_by=harness", "input=10 actual_usd=2 actual_by=harness"}, []string{"", ""}, []string{"", ""})
-	ta.ok("stream archive s1") // s1 archived by the explicit verb
+	// s1 stays on the table: an archived stream is in no total (the owner, 2026-10-14;
+	// where_live_totals_test.go), so its tiers and costs are read while it is live
 	var v whereView
-	ta.json("where --archived", &v)
+	ta.json("where", &v)
 	assert.Equal(t, map[string]int{"pro": 2, "flash": 1}, v.Tiers, "every card by its brief's tier")
 	s1 := v.Tables["work"]["s1"]
 	assert.Equal(t, "$1.50", s1["per_landed"], "three dollars over two landed cards")
@@ -54,7 +55,8 @@ func TestWhereCarriesTiersAndPerLandedCost(t *testing.T) {
 		if strings.HasPrefix(l, "s1 ") {
 			cells := strings.Split(l, "|")
 			assert.Equal(t, "$1.50", strings.TrimSpace(cells[len(cells)-1]), "s1's per landed: %s", l)
-			assert.Equal(t, "$3.00", strings.TrimSpace(cells[len(cells)-2]), "s1's cost: %s", l)
+			// cost | unpriced | per landed (the header below): the cost is third from the end
+			assert.Equal(t, "$3.00", strings.TrimSpace(cells[len(cells)-3]), "s1's cost: %s", l)
 		}
 	}
 	require.Regexp(t, "\\| +cost \\| unpriced \\| per landed$", header, "per landed is the last column, after cost and the runs unpriced")

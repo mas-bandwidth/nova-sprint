@@ -3,9 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -98,13 +95,9 @@ func (st *Store) SeatCheck(ctx context.Context) (SeatCheck, error) {
 // "Handing over the seat", seat-key-follows-record.w5): the seat record's
 // holder when the seat has a record; else, over a key that already holds the
 // coordinator, that holder (init does not change the coordinator); else first,
-// the name init was given (--coordinator, else its actor). A store whose key
-// holds none while a friend-health record survives (an observation made under
-// an earlier seat) is not new: writing a coordinator name onto it moves the
-// seat, and the move is recorded as a seat change, so the earlier observation
-// lapses by FriendEvidence's generation check. A fresh store's first init
-// writes no seat record. It returns the name the key holds. The run loop
-// never writes the key; init and the seat's steps alone do, from the record.
+// the name init was given (--coordinator, else its actor). A fresh init writes
+// no seat record. Friend liveness and its hook record do not affect this choice.
+// The run loop never writes the key; init and the seat's steps do.
 func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 	rec, ok, err := st.Seat(ctx)
 	if err != nil {
@@ -120,70 +113,7 @@ func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 	if coord != "" {
 		return coord, st.B.SetCoordinator(ctx, coord)
 	}
-	has, err := st.hasFriendHealth(ctx)
-	if err != nil {
-		return "", err
-	}
-	if has {
-		return st.initSeatMove(ctx, first)
-	}
 	return first, st.B.SetCoordinator(ctx, first)
-}
-
-// hasFriendHealth says a friend-health record survives: an observation made
-// under an earlier seat, so the sprint is not new. A friend taken off the
-// roster has her record removed with her (SyncFriends), so a surviving record
-// is a rostered friend's.
-func (st *Store) hasFriendHealth(ctx context.Context) (bool, error) {
-	r, kv, err := st.roster(ctx)
-	if kv == nil {
-		return false, nil // a store that keeps no keys has no friend-health record
-	}
-	if err != nil || len(r) == 0 {
-		return false, err
-	}
-	names := slices.Sorted(maps.Keys(r))
-	keys := make([]string, 0, len(names))
-	for _, n := range names {
-		keys = append(keys, friendHealthKey(n))
-	}
-	_, oks, err := getKeys(ctx, kv, keys)
-	if err != nil {
-		return false, err
-	}
-	for _, ok := range oks {
-		if ok {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// initSeatMove records init's move of the seat onto a not-new store whose key
-// holds none: the seat change as the seat's own step writes it, its generation
-// stepped, written with the key, its log line and its note, so an observation
-// made under an earlier seat lapses (FriendEvidence's generation check).
-func (st *Store) initSeatMove(ctx context.Context, first string) (string, error) {
-	step := Step{Named: true, Verb: "init", Args: "init --coordinator " + first,
-		Plan: func(s *sprint.Snapshot) sprint.Plan {
-			reason := "init --coordinator " + first
-			c := &sprint.SeatChange{Holder: first, Generation: max(s.SeatGeneration, sprint.FirstSeatGeneration) + 1, From: s.Coordinator, At: s.Now, By: s.Actor, Reason: reason}
-			from := s.Coordinator
-			if from == "" {
-				from = "-"
-			}
-			n := sprint.Note{Kind: sprint.Happened, Type: sprint.NSeat, At: s.Now, Who: s.Actor, To: first,
-				What: from + " -> " + first + ": " + reason + ", by " + s.Actor}
-			return sprint.Plan{Seat: c, Notes: []sprint.Note{n}}
-		}}
-	res, err := st.Run(ctx, step)
-	if err != nil {
-		return "", err
-	}
-	if len(res.Refused) > 0 {
-		return "", fmt.Errorf("init: %s", res.Refused[0].Why)
-	}
-	return first, nil
 }
 
 // SeatRepairStep writes the coordinator key from the seat's record, read now
@@ -307,31 +237,40 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 // cost a trip of its own. Its answers are exactly Seat's (the seat moved) and
 // Server's (the server is fresh, no older than ServerTTL).
 func (st *Store) SeatAndServer(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, error) {
+	seat, moved, server, fresh, _, err := st.SeatServerCoordinator(ctx)
+	return seat, moved, server, fresh, err
+}
+
+// SeatServerCoordinator reads the seat, server and coordinator keys in one
+// MGET on Redis. This funds where's decision-index read without another serial
+// coordinator GET; no backend call count is hidden or rewritten.
+func (st *Store) SeatServerCoordinator(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, string, error) {
 	var s sprint.SeatChange
 	var r ServerRecord
 	kv, ok := st.B.(KV)
 	if !ok {
-		return s, false, r, false, nil // a backend that keeps no keys has neither
+		coordinator, err := st.B.Coordinator(ctx)
+		return s, false, r, false, coordinator, err // a backend without keys keeps no seat/server records
 	}
-	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer})
+	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer, keyCoordinator})
 	if err != nil {
-		return s, false, r, false, err
+		return s, false, r, false, "", err
 	}
 	if oks[0] {
 		if err := json.Unmarshal([]byte(vals[0]), &s); err != nil {
-			return s, false, r, false, err
+			return s, false, r, false, "", err
 		}
 	}
 	fresh := false
 	if oks[1] {
 		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
-			return s, false, r, false, err
+			return s, false, r, false, "", err
 		}
 		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
 			r = ServerRecord{}
 		}
 	}
-	return s, s.Holder != "", r, fresh, nil
+	return s, s.Holder != "", r, fresh, vals[2], nil
 }
 
 // ServerActor is the actor the server runs as, by its record: "" with no

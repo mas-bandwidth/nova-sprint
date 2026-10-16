@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/redis/go-redis/v9"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // The machine (docs/SPEC-SPRINT.md, "The machine"): one state flag in the
@@ -671,7 +671,15 @@ func tickExtras(s *sprint.Snapshot) map[string][]string {
 			}
 		}
 	}
-	return map[string][]string{sprint.Work: work, sprint.Readers: reads, sprint.Fleet: sprint.ReadCardExtras(s)}
+	fleet := sprint.ReadCardExtras(s)
+	// CoordinatorPush.tla CommitTransition: automatic resumes freeze the same
+	// current-attempt owners as the resume verb, including unplaced work cards.
+	for _, stream := range s.Merge.Rows() {
+		if s.StreamCtl(stream).F("state") == sprint.StreamStopped {
+			fleet = append(fleet, streamNoticeRecords(s, stream)[sprint.Fleet]...)
+		}
+	}
+	return map[string][]string{sprint.Work: work, sprint.Readers: reads, sprint.Fleet: fleet}
 }
 
 // TickPartStep is one part of the tick as a step of the engine: fenced,
@@ -703,7 +711,7 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 
 // mirrors says the part's step brings the display cells up to date after it.
 func mirrors(name string) bool {
-	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartFriendStall
+	return name == "presence" || name == "deal" || name == "level" || name == "resume"
 }
 
 // unchangedNotWritten is the plan of a part with the writes that change no
@@ -804,6 +812,11 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		return res, fmt.Errorf("back: %w", err)
 	}
 	res.State = m.StateWord()
+	// the server's word on every friend, written first on every pass, STOPPED or not: what
+	// the dashboard and where show is read from it (friends.go PublishFriendStatus)
+	if err := st.PublishFriendStatus(ctx, st.now()); err != nil {
+		return res, fmt.Errorf("friend status: %w", err)
+	}
 	if !m.Running() {
 		// A STOPPED machine moves nothing; the tick shows the fleet as its
 		// beats say and says it looked, so start can tell a run loop is
@@ -1160,7 +1173,7 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -1176,12 +1189,6 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// the friends the deal may give a friend's card to and the level evens, read every
 	// tick while the roster has one (sprint.TickDeal, sprint.FriendLevel)
 	if req.Friends, err = pinned.friendSeats(ctx, &first, now); err != nil {
-		return last, err
-	}
-	// each friend's session for the coordinator's pass (sprint.TickCoordinatorPass): every
-	// friend of the roster, whether or not she holds a card; a sprint with no friend reads
-	// the roster alone
-	if req.Sessions, err = pinned.FriendSessions(ctx); err != nil {
 		return last, err
 	}
 	t := &tickRun{st: st, ctx: ctx, res: res, req: req, at: at, runSeq: m.RunSeq, snap: &first, queues: map[string]int{}, twin: twin, readers: first.ReaderStates, noRoom: first.NoRoom}
@@ -1462,11 +1469,8 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				continue
 			}
 			if !drain {
-				// a plan made to see whether the part has work wakes no one
-				probe := t.req
-				probe.WakeFriend = nil
-				p, due := part.Fn(view, probe)
-				p = t.laneChecked(view, probe, part.Name, p)
+				p, due := part.Fn(view, t.req)
+				p = t.laneChecked(view, t.req, part.Name, p)
 				if p.Empty() && due == 0 {
 					// a part that brings the display cells up to date after
 					// it leaves them to the tick's end (tickRun.display)
@@ -1480,11 +1484,6 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		var done *sprint.Note
 		stop := "" // the deal's: every provider out of credit (sprint.FundsCause)
 		var planned sprint.Plan
-		// the stall ladder's wakes of the plan last made (sprint.TickFriendStall): kept,
-		// never sent, as the part plans, and sent once its step commits (tickRun.wake;
-		// tla/StallLadder.tla, NoWakeWithoutRung): a plan made again after a commit lost
-		// to another writer wakes her once, not once a plan
-		var wakes []stallWake
 		fn := func(s *sprint.Snapshot, r sprint.TickReq) (sprint.Plan, int) {
 			if drain {
 				planned = sprint.Drain(s, s.Queue, sprint.MachineActor)
@@ -1499,15 +1498,8 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				sprint.SetRouteShares(s.Routes, t.snap.Fleet)
 				t.routeSharesSet = true
 			}
-			wakes = nil
 			if s.Friends == nil {
 				s.Friends = r.Friends
-			}
-			if r.WakeFriend != nil {
-				r.WakeFriend = func(friend string, rung int, d time.Duration) error {
-					wakes = append(wakes, stallWake{friend, rung, d})
-					return nil
-				}
 			}
 			p, d := part.Fn(s, r)
 			// a judgment checks the lane before it rises (sprint.LaneChecked)
@@ -1615,9 +1607,6 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		case !r.Lost && len(r.Moved) > 0:
 			t.res.addRows(sprint.PlanRows(planned))
 		}
-		if !r.Lost {
-			t.wake(wakes)
-		}
 		// Each table this part wrote, other than its own and the work table,
 		// holds what it wrote in its queue until its update runs.
 		for _, x := range All {
@@ -1666,28 +1655,6 @@ func (t *tickRun) laneChecked(s *sprint.Snapshot, r sprint.TickReq, part string,
 		}
 	}
 	return p
-}
-
-// stallWake is one wake of the friend stall ladder a part's plan made (rung 1 or 2).
-type stallWake struct {
-	friend string
-	rung   int
-	idle   time.Duration
-}
-
-// wake sends the stall ladder's wakes of a part's plan, its step committed
-// (Store.WakeFriend; tla/StallLadder.tla, WokenAtEveryWakeRung): each once, a send
-// that fails said on the tick's result and never failing the tick, as the rung it
-// climbed is written and stands.
-func (t *tickRun) wake(ws []stallWake) {
-	if t.st.WakeFriend == nil {
-		return
-	}
-	for _, w := range ws {
-		if err := t.st.WakeFriend(w.friend, w.rung, w.idle); err != nil {
-			t.res.Said = append(t.res.Said, fmt.Sprintf("the stall wake %d of friend %s was not sent: %v", w.rung, w.friend, err))
-		}
-	}
 }
 
 // end is what the tick returns when an update or a part ended it early.
@@ -2049,7 +2016,7 @@ func (r readOnly) CheckTable(context.Context, string) error   { return ErrReadOn
 func (r readOnly) Epoch(ctx context.Context) (EpochState, error) {
 	return r.b.Epoch(ctx)
 }
-func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time) (bool, error) {
+func (r readOnly) AdvanceEpoch(context.Context, uint64, time.Time, ...string) (bool, error) {
 	return false, ErrReadOnly
 }
 func (r readOnly) SettleEpoch(context.Context, uint64) error    { return ErrReadOnly }
@@ -2219,12 +2186,9 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 	if err != nil {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
-	// a shadow tick wakes no friend: it writes nothing and sends nothing
+	// a shadow tick writes nothing and sends nothing
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
-		return out, err
-	}
-	if req.Sessions, err = ro.FriendSessions(ctx); err != nil {
 		return out, err
 	}
 	var routes RouteCache
@@ -2313,4 +2277,80 @@ func (st *Store) shadowRead(ctx context.Context) (*sprint.Snapshot, error) {
 		return snap, nil
 	}
 	return nil, fmt.Errorf("the sprint is busy: an operation was pending or the fence moved on each of %d reads in %s; a shadow tick repairs nothing; run it again", r.tries, r.slept().Round(time.Millisecond))
+}
+
+func (r readOnly) GuardedMachine(context.Context, RestoreGuard, string, Machine, string) error {
+	return ErrReadOnly
+}
+
+// GuardedMachine checks the epoch, phase and fence owner in the same exchange
+// as the global machine record and its view. A refused exchange writes neither.
+func (m *Mem) GuardedMachine(_ context.Context, g RestoreGuard, owner string, machine Machine, view string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.epochN != m.epoch {
+		return &GuardError{Outcome: GuardMoved}
+	}
+	if machine.Running() {
+		if o := m.restoreOutcome(g); o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+	}
+	l := m.log()
+	if l.fence == nil || l.fence.ID != owner {
+		return errFenceMoved
+	}
+	m.count("kv")
+	if err := m.fail("kv"); err != nil {
+		return err
+	}
+	b, err := json.Marshal(machine)
+	if err != nil {
+		return err
+	}
+	if m.kv == nil {
+		m.kv = map[string]string{}
+	}
+	m.kv[keyMachine] = string(b)
+	m.showState(view, ViewState(machine))
+	return nil
+}
+
+func (r *Redis) GuardedMachine(ctx context.Context, g RestoreGuard, owner string, machine Machine, view string) error {
+	b, err := json.Marshal(machine)
+	if err != nil {
+		return err
+	}
+	fence := r.key(keyFence)
+	var shown *redis.Cmd
+	err = r.C.Watch(ctx, func(tx *redis.Tx) error {
+		o, err := r.restoreOutcome(ctx, tx, g)
+		if err != nil {
+			return err
+		}
+		if o == GuardMoved || machine.Running() && o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+		body, err := tx.Get(ctx, fence).Result()
+		if err != nil {
+			return err
+		}
+		var held OpRecord
+		if err := json.Unmarshal([]byte(body), &held); err != nil {
+			return err
+		}
+		if held.ID != owner {
+			return errFenceMoved
+		}
+		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+			p.Set(ctx, r.Names.Key(keyMachine), string(b), 0)
+			shown = ntable.QueueViewState(ctx, p, view, ViewState(machine))
+			return nil
+		})
+		return err
+	}, r.Names.EpochKey(), ntable.PropsKeyAt(g.MarkerTable, r.Pinned), fence)
+	if err != nil {
+		return err
+	}
+	return viewShown(ntable.ViewStateResult(view, shown))
 }

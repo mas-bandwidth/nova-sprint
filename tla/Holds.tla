@@ -63,8 +63,10 @@
 (* (sentinel.go:51-103): it names needs, is reached, waits on nothing    *)
 (* and its stream is not held; it never waives. SentinelSet replaces a   *)
 (* waiting sentinel's needs (steps_sentinel.go:475-570): here plain ->   *)
-(* cut (names a). The coordinator's stream hold (Hold) is read and       *)
-(* respected by the cut release (sentinel.go:60).                        *)
+(* cut (names a). SentinelBrief replaces a waiting sentinel's brief and  *)
+(* needs and updates its reached stamp (steps_edit.go briefSentinel).    *)
+(* The coordinator's stream hold (Hold) is read and respected by the cut *)
+(* release (sentinel.go:60).                                             *)
 (*                                                                       *)
 (* The stream and the card machine run side by side: their variables are *)
 (* disjoint, so a step of one leaves the other's state unchanged, and    *)
@@ -76,12 +78,23 @@
 (*  "workerreleases" - Release drops the coordinator check               *)
 (*                     (steps_sentinel.go:318) and a worker releases.    *)
 (*                     OnlyCoordinatorReleases fails.                    *)
+(*  "needssetheld"   - NeedsSet recomputes the column from the new needs  *)
+(*                     alone and drops the held check                     *)
+(*                     (steps_edit.go NeedsSet): a held waiting card whose*)
+(*                     needs have landed moves to ready, hold kept.       *)
+(*                     HeldMovesOnlyByRelease fails.                      *)
+(*  "dealheld"       - the deal takes a ready card without asking for its *)
+(*                     hold (steps_work.go dealPlan ready closure): a held*)
+(*                     card is dealt. NoHeldCardDealt fails. Its cfg also *)
+(*                     breaks NeedsSet, since only a broken move leaves a *)
+(*                     held card ready for the deal to see: the deal's    *)
+(*                     guard is the second of two.                        *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Broken, CardBroken
 
-ASSUME CardBroken \subseteq {"resolveheld", "workerreleases"}
+ASSUME CardBroken \subseteq {"resolveheld", "workerreleases", "needssetheld", "dealheld"}
 
 VARIABLES held, state, cause, aWork, aMerge, oLanded, did, sentinel, open,
           cardCol, cardHeld, cardNeeds, cardWaived, cardReached, cardTaken,
@@ -409,6 +422,33 @@ DealA ==
   /\ cardTaken' = [cardTaken EXCEPT !["a"] = FALSE]
   /\ UNCHANGED <<cardHeld, cardNeeds, cardWaived, cardReached, cardReleasedBy, cardStreamHeld>>
 
+\* the deal takes the held card's work when it is ready; it refuses a ready
+\* card that carries a hold (steps_work.go dealPlan, the ready closure: IsHeld);
+\* the "dealheld" witness drops that check
+DealH ==
+  /\ cardCol["h"] = "ready"
+  /\ cardHeld["h"] => ("dealheld" \in CardBroken)
+  /\ cardCol' = [cardCol EXCEPT !["h"] = "working"]
+  /\ UNCHANGED <<cardHeld, cardNeeds, cardWaived, cardReached, cardTaken, cardReleasedBy, cardStreamHeld>>
+
+\* the coordinator re-points the held card's needs (steps_edit.go NeedsSet, and
+\* the DEPENDS-ON brief edit, which keeps the column of a card waiting): any
+\* needs other than the ones it has (b is refused when the sentinel needs h:
+\* the cycle, needsCycle). The column is recomputed from the new needs as the
+\* code does (ready when all have landed, else waiting), except that a held card
+\* keeps its column and its hold: a needs change never releases a hold. The
+\* "needssetheld" witness drops the held check.
+NeedsSetH ==
+  /\ cardCol["h"] \in {"waiting", "ready"}
+  /\ \E needs \in SUBSET {"a", "b"} :
+       /\ needs /= cardNeeds["h"]
+       /\ ("b" \in needs) => ("h" \notin cardNeeds["S"])
+       /\ cardNeeds' = [cardNeeds EXCEPT !["h"] = needs]
+       /\ cardCol' = [cardCol EXCEPT !["h"] =
+             IF cardHeld["h"] /\ ~("needssetheld" \in CardBroken) THEN cardCol["h"]
+             ELSE IF \A n \in needs : cardCol[n] = "landed" THEN "ready" ELSE "waiting"]
+  /\ UNCHANGED <<cardHeld, cardWaived, cardReached, cardTaken, cardReleasedBy, cardStreamHeld>>
+
 \* the worker takes a's work card (working, taken)
 TakeA ==
   /\ cardCol["a"] = "working" /\ ~cardTaken["a"]
@@ -434,11 +474,13 @@ ReleaseSentinel(actor) ==
   /\ UNCHANGED <<cardHeld, cardNeeds, cardReached, cardTaken, cardStreamHeld>>
 
 \* the coordinator clears a held card's hold, and it is ready when it waits
-\* for nothing else (releaseHeld, steps_sentinel.go:442-450)
+\* for nothing else (releaseHeld, steps_sentinel.go:442-450); a held card that
+\* is ready already (only a broken move leaves one) has its hold cleared and
+\* stays ready
 ReleaseHeld(actor) ==
-  /\ cardCol["h"] = "waiting" /\ cardHeld["h"]
+  /\ cardCol["h"] \in {"waiting", "ready"} /\ cardHeld["h"]
   /\ cardHeld' = [cardHeld EXCEPT !["h"] = FALSE]
-  /\ cardCol' = [cardCol EXCEPT !["h"] = IF WaitsFor("h") = {} THEN "ready" ELSE "waiting"]
+  /\ cardCol' = [cardCol EXCEPT !["h"] = IF cardCol["h"] = "ready" \/ WaitsFor("h") = {} THEN "ready" ELSE "waiting"]
   /\ cardReleasedBy' = [cardReleasedBy EXCEPT !["h"] = actor]
   /\ UNCHANGED <<cardNeeds, cardWaived, cardReached, cardTaken, cardStreamHeld>>
 
@@ -463,6 +505,20 @@ CutRelease ==
   /\ cardReleasedBy' = [cardReleasedBy EXCEPT !["S"] = "machine"]
   /\ UNCHANGED <<cardHeld, cardNeeds, cardWaived, cardReached, cardTaken, cardStreamHeld>>
 
+\* what S would wait for under a proposed needs set (steps_sentinel.go:544,
+\* steps_edit.go briefSentinel)
+WaitsForWith(needs) ==
+  {n \in needs : cardCol[n] /= "landed" /\ n \notin cardWaived["S"]} \cup PositionWaits("S")
+
+\* how S's reached stamp updates when its needs change (steps_sentinel.go:
+\* 545-557, steps_edit.go briefSentinel): cleared when new unlanded waits
+\* appear, set when all waits have landed and S is reachable and not held.
+ReachedAfter(needs) ==
+  LET waits == WaitsForWith(needs)
+  IN IF cardReached["S"] /\ waits /= {} THEN FALSE
+     ELSE IF ~cardReached["S"] /\ ~cardHeld["S"] /\ waits = {} /\ Reachable THEN TRUE
+     ELSE cardReached["S"]
+
 \* the coordinator replaces a waiting sentinel's needs (steps_sentinel.go:
 \* 475-570). Here the only move admitted is plain -> cut (naming a); emptying
 \* is refused and setting the needs it has is refused, so one line is the cut.
@@ -470,7 +526,19 @@ SentinelSet ==
   /\ cardCol["S"] = "waiting"
   /\ cardNeeds["S"] = {}
   /\ cardNeeds' = [cardNeeds EXCEPT !["S"] = {"a"}]
-  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardReached, cardTaken, cardReleasedBy, cardStreamHeld>>
+  /\ cardReached' = [cardReached EXCEPT !["S"] = ReachedAfter({"a"})]
+  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardTaken, cardReleasedBy, cardStreamHeld>>
+
+\* the coordinator replaces a waiting sentinel's brief and needs (steps_edit.go
+\* briefSentinel): needs is any non-empty subset of {"a", "h"} (emptying,
+\* self-need and a cycle through b are refused), and cardReached is updated
+\* in the same step.
+SentinelBrief ==
+  /\ cardCol["S"] = "waiting"
+  /\ \E needs \in (SUBSET {"a", "h"}) \ {{}} :
+       /\ cardNeeds' = [cardNeeds EXCEPT !["S"] = needs]
+       /\ cardReached' = [cardReached EXCEPT !["S"] = ReachedAfter(needs)]
+  /\ UNCHANGED <<cardCol, cardHeld, cardWaived, cardTaken, cardReleasedBy, cardStreamHeld>>
 
 \* the coordinator holds or releases the stream's hold (hold.go holdStream);
 \* the cut release respects it (sentinel.go:60)
@@ -484,12 +552,18 @@ CardNext ==
   \/ \E actor \in Actors : Release(actor)
   \/ CutRelease
   \/ SentinelSet
+  \/ SentinelBrief
   \/ StreamHold
   \/ DealA \/ TakeA \/ LandCardA
+  \/ DealH \/ NeedsSetH
 
 \* a held primary stays waiting until the coordinator's release clears its
 \* hold (steps_work.go:895, held.go:53-64)
 HeldMovesOnlyByRelease == \A c \in Cards : cardHeld[c] => cardCol[c] = "waiting"
+
+\* the deal never takes a card that carries a hold: a held card is never
+\* working (steps_work.go dealPlan, the ready closure)
+NoHeldCardDealt == \A c \in Cards : cardHeld[c] => cardCol[c] /= "working"
 
 \* no worker releases: the release verb is the coordinator's alone
 \* (steps_sentinel.go:316-320); the machine's own cut release is "machine"

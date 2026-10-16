@@ -16,10 +16,10 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // answer (docs/SPEC-SPRINT.md section 8, answered by nova-decide; docs/SPEC-NOVA-DECIDE.md
@@ -196,6 +196,11 @@ func (a *app) cmdAnswer(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "answer", "the record's directory: "+err.Error())
 		}
 	}
+	wait, err := a.answerWait(ctx, *c, server, *every)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s answer: %s\n", prog, oneline.WithRemedy(err.Error(), "nova-sprint where"))
+		return 2
+	}
 	for {
 		p, err := w.pass(ctx)
 		if err != nil {
@@ -210,11 +215,46 @@ func (a *app) cmdAnswer(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "ANSWER STOPPED %s: the loop ends\n", strings.TrimPrefix(p.Machine, "machine: "))
 			return 0
 		}
-		a.sleep(*every)
+		err = wait()
 		if ctx.Err() != nil {
 			return 0
 		}
+		if err != nil {
+			fmt.Fprintf(stderr, "%s answer: %s\n", prog, oneline.WithRemedy(err.Error(), "nova-sprint where"))
+			return 2
+		}
 	}
+}
+
+// answerWait is the loop's wait between two passes. On the store it blocks on the inbox
+// stream from the last note it has seen (store.WaitInbox): a judgment committed there ends
+// the wait at once and the next pass answers it, and a quiet inbox ends it at every, the
+// backstop that catches a push the transport lost. The cursor is the inbox's tail as the
+// wait woke, read before the pass that follows, so a note committed during a pass is after
+// it and ends the next wait at once: none is skipped. The cursor is taken here, before the
+// first pass. Through the sprint's server (which runs no wait) and on a twin (where no
+// machine runs between commands) the wait is every on this process's clock, as before.
+func (a *app) answerWait(ctx context.Context, c common, server string, every time.Duration) (func() error, error) {
+	if every == 0 || server != "" || a.twinOpen(c.redis) {
+		return func() error { a.sleep(every); return nil }, nil
+	}
+	st, err := a.storeCtx(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	cursor, err := st.InboxTail(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return func() error {
+		// pinned again at each wait: a clear moves the sprint to another epoch's inbox
+		st, err := a.storeCtx(ctx, c)
+		if err != nil {
+			return err
+		}
+		cursor, _, err = st.WaitInbox(ctx, cursor, every)
+		return err
+	}, nil
 }
 
 // runHere runs one verb in this process, on the store the answer verb was given, as its

@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -21,12 +22,12 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/card"
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 const preAlpha = "nova-card is pre-alpha: not ready for production use."
@@ -49,7 +50,7 @@ usage:
   nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
+  nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...] [--json]
   nova-card template
   nova-card version
   nova-card help [<verb>]
@@ -181,10 +182,26 @@ type multi []string
 func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
+// lintJSONFinding is one finding under --json.
+type lintJSONFinding struct {
+	Rule     string `json:"rule"`
+	RuleName string `json:"rule_name"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Excerpt  string `json:"excerpt"`
+	Remedy   string `json:"remedy"`
+}
+
+// lintJSONOutput is the structured JSON object emitted by nova-card lint --json.
+type lintJSONOutput struct {
+	Findings []lintJSONFinding `json:"findings"`
+}
+
 func cmdLint(args []string, stdout, stderr io.Writer) int {
 	fs := verbflag.New("lint")
 	var cards multi
 	fs.Var(&cards, "card", "a brief `file` to hold to the add's lint; repeat for more")
+	jsonOut := fs.Bool("json", false, "emit a structured JSON object with findings")
 	opts := lintFlags(fs)
 	if err := verbflag.Parse(fs, args); err != nil {
 		return refuse(stderr, "lint", verbflag.Explain(fs, err))
@@ -193,6 +210,10 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "lint", "wants --card <file>, one per brief, and nothing else")
 	}
 	red := 0
+	var jsonFindings []lintJSONFinding
+	if *jsonOut {
+		jsonFindings = make([]lintJSONFinding, 0)
+	}
 	for _, file := range cards {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -200,14 +221,35 @@ func cmdLint(args []string, stdout, stderr io.Writer) int {
 		}
 		id := strings.TrimSuffix(filepath.Base(file), ".md")
 		findings := card.Lint(id, string(raw), opts())
-		for _, f := range findings {
-			fmt.Fprintln(stdout, oneline.Escape(f.String()))
+		if *jsonOut {
+			for _, f := range findings {
+				jsonFindings = append(jsonFindings, lintJSONFinding{
+					Rule:     f.Check,
+					RuleName: f.Check,
+					File:     file,
+					Line:     f.Line,
+					Excerpt:  f.Excerpt,
+					Remedy:   card.Remedy(f.Check),
+				})
+			}
+		} else {
+			for _, f := range findings {
+				fmt.Fprintln(stdout, oneline.Escape(f.String()))
+			}
+			if len(findings) == 0 {
+				fmt.Fprintf(stdout, "LINT OK file=%s\n", oneline.Field(file))
+			}
 		}
 		if len(findings) > 0 {
 			red++
-			continue
 		}
-		fmt.Fprintf(stdout, "LINT OK file=%s\n", oneline.Field(file))
+	}
+	if *jsonOut {
+		b, err := json.Marshal(lintJSONOutput{Findings: jsonFindings})
+		if err != nil {
+			return refuse(stderr, "lint", err.Error())
+		}
+		fmt.Fprintln(stdout, string(b))
 	}
 	if red > 0 {
 		return 1

@@ -17,7 +17,8 @@ func TestFixPriorityOrdersDealAskAndMerge(t *testing.T) {
 		c.Fields[FieldPriority] = level
 		cards = append(cards, c)
 	}
-	want := []*Card{cards[6], cards[5], cards[4], cards[3], cards[2], cards[1], cards[0]}
+	// reader is the top rung (the strict deal: reads, then fixes, then new work)
+	want := []*Card{cards[2], cards[6], cards[5], cards[4], cards[3], cards[1], cards[0]}
 	assert.Equal(t, want, ladderOrder(cards))
 	assert.Equal(t, []*Card{cards[6], cards[5], cards[4], cards[3], cards[0], cards[1], cards[2]}, readOrder(cards))
 	assert.Equal(t, want, MergePriorityOrder(w.s, cards))
@@ -234,7 +235,7 @@ func TestFixStateSeparatesReworkFromReadReview(t *testing.T) {
 func TestFixStateIncludesACompletedBriefDefect(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"}))
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "HOLD: brief defect: the TEST line names a test the PATHS cannot reach"}))
 	require.Equal(t, DoneDefect, w.s.Fleet.Card("s1-1.w1").Col)
 	require.Equal(t, Review, w.s.Primary("s1-1").Col)

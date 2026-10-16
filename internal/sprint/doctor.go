@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 )
 
 // The doctor's checks (the owner, 2026-10-11 ~02:10Z: "I think we need to prioritize sprint
@@ -188,8 +189,6 @@ const (
 	DoctorBeatBound = 60 * time.Second
 	// DoctorRedialGrace is how long after the server starts a loop has to dial it again.
 	DoctorRedialGrace = 60 * time.Second
-	// DoctorPushBound is how old the push loop's last proof may be.
-	DoctorPushBound = 15 * time.Minute
 	// DoctorFinishWindow is the window the finish failures are counted in.
 	DoctorFinishWindow = time.Hour
 	// DoctorStrandedBound is how long a card may sit in review with nothing open on it and no read live.
@@ -222,6 +221,7 @@ func Doctor(in DoctorInput) []DoctorCheck {
 	out = append(out, DoctorProviders(in)...)
 	out = append(out, DoctorReadyNotDealt(in)...)
 	out = append(out, DoctorLanderLoop(in)...)
+	out = append(out, DoctorFailedInReview(in)...)
 	out = append(out, DoctorSeat(in)...)
 	out = append(out, DoctorGitIdentity(in)...)
 	for i := range out {
@@ -385,7 +385,6 @@ func readyWhys(s *Snapshot, r TickReq, cards []*Card) (why map[string]string) {
 			}
 		}
 	}()
-	r.WakeFriend = nil
 	if r.Who == "" {
 		r.Who = MachineActor
 	}
@@ -1021,6 +1020,35 @@ func DoctorLanderLoop(in DoctorInput) (out []DoctorCheck) {
 	return out
 }
 
+// DoctorFailedInReview reports any card in Review whose last attempt failed:
+// a card in review whose finish failed stalls the stream until rework, redo, or drop.
+func DoctorFailedInReview(in DoctorInput) []DoctorCheck {
+	if in.Snap == nil || in.Snap.Work == nil {
+		return nil
+	}
+	const area, check = AreaCards, CheckFailedInReview
+	var out []DoctorCheck
+	for _, c := range in.Snap.Work.Cards() {
+		if !c.Placed() || c.Col != Review {
+			continue
+		}
+		if c.F("result") == "failed" || strings.HasSuffix(c.F("last_finish"), ":failed") {
+			out = append(out, DoctorCheck{
+				Area:     area,
+				Check:    check,
+				Subject:  c.ID,
+				Status:   DoctorFail,
+				Evidence: fmt.Sprintf("attempt=%s result=%s head=%s", orDash(c.F("attempt")), orDash(c.F("result")), shortSHA(c.F("head"))),
+				Remedy:   "nova-sprint rework " + c.ID,
+			})
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, okCheck(area, check, "all", "no failed card in review"))
+	}
+	return out
+}
+
 // latest is the later of two times.
 func latest(a, b time.Time) time.Time {
 	if b.After(a) {
@@ -1147,8 +1175,8 @@ func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 
 // ---- 9. seat ------------------------------------------------------------------------------
 
-// DoctorSeat is check 9: the seat's hook live and proven within DoctorPushBound, and the
-// judgments past their deadline.
+// DoctorSeat is check 9: the coordinator's nova-hook record lets a coordinator command run
+// (CoordinatorGate), and the judgments past their deadline.
 func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaSeat, CheckSeat
 	now := time.Now()
@@ -1157,16 +1185,16 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	}
 	switch p := in.Hook; {
 	case !p.Measured:
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the hook is not armed: no holder's hook record", Remedy: "nova-sprint hook"})
-	case !HookLive(p.Record, p.Recorded, p.Holder, now):
-		age := "never"
-		if !p.Record.Proven.IsZero() {
-			age = now.Sub(p.Record.Proven).Round(time.Second).String() + " ago"
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the coordinator's nova-hook record was not read: no holder, or the gate is not armed", Remedy: "nova-hook status --as <holder>"})
+	case CoordinatorGate(p.Holder, p.Status) != "":
+		answered := "never"
+		if !p.Status.AnswerAt.IsZero() {
+			answered = now.Sub(p.Status.AnswerAt).Round(time.Second).String() + " ago"
 		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorFail,
-			Evidence: fmt.Sprintf("holder=%s proven=%s bound=%s %s", p.Holder, age, DoctorPushBound, cutText(HookGate(p.Record, p.Recorded, p.Holder, now), 200)), Remedy: "nova-sprint hook"})
+			Evidence: fmt.Sprintf("holder=%s %s answered=%s %s", p.Holder, p.Status.Words(), answered, cutText(CoordinatorGate(p.Holder, p.Status), 200)), Remedy: hook.HookCommand(p.Holder, hook.Coordinator)})
 	default:
-		out = append(out, okCheck(area, check, "hook", fmt.Sprintf("holder=%s proven=%s ago", p.Holder, now.Sub(p.Record.Proven).Round(time.Second))))
+		out = append(out, okCheck(area, check, "hook", fmt.Sprintf("holder=%s %s", p.Holder, p.Status.Words())))
 	}
 	if in.Seat.Overdue > 0 {
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "judgments", Status: DoctorFail, Evidence: fmt.Sprintf("open=%d overdue=%d %s", in.Seat.Judgments, in.Seat.Overdue, in.Seat.Line(now)), Remedy: "nova-sprint inbox"})
@@ -1404,11 +1432,9 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 
 // ---- friends ------------------------------------------------------------------------------
 
-// DoctorFriends is the friends group: each friend row's daemon alive on its host (her beat),
-// her session's proof, her working cards against her width and against what her beat says she
-// runs, and her hold with its reason. A friend up whose daemon beats no more is FAIL; working
-// past her width is FAIL; her report and her row disagreeing is DRIFT (work and its report are
-// one act); held or down is WARN with its reason (down is not an error when actually down).
+// DoctorFriends checks authoritative hook/hold status and work report consistency.
+// Working beyond width fails; reported running work that disagrees with cards
+// drifts. Held or hook-down warns with a remedy for the owning system.
 func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaFriends, CheckFriends
 	s := in.Snap
@@ -1433,26 +1459,22 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 			age = s.Now.Sub(b.At)
 			beat = age.Round(time.Second).String()
 		}
-		proof := "never"
-		if !f.Proof.IsZero() {
-			proof = s.Now.Sub(f.Proof).Round(time.Second).String()
-		}
-		ev := fmt.Sprintf("status=%s beat=%s proof=%s working=%d width=%d running=%d", f.Status, beat, proof, working, f.Width, len(f.Running))
+		ev := fmt.Sprintf("status=%s report_age=%s working=%d width=%d running=%d", f.Status, beat, working, f.Width, len(f.Running))
 		switch {
-		case f.Status == Held || f.Status == Down:
+		case f.Status == Down:
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "inspect nova-hook status for " + f.Name})
+		case f.Status == Held:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "nova-sprint friend up " + f.Name + " (once its cause is gone)"})
-		case !beaten || age > DoctorBeatBound*2:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": " + friendPronouns(seats, f.Name).Say("{their} daemon beats no more"), Remedy: "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f.Name + " (on the friend's host)"})
 		case f.Width > 0 && working > f.Width:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail, Evidence: ev + ": working past the friend's width", Remedy: "nova-sprint friend take " + f.Name + " <card> (a card none of the friend's lanes holds; the friend's lanes ask the server what they hold)"})
 		case b.Friend != nil && len(f.Running) != working:
-			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend reconcile " + f.Name})
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorDrift, Evidence: ev + ": beat running and row working differ", Remedy: "nova-sprint friend take " + f.Name + " <card> (a card none of the friend's lanes holds; the friend's lanes ask the server what they hold)"})
 		default:
 			fine++
 		}
 	}
 	if len(out) == 0 || fine > 0 {
-		out = append(out, okCheck(area, check, "up", fmt.Sprintf("friends=%d beating, within width and reconciled=%d", len(seats), fine)))
+		out = append(out, okCheck(area, check, "up", fmt.Sprintf("friends=%d, within width and reconciled=%d", len(seats), fine)))
 	}
 	return out
 }

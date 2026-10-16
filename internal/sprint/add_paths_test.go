@@ -217,7 +217,7 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		assert.Empty(t, BriefDefectOf("HOLD: the gate is red\nPATHS-PROPOSED: cmd/nova-sprint/verbs.go"), "a proposal alone stays the worker's failure")
 
 		w := friendWorld(t, friendBrief("friend amy"))
-		dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		row := FriendRow("amy")
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: report}))
 		wc := w.s.Fleet.Card("s1-1.w1")
@@ -234,7 +234,7 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		assert.Contains(t, js[0].What, BriefDefectPaths)
 
 		w2 := friendWorld(t, friendBrief("friend amy"))
-		dealStarted(w2, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+		dealStarted(w2, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}))
 		w2.must(Finish(w2.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w2.s, "s1-1.w1"), Failed: true,
 			Report: "HOLD: the gate is red\nPATHS-PROPOSED: cmd/nova-sprint/verbs.go"}))
 		assert.Equal(t, Finished, w2.s.Fleet.Card("s1-1.w1").Col)
@@ -272,4 +272,16 @@ func TestAdmissionPathsReadMarker(t *testing.T) {
 			assert.NotContains(t, got[0], "names nothing")
 		})
 	}
+}
+
+func TestAdmissionCtestHasNoPackageButStillHoldsPaths(t *testing.T) {
+	t.Parallel()
+	tree := AdmissionTree{
+		Files: []string{"src/main.cpp", "CMakeLists.txt"},
+		Hold:  func(string) ([]string, error) { return []string{"CMakeLists.txt"}, nil },
+	}
+	brief := "RESULT: c tier: heavy\nREPO: owner/repo\nBASE: main\nPATHS: src/main.cpp\nTEST: ctest DecodeAll\n\nTHE TASK. Fix decoding.\n"
+	assert.Empty(t, PathsAdmission(brief, tree), "a CTest name has no package directory hold")
+	missing := strings.Replace(brief, "PATHS: src/main.cpp", "PATHS: src/missing.cpp", 1)
+	assert.NotEmpty(t, PathsAdmission(missing, tree), "the named source path still must exist")
 }

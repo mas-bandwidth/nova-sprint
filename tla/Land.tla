@@ -42,6 +42,7 @@
 \*   tries     the rebuilds on a moved base (one is allowed)
 \*   events    the outside events so far, bounded by MaxEvents
 \*   ownstop   a ghost: a refusal of a card's own head stopped the stream
+\*   capJudged a ghost: a card in merging was sent to review by the cap alone
 \*   badcaller a ghost: a push was made for a caller whose epoch the store was
 \*             not at when the lander read it
 \*   stalepush a ghost: a push was made after the store left the epoch the
@@ -233,6 +234,10 @@
 \*     2026-10-10 (AttemptsBounded fails, MCLandBound).
 \*   "nosamefinding" reworks the same refusal twice on one brief
 \*     (SameRefusalHalts fails, MCLandBound).
+\*   "capaccepted" judges a refused merging card at the attempt cap
+\*     (AcceptedNeverCapJudged fails).
+\*   "conflictwrong" marks a conflict-only bound the brief's defect and offers
+\*     no carry (ConflictBoundCarries fails, MCLandBoundConflictCarry).
 \*
 \* THE BOUND (WaysOn; off in every instance but MCLandBound, where the
 \* definitions below are replaced). sprint.landRefused answers a refusal of
@@ -249,8 +254,8 @@
 \*   cleared   the card's head no longer fails: chosen at each new attempt,
 \*             TRUE only when regneed is empty or the PATHS meet it (meeting it
 \*             is necessary, not sufficient)
-\* A refusal of way "other" (a conflict of its own, the checks, the tree gate)
-\* is reworked with the way as its finding; one of way "paths" (files outside
+\* A refusal of way "other" (a merge conflict with the advanced base, the
+\* checks, the tree gate) is reworked with the way as its finding; one of way "paths" (files outside
 \* PATHS, E12) goes to the widen rule, which widens the brief in place by the
 \* files named (the brief replaced, so bat moves: the brief reset), or, when
 \* a file is not adjacent, to the conflict rule's redo inside PATHS (no
@@ -265,6 +270,17 @@
 \* comes back by Redeal (its next attempt worked, read and accepted), the
 \* machine's own step under fairness, so the loop is the design's to bound
 \* and not the outside's event count.
+\*
+\* A refusal of way "other" is a merge conflict with the advanced base or not (isconf,
+\* allconf: every refusal since the brief changed was one; a "paths" refusal is not). The way stays one
+\* class for the same-finding test, as before (the model halts a little earlier than
+\* the code, which compares the whole finding), so MaxAttempts is unchanged.
+\* A bound whose two same refusals were both conflicts is a conflict bound
+\* (cbound): the base moved under a correct head, so the judgment offers
+\* rework --carry first and never says the brief is wrong (carryoff, wrongmark;
+\* ConflictBoundCarries). Every other bound (paths, checks, gate, the cap)
+\* keeps the brief-wrong mark. The carry itself (review to ready from the last
+\* head, the bound reset) is the rework verb's, held by the engine's tests.
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. With
@@ -300,23 +316,27 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, widens, paths, regneed, cleared, twice
+          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
+          cbound, carryoff, wrongmark,
+          capJudged
 
 reads == <<oks, need, reread, markneed>>
 offers == <<rhead, offer>>
 store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, markneed, rhead, offer>>
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
-ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback>>
-bound == <<bat, prevw, prevat, widens, paths, regneed, cleared, twice>>
+ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
+bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, widens, paths, regneed, cleared, twice>>
+          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
+          cbound, carryoff, wrongmark,
+          capJudged>>
 
-Heads == Cards \X (1..MaxAttempts)
+Heads == Cards \X (1..(MaxAttempts + 2))
 
 Range(s) == {s[i] : i \in 1..Len(s)}
 
@@ -379,30 +399,34 @@ TypeOK ==
   /\ stop \in {"none", "lander", "own"}
   /\ carried \subseteq Heads
   /\ ownstop \in BOOLEAN
+  /\ capJudged \in BOOLEAN
   /\ oks \in [Cards -> 1..2] /\ need \in 1..2 /\ reread \subseteq Cards
   /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2 /\ markneed \in [Heads -> 0..2]
-  /\ rhead \in [Cards -> 0..MaxAttempts] /\ offer \subseteq Cards
+  /\ rhead \in [Cards -> 0..(MaxAttempts + 2)] /\ offer \subseteq Cards
   /\ repairback \in BOOLEAN
   /\ bat \in [Cards -> Nat] /\ prevat \in [Cards -> Nat]
-  /\ prevw \in [Cards -> {"none", "paths", "other"}]
+  /\ prevw \in [Cards -> SUBSET {"paths", "other"}]
+  /\ allconf \in [Cards -> BOOLEAN]
+  /\ cbound \subseteq Cards /\ carryoff \subseteq Cards /\ wrongmark \subseteq Cards
   /\ widens \in [Cards -> Nat]
   /\ paths \in [Cards -> SUBSET Files] /\ regneed \in [Cards -> SUBSET Files]
   /\ cleared \in [Cards -> BOOLEAN] /\ twice \in BOOLEAN
 
 Init ==
-  /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
+  /\ queue = <<>> /\ att = [c \in Cards |-> IF Broken = "capaccepted" THEN 4 ELSE 1] /\ landed = {} /\ epoch = 0
   /\ base = {} /\ tip = 0
   /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
   /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
   /\ lref = <<>> /\ lkind = "own" /\ ready = {} /\ review = {} /\ stop = "none"
-  /\ carried = {} /\ ownstop = FALSE
+  /\ carried = {} /\ ownstop = FALSE /\ capJudged = FALSE
   /\ oks = [c \in Cards |-> 1] /\ need = 1 /\ reread = {} /\ shortland = FALSE /\ lcheckneed = 1
   /\ markneed = [h \in Heads |-> 0]
   /\ rhead = [c \in Cards |-> 0] /\ offer = {}
   /\ repairback = FALSE
-  /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> "none"] /\ prevat = [c \in Cards |-> 0]
+  /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> {}] /\ prevat = [c \in Cards |-> 0] /\ allconf = [c \in Cards |-> TRUE]
   /\ widens = [c \in Cards |-> 0] /\ paths = [c \in Cards |-> {}]
   /\ regneed \in [Cards -> SUBSET Files] /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
+  /\ cbound = {} /\ carryoff = {} /\ wrongmark = {}
 
 \* ---- the lander (land.go) ----
 
@@ -471,7 +495,7 @@ Check ==
 Push ==
   /\ lphase = PushFrom
   /\ UNCHANGED store /\ UNCHANGED <<lcheckneed, lq, lep, lrep, lbatch, lref, lkind>> /\ UNCHANGED events
-  /\ UNCHANGED <<stalerec, carried, ownstop, repairback>> /\ UNCHANGED bound
+  /\ UNCHANGED <<stalerec, carried, ownstop, repairback, capJudged>> /\ UNCHANGED bound
   /\ IF ltip # tip
      THEN IF tries < 1
           THEN /\ ltip' = tip /\ tries' = tries + 1 /\ lphase' = RebuildTo
@@ -515,7 +539,7 @@ Report ==
         /\ lphase' = IF ok /\ lref # <<>> THEN "refusing" ELSE ReportTo
   /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED remote /\ UNCHANGED offers
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
-  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland, repairback>>
+  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland, repairback, capJudged>>
   /\ UNCHANGED bound
 
 \* The regression can clear at a new attempt only when it needs nothing outside
@@ -535,21 +559,35 @@ NextAttempt(c, cl) ==
 \* the files F outside PATHS for "paths"), the brief's bound first for both
 \* ways, then the rework ("other"), the widen in place or the redo ("paths").
 RefuseWays(c) ==
-  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]) :
+  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]), isconf \in BOOLEAN :
     /\ (w = "paths") = (F # {})
-    /\ LET same == prevw[c] = w /\ prevat[c] > bat[c] /\ prevat[c] < att[c]
+    /\ (w = "paths") => ~isconf
+    /\ LET same == w \in prevw[c]
            capped == att[c] - bat[c] >= Cap
            spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
-           atBound == capped \/ spent \/ (same /\ Broken # "nosamefinding")
+           atBound == (capped /\ Broken = "capaccepted") \/ spent \/ (same /\ Broken # "nosamefinding")
+           \* a conflict-only bound: the same refusal twice, and both a merge conflict with the
+           \* advanced base (sprint.AtBriefBound's Conflict; the head is right, the base moved)
+           conflictOnly == isconf /\ same /\ allconf[c] /\ Broken # "nosamefinding"
+           carries == conflictOnly /\ Broken # "conflictwrong"
        IN IF atBound
           THEN /\ review' = review \cup {c}
-               /\ UNCHANGED <<att, ready, carried>> /\ UNCHANGED bound
-          ELSE /\ twice' = (twice \/ same)
+               \* the card's latest bound, and what its judgment said
+               /\ cbound' = IF conflictOnly THEN cbound \cup {c} ELSE cbound \ {c}
+               /\ carryoff' = IF carries THEN carryoff \cup {c} ELSE carryoff \ {c}
+               /\ wrongmark' = IF carries THEN wrongmark \ {c} ELSE wrongmark \cup {c}
+               /\ capJudged' = (capJudged \/ (capped /\ ~spent /\ ~(same /\ Broken # "nosamefinding")))
+               /\ UNCHANGED <<att, ready, carried>>
+               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice>>
+          ELSE /\ capJudged' = capJudged
+               /\ UNCHANGED <<cbound, carryoff, wrongmark>>
+               /\ twice' = (twice \/ same)
                /\ UNCHANGED regneed
                /\ IF w = "other"
                   THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                          /\ NextAttempt(c, cl)
-                         /\ prevw' = [prevw EXCEPT ![c] = w] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
+                         /\ allconf' = [allconf EXCEPT ![c] = @ /\ isconf]
+                         /\ prevw' = [prevw EXCEPT ![c] = @ \cup {w}] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
                          /\ UNCHANGED <<bat, widens, paths>>
                   ELSE \E widen \in BOOLEAN :
                          IF widen
@@ -560,13 +598,15 @@ RefuseWays(c) ==
                                    /\ paths' = [paths EXCEPT ![c] = np]
                                    /\ widens' = [widens EXCEPT ![c] = @ + 1]
                                    /\ bat' = [bat EXCEPT ![c] = att[c]]
-                                   /\ prevw' = [prevw EXCEPT ![c] = "none"]
+                                   /\ prevw' = [prevw EXCEPT ![c] = {}]
+                                   /\ allconf' = [allconf EXCEPT ![c] = TRUE]
                                    /\ UNCHANGED prevat
                          ELSE \* a file not adjacent: the conflict rule's redo inside PATHS
                               \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                                    /\ NextAttempt(c, cl)
-                                   /\ prevw' = [prevw EXCEPT ![c] = "none"]
-                                   /\ UNCHANGED <<bat, widens, paths, prevat>>
+                                   /\ prevw' = [prevw EXCEPT ![c] = @ \cup {w}] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
+                                   /\ allconf' = [allconf EXCEPT ![c] = FALSE]
+                                   /\ UNCHANGED <<bat, widens, paths>>
 
 \* Refuse: the conflict fact of the refused card, one store step fenced to the
 \* epoch held and guarded to plan only while the queue starts with that card
@@ -584,7 +624,7 @@ Refuse ==
          ok == Fresh(<<lref>>)
          own == lkind = "own" /\ Broken # "ownstops"
      IN IF ~ok
-        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, oks, rhead, offer>> /\ UNCHANGED bound
+        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, capJudged, oks, rhead, offer>> /\ UNCHANGED bound
         ELSE IF own /\ WaysOn
         THEN /\ queue' = Tail(queue)
              /\ RefuseWays(c)
@@ -595,18 +635,18 @@ Refuse ==
                 THEN /\ att' = [att EXCEPT ![c] = @ + 1] /\ ready' = ready \cup {c}
                      /\ carried' = IF Broken = "nocarry" THEN carried ELSE carried \cup {lref}
                      /\ oks' = [oks EXCEPT ![c] = 1]
-                     /\ UNCHANGED <<review, offer, rhead>> /\ UNCHANGED bound
+                     /\ UNCHANGED <<review, offer, rhead, capJudged>> /\ UNCHANGED bound
                 ELSE /\ review' = review \cup {c}
                      \* the refused head is kept on the card (sprint.FieldLandRefusedHead)
                      /\ rhead' = [rhead EXCEPT ![c] = lref[2]]
                      \* the bound's judgment alone (brief, drop); offerrefused also
                      \* offers the refused head to accept, as v1.2.x did
                      /\ offer' = IF Broken = "offerrefused" THEN offer \cup {c} ELSE offer
-                     /\ UNCHANGED <<att, ready, carried, oks>> /\ UNCHANGED bound
+                     /\ UNCHANGED <<att, ready, carried, oks, capJudged>> /\ UNCHANGED bound
              /\ UNCHANGED <<stop, ownstop>>
         ELSE /\ stop' = IF lkind = "own" THEN "own" ELSE "lander"
              /\ ownstop' = (ownstop \/ lkind = "own")
-             /\ UNCHANGED <<queue, att, ready, review, carried, oks, rhead, offer>> /\ UNCHANGED bound
+             /\ UNCHANGED <<queue, att, ready, review, carried, capJudged, oks, rhead, offer>> /\ UNCHANGED bound
   /\ lphase' = "idle" /\ lref' = <<>>
   /\ UNCHANGED <<landed, epoch, need, reread, shortland, markneed>> /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
@@ -704,7 +744,7 @@ Crash ==
 Outside ==
   /\ events < MaxEvents
   /\ events' = events + 1
-  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback>> /\ UNCHANGED bound
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback, capJudged>> /\ UNCHANGED bound
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash \/ Resume \/ SetReads \/ ReadOk)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
@@ -762,7 +802,7 @@ Repair ==
   /\ repairback' = TRUE
   /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events
-  /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, capJudged>>
 
 \* With the bound on, a reworked card comes back: its next attempt worked, read
 \* and accepted, queued at the end (the machine's own step, fair).
@@ -809,12 +849,21 @@ LeavesMergeRightly ==
 
 NeverStoppedByOwn == ~ownstop
 
+\* An accepted card is never judged at the attempt cap alone (AcceptedNeverCapJudged).
+AcceptedNeverCapJudged == ~capJudged
+
 \* The bound's rules (WaysOn). Every failure is an attempt and the loop of
 \* reworks, widens and redos stops at MaxAttempts.
 AttemptsBounded == \A c \in Cards : att[c] <= MaxAttempts
 
 \* The same refusal at two attempts of one brief is never reworked again.
 SameRefusalHalts == ~twice
+
+\* A bound whose two same refusals were both a merge conflict with the advanced base offers
+\* rework --carry and never marks the brief wrong or a brief defect (sprint.BriefBound
+\* Conflict, its Remedy, its String; the brief-defect rule's mark is the brief's alone).
+\* Broken "conflictwrong" marks it wrong and offers no carry (MCLandBoundBrokenConflictIsBriefDefect).
+ConflictBoundCarries == cbound \subseteq carryoff /\ cbound \cap wrongmark = {}
 
 \* A card whose head never clears never lands.
 NeverRightNeverLands == \A c \in Cards : Current(c) \in landed => cleared[c]

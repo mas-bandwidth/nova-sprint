@@ -62,9 +62,9 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // landParallelDefault is how many streams merge at once (--land-parallel).
@@ -238,7 +238,7 @@ func (l *lander) fork(stream string) *lander {
 	f.out, f.toScore, f.toCost = nil, nil, nil
 	f.ledgerLog, f.recLog, f.recNote, f.baseFix, f.followed = nil, nil, "", "", ""
 	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
-	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
+	f.baseStop, f.baseCount, f.baseWhy, f.baseOutsideTip = false, false, "", ""
 	f.gateHost, f.gateWall = "", 0
 	f.gateKey, f.gateRing, f.gateSlot = stream, 0, 0
 	f.laneAs = landLaneWho + "/" + stream
@@ -287,6 +287,11 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	if len(queue) == 0 {
 		return refused("nothing queued to merge in stream " + stream + "; run: nova-sprint queue --stream " + stream)
 	}
+	if ordered, softWhy := sprint.MergeSoftOrder(s, queue); len(ordered) == 0 && softWhy != "" {
+		return refused(softWhy)
+	} else {
+		queue = ordered
+	}
 	// no card short of its reads is landed, nor any card behind it (a card lands only with
 	// every card ahead of it): the refusal names it and its count, and the tick sends it
 	// back to review for the read it lacks (tla/Land.tla NoLandWithoutReads)
@@ -310,7 +315,7 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 			if cb.Ref != "" {
 				lc.base = cb.Ref
 			}
-			if sprint.DeadBaseHeld(s, pr, lc.base) || slices.ContainsFunc(sprint.Split(pr.F("needs")), func(n string) bool { return held[n] }) {
+			if sprint.DeadBaseHeld(s, pr, lc.base) || slices.ContainsFunc(sprint.Split(pr.F("needs")), func(n string) bool { return held[n] }) || slices.ContainsFunc(sprint.SoftDepsOf(s, pr), func(n string) bool { return held[n] }) {
 				held[c.ID] = true
 				continue
 			}
@@ -1226,6 +1231,11 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 			}
 			if newBase != j.baseSha {
 				if why := f.again(ctx, j, newBase, pushed); why != "" {
+					if f.baseOutsideTip != "" {
+						f.baseRefused(*b, stream, why)
+						j.ended(0, false, true)
+						return
+					}
 					j.refuse(why)
 					return
 				}

@@ -2,6 +2,7 @@ package sprint_test
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // The rebalance moves the excess of every unit, not only of a unit whose every
@@ -44,7 +45,7 @@ func (r *dealRig) seedRead(member, col string, n int) {
 	r.t.Helper()
 	for i := 0; i < n; i++ {
 		r.cardN++
-		primary := "seedr-" + itoaTest(r.cardN)
+		primary := "seedr-" + strconv.Itoa(r.cardN)
 		r.poke(sprint.Work, ntable.BatchMemberEntry{ID: primary,
 			Expect: &ntable.MemberExpect{Absent: true},
 			Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Review, Score: float64(r.cardN)},
@@ -67,14 +68,12 @@ func (r *dealRig) readyReads(name string) int {
 	return n
 }
 
-// TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit pins the source rule on the
-// twin: hetzner2 (width 16) holds 8 work and 8 reads working (12 of 16 lanes)
-// and 22 read cards ready; every other member is a reader of the reads' tier
-// with a free lane. One tick leaves hetzner2 no more ready reads than its 8 free
-// halves; the rest are on units that had a free lane.
-func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
-	t.Parallel()
-	r := newDealRig(t)
+// eHetznerFleet is the fleet of 2026-10-11: hetzner2, b3, mini-m5, space and vision at width
+// 16, superman at 8 and batman at 4, read cards on (flash); hetzner2 holds 8 work and 8 reads
+// working (12 of 16 lanes) and 22 read cards ready; b3, mini-m5, space and vision hold 8 work
+// working, superman 2, batman none.
+func (r *dealRig) eHetznerFleet() {
+	r.t.Helper()
 	r.up("hetzner2", 16)
 	r.up("b3", 16)
 	r.up("mini-m5", 16)
@@ -90,6 +89,17 @@ func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
 		r.seedWork(m, sprint.Working, 8)
 	}
 	r.seedWork("superman", sprint.Working, 2)
+}
+
+// TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit pins the source rule on the
+// twin: hetzner2 (width 16) holds 8 work and 8 reads working (12 of 16 lanes)
+// and 22 read cards ready; every other member is a reader of the reads' tier
+// with a free lane. One tick leaves hetzner2 no more ready reads than its 8 free
+// halves; the rest are on units that had a free lane.
+func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
+	t.Parallel()
+	r := newDealRig(t)
+	r.eHetznerFleet()
 	require.Equal(t, 22, r.readyReads("hetzner2"), "hetzner2 holds %d ready reads, want 22", r.readyReads("hetzner2"))
 
 	r.tick()
@@ -101,18 +111,6 @@ func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, moved, 14,
 		"only %d ready reads are on units with a free lane, want the excess, >= 14", moved)
-}
-
-func itoaTest(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }
 
 // NoQueuedCardWhileACapableLaneIsFree is the rebalance's invariant (rebalance.go,
@@ -134,36 +132,34 @@ func NoQueuedCardWhileACapableLaneIsFree(s *sprint.Snapshot) string {
 // seedWorkCard puts a work card and its primary (working, as a taken card would hold it) on
 // the member in the column, so the rebalance's work pass may move it.
 func (r *dealRig) seedWorkCard(member, col string) string {
-	r.t.Helper()
-	r.cardN++
-	primary := fmt.Sprintf("seedw-%d", r.cardN)
-	wcID := primary + ".w1"
-	r.poke(sprint.Work, ntable.BatchMemberEntry{ID: primary,
-		Expect: &ntable.MemberExpect{Absent: true},
-		Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Working, Score: float64(r.cardN)},
-		Set:    map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "work": wcID, sprint.FieldTierNow: "flash"}})
-	r.poke(sprint.Fleet, ntable.BatchMemberEntry{ID: wcID,
-		Expect: &ntable.MemberExpect{Absent: true},
-		Create: &ntable.MemberCreateOp{Row: member, Col: col, Score: float64(r.cardN)},
-		Set:    map[string]string{"kind": "work", "primary": primary, "stream": "s1", "attempt": "1", "gen": "1", "member": member, "redeals": "0"}})
-	return wcID
+	return r.seedWorkAt("seedw-", member, col, 1, nil)
 }
 
 // seedFix puts one fix card (a rework attempt carrying the fix field, kind work) ready on the
 // member, so the rebalance moves it as a work card.
 func (r *dealRig) seedFix(member string) string {
+	return r.seedWorkAt("seedf-", member, sprint.Ready, 2, map[string]string{"fix": "the finding"})
+}
+
+// seedWorkAt puts the work card of attempt n of a new primary (prefix and the rig's count,
+// working on it) on the member in the column, with the extra fields.
+func (r *dealRig) seedWorkAt(prefix, member, col string, n int, extra map[string]string) string {
 	r.t.Helper()
 	r.cardN++
-	primary := fmt.Sprintf("seedf-%d", r.cardN)
-	wcID := primary + ".w2"
+	primary := fmt.Sprintf("%s%d", prefix, r.cardN)
+	wcID := fmt.Sprintf("%s.w%d", primary, n)
 	r.poke(sprint.Work, ntable.BatchMemberEntry{ID: primary,
 		Expect: &ntable.MemberExpect{Absent: true},
 		Create: &ntable.MemberCreateOp{Row: "s1", Col: sprint.Working, Score: float64(r.cardN)},
-		Set:    map[string]string{"kind": "primary", "attempt": "2", "stream": "s1", "work": wcID, sprint.FieldTierNow: "flash"}})
+		Set:    map[string]string{"kind": "primary", "attempt": strconv.Itoa(n), "stream": "s1", "work": wcID, sprint.FieldTierNow: "flash"}})
+	set := map[string]string{"kind": "work", "primary": primary, "stream": "s1", "attempt": strconv.Itoa(n), "gen": "1", "member": member, "redeals": "0"}
+	for k, v := range extra {
+		set[k] = v
+	}
 	r.poke(sprint.Fleet, ntable.BatchMemberEntry{ID: wcID,
 		Expect: &ntable.MemberExpect{Absent: true},
-		Create: &ntable.MemberCreateOp{Row: member, Col: sprint.Ready, Score: float64(r.cardN)},
-		Set:    map[string]string{"kind": "work", "primary": primary, "stream": "s1", "attempt": "2", "gen": "1", "member": member, "redeals": "0", "fix": "the finding"}})
+		Create: &ntable.MemberCreateOp{Row: member, Col: col, Score: float64(r.cardN)},
+		Set:    set})
 	return wcID
 }
 
@@ -223,23 +219,9 @@ func TestAClearedSprintRunsTheRebalanceEveryTick(t *testing.T) {
 // work each tick, so the invariant is checked where it can actually be violated, never trivially.
 func TestNTicksKeepNoQueuedCardWhileALaneIsFree(t *testing.T) {
 	r := newDealRig(t)
-	r.up("hetzner2", 16)
-	r.up("b3", 16)
-	r.up("mini-m5", 16)
-	r.up("space", 16)
-	r.up("vision", 16)
-	r.up("superman", 8)
-	r.up("batman", 4)
-	r.readCardsOn("flash")
 	// (1)'s fleet: hetzner2 at 12 of 16 lanes with 22 ready reads (14 excess); b3, mini-m5,
 	// space, vision at 8 working; superman at 2; batman idle.
-	r.seedWork("hetzner2", sprint.Working, 8)
-	r.seedRead("hetzner2", sprint.Working, 8)
-	r.seedRead("hetzner2", sprint.Ready, 22)
-	for _, m := range []string{"b3", "mini-m5", "space", "vision"} {
-		r.seedWork(m, sprint.Working, 8)
-	}
-	r.seedWork("superman", sprint.Working, 2)
+	r.eHetznerFleet()
 	r.seedFix("hetzner2") // one fix card, kind work, among the admitted cards
 	if v := NoQueuedCardWhileACapableLaneIsFree(r.snap()); v == "" {
 		t.Fatal("the run does not start with excess: hetzner2's 22 ready reads are its 8 free halves' start, so the rebalance has nothing to move and the invariant pins nothing")

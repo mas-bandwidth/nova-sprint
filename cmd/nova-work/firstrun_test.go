@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
+	"github.com/mas-bandwidth/nova-tools/pkg/onboarding"
+	"github.com/mas-bandwidth/nova-tools/pkg/testkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +44,7 @@ func TestTESTSFirstRunIsWhatTheToolPrints(t *testing.T) {
 	// TestTheRoadmapExamplesRunInOrder runs them.
 	var examples []string
 	for _, e := range all {
-		if !strings.HasPrefix(e, "nova-work roadmap ") {
+		if !strings.HasPrefix(e, "nova-work roadmap ") && !strings.HasPrefix(e, "nova-work example ") {
 			examples = append(examples, e)
 		}
 	}

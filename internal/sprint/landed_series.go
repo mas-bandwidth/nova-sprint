@@ -99,7 +99,8 @@ func LandedSeriesOf(lines []Line, now time.Time) LandedSeries {
 				continue
 			}
 			seenLanded[card] = true
-			landings = append(landings, Landing{At: l.At.Unix(), Worker: latestWorker[card]})
+			stream, _ := doneRowCol(l.To) // a work move's place is <stream>:<column>
+			landings = append(landings, Landing{At: l.At.Unix(), Worker: latestWorker[card], Stream: stream})
 		}
 	}
 	return LandedSeriesOfLandings(landings, now)
@@ -110,6 +111,9 @@ func LandedSeriesOf(lines []Line, now time.Time) LandedSeries {
 type Landing struct {
 	At     int64  `json:"at"`
 	Worker string `json:"worker,omitempty"`
+	// Stream is the card's stream, so where leaves an archived stream's landings out of the
+	// series (the owner, 2026-10-14: archived work is in no total); "" in a record from before.
+	Stream string `json:"stream,omitempty"`
 }
 
 // SeriesWindow is how far back the landings the tick keeps for the series reach: the
@@ -162,9 +166,11 @@ func SeriesLandings(s *Snapshot, since time.Time) []Landing {
 		if r := c.F("released"); r != "" && r == c.F("landed") {
 			continue
 		}
-		out = append(out, Landing{At: at.Unix(), Worker: latest[c.ID].row})
+		out = append(out, Landing{At: at.Unix(), Worker: latest[c.ID].row, Stream: c.Row})
 	}
-	slices.SortFunc(out, func(a, b Landing) int { return cmp.Or(cmp.Compare(a.At, b.At), cmp.Compare(a.Worker, b.Worker)) })
+	slices.SortFunc(out, func(a, b Landing) int {
+		return cmp.Or(cmp.Compare(a.At, b.At), cmp.Compare(a.Worker, b.Worker), cmp.Compare(a.Stream, b.Stream))
+	})
 	return out
 }
 

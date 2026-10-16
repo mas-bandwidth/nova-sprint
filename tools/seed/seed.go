@@ -13,8 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 type report struct {
@@ -44,7 +42,7 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 		return nil, fmt.Errorf("%s already exists; -out must be a new directory", out)
 	}
 	if rel.tag == "" || rel.commit == "" {
-		return nil, fmt.Errorf("no nova-tools release tag and commit to record in %s; seed from a tagged release", sprint.NovaToolsVersionFile)
+		return nil, fmt.Errorf("no nova-tools release tag and commit to seed from; seed from a tagged release")
 	}
 	s := &seeder{r: r, from: from, files: map[string]file{}, literalSeen: map[string]bool{}}
 	rep := &report{}
@@ -141,15 +139,6 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 			return nil, fmt.Errorf("keep %s: %w", k, err)
 		}
 	}
-	// The copied tree's version constant and provenance record describe the
-	// same exact source tag. This also permits private prerelease canaries.
-	if err := s.setToolsVersion(rel.tag); err != nil {
-		return nil, err
-	}
-	// Last of all: the release the tree came from, which nova-sprint seat check
-	// requires at least.
-	s.files[sprint.NovaToolsVersionFile] = file{[]byte(sprint.FormatNovaToolsVersion(rel.tag, rel.commit)), 0o644}
-
 	names := make([]string, 0, len(s.files))
 	for n := range s.files {
 		names = append(names, n)
@@ -554,29 +543,6 @@ func (s *seeder) takeModel(name string, seen map[string]bool) error {
 			return fmt.Errorf("TLA module %s references %s: %w", name, ref, err)
 		}
 	}
-	return nil
-}
-
-func (s *seeder) setToolsVersion(tag string) error {
-	const fileName = "internal/sprint/toolsversion.go"
-	f, ok := s.files[fileName]
-	if !ok {
-		return fmt.Errorf("keep %s so the seeded runtime version matches its provenance", fileName)
-	}
-	const marker = `const NovaToolsVersion = "`
-	text := string(f.data)
-	i := strings.Index(text, marker)
-	if i < 0 || strings.Contains(text[i+len(marker):], marker) {
-		return fmt.Errorf("%s must contain exactly one NovaToolsVersion string constant", fileName)
-	}
-	start := i + len(marker)
-	end := strings.IndexByte(text[start:], '"')
-	if end < 0 {
-		return fmt.Errorf("%s has a malformed NovaToolsVersion constant", fileName)
-	}
-	text = text[:start] + tag + text[start+end:]
-	f.data = []byte(text)
-	s.files[fileName] = f
 	return nil
 }
 

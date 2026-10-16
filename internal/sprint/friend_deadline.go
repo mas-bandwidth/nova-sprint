@@ -215,8 +215,7 @@ func (c Suppressed) Counted(epoch uint64, prev, now []LaneQuiet) Suppressed {
 
 // LaneChecked is the part's plan with the judgments the lane check keeps from rising taken
 // out, and those quiets: a lateness (NWorkLate) of a friend's card on a live lane
-// (LiveLane), a friend's stall (NStalled on her) or "finishes none" (NFriendIdle) while a
-// card of hers is on one, and a read tier question (NRaiseReadTier), which ReadTierRule
+// (LiveLane), a friend's "finishes none" (NFriendIdle) while a card of hers is on one, and a read tier question (NRaiseReadTier), which ReadTierRule
 // answers instead; with part the ask, the readers behind it held (ReadersFull). Only a
 // judgment raised is checked: one open already is the coordinator's, as before.
 func LaneChecked(s *Snapshot, r TickReq, part string, p Plan) (Plan, []LaneQuiet) {
@@ -244,14 +243,10 @@ func LaneChecked(s *Snapshot, r TickReq, part string, p Plan) (Plan, []LaneQuiet
 			case NWorkLate:
 				l, live = LiveLane(s, r, s.Fleet.Placed(n.Card))
 				subject = n.Card
-			case NFriendIdle, NStalled:
-				// finishes none is on her row, the stall ladder's stall on her name, with no
-				// stream (a stall of a card names its stream)
+			case NFriendIdle:
+				// finishes none is on her row
 				for _, sub := range n.Primaries {
 					f, ok := FriendOfRow(sub)
-					if n.Type == NStalled {
-						f, ok = sub, n.Stream == ""
-					}
 					if ok && !live {
 						l, live = friendLive(s, r, f)
 					}

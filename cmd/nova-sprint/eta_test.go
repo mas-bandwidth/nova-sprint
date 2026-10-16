@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // etaWork is a work table of one stream with these cards ready and landed.
@@ -166,7 +166,9 @@ func TestWhereShowsHeldCardsApart(t *testing.T) {
 	var w whereView
 	ta.json("where", &w)
 	assert.Equal(t, int64(4), w.Held, "where --json: %+v", w)
-	assert.Equal(t, "3", w.Tables[sprint.Work]["w"][sprint.Waiting], "the work table is as it was: %+v", w.Tables)
+	// the work table counts the two work cards waiting, never the gate (the owner, 2026-10-14:
+	// sentinels are counted nowhere)
+	assert.Equal(t, "2", w.Tables[sprint.Work]["w"][sprint.Waiting], "the work table counts no sentinel: %+v", w.Tables)
 }
 
 // The view shows the largest estimate of the last 10 s, so the value is stable (Glenn,

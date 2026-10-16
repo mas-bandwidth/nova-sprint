@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +24,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 	w := newWorld(t)
 	w.readersTable() // this priority fixture exercises legacy full-width reads
 	w.s.Work.SetRows([]string{"s1", "s2", "s3"})
-	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}})
 	if working > 0 {
 		amy.Running = []string{WorkCardID("s3-1", 1)} // her beat names her one card running
 	}
@@ -67,7 +67,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 // runs them in order (TickTables), each applied.
 func tickDealAndAsk(t *testing.T, w *world, seats ...FriendSeat) {
 	t.Helper()
-	p, _ := TickDeal(w.s, TickReq{Friends: seats})
+	p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 	w.must(p)
 	askReaders(t, w, seats)
 }
@@ -115,7 +115,7 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 			r, _ := friendRoom(amy)
 			require.Equal(t, 3, r-friendLoad(w.s, "amy"), "her room is three")
 
-			p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy}})
+			p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})})
 			firstRead, firstWork := -1, -1
 			for i, u := range p.Units {
 				if u.Moved == u.Key+" asked of friend amy" && firstRead < 0 {
@@ -130,7 +130,7 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 				require.Less(t, firstRead, firstWork, "the deal's plan places a read before any normal work card")
 			}
 			w.must(p)
-			askReaders(t, w, []FriendSeat{amy})
+			askReaders(t, w, workerSeatFixtures([]FriendSeat{amy}))
 			assert.Len(t, friendReads(w, "amy"), tc.reads, "every read she may take is placed")
 			assert.Len(t, friendNewWork(w, "amy"), tc.work, "work only in the room the reads leave")
 			assert.Equal(t, 4, friendLoad(w.s, "amy"), "her room is full")
@@ -138,18 +138,19 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 	}
 }
 
-// The ladder above reader: a high card is dealt before the reads, the reads before normal work,
-// and the reads of a higher primary are asked first.
+// The ladder's top rung is reader (the strict deal, 2026-10-16): the reads before every work
+// card, a high card in the room they leave before normal work, and the reads of a higher
+// primary are asked first.
 func TestTheLadderOrdersTheDealAndTheAsk(t *testing.T) {
 	t.Parallel()
 
-	t.Run("high before the reads, the reads before normal", func(t *testing.T) {
+	t.Run("the reads before high work, high before normal", func(t *testing.T) {
 		t.Parallel()
-		w, amy := priorityWorld(t, 5, 3, 0, 4)
+		w, amy := priorityWorld(t, 5, 2, 0, 4) // her room is three
 		w.s.Work.Card("s2-4").Fields[FieldPriority] = PriorityHigh
 		tickDealAndAsk(t, w, amy)
-		assert.Equal(t, []string{"s2-4"}, friendNewWork(w, "amy"), "the high card first, and no normal card")
-		assert.Len(t, friendReads(w, "amy"), 2, "the reads in the room it leaves")
+		assert.Len(t, friendReads(w, "amy"), 2, "every read first")
+		assert.Equal(t, []string{"s2-4"}, friendNewWork(w, "amy"), "the high card in the room the reads leave, and no normal card")
 	})
 
 	t.Run("a blocker's read is asked first", func(t *testing.T) {
@@ -178,7 +179,7 @@ func TestAFriendsRoomGoesToReadsFirst(t *testing.T) {
 	t.Run("a read she may take that finds no room holds her work", func(t *testing.T) {
 		t.Parallel()
 		w, amy := priorityWorld(t, 1, 5, 0, 10)
-		seats := friendReadsFirst(w.s, []FriendSeat{amy}, readsWaitingCards(w.s), Plan{})
+		seats := friendReadsFirst(w.s, workerSeatFixtures([]FriendSeat{amy}), readsWaitingCards(w.s), Plan{})
 		r, _ := friendRoom(seats[0])
 		assert.LessOrEqual(t, r-friendLoad(w.s, "amy"), 0, "a waiting read she may take leaves no room for work")
 		tickDealAndAsk(t, w, amy)
@@ -239,10 +240,10 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 	})
 }
 
-// A fleet reader reads only the tiers its row names, and a row naming none reads flash while
-// the store holds routes ("I'm ok with flash readers on fleet but not pro"): a pro read is never
-// asked of a flash row or of a fleet row that names no tier, and is asked of a row that names
-// pro. A friend's reader (its own model) naming no tier reads every tier.
+// A fleet reader reads only the tiers its row names, and a row naming none reads every tier
+// a route serves: a pro read is never asked of a flash row, and is asked of a row that names
+// pro and of a row that names none. A friend's reader (its own model) naming no tier reads
+// every tier.
 func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T, tiers map[string]string, readers ...string) *world {
@@ -273,14 +274,14 @@ func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 		assert.False(t, asked(w, "reader-vision"))
 	})
 
-	t.Run("a fleet row naming no tier reads flash only", func(t *testing.T) {
+	t.Run("a fleet row naming no tier reads every served tier", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, nil, "reader-batman-2", "reader-vision-2")
 		askReaders(t, w, nil)
-		assert.False(t, asked(w, "reader-batman-2"), "the fleet does not read pro unless its row says so")
-		assert.False(t, asked(w, "reader-vision-2"))
+		assert.True(t, asked(w, "reader-batman-2"), "an empty cell reads every tier a route serves")
 		assert.True(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteFlash), "it reads flash")
-		assert.False(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteHeavy))
+		assert.True(t, w.s.readerServesTier("reader-batman-2", cardhdr.RoutePro), "and pro, with no tier named")
+		assert.False(t, w.s.readerServesTier("reader-batman-2", cardhdr.RouteHeavy), "but not heavy: no route serves it")
 	})
 
 	t.Run("a friend's reader naming no tier reads every tier", func(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -146,10 +146,13 @@ func TestAWithdrawnCardEveryUpMemberRefusedAtStagingIsRefused(t *testing.T) {
 	assert.Equal(t, Ready, w.state("s1-1"), "nothing was dealt")
 }
 
-// TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling: at its redeal
-// bound below the tier ceiling, a withdrawn card is a new attempt on the next
-// tier, its why naming the bound and the redeals (steps_work.go:1037-1070).
-func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
+// TestAStaleFlashTierOnAHeavyCardIsDealtOnHeavy: a heavy card that carries a tier below
+// its own on its primary (FieldTierNow flash, from a deal before line 1 became the tier it
+// is dealt on) is dealt on heavy, never on flash or pro, and its primary records heavy (the
+// owner, 2026-10-16: a card is never worked below its tier). The escalation ladder below a
+// card's tier is gone with it: the card is at its ceiling from its first deal
+// (TestAWithdrawnCardAtItsRedealBoundAtItsCeilingIsRefused).
+func TestAStaleFlashTierOnAHeavyCardIsDealtOnHeavy(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
@@ -160,27 +163,13 @@ func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 		{Name: "big", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "big", Enabled: true},
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: heavy\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
-	// a card dealt on flash below its ceiling before line 1 became the tier it is dealt on:
-	// the escalation ladder still carries it
 	w.s.Work.Card("s1-1").Fields[FieldTierNow] = "flash"
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	require.Equal(t, "flash", w.s.Work.Card("s1-1").F(FieldTierNow), "its deal is on flash")
+	assert.Equal(t, "heavy", w.s.Work.Card("s1-1").F(FieldTierNow), "its deal is on heavy")
 	wc := w.s.Fleet.Card("s1-1.w1")
-	w.must(Take(w.s, TakeReq{As: wc.Row, Sel: Sel{IDs: []string{wc.ID}}, Gens: gensOf(w.s, wc.ID)}))
-	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
-	wc = w.s.Fleet.Card("s1-1.w1")
-	wc.Fields["redeals"] = itoa(MaxRedeals)
-	wc.Fields[FieldTakeEnded] = "t"
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	pr := w.s.Work.Card("s1-1")
-	assert.Equal(t, 2, pr.Int("attempt"), "a new attempt")
-	assert.Equal(t, "pro", pr.F(FieldTierNow), "escalated to the next tier")
-	wc = w.s.Fleet.Card("s1-1.w2")
-	require.NotNil(t, wc, "the next attempt's card is cut")
-	assert.Contains(t, wc.F("why"), "attempt 1 reached its bound on flash (redealt 3 times)", "the card says why it was redealt")
+	require.NotNil(t, wc)
+	assert.Equal(t, "big", wc.F(FieldRoute), "on the heavy route, never small or next")
+	assert.Empty(t, w.s.NextTier(w.s.Work.Card("s1-1")), "at its own tier: nothing to escalate to")
 }
 
 // TestAWithdrawnCardAtItsRedealBoundAtItsCeilingIsRefused: the same card at

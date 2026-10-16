@@ -4,18 +4,70 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// streamRig is a server behind httptest's listener, on a hand-moved clock and a hand-fed
+// handlerClient is a client whose transport is h called in memory: no listener, no socket
+// (unit tests use none). Each response streams through a pipe, so a handler that flushes
+// as it goes (/events) is read line by line as a real client reads it; closing the body or
+// cancelling the request ends the handler's writes.
+func handlerClient(h http.Handler) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Body == nil {
+			req.Body = http.NoBody
+		}
+		pr, pw := io.Pipe()
+		w := &pipeWriter{h: http.Header{}, pw: pw, ready: make(chan struct{})}
+		go func() {
+			h.ServeHTTP(w, req)
+			w.WriteHeader(http.StatusOK)
+			_ = pw.Close()
+		}()
+		<-w.ready
+		return &http.Response{StatusCode: w.code, Status: fmt.Sprintf("%d %s", w.code, http.StatusText(w.code)),
+			Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1, Header: w.sent, Body: pr, Request: req}, nil
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// pipeWriter is a ResponseWriter whose body is a pipe's write end; the header is sent (ready
+// closed) at the first WriteHeader, Write or Flush.
+type pipeWriter struct {
+	h, sent http.Header
+	pw      *io.PipeWriter
+	once    sync.Once
+	ready   chan struct{}
+	code    int
+}
+
+func (w *pipeWriter) Header() http.Header { return w.h }
+
+func (w *pipeWriter) WriteHeader(code int) {
+	w.once.Do(func() { w.code, w.sent = code, w.h.Clone(); close(w.ready) })
+}
+
+func (w *pipeWriter) Write(b []byte) (int, error) {
+	w.WriteHeader(http.StatusOK)
+	return w.pw.Write(b)
+}
+
+func (w *pipeWriter) Flush() { w.WriteHeader(http.StatusOK) }
+
+// streamRig is a server called in memory (handlerClient), on a hand-moved clock and a hand-fed
 // ticker, whose reads answer from body (the read count n in it).
 type streamRig struct {
 	t    *testing.T
@@ -57,13 +109,11 @@ func (r *streamRig) second() {
 // open opens a stream at path and is its lines, one a channel item.
 func (r *streamRig) open(h http.Handler, path string) (*http.Response, <-chan string) {
 	r.t.Helper()
-	ts := httptest.NewServer(h)
-	r.t.Cleanup(ts.Close)
 	ctx, cancel := context.WithCancel(context.Background())
 	r.t.Cleanup(cancel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://dashboard.test"+path, nil)
 	require.NoError(r.t, err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := handlerClient(h).Do(req)
 	require.NoError(r.t, err)
 	r.t.Cleanup(func() { _ = resp.Body.Close() })
 	lines := make(chan string, 64)
@@ -100,11 +150,17 @@ func next(t *testing.T, lines <-chan string) (name, data string) {
 // /events sends the current copy at once, then each new copy as the ticker's refresh
 // reads it: no poll, so no answer's latency on top of the second. Nobody connected, the
 // ticker reads all the same: the copy is never older than a tick.
+// The test runs in a synctest bubble so the tick's read is waited for with no wall clock.
 func TestEventsSendEachNewCopyAsTheRefreshReadsIt(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, testEventsSendEachNewCopy)
+}
+
+func testEventsSendEachNewCopy(t *testing.T) {
 	r := newStreamRig(t, func(n int) []byte { return where(n) })
 	r.tick <- r.now
-	require.Eventually(t, func() bool { return r.reads() == 1 }, 5*time.Second, time.Millisecond, "no stream: a tick reads all the same")
+	synctest.Wait()
+	require.Equal(t, 1, r.reads(), "no stream: a tick reads all the same")
 
 	resp, lines := r.open(r.s, "/events")
 	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A provider failure is an ended take, never the card's failure (docs/SPEC-SPRINT.md,
@@ -24,12 +24,20 @@ const providerLine = cardhdr.EndProvider + ": stream error: server_error h2 prot
 // does when its child ends.
 func (h *harness) failTake(card, report string) *sprint.Card {
 	h.t.Helper()
+	return h.failTakeUsage(card, report, "wall=450.00s budget=1/1000")
+}
+
+// failTakeUsage is failTake with the usage the member reports: a no-result whose usage
+// reports tokens is the model's output; one that reports none made no model call
+// (sprint.NoModelCall).
+func (h *harness) failTakeUsage(card, report, usage string) *sprint.Card {
+	h.t.Helper()
 	wc := h.snap().Fleet.Card(card)
 	require.NotNil(h.t, wc)
 	gens := map[string]int{wc.ID: wc.Int("gen")}
 	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: gens, Who: wc.Row}))
 	h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: gens, Failed: true,
-		Report: report, Usage: "wall=450.00s budget=1/1000", Who: wc.Row}))
+		Report: report, Usage: usage, Who: wc.Row}))
 	return wc
 }
 

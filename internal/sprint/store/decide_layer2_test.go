@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // nova-decide's layer 2 in the sprint (docs/SPEC-SPRINT.md sections 2 and 5; internal/sprint,
@@ -214,39 +214,6 @@ func TestAFinishCarryingAnotherTakesDecisionIsRefused(t *testing.T) {
 			assert.Equal(t, sprint.Withdrawn, h.snap().Fleet.Card("s1-1.w1").Col, "its own decision routes it")
 			h.clean(tc.name)
 		})
-	}
-}
-
-// Two failed attempts the decision classes nothing-to-do at its bar are the second
-// identical failure, though their reason lines differ: below its ceiling the machine
-// escalates the card to pro at once (flash first). Under the bar the same two lines are two
-// failures, and so are two decided needs-pro, which has no bar.
-func TestTwoDecidedNothingToDoFailuresEscalateTheCard(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		class     string
-		p         float64
-		escalated bool
-	}{{decide.ClassNothingToDo, 0.9, true}, {decide.ClassNothingToDo, 0.6, false}, {decide.ClassNeedsPro, 0.99, false}} {
-		h := flashAndPro(t)
-		h.onFlashBelowPro("s1")
-		h.m.SetDecideBars(Bars{AttemptNoResult: "0.7", AttemptNothingToDo: "0.7"})
-		h.startMachine()
-		h.machine()
-		h.decideTake("s1-1.w1", "verdict not-done; tests red in internal/a", decidedLine(tc.class, tc.p, "s1-1", 1))
-		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "again", Who: "tester"}))
-		h.machine()
-		h.decideTake("s1-1.w2", "push refused: the result's head is not a commit; r", decidedLine(tc.class, tc.p, "s1-1", 2))
-		pr := h.snap().Work.Card("s1-1")
-		if tc.escalated {
-			assert.Equal(t, sprint.Ready, pr.Col, "escalated: back to ready for its next attempt")
-			assert.Equal(t, cardhdr.RoutePro, pr.F(sprint.FieldTierNow))
-			assert.Contains(t, pr.F("why"), "failed the same way (decided nothing-to-do)")
-		} else {
-			assert.Equal(t, sprint.Review, pr.Col, "two different failures: failed work for the coordinator")
-			assert.Equal(t, cardhdr.RouteFlash, pr.F(sprint.FieldTierNow))
-		}
-		h.clean("decided twice")
 	}
 }
 

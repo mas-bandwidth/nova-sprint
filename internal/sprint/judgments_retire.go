@@ -66,6 +66,33 @@ func offTable(s *Snapshot, id string) string {
 	return id + " off the table (" + orDash(c.F("outcome")) + ")"
 }
 
+// judgmentFriend identifies the explicit friend-row subject or the legacy bare
+// subject of a friend-stall judgment (tla/JudgmentRetire.tla RaiseFriend). A
+// work card with the same bare name remains a card, not a friend.
+func judgmentFriend(s *Snapshot, n Note, sub string) string {
+	if f, ok := FriendOfRow(strings.TrimPrefix(strings.TrimPrefix(sub, "stream:"), "member:")); ok {
+		return f
+	}
+	if sub == "" || strings.ContainsAny(sub, ":@/") || s.Work.Card(sub) != nil {
+		return ""
+	}
+	if n.Type == "a friend stalled: two wakes unanswered" {
+		return sub
+	}
+	return ""
+}
+
+// friendOnTable reads roster membership, independently of up, held, down or the
+// scheduling switch (tla/JudgmentRetire.tla FriendOff).
+func friendOnTable(s *Snapshot, name string) bool {
+	for _, f := range s.Friends {
+		if f.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // movedOn is the event a judgment's card moved past it by: "<id> moved to attempt
 // <m> (was <n>)", or "<id> was re-briefed" for a judgment about the brief itself;
 // "" while the card is still the one the judgment was raised for, the judgment
@@ -96,8 +123,10 @@ func movedOn(s *Snapshot, n Note, id string) string {
 		}
 		// the attempt cap's judgment is outlived by the coordinator's decision on the card
 		// (brief_bound.go, FieldDecidedAttempt: a rework, a re-tier, a continue)
-		if at := c.Int(FieldDecidedAttempt); at > 0 && at >= n.Attempt {
-			return fmt.Sprintf("%s was decided on at attempt %d", id, at)
+		if strings.Contains(n.What, "without a coordinator decision") {
+			if at := c.Int(FieldDecidedAttempt); at > 0 && at >= n.Attempt {
+				return fmt.Sprintf("%s was decided on at attempt %d", id, at)
+			}
 		}
 	}
 	return ""
@@ -130,7 +159,9 @@ func outlived(s *Snapshot, n Note, entries []Open) (string, bool) {
 // whose cards have all left the table or moved past the state the judgment was
 // raised for (docs/SPEC-SPRINT.md section 8, "A judgment retires with its card"),
 // skipping those the plan closes already: one decided note a judgment, naming
-// every card's event.
+// every card's event. A friend judgment retires when its named friend leaves
+// the roster (tla/JudgmentRetire.tla FriendOff, NoOrphanAfterTick), answered by
+// the machine with that removal.
 func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	if s.Work == nil {
 		return
@@ -142,32 +173,41 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	var order []string
 	events := map[string][]string{}
 	moved := map[string]bool{}
+	friend := map[string]bool{}
 	prims := map[string][]string{}
 	subject := map[string]Open{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) {
+		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
-		}
-		cards := []string{o.Subject()}
-		if n.StreamLevel {
-			if !contains(retiresWithCards, n.Type) || len(n.Primaries) == 0 {
-				continue
-			}
-			cards = n.Primaries
 		}
 		var es []string
 		didMove := false
-		for _, id := range cards {
-			e := offTable(s, id)
-			if e == "" {
-				if e = movedOn(s, n, id); e == "" {
-					es = nil
-					break
-				}
-				didMove = true
+		if f := judgmentFriend(s, n, o.Subject()); f != "" {
+			if friendOnTable(s, f) {
+				continue
 			}
-			es = append(es, e)
+			es = []string{"friend " + f + " is not on the friends table"}
+			friend[n.ID] = true
+		} else {
+			cards := []string{o.Subject()}
+			if n.StreamLevel {
+				if !contains(retiresWithCards, n.Type) || len(n.Primaries) == 0 {
+					continue
+				}
+				cards = n.Primaries
+			}
+			for _, id := range cards {
+				e := offTable(s, id)
+				if e == "" {
+					if e = movedOn(s, n, id); e == "" {
+						es = nil
+						break
+					}
+					didMove = true
+				}
+				es = append(es, e)
+			}
 		}
 		if len(es) == 0 {
 			continue
@@ -192,7 +232,11 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 		if moved[id] {
 			prefix = MovedOnPrefix
 		}
-		d := decided(o, prefix, who, s.Now, prims[id]...)
+		actor := who
+		if friend[id] {
+			prefix, actor = "retired with its friend: ", MachineActor
+		}
+		d := decided(o, prefix, actor, s.Now, prims[id]...)
 		d.What = prefix + strings.Join(events[id], "; ")
 		p.Notes = append(p.Notes, d)
 	}
@@ -278,13 +322,18 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 	seen := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) {
+		if n.Kind != Judgment || n.SprintLevel || contains(aboutTheLanding, n.Type) || n.Type == NNeedBlocked {
 			continue
 		}
 		if seen[n.ID] {
 			continue
 		}
 		sub := o.Subject()
+		// A legacy bare friend subject that is still on the roster is not an
+		// absent work card (tla/JudgmentRetire.tla SubjectOn).
+		if f := judgmentFriend(s, n, sub); f != "" && friendOnTable(s, f) {
+			continue
+		}
 
 		// Stream-level judgments:
 		if n.StreamLevel {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // 1. A cross need is gone with a return: a later conflict stop resumes by
@@ -385,11 +385,8 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 	}
 }
 
-// The model's brief bound is the engine's (sprint.AtBriefBound): the stream's attempt cap, else
-// the sprint's, counted from the attempt its brief was last replaced at, and the same landing
-// refusal twice. A model with the default cap of 4 counted from attempt 0 reworked the card the
-// engine stops at its second attempt under a stream cap of 2, and stopped the card the engine
-// reworks at its third attempt, one attempt after a brief replaced at its second.
+// The model's brief bound is the engine's (sprint.AtBriefBound): an accepted card merges and the
+// attempt cap never judges it; the same landing refusal twice bounds it.
 func TestTheModelsBriefBoundIsTheEngines(t *testing.T) {
 	t.Parallel()
 	h := newDHarness(t)
@@ -437,12 +434,11 @@ func TestTheModelsBriefBoundIsTheEngines(t *testing.T) {
 	}
 
 	toMerging()
-	require.Equal(t, refmodel.Ready, refused(refmodel.RefusedGate).State, "attempt 1 of 2: reworked")
+	require.Equal(t, refmodel.Ready, refused(refmodel.RefusedGate).State, "attempt 1: reworked")
 	toMerging()
-	p := refused(refmodel.RefusedConflict)
-	require.Equal(t, refmodel.Review, p.State, "attempt 2 of 2: at the stream's cap")
+	p := refused(refmodel.RefusedGate)
+	require.Equal(t, refmodel.Review, p.State, "attempt 2: same refusal twice is the brief's bound")
 	require.True(t, h.model.Open[refmodel.Judgment{Type: refmodel.JBriefWrong, Subject: "x"}])
-	require.Less(t, p.Attempt, refmodel.AttemptsDefault, "a model with the default cap would have reworked it")
 
 	// a new brief at attempt 2: the cap counts from it
 	snap, err := h.st.Load(h.ctx, []string{sprint.Work}, nil)

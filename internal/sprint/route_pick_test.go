@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // TestAZeroLandingRouteGetsAFloorShareOfTheDeal drives the deal, never the
@@ -39,7 +39,7 @@ func TestAZeroLandingRouteGetsAFloorShareOfTheDeal(t *testing.T) {
 	w.must(Add(s, AddReq{Stream: "s1", Cards: cards}))
 	require.Equal(t, 100, len(s.Work.Column(Ready)), "100 ready flash primaries")
 
-	plan, _ := TickDeal(s, TickReq{})
+	plan, _ := tickDealFixture(s, TickReq{})
 	require.Empty(t, plan.Refused, "every ready card is dealt")
 	w.do(plan)
 
@@ -63,12 +63,12 @@ func TestAZeroLandingRouteGetsAFloorShareOfTheDeal(t *testing.T) {
 	w.must(FleetStep(s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 100}))
 	seedOutcomes(s)
 	s.Work.SetRows([]string{"s1"})
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
 	rbPlace(w, "s1-w1", cardhdr.RouteFlash, FriendRow("amy"), Working) // amy's one lane works: no free half
 	for i := 0; i < 40; i++ {
 		rbPlace(w, fmt.Sprintf("s1-q%02d", i), cardhdr.RouteFlash, FriendRow("amy"), Ready)
 	}
-	w.must(Rebalance(s, []FriendSeat{amy}, "machine"))
+	w.must(Rebalance(s, workerSeatFixtures([]FriendSeat{amy}), "machine"))
 
 	a, b = routeCounts(s.Fleet)
 	t.Logf("REBALANCE-ROUTE-SHARE flash-a=%d flash-b=%d", a, b)

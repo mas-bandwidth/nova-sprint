@@ -11,13 +11,13 @@ import (
 
 // A friend's lanes are thin clients of the server (lane_hold.go; nova-tools tla/FriendLane.tla).
 
-var amyLanes = FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
+var amyLanes = workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 
 // laneWorld is three cards dealt ready on amy's row (width 2), none started.
 func laneWorld(t *testing.T) *world {
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
 	dealWith(w, amyLanes)
-	w.s.Friends = []FriendSeat{amyLanes}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{amyLanes})
 	require.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Ready), 3, "dealt ready, unstarted")
 	return w
 }
@@ -45,13 +45,13 @@ func TestALanesTakeIsHerStartAndTheTickKeepsItWorking(t *testing.T) {
 	assert.Equal(t, Working, held.Col, "still working after the tick: never put back ready as unstarted")
 	assert.Equal(t, "1", held.F(FieldLane))
 
-	t.Run("the take before lanes: a bare take by count is put back ready by the tick", func(t *testing.T) {
+	t.Run("a take by count with no lane is her start too: the tick keeps it working", func(t *testing.T) {
 		t.Parallel()
 		w := laneWorld(t)
 		w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{Limit: 1}, Who: FriendRow("amy")}))
 		require.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Working), 1)
 		dealWith(w, amyLanes)
-		assert.Empty(t, w.s.Fleet.Cell(FriendRow("amy"), Working), "the fault: taken, then ready again a tick later")
+		assert.Len(t, w.s.Fleet.Cell(FriendRow("amy"), Working), 1, "the fault of 2026-10-14 20:30 EDT was taken, then ready again a tick later")
 	})
 }
 
@@ -114,7 +114,7 @@ func TestALanesTakeRefusals(t *testing.T) {
 		require.Len(t, p.Refused, 1, "%+v", r)
 		assert.Empty(t, p.Units)
 	}
-	w.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Down, Why: "her beat says down"}}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Down, Why: "her beat says down"}})
 	p := laneTake(w, 1)
 	assert.Empty(t, p.Units)
 	assert.Nil(t, LaneHolds(w.s, FriendRow("amy"), 1))
@@ -241,4 +241,55 @@ func TestAStopReturnNamesTheLane(t *testing.T) {
 	assert.Contains(t, p.Refused[0].Why, "held by lane 1 of friend.amy, not lane 2")
 	p = StopReturn(w.s, StopReturnReq{As: FriendRow("amy"), IDs: []string{c.ID}, Gens: map[string]int{c.ID: max(c.Int("gen"), 1)}, Reason: "stopped", Lane: 1})
 	require.Len(t, p.Units, 1, "%+v", p.Refused)
+}
+
+// A take under a friend's bare name (take --as amy) is refused with the lane form, never
+// taken under a row no lane binds (the coordinator's report of 2026-10-14 20:30 EDT).
+func TestATakeUnderAFriendsBareNameIsRefusedWithTheLaneForm(t *testing.T) {
+	t.Parallel()
+	w := laneWorld(t)
+	p := Take(w.s, TakeReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: "amy", Gens: map[string]int{"s1-1.w1": 1}, Who: "amy"})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "take --as friend.amy --lane <n>")
+	assert.Empty(t, p.Units)
+}
+
+// The strict deal at the take (2026-10-16): a friend's take by id of a new first attempt is
+// refused, naming them, while a fix or a read dealt to her row waits ready; the fix itself is
+// taken by id, and with nothing ahead the new card is taken.
+func TestATakeByIDOfNewWorkWaitsBehindHerFixAndReads(t *testing.T) {
+	t.Parallel()
+	ready := func(w *world) []*Card { return w.s.Fleet.Cell(FriendRow("amy"), Ready) }
+	take := func(w *world, c *Card) Plan {
+		return Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{IDs: []string{c.ID}}, Gens: gensOf(w.s, c.ID), Who: FriendRow("amy")})
+	}
+	t.Run("behind a fix", func(t *testing.T) {
+		t.Parallel()
+		w := laneWorld(t)
+		cs := ready(w)
+		fix, fresh := cs[0], cs[1]
+		w.s.Work.Card(fix.F("primary")).Fields[FieldPriority] = PriorityFix
+		p := take(w, fresh)
+		require.NotEmpty(t, p.Refused, "a new first attempt is not taken past her fix")
+		assert.Contains(t, p.Refused[0].Why, fix.ID, "the refusal names the fix ahead")
+		w.must(take(w, fix))
+		assert.Equal(t, Working, w.s.Fleet.Card(fix.ID).Col, "the fix is taken by id")
+	})
+	t.Run("behind a read", func(t *testing.T) {
+		t.Parallel()
+		w := laneWorld(t)
+		fresh := ready(w)[0]
+		rid := ReadCardID("s9-1", 1, "amy")
+		w.s.Fleet.Put(&Card{ID: rid, Row: FriendRow("amy"), Col: Ready, Rev: 1, Fields: map[string]string{"kind": "read", "primary": "s9-1", "attempt": "1", FieldReadCard: "1"}})
+		p := take(w, fresh)
+		require.NotEmpty(t, p.Refused, "a new first attempt is not taken past her read")
+		assert.Contains(t, p.Refused[0].Why, rid)
+	})
+	t.Run("nothing ahead", func(t *testing.T) {
+		t.Parallel()
+		w := laneWorld(t)
+		fresh := ready(w)[0]
+		w.must(take(w, fresh))
+		assert.Equal(t, Working, w.s.Fleet.Card(fresh.ID).Col)
+	})
 }

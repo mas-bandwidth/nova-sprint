@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // The attempt cap (docs/SPEC-SPRINT.md, the bounds; brief_bound.go; the owner, 2026-10-12): a
@@ -51,8 +51,8 @@ func capJudgmentsOn(s *Snapshot, id string) []Open {
 func TestACardAtTheCapIsDealtToNoOneUntilTheCoordinatorDecides(t *testing.T) {
 	t.Parallel()
 	w := capWorld(t)
-	gus := FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier}
-	w.part(TickDeal, TickReq{Friends: []FriendSeat{gus}})
+	gus := workerSeatFixture(FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier})
+	w.part(TickDeal, TickReq{Friends: workerSeatFixtures([]FriendSeat{gus})})
 	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "the card is left for the coordinator")
 	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "no attempt 5 is dealt to the friend")
 	assert.Empty(t, w.s.Primary("s1-1").F(FieldWho), "its brief gains no WHO line")
@@ -66,7 +66,7 @@ func TestACardAtTheCapIsDealtToNoOneUntilTheCoordinatorDecides(t *testing.T) {
 	assert.Contains(t, n.What, "nova-sprint rework s1-1 --fix <text> --tier <a higher tier>", "the re-tier is the way to a friend tier")
 
 	// a second tick finds the judgment open and raises nothing; the card still waits
-	w.part(TickDeal, TickReq{Friends: []FriendSeat{gus}})
+	w.part(TickDeal, TickReq{Friends: workerSeatFixtures([]FriendSeat{gus})})
 	assert.Len(t, capJudgmentsOn(w.s, "s1-1"), 1, "raised once while it holds")
 	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "still no attempt 5")
 	assert.Empty(t, Check(w.s, nil), "what is always true holds with the capped card waiting")
@@ -104,14 +104,14 @@ func TestACardAtBothCapsIsDealtToNoOne(t *testing.T) {
 	wc.Fields[FieldEnvExitHistory] = "m1=134,m2=137,m1=134"
 	wc.Rev++
 	w.s.Fleet.Put(wc)
-	gus := FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier}
-	w.part(TickDeal, TickReq{Friends: []FriendSeat{gus}})
+	gus := workerSeatFixture(FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier})
+	w.part(TickDeal, TickReq{Friends: workerSeatFixtures([]FriendSeat{gus})})
 	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "not dealt a next attempt")
 	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "no attempt 5")
 	assert.NotNil(t, w.s.Fleet.Placed("s1-1.w4"), "the withdrawn history is not retired")
 	assert.Empty(t, w.s.Primary("s1-1").F(FieldWho), "its brief gains no WHO line")
 	require.Len(t, capJudgmentsOn(w.s, "s1-1"), 1, "one judgment holds it")
-	w.part(TickDeal, TickReq{Friends: []FriendSeat{gus}})
+	w.part(TickDeal, TickReq{Friends: workerSeatFixtures([]FriendSeat{gus})})
 	assert.Len(t, capJudgmentsOn(w.s, "s1-1"), 1, "raised once")
 	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "still no attempt 5")
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // The tests here reach redis.go without a live store: pure helpers run their
@@ -548,19 +548,6 @@ func (db *coverDB) list(key string) (*coverVal, error) {
 		return v, nil
 	}
 	if v.kind != coverList {
-		return nil, errCoverWrongType
-	}
-	return v, nil
-}
-
-func (db *coverDB) set(key string) (*coverVal, error) {
-	v := db.keys[key]
-	if v == nil {
-		v = &coverVal{kind: coverSet, set: map[string]struct{}{}}
-		db.keys[key] = v
-		return v, nil
-	}
-	if v.kind != coverSet {
 		return nil, errCoverWrongType
 	}
 	return v, nil

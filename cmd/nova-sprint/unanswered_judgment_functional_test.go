@@ -3,16 +3,13 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,15 +20,16 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 )
 
 // ujRig is a sprint on a real store (a redis-server of its own, the function library
-// loaded), its server in this process on a clock the test steps, the seat hooked in and
-// then silent, and the owner's bus a recorder. The environment is the store's address and
+// loaded), its server in this process on a clock the test steps, the seat silent, and the
+// bus (the owner's and the seat's) a recorder. The environment is the store's address and
 // the seat's name, HOME and XDG_CONFIG_HOME in the test's own directory, and nothing else:
 // no NOVA_* of the machine the test runs on.
 type ujRig struct {
@@ -43,14 +41,9 @@ type ujRig struct {
 	mu   sync.Mutex
 	now  time.Time
 	sent []bus.Message
-	hook chan hookMsg
 }
 
 const ujSeat = "seat-uj"
-
-// ujSeatSilent is the judgment's type in its words (sprint.NSeatSilent), named here so the
-// test reads the same on a build that has none.
-const ujSeatSilent = "the seat is not answering"
 
 func newUJRig(t *testing.T) *ujRig {
 	t.Helper()
@@ -60,8 +53,12 @@ func newUJRig(t *testing.T) *ujRig {
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(r.ctx, admin))
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": r.addr, "NOVA_SPRINT_ACTOR": ujSeat, "HOME": home, "XDG_CONFIG_HOME": home}
+	env := map[string]string{"NOVA_SPRINT_REDIS": r.addr, "NOVA_SPRINT_ACTOR": ujSeat, "HOME": home, "XDG_CONFIG_HOME": home,
+		busRedisEnv: "bus.test:6379"} // Identity resolution only; the bus recorder below never dials it.
 	r.a = newApp(func(k string) string { return env[k] })
+	// The hook and sprint records share only this rig's private Redis connection.
+	// No hook record means down; the independently stored sprint hold still applies.
+	r.a.readFriendHooks = (hook.Store{C: admin}).Read
 	t.Cleanup(r.a.close)
 	r.a.now = func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now }
 	r.a.sleep = func(time.Duration) {}
@@ -71,7 +68,6 @@ func newUJRig(t *testing.T) *ujRig {
 		r.sent = append(r.sent, m)
 		return nil
 	}
-	r.a.hookSock = shortSock(t)
 	r.a.serveAddr = r.addr
 	// the routes nova-config's apply writes: flash and heavy, no pro
 	for _, x := range [][2]string{{"flash-a", "flash"}, {"heavy-a", "heavy"}} {
@@ -168,71 +164,23 @@ func (r *ujRig) work(readers ...string) {
 	}
 }
 
-// hookIn hooks the seat in over a pipe and proves it, then reads the stream into r.hook;
-// the seat answers nothing more: silent.
-func (r *ujRig) hookIn() *hookSession {
+// pushes is every message one look of the server's coordinator push sent the seat on the
+// bus (coordinator_push.go).
+func (r *ujRig) pushes() []bus.Message {
 	r.t.Helper()
-	server, client := net.Pipe()
-	r.hook = make(chan hookMsg, 256)
-	go func() {
-		sc := bufio.NewScanner(client)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
-			var m hookMsg
-			if json.Unmarshal(sc.Bytes(), &m) == nil {
-				r.hook <- m
-			}
-		}
-		close(r.hook)
-	}()
-	go r.a.hookRun(r.ctx, ujSeat, server, 0)
-	r.t.Cleanup(func() { _ = client.Close() })
-	var chal string
-	for chal == "" {
-		select {
-		case m := <-r.hook:
-			chal = m.Challenge
-		case <-time.After(10 * time.Second):
-			r.t.Fatal("no challenge on the hook")
+	r.mu.Lock()
+	before := len(r.sent)
+	r.mu.Unlock()
+	r.a.coordinatorPass(r.ctx)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []bus.Message
+	for _, m := range r.sent[before:] {
+		if len(m.To) == 1 && m.To[0] == ujSeat {
+			out = append(out, m)
 		}
 	}
-	b, _ := json.Marshal(hookMsg{T: "prove", Req: "p1", Challenge: chal})
-	_, err := client.Write(append(b, '\n'))
-	require.NoError(r.t, err)
-	for {
-		select {
-		case m := <-r.hook:
-			if m.Req == "p1" {
-				require.Equal(r.t, "ok", m.T, m.Why)
-				h := r.a.hookHub()
-				h.mu.Lock()
-				defer h.mu.Unlock()
-				for _, v := range h.cur {
-					return v
-				}
-				return nil
-			}
-		case <-time.After(10 * time.Second):
-			r.t.Fatal("the proof was not answered")
-		}
-	}
-}
-
-// pushes is every push the hook's stream has carried so far.
-func (r *ujRig) pushes(s *hookSession) []hookMsg {
-	r.t.Helper()
-	s.look(r.ctx)
-	var out []hookMsg
-	for {
-		select {
-		case m := <-r.hook:
-			if m.T == "push" {
-				out = append(out, m)
-			}
-		case <-time.After(300 * time.Millisecond):
-			return out
-		}
-	}
+	return out
 }
 
 // The owner, 2026-10-12: "This must never happen again." A real server and store, the seat
@@ -240,8 +188,8 @@ func (r *ujRig) pushes(s *hookSession) []hookMsg {
 // deadline every card with a safe default has moved with no seat verb (returned for its
 // missing read and read again, returned for its needs, pinned to a held friend, on a tier no
 // route serves), and the cards that need a mind (returned by the seat; pinned by the
-// coordinator to a tier no route serves) are named by "the seat is not answering", on the
-// hook's stream and on the owner's bus.
+// coordinator to a tier no route serves) are named by the folded decisions-owed notice, on the
+// seat's bus and on the owner's.
 func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	t.Parallel()
 	began := time.Now()
@@ -293,7 +241,6 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	var out, errb bytes.Buffer
 	code := runOnStore(r.a, r.addr, split("brief s6-1 --tier heavy"), &out, &errb)
 	require.Equal(t, 2, code, "re-tier without --reason should be refused: %s", errb.String())
-	s := r.hookIn()
 	r.do("start")
 	// the seat says nothing from here on
 	r.step(time.Second)
@@ -312,24 +259,41 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	assert.Equal(t, sprint.Ready, r.col("s6-1"), "pinned to pro by the coordinator: stays put, never re-tiered")
 	assert.Equal(t, sprint.Review, r.col("s3-1"), "still the seat's")
 
-	// the seat-not-answering judgment reached the hook's stream and the owner's bus,
-	// naming the card still held
-	var onHook bool
-	for _, p := range r.pushes(s) {
-		if strings.Contains(p.Text, ujSeatSilent) && strings.Contains(p.Text, "s3-1") && strings.Contains(p.Text, "s6-1") {
-			onHook = true
-		}
-	}
-	assert.True(t, onHook, "the alarm is pushed on the seat's hook")
+	// The deadline lane replaces the coordinator's legacy seat-silent alarm.
+	// The tier notice must name only the cards still waiting, not s5 which
+	// has already moved. Require the first delivery before checking no resend.
 	r.mu.Lock()
-	sent := append([]bus.Message(nil), r.sent...)
+	before := len(r.sent)
 	r.mu.Unlock()
-	var onBus bool
-	for _, m := range sent {
-		if m.Subject == ujSeatSilent && strings.Contains(m.Body, "s3-1") && strings.Contains(m.Body, "s6-1") && len(m.To) == 1 && m.To[0] == "glenn" {
-			onBus = true
+	first := r.pushes()
+	require.NotEmpty(t, first, "first look must deliver to the coordinator")
+	r.mu.Lock()
+	delivered := append([]bus.Message(nil), r.sent[before:]...)
+	r.mu.Unlock()
+	for _, to := range []string{ujSeat, "glenn"} {
+		var notices []bus.Message
+		for _, m := range delivered {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == to {
+				notices = append(notices, m)
+			}
 		}
+		require.Len(t, notices, 1, "first look delivers one folded notice to %s: %+v", to, delivered)
+		body := notices[0].Body
+		assert.Contains(t, body, "s3-1")
+		assert.Contains(t, body, "cards=s6-1")
+		assert.Contains(t, body, "1 primaries of tier pro wait:")
+		assert.NotContains(t, body, "s5-1")
+		assert.NotContains(t, body, "2 primaries of tier pro wait:")
 	}
-	assert.True(t, onBus, "the alarm is sent to the owner on the bus: %+v", sent)
+	r.mu.Lock()
+	before = len(r.sent)
+	r.mu.Unlock()
+	r.pushes()
+	r.mu.Lock()
+	resent := append([]bus.Message(nil), r.sent[before:]...)
+	r.mu.Unlock()
+	for _, m := range resent {
+		assert.NotEqual(t, "nova-sprint: decisions owed", m.Subject, "unchanged overdue set is not resent to either recipient")
+	}
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }

@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 )
 
 // A head the lander refuses for a cause of its own (it does not merge, changes files outside
@@ -289,17 +289,20 @@ func TestAConflictingCardIsReworkedAndTheStreamLandsOn(t *testing.T) {
 
 // The same refusal twice is the same finding twice: the brief is wrong, not the worker
 // (brief_bound.go). The second refusal raises the bound's judgment, never a third attempt.
+//
+// The refusal is the tree gate's: a merge conflict with the advanced base twice is the base's
+// bound, not the brief's (merge_conflict_carry_test.go, tla/Land.tla, THE BOUND).
 func TestTheSameLandingRefusalTwiceIsABriefDefect(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
 	why := func(n int) string {
-		return fmt.Sprintf("the head h%d of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go", n)
+		return fmt.Sprintf("the head h%d of s1-1 fails the tree gate: go vet ./...: exit status 1", n)
 	}
 	r.toMerging("s1-1")
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(1), ConflictKind: "file"}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(1)}))
 	require.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col, "the first refusal reworks it")
 	r.toMerging("s1-1")
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(2), ConflictKind: "file"}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(2)}))
 	s := r.snap()
 	pr := s.Work.Card("s1-1")
 	assert.Equal(t, sprint.Review, pr.Col, "not a third attempt")
@@ -365,23 +368,25 @@ func TestABaseFailureStillStopsTheStream(t *testing.T) {
 	r.clean("the base fails")
 }
 
-// A card at its attempt bound is not reworked when the landing refuses its head: it goes back
-// to review with the bound's judgment, and its stream lands on.
+// A card at its brief bound (the same refusal twice) is not reworked when the landing refuses its head:
+// it goes back to review with the bound's judgment, and its stream lands on.
 func TestACardAtItsBoundIsNotReworkedOnConflict(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
-	r.must(store.SetStep(sprint.SetReq{Streams: []string{"s1"}, Attempts: "1", Who: "coordinator"}))
 	for _, id := range []string{"s1-1", "s1-2"} {
 		r.toMerging(id)
 	}
 	why := "the head h1 of s1-1 fails the tree gate: go test ./internal/x/: exit status 1"
 	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why}))
+	assert.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col, "reworked on first refusal")
+	r.toMerging("s1-1")
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why}))
 	s := r.snap()
 	assert.Equal(t, sprint.StreamMerging, s.StreamCtl("s1").F("state"))
 	pr := s.Work.Card("s1-1")
 	assert.Equal(t, sprint.Review, pr.Col, "not reworked at its bound")
-	assert.Equal(t, 1, pr.Int("attempt"))
-	assert.Empty(t, pr.F("fix"))
+	assert.Equal(t, 2, pr.Int("attempt"))
+	assert.NotEmpty(t, pr.F("fix"))
 	open := r.open(sprint.NBriefWrong)
 	require.Len(t, open, 1, "the bound's judgment")
 	assert.Contains(t, open[0].Note.What, why)

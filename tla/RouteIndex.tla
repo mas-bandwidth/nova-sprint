@@ -46,9 +46,11 @@
 \* drawn as a work card is, from the reader tier's array at the same index:
 \* the ask that creates it takes the entry at the place and moves the index by
 \* one, so the work deal and the reads of a tier share one rotation (RouteFair
-\* over every pick of the tier). The tier is the primary's collapsed (readTierOf,
-\* ReadTier): a pro primary read on flash while pro is unrouted and flash is
-\* routed, a heavy primary on pro, a frontier primary on heavy. The routes the
+\* over every pick of the tier). The tier is the primary's read tier (readTierOf,
+\* ReadTier): its own tier or above, never below (the owner, 2026-10-16: a card is
+\* never worked or read below its tier; NeverBelowItsTier, whose reversed witness
+\* MCRouteIndexBrokenReadBelow.cfg draws a pro primary's read on flash, the
+\* collapse readTierOf made before the fix). The routes the
 \* read of the primary returned on (Avoid[c]) are left out while another of the
 \* tier is served, as a redeal leaves out the routes already taken, and so is a
 \* resting route (Rested). A read is never withdrawn and dealt again: a read
@@ -181,8 +183,8 @@ StepsFirst(t, i, ex) ==
 
 Steps(t, i, ex) == IF Broken = "nofirst" THEN StepsNoFirst(t, i, ex) ELSE StepsFirst(t, i, ex)
 
-\* The tier a draw of c takes its array from: the primary's tier, collapsed for a
-\* read (readTierOf, ReadTier: pro to flash while pro is unrouted, heavy to pro).
+\* The tier a draw of c takes its array from: the primary's tier, or for a read its
+\* read tier (readTierOf, ReadTier: the identity in the design, a raise at most).
 DrawTier(c) == IF c \in Reads THEN ReadTier[TierOf[c]] ELSE TierOf[c]
 
 \* The routes a draw of c walks past whatever else: those m cannot launch, for a
@@ -416,6 +418,16 @@ EveryTierIsDealtFromItsRoutes ==
   \A c \in WorkCards :
     (st[c] = "ready" /\ \E m \in Pool(c) : Open(TierOf[c], MemberUnlaunch[m] \cup Rested))
       ~> st[c] # "ready"
+
+\* The ladder, weakest first, and a tier's place on it.
+Ladder == <<"flash", "pro", "heavy", "frontier">>
+Rank(t) == CHOOSE k \in 1..Len(Ladder) : Ladder[k] = t
+
+\* A card is never drawn below its tier (the owner, 2026-10-16: "It is completely
+\* undefined that a card should run at the wrong tier"): every pick, a work card's
+\* deal or a read's, takes a route of the card's tier or above (internal/sprint
+\* route.go cardTier, drawTier, readTierOf).
+NeverBelowItsTier == last.c \in Cards => Rank(last.t) >= Rank(TierOf[last.c])
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.

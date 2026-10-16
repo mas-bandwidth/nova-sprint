@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmap"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 // roadmapVerbs edit and read a repository's own work record, docs/roadmap.sexp
@@ -68,7 +68,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 				placeFlags(f, "add the entry to")
 				f.Required("title", "the entry's title, one line")
 				f.String("text", "", "what the entry is (required for a roadmap item)")
-				f.String("origin", "", "where the entry came from: an issue, a pull request, a card (required for a fix)")
+				f.String("origin", "", "where the entry came from: PR #123, 40-char SHA, or commit reference (required for a fix)")
 				f.String("status", "planned", "a new fix's status: planned or in-progress")
 				f.String("why", "", "a roadmap item's reason to wait")
 				f.Check(func(c *tool.Call) {
@@ -76,7 +76,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 						c.Problem("--text is required for a roadmap item; it wants what the item is")
 					}
 					if c.Str("release") != "" && strings.TrimSpace(c.Str("origin")) == "" {
-						c.Problem("--origin is required for a fix; it wants where the fix came from (a pull request, an issue, a card)")
+						c.Problem("--origin is required for a fix; it wants where the fix came from (valid origin format examples: PR #123, 40-char SHA, or commit reference)")
 					}
 				})
 			},
@@ -172,7 +172,7 @@ func (g github) roadmapVerbs() []tool.Verb {
 const roadmapDetail = `A repository's work record is two files of data and the two pages they render:
 docs/roadmap.sexp -> ROADMAP.md (groups of items: work after the release
 ladder) and docs/fixes.sexp -> FIXES.md (point releases and their fixes). The
-shapes are internal/roadmapdoc's. Every writing verb edits the data, decodes it
+shapes are nova-tools pkg/roadmap's. Every writing verb edits the data, decodes it
 again, and writes the data and its page together; nothing is written when any
 check fails, and every byte it does not change (comments, spacing, the other
 records) is kept. Nothing reaches GitHub: commit the batch of edits as one.

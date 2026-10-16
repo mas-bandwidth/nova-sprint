@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 )
 
 // A reader's state (docs/SPEC-SPRINT.md section 6, the readers table; the
@@ -317,9 +317,9 @@ func ReadsNeededIn(s *Snapshot, pr *Card) int {
 //
 // tla/ReaderTiers.tla Refuse
 func enoughReadersUp(s *Snapshot, pr *Card) bool {
-	// the fast path: no states, no tiers cell, the tier routed, and no fleet reader held to
-	// flash by its empty cell for a read above flash (fleetReadsFlashOnly)
-	if t := s.readTierOf(pr); s.ReaderStates == nil && !s.readersCarryTiers() && s.tierRouted(t) && (len(s.Routes) == 0 || t == cardhdr.RouteFlash) {
+	// the fast path: no states, no tiers cell, and the tier routed (an empty
+	// cell now reads every served tier, so no tier is held back)
+	if t := s.readTierOf(pr); s.ReaderStates == nil && !s.readersCarryTiers() && s.tierRouted(t) {
 		return true
 	}
 	tier, n := s.readTierOf(pr), 0
@@ -631,7 +631,7 @@ func ReadCardForAsk(s *Snapshot, primary string, attempt int, reader string) (id
 //
 // tla/ReaderTiers.tla Eligible
 func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
-	tier := s.readTierDrawn(pr)
+	tier := s.readTierOf(pr)
 	var out []string
 	for _, rd := range s.Readers.Rows() {
 		if s.ReaderIsUp(rd) && s.readerServesTier(rd, tier) {

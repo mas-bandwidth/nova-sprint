@@ -31,9 +31,9 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // landLedger is a family of generated, shrink-only files and the tests that own them: the
@@ -67,13 +67,13 @@ var landLedgers = []landLedger{{
 	owns:  func(p string) bool { return p == "FIXES.md" },
 	roots: []string{"FIXES.md"},
 	tests: "TestFixesIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
+	run:   []string{"go", "tool", "roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
 }, {
 	// the roadmap's page, owned by TestRoadmapIsGeneratedFromTheSexp, the same way
 	owns:  func(p string) bool { return p == "ROADMAP.md" },
 	roots: []string{"ROADMAP.md"},
 	tests: "TestRoadmapIsGeneratedFromTheSexp",
-	run:   []string{"go", "run", "./tools/roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
+	run:   []string{"go", "tool", "roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
 }}
 
 // landRegenPasses bounds the update runs of one resolution: an update that writes

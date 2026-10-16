@@ -7,10 +7,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -248,20 +247,6 @@ func TestOldEpochUnchangedByReuse(t *testing.T) {
 	h.clean("end")
 }
 
-// advanceHook runs a step at the old epoch just before the epoch advances.
-type advanceHook struct {
-	Backend
-	do func()
-}
-
-func (a *advanceHook) AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error) {
-	if a.do != nil {
-		a.do()
-		a.do = nil
-	}
-	return a.Backend.AdvanceEpoch(ctx, from, at)
-}
-
 // A member brought up and a member taken down between clear's start and its
 // advance are both of the old epoch: the blank-slate clear carries the members
 // as clear's start read them (m1 and m2 up), not the mid-clear changes.
@@ -271,13 +256,13 @@ func TestAMemberChangedMidClearIsNotCarried(t *testing.T) {
 	h.setup(1)
 	other := &Store{B: h.m, Names: h.st.Names, Actor: "other", Now: h.st.Now, NewID: func() string { return "o" }, Sleep: h.st.Sleep}
 	st := *h.st
-	st.B = &advanceHook{Backend: h.m, do: func() {
+	st.beforeAdvance = func() {
 		for _, op := range []string{"up m3", "down m1"} {
 			f := strings.Fields(op)
 			_, err := other.Run(h.ctx, FleetStep(sprint.FleetReq{Op: f[0], Member: f[1], Probe: sprint.EnvProbePassed}))
 			assert.NoError(t, err)
 		}
-	}}
+	}
 	_, err := st.Clear(h.ctx)
 	require.NoError(t, err)
 	s := h.snap()

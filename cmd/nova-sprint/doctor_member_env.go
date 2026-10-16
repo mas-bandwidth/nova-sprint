@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/bench"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // The member-env beat-form probe (docs/SPEC-SPRINT.md, "The doctor's refused-verb and

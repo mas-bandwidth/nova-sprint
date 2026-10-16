@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // THE TYPED CARD HEADER, CHECKED BEFORE ANY SPEND (SPEC-TOOLWORK.md §5 rule 1, #1651).
@@ -22,7 +22,7 @@ import (
 //
 //	KIND: <kind>
 //	PATHS: <glob>[, <glob>...]
-//	TEST: [-tags <tags>] <package> <TestName>   (or `TEST: none <why>` where the kind allows it)
+//	TEST: [-tags <tags>] <package> <TestName>   (or `TEST: <runner> <file or target> <case>`, or `TEST: none <why>` where the kind allows it)
 //	LEGS: <leg>[,<leg>...]
 //	SOURCE: <owner>/<repo>#<n> | <file:line at the pinned head>
 //
@@ -97,7 +97,7 @@ type CardHeaderFinding struct {
 var CardHeaderRemedies = map[string]string{
 	"kind-declared":  "the card carries `KIND: <kind>` as the first typed line under the contract line, and the kind is one the pool's kinds list names; the cutter writes it from the pool row and a model never does; a declared kind whose row names no instruction kind is this finding too: name the instruction kind on that row of the one kinds list",
 	"paths-declared": "the card carries `PATHS: <glob>[, <glob>...]`, repository-relative, every glob holding at least one literal segment and none of them climbing with `..`; a card that changes nothing says `PATHS: none`; " + PathsReadRemedy,
-	"test-named":     "the card carries `TEST: [-tags <tags>] <package> <TestName>` -- the package repository-relative and the name a Go test name -- or `TEST: none <why>` where the kind declares no gate",
+	"test-named":     "the card carries `TEST: [-tags <tags>] <package> <TestName>` -- the package repository-relative and the name a Go test name -- or `TEST: <runner> <file or target> <case>` with runner make, ctest, cargo, dotnet or pytest, or `TEST: none <why>` where the kind declares no gate",
 	"paused":         "the coordinator paused this kind, so `cut` cuts no card of it and a card launched before the pause is `ACCEPT ABSTAIN reason=paused` at harvest; the remedy is not a rerun but `nova-pulse trust --set trial --queue <dir> --kind <kind> --who <name> --reason <text>`",
 }
 
@@ -106,8 +106,9 @@ var CardHeaderRemedies = map[string]string{
 // CardHeaderChecks is the four tokens of §5 rule 1; `cmd/nova-swarm/lint.go` merges these
 // into its cardLintRemedies, so a start-named or stop-named line names its remedy.
 const (
-	StartNamedRemedy = "the brief carries `START: <files or packages to read first>`, the files or packages the child reads before it spends; it names where the work begins, so the reading is bounded before a token is spent"
-	StopNamedRemedy  = "the brief carries `STOP: <the condition that ends the task>`, the condition that ends the task; it bounds a flash child's reading, which otherwise runs past its budget"
+	StartNamedRemedy     = "the brief carries `START: <files or packages to read first>`, the files or packages the child reads before it spends; it names where the work begins, so the reading is bounded before a token is spent"
+	StopNamedRemedy      = "the brief carries `STOP: <the condition that ends the task>`, the condition that ends the task; it bounds a flash child's reading, which otherwise runs past its budget"
+	ConsumersNamedRemedy = "the brief carries `CONSUMERS: <cards that need this sentinel>`, naming every card that needs it; a sentinel brief missing CONSUMERS: is refused"
 )
 
 // CardHeaderChecks is every token this file draws, in one byte-stable order.
@@ -150,7 +151,37 @@ type TrustState map[string]string
 var (
 	headerKeyRE  = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$`)
 	goTestNameRE = regexp.MustCompile(`^Test[A-Za-z0-9_]*$`)
+	// runnerCaseRE is the case a runner-form TEST line names: a test, fact, case or
+	// target name as make, ctest, cargo, dotnet and pytest spell them (`Delta`,
+	// `Ns.Class.Method`, `mod::case`, `test_x`), never a shell word.
+	runnerCaseRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:]*$`)
 )
+
+// testRunners is the runner form's first word: the runners test-command already
+// accepts for the gate. The Go form and `ctest <TestName>` are cardhdr.ParseTest's.
+var testRunners = map[string]bool{"make": true, "ctest": true, "cargo": true, "dotnet": true, "pytest": true}
+
+// runnerTestLine reads `<runner> <file or target> <case>`, the TEST form a C++, C#,
+// Rust or Python card names its test with. ok is false when the line is not in that
+// shape (it is then the Go form's or a refusal); why is the refusal of a line in that
+// shape whose target or case does not hold.
+func runnerTestLine(v string) (why string, ok bool) {
+	f := strings.Fields(v)
+	if len(f) != 3 || !testRunners[f[0]] {
+		return "", false
+	}
+	target, name := f[1], f[2]
+	if strings.ContainsAny(target, "*?[") {
+		return fmt.Sprintf("TEST: %s target %q is a glob, not one file or target", f[0], target), true
+	}
+	if why, ok := validGlobs([]string{target}); !ok {
+		return fmt.Sprintf("TEST: %s target: %s", f[0], why), true
+	}
+	if !runnerCaseRE.MatchString(name) {
+		return fmt.Sprintf("TEST: %q is not a %s test name", name, f[0]), true
+	}
+	return "", true
+}
 
 // headerField is one `KEY: value` line of the block, with the line it sits on. `again`
 // is the line of a SECOND line with the same key, 0 when there is none.
@@ -251,8 +282,9 @@ var cardTypedKeys = map[string]bool{"KIND": true, "PATHS": true, "TEST": true, "
 var cardHeaderKeys = map[string]bool{
 	"KIND": true, "PATHS": true, "TEST": true, "LEGS": true, "SOURCE": true,
 	"START": true, "STOP": true,
-	"DEPENDS-ON": true, "PRIORITY": true, "NEW": true, "SHARED": true,
+	"DEPENDS-ON": true, "LAND-AFTER": true, "PRIORITY": true, "NEW": true, "SHARED": true,
 	"REPO": true, "BASE": true, "tier": true, "RESULT": true,
+	"CONSUMERS": true, "WHO": true,
 }
 
 // LintHeaderStranded returns one finding per header key (cardHeaderKeys) written as a
@@ -278,11 +310,12 @@ func LintHeaderStranded(raw []byte) []CardHeaderFinding {
 // token of their own, so a stranded or repeated one answers under `kind-declared`, which
 // is the token for "the typed header is not the header the gate will read".
 var cardKeyCheck = map[string]string{
-	"KIND":   "kind-declared",
-	"PATHS":  "paths-declared",
-	"TEST":   "test-named",
-	"LEGS":   "kind-declared",
-	"SOURCE": "kind-declared",
+	"KIND":      "kind-declared",
+	"PATHS":     "paths-declared",
+	"TEST":      "test-named",
+	"LEGS":      "kind-declared",
+	"SOURCE":    "kind-declared",
+	"CONSUMERS": "consumers-named",
 }
 
 // StartNamedCheck and StopNamedCheck are the tokens for the two reading lines of the
@@ -292,8 +325,9 @@ var cardKeyCheck = map[string]string{
 // flash brief and prints it as a note for tier pro, or no tier. Both carry a remedy in
 // StartNamedRemedy and StopNamedRemedy above, so the note names what to write.
 const (
-	StartNamedCheck = "start-named"
-	StopNamedCheck  = "stop-named"
+	StartNamedCheck     = "start-named"
+	StopNamedCheck      = "stop-named"
+	ConsumersNamedCheck = "consumers-named"
 )
 
 // validGlobs is the PATHS: rule, and it is `hygiene.ValidatePaths` ITSELF, not a
@@ -458,15 +492,22 @@ func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf f
 	}
 
 	// 3. TEST: is declared, and is what cardhdr.ParseTest reads: `[-tags <tags>]
-	// <package> <TestName>` or `none <why>`.
+	// <package> <TestName>`, `ctest <TestName>` or `none <why>`; or the runner form
+	// `<runner> <file or target> <case>` for make, ctest, cargo, dotnet and pytest.
 	test := h["TEST"]
 	tl, testWhy := cardhdr.ParseTest(test.value)
+	runnerWhy, runnerForm := runnerTestLine(test.value)
 	switch {
 	case !test.found && stranded["TEST"] > 0:
 	case !test.found:
 		add("test-named", 1, "no TEST: line under the contract line")
 	case test.value == "":
 		add("test-named", test.line, "TEST: with no package and no test name after it")
+	case runnerForm && runnerWhy != "":
+		add("test-named", test.line, runnerWhy)
+	case runnerForm:
+		// `<runner> <file or target> <case>`: the target held to the PATHS path rule
+		// and the case to a test name, in runnerTestLine.
 	case testWhy != "":
 		add("test-named", test.line, testWhy)
 	case tl.None:
@@ -514,6 +555,14 @@ func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf f
 		}
 		if f := h["STOP"]; !f.found {
 			add(StopNamedCheck, 1, "no STOP: line under the contract line; the brief names the condition that ends the task")
+		}
+	}
+	if kind.value == "sentinel" {
+		f := h["CONSUMERS"]
+		if !f.found {
+			add(ConsumersNamedCheck, 1, "no CONSUMERS: line under the contract line; the brief carries CONSUMERS: <cards that need this sentinel>")
+		} else if strings.TrimSpace(f.value) == "" {
+			add(ConsumersNamedCheck, f.line, "CONSUMERS: with no cards after it; a sentinel brief names every card that needs it")
 		}
 	}
 	return out

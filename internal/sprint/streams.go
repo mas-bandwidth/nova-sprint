@@ -6,40 +6,16 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
-// StreamRemove is the rule of stream remove: why each named stream may not
-// leave the work and merge tables, none when every one may. A stream may
-// leave only while the machine is STOPPED, only when it is a row of the work
-// or the merge table, and only when it holds no card: no primary or sentinel
-// placed in any column of its work row, no merge card in its merge row (its
-// control card, which the row takes with it, is no card it holds). The verb
-// names several and applies all or none: one refused refuses every other
-// with it.
-func StreamRemove(s *Snapshot, running bool, streams []string) []Refusal {
-	var out []Refusal
-	refused := map[string]bool{}
-	for _, st := range streams {
-		why := streamRemoveWhy(s, running, st)
-		if why != "" {
-			out = append(out, Refusal{Key: st, Why: why})
-			refused[st] = true
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	whole := fmt.Sprintf("not removed: the verb names several and removes all or none, and %d of them %s refused", len(out), map[bool]string{true: "was", false: "were"}[len(out) == 1])
-	for _, st := range streams {
-		if !refused[st] {
-			refused[st] = true
-			out = append(out, Refusal{Key: st, Why: whole})
-		}
-	}
-	return out
-}
-
+// streamRemoveWhy is the rule of stream remove for one name: why the stream may
+// not leave the work and merge tables, "" when it may. A stream may leave only
+// while the machine is STOPPED, only when it is a row of the work or the merge
+// table, and only when it holds no card: no primary or sentinel placed in any
+// column of its work row, no merge card in its merge row (its control card,
+// which the row takes with it, is no card it holds). StreamRemoveExisting
+// applies it to each name stream remove names.
 func streamRemoveWhy(s *Snapshot, running bool, st string) string {
 	if running {
 		return "the machine is RUNNING, and a stream is removed only from a STOPPED sprint; nothing was changed; run: nova-sprint stop"

@@ -26,7 +26,7 @@ var personalPronoun = regexp.MustCompile(`(?i)\b(she|her|hers|herself|he|him|him
 // pronounGuardRoots cover sprint command output, the friend daemon's records and
 // seat judgments, the sprint rules that generate those judgments, configuration
 // help, and the one renderer. Paths are from this package's directory.
-var pronounGuardRoots = []string{".", "../../cmd/nova-sprint", "../../internal/sprint", "../config", "../pronouns"}
+var pronounGuardRoots = []string{".", "../../cmd/nova-sprint", "../../internal/sprint", "../config"}
 
 // pronounGuardAllowed are the literals that say a pronoun word for a reason that
 // is not a friend: file (base name) to the literal's text.
@@ -44,8 +44,9 @@ var pronounGuardAllowed = map[string][]string{
 // Only the exact file, const declaration name and literal are exempted.
 var pronounGuardIdentifiers = map[string]map[string]string{
 	"../../internal/sprint/stops.go": {"NStopPinWaits": "a card pinned to one friend waits while she is not up"},
-	"../../internal/sprint/notes.go": {"NFriendNotWoken": "a friend was not told of her card"},
-	"../../internal/sprint/friend_reconcile_tick.go": {
+	"../../internal/sprint/notes.go": {
+		"NFriendNotWoken": "a friend was not told of her card",
+		// the retired QUEUE.json reconcile's notes, kept for the history that holds them
 		"NFriendDisagrees": "a friend's row disagrees with her QUEUE.json",
 		"NFriendAgrees":    "a friend's row agrees with her QUEUE.json again",
 	},

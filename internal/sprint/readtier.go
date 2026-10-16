@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // Read tiers (docs/SPEC-SPRINT.md section 6; the owner, 2026-10-04). The floor: a card's
@@ -89,8 +89,7 @@ func RaiseReadTier(s *Snapshot, stream string) (ReadTierRaise, bool) {
 		if next == "" || s.readTierOf(c) != at {
 			return ReadTierRaise{}, false
 		}
-		// a setting at or above next already asks it: under the interim rule a heavy read is
-		// drawn on pro (readTierOf), so a stream raised to heavy reads at pro and pro is its top
+		// a setting at or above next already asks it
 		if set := s.readTierSetting(c.Row); set != "" && stronger(set, next) == set {
 			return ReadTierRaise{}, false
 		}

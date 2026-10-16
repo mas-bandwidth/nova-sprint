@@ -4,44 +4,40 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/card"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// A heavy brief is pinned heavy and never dealt to flash or pro.
-func TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro(t *testing.T) {
+// A brief's tier is its pin: a heavy brief is pinned heavy and never dealt to
+// flash or pro, a pro brief is never dealt to flash.
+func TestABriefIsDealtOnItsTier(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.s.Routes = []Route{
+	routes := []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "heavy-a", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "h", Enabled: true, Deadline: 600},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}}))
-	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
-	require.NotNil(t, wc)
-	assert.Equal(t, "heavy-a", wc.F(FieldRoute), "heavy card dealt on heavy route")
-	assert.Equal(t, cardhdr.RouteHeavy, w.s.DealTier(w.s.Primary("s1-1")), "heavy card pin is heavy")
-}
-
-// A pro brief is never dealt to flash.
-func TestAProBriefIsNeverDealtToFlash(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
-	w.s.Routes = []Route{
-		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
-		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
+	for _, c := range []struct {
+		name, tier string
+		routes     []Route
+	}{
+		{"AHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro", cardhdr.RouteHeavy, routes},
+		{"AProBriefIsNeverDealtToFlash", cardhdr.RoutePro, routes[:2]},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+			w.s.Routes = c.routes
+			w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: " + c.tier + "\n\nThe task."}}}))
+			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+			wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
+			require.NotNil(t, wc)
+			assert.Equal(t, c.tier+"-a", wc.F(FieldRoute), c.tier+" card dealt on "+c.tier+" route")
+			assert.Equal(t, c.tier, w.s.DealTier(w.s.Primary("s1-1")), c.tier+" card pin is "+c.tier)
+		})
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: pro\n\nThe task."}}}))
-	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
-	require.NotNil(t, wc)
-	assert.Equal(t, "pro-a", wc.F(FieldRoute), "pro card dealt on pro route")
-	assert.Equal(t, cardhdr.RoutePro, w.s.DealTier(w.s.Primary("s1-1")), "pro card pin is pro")
 }
 
 // A card brief with no RESULT-line tier is refused by the card lint.

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // LaneHarness is a Deliverer that can open a session of the friend and
@@ -40,7 +40,7 @@ type LaneTurn struct {
 	Exit     int
 	Rejected string // the line of the output where the harness refused a permission, if any
 	// Windows is the subscription windows' use the harness reported in the turn
-	// (a Claude Code run's rate_limit_event lines, ReadRateLimitEvents); nil when
+	// (a Claude Code run's rate_limit_event lines); nil when
 	// it reported none. The lanes are paced by it (pacing.go).
 	Windows []WindowUse
 	// FirstError is the first line of the turn's output that says an error
@@ -224,7 +224,7 @@ var wallRefusalReason = regexp.MustCompile(`(?m)^WALL REFUSED reason=([a-z_]+)\b
 // refusal of the session.
 //
 // A lane's turn runs in the card's job directory, the one its context carries
-// (WithLaneDir), so a path the model reads relative is read inside the job;
+// (LaneDirOf), so a path the model reads relative is read inside the job;
 // with none it runs in Dir.
 func (o *OpenCode) DeliverTo(ctx context.Context, id, text string) (LaneTurn, error) {
 	o.allow()

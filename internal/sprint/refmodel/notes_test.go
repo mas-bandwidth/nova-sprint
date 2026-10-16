@@ -1,6 +1,7 @@
 package refmodel_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
@@ -33,33 +34,39 @@ type carried struct {
 // note gains that is not here fails the test that reads the type, so a new
 // field is a decision about what a move carries.
 var noteCarry = map[string]carried{
-	"ID":          {"left out", "the store gives every note its own id"},
-	"Kind":        {"kind", ""},
-	"Type":        {"type", ""},
-	"Stream":      {"stream", ""},
-	"Primaries":   {"subjects", ""},
-	"Count":       {"attr", ""},
-	"What":        {"words", ""},
-	"Who":         {"attr", ""},
-	"Attempt":     {"attr", ""},
-	"Before":      {"attr", ""},
-	"At":          {"left out", "the time a note is written at is the time Decide is given"},
-	"Decisions":   {"decisions", ""},
-	"Marked":      {"attr", ""},
-	"Answers":     {"attr", ""},
-	"Alias":       {"left out", "the store numbers a judgment as its commit writes it (sprint.Alias)"},
-	"Suspects":    {"attr", ""},
-	"Card":        {"card", ""},
-	"Other":       {"attr", ""},
-	"Tier":        {"attr", ""},
-	"OtherStream": {"attr", ""},
-	"StreamLevel": {"attr", ""},
-	"SprintLevel": {"attr", ""},
-	"Needs":       {"attr", ""},
-	"Review":      {"attr", ""},
-	"ReviewSet":   {"attr", ""},
-	"To":          {"attr", ""},
-	"Hint":        {"attr", ""},
+	"StreamTransition":       {"attr", ""},
+	"SafeDefault":            {"left out", "derived by Note.Bound from the judgment kind, not an independent decision"},
+	"DecisionDelivery":       {"left out", "the server transport lane persists its frozen payload and receipt independently of a work decision"},
+	"DefaultCoordinatorTold": {"left out", "the transport receipt marks this after a default report is written"},
+	"DefaultOwnerTold":       {"left out", "the owner transport receipt marks this after a default report is written"},
+	"ID":                     {"left out", "the store gives every note its own id"},
+	"Kind":                   {"kind", ""},
+	"Type":                   {"type", ""},
+	"Stream":                 {"stream", ""},
+	"Primaries":              {"subjects", ""},
+	"Count":                  {"attr", ""},
+	"What":                   {"words", ""},
+	"Who":                    {"attr", ""},
+	"Attempt":                {"attr", ""},
+	"Before":                 {"attr", ""},
+	"At":                     {"left out", "the time a note is written at is the time Decide is given"},
+	"Decisions":              {"decisions", ""},
+	"Marked":                 {"attr", ""},
+	"Answers":                {"attr", ""},
+	"Alias":                  {"left out", "the store numbers a judgment as its commit writes it (sprint.Alias)"},
+	"Suspects":               {"attr", ""},
+	"Card":                   {"card", ""},
+	"Other":                  {"attr", ""},
+	"Tier":                   {"attr", ""},
+	"OtherStream":            {"attr", ""},
+	"StreamLevel":            {"attr", ""},
+	"SprintLevel":            {"attr", ""},
+	"Needs":                  {"attr", ""},
+	"Review":                 {"attr", ""},
+	"ReviewSet":              {"attr", ""},
+	"To":                     {"attr", ""},
+	"Hint":                   {"attr", ""},
+	"CoordinatorDelivery":    {"left out", "the coordinator push freezes and marks the note's bus message after the note is written (store.CoordinatorDeliveries), and a decision never sets it"},
 }
 
 func TestEveryFieldOfANoteIsCarriedOrLeftOutInWords(t *testing.T) {
@@ -111,6 +118,11 @@ func attrsOf(n sprint.Note) []string {
 			}
 		case []string:
 			text = strings.Join(slices.Sorted(slices.Values(x)), ",")
+		case *sprint.StreamTransition:
+			if x != nil {
+				value, _ := json.Marshal(x)
+				text = string(value)
+			}
 		case time.Time:
 			if !x.IsZero() {
 				text = x.UTC().Format(time.RFC3339)
@@ -248,6 +260,18 @@ func filled(kind string) sprint.Note {
 			v.Field(i).Set(reflect.ValueOf([]string{"b-" + name, "a-" + name}))
 		case time.Time:
 			v.Field(i).Set(reflect.ValueOf(t0.Add(time.Duration(i+1) * time.Minute)))
+		case *sprint.StreamTransition:
+			v.Field(i).Set(reflect.ValueOf(&sprint.StreamTransition{State: "stopped", Cause: "conflict", Waiting: 2, Owners: []string{"amy", "bea"}}))
+		case *sprint.DecisionDelivery:
+			v.Field(i).Set(reflect.ValueOf(&sprint.DecisionDelivery{Lane: "owner", To: "owner", From: "coord", Set: "judgment-id", Body: "frozen", Token: "token", PreparedAt: t0, RetryBefore: t0.Add(time.Hour), SentAt: t0, Fault: "history", Reports: []string{"report"}, UnknownReceipts: 1}))
+		case *sprint.CoordinatorDelivery:
+			// the frozen bus message of the note's episode (coordinator_push.go): delivery
+			// bookkeeping, set so the move is shown to hold the note with it present
+			v.Field(i).Set(reflect.ValueOf(&sprint.CoordinatorDelivery{
+				CoveredBy: "s-" + name + "-covered", From: "s-" + name + "-from", To: "s-" + name + "-to", Token: "s-" + name + "-token",
+				Subject: "s-" + name + "-subject", Body: "s-" + name + "-body", Episode: "s-" + name + "-episode",
+				Sent: true, RetryBefore: t0.Add(time.Duration(i+1) * time.Minute),
+			}))
 		default:
 			panic("the note's field " + name + " is of a type the test cannot fill")
 		}
@@ -399,4 +423,25 @@ func one(t *testing.T, i int, duty string, tabs *sprint.Snapshot, p sprint.Plan,
 		require.Failf(t, "assertion failed", "sample %d, %s: a %s of %s on %s is not the one move that closes it: %s", i, duty, how, o.Note.ID, o.Subject(), show(ms))
 	}
 	seen[how]++
+}
+
+// Stream notices are decision output, not transport bookkeeping: every frozen
+// field is observable in a move and must survive the comparison.
+func TestStreamTransitionFieldsChangeTheMove(t *testing.T) {
+	t.Parallel()
+	n := sprint.Note{Kind: sprint.Happened, Type: sprint.NStreamStopped, Stream: "s1", StreamTransition: &sprint.StreamTransition{State: "stopped", Cause: "conflict", Waiting: 2, Owners: []string{"amy"}}}
+	base := refmodel.PlanMoves(refmodel.DutyDeal, &sprint.Snapshot{}, sprint.Plan{Notes: []sprint.Note{n}})
+	for name, edit := range map[string]func(*sprint.StreamTransition){
+		"state":   func(v *sprint.StreamTransition) { v.State = "merging" },
+		"cause":   func(v *sprint.StreamTransition) { v.Cause = "red" },
+		"waiting": func(v *sprint.StreamTransition) { v.Waiting = 3 },
+		"owner":   func(v *sprint.StreamTransition) { v.Owners = []string{"bea"} },
+	} {
+		changed := n
+		value := *n.StreamTransition
+		edit(&value)
+		changed.StreamTransition = &value
+		got := refmodel.PlanMoves(refmodel.DutyDeal, &sprint.Snapshot{}, sprint.Plan{Notes: []sprint.Note{changed}})
+		require.NotEqual(t, base, got, name)
+	}
 }

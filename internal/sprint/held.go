@@ -230,7 +230,7 @@ func (c *held) dealTurn(id string) int {
 
 // heldParts is the tick's parts the rule asks what the next tick does: every
 // part but the check, whose duty the rule is.
-var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume, TickDeal, TickAccept, TickAsk, TickDeadlines, TickOverdue}
+var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume, TickDeal, TickAccept, TickAsk, TickDeadlines, TickNeedBlocked, TickOverdue}
 
 func newHeld(h HeldState, now time.Time) *held {
 	s := *h.Snap
@@ -301,6 +301,11 @@ func (c *held) notes(ns []Note) {
 			// read no one may take: its primaries each get the "writes ..." line
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
+			}
+		case n.Type == NNeedBlocked:
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+				c.judged[p] = append(c.judged[p], n.Type+" "+n.ID)
 			}
 		case n.StreamLevel:
 			c.tickStream[n.Stream] = "writes " + n.Type
@@ -481,6 +486,9 @@ func (c *held) tickOn(pr *Card) string {
 // tla/Holds.tla NoSilentStall
 func (c *held) judgment(pr *Card) string {
 	if IsHeld(pr) {
+		if pr.F("held_by") == ServerDefaultActor {
+			return "held by server-default for judgment " + pr.F("held_judgment") + ": " + pr.F("held_reason") + " until release"
+		}
 		return "held by the coordinator (add --held) until release"
 	}
 	if (pr.Col == Ready || pr.Col == Waiting) && StreamHeld(c.s, pr.Row) {
@@ -584,8 +592,20 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			case c.on[n]:
 				return "its needs make a cycle through " + n, "", false
 			case nc == nil:
+				if c.openOn(n) {
+					held = append(held, "needs "+n+" (blocked)")
+					items = append(items, n+" (blocked)")
+					nNeeds++
+					continue
+				}
 				return "waits on " + n + ", which is not on the table", "", false
 			case !nc.Placed():
+				if c.openOn(n) {
+					held = append(held, "needs "+n+" (blocked)")
+					items = append(items, n+" (blocked)")
+					nNeeds++
+					continue
+				}
 				return "waits on " + n + ", off the table (" + orDash(nc.F("outcome")) + "), and no judgment is open on it", "", false
 			}
 			hd := c.hold(n)
@@ -721,7 +741,7 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 	room := 0
 	for _, f := range fs {
 		r, _ := friendRoom(f)
-		room += max(0, r-friendLoad(s, f.Name))
+		room += max(0, r-friendLiveLanes(s, f.Name))
 	}
 	ahead := c.dealTurn(pr.ID)
 	if ahead < room {
@@ -785,6 +805,12 @@ func (c *held) decisions(pr *Card) []string {
 	case pr.Col == Review && acceptable(c.s, pr):
 		out = []string{"accept", "rework", "drop"}
 	case pr.Col == Review && pr.F("result") == "failed":
+		out = []string{"rework", "drop"}
+	case pr.Col == Review && readBranchMissingOpen(c.s, pr):
+		// the judgment holds its reads: ask is refused while no branch on origin holds the
+		// head (askStateAt), and --another always (tla/ReadBranchMissing.tla, AskRefusalsAgree),
+		// so only the verbs that always resolve it are offered here; the judgment's own
+		// decisions offer ask for when the branch is pushed
 		out = []string{"rework", "drop"}
 	case pr.Col == Review && ReadsWanted(c.s, pr) == 0 && askedAtAttempt(c.s, pr):
 		out = []string{"ask --another", "rework", "drop"} // a read is already asked: --another adds one

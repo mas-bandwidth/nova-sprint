@@ -21,11 +21,11 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/binstamp"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/binstamp"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The machine: start and stop set its state; run is the process that ticks
@@ -106,8 +106,8 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		if code := a.startNeedsGate(ctx, st, stderr); code != 0 {
 			return code
 		}
-		// a clean card check of this epoch that matches the cards now, or refused, nothing
-		// written (start-refuses-until-a-clean-check; check_cards.go startCardCheckGate)
+		// the card check is reported as WARN lines and never gates the start
+		// (start-warns-never-gates; check_cards.go startCardCheckGate returns 0)
 		if code := a.startCardCheckGate(ctx, st, stderr); code != 0 {
 			return code
 		}
@@ -326,7 +326,6 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "tick", err.Error())
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	ctx := context.Background()
 	res, err := st.Tick(ctx)
@@ -447,7 +446,6 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "run", "invalid --tick-deadline: "+a.tickDeadline.String()+": a negative value is refused, 0 waits for ever")
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	st.WakeFriend = a.stallWaker(st, stderr)
 	st.Inventory = a.inventoryMachines
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
@@ -685,6 +683,15 @@ const TickWedgedToExit = 3
 // row: not 0, so its supervisor starts it again.
 const exitTickDeadline = 4
 
+// lineMissed counts a tick that could not take the line of control within its
+// deadline as one more wedged tick in a row (a-card-read-never-runs-the-deal): true
+// at TickWedgedToExit, when the process is wedged and run exits exitTickDeadline. A
+// tick that takes the line and stops resets the count, as a tick that stops does.
+func lineMissed(wedged *int) bool {
+	*wedged++
+	return *wedged >= TickWedgedToExit
+}
+
 // tickDeadlineOf is the deadline of the next tick: three times the median wall
 // of the ticks in walls (the last tickWalls; with an even count, the upper of
 // the two middle walls), never less than least and never more than
@@ -905,8 +912,9 @@ const (
 // read alone. Every tick of a RUNNING machine is printed, naming every table
 // and the rows it changed in each, and every tick that
 // failed; an error is printed always and the loop goes on, waiting longer
-// after each failure in a row, up to TickBackoffCap. After each tick of a
-// RUNNING machine every friend is reconciled (reconcileFriendsTick).
+// after each failure in a row, up to TickBackoffCap. No friend's directory is
+// read: a friend lane's state is the server's records alone (nova-tools
+// tla/FriendLaneClient.tla).
 //
 // A loop runs the code it was started with for as long as it runs: a binary
 // installed under it (a release, a fix) would leave the store ticked by the
@@ -924,7 +932,6 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// every line before the loop is seen: the first tick reads the state whole
 	cursor, _ := st.LogTail(ctx)
 	why := tickStart
-	friends := newFriendTick()
 	// the server's record, the actor this loop runs as, which seat and handover
 	// show beside the seat's holder: written before the first tick and every
 	// store.ServerEvery (seat-key-follows-record.w2)
@@ -945,12 +952,41 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		// one tick, or one worker's batch, at a time (serve.go); the tick takes the line at
 		// its turn, after the batch in flight, not behind every batch waiting
 		// (sprint.ControlLine; docs/SPEC-SPRINT.md section 14, The server, "The tick's turn")
-		if waited := a.serial.TickLock(); waited > store.TickEvery {
-			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
-		}
 		deadline := tickDeadlineOf(a.tickDeadline, walls)
 		if deadline > 0 && lift > deadline {
 			deadline = lift
+		}
+		// the tick asks for the line under its own deadline: a line not taken within it is
+		// a wedged tick, so a server whose line is held for ever exits for its supervisor
+		// instead of hanging (a-card-read-never-runs-the-deal; docs/SPEC-SPRINT.md section
+		// 14, The server, "The tick's deadline")
+		lineCtx, lineDone := ctx, context.CancelFunc(func() {})
+		if deadline > 0 {
+			lineCtx, lineDone = context.WithTimeout(ctx, deadline)
+		}
+		waited, lerr := a.serial.TickLockCtx(lineCtx)
+		lineDone()
+		if lerr != nil {
+			if ctx.Err() != nil {
+				return true
+			}
+			fmt.Fprintf(stdout, "%s TICK LINE the tick could not take the server's line of control within %s: %d in a row\n", a.now().Format("15:04:05"), deadline, wedged+1)
+			if lineMissed(&wedged) {
+				fmt.Fprintf(stdout, "%s TICK WEDGED %d ticks in a row could not take the server's line of control within their deadline (%s): the process is wedged and run exits %d so its supervisor starts it again; the stacks follow on stderr\n",
+					a.now().Format("15:04:05"), wedged, deadline, exitTickDeadline)
+				a.writeStacks(stacksBuffer(), stdout, stderr)
+				a.exit(exitTickDeadline)
+				return false
+			}
+			a.writeStacks(stacksBuffer(), stdout, stderr)
+			if n != 0 && i == n-1 {
+				return false
+			}
+			why = tickRetry
+			continue
+		}
+		if waited > store.TickEvery {
+			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
 		}
 		start := a.now()
 		res, over, ended, err := a.tickWithin(ctx, func(c context.Context) (store.TickResult, error) { return a.tickOf(c, st) }, deadline, began, stdout, stderr)
@@ -979,6 +1015,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		}
 		wedged = 0
 		wall := a.now().Sub(start)
+		a.tickEnded(a.now(), deadline) // the SERVE line's tick-age
 		walls = keepWall(walls, wall)
 		if wall <= a.tickDeadline {
 			lift = 0 // the store is as fast as --tick-deadline again
@@ -1007,15 +1044,6 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			if line := sprintLine(ctx, st); line != "" {
 				fmt.Fprintln(stdout, line)
 			}
-		}
-		if err == nil && res.State == store.Running {
-			// every friend reconciled after the tick's deal, with friend reconcile's plan
-			// (friendreconcile_tick.go; docs/SPEC-SPRINT.md section 1,
-			// friend-reconcile-every-tick-r.w1), in the tick's own turn of the line: on
-			// 2026-10-10 each friend's pass queued behind every waiting batch, and the
-			// passes cost 12 s a tick at the median (docs/SPEC-SPRINT.md section 14,
-			// store-trips-pipelinedb-bb)
-			a.reconcileFriendsTick(ctx, st, friends, stdout)
 		}
 		a.serial.Unlock()
 		if err == nil {

@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The coordinator's verbs go to the sprint's server too: a single client/server
@@ -25,7 +26,7 @@ import (
 // nobody (notServed), a verb given its own --redis, and a verb's help run here, as
 // before. A read that waits for the sprint to move (waits) is never run by the server:
 // here it sends the server its plain read, again and again (where --watch: one a
-// frame; inbox --wait: the log's tick-end notes, polled). What a verb's arguments say
+// frame; inbox --wait: blocking tick-note reads). What a verb's arguments say
 // (its help, its flags, which word is a flag's value) is read by the verb's own flags
 // (readVerb), never by a scan of the words.
 
@@ -52,6 +53,7 @@ type verbArgs struct {
 
 // readVerb is the argument list read by its verb's flags, as the verb parses them.
 func readVerb(argv []string) (v verbArgs) {
+	argv = normalizeArgs(argv)
 	for _, vb := range verbs {
 		w := strings.Fields(vb.name)
 		if len(argv) >= len(w) && slices.Equal(argv[:len(w)], w) && len(w) > v.words {
@@ -169,7 +171,7 @@ func (a *app) noServerHint() string {
 	if err != nil {
 		path = seatRecordFile
 	}
-	return fmt.Sprintf("no sprint server named: %s is not set and the seat's record %s names none; run: export %s=<host:port>, or record it: nova-sprint seat install --harness <name> --target <dir> --server <host:port>", ServerEnv, path, ServerEnv)
+	return fmt.Sprintf("no sprint server named: %s is not set and the seat's record %s names none; run: export %s=<host:port>, or record it: nova-sprint seat install --server <host:port>", ServerEnv, path, ServerEnv)
 }
 
 // forwarded sends the verb to the sprint's server when there is one and the server runs
@@ -198,17 +200,26 @@ func (a *app) forwarded(args []string, stdout, stderr io.Writer) (code int, sent
 }
 
 // ask sends the server one verb (its words, then what follows them) as this caller:
-// who acts is this caller's alone, said even when it is no one (the server never acts
-// as its own environment names), before the caller's own words so a --actor it gave
-// wins; each file it names is absolute.
+// a nonempty environment actor is put before the caller's words so an explicit
+// --actor wins. With neither source naming one, the server may derive the actor from
+// its own proven coordinator hook; its environment is never inherited. Each file it
+// names is absolute.
 func (a *app) ask(ctx context.Context, addr string, verb, rest []string) (sprintwire.Result, error) {
 	send := a.forward
 	if send == nil {
 		send = func(ctx context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error) {
-			return sprintwire.Client{Addr: addr}.Do(ctx, verbs...)
+			client := sprintwire.Client{Addr: addr}
+			if len(verbs) == 1 {
+				client.HTTP = a.longPollClient(verbs[0])
+			}
+			return client.Do(ctx, verbs...)
 		}
 	}
-	argv := absolutePaths(slices.Concat(verb, []string{"--actor", a.getenv("NOVA_SPRINT_ACTOR")}, rest))
+	identity := []string(nil)
+	if actor := a.getenv("NOVA_SPRINT_ACTOR"); actor != "" {
+		identity = []string{"--actor", actor}
+	}
+	argv := absolutePaths(slices.Concat(verb, identity, rest))
 	res, err := send(ctx, addr, argv)
 	if err != nil {
 		return sprintwire.Result{}, err
@@ -278,4 +289,13 @@ func absolutePaths(argv []string) []string {
 		}
 	})
 	return argv
+}
+
+// QueueWait.tla Timeout: the wire allows the requested wait plus the existing
+// request allowance. Ordinary verbs retain sprintwire's bounded default.
+func (a *app) longPollClient(argv []string) *http.Client {
+	if d, wait := longPollDuration(readVerb(argv)); wait {
+		return &http.Client{Timeout: d + sprintwire.Timeout, Transport: a.transport}
+	}
+	return nil
 }

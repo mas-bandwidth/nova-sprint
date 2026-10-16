@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +30,41 @@ func (b *pausedTakeAcquire) Acquire(ctx context.Context, gen uint64, op OpRecord
 	return b.Mem.Acquire(ctx, gen, op)
 }
 
+// pausedOutcome is what a paused call returned.
+type pausedOutcome struct {
+	res     Result
+	changed bool
+	err     error
+}
+
+// paused runs fn in the background with verb held just before its commit fence:
+// it returns once fn has planned and reached Acquire, and release lets fn go on
+// and returns what it returned.
+func (h *harness) paused(verb string, fn func() pausedOutcome) (release func() pausedOutcome) {
+	h.t.Helper()
+	b := &pausedTakeAcquire{Mem: h.m, verb: verb, entered: make(chan struct{}), release: make(chan struct{})}
+	h.st.B = b
+	finished := make(chan pausedOutcome, 1)
+	go func() { finished <- fn() }()
+	select {
+	case <-b.entered:
+	case got := <-finished:
+		h.t.Fatalf("%s finished before acquire: result=%+v err=%v", verb, got.res, got.err)
+	}
+	return func() pausedOutcome {
+		close(b.release)
+		return <-finished
+	}
+}
+
+// pausedStopWithCause is an older tick's stopWithCause for run, paused at its fence.
+func (h *harness) pausedStopWithCause(run uint64) func() pausedOutcome {
+	return h.paused("machine cause lock", func() pausedOutcome {
+		_, _, changed, err := h.st.stopWithCause(h.ctx, sprint.DoneCause, run)
+		return pausedOutcome{changed: changed, err: err}
+	})
+}
+
 func TestStopFencesATakeThatReadRunningBeforeStop(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -39,22 +74,14 @@ func TestStopFencesATakeThatReadRunningBeforeStop(t *testing.T) {
 	s := h.snap()
 	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
 	require.NotNil(t, wc)
-	b := &pausedTakeAcquire{Mem: h.m, verb: "take", entered: make(chan struct{}), release: make(chan struct{})}
-	h.st.B = b
-	type done struct {
-		res Result
-		err error
-	}
-	finished := make(chan done, 1)
-	go func() {
+	// the take plans on RUNNING but has not acquired its commit fence
+	release := h.paused("take", func() pausedOutcome {
 		res, err := h.st.Run(h.ctx, TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}}))
-		finished <- done{res, err}
-	}()
-	<-b.entered // the take planned on RUNNING but has not acquired its commit fence
+		return pausedOutcome{res: res, err: err}
+	})
 	_, _, _, err := h.st.StopUntil(h.ctx, "cancel owned children", h.now.Add(time.Hour))
 	require.NoError(t, err)
-	close(b.release)
-	got := <-finished
+	got := release()
 	require.NoError(t, got.err)
 	require.NotEmpty(t, got.res.Refused, "the stale take must re-read STOP and refuse")
 	assert.Equal(t, sprint.Ready, h.snap().Fleet.Card(wc.ID).Col)
@@ -67,33 +94,20 @@ func TestOldTickPartCannotCommitAcrossStopAndRestart(t *testing.T) {
 	h.startMachine()
 	observed, _, err := h.st.Machine(h.ctx)
 	require.NoError(t, err)
-	b := &pausedTakeAcquire{Mem: h.m, verb: "tick stale run", entered: make(chan struct{}), release: make(chan struct{})}
-	h.st.B = b
 	step := Step{Verb: "tick stale run", Halts: true, TickRunSeq: &observed.RunSeq,
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: "tick-stale-probe", Who: sprint.MachineActor, At: s.Now, What: "old tick note"}}}
 		}}
-	type done struct {
-		res Result
-		err error
-	}
-	finished := make(chan done, 1)
-	go func() {
+	release := h.paused("tick stale run", func() pausedOutcome {
 		res, err := h.st.Run(h.ctx, step)
-		finished <- done{res, err}
-	}()
-	select {
-	case <-b.entered:
-	case got := <-finished:
-		t.Fatalf("old tick part finished before acquire: result=%+v err=%v", got.res, got.err)
-	}
+		return pausedOutcome{res: res, err: err}
+	})
 	_, _, _, err = h.st.StopUntil(h.ctx, "operator cancellation", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	_, restarted, _, err := h.st.SetMachine(h.ctx, true)
 	require.NoError(t, err)
 	require.Greater(t, restarted.RunSeq, observed.RunSeq)
-	close(b.release)
-	got := <-finished
+	got := release()
 	require.NoError(t, got.err)
 	assert.True(t, got.res.StaleRun)
 	assert.Zero(t, got.res.Notes, "the old tick part cannot commit in the new run")
@@ -105,22 +119,10 @@ func TestManualStopWinsAnOlderTickCauseStop(t *testing.T) {
 	h.startMachine()
 	observed, _, err := h.st.Machine(h.ctx)
 	require.NoError(t, err)
-	b := &pausedTakeAcquire{Mem: h.m, verb: "machine cause lock", entered: make(chan struct{}), release: make(chan struct{})}
-	h.st.B = b
-	type done struct {
-		changed bool
-		err     error
-	}
-	finished := make(chan done, 1)
-	go func() {
-		_, _, changed, err := h.st.stopWithCause(h.ctx, sprint.DoneCause, observed.RunSeq)
-		finished <- done{changed, err}
-	}()
-	<-b.entered // tick saw RUNNING but has not acquired the shared fence
+	release := h.pausedStopWithCause(observed.RunSeq) // tick saw RUNNING but has not acquired the shared fence
 	_, _, _, err = h.st.StopUntil(h.ctx, "operator cancellation", h.now.Add(time.Hour))
 	require.NoError(t, err)
-	close(b.release)
-	got := <-finished
+	got := release()
 	require.NoError(t, got.err)
 	assert.False(t, got.changed, "an old tick may not replace the explicit stop")
 	m, _, err := h.st.Machine(h.ctx)
@@ -135,25 +137,13 @@ func TestOldTickCannotStopAnExplicitlyRestartedRun(t *testing.T) {
 	h.startMachine()
 	observed, _, err := h.st.Machine(h.ctx)
 	require.NoError(t, err)
-	b := &pausedTakeAcquire{Mem: h.m, verb: "machine cause lock", entered: make(chan struct{}), release: make(chan struct{})}
-	h.st.B = b
-	type done struct {
-		changed bool
-		err     error
-	}
-	finished := make(chan done, 1)
-	go func() {
-		_, _, changed, err := h.st.stopWithCause(h.ctx, sprint.DoneCause, observed.RunSeq)
-		finished <- done{changed, err}
-	}()
-	<-b.entered
+	release := h.pausedStopWithCause(observed.RunSeq)
 	_, _, _, err = h.st.StopUntil(h.ctx, "operator cancellation", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	_, restarted, _, err := h.st.SetMachine(h.ctx, true)
 	require.NoError(t, err)
 	require.Greater(t, restarted.RunSeq, observed.RunSeq)
-	close(b.release)
-	got := <-finished
+	got := release()
 	require.NoError(t, got.err)
 	assert.False(t, got.changed, "old tick cannot stop the new run")
 	m, _, err := h.st.Machine(h.ctx)
@@ -180,15 +170,11 @@ func TestManualStopWinsAnOlderPostAddUndone(t *testing.T) {
 	_, _, changed, err := h.st.stopWithCause(h.ctx, sprint.DoneCause, observed.RunSeq)
 	require.NoError(t, err)
 	require.True(t, changed)
-	b := &pausedTakeAcquire{Mem: h.m, verb: "machine undone lock", entered: make(chan struct{}), release: make(chan struct{})}
-	h.st.B = b
-	finished := make(chan error, 1)
-	go func() { finished <- h.st.undone(h.ctx) }()
-	<-b.entered // post-add cleanup saw DONE but has not acquired the fence
+	// post-add cleanup saw DONE but has not acquired the fence
+	release := h.paused("machine undone lock", func() pausedOutcome { return pausedOutcome{err: h.st.undone(h.ctx)} })
 	_, _, _, err = h.st.StopUntil(h.ctx, "operator cancellation", h.now.Add(time.Hour))
 	require.NoError(t, err)
-	close(b.release)
-	require.NoError(t, <-finished)
+	require.NoError(t, release().err)
 	m, _, err := h.st.Machine(h.ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "operator cancellation", m.Reason)
@@ -295,14 +281,7 @@ func TestReadVerdictRejectsWrongExplicitGenerationBeforeStop(t *testing.T) {
 func TestAutomaticFundsStopRetainsDebtUntilOwnerReturns(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	m, _, err := h.st.Machine(h.ctx)
 	require.NoError(t, err)
 	_, stopped, changed, err := h.st.stopWithCause(h.ctx, sprint.FundsCause, m.RunSeq)
@@ -323,14 +302,7 @@ func TestAutomaticFundsStopRetainsDebtUntilOwnerReturns(t *testing.T) {
 func TestFleetDownCannotRedealAStopOwnedLease(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, _, _, err := h.st.StopUntil(h.ctx, "owner stopping child", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	down := h.run(FleetStep(sprint.FleetReq{Op: "down", Member: wc.Row}))
@@ -349,14 +321,7 @@ func TestFleetDownCannotRedealAStopOwnedLease(t *testing.T) {
 func TestDropMembersCannotDeleteAStopOwnedRow(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, _, _, err := h.st.StopUntil(h.ctx, "owner stopping child", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	// A cut-short sync can leave its control card off the table while the
@@ -375,14 +340,7 @@ func TestDropMembersCannotDeleteAStopOwnedRow(t *testing.T) {
 func TestLegacyStoppedRunProtectsItsLiveOwnerLease(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, stopped, _, err := h.st.StopUntil(h.ctx, "owner stopping child", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	stopped.StopIssued = false // persisted by the prior binary without debt
@@ -399,14 +357,7 @@ func TestLegacyStoppedRunProtectsItsLiveOwnerLease(t *testing.T) {
 func TestRemovedStopDebtStillRefusesRestartAndStaleReturn(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, stopped, _, err := h.st.StopUntil(h.ctx, "owner stopped child", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	require.Len(t, stopped.StopDebt, 1)
@@ -437,22 +388,10 @@ func TestDoneStopWithoutActiveChildrenHasNoDebt(t *testing.T) {
 	assert.True(t, running.Running())
 }
 
-// TestMovedReturnedCardDoesNotSettleStopDebt is replaced in v1.2.6 by live_test.go's
-// TestStartReadsTheReceiptNotTheRow: start reads the return receipt the card carries, not
-// the row it is on, so a returned card a hold moved since is settled (the hold of
-// 2026-10-10 that froze friend.zhi's row), and a card moved with no receipt is not.
-
 func TestClearCannotEraseUnreturnedStopDebt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, err := h.st.Clear(h.ctx)
 	require.ErrorContains(t, err, "captured owner work/read leases")
 	assert.Zero(t, h.snap().Epoch, "clear must not advance past an unreturned owner lease")
@@ -600,14 +539,7 @@ func TestExplicitStopBeforeFirstStartRevokesNewTake(t *testing.T) {
 func TestReturnedStopDebtFreesTheOwnerRowBeforeStart(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	wc, gen := h.taken()
 	_, stopped, _, err := h.st.StopUntil(h.ctx, "owner stopping child", h.now.Add(time.Hour))
 	require.NoError(t, err)
 	require.Len(t, stopped.StopDebt, 1)

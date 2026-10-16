@@ -10,8 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -104,7 +104,7 @@ func (r *transitionRig) daemon(build string, started, present time.Time) {
 // answered is a wake ping amy's session answered, now: she is up on it.
 func (r *transitionRig) answered() {
 	r.t.Helper()
-	_, _, _, err := r.st.FriendHealth(r.ctx, "amy", "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+	err := setFriendHook(r.st, "amy", sprint.Up)
 	require.NoError(r.t, err)
 }
 
@@ -174,11 +174,11 @@ func TestAFriendComingUpPushesTheFourStepsToTheSeat(t *testing.T) {
 	n := notes[0]
 	assert.Equal(t, sprint.Judgment, n.Kind, "a judgment, pushed to the seat inbox as every judgment is")
 	at := r.st.Now().UTC().Format(time.RFC3339)
-	assert.Equal(t, "friend amy is up (was down) at "+at+", transition 1, on session pong 0s ago; bring them up in four steps: "+
+	assert.Equal(t, "friend amy is up (was down) at "+at+", transition 1, on nova-hook proven; bring them up in four steps: "+
 		"1 update: their daemon runs "+current+", the current build is "+current+": an unstamped build cannot be compared; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-amy (to do); "+
-		"2 check: daemon beating (0s ago), daemon started at "+start.Format(time.RFC3339)+" and has beat since; no harness check reported, presence session pong 0s ago; run: nova-friend check amy and read its CHECK DAEMON, CHECK HARNESS and presence lines (to do); "+
+		"2 check nova-hook: nova-hook proven (done); "+
 		"3 snap to present: their daemon sent the present on its start at "+start.Format(time.RFC3339)+" (done); "+
-		"4 into the sprint: not held, evidence session pong 0s ago, no take within 10m0s; run: nova-sprint where, and nova-friend ping --as coordinator --to amy --wake (to do)",
+		"4 into the sprint: not held, evidence nova-hook proven, no take within 10m0s; run: nova-sprint where, and nova-hook hook --as amy --role friend (to do)",
 		n.What)
 	assert.Equal(t, []string{"ack", "wait"}, n.Decisions, "the verbs are in the text; ack or wait answers it")
 	assert.Equal(t, []string{row}, n.Primaries)
@@ -408,6 +408,7 @@ func TestAStatusJudgmentWhoseStepsAreDoneIsAnsweredByRule(t *testing.T) {
 	t.Parallel()
 	r := newTransitionRig(t)
 	r.st.AnswerRules = true
+	r.answered()
 	row := sprint.FriendRow("amy")
 	r.tick(time.Second)
 	_, err := r.st.Hold(r.ctx, sprint.HoldReq{Names: []string{"amy"}, Who: "coordinator", Reason: "test"})
@@ -450,7 +451,7 @@ func TestAFriendFlappingWithNoJudgmentOpenRaisesFlappingOnce(t *testing.T) {
 	before, _ := r.pushes(row)
 
 	down := func() { // her daemon answers the wake ping and her session does not: down
-		_, _, _, err := r.st.FriendHealth(r.ctx, "amy", "coordinator", sprint.FriendHealth{State: sprint.DaemonPong, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+		err := setFriendHook(r.st, "amy", sprint.Down)
 		require.NoError(t, err)
 	}
 	blip := r.answered

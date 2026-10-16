@@ -30,8 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // sexpData is the roadmap data a merge resolves, each with the decoder kind and the page
@@ -290,63 +289,34 @@ func tidyBlanks(base, lines []string) []string {
 	return out
 }
 
-// sexpEntries is a decoded data file's records by kind and id, each as its printed value:
-// the file's own title and text ("top:title", "top:text"), and for fixes "release:<id>" and
-// "fix:<id>", for the roadmap "group:<id>", "scheduled:<id>", "done:<id>" and "item:<id>".
-// An id met twice is an error.
+// sexpEntries is a decoded data file's records by kind and id, each as its canonical printed
+// value: the file's own title and text ("top:title", "top:text"), and for fixes "release:<id>"
+// and "fix:<id>", for the roadmap "group:<id>", "scheduled:<id>", "done:<id>" and "item:<id>".
+// An id met twice is an error. It reads under landDataLimits (land_ledgers.go), the lander's
+// own bound (tla/LandLedgers.tla, ResolveLand), so data past roadmap.Limits still merges
+// instead of bouncing back at the tip; it keeps the decode inside the lander and leaves the
+// shared nova-tools pkg/roadmap bound to its other callers.
 func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
+	d, err := readFormDoc(file, data)
+	if err != nil {
+		return nil, err
+	}
 	out := map[string]any{}
-	put := func(k string, v any) error {
+	put := func(k, v string) error {
 		if _, dup := out[k]; dup {
 			return fmt.Errorf("%s is named twice", k)
 		}
-		out[k] = fmt.Sprintf("%#v", v) // a string, so any record compares
+		out[k] = v // a canonical string, so any record compares
 		return nil
 	}
-	switch kind {
-	case "fixes":
-		fx, err := roadmapdoc.DecodeFixes(file, data)
-		if err != nil {
+	for _, s := range d.scalars {
+		if err := put(s.key, s.canon); err != nil {
 			return nil, err
 		}
-		if err := errors.Join(put("top:title", fx.Title), put("top:text", fx.Text)); err != nil {
-			return nil, err
-		}
-		for _, r := range fx.Releases {
-			if err := put("release:"+r.ID, r); err != nil {
-				return nil, err
-			}
-		}
-		for _, f := range fx.Items {
-			if err := put("fix:"+f.ID, f); err != nil {
-				return nil, err
-			}
-		}
-	default:
-		doc, err := roadmapdoc.Decode(file, data)
-		if err != nil {
-			return nil, err
-		}
-		if err := errors.Join(put("top:title", doc.Title), put("top:text", doc.Text)); err != nil {
-			return nil, err
-		}
-		for _, g := range doc.Groups {
-			if err := put("group:"+g.ID, g); err != nil {
-				return nil, err
-			}
-		}
-		for _, n := range doc.Scheduled {
-			if err := put("scheduled:"+n.ID, n); err != nil {
-				return nil, err
-			}
-		}
-		for _, n := range doc.Done {
-			if err := put("done:"+n.ID, n); err != nil {
-				return nil, err
-			}
-		}
-		for _, it := range doc.Items {
-			if err := put("item:"+it.ID, it); err != nil {
+	}
+	for _, l := range d.lists {
+		for _, it := range l.items {
+			if err := put(it.key, it.canon); err != nil {
 				return nil, err
 			}
 		}

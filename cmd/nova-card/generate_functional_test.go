@@ -8,12 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
+	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
 )
 
 // A directory generated from a ledger in a fixture checkout is admitted whole by
@@ -78,45 +77,14 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	require.Equal(t, 0, exit, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Contains(t, stdout, "CARDS OK dir="+admit+" cards=3 waves=1 tier=flash")
 
-	// the sprint, through the helper: init, prove the seat over the server and the
-	// hook, then add the generated directory and read the push back
+	// The sprint, through the helper: initialize, seed its hook gate, then
+	// admit the generated directory.
 	sprint := newBuiltSprint(t)
 	code, text := sprint.run("init", "--members", "m1", "--readers", "r1")
 	require.Equal(t, 0, code, text)
-	// the seat is proven before any coordinator verb runs, as the built binary
-	// wants of every name (docs/SPEC-SPRINT.md, "The push proof"): the server is
-	// started on loopback, the seat hooks in over it, and the challenge the hook
-	// streams is answered (hook --prove). The server and the hook stay live for
-	// the rest of the test; the coordinator verbs run straight at the store.
-	srvAddr := sprint.serve()
-	hookBuf := sprint.hook(srvAddr)
-	var chal string
-	// the hook streams its challenge; on a failed wait the buffer is read after the
-	// wait and named in the failure, so the socket bind error is not hidden
-	for start := time.Now(); time.Since(start) < 30*time.Second; {
-		for _, l := range strings.Split(hookBuf.String(), "\n") {
-			if strings.HasPrefix(l, "HOOK CHALLENGE ") {
-				chal = strings.TrimSuffix(strings.Fields(l)[2], ":")
-				break
-			}
-		}
-		if chal != "" {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	require.NotEmpty(t, chal, "the hook did not challenge: %s", hookBuf.String())
-	code, text = sprint.run("hook", "--prove", chal)
-	require.Equal(t, 0, code, text)
-
-	// the push reached the coordinator: the seat's push target is recorded and read
-	// back (seat push --harness --target, then seat push prints the record). The
-	// hook proof above is what lets the coordinator's verbs run at all.
-	code, text = sprint.run("seat", "push", "--harness", "claude", "--target", t.TempDir())
-	require.Equal(t, 0, code, text)
-	code, text = sprint.run("seat", "push")
-	require.Equal(t, 0, code, text)
-	require.Contains(t, text, "PUSH RECORD name=coordinator")
+	// The card admission uses the same nova-hook gate as every coordinator verb.
+	// Seed the test store with a proven hook record; delivery is tested in nova-sprint.
+	sprint.proveCoordinator()
 
 	// the generated directory is admitted whole with no --allow-shared-paths: the
 	// cards are chained, so no two independent cards share the ledger's path

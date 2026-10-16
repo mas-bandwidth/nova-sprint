@@ -57,13 +57,42 @@ nova-secrets exec --store "$STORE" --as "$SEAT" --key "$KEY" --sops "$(command -
 
 ## The hook under a Monitor
 
-The seat's session runs `nova-sprint hook --actor "$SEAT"` under a Monitor, with `NOVA_SPRINT_SERVER` and
-`NOVA_SPRINT_REDIS` exported: it holds one subscription on the server and prints one event a line. A seat read
-by a person or a model rather than a Monitor runs `nova-sprint hook --compact` (docs/CLI.md): the same
-subscription, printing only the HOOK lines it acts on and each JUDGMENT as `PUSH <id> JUDGMENT ...` cut to one
-line plus its first detail line (a critical judgment keeps its `CRITICAL <n> behind:` prefix), dropping HAPPENED pushes and the acknowledge/verb menus, each line one write
-so it is read at once on a pipe with no pty. With `--overdue <duration>` (default `5m`) a card-holding judgment
-the server's own list still holds unanswered that long prints one `OVERDUE <alias> <age> <kind> :: <cards>`
-line, again every interval until it is answered -- the seat's `hookfilter.pl` and `overduewatch.py` are gone.
-The seat answers the challenge with `nova-sprint hook --prove <c>` and a push with `nova-sprint hook --ack <id> --session <token>`, both over the running hook's socket; `nova-sprint unhook` ends it.
+The seat's session runs `nova-hook hook --as "$SEAT" --role coordinator` under a Monitor, with `NOVA_BUS_REDIS`
+(and its login's variables) exported: nova-hook holds the seat's bus push and prints one event a line, each
+message to the seat on the bus (the sprint's server sends every judgment and note for the coordinator there,
+`nova-sprint: <n> new for the coordinator`, with the commands that answer each) and each `HOOK CHALLENGE`, which
+the seat answers from inside its turn with `nova-hook prove --as "$SEAT" --nonce <nonce>`. `nova-hook unhook --as
+"$SEAT"` ends it. The coordinator's sprint push is held by the sprint's server (`nova-sprint run --listen`) while it
+runs and reaches the bus; the sprint's own hook, its compact form and the seat's push loop are retired (v1.3.6).
 
+
+### Seat environment defaults
+
+`nova-up --seat` writes `$XDG_CONFIG_HOME/nova-sprint/seat-environment.json`, or
+`$HOME/.config/nova-sprint/seat-environment.json` when `XDG_CONFIG_HOME` is unset.
+`nova-sprint` reads this private, owned regular file on startup. No wrapper or
+shell sourcing is required. An absent file preserves the existing setup; an
+invalid or unsafe file refuses the command without printing its contents.
+
+Version 1 is JSON data with `version: 1`, an optional `environment` object
+containing only `NOVA_SPRINT_REDIS`, `NOVA_SPRINT_SERVER`, and `NOVA_BUS_REDIS`,
+and an optional complete `login` object with `redis`, `user`, `store`, `as`,
+`key`, `sops`, and `secret`. The login names where a password is sealed; it
+contains no password. It applies only to its exact Redis address, for either
+sprint or bus. An existing `login.json` takes precedence over this login.
+Explicit command flags take precedence over process environment variables,
+which take precedence over file endpoint defaults. Explicit process login
+variables take precedence over recorded credentials. A password reference
+without an explicit ACL user uses the default user and never inherits the
+recorded user. The directory holding this profile must also be owned by the
+current user and must not be writable by other users.
+
+The optional `forge_identity` is an absolute path to an existing GitHub CLI
+configuration directory. It is a reference, not a token or an actor assertion.
+`GH_CONFIG_DIR` in the process environment takes precedence. Reading this file
+never changes the process environment and never establishes a sprint actor;
+actor selection still requires the command's usual identity proof.
+
+Unknown or duplicate fields, unsupported versions, credential-bearing endpoint
+URLs, symbolic links, and files accessible to other users are refused. Endpoint
+values and secret values are never evaluated as shell code.

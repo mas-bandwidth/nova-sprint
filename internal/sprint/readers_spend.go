@@ -1,11 +1,10 @@
 package sprint
 
 import (
-	"cmp"
 	"math/big"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // What each reader spent (docs/SPEC-SPRINT.md, "What a card cost", a reader's spend; the
@@ -52,11 +51,11 @@ type ReaderSpend struct {
 func (r *ReaderSpend) addRead(con Consumer, now time.Time) {
 	u := con.Usage
 	r.Reads++
-	if u.Unpriced == WhySubscription {
+	if u.Unpriced == WhySubscription || subscriptionUsage(u) {
 		r.Tokens += max(u.Tokens.Total(), 0)
 		return
 	}
-	usd := cmp.Or(u.Actual, u.Predicted)
+	usd := u.MarginalUSD()
 	if usd == "" {
 		return
 	}

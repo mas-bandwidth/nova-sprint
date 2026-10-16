@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -256,10 +256,9 @@ func TestRouteCoverRouteStats(t *testing.T) {
 }
 
 // The tier a card's reads are asked at is never weaker than the writer's (nova-tools#5096
-// item 27), but for the interim rule (the owner, 2026-10-06 7:41 PM ET: "let pro do it"):
-// a heavy read collapses to pro, so a heavy card, a frontier card (read on heavy, which
-// no route serves) and a read tier raised to heavy are read on pro; a read tier set for
-// the stream or the sprint raises a flash or pro card's reads and lowers none.
+// item 27; the owner, 2026-10-16: a card is never read below its tier): a heavy card is read
+// at heavy, a frontier card at frontier, and a read tier set for the stream or the sprint
+// raises a card's reads and lowers none.
 func TestReadTierOfIsNeverWeakerThanTheWriter(t *testing.T) {
 	t.Parallel()
 	card := func(brief string) *Card {
@@ -270,12 +269,12 @@ func TestReadTierOfIsNeverWeakerThanTheWriter(t *testing.T) {
 	}{
 		{"a flash card", "", "", "flash"},
 		{"a pro card", "tier: pro", "", "pro"},
-		{"a heavy card, on pro (the interim rule)", "tier: heavy", "", "pro"},
-		{"a heavy card, a flash setting does not lower it", "tier: heavy", "flash", "pro"},
-		{"a heavy card, a pro setting", "tier: heavy", "pro", "pro"},
-		{"a frontier card, on heavy, on pro (the interim rule)", "tier: frontier", "", "pro"},
-		{"a frontier card, a lower setting does not lower it below pro", "tier: frontier", "flash", "pro"},
-		{"a pro card raised by the sprint to heavy, on pro (the interim rule)", "tier: pro", "heavy", "pro"},
+		{"a heavy card, at heavy", "tier: heavy", "", "heavy"},
+		{"a heavy card, a flash setting does not lower it", "tier: heavy", "flash", "heavy"},
+		{"a heavy card, a pro setting does not lower it", "tier: heavy", "pro", "heavy"},
+		{"a frontier card, at frontier", "tier: frontier", "", "frontier"},
+		{"a frontier card, a lower setting does not lower it", "tier: frontier", "heavy", "frontier"},
+		{"a pro card raised by the sprint to heavy", "tier: pro", "heavy", "heavy"},
 		{"a flash card raised by the sprint", "", "pro", "pro"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

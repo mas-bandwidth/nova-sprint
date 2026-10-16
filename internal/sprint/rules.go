@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // Answered by rule (docs/SPEC-SPRINT.md section 8; the owner, 2026-10-04, at 1:36 PM: "I want
@@ -274,6 +274,13 @@ func mindCard(pr *Card) string {
 	if _, f := FriendCard(pr); f {
 		return "a friend's card: this work needs a mind"
 	}
+	return mindOther(pr)
+}
+
+// mindOther is mindCard's reasons other than a friend's card: a brief defect, a model the
+// brief pins; "" when none. A failure the failed rule reads as fleet work (failedForFriend
+// says no) climbs the ladder on these grounds alone, its WHO: friend preference kept.
+func mindOther(pr *Card) string {
 	if pr.F(FieldBriefDefect) != "" {
 		return "a brief defect: its brief needs a mind"
 	}
@@ -283,20 +290,59 @@ func mindCard(pr *Card) string {
 	return ""
 }
 
+// failedOnFriend says the attempt that failed ran on a friend's row: the last work card's
+// member is a friend's (friend_deal.go, IsFriendRow).
+func failedOnFriend(s *Snapshot, pr *Card) bool {
+	wc := s.Fleet.Card(pr.F("work"))
+	if wc == nil {
+		wc = s.Fleet.Card(WorkCardID(pr.ID, pr.Int("attempt")))
+	}
+	return wc != nil && IsFriendRow(wc.Row)
+}
+
+// failedForFriend says a failure is a friend's, so the seat answers it: the card names a
+// friend (FriendCard) and is either hers alone (OnlyFriend, a hard pin) or the attempt that
+// failed ran on her row. A WHO: friend preference the deal gave to a fleet member because no
+// friend was up, or that `up` made a friend's card, is fleet work when its attempt ran on the
+// fleet: the failed rule answers it with its report as the fix and never parks it on the seat
+// (tla/SprintRules.tla FailedWithAFindingNeverParked), and its who stands, so it still
+// prefers a friend when one is up. A card no WHO names is the fleet's whoever ran it: a
+// friend with room is dealt the fleet's cards too (friendDealPass), and her failure of one
+// is fleet work.
+func failedForFriend(s *Snapshot, pr *Card) bool {
+	if _, friend := FriendCard(pr); !friend {
+		return false
+	}
+	return OnlyFriend(pr) || failedOnFriend(s, pr)
+}
+
+// mindForFailure is mindCard for a failure failedForFriend read: a friend's failure keeps
+// every reason a card needs a mind, a fleet one only the others (mindOther), its WHO: friend
+// preference kept for the next deal.
+func mindForFailure(pr *Card, friend bool) string {
+	if friend {
+		return mindCard(pr)
+	}
+	return mindOther(pr)
+}
+
 // ruleFailed: work came back failed, or with no result. A harness fault, or a HOLD with
 // findings, is reworked on its tier with the failure as its fix, a friend's card too
 // (ruleHarness). Any other failure: the first on a tier is redealt on the next route of the
 // tier (the rework's own fix, the report); the RuleAttemptCap-th goes a tier up; past
 // heavy, a friend's card. A failure the fleet shares (sameFailure) or a brief with no ladder
 // (a pinned model, the frontier tier) is reworked on its tier with its report, never left to
-// the seat below the brief's bound (wait_refused.go).
+// the seat below the brief's bound (wait_refused.go). Only a friend's own failure is left to
+// the seat: a card that names a friend and is a hard pin, or whose failed attempt ran on her
+// row (failedForFriend); a WHO: friend preference whose attempt ran on the fleet climbs this
+// ladder, its who kept for the next deal.
 // tla/SprintRules.tla, Part "rules": RuleFailed
 func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleFailed
 	pr := s.Work.Placed(a.Subject)
 	friend := false
 	if pr != nil {
-		_, friend = FriendCard(pr)
+		friend = failedForFriend(s, pr)
 	}
 	switch {
 	case pr == nil || pr.Col != Review || pr.F("result") != "failed":
@@ -305,10 +351,12 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	case holdsFor(s, pr) == "" && ruleHarness(s, a, pr):
 		return // a harness fault, or a HOLD with findings: the failure is the fix (harness_fault.go)
 	case pr.F(FieldBriefDefect) != "":
-		left(a, mindCard(pr))
+		left(a, mindForFailure(pr, friend))
 		return
 	case friend:
-		left(a, mindCard(pr)) // a friend's failure outside the harness classes: her work needs a mind
+		// A friend's failure outside the harness classes: her work needs a mind. friend says
+		// the card names a friend, so mindCard names this reason: never an empty why.
+		left(a, mindCard(pr))
 		return
 	case holdsFor(s, pr) != "":
 		ruleHoldNeed(s, a, pr, holdsFor(s, pr))
@@ -338,7 +386,7 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	if pr.F(FieldFailure) != "budget" {
 		same = sameFailure(s, pr.F(FieldFailure))
 	}
-	if stay := mindCard(pr); stay != "" || same != "" {
+	if stay := mindForFailure(pr, friend); stay != "" || same != "" {
 		if stay == "" {
 			stay = same
 		}
@@ -524,8 +572,11 @@ func ruleConflict(s *Snapshot, a *RuleAnswer) {
 			a.Why = card + " refused the same way twice (" + way + "): the brief is wrong, not the worker; marked a brief defect, the stream held for a mind"
 			return
 		}
-		a.Act, a.Why = ActReturn, refusalSaid(way, ctl)+": "+card+" returned to be redone on the current tip at flash"
-		a.set = map[string]string{FieldRuleRefused: way, FieldRuleRefusal: cutText(what, MaxCardTextBytes), FieldTierNow: cardhdr.RouteFlash}
+		// redone at the card's own tier, never below it (cardTier): the escalation it took is
+		// given back, the tier its brief's line 1 or its pin names is kept
+		_, own := CardTiers(pr)
+		a.Act, a.Why = ActReturn, refusalSaid(way, ctl)+": "+card+" returned to be redone on the current tip at "+own
+		a.set = map[string]string{FieldRuleRefused: way, FieldRuleRefusal: cutText(what, MaxCardTextBytes), FieldTierNow: own}
 	case pr != nil && pr.F(FieldRuleRedo) != "" && (m == nil || m.Col != Stuck):
 		a.Act, a.Why = ActResume, card+" is out of the stream to be redone on the tip: the stream goes on"
 	default:
@@ -569,9 +620,47 @@ func redoFix(pr *Card) string {
 	return cutText(RuleConflictFix+"; the lander refused attempt "+pr.F(FieldRuleRedo)+": "+pr.F(FieldRuleRefusal), MaxCardTextBytes)
 }
 
+// attemptEnd is how one attempt ended, classified once: EndHarness (the machine's, never a
+// vote on the brief), EndWorker (a result came back: a vote), or EndBrief (a HOLD naming the
+// brief, or the lander's same refusal way twice: the brief's own vote). The kinds already
+// exist as the end kinds on the card (the member's ends in pkg/cardhdr, the failure classes
+// in failure.go); none is added. tla/SprintRules.tla, Part "answers": only a worker's or the
+// brief's end counts toward the brief-defect mark and the brief-wrong wording of the bound
+// judgment; a harness end is redealt (the failed rule's redeal, once per class) and counts
+// toward max_attempts only as an attempt, never as a vote.
+type attemptEnd string
+
+const (
+	EndHarness attemptEnd = "harness" // no worker report: an idle reap, a no-result take, a push or staging refusal, a deadline with no output
+	EndWorker  attemptEnd = "worker"  // a result came back: not-done, failed, test red
+	EndBrief   attemptEnd = "brief"   // a HOLD naming the brief, or the lander's same refusal way twice
+)
+
+// classifyEnd is one attempt's end, classified once, from its attempt record's ran field
+// (FieldRanAttempts) and the report of its failed work: a take whose worker never ran and
+// reported nothing is EndHarness; a report that names the brief is EndBrief; any other is
+// EndWorker.
+func classifyEnd(ran bool, report string) attemptEnd {
+	if !ran {
+		return EndHarness
+	}
+	if BriefDefectOf(report) != "" {
+		return EndBrief
+	}
+	return EndWorker
+}
+
 // ruleBrief: the same finding twice, or too many attempts on one brief (the brief is wrong,
 // not the worker): the card is marked a brief defect, once, and the judgment stays, its
-// text saying so; nothing deals the card, and no rule answers it again.
+// text saying so; nothing deals the card, and no rule answers it again. A card that reached
+// the cap mostly on harness ends (BriefBound.Harness) is not the brief's: it is left
+// for the coordinator to rework --carry, never marked a brief defect. The same-finding and
+// the lander's same-refusal bounds are the worker's and the brief's own votes, marked as
+// before. A broken lane (AtLaneBroken: its last LaneBrokenBound attempts each ended without a
+// worker report, raised as the same judgment type) has no vote among them, below the cap or
+// across a decision: it is left for hold, rework --tier or drop, never marked
+// (tla/SprintRules.tla, Part "answers": AnLaneBound, MarkOnlyOnVotes; reversed witness
+// MCSprintRulesAnswersBrokenLaneBrokenMarks).
 func ruleBrief(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleBriefDefect
 	pr := s.Work.Placed(a.Subject)
@@ -580,10 +669,30 @@ func ruleBrief(s *Snapshot, a *RuleAnswer) {
 		left(a, "the card is off the table")
 	case pr.F(FieldBriefDefect) != "":
 		left(a, "a brief defect since "+pr.F(FieldBriefDefect)+": brief or drop, a mind's")
+	case harnessAtCap(s, pr):
+		left(a, "a harness fault, not the brief: most attempts ended without a worker report, and only a worker's or the brief's end is a vote; rework it --carry, never marked a brief defect")
+	case laneBrokenAt(s, pr):
+		left(a, "the lane is broken, not the brief: its last attempts all ended without a worker report, none a vote; hold the lane, rework --tier, or drop, never marked a brief defect")
 	default:
 		a.Card = pr.ID
 		a.Act, a.Why = ActMark, "the brief is wrong, not the worker: marked a brief defect and held for a mind"
 	}
+}
+
+// harnessAtCap says the primary is at its attempt cap with more harness ends than worker or
+// brief ends among the attempts (AtBriefBound's Harness): the cap's count is kept, but the
+// harness's attempts are not votes on the brief.
+func harnessAtCap(s *Snapshot, pr *Card) bool {
+	bb, ok := AtBriefBound(pr, brokenFindings(s, pr), s.AttemptsCap(pr.Row))
+	return ok && bb.Harness
+}
+
+// laneBrokenAt says the primary's last LaneBrokenBound attempts each ended without a worker
+// report (AtLaneBroken, the lane-broken judgment's own test): none of them is a vote on the
+// brief, whatever the coordinator decided between them.
+func laneBrokenAt(s *Snapshot, pr *Card) bool {
+	_, broken := AtLaneBroken(s, pr, LaneBrokenBound)
+	return broken
 }
 
 // ruleBaseGate: a stream stopped on its base's red (NBaseRed), the one judgment of every stream
@@ -675,7 +784,7 @@ func acting(s *Snapshot, r TickReq, acts ...string) []RuleAnswer {
 
 // TickRuleReturn returns the conflict cards the conflict rule answers, each marked with the
 // refusal it was returned on (FieldRuleRefused, FieldRuleRefusal) and its next attempt's
-// tier, flash (FieldTierNow).
+// tier, the card's own (FieldTierNow; never below it).
 func TickRuleReturn(s *Snapshot, r TickReq) (Plan, int) {
 	var ids []string
 	sets := map[string]map[string]string{}

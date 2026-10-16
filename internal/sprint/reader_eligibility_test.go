@@ -123,7 +123,18 @@ func TestThePrimariesNoReaderMayBeAskedAreOneJudgment(t *testing.T) {
 	w.s.ReaderStates["reader-f"] = ReaderUp
 	plan, _ = TickAsk(w.s, TickReq{})
 	w.must(plan)
-	assert.Len(t, w.notesOf(NCannotAsk), 2, "no new judgment")
+	var judgments []Note
+	answers := map[string]bool{}
+	for _, n := range w.notesOf(NCannotAsk) {
+		if n.Kind == Judgment {
+			judgments = append(judgments, n)
+		}
+		if n.Kind == Decided {
+			answers[n.Answers] = true
+		}
+	}
+	assert.Len(t, judgments, 2, "no new judgment")
+	assert.Equal(t, map[string]bool{notes[0].ID: true, notes[1].ID: true}, answers, "both prior grouped judgments have factual answers")
 	assert.Empty(t, w.notesOf(NStranded), "a primary asked this tick is not stranded")
 	for _, id := range append(ids, "p6") {
 		asked := len(readsAt(w.s, w.s.Work.Card(id), 1))

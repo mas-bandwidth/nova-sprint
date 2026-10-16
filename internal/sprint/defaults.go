@@ -80,7 +80,6 @@ var Defaults = []Default{
 	{Name: PropFleetTiers, Home: HomeProp, Value: TiersAll, Why: "the fleet may take every tier"},
 	{Name: PropFriendsTiers, Home: HomeProp, Value: TiersAll, Why: "the friends may take every tier"},
 	{Name: PropReworkPriority, Home: HomeProp, Value: PriorityFix, Why: "a next attempt is dealt at fix priority"},
-	{Name: PropUnservedTierFallsTo, Home: HomeProp, Value: SwitchOff, Why: "an unserved card waits for its tier (OPEN: the owner's to state)"},
 	{Name: PropReadTier, Home: HomeProp, Value: ReadTierDefault, Why: "each card's reads run at its own tier"},
 	{Name: PropReadsNeeded, Home: HomeProp, Value: ReadTierDefault, Why: "each card's own rule: one read for a flash card, two above"},
 	// the bounds
@@ -92,8 +91,6 @@ var Defaults = []Default{
 	{Name: PropFriendStartMax, Home: HomeProp, Value: FriendStartMaxDefault.String(), Why: "a friend's card unstarted this long is levelled"},
 	{Name: PropPeggedBound, Home: HomeProp, Value: PeggedBoundDefault.String(), Why: "a member pegged with no card this long is a judgment"},
 	{Name: PropLandingStallBound, Home: HomeProp, Value: LandingStallBound.String(), Why: "the owner's stall watch: one minute"},
-	{Name: PropFriendStallAfter, Home: HomeProp, Value: FriendStallAfterDefault.String(), Why: "the friend stall ladder begins"},
-	{Name: PropFriendStallStep, Home: HomeProp, Value: FriendStallStepDefault.String(), Why: "each rung of the friend stall ladder"},
 	{Name: PropDriftCommits, Home: HomeProp, Value: strconv.Itoa(DriftCommitsDefault), Why: "the base may be this many commits ahead of dev"},
 	{Name: PropDriftHours, Home: HomeProp, Value: strconv.Itoa(DriftHoursDefault), Why: "the base's oldest commit not on dev may be this old"},
 	{Name: PropLowBalanceUsd, Home: HomeProp, Value: strconv.FormatFloat(LowBalanceUsdDefault, 'f', -1, 64), Why: "a provider below five dollars is low"},
@@ -137,6 +134,7 @@ var Defaults = []Default{
 	{Name: "status", Home: HomeShape, Value: ShapeCarried, Why: "each member up or down"},
 	{Name: "held", Home: HomeShape, Value: ShapeCarried, Why: "the members' holds"},
 	{Name: "held_by", Home: HomeShape, Value: ShapeCarried, Why: "who made a hold"},
+	{Name: "held_fields", Home: HomeShape, Value: ShapeCarried, Why: "a hold's cause, reason and who made it (hold_cause.go, HeldCarried)"},
 	{Name: "width", Home: HomeShape, Value: ShapeCarried, Why: "each member's width"},
 }
 

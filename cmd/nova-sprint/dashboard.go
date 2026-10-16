@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -10,13 +11,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // DashboardListen is the page's address when --listen names none, and DashboardPull the
@@ -87,6 +89,7 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	redis := (verbArgs{fs: fs}).given("redis")
 	stdout = &lockedWriter{w: stdout} // the listeners and the reads write lines from their own goroutines
 	srv := a.dashboardServer(c.redis, redis, from, *every, *logo, stdout)
+	a.keepDashboardSamples(srv, c.redis, from)
 	ctx, stop := a.notify(context.Background())
 	defer stop()
 	// one poller: the first read before any listener opens, then one each --every whoever
@@ -131,15 +134,20 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 const dashboardNoStore = "the dashboard reads the sprint: --redis <addr> (or NOVA_SPRINT_REDIS, NOVA_REDIS_ADDR, or a login recorded by nova-sprint seat login), the sprint's server (NOVA_SPRINT_SERVER), or another dashboard (--pull <url>); with no Redis, --redis mem:<file> serves the in-memory twin kept in that file"
 
 // dashboardServer is the dashboard's one server: it reads the sprint as where --json
-// --cards does (whereJSON), or, given from (a puller), that dashboard's /api/sprint; each
+// --dashboard does (whereJSONForDashboard), or, given from (a puller), that dashboard's /api/sprint; each
 // read and the freshness check go to log.
 func (a *app) dashboardServer(redis string, given bool, from string, every time.Duration, logo string, log io.Writer) *sprintdash.Server {
+	cmd := "nova-sprint where --json --dashboard"
+	if redis != "" && given {
+		cmd += " --redis " + redis
+	}
 	srv := &sprintdash.Server{
-		Read:    func() ([]byte, error) { return a.whereJSON(redis, given) },
+		Read:    func() ([]byte, error) { return a.whereJSONForDashboard(redis, given) },
 		Now:     a.now,
 		Every:   every,
 		Logo:    logo,
 		Version: version,
+		Command: cmd,
 		Log:     log,
 	}
 	if from != "" {
@@ -167,11 +175,18 @@ func dashboardUpstream(pull string) (string, error) {
 // whereJSON reads the sprint as `nova-sprint where --json --cards --rows --archived` does, in this
 // process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
 // store; --redis is handed on when the dashboard was given it, as where would have been.
-// The rows give each critical card its stream, so the critical path follows the page's
-// release (sprintdash.placed); the server drops them. The archived streams' rows come
-// too: the page hides them behind its one archived line (stream archive).
 func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
-	argv := []string{"where", "--json", "--cards", "--rows", "--archived"}
+	return a.whereJSONWith([]string{"where", "--json", "--cards", "--rows", "--archived"}, addr, given)
+}
+
+// whereJSONForDashboard reads the sprint as `nova-sprint where --json --dashboard` does, in this
+// process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
+// store; --redis is handed on when the dashboard was given it, as where would have been.
+func (a *app) whereJSONForDashboard(addr string, given bool) ([]byte, error) {
+	return a.whereJSONWith([]string{"where", "--json", "--dashboard"}, addr, given)
+}
+
+func (a *app) whereJSONWith(argv []string, addr string, given bool) ([]byte, error) {
 	if given {
 		argv = append(argv, "--redis", addr)
 	}
@@ -284,4 +299,37 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.w.Write(p)
+}
+
+// keepDashboardSamples has srv keep its throughput samples in a file beside the store login's, one
+// file a store (and a puller's upstream), so a restart, which every release adoption is, carries
+// the rolling hour on and the figure never waits to warm up again. An app with the login off (a
+// test's) keeps none.
+func (a *app) keepDashboardSamples(srv *sprintdash.Server, redis, from string) {
+	if a.loginFile == nil {
+		return
+	}
+	login, err := a.loginFile()
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256([]byte(redis + "\x00" + from))
+	path := filepath.Join(filepath.Dir(login), fmt.Sprintf("dashboard-samples-%x.json", sum[:6]))
+	srv.LoadSamples = func() ([]byte, error) {
+		b, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return b, err
+	}
+	srv.SaveSamples = func(b []byte) error {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, b, 0o600); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
+	}
 }

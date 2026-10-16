@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,7 +51,7 @@ func TestANeedAddedToAWorkingCardIsNotABrokenInvariant(t *testing.T) {
 	lead := "RESULT: work sha=000000000000 tier: flash\nKIND: fix\nDEPENDS-ON: dep\nPATHS: internal/work.go\n\nFix work differently."
 	path := filepath.Join(t.TempDir(), "work.md")
 	require.NoError(t, os.WriteFile(path, []byte(passingBrief(lead)), 0o600))
-	out := run("brief", "work", "--brief-file", path)
+	out := run("brief", "work", "--brief-file", path, "--replace-in-flight")
 	assert.Contains(t, out, "brief edited in place", "a working card takes the brief for its next attempt")
 	assert.Contains(t, out, "working, waits for dep after this attempt", "the brief names the state")
 	run("tick") // the machine applies the brief edit: the card names the need

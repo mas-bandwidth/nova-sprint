@@ -40,7 +40,10 @@ func heldWave(s *Snapshot) *Card {
 // held ones included (docs/SPEC-SPRINT.md section 1, 2026-10-02). Everything
 // it counts is waiting, so a snapshot of the work table's waiting column is
 // enough.
-func HeldBack(s *Snapshot) int {
+// heldBackMemo is HeldBack's recursion, shared with HeldBackByStream: a
+// waiting primary is held back when it waits, through a need or its place in
+// line, on a sentinel not released or a card admitted held.
+func heldBackMemo(s *Snapshot) func(c *Card) bool {
 	memo := map[string]bool{}
 	var back func(c *Card) bool
 	back = func(c *Card) bool {
@@ -58,6 +61,11 @@ func HeldBack(s *Snapshot) int {
 		memo[c.ID] = v
 		return v
 	}
+	return back
+}
+
+func HeldBack(s *Snapshot) int {
+	back := heldBackMemo(s)
 	n := 0
 	for _, c := range s.Work.Column(Waiting) {
 		if back(c) {
@@ -65,6 +73,27 @@ func HeldBack(s *Snapshot) int {
 		}
 	}
 	return n
+}
+
+// HeldBackByStream is HeldBack counted per stream: each stream's waiting
+// primaries no tick moves on its own (a-waiting-stream-is-never-shown-held).
+// The dashboard shows the count beside the stream's stored state ("waiting \u00b7
+// 2 held cards"), never as the state; a stream with no held card is absent.
+func HeldBackByStream(s *Snapshot) map[string]int {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	back := heldBackMemo(s)
+	out := map[string]int{}
+	for _, c := range s.Work.Column(Waiting) {
+		if back(c) {
+			out[c.Row]++
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // streamLine is the stream's primaries on the table, in work order.
@@ -334,7 +363,7 @@ func Release(s *Snapshot, r ReleaseReq) Plan {
 		case w.Operand != WaitOnLine && w.Operand != WaitOnRelease:
 			p.refuse(id, "not a sentinel or a held card: a primary lands by merging")
 			continue
-		case c.Col != Waiting:
+		case c.Col != Waiting && !(c.Col == Ready && IsHeld(c) && !IsSentinel(c)):
 			p.refuse(id, "is "+c.Col+", not a sentinel waiting to be released")
 			continue
 		case !IsSentinel(c):
@@ -442,11 +471,20 @@ func notUnderWay(s *Snapshot, waits []string) (string, string) {
 // ready when it waits for nothing else.
 func releaseHeld(s *Snapshot, c *Card, r ReleaseReq) Unit {
 	set := map[string]string{"released": stamp(s.Now), "released_by": r.Who, "release_reason": r.Reason}
+	if c.Col == Ready {
+		// ready while held: the deal refuses it (dealPlan); the release clears the hold
+		// and it stays ready (tla/Holds.tla ReleaseHeld)
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
+			Moved: fmt.Sprintf("%s released by %s; it is ready", c.ID, r.Who)}
+	}
+	if DecisionParkedReview(c) {
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Review, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))}, Moved: fmt.Sprintf("%s waiting -> review (server-default hold released by %s; head and reads retained)", c.ID, r.Who)}
+	}
 	if w := WaitsFor(s, c, nil); len(w) > 0 {
-		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld))},
+		return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
 			Moved: fmt.Sprintf("%s released by %s; it waits for %s", c.ID, r.Who, strings.Join(w, ","))}
 	}
-	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, set, FieldHeld))},
+	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, set, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"))},
 		Moved: fmt.Sprintf("%s waiting -> ready (released by %s)", c.ID, r.Who)}
 }
 

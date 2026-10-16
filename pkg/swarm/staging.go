@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // StagingIdentity is the pool's one identity row: the name and email every

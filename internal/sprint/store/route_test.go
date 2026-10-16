@@ -554,8 +554,8 @@ func TestAReadRunsOnItsCardsTierAtThatTiersIndex(t *testing.T) {
 // own (route.go, readRouteMissing; TickDeal), not at the unreported deadline; a
 // route that can read it closes it. The card pins its model, so its work is dealt on
 // the pin while its reads, on its tier, pro, have no route: the store's one route is
-// heavy, and a pro read is drawn on flash only while a flash route is enabled (the
-// interim rule, readTierOf), so adding a flash route closes it.
+// heavy, and a pro read is never drawn on flash (the owner, 2026-10-16: never below its
+// tier), so adding a flash route leaves it open and adding a pro route closes it.
 func TestReadsTheirCardsTierCannotServeAreJudgedAtOnce(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("heavy-a", "heavy"))
@@ -576,7 +576,10 @@ func TestReadsTheirCardsTierCannotServeAreJudgedAtOnce(t *testing.T) {
 	assert.Equal(t, 1, h.notesOf(sprint.NNoRoute))
 	h.m.SetRoutes([]sprint.Route{route("heavy-a", "heavy"), route("flash-a", "flash")})
 	h.machine()
-	assert.Empty(t, h.a2Open(sprint.NNoRoute), "a flash route, which reads a pro card while no pro route is enabled, closes it")
+	assert.Len(t, h.a2Open(sprint.NNoRoute), 1, "a flash route never reads a pro card: still open")
+	h.m.SetRoutes([]sprint.Route{route("heavy-a", "heavy"), route("flash-a", "flash"), route("pro-a", "pro")})
+	h.machine()
+	assert.Empty(t, h.a2Open(sprint.NNoRoute), "a pro route closes it")
 }
 
 // One path asks (commit 255180e2; fleet pass 7, 2026-10-01): the finish of reworked work

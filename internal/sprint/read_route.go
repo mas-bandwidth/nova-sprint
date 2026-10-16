@@ -4,8 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // A read needs a reader, not a route (docs/SPEC-SPRINT.md section 6; the card
@@ -21,7 +20,7 @@ import (
 
 // ownModelReader says the reader brings its own model: it is a friend's reader,
 // reader-<name> for a friend (or a bud, a friend on a Claude account) whose seat the
-// snapshot holds or whose friend row the fleet table has (pkg/friend ReaderOf).
+// snapshot holds or whose friend row the fleet table has (nova-tools pkg/friend ReaderOf).
 // Any other reader is the fleet's and runs its read's route. A held friend's reader
 // brings no model: a friend and her reader row are one member to the server, and a
 // held member serves nothing (docs/SPEC-SPRINT.md section 11, hold).
@@ -40,8 +39,8 @@ func (s *Snapshot) ownModelReader(reader string) bool {
 }
 
 // heldFriendReader says reader is a held friend's reader row: reader-<name> names a
-// friend the snapshot holds with status held (her seat), or a friend row the fleet
-// table has whose control card reads held. A held friend and her reader row are one
+// friend the snapshot holds with status held (her seat, FriendStates: the coordinator's
+// hold is the one held). A held friend and her reader row are one
 // member to the server, and a held member serves nothing, new reads and its route
 // judgment alike (docs/SPEC-SPRINT.md section 11, hold).
 func (s *Snapshot) heldFriendReader(reader string) bool {
@@ -51,14 +50,10 @@ func (s *Snapshot) heldFriendReader(reader string) bool {
 	}
 	for _, f := range s.Friends {
 		if f.Name == name {
-			return f.Status == Held
+			return f.Held || f.Status == Held
 		}
 	}
-	if s.Fleet == nil || !s.Fleet.HasRow(FriendRow(name)) {
-		return false
-	}
-	ctl := s.MemberCtl(FriendRow(name))
-	return ctl != nil && ctl.F("status") == Held
+	return false
 }
 
 // tierRouted says a fleet reader can draw a read of tier: the store holds no route
@@ -80,15 +75,13 @@ func (s *Snapshot) tierRouted(tier string) bool {
 // readerServesTier says the reader may be asked a read of tier: its tiers cell names
 // the tier (readerReadsTier), and it brings its own model or a route of the tier is
 // there to draw (tierRouted). A held friend's reader serves nothing. A fleet reader
-// whose row names no tier reads flash alone (fleetReadsFlashOnly): the owner,
-// 2026-10-06, "I'm ok with flash readers on fleet but not pro"; its row names pro or
-// above (reader set --tiers) to read them.
+// whose row names no tier reads every tier a route serves: the flash-only rule
+// went with a-cleared-sprint-reads-with-no-seat-action (the owner, 2026-10-13:
+// defaults are the working machine); its row names tiers (reader set --tiers)
+// to read fewer.
 //
 // tla/ReaderTiers.tla Reads
 func (s *Snapshot) readerServesTier(reader, tier string) bool {
-	if tier != cardhdr.RouteFlash && s.fleetReadsFlashOnly(reader) {
-		return false
-	}
 	if s.heldFriendReader(reader) {
 		return false
 	}
@@ -102,14 +95,6 @@ func (s *Snapshot) readerServesTier(reader, tier string) bool {
 	}
 	// Fleet reader without explicit tier configuration serves tiers with enabled routes.
 	return s.tierRouted(tier)
-}
-
-// fleetReadsFlashOnly says the reader is the fleet's (it brings no model of its own and
-// draws its read's route), its row names no tier, and the store holds routes: it reads
-// flash and no other tier. A store with no route at all has every reader run its own model
-// (tierRouted), and an empty row there reads every tier, as a friend's reader does.
-func (s *Snapshot) fleetReadsFlashOnly(reader string) bool {
-	return len(s.Routes) > 0 && !s.ownModelReader(reader) && strings.TrimSpace(s.readerTiersStored(reader)) == ""
 }
 
 // ownModelReaderUp says a reader up that brings its own model serves tier: the reads of

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
 
 // MergeReq is one mechanical merge step for a stream, given its facts by the
@@ -160,7 +160,7 @@ func baseGateStep(p Plan, s *Snapshot, ctl *Card, r MergeReq) Plan {
 	set := map[string]string{"state": StreamStopped, "since": stamp(s.Now), "cause": "base"}
 	j := judgment(NBaseRed, r.Stream, s.Now, 0)
 	j.StreamLevel, j.Who, j.What = true, r.Who, cutText(what, MaxCardTextBytes)
-	p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"card", "other"}, baseGateCount...)...))}, Notes: []Note{j},
+	p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"card", "other"}, baseGateCount...)...))}, Notes: []Note{streamTransition(s, r.Stream, NStreamStopped, StreamStopped, "base", r.Who, what), j},
 		Moved: "stream " + r.Stream + " stopped: the base fails its tree gate"})
 	return p
 }
@@ -442,11 +442,15 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		queued = before
 	}
 	beforePriority := len(queued)
-	queued = MergePriorityOrder(s, queued)
+	// tla/SoftDependency.tla SoftLandsInOrder (LandAllowed)
+	var softWhy string
+	queued, softWhy = MergeSoftOrder(s, MergePriorityOrder(s, queued))
 	now := stamp(s.Now)
 	if len(queued) == 0 {
 		why := "nothing queued in stream " + r.Stream + "; nothing was changed"
-		if beforePriority > 0 {
+		if softWhy != "" {
+			why = softWhy
+		} else if beforePriority > 0 {
 			why = "no queued card has its prerequisites satisfied in stream " + r.Stream + "; nothing was changed; land its prerequisites first"
 		} else if len(s.Merge.Cell(r.Stream, Stuck)) > 0 {
 			why = "nothing queued before the stuck card of stream " + r.Stream + "; resume it first; nothing was changed"
@@ -478,6 +482,16 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			}
 		}
 		if len(batch) != len(r.Cards) {
+			if softWhy != "" {
+				p.refuse(r.Stream, softWhy)
+				return p
+			}
+			for _, id := range r.Cards {
+				if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 {
+					p.refuse(id, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", id, strings.Join(blocked, ", ")))
+					return p
+				}
+			}
 			p.refuse(r.Stream, fmt.Sprintf("the batch names %d cards and %d of them are queued in stream %s now; nothing was changed", len(r.Cards), len(batch), r.Stream))
 			return p
 		}
@@ -487,6 +501,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	for _, c := range batch {
 		if needs := WaitsFor(s, s.Work.Card(c.ID), landing); len(needs) > 0 {
 			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
+			return p
+		}
+		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 {
+			p.refuse(c.ID, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed; run: nova-sprint land --stream %s", c.ID, strings.Join(soft, ", "), r.Stream))
 			return p
 		}
 		ids = append(ids, c.ID)
@@ -530,7 +548,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			was, had := s.Work.Prop(PropLandRefusal)
 			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(strings.Join(primaries, ",")+": "+reason, MaxCardTextBytes), Was: was, WasAbsent: !had})
 		}
-		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, j)}
+		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, streamTransition(s, r.Stream, NStreamStopped, StreamStopped, cause, r.Who, r.Note), j)}
 	}
 	switch {
 	case r.Conflict != "":
@@ -782,6 +800,8 @@ func Resume(s *Snapshot, r ResumeReq) Plan {
 	}
 	u := Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, set, append([]string{"cause", "card", "other", FieldConflictKind, FieldConflictPaths}, baseGateCount...)...))},
 		Moved: fmt.Sprintf("stream %s stopped -> %s; %d stuck -> queued", r.Stream, state, len(stuck))}
+	// tla/CoordinatorPush.tla CommitTransition: resume has its own durable notice.
+	u.Notes = append(u.Notes, streamTransition(s, r.Stream, NStreamResumed, state, "", r.Who, r.Did))
 	if state == StreamLanded {
 		n := happened(NStreamLanded, r.Stream, s.Now)
 		n.Who = r.Who

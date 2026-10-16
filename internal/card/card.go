@@ -12,8 +12,9 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
 )
 
 // PackagePaths is a card's PATHS computed from what it starts from: every directory a
@@ -194,7 +195,176 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 			add(GateHostCheck, i+1, "this STEP tells the worker to ssh to a named host or run the gate on a named host, which the sprint forbids; "+GateHostRemedy)
 		}
 	}
+	// The toolchain-gate-needs rule, beside the gate-host rule: a need the brief states in
+	// prose is a need the deal cannot see, so a TOOLCHAIN line (or a THE TASK or STEP
+	// sentence saying the work must run on) naming an OS, an ISA or a toolchain wants a
+	// GATE-NEEDS line carrying the matching fact (internal/sprint GateHostPool).
+	gate := toolchainGateFacts(brief)
+	for i, line := range strings.Split(brief, "\n") {
+		if missing := toolchainMissing(id, line, gate); len(missing) > 0 {
+			add(ToolchainGateCheck, i+1, "this line says the work needs "+strings.Join(missing, ", ")+" and no GATE-NEEDS line carries it, so the deal cannot match a member that has it; "+GateHostRemedy)
+		}
+	}
+	// The open-decision rule (the owner-decision rule, docs/SPEC-SPRINT.md): a brief
+	// whose THE TASK leaves an owner decision open -- decision owed, UNSETTLED, an OPEN
+	// QUESTION, a decision required or awaited -- is refused unless
+	// it carries an OWNER RULING: line or its KIND is decision or research, so a worker
+	// is never handed a card that still needs an owner to decide.
+	if line := openDecisionLine(brief); line != 0 {
+		add(OpenDecisionCheck, line, "this brief leaves an owner decision open for the worker to pick; "+OpenDecisionRemedy)
+	}
 	return out
+}
+
+// ToolchainGateCheck is the check name of the toolchain-gate-needs lint finding: a brief
+// whose TOOLCHAIN line, or a THE TASK or STEP sentence saying the work must run on,
+// names an OS, an ISA or a toolchain without a GATE-NEEDS line carrying the matching
+// fact. Its remedy is GateHostRemedy.
+const ToolchainGateCheck = "toolchain-gate-needs"
+
+// toolchainTerms map the words a brief names a need by to the gate fact that carries it
+// (internal/sprint FieldFacts): the OS, the ISA and the toolchain. A term is a word of its
+// own: a hyphen beside it makes it part of a name (a card id like spike-batch-ops-neon).
+var toolchainTerms = []struct {
+	re   *regexp.Regexp
+	fact string
+}{
+	{toolchainTerm(`linux`), "linux"},
+	{toolchainTerm(`darwin`), "darwin"},
+	{toolchainTerm(`avx2`), "avx2"},
+	{toolchainTerm(`avx512\w*`), "avx512f"},
+	{toolchainTerm(`neon|arm64|aarch64|apple silicon`), "arm64"},
+	{toolchainTerm(`dotnet|\.net`), "dotnet"},
+}
+
+// toolchainTerm is the regexp of the alternatives alt as words of their own.
+func toolchainTerm(alt string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^\w.-])(` + alt + `)($|[^\w-])`)
+}
+
+// toolchainImplies are the facts a gate fact carries beside itself: an avx512f member
+// runs avx2 code.
+var toolchainImplies = map[string][]string{"avx512f": {"avx2"}}
+
+// toolchainRunOnRE is a THE TASK or STEP sentence saying where the work runs, in the
+// present or the imperative: "must run on", "runs on", "built on", "measured on"; a
+// past "ran on" is history, not a need.
+var toolchainRunOnRE = regexp.MustCompile(`\b(runs?|built|measured|benched)\s+on\s`)
+
+// toolchainOrRE splits a need into its alternatives: a brief that offers "a Linux bench
+// ... or an Apple silicon bench" is satisfied by either.
+var toolchainOrRE = regexp.MustCompile(`\s+or\s+`)
+
+// toolchainGateFacts is the brief's GATE-NEEDS line, lowercased, with the facts each one
+// implies.
+func toolchainGateFacts(brief string) map[string]bool {
+	facts := map[string]bool{}
+	for line := range strings.SplitSeq(brief, "\n") {
+		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
+			for _, f := range strings.FieldsFunc(strings.ToLower(v), func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+				facts[f] = true
+				for _, g := range toolchainImplies[f] {
+					facts[g] = true
+				}
+			}
+			break
+		}
+	}
+	return facts
+}
+
+// toolchainMissing is the needs a brief line names that gate does not carry: on a
+// TOOLCHAIN line (TOOLCHAIN: or the TOOLCHAIN. section) the whole value, on a THE TASK or STEP line the words after each "run
+// on" up to the sentence's end. The text is split into alternatives on "or"; the line
+// passes when one alternative naming a need is covered whole, or none names one. The
+// card's own id, quoted spans and path tokens are no need.
+func toolchainMissing(id, line string, gate map[string]bool) []string {
+	trimmed := strings.TrimSpace(line)
+	var spans []string
+	switch {
+	case strings.HasPrefix(trimmed, "TOOLCHAIN:"), strings.HasPrefix(trimmed, "TOOLCHAIN."):
+		spans = []string{trimmed[len("TOOLCHAIN:"):]}
+	case strings.HasPrefix(trimmed, "THE TASK"), strings.HasPrefix(trimmed, "STEP"):
+		low := strings.ToLower(unquoted(trimmed))
+		for _, m := range toolchainRunOnRE.FindAllStringIndex(low, -1) {
+			rest := low[m[1]:]
+			if end := sentenceEnd(rest); end >= 0 {
+				rest = rest[:end]
+			}
+			spans = append(spans, rest)
+		}
+	default:
+		return nil
+	}
+	seen := map[string]bool{}
+	var missing []string
+	for _, span := range spans {
+		scan := strings.ToLower(tokenExemptPaths(unquoted(span)))
+		if id != "" {
+			// the card's own id as a token of its own (spike-batch-ops-neon names no need),
+			// never its letters inside another word
+			scan = regexp.MustCompile(`(^|[^\w-])`+regexp.QuoteMeta(strings.ToLower(id))+`($|[^\w-])`).ReplaceAllString(scan, "$1 $2")
+		}
+		covered, named := false, false
+		var short []string
+		for _, alt := range toolchainOrRE.Split(scan, -1) {
+			needs := toolchainNeeds(alt)
+			if len(needs) == 0 {
+				continue
+			}
+			named = true
+			var lack []string
+			for _, n := range needs {
+				if !gate[n] {
+					lack = append(lack, n)
+				}
+			}
+			if len(lack) == 0 {
+				covered = true
+				break
+			}
+			short = append(short, lack...)
+		}
+		if !named || covered {
+			continue
+		}
+		for _, n := range short {
+			if !seen[n] {
+				seen[n] = true
+				missing = append(missing, n)
+			}
+		}
+	}
+	return missing
+}
+
+// toolchainNeeds is the gate facts a lowercased span names, in the order of
+// toolchainTerms, each once.
+func toolchainNeeds(s string) []string {
+	var out []string
+	for _, t := range toolchainTerms {
+		if t.re.MatchString(s) {
+			out = append(out, t.fact)
+		}
+	}
+	return out
+}
+
+// sentenceEnd is the index where the sentence s starts in ends: a ';', ':', '(' or ')',
+// or a '.' followed by a blank or the end (so ".NET" is a word, not an end); -1 when s
+// is one sentence to its end.
+func sentenceEnd(s string) int {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case ';', ':', '(', ')':
+			return i
+		case '.':
+			if i+1 == len(s) || s[i+1] == ' ' {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // GateHostCheck is the check name of the gate-host lint finding, and GateHostRemedy its
@@ -205,6 +375,85 @@ const (
 	GateHostCheck  = "gate-needs-host"
 	GateHostRemedy = "the gate runs on the member it is dealt to, inside the wall, never over ssh to a named host; name the gate's needs on a `GATE-NEEDS:` line (e.g., `GATE-NEEDS: linux, tla`) so the deal matches a member"
 )
+
+// OpenDecisionCheck is the check name of the open-decision lint finding, and
+// OpenDecisionRemedy its remedy (docs/SPEC-SPRINT.md, the owner-decision rule): a brief
+// that leaves an owner decision to the worker is refused until the owner settles it.
+const (
+	OpenDecisionCheck  = "open-decision"
+	OpenDecisionRemedy = "settle it first: an OWNER RULING: line quoting the decision, or a KIND: decision card the work card needs"
+)
+
+// Remedy returns the one-line remedy for a check token drawn by card lint.
+func Remedy(check string) string {
+	if check == GateHostCheck || check == ToolchainGateCheck {
+		return GateHostRemedy
+	}
+	if check == OpenDecisionCheck {
+		return OpenDecisionRemedy
+	}
+	if r, ok := cardtree.Remedies[check]; ok && r != "" {
+		return r
+	}
+	if r, ok := swarm.CardHeaderRemedies[check]; ok && r != "" {
+		return r
+	}
+	if r := swarm.ChildRemedy(swarm.DefaultChildRules, check); r != "" {
+		return r
+	}
+	if r := swarm.BriefRemedy(check); r != "" {
+		return r
+	}
+	switch check {
+	case "tier-line":
+		return "line 1 names the card's tier: write tier: and one of " + cardhdr.RouteList + " on it"
+	case "test-outside-paths":
+		return "the TEST package must be a directory that PATHS names; widen PATHS or change the TEST package"
+	case "personal-name":
+		return "remove the personal or friend name from prose; a name inside a path or a double-quoted word is fine"
+	case "author-name":
+		return "do not name the author on a By: line; sign the attempt with your own name"
+	case "dropped-card":
+		return "remove reference to the dropped card; a brief stands alone and owes nothing to a dropped card"
+	case "model-lines":
+		return "line 1 names the card's tier and model invariants: write tier: and model invariants on line 1"
+	case "placeholder":
+		return "fill it in before the card is handed out: replace each <...> with the card's value"
+	case "sibling-path":
+		return "name the sibling repository in a SIBLINGS header (owner/name@ref, comma separated)"
+	case "start-named":
+		return swarm.StartNamedRemedy
+	case "stop-named":
+		return swarm.StopNamedRemedy
+	case "no-parent-path":
+		return swarm.CardParentPathWanted
+	case "depends-on":
+		return "the card carries DEPENDS-ON: <id>[, <id>...] naming cards this card needs, or DEPENDS-ON: none"
+	case "result-first":
+		return "line 1 IS the contract: " + swarm.CardContractWanted + ". A title, a heading or a # comment on line 1 is this drift, however right the words are"
+	case "clone-step":
+		return "STEP 1 enters the repository from the working directory: the whole step, its line and the lines under it, holds a git clone -q <url> repo && cd repo, or a cd into a checkout that may already be there"
+	case "steps-numbered":
+		return "each step is its own line beginning STEP <n>., numbered 1, 2, 3 with no gap and no repeat"
+	case "red-test":
+		return "name the reproducing test by its own name -- TestSomething -- or, for a card that only reads, say probe or read in so many words"
+	case "test-command":
+		return "write the gate verbatim, exactly as the card is to run it"
+	case "deadline":
+		return "give the card its own bound: a deadline line, or finish within <n> minutes"
+	case "files-named":
+		return "name the file or the package the work lives in, so the change has a home to start from"
+	case "scratch-absolute":
+		return "spell scratch against a named root -- <job>/scratch, $PWD/scratch, an absolute path -- and never as the bare word"
+	case "no-sandbox":
+		return "a card runs INSIDE the wall and never invokes it; drop the nova-sandbox line"
+	case "result-last":
+		return "the LAST step writes RESULT.md, and RESULT.md's own line 1 is the contract line from line 1 of this card"
+	case "size":
+		return "keep the brief within budget: point at a file instead of pasting it, and drop quoted source"
+	}
+	return "resolve the " + check + " finding"
+}
 
 // gateNeedsHostRE finds `ssh <token>` or `on <token>` in a STEP line; the token is held
 // host-like by gateNeedsHost, so an ordinary "on the member" (no host) passes.
@@ -236,6 +485,52 @@ func hostLike(tok string, names []string) bool {
 		return false
 	}
 	return strings.ContainsAny(tok, "0123456789-")
+}
+
+// openDecisionRE is an open-decision marker: the literal phrase a brief uses to leave an
+// owner decision open ("decision owed", "decision required", "unsettled", "open
+// question", "awaiting the ... decision"). The word list stays short and literal, so a
+// brief that reports a decision already made passes, and a numbered list of steps
+// ("(1) ... (2) ...") is no open decision on its own.
+var openDecisionRE = regexp.MustCompile(`(?i)\b(?:decision owed|decision required|unsettled|open question|awaiting the [a-z0-9 -]*decision)\b`)
+
+// openDecisionLine returns the 1-based line of the first open-decision marker in brief,
+// 0 when there is none. A brief that carries an OWNER RULING: line, or whose KIND is
+// decision or research, has settled the decision and is not refused.
+func openDecisionLine(brief string) int {
+	if hasHeaderLine(brief, "OWNER RULING") {
+		return 0
+	}
+	switch strings.ToLower(strings.TrimSpace(kindOf(brief))) {
+	case "decision", "research":
+		return 0
+	}
+	for i, line := range strings.Split(brief, "\n") {
+		if openDecisionRE.MatchString(line) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// kindOf is the value of the brief's KIND: line, "" when it has none.
+func kindOf(brief string) string {
+	for _, line := range strings.Split(brief, "\n") {
+		if v, ok := strings.CutPrefix(line, "KIND:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// hasHeaderLine says the brief carries a KEY: line.
+func hasHeaderLine(brief, key string) bool {
+	for _, line := range strings.Split(brief, "\n") {
+		if strings.HasPrefix(line, key+":") {
+			return true
+		}
+	}
+	return false
 }
 
 // byRE is a By: trailer named in a line and the word after it, past any <, backquote,

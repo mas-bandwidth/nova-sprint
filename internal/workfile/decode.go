@@ -7,26 +7,26 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 )
 
 // Limits is the reader's bounds for a tree file of at most maxBytes: the
 // depth of the shape (section 1.2) with room to spare, and at most one atom
 // per byte, so the byte bound is the one that binds.
-func Limits(maxBytes int) worklang.Limits {
-	return worklang.Limits{MaxBytes: maxBytes, MaxDepth: 16, MaxNodes: maxBytes}
+func Limits(maxBytes int) sexp.Limits {
+	return sexp.Limits{MaxBytes: maxBytes, MaxDepth: 16, MaxNodes: maxBytes}
 }
 
-// Decode reads a tree file through internal/worklang (nothing is evaluated)
+// Decode reads a tree file through nova-tools pkg/sexp (nothing is evaluated)
 // and refuses, naming the path and the key, any record that is not exactly
 // the shape Encode writes: a missing, repeated or unknown key, a value of the
 // wrong kind, an issue whose URL is not the one its path gives. Every such
 // problem of the file is named in the one error (SPEC-WORK-V1 section 1.2).
-func Decode(file string, data []byte, lim worklang.Limits) (*Tree, error) {
-	top, err := worklang.Read(file, data, lim)
+func Decode(file string, data []byte, lim sexp.Limits) (*Tree, error) {
+	top, err := sexp.Read(file, data, lim)
 	if err != nil {
 		// The reader speaks of plans; the refusal here is of a tree.
-		var r *worklang.Refusal
+		var r *sexp.Refusal
 		if errors.As(err, &r) {
 			return nil, fmt.Errorf("workfile: tree file=%s: %s", file, strings.ReplaceAll(r.Reason, "a plan is data", "a tree is data"))
 		}
@@ -67,9 +67,9 @@ func (d *decoder) finish(t *Tree) (*Tree, error) {
 
 // record reads (head <id?> :key value ...) with exactly the keys given, plus
 // the optional keys, which may be absent (SPEC-WORK-V1 section 1.2).
-func (d *decoder) record(at string, f worklang.Form, head string, withID bool, keys []string, optional ...string) (worklang.Form, map[string]worklang.Form, error) {
-	var id worklang.Form
-	if f.Kind != worklang.List || len(f.List) == 0 || f.List[0].Kind != worklang.Symbol || f.List[0].Value != head {
+func (d *decoder) record(at string, f sexp.Form, head string, withID bool, keys []string, optional ...string) (sexp.Form, map[string]sexp.Form, error) {
+	var id sexp.Form
+	if f.Kind != sexp.List || len(f.List) == 0 || f.List[0].Kind != sexp.Symbol || f.List[0].Value != head {
 		return id, nil, d.errf(at, "want a (%s ...) record", head)
 	}
 	rest := f.List[1:]
@@ -83,7 +83,7 @@ func (d *decoder) record(at string, f worklang.Form, head string, withID bool, k
 	return id, m, err
 }
 
-func (d *decoder) pairs(at, head string, rest []worklang.Form, keys, optional []string) (map[string]worklang.Form, error) {
+func (d *decoder) pairs(at, head string, rest []sexp.Form, keys, optional []string) (map[string]sexp.Form, error) {
 	want := map[string]bool{}
 	for _, k := range keys {
 		want[k] = true
@@ -91,10 +91,10 @@ func (d *decoder) pairs(at, head string, rest []worklang.Form, keys, optional []
 	for _, k := range optional {
 		want[k] = true
 	}
-	m := map[string]worklang.Form{}
+	m := map[string]sexp.Form{}
 	for i := 0; i < len(rest); i += 2 {
 		k := rest[i]
-		if k.Kind != worklang.Keyword {
+		if k.Kind != sexp.Keyword {
 			return nil, d.errf(at, "(%s) holds a value where a key belongs, at byte=%d", head, k.Offset)
 		}
 		if !want[k.Value] {
@@ -119,8 +119,8 @@ func (d *decoder) pairs(at, head string, rest []worklang.Form, keys, optional []
 	return m, nil
 }
 
-func (d *decoder) str(at, key string, f worklang.Form) (string, error) {
-	if f.Kind != worklang.String {
+func (d *decoder) str(at, key string, f sexp.Form) (string, error) {
+	if f.Kind != sexp.String {
 		return "", d.errf(at, ":%s wants a string", key)
 	}
 	return f.Value, nil
@@ -129,29 +129,29 @@ func (d *decoder) str(at, key string, f worklang.Form) (string, error) {
 // num reads a positive integer whose spelling is the one strconv.Itoa
 // writes (SPEC-WORK-V1 section 1.2: the file is canonical, one tree, one
 // file, so the SHA-256 names the tree): the form's source span is the
-// number's spelling, so a leading '+' or leading zeros, which the worklang
+// number's spelling, so a leading '+' or leading zeros, which the sexp
 // integer reader takes, is refused here.
-func (d *decoder) num(at, key string, f worklang.Form) (int, error) {
-	if f.Kind != worklang.Integer || f.Int <= 0 || f.Int > maxNumber ||
+func (d *decoder) num(at, key string, f sexp.Form) (int, error) {
+	if f.Kind != sexp.Integer || f.Int <= 0 || f.Int > maxNumber ||
 		f.End-f.Offset != len(strconv.Itoa(int(f.Int))) {
 		return 0, d.errf(at, ":%s wants a positive integer written canonically", key)
 	}
 	return int(f.Int), nil
 }
 
-func (d *decoder) boolean(at, key string, f worklang.Form) (bool, error) {
-	if f.Kind == worklang.Symbol && (f.Value == "true" || f.Value == "false") {
+func (d *decoder) boolean(at, key string, f sexp.Form) (bool, error) {
+	if f.Kind == sexp.Symbol && (f.Value == "true" || f.Value == "false") {
 		return f.Value == "true", nil
 	}
 	return false, d.errf(at, ":%s wants true or false", key)
 }
 
 // enum reads a keyword back into GitHub's spelling, and () as null.
-func (d *decoder) enum(at, key string, f worklang.Form) (string, error) {
-	if f.Kind == worklang.List && len(f.List) == 0 {
+func (d *decoder) enum(at, key string, f sexp.Form) (string, error) {
+	if f.Kind == sexp.List && len(f.List) == 0 {
 		return "", nil
 	}
-	if f.Kind != worklang.Keyword {
+	if f.Kind != sexp.Keyword {
 		return "", d.errf(at, ":%s wants a keyword or ()", key)
 	}
 	v, err := unkeyword(f.Value)
@@ -161,14 +161,14 @@ func (d *decoder) enum(at, key string, f worklang.Form) (string, error) {
 	return v, nil
 }
 
-func (d *decoder) list(at, key string, f worklang.Form) ([]worklang.Form, error) {
-	if f.Kind != worklang.List {
+func (d *decoder) list(at, key string, f sexp.Form) ([]sexp.Form, error) {
+	if f.Kind != sexp.List {
 		return nil, d.errf(at, ":%s wants a list", key)
 	}
 	return f.List, nil
 }
 
-func (d *decoder) strs(at, key string, f worklang.Form) ([]string, error) {
+func (d *decoder) strs(at, key string, f sexp.Form) ([]string, error) {
 	xs, err := d.list(at, key, f)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (d *decoder) strs(at, key string, f worklang.Form) ([]string, error) {
 	return out, nil
 }
 
-func (d *decoder) takeStr(at, key string, m map[string]worklang.Form) (string, bool) {
+func (d *decoder) takeStr(at, key string, m map[string]sexp.Form) (string, bool) {
 	f, ok := m[key]
 	if !ok {
 		return "", false
@@ -205,18 +205,18 @@ func (d *decoder) takeStr(at, key string, m map[string]worklang.Form) (string, b
 // wrongVersion is a tree form's version when it is a string this build does
 // not read; the version is read before the root's keys, which the version
 // itself defines (SPEC-WORK-V1 section 1.2).
-func wrongVersion(f worklang.Form) (string, bool) {
-	if f.Kind != worklang.List || len(f.List) < 2 || f.List[0].Kind != worklang.Symbol || f.List[0].Value != "work-tree" {
+func wrongVersion(f sexp.Form) (string, bool) {
+	if f.Kind != sexp.List || len(f.List) < 2 || f.List[0].Kind != sexp.Symbol || f.List[0].Value != "work-tree" {
 		return "", false
 	}
 	v := f.List[1]
-	if v.Kind != worklang.String || v.Value == Format {
+	if v.Kind != sexp.String || v.Value == Format {
 		return "", false
 	}
 	return v.Value, true
 }
 
-func (d *decoder) tree(f worklang.Form) (*Tree, error) {
+func (d *decoder) tree(f sexp.Form) (*Tree, error) {
 	if v, wrong := wrongVersion(f); wrong {
 		// The version defines the keys, so a file of a version this build
 		// does not read is refused by its version, not by one of another
@@ -228,7 +228,7 @@ func (d *decoder) tree(f worklang.Form) (*Tree, error) {
 	if m == nil {
 		return d.finish(nil)
 	}
-	if id.Kind != worklang.String || id.Value != Format {
+	if id.Kind != sexp.String || id.Value != Format {
 		d.fail("(root)", "format %q, this reader reads %q", id.Value, Format)
 	}
 	t := &Tree{}
@@ -275,12 +275,12 @@ func (d *decoder) tree(f worklang.Form) (*Tree, error) {
 	return d.finish(t)
 }
 
-func (d *decoder) repo(f worklang.Form) (Repo, bool) {
+func (d *decoder) repo(f sexp.Form) (Repo, bool) {
 	id, m, _ := d.record("repos", f, "repo", true, []string{"url", "archived", "issues"})
 	if m == nil {
 		return Repo{}, true
 	}
-	if id.Kind != worklang.String {
+	if id.Kind != sexp.String {
 		d.fail("repos", "a repo's identity is its owner/name string")
 		return Repo{}, true
 	}
@@ -315,7 +315,7 @@ var issueKeys = []string{"url", "node-id", "title", "state", "state-reason", "or
 	"created", "updated", "closed", "locked", "lock-reason", "labels", "assignees", "milestone", "body",
 	"comments", "references", "linked-prs"}
 
-func (d *decoder) issue(repo string, f worklang.Form) (Issue, bool) {
+func (d *decoder) issue(repo string, f sexp.Form) (Issue, bool) {
 	id, m, _ := d.record("repos/"+repo+"/issues", f, "issue", true, issueKeys)
 	if m == nil {
 		return Issue{}, true
@@ -346,14 +346,14 @@ func (d *decoder) issue(repo string, f worklang.Form) (Issue, bool) {
 		}
 	}
 	if o, ok := m["origin"]; ok {
-		if o.Kind == worklang.Keyword && (o.Value == "internal" || o.Value == "external") {
+		if o.Kind == sexp.Keyword && (o.Value == "internal" || o.Value == "external") {
 			is.Origin = o.Value
 		} else {
 			d.fail(at, ":origin wants :internal or :external")
 		}
 	}
 	if numErr == nil {
-		if fv, ok := m["url"]; ok && fv.Kind == worklang.String {
+		if fv, ok := m["url"]; ok && fv.Kind == sexp.String {
 			if want := IssueURL(repo, n); is.URL != want {
 				d.fail(at, ":url %q is not the URL its path gives, %q", is.URL, want)
 			}
@@ -513,9 +513,9 @@ func (d *decoder) issue(repo string, f worklang.Form) (Issue, bool) {
 // source, 0 for one whose source GitHub does not show this login (a
 // private repository's issue), which carries :kind "" (SPEC-WORK-V1
 // section 1.3).
-func (d *decoder) refNumber(at, kind string, f worklang.Form) (int, error) {
+func (d *decoder) refNumber(at, kind string, f sexp.Form) (int, error) {
 	if kind == "" {
-		if f.Kind != worklang.Integer || f.Int != 0 {
+		if f.Kind != sexp.Integer || f.Int != 0 {
 			return 0, d.errf(at, "a reference with no source wants :number 0")
 		}
 		return 0, nil

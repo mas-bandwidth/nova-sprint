@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // The lifecycle of a primary: six states and the legal moves between them,
@@ -50,6 +50,8 @@ type Move struct {
 // Moves is the lifecycle: every legal move, and nothing else. Off the table
 // (drop) is legal from every open state and is not a state.
 var Moves = []Move{
+	{Review, Waiting, "server-default", Mechanical, "a bound judgment parks the primary with its cause and saved review state"},
+	{Waiting, Review, "release", Coordinator, "release restores a server-default parked review primary with its head and reads"},
 	{Waiting, Ready, "resolve", Mechanical, "everything it needs has landed"},
 	{Ready, Working, "deal", Mechanical, "a work card is cut and dealt"},
 	{Working, Review, "finish", Mechanical, "its work card finished, ok or failed"},
@@ -169,7 +171,7 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 					needs = append(needs, st.ID) // behind a stop: it waits
 				}
 			}
-		case e.Move != nil && e.Move.Col == Ready && waitingFrom(e, pre):
+		case e.Move != nil && (e.Move.Col == Ready || e.Move.Col == Review) && waitingFrom(e, pre):
 			if pre == nil {
 				return "a move waiting -> ready is judged against the step's pre-state, and this plan carries none"
 			}
@@ -243,6 +245,33 @@ func unlawful(u Unit, p *Plan) string {
 			}
 			continue
 		}
+		if p.pre != nil && !e.Remove {
+			held := p.pre.Work.Card(e.ID)
+			if held != nil && IsHeld(held) && held.F("held_by") == ServerDefaultActor && held.F("decision_held_from") != "" {
+				if e.Move != nil && e.Move.Col != from && !p.releasing {
+					return "release the server-default hold before moving its primary"
+				}
+				exactRelease := p.releasing && e.Move != nil && e.Move.Col == held.F("decision_held_from")
+				if !exactRelease {
+					for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {
+						if value, ok := e.Set[field]; ok && value != held.F(field) {
+							return "only release may change server-default hold provenance"
+						}
+						if slices.Contains(e.Unset, field) {
+							return "only release may change server-default hold provenance"
+						}
+					}
+				}
+				for _, field := range []string{"brief", "head", "attempt", "needs", FieldTier, FieldTierNow, FieldHeadBriefAttempt, FieldBriefAttempt} {
+					if value, ok := e.Set[field]; ok && value != held.F(field) {
+						return "release the server-default hold before changing " + field
+					}
+					if slices.Contains(e.Unset, field) && held.F(field) != "" {
+						return "release the server-default hold before changing " + field
+					}
+				}
+			}
+		}
 		sentinel := p.pre != nil && IsSentinel(p.pre.Work.Card(e.ID))
 		to := ""
 		if e.Move != nil && e.Move.Col != from {
@@ -251,7 +280,13 @@ func unlawful(u Unit, p *Plan) string {
 		switch {
 		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
-		case from == Ready && to == Waiting && !p.inserting && !needsOpen(e, p.pre):
+		case from == Review && to == Waiting && !decisionPark(e, p.pre, p.drained):
+			return "review -> waiting requires a bound judgment and server-default cause"
+		case from == Waiting && to == Review && (!p.releasing || p.pre == nil || !DecisionParkedReview(p.pre.Work.Card(e.ID))):
+			return "waiting -> review requires release of a server-default parked review primary"
+		case from == Waiting && to != "" && p.pre != nil && DecisionParkedReview(p.pre.Work.Card(e.ID)) && p.releasing && to != Review:
+			return "release must restore the server-default hold's saved review state"
+		case from == Ready && to == Waiting && !p.inserting && !needsOpen(e, p.pre) && !decisionPark(e, p.pre, p.drained):
 			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or with a named need not landed"
 		case from == Working && to == Waiting && !namedNeedsOpen(e.ID, p.pre):
 			// PR #96's move (a dealt card whose needs have not landed waits again) is
@@ -298,6 +333,23 @@ func needsOpen(e ntable.BatchMemberEntry, pre *Snapshot) bool {
 	return false
 }
 
+// NamedNeedsOpen is the card's named needs (the needs field, the card's one record
+// of what it waits for) that have not landed and were not waived, judged against
+// s. The lifecycle's working -> waiting guard (namedNeedsOpen) and the finish
+// (steps_work.go finishPlan) both decide by it, so they cannot disagree.
+// tla/SprintTables.tla FinishAgreesWithLifecycle, WorkingToWaitingOnlyOnNeeds;
+// reversed witness "staleafter".
+func NamedNeedsOpen(s *Snapshot, pc *Card) []string {
+	var out []string
+	waived := Split(pc.F("waived"))
+	for _, n := range Split(pc.F("needs")) {
+		if !contains(waived, n) && s.StateOf(n) != Landed {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // namedNeedsOpen says the card's named needs in the pre-state hold one that
 // has not landed and is not waived; false when the plan carries no pre-state
 // or the pre-state does not hold the card (nothing to judge by, so the move
@@ -310,13 +362,7 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 	if pc == nil {
 		return false
 	}
-	waived := Split(pc.F("waived"))
-	for _, n := range Split(pc.F("needs")) {
-		if !contains(waived, n) && pre.StateOf(n) != Landed {
-			return true
-		}
-	}
-	return false
+	return len(NamedNeedsOpen(pre, pc)) > 0
 }
 
 // Rejudge holds entries a repair is about to apply one by one to the
@@ -331,4 +377,35 @@ func Rejudge(pre *Snapshot, verb string, changes []Change) []Refusal {
 		p.Units = append(p.Units, Unit{Key: c.Entry.ID, Changes: []Change{c}})
 	}
 	return Lawful(p).Refused
+}
+
+// decisionPark is the narrow central lifecycle guard, not a general hold verb.
+// tla/SprintTables.tla ParkingHasCause, ParkingRestoresPrestate.
+func decisionPark(e ntable.BatchMemberEntry, pre *Snapshot, drained bool) bool {
+	if pre == nil || pre.Work == nil || e.Set["held_by"] != ServerDefaultActor || e.Set[FieldHeld] == "" || e.Set["held_reason"] == "" {
+		return false
+	}
+	c := pre.Work.Placed(e.ID)
+	if c == nil || IsSentinel(c) || IsHeld(c) || (c.Col != Ready && c.Col != Review) || e.Set["decision_held_from"] != c.Col {
+		return false
+	}
+	for _, o := range pre.Open {
+		n := o.Note
+		if n.ID == e.Set["held_judgment"] && o.Subject() == c.ID && n.Kind == Judgment && (n.Type == NBound || n.Type == NBriefWrong) {
+			return true
+		}
+	}
+	// Queued moves are drained after their unit records the answer. The exact
+	// server-default acknowledgment preserves the original authority across repair.
+	if !drained {
+		return false
+	}
+	for _, o := range pre.Acked {
+		n := o.Note
+		if n.Answers == e.Set["held_judgment"] && stamp(n.At) == e.Set[FieldHeld] && n.Who == ServerDefaultActor && o.Subject() == c.ID && (n.Type == NBound || n.Type == NBriefWrong) {
+			return true
+		}
+	}
+
+	return false
 }

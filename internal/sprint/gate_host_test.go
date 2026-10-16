@@ -9,24 +9,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/card"
 )
 
-// gateHostFleet is a two-member fleet whose control cards carry the given facts, one
-// per member, in the order given.
-func gateHostFleet(members ...struct {
-	name  string
-	facts string
-}) *Snapshot {
-	f := NewTable(Fleet)
-	var rows []string
-	for _, m := range members {
-		rows = append(rows, m.name)
-	}
-	f.SetRows(rows)
-	for _, m := range members {
-		f.Put(&Card{ID: CtlID(m.name), Row: m.name, Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: m.facts}})
-	}
-	return &Snapshot{Now: t0, Fleet: f}
-}
-
 // TestGateNeedsParsing reads GATE-NEEDS: from the header, comma-separated and trimmed,
 // with "none" and "-" dropped.
 func TestGateNeedsParsing(t *testing.T) {
@@ -87,43 +69,39 @@ func TestAGateNeedsLinuxCardIsNeverDealtToADarwinMember(t *testing.T) {
 	assert.Equal(t, "m-linux", wc.Row, "a GATE-NEEDS linux card is never dealt to a darwin member")
 }
 
-// TestATlaCardIsDealtOnlyToAMemberWhoseFactsCarryTheTlaJar: a card needing tla is dealt
-// only to the member whose facts carry the TLA jar.
-func TestATlaCardIsDealtOnlyToAMemberWhoseFactsCarryTheTlaJar(t *testing.T) {
-	s := gateHostFleet(
-		struct {
-			name  string
-			facts string
-		}{"m-linux", "linux,go"},
-		struct {
-			name  string
-			facts string
-		}{"m-tla", "linux,tla,go"},
-	)
-	c := &Card{ID: "s1-1", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: linux, tla\n"}}
-	pool, why := s.GateHostPool(c, []string{"m-linux", "m-tla"})
-	require.Empty(t, why)
-	assert.Equal(t, []string{"m-tla"}, pool, "a card needing tla is dealt only to a member whose facts carry the TLA jar")
-}
-
-// TestACardNoMemberSatisfiesNamesTheNeed: a card no member satisfies yields one why that
-// names the need, the sentence the tick's judgment carries.
-func TestACardNoMemberSatisfiesNamesTheNeed(t *testing.T) {
-	s := gateHostFleet(
-		struct {
-			name  string
-			facts string
-		}{"m-linux", "linux"},
-		struct {
-			name  string
-			facts string
-		}{"m-darwin", "darwin"},
-	)
-	c := &Card{ID: "s1-1", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: tla\n"}}
-	pool, why := s.GateHostPool(c, []string{"m-linux", "m-darwin"})
-	assert.Empty(t, pool)
-	assert.Contains(t, why, "GATE-NEEDS tla", "the judgment names the need")
-	assert.Contains(t, why, "m-linux", "the judgment names the members it looked at")
+// GateHostPool: a card needing tla is dealt only to the member whose facts carry the TLA
+// jar; a card no member satisfies yields one why that names the need and the members looked
+// at, the sentence the tick's judgment carries.
+func TestGateHostPool(t *testing.T) {
+	for _, tc := range []struct {
+		name, need   string
+		facts        [2]string
+		pool, whyHas []string
+		msg          string
+	}{
+		{"ATlaCardIsDealtOnlyToAMemberWhoseFactsCarryTheTlaJar", "linux, tla", [2]string{"linux,go", "linux,tla,go"},
+			[]string{"m-b"}, nil, "a card needing tla is dealt only to a member whose facts carry the TLA jar"},
+		{"ACardNoMemberSatisfiesNamesTheNeed", "tla", [2]string{"linux", "darwin"},
+			nil, []string{"GATE-NEEDS tla", "m-a"}, "the judgment names the need and the members it looked at"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := NewTable(Fleet)
+			f.SetRows([]string{"m-a", "m-b"})
+			for i, m := range []string{"m-a", "m-b"} {
+				f.Put(&Card{ID: CtlID(m), Row: m, Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: tc.facts[i]}})
+			}
+			s := &Snapshot{Now: t0, Fleet: f}
+			c := &Card{ID: "s1-1", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: " + tc.need + "\n"}}
+			pool, why := s.GateHostPool(c, []string{"m-a", "m-b"})
+			assert.Equal(t, tc.pool, pool, tc.msg)
+			if tc.whyHas == nil {
+				assert.Empty(t, why)
+			}
+			for _, w := range tc.whyHas {
+				assert.Contains(t, why, w, tc.msg)
+			}
+		})
+	}
 }
 
 // TestACardNoMemberSatisfiesRaisesOneJudgment: the tick raises one NGateNeeds judgment

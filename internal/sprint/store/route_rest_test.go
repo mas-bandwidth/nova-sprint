@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // noteWhats is the What of every note of a type the inbox holds.
@@ -137,8 +137,9 @@ func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 
 // A take that ended with no result is the model's output on that card, never the
 // provider's (flash-deepseek41-direct, 2026-10-10, rested twenty minutes for "no-result:
-// its children ended with no result"): five of them on the tier's one route rest nothing,
-// and each card is dealt again on it.
+// its children ended with no result"): five of them on the tier's one route, each with the
+// tokens its model spent, rest nothing, and each card is dealt again on it. (A no-result
+// with no model call at all, on two members, is the route's: the test after this one.)
 func TestARouteWhoseChildrenEndWithNoResultNeverRests(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
@@ -147,7 +148,7 @@ func TestARouteWhoseChildrenEndWithNoResultNeverRests(t *testing.T) {
 	h.machine()
 	ids := []string{"s1-1.w1", "s1-2.w1", "s1-3.w1", "s1-4.w1", "s1-5.w1"}
 	for _, id := range ids {
-		h.failTake(id, noResultLine)
+		h.failTakeUsage(id, noResultLine, "wall=450.00s budget=1/1000 input=1200 output=40")
 	}
 	h.machine()
 	s := h.snap()
@@ -158,6 +159,36 @@ func TestARouteWhoseChildrenEndWithNoResultNeverRests(t *testing.T) {
 		if c := s.Fleet.Card(id); c != nil && c.Col == sprint.Ready {
 			assert.Equal(t, "flash-a", c.F(sprint.FieldRoute), "%s is dealt again on the route", id)
 		}
+	}
+}
+
+// Takes that ended with no result and no model call (no token reported), on two members of
+// one route within the window, are the route's (the owner, 2026-10-13: mini-m5 was held ten
+// hours for the providers' fault): the tick rests the route by the route-rest path, cause
+// no-model-call, tells the seat, and holds no member (sprint hold_cause.go; tla/HoldCause.tla
+// RouteFaultRests and HeldOnlyWhenAlone).
+func TestNoModelCallOnTwoMembersRestsTheRouteAndHoldsNoMember(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 4, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	s := h.snap()
+	rows := map[string]bool{}
+	ids := []string{"s1-1.w1", "s1-2.w1", "s1-3.w1", "s1-4.w1"}
+	for _, id := range ids {
+		rows[s.Fleet.Card(id).Row] = true
+		h.failTake(id, noResultLine)
+	}
+	require.GreaterOrEqual(t, len(rows), 2, "the deal put the four cards on one member: %v", rows)
+	h.machine()
+	s = h.snap()
+	rest, ok := sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet)["flash-a"]
+	require.True(t, ok, "the route did not rest")
+	assert.Equal(t, sprint.RestNoModelCall, rest.Cause)
+	require.Len(t, h.noteWhats(sprint.NRouteRested), 1, "one note to the seat")
+	for m := range rows {
+		assert.Empty(t, s.MemberCtl(m).F("held"), "%s was held for the route's fault", m)
 	}
 }
 

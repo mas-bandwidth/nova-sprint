@@ -10,21 +10,22 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/pronouns"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	toolsfriend "github.com/mas-bandwidth/nova-tools/pkg/friend"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // A friend's cards taken back (docs/SPEC-SPRINT.md section 1, a friend's card taken back;
 // sprint.FriendTake): friend take <friend> <id>... takes back the cards named that she has
 // not started and refuses the rest (the card friend-take-partial.w1; --all-or-nothing takes
-// none when one is refused), friend take --all-unstarted every one, and friend down every one as it holds
-// her. What she has started is read here, outside the step: her beat's running cards and a
+// none when one is refused; a named card in flight wants --working), friend take
+// --all-unstarted only the cards dealt and not taken (never a working one), and friend down
+// every one as it holds her. What she has started is read here, outside the step: her beat's running cards and a
 // push on each card's branch (one git ls-remote each, the tip friend sync reads); the step
 // is a function of the tables and that set.
 
 // friendTakeWords is what friend take says on -h.
-const friendTakeWords = "friend take takes back and marks unstarted cards dealt to the friend: each goes back to ready, withdrawn from the friend's row (no failure, no bound spent: the card records \"taken back by the coordinator: <reason>\"), and the next tick deals the same card at its next generation to another friend up with room, never back to the friend until friend give (a friend's card is never a machine's); each card taken is said as \"<id>: back to ready, not dealt to <friend> again until friend give\" and the summary counts them (marked=<n>); a card whose WHO line pins the friend waits until it is given back to the friend (friend give), briefed for another friend or dropped. A card is refused, one REFUSED line each, when it is not dealt to that friend or when the friend has started it: a push on its branch, the friend's beat naming it running (friend beat --running), or finished (in review or later); the others named are taken, and the exit is 1 when any is refused. --all-or-nothing takes none when one is refused. --all-unstarted takes every unstarted card held by the friend and says the ones the friend keeps. A working card taken frees the friend's lane, and the friend's oldest ready card is taken into working at once. friend sync marks a card taken back as taken in the friend's queue file.\n"
+const friendTakeWords = "friend take takes back and marks cards dealt to the friend: each goes back to ready, withdrawn from the friend's row (no failure, no bound spent: the card records \"taken back by the coordinator: <reason>\"), and the next tick deals the same card at its next generation to another friend up with room, never back to the friend until friend give (a friend's card is never a machine's); each card taken is said as \"<id>: back to ready, not dealt to <friend> again until friend give\" and the summary counts them (marked=<n>); a card whose WHO line pins the friend waits until it is given back to the friend (friend give), briefed for another friend or dropped. The selectors: --all-unstarted takes ONLY the cards dealt to the friend and not taken: ready in the friend's queue with no take recorded (taken, first_taken), no progress, no report and no carried head, and not started (no push on its branch, not named running by the friend's beat); it never takes a working card, and says each card the friend keeps (\"friend <f> keeps <id>: <why>\"). <id>... takes the cards named that are dealt to the friend and not taken; a named card in flight (working, or with a take, progress, report or carried head recorded) is refused unless --working is given, and with --working it is withdrawn mid-flight and one WARNING line counts the working cards withdrawn. --working is for named cards only, never with --all-unstarted. A card is refused, one REFUSED line each, when it is not dealt to that friend, when the friend has started it (a push on its branch, the friend's beat naming it running), or finished (in review or later), even with --working; the others named are taken, and the exit is 1 when any is refused. --all-or-nothing takes none when one is refused. --dry-run lists each card that would move (WOULD), each the friend keeps and each refused, and writes nothing. A working card taken frees the friend's lane, and the friend's oldest ready card is taken into working at once. friend sync marks a card taken back as taken in the friend's queue file.\n"
 
 // friendStarted is the friend's cards she has started, each with its why: every work card
 // ready or working on her row that her last beat names running (by its id, its job or its
@@ -43,7 +44,7 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	if err != nil {
 		return nil, err
 	}
-	pro, _ := pronouns.ParsePronouns(spec.Pronouns)
+	pro, _ := toolsfriend.ParsePronouns(spec.Pronouns)
 	var running []string
 	if b.Friend != nil {
 		running = b.Friend.Running
@@ -73,22 +74,13 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	return out, nil
 }
 
-// keptSays is the NOTE lines of the cards a take of all leaves with her: each one she has
-// started, with why, in id order.
-func keptSays(friend string, started map[string]string) []string {
-	var out []string
-	for _, id := range slices.Sorted(maps.Keys(started)) {
-		out = append(out, fmt.Sprintf("friend %s keeps %s: %s", friend, id, started[id]))
-	}
-	return out
-}
-
 func (a *app) cmdFriendTake(args []string, stdout, stderr io.Writer) int {
 	const name = "friend take"
 	fs, c := a.verbSetup(name)
 	reason := fs.String("reason", "", "why the cards are taken back, kept on each card (\"taken back by the coordinator: <reason>\")")
-	all := fs.Bool("all-unstarted", false, "take every unstarted card held by the friend, naming no card")
-	dry := fs.Bool("dry-run", false, "say which cards would be taken back and write nothing")
+	all := fs.Bool("all-unstarted", false, "take only the cards dealt to the friend and not taken (ready, no take, progress, report, carried head or push), naming no card; never a working card")
+	working := fs.Bool("working", false, "with cards named: withdraw a named card the friend is working (in flight) mid-flight, with one WARNING line; never with --all-unstarted")
+	dry := fs.Bool("dry-run", false, "list each card that would be taken back, kept or refused, and write nothing")
 	allOrNothing := fs.Bool("all-or-nothing", false, "take none of the cards named when any one is refused")
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -101,6 +93,8 @@ func (a *app) cmdFriendTake(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, name, "a friend name wants letters, digits, _ and -: "+pos[0])
 	case *all == (len(pos) > 1):
 		return refuse(stderr, name, "wants the cards to take back, or --all-unstarted, and not both")
+	case *working && *all:
+		return refuse(stderr, name, "--working withdraws named working cards only; --all-unstarted never takes a working card, so not both")
 	}
 	friend, ids := pos[0], pos[1:]
 	st, err := a.store(*c)
@@ -121,20 +115,14 @@ func (a *app) cmdFriendTake(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed(name, err, stderr)
 	}
-	if *dry {
-		fmt.Fprintf(stdout, "FRIEND-TAKE DRY-RUN friend=%s cards=%s all-unstarted=%t; nothing was changed\n", friend, orDashStr(strings.Join(ids, ","), "-"), *all)
-		return 0
-	}
-	if *all {
-		c.says = keptSays(friend, started)
-	}
-	step := store.FriendTakeStep(sprint.FriendTakeReq{Friend: friend, IDs: ids, All: *all, AllOrNothing: *allOrNothing, Reason: *reason, Started: started, Who: c.actor, Spends: true})
+	c.dry = *dry // the plan's WOULD, NOTE and REFUSED lines, nothing written (planDry)
+	step := store.FriendTakeStep(sprint.FriendTakeReq{Friend: friend, IDs: ids, All: *all, Working: *working, AllOrNothing: *allOrNothing, Reason: *reason, Started: started, Who: c.actor, Spends: true})
 	step.Named = false // the takeable are taken and the rest refused; sprint.FriendTake keeps --all-or-nothing itself
 	return a.runStep(name, *c, st, step, stdout, stderr)
 }
 
 // friendGiveWords is what friend give says on -h.
-const friendGiveWords = "friend give hands or unmarks: on a ready card never taken back it hands the card to the friend named, dealt to the friend's fleet row at once (the same work card friend sync delivers), where the deal would otherwise draw the queue head; on a card taken back from the friend (friend take) it clears the mark of the friend it was taken from, so the next deal may deal it to the friend again, and a card whose WHO line pins the friend, which waits for no one else, is dealt to the friend. A card not ready, one whose tier the friend's row does not serve, and one whose needs have not landed are refused, one REFUSED line each, as is a card never taken back and already dealt; the others named are handed, and the exit is 1 when any is refused. Each card says \"<id>: handed to <friend>\", and one unmarked says MOVED <card> may be dealt to <friend> again (<reason>).\n"
+const friendGiveWords = "friend give hands or unmarks: on a ready card never taken back it hands the card to the friend named, dealt to the friend's fleet row at once (the same work card friend sync delivers), where the deal would otherwise draw the queue head; on a card taken back from the friend (friend take) it clears the mark of the friend it was taken from, so the next deal may deal it to the friend again, and a card whose WHO line pins the friend, which waits for no one else, is dealt to the friend. A ready card whose current work card is Done (a brief-replaced bounce) or absent is handed to the friend at its next attempt, from no friend, as the deal deals it. A card not ready, one whose tier or restriction the friend's row does not serve, one whose needs have not landed, one hard pinned to another friend (nova-sprint unpin releases it), and one whose work card is live on a row (friend take frees it) are refused, one REFUSED line each, as is a card taken back from another friend; a friend not up is no refusal, the card waits on the friend's row; the others named are handed, and the exit is 1 when any is refused. Each card says \"<id>: handed to <friend>\", and one unmarked says MOVED <card> may be dealt to <friend> again (<reason>).\n"
 
 func (a *app) cmdFriendGive(args []string, stdout, stderr io.Writer) int {
 	const name = "friend give"
@@ -193,7 +181,7 @@ func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
 	}
 	r := sprint.FriendLevelReq{Started: map[string]string{}, Who: c.actor}
 	for _, f := range rows {
-		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode})
+		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode, WorkerLive: f.WorkerLive})
 		if f.Status != sprint.Up {
 			continue
 		}

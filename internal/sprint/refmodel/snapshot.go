@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // Snapshot is the whole state one tick of the scanning machine decides from:
@@ -38,7 +38,7 @@ type Snapshot struct {
 	Untold []string
 	// Friends is the friends' seats as the roster has them (name, width, status,
 	// class): whom the deal gives a friend's card. nil is none
-	// read, and no friend is dealt a card; the friend stall reads her fleet row.
+	// read, and no friend is dealt a card.
 	Friends []sprint.FriendSeat
 }
 
@@ -107,11 +107,10 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 }
 
 // CarriedProps is the table properties the model carries, each read by a duty to decide as
-// the tick does: the status transitions' record (the presence duty), the landing stall's
-// facts and episode (the deadlines duty, sprint.TickLandingStall), and the unserved tier's
-// fallback setting (the unserved fallback duty, sprint.TickUnservedFallback).
+// the tick does: the status transitions' record (the presence duty) and the landing stall's
+// facts and episode (the deadlines duty, sprint.TickLandingStall).
 var CarriedProps = []string{sprint.PropStatusSeen, sprint.PropLastLanding, sprint.PropLandRefusal,
-	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropUnservedTierFallsTo, sprint.PropReadCards}
+	sprint.PropLandingStallSince, sprint.PropLandingStallSaid, sprint.PropLandingStallBound, sprint.PropReadCards}
 
 func cloneTable(t *sprint.Table) *sprint.Table {
 	if t == nil {

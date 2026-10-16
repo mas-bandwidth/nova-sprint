@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secretcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/secretcheck"
 )
 
 // THE CLASS RULE: NO SECRET REACHES AN ERROR (docs/SPEC-CI.md, `secrets-never-in-errors`),
@@ -29,7 +29,7 @@ import (
 var sprintSecretRoots = []string{
 	"cmd/nova-sprint", "cmd/nova-card", "cmd/nova-work",
 	"internal/sprint", "internal/sprintdash", "internal/card", "internal/cardgen",
-	"internal/workfile", "internal/workgh", "internal/worklang",
+	"internal/workfile", "internal/workgh",
 }
 
 // sprintSecretOpeners is the reviewed table of every function the rule drives here, keyed
@@ -48,7 +48,6 @@ var sprintSecretOpeners = map[string]any{
 	"internal/sprint.ParseReadCard":         sprint.ParseReadCard,
 	"internal/sprint.ParseReaderTiers":      sprint.ParseReaderTiers,
 	"internal/sprint.ParseRoute":            sprint.ParseRoute,
-	"internal/sprint.ParseSiblings":         sprint.ParseSiblings,
 	"internal/sprint.ParseWidth":            sprint.ParseWidth,
 	"internal/sprint.ParseWorkCard":         sprint.ParseWorkCard,
 	"internal/sprint/refmodel.New":          refmodel.New,
@@ -57,7 +56,7 @@ var sprintSecretOpeners = map[string]any{
 
 // sprintSecretLeakAllowlist are the functions known to carry a secret-shaped string into
 // an error, one `<key> <reason>` per line. It only shrinks.
-const sprintSecretLeakAllowlist = sprintNovaToolsLeak + `
+const sprintSecretLeakAllowlist = `
 internal/sprint.ParseAttempts echoes the rejected value with %q (internal/sprint/brief_bound.go:83)
 internal/sprint.ParseDeadline echoes the rejected value with %q (internal/sprint/deadline.go:165)
 internal/sprint.ParseMembers echoes the rejected width with %q (internal/sprint/width.go:42)

@@ -1,16 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // nova-sprint check cards: the core pre-start card check (v1.2.17,
@@ -18,9 +25,10 @@ import (
 // now, should be a new verb 'nova-sprint check'", and "if you start a sprint before checking,
 // then it will fail and tell you to check."). It reads the epoch's work table and its streams,
 // runs the core kinds (sprint.CheckCards), prints one line a finding, and writes the epoch's
-// check record (store.PutCardCheck), which start reads (startCardCheckGate). The check verb
-// beside it (cmdCheck) is the store's invariants and is unchanged. docs/SPEC-SPRINT.md section
-// 14, "The card check"; tla/MachineReady.tla Check.
+// check record (store.PutCardCheck), which start reads (startCardCheckGate); --dry-run and
+// --from <export> run the same check without writing a check record. The check verb beside it
+// (cmdCheck) is the store's invariants and is unchanged. docs/SPEC-SPRINT.md section 14, "The
+// card check"; tla/MachineReady.tla Check.
 func init() {
 	verbClasses["check cards"] = classCoordinator
 }
@@ -28,8 +36,10 @@ func init() {
 // checkCardsOut is check cards' --json object.
 type checkCardsOut struct {
 	Clean    bool                 `json:"clean"`
+	DryRun   bool                 `json:"dry_run,omitempty"`
 	Cards    int                  `json:"cards"`
-	Kinds    string               `json:"kinds,omitempty"`
+	Kinds    string               `json:"kinds,omitempty"`  // the refusing findings by kind
+	Warned   string               `json:"warned,omitempty"` // the warnings by kind (v1.2.18): printed, failing nothing
 	Streams  []string             `json:"streams,omitempty"`
 	Findings []sprint.CardFinding `json:"findings"`
 	Digest   string               `json:"digest"`
@@ -41,6 +51,8 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	var streams listFlag
 	fs.Var(&streams, "stream", "check only this stream (again, or comma separated, for more); a check so limited writes a record start does not take: start wants every card checked")
+	dry := fs.Bool("dry-run", false, "run the card check and print its findings without writing the epoch's check record")
+	from := fs.String("from", "", "read the cards and streams from an export file or directory instead of the store; writes no check record")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
@@ -48,43 +60,78 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 	if len(pos) > 0 {
 		return refuse(stderr, name, "takes no words, found "+pos[0])
 	}
-	st, err := a.store(*c)
-	if err != nil {
-		return refuse(stderr, name, err.Error())
-	}
 	ctx := context.Background()
-	// the work table's cards and the records their needs name (a dropped card is kept, not
-	// placed), and the merge table's control cards of the streams
-	snap, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, checkNeedsExtras)
-	if err != nil {
-		return a.readFailed(name, err, stderr)
-	}
-	if err := st.RoutesInto(ctx, snap); err != nil {
-		return a.readFailed(name, err, stderr)
-	}
-	rs, code := a.briefRules(name, "", c, &st, stderr)
-	if code != 0 {
-		return code
+	var (
+		st      *store.Store
+		snap    *sprint.Snapshot
+		rs      ruleSet
+		baseDir string
+	)
+	if *from != "" {
+		var code int
+		snap, baseDir, rs, code = a.loadCheckExport(ctx, name, *from, stderr)
+		if code != 0 {
+			return code
+		}
+	} else {
+		if *dry {
+			c.read = true
+		}
+		st, err = a.store(*c)
+		if err != nil {
+			return refuse(stderr, name, err.Error())
+		}
+		// the work table's cards and the records their needs name (a dropped card is kept, not
+		// placed), and the merge table's control cards of the streams
+		snap, err = st.Load(ctx, []string{sprint.Work, sprint.Merge}, checkNeedsExtras)
+		if err != nil {
+			return a.readFailed(name, err, stderr)
+		}
+		if err := st.RoutesInto(ctx, snap); err != nil {
+			return a.readFailed(name, err, stderr)
+		}
+		var code int
+		rs, code = a.briefRules(name, "", c, &st, stderr)
+		if code != 0 {
+			return code
+		}
 	}
 	in := sprint.CardCheckIn{Streams: streams, MaxBriefBytes: store.MaxBriefBytes, Trees: map[sprint.CardTreeKey]sprint.AdmissionTree{},
 		Lint: func(brief string) []string { return cardLint(brief, rs) }}
 	for _, cb := range sprint.CardBasesToRead(snap, streams) {
-		in.Trees[sprint.CardTreeKey{Repo: cb.Named, Base: cb.Ref}] = a.cardTree(ctx, cb)
+		k := sprint.CardTreeKey{Repo: cb.Named, Base: cb.Ref}
+		if baseDir != "" {
+			if tree, ok := readExportTree(baseDir, cb); ok {
+				in.Trees[k] = tree
+				continue
+			}
+		}
+		in.Trees[k] = a.cardTree(ctx, cb)
 	}
 	findings := sprint.CheckCards(snap, in)
+	// only a refusing finding fails the check, and so start; a shared-file warning is printed
+	// and kept with the record's findings, and fails neither and orders nothing
+	refusing, warned := sprint.RefusingFindings(findings), sprint.CardCheckKinds(sprint.WarningFindings(findings))
 	cards := sprint.CheckedCardsOf(snap)
-	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(findings) == 0, Streams: streams,
-		Kinds: sprint.CardCheckKinds(findings), Cards: cards, Digest: sprint.CardsDigest(cards)}
+	rec := store.CheckRecord{At: a.now().UTC(), By: c.actor, Clean: len(refusing) == 0, Streams: streams,
+		Kinds: sprint.CardCheckKinds(refusing), Cards: cards, Digest: sprint.CardsDigest(cards), Epoch: snap.Epoch}
 	for _, f := range findings {
 		rec.Findings = append(rec.Findings, f.Line())
 	}
-	// every run writes the record, a failed one over a clean one (tla/MachineReady.tla Check)
-	if rec, err = st.PutCardCheck(ctx, rec); err != nil {
-		return a.readFailed(name, err, stderr)
+	if *dry || *from != "" {
+		if st != nil {
+			rec.Epoch = st.PinnedEpoch()
+		}
+		a.outcome, a.changed = "done", "no"
+	} else {
+		// every run writes the record, a failed one over a clean one (tla/MachineReady.tla Check)
+		if rec, err = st.PutCardCheck(ctx, rec); err != nil {
+			return a.readFailed(name, err, stderr)
+		}
+		a.outcome, a.changed = "done", "yes"
 	}
-	a.outcome, a.changed = "done", "yes"
 	if c.json {
-		o := checkCardsOut{Clean: rec.Clean, Cards: len(cards), Kinds: rec.Kinds, Streams: rec.Streams, Findings: findings, Digest: rec.Digest, Epoch: rec.Epoch}
+		o := checkCardsOut{Clean: rec.Clean, DryRun: *dry || *from != "", Cards: len(cards), Kinds: rec.Kinds, Warned: warned, Streams: rec.Streams, Findings: findings, Digest: rec.Digest, Epoch: rec.Epoch}
 		if o.Findings == nil {
 			o.Findings = []sprint.CardFinding{}
 		}
@@ -94,16 +141,358 @@ func (a *app) cmdCheckCards(args []string, stdout, stderr io.Writer) int {
 		for _, f := range findings {
 			fmt.Fprintln(stdout, oneline.Escape(f.Line()))
 		}
+		also := ""
+		if warned != "" {
+			also = " warned=" + warned
+		}
 		if rec.Clean {
-			fmt.Fprintf(stdout, "CHECK CARDS OK cards=%d\n", len(cards))
+			fmt.Fprintf(stdout, "CHECK CARDS OK cards=%d%s\n", len(cards), also)
 		} else {
-			fmt.Fprintf(stdout, "CHECK CARDS FAILED kinds=%s\n", rec.Kinds)
+			fmt.Fprintf(stdout, "CHECK CARDS FAILED kinds=%s%s\n", rec.Kinds, also)
 		}
 	}
 	if !rec.Clean {
 		return 1
 	}
 	return 0
+}
+
+// loadCheckExport reads a *sprint.Snapshot from an export file or directory (--from <export>):
+// a backup --file twin snapshot, a RESTORE dump, a card <id> --json or card --all --json JSONL
+// file, or a directory holding one with optional briefs/<id>.md and trees/<repo>__<base>.txt.
+func (a *app) loadCheckExport(ctx context.Context, verbName, fromPath string, stderr io.Writer) (*sprint.Snapshot, string, ruleSet, int) {
+	info, err := os.Stat(fromPath)
+	if err != nil {
+		return nil, "", ruleSet{}, refuse(stderr, verbName, "--from: "+err.Error())
+	}
+	baseDir, filePath := filepath.Dir(fromPath), fromPath
+	if info.IsDir() {
+		baseDir, filePath = fromPath, ""
+		for _, cand := range []string{"cards.jsonl", "live-cards.jsonl", "all.jsonl", "cards.json", "snapshot.json", "backup.json"} {
+			p := filepath.Join(baseDir, cand)
+			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+				filePath = p
+				break
+			}
+		}
+		if filePath == "" {
+			ents, _ := os.ReadDir(baseDir)
+			for _, e := range ents {
+				if e.IsDir() {
+					continue
+				}
+				n := e.Name()
+				if strings.HasSuffix(n, ".restore.txt") || strings.HasSuffix(n, ".jsonl") || strings.HasSuffix(n, ".json") || strings.HasSuffix(n, ".backup") {
+					filePath = filepath.Join(baseDir, n)
+					break
+				}
+			}
+		}
+		if filePath == "" {
+			return nil, "", ruleSet{}, refuse(stderr, verbName, "--from: no export file found in "+fromPath)
+		}
+	}
+	b, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, "", ruleSet{}, refuse(stderr, verbName, "--from: "+err.Error())
+	}
+	rs := ruleSet{rules: swarm.DefaultChildRules}
+	if keys, err := store.ParseRestoreDump(b); err == nil && len(keys) > 0 {
+		m, err := store.MemRestore(keys)
+		if err != nil {
+			return nil, "", ruleSet{}, refuse(stderr, verbName, "--from: "+err.Error())
+		}
+		return a.loadExportMem(ctx, verbName, m, baseDir, rs, stderr)
+	}
+	m := store.NewMem()
+	if err := m.Restore(b); err == nil {
+		return a.loadExportMem(ctx, verbName, m, baseDir, rs, stderr)
+	}
+	snap, err := parseCardExport(b, baseDir, a.now().UTC())
+	if err != nil {
+		return nil, "", ruleSet{}, refuse(stderr, verbName, "--from: "+err.Error())
+	}
+	return snap, baseDir, rs, 0
+}
+
+func (a *app) loadExportMem(ctx context.Context, verbName string, m *store.Mem, baseDir string, rs ruleSet, stderr io.Writer) (*sprint.Snapshot, string, ruleSet, int) {
+	st := &store.Store{B: m, Names: sprint.Names{}, Actor: "coordinator", Now: a.now, NewID: store.NewID}
+	var err error
+	if st, err = st.Pinned(ctx); err != nil {
+		return nil, "", ruleSet{}, a.readFailed(verbName, err, stderr)
+	}
+	snap, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, checkNeedsExtras)
+	if err != nil {
+		return nil, "", ruleSet{}, a.readFailed(verbName, err, stderr)
+	}
+	if err := st.RoutesInto(ctx, snap); err != nil {
+		return nil, "", ruleSet{}, a.readFailed(verbName, err, stderr)
+	}
+	if len(snap.Providers) == 0 {
+		snap.Providers = map[string]sprint.Provider{"export": {Name: "export", Billing: "plan", Funded: false}}
+	}
+	if path, err := st.RulesPath(ctx); err == nil && path != "" {
+		if rules, err := swarm.ReadChildRules(path); err == nil {
+			rs = ruleSet{rules: rules}
+		}
+	}
+	return snap, baseDir, rs, 0
+}
+
+type exportEntry struct {
+	Primary   *sprint.Card               `json:"primary"`
+	Work      []*sprint.Card             `json:"work_cards"`
+	Merge     *sprint.Card               `json:"merge"`
+	ID        string                     `json:"id"`
+	IDCap     string                     `json:"ID"`
+	Stream    string                     `json:"stream"`
+	Row       string                     `json:"Row"`
+	Column    string                     `json:"column"`
+	Col       string                     `json:"Col"`
+	State     string                     `json:"state"`
+	Score     float64                    `json:"score"`
+	ScoreCap  float64                    `json:"Score"`
+	Needs     json.RawMessage            `json:"needs"`
+	Brief     string                     `json:"brief"`
+	Fields    map[string]string          `json:"fields"`
+	FieldsCap map[string]string          `json:"Fields"`
+	Cards     []exportEntry              `json:"cards"`
+	Rows      []exportEntry              `json:"rows"`
+	Providers map[string]sprint.Provider `json:"providers"`
+}
+
+func parseExportNeeds(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var ss []string
+	if err := json.Unmarshal(raw, &ss); err == nil {
+		return ss
+	}
+	var ns []sprint.NeedState
+	if err := json.Unmarshal(raw, &ns); err == nil {
+		out := make([]string, 0, len(ns))
+		for _, n := range ns {
+			if n.ID != "" {
+				out = append(out, n.ID)
+			}
+		}
+		return out
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+		return sprint.Split(s)
+	}
+	return nil
+}
+
+func parseCardExport(b []byte, baseDir string, now time.Time) (*sprint.Snapshot, error) {
+	var entries []exportEntry
+	dec := json.NewDecoder(bytes.NewReader(b))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if d, ok := tok.(json.Delim); ok && d == '[' {
+		for dec.More() {
+			var e exportEntry
+			if err := dec.Decode(&e); err != nil {
+				return nil, err
+			}
+			entries = append(entries, e)
+		}
+	} else {
+		dec = json.NewDecoder(bytes.NewReader(b))
+		for {
+			var e exportEntry
+			if err := dec.Decode(&e); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			entries = append(entries, e)
+		}
+	}
+	var workCards, mergeCards []*sprint.Card
+	var providers map[string]sprint.Provider
+	var collect func(es []exportEntry)
+	collect = func(es []exportEntry) {
+		for _, e := range es {
+			if len(e.Providers) > 0 && providers == nil {
+				providers = e.Providers
+			}
+			if len(e.Cards) > 0 {
+				collect(e.Cards)
+			}
+			if len(e.Rows) > 0 {
+				collect(e.Rows)
+			}
+			if e.Primary != nil && e.Primary.ID != "" {
+				p := *e.Primary
+				p.Fields = maps.Clone(e.Primary.Fields)
+				if p.Fields == nil {
+					p.Fields = map[string]string{}
+				}
+				if p.Col == "" {
+					p.Col = e.Column
+				}
+				if p.Row == "" {
+					p.Row = p.Fields["stream"]
+				}
+				fillExportBrief(&p, baseDir)
+				workCards = append(workCards, &p)
+				for _, w := range e.Work {
+					if w != nil && w.ID != "" {
+						wc := *w
+						wc.Fields = maps.Clone(w.Fields)
+						workCards = append(workCards, &wc)
+					}
+				}
+				if e.Merge != nil && e.Merge.ID != "" {
+					mc := *e.Merge
+					mc.Fields = maps.Clone(e.Merge.Fields)
+					mergeCards = append(mergeCards, &mc)
+				}
+				continue
+			}
+			id := e.ID
+			if id == "" {
+				id = e.IDCap
+			}
+			if id == "" {
+				continue
+			}
+			row := e.Stream
+			if row == "" {
+				row = e.Row
+			}
+			col := e.Column
+			if col == "" {
+				col = e.Col
+			}
+			if col == "" {
+				col = e.State
+			}
+			score := e.Score
+			if score == 0 && e.ScoreCap != 0 {
+				score = e.ScoreCap
+			}
+			fields := maps.Clone(e.Fields)
+			if len(fields) == 0 && len(e.FieldsCap) > 0 {
+				fields = maps.Clone(e.FieldsCap)
+			}
+			if fields == nil {
+				fields = map[string]string{}
+			}
+			if row == "" {
+				row = fields["stream"]
+			}
+			if fields["stream"] == "" && row != "" {
+				fields["stream"] = row
+			}
+			if fields["needs"] == "" {
+				if ns := parseExportNeeds(e.Needs); len(ns) > 0 {
+					fields["needs"] = strings.Join(ns, ",")
+				}
+			}
+			if fields["brief"] == "" && e.Brief != "" {
+				fields["brief"] = e.Brief
+			}
+			if fields["kind"] == "" {
+				fields["kind"] = "primary"
+			}
+			c := &sprint.Card{ID: id, Row: row, Col: col, Score: score, Fields: fields}
+			if col == sprint.Ctl || strings.HasPrefix(id, "ctl:") || fields["kind"] == "stream" {
+				if c.Col == "" {
+					c.Col = sprint.Ctl
+				}
+				mergeCards = append(mergeCards, c)
+			} else {
+				if c.Col == "" {
+					c.Col = sprint.Ready
+				}
+				fillExportBrief(c, baseDir)
+				workCards = append(workCards, c)
+			}
+		}
+	}
+	collect(entries)
+	if len(workCards) == 0 && len(mergeCards) == 0 {
+		return nil, errors.New("no cards found in export")
+	}
+	snap := &sprint.Snapshot{Now: now, Work: sprint.NewTable(sprint.Work), Readers: sprint.NewTable(sprint.Readers),
+		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet),
+		Coordinator: "coordinator", Actor: "coordinator", Providers: providers}
+	if len(snap.Providers) == 0 {
+		snap.Providers = map[string]sprint.Provider{"export": {Name: "export", Billing: "plan", Funded: false}}
+	}
+	rowSet := map[string]bool{}
+	for _, c := range workCards {
+		if c.Row != "" {
+			rowSet[c.Row] = true
+		}
+	}
+	for _, c := range mergeCards {
+		if c.Row != "" {
+			rowSet[c.Row] = true
+		}
+	}
+	rows := make([]string, 0, len(rowSet))
+	for r := range rowSet {
+		rows = append(rows, r)
+	}
+	sort.Strings(rows)
+	snap.Work.SetRows(rows)
+	snap.Merge.SetRows(rows)
+	for _, c := range workCards {
+		snap.Work.Put(c)
+	}
+	for _, c := range mergeCards {
+		snap.Merge.Put(c)
+	}
+	for _, r := range rows {
+		if snap.Merge.Card(sprint.CtlID(r)) != nil {
+			continue
+		}
+		branch := "sprint/" + r
+		for _, c := range snap.Work.Cards() {
+			if c.Row != r || !c.Placed() || c.Col == sprint.Landed {
+				continue
+			}
+			if cb := swarm.ReadCardBase([]byte(c.F("brief"))); cb.Ref != "" {
+				branch = cb.Ref
+				break
+			}
+		}
+		snap.Merge.Put(&sprint.Card{ID: sprint.CtlID(r), Row: r, Col: sprint.Ctl, Fields: map[string]string{
+			"kind":                   "stream",
+			sprint.FieldDisplay:      "Stream " + strings.ReplaceAll(r, "-", " "),
+			sprint.FieldStreamBranch: branch,
+		}})
+	}
+	return snap, nil
+}
+
+func fillExportBrief(c *sprint.Card, baseDir string) {
+	if c.F("brief") != "" || baseDir == "" || sprint.IsSentinel(c) {
+		return
+	}
+	for _, p := range []string{filepath.Join(baseDir, "briefs", c.ID+".md"), filepath.Join(baseDir, c.ID+".md")} {
+		if b, err := os.ReadFile(p); err == nil {
+			c.Fields["brief"] = strings.TrimSuffix(string(b), "\n")
+			return
+		}
+	}
+}
+
+func readExportTree(baseDir string, cb swarm.CardBase) (sprint.AdmissionTree, bool) {
+	slug := strings.ReplaceAll(cb.Named+"__"+cb.Ref, "/", "__") + ".txt"
+	for _, p := range []string{filepath.Join(baseDir, "trees", slug), filepath.Join(baseDir, slug)} {
+		if b, err := os.ReadFile(p); err == nil {
+			return sprint.AdmissionTree{Files: strings.Fields(string(b))}, true
+		}
+	}
+	return sprint.AdmissionTree{}, false
 }
 
 // checkNeedsExtras loads the record of every need the placed cards name, placed or kept: a need
@@ -144,18 +533,20 @@ func (a *app) cardTree(ctx context.Context, cb swarm.CardBase) sprint.AdmissionT
 	return a.admissionTree(ctx, &lander{a: a}, cb)
 }
 
-// startCardCheckGate is start's card check gate (start-refuses-until-a-clean-check): from READY
-// or STOPPED, before the machine changes, it reads the epoch's check record and the cards now,
-// and refuses, exit 1, nothing written, with no record, a failed one, one a --stream check
-// limited, or a clean one whose digest is not the cards' now (recomputed from the live table, so
-// any admit, move, brief, needs, priority or tier change voids it with no hook in those verbs).
-// A start of a RUNNING machine changes nothing and is not gated. No flag, variable or setting
-// skips it: newApp sets cardCheckGate (docs/SPEC-SPRINT.md section 14, "The card check"). The
-// one store it does not gate is a mem twin (st.ByHand: --redis mem:<file>, for learning and
-// tests, never a fleet's), so the help's walkthrough and the first-run transcript run as
-// written; check cards runs on a twin as anywhere.
+// startCardCheckGate is start's card check report (v1.4.1, start-warns-never-gates; Glenn: a
+// check reports, it never gates infrastructure): from READY or STOPPED, before the machine
+// changes, it reads the epoch's check record and the cards now, and prints one WARN line on
+// stderr when there is no record, a failed one, one a --stream check limited, or a clean one
+// whose digest is not the cards' now (recomputed from the live table, so any admit, move, brief,
+// needs, priority or tier change makes it stale with no hook in those verbs), and provider
+// findings as WARN too. It always returns 0: the start proceeds (the name is kept; a read
+// failure still exits through readFailed). A clean check that matches prints no WARN. A start of
+// a RUNNING machine changes nothing and prints nothing. newApp sets cardCheckGate
+// (docs/SPEC-SPRINT.md section 14, "The card check"); a mem twin (st.ByHand: --redis
+// mem:<file>, for learning and tests, never a fleet's) prints no report, so the help's
+// walkthrough and the first-run transcript run as written.
 //
-// tla/MachineReady.tla Start, StartRefusedCheck: StartOnlyChecked
+// tla/MachineReady.tla StartChecked, StartUnchecked: StartOnlyChecked, StartNeverGatedByCheck
 func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io.Writer) int {
 	if !a.cardCheckGate || st.ByHand {
 		return 0
@@ -197,14 +588,14 @@ func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io
 				for _, f := range findings {
 					fmt.Fprintf(stderr, "%s start: run nova-sprint check cards: %s\n", prog, oneline.Escape(f.Line()))
 				}
-				fmt.Fprintf(stderr, "%s start: %d provider finding(s): the machine is not started and nothing was written\n", prog, len(findings))
-				return 1
+				fmt.Fprintf(stderr, "%s start: WARN %d provider finding(s); the machine starts anyway (a check reports, it never gates a start)\n", prog, len(findings))
+				return 0
 			}
 		}
 	}
 	if why == "" {
 		return 0
 	}
-	fmt.Fprintf(stderr, "%s start: %s; the machine is not started and nothing was written\n", prog, oneline.Escape(why))
-	return 1
+	fmt.Fprintf(stderr, "%s start: WARN %s; the machine starts anyway (a check reports, it never gates a start)\n", prog, oneline.Escape(why))
+	return 0
 }

@@ -34,27 +34,6 @@ func briefOf(id, brief, depends string) BriefReq {
 	return BriefReq{Cards: []BriefCard{{ID: id, Brief: brief, Needs: Split(depends)}}, Who: "coordinator"}
 }
 
-func TestBriefKeepsANeedRelinkedToItsTwin(t *testing.T) {
-	t.Parallel()
-	w := relinkWorld(t)
-	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1\n\nthe task, reworded", "a-1"))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "a-2", w.s.Work.Placed("b").F("needs"), "the relink record wins over the text's stale DEPENDS-ON")
-	assert.Contains(t, strings.Join(p.Said, "\n"), "needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)")
-}
-
-func TestBriefAddsANewNeedAndKeepsADroppedOne(t *testing.T) {
-	t.Parallel()
-	w := relinkWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
-	// the text names a new dependency c and still names the stale a-1
-	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task, reworded", "a-1,c"))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "a-2,c", w.s.Work.Placed("b").F("needs"), "the relinked need stays a-2 and the new c is added")
-}
-
 func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 	t.Parallel()
 	// a text that drops a need keeps it by default
@@ -74,20 +53,6 @@ func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 	assert.Equal(t, "a-1", w.s.Work.Placed("b").F("needs"), "--needs-from-brief takes the text's stale list")
 }
 
-func TestABriefChangingOnlyDependsKeepsARelinkedNeed(t *testing.T) {
-	t.Parallel()
-	w := relinkWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
-	// the brief differs from the card's only in its DEPENDS-ON: line (the body is
-	// the same), so Brief takes the depends-only path; the relink record must still
-	// win over the text's stale DEPENDS-ON, as it does on the ordinary path.
-	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task", "a-1,c"))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "a-2,c", w.s.Work.Placed("b").F("needs"), "the relink record wins over the text's stale DEPENDS-ON on the depends-only path")
-	assert.Contains(t, strings.Join(p.Said, "\n"), "needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)")
-}
-
 // dependsOnlyBoundWorld is a card dealt at attempt 2 whose brief last changed at
 // attempt 1, with a recorded tier and a DEPENDS-ON line: a DEPENDS-ON-only edit
 // is the depends-only path, which must report the bound and the kept tier as the
@@ -105,57 +70,6 @@ func dependsOnlyBoundWorld(t *testing.T) *world {
 	return w
 }
 
-func TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier(t *testing.T) {
-	t.Parallel()
-	w := dependsOnlyBoundWorld(t)
-	// only the DEPENDS-ON: line changes (x -> x,y), so the task is the same and
-	// the recorded tier still disagrees with the text's line 1: the depends-only
-	// path must say both, as the ordinary path does.
-	p := Brief(w.s, briefOf("a-1", "tier: pro\nDEPENDS-ON: x,y\n\nthe task", "x,y"))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	says := strings.Join(p.Said, "\n")
-	assert.Contains(t, says, "bound: same task (1 attempts stand)")
-	assert.Contains(t, says, "tier kept: frontier (the brief's line 1 says pro)")
-}
-
-func TestADependsOnlyBriefTierFlagOverridesTheText(t *testing.T) {
-	t.Parallel()
-	w := dependsOnlyBoundWorld(t)
-	// only the DEPENDS-ON: line changes (x -> x,y), so the depends-only path is
-	// taken, but --tier names a new tier: the depends-only path must write it over
-	// the recorded tier and the text's line 1, as the ordinary path does
-	// (docs/SPEC-SPRINT.md, the tier).
-	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-1", Brief: "tier: pro\nDEPENDS-ON: x,y\n\nthe task", Needs: []string{"x", "y"}}}, Tier: "heavy", Who: "coordinator"})
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "heavy", w.s.Work.Placed("a-1").F(FieldTier), "--tier names the tier on the depends-only path")
-}
-
-func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"}))
-	// the coordinator pinned the tier with rework --tier or an earlier brief
-	w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
-	p := Brief(w.s, briefOf("a-1", "tier: heavy\n\nthe task, reworded", ""))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "frontier", w.s.Work.Placed("a-1").F(FieldTier), "the recorded tier wins over the text's line 1")
-	assert.Contains(t, strings.Join(p.Said, "\n"), "tier kept: frontier")
-}
-
-func TestBriefTierFlagOverridesTheText(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"}))
-	w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
-	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-1", Brief: "tier: heavy\n\nthe task", Needs: nil}}, Tier: "heavy", Who: "coordinator"})
-	require.Empty(t, p.Refused)
-	w.must(p)
-	assert.Equal(t, "heavy", w.s.Work.Placed("a-1").F(FieldTier), "--tier names the tier over the recorded one and the text")
-}
-
 // boundWorld is a card dealt at attempt 2 whose brief last changed at attempt 1.
 func boundWorld(t *testing.T) *world {
 	t.Helper()
@@ -167,15 +81,76 @@ func boundWorld(t *testing.T) *world {
 	return w
 }
 
-func TestAMetadataOnlyBriefKeepsTheBoundCount(t *testing.T) {
+// An accepted brief edit keeps what a verb set since admission: the relinked
+// need, the recorded tier (unless --tier names one), and the bound count of a
+// routing-only edit; on the ordinary path and on the depends-only path (the
+// text differs only in its DEPENDS-ON: line) alike.
+func TestABriefEditKeepsWhatAVerbSet(t *testing.T) {
 	t.Parallel()
-	w := boundWorld(t)
-	p := Brief(w.s, briefOf("a-1", "tier: heavy\nPATHS: internal/x.go\n\nthe task", ""))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	c := w.s.Work.Placed("a-1")
-	assert.Equal(t, "1", c.F(FieldBriefAttempt), "a routing-only edit keeps the bound count")
-	assert.Contains(t, strings.Join(p.Said, "\n"), "bound: same task (1 attempts stand)")
+	withC := func(t *testing.T) *world {
+		w := relinkWorld(t)
+		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
+		return w
+	}
+	// the coordinator pinned the tier with rework --tier or an earlier brief
+	tierWorld := func(t *testing.T) *world {
+		w := newWorld(t, "reader-a", "reader-b")
+		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"}))
+		w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
+		return w
+	}
+	withTier := func(r BriefReq, tier string) BriefReq { r.Tier = tier; return r }
+	for _, c := range []struct {
+		name             string
+		world            func(*testing.T) *world
+		req              BriefReq
+		field, want, msg string
+		said             []string
+	}{
+		{"BriefKeepsANeedRelinkedToItsTwin", relinkWorld, briefOf("b", "tier: flash\nDEPENDS-ON: a-1\n\nthe task, reworded", "a-1"),
+			"needs", "a-2", "the relink record wins over the text's stale DEPENDS-ON",
+			[]string{"needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)"}},
+		// the text names a new dependency c and still names the stale a-1
+		{"BriefAddsANewNeedAndKeepsADroppedOne", withC, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task, reworded", "a-1,c"),
+			"needs", "a-2,c", "the relinked need stays a-2 and the new c is added", nil},
+		// the body is the same, so Brief takes the depends-only path; the relink
+		// record must still win over the text's stale DEPENDS-ON
+		{"ABriefChangingOnlyDependsKeepsARelinkedNeed", withC, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task", "a-1,c"),
+			"needs", "a-2,c", "the relink record wins over the text's stale DEPENDS-ON on the depends-only path",
+			[]string{"needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)"}},
+		// only DEPENDS-ON changes (x -> x,y) and the recorded tier still disagrees
+		// with line 1: the depends-only path says both, as the ordinary path does
+		{"ADependsOnlyBriefReportsTheBoundAndKeepsTheTier", dependsOnlyBoundWorld, briefOf("a-1", "tier: pro\nDEPENDS-ON: x,y\n\nthe task", "x,y"),
+			"", "", "", []string{"bound: same task (1 attempts stand)", "tier kept: frontier (the brief's line 1 says pro)"}},
+		// --tier on the depends-only path writes over the recorded tier and line 1
+		// (docs/SPEC-SPRINT.md, the tier)
+		{"ADependsOnlyBriefTierFlagOverridesTheText", dependsOnlyBoundWorld, withTier(briefOf("a-1", "tier: pro\nDEPENDS-ON: x,y\n\nthe task", "x,y"), "heavy"),
+			FieldTier, "heavy", "--tier names the tier on the depends-only path", nil},
+		{"BriefKeepsARecordedTierAgainstTheText", tierWorld, briefOf("a-1", "tier: heavy\n\nthe task, reworded", ""),
+			FieldTier, "frontier", "the recorded tier wins over the text's line 1", []string{"tier kept: frontier"}},
+		{"BriefTierFlagOverridesTheText", tierWorld, withTier(briefOf("a-1", "tier: heavy\n\nthe task", ""), "heavy"),
+			FieldTier, "heavy", "--tier names the tier over the recorded one and the text", nil},
+		{"AMetadataOnlyBriefKeepsTheBoundCount", boundWorld, briefOf("a-1", "tier: heavy\nPATHS: internal/x.go\n\nthe task", ""),
+			FieldBriefAttempt, "1", "a routing-only edit keeps the bound count", []string{"bound: same task (1 attempts stand)"}},
+		{"ANewTaskBriefResetsTheBoundCount", boundWorld, briefOf("a-1", "tier: pro\nPATHS: internal/x.go\n\na different task", ""),
+			FieldBriefAttempt, "2", "a new task resets the count", []string{"bound: new task (count reset)"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			w := c.world(t)
+			// This fixture intentionally replaces a working brief.
+			c.req.ReplaceInFlight = true
+			p := Brief(w.s, c.req)
+			require.Empty(t, p.Refused)
+			w.must(p)
+			if c.field != "" {
+				assert.Equal(t, c.want, w.s.Work.Placed(c.req.Cards[0].ID).F(c.field), c.msg)
+			}
+			for _, said := range c.said {
+				assert.Contains(t, strings.Join(p.Said, "\n"), said)
+			}
+		})
+	}
 }
 
 func TestBriefTierRefusesATLAPathBelowHeavy(t *testing.T) {
@@ -197,17 +172,6 @@ func TestBriefTierRefusesATLAPathBelowHeavy(t *testing.T) {
 		w.must(p)
 		assert.Equal(t, tier, w.s.Work.Placed("a-1").F(FieldTier), tier)
 	}
-}
-
-func TestANewTaskBriefResetsTheBoundCount(t *testing.T) {
-	t.Parallel()
-	w := boundWorld(t)
-	p := Brief(w.s, briefOf("a-1", "tier: pro\nPATHS: internal/x.go\n\na different task", ""))
-	require.Empty(t, p.Refused)
-	w.must(p)
-	c := w.s.Work.Placed("a-1")
-	assert.Equal(t, "2", c.F(FieldBriefAttempt), "a new task resets the count")
-	assert.Contains(t, strings.Join(p.Said, "\n"), "bound: new task (count reset)")
 }
 
 // The needs a batch of edits writes are the ones held to the cycle check, never

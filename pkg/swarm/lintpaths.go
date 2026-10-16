@@ -8,10 +8,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 )
 
 // THE BRIEF CHECKS: WHAT NOVA-SPRINT ADD HOLDS A CARD BRIEF TO AT ITS BASE TIP.
@@ -43,6 +43,14 @@ import (
 //	base-is-live          BASE is a sprint base origin holds, never a temporary or deleted one
 //	tier-set              line 1 names a tier, never `-`
 //	tla-is-heavy-or-above a card whose PATHS covers tla/ is tier heavy or frontier
+//	model-gate-named      a card whose PATHS or NEW reaches a .tla or .cfg under tla/ names a
+//	                      STEP that runs `make tlc` or `tlacheck` and a GATE-NEEDS line with tla
+//	spike-paths-research  a KIND: spike or tracer brief names in PATHS and NEW only paths
+//	                      under the research roots (ResearchRoots); its code travels as
+//	                      perf/experiments/<id>/experiment.patch, never as source
+//	paths-cover-registry  a card that adds a C or C++ test source covers each file at the BASE
+//	                      tip that registers its sibling tests by name (a Makefile, test/main.c,
+//	                      a CMakeLists.txt); a Go test needs no registry
 //	who-serves-tier       the friend WHO names (or, for any friend, some friend) serves the tier
 //
 // NO EVIDENCE IS NOT NEGATIVE EVIDENCE, as the base checks have it: a check that needs the
@@ -67,9 +75,19 @@ var BriefBaseRemedies = map[string]string{
 	"tier-set":              "line 1 names the card's tier, `tier: flash|pro|heavy|frontier`; a card with no tier, or `-`, was dealt to friends who could not serve it",
 	"tla-is-heavy-or-above": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
 	// tla-is-frontier is the rule's old token, kept as an alias for one release.
-	"tla-is-frontier": "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
-	"who-serves-tier": "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
+	"tla-is-frontier":      "a card whose PATHS: covers tla/ changes a TLA+ model, and a model is the heavy tier's work or above: write `tier: heavy` on line 1 (or `frontier`), or take tla/ out of PATHS: and give the model to its own card",
+	"model-gate-named":     ModelGateRemedy,
+	"spike-paths-research": "a spike or tracer is never the product: what it keeps is what it taught, not its code, so its KIND: spike or tracer brief names in PATHS: and NEW: only paths under docs/research/, rnd/, perf/, benchmark/experiments/ or benchmark/findings/; deliver the code as a patch file (NEW: perf/experiments/<id>/experiment.patch beside perf/findings/<id>.md and perf/experiments/<id>/raw.txt) and edit no source file, or cut the production change as its own card with another KIND",
+	"paths-cover-registry": "a C or C++ suite builds and runs only the test sources its registry names (a Makefile listing them, test/main.c running each suite, a CMakeLists.txt adding each file), so a card adding a test source changes the registry too: name each registry the finding names on PATHS:; apply the corrected PATHS: line add printed",
+	"who-serves-tier":      "the friend WHO: names serves the card's tier (her row's tiers, else her class), or for `WHO: friend` some friend does; name a friend who serves it, raise the tier to one she serves, or drop the WHO: line so the fleet deals it",
 }
+
+// ModelGate is the sentence internal/cardgen appends to a model card's STEP 4 gate so the
+// worker runs the model and merges tla/RUNS.tsv before committing.
+const ModelGate = "The PATHS reach tla/, so the gate also runs the model: on a Linux TLC bench (java, the pinned jar at /opt/tla/tla2tools.jar; never a working machine), for each group g that `go run ./tools/tlacheck groups --root . --stale` lists (the groups of the cases your edit touched), run `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g`, then `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv $JOB/scratch/tlc-*/RUNS.tsv`, until the groups command prints []; commit tla/RUNS.tsv with the change, never a row written by hand. The lander refuses a head that edits tla/*.tla or tla/*.cfg without a current RUNS.tsv row for each case it touches, naming the case."
+
+// ModelGateRemedy is what model-gate-named wants when PATHS or NEW reaches a .tla or .cfg under tla/.
+const ModelGateRemedy = "when PATHS: or NEW: reaches a .tla or .cfg under tla/, some STEP must run `make tlc` or `tlacheck` and a `GATE-NEEDS:` line must name `tla` (e.g., `GATE-NEEDS: linux, tla`): \"" + ModelGate + "\""
 
 // PathsReadRemedy is the correction for read-only metadata written in PATHS.
 const PathsReadRemedy = "move the read-only file to START with (read) and keep only files the card writes in PATHS"
@@ -149,6 +167,11 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 			add("pr-carry", line, "this card finishes an open pull request and its brief carries no CARRY: line, so its slot stages from the base and not from the PR's head; add `CARRY: head=<the PR's full head sha> branch=<the PR branch>` to the brief's header (the line brief --widen writes, less the attempt), then add the brief again")
 		}
 	}
+	// 10b. spike-paths-research, run before the PATHS: return: a spike may name its files on
+	// NEW: alone (the fixed3d spikes do), and production code on NEW: is refused all the same.
+	if line, outside := spikeOutsideResearch(h); len(outside) > 0 {
+		add("spike-paths-research", line, fmt.Sprintf("KIND %s names %s outside the research roots (%s); a spike's code travels as perf/experiments/<id>/experiment.patch", strings.TrimSpace(h["KIND"].value), quoteDepends(outside), strings.Join(ResearchRoots, ", ")))
+	}
 	pathsF := h["PATHS"]
 	if !pathsF.found {
 		return out, nil
@@ -214,40 +237,73 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 	// 2. donewhen-test-name, read off the TEST line.
 	testF := h["TEST"]
 	tl, testWhy := cardhdr.ParseTest(testF.value)
+	dt, runnerForm := runnerDoneTest(testF.value)
+	checked := false
 	switch {
 	case !testF.found: // a brief with no TEST line is held to it where the copy wrapper reads it
+		checked = true
+	case runnerForm:
+		if why, _ := runnerTestLine(testF.value); why != "" {
+			add("donewhen-test-name", testF.line, why)
+			checked = true
+		}
 	case testWhy != "":
 		add("donewhen-test-name", testF.line, testWhy)
+		checked = true
 	case tl.None:
-	case !tree:
-		missingFinding("donewhen-test-name", testF.line)
+		checked = true
 	default:
-		runner := tl.Runner
-		if runner == "" {
-			runner = "go"
+		dt.runner = tl.Runner
+		if dt.runner == "" {
+			dt.runner = "go"
 		}
-		if runner == "ctest" {
-			if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":CMakeLists.txt"); err != nil {
-				add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: ctest %s names a CMake test, and %s holds no CMakeLists.txt at the base", tl.Name, at()))
-				break
+		dt.name = tl.Name
+		if dt.runner == "go" {
+			dt.scope = []string{goPkgArg(tl.Package)}
+		}
+	}
+	if !checked {
+		if !tree {
+			missingFinding("donewhen-test-name", testF.line)
+		} else {
+			if dt.runner == "ctest" && len(dt.scope) == 0 {
+				if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":CMakeLists.txt"); err != nil {
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: ctest %s names a CMake test, and %s holds no CMakeLists.txt at the base", dt.name, at()))
+					checked = true
+				}
 			}
-		}
-		var scope []string
-		if runner == "go" {
-			scope = []string{goPkgArg(tl.Package)}
-		}
-		present, err := testDefinedAt(bb.Repo, bb.Sha, doneTest{runner: runner, name: tl.Name, scope: scope})
-		switch {
-		case err != nil:
-			add("donewhen-test-name", testF.line, fmt.Sprintf("MISSING: could not search the tree at %s for %s: %v", at(), tl.Name, err))
-		case present && ledgerClassTest(h["KIND"].value, tl.Package):
-			// a ledger card: its class test is green at the base by construction (LedgerKind)
-		case present:
-			where := tl.Package + " "
-			if runner == "ctest" {
-				where = ""
+			if !checked && dt.runner == "make" && len(dt.scope) > 0 {
+				missingTarget := ""
+				for _, sc := range dt.scope {
+					sc = strings.TrimPrefix(sc, "./")
+					if _, err := baseGit(bb.Repo, "cat-file", "-e", "--end-of-options", bb.Sha+":"+sc); err != nil {
+						missingTarget = sc
+						break
+					}
+				}
+				if missingTarget != "" {
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST: make %s %s names target/file %s, and %s holds no such file at the base; the target must exist", dt.scope[0], dt.name, missingTarget, at()))
+					checked = true
+				}
 			}
-			add("donewhen-test-name", testF.line, fmt.Sprintf("TEST %s exists in %sat %s, so it cannot be red there; name the new test the card adds", tl.Name, where, at()))
+			if !checked {
+				present, err := testDefinedAt(bb.Repo, bb.Sha, dt)
+				switch {
+				case err != nil:
+					add("donewhen-test-name", testF.line, fmt.Sprintf("MISSING: could not search the tree at %s for %s: %v", at(), dt.name, err))
+				case present && ledgerClassTest(h["KIND"].value, tl.Package):
+					// a ledger card: its class test is green at the base by construction (LedgerKind)
+				case present:
+					where := ""
+					if dt.runner == "go" {
+						where = tl.Package + " "
+					}
+					if len(dt.scope) > 0 {
+						where = dt.scope[0] + " "
+					}
+					add("donewhen-test-name", testF.line, fmt.Sprintf("TEST %s exists in %sat %s, so it cannot be red there; name the new test the card adds", dt.name, where, at()))
+				}
+			}
 		}
 	}
 
@@ -417,6 +473,33 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		add("tla-is-heavy-or-above", 1, fmt.Sprintf("PATHS covers tla/, a TLA+ model, and line 1 names tier %s, below heavy", orElse(model.Tier, "-")))
 	}
 
+	// 10a. model-gate-named.
+	if line, why := modelGateMissing(raw, h); why != "" {
+		add("model-gate-named", line, why)
+	}
+
+	// 10b. spike-paths-research runs above, before the PATHS: return (spikeOutsideResearch).
+
+	// 10c. paths-cover-registry.
+	if added := addedTestSources(files, tree, paths, news); len(added) > 0 {
+		if tree {
+			var want []string
+			for _, src := range added {
+				for _, r := range testRegistries(bb, files, src) {
+					if !covers(paths, r) && !slices.Contains(want, r) {
+						want = append(want, r)
+					}
+				}
+			}
+			if len(want) > 0 {
+				add("paths-cover-registry", pathsF.line, fmt.Sprintf("the card adds the test source %s, and %s at %s names its sibling tests, so the card changes it too; PATHS does not cover it", quoteDepends(added), quoteDepends(want), at()))
+				addPaths = append(addPaths, want...)
+			}
+		} else {
+			missingFinding("paths-cover-registry", pathsF.line)
+		}
+	}
+
 	// 11. who-serves-tier.
 	if w, why := cardhdr.ReadWho(string(raw)); why == "" && w.Friend && model.Tier != "" && model.Tier != "-" {
 		switch {
@@ -451,6 +534,242 @@ func LintBrief(raw []byte, bb BriefBase) ([]CardHeaderFinding, BriefFix) {
 		fix = append(fix, tierLine(firstLine(raw), cardhdr.RouteHeavy))
 	}
 	return out, fix
+}
+
+// modelStepToolRE matches the model runner a STEP names (`make tlc` or `tlacheck`).
+var modelStepToolRE = regexp.MustCompile(`\bmake\s+(?:-\S+\s+)*tlc\b|\btlacheck\b`)
+
+// reachesModelFile says the PATHS or NEW entry e reaches a .tla or .cfg under tla/.
+func reachesModelFile(e string) bool {
+	e = cleanEntry(e)
+	if diffcheck.Covers(e, "tla/M.tla") || diffcheck.Covers(e, "tla/MCM.cfg") ||
+		hygiene.MatchGlob(e, "tla/M.tla") || hygiene.MatchGlob(e, "tla/MCM.cfg") {
+		return true
+	}
+	return strings.HasPrefix(e, "tla/") && (path.Ext(e) == ".tla" || path.Ext(e) == ".cfg")
+}
+
+// modelTouchLine is the line of the first PATHS or NEW header whose entries reach a .tla or
+// .cfg under tla/; 0 when neither does.
+func modelTouchLine(h map[string]headerField) int {
+	for _, key := range []string{"PATHS", "NEW"} {
+		f := h[key]
+		if !f.found {
+			continue
+		}
+		if slices.ContainsFunc(headerList(f.value), reachesModelFile) {
+			return f.line
+		}
+	}
+	return 0
+}
+
+// stepRunsModel says the brief has at least one STEP line (steps > 0) and whether some STEP
+// paragraph runs `make tlc` or `tlacheck`.
+func stepRunsModel(raw []byte) (steps int, runs bool) {
+	in := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "STEP ") || strings.HasPrefix(t, "STEP\t") || strings.HasPrefix(t, "STEP:") || strings.HasPrefix(t, "STEP."):
+			steps++
+			in = true
+		case t == "" || taskHeadRE.MatchString(t):
+			in = false
+		}
+		if in && modelStepToolRE.MatchString(t) {
+			runs = true
+		}
+	}
+	return steps, runs
+}
+
+// gateNeedsTLA says a GATE-NEEDS header line names tla.
+func gateNeedsTLA(raw []byte, h map[string]headerField) bool {
+	if slices.ContainsFunc(headerList(h["GATE-NEEDS"].value), func(n string) bool {
+		return strings.EqualFold(n, "tla")
+	}) {
+		return true
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
+			if slices.ContainsFunc(headerList(v), func(n string) bool { return strings.EqualFold(n, "tla") }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// modelGateMissing returns the line and refusal for model-gate-named when PATHS or NEW reaches
+// a .tla or .cfg under tla/ and the brief omits either a STEP running `make tlc` or `tlacheck`
+// or a GATE-NEEDS line naming `tla`. A header-only stub with no STEP lines and no REPO, BASE,
+// STOP, GATE-NEEDS or NEW header is not a stepped brief and is not held here.
+func modelGateMissing(raw []byte, h map[string]headerField) (int, string) {
+	line := modelTouchLine(h)
+	if line == 0 {
+		return 0, ""
+	}
+	steps, hasTool := stepRunsModel(raw)
+	if steps == 0 && !h["REPO"].found && !h["BASE"].found && !h["STOP"].found && !h["GATE-NEEDS"].found && !h["NEW"].found {
+		return 0, ""
+	}
+	hasGateNeeds := gateNeedsTLA(raw, h)
+	if !hasGateNeeds && hasTool && !h["REPO"].found && !h["BASE"].found && !h["GATE-NEEDS"].found {
+		if _, task := taskParagraph(raw); task == "" && strings.Contains(string(raw), "on a Linux bench, then: /tmp/tlacheck merge") {
+			hasGateNeeds = true
+		}
+	}
+	if hasTool && hasGateNeeds {
+		return 0, ""
+	}
+	var miss []string
+	if !hasTool {
+		miss = append(miss, "no STEP runs `make tlc` or `tlacheck`")
+	}
+	if !hasGateNeeds {
+		miss = append(miss, "no GATE-NEEDS line names `tla`")
+	}
+	return line, fmt.Sprintf("PATHS or NEW reaches a .tla or .cfg under tla/, and %s; %s", strings.Join(miss, " and "), ModelGateRemedy)
+}
+
+// ResearchRoots are the directories a KIND: spike or tracer brief may name in PATHS: and NEW:
+// (spike-paths-research). Glenn's tracer-bullet rule: a tracer is never the product; what is
+// kept is what it taught, not its code. In sprint 21 two schema tracers named production
+// packages and one landed; the fixed3d spikes named only perf/ and shipped their code as an
+// experiment.patch.
+var ResearchRoots = []string{"docs/research/", "rnd/", "perf/", "benchmark/experiments/", "benchmark/findings/"}
+
+// spikeKind says a KIND: value is a spike or a tracer, in any case.
+func spikeKind(kind string) bool {
+	k := strings.ToLower(strings.TrimSpace(kind))
+	return k == "spike" || k == "tracer"
+}
+
+// underResearchRoot says the PATHS or NEW entry e lies under one of ResearchRoots.
+func underResearchRoot(e string) bool {
+	e = cleanEntry(e)
+	return slices.ContainsFunc(ResearchRoots, func(r string) bool {
+		return strings.HasPrefix(e, r) || e == strings.TrimSuffix(r, "/")
+	})
+}
+
+// spikeOutsideResearch is, for a KIND: spike or tracer brief, every PATHS and NEW entry
+// outside ResearchRoots (as written), with the line of the first header that names one; nil
+// for any other brief.
+func spikeOutsideResearch(h map[string]headerField) (int, []string) {
+	if !spikeKind(h["KIND"].value) {
+		return 0, nil
+	}
+	var outside []string
+	line := 0
+	for _, key := range []string{"PATHS", "NEW"} {
+		f := h[key]
+		if !f.found {
+			continue
+		}
+		for _, e := range headerList(f.value) {
+			if !underResearchRoot(e) {
+				outside = append(outside, e)
+				if line == 0 {
+					line = f.line
+				}
+			}
+		}
+	}
+	return line, outside
+}
+
+// testSourceExts are the extensions of a C or C++ source a test registry lists.
+var testSourceExts = []string{".c", ".cc", ".cpp", ".cxx"}
+
+// testSource says p is a C or C++ test source: a C or C++ file under a test/ or tests/
+// directory, or one named *_test.* or test_*.*. A Go test is none: go test finds it alone.
+func testSource(p string) bool {
+	p = cleanEntry(p)
+	if strings.ContainsAny(p, "*?[") || !slices.Contains(testSourceExts, path.Ext(p)) {
+		return false
+	}
+	stem := strings.TrimSuffix(path.Base(p), path.Ext(p))
+	if strings.HasSuffix(stem, "_test") || strings.HasPrefix(stem, "test_") {
+		return true
+	}
+	return slices.ContainsFunc(strings.Split(path.Dir(p), "/"), func(seg string) bool { return seg == "test" || seg == "tests" })
+}
+
+// addedTestSources is every test source the card adds: a NEW entry that is one, and a PATHS
+// entry that is one and that the tree at the base does not hold. With no tree, every test
+// source PATHS or NEW names, since none can be shown to exist already.
+func addedTestSources(files []string, tree bool, paths, news []string) []string {
+	var out []string
+	for _, e := range append(slices.Clone(news), paths...) {
+		e = cleanEntry(e)
+		if !testSource(e) || slices.Contains(out, e) {
+			continue
+		}
+		if tree && slices.Contains(files, e) && !slices.ContainsFunc(news, func(n string) bool { return cleanEntry(n) == e }) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// registryNames are the base names of a file that registers test sources: a build file in
+// the test source's directory or any directory above it, or a test runner's main beside it.
+var (
+	registryBuildNames = []string{"Makefile", "makefile", "GNUmakefile", "CMakeLists.txt"}
+	registryMainNames  = []string{"main.c", "main.cc", "main.cpp", "main.cxx"}
+)
+
+// testRegistries is every file at the base that registers the test source src's siblings:
+// a build file of src's directory or one above it, or a main beside src, whose text names a
+// test source of src's directory (src itself aside) by file name or by stem, as a whole word.
+// None when the directory holds no other test source, or nothing names one (a glob builds
+// them all).
+func testRegistries(bb BriefBase, files []string, src string) []string {
+	dir := path.Dir(src)
+	var siblings []string
+	for _, f := range files {
+		if path.Dir(f) == dir && f != src && testSource(f) && !slices.Contains(registryMainNames, path.Base(f)) {
+			siblings = append(siblings, f)
+		}
+	}
+	if len(siblings) == 0 {
+		return nil
+	}
+	var cands []string
+	for _, n := range registryMainNames {
+		cands = append(cands, path.Join(dir, n))
+	}
+	for d := dir; ; d = path.Dir(d) {
+		for _, n := range registryBuildNames {
+			cands = append(cands, path.Join(d, n))
+		}
+		if d == "." || d == "/" {
+			break
+		}
+	}
+	var pats []*regexp.Regexp
+	for _, s := range siblings {
+		base := path.Base(s)
+		stem := strings.TrimSuffix(base, path.Ext(base))
+		pats = append(pats, regexp.MustCompile(`(^|[^A-Za-z0-9_])(`+regexp.QuoteMeta(base)+`|`+regexp.QuoteMeta(stem)+`)($|[^A-Za-z0-9_])`))
+	}
+	var out []string
+	for _, c := range cands {
+		if !slices.Contains(files, c) || slices.Contains(out, c) {
+			continue
+		}
+		text, err := baseGit(bb.Repo, "show", "--end-of-options", bb.Sha+":"+c)
+		if err != nil {
+			continue
+		}
+		if slices.ContainsFunc(pats, func(re *regexp.Regexp) bool { return re.MatchString(text) }) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // BriefRemedy is what a brief token wants: BriefBaseRemedies, else CardBaseRemedies.

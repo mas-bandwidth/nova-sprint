@@ -91,10 +91,17 @@ func finishStamps(pr, w *Card, now time.Time) map[string]string {
 
 // CycleTimes is the stage times of the primaries landed in the CycleWindow before now.
 func CycleTimes(s *Snapshot, now time.Time) StageTimes {
+	return CycleTimesExcept(s, now, nil)
+}
+
+// CycleTimesExcept is CycleTimes without the cards of the streams skip names: the where
+// record counts it without the archived streams (store.ArchivedOfShape; the owner, 2026-10-14:
+// archived work is in no total).
+func CycleTimesExcept(s *Snapshot, now time.Time, skip map[string]bool) StageTimes {
 	all := map[string][]float64{}
 	by := map[string]map[string][]float64{}
 	for _, c := range s.Work.Column(Landed) {
-		if IsSentinel(c) {
+		if IsSentinel(c) || skip[c.Row] {
 			continue
 		}
 		landed := stampAt(c, "landed")

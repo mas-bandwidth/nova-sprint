@@ -14,44 +14,45 @@ import (
 // ledger or not, and the edge if any — and refuses the whole set on the first
 // non-ledger overlap without an edge (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
 
-func TestReviewTableNamesPathCardsLedgerAndEdge(t *testing.T) {
+// The shared-path rule (docs/SPEC-CARD-CONTRACT.md) on a plan of two cards, fix-a and fix-b,
+// each a planBrief(path, shared, needs): two cards sharing a path that no lander-owned ledger
+// covers are refused at admission with the overlap named (both card ids and the path), and no
+// flag admits them: a SHARED: line is refused the same way, and a *_test.go file (inside every
+// card's PATHS by AlwaysInPathsRule) is no ledger the lander merges. A needs edge between the
+// two admits them; a ledger the lander merges admits them. Review prints one table line per
+// shared path (path, cards, ledger or not, edge or not) and refuses on the first overlap that
+// is neither.
+func TestSharedPathRule(t *testing.T) {
 	t.Parallel()
-	table, refusal := Review([]CardPlan{
-		{ID: "fix-a", Brief: planBrief("src/x.go", "", "")},
-		{ID: "fix-b", Brief: planBrief("src/x.go", "", "")},
-	})
-	assert.Equal(t, "src/x.go  fix-a,fix-b  not-ledger  no-edge\n", table)
-	assert.NotEqual(t, "", refusal, "a non-ledger overlap without an edge is refused")
-}
-
-func TestReviewNamesLedgerRows(t *testing.T) {
-	t.Parallel()
-	table, refusal := Review([]CardPlan{
-		{ID: "fix-a", Brief: planBrief("FIXES.md", "", "")},
-		{ID: "fix-b", Brief: planBrief("FIXES.md", "", "")},
-	})
-	assert.Equal(t, "FIXES.md  fix-a,fix-b  ledger  no-edge\n", table)
-	assert.Equal(t, "", refusal, "a ledger the lander merges is shared freely")
-}
-
-func TestReviewNamesEdgeRows(t *testing.T) {
-	t.Parallel()
-	table, refusal := Review([]CardPlan{
-		{ID: "fix-a", Brief: planBrief("src/x.go", "", "")},
-		{ID: "fix-b", Brief: planBrief("src/x.go", "", "fix-a")},
-	})
-	assert.Equal(t, "src/x.go  fix-a,fix-b  not-ledger  edge\n", table)
-	assert.Equal(t, "", refusal, "a needs edge chains the pair and admits them")
-}
-
-func TestReviewCleanPlanIsAnEmptyTableAndNoRefusal(t *testing.T) {
-	t.Parallel()
-	table, refusal := Review([]CardPlan{
-		{ID: "fix-a", Brief: planBrief("src/a.go", "", "")},
-		{ID: "fix-b", Brief: planBrief("src/b.go", "", "")},
-	})
-	assert.Equal(t, "", table)
-	assert.Equal(t, "", refusal)
+	const noLink = ", and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)"
+	const xRefusal = "src/x.go is named in PATHS by fix-a and fix-b" + noLink
+	for _, tc := range []struct {
+		name, pathA, pathB, shared, needsB string
+		table, refusal, msg                string
+	}{
+		{"ReviewTableNamesPathCardsLedgerAndEdge", "src/x.go", "src/x.go", "", "",
+			"src/x.go  fix-a,fix-b  not-ledger  no-edge\n", xRefusal, "a non-ledger overlap without an edge is refused: src/x.go is no lander-owned ledger and no needs edge chains the pair"},
+		{"SharedPathRuleRefusesSharededNonLedgerOverlap", "src/x.go", "src/x.go", "src/x.go", "",
+			"src/x.go  fix-a,fix-b  not-ledger  no-edge\n", xRefusal, "a SHARED: line does not admit a non-ledger path: the lander merges only ledgers"},
+		{"SharedPathRuleRefusesTestFileOverlap", "cmd/nova-sprint/add_test.go", "cmd/nova-sprint/add_test.go", "", "",
+			"cmd/nova-sprint/add_test.go  fix-a,fix-b  not-ledger  no-edge\n",
+			"cmd/nova-sprint/add_test.go is named in PATHS by fix-a and fix-b" + noLink, "add_test.go is no lander-owned ledger"},
+		{"ReviewNamesLedgerRows", "FIXES.md", "FIXES.md", "", "",
+			"FIXES.md  fix-a,fix-b  ledger  no-edge\n", "", "a ledger the lander merges is shared freely"},
+		{"ReviewNamesEdgeRows", "src/x.go", "src/x.go", "", "fix-a",
+			"src/x.go  fix-a,fix-b  not-ledger  edge\n", "", "a needs edge chains the pair and admits them: fix-b lands at fix-a's tip"},
+		{"ReviewCleanPlanIsAnEmptyTableAndNoRefusal", "src/a.go", "src/b.go", "", "", "", "", "no path is shared"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			table, refusal := Review([]CardPlan{
+				{ID: "fix-a", Brief: planBrief(tc.pathA, tc.shared, "")},
+				{ID: "fix-b", Brief: planBrief(tc.pathB, tc.shared, tc.needsB)},
+			})
+			assert.Equal(t, tc.table, table, tc.msg)
+			assert.Equal(t, tc.refusal, refusal, tc.msg)
+		})
+	}
 }
 
 // briefNeeds reads a plan's needs the same way add reads a brief's: the first Needs:
@@ -115,7 +116,7 @@ func TestReviewRepositoryIdentity(t *testing.T) {
 			require.Len(t, rows, 1)
 			assert.Equal(t, "src/x.go", rows[0].Path)
 			assert.Equal(t, []string{"fix-a", "fix-b"}, rows[0].Cards)
-			assert.Contains(t, RefuseOverlaps(rows), "neither needs the other")
+			assert.Contains(t, RefuseOverlaps(rows), "neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 		})
 	}
 }

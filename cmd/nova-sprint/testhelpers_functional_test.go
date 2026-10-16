@@ -16,9 +16,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
+	"github.com/mas-bandwidth/nova-tools/pkg/goenv"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,8 +43,8 @@ func newFunctionalTestApp(t *testing.T, redisAddr string) *functionalTestApp {
 	env := map[string]string{
 		"HOME":            home,
 		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
-		// the actor is recorded with every change (no default); it is not a
-		// server variable, so it does not forward. Every server-reaching
+		// the actor is recorded with every change; the default needs both
+		// hooks proven live. This is not a server variable, so it does not forward. Every server-reaching
 		// variable (NOVA_SPRINT_SERVER and the seat record) is otherwise
 		// scrubbed.
 		"NOVA_SPRINT_ACTOR": "coordinator",
@@ -89,16 +88,6 @@ func (ta *functionalTestApp) runVerbOut(argv ...string) (string, int, string) {
 	var out, errb bytes.Buffer
 	code := runInto(ta.a, argv, &out, &errb)
 	return out.String(), code, errb.String()
-}
-
-// newScrubbedApp makes a scrubbed app on the test's own store, for a functional
-// test that runs several apps over one store (the world/coordinator/machines
-// pattern). Each app has HOME and XDG_CONFIG_HOME of the test's own and no
-// NOVA_* variable, so none can forward; its verbs run through runOnStore, which
-// adds --redis.
-func newScrubbedApp(t *testing.T, addr string) *app {
-	t.Helper()
-	return newFunctionalTestApp(t, addr).a
 }
 
 // runOnStore runs a verb on the app a with --redis <store>, so the verb runs on
@@ -270,20 +259,4 @@ func withoutNOVAEnv(env []string) []string {
 		out = append(out, entry)
 	}
 	return out
-}
-
-// quotedSocket is the proof's unix socket, named so the reply command must
-// quote it. It stays under the test directory when that path fits a Unix
-// socket, and otherwise in a short private directory, as twinSocket does when
-// a long TMPDIR cannot hold one. The directory the fallback makes is the
-// caller's to remove.
-func quotedSocket(t *testing.T) string {
-	t.Helper()
-	sock, err := testredis.SocketPath(t.TempDir(), "emma's canary.sock")
-	require.NoError(t, err)
-	if strings.HasPrefix(sock, os.TempDir()) || strings.HasPrefix(sock, "/tmp") {
-		dir := filepath.Dir(sock)
-		t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	}
-	return sock
 }

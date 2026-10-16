@@ -26,8 +26,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
-	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
+	"github.com/mas-bandwidth/nova-tools/pkg/sexp"
 )
 
 // keyedForm is one keyed member of a ledger: its key, its canonical text (formString), and
@@ -80,13 +79,13 @@ func (d formDoc) all() (map[string]keyedForm, map[string]string, error) {
 
 // formKey is a keyed list member's key: (<kind> "<id>" ...) is <kind>:<id>, (:id "<id>" ...)
 // is id:<id>, and any other form is its canonical text.
-func formKey(f worklang.Form) string {
-	if f.Kind == worklang.List && len(f.List) >= 2 {
-		if f.List[0].Kind == worklang.Symbol && f.List[1].Kind == worklang.String {
+func formKey(f sexp.Form) string {
+	if f.Kind == sexp.List && len(f.List) >= 2 {
+		if f.List[0].Kind == sexp.Symbol && f.List[1].Kind == sexp.String {
 			return f.List[0].Value + ":" + f.List[1].Value
 		}
 		for i := 0; i+1 < len(f.List); i++ {
-			if f.List[i].Kind == worklang.Keyword && f.List[i].Value == "id" && f.List[i+1].Kind == worklang.String {
+			if f.List[i].Kind == sexp.Keyword && f.List[i].Value == "id" && f.List[i+1].Kind == sexp.String {
 				return "id:" + f.List[i+1].Value
 			}
 		}
@@ -95,12 +94,12 @@ func formKey(f worklang.Form) string {
 }
 
 // keyedList says a list value is a keyed list: every member is a list with a key.
-func keyedList(f worklang.Form) bool {
-	if f.Kind != worklang.List {
+func keyedList(f sexp.Form) bool {
+	if f.Kind != sexp.List {
 		return false
 	}
 	for _, it := range f.List {
-		if it.Kind != worklang.List {
+		if it.Kind != sexp.List {
 			return false
 		}
 	}
@@ -122,15 +121,15 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 		return d, nil
 	}
 	// one wrapping (<kind> ...) form; a file of one bare (:id ...) form is read as a sequence
-	if top, err := worklang.Read(file, data, roadmapdoc.Limits); err == nil && top.Kind == worklang.List && len(top.List) > 0 && top.List[0].Kind == worklang.Symbol {
+	if top, err := sexp.Read(file, data, landDataLimits); err == nil && top.Kind == sexp.List && len(top.List) > 0 && top.List[0].Kind == sexp.Symbol {
 		for i := 1; i < len(top.List); i++ {
 			kw := top.List[i]
-			if kw.Kind != worklang.Keyword || i+1 >= len(top.List) {
+			if kw.Kind != sexp.Keyword || i+1 >= len(top.List) {
 				continue
 			}
 			v := top.List[i+1]
 			i++
-			if v.Kind == worklang.List && keyedList(v) {
+			if v.Kind == sexp.List && keyedList(v) {
 				l := formList{name: kw.Value, off: v.Offset, end: v.End}
 				for _, it := range v.List {
 					l.items = append(l.items, keyedForm{key: key(it), canon: formString(it), off: it.Offset, end: it.End})
@@ -144,7 +143,7 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 	}
 	// a bare sequence of forms: read as one list, the offsets taken back to the file's
 	wrapped := append(append([]byte("(\n"), data...), []byte("\n)")...)
-	top, err := worklang.Read(file, wrapped, roadmapdoc.Limits)
+	top, err := sexp.Read(file, wrapped, landDataLimits)
 	if err != nil {
 		return d, err
 	}

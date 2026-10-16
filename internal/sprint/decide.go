@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // NOVA-DECIDE'S LAYER 2 in the sprint (docs/SPEC-SPRINT.md sections 2 and 5; the owner,
@@ -267,10 +267,14 @@ func DecideDue(s *Snapshot) (grades []GradeAsk, outcomes []DecideOutcome) {
 }
 
 // LandedTier is the tier a landed primary was on: script for a card of script steps alone
-// (cardtree), else the tier it was on when it landed (cardTier).
+// (cardtree), else the tier its last deal drew (FieldTierNow, a record: a card landed before
+// 2026-10-16 may have run below its tier, and its record says so), else its own (cardTier).
 func LandedTier(c *Card) string {
 	if cardtree.Parse(c.F("brief")).AllScript() {
 		return decide.GradeScript
+	}
+	if m, _ := modelOf(c); !pinnedTier(c, m) && c.F(FieldTierNow) != "" {
+		return c.F(FieldTierNow)
 	}
 	now, _ := CardTiers(c)
 	return now
