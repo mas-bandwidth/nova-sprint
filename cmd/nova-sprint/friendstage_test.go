@@ -58,6 +58,9 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		if args[0] == "clone" {
 			require.NoError(t, os.MkdirAll(args[len(args)-1], 0o755))
 		}
+		if args[0] == "rev-parse" {
+			return landHead + "\n", nil
+		}
 		return "", nil
 	}
 	defer func() { friendStageGit = prev }()
@@ -72,12 +75,13 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	assert.Contains(t, string(jobmd), "CARD: s1-1.w1\n")
 	assert.Contains(t, string(jobmd), "GEN: 1\n")
 	assert.Contains(t, string(jobmd), "BRANCH: sprint/s1-1.w1.g1.e0\n")
-	assert.Contains(t, string(jobmd), "FINISH: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head sprint/s1 --branch sprint/s1-1.w1.g1.e0 --base sprint/s1\n")
-	assert.Contains(t, string(jobmd), "FINISH-FAILED: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head sprint/s1 --branch sprint/s1-1.w1.g1.e0 --base sprint/s1 --failed\n")
+	assert.Contains(t, string(jobmd), "HEAD: "+landHead+"\n", "the symbolic BASE is resolved to the cloned branch's exact commit")
+	assert.Contains(t, string(jobmd), "FINISH: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head "+landHead+" --branch sprint/s1-1.w1.g1.e0 --base sprint/s1\n")
+	assert.Contains(t, string(jobmd), "FINISH-FAILED: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head "+landHead+" --branch sprint/s1-1.w1.g1.e0 --base sprint/s1 --failed\n")
 
 	// the friend's identity was set in the clone's local config, and the clone
 	// was made at the delivered branch
-	var sawName, sawEmail, sawClone, sawCheckout bool
+	var sawName, sawEmail, sawClone, sawResolve, sawCheckout bool
 	for _, c := range calls {
 		switch {
 		case c.args[0] == "clone":
@@ -89,13 +93,18 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		case c.args[0] == "config" && len(c.args) >= 3 && c.args[1] == "user.email":
 			sawEmail = true
 			assert.Equal(t, "amy@example.com", c.args[2])
+		case c.args[0] == "rev-parse":
+			sawResolve = true
+			assert.Equal(t, []string{"rev-parse", "--verify", "refs/remotes/origin/sprint/s1^{commit}"}, c.args)
 		case c.args[0] == "checkout":
 			sawCheckout = true
 			assert.Equal(t, "sprint/s1-1.w1.g1.e0", c.args[3], "the delivered branch is created")
+			assert.Equal(t, landHead, c.args[4], "checkout starts at the exact cloned BASE head")
 		}
 	}
 	assert.True(t, sawClone, "the card's repo is cloned")
 	assert.True(t, sawName && sawEmail, "the clone's local identity is the friend's")
+	assert.True(t, sawResolve, "the non-default BASE is resolved through its remote-tracking ref")
 	assert.True(t, sawCheckout, "the delivered branch is checked out")
 
 	// no git invocation after the clone ran before both identity writes: nothing
@@ -138,12 +147,14 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	assert.Contains(t, string(jm3), "HEAD: "+landHead+"\n")
 	assert.Contains(t, string(jm3), "--head "+landHead+" --branch sprint/s1-3.w1.g1.e0 --base sprint/s1\n")
 
-	// a second stage of the same card@gen is idempotent: it prints the JOB.md path
+	// a second stage of the same card@gen is idempotent: it resolves the same
+	// cloned BASE head, then prints the existing JOB.md path without cloning.
 	before := len(calls)
 	code, out, errs := ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --dir %s", jobs))
 	assert.Equal(t, 0, code, "%s", errs)
 	assert.Contains(t, out, filepath.Join(jobDir, "JOB.md"))
-	assert.Equal(t, before, len(calls), "an idempotent stage runs no git")
+	assert.Len(t, calls, before+1)
+	assert.Equal(t, "rev-parse", calls[before].args[0], "an idempotent stage only checks the cloned BASE")
 
 	// a card not dealt to the named friend is refused
 	code, _, errs = ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.bob --dir %s", jobs))
