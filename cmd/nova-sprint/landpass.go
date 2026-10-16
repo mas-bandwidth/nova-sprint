@@ -287,10 +287,15 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	if len(queue) == 0 {
 		return refused("nothing queued to merge in stream " + stream + "; run: nova-sprint queue --stream " + stream)
 	}
-	if ordered, softWhy := sprint.MergeSoftOrder(s, queue); len(ordered) == 0 && softWhy != "" {
-		return refused(softWhy)
-	} else {
-		queue = ordered
+	// a card that cannot be placed after its queued soft dependency is skipped for this
+	// batch, named with its reason, and the rest of the stream lands
+	// (tla/SoftDependency.tla HeldNeverEmptiesBatch)
+	ordered, softWhy := sprint.MergeSoftOrder(s, queue)
+	if softWhy != "" {
+		l.keep(landBatch{Stream: stream, Status: "refused", IDs: []string{}, Reason: softWhy})
+	}
+	if queue = ordered; len(queue) == 0 && softWhy != "" {
+		return nil, false
 	}
 	// no card short of its reads is landed, nor any card behind it (a card lands only with
 	// every card ahead of it): the refusal names it and its count, and the tick sends it

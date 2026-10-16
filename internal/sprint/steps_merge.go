@@ -449,7 +449,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	if len(queued) == 0 {
 		why := "nothing queued in stream " + r.Stream + "; nothing was changed"
 		if softWhy != "" {
-			why = softWhy
+			why = softWhy + "; nothing was changed"
 		} else if beforePriority > 0 {
 			why = "no queued card has its prerequisites satisfied in stream " + r.Stream + "; nothing was changed; land its prerequisites first"
 		} else if len(s.Merge.Cell(r.Stream, Stuck)) > 0 {
@@ -482,10 +482,6 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			}
 		}
 		if len(batch) != len(r.Cards) {
-			if softWhy != "" {
-				p.refuse(r.Stream, softWhy)
-				return p
-			}
 			for _, id := range r.Cards {
 				if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 {
 					p.refuse(id, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", id, strings.Join(blocked, ", ")))
