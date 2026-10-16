@@ -8,7 +8,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (218)
-- [Setup, release and operations](#setup-release-and-operations) (35)
+- [Setup, release and operations](#setup-release-and-operations) (67)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
@@ -2124,6 +2124,326 @@ Why it waits: A launch agent per friend and per job grew to dozens of plists tha
 Target: v1.7
 
 From: Glenn, live, 2026-10-16: 'consolidate all these things into one app that starts at startup and has configuration according to friends, not an app per-friend'
+
+### nova-sprint log honours --max and names the rest
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint log (cmd/nova-sprint/log.go), never a second mechanism. Problem: `nova-sprint log --since 1h --max 5` printed 2,985 entries, ending `LOG OK lines=2985 of=127415` (854 KB). log.go never reads c.max, and log.go:120 prints every line. Smallest fix: honour --max with a default of 20, end a cut list with `MORE kind=log shown=<n> total=<t> run: nova-sprint log <same filters> --max 0`, and add --grep and --kind later if needed. The help text is corrected by the v1.4.x text fix (the store-verbs --max paragraph now says log does not cap yet); this is the behaviour, and the fix reverses that paragraph when it lands. Tool: nova-sprint log. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A bounded look at the log cost 854 KB because --max is parsed and ignored.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 1 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### nova-sprint check separates new faults from old ones and says what each rule is
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint check (rules in internal/sprint/log.go). Problem: the live sprint prints `CHECK FAILED violations=241`, and every line reads `VIOLATION rule 13: fleet/<card> is not on the table and the log last moved it to <m>:ok`. No help, playbook or repair text names rule 13; in the code it is log/table agreement (log.go:200-235: a card's place and generation on the table must match the log's last move). Smallest fix: (a) a rule table in `help check`, one line per rule with its remedy, which needs someone who knows each remedy (it is not confirmed that `repair` clears rule 13); (b) check --baseline or --since <epoch> to accept old violations so new ones show. The MORE line of check printing `...` is corrected by the v1.4.x text fix; this is the behaviour. Tool: nova-sprint check. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A check that is always red shows nobody a new fault, and rule 13 has no explanation anywhere.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 3 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### say what a judgment alias is, and print it in the answer commands
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint inbox, ack and wait. Problem: every judgment prints `alias=j20532`, and no help or playbook says what it is or which verbs accept it. `--answers` and `hold --cause` take j<n>; `ack` takes <note> only (not confirmed whether ack accepts aliases). Smallest fix: one words entry (`alias a judgment's short name, j<n>; taken by hold --cause, answer --answers, ...`), then print the alias in the ack and wait lines wherever the verb accepts it. That alone would cut the inbox by more than half. Tool: nova-sprint inbox/ack/wait. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Commands print 60-character ids when a five-character alias is accepted, and nothing says so.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 7 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one recommended command per judgment, never a contradiction
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint inbox (internal/sprint/coordinator_pass.go:289, drift.go:130/151 `decisions: []string{"act", "wait"}`, printed by reads.go:2793 like any decision word). Problem: "The seat is not answering" says `this cannot be waited or acknowledged` and is followed by `act:` then `nova-sprint wait tick-overdue-...~21-1.3 --for 30m`; the presence judgment's `act:` offers both ack and wait; one `act:` block was empty. Which judgment owned the wait line was not settled from code alone. Smallest fix: drop a decision block that repeats a listed decision, never print `wait` under a judgment whose type WaitRefused refuses, and print one recommended line. This changes output a parser reads, hence v1.7. Tool: nova-sprint inbox. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The inbox tells the coordinator to wait on a judgment that refuses a wait.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 8 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### every flag a playbook uses is in its verb's usage line, held by a test
+
+Repository mas-bandwidth/nova-sprint. Sweep over the verb table (cmd/nova-sprint/verbs.go) and nova-hook hook (nova-tools cmd/nova-hook/main.go:235), never a second list. Problem: the sprint playbook uses `rework --carry`, `brief --replace-in-flight`/`--keep-head`, `drop --cascade|--relink|--waive`, `--who/--state/--ids-file`, `hold --cause`, `set --pegged-bound`, `fleet up --deadline|--harnesses`, `ack --dry-run` and `friend take --all-or-nothing`, and none is in its verb's usage line. The playbook test reads flags from the FlagSet and the synopsis together (playbook_test.go:47-48), so the gap passes. nova-hook hook documents --codex-socket/--codex-thread/--codex-events-dir/--codex-since in its detail but not in its usage; that usage is quoted in nova-tools TOOLS-PLAYBOOK.md:52 and, across repos, in COORDINATOR-PLAYBOOK.md:58. About a dozen usage lines, each with its quotes kept in step. Smallest fix: a test that every flag a playbook passes appears in the usage synopsis, then add them. The brief-edit warning (survey-brief-edit-in-flight-warning) belongs in the same sweep. Tools: nova-sprint (many verbs), nova-hook hook. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A cold AI reading the usage line cannot find flags the playbook tells it to pass.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 10 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### retire the one-release aliases on a named release, and the disabled lane tutorial
+
+Repository mas-bandwidth/nova-sprint. Across nova-sprint, nova-config, nova-redis and nova-check. Problem: aliases are 'kept for one release' with no release named. nova-sprint: `--limit` (verbs.go:653, "accepted for one release"); `fleet down`, `reader away`, `friend down`, `reader up` and `friend up` (hold.go:38-41, 227-235); `fleet hold`/`friend hold` beside `hold`. nova-config `--as` and `--friend` (main.go:684, login.go:404). nova-redis `--addr` (main.go:318). nova-check `--fail-max` (per the survey, not checked). Also the three `lane` usage lines and the lane tutorial (cmd/nova-sprint/lane.go), DISABLED since 2026-10-13; the "until v1.3" date is corrected by the v1.4.x text fix, and removing the tutorial is this item. Glenn names the release; then delete each alias, its usage lines and its NOTE, with the tests that pin them (cap_alias_test.go). Tools: nova-sprint, nova-config, nova-redis, nova-check. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Removing an alias changes behaviour, and 'accepted until vX' is Glenn's decision.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 11, 12 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### list seat login and seat logout in the help
+
+Repository mas-bandwidth/nova-sprint. Extends the verb table (cmd/nova-sprint/verbs.go) and the playbook test. `nova-sprint seat login` exists (dispatched inside seat, seat.go:505-509, storelogin.go:193; docs/CLI.md:172-173, :386), so "the address nova-sprint seat login recorded" (main.go:698) is correct. The gap: `seat login` and `seat logout` appear in no usage line of `nova-sprint help` or `help seat`, so a cold AI cannot find the verb the --redis text names. Smallest fix: add them to the verb table or the seat synopsis, and to the playbook test. Tool: nova-sprint seat. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The --redis flag text names a verb no usage line lists; the dispatch and table change, so it is not a text fix.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 16 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one doctor: fold nova-swarm doctor into nova-doctor and retire nova-sprint doctor
+
+Repository mas-bandwidth/nova-sprint. Spans nova-sprint and nova-tools. Problem: `nova-doctor run`, `nova-sprint doctor [--all] [--area ...] [--preflight ...]` (in help and step 5 of the playbook's session start) and `nova-swarm doctor` (cmd/nova-swarm/main.go:51, "refuse a launch under a shadowed nova-swarm"). The coordinator's own rule is 'only nova-doctor; nova-sprint doctor retired by name'. Smallest fix (Glenn decides): fold nova-swarm doctor into nova-doctor as `--check swarm-shadow`, and retire nova-sprint doctor from help and the playbook, or rename it to what it is. A text-only line on nova-swarm ("one check; nova-doctor run is the machine's doctor") is not worth a separate PR before that decision. Tools: nova-sprint doctor, nova-swarm doctor. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Three tools are called doctor, and the rule says there is one.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 17 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one refusal shape, <TOOL> <VERB> REFUSED: <cause>; run: <command>, on stderr, with a not-found remedy
+
+Repository mas-bandwidth/nova-sprint. Lint over every refuse/emit call in nova-sprint and nova-tools. Examples of other shapes: `nova-sprint inbox REFUSED: unknown flag ...` (exit 2), `DOCTOR REFUSED: ...`, and `SPILL NOTE ...` beside the result. Most tools already share the shape. Smallest fix: a lint that rejects any other shape, plus the not-found remedy `run: nova-sprint view cards --stream <s>` in place of the biggest view, `where`. The REFUSED word in the `card` and `priority` not-found lines is corrected by the v1.4.x text fix; this is the lint and the remedy. Tools: all. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Callers parse refusals, and a few still print a different shape.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 19 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### nova-sprint help is a 5 KB grouped index, and the prose moves to topics
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint help (cmd/nova-sprint). Problem: the banner is 749 lines and 60,368 bytes with about 181 usage lines and no one-line purpose for each; the judgment table, the fleet beat rules, the friend report grammar and the land algorithm are all in it. Smallest fix: group the verbs (Seat, Cards, Judgments, Fleet, Friends, Readers, Streams, Landing, Release, Machine, Admin), one line per verb with a purpose, and move today's text to `help all` and topics (`help judgments`, `help land`, `help fleet`). The interim line "The whole usage and prose follow (60 KB)..." goes with it. Tool: nova-sprint help. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A cold AI pays 60 KB before it finds a verb.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 20 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### short common-flag lines in help <verb>, and one help store topic
+
+Repository mas-bandwidth/nova-sprint. Extends help <verb> (cmd/nova-sprint). Problem: `help ack` is 1,603 bytes, of which 942 are the common flags `--actor/--epoch/--json/--max/--op/--redis`, and --redis alone is 330 characters (main.go:698). Smallest fix: one-line descriptions of the six, plus a new `help store` topic holding the full --redis paragraph. A new topic is new behaviour, and many -h outputs change, hence v1.7. The V14X store-verbs paragraph edit does not overlap. Tool: nova-sprint. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Boilerplate flags take 60% of each verb's help.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 21 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### inbox --brief: one line per group, with inbox --open <alias> for the full commands
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint inbox. Problem: 38 judgments came to 73 KB in one run, and about 15 KB in another. Smallest fix: one line per group (`j20532 a reader found it broken stream=schema-dart size=3 waited=39m OVERDUE`), with `inbox --open <alias>` for the full commands. Also document `safe_default` (from SafeDecisionDefault) in `help inbox`, after checking what each value means; the missing `[--json]` in the usage line is corrected by the v1.4.x text fix. Tool: nova-sprint inbox. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The inbox is too large to read in one turn.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 22, 35 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### inbox --open prints only the group it opens
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint inbox (verbs.go:2440-2460). Problem: `inbox --open tick-presence-...~21-1.10` printed every judgment (about 15 KB), then that group's members under it, while `help inbox` says `list every member, need and notification of the group of this id`. Smallest fix: print the opened group alone. Tool: nova-sprint inbox. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The verb named open prints the whole inbox.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 23 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one table for return, redo, rework, continue, brief, recut and the tier verbs
+
+Repository mas-bandwidth/nova-sprint. Extends docs/COORDINATOR-PLAYBOOK.md section 4. Problem: from help alone a cold AI could not tell what `tier <card> --set` adds over `brief --tier`. Smallest fix: a side-by-side table (keeps id, keeps head, spends an attempt, when to use), with each verb's semantics checked against the code before it is written, which is why it is not a quick text fix. Tool: nova-sprint docs. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The overlapping verbs have no side-by-side table, and the semantics must be checked in code first.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 24 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### the 'brief is wrong' row warns that a PATHS edit on a working card bounces its next finish
+
+Repository mas-bandwidth/nova-sprint. Extends docs/COORDINATOR-PLAYBOOK.md. The 'the brief is wrong' row does not warn that a PATHS edit on a working card makes its next finish bounce unless `--replace-in-flight` or `--keep-head` is used. Add the warning once survey-usage-lines-list-playbook-flags settles the flags and the semantics are checked. Tool: nova-sprint docs. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: It waits on the usage-line sweep, so the warning names flags that are in the usage lines.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 25 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### no circular remedy: card's now: block drops its own stop-and-look line, and HELD reads plainly
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint card (RepeatDecision, internal/sprint/notes.go:183; held.go:24-29, :297-314). Problem: a judgment's `stop and look:` line says `nova-sprint card <id>`, and `card <id>` prints, in its `now:` block, the same `stop and look: nova-sprint card <id>`. Smallest fix: in card's now:, drop the stop-and-look line for the card being shown; an output change on a parsed block. Also the HELD line: print `writes the judgment <type>` in place of `writes <type>`, which changes `card --fields` that parsers read. The HELD holder letters (a) to (e) were documented in the words entry in v1.4.x; this is the output. Tool: nova-sprint card. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A remedy that points at itself leaves the coordinator where it started.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 27, 28 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### card's default view is the header, now:, the attempts and the first 15 lines of the brief
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint card. Problem: each look at a card costs 2-3k tokens because briefs run 7-9 KB. Smallest fix: make the full brief opt-in with --brief, which already exists in the usage (verbs.go:168). Tool: nova-sprint card. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A routine look at a card should not cost a brief.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 29 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### a human title per judgment type, printed beside the type
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint inbox. Problem: the presence judgment's title is the bare type `status`, with the body "fleet member amd-2 is flapping". The type is a parsed field, so retitling it is not a text fix. Smallest fix: a human title per type (`a member is flapping`) printed beside the type. Tool: nova-sprint inbox. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The title 'status' says nothing about what happened.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 30 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### log lines never end at an empty payload
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint log. Problem: `judgment updated: decision escalation delivery: ` and `ctl-schema-js: schema-js changed by rowan: ` have nothing after the colon. Smallest fix: print the changed field, or skip the line. Tool: nova-sprint log. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A log line with nothing after the colon records nothing.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 31 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one MORE line shape, held by a lint
+
+Repository mas-bandwidth/nova-sprint. Extends the listed function (verbs.go:1139), needs.go:396 and the inbox. Problem: `MORE kind=... run: ...` (verbs.go:1139), needs.go:396 adds `omitted= first_hidden=`, and the inbox prints `... all: nova-sprint inbox --open <id>`. Smallest fix: one shape, `MORE kind=<k> shown=<n> total=<t> run: <exact command>`, held by a lint. The `...` in the listed MORE line is corrected by the v1.4.x text fix; this is the shape. Tool: nova-sprint. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A parser must handle three MORE shapes.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 33 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### friend cards <f> (or friend show <f>) heads with status, hold reason, hook state and last beat
+
+Repository mas-bandwidth/nova-sprint. Extends nova-sprint friend. Problem: `friend cards rowan` shows 8 working cards and no status, so there is no single 'why is this friend here' view; the playbook's `nova-friend check/reach` need the bus address that nova-hook refuses to find (see survey-bus-tools-read-seat-login). Smallest fix: head the view with status, hold reason, hook state and last beat. Tool: nova-sprint friend. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Answering why a friend is idle takes several verbs.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 34 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### decide the pre-alpha banner of nova-work and nova-card
+
+Repository mas-bandwidth/nova-sprint. cmd/nova-work/main.go:49 and cmd/nova-card/main.go:33 print `... is pre-alpha: not ready for production use.` Both playbooks make `nova-work roadmap add` the standard way to record missing behaviour. Whether to drop the banner is Glenn's call, a stage decision rather than a text fix. Tools: nova-work, nova-card. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A stage decision is Glenn's, and the banner contradicts the playbooks until he makes it.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 57 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### a bare call to a tool with a default verb names that verb
+
+Repository mas-bandwidth/nova-tools. Extends pkg/tool (tool.go:171-173). Problem: for any tool with Default set (nova-doctor, nova-up) a bare call prints `no verb and no file given; the verbs are run, version; run: nova-doctor help`, and 'no file' means nothing to either tool. Smallest fix: when Default is set, say `no verb given; run: <tool> <Default>` (or --dry-run), or run the default verb when called bare, the better end. The `[run]` usage line is corrected by the v1.4.x text fix; this is the behaviour. Shared code across every tool. Tool: pkg/tool (nova-doctor, nova-up). Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Shared code across every tool, so it is not a text fix.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 37 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### the banner's --json sentence is true for tools whose verbs print their own lines
+
+Repository mas-bandwidth/nova-tools. Extends the banner generator (pkg/tool/tool.go:527-539), which writes "Every verb but <verbs with f.Prints()> takes --json: <NoJSON>". Problem: nova-doctor says `Every verb but run takes --json: run prints one DOCTOR ... line per check; --json prints results as one object` (doctor.go:239), and nova-check says the same of dogfood ledger/record/convergence/spelling and then "spelling and convergence take it too" (cmd/nova-check/main.go:54). Smallest fix: in the generator, list only verbs with no --json flag, and rewrite the two NoJSON strings. Tools: pkg/tool, nova-doctor, nova-check. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The banner contradicts itself in two tools, and the generator is shared.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 38 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### doctor friend-row names the command it ran and its refusal, and skips non-friend daemons
+
+Repository mas-bandwidth/nova-tools. Extends nova-doctor (internal/doctor/check_friend_row.go:26-28), which runs `nova-config friend show <d.Name> --json`. Problem: the live output names the daemon `sync`, which is no friend, probably the `nova-sprint friend sync` unit misread as a friend daemon by friendDaemonsOrOK, and the fix line (`friend set <name> --mode one-shot ...`) is wrong for it. Smallest fix: exclude non-friend daemons, and quote the exact argv and stderr of the failed call. Tool: nova-doctor. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A check that blames a non-friend and prescribes a wrong fix sends the operator the wrong way.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 39 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### nova-doctor gosdk warns outside a checkout
+
+Repository mas-bandwidth/nova-tools. Extends nova-doctor (check_gosdk.go:146). Problem: `DOCTOR gosdk fail no go.mod here: the bench's toolchain is not named`, so every run from /tmp exits 2. Smallest fix: warn, with `fix: pass --dir <checkout>`. That changes the status and the exit code. Tool: nova-doctor. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A run from any directory but a checkout exits 2 for a reason that is not a fault.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 40 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### a StoreWrite effect in pkg/tool, used by every store-writing verb
+
+Repository mas-bandwidth/nova-tools. Extends pkg/tool (tool.go:139-141, Inspection, LocalWrite, Delivery) and nova-redis. Problem: `nova-redis spill -h` says `Effect: tool.LocalWrite` (main.go:157, 'writes files on this machine'), but spill writes one Redis key, and Delivery ('sends beyond this machine') is not right for a loopback Redis either. Smallest fix: a StoreWrite effect (`store write: writes the store at --redis`). Tools: pkg/tool, nova-redis. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: No effect word is true for a store write.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 46 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### nova-up names its modes, not a hidden verb
+
+Repository mas-bandwidth/nova-tools. Extends nova-up (internal/up/tool.go:36-40). `up` is a real verb and the Default, so `nova-up up -h` is valid. The confusion is three spellings of one entry point: `nova-up --local`, `nova-up up`, and the refusal `the verbs are up, version`. Smallest fix: settle it together with survey-bare-call-names-default-verb (`UP REFUSED: no mode given; the modes are --local and --seat; run: nova-up --local --dry-run`). Tool: nova-up. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: It waits on the shared bare-call refusal.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 49 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one store resolution: nova-hook, nova-bus and nova-friend read the seat login
+
+Repository mas-bandwidth/nova-tools. Extends pkg/bus (open.go:97). Problem: in a shell where `nova-sprint check` reaches the store, `nova-hook status --as rowan` gives `STATUS REFUSED: --redis is required: NOVA_BUS_REDIS is unset, and with no NOVA_SPRINT_REDIS the fleet's bus row (...) cannot be read either; refusing to guess; run: nova-hook help`. nova-sprint resolves its store through the seat login (main.go:698); the bus tools do not read it. Smallest fix: pkg/bus reads the seat login's bus address the way nova-sprint does. Until then the refusal could say the seat login is not read by this tool; hold that text with the fix so the refusal is not changed twice. Tools: nova-hook, nova-bus, nova-friend. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Two store resolutions answer differently in the same shell.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 55 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### one environment table in the tools playbook, held by a test
+
+Repository mas-bandwidth/nova-tools. Extends docs/TOOLS-PLAYBOOK.md. Problem: 17 or more variables (`NOVA_SPRINT_REDIS`, `NOVA_REDIS_ADDR`, `NOVA_BUS_REDIS`, `NOVA_SPRINT_SERVER`, `NOVA_*_PASSWORD_ENV`, `NOVA_PG_DSN`, `NOVA_SEAT`, `NOVA_SPRINT_ACTOR`, `NOVA_SECRETS_*`, ...), and `--redis` means the sprint store in nova-sprint and nova-table and the bus store in nova-hook and nova-bus. Smallest fix: a section `## 0. The environment` (name, tools that read it, what it names, the fallback when unset), generated from the flag defaults or held by a test so it cannot drift. A new doc mechanism. Tools: all. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: A new doc mechanism, and the table must not drift.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 56 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### nova-doctor run ends with a typed summary line
+
+Repository mas-bandwidth/nova-tools. Extends nova-doctor run. Problem: it prints 13 `DOCTOR <check> ...` lines and then nothing (exit 2). Smallest fix: end with `DOCTOR OK|FAILED ok=<n> warn=<n> fail=<n>`, as every other tool ends with a typed summary. New output. Tool: nova-doctor. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Every other tool ends with a typed summary line.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 60 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
+
+### every nova-* on PATH answers help and version, or leaves PATH
+
+Neither nova-sprint nor nova-tools holds the scripts (probably rowan-tools), so the repository is to be settled when the card is cut. Problem: `nova-loop help` gives `nova-loop: no command for help` (exit 2), and `nova-push-credential --help` gives `usage: nova-push-credential get | probe <url>`. nova-doctor's self check also lists `nova-hook-750b0842b`, `nova-sprint-startfix`, `nova-*-mirror.git` and others, and its fix line `nova-update apply --file <manifest> <name>` cannot be run for a stray file; the fix line is corrected by the v1.4.x text fix, and this is the exclusion. Smallest fix: add help and version cases to the two scripts (or move them off PATH); make the self check skip `*.git` directories and stray copies; clean the stray copies from the bin directory (fleet-admin housekeeping). Also one help form in every tool: the tools playbook's claim that `<verb> -h` is always safe is corrected by the v1.4.x text fix for nova-fuse; nova-loop has no help form, and nova-secrets lists only a bare `help`. Tools: nova-loop, nova-push-credential, nova-doctor self. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: The tools playbook promises one help form, and these tools do not answer it.
+
+Target: v1.7
+
+From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage item 44, 43, 54 (verified against nova-sprint main a9670be4 and nova-tools main c4ce3886a)
 
 ## Docs, models and the repository
 
