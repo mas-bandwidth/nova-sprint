@@ -31,7 +31,7 @@ var friendStageGit = func(ctx context.Context, dir string, args ...string) (stri
 }
 
 // friendStageWords is what friend stage says on -h.
-const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's own git identity from the friend's nova-config row git_identity= field in the clone's local config, and writes JOB.md naming the exact finish command. It refuses a card not dealt to the named friend, and refuses a friend whose nova-config row has no git_identity field (it never falls back to the machine's global identity or the sprint's default). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
+const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -105,8 +105,10 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	p := pk[0]
 
-	// (3) the friend's own git identity, from her nova-config row; never the
-	// machine's global git config, never the sprint's default identity
+	// (3) the friend's own git identity, from her nova-config row when it names one, else the
+	// sprint row's git_identity (v1.4.5: the friend kind has no git_identity field yet, so a
+	// row could never name one and every friend delivery was refused); never the machine's
+	// global git config
 	rows, err := a.friends(ctx, *pg)
 	if err != nil {
 		return refuse(stderr, name, "the config cannot be read: "+oneline.Err(err)+"; run: nova-config friend list")
@@ -118,9 +120,17 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			break
 		}
 	}
+	identityFrom := "friend"
 	id, ok := config.ParseGitIdentity(git)
 	if !ok {
-		return refuseState(stderr, name, fmt.Sprintf("friend %s has no git_identity field on record in nova-config (a git_identity='Name <email>' field), so staging would fall back to the machine's global git config; run: nova-config friend set %s --fields git_identity='Name <email>'", friendName, friendName))
+		sprintID, err := st.GitIdentity(ctx)
+		if err != nil {
+			return a.readFailed(name, err, stderr)
+		}
+		if id, ok = config.ParseGitIdentity(sprintID); !ok {
+			return refuseState(stderr, name, fmt.Sprintf("friend %s has no git_identity on her nova-config row and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(sprintID), identityRemedy))
+		}
+		identityFrom = "sprint"
 	}
 
 	// (2) the delivered branch is the one the bus message FRIEND-CARD DELIVERED
@@ -215,7 +225,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err := os.WriteFile(filepath.Join(jobDir, friend.JobFile), []byte(jobmd), 0o644); err != nil {
 		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
 	}
-	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile))
+	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), identityFrom)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
 }
